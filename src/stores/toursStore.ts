@@ -39,7 +39,7 @@ interface ToursState extends ToursData {
   saveDraft: () => Promise<TourResult>;
   discardDraft: () => Promise<TourResult>;
   deletePlan: (id: string) => Promise<TourResult>;
-  copyPlan: (id: string) => Promise<TourResult>;
+  copyPlan: (id: string, runId?: string) => Promise<TourResult>;
   startRun: (id: string) => Promise<TourResult>;
   markStop: (id: string, status: 'visited' | 'skipped' | null) => Promise<TourResult>;
   endRun: () => Promise<TourResult>;
@@ -285,8 +285,8 @@ export const useToursStore = create<ToursState>(() => ({
   discardDraft: () => mutate((d) => {
     d.draft = null;
   }),
-  copyPlan: (id) => mutate((d) => {
-    const p = d.plans.find((p) => p.id === id);
+  copyPlan: (id, runId) => mutate((d) => {
+    const p = runId ? d.runs.find((run) => run.id === runId && run.planId === id)?.snapshot : d.plans.find((p) => p.id === id);
     if (!p)
       return { ok: false, error: 'not_found' };
     if (d.plans.length >= TOUR_LIMIT)
@@ -359,7 +359,9 @@ export const useToursStore = create<ToursState>(() => ({
       return { ok: false, error: 'invalid' };
     let pending = d.pending[id];
     if (!pending) {
-      pending = { plan: cloneTour(plan), operationId: generateUuidV4(), shareOperationId: generateUuidV4(), rotate, stage: 'plan' };
+      // Rotating or renewing a link does not publish a new itinerary revision.
+      const published = plan.revision > 0 && d.published[id] === tourContentSignature(plan);
+      pending = { plan: cloneTour(plan), operationId: generateUuidV4(), shareOperationId: generateUuidV4(), rotate, stage: published ? 'share' : 'plan' };
       d.pending[id] = pending;
       const r = await persist(d, g);
       if (!r.ok)
@@ -468,8 +470,15 @@ export const useToursStore = create<ToursState>(() => ({
     const d = data();
     const remote = result.tour;
     const existing = d.plans.find((p) => p.source?.tourId === remote.id);
-    if (existing && (!update || existing.source!.revision >= remote.revision))
+    if (existing && (!update || existing.source!.revision >= remote.revision)) {
+      // A rotated link still opens the same copy; future update checks use the valid link.
+      if (existing.source!.token !== token) {
+        existing.source!.token = token;
+        const saved = await persist(d, g);
+        if (!saved.ok) return saved;
+      }
       return { ok: true, id: existing.id };
+    }
     if (!existing && d.plans.length >= TOUR_LIMIT)
       return { ok: false, error: 'limit' };
     const copy = cloneTour(remote);

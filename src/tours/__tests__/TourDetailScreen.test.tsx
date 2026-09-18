@@ -22,6 +22,7 @@ const mockStore = {
   error: null,
   busy: false,
   hydrate: jest.fn(async () => ({ ok: true })),
+  copyPlan: jest.fn(async () => ({ ok: true as const, id: 'copied-plan' })),
   markStop: jest.fn(async (id: string, status: 'visited' | 'skipped' | null) => {
     if (!mockStore.activeRun) throw new Error('No active run');
     const statuses = { ...mockStore.activeRun.statuses };
@@ -146,6 +147,23 @@ it('shows the historical snapshot without active-run actions and returns to the 
   expect(screen.getByText(mockStore.activeRun!.snapshot.title)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.markVisited)).toBeTruthy();
   expect(mockBack).not.toHaveBeenCalled();
+});
+
+it('copies the history being displayed from both copy actions', async () => {
+  mockStore.runs = [{
+    id: 'past-run', planId: tourId, snapshot: plan('Minulý večer', 'Historická'),
+    startedAt: '2026-09-10T17:00:00Z', endedAt: '2026-09-10T21:00:00Z', statuses: {},
+  }];
+  const screen = render(<TourDetailScreen />);
+  fireEvent.press(screen.getByLabelText(new RegExp(`^${t.tours.pastRun}\\.`)));
+  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.repeat)); });
+  expect(mockStore.copyPlan).toHaveBeenLastCalledWith(tourId, 'past-run');
+  expect(mockReplace).toHaveBeenCalledWith({ pathname: '/tours/[id]', params: { id: 'copied-plan' } });
+  fireEvent.press(screen.getByLabelText(t.tours.more));
+  const dialog = jest.mocked(showAppDialog).mock.calls[0][0];
+  await act(async () => { dialog.buttons!.find((button) => button.text === t.tours.repeat)!.onPress!(); });
+  expect(mockStore.copyPlan).toHaveBeenCalledTimes(2);
+  expect(mockStore.copyPlan).toHaveBeenLastCalledWith(tourId, 'past-run');
 });
 
 it('shows only plan content in share mode, including the illustration and stop detail', () => {

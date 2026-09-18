@@ -91,7 +91,7 @@ function errorFor(r: {
   status: number;
   stale?: boolean;
   data?: unknown;
-}): TourError {
+}, publicRead = false): TourError {
   if (r.stale)
     return 'account_changed';
   const code = (r.data && typeof r.data === 'object') ? (r.data as {
@@ -99,13 +99,13 @@ function errorFor(r: {
   }).error : null;
   if (code === 'tour_limit' || code === 'share_limit')
     return 'limit';
-  return r.status === 401 || r.status === 403 ? 'auth' : r.status === 409 ? 'conflict' : r.status === 404 ? 'expired' : r.status === 429 ? 'throttled' : r.status === 400 || r.status === 422 ? 'invalid' : 'network';
+  return r.status === 401 || r.status === 403 ? 'auth' : r.status === 409 ? 'conflict' : r.status === 404 ? (publicRead ? 'expired' : 'not_found') : r.status === 429 ? 'throttled' : r.status === 400 || r.status === 422 ? 'invalid' : 'network';
 }
 async function tourRequest(path: string, method = 'GET', body?: unknown, publicRead = false): Promise<TourResponse> {
   const r = await request(path, method, body, publicRead);
   const tour = parseEnvelope(r.data);
   if (!r.ok)
-    return { ok: false, error: errorFor(r), ...(tour ? { tour } : {}) };
+    return { ok: false, error: errorFor(r, publicRead), ...(tour ? { tour } : {}) };
   if (!tour)
     return { ok: false, error: 'invalid' };
   const expiresAt = (r.data as {

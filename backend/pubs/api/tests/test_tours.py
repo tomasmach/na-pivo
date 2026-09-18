@@ -173,6 +173,49 @@ def test_directory_name_city_area_search(query):
     assert APIClient().get("/v1/pubs/search", {"q": ""}).status_code == 400
 
 
+def test_nearby_search_keeps_nearest_pub_beyond_alphabetical_candidate_limit():
+    common = {"city": "Praha", "country": "CZ", "source": "test",
+              "refreshed_at": timezone.now(), "venue_kind": PubHours.VenueKind.PUB}
+    PubDirectory.objects.bulk_create([
+        PubDirectory(name=f"A pub {i}", name_key=f"a pub {i}", cache_key=f"test{i}",
+                     lat=50.10, lng=14.42, **common)
+        for i in range(400)
+    ])
+    PubDirectory.objects.create(name="Z nearest pub", lat=50.08001, lng=14.42, **common)
+
+    response = APIClient().get("/v1/pubs/search", {"lat": 50.08, "lon": 14.42})
+
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == 40
+    assert response.json()["items"][0]["name"] == "Z nearest pub"
+
+
+def test_owner_list_loads_shares_once_and_keeps_inactive_links_private(client):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    active_id, _ = publish(client)
+    active_token, _ = share(client, active_id)
+    revoked_id, _ = publish(client)
+    share(client, revoked_id)
+    TourShare.objects.filter(plan_id=revoked_id).update(revoked_at=timezone.now())
+    expired_id, _ = publish(client)
+    share(client, expired_id)
+    TourShare.objects.filter(plan_id=expired_id).update(expires_at=timezone.now() - timedelta(seconds=1))
+    unshared_id, _ = publish(client)
+
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get("/v1/tours")
+
+    assert response.status_code == 200
+    tours = {item["tour"]["id"]: item for item in response.json()["tours"]}
+    assert len(tours) == 4
+    assert tours[active_id]["share"]["url"].endswith(active_token)
+    assert all(tours[plan_id]["share"] is None for plan_id in (revoked_id, expired_id, unshared_id))
+    assert all(len(item["tour"]["stops"]) == 2 for item in tours.values())
+    assert sum('"pubs_tourshare"' in query["sql"].lower() for query in queries.captured_queries) == 1
+
+
 def test_shared_throttle_api_web(client, monkeypatch):
     from pubs.api.throttling import SharedScopedRateThrottle
     from pubs.models import ApiRateLimitBucket

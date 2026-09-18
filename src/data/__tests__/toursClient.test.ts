@@ -1,4 +1,4 @@
-import { fetchPublishedTours, fetchSharedTour, publishTour, shareTour } from '../toursClient';
+import { fetchPublishedTours, fetchSharedTour, publishTour, shareTour, revokeTour } from '../toursClient';
 import { beginTourAccountChange, endTourAccountChange } from '../toursBoundary';
 import { newTour, type TourPlan } from '@/tours/model';
 import { ensureAccount } from '../account';
@@ -67,5 +67,12 @@ it('ignores a delayed response after account change', async () => {
 
 it('keeps the 404 meaning when a revoked public link has an empty body', async () => {
   jest.mocked(fetch).mockResolvedValue({ status: 404, ok: false, json: async () => { throw new SyntaxError('Empty body'); } } as unknown as Response);
+  expect(await fetchSharedTour('x'.repeat(43))).toEqual({ ok: false, error: 'expired' });
+});
+
+it('distinguishes missing owner tours from expired public links', async () => {
+  jest.mocked(fetch).mockResolvedValue(response(404, {}));
+  expect(await shareTour(plan.id, 'operation')).toEqual({ ok: false, error: 'not_found' });
+  expect(await revokeTour(plan.id)).toEqual({ ok: false, error: 'not_found' });
   expect(await fetchSharedTour('x'.repeat(43))).toEqual({ ok: false, error: 'expired' });
 });

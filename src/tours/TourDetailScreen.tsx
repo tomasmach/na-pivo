@@ -89,7 +89,7 @@ function TourDetail({ id }: { id: string }) {
     if (!plan) return;
     showAppDialog({ title: plan.title, buttons: [
       ...(!plan.source && !active ? [{ text: t.tours.edit, onPress: () => { void edit(); } }] : []),
-      { text: t.tours.repeat, onPress: () => { void action(() => store.copyPlan(id), (r) => { if (r.id) router.push({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); } },
+      { text: t.tours.repeat, onPress: () => { void action(() => store.copyPlan(id, shareMode ? undefined : history?.id), (r) => { if (r.id) router.push({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); } },
       ...(plan.source ? [{ text: t.tours.checkUpdate, onPress: () => router.push(`/t/${plan.source!.token}` as Href) }] : [{ text: t.tours.share, onPress: () => setShareMode(true) }]),
       ...(active ? [{ text: t.tours.end, onPress: end }] : [{ text: t.tours.delete, style: 'destructive' as const, onPress: () => showAppDialog({ title: t.tours.deleteTitle, message: t.tours.deleteMessage, buttons: [
         { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.delete, style: 'destructive', onPress: () => { void action(() => store.deletePlan(id), () => router.replace('/tours' as Href)); } },
@@ -165,7 +165,7 @@ function TourDetail({ id }: { id: string }) {
         <Pressable accessibilityRole="button" accessibilityLabel={t.tours.undo} accessibilityState={{ disabled: acting }} disabled={acting} style={ui.link} onPress={() => { void action(() => store.markStop(undo.id, undo.status), () => setUndo(null)); }}><TourText style={ui.linkText}>{t.tours.undo}</TourText></Pressable>
       </View>}
       {shareMode ? ((!shared || localNewer || !!store.pending[id]) && <TourButton label={shared ? t.tours.publishChanges : t.tours.createLink} busy={acting || store.busy} onPress={() => { void action(() => store.publish(id)); }} />)
-        : history ? <TourButton label={t.tours.repeat} onPress={() => { void action(() => store.copyPlan(id), (r) => { if (r.id) router.replace({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); }} />
+        : history ? <TourButton label={t.tours.repeat} onPress={() => { void action(() => store.copyPlan(id, history?.id), (r) => { if (r.id) router.replace({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); }} />
           : active ? <><TourButton label={next ? t.tours.navigate : t.tours.end} icon={next ? <CompassIcon size={19} color={Colors.stout} /> : undefined} onPress={() => next ? navigate(next) : end()} />{next && <TourButton label={t.tours.markVisited} quiet icon={<CheckIcon size={17} color={Colors.foam} />} disabled={acting} onPress={() => mark(next, 'visited')} />}</>
             : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} quiet onPress={() => setShareMode(true)} />}</>}
     </View>

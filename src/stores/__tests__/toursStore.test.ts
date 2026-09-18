@@ -62,6 +62,33 @@ describe('Tours durable lifecycle', () => {
     await store.getState().startRun(id);
     expect(store.getState().runs).toHaveLength(1);
   });
+  it('copies the selected historical snapshot after the current plan has changed', async () => {
+    const id = await makePlan();
+    await store.getState().startRun(id);
+    await store.getState().markStop(store.getState().activeRun!.snapshot.stops[0].id, 'visited');
+    await store.getState().endRun();
+    const history = cloneTour(store.getState().runs[0]);
+    await store.getState().beginDraft(id);
+    await store.getState().updateDraft({ title: 'New itinerary', scheduledDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), scheduledTime: '19:30' });
+    await store.getState().addStop(pub(3));
+    expect(await store.getState().saveDraft()).toEqual({ ok: true, id });
+
+    const result = await store.getState().copyPlan(id, history.id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    const copy = store.getState().plans.find((p) => p.id === result.id)!;
+    expect(copy).toMatchObject({ title: 'My tour', scheduledDate: null, scheduledTime: null, revision: 0 });
+    expect(copy.stops.map((s) => s.pubId)).toEqual(['1', '2']);
+    expect(copy.id).not.toBe(id);
+    expect(copy.stops.map((s) => s.id)).not.toEqual(history.snapshot.stops.map((s) => s.id));
+    expect(copy.share).toBeUndefined();
+    expect(copy.source).toBeUndefined();
+    expect(store.getState().runs).toEqual([history]);
+    expect(store.getState().activeRun).toBeNull();
+    expect(await store.getState().copyPlan(id, 'missing-run')).toEqual({ ok: false, error: 'not_found' });
+    const currentCopy = await store.getState().copyPlan(id);
+    expect(currentCopy.ok && store.getState().plans.find((p) => p.id === currentCopy.id)?.title).toBe('New itinerary');
+  });
   it('does not discard local state on storage failure', async () => {
     await store.getState().beginDraft();
     (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk'));
@@ -117,6 +144,39 @@ describe('Tours durable lifecycle', () => {
     expect(store.getState().plans[0].share).toEqual(shared.share);
     expect(store.getState().published[id]).toEqual(tourContentSignature(store.getState().plans[0]));
   });
+  it.each([true, false])('shares unchanged content without a new revision and retries the same operation (rotate=%s)', async (rotate) => {
+    const id = await makePlan();
+    const remote = { ...cloneTour(store.getState().plans[0]), revision: 1 };
+    store.setState({ plans: [remote], published: { [id]: tourContentSignature(remote) } });
+    (shareTour as jest.Mock).mockResolvedValueOnce({ ok: false, error: 'network' }).mockResolvedValueOnce({ ok: true, tour: remote });
+    expect(await store.getState().publish(id, rotate)).toEqual({ ok: false, error: 'network' });
+    const first = (shareTour as jest.Mock).mock.calls[0];
+    // The pending operation must also survive an app restart.
+    store.setState({ hydrated: false, plans: [], pending: {} });
+    await store.getState().hydrate();
+    expect(await store.getState().publish(id, rotate)).toEqual({ ok: true });
+    expect(publishTour).not.toHaveBeenCalled();
+    expect(first).toEqual([id, expect.any(String), rotate]);
+    expect((shareTour as jest.Mock).mock.calls[1]).toEqual(first);
+    expect(store.getState().plans[0].revision).toBe(1);
+    expect(store.getState().pending[id]).toBeUndefined();
+  });
+  it('publishes edited content before rotating its link', async () => {
+    const id = await makePlan();
+    const published = { ...cloneTour(store.getState().plans[0]), revision: 1 };
+    store.setState({ plans: [published], published: { [id]: tourContentSignature(published) } });
+    await store.getState().beginDraft(id);
+    await store.getState().updateDraft({ title: 'Changed itinerary' });
+    await store.getState().saveDraft();
+    const updated = { ...cloneTour(store.getState().plans[0]), revision: 2 };
+    (publishTour as jest.Mock).mockResolvedValue({ ok: true, tour: updated });
+    (shareTour as jest.Mock).mockResolvedValue({ ok: true, tour: updated });
+    expect(await store.getState().publish(id, true)).toEqual({ ok: true });
+    expect(publishTour).toHaveBeenCalledWith(expect.objectContaining({ title: 'Changed itinerary', revision: 1 }), expect.any(String));
+    expect(shareTour).toHaveBeenCalledWith(id, expect.any(String), true);
+    expect(jest.mocked(publishTour).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(shareTour).mock.invocationCallOrder[0]);
+    expect(store.getState().plans[0].revision).toBe(2);
+  });
   it.each([true, false])('preserves another device publication returned by share (HTTP success=%s)', async (success) => {
     const id = await makePlan();
     const local = cloneTour(store.getState().plans[0]);
@@ -156,6 +216,26 @@ describe('Tours durable lifecycle', () => {
     expect(store.getState().plans).toEqual([]);
     expect(shareTour).not.toHaveBeenCalled();
     expect(await AsyncStorage.getItem(TOURS_STORAGE_KEY)).toBeNull();
+  });
+  it('retains the imported copy and private run while adopting a rotated link', async () => {
+    await makePlan();
+    const remote = { ...cloneTour(store.getState().plans[0]), revision: 1 };
+    await clearToursPrivateData();
+    await store.getState().hydrate();
+    (fetchSharedTour as jest.Mock).mockResolvedValue({ ok: true, tour: remote });
+    await store.getState().importShared('x'.repeat(32));
+    const importedId = store.getState().plans[0].id;
+    await store.getState().startRun(importedId);
+    await store.getState().markStop(store.getState().activeRun!.snapshot.stops[0].id, 'visited');
+    const active = cloneTour(store.getState().activeRun);
+    const rotatedToken = 'y'.repeat(32);
+    expect(await store.getState().importShared(rotatedToken)).toEqual({ ok: true, id: importedId });
+    expect(store.getState().plans).toHaveLength(1);
+    expect(store.getState().plans[0].source).toMatchObject({ revision: 1, token: rotatedToken });
+    expect(store.getState().activeRun).toEqual(active);
+    store.setState({ hydrated: false, plans: [] });
+    await store.getState().hydrate();
+    expect(store.getState().plans[0].source?.token).toBe(rotatedToken);
   });
   it('deduplicates imported revisions and only replaces the plan on explicit update', async () => {
     const id = await makePlan();

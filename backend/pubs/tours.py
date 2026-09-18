@@ -48,10 +48,9 @@ def tour_snapshot(plan):
 
 
 def owner_payload(plan):
-    share = TourShare.objects.filter(
-        plan=plan, revoked_at__isnull=True, expires_at__gt=timezone.now(),
-    ).first()
-    if share and not hmac.compare_digest(token_hash(share_token(share)), share.token_hash):
+    share = getattr(plan, "share", None)
+    if share and (share.revoked_at or share.expires_at <= timezone.now()
+                  or not hmac.compare_digest(token_hash(share_token(share)), share.token_hash)):
         share = None
     return {
         "tour": tour_snapshot(plan),

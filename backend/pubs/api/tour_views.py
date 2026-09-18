@@ -139,7 +139,7 @@ class TourListView(OwnerTourView):
         except ValueError:
             cursor = 0
         plans = list(TourPlan.objects.filter(owner=request.user, deleted_at__isnull=True)
-                     .prefetch_related("stops").order_by("id")[cursor:cursor + 51])
+                     .select_related("share").prefetch_related("stops").order_by("id")[cursor:cursor + 51])
         return Response({"tours": [owner_payload(p) for p in plans[:50]],
                          "next_cursor": str(cursor + 50) if len(plans) > 50 else None})
 
@@ -279,7 +279,8 @@ class TourPubSearchView(APIView):
     throttle_scope = "tour_search"
 
     def get(self, request):
-        from django.db.models import Q
+        from django.db.models import F, Q
+        from django.db.models.functions import Cos, Power, Radians, Sin
 
         from pubs.models import PubDirectory, PubHours
 
@@ -310,7 +311,16 @@ class TourPubSearchView(APIView):
             delta_lon = radius / max(1, 111 * math.cos(math.radians(lat)))
             rows = rows.filter(lat__range=(lat - delta_lat, lat + delta_lat),
                                lng__range=(lon - delta_lon, lon + delta_lon))
-        candidates = list(rows.order_by("name", "pk")[:400])
+            # Haversine's inner term has the same distance ordering. Apply it
+            # before limiting candidates so dense areas cannot hide nearby pubs.
+            rows = rows.alias(proximity=(
+                Power(Sin(Radians(F("lat") - lat) / 2), 2)
+                + math.cos(math.radians(lat)) * Cos(Radians(F("lat")))
+                * Power(Sin(Radians(F("lng") - lon) / 2), 2)
+            )).order_by("proximity", "name", "pk")
+        else:
+            rows = rows.order_by("name", "pk")
+        candidates = list(rows[:400])
         if lat is not None:
             candidates = [r for r in candidates if _haversine_km(lat, lon, r.lat, r.lng) <= radius]
             candidates.sort(key=lambda r: _haversine_km(lat, lon, r.lat, r.lng))
