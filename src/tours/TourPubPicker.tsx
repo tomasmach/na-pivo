@@ -8,8 +8,9 @@ import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
-import { cachedTourPubs, searchTourPubs, type TourPubSearchResult } from '@/data/tourPubSearch';
+import { cachedTourPubs, filterTourPubs, searchTourPubs, type TourPubSearchResult } from '@/data/tourPubSearch';
 import { t } from '@/i18n';
+import { usePubStore } from '@/stores/pubStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -33,10 +34,14 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const focused = useIsFocused();
   const [query, setQuery] = useState('');
   const [pubs, setPubs] = useState<Pub[]>([]);
+  const reportedPubIds = usePubStore((state) => state.reportedPubIds);
+  const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
+  const visiblePubs = filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys });
   const [status, setStatus] = useState<TourPubSearchResult['status']>('ok');
   const [loading, setLoading] = useState(false);
   const [region, setRegion] = useState<Region>(() => tourRegion(stops));
-  const [preview, setPreview] = useState<Pub | null>(null);
+  const [previewCandidate, setPreview] = useState<Pub | null>(null);
+  const preview = previewCandidate && filterTourPubs([previewCandidate], { reportedPubIds, reportedCacheKeys }).length ? previewCandidate : null;
   const [detailVisible, setDetailVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
@@ -96,6 +101,7 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const alreadyAdded = (pub: Pub) => stops.some((stop) => stop.id !== replaceStop?.id && (stop.pubId === pub.id || (stop.cacheKey === geohash8(pub.lat, pub.lng) && stop.name.trim().toLocaleLowerCase() === pub.name.trim().toLocaleLowerCase())));
   const choosePreview = (pub: Pub) => {
     Keyboard.dismiss();
+    setDetailVisible(false);
     if (!preview) beforePreview.current = viewport.current;
     moveMap({ latitude: pub.lat, longitude: pub.lng, latitudeDelta: Math.min(viewport.current.latitudeDelta, 0.035), longitudeDelta: Math.min(viewport.current.longitudeDelta, 0.035) });
     setPreview(pub);
@@ -103,7 +109,7 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const backToSearch = useCallback(() => {
     setPreview(null);
     if (beforePreview.current) moveMap(beforePreview.current);
-  }, [moveMap]);
+  }, [moveMap, setPreview]);
   useEffect(() => {
     if (!focused) return;
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -116,7 +122,7 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
     const stop = stops.find((item) => item.id === id);
     if (stop) choosePreview({ id: stop.pubId, name: stop.name, lat: stop.lat, lng: stop.lon, address: stop.address });
   };
-  const map = <TourMap stops={stops} selectedId={stops.find((stop) => stop.pubId === preview?.id)?.id ?? null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? 420 : 215} region={region} onRegionChange={moveMap} candidates={pubs.filter((pub) => !alreadyAdded(pub)).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />;
+  const map = <TourMap stops={stops} selectedId={stops.find((stop) => stop.pubId === preview?.id)?.id ?? null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? 420 : 215} region={region} onRegionChange={moveMap} candidates={visiblePubs.filter((pub) => !alreadyAdded(pub)).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />;
 
   return <View accessibilityViewIsModal style={[styles.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
@@ -140,8 +146,8 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
           {loading && <ActivityIndicator accessibilityLabel={t.tours.search} color={Colors.amber} style={styles.loading} />}
           {status === 'cached' && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchOffline}</Text>}
           {status === 'error' && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchError}</Text>}
-          {!loading && !pubs.length && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchEmpty}</Text>}
-          {pubs.map((pub) => <Pressable key={pub.id} accessibilityRole="button" accessibilityLabel={pub.name} style={styles.pubRow} onPress={() => choosePreview(pub)}>
+          {!loading && !visiblePubs.length && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchEmpty}</Text>}
+          {visiblePubs.map((pub) => <Pressable key={pub.id} accessibilityRole="button" accessibilityLabel={pub.name} style={styles.pubRow} onPress={() => choosePreview(pub)}>
             <View style={styles.rowBody}><Text maxFontSizeMultiplier={1.3} style={styles.pubName}>{pub.name}</Text><Text maxFontSizeMultiplier={1.3} style={styles.meta}>{alreadyAdded(pub) ? t.tours.inTour : [pub.address, pub.city].filter(Boolean).join(', ')}</Text></View>
             <ChevronRightIcon size={19} color={Colors.foamMuted} />
           </Pressable>)}

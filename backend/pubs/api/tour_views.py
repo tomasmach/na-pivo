@@ -303,7 +303,7 @@ class TourPubSearchView(APIView):
             return Response({"error": "invalid_query"}, status=400)
         rows = PubDirectory.objects.filter(active=True).exclude(venue_kind=PubHours.VenueKind.NOT_PUB)
         if query:
-            for part in query.split()[:8]:
+            for part in query.replace(",", " ").split()[:8]:
                 rows = rows.filter(Q(name__icontains=part) | Q(city__icontains=part))
         if lat is not None:
             delta_lat = radius / 111

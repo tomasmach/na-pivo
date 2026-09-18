@@ -161,9 +161,10 @@ def test_changed_operation_conflicts_and_token_redaction(client):
         assert token not in redact_party_codes(path)
 
 
-def test_directory_name_city_area_search():
+@pytest.mark.parametrize("query", ["Jelena Praha", "Jelena, Praha"])
+def test_directory_name_city_area_search(query):
     PubDirectory.objects.create(name="U Jelena", lat=50.08, lng=14.42, cache_key="u2fkb", city="Praha", country="CZ", source="test", refreshed_at=timezone.now(), venue_kind=PubHours.VenueKind.PUB)
-    result = APIClient().get("/v1/pubs/search", {"q": "Jelena Praha"})
+    result = APIClient().get("/v1/pubs/search", {"q": query})
     assert result.status_code == 200, result.content
     assert result.json()["items"][0]["name"] == "U Jelena"
     assert result.json()["items"][0]["cache_key"] == PubDirectory.objects.get().cache_key

@@ -1,6 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { cachedTourPubs, searchTourPubs } from '../tourPubSearch';
+import { cachedTourPubs, filterTourPubs, searchTourPubs } from '../tourPubSearch';
 import { geocodePubLocation } from '../mapyClient';
+import { getAllLoadedPubs } from '../pubs';
+import { geohash8 } from '../geohash';
+import { usePubStore } from '@/stores/pubStore';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 jest.mock('@react-native-async-storage/async-storage', () => require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
@@ -8,12 +11,12 @@ jest.mock('@react-native-async-storage/async-storage', () => require('@react-nat
 jest.mock('../apiFetch', () => ({ chainAbortSignal: (signal?: AbortSignal) => ({ signal: signal ?? new AbortController().signal, cleanup: jest.fn() }) }));
 jest.mock('../backendConfig', () => ({ getBackendEndpoint: () => 'http://localhost:8012/v1/pubs/search' }));
 jest.mock('../mapyClient', () => ({ geocodePubLocation: jest.fn(async () => null) }));
-jest.mock('../pubs', () => ({ getAllLoadedPubs: () => [], hydratePubsSnapshot: jest.fn(async () => true) }));
+jest.mock('../pubs', () => ({ getAllLoadedPubs: jest.fn(() => []), hydratePubsSnapshot: jest.fn(async () => true) }));
 
 const center = { latitude: 49.195, longitude: 16.607 };
 const pub = { id: 'public-pub', name: 'Výčep Praha', lat: 50.08, lon: 14.42, address: 'Praha 1' };
 const fetchMock = jest.fn();
-beforeEach(async () => { await AsyncStorage.clear(); fetchMock.mockReset(); (geocodePubLocation as jest.Mock).mockReset(); global.fetch = fetchMock; });
+beforeEach(async () => { await AsyncStorage.clear(); usePubStore.setState({ reportedPubIds: [], reportedCacheKeys: [] }); jest.mocked(getAllLoadedPubs).mockReturnValue([]); fetchMock.mockReset(); (geocodePubLocation as jest.Mock).mockReset(); global.fetch = fetchMock; });
 const response = (items: unknown[]) => ({ ok: true, json: async () => ({ items }) });
 
 it('searches names outside the current map area and preserves public identity', async () => {
@@ -88,4 +91,62 @@ it('refreshes a known pub instead of restoring its older cached name', async () 
   fetchMock.mockResolvedValueOnce(response([{ ...pub, name: 'Nový výčep' }]));
   await searchTourPubs({ query: 'Nový výčep', center });
   expect((await cachedTourPubs())[0].name).toBe('Nový výčep');
+});
+
+
+it('filters non-pubs and reported identities from retained, loaded and persisted offline places', async () => {
+  const snapshot = { ...pub, lng: pub.lon };
+  const nonPub = { ...snapshot, id: 'shop', venueKind: 'not_pub' as const, lat: 49.1 };
+  const reported = { ...snapshot, id: 'reported', lat: 49.2 };
+  const renamed = { ...snapshot, id: 'new-provider-id', lat: 49.3 };
+  const allowed = { ...snapshot, id: 'allowed', lat: 49.4 };
+  jest.mocked(getAllLoadedPubs).mockReturnValue([nonPub, allowed]);
+  await AsyncStorage.setItem('tour-pub-search-v1', JSON.stringify([nonPub, reported, renamed, allowed]));
+  usePubStore.setState({ reportedPubIds: [reported.id], reportedCacheKeys: [geohash8(renamed.lat, renamed.lng)] });
+  // A tour stop's older snapshot must not resurrect a newer not_pub verdict.
+  expect((await cachedTourPubs('', [{ ...nonPub, venueKind: undefined }])).map((p) => p.id)).toEqual(['allowed']);
+  fetchMock.mockRejectedValue(new TypeError('Offline'));
+  expect((await searchTourPubs({ query: 'Výčep', center })).pubs.map((p) => p.id)).toEqual(['allowed']);
+});
+
+it('filters online results by current reports and preserves non-pub verdicts in the public cache', async () => {
+  const nonPub = { ...pub, id: 'shop', venueKind: 'not_pub', lat: 49.1 };
+  const reported = { ...pub, id: 'reported', lat: 49.2 };
+  const renamed = { ...pub, id: 'new-provider-id', lat: 49.3 };
+  const allowed = { ...pub, id: 'allowed', lat: 49.4 };
+  fetchMock.mockImplementation(async () => {
+    usePubStore.setState({ reportedPubIds: [reported.id], reportedCacheKeys: [geohash8(renamed.lat, renamed.lon)] });
+    return response([nonPub, reported, renamed, allowed]);
+  });
+  expect((await searchTourPubs({ query: 'Výčep', center })).pubs.map((p) => p.id)).toEqual(['allowed']);
+  expect((await cachedTourPubs()).map((p) => p.id)).toEqual(['allowed']);
+  usePubStore.setState({ reportedPubIds: [], reportedCacheKeys: [] });
+  expect((await cachedTourPubs()).map((p) => p.id)).toEqual(['reported', 'new-provider-id', 'allowed']);
+});
+
+it('rechecks personal exclusions for results already held by an open picker', () => {
+  const loaded = [{ ...pub, lng: pub.lon }];
+  expect(filterTourPubs(loaded)).toHaveLength(1);
+  usePubStore.setState({ reportedCacheKeys: [geohash8(pub.lat, pub.lon)] });
+  expect(filterTourPubs(loaded)).toEqual([]);
+});
+
+
+it('retains a non-pub verdict after another search and a restart with an old tour stop', async () => {
+  fetchMock.mockResolvedValueOnce(response([{ ...pub, venueKind: 'not_pub' }]));
+  await searchTourPubs({ query: 'Výčep', center });
+  const other = { ...pub, id: 'other-pub', name: 'Jiná hospoda', lat: 49.5 };
+  fetchMock.mockResolvedValueOnce(response([other]));
+  await searchTourPubs({ query: 'Jiná', center });
+  jest.mocked(getAllLoadedPubs).mockReturnValue([]);
+  const retainedStop = { ...pub, lng: pub.lon };
+  expect((await cachedTourPubs('', [retainedStop])).map((p) => p.id)).toEqual(['other-pub']);
+});
+
+it('matches all offline name and city terms regardless of order, accents or commas', async () => {
+  fetchMock.mockResolvedValue(response([{ ...pub, name: 'U Jelena', city: 'Praha', address: 'Dlouhá 5' }]));
+  await searchTourPubs({ query: 'Jelena, Praha', center });
+  fetchMock.mockRejectedValue(new TypeError('Offline'));
+  expect((await searchTourPubs({ query: 'Praha,  jelena dlouha', center })).pubs.map((p) => p.id)).toEqual([pub.id]);
+  expect(await cachedTourPubs('Jelena, Brno')).toEqual([]);
 });
