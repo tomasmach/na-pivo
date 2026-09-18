@@ -53,12 +53,17 @@ jest.mock('react-native-maps', () => ({
       </View>
     );
   }),
-  Marker: ({ children, onPress, accessibilityLabel }: {
+  Marker: ({ children, onPress, accessibilityLabel, tracksViewChanges }: {
     children?: React.ReactNode;
     onPress?: () => void;
     accessibilityLabel?: string;
+    tracksViewChanges?: boolean;
   }) => (
-    <Pressable onPress={onPress} accessibilityLabel={accessibilityLabel}>
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityValue={{ text: tracksViewChanges ? 'tracking' : 'frozen' }}
+    >
       {children}
     </Pressable>
   ),
@@ -250,6 +255,47 @@ describe('BeerMapScreen opening-hours loading', () => {
     screen.rerender(<BeerMapScreen {...props} />);
 
     expect(screen.getByLabelText(t.a11y.beerMap).props.accessibilityValue.text).toBe('light');
+  });
+
+  it('snapshots the entire pub marker after layout, including a newly selected marker', async () => {
+    const screen = render(<BeerMapScreen
+      filters={EMPTY_PUB_SEARCH_FILTERS}
+      onApplyFilters={jest.fn()}
+      onShowCompass={jest.fn()}
+    />);
+    const marker = () => screen.getByLabelText(t.a11y.mapPub('U Testu', 0));
+
+    // A slow first layout must not leave the initial, incomplete bitmap frozen.
+    act(() => jest.advanceTimersByTime(1000));
+    expect(marker().props.accessibilityValue.text).toBe('tracking');
+    fireEvent(marker().findByProps({ collapsable: false }), 'layout');
+    act(() => jest.advanceTimersByTime(200));
+    expect(marker().props.accessibilityValue.text).toBe('frozen');
+
+    await act(async () => fireEvent.press(marker()));
+    expect(marker().props.accessibilityValue.text).toBe('tracking');
+    fireEvent(marker().findByProps({ collapsable: false }), 'layout');
+    act(() => jest.advanceTimersByTime(200));
+    expect(marker().props.accessibilityValue.text).toBe('frozen');
+  });
+
+  it('lets a cluster count render before freezing its complete marker', () => {
+    const data = mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS);
+    mockedUseBeerMap.mockReturnValue({ ...data, pubs: [
+      { id: 'cluster-a', name: 'A', lat: 50.0876, lng: 14.4214 },
+      { id: 'cluster-b', name: 'B', lat: 50.088, lng: 14.422 },
+    ] });
+    const screen = render(<BeerMapScreen
+      filters={EMPTY_PUB_SEARCH_FILTERS}
+      onApplyFilters={jest.fn()}
+      onShowCompass={jest.fn()}
+    />);
+    const marker = screen.getByLabelText(t.a11y.mapCluster(2));
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(marker.props.accessibilityValue.text).toBe('tracking');
+    fireEvent(marker.findByProps({ collapsable: false }), 'layout');
+    act(() => jest.advanceTimersByTime(200));
+    expect(marker.props.accessibilityValue.text).toBe('frozen');
   });
 
   it('recenters on the user without changing zoom or regrouping pub markers', () => {
