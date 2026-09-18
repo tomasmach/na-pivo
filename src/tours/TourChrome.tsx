@@ -17,7 +17,7 @@ export function TourButton({ label, onPress, secondary, disabled, busy, testID }
     accessibilityState={{ disabled: !!disabled || !!busy, busy: !!busy }} disabled={disabled || busy}
     onPress={onPress} style={({ pressed }) => [ui.button, secondary && ui.secondary, (pressed || disabled || busy) && ui.dim]}>
     {busy ? <ActivityIndicator color={secondary ? Colors.foam : Colors.stout} /> :
-      <TourText style={[ui.buttonText, secondary && ui.secondaryText]}>{label}</TourText>}
+      <TourText maxFontSizeMultiplier={FontScaleCap.heading} style={[ui.buttonText, secondary && ui.secondaryText]}>{label}</TourText>}
   </Pressable>;
 }
 export function TourHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: ReactNode }) {
@@ -63,7 +63,7 @@ export function TourStopRow({ stop, index, selected, status, onPress, children }
   return <View style={[ui.stopRow, selected && ui.selectedRow]}>
     <Pressable style={ui.stopPress} onPress={onPress} accessibilityRole="button"
       accessibilityLabel={`${index + 1}. ${stop.name}. ${status || stop.address}`} accessibilityState={{ selected: !!selected }}>
-      <View style={[ui.number, selected && ui.selectedNumber]}><TourText style={ui.numberText}>{index + 1}</TourText></View>
+      <View style={[ui.number, selected && ui.selectedNumber]}><Text allowFontScaling={false} style={ui.numberText}>{index + 1}</Text></View>
       <View style={ui.grow}><TourText numberOfLines={2} style={ui.stopName}>{stop.name}</TourText>
         <TourText numberOfLines={2} style={ui.meta}>{status || stop.address || t.tours.openingHoursUnknown}</TourText></View>
       {!children && <ChevronRightIcon size={18} color={Colors.foamMuted} />}
@@ -85,7 +85,7 @@ export const ui = StyleSheet.create({
   headerRight: { minWidth: HitArea.min },
   iconButton: { width: HitArea.min, minHeight: HitArea.min, alignItems: 'center', justifyContent: 'center' },
   button: { minHeight: 48, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg, borderRadius: Radius.pill, backgroundColor: Colors.amber, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { color: Colors.stout, fontFamily: Fonts.display.bold, fontSize: 18, lineHeight: 25, textAlign: 'center' },
+  buttonText: { color: Colors.stout, fontFamily: undefined, fontWeight: '700', fontSize: 16, lineHeight: 22, includeFontPadding: false, textAlign: 'center' },
   secondary: { backgroundColor: Colors.stout3 },
   secondaryText: { color: Colors.foam },
   dim: { opacity: .55 },
@@ -97,7 +97,7 @@ export const ui = StyleSheet.create({
   stopPress: { flex: 1, flexDirection: 'row', gap: Spacing.md, alignItems: 'center', paddingVertical: Spacing.md, minHeight: 68 },
   stopName: { fontFamily: Fonts.ui.semibold, fontSize: 15, lineHeight: 21, color: Colors.foam },
   number: { width: 30, height: 30, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.stout3, borderWidth: 1, borderColor: withAlpha(Colors.foam, .18) },
-  numberText: { fontFamily: Fonts.display.bold, fontSize: 18, color: Colors.foam },
+  numberText: { fontWeight: '700', fontSize: 16, lineHeight: 22, includeFontPadding: false, textAlign: 'center', fontVariant: ['tabular-nums'], color: Colors.foam },
   selectedRow: { backgroundColor: withAlpha(Colors.amber, .07) },
   selectedNumber: { borderColor: Colors.amber },
   input: { backgroundColor: Colors.stout3, borderWidth: 1, borderColor: withAlpha(Colors.foam, .14), borderRadius: Radius.medium, color: Colors.foam, fontFamily: Fonts.ui.medium, fontSize: 16, paddingHorizontal: Spacing.md, minHeight: 48, paddingVertical: Spacing.sm },

@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   markerTarget: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center' },
   marker: { width: 24, height: 24, borderRadius: Radius.pill, backgroundColor: Colors.foam, borderWidth: 1.5, borderColor: Colors.stout, alignItems: 'center', justifyContent: 'center' },
   selected: { borderColor: Colors.amber },
-  number: { color: Colors.stout, fontFamily: Fonts.display.bold, fontSize: 14, lineHeight: 20, includeFontPadding: false, textAlign: 'center' },
+  number: { color: Colors.stout, fontWeight: '700', fontSize: 14, lineHeight: 20, includeFontPadding: false, textAlign: 'center', fontVariant: ['tabular-nums'] },
   candidate: { width: 20, height: 20, borderRadius: Radius.pill, backgroundColor: Colors.stout2, borderWidth: 1, borderColor: Colors.foamMuted, justifyContent: 'center', alignItems: 'center' },
   selectedCandidate: { width: 24, height: 24, borderWidth: 2, borderColor: Colors.amber },
   expand: { position: 'absolute', top: Spacing.md, right: Spacing.md, width: 44, height: 44, borderRadius: Radius.pill, backgroundColor: Colors.stout, alignItems: 'center', justifyContent: 'center' },
