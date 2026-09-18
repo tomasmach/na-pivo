@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import { StaticMapMarker } from '@/map/StaticMapMarker';
 import { MapIcon, PlusIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import { MoreSheet } from '@/components/shared/MoreSheet';
 import type { Pub } from '@/data/pubs';
@@ -97,14 +98,14 @@ export function TourMap({ stops, selectedId, onSelect, height, region, onRegionC
       >
         {stops.length > 1 && <Polyline coordinates={stops.map((stop) => ({ latitude: stop.lat, longitude: stop.lon }))} strokeColor={Colors.foamMuted} strokeWidth={2} lineDashPattern={[6, 6]} />}
         {candidates.map((pub) => (
-          <Marker key={`candidate:${pub.id}`} identifier={`candidate:${pub.id}`} anchor={{ x: 0.5, y: 0.5 }} coordinate={{ latitude: pub.lat, longitude: pub.lng }} zIndex={pub.id === selectedCandidateId ? 4 : 1} onPress={(event) => { event.stopPropagation(); onCandidate?.(pub); }} accessibilityLabel={pub.name}>
+          <StaticMapMarker key={`candidate:${pub.id}:${pub.id === selectedCandidateId}`} identifier={`candidate:${pub.id}`} anchor={{ x: 0.5, y: 0.5 }} coordinate={{ latitude: pub.lat, longitude: pub.lng }} zIndex={pub.id === selectedCandidateId ? 4 : 1} onPress={(event) => { event.stopPropagation(); onCandidate?.(pub); }} accessibilityLabel={pub.name}>
             <View collapsable={false} style={styles.markerTarget}><View style={[styles.candidate, pub.id === selectedCandidateId && styles.selectedCandidate]}><PlusIcon size={pub.id === selectedCandidateId ? 15 : 13} color={pub.id === selectedCandidateId ? Colors.amber : Colors.foam} /></View></View>
-          </Marker>
+          </StaticMapMarker>
         ))}
         {stops.map((stop, index) => (
-          <Marker anchor={{ x: 0.5, y: 0.5 }} key={stop.id} identifier={stop.id} coordinate={{ latitude: stop.lat, longitude: stop.lon }} onPress={(event) => { event.stopPropagation(); select(stop); }} zIndex={stop.id === selectedId ? 3 : 2} accessibilityLabel={`${index + 1}. ${stop.name}`}>
+          <StaticMapMarker anchor={{ x: 0.5, y: 0.5 }} key={`${stop.id}:${index}:${stop.id === selectedId}`} identifier={stop.id} coordinate={{ latitude: stop.lat, longitude: stop.lon }} onPress={(event) => { event.stopPropagation(); select(stop); }} zIndex={stop.id === selectedId ? 3 : 2} accessibilityLabel={`${index + 1}. ${stop.name}`}>
             <View collapsable={false} style={styles.markerTarget}><View style={[styles.marker, stop.id === selectedId && styles.selected]}><Text allowFontScaling={false} style={styles.number}>{index + 1}</Text></View></View>
-          </Marker>
+          </StaticMapMarker>
         ))}
       </MapView>}
       {unavailable && <View style={styles.fallback}><Text maxFontSizeMultiplier={1.3} style={styles.fallbackText}>{t.tours.mapUnavailable}</Text><Pressable style={styles.retry} accessibilityRole="button" accessibilityLabel={t.tours.retry} onPress={() => { setUnavailable(false); setLoaded(false); setAttempt((value) => value + 1); }}><Text maxFontSizeMultiplier={1.3} style={styles.fallbackText}>{t.tours.retry}</Text></Pressable></View>}
