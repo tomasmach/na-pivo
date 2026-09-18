@@ -1222,6 +1222,7 @@ export const en: Strings = {
     leaderboardMetricBeers: 'Beers',
     leaderboardMetricVisits: 'Visits',
     leaderboardMe: 'You',
+    leaderboardPrivateEmpty: 'Nobody to compare with on this leaderboard yet.',
     leaderboardEmpty: 'Nobody to race yet. Add some mates.',
     leaderboardMore: (n: number) => `+${n} more`,
     settingsOpen: 'Open crew settings',
