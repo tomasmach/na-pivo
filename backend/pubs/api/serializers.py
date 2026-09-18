@@ -2608,6 +2608,7 @@ class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers
 
     query = serializers.CharField(max_length=150, trim_whitespace=True)
     pub_search = serializers.BooleanField(required=False, default=False)
+    address_lookup = serializers.BooleanField(required=False, default=False)
     place_id = serializers.CharField(
         max_length=255,
         required=False,
@@ -2638,6 +2639,7 @@ class PubLocationReverseGeocodeSerializer(
 
     lat = serializers.FloatField()
     lng = serializers.FloatField()
+    require_precise = serializers.BooleanField(required=False, default=False)
 
 
 # ---------------------------------------------------------------------------

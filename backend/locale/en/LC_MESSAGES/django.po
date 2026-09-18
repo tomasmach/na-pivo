@@ -929,3 +929,6 @@ msgstr "This is a pub itinerary. People's locations and personal progress are no
 
 msgid "Zkus to prosím za chvíli."
 msgstr "Please try again shortly."
+
+msgid "Polohu podle adresy se nepodařilo ověřit. Zkus to znovu."
+msgstr "The address location could not be verified. Try again."

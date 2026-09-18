@@ -274,6 +274,7 @@ def test_reverse_geocode_prefills_address_for_map_pin(client):
     source.reverse_geocode.assert_called_once_with(
         lat=50.080123,
         lng=16.510616,
+        require_precise=False,
     )
 
 
@@ -476,3 +477,55 @@ def test_pub_search_filters_google_place_types_without_changing_add_pub(client, 
         assert [item["types"] for item in response.json()["items"]] == [
             ["restaurant"], ["bar"], ["pub"],
         ]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("method", ["get", "post"])
+def test_address_lookup_skips_matching_pub_and_uses_precise_address(client, method):
+    _directory_pub()
+    candidate = GoogleAddressCandidate(
+        lat=50.09, lng=14.43, address="Testovaci 12", city="Praha",
+        result_type="street_address", place_id="address-result",
+    )
+    factory, source = _google_source(candidate)
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = getattr(client, method)(
+            "/v1/pubs/geocode",
+            data={"query": _QUERY, "address_lookup": True, "place_id": "ignore-imprecise-place"},
+            **({"format": "json"} if method == "post" else {}),
+        )
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["providerPlaceId"] == "address-result"
+    assert item["precise"] is True
+    source.geocode_address.assert_called_once_with(address=_QUERY, city="")
+    source.geocode_place_id.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_address_lookup_failure_does_not_return_matching_pub(client):
+    _directory_pub()
+    factory, _ = _google_source()
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.post("/v1/pubs/geocode", data={"query": _QUERY, "address_lookup": True}, format="json")
+    assert response.status_code == 200
+    assert response.json() == {"items": []}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("precise", [False, True])
+def test_reverse_geocode_precision_is_opt_in_and_attested(client, precise):
+    candidate = GoogleAddressCandidate(
+        lat=50.09, lng=14.43, address="Testovaci 12", city="Praha",
+        result_type="street_address", place_id="address-result",
+    )
+    factory, source = _google_source(candidate)
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.post(
+            "/v1/pubs/reverse-geocode",
+            data={"lat": 50.09, "lng": 14.43, "require_precise": precise}, format="json",
+        )
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item.get("precise") is (True if precise else None)
+    source.reverse_geocode.assert_called_once_with(lat=50.09, lng=14.43, require_precise=precise)
