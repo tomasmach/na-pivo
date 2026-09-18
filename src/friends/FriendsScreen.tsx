@@ -137,7 +137,7 @@ import FriendSettingsSheet from './FriendSettingsSheet';
 import { GoingRoster } from './GoingRoster';
 import HairlineRow from './HairlineRow';
 import { LeaderboardRow } from './LeaderboardRow';
-import { partyLeaderboard } from './partyLeaderboard';
+import { partyLeaderboard, partyLeaderboardEmptyMessage } from './partyLeaderboard';
 import MyActivityCard from './MyActivityCard';
 import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
@@ -1423,7 +1423,7 @@ export default function FriendsScreen() {
             </>
           ) : loading && !d ? null : (
             <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {partyBoard.length > 1 ? t.friends.leaderboardPrivateEmpty : t.friends.leaderboardEmpty}
+              {t.friends[partyLeaderboardEmptyMessage(partyBoard.length, friendCount)]}
             </Text>
           )}
 

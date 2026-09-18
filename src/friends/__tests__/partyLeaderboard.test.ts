@@ -1,4 +1,4 @@
-import { partyLeaderboard } from '../partyLeaderboard';
+import { partyLeaderboard, partyLeaderboardEmptyMessage } from '../partyLeaderboard';
 import type { LeaderboardEntry } from '@/data/friendsClient';
 
 function row(id: string, visits30d: number | null, beers30d?: number | null, sharedCount = 0): LeaderboardEntry {
@@ -40,4 +40,12 @@ it('has no ranked rows for an empty or fully private party', () => {
   for (const metric of [0, 1] as const) {
     expect(partyLeaderboard([row('private', null, null)], metric).rows).toEqual([]);
   }
+});
+
+it('distinguishes missing counts, private counts and a party without friends', () => {
+  expect(partyLeaderboardEmptyMessage(0, 3)).toBe('leaderboardUnavailable');
+  expect(partyLeaderboardEmptyMessage(1, 3)).toBe('leaderboardUnavailable');
+  expect(partyLeaderboardEmptyMessage(4, 3)).toBe('leaderboardPrivateEmpty');
+  expect(partyLeaderboardEmptyMessage(0, 0)).toBe('leaderboardEmpty');
+  expect(partyLeaderboardEmptyMessage(1, 0)).toBe('leaderboardEmpty');
 });

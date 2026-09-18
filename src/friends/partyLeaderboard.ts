@@ -13,3 +13,9 @@ export function partyLeaderboard(entries: LeaderboardEntry[], requestedMetric: 0
     b.sharedCount - a.sharedCount);
   return { hasBeers, metric, rows };
 }
+
+/** Choose empty copy from the retained friend list as well as available counts. */
+export function partyLeaderboardEmptyMessage(boardCount: number, friendCount: number) {
+  if (boardCount > 1) return 'leaderboardPrivateEmpty';
+  return friendCount > 0 ? 'leaderboardUnavailable' : 'leaderboardEmpty';
+}

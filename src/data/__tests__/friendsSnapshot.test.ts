@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { partyLeaderboardEmptyMessage } from '@/friends/partyLeaderboard';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -88,6 +89,8 @@ it('drops ambiguous legacy leaderboard counts while keeping the offline friend l
   const snap = await loadFriendsDashboardSnapshot();
   expect(snap?.dashboard.friends).toEqual(legacy.friends);
   expect(snap?.dashboard.leaderboard).toEqual([]);
+  expect(partyLeaderboardEmptyMessage(snap!.dashboard.leaderboard.length, snap!.dashboard.friends.length))
+    .toBe('leaderboardUnavailable');
 });
 
 it('round-trips private, zero and omitted counts without changing their meaning', async () => {
