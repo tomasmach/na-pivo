@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { t } from '@/i18n';
+import { geohash8 } from '@/data/geohash';
 import type { FriendPubActivity } from '@/data/friendsClient';
 import { EMPTY_PUB_SEARCH_FILTERS } from '@/data/pubSearchFilters';
 import BeerMapScreen, { resetBeerMapLayerForAddedPub } from '../BeerMapScreen';
@@ -10,6 +11,11 @@ import { fetchPubHours } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import { useBeerMap } from '../useBeerMap';
 
+const mockPubStoreState = {
+  reportedPubIds: [] as string[],
+  reportedCacheKeys: [] as string[],
+  addReportedPub: jest.fn(),
+};
 let mockColorScheme: 'light' | 'dark' | null = 'dark';
 const mockAnimateCamera = jest.fn();
 const mockAnimateToRegion = jest.fn();
@@ -74,8 +80,8 @@ jest.mock('../useBeerMap', () => ({ useBeerMap: jest.fn() }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn() }));
 jest.mock('@/data/pubReportQueue', () => ({ enqueuePubReport: jest.fn(async () => true) }));
 jest.mock('@/stores/pubStore', () => ({
-  usePubStore: (selector: (state: { addReportedPub: jest.Mock }) => unknown) =>
-    selector({ addReportedPub: jest.fn() }),
+  usePubStore: (selector: (state: typeof mockPubStoreState) => unknown) =>
+    selector(mockPubStoreState),
 }));
 jest.mock('@/utils/useReduceMotion', () => ({ useReduceMotion: () => true }));
 jest.mock('@/utils/haptics', () => ({ fireLightImpactHaptic: jest.fn() }));
@@ -126,6 +132,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     MapPinnedIcon: MockIcon,
     RefreshCwIcon: MockIcon,
     StarIcon: MockIcon,
+    SearchIcon: MockIcon,
     UsersIcon: MockIcon,
     XIcon: MockIcon,
   };
@@ -196,6 +203,12 @@ describe('BeerMapScreen opening-hours loading', () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockColorScheme = 'dark';
+    mockPubStoreState.reportedPubIds = [];
+    mockPubStoreState.reportedCacheKeys = [];
+    mockPubStoreState.addReportedPub.mockImplementation((id: string, key: string) => {
+      mockPubStoreState.reportedPubIds = [...mockPubStoreState.reportedPubIds, id];
+      mockPubStoreState.reportedCacheKeys = [...mockPubStoreState.reportedCacheKeys, key];
+    });
     mockedUseBeerMap.mockReturnValue({
       pubs: [{ id: 'pub-1', name: 'U Testu', lat: 50.0876, lng: 14.4214 }],
       nearbyPrices: [],
@@ -468,4 +481,106 @@ describe('BeerMapScreen opening-hours loading', () => {
       'closed',
     );
   });
+  it('focuses a search result outside the catalogue instead of the remembered map', () => {
+    const props = {
+      filters: EMPTY_PUB_SEARCH_FILTERS,
+      onApplyFilters: jest.fn(),
+      onShowCompass: jest.fn(),
+    };
+    const previous = render(<BeerMapScreen {...props} />);
+    fireEvent.press(previous.getByLabelText(t.map.layerFriends));
+    previous.unmount();
+
+    const found = { id: 'remote-1', name: 'Vzdálená hospoda', lat: 49.19, lng: 16.61 };
+    const onSearch = jest.fn();
+    const screen = render(<BeerMapScreen
+      {...props}
+      initialPub={found}
+      focusInitialPub
+      onSearch={onSearch}
+    />);
+    expect(mockedUseBeerMap.mock.results.at(-1)?.value.loadRegion).toHaveBeenCalledWith({
+      latitude: found.lat, longitude: found.lng, latitudeDelta: 0.035, longitudeDelta: 0.035,
+    });
+    expect(screen.getByLabelText(t.map.layerAll).props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByLabelText(t.a11y.mapPub(found.name, 0))).toBeTruthy();
+    expect(screen.getByText(found.name)).toBeTruthy();
+    expect(mockedFetchPubHours).toHaveBeenCalledWith([found], expect.anything());
+    fireEvent.press(screen.getByLabelText(t.pubSearch.open));
+    expect(onSearch).toHaveBeenCalledTimes(1);
+    fireEvent.press(screen.getByLabelText(t.map.aimCompass));
+    expect(props.onShowCompass).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies later map layers, filters and fresh catalogue data to a searched pub', () => {
+    const found = { id: 'remote-2', name: 'Původní název', lat: 49.21, lng: 16.62 };
+    const props = { initialPub: found, focusInitialPub: true, filters: EMPTY_PUB_SEARCH_FILTERS,
+      onApplyFilters: jest.fn(), onShowCompass: jest.fn() };
+    const screen = render(<BeerMapScreen {...props} />);
+    expect(screen.getByLabelText(t.a11y.mapPub(found.name, 0))).toBeTruthy();
+    fireEvent.press(screen.getByLabelText(t.map.layerVisited));
+    expect(screen.queryByLabelText(t.a11y.mapPub(found.name, 0))).toBeNull();
+    fireEvent.press(screen.getByLabelText(t.map.layerAll));
+    screen.rerender(<BeerMapScreen {...props} filters={{ ...EMPTY_PUB_SEARCH_FILTERS, priceMaxCzk: 30 }} />);
+    expect(screen.queryByLabelText(t.a11y.mapPub(found.name, 0))).toBeNull();
+    mockedUseBeerMap.mockReturnValue({ ...mockedUseBeerMap.mock.results.at(-1)!.value,
+      pubs: [{ ...found, name: 'Nový název' }] });
+    screen.rerender(<BeerMapScreen {...props} />);
+    expect(screen.getByLabelText(t.a11y.mapPub('Nový název', 0))).toBeTruthy();
+    expect(screen.queryByText(found.name)).toBeNull();
+  });
+
+  it.each(['id', 'cell'])('keeps a reported search result hidden by its %s', (signal) => {
+    const found = { id: 'remote-3', name: 'Zavřená hospoda', lat: 49.23, lng: 16.64 };
+    const props = { initialPub: found, focusInitialPub: true, filters: EMPTY_PUB_SEARCH_FILTERS,
+      onApplyFilters: jest.fn(), onShowCompass: jest.fn() };
+    const screen = render(<BeerMapScreen {...props} />);
+    expect(screen.getByLabelText(t.a11y.mapPub(found.name, 0))).toBeTruthy();
+    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed(found.name)));
+    act(() => jest.advanceTimersByTime(260));
+    fireEvent.press(screen.getByLabelText(t.compass.reportClosed));
+    expect(screen.queryByLabelText(t.a11y.mapPub(found.name, 0))).toBeNull();
+    screen.unmount();
+    if (signal === 'id') mockPubStoreState.reportedCacheKeys = [];
+    else mockPubStoreState.reportedPubIds = [];
+    const reopened = render(<BeerMapScreen {...props} />);
+    expect(reopened.queryByLabelText(t.a11y.mapPub(found.name, 0))).toBeNull();
+  });
+
+  it('keeps the searched pub name instead of a historical visit at the same location', () => {
+    const found = { id: 'tygr-1', name: 'U Zlatého tygra', lat: 50.08759, lng: 14.42108 };
+    mockedUseBeerMap.mockReturnValue({
+      pubs: [], nearbyPrices: [], visitedCities: [], livePubs: [], position: null,
+      permissionState: 'granted', loadingPubs: false, stale: false,
+      requestPermission: jest.fn(), loadRegion: jest.fn(), refresh: jest.fn(),
+      visitedPubs: [{ cacheKey: geohash8(found.lat, found.lng), name: 'Bar Dawu',
+        lat: found.lat, lng: found.lng, city: 'Praha', visitCount: 1, lastVisitedAt: '2026-09-18T12:00:00Z' }],
+    });
+    const screen = render(<BeerMapScreen initialPub={found} focusInitialPub
+      filters={EMPTY_PUB_SEARCH_FILTERS} onApplyFilters={jest.fn()} onShowCompass={jest.fn()} />);
+    expect(screen.getByText(found.name)).toBeTruthy();
+    expect(screen.queryByText('Bar Dawu')).toBeNull();
+    expect(mockedFetchPubHours).toHaveBeenCalledWith([found], expect.anything());
+    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed(found.name)));
+    act(() => jest.advanceTimersByTime(260));
+    fireEvent.press(screen.getByLabelText(t.compass.reportClosed));
+    expect(screen.queryByLabelText(t.a11y.mapPub(found.name, 1))).toBeNull();
+    expect(screen.queryByLabelText(t.a11y.mapPub('Bar Dawu', 1))).toBeNull();
+  });
+
+  it('keeps a selected pub identity when another cached pub occupies the same map cell', () => {
+    const found = { id: 'tygr-2', name: 'U Zlatého tygra', lat: 50.08759, lng: 14.42108 };
+    const mapData = mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS);
+    mockedUseBeerMap.mockReturnValue({ ...mapData,
+      pubs: [{ ...found, id: 'old-dawu', name: 'Bar Dawu' }],
+    });
+    const screen = render(<BeerMapScreen initialPub={found} focusInitialPub
+      filters={EMPTY_PUB_SEARCH_FILTERS} onApplyFilters={jest.fn()} onShowCompass={jest.fn()} />);
+    expect(screen.getByText(found.name)).toBeTruthy();
+    expect(screen.queryByText('Bar Dawu')).toBeNull();
+    expect(mockedFetchPubHours).toHaveBeenCalledWith([found], expect.anything());
+  });
+
 });
