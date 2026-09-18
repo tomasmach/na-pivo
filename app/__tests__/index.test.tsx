@@ -1,5 +1,5 @@
 import React from 'react';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
@@ -28,6 +28,8 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('expo-router', () => ({
+  useFocusEffect: jest.fn(),
+  useLocalSearchParams: jest.fn(() => ({})),
   useRouter: jest.fn(() => ({
     push: jest.fn(),
   })),
@@ -94,6 +96,7 @@ jest.mock('@/components/shared/GlowButton', () => ({
 }));
 
 jest.mock('@/components/shared/IconGlyph', () => ({
+  SearchIcon: jest.fn(() => null),
   BeerIcon: jest.fn(() => null),
   BeerOffIcon: jest.fn(() => null),
   Trash2Icon: jest.fn(() => null),
@@ -227,10 +230,31 @@ function baseCompassState() {
 describe('CompassScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (useLocalSearchParams as jest.Mock).mockReturnValue({});
     mockedUseRouter.mockReturnValue({ push: jest.fn() });
     act(() => {
       useSettingsStore.setState({ hidePubNames: false, homePoint: null });
     });
+  });
+
+  it.each([
+    ['active', {}],
+    ['loading', { isLoading: true }],
+    ['empty', { pub: null }],
+    ['denied location', { permissionState: 'denied' }],
+    ['undetermined location', { permissionState: 'undetermined' }],
+  ])('opens pub search from the %s compass', (_name, overrides) => {
+    const push = jest.fn();
+    mockedUseRouter.mockReturnValue({ push });
+    useCompass.mockReturnValue({ ...baseCompassState(), ...overrides });
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+    const button = renderer.root.findAllByProps({ accessibilityLabel: t.pubSearch.open })[0];
+    act(() => button.props.onPress());
+    expect(push).toHaveBeenCalledWith('/pub-search');
+    act(() => renderer.unmount());
   });
 
   it('shows the empty state instead of a compass card when no pub is selected', () => {
@@ -313,6 +337,29 @@ describe('CompassScreen', () => {
     expect(
       sheet.rows.some((row: { label: string }) => row.label === t.compass.moreMap),
     ).toBe(false);
+  });
+
+  it('returns to compass from searched pub navigation even when the original screen showed the map', () => {
+    const setParams = jest.fn();
+    mockedUseRouter.mockReturnValue({ push: jest.fn(), setParams });
+    useCompass.mockReturnValue(baseCompassState());
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.mapSwitchToMap }).props.onPress();
+    });
+    expect(renderer.root.findAllByType(BeerMapScreen)).toHaveLength(1);
+
+    (useLocalSearchParams as jest.Mock).mockReturnValue({ view: 'compass' });
+    act(() => renderer.update(React.createElement(CompassScreen)));
+    const focus = (useFocusEffect as jest.Mock).mock.calls.at(-1)![0];
+    act(() => focus());
+    expect(renderer.root.findAllByType(BeerMapScreen)).toHaveLength(0);
+    expect(renderer.root.findByProps({ accessibilityLabel: t.a11y.mapSwitchCompassSelected })).toBeTruthy();
+    expect(setParams).toHaveBeenCalledWith({ view: undefined });
+    act(() => renderer.unmount());
   });
 
   it('switches from the active compass to the map through the header switch', () => {
