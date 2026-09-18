@@ -2807,6 +2807,7 @@ export const cs = {
   },
 
   tours: {
+    openMap: 'Otevřít mapu', privateRun: 'Jen tvůj průchod', pastRun: 'Předchozí průchod',
     mapUnavailable: 'Mapa se nenačetla. Zastávky máš dál v seznamu.',
     clearSearch: 'Vymazat hledání',
     backToSearch: 'Zpět k výběru',

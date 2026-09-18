@@ -10,14 +10,15 @@ import type { TourPlan, TourStop } from './model';
 export function TourText(props: TextProps) {
   return <Text maxFontSizeMultiplier={FontScaleCap.body} {...props} style={[ui.text, props.style]} />;
 }
-export function TourButton({ label, onPress, secondary, disabled, busy, testID }: {
-  label: string; onPress: () => void; secondary?: boolean; disabled?: boolean; busy?: boolean; testID?: string;
+export function TourButton({ label, onPress, secondary, quiet, icon, disabled, busy, testID }: {
+  label: string; onPress: () => void; secondary?: boolean; quiet?: boolean; icon?: ReactNode; disabled?: boolean; busy?: boolean; testID?: string;
 }) {
   return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label}
     accessibilityState={{ disabled: !!disabled || !!busy, busy: !!busy }} disabled={disabled || busy}
-    onPress={onPress} style={({ pressed }) => [ui.button, secondary && ui.secondary, (pressed || disabled || busy) && ui.dim]}>
-    {busy ? <ActivityIndicator color={secondary ? Colors.foam : Colors.stout} /> :
-      <TourText maxFontSizeMultiplier={FontScaleCap.heading} style={[ui.buttonText, secondary && ui.secondaryText]}>{label}</TourText>}
+    onPress={onPress} style={({ pressed }) => [ui.button, secondary && ui.secondary, quiet && ui.quiet, (pressed || disabled || busy) && ui.dim]}>
+    {busy ? <ActivityIndicator color={secondary || quiet ? Colors.foam : Colors.stout} /> : <>
+      {icon}<TourText maxFontSizeMultiplier={FontScaleCap.heading} style={[ui.buttonText, (secondary || quiet) && ui.secondaryText, quiet && ui.quietText]}>{label}</TourText>
+    </>}
   </Pressable>;
 }
 export function TourHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: ReactNode }) {
@@ -84,9 +85,11 @@ export const ui = StyleSheet.create({
   headerTitle: { flex: 1, textAlign: 'center', fontFamily: Fonts.ui.semibold, fontSize: 16, color: Colors.foam },
   headerRight: { minWidth: HitArea.min },
   iconButton: { width: HitArea.min, minHeight: HitArea.min, alignItems: 'center', justifyContent: 'center' },
-  button: { minHeight: 48, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg, borderRadius: Radius.pill, backgroundColor: Colors.amber, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { color: Colors.stout, fontFamily: undefined, fontWeight: '700', fontSize: 16, lineHeight: 22, includeFontPadding: false, textAlign: 'center' },
+  button: { minHeight: 48, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg, borderRadius: Radius.pill, backgroundColor: Colors.amber, flexDirection: 'row', gap: Spacing.sm, alignItems: 'center', justifyContent: 'center' },
+  buttonText: { color: Colors.stout, fontFamily: undefined, fontWeight: '700', fontSize: 16, lineHeight: 22, includeFontPadding: false, textAlign: 'center', flexShrink: 1 },
   secondary: { backgroundColor: Colors.stout3 },
+  quiet: { backgroundColor: 'transparent', minHeight: HitArea.min },
+  quietText: { fontSize: 14, lineHeight: 20 },
   secondaryText: { color: Colors.foam },
   dim: { opacity: .55 },
   footer: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, .1), backgroundColor: Colors.stout },

@@ -5,7 +5,7 @@ import { usePreventRemove } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
 import * as Clipboard from 'expo-clipboard';
-import { EllipsisIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, CompassIcon, EllipsisIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
@@ -13,10 +13,13 @@ import { geohash8 } from '@/data/geohash';
 import { useToursStore, tourContentSignature } from '@/stores/toursStore';
 import { openPubInMaps } from '@/utils/maps';
 import { t, intlLocale } from '@/i18n';
-import { Colors } from '@/theme/colors';
-import { Spacing } from '@/theme/layout';
-import { TourButton, TourError, TourHeader, TourStopRow, TourText, stopCount, tourDate, ui } from './TourChrome';
+import { Colors, withAlpha } from '@/theme/colors';
+import { Radius, Spacing } from '@/theme/layout';
+import { FontScaleCap } from '@/theme/fonts';
+import { TourButton, TourError, TourHeader, TourText, stopCount, tourDate, ui } from './TourChrome';
 import { TourMap } from './TourMap';
+import { TourJourneyIllustration } from './TourJourneyIllustration';
+import { TourHistoryRow, TourJourneyStop, TourMapPreview } from './TourJourney';
 import type { TourResult, TourStop } from './model';
 
 export default function TourDetailScreen() {
@@ -49,7 +52,7 @@ function TourDetail({ id }: { id: string }) {
   const [region, setRegion] = useState<Region>();
   const [notice, setNotice] = useState<string | null>(null); const [undo, setUndo] = useState<{ id: string; status: 'visited' | 'skipped' | null } | null>(null);
   const [acting, setActing] = useState(false); const actionLock = useRef(false);
-  const scroll = useRef<ScrollView>(null); const rowsY = useRef<Record<string, number>>({}); const listY = useRef(0);
+  const scroll = useRef<ScrollView>(null);
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   const [openedAt] = useState(() => Date.now());
   async function action(operation: () => Promise<TourResult>, after?: (result: { ok: true; id?: string }) => void) {
@@ -58,7 +61,6 @@ function TourDetail({ id }: { id: string }) {
     try { const result = await operation(); if (result.ok) after?.(result); }
     finally { actionLock.current = false; setActing(false); }
   }
-  function select(stopId: string) { setSelected(stopId); const row = rowsY.current[stopId]; if (row !== undefined) scroll.current?.scrollTo({ y: Math.max(0, listY.current + row - 8), animated: true }); }
   function navigate(stop: TourStop) { void openPubInMaps({ lat: stop.lat, lng: stop.lon, name: stop.name }).catch(() => setNotice(t.tours.errors.navigation)); }
   function mark(stop: TourStop, status: 'visited' | 'skipped' | null) {
     const previous = active?.statuses[stop.id] ?? null;
@@ -104,27 +106,32 @@ function TourDetail({ id }: { id: string }) {
   const shared = !!plan.share && new Date(plan.share.expiresAt).getTime() > openedAt;
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
     <View style={ui.grow} accessibilityElementsHidden={overlayVisible} importantForAccessibility={overlayVisible ? 'no-hide-descendants' : 'auto'}>
-    <TourHeader title={shareMode ? t.tours.sharedPlan : run ? t.tours.run : t.tours.title} onBack={() => shareMode ? setShareMode(false) : router.canGoBack() ? router.back() : router.replace('/tours' as Href)}
+    <TourHeader title={shareMode ? t.tours.sharedPlan : run ? t.tours.run : t.tours.title} onBack={() => shareMode ? setShareMode(false) : history ? setHistoryId(null) : router.canGoBack() ? router.back() : router.replace('/tours' as Href)}
       right={<Pressable style={ui.iconButton} accessibilityRole="button" accessibilityLabel={t.tours.more} onPress={more}><EllipsisIcon color={Colors.foam} size={23} /></Pressable>} />
-    <ScrollView ref={scroll} contentContainerStyle={ui.content}>
-      <View><TourText style={ui.heading}>{current.title}</TourText><TourText style={ui.meta}>{tourDate(current)}</TourText></View>
+    <ScrollView ref={scroll} contentContainerStyle={styles.content}>
+      <View><TourText maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{current.title}</TourText><TourText style={styles.date}>{tourDate(current)}</TourText></View>
+      <TourJourneyIllustration stops={current.stops} statuses={!shareMode ? run?.statuses : undefined} nextStopId={!shareMode && active && !history ? next?.id : undefined} />
       <TourError code={store.error} message={notice} />
       {plan.conflict && (<View style={{ gap: Spacing.md }}><TourText style={ui.section}>{t.tours.conflict}</TourText><TourText>{t.tours.conflictMessage}</TourText>
       <TourButton label={t.tours.useServer} secondary onPress={() => { void action(() => store.chooseServerVersion(plan.id)); }} />
       <TourButton label={t.tours.keepBoth} secondary onPress={() => { void action(() => store.copyLocalConflict(plan.id), (r) => { if (r.id) router.replace({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); }} />
     </View>)}
-      {!shareMode && active && !history && <View><TourText style={ui.meta}>{next ? t.tours.nextStop : t.tours.allDone}</TourText>{next && <TourText style={ui.section}>{next.name}</TourText>}</View>}
-      <TourMap stops={current.stops} selectedId={selected} onSelect={select} height={run ? 150 : 180} region={region} onRegionChange={setRegion} onExpand={() => setLargeMap(true)} />
-      <View onLayout={(event) => { listY.current = event.nativeEvent.layout.y; }}>
-        <View style={ui.row}><TourText style={ui.section}>{run && !shareMode ? `${Object.values(run.statuses).filter((s) => s === 'visited').length} / ${run.snapshot.stops.length} ${t.tours.visited.toLocaleLowerCase()}` : stopCount(current.stops.length)}</TourText>
+
+      <View>
+        <View style={[ui.row, styles.listHeading]}><TourText style={styles.section}>{t.tours.stops}</TourText>
+          <TourText style={styles.progress}>{run && !shareMode ? `${Object.values(run.statuses).filter((s) => s === 'visited').length} / ${run.snapshot.stops.length} ${t.tours.visited.toLocaleLowerCase()}` : stopCount(current.stops.length)}</TourText>
           {!shareMode && !run && !plan.source && <Pressable onPress={() => { void edit(); }} style={ui.link} accessibilityRole="button" accessibilityLabel={t.tours.edit}><TourText style={ui.linkText}>{t.tours.edit}</TourText></Pressable>}
           {history && <TourText style={ui.meta}>{t.tours.ended}</TourText>}
         </View>
-        {current.stops.map((stop, index) => <View key={stop.id} onLayout={(event) => { rowsY.current[stop.id] = event.nativeEvent.layout.y; }}>
-          <TourStopRow stop={stop} index={index} selected={selected === stop.id} onPress={() => { setSelected(stop.id); setDetail(stop); }}
-            status={!shareMode && run ? run.statuses[stop.id] ? t.tours[run.statuses[stop.id]] : stop.id === next?.id && !history ? t.tours.nextStop : t.tours.pending : index === 0 ? `${t.tours.firstStop}${current.scheduledTime ? ` ${current.scheduledTime}` : ''} · ${stop.address}` : undefined} />
+        {current.stops.map((stop, index) => <View key={stop.id}>
+          <TourJourneyStop stop={stop} index={index} count={current.stops.length} selected={selected === stop.id}
+            next={!shareMode && !!active && !history && stop.id === next?.id} status={!shareMode ? run?.statuses[stop.id] : undefined}
+            onPress={() => { setSelected(stop.id); setDetail(stop); }}
+            caption={!shareMode && run ? run.statuses[stop.id] ? t.tours[run.statuses[stop.id]] : stop.id === next?.id && !history ? t.tours.nextStop : t.tours.pending : index === 0 ? `${t.tours.firstStop}${current.scheduledTime ? ` ${current.scheduledTime}` : ''}${stop.address ? ` · ${stop.address}` : ''}` : stop.address || t.tours.openingHoursUnknown} />
         </View>)}
       </View>
+      <TourMapPreview stops={current.stops} onPress={() => setLargeMap(true)} />
+      {!shareMode && active && !history && !next && <TourText style={styles.section}>{t.tours.allDone}</TourText>}
       {shareMode ? <>
         <TourText style={ui.notice}>{t.tours.shareNotice}</TourText>
         <View><TourText style={ui.section}>{t.tours.expires}</TourText><TourText>{new Date(expires).toLocaleDateString(intlLocale)}</TourText></View>
@@ -140,19 +147,27 @@ function TourDetail({ id }: { id: string }) {
           ] })} />
         </>}
       </> : <>
-        {undo && active && <View style={ui.row}><TourText style={ui.grow}>{active.snapshot.stops.find((stop) => stop.id === undo.id)?.name}</TourText><TourButton label={t.tours.undo} secondary onPress={() => { void action(() => store.markStop(undo.id, undo.status), () => setUndo(null)); }} /></View>}
-        {run && <TourText style={ui.notice}>{t.tours.runPrivacy}</TourText>}
+
         {!run && plan.source && <TourButton label={t.tours.checkUpdate} secondary onPress={() => router.push(`/t/${plan.source!.token}` as Href)} />}
-        {store.runs.filter((r) => r.planId === id).length > 0 && <View style={{ gap: Spacing.sm }}><TourText style={ui.section}>{t.tours.history}</TourText>
-          {store.runs.filter((r) => r.planId === id).map((r) => <TourButton key={r.id} secondary label={`${new Date(r.startedAt).toLocaleDateString(intlLocale)} · ${Object.values(r.statuses).filter((s) => s === 'visited').length}/${r.snapshot.stops.length}`} onPress={() => { setHistoryId(r.id); setSelected(null); scroll.current?.scrollTo({ y: 0, animated: true }); }} />)}
+        {store.runs.some((r) => r.planId === id) && <View>
+          {store.runs.filter((r) => r.planId === id).map((r) => <TourHistoryRow key={r.id} run={r} selected={r.id === historyId} onPress={() => { setHistoryId(r.id); setSelected(null); scroll.current?.scrollTo({ y: 0, animated: true }); }} />)}
         </View>}
+        {run && <Pressable accessibilityRole="button" accessibilityLabel={t.tours.privateRun} style={styles.privacy}
+          onPress={() => showAppDialog({ title: t.tours.privateRun, message: t.tours.runPrivacy, buttons: [{ text: t.tours.close, style: 'cancel' }] })}>
+          <LockKeyholeIcon size={13} color={Colors.mutedText} /><TourText style={styles.privacyText}>{t.tours.privateRun}</TourText>
+        </Pressable>}
       </>}
     </ScrollView>
-    <View style={[ui.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
+    <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
+      {undo && active && !history && !shareMode && <View style={styles.undo} accessibilityLiveRegion="polite">
+        <View style={ui.grow}><TourText style={styles.undoName} numberOfLines={1}>{active.snapshot.stops.find((stop) => stop.id === undo.id)?.name}</TourText>
+          <TourText style={styles.undoStatus}>{active.statuses[undo.id] ? t.tours[active.statuses[undo.id]] : t.tours.undoMark}</TourText></View>
+        <Pressable accessibilityRole="button" accessibilityLabel={t.tours.undo} accessibilityState={{ disabled: acting }} disabled={acting} style={ui.link} onPress={() => { void action(() => store.markStop(undo.id, undo.status), () => setUndo(null)); }}><TourText style={ui.linkText}>{t.tours.undo}</TourText></Pressable>
+      </View>}
       {shareMode ? ((!shared || localNewer || !!store.pending[id]) && <TourButton label={shared ? t.tours.publishChanges : t.tours.createLink} busy={acting || store.busy} onPress={() => { void action(() => store.publish(id)); }} />)
         : history ? <TourButton label={t.tours.repeat} onPress={() => { void action(() => store.copyPlan(id), (r) => { if (r.id) router.replace({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); }} />
-          : active ? <><TourButton label={next ? t.tours.navigate : t.tours.end} onPress={() => next ? navigate(next) : end()} />{next && <TourButton label={t.tours.markVisited} secondary disabled={acting} onPress={() => mark(next, 'visited')} />}</>
-            : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} secondary onPress={() => setShareMode(true)} />}</>}
+          : active ? <><TourButton label={next ? t.tours.navigate : t.tours.end} icon={next ? <CompassIcon size={19} color={Colors.stout} /> : undefined} onPress={() => next ? navigate(next) : end()} />{next && <TourButton label={t.tours.markVisited} quiet icon={<CheckIcon size={17} color={Colors.foam} />} disabled={acting} onPress={() => mark(next, 'visited')} />}</>
+            : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} quiet onPress={() => setShareMode(true)} />}</>}
     </View>
     </View>
     {overlayVisible && <View accessibilityViewIsModal style={[ui.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -173,3 +188,18 @@ function TourDetail({ id }: { id: string }) {
     </View>}
   </View>;
 }
+
+const styles = StyleSheet.create({
+  content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, paddingBottom: Spacing.lg, gap: Spacing.md },
+  title: { fontFamily: undefined, fontWeight: '800', fontSize: 30, lineHeight: 34, letterSpacing: -.7, color: Colors.foam },
+  date: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.foamMuted, marginTop: Spacing.sm },
+  listHeading: { minHeight: 28, flexWrap: 'wrap', marginBottom: Spacing.xs },
+  section: { fontFamily: undefined, fontWeight: '600', fontSize: 14, lineHeight: 20, color: Colors.foam },
+  progress: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.foamMuted },
+  privacy: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', minHeight: 44, gap: Spacing.xs },
+  privacyText: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.mutedText },
+  footer: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, .1), backgroundColor: Colors.stout },
+  undo: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingLeft: Spacing.md, paddingVertical: Spacing.xs, borderRadius: Radius.medium, backgroundColor: Colors.stout3, marginBottom: Spacing.sm },
+  undoName: { fontFamily: undefined, fontWeight: '600', fontSize: 13, lineHeight: 18, color: Colors.foam },
+  undoStatus: { fontFamily: undefined, fontSize: 12, lineHeight: 17, color: Colors.foamMuted },
+});

@@ -2208,6 +2208,7 @@ export const en: Strings = {
     playStoreA11y: 'Open Na pivo in Google Play',
   },
   tours: {
+    openMap: 'Open map', privateRun: 'Your private progress', pastRun: 'Past tour',
     mapUnavailable: 'The map could not be loaded. Your stops are still in the list.',
     clearSearch: 'Clear search',
     backToSearch: 'Back to search',
