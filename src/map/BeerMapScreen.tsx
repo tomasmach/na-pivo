@@ -74,6 +74,7 @@ import {
   type VisitedCitySummary,
 } from './mapModel';
 import { useBeerMap } from './useBeerMap';
+import { StaticMapMarker } from './StaticMapMarker';
 
 const DEFAULT_REGION: Region = {
   latitude: 49.8175,
@@ -1254,35 +1255,33 @@ export default function BeerMapScreen({
             const point = cluster.items[0];
             const selected = selectedPub?.key === point.key;
             return (
-              <Marker
+              <StaticMapMarker
                 key={`${point.key}:${point.visit?.visitCount ?? 0}:${selected ? 'selected' : 'idle'}`}
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 onPress={() => selectPub(point)}
-                tracksViewChanges={selected}
                 accessibilityLabel={t.a11y.mapPub(
                   point.pub.name,
                   point.visit?.visitCount ?? 0,
                 )}
               >
                 <PubMarker visited={Boolean(point.visit)} selected={selected} />
-              </Marker>
+              </StaticMapMarker>
             );
           }
           return (
-            <Marker
-              key={`cluster:${cluster.id}:${cluster.items.length}`}
+            <StaticMapMarker
+              key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}`}
               stopPropagation
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
-              tracksViewChanges={false}
               accessibilityLabel={t.a11y.mapCluster(cluster.items.length)}
             >
               <ClusterMarker
                 count={cluster.items.length}
                 visited={cluster.items.some((item) => item.visit != null)}
               />
-            </Marker>
+            </StaticMapMarker>
           );
         })}
 
