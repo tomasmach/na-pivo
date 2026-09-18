@@ -2003,6 +2003,7 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
     # Every reverse accessor that _export_account_data serializes, documented
     # with an exact export JSON path where its rows land.
     exported_relations = {
+        "tours": "tours[*].id",
         "auth_tokens": "auth_sessions[*].device_label",
         "email_credential": "email_credential.created_at",
         "beer_photo_deletion_tombstones": "beer_photo_deletion_tombstones[*].client_id",

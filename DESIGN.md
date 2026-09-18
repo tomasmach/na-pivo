@@ -1004,6 +1004,23 @@ přidat akci opačného směru, **udělej místo toho druhý sheet**.
 
 ## 9. Ilustrace a osobnost
 
+### Schválený vzor Tour de pub (18. 9. 2026)
+
+Detail tour používá [variantu A](https://4mhfgkc9i5ba.postplan.dev): SVG pás hospod
+(`TourJourneyIllustration`), propojený seznam zastávek a skutečnou mapu v náhledu pod seznamem.
+Každá ze 2–8 hospod v ilustraci odpovídá jedné zastávce; jantarové dveře označují příští,
+check navštívenou a minus přeskočenou. Fasády jsou smyšlené, spojnice ukazuje pořadí, ne geografii.
+Tohle je schválené rozšíření obecného pravidla „nejdřív mapa“ níže, ne náhrada mapy kresbou.
+
+Pás má `viewBox="0 0 350 158"`, pro 5–8 zastávek `0 24 350 134`; výška vychází ze šířky. Seznam používá kruhy 30 pt,
+řádek minimálně 78 pt a systémové písmo: název 17/23, příští hospoda 21/27, popisek 12/18.
+Titulek je 30/34, váha 800. Jediná plná jantarová akce je v patičce; označení zastávky je
+textové tlačítko s checkem. Historie má ploché řádky, vysvětlení soukromí otevírá „Jen tvůj
+průchod“. Vrácení posledního označení zůstává viditelné v patičce a nepřekrývá obsah.
+Barvy zůstávají podle aktuálních `src/theme/colors.ts`, bez nových gradientů a závislostí.
+
+### Obecná pravidla
+
 **Kreslený prvek si musí zasloužit místo tím, že nese data.** Obrázek TOHO, co se počítá, data
 nenese — a přesně na tom umřely dvě ilustrace, které tu dřív byly povinné:
 

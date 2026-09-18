@@ -429,3 +429,30 @@ Never paste or log the refresh token, the client secret or raw response bodies a
 ## Agent instructions
 
 Agent-facing product and engineering guidance lives in `AGENTS.md`. Claude-compatible instructions live in `CLAUDE.md` and point to the same source.
+
+### Tour de pub publication
+
+`/v1/tours` is account-scoped; `/v1/tour-shares/<token>` and `/t/<token>` expose
+only the explicitly published itinerary. Local drafts and personal progress are
+never uploaded. The API and the HTML landing share the database-backed
+`tour_public` throttle (60 requests/minute/IP across workers). Mutations are
+serialized under the account row lock; operation IDs retain replay protection,
+and stale revisions return 409 without overwriting the published plan.
+
+Share capabilities use HMAC-SHA256 with `SECRET_KEY`, the tour UUID and the random
+share-operation UUID. The database stores only the token hash and nonce. A database
+leak alone cannot reconstruct links; an authenticated owner can recover the same
+URL on a second device. Rotating `SECRET_KEY` invalidates these links; the owner
+must explicitly create a new link. Revocation followed by publication uses a new
+operation UUID. `prune_operational_data` revokes expired links in bounded batches.
+Account deletion immediately revokes links and eventual account purge removes plans.
+
+Access logging must never store `/t/<token>` or `/v1/tour-shares/<token>` verbatim.
+Django redacts both paths; the existing Gunicorn access format excludes URLs.
+The Caddy example above has no access logging enabled. Before enabling access logs
+at a proxy or CDN, omit request URIs for both paths. No production proxy setting
+has been inspected by local verification. Public responses are `no-store`,
+`no-referrer`, and `noindex`; the web page loads no third-party resources.
+
+Deploy the additive backend migration before releasing the mobile feature.
+Android `/t/*` App Links require a new mobile build; AASA keeps `/p/*` and `/party/*`.

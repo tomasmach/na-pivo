@@ -109,6 +109,7 @@ def apple_app_site_association(_request: HttpRequest) -> JsonResponse:
                 "components": [
                     {"/": "/p/*", "comment": "Parta friend invite links"},
                     {"/": "/party/*", "comment": "Shared table invite links"},
+                    {"/": "/t/*", "comment": "Tour itinerary links"},
                 ],
             }
         ]
@@ -184,3 +185,34 @@ def invite_asset(_request: HttpRequest, filename: str) -> FileResponse:
     response.headers["Cache-Control"] = "public, max-age=604800, immutable"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+def tour_invite_landing(request: HttpRequest, token: str) -> HttpResponse:
+    """Read-only itinerary, with no trackers, external fonts, map SDK or redirect."""
+    from rest_framework.request import Request
+
+    from pubs.api.throttling import SharedScopedRateThrottle
+    from pubs.tours import protect_response, public_share, tour_snapshot
+
+    throttle = SharedScopedRateThrottle()
+    policy = type("TourPublicPolicy", (), {"throttle_scope": "tour_public"})()
+    if not throttle.allow_request(Request(request), policy):
+        response = HttpResponse(gettext("Zkus to prosím za chvíli."), status=429)
+        response["Retry-After"] = str(throttle.wait())
+        return protect_response(response)
+    share = public_share(token)
+    if not share:
+        return protect_response(render(request, "pubs/tour_landing.html", {
+            "unavailable": True, **_language_context(),
+        }, status=404))
+    tour = tour_snapshot(share.plan)
+    first = tour["stops"][0]
+    response = render(request, "pubs/tour_landing.html", {
+        "tour": tour,
+        "meeting_date": share.plan.scheduled_date,
+        "deep_link": f"napivo://t/{quote(token, safe='')}",
+        "navigation_url": f"https://www.google.com/maps/dir/?api=1&destination={first['lat']},{first['lon']}&travelmode=walking",
+        **_language_context(),
+    })
+    response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+    return protect_response(response)

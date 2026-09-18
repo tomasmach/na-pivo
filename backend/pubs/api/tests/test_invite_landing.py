@@ -71,6 +71,7 @@ def test_apple_association_limits_universal_links_to_invites(client, settings):
                     "components": [
                         {"/": "/p/*", "comment": "Parta friend invite links"},
                         {"/": "/party/*", "comment": "Shared table invite links"},
+                        {"/": "/t/*", "comment": "Tour itinerary links"},
                     ],
                 }
             ],

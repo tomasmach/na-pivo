@@ -8,6 +8,10 @@ import React, { memo, ComponentType } from 'react';
 import Svg, { Circle as SvgCircle, Path as SvgPath } from 'react-native-svg';
 import {
   Armchair,
+  ArrowUp,
+  ArrowDown,
+  GripVertical,
+  Ellipsis,
   Beer,
   BeerOff,
   Compass,
@@ -210,3 +214,8 @@ export const QrCodeIcon = wrap(QrCode, 'QrCodeIcon');
 export const MenuIcon = wrap(Menu, 'MenuIcon');
 export const GlobeIcon = wrap(Globe, 'GlobeIcon');
 export const TriangleAlertIcon = wrap(TriangleAlert, 'TriangleAlertIcon');
+
+export const ArrowUpIcon = wrap(ArrowUp, 'ArrowUpIcon');
+export const ArrowDownIcon = wrap(ArrowDown, 'ArrowDownIcon');
+export const GripVerticalIcon = wrap(GripVertical, 'GripVerticalIcon');
+export const EllipsisIcon = wrap(Ellipsis, 'EllipsisIcon');

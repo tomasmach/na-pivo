@@ -1,5 +1,5 @@
 import { redirectSystemPath } from '../../../app/+native-intent';
-import { isLegacyTableInviteUrl, parseInviteCodeFromUrl } from '../inviteLinkRoutes';
+import { isLegacyTableInviteUrl, parseInviteCodeFromUrl, parseTourTokenFromUrl } from '../inviteLinkRoutes';
 
 describe('restored app invitation routes', () => {
   it.each([
@@ -53,5 +53,24 @@ describe('restored app invitation routes', () => {
   ])('leaves unrelated system links alone: %s', (path) => {
     expect(isLegacyTableInviteUrl(path)).toBe(false);
     expect(redirectSystemPath({ path, initial: true })).toBe(path);
+  });
+});
+
+const tourToken = 'test_token_with_at_least_32_characters';
+describe('tour invitation routes', () => {
+  it.each([true, false])('routes cold/warm start with the same token (initial=%s)', (initial) => {
+    for (const path of [`napivo://t/${tourToken}`, `https://na-pivo.cz/t/${tourToken}`]) {
+      expect(parseTourTokenFromUrl(path)).toBe(tourToken);
+      expect(redirectSystemPath({ path, initial })).toBe(`/t/${tourToken}`);
+      expect(parseInviteCodeFromUrl(path)).toBeNull();
+    }
+  });
+  it.each([
+    'https://evil.example/t/test_token_with_at_least_32_characters',
+    'https://evil.example@na-pivo.cz/t/test_token_with_at_least_32_characters',
+    'napivo://t/short', 'https://na-pivo.cz/t/%2Fbad',
+    'https://na-pivo.cz/t/test_token_with_at_least_32_characters/extra',
+  ])('rejects malformed and third party tour URLs', (path) => {
+    expect(parseTourTokenFromUrl(path)).toBeNull();
   });
 });

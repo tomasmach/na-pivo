@@ -61,6 +61,13 @@ from .party_views import (
     party_game_stream,
 )
 from .pub_event_views import PubEventView
+from .tour_views import (
+    PublicTourView,
+    TourDetailView,
+    TourListView,
+    TourPubSearchView,
+    TourShareView,
+)
 from .views import (
     AccountAvatarView,
     AccountDeletionStatusView,
@@ -134,6 +141,11 @@ from .views import (
 )
 
 urlpatterns = [
+    path("tours", TourListView.as_view()),
+    path("tours/<uuid:plan_id>", TourDetailView.as_view()),
+    path("tours/<uuid:plan_id>/share", TourShareView.as_view()),
+    path("tour-shares/<slug:token>", PublicTourView.as_view()),
+    path("pubs/search", TourPubSearchView.as_view()),
     path("challenges", ChallengeListView.as_view(), name="challenges"),
     path("community-events", CommunityEventCollectionView.as_view(), name="community-events"),
     path(

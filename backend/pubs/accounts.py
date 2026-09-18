@@ -2300,6 +2300,8 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     # Move parent rows before their Account CASCADE can erase entire 3.0 trees.
     # Duplicate offline identities retain the claimed account's parent row, but
     # every child with an independent identity is moved or deduplicated first.
+    from pubs.models import TourPlan
+    TourPlan.objects.filter(owner=source).update(owner=target)
     _merge_friendships(source, target)
     _merge_follows(source, target)
     _merge_friend_blocks(source, target)
@@ -3145,6 +3147,8 @@ def schedule_deletion(account: Account) -> None:
             active=False,
             updated_at=timezone.now(),
         )
+        from pubs.models import TourShare
+        TourShare.objects.filter(plan__owner=locked).update(revoked_at=timezone.now())
         _resolve_shared_lifecycles_on_soft_delete(locked)
 
         locked.status = Account.Status.PENDING_DELETION

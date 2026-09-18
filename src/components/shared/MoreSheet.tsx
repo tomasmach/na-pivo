@@ -88,6 +88,7 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
         <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
           {/* Swallows presses so a row tap never falls through to the backdrop. */}
           <Pressable
+            accessible={false}
             style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
             onPress={() => undefined}
           >

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearToursPrivateData } from '@/stores/toursStore';
 
 import { clearAddedPubsQueue } from './addedPubsQueue';
 import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueue';
@@ -118,6 +119,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // Invalidate a captured pre-logout history snapshot before any async queue
   // clear can yield, so it cannot be enqueued under the replacement account.
   cancelDrinksHistorySeed();
+  const toursCleanup = clearToursPrivateData();
   useTallyStore.setState({ current: null, history: [] });
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });
@@ -142,6 +144,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   });
 
   await Promise.all([
+    toursCleanup,
     clearAddedPubsQueue(),
     clearCommunityQueue(),
     clearDrinksQueue(),
