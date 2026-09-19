@@ -13,6 +13,7 @@ jest.mock('../visitsClient', () => ({
 const shareFriendPubActivity = jest.fn(async (..._args: unknown[]) => ({ ok: false, code: 'network', detail: '' }));
 jest.mock('../friendsClient', () => ({
   shareFriendPubActivity: (...args: unknown[]) => shareFriendPubActivity(...args),
+  createFriendPlan: jest.fn(async () => ({ ok: false, code: 'network', detail: '' })),
 }));
 
 import { IDLE_TIMEOUT_MS, useTallyStore } from '@/stores/tallyStore';
@@ -173,6 +174,7 @@ it('Dopito discards offline broadcasts and delayed retries without blocking a ne
 it('keeps a future plan and a later broadcast when a previous visit closure is retried', async () => {
   await AsyncStorage.setItem('na-pivo-friends-queue', JSON.stringify([
     { op: 'activity', clientId: 'old-live', payload: { pub: broadcastPub } },
+    { op: 'activity', clientId: 'due-plan', payload: { pub: broadcastPub, scheduledFor: '2026-09-19T17:30:00.000Z' } },
     { op: 'activity', clientId: 'plan', payload: { pub: broadcastPub, scheduledFor: '2026-09-20T18:00:00.000Z' } },
     { op: 'activity', clientId: 'new-live', payload: { pub: broadcastPub, startedAt: '2026-09-19T18:30:00.000Z' } },
   ]));
@@ -181,4 +183,10 @@ it('keeps a future plan and a later broadcast when a previous visit closure is r
   await flushVisitsQueue();
   const queue = JSON.parse((await AsyncStorage.getItem('na-pivo-friends-queue'))!);
   expect(queue.map((item: { clientId: string }) => item.clientId)).toEqual(['plan', 'new-live']);
+  await enqueueFriendOp({
+    op: 'activity', clientId: 'late-plan',
+    payload: { pub: broadcastPub, scheduledFor: '2026-09-19T17:30:00.000Z' },
+  });
+  const afterRetry = JSON.parse((await AsyncStorage.getItem('na-pivo-friends-queue'))!);
+  expect(afterRetry.some((item: { clientId: string }) => item.clientId === 'late-plan')).toBe(false);
 });

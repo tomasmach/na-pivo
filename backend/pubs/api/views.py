@@ -3753,8 +3753,9 @@ class PubVisitView(APIView):
                         account=account,
                         cache_key=cache_key,
                         active=True,
-                        kind=FriendPubActivity.Kind.LIVE,
-                        started_at__lte=closed_at,
+                    ).filter(
+                        Q(kind=FriendPubActivity.Kind.LIVE, started_at__lte=closed_at)
+                        | Q(kind=FriendPubActivity.Kind.PLAN, scheduled_for__lte=closed_at)
                     ).update(active=False, updated_at=dj_timezone.now())
         except Exception as exc:  # noqa: BLE001
             logger.error(
@@ -6396,8 +6397,8 @@ class FriendActivityView(APIView):
             )
         else:
             kind = FriendPubActivity.Kind.LIVE
+            started_at = data.get("started_at") or scheduled_for or now
             scheduled_for = None
-            started_at = data.get("started_at") or now
             requested_expiry = data.get("expires_at")
             max_expiry = started_at + FRIEND_ACTIVITY_MAX_TTL
             expires_at = requested_expiry or started_at + FRIEND_ACTIVITY_DEFAULT_TTL

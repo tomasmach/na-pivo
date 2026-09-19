@@ -153,7 +153,7 @@ const runMutation = createQueueLock();
 function classify(result: FriendActionResult): QueueSyncResult {
   if (result.ok) return 'ok';
   const code = result.code;
-  if (code === 'offline' || code === 'account' || code === 'network' || code === 'auth') {
+  if (code === 'offline' || code === 'account' || code === 'network' || code === 'auth' || code === 'visit_pending') {
     return 'retry';
   }
   const httpMatch = /^http_(\d{3})$/.exec(code);
@@ -271,13 +271,11 @@ export async function enqueueFriendOp(item: FriendQueueItem): Promise<void> {
 }
 
 function isFinishedBroadcast(item: Extract<FriendQueueItem, { op: 'activity' }>): boolean {
-  if (item.payload.scheduledFor) return false;
   const pubKey = geohash8(item.payload.pub.lat, item.payload.pub.lng);
+  const activityAt = item.payload.scheduledFor ?? item.payload.startedAt;
   return useTallyStore.getState().history.some((session) => session.closedAt && (
-    session.clientId === item.clientId || (
-      session.pubKey === pubKey && (!item.payload.startedAt ||
-        Date.parse(item.payload.startedAt) <= Date.parse(session.closedAt))
-    )
+    (!item.payload.scheduledFor && session.clientId === item.clientId) ||
+    (session.pubKey === pubKey && (!activityAt || Date.parse(activityAt) <= Date.parse(session.closedAt)))
   ));
 }
 
@@ -285,9 +283,11 @@ function isFinishedBroadcast(item: Extract<FriendQueueItem, { op: 'activity' }>)
 export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Promise<void> {
   return runMutation(async () => {
     const queue = await loadQueue();
-    await saveQueue(queue.filter((item) => item.op !== 'activity' || item.payload.scheduledFor ||
-      geohash8(item.payload.pub.lat, item.payload.pub.lng) !== pubKey ||
-      (item.payload.startedAt && Date.parse(item.payload.startedAt) > Date.parse(closedAt))));
+    await saveQueue(queue.filter((item) => {
+      if (item.op !== 'activity' || geohash8(item.payload.pub.lat, item.payload.pub.lng) !== pubKey) return true;
+      const activityAt = item.payload.scheduledFor ?? item.payload.startedAt;
+      return !!activityAt && Date.parse(activityAt) > Date.parse(closedAt);
+    }));
   });
 }
 

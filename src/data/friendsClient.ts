@@ -1040,6 +1040,11 @@ export async function shareFriendPubActivity(
       ...(targetIds ? { recipient_ids: targetIds } : {}),
     },
   });
+  if (res.ok && res.data.applied === false) {
+    // Reopening a timed-out visit may still be queued or in flight. Do not
+    // report a silent server no-op as a delivered broadcast.
+    return { ok: false, code: 'visit_pending', detail: t.clientErrors.save };
+  }
   return res.ok ? { ok: true } : res.result;
 }
 
