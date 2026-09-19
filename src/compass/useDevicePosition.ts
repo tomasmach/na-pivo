@@ -89,6 +89,9 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       const sub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
+          // A passive watcher must not reopen Android's accuracy dialog on
+          // every resume after the user declines it. GPS can still emit fixes.
+          mayShowUserSettingsDialog: false,
           distanceInterval: 0,
           timeInterval: 1000,
         },
