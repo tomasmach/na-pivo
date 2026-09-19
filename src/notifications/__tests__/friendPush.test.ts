@@ -65,6 +65,27 @@ it('lights up push for an existing grantee who has not opted out', async () => {
   expect(useSettingsStore.getState().friendPushEnabled).toBe(true);
 });
 
+it('keeps a later opt-out after an in-flight registration resolves', async () => {
+  let finishRegistration!: (token: string) => void;
+  mockEnsurePushTokenRegistered.mockReturnValue(new Promise((resolve) => { finishRegistration = resolve; }));
+  const registration = ensureFriendPushRegisteredIfGranted();
+  await Promise.resolve();
+  useSettingsStore.setState({ friendPushOptedOut: true, friendPushEnabled: false });
+  finishRegistration('ExponentPushToken[test]');
+  await registration;
+  expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
+});
+
+it('does not register after opting out while permission is being checked', async () => {
+  let finishPermission!: (status: Notifications.NotificationPermissionsStatus) => void;
+  jest.mocked(Notifications.getPermissionsAsync).mockReturnValueOnce(new Promise((resolve) => { finishPermission = resolve; }));
+  const registration = ensureFriendPushRegisteredIfGranted();
+  useSettingsStore.setState({ friendPushOptedOut: true, friendPushEnabled: false });
+  finishPermission({ status: 'granted' } as Notifications.NotificationPermissionsStatus);
+  await registration;
+  expect(mockEnsurePushTokenRegistered).not.toHaveBeenCalled();
+});
+
 it('clears the opt-out on an explicit enable', async () => {
   useSettingsStore.setState({ friendPushOptedOut: true, friendPushEnabled: false });
 
