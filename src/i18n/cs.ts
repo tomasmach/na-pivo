@@ -1745,6 +1745,7 @@ export const cs = {
     pushPromptDismiss: 'Teď ne',
     pushEnabledToast: 'Platí, dám vědět.',
     pushDeniedHint: 'Upozornění máš vypnutá v systému.',
+    pushEnableError: 'Zapnutí se nepovedlo. Zkus to prosím znovu.',
     pushDeniedCta: 'Zapnout',
     pushToggleTitle: 'Upozornění na partu',
     pushToggleSub: 'Cinky, pozvánky a kdo je na pivu.',

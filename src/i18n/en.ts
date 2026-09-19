@@ -1420,6 +1420,7 @@ export const en: Strings = {
     pushPromptDismiss: 'Not now',
     pushEnabledToast: "Right, I'll let you know.",
     pushDeniedHint: 'Notifications are switched off in your system settings.',
+    pushEnableError: "Couldn't turn it on. Please try again.",
     pushDeniedCta: 'Turn on',
     pushToggleTitle: 'Crew notifications',
     pushToggleSub: "Pings, invites and who's out for a beer.",
