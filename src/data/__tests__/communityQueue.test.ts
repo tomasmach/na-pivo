@@ -56,11 +56,11 @@ describe('enqueuePubCommunity', () => {
     expect(await readQueue()).toHaveLength(1);
   });
 
-  it('dedups by geohash-8 cell — a newer edit of the same pub replaces the old one', async () => {
+  it('dedups by geohash-8 cell and keeps the latest contribution ID', async () => {
     (submitPubCommunity as jest.Mock).mockResolvedValue(null);
 
     // Same coordinates → same cell; the second submission has a fresh client_id
-    // and replaces the first.
+    // and becomes the identity of the combined contribution.
     await enqueuePubCommunity(entry({ client_id: 'old' }));
     await enqueuePubCommunity(entry({ client_id: 'new' }));
 
@@ -76,6 +76,59 @@ describe('enqueuePubCommunity', () => {
     await enqueuePubCommunity(entry({ client_id: 'b', lat: 49.1951, lng: 16.6068 }));
 
     expect(await readQueue()).toHaveLength(2);
+  });
+
+  it('keeps an offline beer menu when only opening hours are edited afterwards', async () => {
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+    const beers = [
+      { name: 'Plzeň', price_czk: 62, volume_ml: 500 },
+      { name: 'Plzeň', price_czk: 38, volume_ml: 300 },
+    ];
+    await enqueuePubCommunity(entry({
+      client_id: 'beer-edit', hours: undefined, beers, beer_menu_rotates: true,
+    }));
+    await enqueuePubCommunity(entry({ client_id: 'hours-edit' }));
+
+    expect(await readQueue()).toEqual([expect.objectContaining({
+      client_id: 'hours-edit',
+      hours: entry().hours,
+      beers,
+      beer_menu_rotates: true,
+    })]);
+
+    (submitPubCommunity as jest.Mock).mockResolvedValue({ cacheKey: 'k', hours: null, beers: [] });
+    await flushCommunityQueue();
+    expect(submitPubCommunity).toHaveBeenLastCalledWith(expect.objectContaining({ beers }));
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('keeps offline opening hours when only the beer menu is edited afterwards', async () => {
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+    const beers = [{ name: 'Plzeň', price_czk: 38, volume_ml: 300 }];
+    await enqueuePubCommunity(entry({ client_id: 'hours-edit' }));
+    await enqueuePubCommunity(entry({ client_id: 'beer-edit', hours: undefined, beers }));
+
+    expect(await readQueue()).toEqual([expect.objectContaining({
+      client_id: 'beer-edit', hours: entry().hours, beers,
+    })]);
+  });
+
+  it.each([
+    { label: 'an explicit empty menu', beers: [] },
+    { label: 'a replacement menu', beers: [{ name: 'Kozel', price_czk: 49, volume_ml: 300 }] },
+  ])('uses $label and the latest supplied hours and tap setting', async ({ beers }) => {
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+    await enqueuePubCommunity(entry({
+      client_id: 'old',
+      beers: [{ name: 'Plzeň', price_czk: 62, volume_ml: 500 }],
+      beer_menu_rotates: true,
+    }));
+    const hours = { ...entry().hours!, mo: [['10:00', '23:00'] as [string, string]] };
+    await enqueuePubCommunity(entry({ client_id: 'new', hours, beers, beer_menu_rotates: false }));
+
+    expect(await readQueue()).toEqual([expect.objectContaining({
+      client_id: 'new', hours, beers, beer_menu_rotates: false,
+    })]);
   });
 });
 
