@@ -1553,7 +1553,7 @@ function Tacek({
       <CounterMoreSheet
         visible={moreVisible}
         onClose={closeMore}
-        onDone={count > 0 ? () => runAfterSheetClose(handleDone) : undefined}
+        onDone={sessionDrinks.length > 0 ? () => runAfterSheetClose(handleDone) : undefined}
         onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
         onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
         broadcasted={broadcasted}
