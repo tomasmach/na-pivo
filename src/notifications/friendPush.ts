@@ -49,26 +49,33 @@ export async function registerFriendPush(): Promise<FriendPushResult> {
     return { ok: false, reason: 'unavailable' };
   }
 
-  const existing = await Notifications.getPermissionsAsync();
-  let status = existing.status;
-  if (status === 'undetermined') {
-    const requested = await Notifications.requestPermissionsAsync({
-      ios: { allowAlert: true, allowBadge: false, allowSound: false },
-    });
-    status = requested.status;
-  }
+  try {
+    const existing = await Notifications.getPermissionsAsync();
+    let status = existing.status;
+    if (status === 'undetermined') {
+      const requested = await Notifications.requestPermissionsAsync({
+        ios: { allowAlert: true, allowBadge: false, allowSound: false },
+      });
+      status = requested.status;
+    }
 
-  if (status !== 'granted') {
-    setFriendPushEnabled(false);
-    return { ok: false, reason: 'denied' };
-  }
+    if (status !== 'granted') {
+      setFriendPushEnabled(false);
+      return { ok: false, reason: 'denied' };
+    }
 
-  await ensurePushTokenRegistered('granted');
-  // An explicit enable clears any prior opt-out so the launch/focus re-register
-  // keeps push on (and re-enables the device server-side via the token register).
-  setFriendPushOptedOut(false);
-  setFriendPushEnabled(true);
-  return { ok: true };
+    const token = await ensurePushTokenRegistered('granted');
+    if (token) {
+      // Clear an explicit opt-out only once the backend accepts the device.
+      setFriendPushOptedOut(false);
+      setFriendPushEnabled(true);
+      return { ok: true };
+    }
+  } catch {
+    // Native permission APIs can be unavailable in an incompatible client.
+  }
+  setFriendPushEnabled(false);
+  return { ok: false, reason: 'unavailable' };
 }
 
 /**
@@ -107,8 +114,8 @@ export async function ensureFriendPushRegisteredIfGranted(): Promise<void> {
   try {
     const { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') return;
-    await ensurePushTokenRegistered('granted');
-    if (!useSettingsStore.getState().friendPushEnabled) {
+    const token = await ensurePushTokenRegistered('granted');
+    if (token && !useSettingsStore.getState().friendPushEnabled) {
       useSettingsStore.getState().setFriendPushEnabled(true);
     }
   } catch {

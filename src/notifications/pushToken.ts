@@ -47,8 +47,8 @@ export async function ensurePushTokenRegistered(status: PushPermissionStatus): P
       : await Notifications.getExpoPushTokenAsync();
     const token = response.data;
     await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
-    void registerPushDevice(token, status);
-    return token;
+    const registered = await registerPushDevice(token, status);
+    return registered ? token : null;
   } catch {
     return null;
   }

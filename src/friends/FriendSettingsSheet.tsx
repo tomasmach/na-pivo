@@ -136,7 +136,7 @@ function FriendSettingsSheet({
       if (!mountedRef.current) return;
       setPushBusy(false);
       if (!result.ok) {
-        showToast(t.friends.pushDeniedHint, {
+        showToast(result.reason === 'denied' ? t.friends.pushDeniedHint : t.friends.pushEnableError, {
           icon: <XIcon size={18} color={Colors.amber} />,
         });
       }
