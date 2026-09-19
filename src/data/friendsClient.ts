@@ -1020,8 +1020,9 @@ export async function shareFriendPubActivity(
   message?: string,
   clientId?: string,
   recipientIds?: string[],
+  startedAt?: string,
 ): Promise<FriendActionResult> {
-  const now = new Date();
+  const now = startedAt ? new Date(startedAt) : new Date();
   const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000);
   const targetIds = recipientIds && recipientIds.length > 0 ? recipientIds : undefined;
   const res = await requestJson('/v1/friends/pub-activity', {

@@ -72,8 +72,8 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<VisitQueueItem>(
  *  from being persisted immediately. */
 const runMutation = createQueueLock();
 
-async function deliver(item: VisitQueueItem): Promise<SubmitVisitResult> {
-  return item.op === 'upsert' ? submitVisit(item.entry) : deleteVisit(item.clientId);
+async function deliver(item: VisitQueueItem, signal: AbortSignal): Promise<SubmitVisitResult> {
+  return item.op === 'upsert' ? submitVisit(item.entry, signal) : deleteVisit(item.clientId, signal);
 }
 
 /** Stable content signature for an op, used to tell whether the queued op for a
@@ -100,7 +100,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     // account.)
     if (signal.aborted) break;
     attempted.set(item.clientId, signature(item));
-    const result = await deliver(item);
+    const result = await deliver(item, signal);
     if (result !== 'retry') settled.add(item.clientId);
   }
 
