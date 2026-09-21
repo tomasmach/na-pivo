@@ -3650,6 +3650,20 @@ class PubVisitView(APIView):
                 PubVisit.objects.filter(account=request.user).select_related("party_evening"),
             )
             items = [_visit_item(visit) for visit in visits]
+            # Released maps recreate missing catalogue markers from these
+            # fields. Project repaired pub identities on reads while retaining
+            # original history, export data and client conflict timestamps.
+            identities = resolve_pub_identities(items)
+            for item, identity in zip(items, identities, strict=True):
+                if identity.canonical_id is not None:
+                    item.update(
+                        cache_key=identity.cache_key,
+                        name=identity.name,
+                        lat=identity.lat,
+                        lng=identity.lng,
+                        city=identity.city,
+                        external_id=identity.external_id,
+                    )
         except ValueError:
             return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
