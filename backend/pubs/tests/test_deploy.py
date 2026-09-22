@@ -154,3 +154,15 @@ def test_unhealthy_worker_restores_previous_image(rollout, monkeypatch):
         deploy.deploy(config, 30)
     assert deploy.os.environ["NAPIVO_BACKEND_IMAGE"] == "sha256:previous"
     assert sum("up" in c and c[-1] == "worker" for c in commands) == 2
+
+
+def test_failed_proxy_rollback_still_restores_worker(rollout, monkeypatch):
+    config, commands, _ = rollout
+    monkeypatch.setattr(deploy.time, "sleep", Mock(side_effect=KeyboardInterrupt))
+    monkeypatch.setattr(
+        deploy, "switch_proxy", Mock(side_effect=[None, RuntimeError("rollback failed")])
+    )
+    with pytest.raises(RuntimeError, match="rollback failed"):
+        deploy.deploy(config, 30)
+    assert any("up" in c and c[-1] == "worker" for c in commands)
+    assert ("docker", "rm", deploy.NEXT) not in commands

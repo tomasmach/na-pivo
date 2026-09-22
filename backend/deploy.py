@@ -278,14 +278,16 @@ def deploy(caddyfile: Path, drain_seconds: int) -> None:
     except BaseException as exc:
         # Keep a ready candidate serving if replacing canonical failed. Never
         # pull the last working upstream out from under the proxy during cleanup.
-        if isinstance(exc, ProxyStateUnknownError):
-            switched = True
-        elif switched and not canonical_replaced:
-            switch_proxy(caddyfile, staged, original, archive)
-            switched = False
-        if worker_stopped:
-            os.environ["NAPIVO_BACKEND_IMAGE"] = old_worker_image
-            run(*COMPOSE, "up", "-d", "--no-build", "--no-deps", "worker")
+        try:
+            if isinstance(exc, ProxyStateUnknownError):
+                switched = True
+            elif switched and not canonical_replaced:
+                switch_proxy(caddyfile, staged, original, archive)
+                switched = False
+        finally:
+            if worker_stopped:
+                os.environ["NAPIVO_BACKEND_IMAGE"] = old_worker_image
+                run(*COMPOSE, "up", "-d", "--no-build", "--no-deps", "worker")
         raise
     finally:
         if (
