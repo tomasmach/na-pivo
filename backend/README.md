@@ -265,8 +265,8 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `DRINK_BURST_WINDOW_MINUTES` | `10` | Burst detection window |
 | `DRINK_DAILY_FLAG_CAP` | `21` | Beer ordinal in the 04:00 drinking day at which rows become suspect |
 | `DRINK_DAILY_HARD_CAP` | `40` | Existing rows of any drink type in the drinking day after which new rows are rejected |
-| `LEADERBOARD_BEER_RED_DAY` | `25` | Raw beers in one drinking day that temporarily hide an account from beer leaderboards |
-| `LEADERBOARD_BEER_RED_BURSTS` | `12` | Burst-flagged beers in one drinking day that temporarily hide an account from beer leaderboards |
+| `LEADERBOARD_BEER_RED_DAY` | `25` | Raw beers that exclude that drinking day from beer leaderboard scores; other days still count |
+| `LEADERBOARD_BEER_RED_BURSTS` | `12` | Burst-flagged beers that exclude that drinking day from beer leaderboard scores; other days still count |
 | `LOG_LEVEL` | `INFO` | Structured JSON log level |
 
 ---
