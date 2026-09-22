@@ -4,10 +4,8 @@ import { AppState, Platform } from 'react-native';
 import type * as ExpoNotifications from 'expo-notifications';
 import type * as ExpoTaskManager from 'expo-task-manager';
 
-import { disablePushDevice, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { t } from '@/i18n';
-import { ensurePushTokenRegistered } from '@/notifications/pushToken';
 import {
   clearPendingPubReminder,
   decidePubReminderOnEnter,
@@ -104,12 +102,6 @@ async function setAndroidChannel(): Promise<void> {
     vibrationPattern: [0, 180, 120, 180],
     lightColor: '#f6c45c',
   });
-}
-
-function permissionStatus(status: string | null | undefined): 'granted' | 'denied' | 'undetermined' {
-  if (status === 'granted') return 'granted';
-  if (status === 'denied') return 'denied';
-  return 'undetermined';
 }
 
 async function readJson<T>(key: string, fallback: T): Promise<T> {
@@ -417,7 +409,6 @@ export async function initializePubReminderNotifications(): Promise<void> {
     return;
   }
 
-  void ensurePushTokenRegistered(permissionStatus(notificationPermission.status));
   if (!startupGeofenceRefreshTimer) {
     startupGeofenceRefreshTimer = setTimeout(() => {
       startupGeofenceRefreshTimer = null;
@@ -459,7 +450,6 @@ export async function enablePubReminderNotifications(): Promise<PubReminderEnabl
   }
 
   await setReminderEnabled(true);
-  void ensurePushTokenRegistered(permissionStatus(notificationPermission.status));
   await refreshGeofences();
   return { ok: true };
 }
@@ -488,12 +478,6 @@ export async function disablePubReminderNotifications(): Promise<void> {
   await setReminderEnabled(false);
   await cancelPendingPubReminder();
   await stopGeofencing();
-  try {
-    const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
-    if (token) void disablePushDevice(token);
-  } catch {
-    // Without the local token, avoid disabling every device on the account.
-  }
 }
 
 function isPubReminderResponse(response: ExpoNotifications.NotificationResponse | null): boolean {

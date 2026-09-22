@@ -1,7 +1,7 @@
 /**
  * Parta push opt-in — fully decoupled from pub reminders (Parta 3.0 §E / §8.5).
  *
- * Pub reminders gate push behind background-location; Parta only ever needs the
+ * Pub reminders are scheduled locally; Parta only ever needs the
  * OS notification permission. `registerFriendPush()` requests notifications ONLY
  * (never location), registers the device token, and records the choice in the
  * settings store so the in-context opt-in strip can react. Existing grantees are
@@ -100,8 +100,8 @@ export function registerFriendPush(): Promise<FriendPushResult> {
 
 /**
  * Persist the opt-out and disable this device after earlier registrations finish.
- * Keep the choice on failure so launch/focus/foreground can retry it. The shared
- * device token also pauses pub reminders until their next explicit registration.
+ * Keep the choice on failure so launch/focus/foreground can retry it. Local pub
+ * reminders have their own permission gate and do not change this device token.
  */
 export function disableFriendPush(): Promise<boolean> {
   ++choiceVersion;

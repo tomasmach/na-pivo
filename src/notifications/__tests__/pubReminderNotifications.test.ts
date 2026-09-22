@@ -1,4 +1,6 @@
 import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { registerPushDevice, disablePushDevice } from '@/data/pushDeviceClient';
 
 const mockGetLastKnownPositionAsync = jest.fn();
 const mockGetCurrentPositionAsync = jest.fn();
@@ -40,6 +42,8 @@ jest.mock('expo-location', () => ({
   getLastKnownPositionAsync: mockGetLastKnownPositionAsync,
   getCurrentPositionAsync: mockGetCurrentPositionAsync,
   getBackgroundPermissionsAsync: mockGetBackgroundPermissionsAsync,
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  requestBackgroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   hasStartedGeofencingAsync: mockHasStartedGeofencingAsync,
   stopGeofencingAsync: mockStopGeofencingAsync,
   startGeofencingAsync: mockStartGeofencingAsync,
@@ -64,6 +68,8 @@ jest.mock('@/stores/settingsStore', () => ({
 // eslint-disable-next-line import/first
 import {
   initializePubReminderNotifications,
+  enablePubReminderNotifications,
+  disablePubReminderNotifications,
   isPubReminderEligible,
   refreshPubReminderGeofences,
 } from '../pubReminderNotifications';
@@ -275,4 +281,31 @@ describe('isPubReminderEligible', () => {
     expect(isPubReminderEligible({ venueKind: 'unknown', beers: [{ name: '   ' }] })).toBe(false);
     expect(isPubReminderEligible({})).toBe(false);
   });
+});
+
+
+it('keeps local reminders independent of the Parta server push choice', async () => {
+  jest.useFakeTimers();
+  try {
+    mockSettingsGetState.mockReturnValue({ pubReminderEnabled: true, friendPushOptedOut: true });
+    mockGetLastKnownPositionAsync.mockResolvedValue(location(50.081, 14.419));
+    (AppState as { currentState: string }).currentState = 'active';
+    await AsyncStorage.setItem('push-token', 'ExponentPushToken[test]');
+
+    await initializePubReminderNotifications();
+    await jest.advanceTimersByTimeAsync(8_000);
+    await expect(enablePubReminderNotifications()).resolves.toEqual({ ok: true });
+    expect(mockStartGeofencingAsync).toHaveBeenCalled();
+    expect(await AsyncStorage.getItem('na-pivo-pub-reminders-enabled')).toBe('true');
+
+    mockHasStartedGeofencingAsync.mockResolvedValue(true);
+    await disablePubReminderNotifications();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockStopGeofencingAsync).toHaveBeenCalled();
+    expect(await AsyncStorage.getItem('na-pivo-pub-reminders-enabled')).toBe('false');
+    expect(registerPushDevice).not.toHaveBeenCalled();
+    expect(disablePushDevice).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
 });
