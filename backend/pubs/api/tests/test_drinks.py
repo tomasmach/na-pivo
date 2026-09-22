@@ -25,6 +25,7 @@ from pubs.enrichment import geohash8
 from pubs.models import (
     Account,
     BeerBrand,
+    BeerProduct,
     DrinkLog,
     OfflineMutationTombstone,
     PubBeerBrand,
@@ -67,6 +68,99 @@ def _register(client: APIClient, device_id: str = _DEVICE_ID) -> str:
 
 def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+@pytest.mark.django_db
+def test_catalog_names_round_trip_through_private_drinks(client):
+    """The released counter submits directory/menu names without truncation."""
+    token = _register(client)
+    pub_name = "Hospoda " + "a" * 247
+    beer_name = "Ležák " + "b" * 154
+    brand = BeerBrand.objects.get(key="pilsner-urquell")
+    BeerProduct.objects.create(
+        key="long-catalog-name", brand=brand, brand_key=brand.key, brand_name=brand.name,
+        name=beer_name, aliases=["longcatalog"],
+    )
+    suggestion = client.get("/v1/beer-brands/suggest", {"q": "longcatalog"}).json()["suggestions"][0]
+    assert suggestion["name"] == beer_name
+    payload = _payload(name=pub_name, beer={"name": suggestion["name"], "price_czk": 62, "volume_ml": 500})
+
+    created = client.post("/v1/drinks", data=payload, format="json", **_auth(token))
+    assert created.status_code == 201, created.json()
+    duplicate = client.post("/v1/drinks", data=payload, format="json", **_auth(token))
+    assert duplicate.status_code == 200
+    assert duplicate.json()["duplicate"] is True
+    assert DrinkLog.objects.count() == 1
+    assert PubCommunityData.objects.count() == 0
+    drink = client.get("/v1/drinks", **_auth(token)).json()["drinks"][0]
+    assert drink["name"] == pub_name
+    assert drink["beer"]["name"] == beer_name
+
+    updated = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": beer_name[:-1] + "c"},
+        format="json",
+        **_auth(token),
+    )
+    assert updated.status_code == 200, updated.json()
+    assert DrinkLog.objects.get().beer_name == beer_name[:-1] + "c"
+
+
+@pytest.mark.django_db
+def test_custom_beer_volume_can_be_corrected_without_losing_private_history(client):
+    token = _register(client)
+    payload = _payload(beer={"name": "Plzeň", "price_czk": 62, "volume_ml": 450})
+    created = client.post("/v1/drinks", data=payload, format="json", **_auth(token))
+    assert created.status_code == 201
+    renamed = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}", data={"beer_name": "Kozel 11"}, format="json", **_auth(token),
+    )
+    assert renamed.status_code == 200, renamed.json()
+    resized = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"drink_type": "beer", "volume_ml": 475}, format="json", **_auth(token),
+    )
+    assert resized.status_code == 200, resized.json()
+    drink = DrinkLog.objects.get()
+    assert (drink.beer_name, drink.volume_ml) == ("Kozel 11", 475)
+    assert PubCommunityData.objects.count() == 0
+    assert PubBeerBrand.objects.count() == 0
+    assert PubBeerProduct.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("overrides", [
+    {"name": "n" * 256},
+    {"beer": {"name": "b" * 161}},
+    {"beer": {"name": "Ležák", "volume_ml": 3001}},
+])
+def test_drink_catalog_compatibility_keeps_payload_bounds(client, overrides):
+    token = _register(client)
+    response = client.post("/v1/drinks", data=_payload(**overrides), format="json", **_auth(token))
+    assert response.status_code == 400
+    assert DrinkLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_drink_validation_diagnostics_exclude_submitted_values(client, caplog):
+    token = _register(client)
+    payload = _payload(
+        name="n" * 256,
+        drink_type="private-user-value",
+        beer={"name": "private-beer-name", "price_czk": 0},
+    )
+    response = client.post("/v1/drinks", data=payload, format="json", **_auth(token))
+    assert response.status_code == 400
+    assert response.json()["code"] == "drink_validation_failed"
+    assert response.json()["validation_errors"] == [
+        {"field": "name", "code": "max_length"},
+        {"field": "drink_type", "code": "invalid_choice"},
+        {"field": "beer.price_czk", "code": "min_value"},
+    ]
+    assert "drinks: validation rejected" in caplog.text
+    for private_value in (token, payload["name"], payload["drink_type"], "private-beer-name", str(_LAT), str(_LNG), _CLIENT_ID):
+        assert private_value not in caplog.text
+    assert DrinkLog.objects.count() == 0
 
 
 @pytest.mark.django_db
