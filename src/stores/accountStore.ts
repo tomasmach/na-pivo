@@ -264,17 +264,20 @@ export const useAccountStore = create<AccountState>((set, get) => {
             state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
         }));
         if (session) {
-          const [preferences, profile] = await Promise.all([
-            fetchAccountPreferences(),
+          const [profile] = await Promise.all([
             auth.fetchAccountProfile(),
             refreshDiarySnapshot(),
           ]);
-          if (preferences) {
-            applyAccountSettings(preferences);
-          }
           if (profile) {
             set({ profile });
             applyAccountSettings(profile.settings);
+          } else {
+            // The profile includes settings on current backends. Keep the
+            // narrower read as a fallback when that request is unavailable.
+            const preferences = await fetchAccountPreferences();
+            if (preferences && get().session?.token === session.token) {
+              applyAccountSettings(preferences);
+            }
           }
         }
       } catch (error) {

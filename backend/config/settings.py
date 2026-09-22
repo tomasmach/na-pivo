@@ -99,6 +99,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",  # must be before CommonMiddleware
+    "pubs.api.compression.LargeSnapshotGZipMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "pubs.observability.RequestLogMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",

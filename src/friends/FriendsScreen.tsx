@@ -641,10 +641,10 @@ export default function FriendsScreen() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void load('silent');
+      if (state === 'active' && focused) void load('silent');
     });
     return () => subscription.remove();
-  }, [load]);
+  }, [focused, load]);
 
   const d = dashboard;
 

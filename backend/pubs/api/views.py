@@ -9523,11 +9523,8 @@ def _filter_items_by_amenity_signals(
     uses a name-aware pub identity, so a cache-key-only join could incorrectly
     lend one venue's card terminal or foosball table to the pub next door.
     """
-    return [
-        item
-        for item in items
-        if any(_items_refer_to_same_pub(item, signal) for signal in amenity_items)
-    ]
+    matches_signal = _pub_item_matcher(amenity_items)
+    return [item for item in items if matches_signal(item)]
 
 
 def _strong_item_external_id(item: dict) -> str | None:
@@ -9537,20 +9534,31 @@ def _strong_item_external_id(item: dict) -> str | None:
     return external_id
 
 
-def _items_refer_to_same_pub(left: dict, right: dict) -> bool:
-    """Identity-safe provider/signal match.
+def _pub_item_matcher(items: list[dict]):
+    """Index pub identities once before comparing nearby directory and signal rows.
 
-    Two present stable ids are authoritative: equality matches and inequality is
-    a hard mismatch. The coarser geohash+name fallback is only allowed when at
-    least one side lacks a stable id.
+    Two stable IDs match only when equal. Geohash and name may match when at
+    least one side lacks a stable ID, preserving adjacent businesses.
     """
-    left_external_id = _strong_item_external_id(left)
-    right_external_id = _strong_item_external_id(right)
-    if left_external_id and right_external_id:
-        return left_external_id == right_external_id
-    return _item_cache_key(left) == _item_cache_key(right) and names_match(
-        str(left.get("name") or ""), str(right.get("name") or "")
-    )
+    by_cell: dict[str, list[tuple[str, str | None]]] = defaultdict(list)
+    stable_ids: set[str] = set()
+    for item in items:
+        external_id = _strong_item_external_id(item)
+        if external_id:
+            stable_ids.add(external_id)
+        by_cell[_item_cache_key(item)].append((str(item.get("name") or ""), external_id))
+
+    def matches(candidate: dict) -> bool:
+        candidate_id = _strong_item_external_id(candidate)
+        if candidate_id and candidate_id in stable_ids:
+            return True
+        candidate_name = str(candidate.get("name") or "")
+        return any(
+            (not candidate_id or not item_id) and names_match(candidate_name, item_name)
+            for item_name, item_id in by_cell.get(_item_cache_key(candidate), ())
+        )
+
+    return matches
 
 
 def _with_pub_signal_items(signal_items: list[dict], provider_items: list[dict]) -> list[dict]:
@@ -9563,11 +9571,8 @@ def _with_pub_signal_items(signal_items: list[dict], provider_items: list[dict])
     if not signal_items:
         return provider_items
 
-    remaining_provider_items = [
-        item
-        for item in provider_items
-        if not any(_items_refer_to_same_pub(item, signal) for signal in signal_items)
-    ]
+    matches_signal = _pub_item_matcher(signal_items)
+    remaining_provider_items = [item for item in provider_items if not matches_signal(item)]
     return [*signal_items, *remaining_provider_items]
 
 
@@ -9575,11 +9580,8 @@ def _with_missing_pub_signal_items(
     signal_items: list[dict], existing_items: list[dict]
 ) -> list[dict]:
     """Append only community pubs that the primary sources do not already have."""
-    missing = [
-        signal
-        for signal in signal_items
-        if not any(_items_refer_to_same_pub(signal, item) for item in existing_items)
-    ]
+    matches_existing = _pub_item_matcher(existing_items)
+    missing = [signal for signal in signal_items if not matches_existing(signal)]
     return [*existing_items, *missing]
 
 
