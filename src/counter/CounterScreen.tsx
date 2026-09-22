@@ -1648,9 +1648,21 @@ export default function CounterScreen({
   onMoreAvailability,
 }: CounterScreenProps = {}) {
   const router = useRouter();
-  const { candidates, selected, selectPub, permissionState, requestPermission, loading, retry } =
-    useNearbyPub();
+  const {
+    candidates,
+    selected,
+    selectPub,
+    permissionState,
+    requestPermission,
+    loading,
+    retry,
+    setPicking,
+  } = useNearbyPub();
   const [pickerOpen, setPickerOpen] = useState(false);
+  // The picker lists distances, so GPS stays live while it is open.
+  useEffect(() => {
+    setPicking(pickerOpen);
+  }, [pickerOpen, setPicking]);
   // "Mimo hospodu" mode, restored from a live outside session so returning to
   // the tab mid-evening lands back in it (useNearbyPub ignores ctx sessions).
   const [outsideContext, setOutsideContext] = useState<OutsidePlaceContext | null>(() => {

@@ -189,6 +189,7 @@ function nearbyState(over: Record<string, unknown> = {}) {
     requestPermission: jest.fn(),
     loading: false,
     retry: jest.fn(),
+    setPicking: jest.fn(),
     ...over,
   };
 }

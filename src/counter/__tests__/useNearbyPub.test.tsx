@@ -124,6 +124,90 @@ beforeEach(() => {
 });
 
 describe('useNearbyPub', () => {
+  it('pauses GPS once a pub is pinned and resumes it on retry', async () => {
+    setNearby(PUB_A);
+    const hook = renderNearbyHook();
+    await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_A.id));
+
+    const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
+    expect(lastCall()).toEqual([true]);
+
+    act(() => {
+      hook.result.selectPub(PUB_A);
+    });
+    expect(lastCall()).toEqual([false]);
+
+    act(() => {
+      hook.result.retry();
+    });
+    expect(lastCall()).toEqual([true]);
+    hook.unmount();
+  });
+
+  it('keeps GPS live while the picker is open so distances stay current', async () => {
+    setNearby(PUB_A);
+    const hook = renderNearbyHook();
+    await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_A.id));
+    const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
+
+    act(() => {
+      hook.result.selectPub(PUB_A);
+    });
+    expect(lastCall()).toEqual([false]);
+
+    act(() => {
+      hook.result.setPicking(true);
+    });
+    expect(lastCall()).toEqual([true]);
+
+    // Walking to another pub with the picker open refreshes its list and does
+    // not pause GPS behind the user's back.
+    setNearby(PUB_B, 15);
+    hook.rerender();
+    await waitForExpectation(() => expect(hook.result.candidates[0]?.pub.id).toBe(PUB_B.id));
+    expect(lastCall()).toEqual([true]);
+
+    act(() => {
+      hook.result.setPicking(false);
+    });
+    expect(lastCall()).toEqual([false]);
+    hook.unmount();
+  });
+
+  it('waits for a fresh fix after a retry before pausing GPS again', async () => {
+    // The real watcher keeps its last fix while paused; the retry must not pin
+    // the evening pub from that old fix and switch GPS straight back off.
+    (useDevicePosition as jest.Mock).mockImplementation(() => ({ position: currentPosition }));
+    useTallyStore.setState({
+      current: {
+        clientId: 'session-a',
+        pubKey: geohash8(PUB_A.lat, PUB_A.lng),
+        pubName: PUB_A.name,
+        startedAt: '2026-06-30T19:00:00.000Z',
+        drinks: [{ id: 'drink-1', beerName: 'Plzeň', priceCzk: 62, at: '2026-06-30T19:05:00.000Z' }],
+      },
+      history: [],
+    });
+    setNearby(PUB_A);
+    const hook = renderNearbyHook();
+    const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
+    await waitForExpectation(() => expect(lastCall()).toEqual([false]));
+
+    act(() => {
+      hook.result.retry();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(lastCall()).toEqual([true]);
+
+    setNearby(PUB_A, 10);
+    hook.rerender();
+    await waitForExpectation(() => expect(lastCall()).toEqual([false]));
+    hook.unmount();
+  });
+
   it('refreshes location permission after returning from system settings', async () => {
     (checkLocationPermission as jest.Mock)
       .mockResolvedValueOnce('denied')
