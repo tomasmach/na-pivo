@@ -290,6 +290,16 @@ The `account` and other scoped throttles use atomic PostgreSQL counters. Their l
 
 Structured Django logs include a privacy-safe request id, redacted path, status, duration, app version headers and a hashed client IP. Gunicorn logs only method, status and latency, so sensitive URL segments and query parameters never reach the raw access log.
 
+Unresolved addresses submitted when creating or editing a pub are cached for one
+hour in `PubGeocodingMiss`, shared across backend processes. Only an HMAC of the
+normalized address/city and its expiry are stored; `prune_operational_data`
+removes expired rows. Corrections are looked up immediately. Provider errors and
+exhausted budgets are not cached. Logs distinguish fresh and cached misses with
+`event=pub_address_lookup`, `result=no_match` and `cached=true/false`.
+Responses remain HTTP 503 so released clients retain the pending write; this
+reduces paid lookups, not the number of retry responses. Concurrent first misses
+can each call Google before a cached result exists.
+
 The Expo app sends a small event whitelist to:
 
 | Method | Path | Auth | Purpose |
