@@ -1313,6 +1313,7 @@ export default function FriendsScreen() {
                 <FriendActiveCard
                   key={`live:${activity.id}`}
                   activity={activity}
+                  presence={d?.presence.find((row) => row.account.id === activity.account.id)}
                   onResponded={reload}
                   stale={loadError}
                 />

@@ -399,6 +399,7 @@ function Tacek({
   /** The drink counted within the last UNDO_WINDOW_MS, undoable from the strip. */
   const [lastCounted, setLastCounted] = useState<{ id: string; ordinal: number; isBeer: boolean } | null>(null);
   const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
+  const [checkInVisitClientId, setCheckInVisitClientId] = useState<string | null>(null);
   /** Session clientId whose "Dopito?" nudge was already shown and answered. */
   const [dopitoNudgedFor, setDopitoNudgedFor] = useState<string | null>(null);
 
@@ -475,6 +476,7 @@ function Tacek({
     setNudgeCell(cell);
     setLastCounted(null);
     setCheckInBeerName(null);
+    setCheckInVisitClientId(null);
     setCheckInSheetOpen(false);
     setPendingRapid(null);
   }
@@ -783,7 +785,10 @@ function Tacek({
       }
       // The check-in prompt is now-semantic and pub-bound — skip it for a
       // backdated or outside log.
-      if (pub && !atOverride && drinkType === 'beer') setCheckInBeerName(beer.name);
+      if (pub && !atOverride && drinkType === 'beer') {
+        setCheckInBeerName(beer.name);
+        setCheckInVisitClientId(useTallyStore.getState().current?.clientId ?? null);
+      }
 
       const entry = buildDrinkEntry(
         {
@@ -1274,14 +1279,15 @@ function Tacek({
             archiveCurrent('manual');
             setDopitoNudgedFor(clientId);
             setLastCounted(null);
-            setCheckInBeerName(null);
+            setCheckInBeerName(pub && isThisSession ? latestBeer?.beerName ?? null : null);
+            setCheckInVisitClientId(clientId);
             void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
             if (hapticEnabled) fireLightImpactHaptic();
           },
         },
       ],
     });
-  }, [archiveCurrent, current, hapticEnabled]);
+  }, [archiveCurrent, current, hapticEnabled, isThisSession, latestBeer, pub]);
 
   const handleResume = useCallback(() => {
     if (!cell) return;
@@ -1617,7 +1623,7 @@ function Tacek({
           beerName={checkInBeerName}
           pub={pub}
           pubKey={cell}
-          visitClientId={isThisSession ? current?.clientId : null}
+          visitClientId={checkInVisitClientId ?? (isThisSession ? current?.clientId : null)}
           onClose={() => setCheckInSheetOpen(false)}
           onSubmitted={() => setCheckInBeerName(null)}
         />
