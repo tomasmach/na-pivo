@@ -2699,6 +2699,7 @@ class UserAddedPub(models.Model):
     )
     google_place_id = models.CharField(max_length=256, blank=True, default="")
     location_synced_at = models.DateTimeField(null=True, blank=True)
+    location_refresh_after = models.DateTimeField(null=True, blank=True)
     city = models.TextField(blank=True, default="")
     address = models.TextField(blank=True, default="")
     active = models.BooleanField(

@@ -300,6 +300,14 @@ Responses remain HTTP 503 so released clients retain the pending write; this
 reduces paid lookups, not the number of retry responses. Concurrent first misses
 can each call Google before a cached result exists.
 
+The worker refreshes Google-derived community pub coordinates after 25 days.
+Place-ID lookups use the single-result Geocoding v4 contract (root field mask,
+no `results` wrapper). An unsuccessful refresh waits 24 hours before retrying;
+the delay is stored on the pub and survives worker restarts. Other eligible pubs
+can still refresh. Exhausting the shared Google daily cap stops the batch without
+delaying an unattempted pub. Successful refreshes clear the retry delay and retain
+the user-submitted name and address.
+
 The Expo app sends a small event whitelist to:
 
 | Method | Path | Auth | Purpose |
