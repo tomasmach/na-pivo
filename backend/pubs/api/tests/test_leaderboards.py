@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.core.cache import cache
@@ -9,6 +10,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.views import _leaderboard_drinking_day
 from pubs.models import Account, AccountUsageStats, DrinkLog, FriendBlock, Friendship, PubVisit
 
 
@@ -241,7 +243,7 @@ def test_leaderboards_exclude_suspect_drinks_and_excluded_accounts(client):
 
 
 @pytest.mark.django_db
-def test_red_beer_day_temporarily_hides_account_only_from_beer_leaderboard(client):
+def test_red_only_account_has_no_score_but_remains_eligible(client):
     token, me = _register(client, "janek")
     red_token, red = _register(client, "extrem")
     base = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
@@ -262,7 +264,7 @@ def test_red_beer_day_temporarily_hides_account_only_from_beer_leaderboard(clien
         "rank": None,
         "score": 0,
         "listed": False,
-        "eligible": False,
+        "eligible": True,
     }
 
     pubs = client.get("/v1/leaderboards?category=pubs&period=week", **_auth(token))
@@ -298,6 +300,126 @@ def test_repeated_burst_flags_can_hide_account_below_red_day_count(client, setti
 
     assert response.status_code == status.HTTP_200_OK
     assert [row["account"]["nickname"] for row in response.json()["entries"]] == ["janek"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("period", ["week", "year", "all"])
+@pytest.mark.parametrize("red_reason", ["raw_count", "burst"])
+def test_red_day_preserves_other_days_and_consistent_ranks(
+    client, monkeypatch, period, red_reason,
+):
+    prague = ZoneInfo("Europe/Prague")
+    now = datetime(2026, 9, 16, 12, tzinfo=prague)
+    monkeypatch.setattr("pubs.api.views.dj_timezone.now", lambda: now)
+    token, me = _register(client, "janek")
+    _older_token, older = _register(client, "oldrich")
+    _newer_token, newer = _register(client, "novak")
+    _set_created(older, -3)
+    _set_created(me, -2)
+    _set_created(newer, -1)
+    red_start = {
+        "week": datetime(2026, 9, 14, 12, tzinfo=prague),
+        "year": datetime(2026, 2, 10, 12, tzinfo=prague),
+        "all": datetime(2025, 2, 10, 12, tzinfo=prague),
+    }[period]
+    red_count = 25 if red_reason == "raw_count" else 20
+    for index in range(red_count):
+        burst = red_reason == "burst" and index >= 8
+        _drink(
+            me,
+            drank_at=red_start + timedelta(seconds=index),
+            is_suspect=burst,
+            suspect_reason="burst" if burst else "",
+        )
+    clean_start = now - timedelta(days=1)
+    for account in (me, older, newer):
+        for index in range(3):
+            _drink(account, drank_at=clean_start + timedelta(hours=index))
+    _drink(me, drank_at=clean_start, is_suspect=True, suspect_reason="manual")
+    # A different account's beer on the red day must remain countable.
+    _drink(older, drank_at=red_start)
+
+    response = client.get(
+        f"/v1/leaderboards?category=beers&period={period}", **_auth(token),
+    )
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["total_ranked"] == 3
+    assert [(row["rank"], row["account"]["nickname"], row["score"]) for row in body["entries"]] == [
+        (1, "oldrich", 4), (2, "janek", 3), (3, "novak", 3),
+    ]
+    assert body["me"] == {"rank": 2, "score": 3, "listed": True, "eligible": True}
+    # Cached rows and the live own score use the same day exclusion.
+    assert client.get(
+        f"/v1/leaderboards?category=beers&period={period}", **_auth(token),
+    ).json() == body
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("period", "start"),
+    [("week", "2026-09-14T00:00:00"), ("year", "2026-01-01T00:00:00")],
+)
+def test_red_day_crossing_period_start_excludes_only_until_four_am(
+    client, monkeypatch, period, start,
+):
+    boundary = datetime.fromisoformat(start).replace(tzinfo=ZoneInfo("Europe/Prague"))
+    monkeypatch.setattr("pubs.api.views.dj_timezone.now", lambda: boundary + timedelta(days=2))
+    token, me = _register(client, "janek")
+    _other_token, other = _register(client, "anna")
+    # Most of this red drinking day precedes the requested week/year.
+    for index in range(24):
+        _drink(me, drank_at=boundary - timedelta(hours=6) + timedelta(minutes=15 * index))
+    _drink(me, drank_at=boundary + timedelta(hours=3, minutes=59))
+    _drink(me, drank_at=boundary + timedelta(hours=4))
+    _drink(me, drank_at=boundary + timedelta(hours=5))
+    _drink(other, drank_at=boundary + timedelta(hours=3))
+
+    response = client.get(
+        f"/v1/leaderboards?category=beers&period={period}", **_auth(token),
+    )
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["total_ranked"] == 2
+    assert [(row["account"]["nickname"], row["score"]) for row in body["entries"]] == [
+        ("janek", 2), ("anna", 1),
+    ]
+    assert body["me"] == {"rank": 1, "score": 2, "listed": True, "eligible": True}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("timestamp", "expected_day"),
+    [("2026-03-29T04:30:00", "2026-03-29"), ("2026-10-25T03:30:00", "2026-10-24")],
+)
+def test_red_day_keeps_four_am_boundary_across_dst(
+    client, monkeypatch, timestamp, expected_day,
+):
+    point = datetime.fromisoformat(timestamp).replace(tzinfo=ZoneInfo("Europe/Prague"))
+    monkeypatch.setattr("pubs.api.views.dj_timezone.now", lambda: point + timedelta(days=1))
+    token, me = _register(client, "janek")
+    previous_noon = (point - timedelta(days=1)).replace(hour=12, minute=0)
+    for index in range(25):
+        _drink(me, drank_at=previous_noon + timedelta(seconds=index))
+    boundary_drink = _drink(me, drank_at=point)
+    # In autumn, 03:30 still belongs to the red day; 04:00 starts a clean day.
+    if point.hour < 4:
+        _drink(me, drank_at=point.replace(hour=4, minute=0))
+
+    response = client.get("/v1/leaderboards?category=beers&period=all", **_auth(token))
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["me"] == {"rank": 1, "score": 1, "listed": True, "eligible": True}
+    assert [(row["account"]["nickname"], row["score"]) for row in body["entries"]] == [
+        ("janek", 1),
+    ]
+    actual_day = (
+        DrinkLog.objects.filter(pk=boundary_drink.pk)
+        .annotate(drinking_day=_leaderboard_drinking_day())
+        .values_list("drinking_day", flat=True)
+        .get()
+    )
+    assert actual_day == date.fromisoformat(expected_day)
 
 
 @pytest.mark.django_db

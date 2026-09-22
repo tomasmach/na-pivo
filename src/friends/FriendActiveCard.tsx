@@ -18,7 +18,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
 import { CompassIcon, MapPinIcon } from '@/components/shared/IconGlyph';
-import type { FriendProfile, FriendPubActivity } from '@/data/friendsClient';
+import type { FriendPresence, FriendProfile, FriendPubActivity } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -35,6 +35,7 @@ import { formatRelative, useNowTick } from './useNowTick';
 
 interface FriendActiveCardProps {
   activity: FriendPubActivity;
+  presence?: FriendPresence;
   /** Fired after a successful RSVP/clear — the parent should reload the dashboard. */
   onResponded: (activity: FriendPubActivity) => void;
   /** Dim the live dot to a static 0.4 while the dashboard is stale (§2C). */
@@ -48,7 +49,7 @@ function nameOf(profile: FriendProfile | null | undefined): string {
   return profile.displayName || t.friends.fallbackName;
 }
 
-function FriendActiveCard({ activity, onResponded, stale = false }: FriendActiveCardProps) {
+function FriendActiveCard({ activity, presence, onResponded, stale = false }: FriendActiveCardProps) {
   const now = useNowTick();
   const router = useRouter();
   const { account, responses } = activity;
@@ -72,6 +73,9 @@ function FriendActiveCard({ activity, onResponded, stale = false }: FriendActive
   }, [activity, router]);
 
   const relative = formatRelative(activity.startedAt, now);
+  const beers = presence?.account.id === account.id && presence.cacheKey === activity.cacheKey
+    ? presence.beers
+    : null;
 
   return (
     <View style={styles.card}>
@@ -102,6 +106,11 @@ function FriendActiveCard({ activity, onResponded, stale = false }: FriendActive
 
         <View style={styles.headerMeta}>
           <LiveDot stale={stale} />
+          {beers != null && beers > 0 ? (
+            <Text style={styles.relativeTime} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.friends.presenceBeers(beers)}
+            </Text>
+          ) : null}
           {relative ? (
             <Text
               style={styles.relativeTime}
