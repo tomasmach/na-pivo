@@ -3765,6 +3765,18 @@ class PubVisitView(APIView):
                         "party_evening_id": party_evening_id,
                     },
                 )
+                closed_at = data.get("closed_at")
+                if closed_at is not None:
+                    # A delayed departure must not end a later return to the
+                    # same pub, another pub's broadcast, or a future plan.
+                    FriendPubActivity.objects.filter(
+                        account=account,
+                        cache_key=cache_key,
+                        active=True,
+                    ).filter(
+                        Q(kind=FriendPubActivity.Kind.LIVE, started_at__lte=closed_at)
+                        | Q(kind=FriendPubActivity.Kind.PLAN, scheduled_for__lte=closed_at)
+                    ).update(active=False, updated_at=dj_timezone.now())
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-visits: unexpected error saving visit (%s)",
@@ -6412,8 +6424,8 @@ class FriendActivityView(APIView):
             )
         else:
             kind = FriendPubActivity.Kind.LIVE
+            started_at = data.get("started_at") or scheduled_for or now
             scheduled_for = None
-            started_at = data.get("started_at") or now
             requested_expiry = data.get("expires_at")
             max_expiry = started_at + FRIEND_ACTIVITY_MAX_TTL
             expires_at = requested_expiry or started_at + FRIEND_ACTIVITY_DEFAULT_TTL
@@ -6444,6 +6456,15 @@ class FriendActivityView(APIView):
         should_notify = False
         try:
             with transaction.atomic():
+                # Serialize with visit closure, including a broadcast that was
+                # already in flight when the user tapped Dopito.
+                Account.objects.select_for_update().get(pk=request.user.pk)
+                if not is_plan and PubVisit.objects.filter(
+                    account=request.user,
+                    cache_key=cache_key,
+                    closed_at__isnull=False,
+                ).filter(Q(closed_at__gte=started_at) | Q(client_id=data["client_id"])).exists():
+                    return Response({"ended": True, "applied": False}, status=status.HTTP_200_OK)
                 existing = (
                     FriendPubActivity.objects.select_for_update()
                     .filter(account=request.user, client_id=data["client_id"])
@@ -10035,13 +10056,22 @@ class _PubLocationLookupBaseView(APIView):
             venue_kind=PubHours.VenueKind.NOT_PUB
         )
         if pub_search:
+            # Community additions are already visible in /pubs/near. Include
+            # them in explicit pub search without changing address lookups.
+            community_query = UserAddedPub.objects.filter(active=True).exclude(
+                cache_key__in=PubHours.objects.filter(
+                    venue_kind=PubHours.VenueKind.NOT_PUB
+                ).values("cache_key")
+            )
             # Search every token across the two catalogue fields, so both
             # "U Jelena Brno" and "U Jelena, Brno" retain the city constraint.
             tokens = query.replace(",", " ").split()
             if not tokens:
                 return []
             for token in tokens:
-                rows_query = rows_query.filter(Q(name__icontains=token) | Q(city__icontains=token))
+                match = Q(name__icontains=token) | Q(city__icontains=token)
+                rows_query = rows_query.filter(match)
+                community_query = community_query.filter(match)
         else:
             # Preserve the released add-pub "name, address, city" contract.
             name_query = query.split(",", 1)[0].strip()
@@ -10063,6 +10093,9 @@ class _PubLocationLookupBaseView(APIView):
             )[:scan_limit]
         )
         if pub_search:
+            rows.extend(community_query.only(
+                "id", "name", "lat", "lng", "cache_key", "city", "address",
+            )[:scan_limit])
             blocked = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
             rows = [row for row in rows if row.cache_key not in blocked]
         if lat is not None and lng is not None:
@@ -10071,10 +10104,22 @@ class _PubLocationLookupBaseView(APIView):
             rows.sort(key=lambda row: (row.name.casefold(), row.pk))
 
         items = []
-        for row in rows[:limit]:
-            item = _pub_directory_item(row)
-            item.update({"id": f"local:{row.pk}", "provider": "local"})
+        seen = set()
+        for row in rows:
+            if isinstance(row, UserAddedPub):
+                item = _user_added_pub_item(row)
+                item["id"] = f"community:{row.pk}"
+            else:
+                item = _pub_directory_item(row)
+                item["id"] = f"local:{row.pk}"
+            item["provider"] = "local"
+            key = _pub_near_dedupe_key(item)
+            if pub_search and key in seen:
+                continue
+            seen.add(key)
             items.append(item)
+            if len(items) >= limit:
+                break
         return items
 
     def _lookup_response(self, data: dict) -> Response:
