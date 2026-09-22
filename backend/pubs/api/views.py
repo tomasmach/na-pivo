@@ -4005,6 +4005,12 @@ class PushDeviceView(APIView):
         revision = data.get("client_revision")
         try:
             with transaction.atomic():
+                # Account deletion uses Account -> AuthToken -> PushDevice too.
+                account = Account.objects.select_for_update().filter(
+                    pk=request.user.pk, status=Account.Status.ACTIVE
+                ).first()
+                if account is None:
+                    return Response({"detail": "Invalid account token."}, status=401)
                 # Authentication may predate a slow request or logout. Hold the
                 # same token row that revocation deletes until this write ends.
                 auth_token = AuthToken.objects.select_for_update().filter(
@@ -4061,6 +4067,11 @@ class PushDeviceView(APIView):
                 )
             else:
                 with transaction.atomic():
+                    account = Account.objects.select_for_update().filter(
+                        pk=request.user.pk, status=Account.Status.ACTIVE
+                    ).first()
+                    if account is None:
+                        return Response({"disabled": 0}, status=status.HTTP_200_OK)
                     device = self._locked_device(request, data["push_token"])
                     # A previous account cannot disable a token reassigned after
                     # sign-in, even if its delayed logout has a higher revision.

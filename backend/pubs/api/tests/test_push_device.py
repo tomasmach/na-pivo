@@ -318,13 +318,18 @@ def test_simultaneous_first_put_and_disable_keep_the_latest_revision(client, mon
         pytest.skip("Row-lock/unique-insert race needs PostgreSQL")
     token = _register(client)
     rendezvous = Barrier(2)
-    locked_device = PushDeviceView._locked_device
+    original_put, original_delete = PushDeviceView.put, PushDeviceView.delete
 
-    def wait_then_lock(request, push_token):
+    def concurrent_put(self, request):
         rendezvous.wait(timeout=10)
-        return locked_device(request, push_token)
+        return original_put(self, request)
 
-    monkeypatch.setattr(PushDeviceView, "_locked_device", staticmethod(wait_then_lock))
+    def concurrent_delete(self, request):
+        rendezvous.wait(timeout=10)
+        return original_delete(self, request)
+
+    monkeypatch.setattr(PushDeviceView, "put", concurrent_put)
+    monkeypatch.setattr(PushDeviceView, "delete", concurrent_delete)
 
     def send(method, revision):
         try:
@@ -342,3 +347,44 @@ def test_simultaneous_first_put_and_disable_keep_the_latest_revision(client, mon
     device = PushDevice.objects.get()
     assert device.enabled is False
     assert device.client_revision == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_two_accounts_creating_same_token_keep_the_latest_registration(client, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from django.db import connection
+
+    from pubs.api.views import PushDeviceView
+
+    if connection.vendor != "postgresql":
+        pytest.skip("Unique-insert race needs PostgreSQL")
+    first = _register(client)
+    second = _register(client, _OTHER_DEVICE_ID)
+    rendezvous = Barrier(2)
+    locked_device = PushDeviceView._locked_device
+
+    def wait_then_lock(request, push_token):
+        rendezvous.wait(timeout=10)
+        return locked_device(request, push_token)
+
+    monkeypatch.setattr(PushDeviceView, "_locked_device", staticmethod(wait_then_lock))
+
+    def send(token, revision):
+        try:
+            return APIClient().put(
+                "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": revision},
+                format="json", **_auth(token),
+            ).status_code
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        older = pool.submit(send, first, 1)
+        newer = pool.submit(send, second, 2)
+        assert older.result(timeout=15) == newer.result(timeout=15) == 200
+    device = PushDevice.objects.get()
+    assert device.enabled is True
+    assert device.client_revision == 2
+    assert device.account.device_id == _OTHER_DEVICE_ID
