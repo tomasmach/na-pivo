@@ -3985,6 +3985,16 @@ class PushDeviceView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "push_devices"
 
+    @staticmethod
+    def _locked_device(request: Request, push_token: str) -> PushDevice:
+        # get_or_create handles the unique-token insert race. Lock the winner,
+        # including a disabled tombstone created before the first PUT arrived.
+        device, _created = PushDevice.objects.get_or_create(
+            push_token=push_token,
+            defaults={"account": request.user, "enabled": False},
+        )
+        return PushDevice.objects.select_for_update().get(pk=device.pk)
+
     def put(self, request: Request) -> Response:
         serializer = PushDeviceRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -3992,21 +4002,44 @@ class PushDeviceView(APIView):
 
         data = serializer.validated_data
         locale = data.get("locale") or ""
+        revision = data.get("client_revision")
         try:
-            device, _created = PushDevice.objects.update_or_create(
-                push_token=data["push_token"],
-                defaults={
+            with transaction.atomic():
+                # Account deletion uses Account -> AuthToken -> PushDevice too.
+                account = Account.objects.select_for_update().filter(
+                    pk=request.user.pk, status=Account.Status.ACTIVE
+                ).first()
+                if account is None:
+                    return Response({"detail": "Invalid account token."}, status=401)
+                # Authentication may predate a slow request or logout. Hold the
+                # same token row that revocation deletes until this write ends.
+                auth_token = AuthToken.objects.select_for_update().filter(
+                    token_hash=hash_account_token(request.auth), account=request.user
+                ).first()
+                if auth_token is None or auth_token.is_expired:
+                    return Response({"detail": "Invalid account token."}, status=401)
+                defaults = {
                     "account": request.user,
                     "platform": data["platform"],
                     "permission_status": data["permission_status"],
                     "enabled": data["enabled"],
                     "app_version": data.get("app_version") or "",
                     "locale": locale,
-                },
-            )
-            # Mirror onto the account so e-mails and cron jobs, which never see a
-            # device row, render in the same language.
-            remember_account_locale(request.user, locale)
+                }
+                if revision is None:
+                    # Released clients keep their original wire contract.
+                    device, _created = PushDevice.objects.update_or_create(
+                        push_token=data["push_token"], defaults=defaults
+                    )
+                else:
+                    device = self._locked_device(request, data["push_token"])
+                    if revision <= (device.client_revision or 0):
+                        return Response({"applied": False}, status=status.HTTP_200_OK)
+                    for key, value in defaults.items():
+                        setattr(device, key, value)
+                    device.client_revision = revision
+                    device.save()
+                remember_account_locale(request.user, locale)
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "push-device: unexpected error registering token",
@@ -4021,19 +4054,34 @@ class PushDeviceView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        push_token = serializer.validated_data["push_token"]
-        queryset = PushDevice.objects.filter(
-            account=request.user,
-            enabled=True,
-            push_token=push_token,
-        )
-
+        data = serializer.validated_data
+        revision = data.get("client_revision")
         try:
-            disabled = queryset.update(
-                enabled=False,
-                permission_status=PushDevice.PermissionStatus.DENIED,
-                updated_at=dj_timezone.now(),
-            )
+            if revision is None:
+                disabled = PushDevice.objects.filter(
+                    account=request.user, enabled=True, push_token=data["push_token"]
+                ).update(
+                    enabled=False,
+                    permission_status=PushDevice.PermissionStatus.DENIED,
+                    updated_at=dj_timezone.now(),
+                )
+            else:
+                with transaction.atomic():
+                    account = Account.objects.select_for_update().filter(
+                        pk=request.user.pk, status=Account.Status.ACTIVE
+                    ).first()
+                    if account is None:
+                        return Response({"disabled": 0}, status=status.HTTP_200_OK)
+                    device = self._locked_device(request, data["push_token"])
+                    # A previous account cannot disable a token reassigned after
+                    # sign-in, even if its delayed logout has a higher revision.
+                    if device.account_id != request.user.pk or revision <= (device.client_revision or 0):
+                        return Response({"disabled": 0}, status=status.HTTP_200_OK)
+                    disabled = int(device.enabled)
+                    device.enabled = False
+                    device.permission_status = PushDevice.PermissionStatus.DENIED
+                    device.client_revision = revision
+                    device.save()
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "push-device: unexpected error disabling token",

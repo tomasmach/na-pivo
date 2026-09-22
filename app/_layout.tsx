@@ -387,6 +387,7 @@ export default function RootLayout() {
         void restorePubAmenities();
         void flushVisitsQueue();
         void flushFriendsQueue();
+        void ensureFriendPushRegisteredIfGranted();
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
         void useAccountStore.getState().refreshDiarySnapshot();

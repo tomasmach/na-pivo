@@ -1134,6 +1134,8 @@ class PushDevice(models.Model):
         db_index=True,
     )
     enabled = models.BooleanField(default=True, db_index=True)
+    # Optional ordering marker from newer installs. Old released clients omit it.
+    client_revision = models.PositiveBigIntegerField(null=True, blank=True)
     app_version = models.CharField(max_length=64, blank=True, default="")
     locale = models.CharField(
         max_length=8,
