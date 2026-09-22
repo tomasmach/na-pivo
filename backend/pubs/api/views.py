@@ -97,6 +97,7 @@ from pubs.account_export_jobs import (
     retry_account_export,
 )
 from pubs.accounts import AccountError
+from pubs.api.drink_validation import drink_validation_errors
 from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
 from pubs.beer_catalog import (
     ALLOWED_BEER_VOLUMES_ML,
@@ -2550,7 +2551,12 @@ class DrinksView(APIView):
             context={"beer_match_cache": match_cache},
         )
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            errors = drink_validation_errors(serializer.errors)
+            logger.warning("drinks: validation rejected %s", json.dumps(errors))
+            return Response(
+                {**serializer.errors, "code": "drink_validation_failed", "validation_errors": errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         data = serializer.validated_data
         is_pub = data["place_context"] == DrinkLog.PlaceContext.PUB
@@ -2726,10 +2732,11 @@ class DrinksView(APIView):
                 }
 
                 menu_updated = False
-                # Custom volumes and unpriced quick-adds stay private.
+                # Values beyond the released public-menu contract stay private.
                 if (
                     may_publish and is_pub and is_beer
                     and beer.get("price_czk") is not None
+                    and len(beer["name"]) <= 80
                     and beer.get("volume_ml") in ALLOWED_BEER_VOLUMES_ML
                 ):
                     menu_updated = self._merge_into_community(
@@ -2794,16 +2801,6 @@ class DrinksView(APIView):
                 beer_name = update.get("beer_name", drink.beer_name)
                 drink_type = update.get("drink_type", drink.drink_type)
                 volume_ml = update.get("volume_ml", drink.volume_ml)
-                if drink_type == DrinkLog.DrinkType.BEER and volume_ml is not None:
-                    if volume_ml not in ALLOWED_BEER_VOLUMES_ML:
-                        return Response(
-                            {
-                                "volume_ml": [
-                                    f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."
-                                ]
-                            },
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
                 if (
                     drink_type == DrinkLog.DrinkType.SHOT
                     and volume_ml is not None
@@ -2869,7 +2866,12 @@ class DrinksView(APIView):
                         old_product_key=old_product_key,
                         account=request.user,
                         match_cache=match_cache,
-                        upsert_new=drink.drink_type == DrinkLog.DrinkType.BEER,
+                        upsert_new=(
+                            drink.drink_type == DrinkLog.DrinkType.BEER
+                            and drink.price_czk is not None
+                            and drink.volume_ml in ALLOWED_BEER_VOLUMES_ML
+                            and len(drink.beer_name) <= 80
+                        ),
                     )
         except Exception as exc:  # noqa: BLE001
             logger.error(

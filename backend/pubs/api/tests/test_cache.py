@@ -524,7 +524,9 @@ def test_sync_enrich_error_does_not_close_task():
         get_or_enrich([_PUB_ENTRY], sync_budget=0)
 
     mock_source = MagicMock()
-    mock_source.fetch.side_effect = RuntimeError("daily cap exceeded")
+    from pubs.enrichment import FirmyDailyCapExceededError
+
+    mock_source.fetch.side_effect = FirmyDailyCapExceededError("daily cap exceeded")
     with patch("pubs.api.cache.FirmyHoursSource", return_value=mock_source):
         get_or_enrich([_PUB_ENTRY], sync_budget=1)
 
