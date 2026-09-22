@@ -507,6 +507,29 @@ describe('CounterScreen CTA state machine', () => {
     expect(groups.map((group: any) => group.name)).toEqual(['Plzeň', 'Kozel']);
     expect(groups[0].beers.map((beer: any) => beer.volumeMl)).toEqual([300, 500]);
   });
+
+  it('can finish an evening containing only a soft drink through the overflow menu', () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    useTallyStore.setState({ current: session({ drinks: [{
+      ...beerDrink('kofola-1', 30), beerName: 'Kofola', drinkType: 'soft_drink',
+    }] }), history: [] });
+    const renderer = render();
+    const { CounterMoreSheet } = require('../CounterMoreSheet');
+    const more = renderer.root.findByType(CounterMoreSheet);
+    expect(more.props.onDone).toEqual(expect.any(Function));
+    act(() => {
+      more.props.onDone();
+      jest.advanceTimersByTime(500);
+    });
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(dialog.title).toBe(copy.counter.doneTitle);
+    act(() => dialog.buttons.find((button: { text: string }) => button.text === copy.counter.doneConfirm).onPress());
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(useTallyStore.getState().history[0]).toMatchObject({
+      archivedReason: 'manual', closedAt: expect.any(String),
+      drinks: [expect.objectContaining({ drinkType: 'soft_drink', beerName: 'Kofola' })],
+    });
+  });
 });
 
 // ─── 2. Counting through the CTA ─────────────────────────────────────────────

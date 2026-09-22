@@ -3765,6 +3765,18 @@ class PubVisitView(APIView):
                         "party_evening_id": party_evening_id,
                     },
                 )
+                closed_at = data.get("closed_at")
+                if closed_at is not None:
+                    # A delayed departure must not end a later return to the
+                    # same pub, another pub's broadcast, or a future plan.
+                    FriendPubActivity.objects.filter(
+                        account=account,
+                        cache_key=cache_key,
+                        active=True,
+                    ).filter(
+                        Q(kind=FriendPubActivity.Kind.LIVE, started_at__lte=closed_at)
+                        | Q(kind=FriendPubActivity.Kind.PLAN, scheduled_for__lte=closed_at)
+                    ).update(active=False, updated_at=dj_timezone.now())
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-visits: unexpected error saving visit (%s)",
@@ -6412,8 +6424,8 @@ class FriendActivityView(APIView):
             )
         else:
             kind = FriendPubActivity.Kind.LIVE
+            started_at = data.get("started_at") or scheduled_for or now
             scheduled_for = None
-            started_at = data.get("started_at") or now
             requested_expiry = data.get("expires_at")
             max_expiry = started_at + FRIEND_ACTIVITY_MAX_TTL
             expires_at = requested_expiry or started_at + FRIEND_ACTIVITY_DEFAULT_TTL
@@ -6444,6 +6456,15 @@ class FriendActivityView(APIView):
         should_notify = False
         try:
             with transaction.atomic():
+                # Serialize with visit closure, including a broadcast that was
+                # already in flight when the user tapped Dopito.
+                Account.objects.select_for_update().get(pk=request.user.pk)
+                if not is_plan and PubVisit.objects.filter(
+                    account=request.user,
+                    cache_key=cache_key,
+                    closed_at__isnull=False,
+                ).filter(Q(closed_at__gte=started_at) | Q(client_id=data["client_id"])).exists():
+                    return Response({"ended": True, "applied": False}, status=status.HTTP_200_OK)
                 existing = (
                     FriendPubActivity.objects.select_for_update()
                     .filter(account=request.user, client_id=data["client_id"])

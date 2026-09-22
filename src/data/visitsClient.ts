@@ -38,6 +38,8 @@ export interface VisitEntry {
   started_at: string;
   /** ISO-8601 of the last beer, or null while the evening is still open. */
   ended_at?: string | null;
+  /** Explicit departure; null reopens a timeout-archived visit. */
+  closed_at?: string | null;
   /** ISO-8601 of the last local change — drives last-write-wins on the server. */
   updated_at: string;
 }
