@@ -24,9 +24,11 @@ from rest_framework.throttling import ScopedRateThrottle
 from pubs.enrichment import geohash8
 from pubs.models import (
     Account,
+    CanonicalPub,
     OfflineMutationTombstone,
     PartyEvening,
     PartyEveningMember,
+    PubAlias,
     PubVisit,
 )
 
@@ -784,3 +786,50 @@ def test_pub_visits_endpoint_is_throttled(client, monkeypatch):
         **_auth(token),
     )
     assert throttled.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('query', ['', '?limit=1'])
+def test_get_projects_merged_visit_location_without_rewriting_history(client, query):
+    """Released maps recreate missing catalogue pins from the visit wire identity."""
+    from pubs.api.views import _export_visit_item
+
+    token = _register(client)
+    assert client.post('/v1/pub-visits', data=_payload(), format='json', **_auth(token)).status_code == 201
+    visit = PubVisit.objects.get()
+    stored = PubVisit.objects.values().get(pk=visit.pk)
+    canonical = CanonicalPub.objects.create(
+        cache_key=geohash8(50.09, 14.43), name=_NAME,
+        lat=50.09, lng=14.43, city='Praha', external_id='correct-place',
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=_KEY, name=_NAME, lat=_LAT, lng=_LNG,
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=canonical.cache_key, name=_NAME,
+        lat=canonical.lat, lng=canonical.lng, is_primary=True,
+    )
+    response = client.get('/v1/pub-visits' + query, **_auth(token))
+    assert response.status_code == 200
+    item = response.json()['visits'][0]
+    assert {key: item[key] for key in ('cache_key', 'name', 'lat', 'lng', 'city', 'external_id')} == {
+        'cache_key': canonical.cache_key, 'name': canonical.name,
+        'lat': canonical.lat, 'lng': canonical.lng, 'city': canonical.city,
+        'external_id': canonical.external_id,
+    }
+    assert item['client_id'] == str(visit.client_id)
+    assert item['updated_at'] == visit.client_updated_at.isoformat()
+    assert item['started_at'] == visit.started_at.isoformat()
+    assert PubVisit.objects.values().get(pk=visit.pk) == stored
+    assert _export_visit_item(visit)['cache_key'] == _KEY
+    assert _export_visit_item(visit)['lat'] == _LAT
+
+    # Old-client retries persist canonical keys together with original coords.
+    assert client.post('/v1/pub-visits', data=_payload(), format='json', **_auth(token)).status_code == 200
+    item = client.get('/v1/pub-visits', **_auth(token)).json()['visits'][0]
+    assert (item['cache_key'], item['lat'], item['lng']) == (canonical.cache_key, canonical.lat, canonical.lng)
+
+    canonical.active = False
+    canonical.save(update_fields=['active'])
+    item = client.get('/v1/pub-visits', **_auth(token)).json()['visits'][0]
+    assert (item['lat'], item['lng']) == (_LAT, _LNG)
