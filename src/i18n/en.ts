@@ -26,10 +26,17 @@ export const en: Strings = {
   },
   pubSearch: {
     open: 'Find a pub',
-    placeholder: 'Pub name, town',
+    placeholder: 'Pub name or town',
     cancel: 'Cancel',
     clear: 'Clear search',
     recent: 'Recent searches',
+    nearby: 'Nearby',
+    frequent: 'Your regulars',
+    distanceMeters: (value: string) => `${value} m`,
+    distanceKm: (value: string) => `${value} km`,
+    visitCount: (n: number) => englishPlural(n, {
+      one: '1 visit', other: `${n} visits`,
+    }),
     tooShort: 'Enter at least two letters',
     loading: 'Looking for pubs…',
     empty: 'No pubs found',
