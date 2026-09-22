@@ -66,6 +66,8 @@ const MAX_PRODUCT_EVENTS_PER_SESSION = 400;
 const PRODUCT_EVENTS = new Set<ClientTelemetryEvent>(['screen_viewed', 'ui_interaction']);
 const MAX_REPEATS_PER_MESSAGE = 3;
 const CONTEXT_KEYS = new Set([
+  'app_state',
+  'error_category',
   'operation',
   'endpoint',
   'status',
@@ -89,6 +91,16 @@ const CONTEXT_KEYS = new Set([
   'previous_screen',
   'target',
   'action',
+]);
+
+export type DiagnosticAppState = 'active' | 'inactive' | 'background' | 'unknown';
+export type NativeErrorCategory =
+  | 'secure_store_read' | 'secure_store_access' | 'geofence_task'
+  | 'notification_schedule' | 'permission' | 'unknown';
+const DIAGNOSTIC_APP_STATES = new Set(['active', 'inactive', 'background', 'unknown']);
+const NATIVE_ERROR_CATEGORIES = new Set([
+  'secure_store_read', 'secure_store_access', 'geofence_task',
+  'notification_schedule', 'permission', 'unknown',
 ]);
 
 const EMAIL_RE = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}/g;
@@ -195,6 +207,11 @@ function sanitizeContext(
   const out: Record<string, TelemetryContextValue> = {};
   for (const [key, value] of Object.entries(context)) {
     if (!CONTEXT_KEYS.has(key) || value === undefined || value === null) continue;
+    if (key === 'app_state' || key === 'error_category') {
+      const allowed = key === 'app_state' ? DIAGNOSTIC_APP_STATES : NATIVE_ERROR_CATEGORIES;
+      if (typeof value === 'string' && allowed.has(value)) out[key] = value;
+      continue;
+    }
     if (key === 'endpoint') {
       const endpoint = sanitizeEndpoint(value);
       if (endpoint) out[key] = endpoint;
@@ -296,6 +313,8 @@ export function trackApiFailure(
     error?: unknown;
     sync_result?: string;
     retryable?: boolean;
+    app_state?: DiagnosticAppState;
+    error_category?: NativeErrorCategory;
   } = {},
 ): void {
   const cleanError = details.error ? sanitizeError(details.error) : null;
@@ -314,6 +333,8 @@ export function trackApiFailure(
       stack: cleanError?.stack,
       sync_result: details.sync_result,
       retryable: details.retryable,
+      app_state: details.app_state,
+      error_category: details.error_category,
     },
   });
 }
