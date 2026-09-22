@@ -104,6 +104,7 @@ describe('useDevicePosition', () => {
     expect(Location.watchPositionAsync).toHaveBeenCalledWith(
       {
         accuracy: Location.Accuracy.BestForNavigation,
+        mayShowUserSettingsDialog: false,
         distanceInterval: 0,
         timeInterval: 1000,
       },
@@ -334,5 +335,39 @@ describe('useDevicePosition', () => {
     expect(remove).not.toHaveBeenCalled();
     hook.unmount();
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('receives GPS fixes without reopening Android location settings after foreground changes', async () => {
+    const showSettingsDialog = jest.fn();
+    (Location.watchPositionAsync as jest.Mock).mockImplementation(async (options, callback) => {
+      // Expo asks to enable Google's network provider by default. Declining its
+      // activity rejects the watcher and returns the app to the foreground.
+      if (options.mayShowUserSettingsDialog !== false) {
+        showSettingsDialog();
+        throw new Error('LocationSettingsUnsatisfied');
+      }
+      callback({ coords: { latitude: 50.087, longitude: 14.421, accuracy: 12 } });
+      return { remove: jest.fn() };
+    });
+
+    const hook = renderDevicePositionHook({ enabled: true });
+    await act(async () => { await Promise.resolve(); });
+
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      act(() => {
+        (AppState as { currentState: string }).currentState = 'background';
+        appStateHandler?.('background');
+      });
+      await act(async () => {
+        (AppState as { currentState: string }).currentState = 'active';
+        appStateHandler?.('active');
+        await Promise.resolve();
+      });
+    }
+
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(4);
+    expect(showSettingsDialog).not.toHaveBeenCalled();
+    expect(hook.result.position).toEqual({ lat: 50.087, lng: 14.421, accuracyMeters: 12 });
+    hook.unmount();
   });
 });
