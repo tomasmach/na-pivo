@@ -635,6 +635,13 @@ _CLIENT_EVENT_INTERACTION_ACTIONS = {
 # name can never ride in on a key that only checked its own spelling.
 _CLIENT_EVENT_DRINK_TYPES = {choice.value for choice in DrinkLog.DrinkType}
 _CLIENT_EVENT_PLACE_CONTEXTS = {choice.value for choice in DrinkLog.PlaceContext}
+_CLIENT_EVENT_NATIVE_ENUMS = {
+    "app_state": {"active", "inactive", "background", "unknown"},
+    "error_category": {
+        "secure_store_read", "secure_store_access", "geofence_task",
+        "notification_schedule", "notification_cancel", "permission", "unknown",
+    },
+}
 _CLIENT_EVENT_CONTEXT_KEYS = {
     "operation",
     "endpoint",
@@ -662,6 +669,7 @@ _CLIENT_EVENT_CONTEXT_KEYS = {
     "previous_screen",
     "target",
     "action",
+    *_CLIENT_EVENT_NATIVE_ENUMS,
 }
 _EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
@@ -697,6 +705,9 @@ def _sanitize_client_text(value: object, *, max_len: int) -> str:
 def _sanitize_client_scalar(key: str, value: object) -> object | None:
     if value is None:
         return None
+
+    if key in _CLIENT_EVENT_NATIVE_ENUMS:
+        return value if isinstance(value, str) and value in _CLIENT_EVENT_NATIVE_ENUMS[key] else None
 
     if key in {"screen", "previous_screen"}:
         screen = str(value).strip()
