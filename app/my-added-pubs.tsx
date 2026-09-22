@@ -207,11 +207,9 @@ export default function MyAddedPubsScreen() {
     }
     if (unresolvedSubmissions.length > 0) {
       return {
-        kind: 'counted',
-        text: t.addPub.needsFixCount(unresolvedSubmissions.length),
-        undoLabel: t.addPub.fixLocation,
-        onUndo: () => handleEdit(unresolvedSubmissions[0]),
-        actionAccessibilityLabel: t.addPub.fixLocation,
+        kind: 'dopito',
+        label: t.addPub.fixLocation,
+        onPress: () => handleEdit(unresolvedSubmissions[0]),
       };
     }
     if (failedSubmissions.length > 0) {
