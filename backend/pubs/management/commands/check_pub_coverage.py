@@ -106,8 +106,10 @@ class Command(BaseCommand):
             community_count = _nearby_count(
                 UserAddedPub.objects.filter(active=True), sample
             )
-            passed = country is None or directory_count >= sample.minimum
-            if not passed:
+            # Community-only locations have no directory coverage guarantee.
+            # Their observed count must not turn an unsupported check green.
+            passed = directory_count >= sample.minimum if country else None
+            if passed is False:
                 failed.append(sample.name)
             rows.append(
                 {
@@ -119,6 +121,7 @@ class Command(BaseCommand):
                     "directory_pubs": directory_count,
                     "community_pubs": community_count,
                     "passed": passed,
+                    "status": "unsupported" if passed is None else "passed" if passed else "failed",
                 }
             )
 

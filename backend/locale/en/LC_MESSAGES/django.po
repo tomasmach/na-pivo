@@ -881,3 +881,6 @@ msgstr "Sorry about 2.0"
 
 msgid "Nová verze se nepovedla. Stará appka je zpátky, stačí aktualizovat."
 msgstr "The new version missed the mark. The old app is back, just update."
+
+msgid "Polohu podle adresy se nepodařilo ověřit. Zkus to znovu."
+msgstr "The address location could not be verified. Try again."

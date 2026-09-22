@@ -180,11 +180,12 @@ class GoogleGeocodingSource:
         *,
         lat: float,
         lng: float,
+        require_precise: bool = False,
     ) -> GoogleAddressCandidate | None:
         """Resolve an explicitly selected map point to its nearest address."""
 
         url = f"{_GEOCODING_URL}/location/{lat:.7f},{lng:.7f}"
-        return self._geocode(url=url, require_precise=False)
+        return self._geocode(url=url, require_precise=require_precise)
 
     def _geocode(
         self,
