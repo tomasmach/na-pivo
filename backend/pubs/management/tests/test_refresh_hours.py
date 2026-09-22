@@ -17,7 +17,7 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
-from pubs.enrichment.firmy import RawHours
+from pubs.enrichment.firmy import FirmyDailyCapExceededError, RawHours
 from pubs.enrichment.matcher import geohash8
 from pubs.models import EnrichTask, PubHours
 
@@ -247,7 +247,7 @@ class TestFreshRowSkipsPendingTask:
 
 @pytest.mark.django_db
 class TestDailyCapRespected:
-    """When FirmyHoursSource raises RuntimeError (cap exceeded), command stops."""
+    """When FirmyHoursSource raises FirmyDailyCapExceededError, command stops."""
 
     def test_daily_cap_exceeded_stops_processing(self):
         # Create multiple tasks
@@ -269,7 +269,7 @@ class TestDailyCapRespected:
             # First call succeeds, second raises cap error
             instance.fetch.side_effect = [
                 _GOOD_RESULT,
-                RuntimeError("firmy: daily request cap of 1 exceeded"),
+                FirmyDailyCapExceededError("firmy: daily request cap of 1 exceeded"),
                 _GOOD_RESULT,  # This should never be reached
             ]
 
@@ -286,7 +286,7 @@ class TestDailyCapRespected:
             instance = MockSource.return_value
             instance._owns_session = True
             instance._session = MagicMock()
-            instance.fetch.side_effect = RuntimeError("firmy: daily request cap exceeded")
+            instance.fetch.side_effect = FirmyDailyCapExceededError("firmy: daily request cap exceeded")
 
             out, _ = _run_command()
 
@@ -701,3 +701,109 @@ class TestOutputMessages:
             out, _ = _run_command()
 
         assert "0" in out
+
+
+@pytest.mark.django_db
+def test_repeated_real_budget_denials_preserve_last_task_attempt(settings):
+    settings.FIRMY_DAILY_CAP = 0
+    settings.FIRMY_ERROR_RETRY_COOLDOWN_MINUTES = 0
+    task = _make_task(attempts=2, max_attempts=3)
+
+    with patch("requests.Session.get") as request:
+        for _ in range(3):
+            out, _ = _run_command()
+            assert "Stopped" in out
+            task.refresh_from_db()
+            assert task.attempts == 2
+            assert not task.done
+    request.assert_not_called()
+    assert not PubHours.objects.exists()
+
+
+@pytest.mark.django_db
+def test_unrelated_runtime_error_consumes_retry_and_continues():
+    failed = _make_task(attempts=2)
+    _make_task(cache_key=geohash8(_LAT + 0.1, _LNG), lat=_LAT + 0.1)
+    with patch(FIRMY_SOURCE_PATH) as source:
+        source.return_value.fetch.side_effect = [RuntimeError("parser broke"), _GOOD_RESULT]
+        out, _ = _run_command()
+    failed.refresh_from_db()
+    assert failed.attempts == 3
+    assert failed.done
+    assert failed.error == "Unexpected error: parser broke"
+    assert "Done. Processed 2" in out
+    assert PubHours.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_stale_refresh_cap_preserves_existing_hours():
+    pub = _make_pub_hours(fetched_at=timezone.now() - timedelta(days=31))
+    original = PubHours.objects.values().get(pk=pub.pk)
+    with patch(FIRMY_SOURCE_PATH) as source:
+        source.return_value.fetch.side_effect = FirmyDailyCapExceededError("daily cap")
+        out, _ = _run_command()
+    assert "Stopped" in out
+    assert PubHours.objects.values().get(pk=pub.pk) == original
+
+
+@pytest.mark.django_db
+def test_real_budget_stops_between_search_and_detail_then_resumes_next_day(settings):
+    import json
+    from datetime import UTC, datetime
+
+    from requests import Response
+
+    from pubs.models import ExternalApiDailyUsage
+
+    settings.FIRMY_DAILY_CAP = 2
+    settings.FIRMY_MIN_INTERVAL_SEC = 0
+    task = _make_task(attempts=2)
+    pub = _make_pub_hours(fetched_at=timezone.now() - timedelta(days=31))
+    original_pub = PubHours.objects.values().get(pk=pub.pk)
+    now = datetime.now(UTC)
+    usage = ExternalApiDailyUsage.objects.create(
+        provider="firmy", operation="http", day=now.date(), request_count=1,
+    )
+    detail_url = "https://www.firmy.cz/detail/123-qa.html"
+    ld = {
+        "@type": "LocalBusiness", "name": _PUB_NAME,
+        "geo": {"latitude": _LAT, "longitude": _LNG},
+        "url": detail_url, "openingHours": "Mo-Su 12:00-22:00",
+    }
+    html = (
+        f'<a href="{detail_url}">QA</a>'
+        f'<script type="application/ld+json">{json.dumps(ld)}</script>'
+    )
+
+    def response(url, **kwargs):
+        result = Response()
+        result.status_code = 200
+        result.url = url
+        result._content = html.encode()
+        return result
+
+    with patch("requests.Session.get", side_effect=response) as request:
+        out, _ = _run_command()
+        assert "Stopped" in out
+        assert request.call_count == 1  # Search used the last available request.
+        usage.refresh_from_db()
+        assert usage.request_count == 2
+        task.refresh_from_db()
+        assert task.attempts == 2
+        assert not task.done
+        assert PubHours.objects.values().get(pk=pub.pk) == original_pub
+
+        with patch("pubs.external_api_budget.datetime") as clock:
+            clock.now.return_value = now + timedelta(days=1)
+            out, _ = _run_command()
+        assert "Done. Processed 1" in out
+        assert request.call_count == 3  # Next UTC day: search and detail succeed.
+
+    task.refresh_from_db()
+    assert task.done
+    assert task.attempts == 3
+    assert task.error is None
+    pub.refresh_from_db()
+    assert pub.status == "ok"
+    assert pub.opening_hours_raw == "Mo-Su 12:00-22:00"
+    assert ExternalApiDailyUsage.objects.get(day=(now + timedelta(days=1)).date()).request_count == 2
