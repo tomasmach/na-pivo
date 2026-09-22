@@ -86,6 +86,7 @@ function PhotoTile({
           source={{ uri }}
           style={StyleSheet.absoluteFill}
           resizeMode="cover"
+          resizeMethod="resize"
           accessibilityIgnoresInvertColors
         />
       ) : null}

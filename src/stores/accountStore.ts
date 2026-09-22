@@ -2,7 +2,6 @@ import { create } from 'zustand';
 
 import {
   ensureAccount,
-  fetchAccountPreferences,
   setAnonymousSessionEvictionListener,
   type AccountSession,
 } from '@/data/account';
@@ -264,14 +263,12 @@ export const useAccountStore = create<AccountState>((set, get) => {
             state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
         }));
         if (session) {
-          const [preferences, profile] = await Promise.all([
-            fetchAccountPreferences(),
+          // One GET /v1/account/me: the profile carries the same `settings`
+          // block the separate preferences read used to fetch a second time.
+          const [profile] = await Promise.all([
             auth.fetchAccountProfile(),
             refreshDiarySnapshot(),
           ]);
-          if (preferences) {
-            applyAccountSettings(preferences);
-          }
           if (profile) {
             set({ profile });
             applyAccountSettings(profile.settings);

@@ -285,7 +285,7 @@ function closeSession(session: TallySession, reason: ArchivedReason, nowMs = Dat
 
 export const useTallyStore = create<TallyState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       current: null,
       history: [],
 
@@ -595,6 +595,11 @@ export const useTallyStore = create<TallyState>()(
         }),
 
       maybeAutoArchive: (nowMs = Date.now()) => {
+        // Runs on every foreground. Bail out before set(): persist rewrites the
+        // whole tally blob on every set, even one that returns the same state.
+        const pending = get().current;
+        if (!pending || pending.drinks.length === 0) return false;
+        if (nowMs - sessionLastActivityMs(pending) < IDLE_TIMEOUT_MS) return false;
         let archived = false;
         set((state) => {
           if (!state.current || state.current.drinks.length === 0) return state;

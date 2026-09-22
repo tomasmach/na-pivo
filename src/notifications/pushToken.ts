@@ -28,9 +28,14 @@ const Notifications = loadNotifications();
 /**
  * Fetch the Expo push token (when permission is granted), persist it, and upsert
  * the device on the backend. Returns the token, or null when unavailable. No-ops
- * unless `status === 'granted'`.
+ * unless `status === 'granted'`. `reuseRecent` lets a background reconcile skip
+ * the PUT when the backend already accepted the same registration today; an
+ * explicit opt-in always sends it.
  */
-export async function ensurePushTokenRegistered(status: PushPermissionStatus): Promise<string | null> {
+export async function ensurePushTokenRegistered(
+  status: PushPermissionStatus,
+  options: { reuseRecent?: boolean } = {},
+): Promise<string | null> {
   if (status !== 'granted' || !Notifications) return null;
   try {
     const projectId =
@@ -40,7 +45,9 @@ export async function ensurePushTokenRegistered(status: PushPermissionStatus): P
       : await Notifications.getExpoPushTokenAsync();
     const token = response.data;
     await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
-    const registered = await registerPushDevice(token, status);
+    const registered = options.reuseRecent
+      ? await registerPushDevice(token, status, undefined, { reuseRecent: true })
+      : await registerPushDevice(token, status);
     return registered ? token : null;
   } catch {
     return null;

@@ -23,6 +23,14 @@ import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
 import { installPubAmenitiesSync, restorePubAmenities } from '@/data/pubAmenitiesSync';
+import { flushPubRatingsQueue } from '@/data/pubRatingsQueue';
+import { flushPubAmenitiesQueue } from '@/data/pubAmenitiesQueue';
+import {
+  ALL_FOREGROUND_PULLS,
+  claimForegroundPull,
+  markForegroundPulls,
+  type ForegroundPull,
+} from '@/data/foregroundPulls';
 import { flushVisitsQueue } from '@/data/visitsQueue';
 import { flushFriendsQueue } from '@/data/friendsQueue';
 import { fetchFriendsLive } from '@/data/friendsClient';
@@ -149,14 +157,14 @@ function seedPartaBadge(): void {
   });
 }
 
-function restoreAndFlushAddedPubsQueue(): void {
+function restoreAndFlushAddedPubsQueue(pullOwnAddedPubs = true): void {
   void restoreQueuedAddedPubs()
     .then((restoredCount) => {
       if (restoredCount > 0) {
         usePubStore.getState().bumpCatalogRevision();
       }
       return flushAddedPubsQueue()
-        .then(() => syncOwnAddedPubs())
+        .then(() => (pullOwnAddedPubs ? syncOwnAddedPubs() : undefined))
         .then(() => restoredCount);
     })
     .then((restoredCount) => {
@@ -285,6 +293,9 @@ export default function RootLayout() {
         const session = useAccountStore.getState().session;
         setTelemetrySession(session);
         setTelemetryReady(true);
+        // Launch already pulled everything for this account; foregrounds in the
+        // next few minutes can skip the same downloads.
+        markForegroundPulls(session?.accountId, ALL_FOREGROUND_PULLS);
         // Account hydration may restore the legacy CZK/EUR preference after the
         // launch-time location check, so let the cached country win once more.
         void refreshCurrencyFromLastKnownLocation();
@@ -372,6 +383,10 @@ export default function RootLayout() {
           void seedDrinksFromHistory();
         });
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
+        // Every queue FLUSH below runs on each foreground. Server PULLS run at
+        // most once per few minutes per account (see foregroundPulls).
+        const accountId = useAccountStore.getState().session?.accountId ?? null;
+        const pull = (name: ForegroundPull) => claimForegroundPull(name, accountId);
         // Commit any lock-screen `+ pivo` taps before applying the idle cutoff;
         // the native action's timestamp may be the latest activity tonight.
         void reconcileLiveBeerActivityAndAutoArchive();
@@ -379,24 +394,27 @@ export default function RootLayout() {
         void flushPubNameCorrectionsQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
-        restoreAndFlushAddedPubsQueue();
+        restoreAndFlushAddedPubsQueue(pull('addedPubs'));
         void flushDrinksQueue();
         void flushDeleteDrinksQueue();
         void flushUpdateDrinksQueue();
-        void restorePubRatings();
-        void restorePubAmenities();
+        // restore* = flush + pull + merge; a throttled foreground still flushes.
+        if (pull('ratings')) void restorePubRatings();
+        else void flushPubRatingsQueue();
+        if (pull('amenities')) void restorePubAmenities();
+        else void flushPubAmenitiesQueue();
         void flushVisitsQueue();
         void flushFriendsQueue();
-        void ensureFriendPushRegisteredIfGranted();
+        if (pull('push')) void ensureFriendPushRegisteredIfGranted();
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
-        void useAccountStore.getState().refreshDiarySnapshot();
+        if (pull('diary')) void useAccountStore.getState().refreshDiarySnapshot();
         // Re-seed pub geofences for wherever the user is now (no-op when the
         // feature is off; cheap unless they moved a few km since last fetch).
         if ((useTallyStore.getState().current?.drinks.length ?? 0) > 0) {
           void cancelPendingPubReminder();
         }
-        void refreshPubReminderGeofences();
+        if (pull('geofences')) void refreshPubReminderGeofences();
       } else {
         flushWalkingDistance();
       }

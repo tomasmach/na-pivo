@@ -238,6 +238,7 @@ function EntryTile({
           source={{ uri: entry.imageUrl }}
           style={StyleSheet.absoluteFill}
           resizeMode="cover"
+          resizeMethod="resize"
           accessibilityIgnoresInvertColors
         />
         {entry.isMine ? (
@@ -302,6 +303,7 @@ function WinnerTile({ winner, lead }: { winner: PhotoContestWinner; lead: boolea
           source={{ uri: winner.imageUrl }}
           style={StyleSheet.absoluteFill}
           resizeMode="cover"
+          resizeMethod="resize"
           accessibilityIgnoresInvertColors
         />
       </View>
@@ -754,6 +756,7 @@ export default function PhotoContestScreen() {
                   source={{ uri: winners[0].imageUrl }}
                   style={StyleSheet.absoluteFill}
                   resizeMode="cover"
+                  resizeMethod="resize"
                   accessibilityIgnoresInvertColors
                 />
               </View>
@@ -791,6 +794,7 @@ export default function PhotoContestScreen() {
                       source={{ uri: myEntry.imageUrl }}
                       style={StyleSheet.absoluteFill}
                       resizeMode="cover"
+                      resizeMethod="resize"
                       accessibilityIgnoresInvertColors
                     />
                   </View>
@@ -863,6 +867,7 @@ export default function PhotoContestScreen() {
                                 source={{ uri: photo.imageUrl }}
                                 style={StyleSheet.absoluteFill}
                                 resizeMode="cover"
+                                resizeMethod="resize"
                                 accessibilityIgnoresInvertColors
                               />
                             ) : null}

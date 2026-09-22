@@ -121,21 +121,25 @@ interface BeerPhotosState {
 
 export const useBeerPhotosStore = create<BeerPhotosState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       photos: [],
 
-      setServerPhotos: (list) =>
-        set((state) => {
-          const serverByClientId = new Set(list.map((p) => p.clientId).filter(Boolean));
-          const serverIds = new Set(list.map((p) => p.id));
-          const keptLocals = state.photos.filter(
-            (photo) =>
-              photo.syncState !== 'synced' &&
-              !serverByClientId.has(photo.clientId) &&
-              (photo.id == null || !serverIds.has(photo.id)),
-          );
-          return { photos: sortNewestFirst([...list.map(fromServerPhoto), ...keptLocals]) };
-        }),
+      setServerPhotos: (list) => {
+        const current = get().photos;
+        const serverByClientId = new Set(list.map((p) => p.clientId).filter(Boolean));
+        const serverIds = new Set(list.map((p) => p.id));
+        const keptLocals = current.filter(
+          (photo) =>
+            photo.syncState !== 'synced' &&
+            !serverByClientId.has(photo.clientId) &&
+            (photo.id == null || !serverIds.has(photo.id)),
+        );
+        const photos = sortNewestFirst([...list.map(fromServerPhoto), ...keptLocals]);
+        // An unchanged reload keeps the old array, so photo views do not
+        // re-render and persist does not rewrite the blob.
+        if (JSON.stringify(photos) === JSON.stringify(current)) return;
+        set({ photos });
+      },
 
       addPendingPhoto: (input) =>
         set((state) => {

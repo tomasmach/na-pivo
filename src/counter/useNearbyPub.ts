@@ -5,6 +5,8 @@
  * sitting in?", not bearing / heading / arrival / reroll. It:
  *   • gates location permission (mirrors the compass permission flow),
  *   • watches GPS only while the tab is focused (useFocusEffect → enabled flag),
+ *     and pauses it once a pub is pinned: a sitting does not need live GPS. A
+ *     refocus or retry takes one fresh fix before pausing again,
  *   • fetches nearby pubs and exposes the nearest ~10 as picker candidates,
  *   • auto-picks the nearest pub when it is within AUTO_PICK_METERS,
  *   • PINS the chosen pub once a session is under way, so GPS jitter never makes
@@ -88,6 +90,9 @@ export function useNearbyPub(): UseNearbyPubResult {
   // Once the user has a pinned pub (auto or manual) we stop letting GPS reselect
   // it — the active pub is sticky for the whole sitting.
   const pinnedRef = useRef(false);
+  // A pinned pub no longer depends on GPS, so the watcher pauses until the next
+  // focus or retry (each of which takes one fresh fix for the picker distances).
+  const [gpsPaused, setGpsPaused] = useState(false);
 
   // — Permission on mount / return from system settings —
   useEffect(() => {
@@ -118,11 +123,15 @@ export function useNearbyPub(): UseNearbyPubResult {
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
+      setGpsPaused(false);
       return () => setFocused(false);
     }, []),
   );
 
-  const { position } = useDevicePosition(focused && permissionState === 'granted');
+  const { position } = useDevicePosition(
+    focused && permissionState === 'granted' && !gpsPaused,
+    'counter',
+  );
 
   useEffect(() => {
     if (position) recordWalkingSample(position);
@@ -196,16 +205,20 @@ export function useNearbyPub(): UseNearbyPubResult {
             setSelected(null);
           }
         }
+        if (pinnedRef.current) setGpsPaused(true);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [activeSessionPubKey, positionLat, positionLng, retryNonce]);
+    // `position` (a new object per fix) is listed so a fresh fix with identical
+    // coordinates still reaches the pin check above and can pause GPS.
+  }, [activeSessionPubKey, position, positionLat, positionLng, retryNonce]);
 
   const selectPub = useCallback((pub: Pub) => {
     pinnedRef.current = true;
     setSelected(pub);
+    setGpsPaused(true);
   }, []);
 
   const requestPermission = useCallback(async () => {
@@ -216,6 +229,7 @@ export function useNearbyPub(): UseNearbyPubResult {
   const retry = useCallback(() => {
     // Un-pin and re-run the search; lets the user re-detect after moving pubs.
     pinnedRef.current = false;
+    setGpsPaused(false);
     forceNextFetchRef.current = true;
     setSelected(null);
     setHasFix(false);

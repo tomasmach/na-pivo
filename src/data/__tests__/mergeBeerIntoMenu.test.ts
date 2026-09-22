@@ -50,6 +50,12 @@ describe('mergeBeerIntoMenu', () => {
     expect(menu).toEqual(snapshot);
   });
 
+  it('returns the same menu when the price is already there', () => {
+    const menu: CommunityBeer[] = [{ name: 'Plzeň', priceCzk: 60, volumeMl: 500 }];
+    expect(mergeBeerIntoMenu(menu, { name: 'plzeň', priceCzk: 60, volumeMl: 500 })).toBe(menu);
+    expect(mergeBeerIntoMenu(menu, { name: 'Plzeň', priceCzk: 61, volumeMl: 500 })).not.toBe(menu);
+  });
+
   it('appends until the cap (12) and then skips additional new beers', () => {
     const full: CommunityBeer[] = Array.from({ length: MAX_MENU_BEERS }, (_, i) => ({
       name: `Beer ${i}`,

@@ -127,6 +127,7 @@ import {
   ensureFriendPushRegisteredIfGranted,
   registerFriendPush,
 } from '@/notifications/friendPush';
+import { claimForegroundPull } from '@/data/foregroundPulls';
 
 import { AddFriendTools } from './AddFriendTools';
 import CodeSheet from './CodeSheet';
@@ -150,6 +151,9 @@ import { mergeCheckInsIntoFeed, type MergedSitting } from './partaFeedMerge';
 import { useFriendSafety } from './friendSafety';
 
 const LIVE_POLL_MS = 35000;
+/** A tab switch or quick app switch back to Parta within this window reuses the
+ *  dashboard it just loaded instead of refetching all four feeds. */
+const RELOAD_SKIP_MS = 30_000;
 const SHEET_DISMISS_MS = 260;
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 /** How many evenings the screen holds before "Načíst starší" earns its place. */
@@ -425,6 +429,9 @@ export default function FriendsScreen() {
   const markContestResultsSeen = useContestResultsStore((state) => state.markResultsSeen);
 
   const mountedRef = useRef(true);
+  const firstFocusRef = useRef(true);
+  const lastLoadOkAtRef = useRef(0);
+  const lastTeasersAtRef = useRef(0);
   const loadGenRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
   const settingsOverrideRef = useRef<FriendsDashboard['settings'] | null>(null);
@@ -473,6 +480,7 @@ export default function FriendsScreen() {
 
         if (generation === loadGenRef.current) {
           if (next) {
+            lastLoadOkAtRef.current = Date.now();
             const override = settingsOverrideRef.current;
             setDashboard(override ? { ...next, settings: override } : next);
             setLoadError(false);
@@ -590,10 +598,10 @@ export default function FriendsScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    const kickoff = setTimeout(() => void load('initial'), 0);
-    return () => clearTimeout(kickoff);
-  }, [load]);
+  const loadedRecently = useCallback(
+    () => Date.now() - lastLoadOkAtRef.current < RELOAD_SKIP_MS,
+    [],
+  );
 
   const reload = useCallback(() => {
     void load();
@@ -603,18 +611,28 @@ export default function FriendsScreen() {
     useCallback(() => {
       setFocused(true);
       const target = usePartaSignalStore.getState().consumeRefresh();
-      void load(target ? 'refresh' : 'silent').then(() => {
-        if (!target || !mountedRef.current) return;
-        if (target.friendshipId) scrollToOffset(requestsYRef.current);
-        else if (target.activityId) scrollToOffset(activeYRef.current);
-      });
-      void ensureFriendPushRegisteredIfGranted();
+      // The first focus IS the initial load (a separate mount kickoff used to
+      // abort it 5 ms later and refire all four feeds). Later focuses reuse a
+      // dashboard loaded in the last few seconds unless a push asked for fresh.
+      const first = firstFocusRef.current;
+      firstFocusRef.current = false;
+      if (first || target || !loadedRecently()) {
+        void load(first ? 'initial' : target ? 'refresh' : 'silent').then(() => {
+          if (!target || !mountedRef.current) return;
+          if (target.friendshipId) scrollToOffset(requestsYRef.current);
+          else if (target.activityId) scrollToOffset(activeYRef.current);
+        });
+      }
+      const accountId = useAccountStore.getState().session?.accountId ?? null;
+      if (claimForegroundPull('push', accountId)) void ensureFriendPushRegisteredIfGranted();
       return () => setFocused(false);
-    }, [load, scrollToOffset]),
+    }, [load, loadedRecently, scrollToOffset]),
   );
 
   useFocusEffect(
     useCallback(() => {
+      if (Date.now() - lastTeasersAtRef.current < RELOAD_SKIP_MS) return;
+      lastTeasersAtRef.current = Date.now();
       void fetchLeaderboard('beers', 'week').then((board) => {
         if (mountedRef.current && board) setWeeklyBoard(board);
       });
@@ -640,11 +658,14 @@ export default function FriendsScreen() {
   }, [focused, load, scrollToOffset]);
 
   useEffect(() => {
+    // A mounted-but-hidden Parta tab must not refetch its feeds on every app
+    // foreground; its next focus reloads instead.
+    if (!focused) return;
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void load('silent');
+      if (state === 'active' && !loadedRecently()) void load('silent');
     });
     return () => subscription.remove();
-  }, [load]);
+  }, [focused, load, loadedRecently]);
 
   const d = dashboard;
 

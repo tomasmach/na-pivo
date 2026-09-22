@@ -61,7 +61,7 @@ it('does not force the toggle back on when the user has opted out', async () => 
 it('lights up push for an existing grantee who has not opted out', async () => {
   await ensureFriendPushRegisteredIfGranted();
 
-  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted');
+  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted', { reuseRecent: true });
   expect(useSettingsStore.getState().friendPushEnabled).toBe(true);
 });
 

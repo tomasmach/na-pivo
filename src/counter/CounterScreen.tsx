@@ -772,7 +772,10 @@ function Tacek({
       // Merge into the local community menu so the price shows instantly across
       // the app. Pub only — an outside beer must never enter community data.
       if (pub && drinkType === 'beer' && typeof beer.priceCzk === 'number') {
-        setOverride(cell, { beers: mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk }) });
+        const nextMenu = mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk });
+        // Same price already on the menu: skip the persisted write and the
+        // re-render of every tab that reads community overrides.
+        if (nextMenu !== menu) setOverride(cell, { beers: nextMenu });
       }
       // The check-in prompt is now-semantic and pub-bound — skip it for a
       // backdated or outside log.

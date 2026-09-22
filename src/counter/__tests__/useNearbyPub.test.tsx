@@ -124,6 +124,26 @@ beforeEach(() => {
 });
 
 describe('useNearbyPub', () => {
+  it('pauses GPS once a pub is pinned and resumes it on retry', async () => {
+    setNearby(PUB_A);
+    const hook = renderNearbyHook();
+    await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_A.id));
+
+    const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
+    expect(lastCall()).toEqual([true, 'counter']);
+
+    act(() => {
+      hook.result.selectPub(PUB_A);
+    });
+    expect(lastCall()).toEqual([false, 'counter']);
+
+    act(() => {
+      hook.result.retry();
+    });
+    expect(lastCall()).toEqual([true, 'counter']);
+    hook.unmount();
+  });
+
   it('refreshes location permission after returning from system settings', async () => {
     (checkLocationPermission as jest.Mock)
       .mockResolvedValueOnce('denied')

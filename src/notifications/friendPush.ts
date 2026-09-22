@@ -126,7 +126,7 @@ export function ensureFriendPushRegisteredIfGranted(): Promise<void> {
     try {
       const { status } = await Notifications.getPermissionsAsync();
       if (status !== 'granted' || version !== choiceVersion || useSettingsStore.getState().friendPushOptedOut) return;
-      const token = await ensurePushTokenRegistered('granted');
+      const token = await ensurePushTokenRegistered('granted', { reuseRecent: true });
       if (token && version === choiceVersion && !useSettingsStore.getState().friendPushOptedOut) {
         useSettingsStore.getState().setFriendPushEnabled(true);
       }

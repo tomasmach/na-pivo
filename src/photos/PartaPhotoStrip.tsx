@@ -140,6 +140,7 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
               source={{ uri: photo.uri }}
               style={StyleSheet.absoluteFill}
               resizeMode="cover"
+              resizeMethod="resize"
               accessibilityIgnoresInvertColors
             />
             <View style={styles.nameChip}>

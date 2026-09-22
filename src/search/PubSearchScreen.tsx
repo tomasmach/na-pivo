@@ -16,7 +16,8 @@ import { useAccountStore } from '@/stores/accountStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
 import { openPubInMaps } from '@/utils/maps';
-import { intlLocale, t } from '@/i18n';
+import { numberFormat } from '@/utils/intlFormat';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -26,7 +27,7 @@ import { usePubSuggestions } from './usePubSuggestions';
 function suggestionDistance(meters: number): string {
   const value = meters < 1000 ? meters : meters / 1000;
   const digits = meters >= 1000 && meters < 10000 ? 1 : 0;
-  const amount = new Intl.NumberFormat(intlLocale, { maximumFractionDigits: digits }).format(value);
+  const amount = numberFormat({ maximumFractionDigits: digits }).format(value);
   return meters < 1000 ? t.pubSearch.distanceMeters(amount) : t.pubSearch.distanceKm(amount);
 }
 
