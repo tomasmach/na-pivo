@@ -46,6 +46,7 @@ import {
 
 const VIEWPORT_DEBOUNCE_MS = 650;
 const LIVE_REFRESH_MS = 35_000;
+const IDLE_LIVE_REFRESH_MS = 3 * 60_000;
 /** The map draws its own native location dot, so JS only needs one fix to
  *  centre the first view and one per tap on the locate button. */
 const MOUNT_FIX_MAX_AGE_MS = 5 * 60 * 1000;
@@ -258,11 +259,12 @@ export function useBeerMap(
     [friendActivities, nowMs],
   );
 
-  // Poll friends' live status only while it can matter on screen: someone is
-  // live (their markers must expire/update) or the friends layer is open.
+  // Poll friends' live status at full rate only while it matters on screen:
+  // someone is live (their markers must expire/update) or the friends layer is
+  // open. Otherwise a slow poll still notices a friend who just sat down.
   const pollFriendsLive = hasLive || friendsLayerVisible;
   useEffect(() => {
-    if (!focused || !pollFriendsLive) return;
+    if (!focused) return;
     const timer = setInterval(() => {
       setNowMs(Date.now());
       if (privateReadsSuspended.current) return;
@@ -276,7 +278,7 @@ export function useBeerMap(
           setFriendActivities(live.activeFriends);
         }
       });
-    }, LIVE_REFRESH_MS);
+    }, pollFriendsLive ? LIVE_REFRESH_MS : IDLE_LIVE_REFRESH_MS);
     return () => clearInterval(timer);
   }, [focused, pollFriendsLive]);
 

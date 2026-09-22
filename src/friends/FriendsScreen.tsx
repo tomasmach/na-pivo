@@ -612,21 +612,20 @@ export default function FriendsScreen() {
       setFocused(true);
       const target = usePartaSignalStore.getState().consumeRefresh();
       // The first focus IS the initial load (a separate mount kickoff used to
-      // abort it 5 ms later and refire all four feeds). Later focuses reuse a
-      // dashboard loaded in the last few seconds unless a push asked for fresh.
+      // abort it 5 ms later and refire all four feeds). Every later focus still
+      // reloads: a friend profile pushed on top may have blocked, removed or
+      // accepted someone, and the list must not show them for another minute.
       const first = firstFocusRef.current;
       firstFocusRef.current = false;
-      if (first || target || !loadedRecently()) {
-        void load(first ? 'initial' : target ? 'refresh' : 'silent').then(() => {
-          if (!target || !mountedRef.current) return;
-          if (target.friendshipId) scrollToOffset(requestsYRef.current);
-          else if (target.activityId) scrollToOffset(activeYRef.current);
-        });
-      }
+      void load(first ? 'initial' : target ? 'refresh' : 'silent').then(() => {
+        if (!target || !mountedRef.current) return;
+        if (target.friendshipId) scrollToOffset(requestsYRef.current);
+        else if (target.activityId) scrollToOffset(activeYRef.current);
+      });
       const accountId = useAccountStore.getState().session?.accountId ?? null;
       if (claimForegroundPull('push', accountId)) void ensureFriendPushRegisteredIfGranted();
       return () => setFocused(false);
-    }, [load, loadedRecently, scrollToOffset]),
+    }, [load, scrollToOffset]),
   );
 
   useFocusEffect(

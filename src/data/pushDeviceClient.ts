@@ -27,6 +27,7 @@ interface AcceptedRegistration {
   pushToken: string;
   permissionStatus: PushPermissionStatus;
   locale: string;
+  appVersion: string;
   accountId: string;
   atMs: number;
 }
@@ -40,6 +41,7 @@ async function readAcceptedRegistration(): Promise<AcceptedRegistration | null> 
       typeof parsed.pushToken !== 'string' ||
       typeof parsed.permissionStatus !== 'string' ||
       typeof parsed.locale !== 'string' ||
+      typeof parsed.appVersion !== 'string' ||
       typeof parsed.accountId !== 'string' ||
       typeof parsed.atMs !== 'number'
     ) {
@@ -96,6 +98,7 @@ export async function registerPushDevice(
       accepted.pushToken === pushToken &&
       accepted.permissionStatus === permissionStatus &&
       accepted.locale === locale &&
+      accepted.appVersion === getAppVersionLabel() &&
       accepted.accountId === session.accountId &&
       Date.now() - accepted.atMs >= 0 &&
       Date.now() - accepted.atMs < REGISTRATION_REFRESH_MS
@@ -143,6 +146,7 @@ export async function registerPushDevice(
           pushToken,
           permissionStatus,
           locale,
+          appVersion: getAppVersionLabel(),
           accountId: session.accountId,
           atMs: Date.now(),
         };

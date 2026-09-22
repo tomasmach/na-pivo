@@ -110,7 +110,11 @@ export function useNearbyPub(): UseNearbyPubResult {
 
     refreshPermission();
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refreshPermission();
+      if (state !== 'active') return;
+      refreshPermission();
+      // The phone may have moved to another pub while locked: take one fresh
+      // fix; the pin check pauses GPS again right after it.
+      setGpsPaused(false);
     });
 
     return () => {
