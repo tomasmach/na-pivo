@@ -1,10 +1,12 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import type { FriendPresence, FriendPubActivity } from '@/data/friendsClient';
 import { t } from '@/i18n';
 import FriendActiveCard from '../FriendActiveCard';
+import { focusPubFromActivity } from '../focusPubHandoff';
 
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 jest.mock('@/profile/Avatar', () => ({ Avatar: () => null }));
 jest.mock('@/components/shared/IconGlyph', () => ({ CompassIcon: () => null, MapPinIcon: () => null }));
 jest.mock('../CheersPill', () => () => null);
@@ -28,6 +30,13 @@ const presence: FriendPresence = {
 };
 
 describe('live friend invite drink count', () => {
+  it('opens the explicit compass route after focusing a friend pub', () => {
+    jest.mocked(focusPubFromActivity).mockReturnValue(true);
+    const screen = render(<FriendActiveCard activity={activity} onResponded={jest.fn()} />);
+    fireEvent.press(screen.getByLabelText(t.friends.showOnCompass));
+    expect(focusPubFromActivity).toHaveBeenCalledWith(activity);
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/', params: { view: 'compass' } });
+  });
   it('keeps the count when a sitting friend sends an invite and refreshes it', () => {
     const props = { activity, presence, onResponded: jest.fn() };
     const screen = render(<FriendActiveCard {...props} />);

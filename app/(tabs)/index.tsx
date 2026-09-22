@@ -219,24 +219,11 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
         )}
 
         <GlowButton
-          label={t.permissions.cta}
-          onPress={requestPermission}
+          label={permissionState === 'denied' ? t.permissions.openSettings : t.permissions.cta}
+          onPress={permissionState === 'denied' ? () => Linking.openSettings() : requestPermission}
           glow="soft"
-          accessibilityLabel={t.permissions.cta}
+          accessibilityLabel={permissionState === 'denied' ? t.permissions.openSettings : t.permissions.cta}
         />
-
-        {permissionState === 'denied' && (
-          <View style={styles.permSecondaryWrap}>
-            <GlowButton
-              label={t.permissions.openSettings}
-              onPress={() => Linking.openSettings()}
-              variant="secondary"
-              glow="none"
-              height={50}
-              accessibilityLabel={t.permissions.openSettings}
-            />
-          </View>
-        )}
 
         <Pressable
           onPress={onShowMap}
@@ -1308,10 +1295,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 8,
-  },
-  permSecondaryWrap: {
-    width: '100%',
-    marginTop: -8,
   },
   permissionMapButton: {
     minHeight: 44,

@@ -69,7 +69,7 @@ function FriendActiveCard({ activity, presence, onResponded, stale = false }: Fr
     openSafetyMenu(account);
   }, [openSafetyMenu, account]);
   const showOnCompass = useCallback(() => {
-    if (focusPubFromActivity(activity)) router.push('/' as Href);
+    if (focusPubFromActivity(activity)) router.push({ pathname: '/', params: { view: 'compass' } });
   }, [activity, router]);
 
   const relative = formatRelative(activity.startedAt, now);

@@ -255,23 +255,12 @@ function PermissionGate({
       )}
       <View style={styles.gateButton}>
         <GlowButton
-          label={t.counter.permCta}
-          onPress={requestPermission}
+          label={permissionState === 'denied' ? t.counter.permOpenSettings : t.counter.permCta}
+          onPress={permissionState === 'denied' ? () => Linking.openSettings() : requestPermission}
           glow="soft"
-          accessibilityLabel={t.a11y.counterRequestLocation}
+          accessibilityLabel={permissionState === 'denied' ? t.counter.permOpenSettings : t.a11y.counterRequestLocation}
         />
       </View>
-      {permissionState === 'denied' && (
-        <View style={styles.gateButtonSecondary}>
-          <GlowButton
-            label={t.counter.permOpenSettings}
-            onPress={() => Linking.openSettings()}
-            variant="secondary"
-            glow="none"
-            height={50}
-          />
-        </View>
-      )}
       <Pressable
         onPress={onLogOutside}
         style={styles.gateLink}
@@ -1815,7 +1804,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   gateButton: { alignSelf: 'stretch', marginTop: Spacing.sm },
-  gateButtonSecondary: { alignSelf: 'stretch', marginTop: -Spacing.xs },
   gateLink: {
     flexDirection: 'row',
     alignItems: 'center',

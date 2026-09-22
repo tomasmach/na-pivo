@@ -955,6 +955,15 @@ describe('CounterScreen outside a pub', () => {
 // ─── 7. Permission gate ──────────────────────────────────────────────────────
 
 describe('CounterScreen permission gate', () => {
+  it('shows only the settings action after location was denied', () => {
+    useNearbyPub.mockReturnValue(
+      nearbyState({ permissionState: 'denied', selected: null, candidates: [] }),
+    );
+    const renderer = render();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: copy.counter.permOpenSettings })).toHaveLength(1);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: copy.a11y.counterRequestLocation })).toHaveLength(0);
+  });
+
   it('renders the gate and still lets you start an outside evening', () => {
     useNearbyPub.mockReturnValue(
       nearbyState({ permissionState: 'undetermined', selected: null, candidates: [] }),

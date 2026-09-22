@@ -250,6 +250,15 @@ describe('CompassScreen', () => {
     act(() => renderer.unmount());
   });
 
+  it('shows only the settings action after location was denied', () => {
+    useCompass.mockReturnValue({ ...baseCompassState(), permissionState: 'denied' });
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(React.createElement(CompassScreen)); });
+    expect(renderer.root.findAllByProps({ accessibilityLabel: t.permissions.openSettings })).toHaveLength(1);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: t.permissions.cta })).toHaveLength(0);
+    act(() => renderer.unmount());
+  });
+
   it.each([
     ['active', {}],
     ['loading', { isLoading: true }],
@@ -352,16 +361,14 @@ describe('CompassScreen', () => {
     ).toBe(false);
   });
 
-  it('returns to compass from searched pub navigation even when the original screen showed the map', () => {
+  it('returns to compass from explicit pub navigation even when browsing the map was saved', () => {
     const setParams = jest.fn();
     mockedUseRouter.mockReturnValue({ push: jest.fn(), setParams });
     useCompass.mockReturnValue(baseCompassState());
     let renderer: any;
     act(() => {
+      useSettingsStore.setState({ mapWithoutLocation: true });
       renderer = TestRenderer.create(React.createElement(CompassScreen));
-    });
-    act(() => {
-      renderer.root.findByProps({ accessibilityLabel: t.a11y.mapSwitchToMap }).props.onPress();
     });
     expect(renderer.root.findAllByType(BeerMapScreen)).toHaveLength(1);
 
@@ -372,6 +379,7 @@ describe('CompassScreen', () => {
     expect(renderer.root.findAllByType(BeerMapScreen)).toHaveLength(0);
     expect(renderer.root.findByProps({ accessibilityLabel: t.a11y.mapSwitchCompassSelected })).toBeTruthy();
     expect(setParams).toHaveBeenCalledWith({ view: undefined });
+    expect(useSettingsStore.getState().mapWithoutLocation).toBe(false);
     act(() => renderer.unmount());
   });
 
