@@ -11,10 +11,9 @@
  * The backend is idempotent on client_id, so re-sending a queued entry is safe.
  *
  * Dedup: keyed by the pub's geohash-8 cell (the stable physical-place key — the
- * Mapy.cz external id is unstable). A newer edit of the same pub REPLACES the
- * older queued submission, because the queued one is already stale. The newer
- * entry keeps its own fresh client_id (minted at build time by the caller),
- * since its content differs and we want it stored as a distinct contribution.
+ * Mapy.cz external id is unstable). A newer edit replaces only the sections it
+ * supplies, preserving other pending edits. The combined entry keeps the newer
+ * client_id (minted at build time by the caller).
  */
 
 import { submitPubCommunity, type CommunityEntry, type CommunityResponse } from './communityClient';
@@ -78,15 +77,21 @@ async function flushLocked(): Promise<Map<string, CommunityResponse>> {
  * reached the backend on the first attempt, or null when it stays queued for a
  * later flush. Never throws.
  *
- * A newer edit of the same pub (same geohash-8 cell) replaces any older queued
- * submission for that pub — the older one is stale.
+ * A newer edit of the same pub (same geohash-8 cell) replaces supplied sections
+ * while preserving pending changes to the other sections.
  */
 export function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityResponse | null> {
   return enqueueTask(async () => {
     const queue = await loadQueue();
     const cell = entryCell(entry);
+    const previous = queue.find((queued) => entryCell(queued) === cell);
     const deduped = queue.filter((queued) => entryCell(queued) !== cell);
-    deduped.push(entry);
+    deduped.push({
+      ...entry,
+      hours: entry.hours ?? previous?.hours,
+      beers: entry.beers ?? previous?.beers,
+      beer_menu_rotates: entry.beer_menu_rotates ?? previous?.beer_menu_rotates,
+    });
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
 
     const delivered = await flushLocked();
