@@ -37,7 +37,7 @@ import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
 import { lookupAddedPubLocation, type AddedPubLocation } from '@/data/addedPubLocationClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { enqueueAddedPub, enqueueAddedPubEdit } from '@/data/addedPubsQueue';
+import { enqueueAddedPub, enqueueAddedPubEdit, loadAddedPubSubmissions } from '@/data/addedPubsQueue';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -77,7 +77,21 @@ export default function AddPubScreen() {
   const params = useLocalSearchParams();
   const editedClientId = useMemo(() => parseStringParam(params.clientId), [params.clientId]);
   const isEditing = editedClientId.length > 0;
-  const needsLocation = isEditing && parseStringParam(params.needsLocation) === '1';
+  const [storedNeedsLocation, setStoredNeedsLocation] = useState(false);
+  const [loadingSubmission, setLoadingSubmission] = useState(isEditing);
+  const needsLocation = isEditing && (storedNeedsLocation || parseStringParam(params.needsLocation) === '1');
+  useEffect(() => {
+    if (!isEditing) return;
+    let active = true;
+    setLoadingSubmission(true);
+    void loadAddedPubSubmissions().then((submissions) => {
+      if (!active) return;
+      setStoredNeedsLocation(submissions.some((submission) =>
+        submission.client_id === editedClientId && submission.failureReason === 'location-not-found'));
+      setLoadingSubmission(false);
+    });
+    return () => { active = false; };
+  }, [editedClientId, isEditing]);
   const bumpCatalogRevision = usePubStore((s) => s.bumpCatalogRevision);
   const showToast = useToastStore((s) => s.show);
 
@@ -131,6 +145,7 @@ export default function AddPubScreen() {
         (!locationCorrectionSelected || (city.trim().length > 0 && address.trim().length > 0))
       : city.trim().length > 0 && address.trim().length > 0 && locationCorrectionSelected) &&
     !locating &&
+    !loadingSubmission &&
     !submitted;
   const currentLocationSelected = selectedLocation?.source === 'pin';
 

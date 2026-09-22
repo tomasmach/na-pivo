@@ -16,6 +16,7 @@ const mockGetCurrentPositionAsync: jest.Mock = jest.fn(async () => ({
 }));
 const mockEnqueueAddedPub: jest.Mock = jest.fn(async () => true);
 const mockEnqueueAddedPubEdit: jest.Mock = jest.fn(async () => 'synced');
+const mockLoadAddedPubSubmissions: jest.Mock = jest.fn(async () => []);
 const mockClearPubsSnapshot: jest.Mock = jest.fn(async () => undefined);
 const mockPubIdForCoords: jest.Mock = jest.fn((lat: number, lng: number) => `local:${lat}:${lng}`);
 const mockUpsertLocalPub: jest.Mock = jest.fn();
@@ -101,6 +102,7 @@ jest.mock('@/data/account', () => ({
 jest.mock('@/data/addedPubsQueue', () => ({
   enqueueAddedPub: (entry: unknown) => mockEnqueueAddedPub(entry),
   enqueueAddedPubEdit: (entry: unknown) => mockEnqueueAddedPubEdit(entry),
+  loadAddedPubSubmissions: () => mockLoadAddedPubSubmissions(),
 }));
 
 jest.mock('@/data/pubs', () => ({
@@ -147,6 +149,7 @@ describe('AddPubScreen location confirmation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSearchParams = { lat: '50.087', lng: '14.421', city: 'Praha' };
+    mockLoadAddedPubSubmissions.mockResolvedValue([]);
     mockEnsureLocationPermission.mockResolvedValue('granted');
     mockGetCurrentPositionAsync.mockResolvedValue({
       coords: { latitude: 48.1486, longitude: 17.1077 },
@@ -160,8 +163,8 @@ describe('AddPubScreen location confirmation', () => {
     renderer = undefined;
   });
 
-  function renderScreen() {
-    act(() => { renderer = TestRenderer.create(<AddPubScreen />); });
+  async function renderScreen() {
+    await act(async () => { renderer = TestRenderer.create(<AddPubScreen />); });
   }
 
   function button(label: string) {
@@ -197,7 +200,7 @@ describe('AddPubScreen location confirmation', () => {
   }
 
   it('saves the explicitly confirmed address instead of route GPS in a different city', async () => {
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await press(t.addPub.findAddress);
     expect(mockLookupAddedPubLocation).toHaveBeenCalledWith(
@@ -218,7 +221,7 @@ describe('AddPubScreen location confirmation', () => {
   });
 
   it('takes a fresh GPS fix and requires confirmation of its reverse-geocoded address', async () => {
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await press(t.a11y.addPubUseCurrentLocationButton);
     expect(mockEnsureLocationPermission).toHaveBeenCalledTimes(1);
@@ -235,7 +238,7 @@ describe('AddPubScreen location confirmation', () => {
 
   it.each(['address', 'GPS'])('does not save or insert GPS after a failed/offline %s lookup', async (source) => {
     mockLookupAddedPubLocation.mockResolvedValue(null);
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await press(source === 'address' ? t.addPub.findAddress : t.a11y.addPubUseCurrentLocationButton);
     await submit();
@@ -244,7 +247,7 @@ describe('AddPubScreen location confirmation', () => {
   });
 
   it('does not save typed text without looking up and confirming the address', async () => {
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await submit();
     expectNoWrite();
@@ -252,7 +255,7 @@ describe('AddPubScreen location confirmation', () => {
 
   it.each([t.a11y.addPubAddressInput, t.a11y.addPubCityInput])(
     'invalidates confirmation after changing %s', async (field) => {
-      renderScreen();
+      await renderScreen();
       fillAddress();
       await press(t.addPub.findAddress);
       await press(confirmLabel);
@@ -265,7 +268,7 @@ describe('AddPubScreen location confirmation', () => {
   it('discards an in-flight lookup when its address changes, even if the service resolves late', async () => {
     const pending = deferred<typeof resolvedAddress>();
     mockLookupAddedPubLocation.mockReturnValue(pending.promise);
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await press(t.addPub.findAddress);
     const signal = mockLookupAddedPubLocation.mock.calls[0][1] as AbortSignal;
@@ -280,7 +283,7 @@ describe('AddPubScreen location confirmation', () => {
   it('preserves an explicitly aimed map pin while offline and marks its origin', async () => {
     mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
     mockLookupAddedPubLocation.mockResolvedValue(null);
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await submit();
     expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({
@@ -293,7 +296,7 @@ describe('AddPubScreen location confirmation', () => {
 
   it('lets the user deselect a map pin and blocks saving', async () => {
     mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await press(t.a11y.addPubMapPinSelected);
     await submit();
@@ -303,7 +306,7 @@ describe('AddPubScreen location confirmation', () => {
   it.each<Record<string, string>>([{ lng: '14.421' }, { lat: '50.087' }])(
     'does not turn a missing map coordinate into zero (%j)', async (coordinates) => {
       mockSearchParams = { ...coordinates, source: 'map' };
-      renderScreen();
+      await renderScreen();
       fillAddress();
       await submit();
       expectNoWrite();
@@ -316,7 +319,7 @@ describe('AddPubScreen location confirmation', () => {
       clientId: 'existing-client-id', name: 'Původní jméno', city: 'Praha',
       address: 'Stará 1', lat: '50.087', lng: '14.421',
     };
-    renderScreen();
+    await renderScreen();
     change(t.a11y.addPubNameInput, 'Nové jméno');
     await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
@@ -329,12 +332,15 @@ describe('AddPubScreen location confirmation', () => {
     }));
   });
 
-  it('requires a confirmed location when recovering an unresolved addition, even for a rename', async () => {
+  it.each<Record<string, string>>([{}, { needsLocation: '1' }])('requires confirmation from every entry point when the persisted location is unresolved (%j)', async (routeParams) => {
     mockSearchParams = {
       clientId: 'unresolved-id', name: 'Původní jméno', city: 'Praha',
-      address: 'Neznámá 1', lat: '50.087', lng: '14.421', needsLocation: '1',
+      address: 'Neznámá 1', lat: '50.087', lng: '14.421', ...routeParams,
     };
-    renderScreen();
+    mockLoadAddedPubSubmissions.mockResolvedValue([{
+      client_id: 'unresolved-id', failureReason: 'location-not-found',
+    }]);
+    await renderScreen();
     change(t.a11y.addPubNameInput, 'Nové jméno');
     await submit();
     expectNoWrite();
@@ -354,7 +360,7 @@ describe('AddPubScreen location confirmation', () => {
       clientId: 'existing-client-id', name: 'Původní jméno', city: 'Praha',
       address: 'Stará 1', lat: '50.087', lng: '14.421',
     };
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await submit();
     expectNoWrite();
@@ -369,7 +375,7 @@ describe('AddPubScreen location confirmation', () => {
   });
 
   it('queues only one pub when save is tapped twice before a render', async () => {
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await press(t.addPub.findAddress);
     await press(confirmLabel);
@@ -382,7 +388,7 @@ describe('AddPubScreen location confirmation', () => {
 
   it('keeps a fresh location refusal in the form without opening settings or selecting stale GPS', async () => {
     mockEnsureLocationPermission.mockResolvedValue('denied');
-    renderScreen();
+    await renderScreen();
     fillAddress();
     await press(t.a11y.addPubUseCurrentLocationButton);
     await submit();

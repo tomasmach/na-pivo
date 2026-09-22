@@ -271,6 +271,7 @@ export function enqueueAddedPubEdit(entry: AddedPubEditEntry): Promise<AddedPubS
             address: entry.address.trim(),
           }
         : null;
+    if (previous.failureReason === 'location-not-found' && !locationEdit) return 'failed';
     const pendingEdit: AddedPubEditEntry = {
       ...(previous.pendingEdit ?? {}),
       client_id: entry.client_id,
@@ -374,7 +375,11 @@ export function restoreQueuedAddedPubs(): Promise<number> {
   return registryTask(async () => {
     const registry = await loadRegistry();
     for (const submission of registry) {
-      if (submission.syncState !== 'failed') upsertLocalPub(pubFromSubmission(submission));
+      if (submission.syncState !== 'failed') {
+        upsertLocalPub(pubFromSubmission(submission));
+      } else if (submission.pendingOperation === 'edit' && submission.rollback) {
+        upsertLocalPub(pubFromSubmission({ ...submission, ...submission.rollback }));
+      }
     }
     return registry.filter((submission) => submission.syncState === 'pending').length;
   });

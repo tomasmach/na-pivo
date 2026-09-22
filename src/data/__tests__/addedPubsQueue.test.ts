@@ -6,6 +6,7 @@ import {
   flushAddedPubsQueue,
   loadAddedPubSubmissions,
   retryAddedPub,
+  restoreQueuedAddedPubs,
   syncOwnAddedPubs,
 } from '../addedPubsQueue';
 import { fetchOwnAddedPubs, submitAddedPub, submitAddedPubEdit } from '../addedPubsClient';
@@ -85,6 +86,20 @@ describe('added pub state registry', () => {
     expect((await loadAddedPubSubmissions())[0]).toEqual(expect.objectContaining({
       address: 'Neznámá 1', failureReason: 'location-not-found', pendingOperation: 'edit',
     }));
+    // Cold startup must restore the confirmed pin without losing the failed edit.
+    jest.clearAllMocks();
+    await restoreQueuedAddedPubs();
+    (fetchOwnAddedPubs as jest.Mock).mockResolvedValueOnce([{
+      clientId: ENTRY.client_id, cacheKey: 'confirmed', ...ENTRY,
+    }]);
+    await syncOwnAddedPubs();
+    expect(upsertLocalPub).toHaveBeenLastCalledWith(expect.objectContaining({
+      lat: ENTRY.lat, lng: ENTRY.lng, address: ENTRY.address,
+    }));
+    const before = await loadAddedPubSubmissions();
+    await expect(enqueueAddedPubEdit({ client_id: ENTRY.client_id, name: 'Pouze nové jméno' })).resolves.toBe('failed');
+    expect(submitAddedPubEdit).not.toHaveBeenCalled();
+    expect(await loadAddedPubSubmissions()).toEqual(before);
   });
 
   it('keeps a retryable submit visible as pending and syncs after connectivity returns', async () => {
