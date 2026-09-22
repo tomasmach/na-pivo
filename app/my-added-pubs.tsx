@@ -47,6 +47,7 @@ export default function MyAddedPubsScreen() {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const sheetActionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -69,12 +70,17 @@ export default function MyAddedPubsScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setLoading(true);
       void (async () => {
+        const cached = await loadAddedPubSubmissions();
+        if (!active) return;
+        setSubmissions(cached);
         const synced = await syncOwnAddedPubs();
         const rows = await loadAddedPubSubmissions();
         if (active) {
           setLoadFailed(!synced);
           setSubmissions(rows);
+          setLoading(false);
         }
       })();
       return () => {
@@ -217,8 +223,12 @@ export default function MyAddedPubsScreen() {
         ) : null}
         {submissions.length === 0 ? (
           !loadFailed ? (
-            <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.addPub.emptyTitle}
+            <Text
+              style={styles.emptyTitle}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+              accessibilityLiveRegion="polite"
+            >
+              {loading ? t.addPub.loading : t.addPub.emptyTitle}
             </Text>
           ) : null
         ) : sortedSubmissions.map((submission, index) => {

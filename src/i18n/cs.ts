@@ -849,6 +849,7 @@ export const cs = {
     editQueuedToast: 'Opravu mám v telefonu a pošlu ji, až budeš online.',
     editSavedToast: 'Oprava je uložená.',
     myPubsTitle: 'Moje přidané hospody',
+    loading: 'Načítám hospody…',
     emptyTitle: 'Zatím tu žádná není.',
     emptyBody: 'Když v kompasu chybí hospoda, doplň ji. Přidám ji do mapy i ostatním.',
     syncedCaption: 'V KOMPASU',

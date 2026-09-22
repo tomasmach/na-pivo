@@ -100,3 +100,16 @@ it('shows one add action and a plain empty state', async () => {
   expect(mockPush).toHaveBeenCalledTimes(1);
   expect(mockPush).toHaveBeenCalledWith('/add-pub');
 });
+
+
+it.each([true, false])('does not claim an empty list while the first remote load is pending (cached=%s)', async (cached) => {
+  let finish!: (result: boolean) => void;
+  mockSync.mockReturnValue(new Promise<boolean>((resolve) => { finish = resolve; }));
+  mockLoad.mockResolvedValue(cached ? [pub('Uložená hospoda', 'pending', 1)] : []);
+  await mount();
+  expect(text()).not.toContain(t.addPub.emptyTitle);
+  expect(text()).toContain(cached ? 'Uložená hospoda' : t.addPub.loading);
+  await act(async () => { finish(false); });
+  expect(text()).toContain(t.addPub.loadFailed);
+  expect(text()).not.toContain(t.addPub.emptyTitle);
+});
