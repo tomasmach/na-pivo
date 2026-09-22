@@ -1749,7 +1749,7 @@ export const cs = {
     pushDeniedCta: 'Zapnout',
     pushToggleTitle: 'Upozornění na partu',
     pushToggleSub: 'Cinky, pozvánky a kdo je na pivu.',
-    pushDisableError: 'Vypnutí se nepovedlo. Zkus to prosím znovu.',
+    pushDisableError: 'Upozornění se zatím nepodařilo vypnout. Zkusím to znovu po návratu do appky.',
 
     // — Compass handoff (§F2) —
     showOnCompass: 'Ukaž na kompasu',

@@ -762,7 +762,7 @@ export default function FriendsScreen() {
       if (!mountedRef.current) return;
       if (result.ok) {
         showToast(t.friends.pushEnabledToast);
-      } else {
+      } else if (result.reason !== 'cancelled') {
         showToast(result.reason === 'denied' ? t.friends.pushDeniedHint : t.friends.pushEnableError);
       }
     });

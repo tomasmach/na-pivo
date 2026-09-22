@@ -1424,7 +1424,7 @@ export const en: Strings = {
     pushDeniedCta: 'Turn on',
     pushToggleTitle: 'Crew notifications',
     pushToggleSub: "Pings, invites and who's out for a beer.",
-    pushDisableError: "Couldn't turn it off. Please try again.",
+    pushDisableError: "Couldn't turn notifications off yet. I'll try again when you return to the app.",
     showOnCompass: 'Show on the compass',
     friendCompassKicker: 'HEADING TO THE CREW',
     friendCompassBack: 'Back to the nearest',
