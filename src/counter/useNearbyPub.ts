@@ -19,7 +19,7 @@ import { useFocusEffect } from 'expo-router';
 import { AppState } from 'react-native';
 
 import { useDevicePosition } from '@/compass/useDevicePosition';
-import { checkLocationPermission, ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
+import { checkLocationPermission, ensureLocationPermission } from '@/compass/permissions';
 import type { PermissionState } from '@/compass/permissions';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
@@ -209,11 +209,8 @@ export function useNearbyPub(): UseNearbyPubResult {
   }, []);
 
   const requestPermission = useCallback(async () => {
-    const state = await ensureLocationPermission();
+    const state = await ensureLocationPermission({ openSettingsIfDenied: true });
     setPermissionState(state);
-    if (state === 'denied') {
-      await openSystemSettings();
-    }
   }, []);
 
   const retry = useCallback(() => {

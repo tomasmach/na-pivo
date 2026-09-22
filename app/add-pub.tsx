@@ -32,7 +32,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
+import { ensureLocationPermission } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
 import { lookupAddedPubLocation, type AddedPubLocation } from '@/data/addedPubLocationClient';
@@ -178,11 +178,10 @@ export default function AddPubScreen() {
     lookupRequest.current = request;
     setLocating(true);
     try {
-      const permission = await ensureLocationPermission();
+      const permission = await ensureLocationPermission({ openSettingsIfDenied: true });
       if (request.signal.aborted) return;
       if (permission !== 'granted') {
         setLocationError(t.addPub.locationPermissionDenied);
-        if (permission === 'denied') await openSystemSettings();
         return;
       }
       // Route coordinates may belong to another pub, or be an old GPS fix.

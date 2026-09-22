@@ -41,7 +41,7 @@ import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
 import { useTargetBearing } from '@/compass/useTargetBearing';
 import { useArrivalDetector } from '@/compass/useArrivalDetector';
-import { checkLocationPermission, ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
+import { checkLocationPermission, ensureLocationPermission } from '@/compass/permissions';
 import { formatDistanceCs, haversineMeters } from '@/compass/distance';
 import { compassArrowRotation } from '@/compass/rotation';
 import type { PermissionState } from '@/compass/permissions';
@@ -1177,11 +1177,8 @@ export function useCompass(
   }, [activeBeerBrandKey, catalogRevision, excludeRevision, resetExclusions]);
 
   const requestPermission = useCallback(async () => {
-    const state = await ensureLocationPermission();
+    const state = await ensureLocationPermission({ openSettingsIfDenied: true });
     setPermissionState(state);
-    if (state === 'denied') {
-      await openSystemSettings();
-    }
   }, []);
 
   return {

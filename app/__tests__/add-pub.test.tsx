@@ -45,7 +45,7 @@ jest.mock('expo-location', () => ({
 }));
 
 jest.mock('@/compass/permissions', () => ({
-  ensureLocationPermission: () => mockEnsureLocationPermission(),
+  ensureLocationPermission: (options: unknown) => mockEnsureLocationPermission(options),
   openSystemSettings: () => mockOpenSystemSettings(),
 }));
 
@@ -360,13 +360,14 @@ describe('AddPubScreen location confirmation', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
-  it('shows permission failure and offers settings without selecting stale route GPS', async () => {
+  it('keeps a fresh location refusal in the form without opening settings or selecting stale GPS', async () => {
     mockEnsureLocationPermission.mockResolvedValue('denied');
     renderScreen();
     fillAddress();
     await press(t.a11y.addPubUseCurrentLocationButton);
     await submit();
-    expect(mockOpenSystemSettings).toHaveBeenCalledTimes(1);
+    expect(mockEnsureLocationPermission).toHaveBeenCalledWith({ openSettingsIfDenied: true });
+    expect(mockOpenSystemSettings).not.toHaveBeenCalled();
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
     expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
     expect(JSON.stringify(renderer!.toJSON())).toContain(t.addPub.locationPermissionDenied);

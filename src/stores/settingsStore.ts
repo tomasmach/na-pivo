@@ -22,6 +22,8 @@ export type BeerCountReminderIntervalMinutes =
 
 interface SettingsState {
   mode: Mode;
+  /** Explicit map fallback survives relaunch without requesting location. */
+  mapWithoutLocation: boolean;
   homePoint: HomePoint | null;
   navigationProvider: NavigationProvider;
   maxDistanceKm: number | null;
@@ -54,6 +56,7 @@ interface SettingsState {
   surpriseSeed: number;
   lastSeenPartyStreak: number;
   setMode: (m: Mode) => void;
+  setMapWithoutLocation: (value: boolean) => void;
   setHomePoint: (point: HomePoint | null) => void;
   setNavigationProvider: (provider: NavigationProvider) => void;
   setMaxDistanceKm: (km: number | null) => void;
@@ -80,6 +83,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       mode: 'nearest',
+      mapWithoutLocation: false,
       homePoint: null,
       navigationProvider: 'google',
       maxDistanceKm: null,
@@ -105,6 +109,7 @@ export const useSettingsStore = create<SettingsState>()(
       lastSeenPartyStreak: 0,
 
       setMode: (m) => set({ mode: m }),
+      setMapWithoutLocation: (value) => set({ mapWithoutLocation: value }),
       setHomePoint: (point) => set({ homePoint: point }),
       setNavigationProvider: (provider) => set({ navigationProvider: provider }),
       setMaxDistanceKm: (km) => set({ maxDistanceKm: km }),
@@ -137,6 +142,7 @@ export const useSettingsStore = create<SettingsState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         mode: state.mode,
+        mapWithoutLocation: state.mapWithoutLocation,
         homePoint: state.homePoint,
         navigationProvider: state.navigationProvider,
         maxDistanceKm: state.maxDistanceKm,

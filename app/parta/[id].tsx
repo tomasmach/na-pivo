@@ -161,7 +161,7 @@ export default function FriendProfileScreen() {
   const handleShowOnCompass = useCallback(() => {
     if (!compassTarget) return;
     if (focusPubFromActivity(compassTarget)) {
-      router.push('/' as Href);
+      router.push({ pathname: '/', params: { view: 'compass' } });
     }
   }, [compassTarget, router]);
 

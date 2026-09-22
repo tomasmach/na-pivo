@@ -7,7 +7,6 @@ import { useDevicePosition } from '@/compass/useDevicePosition';
 import {
   checkLocationPermission,
   ensureLocationPermission,
-  openSystemSettings,
   type PermissionState,
 } from '@/compass/permissions';
 import { geohash8 } from '@/data/geohash';
@@ -306,9 +305,8 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   );
 
   const requestPermission = useCallback(async () => {
-    const next = await ensureLocationPermission();
+    const next = await ensureLocationPermission({ openSettingsIfDenied: true });
     setPermissionState(next);
-    if (next === 'denied') await openSystemSettings();
   }, []);
 
   const loadRegion = useCallback((region: Region) => setRequestedRegion(region), []);
