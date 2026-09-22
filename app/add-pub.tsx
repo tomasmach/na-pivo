@@ -77,18 +77,22 @@ export default function AddPubScreen() {
   const params = useLocalSearchParams();
   const editedClientId = useMemo(() => parseStringParam(params.clientId), [params.clientId]);
   const isEditing = editedClientId.length > 0;
-  const [storedNeedsLocation, setStoredNeedsLocation] = useState(false);
-  const [loadingSubmission, setLoadingSubmission] = useState(isEditing);
-  const needsLocation = isEditing && (storedNeedsLocation || parseStringParam(params.needsLocation) === '1');
+  const [locationCheck, setLocationCheck] = useState<{ clientId: string; required: boolean } | null>(null);
+  const loadingSubmission = isEditing && locationCheck?.clientId !== editedClientId;
+  const needsLocation = isEditing && (
+    (locationCheck?.clientId === editedClientId && locationCheck.required) ||
+    parseStringParam(params.needsLocation) === '1'
+  );
   useEffect(() => {
     if (!isEditing) return;
     let active = true;
-    setLoadingSubmission(true);
     void loadAddedPubSubmissions().then((submissions) => {
       if (!active) return;
-      setStoredNeedsLocation(submissions.some((submission) =>
-        submission.client_id === editedClientId && submission.failureReason === 'location-not-found'));
-      setLoadingSubmission(false);
+      setLocationCheck({
+        clientId: editedClientId,
+        required: submissions.some((submission) =>
+          submission.client_id === editedClientId && submission.failureReason === 'location-not-found'),
+      });
     });
     return () => { active = false; };
   }, [editedClientId, isEditing]);
