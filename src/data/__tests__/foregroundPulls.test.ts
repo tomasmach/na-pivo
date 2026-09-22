@@ -1,14 +1,14 @@
 import {
   FOREGROUND_PULL_MIN_INTERVAL_MS,
   pulledRecently,
-  resetForegroundPullsForTests,
+  resetForegroundPulls,
   trackForegroundPull,
 } from '../foregroundPulls';
 
 const T0 = 1_800_000_000_000;
 
 beforeEach(() => {
-  resetForegroundPullsForTests();
+  resetForegroundPulls();
 });
 
 function account(id: string | null) {

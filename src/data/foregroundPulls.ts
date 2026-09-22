@@ -56,6 +56,7 @@ export function trackForegroundPull(
   );
 }
 
-export function resetForegroundPullsForTests(): void {
+/** Forget every recorded pull, e.g. when local account data is wiped. */
+export function resetForegroundPulls(): void {
   lastPullAt.clear();
 }

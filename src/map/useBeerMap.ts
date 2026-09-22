@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import type { Region } from 'react-native-maps';
 
 import type { DevicePosition } from '@/compass/useDevicePosition';
+import { updateCurrencyFromCoordinates } from '@/location/locationCurrency';
 import {
   checkLocationPermission,
   ensureLocationPermission,
@@ -59,9 +60,17 @@ async function readOneShotPosition(maxAgeMs: number): Promise<DevicePosition | n
       (await Location.getLastKnownPositionAsync({
         maxAge: maxAgeMs,
         requiredAccuracy: CACHED_FIX_REQUIRED_ACCURACY_M,
-      })) ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+      })) ??
+      (await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+        // A passive map fix must not open Android's location-settings dialog on
+        // every focus; the watcher it replaces never showed it either.
+        mayShowUserSettingsDialog: false,
+      }));
     const { latitude, longitude, accuracy } = fix.coords;
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    // The removed watcher also kept the price currency in step with the country.
+    void updateCurrencyFromCoordinates(latitude, longitude);
     return { lat: latitude, lng: longitude, accuracyMeters: accuracy ?? 999 };
   } catch {
     return null;
