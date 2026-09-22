@@ -758,6 +758,7 @@ export const en: Strings = {
     editQueuedToast: "I have the fix on your phone and I'll send it once you're online.",
     editSavedToast: 'The fix is saved.',
     myPubsTitle: 'Pubs I added',
+    loading: 'Loading pubs…',
     emptyTitle: 'None here yet.',
     emptyBody: "When a pub is missing from the compass, add it. I'll put it on the map for everyone else too.",
     syncedCaption: 'IN THE COMPASS',
@@ -766,6 +767,8 @@ export const en: Strings = {
     allSynced: 'Everything is sent.',
     listLabel: 'Your pubs',
     statusPending: 'Waiting',
+    statusPendingEdit: 'Edit pending',
+    statusPendingCreate: 'Waiting to send',
     statusSynced: 'In the compass',
     statusFailed: "Didn't go through",
     pendingCount: (count: number) =>
