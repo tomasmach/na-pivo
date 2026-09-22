@@ -3947,23 +3947,33 @@ class ClientEventsView(APIView):
         account = _account_from_request(request)
 
         try:
-            event = ClientEvent.objects.create(
-                account=account,
-                event=data["event"],
-                severity=data["severity"],
-                message=data.get("message") or "",
-                context=data.get("context") or {},
-                app_version=data.get("app_version") or "",
-                platform=data.get("platform") or "",
-                os_version=data.get("os_version") or "",
-            )
-            _update_usage_stats(event)
+            with transaction.atomic():
+                if account is not None:
+                    # Authentication can precede deletion/merge. The same
+                    # Account lock is used by those mutations; never recreate
+                    # diagnostic data for an account they already removed.
+                    account = Account.objects.select_for_update().filter(
+                        pk=account.pk, status=Account.Status.ACTIVE,
+                    ).first()
+                    if account is None:
+                        return Response({"accepted": True}, status=status.HTTP_202_ACCEPTED)
+                event = ClientEvent.objects.create(
+                    account=account,
+                    event=data["event"],
+                    severity=data["severity"],
+                    message=data.get("message") or "",
+                    context=data.get("context") or {},
+                    app_version=data.get("app_version") or "",
+                    platform=data.get("platform") or "",
+                    os_version=data.get("os_version") or "",
+                )
+                # Keep the event and counters together. A failed counter write
+                # must not leave a partial event behind for the client retry.
+                _update_usage_stats(event)
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "client-events: unexpected error saving %r: %s",
-                data.get("event"),
-                exc,
-                exc_info=True,
+                "client-events: unexpected error saving event (%s)",
+                type(exc).__name__,
             )
             return _internal_error()
 
