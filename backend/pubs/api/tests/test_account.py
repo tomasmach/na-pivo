@@ -606,6 +606,9 @@ def test_account_register_is_throttled(client, monkeypatch):
     does NOT affect it (a well-known DRF testing gotcha).
     """
     monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", {"account": "3/min"})
+    # Keep the burst in one fixed window even when CI crosses a minute boundary.
+    now = timezone.now()
+    monkeypatch.setattr("pubs.api.throttling.timezone.now", lambda: now)
 
     for i in range(3):
         resp = client.post(
