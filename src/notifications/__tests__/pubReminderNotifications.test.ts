@@ -124,6 +124,31 @@ beforeEach(async () => {
 afterEach(() => { jest.useRealTimers(); });
 
 describe('geofence task failures', () => {
+  it('preserves an uncancelled reminder and lets exit retry after a failed disable', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 8, 23, 19));
+    await AsyncStorage.setItem('na-pivo-pub-reminders-enabled', 'true');
+    await AsyncStorage.setItem('na-pivo-pub-reminder-geofences', JSON.stringify({ pub: 'Private pub' }));
+    const pendingReminder = {
+      pubId: 'old-pub', pubName: 'Old private pub', enteredAtMs: Date.now() - 2_000,
+      scheduledAtMs: Date.now() - 2_000, fireAtMs: Date.now() + 60_000, notificationId: 'old-id',
+    };
+    await AsyncStorage.setItem('na-pivo-pub-reminder-state', JSON.stringify({ pendingReminder }));
+    mockCancelNotification.mockRejectedValueOnce(new Error('cancel unavailable'));
+    await mockTaskHandler({ data: { eventType: 1, region: { identifier: 'pub' } } });
+    expect(mockScheduleNotification).not.toHaveBeenCalled();
+    expect(JSON.parse((await AsyncStorage.getItem('na-pivo-pub-reminder-state'))!)).toEqual({ pendingReminder });
+
+    mockCancelNotification.mockRejectedValueOnce(new Error('cancel unavailable'));
+    await disablePubReminderNotifications();
+    expect(await AsyncStorage.getItem('na-pivo-pub-reminders-enabled')).toBe('false');
+    expect(JSON.parse((await AsyncStorage.getItem('na-pivo-pub-reminder-state'))!)).toEqual({ pendingReminder });
+    await mockTaskHandler({ data: { eventType: 2, region: { identifier: 'old-pub' } } });
+    expect(mockCancelNotification).toHaveBeenCalledTimes(3);
+    expect(mockCancelNotification).toHaveBeenLastCalledWith('old-id');
+    expect(JSON.parse((await AsyncStorage.getItem('na-pivo-pub-reminder-state'))!)).toEqual({});
+  });
+
   it('keeps a failed schedule retryable without a rejected task or a phantom reminder', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(2026, 8, 22, 19));

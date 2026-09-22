@@ -179,12 +179,16 @@ async function schedulePubReminder(pubName: string, pubId: string, fireAtMs: num
   });
 }
 
-async function cancelScheduledPubReminder(notificationId: string | undefined): Promise<void> {
-  if (!Notifications || !notificationId) return;
+async function cancelScheduledPubReminder(notificationId: string | undefined): Promise<boolean> {
+  if (!notificationId) return true;
+  if (!Notifications) return false;
   try {
     await Notifications.cancelScheduledNotificationAsync(notificationId);
+    return true;
   } catch {
-    // Best effort: state cleanup still prevents us from chaining new spam.
+    // Keep the id in durable state until a later exit/disable can retry.
+    reportReminderFailure('notification_cancel');
+    return false;
   }
 }
 
@@ -205,7 +209,7 @@ export async function cancelPendingPubReminder(): Promise<void> {
     await writePubReminderState(state);
     return;
   }
-  await cancelScheduledPubReminder(pending.notificationId);
+  if (!(await cancelScheduledPubReminder(pending.notificationId))) return;
   await writePubReminderState(clearPendingPubReminder(state, nowMs));
 }
 
@@ -217,7 +221,7 @@ async function cancelPendingPubReminderForPub(pubId: string): Promise<void> {
     await writePubReminderState(state);
     return;
   }
-  await cancelScheduledPubReminder(pending.notificationId);
+  if (!(await cancelScheduledPubReminder(pending.notificationId))) return;
   await writePubReminderState(clearPendingPubReminder(state, nowMs));
 }
 
@@ -373,7 +377,7 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
   });
 
   if (decision.shouldNotify && decision.notificationPub) {
-    await cancelScheduledPubReminder(decision.cancelPendingNotificationId);
+    if (!(await cancelScheduledPubReminder(decision.cancelPendingNotificationId))) return;
     const pending = decision.nextState.pendingReminder;
     if (!pending) {
       await writePubReminderState(decision.nextState);
@@ -406,7 +410,8 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
 }
 
 async function handleGeofenceExit(pubId: string): Promise<void> {
-  if (!(await isReminderEnabled())) return;
+  // A previous disable may have failed to cancel in the OS. An exit can still
+  // finish that cleanup even when new reminders are no longer enabled.
   await cancelPendingPubReminderForPub(pubId);
 }
 
