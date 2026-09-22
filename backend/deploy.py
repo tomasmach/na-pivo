@@ -205,6 +205,12 @@ def deploy(caddyfile: Path, drain_seconds: int) -> None:
     (archive / "Caddyfile.before").write_bytes(original)
     old_image = run("docker", "inspect", "--format", "{{.Image}}", WEB, capture=True)
     old_worker_image = run("docker", "inspect", "--format", "{{.Image}}", WORKER, capture=True)
+    # Keep explicit local references before a build can move an existing tag.
+    # Container image IDs alone need not remain resolvable by Compose/containerd.
+    old_web_ref = f"na-pivo-backend:rollback-web-{archive.name}"
+    old_worker_ref = f"na-pivo-backend:rollback-worker-{archive.name}"
+    run("docker", "image", "tag", old_image, old_web_ref)
+    run("docker", "image", "tag", old_worker_image, old_worker_ref)
     (archive / "state.json").write_text(
         json.dumps(
             {
@@ -212,6 +218,8 @@ def deploy(caddyfile: Path, drain_seconds: int) -> None:
                 "sha": run("git", "rev-parse", "HEAD", capture=True),
                 "previous_web_image": old_image,
                 "previous_worker_image": old_worker_image,
+                "previous_web_reference": old_web_ref,
+                "previous_worker_reference": old_worker_ref,
                 "caddy_sha256": hashlib.sha256(original).hexdigest(),
             },
             indent=2,
@@ -286,8 +294,8 @@ def deploy(caddyfile: Path, drain_seconds: int) -> None:
                 switched = False
         finally:
             if worker_stopped:
-                os.environ["NAPIVO_BACKEND_IMAGE"] = old_worker_image
-                run(*COMPOSE, "up", "-d", "--no-build", "--no-deps", "worker")
+                os.environ["NAPIVO_BACKEND_IMAGE"] = old_worker_ref
+                run(*COMPOSE, "up", "-d", "--no-build", "--no-deps", "--pull", "never", "worker")
         raise
     finally:
         if (

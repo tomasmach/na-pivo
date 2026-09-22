@@ -465,8 +465,10 @@ If canonical readiness fails after the first switch, **keep `napivo-web-next`
 running**: it serves traffic until the canonical instance is repaired and checked.
 If both proxy reload and rollback fail, both instances are retained for inspection.
 The script restores the previous worker image when needed; it never rolls back the
-database automatically. To restore a previous web image, use its immutable ID from
-`state.json` as `NAPIVO_BACKEND_IMAGE`, include both compose files below, and verify
+database automatically. Previous images receive dedicated local rollback tags
+before building; they remain available even if another tag moves. To restore a
+previous web image, use `previous_web_reference` from `state.json` as
+`NAPIVO_BACKEND_IMAGE`, pass `--pull never`, include both compose files below, and verify
 readiness before switching traffic. Never remove the only serving upstream.
 
 Production logging uses `docker-compose.production.yml` with persistent host

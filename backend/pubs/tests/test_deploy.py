@@ -152,7 +152,7 @@ def test_unhealthy_worker_restores_previous_image(rollout, monkeypatch):
     monkeypatch.setattr(deploy, "worker_ready", Mock(side_effect=RuntimeError("worker failed")))
     with pytest.raises(RuntimeError, match="worker failed"):
         deploy.deploy(config, 30)
-    assert deploy.os.environ["NAPIVO_BACKEND_IMAGE"] == "sha256:previous"
+    assert deploy.os.environ["NAPIVO_BACKEND_IMAGE"].startswith("na-pivo-backend:rollback-worker-")
     assert sum("up" in c and c[-1] == "worker" for c in commands) == 2
 
 
