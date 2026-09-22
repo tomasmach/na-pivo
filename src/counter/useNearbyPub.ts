@@ -5,8 +5,9 @@
  * sitting in?", not bearing / heading / arrival / reroll. It:
  *   • gates location permission (mirrors the compass permission flow),
  *   • watches GPS only while the tab is focused (useFocusEffect → enabled flag),
- *     and pauses it once a pub is pinned: a sitting does not need live GPS. A
- *     refocus or retry takes one fresh fix before pausing again,
+ *     and (with `pauseWhenPinned`, the counter tab) pauses it once a pub is
+ *     pinned: a sitting does not need live GPS. A refocus, unlock, retry or open
+ *     picker takes a fresh fix before pausing again,
  *   • fetches nearby pubs and exposes the nearest ~10 as picker candidates,
  *   • auto-picks the nearest pub when it is within AUTO_PICK_METERS,
  *   • PINS the chosen pub once a session is under way, so GPS jitter never makes
@@ -72,7 +73,13 @@ export interface UseNearbyPubResult {
   setPicking: (active: boolean) => void;
 }
 
-export function useNearbyPub(): UseNearbyPubResult {
+export interface UseNearbyPubOptions {
+  /** Pause GPS while a pub is pinned. Only a caller that reports its picker via
+   *  `setPicking` may opt in, or its picker would show frozen distances. */
+  pauseWhenPinned?: boolean;
+}
+
+export function useNearbyPub({ pauseWhenPinned = false }: UseNearbyPubOptions = {}): UseNearbyPubResult {
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
   const [focused, setFocused] = useState(false);
   const [candidates, setCandidates] = useState<NearbyCandidate[]>([]);
@@ -100,6 +107,14 @@ export function useNearbyPub(): UseNearbyPubResult {
   // not pause GPS again before a newer fix arrives.
   const staleFixRef = useRef<DevicePosition | null>(null);
   const pickingRef = useRef(false);
+  const pauseWhenPinnedRef = useRef(pauseWhenPinned);
+  // True when a pinned sitting has a fix newer than the one held at resume.
+  const canPause = (fix: DevicePosition | null): boolean =>
+    pauseWhenPinnedRef.current &&
+    pinnedRef.current &&
+    !pickingRef.current &&
+    fix !== null &&
+    fix !== staleFixRef.current;
 
   // — Permission on mount / return from system settings —
   useEffect(() => {
@@ -146,6 +161,12 @@ export function useNearbyPub(): UseNearbyPubResult {
   useEffect(() => {
     positionRef.current = position;
     if (position) recordWalkingSample(position);
+    // A fresh fix while already pinned (e.g. after unlock, same coordinates)
+    // pauses GPS again without re-ranking candidates on every sample.
+    if (!canPause(position)) return;
+    void Promise.resolve().then(() => {
+      if (canPause(positionRef.current)) setGpsPaused(true);
+    });
   }, [position]);
 
   const positionLat = position?.lat;
@@ -216,23 +237,19 @@ export function useNearbyPub(): UseNearbyPubResult {
             setSelected(null);
           }
         }
-        if (pinnedRef.current && !pickingRef.current && position !== staleFixRef.current) {
-          setGpsPaused(true);
-        }
+        if (canPause(positionRef.current)) setGpsPaused(true);
       });
 
     return () => {
       cancelled = true;
     };
-    // `position` (a new object per fix) is listed so a fresh fix with identical
-    // coordinates still reaches the pin check above and can pause GPS.
-  }, [activeSessionPubKey, position, positionLat, positionLng, retryNonce]);
+  }, [activeSessionPubKey, positionLat, positionLng, retryNonce]);
 
   const selectPub = useCallback((pub: Pub) => {
     pinnedRef.current = true;
     pickingRef.current = false;
     setSelected(pub);
-    setGpsPaused(true);
+    if (pauseWhenPinnedRef.current) setGpsPaused(true);
   }, []);
 
   const setPicking = useCallback((active: boolean) => {
@@ -240,7 +257,7 @@ export function useNearbyPub(): UseNearbyPubResult {
     if (active) {
       staleFixRef.current = positionRef.current;
       setGpsPaused(false);
-    } else if (pinnedRef.current) {
+    } else if (pauseWhenPinnedRef.current && pinnedRef.current) {
       setGpsPaused(true);
     }
   }, []);

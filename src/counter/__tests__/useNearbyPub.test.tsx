@@ -54,12 +54,12 @@ let currentPosition: Position | null = null;
 let currentNearby: NearbyResult[] = [];
 let appStateHandler: ((state: string) => void) | null = null;
 
-function renderNearbyHook() {
+function renderNearbyHook(options: Parameters<typeof useNearbyPub>[0] = {}) {
   let latestResult: ReturnType<typeof useNearbyPub> | undefined;
   let renderer: { update: (element: React.ReactElement) => void; unmount: () => void };
 
   function Harness() {
-    latestResult = useNearbyPub();
+    latestResult = useNearbyPub(options);
     return null;
   }
 
@@ -126,7 +126,7 @@ beforeEach(() => {
 describe('useNearbyPub', () => {
   it('pauses GPS once a pub is pinned and resumes it on retry', async () => {
     setNearby(PUB_A);
-    const hook = renderNearbyHook();
+    const hook = renderNearbyHook({ pauseWhenPinned: true });
     await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_A.id));
 
     const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
@@ -146,7 +146,7 @@ describe('useNearbyPub', () => {
 
   it('keeps GPS live while the picker is open so distances stay current', async () => {
     setNearby(PUB_A);
-    const hook = renderNearbyHook();
+    const hook = renderNearbyHook({ pauseWhenPinned: true });
     await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_A.id));
     const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
 
@@ -189,7 +189,7 @@ describe('useNearbyPub', () => {
       history: [],
     });
     setNearby(PUB_A);
-    const hook = renderNearbyHook();
+    const hook = renderNearbyHook({ pauseWhenPinned: true });
     const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
     await waitForExpectation(() => expect(lastCall()).toEqual([false]));
 
@@ -205,6 +205,45 @@ describe('useNearbyPub', () => {
     setNearby(PUB_A, 10);
     hook.rerender();
     await waitForExpectation(() => expect(lastCall()).toEqual([false]));
+    hook.unmount();
+  });
+
+  it('keeps GPS live for callers that do not opt into pausing', async () => {
+    setNearby(PUB_A);
+    const hook = renderNearbyHook();
+    await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_A.id));
+
+    act(() => {
+      hook.result.selectPub(PUB_A);
+    });
+    expect((useDevicePosition as jest.Mock).mock.calls.at(-1)).toEqual([true]);
+    hook.unmount();
+  });
+
+  it('pauses on a fresh fix with unchanged coordinates without re-ranking', async () => {
+    (useDevicePosition as jest.Mock).mockImplementation(() => ({ position: currentPosition }));
+    setNearby(PUB_A);
+    const hook = renderNearbyHook({ pauseWhenPinned: true });
+    await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_A.id));
+    act(() => {
+      hook.result.selectPub(PUB_A);
+    });
+    const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
+    expect(lastCall()).toEqual([false]);
+
+    // Unlock resumes GPS on the retained fix; the first live sample at the same
+    // spot pauses it again and does not search for pubs again.
+    await act(async () => {
+      appStateHandler?.('active');
+      await Promise.resolve();
+    });
+    expect(lastCall()).toEqual([true]);
+    const searches = (findNearbyPubs as jest.Mock).mock.calls.length;
+
+    currentPosition = { ...currentPosition! };
+    hook.rerender();
+    await waitForExpectation(() => expect(lastCall()).toEqual([false]));
+    expect((findNearbyPubs as jest.Mock).mock.calls.length).toBe(searches);
     hook.unmount();
   });
 

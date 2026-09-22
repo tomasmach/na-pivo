@@ -1657,7 +1657,7 @@ export default function CounterScreen({
     loading,
     retry,
     setPicking,
-  } = useNearbyPub();
+  } = useNearbyPub({ pauseWhenPinned: true });
   const [pickerOpen, setPickerOpen] = useState(false);
   // The picker lists distances, so GPS stays live while it is open.
   useEffect(() => {
