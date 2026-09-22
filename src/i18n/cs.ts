@@ -805,6 +805,8 @@ export const cs = {
     findAddress: 'Najít podle adresy',
     confirmAddress: 'Použít tuto adresu',
     addressConfirmed: 'Potvrzená adresa',
+    fixLocation: 'Oprav polohu',
+    locationNeedsFix: 'Polohu podle adresy se nepodařilo ověřit. Oprav adresu a potvrď polohu.',
     addressLookupFailed: 'Adresu se nepodařilo ověřit. Zkontroluj připojení a zkus to znovu.',
 
     title: 'Přidat hospodu',

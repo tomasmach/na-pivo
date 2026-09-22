@@ -1,4 +1,4 @@
-import { buildAddedPubEntry, submitAddedPub } from '../addedPubsClient';
+import { buildAddedPubEntry, submitAddedPub, submitAddedPubEdit } from '../addedPubsClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
 
 jest.mock('../account', () => ({
@@ -146,6 +146,24 @@ describe('submitAddedPub', () => {
     global.fetch = jest.fn(async () => ({ ok: false, status: 422 })) as unknown as typeof fetch;
 
     await expect(submitAddedPub(entry)).resolves.toBe('permanent-error');
+  });
+
+  it.each([submitAddedPub, submitAddedPubEdit])('separates an unresolved address from a temporary outage', async (submit) => {
+    setBackend('https://api.example.com');
+    for (const [code, expected] of [
+      ['location_not_found', 'location-not-found'],
+      ['geocoding_unavailable', 'retry'],
+      ['unknown', 'retry'],
+    ]) {
+      global.fetch = jest.fn(async () => ({
+        ok: false, status: 503, json: async () => ({ code }),
+      })) as unknown as typeof fetch;
+      await expect(submit(entry)).resolves.toBe(expected);
+    }
+    global.fetch = jest.fn(async () => ({
+      ok: false, status: 503, json: async () => { throw new Error('not JSON'); },
+    })) as unknown as typeof fetch;
+    await expect(submit(entry)).resolves.toBe('retry');
   });
 
   it('clears cached anonymous account on 401 and returns retry', async () => {

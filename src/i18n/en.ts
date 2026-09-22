@@ -716,6 +716,8 @@ export const en: Strings = {
     findAddress: 'Find by address',
     confirmAddress: 'Use this address',
     addressConfirmed: 'Confirmed address',
+    fixLocation: 'Fix location',
+    locationNeedsFix: 'The address could not be located. Correct the address and confirm its location.',
     addressLookupFailed: 'The address could not be verified. Check your connection and try again.',
 
     title: 'Add a pub',
