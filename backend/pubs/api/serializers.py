@@ -639,7 +639,7 @@ _CLIENT_EVENT_NATIVE_ENUMS = {
     "app_state": {"active", "inactive", "background", "unknown"},
     "error_category": {
         "secure_store_read", "secure_store_access", "geofence_task",
-        "notification_schedule", "permission", "unknown",
+        "notification_schedule", "notification_cancel", "permission", "unknown",
     },
 }
 _CLIENT_EVENT_CONTEXT_KEYS = {

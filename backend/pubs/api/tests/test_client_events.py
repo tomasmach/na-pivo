@@ -77,6 +77,7 @@ def test_stats_failure_rolls_back_event_before_a_retry(client, caplog):
 @pytest.mark.django_db
 @pytest.mark.parametrize("context, expected", [
     ({"app_state": "background", "error_category": "secure_store_access"}, {"app_state": "background", "error_category": "secure_store_access"}),
+    ({"error_category": "notification_cancel"}, {"error_category": "notification_cancel"}),
     ({"app_state": "user-private-text", "error_category": "native-exception-with-private-text"}, {}),
     ({"app_state": ["active"], "error_category": {"private": "value"}}, {}),
 ])
