@@ -311,6 +311,10 @@ _global_counter = DailyCounter()
 # ---------------------------------------------------------------------------
 
 
+class FirmyDailyCapExceededError(RuntimeError):
+    """The shared request budget is exhausted; retry after its UTC reset."""
+
+
 class FirmyHoursSource:
     """
     Fetch opening hours for a pub from Firmy.cz.
@@ -452,7 +456,7 @@ class FirmyHoursSource:
     def _get(self, url: str, **kwargs) -> requests.Response:
         """Throttled, cap-checked GET request with redirect/size/host guards."""
         if not self._check_cap():
-            raise RuntimeError(
+            raise FirmyDailyCapExceededError(
                 f"firmy: daily request cap of {self._daily_cap} exceeded — "
                 "not making further requests today."
             )
@@ -869,7 +873,7 @@ class FirmyHoursSource:
 
         Raises
         ------
-        RuntimeError
+        FirmyDailyCapExceededError
             Daily request cap exceeded.
         TransientFetchError
             A retryable network/proxy/consent-wall failure — the caller should

@@ -41,6 +41,7 @@ from django.conf import settings
 from django.utils import timezone as dj_tz
 
 from pubs.enrichment import (
+    FirmyDailyCapExceededError,
     FirmyHoursSource,
     classify_venue,
     geohash8,
@@ -508,7 +509,7 @@ def _enrich_sync(
 
     try:
         raw = source.fetch(name, lat, lng, city=city)
-    except RuntimeError as exc:
+    except FirmyDailyCapExceededError as exc:
         # Daily cap exceeded — treat as transient error
         logger.warning("firmy: daily cap exceeded for %r: %s", name, exc)
         return _save_error_row(cache_key, name, lat, lng, exc, now)
