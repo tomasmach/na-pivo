@@ -130,17 +130,17 @@ describe('useNearbyPub', () => {
     await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_A.id));
 
     const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
-    expect(lastCall()).toEqual([true]);
+    expect(lastCall()).toEqual([true, 'counter']);
 
     act(() => {
       hook.result.selectPub(PUB_A);
     });
-    expect(lastCall()).toEqual([false]);
+    expect(lastCall()).toEqual([false, 'counter']);
 
     act(() => {
       hook.result.retry();
     });
-    expect(lastCall()).toEqual([true]);
+    expect(lastCall()).toEqual([true, 'counter']);
     hook.unmount();
   });
 
@@ -153,24 +153,24 @@ describe('useNearbyPub', () => {
     act(() => {
       hook.result.selectPub(PUB_A);
     });
-    expect(lastCall()).toEqual([false]);
+    expect(lastCall()).toEqual([false, 'counter']);
 
     act(() => {
       hook.result.setPicking(true);
     });
-    expect(lastCall()).toEqual([true]);
+    expect(lastCall()).toEqual([true, 'counter']);
 
     // Walking to another pub with the picker open refreshes its list and does
     // not pause GPS behind the user's back.
     setNearby(PUB_B, 15);
     hook.rerender();
     await waitForExpectation(() => expect(hook.result.candidates[0]?.pub.id).toBe(PUB_B.id));
-    expect(lastCall()).toEqual([true]);
+    expect(lastCall()).toEqual([true, 'counter']);
 
     act(() => {
       hook.result.setPicking(false);
     });
-    expect(lastCall()).toEqual([false]);
+    expect(lastCall()).toEqual([false, 'counter']);
     hook.unmount();
   });
 
@@ -191,7 +191,7 @@ describe('useNearbyPub', () => {
     setNearby(PUB_A);
     const hook = renderNearbyHook({ pauseWhenPinned: true });
     const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
-    await waitForExpectation(() => expect(lastCall()).toEqual([false]));
+    await waitForExpectation(() => expect(lastCall()).toEqual([false, 'counter']));
 
     act(() => {
       hook.result.retry();
@@ -200,11 +200,11 @@ describe('useNearbyPub', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(lastCall()).toEqual([true]);
+    expect(lastCall()).toEqual([true, 'counter']);
 
     setNearby(PUB_A, 10);
     hook.rerender();
-    await waitForExpectation(() => expect(lastCall()).toEqual([false]));
+    await waitForExpectation(() => expect(lastCall()).toEqual([false, 'counter']));
     hook.unmount();
   });
 
@@ -216,7 +216,7 @@ describe('useNearbyPub', () => {
     act(() => {
       hook.result.selectPub(PUB_A);
     });
-    expect((useDevicePosition as jest.Mock).mock.calls.at(-1)).toEqual([true]);
+    expect((useDevicePosition as jest.Mock).mock.calls.at(-1)).toEqual([true, 'counter']);
     hook.unmount();
   });
 
@@ -229,7 +229,7 @@ describe('useNearbyPub', () => {
       hook.result.selectPub(PUB_A);
     });
     const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
-    expect(lastCall()).toEqual([false]);
+    expect(lastCall()).toEqual([false, 'counter']);
 
     // Unlock resumes GPS on the retained fix; the first live sample at the same
     // spot pauses it again and does not search for pubs again.
@@ -237,12 +237,12 @@ describe('useNearbyPub', () => {
       appStateHandler?.('active');
       await Promise.resolve();
     });
-    expect(lastCall()).toEqual([true]);
+    expect(lastCall()).toEqual([true, 'counter']);
     const searches = (findNearbyPubs as jest.Mock).mock.calls.length;
 
     currentPosition = { ...currentPosition! };
     hook.rerender();
-    await waitForExpectation(() => expect(lastCall()).toEqual([false]));
+    await waitForExpectation(() => expect(lastCall()).toEqual([false, 'counter']));
     expect((findNearbyPubs as jest.Mock).mock.calls.length).toBe(searches);
     hook.unmount();
   });

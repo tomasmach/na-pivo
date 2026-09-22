@@ -156,7 +156,10 @@ export function useNearbyPub({ pauseWhenPinned = false }: UseNearbyPubOptions = 
     }, []),
   );
 
-  const { position } = useDevicePosition(focused && permissionState === 'granted' && !gpsPaused);
+  const { position } = useDevicePosition(
+    focused && permissionState === 'granted' && !gpsPaused,
+    'counter',
+  );
 
   useEffect(() => {
     positionRef.current = position;
