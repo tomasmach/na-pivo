@@ -62,7 +62,10 @@ export default function MyAddedPubsScreen() {
       setLoadFailed(!synced);
       setSubmissions(await loadAddedPubSubmissions());
       bumpCatalogRevision();
+    } catch {
+      setLoadFailed(true);
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
   }, [bumpCatalogRevision]);
@@ -72,15 +75,20 @@ export default function MyAddedPubsScreen() {
       let active = true;
       setLoading(true);
       void (async () => {
-        const cached = await loadAddedPubSubmissions();
-        if (!active) return;
-        setSubmissions(cached);
-        const synced = await syncOwnAddedPubs();
-        const rows = await loadAddedPubSubmissions();
-        if (active) {
-          setLoadFailed(!synced);
-          setSubmissions(rows);
-          setLoading(false);
+        try {
+          const cached = await loadAddedPubSubmissions();
+          if (!active) return;
+          setSubmissions(cached);
+          const synced = await syncOwnAddedPubs();
+          const rows = await loadAddedPubSubmissions();
+          if (active) {
+            setLoadFailed(!synced);
+            setSubmissions(rows);
+          }
+        } catch {
+          if (active) setLoadFailed(true);
+        } finally {
+          if (active) setLoading(false);
         }
       })();
       return () => {

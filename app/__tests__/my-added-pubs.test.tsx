@@ -113,3 +113,28 @@ it.each([true, false])('does not claim an empty list while the first remote load
   expect(text()).toContain(t.addPub.loadFailed);
   expect(text()).not.toContain(t.addPub.emptyTitle);
 });
+
+
+it.each([true, false])('offers a retry after sync storage rejects and preserves cached pubs (cached=%s)', async (cached) => {
+  mockLoad.mockResolvedValue(cached ? [pub('Uložená hospoda', 'pending', 1)] : []);
+  mockSync.mockRejectedValueOnce(new Error('storage unavailable'));
+  await mount();
+  expect(text()).toContain(t.addPub.loadFailed);
+  expect(text()).not.toContain(t.addPub.loading);
+  expect(text()).not.toContain(t.addPub.emptyTitle);
+  if (cached) expect(text()).toContain('Uložená hospoda');
+  mockSync.mockResolvedValueOnce(true);
+  await act(async () => { await row(t.addPub.retryLoad).props.onPress(); });
+  expect(text()).not.toContain(t.addPub.loadFailed);
+  if (!cached) expect(text()).toContain(t.addPub.emptyTitle);
+});
+
+it('preserves visible local pubs when a pull refresh rejects', async () => {
+  mockLoad.mockResolvedValue([pub('Uložená hospoda', 'pending', 1)]);
+  await mount();
+  mockSync.mockRejectedValueOnce(new Error('storage unavailable'));
+  await act(async () => { await renderer.root.findByType(ScrollView).props.refreshControl.props.onRefresh(); });
+  expect(text()).toContain('Uložená hospoda');
+  expect(text()).toContain(t.addPub.loadFailed);
+  expect(renderer.root.findByType(ScrollView).props.refreshControl.props.refreshing).toBe(false);
+});
