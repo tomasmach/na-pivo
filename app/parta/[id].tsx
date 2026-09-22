@@ -511,6 +511,7 @@ export default function FriendProfileScreen() {
                       source={{ uri: photo.imageUrl }}
                       style={StyleSheet.absoluteFill}
                       resizeMode="cover"
+                      resizeMethod="resize"
                       accessibilityIgnoresInvertColors
                     />
                   </ScalePressable>

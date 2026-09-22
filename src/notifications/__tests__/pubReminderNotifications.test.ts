@@ -252,6 +252,30 @@ describe('refreshPubReminderGeofences', () => {
     );
   });
 
+  it('does not re-register an unchanged region set that the OS still monitors', async () => {
+    mockGetLastKnownPositionAsync.mockResolvedValue(location(50.081, 14.419));
+
+    await refreshPubReminderGeofences();
+    expect(mockStartGeofencingAsync).toHaveBeenCalledTimes(1);
+
+    mockHasStartedGeofencingAsync.mockResolvedValue(true);
+    await refreshPubReminderGeofences();
+    expect(mockStartGeofencingAsync).toHaveBeenCalledTimes(1);
+
+    // The OS dropped the task (e.g. after a permission change) → register again.
+    mockHasStartedGeofencingAsync.mockResolvedValue(false);
+    await refreshPubReminderGeofences();
+    expect(mockStartGeofencingAsync).toHaveBeenCalledTimes(2);
+
+    // A different nearby set is always handed to the OS.
+    mockHasStartedGeofencingAsync.mockResolvedValue(true);
+    mockFindNearbyPubs.mockReturnValue([
+      { pub: { id: 'mapy:other', name: 'Jinde', lat: 50.09, lng: 14.43, venueKind: 'pub' } },
+    ]);
+    await refreshPubReminderGeofences();
+    expect(mockStartGeofencingAsync).toHaveBeenCalledTimes(3);
+  });
+
   it('falls back to a fresh balanced location when cached coordinates are missing', async () => {
     mockGetLastKnownPositionAsync.mockResolvedValue(null);
     mockGetCurrentPositionAsync.mockResolvedValue(location(49.195, 16.607));

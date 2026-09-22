@@ -48,6 +48,9 @@ const STARTUP_GEOFENCE_REFRESH_DELAY_MS = 8_000;
 const PUB_REMINDER_DWELL_SECONDS = PUB_REMINDER_DWELL_MS / 1000;
 
 let startupGeofenceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+/** Regions this process last handed to the OS. Re-registering an identical set
+ * makes iOS re-check every region (and can replay Enter), so it is skipped. */
+let registeredGeofenceSignature: string | null = null;
 const NATIVE_FAILURE_RETRY_MS = 60_000;
 const NATIVE_FAILURE_REPORT_MS = 15 * 60_000;
 let notificationRetryAfter = 0;
@@ -260,6 +263,7 @@ async function resolveCoords(): Promise<{ lat: number; lng: number } | null> {
 }
 
 async function stopGeofencing(): Promise<void> {
+  registeredGeofenceSignature = null;
   try {
     if (await Location.hasStartedGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK)) {
       await Location.stopGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK);
@@ -338,8 +342,19 @@ async function refreshGeofences(coords?: { lat: number; lng: number }): Promise<
   });
 
   await writeJson(PUB_REMINDER_GEOFENCES_KEY, nameById);
+  const signature = regions
+    .map((region) => `${region.identifier}@${region.latitude},${region.longitude}`)
+    .join('|');
   try {
+    if (
+      signature === registeredGeofenceSignature &&
+      (await Location.hasStartedGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK))
+    ) {
+      return;
+    }
+    registeredGeofenceSignature = null;
     await Location.startGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK, regions);
+    registeredGeofenceSignature = signature;
   } catch {
     // Permissions revoked between the gate and here — leave geofencing stopped.
   }
