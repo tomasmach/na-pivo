@@ -1,0 +1,13 @@
+# Applied by deploy.py. Journald retains logs when Compose replaces containers.
+# The host must have persistent journald storage; do not alter other apps' limits.
+services:
+  napivo-web:
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
+  worker:
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
