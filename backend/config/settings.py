@@ -100,6 +100,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",  # must be before CommonMiddleware
     "django.middleware.security.SecurityMiddleware",
+    # Above everything that reads or writes the body, so it compresses the
+    # final response. Streams (live game SSE, file downloads) pass through.
+    "pubs.compression.BufferedGZipMiddleware",
     "pubs.observability.RequestLogMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     # Resolves the request language from Accept-Language ("en" from the new app,

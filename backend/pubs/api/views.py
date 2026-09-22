@@ -634,7 +634,7 @@ def _shared_pub_stats(
     }
     cutoff = dj_timezone.now() - FRIEND_SHARED_STATS_WINDOW
     my_visits = list(
-        PubVisit.objects.filter(account=account, started_at__gte=cutoff).only(
+        PubVisit.objects.filter(account=account, started_at__gte=cutoff).values_list(
             "cache_key", "started_at", "name"
         )
     )
@@ -644,33 +644,39 @@ def _shared_pub_stats(
     def _local_date(value):
         return dj_timezone.localtime(value, PRAGUE_TZ).date()
 
-    my_keys = {(visit.cache_key, _local_date(visit.started_at)) for visit in my_visits}
+    my_keys = {(cache_key, _local_date(started_at)) for cache_key, started_at, _ in my_visits}
     my_pub_names = {
-        (visit.cache_key, _local_date(visit.started_at)): visit.name for visit in my_visits
+        (cache_key, _local_date(started_at)): name for cache_key, started_at, name in my_visits
     }
     shared_dates: set = set()
+    # Only friend visits to a pub I also visited can be shared, so the database
+    # drops the rest instead of materializing a year of every friend's history.
     friend_visits = (
-        PubVisit.objects.filter(account_id__in=friend_ids, started_at__gte=cutoff)
-        .only("account_id", "cache_key", "started_at", "name")
+        PubVisit.objects.filter(
+            account_id__in=friend_ids,
+            started_at__gte=cutoff,
+            cache_key__in={cache_key for cache_key, _, _ in my_visits},
+        )
         .order_by("-started_at")
+        .values_list("account_id", "cache_key", "started_at", "name")
     )
     seen_pairs: set[tuple[int, str, object]] = set()
-    for visit in friend_visits:
-        local_date = _local_date(visit.started_at)
-        key = (visit.cache_key, local_date)
+    for account_id, cache_key, started_at, name in friend_visits:
+        local_date = _local_date(started_at)
+        key = (cache_key, local_date)
         if key not in my_keys:
             continue
         shared_dates.add(local_date)
-        pair = (visit.account_id, visit.cache_key, local_date)
+        pair = (account_id, cache_key, local_date)
         if pair in seen_pairs:
             continue
         seen_pairs.add(pair)
-        item = stats[visit.account_id]
+        item = stats[account_id]
         item["shared_count"] = int(item["shared_count"]) + 1
         last_shared_at = item["last_shared_at"]
-        if last_shared_at is None or visit.started_at > last_shared_at:
-            item["last_shared_at"] = visit.started_at
-            item["last_pub_name"] = my_pub_names.get(key) or visit.name
+        if last_shared_at is None or started_at > last_shared_at:
+            item["last_shared_at"] = started_at
+            item["last_pub_name"] = my_pub_names.get(key) or name
     return stats, shared_dates
 
 
@@ -9523,11 +9529,8 @@ def _filter_items_by_amenity_signals(
     uses a name-aware pub identity, so a cache-key-only join could incorrectly
     lend one venue's card terminal or foosball table to the pub next door.
     """
-    return [
-        item
-        for item in items
-        if any(_items_refer_to_same_pub(item, signal) for signal in amenity_items)
-    ]
+    signal_index = _PubMatchIndex(amenity_items)
+    return [item for item in items if signal_index.matches(item)]
 
 
 def _strong_item_external_id(item: dict) -> str | None:
@@ -9553,6 +9556,42 @@ def _items_refer_to_same_pub(left: dict, right: dict) -> bool:
     )
 
 
+class _PubMatchIndex:
+    """Answer ``any(_items_refer_to_same_pub(item, other) for other in others)``
+    without comparing ``item`` against every row.
+
+    A match is either two equal stable ids, or (when at least one side lacks a
+    stable id) the same geohash-8 cell plus matching names. Stable ids go in a
+    set and the name fallback only compares rows from the item's own cell, so
+    the per-request work no longer grows with community rows x provider rows.
+    ``item`` stays the left argument of ``names_match``, as in the pairwise loop.
+    """
+
+    def __init__(self, others: list[dict]) -> None:
+        self._strong_ids: set[str] = set()
+        self._by_cache_key: dict[str, list[tuple[str | None, str]]] = defaultdict(list)
+        for other in others:
+            strong_id = _strong_item_external_id(other)
+            if strong_id:
+                self._strong_ids.add(strong_id)
+            self._by_cache_key[_item_cache_key(other)].append(
+                (strong_id, str(other.get("name") or ""))
+            )
+
+    def matches(self, item: dict) -> bool:
+        strong_id = _strong_item_external_id(item)
+        if strong_id and strong_id in self._strong_ids:
+            return True
+        candidates = self._by_cache_key.get(_item_cache_key(item))
+        if not candidates:
+            return False
+        name = str(item.get("name") or "")
+        return any(
+            not (strong_id and other_strong_id) and names_match(name, other_name)
+            for other_strong_id, other_name in candidates
+        )
+
+
 def _with_pub_signal_items(signal_items: list[dict], provider_items: list[dict]) -> list[dict]:
     """Prefer local signal rows and remove matching provider copies.
 
@@ -9563,11 +9602,8 @@ def _with_pub_signal_items(signal_items: list[dict], provider_items: list[dict])
     if not signal_items:
         return provider_items
 
-    remaining_provider_items = [
-        item
-        for item in provider_items
-        if not any(_items_refer_to_same_pub(item, signal) for signal in signal_items)
-    ]
+    signal_index = _PubMatchIndex(signal_items)
+    remaining_provider_items = [item for item in provider_items if not signal_index.matches(item)]
     return [*signal_items, *remaining_provider_items]
 
 
@@ -9575,11 +9611,8 @@ def _with_missing_pub_signal_items(
     signal_items: list[dict], existing_items: list[dict]
 ) -> list[dict]:
     """Append only community pubs that the primary sources do not already have."""
-    missing = [
-        signal
-        for signal in signal_items
-        if not any(_items_refer_to_same_pub(signal, item) for item in existing_items)
-    ]
+    existing_index = _PubMatchIndex(existing_items)
+    missing = [signal for signal in signal_items if not existing_index.matches(signal)]
     return [*existing_items, *missing]
 
 
