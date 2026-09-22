@@ -43,11 +43,13 @@ from django.db.models import (
     Avg,
     Case,
     Count,
+    DateField,
     DateTimeField,
     Exists,
     ExpressionWrapper,
     F,
     FloatField,
+    Func,
     IntegerField,
     Max,
     Min,
@@ -63,8 +65,11 @@ from django.db.models import (
 )
 from django.db.models.functions import (
     ACos,
+    Cast,
     Coalesce,
+    Concat,
     Cos,
+    ExtractHour,
     Greatest,
     Least,
     Lower,
@@ -74,6 +79,7 @@ from django.db.models.functions import (
     TruncDate,
     TruncMonth,
 )
+from django.db.models.lookups import LessThan
 from django.utils import timezone as dj_timezone
 from django.utils.translation import gettext, gettext_lazy
 from rest_framework import status
@@ -3644,6 +3650,20 @@ class PubVisitView(APIView):
                 PubVisit.objects.filter(account=request.user).select_related("party_evening"),
             )
             items = [_visit_item(visit) for visit in visits]
+            # Released maps recreate missing catalogue markers from these
+            # fields. Project repaired pub identities on reads while retaining
+            # original history, export data and client conflict timestamps.
+            identities = resolve_pub_identities(items)
+            for item, identity in zip(items, identities, strict=True):
+                if identity.canonical_id is not None:
+                    item.update(
+                        cache_key=identity.cache_key,
+                        name=identity.name,
+                        lat=identity.lat,
+                        lng=identity.lng,
+                        city=identity.city,
+                        external_id=identity.external_id,
+                    )
         except ValueError:
             return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
@@ -5018,7 +5038,7 @@ def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, d
 
 def _leaderboard_cache_key(category: str, period: str, period_start: datetime | None) -> str:
     marker = period_start.isoformat() if period_start is not None else "all"
-    return f"v1:leaderboards:abuse-v3:{category}:{period}:{marker}"
+    return f"v1:leaderboards:abuse-v4:{category}:{period}:{marker}"
 
 
 def _leaderboard_account_queryset():
@@ -5041,20 +5061,48 @@ def _countable_beer_drinks():
     )
 
 
-def _leaderboard_red_beer_days(period_start_utc: datetime | None):
+def _leaderboard_drinking_day():
+    if connection.vendor == "postgresql":
+        # Convert before subtracting so DST keeps the local 04:00 boundary.
+        local_time = Func(
+            Value("Europe/Prague"), F("drank_at"),
+            function="timezone", output_field=DateTimeField(),
+        )
+        return Cast(local_time - timedelta(hours=4), output_field=DateField())
+    # Decide in local wall time so DST never moves the 04:00 boundary.
+    local_date = TruncDate("drank_at", tzinfo=PRAGUE_TZ)
+    return Case(
+        When(
+            LessThan(ExtractHour("drank_at", tzinfo=PRAGUE_TZ), 4),
+            then=Cast(local_date - timedelta(days=1), output_field=DateField()),
+        ),
+        default=local_date,
+        output_field=DateField(),
+    )
+
+
+def _leaderboard_drinking_day_key():
+    return Concat(
+        Cast("account_id", TextField()), Value(":"),
+        Cast(_leaderboard_drinking_day(), TextField()),
+        output_field=TextField(),
+    )
+
+
+def _leaderboard_red_beer_days(
+    period_start_utc: datetime | None, *, account_id: int | None = None,
+):
     """Beer days that are too implausible for the public competition."""
 
     qs = DrinkLog.objects.filter(drink_type=DrinkLog.DrinkType.BEER)
+    if account_id is not None:
+        qs = qs.filter(account_id=account_id)
     if period_start_utc is not None:
         context_start = drinking_day_bounds(period_start_utc)[0]
         qs = qs.filter(drank_at__gte=context_start)
-    shifted = ExpressionWrapper(
-        F("drank_at") - timedelta(hours=4),
-        output_field=DateTimeField(),
-    )
     return (
-        qs.annotate(drinking_day=TruncDate(shifted, tzinfo=PRAGUE_TZ))
-        .values("account_id", "drinking_day")
+        qs.annotate(leaderboard_day_key=_leaderboard_drinking_day_key())
+        .values("leaderboard_day_key")
         .annotate(
             raw_beers=Count("id"),
             burst_beers=Count("id", filter=Q(suspect_reason="burst")),
@@ -5067,24 +5115,34 @@ def _leaderboard_red_beer_days(period_start_utc: datetime | None):
     )
 
 
-def _leaderboard_has_red_beer_day(
-    account_id: int,
-    period_start_utc: datetime | None,
-) -> bool:
-    return _leaderboard_red_beer_days(period_start_utc).filter(account_id=account_id).exists()
+def _leaderboard_countable_beer_drinks(
+    period_start_utc: datetime | None, *, account_id: int | None = None,
+):
+    # A bad day excludes only that account's day, not its entire history.
+    # The non-null account/date key lets the database compute red days once,
+    # without a correlated aggregate for each drink. Both backends support it.
+    red_days = (
+        _leaderboard_red_beer_days(period_start_utc, account_id=account_id)
+        .values("leaderboard_day_key")
+    )
+    qs = (
+        _countable_beer_drinks()
+        .alias(leaderboard_day_key=_leaderboard_drinking_day_key())
+        .exclude(leaderboard_day_key__in=Subquery(red_days))
+    )
+    if account_id is not None:
+        qs = qs.filter(account_id=account_id)
+    if period_start_utc is not None:
+        qs = qs.filter(drank_at__gte=period_start_utc)
+    return qs
 
 
 def _leaderboard_drink_scores(
     period_start_utc: datetime | None, blocked_ids: set[int] | None = None
 ) -> dict[int, int]:
-    red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
-    qs = (
-        _countable_beer_drinks()
-        .filter(account__in=_leaderboard_account_queryset())
-        .exclude(account_id__in=Subquery(red_accounts))
+    qs = _leaderboard_countable_beer_drinks(period_start_utc).filter(
+        account__in=_leaderboard_account_queryset(),
     )
-    if period_start_utc is not None:
-        qs = qs.filter(drank_at__gte=period_start_utc)
     if blocked_ids:
         qs = qs.exclude(account_id__in=blocked_ids)
     rows = (
@@ -5175,14 +5233,9 @@ def _leaderboard_total_ranked(category: str, period_start_utc: datetime | None) 
             account__in=_leaderboard_account_queryset(),
             mapper_xp__gt=0,
         ).count()
-    red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
-    qs = (
-        _countable_beer_drinks()
-        .filter(account__in=_leaderboard_account_queryset())
-        .exclude(account_id__in=Subquery(red_accounts))
+    qs = _leaderboard_countable_beer_drinks(period_start_utc).filter(
+        account__in=_leaderboard_account_queryset(),
     )
-    if period_start_utc is not None:
-        qs = qs.filter(drank_at__gte=period_start_utc)
     return qs.values("account_id").annotate(score=Count("id")).filter(score__gt=0).count()
 
 
@@ -5202,18 +5255,11 @@ def _leaderboard_account_score(
     account: Account,
     category: str,
     period_start_utc: datetime | None,
-    *,
-    red_beer_day: bool = False,
 ) -> int:
     if account.excluded_from_leaderboards:
         return 0
     if category == "beers":
-        if red_beer_day:
-            return 0
-        qs = _countable_beer_drinks().filter(account=account)
-        if period_start_utc is not None:
-            qs = qs.filter(drank_at__gte=period_start_utc)
-        return qs.count()
+        return _leaderboard_countable_beer_drinks(period_start_utc, account_id=account.pk).count()
     if category == "pubs":
         visits = PubVisit.objects.filter(account=account).exclude(cache_key="")
         drinks = DrinkLog.objects.filter(
@@ -5234,16 +5280,11 @@ def _leaderboard_account_score(
     return int(getattr(stats, "mapper_xp", 0) or 0)
 
 
-def _leaderboard_is_eligible(
-    account: Account,
-    *,
-    red_beer_day: bool = False,
-) -> bool:
+def _leaderboard_is_eligible(account: Account) -> bool:
     return (
         account.status == Account.Status.ACTIVE
         and account.is_public
         and not account.excluded_from_leaderboards
-        and not red_beer_day
         and bool((account.nickname or "").strip())
     )
 
@@ -5296,14 +5337,9 @@ def _leaderboard_rank_for_score(
             mapper_xp__gt=0,
         ).annotate(score=F("mapper_xp"))
     else:
-        red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
-        queryset = (
-            _countable_beer_drinks()
-            .filter(account__in=_leaderboard_account_queryset())
-            .exclude(account_id__in=Subquery(red_accounts))
+        queryset = _leaderboard_countable_beer_drinks(period_start_utc).filter(
+            account__in=_leaderboard_account_queryset(),
         )
-        if period_start_utc is not None:
-            queryset = queryset.filter(drank_at__gte=period_start_utc)
         queryset = queryset.values("account_id", "account__created_at").annotate(score=Count("id"))
     if blocked_ids:
         queryset = queryset.exclude(account_id__in=blocked_ids)
@@ -5370,17 +5406,8 @@ def _leaderboard_me_payload(
     blocked_ids: set[int],
 ) -> dict:
     me = request.user
-    red_beer_day = category == "beers" and _leaderboard_has_red_beer_day(
-        me.id,
-        period_start_utc,
-    )
-    # The viewer's own score stays live — a beer logged a second ago must show
-    # up immediately, exactly as before the snapshot cache. Only the O(N)
-    # "who is ahead" walk reads the cached ranking (staleness matches the rows).
-    if red_beer_day:
-        score = 0
-    else:
-        score = _leaderboard_account_score(me, category, period_start_utc)
+    # The viewer's own score and rank stay live while the table rows are cached.
+    score = _leaderboard_account_score(me, category, period_start_utc)
     rank = None
     if score > 0:
         rank = _leaderboard_rank_for_score(
@@ -5394,7 +5421,7 @@ def _leaderboard_me_payload(
         "rank": rank,
         "score": score,
         "listed": any(row["account_pk"] == me.id for row in rows),
-        "eligible": _leaderboard_is_eligible(me, red_beer_day=red_beer_day),
+        "eligible": _leaderboard_is_eligible(me),
     }
 
 
@@ -10008,13 +10035,22 @@ class _PubLocationLookupBaseView(APIView):
             venue_kind=PubHours.VenueKind.NOT_PUB
         )
         if pub_search:
+            # Community additions are already visible in /pubs/near. Include
+            # them in explicit pub search without changing address lookups.
+            community_query = UserAddedPub.objects.filter(active=True).exclude(
+                cache_key__in=PubHours.objects.filter(
+                    venue_kind=PubHours.VenueKind.NOT_PUB
+                ).values("cache_key")
+            )
             # Search every token across the two catalogue fields, so both
             # "U Jelena Brno" and "U Jelena, Brno" retain the city constraint.
             tokens = query.replace(",", " ").split()
             if not tokens:
                 return []
             for token in tokens:
-                rows_query = rows_query.filter(Q(name__icontains=token) | Q(city__icontains=token))
+                match = Q(name__icontains=token) | Q(city__icontains=token)
+                rows_query = rows_query.filter(match)
+                community_query = community_query.filter(match)
         else:
             # Preserve the released add-pub "name, address, city" contract.
             name_query = query.split(",", 1)[0].strip()
@@ -10036,6 +10072,9 @@ class _PubLocationLookupBaseView(APIView):
             )[:scan_limit]
         )
         if pub_search:
+            rows.extend(community_query.only(
+                "id", "name", "lat", "lng", "cache_key", "city", "address",
+            )[:scan_limit])
             blocked = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
             rows = [row for row in rows if row.cache_key not in blocked]
         if lat is not None and lng is not None:
@@ -10044,10 +10083,22 @@ class _PubLocationLookupBaseView(APIView):
             rows.sort(key=lambda row: (row.name.casefold(), row.pk))
 
         items = []
-        for row in rows[:limit]:
-            item = _pub_directory_item(row)
-            item.update({"id": f"local:{row.pk}", "provider": "local"})
+        seen = set()
+        for row in rows:
+            if isinstance(row, UserAddedPub):
+                item = _user_added_pub_item(row)
+                item["id"] = f"community:{row.pk}"
+            else:
+                item = _pub_directory_item(row)
+                item["id"] = f"local:{row.pk}"
+            item["provider"] = "local"
+            key = _pub_near_dedupe_key(item)
+            if pub_search and key in seen:
+                continue
+            seen.add(key)
             items.append(item)
+            if len(items) >= limit:
+                break
         return items
 
     def _lookup_response(self, data: dict) -> Response:

@@ -390,10 +390,10 @@ DRINK_BURST_WINDOW_MINUTES: int = int(
 DRINK_DAILY_FLAG_CAP: int = int(os.environ.get("DRINK_DAILY_FLAG_CAP", "21"))
 DRINK_DAILY_HARD_CAP: int = int(os.environ.get("DRINK_DAILY_HARD_CAP", "40"))
 
-# A red account is temporarily omitted from the public beer leaderboard for a
-# period containing an obviously implausible drinking day. This is derived at
-# read time, so correcting/deleting the bad rows automatically restores it; the
-# profile, private diary and the other leaderboard categories remain untouched.
+# An implausible drinking day is omitted from public beer leaderboard scores.
+# Other days still count, including in the all-time board. This is derived at
+# read time, so correcting/deleting bad rows restores that day's valid beers;
+# the profile, private diary and other leaderboard categories stay untouched.
 LEADERBOARD_BEER_RED_DAY: int = int(
     os.environ.get("LEADERBOARD_BEER_RED_DAY", "25")
 )
