@@ -96,11 +96,11 @@ const CONTEXT_KEYS = new Set([
 export type DiagnosticAppState = 'active' | 'inactive' | 'background' | 'unknown';
 export type NativeErrorCategory =
   | 'secure_store_read' | 'secure_store_access' | 'geofence_task'
-  | 'notification_schedule' | 'permission' | 'unknown';
+  | 'notification_schedule' | 'notification_cancel' | 'permission' | 'unknown';
 const DIAGNOSTIC_APP_STATES = new Set(['active', 'inactive', 'background', 'unknown']);
 const NATIVE_ERROR_CATEGORIES = new Set([
   'secure_store_read', 'secure_store_access', 'geofence_task',
-  'notification_schedule', 'permission', 'unknown',
+  'notification_schedule', 'notification_cancel', 'permission', 'unknown',
 ]);
 
 const EMAIL_RE = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}/g;
