@@ -1,4 +1,4 @@
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { registerPushDevice, disablePushDevice } from '@/data/pushDeviceClient';
 
@@ -77,6 +77,10 @@ jest.mock('@/stores/settingsStore', () => ({
 }));
 
 // eslint-disable-next-line import/first
+import * as Location from 'expo-location';
+// eslint-disable-next-line import/first
+import * as Notifications from 'expo-notifications';
+// eslint-disable-next-line import/first
 import {
   initializePubReminderNotifications,
   enablePubReminderNotifications,
@@ -98,6 +102,11 @@ function location(lat: number, lng: number) {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  (AppState as { currentState: string }).currentState = 'active';
+  (Platform as { OS: string }).OS = 'ios';
+  (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+  (Location.requestBackgroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+  (Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
   await AsyncStorage.clear();
   mockGetNotificationPermissions.mockResolvedValue({ status: 'granted' });
   mockScheduleNotification.mockResolvedValue('scheduled-id');
@@ -400,4 +409,94 @@ it('keeps local reminders independent of the Parta server push choice', async ()
   } finally {
     jest.useRealTimers();
   }
+});
+
+
+describe('first enable permission dialogs', () => {
+  let onAppState: (state: string) => void;
+  const removeListener = jest.fn();
+  const appState = (state: string) => {
+    (AppState as { currentState: string }).currentState = state;
+    onAppState(state);
+  };
+  const flushPromises = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+  beforeEach(() => {
+    (AppState.addEventListener as jest.Mock).mockImplementation((_event, callback) => {
+      onAppState = callback;
+      return { remove: removeListener };
+    });
+    mockGetLastKnownPositionAsync.mockResolvedValue(location(50.081, 14.419));
+  });
+
+  it('waits for the notification dialog to close before asking for Always location', async () => {
+    (Notifications.requestPermissionsAsync as jest.Mock).mockImplementationOnce(async () => {
+      (AppState as { currentState: string }).currentState = 'inactive';
+      return { status: 'granted' };
+    });
+    const enabled = enablePubReminderNotifications();
+    await flushPromises();
+    expect(Location.requestBackgroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(mockStartGeofencingAsync).not.toHaveBeenCalled();
+    appState('background');
+    await flushPromises();
+    expect(Location.requestBackgroundPermissionsAsync).not.toHaveBeenCalled();
+    appState('active');
+    await expect(enabled).resolves.toEqual({ ok: true });
+    expect(removeListener).toHaveBeenCalledTimes(1);
+    expect(mockStartGeofencingAsync).toHaveBeenCalledTimes(1);
+    expect(await AsyncStorage.getItem('na-pivo-pub-reminders-enabled')).toBe('true');
+  });
+
+  it('rechecks an early denied background result only after the user answers its dialog', async () => {
+    (Location.requestBackgroundPermissionsAsync as jest.Mock).mockImplementationOnce(async () => {
+      (AppState as { currentState: string }).currentState = 'inactive';
+      return { status: 'denied' };
+    });
+    const enabled = enablePubReminderNotifications();
+    await flushPromises();
+    expect(mockGetBackgroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(mockStartGeofencingAsync).not.toHaveBeenCalled();
+    appState('active');
+    await expect(enabled).resolves.toEqual({ ok: true });
+    expect(mockGetBackgroundPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(mockStartGeofencingAsync).toHaveBeenCalledTimes(1);
+    expect(removeListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a real background denial disabled and does not ask again', async () => {
+    (Location.requestBackgroundPermissionsAsync as jest.Mock).mockImplementationOnce(async () => {
+      (AppState as { currentState: string }).currentState = 'inactive';
+      return { status: 'denied' };
+    });
+    mockGetBackgroundPermissionsAsync.mockResolvedValue({ status: 'denied' });
+    const enabled = enablePubReminderNotifications();
+    await flushPromises();
+    appState('active');
+    await expect(enabled).resolves.toEqual({ ok: false, reason: 'background-location-denied' });
+    expect(Location.requestBackgroundPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(mockStartGeofencingAsync).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem('na-pivo-pub-reminders-enabled')).toBe('false');
+  });
+
+  it.each(['foreground', 'notifications'])('stops after a real %s denial', async (permission) => {
+    const request = permission === 'foreground'
+      ? Location.requestForegroundPermissionsAsync : Notifications.requestPermissionsAsync;
+    (request as jest.Mock).mockResolvedValueOnce({ status: 'denied' });
+    await expect(enablePubReminderNotifications()).resolves.toEqual({
+      ok: false, reason: permission === 'foreground' ? 'foreground-location-denied' : 'notifications-denied',
+    });
+    expect(Location.requestBackgroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(mockStartGeofencingAsync).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem('na-pivo-pub-reminders-enabled')).toBe('false');
+  });
+
+  it('leaves Android permission sequencing unchanged', async () => {
+    (Platform as { OS: string }).OS = 'android';
+    (AppState as { currentState: string }).currentState = 'background';
+    (Location.requestBackgroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'denied' });
+    await expect(enablePubReminderNotifications()).resolves.toEqual({ ok: false, reason: 'background-location-denied' });
+    expect(AppState.addEventListener).not.toHaveBeenCalled();
+    expect(mockGetBackgroundPermissionsAsync).not.toHaveBeenCalled();
+  });
 });

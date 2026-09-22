@@ -467,6 +467,20 @@ export async function initializePubReminderNotifications(): Promise<void> {
   }
 }
 
+/** iOS can resolve a permission request while its system dialog is still closing.
+ * Starting the Always request then can make Expo return denied before its dialog
+ * has been answered. Keep each prompt in its own active app lifecycle. */
+async function waitForPermissionDialogDismissal(): Promise<void> {
+  if (Platform.OS !== 'ios' || AppState.currentState === 'active') return;
+  await new Promise<void>((resolve) => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      subscription.remove();
+      resolve();
+    });
+  });
+}
+
 export async function enablePubReminderNotifications(): Promise<PubReminderEnableResult> {
   await setAndroidChannel();
   if (!Notifications || !TaskManager) {
@@ -475,6 +489,7 @@ export async function enablePubReminderNotifications(): Promise<PubReminderEnabl
   }
 
   const foreground = await Location.requestForegroundPermissionsAsync();
+  await waitForPermissionDialogDismissal();
   if (foreground.status !== 'granted') {
     await setReminderEnabled(false);
     return { ok: false, reason: 'foreground-location-denied' };
@@ -487,12 +502,17 @@ export async function enablePubReminderNotifications(): Promise<PubReminderEnabl
       allowSound: false,
     },
   });
+  await waitForPermissionDialogDismissal();
   if (notificationPermission.status !== 'granted') {
     await setReminderEnabled(false);
     return { ok: false, reason: 'notifications-denied' };
   }
 
-  const background = await Location.requestBackgroundPermissionsAsync();
+  let background = await Location.requestBackgroundPermissionsAsync();
+  await waitForPermissionDialogDismissal();
+  if (Platform.OS === 'ios' && background.status !== 'granted') {
+    background = await Location.getBackgroundPermissionsAsync();
+  }
   if (background.status !== 'granted') {
     await setReminderEnabled(false);
     return { ok: false, reason: 'background-location-denied' };
