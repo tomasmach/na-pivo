@@ -5,6 +5,7 @@ import type * as ExpoNotifications from 'expo-notifications';
 import type * as ExpoTaskManager from 'expo-task-manager';
 
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
+import { trackApiFailure, type NativeErrorCategory } from '@/data/telemetryClient';
 import { t } from '@/i18n';
 import {
   clearPendingPubReminder,
@@ -47,6 +48,22 @@ const STARTUP_GEOFENCE_REFRESH_DELAY_MS = 8_000;
 const PUB_REMINDER_DWELL_SECONDS = PUB_REMINDER_DWELL_MS / 1000;
 
 let startupGeofenceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+const NATIVE_FAILURE_RETRY_MS = 60_000;
+const NATIVE_FAILURE_REPORT_MS = 15 * 60_000;
+let notificationRetryAfter = 0;
+const nativeFailureReports = new Map<string, number>();
+
+function reportReminderFailure(category: NativeErrorCategory): void {
+  const state = AppState.currentState;
+  const appState = state === 'active' || state === 'background' || state === 'inactive' ? state : 'unknown';
+  const key = `${appState}:${category}`;
+  const lastReport = nativeFailureReports.get(key);
+  if (lastReport !== undefined && Date.now() - lastReport < NATIVE_FAILURE_REPORT_MS) return;
+  nativeFailureReports.set(key, Date.now());
+  trackApiFailure('pub_reminder_task', {
+    reason: 'native_operation_failed', app_state: appState, error_category: category, retryable: true,
+  });
+}
 
 export type PubReminderEnableResult =
   | { ok: true }
@@ -326,6 +343,11 @@ async function refreshGeofences(coords?: { lat: number; lng: number }): Promise<
 
 async function handleGeofenceEnter(pubId: string): Promise<void> {
   if (!(await isReminderEnabled())) return;
+  if (Date.now() < notificationRetryAfter || !Notifications) return;
+  if ((await Notifications.getPermissionsAsync()).status !== 'granted') {
+    await cancelPendingPubReminder();
+    return;
+  }
 
   const now = new Date();
   if (!isPubReminderEveningWindow(now)) return;
@@ -357,11 +379,22 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
       await writePubReminderState(decision.nextState);
       return;
     }
-    const notificationId = await schedulePubReminder(
-      decision.notificationPub.name,
-      decision.notificationPub.id,
-      pending.fireAtMs,
-    );
+    let notificationId: string | null;
+    try {
+      notificationId = await schedulePubReminder(
+        decision.notificationPub.name,
+        decision.notificationPub.id,
+        pending.fireAtMs,
+      );
+    } catch {
+      // The previous notification was already cancelled. Do not leave it in
+      // storage as if it will fire, or commit the new one that failed to schedule.
+      await writePubReminderState(clearPendingPubReminder(state, now.getTime()));
+      notificationRetryAfter = Date.now() + NATIVE_FAILURE_RETRY_MS;
+      reportReminderFailure('notification_schedule');
+      return;
+    }
+    notificationRetryAfter = 0;
     await writePubReminderState({
       ...decision.nextState,
       pendingReminder: notificationId ? { ...pending, notificationId } : undefined,
@@ -378,14 +411,23 @@ async function handleGeofenceExit(pubId: string): Promise<void> {
 }
 
 TaskManager?.defineTask(PUB_REMINDER_GEOFENCE_TASK, async ({ data, error }) => {
-  if (error) return;
-  const { eventType, region } = (data as GeofenceTaskData | undefined) ?? {};
-  const pubId = region?.identifier;
-  if (!pubId) return;
-  if (eventType === Location.GeofencingEventType.Enter) {
-    await handleGeofenceEnter(pubId);
-  } else if (eventType === Location.GeofencingEventType.Exit) {
-    await handleGeofenceExit(pubId);
+  if (error) {
+    reportReminderFailure('geofence_task');
+    return;
+  }
+  try {
+    const { eventType, region } = (data as GeofenceTaskData | undefined) ?? {};
+    const pubId = region?.identifier;
+    if (typeof pubId !== 'string' || !pubId) return;
+    if (eventType === Location.GeofencingEventType.Enter) {
+      await handleGeofenceEnter(pubId);
+    } else if (eventType === Location.GeofencingEventType.Exit) {
+      await handleGeofenceExit(pubId);
+    }
+  } catch {
+    // Expo otherwise logs the raw native exception from a rejected task. Keep
+    // the failure visible without forwarding location or notification contents.
+    reportReminderFailure('unknown');
   }
 });
 
@@ -406,6 +448,8 @@ export async function initializePubReminderNotifications(): Promise<void> {
     Location.getBackgroundPermissionsAsync(),
   ]);
   if (notificationPermission.status !== 'granted' || backgroundPermission.status !== 'granted') {
+    await cancelPendingPubReminder();
+    await stopGeofencing();
     return;
   }
 
@@ -466,9 +510,17 @@ export async function refreshPubReminderGeofences(): Promise<void> {
     await cancelPendingPubReminder();
   }
   try {
-    const background = await Location.getBackgroundPermissionsAsync();
-    if (background.status !== 'granted') return;
+    const [background, notification] = await Promise.all([
+      Location.getBackgroundPermissionsAsync(),
+      Notifications?.getPermissionsAsync(),
+    ]);
+    if (background.status !== 'granted' || notification?.status !== 'granted') {
+      await cancelPendingPubReminder();
+      await stopGeofencing();
+      return;
+    }
   } catch {
+    reportReminderFailure('permission');
     return;
   }
   await refreshGeofences();
