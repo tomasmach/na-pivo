@@ -4666,6 +4666,13 @@ class PubCommunityXpLedger(models.Model):
         return f"PubCommunityXpLedger({self.kind} [{self.cache_key}])"
 
 
+class PubGeocodingMiss(models.Model):
+    """Short-lived, shared negative cache; never stores an address or GPS."""
+
+    address_hash = models.CharField(max_length=64, primary_key=True)
+    expires_at = models.DateTimeField(db_index=True)
+
+
 class ExternalApiDailyUsage(models.Model):
     """Shared per-day request counter for metered external API operations."""
 
