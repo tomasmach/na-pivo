@@ -2280,7 +2280,9 @@ class DrinkItemSerializer(serializers.Serializer):
     Beer sizes outside the public community-menu presets remain private.
     """
 
-    name = serializers.CharField(max_length=80, trim_whitespace=True)
+    # The counter also submits names selected from the 160-character product
+    # catalogue; private history must accept what that catalogue returns.
+    name = serializers.CharField(max_length=160, trim_whitespace=True)
     price_czk = serializers.IntegerField(required=False, min_value=1, max_value=1000)
     volume_ml = serializers.IntegerField(
         required=False,
@@ -2294,7 +2296,7 @@ class DrinkItemSerializer(serializers.Serializer):
     )
 
 
-class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
+class DrinkRequestSerializer(PubInputSerializer):
     """Request body for POST /v1/drinks.
 
     Pub identity remains mandatory when ``place_context`` is ``pub``. Price is
@@ -2399,7 +2401,7 @@ class DrinkUpdateSerializer(serializers.Serializer):
     drink to another pub or timestamp.
     """
 
-    beer_name = serializers.CharField(max_length=80, trim_whitespace=True, required=False)
+    beer_name = serializers.CharField(max_length=160, trim_whitespace=True, required=False)
     drink_type = serializers.ChoiceField(choices=DrinkLog.DrinkType.choices, required=False)
     price_czk = serializers.IntegerField(min_value=1, max_value=1000, required=False, allow_null=True)
     volume_ml = serializers.IntegerField(min_value=10, max_value=3000, required=False, allow_null=True)
@@ -2415,11 +2417,6 @@ class DrinkUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError("At least one drink field must be provided.")
         drink_type = attrs.get("drink_type")
         volume_ml = attrs.get("volume_ml")
-        if drink_type == DrinkLog.DrinkType.BEER and volume_ml is not None:
-            if volume_ml not in ALLOWED_BEER_VOLUMES_ML:
-                raise serializers.ValidationError(
-                    {"volume_ml": f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."}
-                )
         if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
             raise serializers.ValidationError({"volume_ml": "A shot volume must not exceed 200 ml."})
         return attrs
