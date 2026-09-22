@@ -398,7 +398,7 @@ def compute_my_stats(
     )
     drinks = (
         account.drinks.filter(id__in=Subquery(recent_drink_ids))
-        .only(
+        .values_list(
             "cache_key",
             "name",
             "price_czk",
@@ -425,30 +425,30 @@ def compute_my_stats(
     total_spent = 0
     total_beers = 0
     first_drink_at: datetime | None = None
-    for drink in drinks.iterator(chunk_size=1_000):
-        at = _as_utc(drink.drank_at)
+    for cache_key, name, price_czk, drink_type, drank_at in drinks.iterator(chunk_size=1_000):
+        at = _as_utc(drank_at)
         if first_drink_at is None:
             first_drink_at = at
-        total_spent += drink.price_czk or 0
-        is_beer = drink.drink_type == DrinkLog.DrinkType.BEER
+        total_spent += price_czk or 0
+        is_beer = drink_type == DrinkLog.DrinkType.BEER
         if is_beer:
             total_beers += 1
 
-        day = drinking_day(drink.drank_at, stats_tz)
-        ekey = (drink.cache_key, day)
+        day = drinking_day(drank_at, stats_tz)
+        ekey = (cache_key, day)
         evening_times.setdefault(ekey, []).append(at)
         night_times.setdefault(day, []).append(at)
         if is_beer:
             evening_beer_times.setdefault(ekey, []).append(at)
             night_beer_times.setdefault(day, []).append(at)
-        if drink.cache_key is not None:
-            night_pub_keys.setdefault(day, set()).add(drink.cache_key)
+        if cache_key is not None:
+            night_pub_keys.setdefault(day, set()).add(cache_key)
             # Dict order follows the first stop; assigning the latest observed
             # name updates spelling without changing the crawl order.
-            night_pub_names.setdefault(day, {})[drink.cache_key] = drink.name
+            night_pub_names.setdefault(day, {})[cache_key] = name
         # Non-pub evenings participate in day-based records, but never pretend
         # to have a pub name.
-        evening_name[ekey] = drink.name if drink.cache_key is not None else None
+        evening_name[ekey] = name if cache_key is not None else None
 
         for period_map, period in ((months, day.strftime("%Y-%m")), (years, str(day.year))):
             summary = period_map.setdefault(
@@ -457,23 +457,23 @@ def compute_my_stats(
             )
             summary["beers"] += int(is_beer)
             summary["evening_keys"].add(ekey)
-            summary["spent_czk"] += drink.price_czk or 0
+            summary["spent_czk"] += price_czk or 0
 
-        if drink.cache_key is None:
+        if cache_key is None:
             continue
-        pub = pubs.get(drink.cache_key)
+        pub = pubs.get(cache_key)
         if pub is None:
-            pubs[drink.cache_key] = {
-                "cache_key": drink.cache_key,
-                "name": drink.name,
+            pubs[cache_key] = {
+                "cache_key": cache_key,
+                "name": name,
                 "beers": int(is_beer),
-                "spent_czk": drink.price_czk or 0,
+                "spent_czk": price_czk or 0,
                 "last_drank_at": at,
             }
         else:
             pub["beers"] += int(is_beer)
-            pub["spent_czk"] += drink.price_czk or 0
-            pub["name"] = drink.name  # ascending → newest name / timestamp win
+            pub["spent_czk"] += price_czk or 0
+            pub["name"] = name  # ascending → newest name / timestamp win
             pub["last_drank_at"] = at
 
     if first_drink_at is None:
