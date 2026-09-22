@@ -857,6 +857,8 @@ export const cs = {
     allSynced: 'Všechno je venku.',
     listLabel: 'Tvoje hospody',
     statusPending: 'Čeká',
+    statusPendingEdit: 'Úprava čeká',
+    statusPendingCreate: 'Čeká na odeslání',
     statusSynced: 'V kompasu',
     statusFailed: 'Neprošla',
     pendingCount: (count: number) =>
@@ -888,7 +890,7 @@ export const cs = {
     edit: 'Opravit hospodu',
     openPubActions: (name: string) => `Otevřít akce hospody ${name}`,
     addFirstCta: 'Přidej první hospodu',
-    addCta: 'Přidej hospodu',
+    addCta: 'Přidat hospodu',
     addCtaHint: 'Chybí v kompasu? Doplním ji do mapy i ostatním.',
     editFromDetailHint: 'Jen u vlastní přidané hospody',
     openMyPubs: 'Moje přidané hospody',

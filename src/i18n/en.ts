@@ -766,6 +766,8 @@ export const en: Strings = {
     allSynced: 'Everything is sent.',
     listLabel: 'Your pubs',
     statusPending: 'Waiting',
+    statusPendingEdit: 'Edit pending',
+    statusPendingCreate: 'Waiting to send',
     statusSynced: 'In the compass',
     statusFailed: "Didn't go through",
     pendingCount: (count: number) =>
