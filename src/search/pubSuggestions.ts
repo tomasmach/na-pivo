@@ -1,5 +1,5 @@
 import { haversineMeters } from '@/compass/distance';
-import { geohash8 } from '@/data/geohash';
+import { decodeGeohash8, geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import type { WireVisit } from '@/data/visitsClient';
 import { buildMapPubPoints, buildVisitedPubs } from '@/map/mapModel';
@@ -29,8 +29,46 @@ const timestamp = (value: string) => Date.parse(value) || 0;
 export function buildPubSuggestions({
   pubs, localSessions, serverVisits, position, reportedIds, reportedKeys,
 }: SuggestionInput): { nearby: PubSuggestion[]; frequent: PubSuggestion[] } {
+  // Old persisted evenings may lack an external id. A synced copy can supply
+  // it, but must never overwrite an identity already present on the row.
+  const pubIdByClientId = new Map<string, string>();
+  for (const session of localSessions) {
+    if (session.pubExternalId) pubIdByClientId.set(session.clientId, session.pubExternalId);
+  }
+  for (const visit of serverVisits) {
+    if (visit.external_id) pubIdByClientId.set(visit.client_id, visit.external_id);
+  }
+  const validVisits = serverVisits.filter((visit) => validPosition(visit)
+    && (!visit.cache_key || validKey(visit.cache_key)))
+    .map((visit) => ({ ...visit, external_id: visit.external_id || pubIdByClientId.get(visit.client_id) || null }));
+  const validSessions = localSessions.filter((session) => validKey(session.pubKey)
+    && session.drinks.length > 0
+    && (session.placeContext === undefined || session.placeContext === 'pub'))
+    .map((session) => ({ ...session, pubExternalId: session.pubExternalId || pubIdByClientId.get(session.clientId) }));
+  const knownPlaces = [
+    ...validVisits.map((visit) => ({ id: visit.external_id, key: visit.cache_key || geohash8(visit.lat, visit.lng),
+      lat: visit.lat, lng: visit.lng, updatedAt: timestamp(visit.updated_at) })),
+    ...validSessions.map((session) => ({ id: session.pubExternalId, key: session.pubKey,
+      ...decodeGeohash8(session.pubKey), updatedAt: Math.max(timestamp(session.startedAt),
+        ...session.drinks.map((drink) => timestamp(drink.at))) })),
+  ];
+  const identities = new Map<string, { lat: number; lng: number; key: string; updatedAt: number }>();
+  for (const place of knownPlaces) {
+    if (place.id && (!identities.has(place.id) || place.updatedAt > identities.get(place.id)!.updatedAt)) {
+      identities.set(place.id, place);
+    }
+  }
+  // The current catalog position wins over historical visit coordinates.
+  for (const pub of pubs) {
+    if (validPosition(pub)) identities.set(pub.id, { ...pub, key: geohash8(pub.lat, pub.lng), updatedAt: 0 });
+  }
   const blockedIds = new Set(reportedIds);
   const blockedKeys = new Set(reportedKeys);
+  for (const place of knownPlaces) {
+    if (place.id && (blockedKeys.has(place.key) || blockedKeys.has(geohash8(place.lat, place.lng)))) {
+      blockedIds.add(place.id);
+    }
+  }
   // Keep exclusions before removing catalog rows, so visit fallbacks cannot
   // resurrect a reported place under another provider id.
   for (const pub of pubs) {
@@ -45,19 +83,25 @@ export function buildPubSuggestions({
     (id != null && blockedIds.has(id)) || blockedKeys.has(key);
   const catalog = pubs.filter((pub) => validPosition(pub)
     && !blocked(pub.id, geohash8(pub.lat, pub.lng)));
+  const normalizedVisits = validVisits.map((visit) => {
+    const target = visit.external_id ? identities.get(visit.external_id) : undefined;
+    return target ? { ...visit, cache_key: target.key, lat: target.lat, lng: target.lng } : visit;
+  });
+  const normalizedSessions = validSessions.map((session) => {
+    const target = session.pubExternalId ? identities.get(session.pubExternalId) : undefined;
+    return target ? { ...session, pubKey: target.key } : session;
+  });
+  // Check both original and canonical locations before merging client IDs.
   const excludedClientIds = new Set([
-    ...serverVisits.filter((visit) => blocked(visit.external_id, visit.cache_key)
+    ...[...serverVisits, ...normalizedVisits].filter((visit) => blocked(visit.external_id, visit.cache_key)
       || (validPosition(visit) && blockedKeys.has(geohash8(visit.lat, visit.lng))))
       .map((visit) => visit.client_id),
-    ...localSessions.filter((session) => blocked(session.pubExternalId, session.pubKey))
+    ...[...localSessions, ...normalizedSessions].filter((session) => blocked(session.pubExternalId, session.pubKey))
       .map((session) => session.clientId),
   ]);
   const visits = buildVisitedPubs(
-    serverVisits.filter((visit) => !excludedClientIds.has(visit.client_id)
-      && validPosition(visit) && (!visit.cache_key || validKey(visit.cache_key))),
-    localSessions.filter((session) => !excludedClientIds.has(session.clientId)
-      && validKey(session.pubKey) && session.drinks.length > 0
-      && (session.placeContext === undefined || session.placeContext === 'pub')),
+    normalizedVisits.filter((visit) => !excludedClientIds.has(visit.client_id)),
+    normalizedSessions.filter((session) => !excludedClientIds.has(session.clientId)),
     catalog,
   );
   const { points } = buildMapPubPoints(catalog, visits, false, false);

@@ -112,3 +112,49 @@ it('does not revive a location-reported catalog id through older visit coordinat
   expect(build({ pubs: [place], reportedKeys: [geohash8(place.lat, place.lng)], serverVisits: [visit(old)] }))
     .toEqual({ nearby: [], frequent: [] });
 });
+
+it('merges server visits before and after a pin move by known pub id', () => {
+  const current = pub('user:stable-place-id');
+  const old = pub(current.id, 0.0004);
+  const result = build({ pubs: [current], serverVisits: [visit(old, 'before'), visit(current, 'after')] });
+  expect([...result.nearby, ...result.frequent]).toEqual([{ pub: current, distanceMeters: 0, visitCount: 2 }]);
+});
+
+it('merges offline sessions into the moved catalog pub without double-counting a synced session', () => {
+  const current = pub('user:stable-place-id');
+  const old = pub(current.id, 0.0004);
+  const result = build({ position: null, pubs: [current], serverVisits: [visit(current, 'synced')],
+    localSessions: [session(old, 'synced', 2), session(old, 'offline')] });
+  expect(result.frequent).toEqual([{ pub: current, visitCount: 2 }]);
+});
+
+it.each(['old', 'current'] as const)('preserves reports at the %s pin when normalizing identity', (reportedPin) => {
+  const current = pub('user:stable-place-id');
+  const old = pub(current.id, 0.0004);
+  const reported = reportedPin === 'old' ? old : current;
+  expect(build({ pubs: [current], serverVisits: [visit(old, 'before'), visit(current, 'after')],
+    localSessions: [session(old, 'offline')], reportedKeys: [geohash8(reported.lat, reported.lng)] }))
+    .toEqual({ nearby: [], frequent: [] });
+});
+
+it('merges a missing catalog pub at its newest known position', () => {
+  const current = pub('user:stable-place-id');
+  const old = pub(current.id, 0.0004);
+  const result = build({ position: null, serverVisits: [visit(old, 'before'), visit(current, 'after', '2026-09-21T18:00:00Z')] });
+  expect(result.frequent).toHaveLength(1);
+  expect(result.frequent[0].visitCount).toBe(2);
+  expect(result.frequent[0].pub.lat).toBe(current.lat);
+});
+
+it.each(['local', 'server'] as const)('inherits a missing %s pub id from the same synced evening before normalizing its pin', (missingId) => {
+  const current = pub('user:stable-place-id');
+  const old = pub(current.id, 0.0004);
+  const remote = visit(missingId === 'server' ? old : current, 'same-evening', '2026-09-21T18:00:00Z');
+  const local = session(old, 'same-evening');
+  if (missingId === 'local') {
+    local.pubExternalId = undefined;
+    local.drinks[0].at = '2026-09-22T18:00:00Z';
+  } else remote.external_id = null;
+  const result = build({ pubs: [current], serverVisits: [remote], localSessions: [local] });
+  expect([...result.nearby, ...result.frequent]).toEqual([{ pub: current, distanceMeters: 0, visitCount: 1 }]);
+});
