@@ -1696,3 +1696,62 @@ def test_distinct_legacy_item_not_deduped(client):
     assert resp.status_code == status.HTTP_200_OK
     names = [item["name"] for item in resp.json()["items"]]
     assert names == ["Jiná hospoda", _ITEM["name"]]
+
+
+def _matching_fixture_items() -> list[dict]:
+    """Pubs that exercise every branch of the provider/signal identity rule."""
+    cell_a = {"lat": 50.08, "lon": 14.42}
+    cell_b = {"lat": 50.09, "lon": 14.43}
+    return [
+        {"id": "stable-1", "name": "Hospoda U Testu", "position": cell_a},
+        {"id": "stable-2", "name": "Hospoda U Testu", "position": cell_a},
+        {"id": "stable-1", "name": "Úplně jiný název", "position": cell_b},
+        {"name": "Hospoda U Testu", "position": cell_a},
+        {"name": "Hospoda u testu", "position": cell_a},
+        {"name": "Hospoda U Testu", "position": cell_b},
+        {"name": "Pivnice Na Rohu", "position": cell_a},
+        {"id": "mapy:50.08000,14.42000", "name": "Pivnice Na Rohu", "position": cell_a},
+        {"id": "  ", "name": "Hospoda U Testu", "position": cell_a},
+        {"name": "Hospoda U Testu"},
+        {"name": "Hospoda U Testu", "position": {"lat": "50.08", "lon": 14.42}},
+        {"id": "stable-3", "name": "", "position": cell_a},
+        {"position": cell_a},
+    ]
+
+
+def test_indexed_pub_matching_equals_the_pairwise_identity_rule():
+    """The indexed signal merges must keep the pairwise rule's exact results."""
+    from pubs.api.views import (
+        _filter_items_by_amenity_signals,
+        _items_refer_to_same_pub,
+        _with_missing_pub_signal_items,
+        _with_pub_signal_items,
+    )
+
+    items = _matching_fixture_items()
+    for split in range(len(items) + 1):
+        signals, provider = items[:split], items[split:]
+        for left, right in ((signals, provider), (provider, signals), (items, items)):
+            assert _filter_items_by_amenity_signals(left, right) == [
+                item for item in left if any(_items_refer_to_same_pub(item, s) for s in right)
+            ]
+            assert _with_pub_signal_items(right, left) == (
+                [
+                    *right,
+                    *[
+                        item
+                        for item in left
+                        if not any(_items_refer_to_same_pub(item, s) for s in right)
+                    ],
+                ]
+                if right
+                else left
+            )
+            assert _with_missing_pub_signal_items(left, right) == [
+                *right,
+                *[
+                    signal
+                    for signal in left
+                    if not any(_items_refer_to_same_pub(signal, item) for item in right)
+                ],
+            ]
