@@ -24,6 +24,24 @@ beforeEach(() => {
 });
 
 describe('useSettingsStore', () => {
+  it('persists and restores the explicit map fallback without changing old settings', async () => {
+    const { useSettingsStore } = require('../settingsStore');
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState().mapWithoutLocation).toBe(false);
+    useSettingsStore.getState().setMapWithoutLocation(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const raw = await currentAsyncStorage().getItem('na-pivo-settings');
+    useSettingsStore.setState({ mapWithoutLocation: false });
+    await currentAsyncStorage().setItem('na-pivo-settings', raw);
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState().mapWithoutLocation).toBe(true);
+    useSettingsStore.getState().setMapWithoutLocation(false);
+    await currentAsyncStorage().setItem('na-pivo-settings', JSON.stringify({ state: { hideClosedPubs: false }, version: 1 }));
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState().mapWithoutLocation).toBe(false);
+    expect(useSettingsStore.getState().hideClosedPubs).toBe(false);
+  });
+
   it('has correct default state', () => {
     const { useSettingsStore } = require('../settingsStore');
     const state = useSettingsStore.getState();

@@ -212,9 +212,11 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
         <Text style={styles.permTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
           {t.permissions.title}
         </Text>
-        <Text style={styles.permBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.permissions.body}
-        </Text>
+        {Platform.OS !== 'ios' && (
+          <Text style={styles.permBody} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.permissions.body}
+          </Text>
+        )}
 
         <GlowButton
           label={t.permissions.cta}
@@ -588,11 +590,15 @@ export default function CompassScreen() {
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const mapWithoutLocation = useSettingsStore((state) => state.mapWithoutLocation === true);
+  const setMapWithoutLocation = useSettingsStore((state) => state.setMapWithoutLocation);
+  const mapVisible = mapOpen || mapWithoutLocation;
   useFocusEffect(useCallback(() => {
     if (view !== 'compass') return;
     setMapOpen(false);
+    setMapWithoutLocation(false);
     router.setParams({ view: undefined });
-  }, [router, view]));
+  }, [router, setMapWithoutLocation, view]));
   const [moreOpen, setMoreOpen] = useState(false);
   const [mapPubOpen, setMapPubOpen] = useState(false);
   // The dial is sized from the card, never the other way round (§5.3).
@@ -628,7 +634,7 @@ export default function CompassScreen() {
     pubFilters.amenityKeys,
     pubFilters.priceMinCzk,
     pubFilters.priceMaxCzk,
-    !mapOpen,
+    !mapVisible,
     pubFilters.includeOtherPlaces === true,
   );
   const activeFilterCount = activePubSearchFilterCount(pubFilters);
@@ -727,12 +733,14 @@ export default function CompassScreen() {
   );
   const handleShowMap = useCallback(() => {
     trackUiInteraction('compass_map_open');
+    if (permissionState !== 'granted') setMapWithoutLocation(true);
     setMapOpen(true);
-  }, []);
+  }, [permissionState, setMapWithoutLocation]);
   const handleShowCompass = useCallback(() => {
     trackUiInteraction('compass_return');
     setMapOpen(false);
-  }, []);
+    setMapWithoutLocation(false);
+  }, [setMapWithoutLocation]);
 
   const handleAddPub = useCallback(() => {
     trackUiInteraction('compass_add_pub_open');
@@ -925,7 +933,7 @@ export default function CompassScreen() {
     targetPub,
   ]);
 
-  if (mapOpen) {
+  if (mapVisible) {
     return (
       <BeerMapScreen
         initialPub={pub}

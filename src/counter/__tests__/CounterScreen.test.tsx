@@ -962,6 +962,7 @@ describe('CounterScreen permission gate', () => {
     const renderer = render();
 
     expect(surfaceText(renderer)).toContain(copy.counter.permTitle);
+    expect(surfaceText(renderer)).not.toContain(copy.counter.permBody);
 
     act(() => surface(renderer, copy.counter.outsideNoLocationCta).props.onPress());
 

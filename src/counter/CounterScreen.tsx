@@ -21,7 +21,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Linking } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Linking, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
@@ -248,9 +248,11 @@ function PermissionGate({
       <Text style={styles.gateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
         {t.counter.permTitle}
       </Text>
-      <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.counter.permBody}
-      </Text>
+      {Platform.OS !== 'ios' && (
+        <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
+          {t.counter.permBody}
+        </Text>
+      )}
       <View style={styles.gateButton}>
         <GlowButton
           label={t.counter.permCta}
