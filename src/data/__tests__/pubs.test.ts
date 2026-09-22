@@ -622,6 +622,54 @@ describe("renameLocalPub", () => {
 });
 
 describe("findNearestPub", () => {
+  it("preserves the server preference for a confirmed pub in the same 250m band", () => {
+    _init([
+      { id: "pub", name: "Potvrzená hospoda", lat: 50.0008, lng: 14.0, venueKind: "pub" },
+      { id: "maybe", name: "Nejasná restaurace", lat: 50.0004, lng: 14.0, venueKind: "maybe" },
+    ]);
+
+    expect(findNearestPub({ lat: 50.0, lng: 14.0 })?.id).toBe("pub");
+    // The counter's physical location lookup still follows exact distance.
+    expect(findNearbyPubs({ lat: 50.0, lng: 14.0, limit: 1 })[0].pub.id).toBe("maybe");
+  });
+
+  it("does not let relevance override an earlier distance band", () => {
+    _init([
+      { id: "pub", name: "Vzdálenější hospoda", lat: 50.003, lng: 14.0, venueKind: "pub" },
+      { id: "maybe", name: "Blízká restaurace", lat: 50.0004, lng: 14.0, venueKind: "maybe" },
+    ]);
+
+    expect(findNearestPub({ lat: 50.0, lng: 14.0 })?.id).toBe("maybe");
+  });
+
+  it("considers the whole nearest occupied band instead of a fixed candidate count", () => {
+    _init([
+      ...Array.from({ length: 80 }, (_, i) => ({
+        id: `maybe-${i}`, name: `Restaurace ${i}`, lat: 50.0028 + i * 0.00001,
+        lng: 14.0, venueKind: "maybe" as const,
+      })),
+      { id: "pub", name: "Potvrzená hospoda", lat: 50.004, lng: 14.0, venueKind: "pub" },
+    ]);
+
+    expect(findNearestPub({ lat: 50.0, lng: 14.0 })?.id).toBe("pub");
+    expect(findNearestPub({ lat: 50.0, lng: 14.0, maxKm: 0.35 })?.id).toBe("maybe-0");
+  });
+
+  it.each(["id", "cell", "content"])("applies the %s exclusion before ranking candidates", (filter) => {
+    const confirmed: Pub = {
+      id: "pub", name: "Potvrzená hospoda", lat: 50.0008, lng: 14.0, venueKind: "pub",
+    };
+    _init([
+      confirmed,
+      { id: "maybe", name: "Nejasná restaurace", lat: 50.0004, lng: 14.0, venueKind: "maybe" },
+    ]);
+    const exclusion = filter === "id" ? { excludeIds: [confirmed.id] }
+      : filter === "cell" ? { excludeCacheKeys: [geohash8(confirmed.lat, confirmed.lng)] }
+        : { filterPub: (pub: Pub) => pub.id !== confirmed.id };
+
+    expect(findNearestPub({ lat: 50.0, lng: 14.0, ...exclusion })?.id).toBe("maybe");
+  });
+
   it("keeps reviewed other places opt-in and behind a primary pub", () => {
     _init([
       { id: "stand", name: "Stánek s výčepem", lat: 50.0, lng: 14.0, discoveryKind: "seasonal_stand" },

@@ -52,11 +52,32 @@ def test_check_pub_coverage_reports_supported_and_community_only_samples(capsys)
         "mode": "directory_and_community",
         "name": "Brno",
         "passed": True,
+        "status": "passed",
         "radius_km": 5.0,
     }
     assert body["samples"][1]["mode"] == "community_only"
     assert body["samples"][1]["community_pubs"] == 1
-    assert body["samples"][1]["passed"] is True
+    assert body["samples"][1]["passed"] is None
+    assert body["samples"][1]["status"] == "unsupported"
+
+
+@pytest.mark.django_db
+def test_empty_unsupported_sample_is_not_reported_as_passing(capsys):
+    call_command(
+        "check_pub_coverage",
+        "--sample",
+        "Tenerife,28.2916,-16.6291,10,0",
+        "--strict",
+    )
+
+    body = json.loads(capsys.readouterr().out)
+    sample = body["samples"][0]
+    assert sample["directory_pubs"] == 0
+    assert sample["community_pubs"] == 0
+    assert sample["mode"] == "community_only"
+    assert sample["passed"] is None
+    assert sample["status"] == "unsupported"
+    assert body["failed_supported_samples"] == []
 
 
 @pytest.mark.django_db
@@ -72,3 +93,4 @@ def test_check_pub_coverage_strict_fails_below_minimum(capsys):
     body = json.loads(capsys.readouterr().out.splitlines()[0])
     assert body["failed_supported_samples"] == ["Brno"]
     assert body["samples"][0]["passed"] is False
+    assert body["samples"][0]["status"] == "failed"
