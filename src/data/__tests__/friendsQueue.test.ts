@@ -116,7 +116,7 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
 
     shareFriendPubActivity.mockResolvedValue(retry());
     await enqueueFriendOp({ op: 'activity', clientId: 'live1', payload: { pub: PUB, recipientIds: ['friend-a'] } });
-    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1', ['friend-a']);
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1', ['friend-a'], expect.any(String));
   });
 
   it('routes a request op through sendFriendRequest', async () => {
