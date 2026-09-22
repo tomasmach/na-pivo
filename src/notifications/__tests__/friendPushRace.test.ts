@@ -36,7 +36,7 @@ beforeEach(async () => {
     const method = init?.method ?? '';
     requests.push(method);
     serverEnabled = method === 'PUT';
-    return { ok: true, status: 200 } as Response;
+    return { ok: true, status: 200, json: async () => ({}) } as Response;
   }) as typeof fetch;
 });
 afterEach(() => { global.fetch = originalFetch; });
@@ -48,7 +48,7 @@ it.each(['silent', 'explicit'] as const)('keeps the server and persisted choice 
     await new Promise<void>((resolve) => { finishPut = resolve; });
     serverEnabled = true;
     requests.push('PUT applied');
-    return { ok: true, status: 200 } as Response;
+    return { ok: true, status: 200, json: async () => ({}) } as Response;
   });
   const registration = mode === 'silent' ? ensureFriendPushRegisteredIfGranted() : registerFriendPush();
   await settle();
@@ -100,7 +100,7 @@ it('lets a later explicit enable win over an in-flight disable', async () => {
     await new Promise<void>((resolve) => { finishDelete = resolve; });
     serverEnabled = false;
     requests.push('DELETE applied');
-    return { ok: true, status: 200 } as Response;
+    return { ok: true, status: 200, json: async () => ({}) } as Response;
   });
   useSettingsStore.setState({ friendPushEnabled: false, friendPushOptedOut: true });
   const disabling = disableFriendPush();
@@ -134,6 +134,28 @@ it('waits for the saved opt-out before doing any startup registration', async ()
     expect(serverEnabled).toBe(false);
     expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
   } finally {
-    storageRead.mockRestore();
+    storageRead.mockImplementation(getItem);
   }
+});
+
+it('persists increasing server revisions even when the device clock moves backwards', async () => {
+  await AsyncStorage.setItem('na-pivo-push-device-revision', '9000');
+  const clock = jest.spyOn(Date, 'now').mockReturnValue(8000);
+  try {
+    await registerFriendPush();
+    await disableFriendPush();
+    const bodies = jest.mocked(global.fetch).mock.calls.map(([, init]) => JSON.parse(init!.body as string));
+    expect(bodies.map((body) => body.client_revision)).toEqual([9001, 9002]);
+    expect(await AsyncStorage.getItem('na-pivo-push-device-revision')).toBe('9002');
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+it('does not report success when a stale registration was ignored by the server', async () => {
+  useSettingsStore.setState({ friendPushEnabled: false, friendPushOptedOut: true });
+  jest.mocked(global.fetch).mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ applied: false }) } as Response);
+  await expect(registerFriendPush()).resolves.toEqual({ ok: false, reason: 'unavailable' });
+  expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
+  expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
 });

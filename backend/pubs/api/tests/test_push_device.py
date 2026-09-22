@@ -219,3 +219,126 @@ def test_push_device_delete_requires_valid_token(client):
     )
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_newer_disable_prevents_late_first_registration(client):
+    token = _register(client)
+    disabled = client.delete(
+        "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": 2},
+        format="json", **_auth(token),
+    )
+    late = client.put(
+        "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": 1},
+        format="json", **_auth(token),
+    )
+    assert disabled.status_code == late.status_code == 200
+    assert late.json() == {"applied": False}
+    device = PushDevice.objects.get()
+    assert device.enabled is False
+    assert device.client_revision == 2
+    newer = client.put(
+        "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": 3},
+        format="json", **_auth(token),
+    )
+    assert newer.status_code == 200
+    assert newer.json()["enabled"] is True
+
+
+@pytest.mark.django_db
+def test_delayed_disable_cannot_overwrite_a_newer_enable(client):
+    token = _register(client)
+    client.put(
+        "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": 3},
+        format="json", **_auth(token),
+    )
+    response = client.delete(
+        "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": 2},
+        format="json", **_auth(token),
+    )
+    assert response.json() == {"disabled": 0}
+    assert PushDevice.objects.get().enabled is True
+
+
+@pytest.mark.django_db
+def test_old_account_cannot_disable_reassigned_device_with_higher_revision(client):
+    first = _register(client)
+    second = _register(client, _OTHER_DEVICE_ID)
+    client.put(
+        "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": 1},
+        format="json", **_auth(first),
+    )
+    client.put(
+        "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": 2},
+        format="json", **_auth(second),
+    )
+    response = client.delete(
+        "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": 3},
+        format="json", **_auth(first),
+    )
+    assert response.json() == {"disabled": 0}
+    device = PushDevice.objects.get()
+    assert device.enabled is True
+    assert device.client_revision == 2
+    assert device.account.device_id == _OTHER_DEVICE_ID
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("ordered", [True, False])
+def test_registration_authenticated_before_logout_cannot_reenable_device(client, ordered):
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    from pubs.api.views import PushDeviceView
+
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    payload = {"push_token": _PUSH_TOKEN}
+    if ordered:
+        payload["client_revision"] = 1
+    # The request passed authentication, then its worker was delayed until logout.
+    pending = APIRequestFactory().put("/v1/push-device", payload, format="json")
+    force_authenticate(pending, user=account, token=token)
+    logout = client.post("/v1/auth/logout", {}, format="json", **_auth(token))
+    assert logout.status_code == 200
+    response = PushDeviceView.as_view()(pending)
+    assert response.status_code == 401
+    assert not PushDevice.objects.filter(enabled=True).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_simultaneous_first_put_and_disable_keep_the_latest_revision(client, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from django.db import connection
+
+    from pubs.api.views import PushDeviceView
+
+    if connection.vendor != "postgresql":
+        pytest.skip("Row-lock/unique-insert race needs PostgreSQL")
+    token = _register(client)
+    rendezvous = Barrier(2)
+    locked_device = PushDeviceView._locked_device
+
+    def wait_then_lock(request, push_token):
+        rendezvous.wait(timeout=10)
+        return locked_device(request, push_token)
+
+    monkeypatch.setattr(PushDeviceView, "_locked_device", staticmethod(wait_then_lock))
+
+    def send(method, revision):
+        try:
+            return getattr(APIClient(), method)(
+                "/v1/push-device", {"push_token": _PUSH_TOKEN, "client_revision": revision},
+                format="json", **_auth(token),
+            ).status_code
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        put = pool.submit(send, "put", 1)
+        delete = pool.submit(send, "delete", 2)
+        assert put.result(timeout=15) == delete.result(timeout=15) == 200
+    device = PushDevice.objects.get()
+    assert device.enabled is False
+    assert device.client_revision == 2

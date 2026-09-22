@@ -824,6 +824,9 @@ class ClientEventRequestSerializer(serializers.Serializer):
 class PushDeviceRequestSerializer(serializers.Serializer):
     """Request body for PUT /v1/push-device."""
 
+    client_revision = serializers.IntegerField(
+        required=False, min_value=1, max_value=9007199254740991
+    )
     push_token = serializers.CharField(max_length=512, trim_whitespace=True)
     platform = serializers.ChoiceField(
         choices=PushDevice.Platform.choices,
@@ -870,6 +873,9 @@ class PushDeviceRequestSerializer(serializers.Serializer):
 class PushDeviceDeleteSerializer(serializers.Serializer):
     """Request body for DELETE /v1/push-device."""
 
+    client_revision = serializers.IntegerField(
+        required=False, min_value=1, max_value=9007199254740991
+    )
     push_token = serializers.CharField(max_length=512, trim_whitespace=True)
 
     def validate_push_token(self, value: str) -> str:
