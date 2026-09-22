@@ -198,6 +198,7 @@ function mockLiveMap(avatarUrl: string | null) {
     requestPermission: jest.fn(async () => undefined),
     loadRegion: jest.fn(),
     refresh: jest.fn(),
+    refreshPosition: jest.fn(async () => null),
   });
 
   return activity;
@@ -227,6 +228,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       requestPermission: jest.fn(async () => undefined),
       loadRegion: jest.fn(),
       refresh: jest.fn(),
+      refreshPosition: jest.fn(async () => null),
     });
     mockedFetchPubHours.mockResolvedValue(new Map([
       ['pub-1', {
@@ -325,6 +327,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       requestPermission: jest.fn(async () => undefined),
       loadRegion: jest.fn(),
       refresh: jest.fn(),
+      refreshPosition: jest.fn(async () => null),
     });
     const screen = render(
       <BeerMapScreen
@@ -352,6 +355,33 @@ describe('BeerMapScreen opening-hours loading', () => {
         latitudeDelta: 0.055,
         longitudeDelta: 0.055,
       },
+      0,
+    );
+  });
+
+  it('follows a fresh one-shot fix when the user moved since the last one', async () => {
+    const refreshPosition = jest.fn(async () => ({ lat: 50.0901, lng: 14.4301, accuracyMeters: 10 }));
+    mockedUseBeerMap.mockReturnValue({
+      ...mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS),
+      position: { lat: 50.0821, lng: 14.4213, accuracyMeters: 12 },
+      refreshPosition,
+    });
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText(t.a11y.mapLocate));
+      await Promise.resolve();
+    });
+
+    expect(refreshPosition).toHaveBeenCalledTimes(1);
+    expect(mockAnimateToRegion).toHaveBeenLastCalledWith(
+      expect.objectContaining({ latitude: 50.0901, longitude: 14.4301 }),
       0,
     );
   });
@@ -599,7 +629,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     mockedUseBeerMap.mockReturnValue({
       pubs: [], nearbyPrices: [], visitedCities: [], livePubs: [], position: null,
       permissionState: 'granted', loadingPubs: false, stale: false,
-      requestPermission: jest.fn(), loadRegion: jest.fn(), refresh: jest.fn(),
+      requestPermission: jest.fn(), loadRegion: jest.fn(), refresh: jest.fn(), refreshPosition: jest.fn(async () => null),
       visitedPubs: [{ cacheKey: geohash8(found.lat, found.lng), name: 'Bar Dawu',
         lat: found.lat, lng: found.lng, city: 'Praha', visitCount: 1, lastVisitedAt: '2026-09-18T12:00:00Z' }],
     });

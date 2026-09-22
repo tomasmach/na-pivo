@@ -177,6 +177,7 @@ interface RawAccount {
   /** Defensive alias some providers/responses use instead of avatar_url. */
   picture?: string | null;
   has_avatar?: boolean;
+  hide_pub_names?: boolean;
   settings?: {
     mode?: string;
     max_distance_km?: number | null;
@@ -243,8 +244,9 @@ interface RawAccount {
 const CANCELLED: AuthResult = { ok: false, code: 'cancelled', detail: '' };
 
 function parseSettings(data: RawAccount): AccountSettings | undefined {
-  const raw = data.settings;
-  if (!raw) return undefined;
+  const raw = data.settings ?? {};
+  // Older account responses expose this preference at the top level.
+  if (!data.settings && typeof data.hide_pub_names !== 'boolean') return undefined;
   return {
     mode: raw.mode === 'nearest' || raw.mode === 'surprise' ? raw.mode : undefined,
     maxDistanceKm:
@@ -259,7 +261,8 @@ function parseSettings(data: RawAccount): AccountSettings | undefined {
     soundEnabled: typeof raw.sound_enabled === 'boolean' ? raw.sound_enabled : undefined,
     hideClosedPubs:
       typeof raw.hide_closed_pubs === 'boolean' ? raw.hide_closed_pubs : undefined,
-    hidePubNames: typeof raw.hide_pub_names === 'boolean' ? raw.hide_pub_names : undefined,
+    hidePubNames:
+      typeof raw.hide_pub_names === 'boolean' ? raw.hide_pub_names : data.hide_pub_names,
     marketingEmailsEnabled:
       typeof raw.marketing_emails_enabled === 'boolean'
         ? raw.marketing_emails_enabled

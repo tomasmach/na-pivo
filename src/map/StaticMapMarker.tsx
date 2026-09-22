@@ -1,6 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Marker, type MapMarkerProps } from 'react-native-maps';
+
+const SnapshotRefreshContext = createContext<() => void>(() => undefined);
+
+/**
+ * Re-take the marker bitmap after content that does not change layout, such
+ * as a remote avatar finishing its load or failing over to an initial.
+ */
+export function useMarkerSnapshotRefresh(): () => void {
+  return useContext(SnapshotRefreshContext);
+}
 
 /** Remount with a new key whenever the marker's visual content changes. */
 export function StaticMapMarker({ children, ...props }: Omit<MapMarkerProps, 'tracksViewChanges'>) {
@@ -23,7 +33,9 @@ export function StaticMapMarker({ children, ...props }: Omit<MapMarkerProps, 'tr
     <Marker {...props} tracksViewChanges={tracking}>
       {/* Fabric must measure the whole marker, not a flattened inner circle. */}
       <View collapsable={false} onLayout={settleSnapshot}>
-        {children}
+        <SnapshotRefreshContext.Provider value={settleSnapshot}>
+          {children}
+        </SnapshotRefreshContext.Provider>
       </View>
     </Marker>
   );

@@ -6,7 +6,7 @@
  * named home instead of competing on this surface.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +26,6 @@ import { enqueueBeerPhoto } from '@/data/beerPhotosQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import CodeSheet from '@/friends/CodeSheet';
 import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import { t, intlLocale, beerCountLabel } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
@@ -56,6 +55,9 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { formatPrice } from '@/utils/currency';
+
+// The QR code pulls in ~450 KB of SVG/CSS parsing; load it when the sheet opens.
+const CodeSheet = lazy(() => import('@/friends/CodeSheet'));
 
 function lifetimeBeerCount(sessions: TallySession[]): number {
   return sessions.reduce((total, session) => total + sessionCount(session), 0);
@@ -138,23 +140,32 @@ export default function ProfileScreen() {
     };
   }, [reconciledStats, sessions]);
   const now = useMemo(() => new Date(), []);
-  const firstBeerAt = useMemo(
+  // The server snapshot holds the whole drink history; scan it only when the
+  // snapshot changes, not on every local drink.
+  const remoteFirstBeerAt = useMemo(
     () =>
-      earliestTimestamp([
-        isSignedIn ? profile?.stats?.firstBeerAt : null,
-        ...(diarySnapshot?.drinks ?? [])
+      earliestTimestamp(
+        (diarySnapshot?.drinks ?? [])
           .filter(
             (drink) =>
               !drink.is_suspect && normalizeDrinkType(drink.drink_type) === 'beer',
           )
           .map((drink) => drink.drank_at),
+      ),
+    [diarySnapshot],
+  );
+  const firstBeerAt = useMemo(
+    () =>
+      earliestTimestamp([
+        isSignedIn ? profile?.stats?.firstBeerAt : null,
+        remoteFirstBeerAt,
         ...sessions.flatMap((session) =>
           session.drinks
             .filter((drink) => normalizeDrinkType(drink.drinkType) === 'beer')
             .map((drink) => drink.at),
         ),
       ]),
-    [diarySnapshot, isSignedIn, profile?.stats?.firstBeerAt, sessions],
+    [isSignedIn, profile?.stats?.firstBeerAt, remoteFirstBeerAt, sessions],
   );
   const averageBeersPerDay = formatDailyBeerAverage(
     dailyBeerAverage(beers, firstBeerAt, now),
@@ -485,7 +496,11 @@ export default function ProfileScreen() {
         onClose={() => setMoreVisible(false)}
       />
 
-      {codeVisible ? <CodeSheet onClose={() => setCodeVisible(false)} /> : null}
+      {codeVisible ? (
+        <Suspense fallback={null}>
+          <CodeSheet onClose={() => setCodeVisible(false)} />
+        </Suspense>
+      ) : null}
     </View>
   );
 }

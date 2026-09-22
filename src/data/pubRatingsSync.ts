@@ -151,14 +151,14 @@ export function installPubRatingsSync(): () => void {
  *   - hydrateRatings does the actual last-write-wins; we run it under
  *     suppressSync so the merged-in entries are not echoed back as upserts.
  */
-export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
+export async function restorePubRatings(signal?: AbortSignal): Promise<boolean> {
   // Apply queued tombstones before reading, when possible. If any delete remains
   // pending, skip that server row below so a cleared rating does not reappear.
   await flushPubRatingsQueue();
   const pendingDeleteKeys = await getQueuedRatingDeletePubKeys();
   const serverRatings = await fetchRatings(signal);
   if (serverRatings === null) {
-    return;
+    return false;
   }
 
   // Map wire → local PubRating, keyed by pubKey (= cache_key).
@@ -196,4 +196,5 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
   }
 
   await flushPubRatingsQueue();
+  return true;
 }

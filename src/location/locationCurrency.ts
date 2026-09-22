@@ -8,12 +8,17 @@ import { useSettingsStore } from '@/stores/settingsStore';
 const RATE_CACHE_KEY = 'na-pivo-currency-rates-v1';
 const RATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COUNTRY_CELL_DEGREES = 0.25;
+/** A failed lookup (offline geocoder, rate API down, country without a known
+ * currency) must not retry on every GPS fix; the same cell waits this long. */
+const FAILED_CELL_RETRY_MS = 10 * 60 * 1000;
 
 type CachedRate = { currency: string; czkPerUnit: number; fetchedAt: number };
 
 let lastCell: string | null = null;
 let lastDetectedCurrency: string | null = null;
 let detectionInFlight = false;
+let failedCell: string | null = null;
+let failedAtMs = 0;
 
 function coordinateCell(lat: number, lng: number): string {
   return `${Math.floor(lat / COUNTRY_CELL_DEGREES)}:${Math.floor(lng / COUNTRY_CELL_DEGREES)}`;
@@ -90,10 +95,12 @@ export async function updateCurrencyFromCoordinates(lat: number, lng: number): P
   const cell = coordinateCell(lat, lng);
   if (
     (cell === lastCell && useSettingsStore.getState().priceCurrency === lastDetectedCurrency) ||
-    detectionInFlight
+    detectionInFlight ||
+    (cell === failedCell && Date.now() - failedAtMs < FAILED_CELL_RETRY_MS)
   ) return;
 
   detectionInFlight = true;
+  let detected = false;
   try {
     const addresses = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
     const currency = currencyForCountryCode(addresses[0]?.isoCountryCode);
@@ -104,12 +111,27 @@ export async function updateCurrencyFromCoordinates(lat: number, lng: number): P
     if (!rate) return;
     lastCell = cell;
     lastDetectedCurrency = currency;
+    detected = true;
     useSettingsStore.getState().setPriceCurrency(currency, rate);
   } catch {
     // Keep the last working currency when reverse geocoding is unavailable.
   } finally {
     detectionInFlight = false;
+    if (detected) {
+      failedCell = null;
+    } else {
+      failedCell = cell;
+      failedAtMs = Date.now();
+    }
   }
+}
+
+export function resetLocationCurrencyForTests(): void {
+  lastCell = null;
+  lastDetectedCurrency = null;
+  detectionInFlight = false;
+  failedCell = null;
+  failedAtMs = 0;
 }
 
 /** Refreshes from an OS-cached fix only; never prompts or starts a GPS reading. */

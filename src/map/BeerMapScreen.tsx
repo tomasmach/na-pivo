@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import MapView, {
-  Marker,
   PROVIDER_GOOGLE,
   type MapPressEvent,
   type Region,
@@ -23,6 +22,7 @@ import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
+import { haversineMeters } from '@/compass/distance';
 import {
   BeerIcon,
   ChevronRightIcon,
@@ -74,7 +74,7 @@ import {
   type VisitedCitySummary,
 } from './mapModel';
 import { useBeerMap } from './useBeerMap';
-import { StaticMapMarker } from './StaticMapMarker';
+import { StaticMapMarker, useMarkerSnapshotRefresh } from './StaticMapMarker';
 
 const DEFAULT_REGION: Region = {
   latitude: 49.8175,
@@ -93,6 +93,8 @@ type MapSelection =
   | { kind: 'city'; key: string; accountId: string | null };
 
 let rememberedRegion: Region | null = null;
+/** A fresher locate fix closer than this does not re-animate the map. */
+const LOCATE_FOLLOW_UP_M = 25;
 let rememberedLayer: Layer = 'all';
 let rememberedSelection: MapSelection | null = null;
 const layerListeners = new Set<() => void>();
@@ -457,6 +459,7 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
   const avatarUrl = account?.avatarUrl;
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const showAvatar = Boolean(avatarUrl && avatarUrl !== failedAvatarUrl);
+  const refreshSnapshot = useMarkerSnapshotRefresh();
 
   return (
     <View style={styles.liveMarkerHit}>
@@ -465,7 +468,11 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
           <Image
             source={{ uri: avatarUrl }}
             style={styles.liveAvatar}
-            onError={() => setFailedAvatarUrl(avatarUrl)}
+            onLoad={refreshSnapshot}
+            onError={() => {
+              setFailedAvatarUrl(avatarUrl);
+              refreshSnapshot();
+            }}
             accessibilityIgnoresInvertColors
             testID="live-map-avatar"
           />
@@ -517,9 +524,12 @@ export default function BeerMapScreen({
     loadingPubs,
     stale,
     requestPermission,
+    refreshPosition,
     loadRegion,
     refresh,
-  } = useBeerMap(filters);
+    // The layer store re-renders this screen on every change, so reading the
+    // remembered value here stays current for the live-friends poll gate.
+  } = useBeerMap(filters, rememberedLayer === 'friends');
   const activeFilterCount = activePubSearchFilterCount(filters);
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
@@ -900,25 +910,34 @@ export default function BeerMapScreen({
 
   const locate = useCallback(() => {
     trackUiInteraction('map_locate');
-    if (!position) {
-      void requestPermission();
-      return;
-    }
-    const next = {
-      latitude: position.lat,
-      longitude: position.lng,
-      // Recentring must not silently change the zoom. Cluster membership follows
-      // the zoom level, so forcing a new delta here made unchanged pub markers
-      // regroup whenever the user tapped the location button.
-      latitudeDelta: region.latitudeDelta,
-      longitudeDelta: region.longitudeDelta,
+    const recenter = (target: { lat: number; lng: number }) => {
+      const next = {
+        latitude: target.lat,
+        longitude: target.lng,
+        // Recentring must not silently change the zoom. Cluster membership follows
+        // the zoom level, so forcing a new delta here made unchanged pub markers
+        // regroup whenever the user tapped the location button.
+        latitudeDelta: region.latitudeDelta,
+        longitudeDelta: region.longitudeDelta,
+      };
+      mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 360);
+      handleRegionChange(next);
     };
-    mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 360);
-    handleRegionChange(next);
+    // The map keeps no live GPS watcher: jump to the last fix right away, then
+    // follow a fresh one-shot fix when the user has moved since.
+    if (position) recenter(position);
+    void refreshPosition().then((fresh) => {
+      if (!fresh) {
+        if (!position) void requestPermission();
+        return;
+      }
+      if (!position || haversineMeters(position, fresh) > LOCATE_FOLLOW_UP_M) recenter(fresh);
+    });
   }, [
     handleRegionChange,
     position,
     reduceMotion,
+    refreshPosition,
     region.latitudeDelta,
     region.longitudeDelta,
     requestPermission,
@@ -1216,8 +1235,8 @@ export default function BeerMapScreen({
       >
         {showCities && layer !== 'friends'
           ? visitedCities.map((city) => (
-              <Marker
-                key={`city:${city.key}`}
+              <StaticMapMarker
+                key={`city:${city.key}:${city.name}:${city.visitCount}`}
                 stopPropagation
                 coordinate={{ latitude: city.lat, longitude: city.lng }}
                 onPress={() => {
@@ -1246,7 +1265,7 @@ export default function BeerMapScreen({
                     {city.visitCount}
                   </Text>
                 </View>
-              </Marker>
+              </StaticMapMarker>
             ))
           : null}
 
@@ -1286,8 +1305,8 @@ export default function BeerMapScreen({
         })}
 
         {layer !== 'visited' ? livePubs.map((live) => (
-          <Marker
-            key={`live:${live.cacheKey}:${selectedLive?.cacheKey === live.cacheKey ? 'selected' : 'idle'}`}
+          <StaticMapMarker
+            key={`live:${live.cacheKey}:${selectedLive?.cacheKey === live.cacheKey ? 'selected' : 'idle'}:${live.activities.length}:${friendName(live)}:${live.activities[0]?.account?.avatarUrl ?? ''}`}
             stopPropagation
             coordinate={{ latitude: live.lat, longitude: live.lng }}
             onPress={() => selectLive(live)}
@@ -1295,7 +1314,7 @@ export default function BeerMapScreen({
             accessibilityLabel={t.a11y.mapLive(friendName(live), live.name)}
           >
             <LiveMarker live={live} selected={selectedLive?.cacheKey === live.cacheKey} />
-          </Marker>
+          </StaticMapMarker>
         )) : null}
       </MapView>
 
