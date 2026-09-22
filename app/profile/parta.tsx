@@ -211,6 +211,7 @@ export default function ManagePartaScreen() {
         // above the keyboard — pad it here (iOS pads via keyboard insets below).
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" enabled={Platform.OS === 'android'}>
         <KeyboardAwareScrollView
+          keyboardAvoidedExternally={Platform.OS === 'android'}
           contentContainerStyle={[
             styles.content,
             { paddingBottom: Math.max(insets.bottom + 18, 32) },
