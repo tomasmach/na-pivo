@@ -1277,6 +1277,7 @@ function Tacek({
           text: t.counter.doneConfirm,
           onPress: () => {
             archiveCurrent('manual');
+            setBroadcastCell(null);
             setDopitoNudgedFor(clientId);
             setLastCounted(null);
             setCheckInBeerName(pub && isThisSession ? latestBeer?.beerName ?? null : null);
@@ -1305,14 +1306,16 @@ function Tacek({
     trackUiInteraction('counter_share_friends', 'share');
     setSharingWithFriends(true);
     const shareClientId = isThisSession && current?.clientId ? current.clientId : generateUuidV4();
-    const result = await shareFriendPubActivity(pub, '', shareClientId);
+    const startedAt = new Date().toISOString();
+    const result = await shareFriendPubActivity(pub, '', shareClientId, undefined, startedAt);
     setSharingWithFriends(false);
+    if (useTallyStore.getState().history.some((session) => session.clientId === shareClientId && session.closedAt)) return;
     if (result.ok) {
       setBroadcastCell(cell);
       showToast(t.friends.shareSuccess);
       if (hapticEnabled) fireLightImpactHaptic();
     } else if (isRetriableFriendError(result)) {
-      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '' } });
+      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '', startedAt } });
       setBroadcastCell(cell);
       showToast(t.friends.composeQueued);
     } else {
@@ -1556,7 +1559,7 @@ function Tacek({
       <CounterMoreSheet
         visible={moreVisible}
         onClose={closeMore}
-        onDone={count > 0 ? () => runAfterSheetClose(handleDone) : undefined}
+        onDone={sessionDrinks.length > 0 ? () => runAfterSheetClose(handleDone) : undefined}
         onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
         onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
         broadcasted={broadcasted}

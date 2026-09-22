@@ -53,7 +53,13 @@ from pubs.api.views import (
     _send_friend_push,
 )
 from pubs.i18n import LocalizedText
-from pubs.models import FriendNotification, FriendPubActivity, FriendPubActivityRecipient
+from pubs.models import (
+    Account,
+    FriendNotification,
+    FriendPubActivity,
+    FriendPubActivityRecipient,
+    PubVisit,
+)
 
 logger = logging.getLogger("pubs.friends")
 
@@ -188,8 +194,14 @@ class Command(BaseCommand):
     def _convert_one(plan_id: int, now) -> FriendPubActivity | None:
         """Flip one plan row to live inside a transaction; return it or None."""
         with transaction.atomic():
+            account_id = FriendPubActivity.objects.filter(pk=plan_id).values_list("account_id", flat=True).first()
+            if account_id is None:
+                return None
+            # Use the same lock order as visit closure and live broadcasts.
+            if Account.objects.select_for_update().filter(pk=account_id).first() is None:
+                return None
             plan = (
-                FriendPubActivity.objects.select_for_update()
+                FriendPubActivity.objects.select_for_update(of=("self",))
                 .select_related("account")
                 .filter(
                     pk=plan_id,
@@ -201,8 +213,18 @@ class Command(BaseCommand):
             if plan is None:
                 return None
 
+            started_at = plan.scheduled_for or plan.started_at
+            if PubVisit.objects.filter(
+                account_id=account_id, cache_key=plan.cache_key, closed_at__gte=started_at
+            ).exists():
+                plan.active = False
+                plan.save(update_fields=["active", "updated_at"])
+                return None
+
             plan.kind = FriendPubActivity.Kind.LIVE
-            plan.started_at = now
+            # A delayed conversion still belongs to the original planned time,
+            # so a departure queued after that time can retire it.
+            plan.started_at = started_at
             # Guarantee a fresh live window even if the plan sat past its own TTL
             # during downtime; never shorten an already-longer expiry.
             plan.expires_at = max(plan.expires_at, now + FRIEND_ACTIVITY_DEFAULT_TTL)

@@ -22,9 +22,12 @@ from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.enrichment import geohash8
+from pubs.management.commands.advance_friend_plans import Command as AdvanceFriendPlans
 from pubs.models import (
     Account,
     CanonicalPub,
+    FriendPubActivity,
+    Friendship,
     OfflineMutationTombstone,
     PartyEvening,
     PartyEveningMember,
@@ -90,6 +93,235 @@ def _active_party(account: Account, code: str = "PRAH24") -> PartyEvening:
     )
     PartyEveningMember.objects.create(evening=evening, account=account)
     return evening
+
+
+@pytest.mark.django_db
+def test_finishing_visit_clears_own_and_friend_presence_and_live_activity(client):
+    token = _register(client)
+    friend_token = _register(client, _OTHER_DEVICE_ID)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    friend = Account.objects.get(device_id=_OTHER_DEVICE_ID)
+    Friendship.objects.create(requester=account, recipient=friend, status=Friendship.Status.ACCEPTED)
+    now = timezone.now()
+    payload = _payload(
+        started_at=(now - timedelta(hours=1)).isoformat(),
+        ended_at=(now - timedelta(minutes=10)).isoformat(),
+        updated_at=(now - timedelta(minutes=10)).isoformat(),
+    )
+    assert client.post('/v1/pub-visits', data=payload, format='json', **_auth(token)).status_code == 201
+    activity = FriendPubActivity.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        started_at=now - timedelta(minutes=30),
+        expires_at=now + timedelta(hours=2),
+    )
+    assert client.get('/v1/friends/live', **_auth(token)).json()['my_presence'] is not None
+    assert client.get('/v1/friends/live', **_auth(friend_token)).json()['presence']
+
+    payload.update(closed_at=now.isoformat(), updated_at=now.isoformat())
+    response = client.post('/v1/pub-visits', data=payload, format='json', **_auth(token))
+
+    assert response.status_code == 200
+    activity.refresh_from_db()
+    assert activity.active is False
+    own = client.get('/v1/friends/live', **_auth(token)).json()
+    friends = client.get('/v1/friends/live', **_auth(friend_token)).json()
+    assert own['my_presence'] is None
+    assert own['my_active_activity'] is None
+    assert friends['presence'] == []
+    assert friends['active_friends'] == []
+
+
+@pytest.mark.django_db
+def test_late_visit_closure_preserves_later_return_other_pub_and_future_plan(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    now = timezone.now()
+    closed_at = now - timedelta(minutes=30)
+    common = {
+        "account": account,
+        "cache_key": _KEY,
+        "name": _NAME,
+        "lat": _LAT,
+        "lng": _LNG,
+        "started_at": now - timedelta(hours=1),
+        "expires_at": now + timedelta(hours=2),
+    }
+    ended = FriendPubActivity.objects.create(client_id=uuid.uuid4(), **common)
+    retained = [
+        FriendPubActivity.objects.create(
+            client_id=uuid.uuid4(), **{**common, "started_at": now - timedelta(minutes=10)}
+        ),
+        FriendPubActivity.objects.create(
+            client_id=uuid.uuid4(), **{**common, "cache_key": "u2fkbfvz"}
+        ),
+        FriendPubActivity.objects.create(
+            client_id=uuid.uuid4(), kind=FriendPubActivity.Kind.PLAN, scheduled_for=now, **common
+        ),
+    ]
+    payload = _payload(
+        started_at=(now - timedelta(hours=2)).isoformat(),
+        ended_at=(now - timedelta(hours=1)).isoformat(),
+        closed_at=closed_at.isoformat(),
+        updated_at=closed_at.isoformat(),
+    )
+    for expected_status in (201, 200):
+        response = client.post("/v1/pub-visits", data=payload, format="json", **_auth(token))
+        assert response.status_code == expected_status
+        ended.refresh_from_db()
+        assert ended.active is False
+        for activity in retained:
+            activity.refresh_from_db()
+            assert activity.active is True
+
+
+@pytest.mark.django_db
+def test_stale_closure_cannot_end_activity_after_the_visit_was_resumed(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    now = timezone.now()
+    payload = _payload(
+        started_at=(now - timedelta(hours=2)).isoformat(),
+        updated_at=now.isoformat(),
+    )
+    assert client.post("/v1/pub-visits", data=payload, format="json", **_auth(token)).status_code == 201
+    activity = FriendPubActivity.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        started_at=now - timedelta(hours=1),
+        expires_at=now + timedelta(hours=2),
+    )
+    stale_revision = (now - timedelta(minutes=30)).isoformat()
+    response = client.post(
+        "/v1/pub-visits",
+        data={**payload, "closed_at": stale_revision, "updated_at": stale_revision},
+        format="json",
+        **_auth(token),
+    )
+    assert response.status_code == 200
+    assert response.json()["applied"] is False
+    activity.refresh_from_db()
+    assert activity.active is True
+    assert PubVisit.objects.get().closed_at is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("same_client_id", [False, True])
+def test_broadcast_arriving_after_departure_cannot_resurrect_finished_evening(client, same_client_id):
+    token = _register(client)
+    now = timezone.now()
+    closed_at = now - timedelta(minutes=10)
+    visit = _payload(
+        started_at=(now - timedelta(hours=1)).isoformat(),
+        closed_at=closed_at.isoformat(),
+        updated_at=closed_at.isoformat(),
+    )
+    assert client.post("/v1/pub-visits", data=visit, format="json", **_auth(token)).status_code == 201
+    activity = {
+        "client_id": _CLIENT_ID if same_client_id else str(uuid.uuid4()),
+        "name": _NAME,
+        "lat": _LAT,
+        "lng": _LNG,
+        # Legacy retries reset the time; a matching visit id still closes them.
+        "started_at": (now if same_client_id else now - timedelta(minutes=30)).isoformat(),
+        "expires_at": (now + timedelta(hours=2)).isoformat(),
+    }
+    response = client.post("/v1/friends/pub-activity", data=activity, format="json", **_auth(token))
+    assert response.status_code == 200
+    assert response.json() == {"ended": True, "applied": False}
+    assert not FriendPubActivity.objects.exists()
+
+    # A genuinely new broadcast on returning to the same pub remains available.
+    activity.update(client_id=str(uuid.uuid4()), started_at=now.isoformat())
+    response = client.post("/v1/friends/pub-activity", data=activity, format="json", **_auth(token))
+    assert response.status_code == 201
+    assert FriendPubActivity.objects.get().active is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("worker_first", [False, True])
+def test_finishing_due_plan_stays_closed_regardless_of_worker_order(client, worker_first):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    now = timezone.now()
+    scheduled_for = now - timedelta(minutes=10)
+    closed_at = now - timedelta(minutes=5)
+    plan = FriendPubActivity.objects.create(
+        account=account, client_id=uuid.uuid4(), cache_key=_KEY, name=_NAME,
+        lat=_LAT, lng=_LNG, kind=FriendPubActivity.Kind.PLAN,
+        scheduled_for=scheduled_for, started_at=scheduled_for,
+        expires_at=now + timedelta(hours=2),
+    )
+    if worker_first:
+        assert AdvanceFriendPlans._convert_one(plan.pk, now) is not None
+    response = client.post("/v1/pub-visits", data=_payload(
+        started_at=(now - timedelta(hours=1)).isoformat(),
+        closed_at=closed_at.isoformat(), updated_at=closed_at.isoformat(),
+    ), format="json", **_auth(token))
+    assert response.status_code == 201
+    if not worker_first:
+        assert AdvanceFriendPlans._convert_one(plan.pk, now) is None
+    plan.refresh_from_db()
+    assert plan.active is False
+    live = client.get("/v1/friends/live", **_auth(token)).json()
+    assert live["my_presence"] is None
+    assert live["my_active_activity"] is None
+
+
+@pytest.mark.django_db
+def test_offline_due_plan_does_not_get_a_new_start_time_after_departure(client):
+    token = _register(client)
+    now = timezone.now()
+    closed_at = now - timedelta(minutes=5)
+    response = client.post("/v1/pub-visits", data=_payload(
+        started_at=(now - timedelta(hours=1)).isoformat(),
+        closed_at=closed_at.isoformat(), updated_at=closed_at.isoformat(),
+    ), format="json", **_auth(token))
+    assert response.status_code == 201
+    payload = {
+        "client_id": str(uuid.uuid4()), "name": _NAME, "lat": _LAT, "lng": _LNG,
+        "scheduled_for": (now - timedelta(minutes=10)).isoformat(),
+    }
+    response = client.post("/v1/friends/pub-activity", data=payload, format="json", **_auth(token))
+    assert response.status_code == 200
+    assert response.json()["applied"] is False
+    assert not FriendPubActivity.objects.exists()
+    payload.update(client_id=str(uuid.uuid4()), scheduled_for=(now + timedelta(minutes=20)).isoformat())
+    response = client.post("/v1/friends/pub-activity", data=payload, format="json", **_auth(token))
+    assert response.status_code == 201
+    assert FriendPubActivity.objects.get().kind == FriendPubActivity.Kind.PLAN
+
+
+@pytest.mark.django_db
+def test_broadcast_rejected_during_resume_can_retry_after_reopening(client):
+    token = _register(client)
+    now = timezone.now()
+    visit = _payload(
+        started_at=(now - timedelta(hours=4)).isoformat(),
+        closed_at=(now - timedelta(minutes=5)).isoformat(),
+        updated_at=(now - timedelta(minutes=5)).isoformat(),
+    )
+    assert client.post("/v1/pub-visits", data=visit, format="json", **_auth(token)).status_code == 201
+    broadcast = {
+        "client_id": _CLIENT_ID, "name": _NAME, "lat": _LAT, "lng": _LNG,
+        "started_at": now.isoformat(), "expires_at": (now + timedelta(hours=4)).isoformat(),
+    }
+    response = client.post("/v1/friends/pub-activity", data=broadcast, format="json", **_auth(token))
+    assert response.status_code == 200
+    assert response.json()["applied"] is False
+    visit.update(closed_at=None, updated_at=now.isoformat())
+    assert client.post("/v1/pub-visits", data=visit, format="json", **_auth(token)).status_code == 200
+    response = client.post("/v1/friends/pub-activity", data=broadcast, format="json", **_auth(token))
+    assert response.status_code == 201
+    assert FriendPubActivity.objects.get().active is True
 
 
 # ---------------------------------------------------------------------------
