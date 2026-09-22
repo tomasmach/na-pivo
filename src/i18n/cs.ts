@@ -36,6 +36,8 @@ export const cs = {
     recent: 'Poslední hledání',
     nearby: 'V okolí',
     frequent: 'Tvoje stálice',
+    distanceMeters: (value: string) => `${value} m`,
+    distanceKm: (value: string) => `${value} km`,
     visitCount: (n: number) => czechPlural(n, {
       one: '1 návštěva', few: `${n} návštěvy`, many: `${n} návštěv`,
     }),

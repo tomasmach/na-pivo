@@ -26,7 +26,8 @@ import { usePubSuggestions } from './usePubSuggestions';
 function suggestionDistance(meters: number): string {
   const value = meters < 1000 ? meters : meters / 1000;
   const digits = meters >= 1000 && meters < 10000 ? 1 : 0;
-  return `${new Intl.NumberFormat(intlLocale, { maximumFractionDigits: digits }).format(value)} ${meters < 1000 ? 'm' : 'km'}`;
+  const amount = new Intl.NumberFormat(intlLocale, { maximumFractionDigits: digits }).format(value);
+  return meters < 1000 ? t.pubSearch.distanceMeters(amount) : t.pubSearch.distanceKm(amount);
 }
 
 export default function PubSearchScreen() {

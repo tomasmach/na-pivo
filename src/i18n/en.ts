@@ -32,6 +32,8 @@ export const en: Strings = {
     recent: 'Recent searches',
     nearby: 'Nearby',
     frequent: 'Your regulars',
+    distanceMeters: (value: string) => `${value} m`,
+    distanceKm: (value: string) => `${value} km`,
     visitCount: (n: number) => englishPlural(n, {
       one: '1 visit', other: `${n} visits`,
     }),
