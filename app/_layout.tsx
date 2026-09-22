@@ -434,6 +434,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="pub-search" options={{ animation: 'none' }} />
           <Stack.Screen
             name="onboarding"
             options={{

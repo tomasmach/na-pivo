@@ -4,6 +4,8 @@ import { TextInput } from 'react-native';
 import { searchPubNames, resolvePubSearchResult } from '@/data/pubSearchClient';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import BeerMapScreen from '@/map/BeerMapScreen';
+import { saveRecentSearch } from '../recentSearches';
+import type { PubSuggestion } from '../pubSuggestions';
 import PubSearchScreen from '../PubSearchScreen';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -13,6 +15,8 @@ afterAll(() => { global.requestAnimationFrame = originalAnimationFrame; });
 const mockBack = jest.fn();
 const mockDismissTo = jest.fn();
 const mockPub = { id: 'pub:1', name: 'U Jelena', lat: 49.2, lng: 16.6, city: 'Brno' };
+const mockSuggestions: { nearby: PubSuggestion[]; frequent: PubSuggestion[]; pubs: typeof mockPub[] } = { nearby: [], frequent: [], pubs: [] };
+jest.mock('../usePubSuggestions', () => ({ usePubSuggestions: () => mockSuggestions }));
 jest.mock('react-native', () => ({ ...jest.requireActual('react-native'), BackHandler: { addEventListener: () => ({ remove: jest.fn() }) } }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack, dismissTo: mockDismissTo, canGoBack: () => true, replace: jest.fn(), push: jest.fn() }), useFocusEffect: () => undefined }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) }));
@@ -41,6 +45,8 @@ function result() { return renderer.root.findByProps({ accessibilityLabel: 'U Je
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  mockSuggestions.nearby = [];
+  mockSuggestions.frequent = [];
   jest.mocked(searchPubNames).mockResolvedValue({ pubs: [mockPub], failed: false });
   jest.mocked(resolvePubSearchResult).mockResolvedValue(mockPub);
 });
@@ -91,4 +97,39 @@ it('ignores a pending place resolution after the user clears the query', async (
   await type('');
   await act(async () => resolve(mockPub));
   expect(renderer.root.findAllByType(MapPubSheet)).toHaveLength(0);
+});
+
+it('opens a suggested pub without searching or saving an empty recent query', async () => {
+  mockSuggestions.nearby = [{ pub: mockPub, distanceMeters: 180 }];
+  mockSuggestions.frequent = [{ pub: { ...mockPub, id: 'pub:2', name: 'Stará pošta' }, visitCount: 8 }];
+  await mount();
+  expect(JSON.stringify(renderer.toJSON())).toContain('V okolí');
+  expect(JSON.stringify(renderer.toJSON())).toContain('Tvoje stálice');
+  expect(JSON.stringify(renderer.toJSON())).toContain('8 návštěv');
+  expect(searchPubNames).not.toHaveBeenCalled();
+  await act(async () => { renderer.root.findByProps({ accessibilityLabel: 'U Jelena, Brno, 180 m' }).props.onPress(); });
+  expect(renderer.root.findByType(MapPubSheet).props.pubName).toBe('U Jelena');
+  expect(saveRecentSearch).not.toHaveBeenCalled();
+  act(() => renderer.root.findByType(MapPubSheet).props.onClose());
+  expect(renderer.root.findByType(TextInput).props.value).toBe('');
+  expect(JSON.stringify(renderer.toJSON())).toContain('Tvoje stálice');
+});
+
+it('replaces suggestions while typing and restores them when clearing', async () => {
+  mockSuggestions.frequent = [{ pub: mockPub, visitCount: 3 }];
+  await mount();
+  await type('jelen');
+  expect(JSON.stringify(renderer.toJSON())).not.toContain('Tvoje stálice');
+  await act(async () => { renderer.root.findByProps({ accessibilityLabel: 'Smazat hledání' }).props.onPress(); });
+  expect(JSON.stringify(renderer.toJSON())).toContain('Tvoje stálice');
+  expect(renderer.root.findByType(TextInput).props.value).toBe('');
+});
+
+it('keeps a new user without suggestions on the search field without a loader', async () => {
+  await mount();
+  const content = JSON.stringify(renderer.toJSON());
+  expect(content).not.toContain('Tvoje stálice');
+  expect(content).not.toContain('V okolí');
+  expect(content).not.toContain('Hledám hospody');
+  expect(searchPubNames).not.toHaveBeenCalled();
 });
