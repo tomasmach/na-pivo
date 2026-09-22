@@ -43,11 +43,13 @@ from django.db.models import (
     Avg,
     Case,
     Count,
+    DateField,
     DateTimeField,
     Exists,
     ExpressionWrapper,
     F,
     FloatField,
+    Func,
     IntegerField,
     Max,
     Min,
@@ -63,8 +65,11 @@ from django.db.models import (
 )
 from django.db.models.functions import (
     ACos,
+    Cast,
     Coalesce,
+    Concat,
     Cos,
+    ExtractHour,
     Greatest,
     Least,
     Lower,
@@ -74,6 +79,7 @@ from django.db.models.functions import (
     TruncDate,
     TruncMonth,
 )
+from django.db.models.lookups import LessThan
 from django.utils import timezone as dj_timezone
 from django.utils.translation import gettext, gettext_lazy
 from rest_framework import status
@@ -1604,6 +1610,18 @@ class PubNameCorrectionView(APIView):
         )
 
 
+def _user_added_pub_location_error(*, not_found: bool = False) -> Response:
+    # Released clients permanently discard queued writes on 400/422. Keep an
+    # unverified address retryable without publishing the device's coordinates.
+    return Response(
+        {
+            "detail": gettext("Polohu podle adresy se nepodařilo ověřit. Zkus to znovu."),
+            "code": "location_not_found" if not_found else "geocoding_unavailable",
+        },
+        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+
+
 class UserAddedPubView(APIView):
     """
     POST /v1/pubs
@@ -1685,29 +1703,19 @@ class UserAddedPubView(APIView):
                         "user-added-pub: create location verification unavailable: %s",
                         type(exc).__name__,
                     )
-                    resolved = None
+                    return _user_added_pub_location_error()
+                if resolved is None:
+                    return _user_added_pub_location_error(not_found=True)
 
-                verify_max_km = max(
-                    0.05,
-                    float(
-                        getattr(
-                            settings,
-                            "USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS",
-                            500,
-                        )
-                    )
-                    / 1000,
-                )
-                if (
-                    resolved is not None
-                    and _haversine_km(lat, lng, resolved.lat, resolved.lng)
-                    > verify_max_km
-                ):
-                    lat = resolved.lat
-                    lng = resolved.lng
-                    location_source = UserAddedPub.LocationSource.GOOGLE_GEOCODE
-                    google_place_id = resolved.place_id
-                    location_synced_at = dj_timezone.now()
+                # Legacy clients send device GPS alongside an entered address.
+                # Even a nearby GPS point may belong to a different building.
+                lat = resolved.lat
+                lng = resolved.lng
+                city = resolved.city
+                address = resolved.address
+                location_source = UserAddedPub.LocationSource.GOOGLE_GEOCODE
+                google_place_id = resolved.place_id
+                location_synced_at = dj_timezone.now()
         elif address and city:
             try:
                 resolved = resolve_user_added_pub_location(
@@ -1717,26 +1725,14 @@ class UserAddedPubView(APIView):
                     lat=data.get("lat"),
                     lng=data.get("lng"),
                 )
-            except GoogleGeocodingUnavailableError as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "user-added-pub: Google geocoding unavailable: %s",
                     type(exc).__name__,
                 )
-                return Response(
-                    {
-                        "detail": "Geocoding is temporarily unavailable.",
-                        "code": "geocoding_unavailable",
-                    },
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                )
+                return _user_added_pub_location_error()
             if resolved is None:
-                return Response(
-                    {
-                        "detail": "The address could not be located precisely.",
-                        "code": "location_not_found",
-                    },
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                )
+                return _user_added_pub_location_error(not_found=True)
             lat = resolved.lat
             lng = resolved.lng
             city = resolved.city
@@ -1840,26 +1836,14 @@ class UserAddedPubView(APIView):
                     lat=data["lat"],
                     lng=data["lng"],
                 )
-            except GoogleGeocodingUnavailableError as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "user-added-pub: edit geocoding unavailable: %s",
                     type(exc).__name__,
                 )
-                return Response(
-                    {
-                        "detail": "Geocoding is temporarily unavailable.",
-                        "code": "geocoding_unavailable",
-                    },
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                )
+                return _user_added_pub_location_error()
             if resolved is None:
-                return Response(
-                    {
-                        "detail": "The address could not be located precisely.",
-                        "code": "location_not_found",
-                    },
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                )
+                return _user_added_pub_location_error(not_found=True)
 
             verify_max_km = max(
                 0.05,
@@ -3666,6 +3650,20 @@ class PubVisitView(APIView):
                 PubVisit.objects.filter(account=request.user).select_related("party_evening"),
             )
             items = [_visit_item(visit) for visit in visits]
+            # Released maps recreate missing catalogue markers from these
+            # fields. Project repaired pub identities on reads while retaining
+            # original history, export data and client conflict timestamps.
+            identities = resolve_pub_identities(items)
+            for item, identity in zip(items, identities, strict=True):
+                if identity.canonical_id is not None:
+                    item.update(
+                        cache_key=identity.cache_key,
+                        name=identity.name,
+                        lat=identity.lat,
+                        lng=identity.lng,
+                        city=identity.city,
+                        external_id=identity.external_id,
+                    )
         except ValueError:
             return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
@@ -5040,7 +5038,7 @@ def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, d
 
 def _leaderboard_cache_key(category: str, period: str, period_start: datetime | None) -> str:
     marker = period_start.isoformat() if period_start is not None else "all"
-    return f"v1:leaderboards:abuse-v3:{category}:{period}:{marker}"
+    return f"v1:leaderboards:abuse-v4:{category}:{period}:{marker}"
 
 
 def _leaderboard_account_queryset():
@@ -5063,20 +5061,48 @@ def _countable_beer_drinks():
     )
 
 
-def _leaderboard_red_beer_days(period_start_utc: datetime | None):
+def _leaderboard_drinking_day():
+    if connection.vendor == "postgresql":
+        # Convert before subtracting so DST keeps the local 04:00 boundary.
+        local_time = Func(
+            Value("Europe/Prague"), F("drank_at"),
+            function="timezone", output_field=DateTimeField(),
+        )
+        return Cast(local_time - timedelta(hours=4), output_field=DateField())
+    # Decide in local wall time so DST never moves the 04:00 boundary.
+    local_date = TruncDate("drank_at", tzinfo=PRAGUE_TZ)
+    return Case(
+        When(
+            LessThan(ExtractHour("drank_at", tzinfo=PRAGUE_TZ), 4),
+            then=Cast(local_date - timedelta(days=1), output_field=DateField()),
+        ),
+        default=local_date,
+        output_field=DateField(),
+    )
+
+
+def _leaderboard_drinking_day_key():
+    return Concat(
+        Cast("account_id", TextField()), Value(":"),
+        Cast(_leaderboard_drinking_day(), TextField()),
+        output_field=TextField(),
+    )
+
+
+def _leaderboard_red_beer_days(
+    period_start_utc: datetime | None, *, account_id: int | None = None,
+):
     """Beer days that are too implausible for the public competition."""
 
     qs = DrinkLog.objects.filter(drink_type=DrinkLog.DrinkType.BEER)
+    if account_id is not None:
+        qs = qs.filter(account_id=account_id)
     if period_start_utc is not None:
         context_start = drinking_day_bounds(period_start_utc)[0]
         qs = qs.filter(drank_at__gte=context_start)
-    shifted = ExpressionWrapper(
-        F("drank_at") - timedelta(hours=4),
-        output_field=DateTimeField(),
-    )
     return (
-        qs.annotate(drinking_day=TruncDate(shifted, tzinfo=PRAGUE_TZ))
-        .values("account_id", "drinking_day")
+        qs.annotate(leaderboard_day_key=_leaderboard_drinking_day_key())
+        .values("leaderboard_day_key")
         .annotate(
             raw_beers=Count("id"),
             burst_beers=Count("id", filter=Q(suspect_reason="burst")),
@@ -5089,24 +5115,34 @@ def _leaderboard_red_beer_days(period_start_utc: datetime | None):
     )
 
 
-def _leaderboard_has_red_beer_day(
-    account_id: int,
-    period_start_utc: datetime | None,
-) -> bool:
-    return _leaderboard_red_beer_days(period_start_utc).filter(account_id=account_id).exists()
+def _leaderboard_countable_beer_drinks(
+    period_start_utc: datetime | None, *, account_id: int | None = None,
+):
+    # A bad day excludes only that account's day, not its entire history.
+    # The non-null account/date key lets the database compute red days once,
+    # without a correlated aggregate for each drink. Both backends support it.
+    red_days = (
+        _leaderboard_red_beer_days(period_start_utc, account_id=account_id)
+        .values("leaderboard_day_key")
+    )
+    qs = (
+        _countable_beer_drinks()
+        .alias(leaderboard_day_key=_leaderboard_drinking_day_key())
+        .exclude(leaderboard_day_key__in=Subquery(red_days))
+    )
+    if account_id is not None:
+        qs = qs.filter(account_id=account_id)
+    if period_start_utc is not None:
+        qs = qs.filter(drank_at__gte=period_start_utc)
+    return qs
 
 
 def _leaderboard_drink_scores(
     period_start_utc: datetime | None, blocked_ids: set[int] | None = None
 ) -> dict[int, int]:
-    red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
-    qs = (
-        _countable_beer_drinks()
-        .filter(account__in=_leaderboard_account_queryset())
-        .exclude(account_id__in=Subquery(red_accounts))
+    qs = _leaderboard_countable_beer_drinks(period_start_utc).filter(
+        account__in=_leaderboard_account_queryset(),
     )
-    if period_start_utc is not None:
-        qs = qs.filter(drank_at__gte=period_start_utc)
     if blocked_ids:
         qs = qs.exclude(account_id__in=blocked_ids)
     rows = (
@@ -5197,14 +5233,9 @@ def _leaderboard_total_ranked(category: str, period_start_utc: datetime | None) 
             account__in=_leaderboard_account_queryset(),
             mapper_xp__gt=0,
         ).count()
-    red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
-    qs = (
-        _countable_beer_drinks()
-        .filter(account__in=_leaderboard_account_queryset())
-        .exclude(account_id__in=Subquery(red_accounts))
+    qs = _leaderboard_countable_beer_drinks(period_start_utc).filter(
+        account__in=_leaderboard_account_queryset(),
     )
-    if period_start_utc is not None:
-        qs = qs.filter(drank_at__gte=period_start_utc)
     return qs.values("account_id").annotate(score=Count("id")).filter(score__gt=0).count()
 
 
@@ -5224,18 +5255,11 @@ def _leaderboard_account_score(
     account: Account,
     category: str,
     period_start_utc: datetime | None,
-    *,
-    red_beer_day: bool = False,
 ) -> int:
     if account.excluded_from_leaderboards:
         return 0
     if category == "beers":
-        if red_beer_day:
-            return 0
-        qs = _countable_beer_drinks().filter(account=account)
-        if period_start_utc is not None:
-            qs = qs.filter(drank_at__gte=period_start_utc)
-        return qs.count()
+        return _leaderboard_countable_beer_drinks(period_start_utc, account_id=account.pk).count()
     if category == "pubs":
         visits = PubVisit.objects.filter(account=account).exclude(cache_key="")
         drinks = DrinkLog.objects.filter(
@@ -5256,16 +5280,11 @@ def _leaderboard_account_score(
     return int(getattr(stats, "mapper_xp", 0) or 0)
 
 
-def _leaderboard_is_eligible(
-    account: Account,
-    *,
-    red_beer_day: bool = False,
-) -> bool:
+def _leaderboard_is_eligible(account: Account) -> bool:
     return (
         account.status == Account.Status.ACTIVE
         and account.is_public
         and not account.excluded_from_leaderboards
-        and not red_beer_day
         and bool((account.nickname or "").strip())
     )
 
@@ -5318,14 +5337,9 @@ def _leaderboard_rank_for_score(
             mapper_xp__gt=0,
         ).annotate(score=F("mapper_xp"))
     else:
-        red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
-        queryset = (
-            _countable_beer_drinks()
-            .filter(account__in=_leaderboard_account_queryset())
-            .exclude(account_id__in=Subquery(red_accounts))
+        queryset = _leaderboard_countable_beer_drinks(period_start_utc).filter(
+            account__in=_leaderboard_account_queryset(),
         )
-        if period_start_utc is not None:
-            queryset = queryset.filter(drank_at__gte=period_start_utc)
         queryset = queryset.values("account_id", "account__created_at").annotate(score=Count("id"))
     if blocked_ids:
         queryset = queryset.exclude(account_id__in=blocked_ids)
@@ -5392,17 +5406,8 @@ def _leaderboard_me_payload(
     blocked_ids: set[int],
 ) -> dict:
     me = request.user
-    red_beer_day = category == "beers" and _leaderboard_has_red_beer_day(
-        me.id,
-        period_start_utc,
-    )
-    # The viewer's own score stays live — a beer logged a second ago must show
-    # up immediately, exactly as before the snapshot cache. Only the O(N)
-    # "who is ahead" walk reads the cached ranking (staleness matches the rows).
-    if red_beer_day:
-        score = 0
-    else:
-        score = _leaderboard_account_score(me, category, period_start_utc)
+    # The viewer's own score and rank stay live while the table rows are cached.
+    score = _leaderboard_account_score(me, category, period_start_utc)
     rank = None
     if score > 0:
         rank = _leaderboard_rank_for_score(
@@ -5416,7 +5421,7 @@ def _leaderboard_me_payload(
         "rank": rank,
         "score": score,
         "listed": any(row["account_pk"] == me.id for row in rows),
-        "eligible": _leaderboard_is_eligible(me, red_beer_day=red_beer_day),
+        "eligible": _leaderboard_is_eligible(me),
     }
 
 
@@ -10023,21 +10028,29 @@ class _PubLocationLookupBaseView(APIView):
         lat: float | None,
         lng: float | None,
         limit: int,
+        *,
+        pub_search: bool = False,
     ) -> list[dict]:
-        # Names are the only searchable provider-independent text held in the
-        # local directory. The first comma-separated segment matches the old
-        # "name, address, city" geocode contract.
-        name_query = query.split(",", 1)[0].strip()
-        if len(name_query) < 2:
-            return []
+        rows_query = PubDirectory.objects.filter(active=True).exclude(
+            venue_kind=PubHours.VenueKind.NOT_PUB
+        )
+        if pub_search:
+            # Search every token across the two catalogue fields, so both
+            # "U Jelena Brno" and "U Jelena, Brno" retain the city constraint.
+            tokens = query.replace(",", " ").split()
+            if not tokens:
+                return []
+            for token in tokens:
+                rows_query = rows_query.filter(Q(name__icontains=token) | Q(city__icontains=token))
+        else:
+            # Preserve the released add-pub "name, address, city" contract.
+            name_query = query.split(",", 1)[0].strip()
+            if len(name_query) < 2:
+                return []
+            rows_query = rows_query.filter(name__icontains=name_query)
         scan_limit = max(limit, int(getattr(settings, "GOOGLE_MAPS_LOCAL_SCAN_LIMIT", 80)))
         rows = list(
-            PubDirectory.objects.filter(
-                active=True,
-                name__icontains=name_query,
-            )
-            .exclude(venue_kind=PubHours.VenueKind.NOT_PUB)
-            .only(
+            rows_query.only(
                 "id",
                 "name",
                 "lat",
@@ -10046,8 +10059,12 @@ class _PubLocationLookupBaseView(APIView):
                 "city",
                 "country",
                 "venue_kind",
+                "discovery_kind",
             )[:scan_limit]
         )
+        if pub_search:
+            blocked = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
+            rows = [row for row in rows if row.cache_key not in blocked]
         if lat is not None and lng is not None:
             rows.sort(key=lambda row: _haversine_km(lat, lng, row.lat, row.lng))
         else:
@@ -10066,6 +10083,7 @@ class _PubLocationLookupBaseView(APIView):
             data.get("lat"),
             data.get("lng"),
             self.max_items,
+            pub_search=data["pub_search"],
         )
         return Response({"items": items}, status=status.HTTP_200_OK)
 
@@ -10097,6 +10115,7 @@ class PubLocationSuggestView(_PubLocationLookupBaseView):
             data.get("lat"),
             data.get("lng"),
             local_limit,
+            pub_search=data["pub_search"],
         )
         api_key = getattr(settings, "GOOGLE_MAPS_SERVER_API_KEY", "") or ""
         if not api_key or len(data["query"].strip()) < 3:
@@ -10139,6 +10158,8 @@ class PubLocationSuggestView(_PubLocationLookupBaseView):
         }
         google_items = []
         for prediction in predictions:
+            if data["pub_search"] and not {"pub", "bar", "restaurant"}.intersection(prediction.types):
+                continue
             name_key = normalize_pub_name(prediction.name)
             if name_key in seen_names:
                 continue
@@ -10152,6 +10173,7 @@ class PubLocationSuggestView(_PubLocationLookupBaseView):
                     "label": "Google Maps",
                     "location": prediction.location,
                     "type": "poi",
+                    **({"types": list(prediction.types)} if data["pub_search"] else {}),
                 }
             )
         return Response(
@@ -10166,13 +10188,17 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
     max_items = 3
 
     def _lookup_response(self, data: dict) -> Response:
-        place_id = data.get("place_id") or ""
-        if not place_id:
+        # Address lookup must not return a similarly named pub or a place-id
+        # result that bypasses the provider's rooftop precision requirement.
+        address_lookup = data["address_lookup"]
+        place_id = "" if address_lookup else data.get("place_id") or ""
+        if not place_id and not address_lookup:
             local_items = self._local_items(
                 data["query"],
                 data.get("lat"),
                 data.get("lng"),
                 self.max_items,
+                pub_search=data["pub_search"],
             )
             if local_items:
                 return Response({"items": local_items}, status=status.HTTP_200_OK)
@@ -10218,6 +10244,11 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
         if candidate is None:
             return Response({"items": []}, status=status.HTTP_200_OK)
 
+        if data["pub_search"] and _globally_reported_pub_cache_keys(
+            {geohash8(candidate.lat, candidate.lng)}
+        ):
+            return Response({"items": []}, status=status.HTTP_200_OK)
+
         regional_structure = []
         if candidate.city:
             regional_structure.append({"name": candidate.city, "type": "regional.municipality"})
@@ -10233,6 +10264,7 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
             "type": "regional.address",
             "regionalStructure": regional_structure,
             "attributions": ["Google Maps"],
+            **({"precise": True} if address_lookup else {}),
         }
         return Response({"items": [item]}, status=status.HTTP_200_OK)
 
@@ -10268,7 +10300,9 @@ class PubLocationReverseGeocodeView(APIView):
                     cap=daily_cap,
                 ),
             ) as source:
-                candidate = source.reverse_geocode(lat=data["lat"], lng=data["lng"])
+                candidate = source.reverse_geocode(
+                    lat=data["lat"], lng=data["lng"], require_precise=data["require_precise"],
+                )
         except GoogleGeocodingUnavailableError as exc:
             logger.warning(
                 "pubs-reverse-geocode: Google lookup unavailable: %s: %s",
@@ -10315,6 +10349,7 @@ class PubLocationReverseGeocodeView(APIView):
                         "type": "regional.address",
                         "regionalStructure": regional_structure,
                         "attributions": ["Google Maps"],
+                        **({"precise": True} if data["require_precise"] else {}),
                     }
                 ]
             },
