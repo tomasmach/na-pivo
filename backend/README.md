@@ -201,6 +201,31 @@ Important rules:
 - Prefer clear logs, deduplication and failure visibility over silent best-effort scraping.
 - For production scale, pursue a Seznam B2B data licence or the [Mapy.com Places API](https://developer.mapy.cz/).
 
+### Recover tasks stranded by the Firmy.cz daily limit
+
+`refresh_hours` stops on the shared daily cap without using a task retry, even
+if the cap is reached between search and detail. Other failures still consume
+retries and respect `FIRMY_ERROR_RETRY_COOLDOWN_MINUTES`. The existing request cap
+and minimum interval are unchanged.
+
+After deploying this fix, preview and recover tasks stranded by the old worker:
+
+```bash
+python manage.py recover_hours_budget_tasks
+python manage.py recover_hours_budget_tasks --apply
+```
+
+The default is read-only. Each run is bounded to 1000 rows (`--limit`, maximum
+10000). Only unfinished tasks with `attempts == max_attempts > 0` and the exact
+historical daily-cap error qualify. Apply restores one retry, retaining prior
+failures, timestamps, and all pub data. It makes no external requests and reruns
+are idempotent. The normal worker then handles them under the existing budget;
+rows that already have fresh hours close without fetching. Run against the
+intended database after stopping the old worker, never against an older release.
+
+`refresh_hours --dry-run` is different: it fetches live data and reserves request
+budget, while leaving hours and tasks unchanged.
+
 ### Consent cookie-wall and `FIRMY_PROXY_URL`
 
 Firmy.cz detail pages sit behind a Seznam GDPR consent cookie-wall (`cmp.seznam.cz` / `cmp.firmy.cz`). Requests from flagged datacenter IPs can be bounced to the consent wall (`reason=missing`), so detail content is not served even with a cookie-aware session and autologin warmup.
@@ -401,18 +426,66 @@ docker compose -p na-pivo up -d --build
 
 ### Routine deploys
 
-Tag the commit to deploy as `api-YYYY.MM.DD.N` (from `dev`, or from the last
-deployed tag for a hotfix), push the tag, then on the VPS:
+Tag the verified commit as `api-YYYY.MM.DD.N` (from `dev`, or from the last
+deployed tag for a hotfix), push the tag, then on the VPS. Review migrations for
+compatibility with the previous release first: old and new web processes overlap
+briefly. A schema change that cannot support both releases needs its own plan.
 
 ```bash
 cd /opt/na-pivo
 git fetch origin --tags --filter=blob:none
 git checkout --detach api-YYYY.MM.DD.N
 cd backend
-docker compose -p na-pivo up -d --build
+python3 deploy.py
 docker compose -p na-pivo ps
 docker compose -p na-pivo logs --tail=30 napivo-web
 ```
+
+`deploy.py` archives the database, current logs, Caddyfile and previous image IDs
+under `/opt/na-pivo/backups/rollout-*` with owner-only permissions. It builds a
+tagged image, stops the worker, and starts a temporary `napivo-web-next` instance.
+Only after HTTP, migration, database and proxy-network checks pass does it reload
+the two Na Pivo upstreams in the shared Caddy. Other sites remain unchanged.
+After a 30-second drain it replaces the canonical web, checks it, switches back,
+and starts and checks the worker. A final drain precedes temporary-instance cleanup.
+Long-lived SSE connections can reconnect during proxy reload or web shutdown;
+this procedure does not promise uninterrupted individual streams.
+
+Run only one deploy at a time. The script holds `/var/lock/napivo-deploy.lock` and
+refuses an existing temporary instance. It requires the current production
+topology: `culinair-caddy-1`, `/opt/culinair/Caddyfile`, and exactly two
+`reverse_proxy napivo-web:8000` lines. It writes that bind-mounted file in place,
+refusing concurrent edits, and reloads the validated staged copy without restarting
+Caddy. Do not use `compose up --build` for routine production replacement: it
+removes the serving web before the replacement is ready.
+
+On failure, read the final message and `state.json` in the printed backup directory.
+Before canonical replacement, traffic remains on or returns to the previous web.
+If canonical readiness fails after the first switch, **keep `napivo-web-next`
+running**: it serves traffic until the canonical instance is repaired and checked.
+If both proxy reload and rollback fail, both instances are retained for inspection.
+The script restores the previous worker image when needed; it never rolls back the
+database automatically. Previous images receive dedicated local rollback tags
+before building; they remain available even if another tag moves. To restore a
+previous web image, use `previous_web_reference` from `state.json` as
+`NAPIVO_BACKEND_IMAGE`, pass `--pull never`, include both compose files below, and verify
+readiness before switching traffic. Never remove the only serving upstream.
+
+Production logging uses `docker-compose.production.yml` with persistent host
+journald storage (`/var/log/journal`). Logs survive container replacement:
+
+```bash
+journalctl CONTAINER_NAME=napivo-web --since '24 hours ago'
+journalctl CONTAINER_NAME=napivo-worker --since '24 hours ago'
+# For manual recovery commands, use the same image and logging override:
+NAPIVO_BACKEND_IMAGE=na-pivo-backend:api-YYYY.MM.DD.N docker compose -p na-pivo \
+  -f docker-compose.yml -f docker-compose.production.yml ps
+```
+
+Retention follows the host journal's disk and age limits; this does not change
+other applications' retention. The first rollout also archives the previous
+json-file logs before deleting old containers. Keep backup files private and
+include them in the operator's normal backup-retention routine.
 
 Always pass `-p na-pivo`: the compose project name is pinned in
 `docker-compose.yml`, but the explicit flag keeps a stray invocation from a

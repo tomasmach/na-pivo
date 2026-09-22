@@ -568,7 +568,7 @@ class TestFirmyHoursSourceFetch:
             src.fetch(name, lat, lng, city="Praha")
 
     def test_daily_cap_exceeded_raises(self):
-        """Exceeding daily cap raises RuntimeError."""
+        """Exceeding daily cap raises a distinguishable retryable error."""
 
         name = "Pivnice"
         lat, lng = 50.0, 14.0
@@ -577,7 +577,9 @@ class TestFirmyHoursSourceFetch:
         src = _make_source(search_html, detail_html, firm_id="444444", slug="pivnice")
         src._daily_cap = 0  # cap of 0 → always exceeded
 
-        with pytest.raises(RuntimeError, match="daily request cap"):
+        from pubs.enrichment import FirmyDailyCapExceededError
+
+        with pytest.raises(FirmyDailyCapExceededError, match="daily request cap"):
             src.fetch(name, lat, lng)
 
 
