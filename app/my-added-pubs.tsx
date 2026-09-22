@@ -113,7 +113,12 @@ export default function MyAddedPubsScreen() {
     [submissions],
   );
   const failedSubmissions = useMemo(
-    () => sortedSubmissions.filter((submission) => submission.syncState === 'failed'),
+    () => sortedSubmissions.filter((submission) =>
+      submission.syncState === 'failed' && !submission.failureReason),
+    [sortedSubmissions],
+  );
+  const unresolvedSubmissions = useMemo(
+    () => sortedSubmissions.filter((submission) => submission.failureReason === 'location-not-found'),
     [sortedSubmissions],
   );
   const pendingCount = useMemo(
@@ -157,6 +162,7 @@ export default function MyAddedPubsScreen() {
         address: submission.address ?? '',
         lat: String(submission.lat),
         lng: String(submission.lng),
+        ...(submission.failureReason === 'location-not-found' ? { needsLocation: '1' } : {}),
       },
     });
   }, [router]);
@@ -199,6 +205,15 @@ export default function MyAddedPubsScreen() {
     if (retryingId !== null) {
       return { kind: 'dopito', label: t.addPub.retryingAll, onPress: () => undefined };
     }
+    if (unresolvedSubmissions.length > 0) {
+      return {
+        kind: 'counted',
+        text: t.addPub.needsFixCount(unresolvedSubmissions.length),
+        undoLabel: t.addPub.fixLocation,
+        onUndo: () => handleEdit(unresolvedSubmissions[0]),
+        actionAccessibilityLabel: t.addPub.fixLocation,
+      };
+    }
     if (failedSubmissions.length > 0) {
       return {
         kind: 'counted',
@@ -225,13 +240,13 @@ export default function MyAddedPubsScreen() {
       };
     }
     return null;
-  }, [failedSubmissions.length, handleRetryAll, loadFailed, pendingCount, refresh, retryingId]);
+  }, [failedSubmissions.length, handleEdit, handleRetryAll, loadFailed, pendingCount, refresh, retryingId, unresolvedSubmissions]);
 
   const heroFact =
     pendingCount > 0
       ? t.addPub.pendingCount(pendingCount)
-      : failedSubmissions.length > 0
-        ? t.addPub.needsFixCount(failedSubmissions.length)
+      : failedSubmissions.length + unresolvedSubmissions.length > 0
+        ? t.addPub.needsFixCount(failedSubmissions.length + unresolvedSubmissions.length)
         : t.addPub.allSynced;
 
   return (
@@ -304,22 +319,28 @@ export default function MyAddedPubsScreen() {
             <View style={styles.rowsCard}>
               {sortedSubmissions.map((submission, index) => {
                 const status =
-                  submission.syncState === 'pending'
-                    ? t.addPub.statusPending
-                    : submission.syncState === 'failed'
-                      ? t.addPub.statusFailed
-                      : t.addPub.statusSynced;
+                  submission.failureReason === 'location-not-found'
+                    ? t.addPub.fixLocation
+                    : submission.syncState === 'pending'
+                      ? t.addPub.statusPending
+                      : submission.syncState === 'failed'
+                        ? t.addPub.statusFailed
+                        : t.addPub.statusSynced;
                 return (
                   <Pressable
                     key={submission.client_id}
-                    onPress={() => setSelectedId(submission.client_id)}
+                    onPress={() => submission.failureReason === 'location-not-found'
+                      ? handleEdit(submission)
+                      : setSelectedId(submission.client_id)}
                     style={({ pressed }) => [
                       styles.row,
                       index > 0 && styles.rowDivider,
                       pressed && styles.rowPressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={t.addPub.openPubActions(submission.name)}
+                    accessibilityLabel={submission.failureReason === 'location-not-found'
+                      ? `${t.addPub.fixLocation}: ${submission.name}`
+                      : t.addPub.openPubActions(submission.name)}
                   >
                     <View style={styles.rowCopy}>
                       <Text

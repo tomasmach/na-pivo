@@ -329,6 +329,26 @@ describe('AddPubScreen location confirmation', () => {
     }));
   });
 
+  it('requires a confirmed location when recovering an unresolved addition, even for a rename', async () => {
+    mockSearchParams = {
+      clientId: 'unresolved-id', name: 'Původní jméno', city: 'Praha',
+      address: 'Neznámá 1', lat: '50.087', lng: '14.421', needsLocation: '1',
+    };
+    renderScreen();
+    change(t.a11y.addPubNameInput, 'Nové jméno');
+    await submit();
+    expectNoWrite();
+    fillAddress();
+    await press(t.addPub.findAddress);
+    await submit();
+    expectNoWrite();
+    await press(confirmLabel);
+    await submit();
+    expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
+      client_id: 'unresolved-id', name: 'Hospoda U Testu', ...resolvedAddress,
+    });
+  });
+
   it('blocks an edit with changed name and address until the new location is confirmed', async () => {
     mockSearchParams = {
       clientId: 'existing-client-id', name: 'Původní jméno', city: 'Praha',

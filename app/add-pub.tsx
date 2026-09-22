@@ -77,6 +77,7 @@ export default function AddPubScreen() {
   const params = useLocalSearchParams();
   const editedClientId = useMemo(() => parseStringParam(params.clientId), [params.clientId]);
   const isEditing = editedClientId.length > 0;
+  const needsLocation = isEditing && parseStringParam(params.needsLocation) === '1';
   const bumpCatalogRevision = usePubStore((s) => s.bumpCatalogRevision);
   const showToast = useToastStore((s) => s.show);
 
@@ -125,6 +126,7 @@ export default function AddPubScreen() {
     name.trim().length > 0 &&
     (isEditing
       ? (nameChanged || locationCorrectionSelected) &&
+        (!needsLocation || locationCorrectionSelected) &&
         (!addressChanged || locationCorrectionSelected) &&
         (!locationCorrectionSelected || (city.trim().length > 0 && address.trim().length > 0))
       : city.trim().length > 0 && address.trim().length > 0 && locationCorrectionSelected) &&
@@ -330,14 +332,14 @@ export default function AddPubScreen() {
             <MapPinIcon size={18} color={Colors.amber} />
           </View>
           <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isEditing ? t.addPub.editIntro : t.addPub.intro}
+            {needsLocation ? t.addPub.locationNeedsFix : isEditing ? t.addPub.editIntro : t.addPub.intro}
           </Text>
         </View>
 
         <View style={styles.locationCard}>
-          <Text style={styles.locationHeader}>{isEditing ? t.addPub.editLocationHeader : t.addPub.locationHeader}</Text>
+          <Text style={styles.locationHeader}>{isEditing && !needsLocation ? t.addPub.editLocationHeader : t.addPub.locationHeader}</Text>
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isEditing
+            {isEditing && !needsLocation
               ? t.addPub.editLocationBody
               : fromMapPin
                 ? t.addPub.mapPinLocationBody

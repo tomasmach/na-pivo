@@ -30,6 +30,8 @@ export interface AddedPubSubmission extends AddedPubEntry {
   syncState: AddedPubSyncState;
   pendingOperation: 'create' | 'edit' | null;
   updatedAt: string;
+  /** A no-match needs the user's correction, not another automatic request. */
+  failureReason?: 'location-not-found';
   /** Last server-confirmed value used to undo a permanently rejected edit. */
   rollback?: AddedPubEntry;
   /** Exact partial PATCH to retry without turning a rename into a location edit. */
@@ -93,6 +95,9 @@ function normalizeSubmission(value: unknown): AddedPubSubmission | null {
     syncState,
     pendingOperation,
     updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : new Date(0).toISOString(),
+    ...(syncState === 'failed' && candidate.failureReason === 'location-not-found'
+      ? { failureReason: 'location-not-found' as const }
+      : {}),
     ...(isAddedPubEntry(candidate.rollback) ? { rollback: candidate.rollback } : {}),
     ...(pendingEdit ? { pendingEdit } : {}),
   };
@@ -201,11 +206,12 @@ async function flushLocked(): Promise<void> {
       applySubmittedResult(submission, synced);
       await clearPubsSnapshot();
       changed = true;
-    } else if (result === 'permanent-error') {
+    } else if (result === 'permanent-error' || result === 'location-not-found') {
       registry[index] = {
         ...submission,
         syncState: 'failed',
         pendingOperation: submission.pendingOperation,
+        ...(result === 'location-not-found' ? { failureReason: 'location-not-found' as const } : {}),
       };
       if (submission.pendingOperation === 'create') {
         removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
