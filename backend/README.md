@@ -201,6 +201,31 @@ Important rules:
 - Prefer clear logs, deduplication and failure visibility over silent best-effort scraping.
 - For production scale, pursue a Seznam B2B data licence or the [Mapy.com Places API](https://developer.mapy.cz/).
 
+### Recover tasks stranded by the Firmy.cz daily limit
+
+`refresh_hours` stops on the shared daily cap without using a task retry, even
+if the cap is reached between search and detail. Other failures still consume
+retries and respect `FIRMY_ERROR_RETRY_COOLDOWN_MINUTES`. The existing request cap
+and minimum interval are unchanged.
+
+After deploying this fix, preview and recover tasks stranded by the old worker:
+
+```bash
+python manage.py recover_hours_budget_tasks
+python manage.py recover_hours_budget_tasks --apply
+```
+
+The default is read-only. Each run is bounded to 1000 rows (`--limit`, maximum
+10000). Only unfinished tasks with `attempts == max_attempts > 0` and the exact
+historical daily-cap error qualify. Apply restores one retry, retaining prior
+failures, timestamps, and all pub data. It makes no external requests and reruns
+are idempotent. The normal worker then handles them under the existing budget;
+rows that already have fresh hours close without fetching. Run against the
+intended database after stopping the old worker, never against an older release.
+
+`refresh_hours --dry-run` is different: it fetches live data and reserves request
+budget, while leaving hours and tasks unchanged.
+
 ### Consent cookie-wall and `FIRMY_PROXY_URL`
 
 Firmy.cz detail pages sit behind a Seznam GDPR consent cookie-wall (`cmp.seznam.cz` / `cmp.firmy.cz`). Requests from flagged datacenter IPs can be bounced to the consent wall (`reason=missing`), so detail content is not served even with a cookie-aware session and autologin warmup.
