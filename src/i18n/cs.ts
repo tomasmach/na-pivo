@@ -2792,7 +2792,7 @@ export const cs = {
     // Version badge shown next to the eyebrow, e.g. "v1.2.0".
     versionLabel: (version: string) => `v${version}`,
     // Full-screen three-card note shown once to people who updated to 2.1.0
-    // (the release that brought the simple app back). Czech only for now.
+    // (the release that brought the simple app back).
     apology: {
       skip: 'Přeskočit',
       slide1Title: 'Promiň za dvojku',
@@ -2807,6 +2807,21 @@ export const cs = {
       slide3Body:
         'Appku dělám pro vás, zadarmo a podle toho, co mi píšete. Pokud po dvojce zůstalo v obchodě špatné hodnocení, budu rád, když ho po dnešku přepíšeš.',
       slide3Review: 'Upravit hodnocení',
+      slide3Done: 'Jdu na pivo',
+    },
+    fixed211: {
+      skip: 'Přeskočit',
+      slide1Title: 'Mapa na Androidu je opravená',
+      slide1Body:
+        'Opravil jsem useknuté značky hospod i chybějící půllitry a čísla na mapě. Díky všem, kdo mi to nahlásili.',
+      slide1Next: 'Pokračovat',
+      slide2Title: 'Vyhledávání hospod je zpátky',
+      slide2Body:
+        'V kompasu i na mapě zase najdeš lupu. Hledej podle názvu nebo města, nebo rovnou vyber některou z hospod poblíž a svých stálic.',
+      slide2Next: 'Ještě pár drobností',
+      slide3Title: 'Pár oprav navíc',
+      slide3Body:
+        'Zapracoval jsem i na výkonu a opravil chyby v partě, upozorněních a ukládání zápisů. Přehlednější jsou taky tvoje přidané hospody.',
       slide3Done: 'Jdu na pivo',
     },
   },

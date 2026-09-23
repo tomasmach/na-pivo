@@ -2217,6 +2217,21 @@ export const en: Strings = {
       slide3Review: 'Edit my rating',
       slide3Done: 'Off to the pub',
     },
+    fixed211: {
+      skip: 'Skip',
+      slide1Title: 'The Android map is fixed',
+      slide1Body:
+        'I fixed clipped pub markers and missing beer mugs and numbers on the map. Thanks to everyone who reported it.',
+      slide1Next: 'Continue',
+      slide2Title: 'Pub search is back',
+      slide2Body:
+        'The search icon is back in the compass and on the map. Search by name or city, or pick a nearby pub or one of your regulars.',
+      slide2Next: 'A few more fixes',
+      slide3Title: 'A few more fixes',
+      slide3Body:
+        'I also worked on performance and fixed bugs in groups, notifications, and saving entries. Your added pubs are easier to browse, too.',
+      slide3Done: "Let's get a beer",
+    },
   },
   about: {
     tagline: 'Your compass to the nearest beer.',
