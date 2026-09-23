@@ -537,6 +537,73 @@ def test_sync_enrich_error_does_not_close_task():
     assert task.done is False
 
 
+@pytest.mark.django_db
+def test_sync_success_clears_error_on_exhausted_task():
+    task = EnrichTask.objects.create(
+        cache_key=_FLEKY_KEY,
+        name=_FLEKY_NAME,
+        lat=_FLEKY_LAT,
+        lng=_FLEKY_LNG,
+        done=True,
+        attempts=3,
+        max_attempts=3,
+        error="previous timeout",
+    )
+    _make_fresh_row(
+        status=PubHours.Status.ERROR,
+        opening_hours_raw=None,
+        error="previous timeout",
+        fetched_at=dj_tz.now() - timedelta(hours=1),
+    )
+    mock_source = MagicMock()
+    mock_source.fetch.return_value = _GOOD_RAW
+
+    with patch("pubs.api.cache.FirmyHoursSource", return_value=mock_source):
+        result = get_or_enrich([_PUB_ENTRY], sync_budget=1)[0]
+
+    mock_source.fetch.assert_called_once()
+    task.refresh_from_db()
+    hours = PubHours.objects.get(cache_key=_FLEKY_KEY)
+    assert result["status"] == "ok"
+    assert task.done is True
+    assert task.error is None
+    assert hours.status == PubHours.Status.OK
+    assert hours.error is None
+
+
+@pytest.mark.django_db
+def test_sync_retry_failure_preserves_error_on_exhausted_task():
+    task = EnrichTask.objects.create(
+        cache_key=_FLEKY_KEY,
+        name=_FLEKY_NAME,
+        lat=_FLEKY_LAT,
+        lng=_FLEKY_LNG,
+        done=True,
+        attempts=3,
+        max_attempts=3,
+        error="previous timeout",
+    )
+    _make_fresh_row(
+        status=PubHours.Status.ERROR,
+        opening_hours_raw=None,
+        error="previous timeout",
+        fetched_at=dj_tz.now() - timedelta(hours=1),
+    )
+    mock_source = MagicMock()
+    mock_source.fetch.side_effect = RuntimeError("new timeout")
+
+    with patch("pubs.api.cache.FirmyHoursSource", return_value=mock_source):
+        result = get_or_enrich([_PUB_ENTRY], sync_budget=1)[0]
+
+    task.refresh_from_db()
+    hours = PubHours.objects.get(cache_key=_FLEKY_KEY)
+    assert result["status"] == "error"
+    assert task.done is True
+    assert task.error == "previous timeout"
+    assert hours.status == PubHours.Status.ERROR
+    assert hours.error == "new timeout"
+
+
 # ---------------------------------------------------------------------------
 # Test: geohash-8 collision — a different business must not get cached hours
 # ---------------------------------------------------------------------------
