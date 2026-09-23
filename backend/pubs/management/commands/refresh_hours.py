@@ -119,6 +119,7 @@ def _mark_task_done(task: EnrichTask, dry_run: bool) -> None:
     if dry_run:
         return
     task.done = True
+    task.error = None
     task.last_attempt_at = timezone.now()
     task.save(update_fields=["done", "last_attempt_at", "attempts", "error"])
 
@@ -330,7 +331,6 @@ class Command(BaseCommand):
                 result=result,
                 dry_run=dry_run,
             )
-            task.error = None
             _mark_task_done(task, dry_run)
             processed += 1
 

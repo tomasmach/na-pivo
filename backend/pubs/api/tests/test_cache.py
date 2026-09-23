@@ -504,6 +504,8 @@ def test_sync_enrich_closes_open_enrich_task():
 
     task = EnrichTask.objects.get(cache_key=_FLEKY_KEY)
     assert task.done is False
+    task.error = "previous timeout"
+    task.save(update_fields=["error"])
 
     # Phase 2: same key sync-enriched successfully.
     mock_source = MagicMock()
@@ -513,6 +515,7 @@ def test_sync_enrich_closes_open_enrich_task():
 
     task.refresh_from_db()
     assert task.done is True
+    assert task.error is None
     # And a fresh PubHours row exists.
     assert PubHours.objects.get(cache_key=_FLEKY_KEY).status == PubHours.Status.OK
 

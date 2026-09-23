@@ -16,6 +16,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.core.management import call_command
 from django.utils import timezone
+from requests import Response
+from rest_framework.test import APIClient
 
 from pubs.enrichment.firmy import FirmyDailyCapExceededError, RawHours
 from pubs.enrichment.matcher import geohash8
@@ -169,6 +171,38 @@ class TestPendingTaskIsProcessed:
         task.refresh_from_db()
         assert task.done is True
 
+    def test_upstream_410_is_cached_as_unknown_and_served_by_api(self, settings):
+        settings.FIRMY_MIN_INTERVAL_SEC = 0
+        task = _make_task(error="previous timeout")
+
+        def no_results(url, **kwargs):
+            response = Response()
+            response.status_code = 410
+            response.url = url
+            response._content = b"<html>no results</html>"
+            return response
+
+        with patch("requests.Session.get", side_effect=no_results) as request:
+            out, _ = _run_command()
+            assert "no confident match" in out
+            assert request.call_count > 0
+            fetched_count = request.call_count
+            response = APIClient().post(
+                "/v1/pub-hours",
+                data={"pubs": [{"name": _PUB_NAME, "lat": _LAT, "lng": _LNG}]},
+                format="json",
+            )
+            assert request.call_count == fetched_count
+
+        task.refresh_from_db()
+        hours = PubHours.objects.get(cache_key=_CACHE_KEY)
+        assert task.done is True
+        assert task.error is None
+        assert hours.status == PubHours.Status.UNKNOWN
+        assert hours.error is None
+        assert response.status_code == 200
+        assert response.json()["results"][0]["status"] == "unknown"
+
     def test_already_done_tasks_are_skipped(self):
         """Tasks with done=True are not processed."""
         _make_task(done=True, attempts=1)
@@ -209,7 +243,7 @@ class TestFreshRowSkipsPendingTask:
     """
 
     def test_task_skipped_when_fresh_row_exists(self):
-        task = _make_task()
+        task = _make_task(error="previous timeout")
         # A fresh PubHours row already exists for the same cache_key.
         _make_pub_hours(fetched_at=timezone.now())
 
@@ -226,6 +260,7 @@ class TestFreshRowSkipsPendingTask:
         # Task was closed.
         task.refresh_from_db()
         assert task.done is True
+        assert task.error is None
 
     def test_task_still_processed_when_row_stale(self):
         """If the existing row is stale, the task is still fetched normally."""
@@ -656,6 +691,7 @@ class TestAttemptTracking:
         task.refresh_from_db()
         assert task.attempts == 3
         assert task.done is True
+        assert task.error == "Unexpected error: still failing"
 
     def test_successful_fetch_marks_done(self):
         task = _make_task(attempts=1, max_attempts=3)

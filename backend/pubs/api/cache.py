@@ -470,6 +470,7 @@ def _close_enrich_task(cache_key: str) -> None:
     """
     EnrichTask.objects.filter(cache_key=cache_key, done=False).update(
         done=True,
+        error=None,
         last_attempt_at=dj_tz.now(),
     )
 
