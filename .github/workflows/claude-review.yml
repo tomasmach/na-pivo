@@ -29,7 +29,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Review pull request
         uses: anthropics/claude-code-action@46a42b43239748e5b25771606bf1f551c3b1b517 # v1.0.232
@@ -39,15 +39,8 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this pull request against the rules in AGENTS.md and DESIGN.md.
-            Report only real problems: bugs, broken offline queues, API changes that
-            break released app versions, privacy leaks, missing auth or throttling on
-            new endpoints, and user-facing texts missing from cs.ts or en.ts.
-            Skip style nits and praise.
-
-            Post each problem as an inline comment on the relevant line. Finish with
-            one short PR comment in Czech that lists the findings, or says that you
-            found nothing.
+            Read .github/claude-review.md and review this pull request exactly as
+            it says.
           claude_args: |
             --model claude-opus-5-5
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git log:*),Bash(git blame:*),Bash(git show:*)"
