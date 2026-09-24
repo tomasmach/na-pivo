@@ -61,6 +61,7 @@ from .party_views import (
     party_game_stream,
 )
 from .pub_event_views import PubEventView
+from .pub_visitors_views import PubVisitorsLastWeekView
 from .views import (
     AccountAvatarView,
     AccountDeletionStatusView,
@@ -361,6 +362,11 @@ urlpatterns = [
         name="user-added-pubs",
     ),
     path("pubs/near", PubsNearView.as_view(), name="pubs-near"),
+    path(
+        "pubs/visitors-last-week",
+        PubVisitorsLastWeekView.as_view(),
+        name="pubs-visitors-last-week",
+    ),
     path("pubs/suggest", PubLocationSuggestView.as_view(), name="pubs-suggest"),
     path("pubs/geocode", PubLocationGeocodeView.as_view(), name="pubs-geocode"),
     path(
