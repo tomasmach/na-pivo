@@ -35,6 +35,8 @@ interface SettingsState {
   preferRatedPubs: boolean;
   preferGardenPubs: boolean;
   hidePubNames: boolean;
+  /** Map pins show how many people drank in each pub last week. */
+  showPubVisitors: boolean;
   marketingEmailsEnabled: boolean;
   pubReminderEnabled: boolean;
   /** One-shot reminder refreshed by each beer of an active evening. */
@@ -67,6 +69,7 @@ interface SettingsState {
   setPreferRatedPubs: (v: boolean) => void;
   setPreferGardenPubs: (v: boolean) => void;
   setHidePubNames: (v: boolean) => void;
+  setShowPubVisitors: (v: boolean) => void;
   setMarketingEmailsEnabled: (v: boolean) => void;
   setPubReminderEnabled: (v: boolean) => void;
   setBeerCountReminderEnabled: (v: boolean) => void;
@@ -95,6 +98,7 @@ export const useSettingsStore = create<SettingsState>()(
       preferRatedPubs: false,
       preferGardenPubs: false,
       hidePubNames: false,
+      showPubVisitors: true,
       marketingEmailsEnabled: false,
       pubReminderEnabled: false,
       beerCountReminderEnabled: true,
@@ -124,6 +128,7 @@ export const useSettingsStore = create<SettingsState>()(
       setPreferRatedPubs: (v) => set({ preferRatedPubs: v }),
       setPreferGardenPubs: (v) => set({ preferGardenPubs: v }),
       setHidePubNames: (v) => set({ hidePubNames: v }),
+      setShowPubVisitors: (v) => set({ showPubVisitors: v }),
       setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
       setPubReminderEnabled: (v) => set({ pubReminderEnabled: v }),
       setBeerCountReminderEnabled: (v) => set({ beerCountReminderEnabled: v }),
@@ -154,6 +159,7 @@ export const useSettingsStore = create<SettingsState>()(
         preferRatedPubs: state.preferRatedPubs,
         preferGardenPubs: state.preferGardenPubs,
         hidePubNames: state.hidePubNames,
+        showPubVisitors: state.showPubVisitors,
         marketingEmailsEnabled: state.marketingEmailsEnabled,
         pubReminderEnabled: state.pubReminderEnabled,
         beerCountReminderEnabled: state.beerCountReminderEnabled,
