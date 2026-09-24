@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -1704,18 +1704,17 @@ export default function CounterScreen({
 
   const [handedOff, setHandedOff] = useState(false);
   // A tour stop asked to log a beer here: open on that pub, as a manual pick.
-  useEffect(() => {
-    const consume = ({ pub }: { pub: Pub | null }) => {
+  // Taken on focus, so only the counter the user actually lands on consumes it.
+  useFocusEffect(
+    useCallback(() => {
+      const pub = useCounterHandoffStore.getState().pub;
       if (!pub) return;
       useCounterHandoffStore.getState().clear();
       setHandedOff(true);
       setOutsideContext(null);
       selectPub(pub);
-    };
-    // The tab may mount only after the handoff was dropped.
-    consume(useCounterHandoffStore.getState());
-    return useCounterHandoffStore.subscribe(consume);
-  }, [selectPub]);
+    }, [selectPub]),
+  );
 
   useEffect(() => {
     void trackCounterTabOpened(hadActiveSessionOnOpen.current);

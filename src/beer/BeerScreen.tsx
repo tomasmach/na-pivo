@@ -15,7 +15,8 @@
  * the running tally itself lives in the persisted store, so nothing is lost.
  */
 
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -88,11 +89,11 @@ export default function BeerScreen() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<BeerTab>('count');
   // A tour stop handing a pub to the counter must land on the counter, not the diary.
-  useEffect(() => {
-    const follow = ({ pub }: { pub: unknown }) => { if (pub) setTab('count'); };
-    follow(useCounterHandoffStore.getState());
-    return useCounterHandoffStore.subscribe(follow);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (useCounterHandoffStore.getState().pub) setTab('count');
+    }, []),
+  );
   // Both halves hand their "…" door to this header, so their open state lives
   // here too. `counterMoreReady` goes false while the counter shows the location
   // permission gate — no counter, no overflow sheet, so no glyph either.

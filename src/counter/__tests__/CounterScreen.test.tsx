@@ -86,6 +86,8 @@ jest.mock('@/photos/BeerPhotoCaptureFlow', () => ({ BeerPhotoCaptureFlow: () => 
 const mockRouterPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ push: mockRouterPush, back: jest.fn() })),
+  // The counter is always the focused screen in these tests.
+  useFocusEffect: (effect: () => void) => jest.requireActual<typeof import('react')>('react').useEffect(effect, [effect]),
 }));
 
 jest.mock('@/components/shared/IconGlyph', () => {
@@ -183,6 +185,7 @@ import { geohash8 } from '@/data/geohash';
 import { BeerFormModal } from '@/counter/BeerFormModal';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
 
 const { default: CounterScreen, groupMenuBeers, UNDO_WINDOW_MS } = require('../CounterScreen');
 const TestRenderer = require('react-test-renderer');
@@ -582,6 +585,16 @@ describe('CounterScreen and a running tour', () => {
       await Promise.resolve();
     });
     expect(mockTours.markStop).toHaveBeenLastCalledWith('stop-2', null);
+  });
+
+  it('opens on the pub a tour stop handed over, once', () => {
+    const state = nearbyState();
+    useNearbyPub.mockReturnValue(state);
+    const lokal = { id: 'pub-3', name: 'Lokál Dlouhááá', lat: 50.09, lng: 14.42 };
+    useCounterHandoffStore.getState().handOff(lokal);
+    render();
+    expect(state.selectPub).toHaveBeenCalledWith(lokal);
+    expect(useCounterHandoffStore.getState().pub).toBeNull();
   });
 
   it('leaves a stop marked by hand alone when its drink is undone', async () => {

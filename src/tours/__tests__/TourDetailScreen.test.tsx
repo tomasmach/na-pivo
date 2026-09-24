@@ -50,7 +50,7 @@ jest.mock('react-native', () => {
 });
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: tourId }),
-  useRouter: () => ({ replace: mockReplace, canGoBack: () => true, back: mockBack, push: mockPush }),
+  useRouter: () => ({ replace: mockReplace, canGoBack: () => true, back: mockBack, push: mockPush, navigate: mockPush }),
   useIsFocused: () => true,
 }));
 jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: jest.fn() }));
@@ -271,6 +271,6 @@ it('hands the next stop to the counter and shows beers counted at visited stops'
   expect(screen.getByLabelText(`1. ${first.name}. ${t.tours.youAreHere} · 2 piva`)).toBeTruthy();
   fireEvent.press(screen.getByLabelText(t.tours.logBeerAt(2)));
   expect(useCounterHandoffStore.getState().pub).toEqual({ id: second.pubId, name: second.name, lat: second.lat, lng: second.lon, address: 'Praha' });
-  expect(mockPush).toHaveBeenLastCalledWith('/beer');
+  expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/beer');
   mockTally.current = null;
 });

@@ -68,7 +68,8 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   // The counter checks the stop off once a beer is logged there.
   function logBeer(stop: TourStop) {
     useCounterHandoffStore.getState().handOff(pubFromStop(stop));
-    router.push('/beer' as Href);
+    // Back to the existing tabs, not a second copy of them on top of the tour.
+    router.navigate('/(tabs)/beer' as Href);
   }
   function navigate(stop: TourStop) { void openPubInMaps({ lat: stop.lat, lng: stop.lon, name: stop.name }).catch(() => setNotice(t.tours.errors.navigation)); }
   function mark(stop: TourStop, status: 'visited' | 'skipped' | null) {
