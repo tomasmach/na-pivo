@@ -174,8 +174,6 @@ export function PartyCard({
           ) : null}
         </View>
       ) : null}
-
-      {rail ?? null}
     </>
   );
 
@@ -186,20 +184,26 @@ export function PartyCard({
       <View style={styles.card} accessibilityRole="text" accessibilityLabel={accessibilityLabel}>
         <CardSheen />
         {content}
+        {rail ?? null}
       </View>
     );
   }
 
+  // The rail sits beside the pressable body, not inside it: an accessible
+  // Pressable hides its descendants from VoiceOver, doors included.
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-    >
+    <View style={styles.card}>
       <CardSheen />
-      {content}
-    </Pressable>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={({ pressed }) => [styles.pressArea, pressed && styles.pressed]}
+      >
+        {content}
+      </Pressable>
+      {rail ?? null}
+    </View>
   );
 }
 
@@ -211,6 +215,9 @@ const styles = StyleSheet.create({
   // takes over, which is exactly the NightCard behaviour.
   card: {
     ...CardSurface.card,
+    flex: 1,
+  },
+  pressArea: {
     flex: 1,
   },
   pressed: {

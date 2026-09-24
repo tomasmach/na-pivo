@@ -877,6 +877,7 @@ export default function CompassScreen() {
         kind: 'rapid',
         text: t.tours.compassNudge(tourNextName),
         confirmLabel: t.tours.open,
+        confirmAccessibilityLabel: t.tours.openTour(tourNextName),
         icon: MapIcon,
         onConfirm: () => router.push({ pathname: '/tours/[id]', params: { id: tourPlanId } } as Href),
       };

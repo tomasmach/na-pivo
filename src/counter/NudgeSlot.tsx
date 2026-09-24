@@ -30,6 +30,8 @@ export type Nudge =
        * what already happened — pass the glyph that matches.
        */
       icon?: React.ComponentType<IconProps>;
+      /** What VoiceOver reads for the pill; defaults to the counter's rapid confirm. */
+      confirmAccessibilityLabel?: string;
     }
   | {
       kind: 'counted';
@@ -103,7 +105,7 @@ function RapidStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'rapid' }> }) {
         onPress={nudge.onConfirm}
         style={({ pressed }) => [styles.filledPill, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={t.a11y.counterRapidConfirm}
+        accessibilityLabel={nudge.confirmAccessibilityLabel ?? t.a11y.counterRapidConfirm}
         hitSlop={PILL_HIT_SLOP}
       >
         <Text

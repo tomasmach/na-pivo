@@ -29,14 +29,14 @@ function Row({ title, meta, onPress, icon, first }: { title: string; meta: strin
   </Pressable>;
 }
 
-function Hero({ run, plan, onPress }: { run: TourRun | null; plan?: TourPlan; onPress: () => void }) {
+function Hero({ run, plan, upcoming, onPress }: { run: TourRun | null; plan?: TourPlan; upcoming: boolean; onPress: () => void }) {
   const glance = run ? describeRun(run) : null;
   const shown = run?.snapshot ?? plan;
   if (!shown) return null;
   const line = glance
     ? [t.tours.runOf(glance.visited, glance.total), glance.next ? t.tours.nextPub(glance.next.name, glance.minutes) : null].filter(Boolean).join(' · ')
     : planMeta(shown);
-  const kicker = run ? t.tours.active : shown.scheduledDate ? t.tours.upNext : null;
+  const kicker = run ? t.tours.active : upcoming ? t.tours.upNext : null;
   return <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={[kicker, shown.title, line].filter(Boolean).join('. ')}
     style={({ pressed }) => [styles.hero, pressed && styles.pressed]}>
     <TourJourneyIllustration stops={shown.stops} statuses={run?.statuses} nextStopId={glance?.next?.id} />
@@ -62,11 +62,16 @@ export default function ToursScreen() {
     if (result.ok) editDraft();
   }
   const active = store.activeRun;
-  const heroPlan = active ? undefined : upcomingPlan(store.plans) ?? sortPlans(store.plans)[0];
+  const upcoming = active ? undefined : upcomingPlan(store.plans);
+  const heroPlan = active ? undefined : upcoming ?? sortPlans(store.plans)[0];
   const others = sortPlans(store.plans.filter((plan) => plan.id !== active?.planId && plan.id !== heroPlan?.id));
   const empty = store.hydrated && !active && !store.draft && store.plans.length === 0;
+  async function restore() {
+    const result = await store.restorePublished();
+    if (result.ok) showAppDialog({ title: t.tours.restored, buttons: [{ text: t.tours.close, style: 'cancel' }] });
+  }
   const more = () => showAppDialog({ title: t.tours.mine, message: t.tours.localNotice, buttons: [
-    { text: t.tours.restore, onPress: () => { void store.restorePublished(); } },
+    { text: t.tours.restore, onPress: () => { void restore(); } },
     { text: t.tours.close, style: 'cancel' },
   ] });
 
@@ -81,9 +86,9 @@ export default function ToursScreen() {
         <TourText maxFontSizeMultiplier={FontScaleCap.heading} style={styles.heroTitle}>{t.tours.emptyTitle}</TourText>
         <TourText>{t.tours.empty}</TourText>
       </View> : <>
-        <Hero run={active} plan={heroPlan} onPress={() => open(active?.planId ?? heroPlan!.id)} />
+        <Hero run={active} plan={heroPlan} upcoming={!!upcoming} onPress={() => open(active?.planId ?? heroPlan!.id)} />
         {(store.draft || others.length > 0) && <View>
-          <TourText style={styles.section}>{t.tours.otherTours}</TourText>
+          {(active || heroPlan) && <TourText style={styles.section}>{t.tours.otherTours}</TourText>}
           {store.draft && <Row first title={store.draft.title.trim() || t.tours.untitled} meta={`${t.tours.draft} · ${pubCount(store.draft.stops.length)}`} onPress={editDraft} />}
           {others.map((plan, index) => <Row key={plan.id} first={!store.draft && index === 0} title={plan.title} meta={planMeta(plan)} onPress={() => open(plan.id)} />)}
         </View>}
@@ -103,7 +108,7 @@ export default function ToursScreen() {
         <TourButton label={store.draft ? t.tours.continueDraft : t.tours.createNew} quiet onPress={() => { if (store.draft) editDraft(); else void create(); }} />
       </> : store.draft ? <TourButton label={t.tours.continueDraft} onPress={editDraft} />
         : <TourButton label={t.tours.create} onPress={() => { void create(); }} disabled={!store.hydrated} />}
-      {empty && <TourButton label={t.tours.restore} quiet busy={store.busy} onPress={() => { void store.restorePublished(); }} />}
+      {empty && <TourButton label={t.tours.restore} quiet busy={store.busy} onPress={() => { void restore(); }} />}
     </View>
   </View>;
 }

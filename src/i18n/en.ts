@@ -2273,6 +2273,7 @@ export const en: Strings = {
     runOf: (visited: number, total: number) => `${visited} of ${total} pubs`,
     nextPub: (name: string, minutes?: number) => `next ${name}${minutes ? `, about ${minutes} min` : ''}`,
     compassNudge: (name: string) => `Tour: next ${name}`, open: 'Open',
+    openTour: (name: string) => `Open the tour, next stop ${name}`,
     addMeetup: 'Add meetup', youAreHere: "You're here", today: 'Today',
     onDay: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     closedOn: (day: string) => day === 'Today' ? 'Closed today' : `Closed on ${day}`,
