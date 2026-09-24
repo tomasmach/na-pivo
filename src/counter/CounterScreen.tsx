@@ -1461,6 +1461,7 @@ function Tacek({
         kind: 'rapid',
         text: tour.next ? t.tours.compassNudge(tour.next.name) : t.tours.counterAllDone,
         confirmLabel: t.tours.open,
+        confirmAccessibilityLabel: tour.next ? t.tours.openTour(tour.next.name) : t.tours.open,
         icon: MapIcon,
         onConfirm: () => router.push({ pathname: '/tours/[id]', params: { id: tour.planId } } as Href),
       };
