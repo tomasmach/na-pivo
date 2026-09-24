@@ -4,6 +4,7 @@ import { t } from '@/i18n';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { openPubInMaps } from '@/utils/maps';
 import { fetchPubHours } from '@/data/hoursClient';
+import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
 import type { TourPlan, TourRun } from '../model';
 import { TourJourneyIllustration } from '../TourJourneyIllustration';
 import TourDetailScreen from '../TourDetailScreen';
@@ -13,6 +14,7 @@ import TourDetailScreen from '../TourDetailScreen';
 const tourId = '11111111-1111-4111-8111-111111111111';
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 const mockStore = {
   plans: [] as TourPlan[],
   activeRun: null as TourRun | null,
@@ -48,7 +50,7 @@ jest.mock('react-native', () => {
 });
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: tourId }),
-  useRouter: () => ({ replace: mockReplace, canGoBack: () => true, back: mockBack, push: jest.fn() }),
+  useRouter: () => ({ replace: mockReplace, canGoBack: () => true, back: mockBack, push: mockPush }),
   useIsFocused: () => true,
 }));
 jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: jest.fn() }));
@@ -64,10 +66,12 @@ jest.mock('@/components/amenities/MapPubSheet', () => ({ MapPubSheet: () => null
 jest.mock('@/components/amenities/pubInfoContext', () => ({ pubInfoFromPub: jest.fn() }));
 jest.mock('@/utils/maps', () => ({ openPubInMaps: jest.fn(async () => undefined) }));
 jest.mock('@/data/pubs', () => ({ getAllLoadedPubs: () => [] }));
+const mockTally = { current: null as null | { pubKey: string; drinks: { drinkType?: string; at: string }[] }, history: [] as { pubKey: string; drinks: { at: string }[] }[] };
+jest.mock('@/stores/tallyStore', () => ({ useTallyStore: (select: (s: typeof mockTally) => unknown) => select(mockTally) }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn(async () => new Map()) }));
 jest.mock('../TourJourneyIllustration', () => ({ TourJourneyIllustration: jest.fn(() => null) }));
 jest.mock('@/components/shared/IconGlyph', () => ({
-  CheckIcon: () => null, ChevronLeftIcon: () => null, ChevronRightIcon: () => null,
+  BeerIcon: () => null, CheckIcon: () => null, ChevronLeftIcon: () => null, ChevronRightIcon: () => null,
   CompassIcon: () => null, EllipsisIcon: () => null, FootprintsIcon: () => null, HistoryIcon: () => null,
   LockKeyholeIcon: () => null, MapIcon: () => null, MinusIcon: () => null,
 }));
@@ -114,13 +118,14 @@ it('marks the next stop, navigates to the following one, and restores the first 
   expect(screen.getByLabelText(`1. ${first.name}. ${t.tours.nextStop} · Praha`)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.navigate)).toBeTruthy();
 
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.arrivedAt(1))); });
+  fireEvent.press(screen.getByLabelText(`1. ${first.name}. ${t.tours.nextStop} · Praha`));
+  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.markVisited)); });
   screen.rerender(<TourDetailScreen />);
   expect(mockStore.markStop).toHaveBeenLastCalledWith(first.id, 'visited');
   // The pub the group sits in stays visible instead of jumping straight to the next one.
   expect(screen.getByLabelText(`1. ${first.name}. ${t.tours.youAreHere}`)).toBeTruthy();
   expect(screen.getByLabelText(`2. ${second.name}. ${t.tours.nextStop} · Praha`)).toBeTruthy();
-  expect(screen.getByLabelText(t.tours.arrivedAt(2))).toBeTruthy();
+  expect(screen.getByLabelText(t.tours.logBeerAt(2))).toBeTruthy();
   fireEvent.press(screen.getByLabelText(t.tours.navigateMinutes(17)));
   expect(openPubInMaps).toHaveBeenLastCalledWith({ lat: second.lat, lng: second.lon, name: second.name });
 
@@ -145,13 +150,13 @@ it('shows the historical snapshot without active-run actions and returns to the 
   expect(screen.getByLabelText(`1. ${snapshot.stops[0].name}. ${t.tours.visited}`)).toBeTruthy();
   expect(screen.queryByText(mockStore.plans[0].title)).toBeNull();
   expect(screen.queryByText(mockStore.activeRun!.snapshot.title)).toBeNull();
-  expect(screen.queryByLabelText(t.tours.arrivedAt(1))).toBeNull();
+  expect(screen.queryByLabelText(t.tours.logBeerAt(1))).toBeNull();
   expect(screen.queryByLabelText(t.tours.navigate)).toBeNull();
   expect(screen.getByLabelText(t.tours.repeat)).toBeTruthy();
 
   fireEvent.press(screen.getByLabelText(t.tours.back));
   expect(screen.getByText(mockStore.activeRun!.snapshot.title)).toBeTruthy();
-  expect(screen.getByLabelText(t.tours.arrivedAt(1))).toBeTruthy();
+  expect(screen.getByLabelText(t.tours.logBeerAt(1))).toBeTruthy();
   expect(mockBack).not.toHaveBeenCalled();
 });
 
@@ -206,7 +211,7 @@ it('opens the full map, selects a stop, and restores the main controls on close'
   expect(screen.queryByTestId('full-tour-map')).toBeNull();
   fireEvent.press(screen.getByLabelText(t.tours.openMap));
   expect(screen.getByTestId('full-tour-map')).toBeTruthy();
-  expect(screen.queryByLabelText(t.tours.arrivedAt(1))).toBeNull();
+  expect(screen.queryByLabelText(t.tours.logBeerAt(1))).toBeNull();
 
   const second = mockStore.activeRun!.snapshot.stops[1];
   fireEvent.press(screen.getByLabelText(`Map: ${second.name}`));
@@ -214,7 +219,7 @@ it('opens the full map, selects a stop, and restores the main controls on close'
   expect(screen.getByLabelText(t.tours.fullPubDetail)).toBeTruthy();
   fireEvent.press(screen.getByLabelText(t.tours.back));
   await waitFor(() => expect(screen.queryByTestId('full-tour-map')).toBeNull());
-  expect(screen.getByLabelText(t.tours.arrivedAt(1))).toBeTruthy();
+  expect(screen.getByLabelText(t.tours.logBeerAt(1))).toBeTruthy();
   expect(screen.getByLabelText(t.tours.openMap)).toBeTruthy();
   expect(mockBack).not.toHaveBeenCalled();
 });
@@ -251,7 +256,21 @@ it('keeps the group at the last visited pub when the stop after it is skipped', 
   mockStore.activeRun = { ...mockStore.activeRun!, snapshot, statuses: { 'Běh-1': 'visited', 'Běh-2': 'skipped' } };
   const screen = render(<TourDetailScreen />);
   expect(screen.getByLabelText(`1. Běh hospoda 1. ${t.tours.youAreHere}`)).toBeTruthy();
-  expect(screen.getByLabelText(t.tours.arrivedAt(3))).toBeTruthy();
+  expect(screen.getByLabelText(t.tours.logBeerAt(3))).toBeTruthy();
   // 1 → 3 is about 2.2 km of air distance, not the 2 → 3 leg.
   expect(screen.getByLabelText(t.tours.navigateMinutes(35))).toBeTruthy();
+});
+
+it('hands the next stop to the counter and shows beers counted at visited stops', () => {
+  const [first, second] = mockStore.activeRun!.snapshot.stops;
+  mockStore.activeRun!.statuses = { [first.id]: 'visited' };
+  mockTally.current = { pubKey: 'u2fkbnjj', drinks: [{ at: '2026-09-18T17:30:00Z' }, { at: '2026-09-18T18:10:00Z' }, { at: '2026-09-17T18:10:00Z' }] };
+  first.cacheKey = 'u2fkbnjj';
+  const screen = render(<TourDetailScreen />);
+  // Two beers since the run started at 17:00; yesterday's beer does not count.
+  expect(screen.getByLabelText(`1. ${first.name}. ${t.tours.youAreHere} · 2 piva`)).toBeTruthy();
+  fireEvent.press(screen.getByLabelText(t.tours.logBeerAt(2)));
+  expect(useCounterHandoffStore.getState().pub).toEqual({ id: second.pubId, name: second.name, lat: second.lat, lng: second.lon, address: 'Praha' });
+  expect(mockPush).toHaveBeenLastCalledWith('/beer');
+  mockTally.current = null;
 });

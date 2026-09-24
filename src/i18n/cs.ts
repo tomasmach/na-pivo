@@ -2873,6 +2873,9 @@ export const cs = {
     nextPub: (name: string, minutes?: number) => `další ${name}${minutes ? `, asi ${minutes} min` : ''}`,
     compassNudge: (name: string) => `Tour: další ${name}`, open: 'Otevřít',
     openTour: (name: string) => `Otevřít tour, další zastávka ${name}`,
+    counterAllDone: 'Tour: všechno odškrtnuté',
+    countedAtStop: (beer: number, stop: number) => `${beer}. pivo, ${['jednička', 'dvojka', 'trojka', 'čtyřka', 'pětka', 'šestka', 'sedmička', 'osmička'][stop - 1] ?? stop} odškrtnutá`,
+    logBeerAt: (stop: number) => `Zapsat pivo na ${['jedničce', 'dvojce', 'trojce', 'čtyřce', 'pětce', 'šestce', 'sedmičce', 'osmičce'][stop - 1] ?? stop}`,
     addMeetup: 'Přidat sraz', youAreHere: 'Tady sedíte', today: 'Dnes',
     onDay: ['V pondělí', 'V úterý', 'Ve středu', 'Ve čtvrtek', 'V pátek', 'V sobotu', 'V neděli'],
     closedOn: (day: string) => `${day} zavřeno`,
@@ -2882,7 +2885,6 @@ export const cs = {
     summary: (pubs: string, distance: string) => `${pubs}, asi ${distance} pěšky`,
     walkLeg: (distance: string, minutes: number) => `${distance} · asi ${minutes} min pěšky`,
     navigateMinutes: (minutes: number) => `Navigovat · ${minutes} min`,
-    arrivedAt: (stop: number) => `Už sedíme na ${['jedničce', 'dvojce', 'trojce', 'čtyřce', 'pětce', 'šestce', 'sedmičce', 'osmičce'][stop - 1] ?? stop}`,
     errors: {
       network: 'Bez spojení se plán nezveřejní. Změny máš dál v telefonu.',
       storage: 'Změny se nepodařilo uložit do telefonu. Zkus to znovu.',

@@ -5,14 +5,17 @@ import { usePreventRemove } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
 import * as Clipboard from 'expo-clipboard';
-import { CheckIcon, CompassIcon, EllipsisIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, CompassIcon, EllipsisIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
 import { useToursStore, tourContentSignature } from '@/stores/toursStore';
 import { openPubInMaps } from '@/utils/maps';
-import { t, intlLocale } from '@/i18n';
+import { beerCountLabel, t, intlLocale } from '@/i18n';
+import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
+import { useTallyStore } from '@/stores/tallyStore';
+import { beersAtStop, pubFromStop } from './counterLink';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Radius, Spacing } from '@/theme/layout';
 import { FontScaleCap } from '@/theme/fonts';
@@ -62,6 +65,11 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     try { const result = await operation(); if (result.ok) after?.(result); }
     finally { actionLock.current = false; setActing(false); }
   }
+  // The counter checks the stop off once a beer is logged there.
+  function logBeer(stop: TourStop) {
+    useCounterHandoffStore.getState().handOff(pubFromStop(stop));
+    router.push('/beer' as Href);
+  }
   function navigate(stop: TourStop) { void openPubInMaps({ lat: stop.lat, lng: stop.lon, name: stop.name }).catch(() => setNotice(t.tours.errors.navigation)); }
   function mark(stop: TourStop, status: 'visited' | 'skipped' | null) {
     const previous = active?.statuses[stop.id] ?? null;
@@ -99,6 +107,9 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     ] });
   }
   const next = active?.snapshot.stops.find((s) => !active.statuses[s.id]);
+  const liveSession = useTallyStore((s) => s.current);
+  const pastSessions = useTallyStore((s) => s.history);
+  const sessions = liveSession ? [liveSession, ...pastSessions] : pastSessions;
   const facts = useTourStopFacts(history && !shareMode ? [] : (shareMode ? plan : displayed)?.stops ?? []);
 
   if (!plan || !displayed) return <View style={[ui.screen, { paddingTop: insets.top }]}><TourHeader title={t.tours.title} onBack={() => router.replace('/tours' as Href)} /><TourError code={store.error} message={store.hydrated ? t.tours.invalidLink : t.tours.loading} /></View>;
@@ -131,7 +142,10 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   function caption(stop: TourStop, index: number) {
     if (runView) {
       const status = runView.statuses[stop.id];
-      if (status) return stop.id === hereId ? t.tours.youAreHere : t.tours[status];
+      if (status) {
+        const beers = status === 'visited' ? beersAtStop(stop, runView, sessions) : 0;
+        return [stop.id === hereId ? t.tours.youAreHere : t.tours[status], beers ? beerCountLabel(beers) : null].filter(Boolean).join(' · ');
+      }
       if (history) return t.tours.pending;
       return stop.id === next?.id ? [t.tours.nextStop, stop.address].filter(Boolean).join(' · ') : stop.address;
     }
@@ -207,7 +221,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
       </View>}
       {shareMode ? ((!shared || localNewer || !!store.pending[id]) && <TourButton label={shared ? t.tours.publishChanges : t.tours.createLink} busy={acting || store.busy} onPress={() => { void action(() => store.publish(id)); }} />)
         : history ? <TourButton label={t.tours.repeat} onPress={() => { void action(() => store.copyPlan(id, history?.id), (r) => { if (r.id) router.replace({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); }} />
-          : active ? <><TourButton label={next ? hereLeg ? t.tours.navigateMinutes(hereLeg.minutes) : t.tours.navigate : t.tours.end} icon={next ? <CompassIcon size={19} color={Colors.stout} /> : undefined} onPress={() => next ? navigate(next) : end()} />{next && <TourButton label={t.tours.arrivedAt(nextIndex + 1)} quiet icon={<CheckIcon size={17} color={Colors.foam} />} disabled={acting} onPress={() => mark(next, 'visited')} />}</>
+          : active ? <><TourButton label={next ? hereLeg ? t.tours.navigateMinutes(hereLeg.minutes) : t.tours.navigate : t.tours.end} icon={next ? <CompassIcon size={19} color={Colors.stout} /> : undefined} onPress={() => next ? navigate(next) : end()} />{next && <TourButton label={t.tours.logBeerAt(nextIndex + 1)} quiet icon={<BeerIcon size={17} color={Colors.foam} />} onPress={() => logBeer(next)} />}</>
             : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} quiet onPress={() => setShareMode(true)} />}</>}
     </View>
     </View>

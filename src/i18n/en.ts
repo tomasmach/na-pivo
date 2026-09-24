@@ -2274,6 +2274,9 @@ export const en: Strings = {
     nextPub: (name: string, minutes?: number) => `next ${name}${minutes ? `, about ${minutes} min` : ''}`,
     compassNudge: (name: string) => `Tour: next ${name}`, open: 'Open',
     openTour: (name: string) => `Open the tour, next stop ${name}`,
+    counterAllDone: 'Tour: all stops done',
+    countedAtStop: (beer: number, stop: number) => `Beer ${beer}, stop ${stop} checked off`,
+    logBeerAt: (stop: number) => `Log a beer at stop ${stop}`,
     addMeetup: 'Add meetup', youAreHere: "You're here", today: 'Today',
     onDay: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     closedOn: (day: string) => day === 'Today' ? 'Closed today' : `Closed on ${day}`,
@@ -2283,7 +2286,6 @@ export const en: Strings = {
     summary: (pubs: string, distance: string) => `${pubs}, about ${distance} on foot`,
     walkLeg: (distance: string, minutes: number) => `${distance} · about ${minutes} min walk`,
     navigateMinutes: (minutes: number) => `Navigate · ${minutes} min`,
-    arrivedAt: (stop: number) => `We're at stop ${stop}`,
     errors: {
       network: 'A connection is needed to publish. Your changes are still on this phone.',
       storage: 'Changes could not be saved on this phone. Try again.',
