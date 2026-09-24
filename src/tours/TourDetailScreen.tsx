@@ -16,10 +16,11 @@ import { t, intlLocale } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Radius, Spacing } from '@/theme/layout';
 import { FontScaleCap } from '@/theme/fonts';
-import { TourButton, TourError, TourHeader, TourText, stopCount, tourDate, ui } from './TourChrome';
+import { TourButton, TourError, TourHeader, TourText, pubCount, tourDate, ui } from './TourChrome';
 import { TourMap } from './TourMap';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
-import { TourHistoryRow, TourJourneyStop, TourMapPreview } from './TourJourney';
+import { TourHistoryRow, TourJourneyStop, TourLeg, TourMapPreview, type StopFactsLine } from './TourJourney';
+import { formatWalkDistance, hoursOnDay, planDay, useTourStopFacts, walkingLeg } from './stopFacts';
 import type { TourResult, TourStop } from './model';
 
 export default function TourDetailScreen() {
@@ -98,18 +99,58 @@ function TourDetail({ id }: { id: string }) {
     ] });
   }
   const next = active?.snapshot.stops.find((s) => !active.statuses[s.id]);
+  const facts = useTourStopFacts(history && !shareMode ? [] : (shareMode ? plan : displayed)?.stops ?? []);
 
   if (!plan || !displayed) return <View style={[ui.screen, { paddingTop: insets.top }]}><TourHeader title={t.tours.title} onBack={() => router.replace('/tours' as Href)} /><TourError code={store.error} message={store.hydrated ? t.tours.invalidLink : t.tours.loading} /></View>;
   const current = shareMode ? plan : displayed;
   const localNewer = !!store.published[id] && store.published[id] !== tourContentSignature(plan);
   const expires = plan.share?.expiresAt ?? new Date(Math.max(openedAt + 30 * 86400000, plan.scheduledDate ? new Date(`${plan.scheduledDate}T12:00:00Z`).getTime() + 7 * 86400000 : 0)).toISOString();
   const shared = !!plan.share && new Date(plan.share.expiresAt).getTime() > openedAt;
+  const runView = !shareMode && run ? run : null;
+  const live = !!runView && !history;
+  const stops = current.stops;
+  const legs = stops.slice(1).map((stop, index) => walkingLeg(stops[index], stop));
+  const nextIndex = live && next ? stops.findIndex((stop) => stop.id === next.id) : -1;
+  // Skipped stops do not move the group; the last visited one before the next stop does.
+  const hereStop = live ? stops.slice(0, next ? nextIndex : stops.length).reverse().find((stop) => runView?.statuses[stop.id] === 'visited') : undefined;
+  const hereId = hereStop?.id;
+  const hereLeg = hereStop && next ? walkingLeg(hereStop, next) : undefined;
+  // A running tour happens tonight; a plan is about its meetup day.
+  const { day, today } = planDay({ scheduledDate: live ? null : current.scheduledDate }, live);
+  const dayLabel = today ? t.tours.today : t.tours.onDay[day];
+  function factsLine(stop: TourStop, withHours: boolean): StopFactsLine | undefined {
+    const known = facts[stop.id];
+    if (!known) return undefined;
+    const intervals = withHours ? hoursOnDay(known.hours, day) : null;
+    return {
+      hours: intervals ? intervals.length ? `${dayLabel} ${intervals.join(', ')}` : t.tours.closedOn(dayLabel) : undefined,
+      closed: !!intervals && !intervals.length,
+      beers: known.beers.slice(0, 2).join(', ') || undefined,
+    };
+  }
+  function caption(stop: TourStop, index: number) {
+    if (runView) {
+      const status = runView.statuses[stop.id];
+      if (status) return stop.id === hereId ? t.tours.youAreHere : t.tours[status];
+      if (history) return t.tours.pending;
+      return stop.id === next?.id ? [t.tours.nextStop, stop.address].filter(Boolean).join(' · ') : stop.address;
+    }
+    return index === 0 ? `${t.tours.firstStop}${current.scheduledTime ? ` ${current.scheduledTime}` : ''}${stop.address ? ` · ${stop.address}` : ''}` : stop.address;
+  }
+  const visitedCount = runView ? Object.values(runView.statuses).filter((s) => s === 'visited').length : 0;
+  const editable = !shareMode && !run && !plan.source;
+  const meta = runView
+    ? [history ? new Date(runView.startedAt).toLocaleDateString(intlLocale) : t.tours.onTheWaySince(new Date(runView.startedAt).toLocaleTimeString(intlLocale, { hour: 'numeric', minute: '2-digit' })), t.tours.progress(visitedCount, stops.length)].join(' · ')
+    : [current.scheduledDate ? tourDate(current) : editable ? null : t.tours.optional, t.tours.summary(pubCount(stops.length), formatWalkDistance(legs.reduce((sum, leg) => sum + leg.meters, 0)))].filter(Boolean).join(' · ');
+  const closedOnMeetup = !runView && current.scheduledDate ? stops.filter((stop) => factsLine(stop, true)?.closed).map((stop) => stop.name) : [];
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
     <View style={ui.grow} accessibilityElementsHidden={overlayVisible} importantForAccessibility={overlayVisible ? 'no-hide-descendants' : 'auto'}>
     <TourHeader title={shareMode ? t.tours.sharedPlan : run ? t.tours.run : t.tours.title} onBack={() => shareMode ? setShareMode(false) : history ? setHistoryId(null) : router.canGoBack() ? router.back() : router.replace('/tours' as Href)}
       right={<Pressable style={ui.iconButton} accessibilityRole="button" accessibilityLabel={t.tours.more} onPress={more}><EllipsisIcon color={Colors.foam} size={23} /></Pressable>} />
     <ScrollView ref={scroll} contentContainerStyle={styles.content}>
-      <View><TourText maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{current.title}</TourText><TourText style={styles.date}>{tourDate(current)}</TourText></View>
+      <View><TourText maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{current.title}</TourText><TourText style={styles.date}>{meta}</TourText>
+        {editable && !current.scheduledDate && <Pressable onPress={() => { void edit(); }} style={styles.addMeetup} accessibilityRole="button" accessibilityLabel={t.tours.addMeetup}><TourText style={ui.linkText}>{t.tours.addMeetup}</TourText></Pressable>}
+        {closedOnMeetup.length > 0 && <TourText style={styles.closed}>{t.tours.closedOnMeetup(closedOnMeetup.join(', '), closedOnMeetup.length)}</TourText>}</View>
       <TourJourneyIllustration stops={current.stops} statuses={!shareMode ? run?.statuses : undefined} nextStopId={!shareMode && active && !history ? next?.id : undefined} />
       <TourError code={store.error} message={notice} />
       {plan.conflict && (<View style={{ gap: Spacing.md }}><TourText style={ui.section}>{t.tours.conflict}</TourText><TourText>{t.tours.conflictMessage}</TourText>
@@ -119,15 +160,15 @@ function TourDetail({ id }: { id: string }) {
 
       <View>
         <View style={[ui.row, styles.listHeading]}><TourText style={styles.section}>{t.tours.stops}</TourText>
-          <TourText style={styles.progress}>{run && !shareMode ? `${Object.values(run.statuses).filter((s) => s === 'visited').length} / ${run.snapshot.stops.length} ${t.tours.visited.toLocaleLowerCase()}` : stopCount(current.stops.length)}</TourText>
-          {!shareMode && !run && !plan.source && <Pressable onPress={() => { void edit(); }} style={ui.link} accessibilityRole="button" accessibilityLabel={t.tours.edit}><TourText style={ui.linkText}>{t.tours.edit}</TourText></Pressable>}
+          {editable && <Pressable onPress={() => { void edit(); }} style={ui.link} accessibilityRole="button" accessibilityLabel={t.tours.edit}><TourText style={ui.linkText}>{t.tours.edit}</TourText></Pressable>}
           {history && <TourText style={ui.meta}>{t.tours.ended}</TourText>}
         </View>
-        {current.stops.map((stop, index) => <View key={stop.id}>
-          <TourJourneyStop stop={stop} index={index} count={current.stops.length} selected={selected === stop.id}
-            next={!shareMode && !!active && !history && stop.id === next?.id} status={!shareMode ? run?.statuses[stop.id] : undefined}
+        {stops.map((stop, index) => <View key={stop.id}>
+          {index > 0 && <TourLeg label={t.tours.walkLeg(formatWalkDistance(legs[index - 1].meters), legs[index - 1].minutes)} done={!!runView?.statuses[stop.id]} />}
+          <TourJourneyStop stop={stop} index={index} count={stops.length} selected={selected === stop.id}
+            next={live && stop.id === next?.id} status={runView?.statuses[stop.id]} here={stop.id === hereId}
             onPress={() => { setSelected(stop.id); setDetail(stop); }}
-            caption={!shareMode && run ? run.statuses[stop.id] ? t.tours[run.statuses[stop.id]] : stop.id === next?.id && !history ? t.tours.nextStop : t.tours.pending : index === 0 ? `${t.tours.firstStop}${current.scheduledTime ? ` ${current.scheduledTime}` : ''}${stop.address ? ` · ${stop.address}` : ''}` : stop.address || t.tours.openingHoursUnknown} />
+            caption={caption(stop, index)} facts={history ? undefined : factsLine(stop, !runView || !runView.statuses[stop.id])} />
         </View>)}
       </View>
       <TourMapPreview stops={current.stops} onPress={() => setLargeMap(true)} />
@@ -166,7 +207,7 @@ function TourDetail({ id }: { id: string }) {
       </View>}
       {shareMode ? ((!shared || localNewer || !!store.pending[id]) && <TourButton label={shared ? t.tours.publishChanges : t.tours.createLink} busy={acting || store.busy} onPress={() => { void action(() => store.publish(id)); }} />)
         : history ? <TourButton label={t.tours.repeat} onPress={() => { void action(() => store.copyPlan(id, history?.id), (r) => { if (r.id) router.replace({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); }} />
-          : active ? <><TourButton label={next ? t.tours.navigate : t.tours.end} icon={next ? <CompassIcon size={19} color={Colors.stout} /> : undefined} onPress={() => next ? navigate(next) : end()} />{next && <TourButton label={t.tours.markVisited} quiet icon={<CheckIcon size={17} color={Colors.foam} />} disabled={acting} onPress={() => mark(next, 'visited')} />}</>
+          : active ? <><TourButton label={next ? hereLeg ? t.tours.navigateMinutes(hereLeg.minutes) : t.tours.navigate : t.tours.end} icon={next ? <CompassIcon size={19} color={Colors.stout} /> : undefined} onPress={() => next ? navigate(next) : end()} />{next && <TourButton label={t.tours.arrivedAt(nextIndex + 1)} quiet icon={<CheckIcon size={17} color={Colors.foam} />} disabled={acting} onPress={() => mark(next, 'visited')} />}</>
             : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} quiet onPress={() => setShareMode(true)} />}</>}
     </View>
     </View>
@@ -174,7 +215,7 @@ function TourDetail({ id }: { id: string }) {
         <TourHeader title={detail?.name ?? t.tours.map} onBack={() => { setLargeMap(false); setDetail(null); }} />
         <ScrollView contentContainerStyle={[ui.content, { flexGrow: 1 }]}>
           <TourMap key={detail ? "stop-detail" : "overview"} stops={current.stops} selectedId={detail?.id ?? selected} onSelect={(stopId) => { setSelected(stopId); setDetail(current.stops.find((s) => s.id === stopId) ?? null); }} height={detail ? 160 : Math.max(240, dimensions.height - insets.top - insets.bottom - 150)} region={region} onRegionChange={setRegion} />
-          {detail && <><TourText style={ui.heading}>{current.stops.findIndex((s) => s.id === detail.id) + 1}. {detail.name}</TourText><TourText>{detail.address}</TourText><TourText style={ui.notice}>{t.tours.openingHoursUnknown}</TourText>
+          {detail && <><TourText style={ui.heading}>{current.stops.findIndex((s) => s.id === detail.id) + 1}. {detail.name}</TourText><TourText>{detail.address}</TourText><TourText style={ui.notice}>{factsLine(detail, true)?.hours ?? t.tours.openingHoursUnknown}</TourText>
             <TourButton label={t.tours.fullPubDetail} secondary onPress={() => setPubDetail(true)} />
             {!shareMode && active && !history && <><TourText style={ui.notice}>{t.tours.runPrivacy}</TourText>
               <TourButton label={active.statuses[detail.id] ? t.tours.undoMark : t.tours.markVisited} disabled={acting} onPress={() => mark(detail, active.statuses[detail.id] ? null : 'visited')} />
@@ -195,7 +236,8 @@ const styles = StyleSheet.create({
   date: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.foamMuted, marginTop: Spacing.sm },
   listHeading: { minHeight: 28, flexWrap: 'wrap', marginBottom: Spacing.xs },
   section: { fontFamily: undefined, fontWeight: '600', fontSize: 14, lineHeight: 20, color: Colors.foam },
-  progress: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.foamMuted },
+  addMeetup: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+  closed: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.closed, marginTop: Spacing.xs },
   privacy: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', minHeight: 44, gap: Spacing.xs },
   privacyText: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.mutedText },
   footer: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, .1), backgroundColor: Colors.stout },

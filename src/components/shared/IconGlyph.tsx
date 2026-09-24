@@ -12,6 +12,7 @@ import {
   ArrowDown,
   GripVertical,
   Ellipsis,
+  Footprints,
   Beer,
   BeerOff,
   Compass,
@@ -219,3 +220,4 @@ export const ArrowUpIcon = wrap(ArrowUp, 'ArrowUpIcon');
 export const ArrowDownIcon = wrap(ArrowDown, 'ArrowDownIcon');
 export const GripVerticalIcon = wrap(GripVertical, 'GripVerticalIcon');
 export const EllipsisIcon = wrap(Ellipsis, 'EllipsisIcon');
+export const FootprintsIcon = wrap(Footprints, 'FootprintsIcon');

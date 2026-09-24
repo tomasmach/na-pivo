@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { CheckIcon, ChevronRightIcon, HistoryIcon, MapIcon, MinusIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, ChevronRightIcon, HistoryIcon, MapIcon, MinusIcon, FootprintsIcon } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -7,13 +7,16 @@ import { t, intlLocale } from '@/i18n';
 import { TourMap } from './TourMap';
 import type { TourRun, TourStop } from './model';
 
-export function TourJourneyStop({ stop, index, count, status, caption, next, selected, onPress }: {
+export interface StopFactsLine { hours?: string; closed?: boolean; beers?: string }
+
+export function TourJourneyStop({ stop, index, count, status, caption, facts, here, next, selected, onPress }: {
   stop: TourStop; index: number; count: number; status?: 'visited' | 'skipped'; caption: string;
-  next: boolean; selected: boolean; onPress: () => void;
+  facts?: StopFactsLine; here?: boolean; next: boolean; selected: boolean; onPress: () => void;
 }) {
+  const factsText = [facts?.hours, facts?.beers].filter(Boolean).join(' · ');
   return <View style={styles.stop}>
     <View pointerEvents="none" style={[styles.rail, index === 0 && styles.railFirst, index === count - 1 && styles.railLast]} />
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${index + 1}. ${stop.name}. ${caption}`}
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${index + 1}. ${stop.name}. ${caption}${factsText ? `. ${factsText}` : ''}`}
       accessibilityState={{ selected }} style={({ pressed }) => [styles.stopPress, (selected || pressed) && styles.highlight]}>
       <View style={[styles.number, next && styles.nextNumber, status === 'visited' && styles.visitedNumber]}>
         {status === 'visited' ? <CheckIcon size={16} color={Colors.stout} /> : status === 'skipped' ? <MinusIcon size={15} color={Colors.foamMuted} /> :
@@ -21,10 +24,22 @@ export function TourJourneyStop({ stop, index, count, status, caption, next, sel
       </View>
       <View style={styles.words}>
         <Text maxFontSizeMultiplier={FontScaleCap.heading} style={[styles.name, next && styles.nextName]}>{stop.name}</Text>
-        <Text maxFontSizeMultiplier={FontScaleCap.body} style={[styles.caption, next && styles.nextCaption]}>{caption}</Text>
+        {!!caption && <Text maxFontSizeMultiplier={FontScaleCap.body} style={[styles.caption, next && styles.nextCaption, here && styles.here]}>{caption}</Text>}
+        {!!factsText && <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={2} style={styles.facts}>
+          {facts?.hours && <Text style={facts.closed ? styles.closed : styles.open}>{facts.hours}</Text>}
+          {facts?.hours && facts.beers ? ' · ' : ''}{facts?.beers}
+        </Text>}
       </View>
       <ChevronRightIcon size={16} color={Colors.mutedText} />
     </Pressable>
+  </View>;
+}
+
+export function TourLeg({ label, done }: { label: string; done: boolean }) {
+  return <View style={[styles.leg, done && styles.dim]}>
+    <View pointerEvents="none" style={styles.rail} />
+    <FootprintsIcon size={13} color={Colors.mutedText} />
+    <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.legText}>{label}</Text>
   </View>;
 }
 
@@ -64,6 +79,11 @@ const styles = StyleSheet.create({
   nextName: { fontSize: 21, lineHeight: 27, fontWeight: '700', letterSpacing: -.4 },
   caption: { fontSize: 12, lineHeight: 18, color: Colors.mutedText, marginTop: Spacing.xs },
   nextCaption: { color: Colors.foamMuted },
+  here: { color: Colors.foamMuted, fontWeight: '600' },
+  facts: { fontSize: 12, lineHeight: 18, color: Colors.mutedText, marginTop: 2 },
+  open: { color: Colors.open }, closed: { color: Colors.closed },
+  leg: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 30 + Spacing.md },
+  legText: { fontSize: 12, lineHeight: 18, color: Colors.mutedText },
   highlight: { backgroundColor: withAlpha(Colors.foam, .04) },
   mapLink: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingRight: Spacing.md, borderRadius: Radius.medium, backgroundColor: Colors.stout3, overflow: 'hidden' },
   thumbnail: { width: 104, height: 76 },
