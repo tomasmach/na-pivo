@@ -21,7 +21,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import {
   useAnimatedReaction,
   useSharedValue,
@@ -43,6 +43,8 @@ import {
 } from '@/data/pubSearchFilters';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useToursStore } from '@/stores/toursStore';
+import { runGlance } from '@/tours/glance';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { isHeadingAccuracyLow } from '@/compass/headingAccuracy';
 import { openHomeInMaps, openPubInMaps } from '@/utils/maps';
@@ -846,6 +848,12 @@ export default function CompassScreen() {
     setMapPubOpen(true);
   }, [focusedPub, reveal, showPubDetails]);
 
+  const activeTourRun = useToursStore((s) => s.activeRun);
+  useEffect(() => { void useToursStore.getState().hydrate(); }, []);
+  const tour = runGlance(activeTourRun);
+  const tourPlanId = tour?.next ? tour.planId : undefined;
+  const tourNextName = tour?.next?.name;
+
   // One nudge, one priority, never two — the slot is 52 pt whether it speaks or
   // not, so the button below it never moves under the thumb.
   const compassNudge: Nudge | null = useMemo(() => {
@@ -863,13 +871,23 @@ export default function CompassScreen() {
     if (focusedPub) {
       return { kind: 'dopito', label: t.compass.nudgeFocused, onPress: () => undefined };
     }
+    // A running tour points the way to its next pub, not to the nearest one.
+    if (tourPlanId && tourNextName) {
+      return {
+        kind: 'rapid',
+        text: t.tours.compassNudge(tourNextName),
+        confirmLabel: t.tours.open,
+        icon: MapIcon,
+        onConfirm: () => router.push({ pathname: '/tours/[id]', params: { id: tourPlanId } } as Href),
+      };
+    }
     // Surprise mode speaks for itself through "Dej mi jinou" in the thumb arc,
     // so it gets no strip of its own; the way back is the overflow sheet.
     if (hasMagnetometer === false) {
       return { kind: 'dopito', label: t.compass.nudgeNoMagnetometer, onPress: () => undefined };
     }
     return null;
-  }, [activeFilterCount, focusedPub, hasMagnetometer, headingAccuracy]);
+  }, [activeFilterCount, focusedPub, hasMagnetometer, headingAccuracy, router, tourNextName, tourPlanId]);
 
   // Everything that used to live in the header and the bottom bar — minus the
   // map, which is now a visible half of the header. One door per place.

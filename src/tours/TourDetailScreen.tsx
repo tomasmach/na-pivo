@@ -20,18 +20,18 @@ import { TourButton, TourError, TourHeader, TourText, pubCount, tourDate, ui } f
 import { TourMap } from './TourMap';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
 import { TourHistoryRow, TourJourneyStop, TourLeg, TourMapPreview, type StopFactsLine } from './TourJourney';
-import { formatWalkDistance, hoursOnDay, planDay, useTourStopFacts, walkingLeg } from './stopFacts';
-import type { TourResult, TourStop } from './model';
+import { formatWalkDistance, hoursOnDay, planDay, useTourStopFacts, walkingDistance, walkingLeg } from './stopFacts';
+import { runPosition, type TourResult, type TourStop } from './model';
 
 export default function TourDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  return <TourDetail key={id} id={id} />;
+  const { id, run } = useLocalSearchParams<{ id: string; run?: string }>();
+  return <TourDetail key={id} id={id} initialRun={run} />;
 }
-function TourDetail({ id }: { id: string }) {
+function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const focused = useIsFocused();
   const router = useRouter(); const insets = useSafeAreaInsets(); const dimensions = useWindowDimensions();
   const store = useToursStore();
-  const [historyId, setHistoryId] = useState<string | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(initialRun ?? null);
   const active = store.activeRun?.planId === id ? store.activeRun : null;
   const history = store.runs.find((run) => run.id === historyId && run.planId === id);
   const run = history ?? active;
@@ -110,9 +110,9 @@ function TourDetail({ id }: { id: string }) {
   const live = !!runView && !history;
   const stops = current.stops;
   const legs = stops.slice(1).map((stop, index) => walkingLeg(stops[index], stop));
-  const nextIndex = live && next ? stops.findIndex((stop) => stop.id === next.id) : -1;
-  // Skipped stops do not move the group; the last visited one before the next stop does.
-  const hereStop = live ? stops.slice(0, next ? nextIndex : stops.length).reverse().find((stop) => runView?.statuses[stop.id] === 'visited') : undefined;
+  const position = live && runView ? runPosition(runView) : undefined;
+  const nextIndex = position?.nextIndex ?? -1;
+  const hereStop = position?.here;
   const hereId = hereStop?.id;
   const hereLeg = hereStop && next ? walkingLeg(hereStop, next) : undefined;
   // A running tour happens tonight; a plan is about its meetup day.
@@ -141,11 +141,11 @@ function TourDetail({ id }: { id: string }) {
   const editable = !shareMode && !run && !plan.source;
   const meta = runView
     ? [history ? new Date(runView.startedAt).toLocaleDateString(intlLocale) : t.tours.onTheWaySince(new Date(runView.startedAt).toLocaleTimeString(intlLocale, { hour: 'numeric', minute: '2-digit' })), t.tours.progress(visitedCount, stops.length)].join(' · ')
-    : [current.scheduledDate ? tourDate(current) : editable ? null : t.tours.optional, t.tours.summary(pubCount(stops.length), formatWalkDistance(legs.reduce((sum, leg) => sum + leg.meters, 0)))].filter(Boolean).join(' · ');
+    : [current.scheduledDate ? tourDate(current) : editable ? null : t.tours.optional, t.tours.summary(pubCount(stops.length), formatWalkDistance(walkingDistance(stops)))].filter(Boolean).join(' · ');
   const closedOnMeetup = !runView && current.scheduledDate ? stops.filter((stop) => factsLine(stop, true)?.closed).map((stop) => stop.name) : [];
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
     <View style={ui.grow} accessibilityElementsHidden={overlayVisible} importantForAccessibility={overlayVisible ? 'no-hide-descendants' : 'auto'}>
-    <TourHeader title={shareMode ? t.tours.sharedPlan : run ? t.tours.run : t.tours.title} onBack={() => shareMode ? setShareMode(false) : history ? setHistoryId(null) : router.canGoBack() ? router.back() : router.replace('/tours' as Href)}
+    <TourHeader title={shareMode ? t.tours.sharedPlan : run ? t.tours.run : t.tours.title} onBack={() => shareMode ? setShareMode(false) : history && history.id !== initialRun ? setHistoryId(null) : router.canGoBack() ? router.back() : router.replace('/tours' as Href)}
       right={<Pressable style={ui.iconButton} accessibilityRole="button" accessibilityLabel={t.tours.more} onPress={more}><EllipsisIcon color={Colors.foam} size={23} /></Pressable>} />
     <ScrollView ref={scroll} contentContainerStyle={styles.content}>
       <View><TourText maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{current.title}</TourText><TourText style={styles.date}>{meta}</TourText>

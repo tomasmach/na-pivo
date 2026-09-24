@@ -25,6 +25,10 @@ export function walkingLeg(a: TourStop, b: TourStop): WalkingLeg {
   return { meters, minutes: Math.max(1, Math.round(meters / METERS_PER_MINUTE)) };
 }
 
+export function walkingDistance(stops: readonly TourStop[]): number {
+  return stops.slice(1).reduce((sum, stop, index) => sum + walkingLeg(stops[index], stop).meters, 0);
+}
+
 export function formatWalkDistance(meters: number): string {
   if (meters < 1000) return `${Math.max(10, Math.round(meters / 10) * 10)} m`;
   return `${(meters / 1000).toLocaleString(intlLocale, { maximumFractionDigits: 1 })} km`;

@@ -64,6 +64,7 @@ import {
   CheckIcon,
   MenuIcon,
   HandPlatterIcon,
+  MapIcon,
   ImagesIcon,
   QrCodeIcon,
   SettingsIcon,
@@ -141,6 +142,7 @@ import { partyLeaderboard, partyLeaderboardEmptyMessage } from './partyLeaderboa
 import MyActivityCard from './MyActivityCard';
 import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
+import { TourGlanceLine } from '@/tours/TourGlanceLine';
 import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
 import { PresenceList } from './PresenceList';
@@ -868,6 +870,13 @@ export default function FriendsScreen() {
           router.push('/photo-contest' as Href);
         },
       },
+      {
+        key: 'tour',
+        label: t.tours.rail,
+        a11yLabel: t.tours.railA11y,
+        Icon: MapIcon,
+        onPress: () => router.push('/tours' as Href),
+      },
     ],
     [router],
   );
@@ -1291,7 +1300,7 @@ export default function FriendsScreen() {
                 sittingCount > 0 || maybeCount > 0 ? () => setRosterVisible(true) : null
               }
               accessibilityLabel={t.a11y.partaCard(String(sittingCount), headline)}
-              rail={<DoorRail tiles={railTiles} />}
+              rail={<><DoorRail tiles={railTiles} /><TourGlanceLine /></>}
               topRow={chromeRow}
             />
           </View>
