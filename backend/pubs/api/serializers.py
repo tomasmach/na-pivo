@@ -635,6 +635,13 @@ _CLIENT_EVENT_INTERACTION_ACTIONS = {
 # name can never ride in on a key that only checked its own spelling.
 _CLIENT_EVENT_DRINK_TYPES = {choice.value for choice in DrinkLog.DrinkType}
 _CLIENT_EVENT_PLACE_CONTEXTS = {choice.value for choice in DrinkLog.PlaceContext}
+_CLIENT_EVENT_NATIVE_ENUMS = {
+    "app_state": {"active", "inactive", "background", "unknown"},
+    "error_category": {
+        "secure_store_read", "secure_store_access", "geofence_task",
+        "notification_schedule", "notification_cancel", "permission", "unknown",
+    },
+}
 _CLIENT_EVENT_CONTEXT_KEYS = {
     "operation",
     "endpoint",
@@ -662,6 +669,7 @@ _CLIENT_EVENT_CONTEXT_KEYS = {
     "previous_screen",
     "target",
     "action",
+    *_CLIENT_EVENT_NATIVE_ENUMS,
 }
 _EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
@@ -697,6 +705,9 @@ def _sanitize_client_text(value: object, *, max_len: int) -> str:
 def _sanitize_client_scalar(key: str, value: object) -> object | None:
     if value is None:
         return None
+
+    if key in _CLIENT_EVENT_NATIVE_ENUMS:
+        return value if isinstance(value, str) and value in _CLIENT_EVENT_NATIVE_ENUMS[key] else None
 
     if key in {"screen", "previous_screen"}:
         screen = str(value).strip()
@@ -824,6 +835,9 @@ class ClientEventRequestSerializer(serializers.Serializer):
 class PushDeviceRequestSerializer(serializers.Serializer):
     """Request body for PUT /v1/push-device."""
 
+    client_revision = serializers.IntegerField(
+        required=False, min_value=1, max_value=9007199254740991
+    )
     push_token = serializers.CharField(max_length=512, trim_whitespace=True)
     platform = serializers.ChoiceField(
         choices=PushDevice.Platform.choices,
@@ -870,6 +884,9 @@ class PushDeviceRequestSerializer(serializers.Serializer):
 class PushDeviceDeleteSerializer(serializers.Serializer):
     """Request body for DELETE /v1/push-device."""
 
+    client_revision = serializers.IntegerField(
+        required=False, min_value=1, max_value=9007199254740991
+    )
     push_token = serializers.CharField(max_length=512, trim_whitespace=True)
 
     def validate_push_token(self, value: str) -> str:
@@ -2263,7 +2280,9 @@ class DrinkItemSerializer(serializers.Serializer):
     Beer sizes outside the public community-menu presets remain private.
     """
 
-    name = serializers.CharField(max_length=80, trim_whitespace=True)
+    # The counter also submits names selected from the 160-character product
+    # catalogue; private history must accept what that catalogue returns.
+    name = serializers.CharField(max_length=160, trim_whitespace=True)
     price_czk = serializers.IntegerField(required=False, min_value=1, max_value=1000)
     volume_ml = serializers.IntegerField(
         required=False,
@@ -2277,7 +2296,7 @@ class DrinkItemSerializer(serializers.Serializer):
     )
 
 
-class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
+class DrinkRequestSerializer(PubInputSerializer):
     """Request body for POST /v1/drinks.
 
     Pub identity remains mandatory when ``place_context`` is ``pub``. Price is
@@ -2382,7 +2401,7 @@ class DrinkUpdateSerializer(serializers.Serializer):
     drink to another pub or timestamp.
     """
 
-    beer_name = serializers.CharField(max_length=80, trim_whitespace=True, required=False)
+    beer_name = serializers.CharField(max_length=160, trim_whitespace=True, required=False)
     drink_type = serializers.ChoiceField(choices=DrinkLog.DrinkType.choices, required=False)
     price_czk = serializers.IntegerField(min_value=1, max_value=1000, required=False, allow_null=True)
     volume_ml = serializers.IntegerField(min_value=10, max_value=3000, required=False, allow_null=True)
@@ -2398,11 +2417,6 @@ class DrinkUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError("At least one drink field must be provided.")
         drink_type = attrs.get("drink_type")
         volume_ml = attrs.get("volume_ml")
-        if drink_type == DrinkLog.DrinkType.BEER and volume_ml is not None:
-            if volume_ml not in ALLOWED_BEER_VOLUMES_ML:
-                raise serializers.ValidationError(
-                    {"volume_ml": f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."}
-                )
         if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
             raise serializers.ValidationError({"volume_ml": "A shot volume must not exceed 200 ml."})
         return attrs
@@ -2607,6 +2621,8 @@ class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers
     """Query params for local-first pub name/address lookup endpoints."""
 
     query = serializers.CharField(max_length=150, trim_whitespace=True)
+    pub_search = serializers.BooleanField(required=False, default=False)
+    address_lookup = serializers.BooleanField(required=False, default=False)
     place_id = serializers.CharField(
         max_length=255,
         required=False,
@@ -2637,6 +2653,7 @@ class PubLocationReverseGeocodeSerializer(
 
     lat = serializers.FloatField()
     lng = serializers.FloatField()
+    require_precise = serializers.BooleanField(required=False, default=False)
 
 
 # ---------------------------------------------------------------------------

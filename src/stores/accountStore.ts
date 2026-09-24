@@ -7,6 +7,7 @@ import {
   type AccountSession,
 } from '@/data/account';
 import * as auth from '@/data/auth';
+import { trackForegroundPull } from '@/data/foregroundPulls';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import {
   EMPTY_ACHIEVEMENTS,
@@ -131,7 +132,8 @@ interface AccountState {
   /** Re-fetch GET /v1/account/me into `profile`. */
   refreshProfile: () => Promise<void>;
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
-  refreshDiarySnapshot: () => Promise<void>;
+  /** Resolves true when the server snapshot was fetched. */
+  refreshDiarySnapshot: () => Promise<boolean>;
   /**
    * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
    * snapshot so Profile climbs immediately after a vote, without a second GET.
@@ -214,13 +216,14 @@ export const useAccountStore = create<AccountState>((set, get) => {
     }));
   };
 
-  const refreshDiarySnapshot = async () => {
+  const refreshDiarySnapshot = async (): Promise<boolean> => {
     const accountId = get().session?.accountId;
-    if (!accountId) return;
+    if (!accountId) return false;
     const data = await reconcileDiarySnapshot();
     if (data && get().session?.accountId === accountId) {
       set({ diarySnapshot: { accountId, data } });
     }
+    return data != null;
   };
 
   /** After a session-changing auth call: persist the new token + profile. */
@@ -264,17 +267,21 @@ export const useAccountStore = create<AccountState>((set, get) => {
             state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
         }));
         if (session) {
-          const [preferences, profile] = await Promise.all([
-            fetchAccountPreferences(),
+          const [profile] = await Promise.all([
             auth.fetchAccountProfile(),
-            refreshDiarySnapshot(),
+            // A successful launch pull lets the first foreground skip it.
+            trackForegroundPull('diary', refreshDiarySnapshot, () => get().session?.accountId ?? null),
           ]);
-          if (preferences) {
-            applyAccountSettings(preferences);
-          }
           if (profile) {
             set({ profile });
             applyAccountSettings(profile.settings);
+          } else {
+            // The profile includes settings on current backends. Keep the
+            // narrower read as a fallback when that request is unavailable.
+            const preferences = await fetchAccountPreferences();
+            if (preferences && get().session?.token === session.token) {
+              applyAccountSettings(preferences);
+            }
           }
         }
       } catch (error) {

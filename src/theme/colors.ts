@@ -4,6 +4,8 @@
  */
 
 export const Colors = {
+  // Approved flat-screen canvas; legacy screens keep their stout palette (DESIGN.md).
+  canvas: '#15120F',
   // Backgrounds — dark stout palette
   stout: '#1F1308',
   stout2: '#2B1A0E',

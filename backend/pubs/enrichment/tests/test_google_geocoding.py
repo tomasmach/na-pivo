@@ -120,14 +120,10 @@ def test_geocoder_skips_centroid_and_returns_later_precise_result() -> None:
 def test_place_id_lookup_accepts_known_place_without_address_precision() -> None:
     session = _FakeSession(
         _response(
-            {
-                "results": [
-                    _result(
-                        result_type="establishment",
-                        granularity="APPROXIMATE",
-                    )
-                ]
-            }
+            _result(
+                result_type="establishment",
+                granularity="APPROXIMATE",
+            )
         )
     )
 
@@ -136,10 +132,11 @@ def test_place_id_lookup_accepts_known_place_without_address_precision() -> None
     assert candidate is not None
     assert candidate.place_id == "ChIJ-test-place-id"
     assert candidate.result_type == "establishment"
-    assert session.calls[0]["url"].endswith(
-        "/v4/geocode/places/ChIJ-test%2Fplace-id"
-    )
+    assert session.calls[0]["url"].endswith("/v4/geocode/places/ChIJ-test%2Fplace-id")
     assert session.calls[0]["params"] == {"languageCode": "cs"}
+    assert session.calls[0]["headers"]["X-Goog-FieldMask"] == (
+        "placeId,location,granularity,formattedAddress,addressComponents,types"
+    )
 
 
 def test_reverse_geocode_uses_selected_coordinates() -> None:
@@ -148,9 +145,7 @@ def test_reverse_geocode_uses_selected_coordinates() -> None:
     candidate = _source(session).reverse_geocode(lat=50.0801234, lng=16.5106164)
 
     assert candidate is not None
-    assert session.calls[0]["url"].endswith(
-        "/v4/geocode/location/50.0801234,16.5106164"
-    )
+    assert session.calls[0]["url"].endswith("/v4/geocode/location/50.0801234,16.5106164")
     assert session.calls[0]["params"] == {"languageCode": "cs"}
 
 
@@ -213,3 +208,38 @@ def test_exhausted_hard_cap_prevents_http_request() -> None:
         )
 
     assert session.calls == []
+
+
+@pytest.mark.parametrize(
+    "result_type,granularity",
+    [
+        ("locality", "GEOMETRIC_CENTER"),
+        ("route", "APPROXIMATE"),
+        ("street_address", "GEOMETRIC_CENTER"),
+    ],
+)
+def test_reverse_geocode_strict_mode_rejects_centroids_but_legacy_accepts(result_type, granularity):
+    payload = {"results": [_result(result_type=result_type, granularity=granularity)]}
+    legacy_session = _FakeSession(_response(payload))
+    strict_session = _FakeSession(_response(payload))
+    assert _source(legacy_session).reverse_geocode(lat=50.08, lng=14.42) is not None
+    assert (
+        _source(strict_session).reverse_geocode(lat=50.08, lng=14.42, require_precise=True) is None
+    )
+
+
+def test_reverse_geocode_strict_mode_skips_centroid_for_precise_address():
+    session = _FakeSession(
+        _response(
+            {
+                "results": [
+                    _result(result_type="locality", granularity="GEOMETRIC_CENTER"),
+                    _result(result_type="premise", granularity="ROOFTOP", lat=50.08, lng=14.42),
+                ]
+            }
+        )
+    )
+    candidate = _source(session).reverse_geocode(lat=50.08, lng=14.42, require_precise=True)
+    assert candidate is not None
+    assert candidate.result_type == "premise"
+    assert (candidate.lat, candidate.lng) == (50.08, 14.42)

@@ -34,6 +34,8 @@
  */
 
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -91,7 +93,6 @@ import {
   type FriendPubActivity,
   type FriendsDashboard,
   type Friendship,
-  type LeaderboardEntry,
 } from '@/data/friendsClient';
 import {
   enqueueFriendOp,
@@ -130,7 +131,6 @@ import {
 } from '@/notifications/friendPush';
 
 import { AddFriendTools } from './AddFriendTools';
-import CodeSheet from './CodeSheet';
 import ComposeSheet from './ComposeSheet';
 import FriendActiveCard from './FriendActiveCard';
 import { FriendMini, friendDisplayName } from './FriendMini';
@@ -138,6 +138,7 @@ import FriendSettingsSheet from './FriendSettingsSheet';
 import { GoingRoster } from './GoingRoster';
 import HairlineRow from './HairlineRow';
 import { LeaderboardRow } from './LeaderboardRow';
+import { partyLeaderboard, partyLeaderboardEmptyMessage } from './partyLeaderboard';
 import MyActivityCard from './MyActivityCard';
 import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
@@ -149,7 +150,13 @@ import { deriveSharedTable } from './sharedTable';
 import { mergeCheckInsIntoFeed, type MergedSitting } from './partaFeedMerge';
 import { useFriendSafety } from './friendSafety';
 
+// The QR code pulls in ~450 KB of SVG/CSS parsing; load it when the sheet opens.
+const CodeSheet = lazy(() => import('./CodeSheet'));
+
 const LIVE_POLL_MS = 35000;
+/** A tab switch or quick app switch back to Parta within this window reuses the
+ *  dashboard it just loaded instead of refetching all four feeds. */
+const RELOAD_SKIP_MS = 30_000;
 const SHEET_DISMISS_MS = 260;
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 /** How many evenings the screen holds before "Načíst starší" earns its place. */
@@ -425,6 +432,9 @@ export default function FriendsScreen() {
   const markContestResultsSeen = useContestResultsStore((state) => state.markResultsSeen);
 
   const mountedRef = useRef(true);
+  const firstFocusRef = useRef(true);
+  const lastLoadOkAtRef = useRef(0);
+  const lastTeasersAtRef = useRef(0);
   const loadGenRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
   const settingsOverrideRef = useRef<FriendsDashboard['settings'] | null>(null);
@@ -473,6 +483,7 @@ export default function FriendsScreen() {
 
         if (generation === loadGenRef.current) {
           if (next) {
+            lastLoadOkAtRef.current = Date.now();
             const override = settingsOverrideRef.current;
             setDashboard(override ? { ...next, settings: override } : next);
             setLoadError(false);
@@ -590,10 +601,10 @@ export default function FriendsScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    const kickoff = setTimeout(() => void load('initial'), 0);
-    return () => clearTimeout(kickoff);
-  }, [load]);
+  const loadedRecently = useCallback(
+    () => Date.now() - lastLoadOkAtRef.current < RELOAD_SKIP_MS,
+    [],
+  );
 
   const reload = useCallback(() => {
     void load();
@@ -603,7 +614,13 @@ export default function FriendsScreen() {
     useCallback(() => {
       setFocused(true);
       const target = usePartaSignalStore.getState().consumeRefresh();
-      void load(target ? 'refresh' : 'silent').then(() => {
+      // The first focus IS the initial load (a separate mount kickoff used to
+      // abort it 5 ms later and refire all four feeds). Every later focus still
+      // reloads: a friend profile pushed on top may have blocked, removed or
+      // accepted someone, and the list must not show them for another minute.
+      const first = firstFocusRef.current;
+      firstFocusRef.current = false;
+      void load(first ? 'initial' : target ? 'refresh' : 'silent').then(() => {
         if (!target || !mountedRef.current) return;
         if (target.friendshipId) scrollToOffset(requestsYRef.current);
         else if (target.activityId) scrollToOffset(activeYRef.current);
@@ -615,6 +632,8 @@ export default function FriendsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (Date.now() - lastTeasersAtRef.current < RELOAD_SKIP_MS) return;
+      lastTeasersAtRef.current = Date.now();
       void fetchLeaderboard('beers', 'week').then((board) => {
         if (mountedRef.current && board) setWeeklyBoard(board);
       });
@@ -640,11 +659,14 @@ export default function FriendsScreen() {
   }, [focused, load, scrollToOffset]);
 
   useEffect(() => {
+    // A mounted-but-hidden Parta tab must not refetch its feeds on every app
+    // foreground; its next focus reloads instead.
+    if (!focused) return;
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void load('silent');
+      if (state === 'active' && !loadedRecently()) void load('silent');
     });
     return () => subscription.remove();
-  }, [load]);
+  }, [focused, load, loadedRecently]);
 
   const d = dashboard;
 
@@ -762,6 +784,8 @@ export default function FriendsScreen() {
       if (!mountedRef.current) return;
       if (result.ok) {
         showToast(t.friends.pushEnabledToast);
+      } else if (result.reason !== 'cancelled') {
+        showToast(result.reason === 'denied' ? t.friends.pushDeniedHint : t.friends.pushEnableError);
       }
     });
   }, [showToast]);
@@ -988,29 +1012,16 @@ export default function FriendsScreen() {
   // sorts by visits; the beer order is this screen's own cut of the same rows.
   // An older backend omits beers_30d → the toggle hides and visits stand alone.
   const partyBoard = useMemo(() => d?.leaderboard ?? [], [d?.leaderboard]);
-  const boardHasBeers =
-    partyBoard.length > 0 && partyBoard.every((entry) => entry.beers30d != null);
-  const activeBoardMetric: 0 | 1 = boardHasBeers ? boardMetric : 1;
-  const rankedBoard = useMemo(() => {
-    if (activeBoardMetric === 1) return partyBoard;
-    return [...partyBoard].sort(
-      (a, b) =>
-        (b.beers30d ?? 0) - (a.beers30d ?? 0) ||
-        b.visits30d - a.visits30d ||
-        b.sharedCount - a.sharedCount,
-    );
-  }, [activeBoardMetric, partyBoard]);
+  const { hasBeers: boardHasBeers, metric: activeBoardMetric, rows: rankedBoard } = useMemo(
+    () => partyLeaderboard(partyBoard, boardMetric),
+    [partyBoard, boardMetric],
+  );
   // Top rows + a tappable "+N dalších" expand, but ALWAYS pin my row while
   // collapsed (expanding shows everyone, me included).
   const visibleBoard = showAllBoard ? rankedBoard : rankedBoard.slice(0, LEADERBOARD_CAP);
   const hiddenBoardCount = rankedBoard.length - visibleBoard.length;
   const myBoardIndex = rankedBoard.findIndex((entry) => entry.isMe);
   const myBoardPinned = !showAllBoard && hiddenBoardCount > 0 && myBoardIndex >= LEADERBOARD_CAP;
-  const boardValue = useCallback(
-    (entry: LeaderboardEntry) =>
-      activeBoardMetric === 0 ? (entry.beers30d ?? 0) : entry.visits30d,
-    [activeBoardMetric],
-  );
   const boardCaption = useCallback(
     (value: number) =>
       activeBoardMetric === 0
@@ -1324,6 +1335,7 @@ export default function FriendsScreen() {
                 <FriendActiveCard
                   key={`live:${activity.id}`}
                   activity={activity}
+                  presence={d?.presence.find((row) => row.account.id === activity.account.id)}
                   onResponded={reload}
                   stale={loadError}
                 />
@@ -1371,27 +1383,27 @@ export default function FriendsScreen() {
             {t.friends.leaderboardHeader}
           </Text>
 
+          {partyBoard.length > 1 && boardHasBeers ? (
+            <View style={styles.boardSwitch}>
+              <SegmentedControl
+                options={[t.friends.leaderboardMetricBeers, t.friends.leaderboardMetricVisits]}
+                value={activeBoardMetric}
+                onChange={setBoardMetric}
+                accessibilityLabel={t.a11y.partyLeaderboardMetric}
+              />
+            </View>
+          ) : null}
+
           {rankedBoard.length > 1 ? (
             <>
-              {boardHasBeers ? (
-                <View style={styles.boardSwitch}>
-                  <SegmentedControl
-                    options={[t.friends.leaderboardMetricBeers, t.friends.leaderboardMetricVisits]}
-                    value={activeBoardMetric}
-                    onChange={setBoardMetric}
-                    accessibilityLabel={t.a11y.partyLeaderboardMetric}
-                  />
-                </View>
-              ) : null}
-
               <View style={styles.card}>
                 {visibleBoard.map((entry, index) => (
                   <LeaderboardRow
                     key={entry.account.id || `rank-${index}`}
                     entry={entry}
                     rank={index + 1}
-                    value={boardValue(entry)}
-                    caption={boardCaption(boardValue(entry))}
+                    value={entry.value}
+                    caption={boardCaption(entry.value)}
                     divided={index > 0}
                     onPress={
                       entry.isMe || !entry.account.id
@@ -1414,8 +1426,8 @@ export default function FriendsScreen() {
                       key="me-pinned"
                       entry={rankedBoard[myBoardIndex]}
                       rank={myBoardIndex + 1}
-                      value={boardValue(rankedBoard[myBoardIndex])}
-                      caption={boardCaption(boardValue(rankedBoard[myBoardIndex]))}
+                      value={rankedBoard[myBoardIndex].value}
+                      caption={boardCaption(rankedBoard[myBoardIndex].value)}
                     />
                   </>
                 ) : null}
@@ -1436,7 +1448,7 @@ export default function FriendsScreen() {
             </>
           ) : loading && !d ? null : (
             <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.friends.leaderboardEmpty}
+              {t.friends[partyLeaderboardEmptyMessage(partyBoard.length, friendCount)]}
             </Text>
           )}
 
@@ -1517,7 +1529,11 @@ export default function FriendsScreen() {
         onSaved={handleSettingsSaved}
       />
 
-      {codeVisible ? <CodeSheet onClose={() => setCodeVisible(false)} /> : null}
+      {codeVisible ? (
+        <Suspense fallback={null}>
+          <CodeSheet onClose={() => setCodeVisible(false)} />
+        </Suspense>
+      ) : null}
 
       {composeVisible ? (
         <ComposeSheet

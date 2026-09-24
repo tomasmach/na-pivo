@@ -27,7 +27,7 @@ import {
   type CommunityEventsDashboard,
   type DistanceBand,
 } from '@/data/communityEventsClient';
-import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
+import { ensureLocationPermission } from '@/compass/permissions';
 import {
   trackUiInteraction,
   type UiInteractionAction,
@@ -286,10 +286,9 @@ export default function CommunityEventsScreen() {
   const locate = useCallback(async (forEvent: boolean) => {
     trackUiInteraction('community_locate');
     setBusy(true);
-    const permission = await ensureLocationPermission();
+    const permission = await ensureLocationPermission({ openSettingsIfDenied: true });
     if (permission !== 'granted') {
       showToast(t.addPub.locationPermissionDenied);
-      if (permission === 'denied') await openSystemSettings();
       setBusy(false);
       return;
     }

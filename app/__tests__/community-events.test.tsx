@@ -12,6 +12,7 @@ const mockRequestCommunityEventJoin = jest.fn();
 const mockShowToast = jest.fn();
 const mockGetCurrentPositionAsync = jest.fn();
 const mockEnsureLocationPermission = jest.fn();
+const mockOpenSystemSettings = jest.fn();
 const mockGenerateUuidV4 = jest.fn(() => 'community-draft-id');
 
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn() }) }));
@@ -38,8 +39,8 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   XIcon: () => null,
 }));
 jest.mock('@/compass/permissions', () => ({
-  ensureLocationPermission: () => mockEnsureLocationPermission(),
-  openSystemSettings: jest.fn(),
+  ensureLocationPermission: (options: unknown) => mockEnsureLocationPermission(options),
+  openSystemSettings: () => mockOpenSystemSettings(),
 }));
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },
@@ -129,6 +130,17 @@ describe('CommunityEventsScreen', () => {
     });
     return renderer!;
   }
+
+  it('leaves a fresh location refusal in the screen without opening settings', async () => {
+    mockEnsureLocationPermission.mockResolvedValue('denied');
+    await renderScreen();
+    const button = renderer!.root.findByProps({ accessibilityLabel: t.communityEvents.locate });
+    await act(async () => { await button.props.onPress(); });
+    expect(mockEnsureLocationPermission).toHaveBeenCalledWith({ openSettingsIfDenied: true });
+    expect(mockOpenSystemSettings).not.toHaveBeenCalled();
+    expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenCalledWith(t.addPub.locationPermissionDenied);
+  });
 
   it('does not refetch the unlocated dashboard after obtaining location', async () => {
     mockFetchCommunityEvents

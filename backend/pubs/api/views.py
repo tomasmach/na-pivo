@@ -43,11 +43,13 @@ from django.db.models import (
     Avg,
     Case,
     Count,
+    DateField,
     DateTimeField,
     Exists,
     ExpressionWrapper,
     F,
     FloatField,
+    Func,
     IntegerField,
     Max,
     Min,
@@ -63,8 +65,11 @@ from django.db.models import (
 )
 from django.db.models.functions import (
     ACos,
+    Cast,
     Coalesce,
+    Concat,
     Cos,
+    ExtractHour,
     Greatest,
     Least,
     Lower,
@@ -74,6 +79,7 @@ from django.db.models.functions import (
     TruncDate,
     TruncMonth,
 )
+from django.db.models.lookups import LessThan
 from django.utils import timezone as dj_timezone
 from django.utils.translation import gettext, gettext_lazy
 from rest_framework import status
@@ -91,6 +97,7 @@ from pubs.account_export_jobs import (
     retry_account_export,
 )
 from pubs.accounts import AccountError
+from pubs.api.drink_validation import drink_validation_errors
 from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
 from pubs.beer_catalog import (
     ALLOWED_BEER_VOLUMES_ML,
@@ -627,7 +634,7 @@ def _shared_pub_stats(
     }
     cutoff = dj_timezone.now() - FRIEND_SHARED_STATS_WINDOW
     my_visits = list(
-        PubVisit.objects.filter(account=account, started_at__gte=cutoff).only(
+        PubVisit.objects.filter(account=account, started_at__gte=cutoff).values_list(
             "cache_key", "started_at", "name"
         )
     )
@@ -637,33 +644,39 @@ def _shared_pub_stats(
     def _local_date(value):
         return dj_timezone.localtime(value, PRAGUE_TZ).date()
 
-    my_keys = {(visit.cache_key, _local_date(visit.started_at)) for visit in my_visits}
+    my_keys = {(cache_key, _local_date(started_at)) for cache_key, started_at, _ in my_visits}
     my_pub_names = {
-        (visit.cache_key, _local_date(visit.started_at)): visit.name for visit in my_visits
+        (cache_key, _local_date(started_at)): name for cache_key, started_at, name in my_visits
     }
     shared_dates: set = set()
+    # Only friend visits to a pub I also visited can be shared, so the database
+    # drops the rest instead of materializing a year of every friend's history.
     friend_visits = (
-        PubVisit.objects.filter(account_id__in=friend_ids, started_at__gte=cutoff)
-        .only("account_id", "cache_key", "started_at", "name")
+        PubVisit.objects.filter(
+            account_id__in=friend_ids,
+            started_at__gte=cutoff,
+            cache_key__in={cache_key for cache_key, _, _ in my_visits},
+        )
         .order_by("-started_at")
+        .values_list("account_id", "cache_key", "started_at", "name")
     )
     seen_pairs: set[tuple[int, str, object]] = set()
-    for visit in friend_visits:
-        local_date = _local_date(visit.started_at)
-        key = (visit.cache_key, local_date)
+    for account_id, cache_key, started_at, name in friend_visits:
+        local_date = _local_date(started_at)
+        key = (cache_key, local_date)
         if key not in my_keys:
             continue
         shared_dates.add(local_date)
-        pair = (visit.account_id, visit.cache_key, local_date)
+        pair = (account_id, cache_key, local_date)
         if pair in seen_pairs:
             continue
         seen_pairs.add(pair)
-        item = stats[visit.account_id]
+        item = stats[account_id]
         item["shared_count"] = int(item["shared_count"]) + 1
         last_shared_at = item["last_shared_at"]
-        if last_shared_at is None or visit.started_at > last_shared_at:
-            item["last_shared_at"] = visit.started_at
-            item["last_pub_name"] = my_pub_names.get(key) or visit.name
+        if last_shared_at is None or started_at > last_shared_at:
+            item["last_shared_at"] = started_at
+            item["last_pub_name"] = my_pub_names.get(key) or name
     return stats, shared_dates
 
 
@@ -1604,6 +1617,18 @@ class PubNameCorrectionView(APIView):
         )
 
 
+def _user_added_pub_location_error(*, not_found: bool = False) -> Response:
+    # Released clients permanently discard queued writes on 400/422. Keep an
+    # unverified address retryable without publishing the device's coordinates.
+    return Response(
+        {
+            "detail": gettext("Polohu podle adresy se nepodařilo ověřit. Zkus to znovu."),
+            "code": "location_not_found" if not_found else "geocoding_unavailable",
+        },
+        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+
+
 class UserAddedPubView(APIView):
     """
     POST /v1/pubs
@@ -1685,29 +1710,19 @@ class UserAddedPubView(APIView):
                         "user-added-pub: create location verification unavailable: %s",
                         type(exc).__name__,
                     )
-                    resolved = None
+                    return _user_added_pub_location_error()
+                if resolved is None:
+                    return _user_added_pub_location_error(not_found=True)
 
-                verify_max_km = max(
-                    0.05,
-                    float(
-                        getattr(
-                            settings,
-                            "USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS",
-                            500,
-                        )
-                    )
-                    / 1000,
-                )
-                if (
-                    resolved is not None
-                    and _haversine_km(lat, lng, resolved.lat, resolved.lng)
-                    > verify_max_km
-                ):
-                    lat = resolved.lat
-                    lng = resolved.lng
-                    location_source = UserAddedPub.LocationSource.GOOGLE_GEOCODE
-                    google_place_id = resolved.place_id
-                    location_synced_at = dj_timezone.now()
+                # Legacy clients send device GPS alongside an entered address.
+                # Even a nearby GPS point may belong to a different building.
+                lat = resolved.lat
+                lng = resolved.lng
+                city = resolved.city
+                address = resolved.address
+                location_source = UserAddedPub.LocationSource.GOOGLE_GEOCODE
+                google_place_id = resolved.place_id
+                location_synced_at = dj_timezone.now()
         elif address and city:
             try:
                 resolved = resolve_user_added_pub_location(
@@ -1717,26 +1732,14 @@ class UserAddedPubView(APIView):
                     lat=data.get("lat"),
                     lng=data.get("lng"),
                 )
-            except GoogleGeocodingUnavailableError as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "user-added-pub: Google geocoding unavailable: %s",
                     type(exc).__name__,
                 )
-                return Response(
-                    {
-                        "detail": "Geocoding is temporarily unavailable.",
-                        "code": "geocoding_unavailable",
-                    },
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                )
+                return _user_added_pub_location_error()
             if resolved is None:
-                return Response(
-                    {
-                        "detail": "The address could not be located precisely.",
-                        "code": "location_not_found",
-                    },
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                )
+                return _user_added_pub_location_error(not_found=True)
             lat = resolved.lat
             lng = resolved.lng
             city = resolved.city
@@ -1840,26 +1843,14 @@ class UserAddedPubView(APIView):
                     lat=data["lat"],
                     lng=data["lng"],
                 )
-            except GoogleGeocodingUnavailableError as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "user-added-pub: edit geocoding unavailable: %s",
                     type(exc).__name__,
                 )
-                return Response(
-                    {
-                        "detail": "Geocoding is temporarily unavailable.",
-                        "code": "geocoding_unavailable",
-                    },
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                )
+                return _user_added_pub_location_error()
             if resolved is None:
-                return Response(
-                    {
-                        "detail": "The address could not be located precisely.",
-                        "code": "location_not_found",
-                    },
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                )
+                return _user_added_pub_location_error(not_found=True)
 
             verify_max_km = max(
                 0.05,
@@ -2566,7 +2557,12 @@ class DrinksView(APIView):
             context={"beer_match_cache": match_cache},
         )
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            errors = drink_validation_errors(serializer.errors)
+            logger.warning("drinks: validation rejected %s", json.dumps(errors))
+            return Response(
+                {**serializer.errors, "code": "drink_validation_failed", "validation_errors": errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         data = serializer.validated_data
         is_pub = data["place_context"] == DrinkLog.PlaceContext.PUB
@@ -2742,10 +2738,11 @@ class DrinksView(APIView):
                 }
 
                 menu_updated = False
-                # Custom volumes and unpriced quick-adds stay private.
+                # Values beyond the released public-menu contract stay private.
                 if (
                     may_publish and is_pub and is_beer
                     and beer.get("price_czk") is not None
+                    and len(beer["name"]) <= 80
                     and beer.get("volume_ml") in ALLOWED_BEER_VOLUMES_ML
                 ):
                     menu_updated = self._merge_into_community(
@@ -2810,16 +2807,6 @@ class DrinksView(APIView):
                 beer_name = update.get("beer_name", drink.beer_name)
                 drink_type = update.get("drink_type", drink.drink_type)
                 volume_ml = update.get("volume_ml", drink.volume_ml)
-                if drink_type == DrinkLog.DrinkType.BEER and volume_ml is not None:
-                    if volume_ml not in ALLOWED_BEER_VOLUMES_ML:
-                        return Response(
-                            {
-                                "volume_ml": [
-                                    f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."
-                                ]
-                            },
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
                 if (
                     drink_type == DrinkLog.DrinkType.SHOT
                     and volume_ml is not None
@@ -2885,7 +2872,12 @@ class DrinksView(APIView):
                         old_product_key=old_product_key,
                         account=request.user,
                         match_cache=match_cache,
-                        upsert_new=drink.drink_type == DrinkLog.DrinkType.BEER,
+                        upsert_new=(
+                            drink.drink_type == DrinkLog.DrinkType.BEER
+                            and drink.price_czk is not None
+                            and drink.volume_ml in ALLOWED_BEER_VOLUMES_ML
+                            and len(drink.beer_name) <= 80
+                        ),
                     )
         except Exception as exc:  # noqa: BLE001
             logger.error(
@@ -3666,6 +3658,20 @@ class PubVisitView(APIView):
                 PubVisit.objects.filter(account=request.user).select_related("party_evening"),
             )
             items = [_visit_item(visit) for visit in visits]
+            # Released maps recreate missing catalogue markers from these
+            # fields. Project repaired pub identities on reads while retaining
+            # original history, export data and client conflict timestamps.
+            identities = resolve_pub_identities(items)
+            for item, identity in zip(items, identities, strict=True):
+                if identity.canonical_id is not None:
+                    item.update(
+                        cache_key=identity.cache_key,
+                        name=identity.name,
+                        lat=identity.lat,
+                        lng=identity.lng,
+                        city=identity.city,
+                        external_id=identity.external_id,
+                    )
         except ValueError:
             return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
@@ -3767,6 +3773,18 @@ class PubVisitView(APIView):
                         "party_evening_id": party_evening_id,
                     },
                 )
+                closed_at = data.get("closed_at")
+                if closed_at is not None:
+                    # A delayed departure must not end a later return to the
+                    # same pub, another pub's broadcast, or a future plan.
+                    FriendPubActivity.objects.filter(
+                        account=account,
+                        cache_key=cache_key,
+                        active=True,
+                    ).filter(
+                        Q(kind=FriendPubActivity.Kind.LIVE, started_at__lte=closed_at)
+                        | Q(kind=FriendPubActivity.Kind.PLAN, scheduled_for__lte=closed_at)
+                    ).update(active=False, updated_at=dj_timezone.now())
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-visits: unexpected error saving visit (%s)",
@@ -3935,23 +3953,33 @@ class ClientEventsView(APIView):
         account = _account_from_request(request)
 
         try:
-            event = ClientEvent.objects.create(
-                account=account,
-                event=data["event"],
-                severity=data["severity"],
-                message=data.get("message") or "",
-                context=data.get("context") or {},
-                app_version=data.get("app_version") or "",
-                platform=data.get("platform") or "",
-                os_version=data.get("os_version") or "",
-            )
-            _update_usage_stats(event)
+            with transaction.atomic():
+                if account is not None:
+                    # Authentication can precede deletion/merge. The same
+                    # Account lock is used by those mutations; never recreate
+                    # diagnostic data for an account they already removed.
+                    account = Account.objects.select_for_update().filter(
+                        pk=account.pk, status=Account.Status.ACTIVE,
+                    ).first()
+                    if account is None:
+                        return Response({"accepted": True}, status=status.HTTP_202_ACCEPTED)
+                event = ClientEvent.objects.create(
+                    account=account,
+                    event=data["event"],
+                    severity=data["severity"],
+                    message=data.get("message") or "",
+                    context=data.get("context") or {},
+                    app_version=data.get("app_version") or "",
+                    platform=data.get("platform") or "",
+                    os_version=data.get("os_version") or "",
+                )
+                # Keep the event and counters together. A failed counter write
+                # must not leave a partial event behind for the client retry.
+                _update_usage_stats(event)
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "client-events: unexpected error saving %r: %s",
-                data.get("event"),
-                exc,
-                exc_info=True,
+                "client-events: unexpected error saving event (%s)",
+                type(exc).__name__,
             )
             return _internal_error()
 
@@ -3975,6 +4003,16 @@ class PushDeviceView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "push_devices"
 
+    @staticmethod
+    def _locked_device(request: Request, push_token: str) -> PushDevice:
+        # get_or_create handles the unique-token insert race. Lock the winner,
+        # including a disabled tombstone created before the first PUT arrived.
+        device, _created = PushDevice.objects.get_or_create(
+            push_token=push_token,
+            defaults={"account": request.user, "enabled": False},
+        )
+        return PushDevice.objects.select_for_update().get(pk=device.pk)
+
     def put(self, request: Request) -> Response:
         serializer = PushDeviceRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -3982,21 +4020,44 @@ class PushDeviceView(APIView):
 
         data = serializer.validated_data
         locale = data.get("locale") or ""
+        revision = data.get("client_revision")
         try:
-            device, _created = PushDevice.objects.update_or_create(
-                push_token=data["push_token"],
-                defaults={
+            with transaction.atomic():
+                # Account deletion uses Account -> AuthToken -> PushDevice too.
+                account = Account.objects.select_for_update().filter(
+                    pk=request.user.pk, status=Account.Status.ACTIVE
+                ).first()
+                if account is None:
+                    return Response({"detail": "Invalid account token."}, status=401)
+                # Authentication may predate a slow request or logout. Hold the
+                # same token row that revocation deletes until this write ends.
+                auth_token = AuthToken.objects.select_for_update().filter(
+                    token_hash=hash_account_token(request.auth), account=request.user
+                ).first()
+                if auth_token is None or auth_token.is_expired:
+                    return Response({"detail": "Invalid account token."}, status=401)
+                defaults = {
                     "account": request.user,
                     "platform": data["platform"],
                     "permission_status": data["permission_status"],
                     "enabled": data["enabled"],
                     "app_version": data.get("app_version") or "",
                     "locale": locale,
-                },
-            )
-            # Mirror onto the account so e-mails and cron jobs, which never see a
-            # device row, render in the same language.
-            remember_account_locale(request.user, locale)
+                }
+                if revision is None:
+                    # Released clients keep their original wire contract.
+                    device, _created = PushDevice.objects.update_or_create(
+                        push_token=data["push_token"], defaults=defaults
+                    )
+                else:
+                    device = self._locked_device(request, data["push_token"])
+                    if revision <= (device.client_revision or 0):
+                        return Response({"applied": False}, status=status.HTTP_200_OK)
+                    for key, value in defaults.items():
+                        setattr(device, key, value)
+                    device.client_revision = revision
+                    device.save()
+                remember_account_locale(request.user, locale)
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "push-device: unexpected error registering token",
@@ -4011,19 +4072,34 @@ class PushDeviceView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        push_token = serializer.validated_data["push_token"]
-        queryset = PushDevice.objects.filter(
-            account=request.user,
-            enabled=True,
-            push_token=push_token,
-        )
-
+        data = serializer.validated_data
+        revision = data.get("client_revision")
         try:
-            disabled = queryset.update(
-                enabled=False,
-                permission_status=PushDevice.PermissionStatus.DENIED,
-                updated_at=dj_timezone.now(),
-            )
+            if revision is None:
+                disabled = PushDevice.objects.filter(
+                    account=request.user, enabled=True, push_token=data["push_token"]
+                ).update(
+                    enabled=False,
+                    permission_status=PushDevice.PermissionStatus.DENIED,
+                    updated_at=dj_timezone.now(),
+                )
+            else:
+                with transaction.atomic():
+                    account = Account.objects.select_for_update().filter(
+                        pk=request.user.pk, status=Account.Status.ACTIVE
+                    ).first()
+                    if account is None:
+                        return Response({"disabled": 0}, status=status.HTTP_200_OK)
+                    device = self._locked_device(request, data["push_token"])
+                    # A previous account cannot disable a token reassigned after
+                    # sign-in, even if its delayed logout has a higher revision.
+                    if device.account_id != request.user.pk or revision <= (device.client_revision or 0):
+                        return Response({"disabled": 0}, status=status.HTTP_200_OK)
+                    disabled = int(device.enabled)
+                    device.enabled = False
+                    device.permission_status = PushDevice.PermissionStatus.DENIED
+                    device.client_revision = revision
+                    device.save()
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "push-device: unexpected error disabling token",
@@ -5040,7 +5116,7 @@ def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, d
 
 def _leaderboard_cache_key(category: str, period: str, period_start: datetime | None) -> str:
     marker = period_start.isoformat() if period_start is not None else "all"
-    return f"v1:leaderboards:abuse-v3:{category}:{period}:{marker}"
+    return f"v1:leaderboards:abuse-v4:{category}:{period}:{marker}"
 
 
 def _leaderboard_account_queryset():
@@ -5063,20 +5139,48 @@ def _countable_beer_drinks():
     )
 
 
-def _leaderboard_red_beer_days(period_start_utc: datetime | None):
+def _leaderboard_drinking_day():
+    if connection.vendor == "postgresql":
+        # Convert before subtracting so DST keeps the local 04:00 boundary.
+        local_time = Func(
+            Value("Europe/Prague"), F("drank_at"),
+            function="timezone", output_field=DateTimeField(),
+        )
+        return Cast(local_time - timedelta(hours=4), output_field=DateField())
+    # Decide in local wall time so DST never moves the 04:00 boundary.
+    local_date = TruncDate("drank_at", tzinfo=PRAGUE_TZ)
+    return Case(
+        When(
+            LessThan(ExtractHour("drank_at", tzinfo=PRAGUE_TZ), 4),
+            then=Cast(local_date - timedelta(days=1), output_field=DateField()),
+        ),
+        default=local_date,
+        output_field=DateField(),
+    )
+
+
+def _leaderboard_drinking_day_key():
+    return Concat(
+        Cast("account_id", TextField()), Value(":"),
+        Cast(_leaderboard_drinking_day(), TextField()),
+        output_field=TextField(),
+    )
+
+
+def _leaderboard_red_beer_days(
+    period_start_utc: datetime | None, *, account_id: int | None = None,
+):
     """Beer days that are too implausible for the public competition."""
 
     qs = DrinkLog.objects.filter(drink_type=DrinkLog.DrinkType.BEER)
+    if account_id is not None:
+        qs = qs.filter(account_id=account_id)
     if period_start_utc is not None:
         context_start = drinking_day_bounds(period_start_utc)[0]
         qs = qs.filter(drank_at__gte=context_start)
-    shifted = ExpressionWrapper(
-        F("drank_at") - timedelta(hours=4),
-        output_field=DateTimeField(),
-    )
     return (
-        qs.annotate(drinking_day=TruncDate(shifted, tzinfo=PRAGUE_TZ))
-        .values("account_id", "drinking_day")
+        qs.annotate(leaderboard_day_key=_leaderboard_drinking_day_key())
+        .values("leaderboard_day_key")
         .annotate(
             raw_beers=Count("id"),
             burst_beers=Count("id", filter=Q(suspect_reason="burst")),
@@ -5089,24 +5193,34 @@ def _leaderboard_red_beer_days(period_start_utc: datetime | None):
     )
 
 
-def _leaderboard_has_red_beer_day(
-    account_id: int,
-    period_start_utc: datetime | None,
-) -> bool:
-    return _leaderboard_red_beer_days(period_start_utc).filter(account_id=account_id).exists()
+def _leaderboard_countable_beer_drinks(
+    period_start_utc: datetime | None, *, account_id: int | None = None,
+):
+    # A bad day excludes only that account's day, not its entire history.
+    # The non-null account/date key lets the database compute red days once,
+    # without a correlated aggregate for each drink. Both backends support it.
+    red_days = (
+        _leaderboard_red_beer_days(period_start_utc, account_id=account_id)
+        .values("leaderboard_day_key")
+    )
+    qs = (
+        _countable_beer_drinks()
+        .alias(leaderboard_day_key=_leaderboard_drinking_day_key())
+        .exclude(leaderboard_day_key__in=Subquery(red_days))
+    )
+    if account_id is not None:
+        qs = qs.filter(account_id=account_id)
+    if period_start_utc is not None:
+        qs = qs.filter(drank_at__gte=period_start_utc)
+    return qs
 
 
 def _leaderboard_drink_scores(
     period_start_utc: datetime | None, blocked_ids: set[int] | None = None
 ) -> dict[int, int]:
-    red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
-    qs = (
-        _countable_beer_drinks()
-        .filter(account__in=_leaderboard_account_queryset())
-        .exclude(account_id__in=Subquery(red_accounts))
+    qs = _leaderboard_countable_beer_drinks(period_start_utc).filter(
+        account__in=_leaderboard_account_queryset(),
     )
-    if period_start_utc is not None:
-        qs = qs.filter(drank_at__gte=period_start_utc)
     if blocked_ids:
         qs = qs.exclude(account_id__in=blocked_ids)
     rows = (
@@ -5197,14 +5311,9 @@ def _leaderboard_total_ranked(category: str, period_start_utc: datetime | None) 
             account__in=_leaderboard_account_queryset(),
             mapper_xp__gt=0,
         ).count()
-    red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
-    qs = (
-        _countable_beer_drinks()
-        .filter(account__in=_leaderboard_account_queryset())
-        .exclude(account_id__in=Subquery(red_accounts))
+    qs = _leaderboard_countable_beer_drinks(period_start_utc).filter(
+        account__in=_leaderboard_account_queryset(),
     )
-    if period_start_utc is not None:
-        qs = qs.filter(drank_at__gte=period_start_utc)
     return qs.values("account_id").annotate(score=Count("id")).filter(score__gt=0).count()
 
 
@@ -5224,18 +5333,11 @@ def _leaderboard_account_score(
     account: Account,
     category: str,
     period_start_utc: datetime | None,
-    *,
-    red_beer_day: bool = False,
 ) -> int:
     if account.excluded_from_leaderboards:
         return 0
     if category == "beers":
-        if red_beer_day:
-            return 0
-        qs = _countable_beer_drinks().filter(account=account)
-        if period_start_utc is not None:
-            qs = qs.filter(drank_at__gte=period_start_utc)
-        return qs.count()
+        return _leaderboard_countable_beer_drinks(period_start_utc, account_id=account.pk).count()
     if category == "pubs":
         visits = PubVisit.objects.filter(account=account).exclude(cache_key="")
         drinks = DrinkLog.objects.filter(
@@ -5256,16 +5358,11 @@ def _leaderboard_account_score(
     return int(getattr(stats, "mapper_xp", 0) or 0)
 
 
-def _leaderboard_is_eligible(
-    account: Account,
-    *,
-    red_beer_day: bool = False,
-) -> bool:
+def _leaderboard_is_eligible(account: Account) -> bool:
     return (
         account.status == Account.Status.ACTIVE
         and account.is_public
         and not account.excluded_from_leaderboards
-        and not red_beer_day
         and bool((account.nickname or "").strip())
     )
 
@@ -5318,14 +5415,9 @@ def _leaderboard_rank_for_score(
             mapper_xp__gt=0,
         ).annotate(score=F("mapper_xp"))
     else:
-        red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
-        queryset = (
-            _countable_beer_drinks()
-            .filter(account__in=_leaderboard_account_queryset())
-            .exclude(account_id__in=Subquery(red_accounts))
+        queryset = _leaderboard_countable_beer_drinks(period_start_utc).filter(
+            account__in=_leaderboard_account_queryset(),
         )
-        if period_start_utc is not None:
-            queryset = queryset.filter(drank_at__gte=period_start_utc)
         queryset = queryset.values("account_id", "account__created_at").annotate(score=Count("id"))
     if blocked_ids:
         queryset = queryset.exclude(account_id__in=blocked_ids)
@@ -5392,17 +5484,8 @@ def _leaderboard_me_payload(
     blocked_ids: set[int],
 ) -> dict:
     me = request.user
-    red_beer_day = category == "beers" and _leaderboard_has_red_beer_day(
-        me.id,
-        period_start_utc,
-    )
-    # The viewer's own score stays live — a beer logged a second ago must show
-    # up immediately, exactly as before the snapshot cache. Only the O(N)
-    # "who is ahead" walk reads the cached ranking (staleness matches the rows).
-    if red_beer_day:
-        score = 0
-    else:
-        score = _leaderboard_account_score(me, category, period_start_utc)
+    # The viewer's own score and rank stay live while the table rows are cached.
+    score = _leaderboard_account_score(me, category, period_start_utc)
     rank = None
     if score > 0:
         rank = _leaderboard_rank_for_score(
@@ -5416,7 +5499,7 @@ def _leaderboard_me_payload(
         "rank": rank,
         "score": score,
         "listed": any(row["account_pk"] == me.id for row in rows),
-        "eligible": _leaderboard_is_eligible(me, red_beer_day=red_beer_day),
+        "eligible": _leaderboard_is_eligible(me),
     }
 
 
@@ -6407,8 +6490,8 @@ class FriendActivityView(APIView):
             )
         else:
             kind = FriendPubActivity.Kind.LIVE
+            started_at = data.get("started_at") or scheduled_for or now
             scheduled_for = None
-            started_at = data.get("started_at") or now
             requested_expiry = data.get("expires_at")
             max_expiry = started_at + FRIEND_ACTIVITY_MAX_TTL
             expires_at = requested_expiry or started_at + FRIEND_ACTIVITY_DEFAULT_TTL
@@ -6439,6 +6522,15 @@ class FriendActivityView(APIView):
         should_notify = False
         try:
             with transaction.atomic():
+                # Serialize with visit closure, including a broadcast that was
+                # already in flight when the user tapped Dopito.
+                Account.objects.select_for_update().get(pk=request.user.pk)
+                if not is_plan and PubVisit.objects.filter(
+                    account=request.user,
+                    cache_key=cache_key,
+                    closed_at__isnull=False,
+                ).filter(Q(closed_at__gte=started_at) | Q(client_id=data["client_id"])).exists():
+                    return Response({"ended": True, "applied": False}, status=status.HTTP_200_OK)
                 existing = (
                     FriendPubActivity.objects.select_for_update()
                     .filter(account=request.user, client_id=data["client_id"])
@@ -9437,11 +9529,8 @@ def _filter_items_by_amenity_signals(
     uses a name-aware pub identity, so a cache-key-only join could incorrectly
     lend one venue's card terminal or foosball table to the pub next door.
     """
-    return [
-        item
-        for item in items
-        if any(_items_refer_to_same_pub(item, signal) for signal in amenity_items)
-    ]
+    signal_index = _PubMatchIndex(amenity_items)
+    return [item for item in items if signal_index.matches(item)]
 
 
 def _strong_item_external_id(item: dict) -> str | None:
@@ -9467,6 +9556,42 @@ def _items_refer_to_same_pub(left: dict, right: dict) -> bool:
     )
 
 
+class _PubMatchIndex:
+    """Answer ``any(_items_refer_to_same_pub(item, other) for other in others)``
+    without comparing ``item`` against every row.
+
+    A match is either two equal stable ids, or (when at least one side lacks a
+    stable id) the same geohash-8 cell plus matching names. Stable ids go in a
+    set and the name fallback only compares rows from the item's own cell, so
+    the per-request work no longer grows with community rows x provider rows.
+    ``item`` stays the left argument of ``names_match``, as in the pairwise loop.
+    """
+
+    def __init__(self, others: list[dict]) -> None:
+        self._strong_ids: set[str] = set()
+        self._by_cache_key: dict[str, list[tuple[str | None, str]]] = defaultdict(list)
+        for other in others:
+            strong_id = _strong_item_external_id(other)
+            if strong_id:
+                self._strong_ids.add(strong_id)
+            self._by_cache_key[_item_cache_key(other)].append(
+                (strong_id, str(other.get("name") or ""))
+            )
+
+    def matches(self, item: dict) -> bool:
+        strong_id = _strong_item_external_id(item)
+        if strong_id and strong_id in self._strong_ids:
+            return True
+        candidates = self._by_cache_key.get(_item_cache_key(item))
+        if not candidates:
+            return False
+        name = str(item.get("name") or "")
+        return any(
+            not (strong_id and other_strong_id) and names_match(name, other_name)
+            for other_strong_id, other_name in candidates
+        )
+
+
 def _with_pub_signal_items(signal_items: list[dict], provider_items: list[dict]) -> list[dict]:
     """Prefer local signal rows and remove matching provider copies.
 
@@ -9477,11 +9602,8 @@ def _with_pub_signal_items(signal_items: list[dict], provider_items: list[dict])
     if not signal_items:
         return provider_items
 
-    remaining_provider_items = [
-        item
-        for item in provider_items
-        if not any(_items_refer_to_same_pub(item, signal) for signal in signal_items)
-    ]
+    signal_index = _PubMatchIndex(signal_items)
+    remaining_provider_items = [item for item in provider_items if not signal_index.matches(item)]
     return [*signal_items, *remaining_provider_items]
 
 
@@ -9489,11 +9611,8 @@ def _with_missing_pub_signal_items(
     signal_items: list[dict], existing_items: list[dict]
 ) -> list[dict]:
     """Append only community pubs that the primary sources do not already have."""
-    missing = [
-        signal
-        for signal in signal_items
-        if not any(_items_refer_to_same_pub(signal, item) for item in existing_items)
-    ]
+    existing_index = _PubMatchIndex(existing_items)
+    missing = [signal for signal in signal_items if not existing_index.matches(signal)]
     return [*existing_items, *missing]
 
 
@@ -10023,21 +10142,38 @@ class _PubLocationLookupBaseView(APIView):
         lat: float | None,
         lng: float | None,
         limit: int,
+        *,
+        pub_search: bool = False,
     ) -> list[dict]:
-        # Names are the only searchable provider-independent text held in the
-        # local directory. The first comma-separated segment matches the old
-        # "name, address, city" geocode contract.
-        name_query = query.split(",", 1)[0].strip()
-        if len(name_query) < 2:
-            return []
+        rows_query = PubDirectory.objects.filter(active=True).exclude(
+            venue_kind=PubHours.VenueKind.NOT_PUB
+        )
+        if pub_search:
+            # Community additions are already visible in /pubs/near. Include
+            # them in explicit pub search without changing address lookups.
+            community_query = UserAddedPub.objects.filter(active=True).exclude(
+                cache_key__in=PubHours.objects.filter(
+                    venue_kind=PubHours.VenueKind.NOT_PUB
+                ).values("cache_key")
+            )
+            # Search every token across the two catalogue fields, so both
+            # "U Jelena Brno" and "U Jelena, Brno" retain the city constraint.
+            tokens = query.replace(",", " ").split()
+            if not tokens:
+                return []
+            for token in tokens:
+                match = Q(name__icontains=token) | Q(city__icontains=token)
+                rows_query = rows_query.filter(match)
+                community_query = community_query.filter(match)
+        else:
+            # Preserve the released add-pub "name, address, city" contract.
+            name_query = query.split(",", 1)[0].strip()
+            if len(name_query) < 2:
+                return []
+            rows_query = rows_query.filter(name__icontains=name_query)
         scan_limit = max(limit, int(getattr(settings, "GOOGLE_MAPS_LOCAL_SCAN_LIMIT", 80)))
         rows = list(
-            PubDirectory.objects.filter(
-                active=True,
-                name__icontains=name_query,
-            )
-            .exclude(venue_kind=PubHours.VenueKind.NOT_PUB)
-            .only(
+            rows_query.only(
                 "id",
                 "name",
                 "lat",
@@ -10046,18 +10182,37 @@ class _PubLocationLookupBaseView(APIView):
                 "city",
                 "country",
                 "venue_kind",
+                "discovery_kind",
             )[:scan_limit]
         )
+        if pub_search:
+            rows.extend(community_query.only(
+                "id", "name", "lat", "lng", "cache_key", "city", "address",
+            )[:scan_limit])
+            blocked = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
+            rows = [row for row in rows if row.cache_key not in blocked]
         if lat is not None and lng is not None:
             rows.sort(key=lambda row: _haversine_km(lat, lng, row.lat, row.lng))
         else:
             rows.sort(key=lambda row: (row.name.casefold(), row.pk))
 
         items = []
-        for row in rows[:limit]:
-            item = _pub_directory_item(row)
-            item.update({"id": f"local:{row.pk}", "provider": "local"})
+        seen = set()
+        for row in rows:
+            if isinstance(row, UserAddedPub):
+                item = _user_added_pub_item(row)
+                item["id"] = f"community:{row.pk}"
+            else:
+                item = _pub_directory_item(row)
+                item["id"] = f"local:{row.pk}"
+            item["provider"] = "local"
+            key = _pub_near_dedupe_key(item)
+            if pub_search and key in seen:
+                continue
+            seen.add(key)
             items.append(item)
+            if len(items) >= limit:
+                break
         return items
 
     def _lookup_response(self, data: dict) -> Response:
@@ -10066,6 +10221,7 @@ class _PubLocationLookupBaseView(APIView):
             data.get("lat"),
             data.get("lng"),
             self.max_items,
+            pub_search=data["pub_search"],
         )
         return Response({"items": items}, status=status.HTTP_200_OK)
 
@@ -10097,6 +10253,7 @@ class PubLocationSuggestView(_PubLocationLookupBaseView):
             data.get("lat"),
             data.get("lng"),
             local_limit,
+            pub_search=data["pub_search"],
         )
         api_key = getattr(settings, "GOOGLE_MAPS_SERVER_API_KEY", "") or ""
         if not api_key or len(data["query"].strip()) < 3:
@@ -10139,6 +10296,8 @@ class PubLocationSuggestView(_PubLocationLookupBaseView):
         }
         google_items = []
         for prediction in predictions:
+            if data["pub_search"] and not {"pub", "bar", "restaurant"}.intersection(prediction.types):
+                continue
             name_key = normalize_pub_name(prediction.name)
             if name_key in seen_names:
                 continue
@@ -10152,6 +10311,7 @@ class PubLocationSuggestView(_PubLocationLookupBaseView):
                     "label": "Google Maps",
                     "location": prediction.location,
                     "type": "poi",
+                    **({"types": list(prediction.types)} if data["pub_search"] else {}),
                 }
             )
         return Response(
@@ -10166,13 +10326,17 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
     max_items = 3
 
     def _lookup_response(self, data: dict) -> Response:
-        place_id = data.get("place_id") or ""
-        if not place_id:
+        # Address lookup must not return a similarly named pub or a place-id
+        # result that bypasses the provider's rooftop precision requirement.
+        address_lookup = data["address_lookup"]
+        place_id = "" if address_lookup else data.get("place_id") or ""
+        if not place_id and not address_lookup:
             local_items = self._local_items(
                 data["query"],
                 data.get("lat"),
                 data.get("lng"),
                 self.max_items,
+                pub_search=data["pub_search"],
             )
             if local_items:
                 return Response({"items": local_items}, status=status.HTTP_200_OK)
@@ -10218,6 +10382,11 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
         if candidate is None:
             return Response({"items": []}, status=status.HTTP_200_OK)
 
+        if data["pub_search"] and _globally_reported_pub_cache_keys(
+            {geohash8(candidate.lat, candidate.lng)}
+        ):
+            return Response({"items": []}, status=status.HTTP_200_OK)
+
         regional_structure = []
         if candidate.city:
             regional_structure.append({"name": candidate.city, "type": "regional.municipality"})
@@ -10233,6 +10402,7 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
             "type": "regional.address",
             "regionalStructure": regional_structure,
             "attributions": ["Google Maps"],
+            **({"precise": True} if address_lookup else {}),
         }
         return Response({"items": [item]}, status=status.HTTP_200_OK)
 
@@ -10268,7 +10438,9 @@ class PubLocationReverseGeocodeView(APIView):
                     cap=daily_cap,
                 ),
             ) as source:
-                candidate = source.reverse_geocode(lat=data["lat"], lng=data["lng"])
+                candidate = source.reverse_geocode(
+                    lat=data["lat"], lng=data["lng"], require_precise=data["require_precise"],
+                )
         except GoogleGeocodingUnavailableError as exc:
             logger.warning(
                 "pubs-reverse-geocode: Google lookup unavailable: %s: %s",
@@ -10315,6 +10487,7 @@ class PubLocationReverseGeocodeView(APIView):
                         "type": "regional.address",
                         "regionalStructure": regional_structure,
                         "attributions": ["Google Maps"],
+                        **({"precise": True} if data["require_precise"] else {}),
                     }
                 ]
             },

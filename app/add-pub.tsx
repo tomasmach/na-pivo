@@ -6,7 +6,7 @@
  * compass can target it immediately after returning.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -32,11 +32,12 @@ import {
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
+import { ensureLocationPermission } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
+import { lookupAddedPubLocation, type AddedPubLocation } from '@/data/addedPubLocationClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { enqueueAddedPub, enqueueAddedPubEdit } from '@/data/addedPubsQueue';
+import { enqueueAddedPub, enqueueAddedPubEdit, loadAddedPubSubmissions } from '@/data/addedPubsQueue';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -49,6 +50,7 @@ function parseStringParam(value: string | string[] | undefined): string {
 
 function parseCoordParam(value: string | string[] | undefined): number | null {
   const raw = parseStringParam(value);
+  if (!raw.trim()) return null;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -66,7 +68,7 @@ interface Coordinates {
 
 interface SelectedLocation extends Coordinates {
   displayLocation?: string;
-  source: 'current' | 'pin';
+  source: 'pin' | 'address';
 }
 
 export default function AddPubScreen() {
@@ -75,6 +77,25 @@ export default function AddPubScreen() {
   const params = useLocalSearchParams();
   const editedClientId = useMemo(() => parseStringParam(params.clientId), [params.clientId]);
   const isEditing = editedClientId.length > 0;
+  const [locationCheck, setLocationCheck] = useState<{ clientId: string; required: boolean } | null>(null);
+  const loadingSubmission = isEditing && locationCheck?.clientId !== editedClientId;
+  const needsLocation = isEditing && (
+    (locationCheck?.clientId === editedClientId && locationCheck.required) ||
+    parseStringParam(params.needsLocation) === '1'
+  );
+  useEffect(() => {
+    if (!isEditing) return;
+    let active = true;
+    void loadAddedPubSubmissions().then((submissions) => {
+      if (!active) return;
+      setLocationCheck({
+        clientId: editedClientId,
+        required: submissions.some((submission) =>
+          submission.client_id === editedClientId && submission.failureReason === 'location-not-found'),
+      });
+    });
+    return () => { active = false; };
+  }, [editedClientId, isEditing]);
   const bumpCatalogRevision = usePubStore((s) => s.bumpCatalogRevision);
   const showToast = useToastStore((s) => s.show);
 
@@ -112,17 +133,49 @@ export default function AddPubScreen() {
         }
       : null,
   );
+  const [candidate, setCandidate] = useState<AddedPubLocation | null>(null);
+  const lookupRequest = useRef<AbortController | null>(null);
+  const submitting = useRef(false);
+  useEffect(() => () => lookupRequest.current?.abort(), []);
+  const addressChanged = city.trim() !== initialCity || address.trim() !== initialAddress;
   const nameChanged = name.trim() !== initialName;
   const locationCorrectionSelected = selectedLocation !== null;
   const canSubmit =
     name.trim().length > 0 &&
     (isEditing
       ? (nameChanged || locationCorrectionSelected) &&
+        (!needsLocation || locationCorrectionSelected) &&
+        (!addressChanged || locationCorrectionSelected) &&
         (!locationCorrectionSelected || (city.trim().length > 0 && address.trim().length > 0))
       : city.trim().length > 0 && address.trim().length > 0 && locationCorrectionSelected) &&
     !locating &&
+    !loadingSubmission &&
     !submitted;
-  const currentLocationSelected = locationCorrectionSelected;
+  const currentLocationSelected = selectedLocation?.source === 'pin';
+
+  const clearLookup = useCallback(() => {
+    lookupRequest.current?.abort();
+    lookupRequest.current = null;
+    setLocating(false);
+    setCandidate(null);
+    setLocationError('');
+    // An explicitly aimed map pin is independent of its text label. An address
+    // result and a reverse-geocoded GPS point are valid only for those fields.
+    setSelectedLocation((location) => location?.source === 'pin' ? location : null);
+  }, []);
+
+  const handleFindAddress = useCallback(async () => {
+    clearLookup();
+    setSelectedLocation(null);
+    const request = new AbortController();
+    lookupRequest.current = request;
+    setLocating(true);
+    const result = await lookupAddedPubLocation({ address: address.trim(), city: city.trim() }, request.signal);
+    if (request.signal.aborted) return;
+    setCandidate(result);
+    if (!result) setLocationError(t.addPub.addressLookupFailed);
+    setLocating(false);
+  }, [address, city, clearLookup]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     trackUiInteraction('add_pub_location', 'select');
@@ -136,47 +189,39 @@ export default function AddPubScreen() {
       return;
     }
 
-    setLocating(true);
-    setLocationError('');
-    try {
-      // Creation receives the compass' fresh position as a shortcut. A location
-      // correction deliberately requires a new fix taken at the pub.
-      let coords: Coordinates | null = isEditing ? null : initialCoords;
-      if (!coords) {
-        const permission = await ensureLocationPermission();
-        if (permission !== 'granted') {
-          setLocationError(t.addPub.locationPermissionDenied);
-          showToast(t.addPub.locationPermissionDenied);
-          if (permission === 'denied') await openSystemSettings();
-          return;
-        }
-
-        const fix = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-        coords = {
-          lat: fix.coords.latitude,
-          lng: fix.coords.longitude,
-        };
-      }
-
-      setSelectedLocation({
-        ...coords,
-        displayLocation: fromMapPin
-          ? t.addPub.mapPinSelectedBody
-          : t.addPub.currentLocationSelectedBody,
-        source: fromMapPin ? 'pin' : 'current',
-      });
-    } catch {
-      setLocationError(t.addPub.locationUnavailable);
-      showToast(t.addPub.locationUnavailable);
-    } finally {
-      setLocating(false);
+    clearLookup();
+    setSelectedLocation(null);
+    if (fromMapPin && initialCoords) {
+      setSelectedLocation({ ...initialCoords, source: 'pin', displayLocation: t.addPub.mapPinSelectedBody });
+      return;
     }
-  }, [currentLocationSelected, fromMapPin, initialAddress, initialCity, initialCoords, isEditing, showToast]);
+    const request = new AbortController();
+    lookupRequest.current = request;
+    setLocating(true);
+    try {
+      const permission = await ensureLocationPermission({ openSettingsIfDenied: true });
+      if (request.signal.aborted) return;
+      if (permission !== 'granted') {
+        setLocationError(t.addPub.locationPermissionDenied);
+        return;
+      }
+      // Route coordinates may belong to another pub, or be an old GPS fix.
+      const fix = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      if (request.signal.aborted) return;
+      const result = await lookupAddedPubLocation({ lat: fix.coords.latitude, lng: fix.coords.longitude }, request.signal);
+      if (request.signal.aborted) return;
+      setCandidate(result);
+      if (!result) setLocationError(t.addPub.addressLookupFailed);
+    } catch {
+      if (!request.signal.aborted) setLocationError(t.addPub.locationUnavailable);
+    } finally {
+      if (!request.signal.aborted) setLocating(false);
+    }
+  }, [clearLookup, currentLocationSelected, fromMapPin, initialAddress, initialCity, initialCoords, isEditing]);
 
   const handleSubmit = useCallback(async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || submitting.current) return;
+    submitting.current = true;
     trackUiInteraction('add_pub_submit', 'submit');
     setSubmitted(true);
     setLocationError('');
@@ -189,6 +234,7 @@ export default function AddPubScreen() {
     const location = selectedLocation ?? initialCoords;
 
     if (!isEditing && !location) {
+      submitting.current = false;
       setSubmitted(false);
       setLocationError(t.addPub.locationError);
       showToast(t.addPub.locationError);
@@ -305,14 +351,14 @@ export default function AddPubScreen() {
             <MapPinIcon size={18} color={Colors.amber} />
           </View>
           <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isEditing ? t.addPub.editIntro : t.addPub.intro}
+            {needsLocation ? t.addPub.locationNeedsFix : isEditing ? t.addPub.editIntro : t.addPub.intro}
           </Text>
         </View>
 
         <View style={styles.locationCard}>
-          <Text style={styles.locationHeader}>{isEditing ? t.addPub.editLocationHeader : t.addPub.locationHeader}</Text>
+          <Text style={styles.locationHeader}>{isEditing && !needsLocation ? t.addPub.editLocationHeader : t.addPub.locationHeader}</Text>
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isEditing
+            {isEditing && !needsLocation
               ? t.addPub.editLocationBody
               : fromMapPin
                 ? t.addPub.mapPinLocationBody
@@ -414,7 +460,7 @@ export default function AddPubScreen() {
                 accessibilityLabel={
                   selectedLocation.source === 'pin'
                     ? t.a11y.addPubMapPinSelected
-                    : t.a11y.addPubCurrentLocationSelected
+                    : t.addPub.addressConfirmed
                 }
               >
                 <MapPinIcon size={16} color={Colors.amber} />
@@ -422,7 +468,7 @@ export default function AddPubScreen() {
                   <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
                     {selectedLocation.source === 'pin'
                       ? t.addPub.mapPinSelectedTitle
-                      : t.addPub.currentLocationSelectedTitle}
+                      : t.addPub.addressConfirmed}
                   </Text>
                   <Text
                     style={styles.suggestionLocation}
@@ -431,6 +477,7 @@ export default function AddPubScreen() {
                   >
                     {selectedLocation.displayLocation}
                   </Text>
+                  {selectedLocation.source === 'address' && <Text style={styles.suggestionLocation}>Google Maps</Text>}
                 </View>
               </View>
             </View>
@@ -440,10 +487,9 @@ export default function AddPubScreen() {
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>{t.addPub.cityLabel}</Text>
           <TextInput
-            style={[styles.input, isEditing && !locationCorrectionSelected && styles.inputDisabled]}
+            style={styles.input}
             value={city}
-            onChangeText={setCity}
-            editable={!isEditing || locationCorrectionSelected}
+            onChangeText={(value) => { clearLookup(); setCity(value); }}
             placeholder={t.addPub.cityPlaceholder}
             placeholderTextColor={Colors.mutedText}
             maxLength={128}
@@ -454,16 +500,49 @@ export default function AddPubScreen() {
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>{t.addPub.addressLabel}</Text>
           <TextInput
-            style={[styles.input, isEditing && !locationCorrectionSelected && styles.inputDisabled]}
+            style={styles.input}
             value={address}
-            onChangeText={setAddress}
-            editable={!isEditing || locationCorrectionSelected}
+            onChangeText={(value) => { clearLookup(); setAddress(value); }}
             placeholder={t.addPub.addressPlaceholder}
             placeholderTextColor={Colors.mutedText}
             maxLength={255}
             accessibilityLabel={t.a11y.addPubAddressInput}
           />
         </View>
+
+        <Pressable
+          onPress={() => void handleFindAddress()}
+          disabled={locating || !city.trim() || !address.trim()}
+          accessibilityRole="button"
+          accessibilityLabel={t.addPub.findAddress}
+          accessibilityState={{ disabled: locating || !city.trim() || !address.trim(), busy: locating }}
+          style={styles.lookupButton}
+        >
+          <Text style={styles.currentLocationTitle}>{locating ? t.addPub.locating : t.addPub.findAddress}</Text>
+        </Pressable>
+
+        {candidate && (
+          <Pressable
+            style={styles.selectedSuggestion}
+            accessibilityRole="button"
+            accessibilityLabel={`${t.addPub.confirmAddress}: ${candidate.address}, ${candidate.city}`}
+            onPress={() => {
+              lookupRequest.current?.abort();
+              setCity(candidate.city);
+              setAddress(candidate.address);
+              setSelectedLocation({ ...candidate, source: 'address', displayLocation: `${candidate.address}, ${candidate.city}` });
+              setCandidate(null);
+              setLocationError('');
+            }}
+          >
+            <MapPinIcon size={18} color={Colors.amber} />
+            <View style={styles.suggestionText}>
+              <Text style={styles.suggestionName}>{candidate.address}, {candidate.city}</Text>
+              <Text style={styles.currentLocationTitle}>{t.addPub.confirmAddress}</Text>
+              <Text style={styles.suggestionLocation}>Google Maps</Text>
+            </View>
+          </Pressable>
+        )}
 
         {!!locationError && (
           <Text style={styles.invalidText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -476,9 +555,10 @@ export default function AddPubScreen() {
             label={submitted ? t.addPub.saving : isEditing ? t.addPub.editSave : t.addPub.save}
             onPress={handleSubmit}
             glow="none"
+            disabled={!canSubmit}
             accessibilityLabel={t.a11y.addPubSaveButton}
           />
-          {!canSubmit && <View style={styles.submitDisabledOverlay} />}
+
         </View>
       </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
@@ -605,9 +685,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     color: Colors.foam,
   },
-  inputDisabled: {
-    opacity: 0.55,
-  },
   locationCard: {
     overflow: 'hidden',
     borderRadius: Radius.card,
@@ -701,13 +778,12 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: Spacing.sm,
   },
-  submitDisabledOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+  lookupButton: {
+    minHeight: 48,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.stout, 0.42),
+    backgroundColor: Colors.stout3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
   },
 });

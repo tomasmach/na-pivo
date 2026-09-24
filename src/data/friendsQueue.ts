@@ -38,6 +38,8 @@ import {
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
 import type { Pub } from './pubs';
+import { geohash8 } from './geohash';
+import { useTallyStore } from '@/stores/tallyStore';
 
 const STORAGE_KEY = 'na-pivo-friends-queue';
 /** Hard cap — only bites with a very long offline backlog, where dropping the
@@ -52,6 +54,8 @@ interface ActivityPayload {
   scheduledFor?: string | null;
   /** Optional explicit audience; absent keeps legacy "all friends" fanout. */
   recipientIds?: string[];
+  /** Original send time, preserved on offline retry. Missing on legacy ops. */
+  startedAt?: string;
 }
 
 /** One pending Parta write, keyed (and deduped) by {@link dedupKey}. */
@@ -109,6 +113,8 @@ function isQueueItem(value: unknown): value is FriendQueueItem {
       return (
         typeof i.clientId === 'string' &&
         isPub((i as { payload?: ActivityPayload }).payload?.pub) &&
+        (i.payload.startedAt === undefined ||
+          (typeof i.payload.startedAt === 'string' && Number.isFinite(Date.parse(i.payload.startedAt)))) &&
         ((i as { payload?: ActivityPayload }).payload?.recipientIds === undefined ||
           Array.isArray((i as { payload?: ActivityPayload }).payload?.recipientIds))
       );
@@ -147,7 +153,7 @@ const runMutation = createQueueLock();
 function classify(result: FriendActionResult): QueueSyncResult {
   if (result.ok) return 'ok';
   const code = result.code;
-  if (code === 'offline' || code === 'account' || code === 'network' || code === 'auth') {
+  if (code === 'offline' || code === 'account' || code === 'network' || code === 'auth' || code === 'visit_pending') {
     return 'retry';
   }
   const httpMatch = /^http_(\d{3})$/.exec(code);
@@ -183,10 +189,11 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
     case 'cheer-clear':
       return classify(await clearActivityReaction(item.activityId));
     case 'activity': {
+      if (isFinishedBroadcast(item)) return 'ok';
       const { pub, message, scheduledFor } = item.payload;
       const result = scheduledFor
         ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
-        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds);
+        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt);
       return classify(result);
     }
     case 'end':
@@ -249,14 +256,39 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * key (last write wins). Never throws.
  */
 export async function enqueueFriendOp(item: FriendQueueItem): Promise<void> {
+  if (item.op === 'activity' && !item.payload.scheduledFor) {
+    item = { ...item, payload: { ...item.payload, startedAt: item.payload.startedAt ?? new Date().toISOString() } };
+  }
   const key = dedupKey(item);
   await runMutation(async () => {
+    if (item.op === 'activity' && isFinishedBroadcast(item)) return;
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
     deduped.push(item);
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
   });
   await flushFriendsQueue();
+}
+
+function isFinishedBroadcast(item: Extract<FriendQueueItem, { op: 'activity' }>): boolean {
+  const pubKey = geohash8(item.payload.pub.lat, item.payload.pub.lng);
+  const activityAt = item.payload.scheduledFor ?? item.payload.startedAt;
+  return useTallyStore.getState().history.some((session) => session.closedAt && (
+    (!item.payload.scheduledFor && session.clientId === item.clientId) ||
+    (session.pubKey === pubKey && (!activityAt || Date.parse(activityAt) <= Date.parse(session.closedAt)))
+  ));
+}
+
+/** Dopito also cancels broadcasts that have not reached the server yet. */
+export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Promise<void> {
+  return runMutation(async () => {
+    const queue = await loadQueue();
+    await saveQueue(queue.filter((item) => {
+      if (item.op !== 'activity' || geohash8(item.payload.pub.lat, item.payload.pub.lng) !== pubKey) return true;
+      const activityAt = item.payload.scheduledFor ?? item.payload.startedAt;
+      return !!activityAt && Date.parse(activityAt) > Date.parse(closedAt);
+    }));
+  });
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);

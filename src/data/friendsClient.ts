@@ -110,9 +110,10 @@ export interface FriendStreak {
 
 export interface LeaderboardEntry {
   account: FriendProfile;
-  visits30d: number;
-  /** Beers in the same 30-day window. Null on an older backend without it. */
-  beers30d: number | null;
+  /** Null means private or unavailable, never zero. */
+  visits30d: number | null;
+  /** Undefined on older backends; null when the member does not share. */
+  beers30d?: number | null;
   sharedCount: number;
   isMe: boolean;
 }
@@ -345,8 +346,8 @@ interface RawFriendStreak {
 
 interface RawLeaderboardEntry {
   account?: RawFriendProfile;
-  visits_30d?: number;
-  beers_30d?: number;
+  visits_30d?: number | null;
+  beers_30d?: number | null;
   shared_count?: number;
   is_me?: boolean;
 }
@@ -584,8 +585,10 @@ function parseMyPresence(raw: unknown): MyPresence | null {
 function parseLeaderboardEntry(raw: RawLeaderboardEntry): LeaderboardEntry {
   return {
     account: parseProfile(raw.account),
-    visits30d: typeof raw.visits_30d === 'number' ? raw.visits_30d : 0,
-    beers30d: typeof raw.beers_30d === 'number' ? raw.beers_30d : null,
+    visits30d: typeof raw.visits_30d === 'number' ? raw.visits_30d : null,
+    beers30d: raw.beers_30d === undefined
+      ? undefined
+      : typeof raw.beers_30d === 'number' ? raw.beers_30d : null,
     sharedCount: typeof raw.shared_count === 'number' ? raw.shared_count : 0,
     isMe: raw.is_me === true,
   };
@@ -1017,8 +1020,9 @@ export async function shareFriendPubActivity(
   message?: string,
   clientId?: string,
   recipientIds?: string[],
+  startedAt?: string,
 ): Promise<FriendActionResult> {
-  const now = new Date();
+  const now = startedAt ? new Date(startedAt) : new Date();
   const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000);
   const targetIds = recipientIds && recipientIds.length > 0 ? recipientIds : undefined;
   const res = await requestJson('/v1/friends/pub-activity', {
@@ -1036,6 +1040,11 @@ export async function shareFriendPubActivity(
       ...(targetIds ? { recipient_ids: targetIds } : {}),
     },
   });
+  if (res.ok && res.data.applied === false) {
+    // Reopening a timed-out visit may still be queued or in flight. Do not
+    // report a silent server no-op as a delivered broadcast.
+    return { ok: false, code: 'visit_pending', detail: t.clientErrors.save };
+  }
   return res.ok ? { ok: true } : res.result;
 }
 

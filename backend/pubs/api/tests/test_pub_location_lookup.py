@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from unittest.mock import ANY, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from django.utils import timezone as dj_tz
@@ -15,8 +17,9 @@ from pubs.enrichment import (
     GoogleGeocodingUnavailableError,
     GooglePlacePrediction,
     GooglePlacesUnavailableError,
+    geohash8,
 )
-from pubs.models import PubDirectory, PubHours
+from pubs.models import Account, PubDirectory, PubHours, PubReport, UserAddedPub
 
 _QUERY = "Hospoda U Testu, Testovaci 12, Praha"
 
@@ -52,6 +55,52 @@ def _directory_pub() -> PubDirectory:
         active=True,
         refreshed_at=dj_tz.now(),
     )
+
+
+def _community_pub(**overrides) -> UserAddedPub:
+    fields = {
+        "name": "Switch Bar&Café",
+        "lat": 50.7676753,
+        "lng": 15.054216,
+        "city": "Liberec",
+        "address": "Barvířská 31/8",
+        **overrides,
+    }
+    return UserAddedPub.objects.create(
+        account=Account.objects.create(device_id=f"lookup-owner-{uuid4()}"),
+        client_id=uuid4(),
+        cache_key=geohash8(fields["lat"], fields["lng"]),
+        **fields,
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("method", ["get", "post"])
+@pytest.mark.parametrize("path", ["/v1/pubs/suggest", "/v1/pubs/geocode"])
+def test_pub_search_finds_community_pub_without_provider_or_account(client, settings, method, path):
+    settings.GOOGLE_MAPS_SERVER_API_KEY = ""
+    pub = _community_pub()
+    factory, _ = _google_source()
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = getattr(client, method)(
+            path, {"query": "Switch Liberec", "pub_search": True}, format="json",
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"items": [{
+        "id": f"community:{pub.pk}",
+        "provider": "local",
+        "name": pub.name,
+        "label": "Hospoda",
+        "position": {"lat": pub.lat, "lon": pub.lng},
+        "regionalStructure": [
+            {"name": pub.address, "type": "regional.street"},
+            {"name": pub.city, "type": "regional.municipality"},
+        ],
+        "source": "community",
+        "location": pub.address,
+    }]}
+    factory.assert_not_called()
 
 
 def _google_source(candidate: GoogleAddressCandidate | None = None, *, error=None):
@@ -273,6 +322,7 @@ def test_reverse_geocode_prefills_address_for_map_pin(client):
     source.reverse_geocode.assert_called_once_with(
         lat=50.080123,
         lng=16.510616,
+        require_precise=False,
     )
 
 
@@ -375,3 +425,245 @@ def test_reverse_geocode_unexpected_google_failure_returns_503_not_500(client):
 
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.json() == {"detail": "Location lookup is temporarily unavailable."}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("query", ["U Jelena Brno", "U Jelena, Brno"])
+@pytest.mark.parametrize("path", ["/v1/pubs/suggest", "/v1/pubs/geocode"])
+def test_pub_search_matches_name_and_city_together(client, query, path):
+    pub = _directory_pub()
+    pub.name, pub.city = "U Jelena", "Brno"
+    pub.save()
+    other = _directory_pub()
+    other.name = "U Jelena"
+    other.lat += 0.1
+    other.save()
+
+    factory, _ = _google_source()
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.post(path, {"query": query, "pub_search": True}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [item["id"] for item in response.json()["items"]] == [f"local:{pub.pk}"]
+
+
+@pytest.mark.django_db
+def test_pub_search_accepts_two_character_query_without_calling_google(client):
+    pub = _directory_pub()
+    factory, source = _google_places_source()
+    with patch("pubs.api.views.GooglePlacesAutocompleteSource", factory):
+        response = client.post(
+            "/v1/pubs/suggest", {"query": "Te", "pub_search": True}, format="json",
+        )
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["items"][0]["id"] == f"local:{pub.pk}"
+    source.autocomplete.assert_not_called()
+
+
+def _report_pub(pub, count):
+    for index in range(count):
+        account = Account.objects.create(
+            device_id=f"lookup-reporter-{index}",
+            quorum_trusted_at=dj_tz.now() - timedelta(hours=25),
+        )
+        PubReport.objects.create(
+            account=account, cache_key=pub.cache_key, name=pub.name,
+            lat=pub.lat, lng=pub.lng, reason=PubReport.Reason.CLOSED,
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("report_count", [1, 3])
+def test_pub_search_hides_only_globally_reported_directory_pubs(client, report_count):
+    pub = _directory_pub()
+    _report_pub(pub, report_count)
+    response = client.post(
+        "/v1/pubs/suggest", {"query": pub.name, "pub_search": True}, format="json",
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert [item["id"] for item in response.json()["items"]] == (
+        [] if report_count == 3 else [f"local:{pub.pk}"]
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("report_count", [1, 3])
+def test_pub_search_hides_only_globally_reported_community_pubs(client, report_count):
+    pub = _community_pub()
+    _report_pub(pub, report_count)
+    response = client.post(
+        "/v1/pubs/suggest", {"query": "Switch Liberec", "pub_search": True}, format="json",
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert [item["id"] for item in response.json()["items"]] == (
+        [] if report_count == 3 else [f"community:{pub.pk}"]
+    )
+
+
+@pytest.mark.django_db
+def test_pub_search_community_results_keep_city_active_and_venue_filters(client):
+    wanted = _community_pub()
+    _community_pub(city="Praha", lat=50.08)
+    _community_pub(active=False, lat=50.77)
+    not_pub = _community_pub(lat=50.78)
+    PubHours.objects.create(
+        cache_key=not_pub.cache_key, name=not_pub.name, lat=not_pub.lat, lng=not_pub.lng,
+        venue_kind=PubHours.VenueKind.NOT_PUB,
+    )
+    response = client.post(
+        "/v1/pubs/suggest", {"query": "Switch, Liberec", "pub_search": True}, format="json",
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert [item["id"] for item in response.json()["items"]] == [f"community:{wanted.pk}"]
+
+
+@pytest.mark.django_db
+def test_pub_search_deduplicates_combined_sources_before_distance_limit(client):
+    directory = _directory_pub()
+    _community_pub(name=directory.name, lat=directory.lat, lng=directory.lng, city=directory.city)
+    added = [
+        _community_pub(name=f"Hospoda U Testu {index}", lat=50.083 + index * 0.001, lng=14.421)
+        for index in range(6)
+    ]
+    # A repeated community submission must not consume another result slot.
+    _community_pub(name=added[0].name, lat=added[0].lat, lng=added[0].lng)
+    response = client.post(
+        "/v1/pubs/suggest",
+        {"query": "U Testu", "pub_search": True, "lat": 50.08, "lng": 14.421},
+        format="json",
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in response.json()["items"]] == [
+        directory.name, *(pub.name for pub in added[:3]),
+    ]
+
+
+@pytest.mark.django_db
+def test_pub_search_community_hit_does_not_add_provider_calls_or_duplicate_predictions(client):
+    pub = _community_pub()
+    geocode_factory, _ = _google_source()
+    places_factory, places = _google_places_source([
+        GooglePlacePrediction(
+            place_id="same-pub", name=pub.name, location=pub.city, types=("bar",),
+        ),
+        GooglePlacePrediction(
+            place_id="another-pub", name="Switch Another", location=pub.city, types=("pub",),
+        ),
+    ])
+    with (
+        patch("pubs.api.views.GoogleGeocodingSource", geocode_factory),
+        patch("pubs.api.views.GooglePlacesAutocompleteSource", places_factory),
+    ):
+        suggest = client.post(
+            "/v1/pubs/suggest", {"query": "Switch", "pub_search": True}, format="json",
+        )
+        geocode = client.post(
+            "/v1/pubs/geocode", {"query": "Switch", "pub_search": True}, format="json",
+        )
+    assert suggest.status_code == geocode.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in suggest.json()["items"]] == [pub.name, "Switch Another"]
+    assert geocode.json()["items"][0]["name"] == pub.name
+    places.autocomplete.assert_called_once_with(query="Switch", lat=None, lng=None, limit=7)
+    geocode_factory.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_community_pub_does_not_change_legacy_address_lookup(client, settings):
+    settings.GOOGLE_MAPS_SERVER_API_KEY = ""
+    _community_pub()
+    response = client.post("/v1/pubs/suggest", {"query": "Switch, Liberec"}, format="json")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"items": []}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("pub_search", [False, True])
+def test_pub_search_rejects_google_geocode_for_globally_reported_pub(client, pub_search):
+    pub = _directory_pub()
+    _report_pub(pub, 3)
+    factory, _ = _google_source(GoogleAddressCandidate(
+        lat=pub.lat, lng=pub.lng, address="Testovaci 12", city=pub.city,
+        result_type="premise", place_id="reported-pub",
+    ))
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.post(
+            "/v1/pubs/geocode",
+            {"query": pub.name, "place_id": "reported-pub", "pub_search": pub_search},
+            format="json",
+        )
+    assert response.status_code == status.HTTP_200_OK
+    assert bool(response.json()["items"]) is not pub_search
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("pub_search", [False, True])
+def test_pub_search_filters_google_place_types_without_changing_add_pub(client, pub_search):
+    predictions = [
+        GooglePlacePrediction(place_id=kind, name=kind, location="Brno", types=(kind,))
+        for kind in ["locality", "street_address", "store", "restaurant", "bar", "pub"]
+    ]
+    factory, _ = _google_places_source(predictions)
+    with patch("pubs.api.views.GooglePlacesAutocompleteSource", factory):
+        response = client.post(
+            "/v1/pubs/suggest", {"query": "Brno", "pub_search": pub_search}, format="json",
+        )
+    assert response.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in response.json()["items"]] == (
+        ["restaurant", "bar", "pub"] if pub_search else [p.name for p in predictions]
+    )
+    if pub_search:
+        assert [item["types"] for item in response.json()["items"]] == [
+            ["restaurant"], ["bar"], ["pub"],
+        ]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("method", ["get", "post"])
+def test_address_lookup_skips_matching_pub_and_uses_precise_address(client, method):
+    _directory_pub()
+    candidate = GoogleAddressCandidate(
+        lat=50.09, lng=14.43, address="Testovaci 12", city="Praha",
+        result_type="street_address", place_id="address-result",
+    )
+    factory, source = _google_source(candidate)
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = getattr(client, method)(
+            "/v1/pubs/geocode",
+            data={"query": _QUERY, "address_lookup": True, "place_id": "ignore-imprecise-place"},
+            **({"format": "json"} if method == "post" else {}),
+        )
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["providerPlaceId"] == "address-result"
+    assert item["precise"] is True
+    source.geocode_address.assert_called_once_with(address=_QUERY, city="")
+    source.geocode_place_id.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_address_lookup_failure_does_not_return_matching_pub(client):
+    _directory_pub()
+    factory, _ = _google_source()
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.post("/v1/pubs/geocode", data={"query": _QUERY, "address_lookup": True}, format="json")
+    assert response.status_code == 200
+    assert response.json() == {"items": []}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("precise", [False, True])
+def test_reverse_geocode_precision_is_opt_in_and_attested(client, precise):
+    candidate = GoogleAddressCandidate(
+        lat=50.09, lng=14.43, address="Testovaci 12", city="Praha",
+        result_type="street_address", place_id="address-result",
+    )
+    factory, source = _google_source(candidate)
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.post(
+            "/v1/pubs/reverse-geocode",
+            data={"lat": 50.09, "lng": 14.43, "require_precise": precise}, format="json",
+        )
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item.get("precise") is (True if precise else None)
+    source.reverse_geocode.assert_called_once_with(lat=50.09, lng=14.43, require_precise=precise)

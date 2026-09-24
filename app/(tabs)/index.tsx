@@ -21,7 +21,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   useAnimatedReaction,
   useSharedValue,
@@ -80,6 +80,7 @@ import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useToastStore } from '@/stores/toastStore';
 import BeerMapScreen from '@/map/BeerMapScreen';
+import { PubSearchButton } from '@/search/PubSearchButton';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -198,6 +199,10 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={[styles.headerRow, styles.headerRowEmpty]}>
+        <View style={styles.headerSpacer} />
+        <PubSearchButton />
+      </View>
       <View style={styles.permCard}>
         {/* Beer decoration */}
         <View style={styles.permIconWrap}>
@@ -207,29 +212,18 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
         <Text style={styles.permTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
           {t.permissions.title}
         </Text>
-        <Text style={styles.permBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.permissions.body}
-        </Text>
+        {Platform.OS !== 'ios' && (
+          <Text style={styles.permBody} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.permissions.body}
+          </Text>
+        )}
 
         <GlowButton
-          label={t.permissions.cta}
-          onPress={requestPermission}
+          label={permissionState === 'denied' ? t.permissions.openSettings : t.permissions.cta}
+          onPress={permissionState === 'denied' ? () => Linking.openSettings() : requestPermission}
           glow="soft"
-          accessibilityLabel={t.permissions.cta}
+          accessibilityLabel={permissionState === 'denied' ? t.permissions.openSettings : t.permissions.cta}
         />
-
-        {permissionState === 'denied' && (
-          <View style={styles.permSecondaryWrap}>
-            <GlowButton
-              label={t.permissions.openSettings}
-              onPress={() => Linking.openSettings()}
-              variant="secondary"
-              glow="none"
-              height={50}
-              accessibilityLabel={t.permissions.openSettings}
-            />
-          </View>
-        )}
 
         <Pressable
           onPress={onShowMap}
@@ -282,6 +276,8 @@ function LoadingScreen({ rotation, onShowMap }: LoadingScreenProps) {
           onSelectCompass={() => undefined}
           onSelectMap={onShowMap}
         />
+        <View style={styles.headerSpacer} />
+        <PubSearchButton />
       </View>
 
       <CompassCard
@@ -570,6 +566,7 @@ function hoursTimeFromIso(iso: string | null | undefined): string | null {
 
 export default function CompassScreen() {
   const router = useRouter();
+  const { view } = useLocalSearchParams<{ view?: string }>();
   const insets = useSafeAreaInsets();
   useWindowDimensions();
   const [, setSceneSize] = useState<{ width: number; height: number } | null>(null);
@@ -580,6 +577,15 @@ export default function CompassScreen() {
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const mapWithoutLocation = useSettingsStore((state) => state.mapWithoutLocation === true);
+  const setMapWithoutLocation = useSettingsStore((state) => state.setMapWithoutLocation);
+  const mapVisible = mapOpen || mapWithoutLocation;
+  useFocusEffect(useCallback(() => {
+    if (view !== 'compass') return;
+    setMapOpen(false);
+    setMapWithoutLocation(false);
+    router.setParams({ view: undefined });
+  }, [router, setMapWithoutLocation, view]));
   const [moreOpen, setMoreOpen] = useState(false);
   const [mapPubOpen, setMapPubOpen] = useState(false);
   // The dial is sized from the card, never the other way round (§5.3).
@@ -615,7 +621,7 @@ export default function CompassScreen() {
     pubFilters.amenityKeys,
     pubFilters.priceMinCzk,
     pubFilters.priceMaxCzk,
-    !mapOpen,
+    !mapVisible,
     pubFilters.includeOtherPlaces === true,
   );
   const activeFilterCount = activePubSearchFilterCount(pubFilters);
@@ -714,12 +720,14 @@ export default function CompassScreen() {
   );
   const handleShowMap = useCallback(() => {
     trackUiInteraction('compass_map_open');
+    if (permissionState !== 'granted') setMapWithoutLocation(true);
     setMapOpen(true);
-  }, []);
+  }, [permissionState, setMapWithoutLocation]);
   const handleShowCompass = useCallback(() => {
     trackUiInteraction('compass_return');
     setMapOpen(false);
-  }, []);
+    setMapWithoutLocation(false);
+  }, [setMapWithoutLocation]);
 
   const handleAddPub = useCallback(() => {
     trackUiInteraction('compass_add_pub_open');
@@ -912,7 +920,7 @@ export default function CompassScreen() {
     targetPub,
   ]);
 
-  if (mapOpen) {
+  if (mapVisible) {
     return (
       <BeerMapScreen
         initialPub={pub}
@@ -955,6 +963,8 @@ export default function CompassScreen() {
             onSelectCompass={() => undefined}
             onSelectMap={handleShowMap}
           />
+          <View style={styles.headerSpacer} />
+          <PubSearchButton />
         </View>
         <EmptyScreen
           onSettings={handleSettings}
@@ -1002,6 +1012,7 @@ export default function CompassScreen() {
           onSelectMap={handleShowMap}
         />
         <View style={styles.headerSpacer} />
+        <PubSearchButton />
         <Pressable
           onPress={() => {
             trackUiInteraction('compass_more_open');
@@ -1152,18 +1163,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: 44,
     marginBottom: 8,
+    marginHorizontal: -12,
   },
   // The empty state owns its own horizontal padding, so the header borrows the
   // surface's gutter instead of the surface's whole style.
   headerRowEmpty: {
-    paddingHorizontal: 24,
+    marginHorizontal: 0,
+    paddingHorizontal: 12,
   },
   headerSpacer: { flex: 1, minWidth: Spacing.sm },
   // Quiet on purpose: an outlined circle beside an amber button is two frames
   // competing. This one is just a glyph.
   moreButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1282,10 +1295,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 8,
-  },
-  permSecondaryWrap: {
-    width: '100%',
-    marginTop: -8,
   },
   permissionMapButton: {
     minHeight: 44,

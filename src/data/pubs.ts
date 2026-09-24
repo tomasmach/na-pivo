@@ -195,6 +195,9 @@ const DEFAULT_FETCH_RADIUS_KM = 25;
  *  cap does NOT cover the full requested radius — in dense areas the data ends
  *  at the farthest returned pub, so coverage gating must use that distance. */
 const RESULT_CAP_HINT = 300;
+/** Matches backend _PUB_RELEVANCE_DISTANCE_BAND_KM: confirmed pubs win only
+ * within the nearest occupied walking-distance band. */
+const PUB_RELEVANCE_DISTANCE_BAND_KM = 0.25;
 
 /** AsyncStorage key for the persisted result snapshot. */
 const SNAPSHOT_KEY = "na-pivo-pubs-snapshot";
@@ -751,7 +754,8 @@ function isPrimaryDiscoveryPub(pub: Pub): boolean {
 }
 
 /**
- * Returns the nearest pub within maxKm kilometers.
+ * Returns the nearest pub, preferring a confirmed pub within the same 250m
+ * distance band as the nearest eligible result, matching the backend ranking.
  * When maxKm is omitted, there is no distance limit.
  * Returns null if no pub is found within the radius.
  */
@@ -773,19 +777,37 @@ export function findNearestPub(opts: {
     (filterPub ? filterPub(pub) : true);
   const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys, contentFilter);
 
+  const selectNearest = (eligible: ((i: number) => boolean) | undefined): Pub | null => {
+    const [nearestIndex] = geokdbush.around(_index!, lng, lat, 1, maxDistance, eligible);
+    if (nearestIndex === undefined) return null;
+    const nearest = _pubs[nearestIndex];
+    if (nearest.venueKind === 'pub') return nearest;
+
+    const distanceBand = (pub: Pub) => Math.floor(
+      haversineKm(lat, lng, pub.lat, pub.lng) / PUB_RELEVANCE_DISTANCE_BAND_KM,
+    );
+    const nearestBand = distanceBand(nearest);
+    const bandRadius = Math.min(
+      maxDistance ?? Infinity,
+      (nearestBand + 1) * PUB_RELEVANCE_DISTANCE_BAND_KM,
+    );
+    const [confirmedIndex] = geokdbush.around(_index!, lng, lat, 1, bandRadius, (i) =>
+      (!eligible || eligible(i)) && _pubs[i].venueKind === 'pub' && distanceBand(_pubs[i]) === nearestBand,
+    );
+    return confirmedIndex === undefined ? nearest : _pubs[confirmedIndex];
+  };
+
   if (opts.includeOtherPlaces) {
     const primaryPredicate = buildExcludePredicate(
       excludeIds,
       excludeCacheKeys,
       (pub) => isPrimaryDiscoveryPub(pub) && (filterPub ? filterPub(pub) : true),
     );
-    const primary = geokdbush.around(_index, lng, lat, 1, maxDistance, primaryPredicate);
-    if (primary.length > 0) return _pubs[primary[0]];
+    const primary = selectNearest(primaryPredicate);
+    if (primary) return primary;
   }
 
-  const results = geokdbush.around(_index, lng, lat, 1, maxDistance, predicate);
-  if (results.length === 0) return null;
-  return _pubs[results[0]];
+  return selectNearest(predicate);
 }
 
 /**

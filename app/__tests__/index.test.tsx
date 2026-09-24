@@ -1,7 +1,8 @@
 import React from 'react';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { Platform } from 'react-native';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { CompassCard } from '@/compassui/CompassCard';
@@ -28,6 +29,8 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('expo-router', () => ({
+  useFocusEffect: jest.fn(),
+  useLocalSearchParams: jest.fn(() => ({})),
   useRouter: jest.fn(() => ({
     push: jest.fn(),
   })),
@@ -94,6 +97,7 @@ jest.mock('@/components/shared/GlowButton', () => ({
 }));
 
 jest.mock('@/components/shared/IconGlyph', () => ({
+  SearchIcon: jest.fn(() => null),
   BeerIcon: jest.fn(() => null),
   BeerOffIcon: jest.fn(() => null),
   Trash2Icon: jest.fn(() => null),
@@ -227,10 +231,52 @@ function baseCompassState() {
 describe('CompassScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Platform.OS = 'ios';
+    (useLocalSearchParams as jest.Mock).mockReturnValue({});
     mockedUseRouter.mockReturnValue({ push: jest.fn() });
     act(() => {
-      useSettingsStore.setState({ hidePubNames: false, homePoint: null });
+      useSettingsStore.setState({ hidePubNames: false, homePoint: null, mapWithoutLocation: false });
     });
+  });
+
+  it.each(['ios', 'android'] as const)('keeps the long disclosure only outside iOS (%s)', (platform) => {
+    Platform.OS = platform;
+    useCompass.mockReturnValue({ ...baseCompassState(), permissionState: 'undetermined' });
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(React.createElement(CompassScreen)); });
+    const screen = JSON.stringify(renderer.toJSON());
+    if (platform === 'ios') expect(screen).not.toContain(t.permissions.body);
+    else expect(screen).toContain(t.permissions.body);
+    act(() => renderer.unmount());
+  });
+
+  it('shows only the settings action after location was denied', () => {
+    useCompass.mockReturnValue({ ...baseCompassState(), permissionState: 'denied' });
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(React.createElement(CompassScreen)); });
+    expect(renderer.root.findAllByProps({ accessibilityLabel: t.permissions.openSettings })).toHaveLength(1);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: t.permissions.cta })).toHaveLength(0);
+    act(() => renderer.unmount());
+  });
+
+  it.each([
+    ['active', {}],
+    ['loading', { isLoading: true }],
+    ['empty', { pub: null }],
+    ['denied location', { permissionState: 'denied' }],
+    ['undetermined location', { permissionState: 'undetermined' }],
+  ])('opens pub search from the %s compass', (_name, overrides) => {
+    const push = jest.fn();
+    mockedUseRouter.mockReturnValue({ push });
+    useCompass.mockReturnValue({ ...baseCompassState(), ...overrides });
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+    const button = renderer.root.findAllByProps({ accessibilityLabel: t.pubSearch.open })[0];
+    act(() => button.props.onPress());
+    expect(push).toHaveBeenCalledWith('/pub-search');
+    act(() => renderer.unmount());
   });
 
   it('shows the empty state instead of a compass card when no pub is selected', () => {
@@ -315,6 +361,28 @@ describe('CompassScreen', () => {
     ).toBe(false);
   });
 
+  it('returns to compass from explicit pub navigation even when browsing the map was saved', () => {
+    const setParams = jest.fn();
+    mockedUseRouter.mockReturnValue({ push: jest.fn(), setParams });
+    useCompass.mockReturnValue(baseCompassState());
+    let renderer: any;
+    act(() => {
+      useSettingsStore.setState({ mapWithoutLocation: true });
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+    expect(renderer.root.findAllByType(BeerMapScreen)).toHaveLength(1);
+
+    (useLocalSearchParams as jest.Mock).mockReturnValue({ view: 'compass' });
+    act(() => renderer.update(React.createElement(CompassScreen)));
+    const focus = (useFocusEffect as jest.Mock).mock.calls.at(-1)![0];
+    act(() => focus());
+    expect(renderer.root.findAllByType(BeerMapScreen)).toHaveLength(0);
+    expect(renderer.root.findByProps({ accessibilityLabel: t.a11y.mapSwitchCompassSelected })).toBeTruthy();
+    expect(setParams).toHaveBeenCalledWith({ view: undefined });
+    expect(useSettingsStore.getState().mapWithoutLocation).toBe(false);
+    act(() => renderer.unmount());
+  });
+
   it('switches from the active compass to the map through the header switch', () => {
     const BeerMapScreenMock = BeerMapScreen as jest.Mock;
     useCompass.mockReturnValue(baseCompassState());
@@ -374,12 +442,25 @@ describe('CompassScreen', () => {
 
     const mapButton = renderer!.root.findByProps({ accessibilityLabel: t.map.openWithoutLocation });
     act(() => mapButton.props.onPress());
+    expect(useSettingsStore.getState().mapWithoutLocation).toBe(true);
 
     expect(BeerMapScreenMock).toHaveBeenCalledWith(
       expect.objectContaining({ initialPub: expect.objectContaining({ name: 'U Testu' }) }),
       undefined,
     );
     expect(useCompass).toHaveBeenLastCalledWith(null, [], null, null, false, false);
+  });
+
+  it('restores the chosen map after remount and lets an explicit compass choice clear it', () => {
+    useCompass.mockReturnValue({ ...baseCompassState(), permissionState: 'denied' });
+    useSettingsStore.setState({ mapWithoutLocation: true });
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(React.createElement(CompassScreen)); });
+    const map = renderer.root.findByType(BeerMapScreen);
+    act(() => map.props.onShowCompass());
+    expect(useSettingsStore.getState().mapWithoutLocation).toBe(false);
+    expect(renderer.root.findByProps({ accessibilityLabel: t.map.openWithoutLocation })).toBeTruthy();
+    act(() => renderer.unmount());
   });
 
   it('syncs more-sheet compass mode changes to the account preferences endpoint', () => {

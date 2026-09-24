@@ -28,6 +28,34 @@ export const cs = {
     pricePlaceholder: (unit: string) => `Cena (${unit})`,
   },
 
+  pubSearch: {
+    open: 'Hledat hospodu',
+    placeholder: 'Název hospody nebo město',
+    cancel: 'Zrušit',
+    clear: 'Smazat hledání',
+    recent: 'Poslední hledání',
+    nearby: 'V okolí',
+    frequent: 'Tvoje stálice',
+    distanceMeters: (value: string) => `${value} m`,
+    distanceKm: (value: string) => `${value} km`,
+    visitCount: (n: number) => czechPlural(n, {
+      one: '1 návštěva', few: `${n} návštěvy`, many: `${n} návštěv`,
+    }),
+    tooShort: 'Napiš aspoň dvě písmena',
+    loading: 'Hledám hospody…',
+    empty: 'Nic jsem nenašel',
+    emptyHint: 'Zkus jiný název nebo přidej město.',
+    unavailable: 'Hledání teď není dostupné',
+    savedOnly: 'Ukazuju jen hospody uložené v telefonu.',
+    noSaved: 'Mezi uloženými hospodami nic takového nemám.',
+    retry: 'Zkusit znovu',
+    openFailed: 'Hospodu teď nejde otevřít. Zkus to znovu.',
+    navigationFailed: 'Navigaci se nepodařilo otevřít.',
+    opening: 'Otevírám hospodu…',
+    add: 'Přidat hospodu',
+    showMap: 'Ukázat na mapě',
+    external: 'Návrh z Google Maps',
+  },
   map: {
     compass: 'Kompas',
     map: 'Mapa',
@@ -81,10 +109,10 @@ export const cs = {
     notVisited: 'Tady ještě nemáš čárku.',
     visited: 'Navštíveno',
     pubDetail: 'Detail hospody',
-    offline: 'Mapa drží poslední data. Parta se ozve, až chytíš signál.',
+    offline: 'Uložená data',
     retry: 'Zkusit znovu',
     loading: 'Sháním podniky…',
-    permissionHint: 'Rozhlížet se můžeš i bez polohy. Klepni a najdu tě.',
+    permissionHint: 'Povolit polohu',
     openWithoutLocation: 'Otevřít mapu bez polohy',
     listTitle: 'Podniky na mapě',
     listLink: 'Seznam',
@@ -774,14 +802,21 @@ export const cs = {
   },
 
   addPub: {
+    findAddress: 'Najít podle adresy',
+    confirmAddress: 'Použít tuto adresu',
+    addressConfirmed: 'Potvrzená adresa',
+    fixLocation: 'Oprav polohu',
+    locationNeedsFix: 'Polohu podle adresy se nepodařilo ověřit. Oprav adresu a potvrď polohu.',
+    addressLookupFailed: 'Adresu se nepodařilo ověřit. Zkontroluj připojení a zkus to znovu.',
+
     title: 'Přidat hospodu',
     editTitle: 'Opravit hospodu',
     intro:
       'Vyplň název, město a adresu a potvrď, kde hospoda stojí. Po odeslání ji uvidí i ostatní.',
     editIntro:
-      'Název můžeš opravit hned. Pro změnu adresy potvrď nový bod přímo u hospody.',
+      'Název můžeš opravit hned. Při změně adresy najdi a potvrď její polohu.',
     locationHeader: 'Poloha',
-    locationBody: 'Přidej hospodu tam, kde právě stojíš. Uložím jen tenhle bod, žádnou trasu ani historii polohy.',
+    locationBody: 'Najdi hospodu podle adresy nebo si nech zjistit adresu místa, kde stojíš.',
     editLocationHeader: 'Změna polohy (nepovinná)',
     editLocationBody: 'Původní bod zůstane beze změny. Novou adresu a polohu potvrď jen tehdy, když opravdu nesedí.',
     useCurrentLocation: 'Použít moji aktuální polohu',
@@ -792,7 +827,7 @@ export const cs = {
     mapPinSelectedTitle: 'Použije se špendlík z mapy',
     mapPinSelectedBody: 'Bod, kam míří špendlík. Doplň k němu adresu a město.',
     editUseCurrentLocation: 'Opravit adresu a polohu',
-    editUseCurrentLocationHint: 'Zapni přímo u hospody, pak uprav město a adresu.',
+    editUseCurrentLocationHint: 'Zjistím adresu místa, kde právě stojíš.',
     locating: 'Zjišťuju polohu…',
     nameLabel: 'Název',
     namePlaceholder: 'Např. Hospoda U Komunity',
@@ -814,6 +849,7 @@ export const cs = {
     editQueuedToast: 'Opravu mám v telefonu a pošlu ji, až budeš online.',
     editSavedToast: 'Oprava je uložená.',
     myPubsTitle: 'Moje přidané hospody',
+    loading: 'Načítám hospody…',
     emptyTitle: 'Zatím tu žádná není.',
     emptyBody: 'Když v kompasu chybí hospoda, doplň ji. Přidám ji do mapy i ostatním.',
     syncedCaption: 'V KOMPASU',
@@ -822,6 +858,8 @@ export const cs = {
     allSynced: 'Všechno je venku.',
     listLabel: 'Tvoje hospody',
     statusPending: 'Čeká',
+    statusPendingEdit: 'Úprava čeká',
+    statusPendingCreate: 'Čeká na odeslání',
     statusSynced: 'V kompasu',
     statusFailed: 'Neprošla',
     pendingCount: (count: number) =>
@@ -853,7 +891,7 @@ export const cs = {
     edit: 'Opravit hospodu',
     openPubActions: (name: string) => `Otevřít akce hospody ${name}`,
     addFirstCta: 'Přidej první hospodu',
-    addCta: 'Přidej hospodu',
+    addCta: 'Přidat hospodu',
     addCtaHint: 'Chybí v kompasu? Doplním ji do mapy i ostatním.',
     editFromDetailHint: 'Jen u vlastní přidané hospody',
     openMyPubs: 'Moje přidané hospody',
@@ -1427,6 +1465,8 @@ export const cs = {
     leaderboardMetricBeers: 'Piva',
     leaderboardMetricVisits: 'Návštěvy',
     leaderboardMe: 'Ty',
+    leaderboardUnavailable: 'Žebříček zatím není načtený.',
+    leaderboardPrivateEmpty: 'V tomhle žebříčku zatím nemáš s kým soupeřit.',
     leaderboardEmpty: 'Zatím nemáš s kým soupeřit. Přiber parťáky.',
     leaderboardMore: (n: number) =>
       n === 1 ? '+1 další' : n >= 2 && n <= 4 ? `+${n} další` : `+${n} dalších`,
@@ -1717,10 +1757,11 @@ export const cs = {
     pushPromptDismiss: 'Teď ne',
     pushEnabledToast: 'Platí, dám vědět.',
     pushDeniedHint: 'Upozornění máš vypnutá v systému.',
+    pushEnableError: 'Zapnutí se nepovedlo. Zkus to prosím znovu.',
     pushDeniedCta: 'Zapnout',
     pushToggleTitle: 'Upozornění na partu',
     pushToggleSub: 'Cinky, pozvánky a kdo je na pivu.',
-    pushDisableError: 'Vypnutí se nepovedlo. Zkus to prosím znovu.',
+    pushDisableError: 'Upozornění se zatím nepodařilo vypnout. Zkusím to znovu po návratu do appky.',
 
     // — Compass handoff (§F2) —
     showOnCompass: 'Ukaž na kompasu',
@@ -2751,7 +2792,7 @@ export const cs = {
     // Version badge shown next to the eyebrow, e.g. "v1.2.0".
     versionLabel: (version: string) => `v${version}`,
     // Full-screen three-card note shown once to people who updated to 2.1.0
-    // (the release that brought the simple app back). Czech only for now.
+    // (the release that brought the simple app back).
     apology: {
       skip: 'Přeskočit',
       slide1Title: 'Promiň za dvojku',
@@ -2766,6 +2807,21 @@ export const cs = {
       slide3Body:
         'Appku dělám pro vás, zadarmo a podle toho, co mi píšete. Pokud po dvojce zůstalo v obchodě špatné hodnocení, budu rád, když ho po dnešku přepíšeš.',
       slide3Review: 'Upravit hodnocení',
+      slide3Done: 'Jdu na pivo',
+    },
+    fixed211: {
+      skip: 'Přeskočit',
+      slide1Title: 'Mapa na Androidu je opravená',
+      slide1Body:
+        'Opravil jsem useknuté značky hospod i chybějící půllitry a čísla na mapě. Díky všem, kdo mi to nahlásili.',
+      slide1Next: 'Pokračovat',
+      slide2Title: 'Vyhledávání hospod je zpátky',
+      slide2Body:
+        'V kompasu i na mapě zase najdeš lupu. Hledej podle názvu nebo města, nebo rovnou vyber některou z hospod poblíž a svých stálic.',
+      slide2Next: 'Ještě pár drobností',
+      slide3Title: 'Pár oprav navíc',
+      slide3Body:
+        'Zapracoval jsem i na výkonu a opravil chyby v partě, upozorněních a ukládání zápisů. Přehlednější jsou taky tvoje přidané hospody.',
       slide3Done: 'Jdu na pivo',
     },
   },

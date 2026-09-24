@@ -128,7 +128,7 @@ describe('flushVisitsQueue', () => {
   it('routes delete ops through deleteVisit', async () => {
     deleteVisit.mockResolvedValue('retry');
     await enqueueVisitOp({ op: 'delete', clientId: 'v1' });
-    expect(deleteVisit).toHaveBeenCalledWith('v1');
+    expect(deleteVisit).toHaveBeenCalledWith('v1', expect.any(AbortSignal));
   });
 
   it('does nothing on an empty queue', async () => {
@@ -233,6 +233,8 @@ describe('flushVisitsQueue', () => {
     await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
 
     await clearVisitsQueue();
+    const signal = (submitVisit as jest.Mock).mock.calls[0][1] as AbortSignal;
+    expect(signal.aborted).toBe(true);
     resolveFirst('ok');
     await flushing;
 

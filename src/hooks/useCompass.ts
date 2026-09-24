@@ -41,7 +41,7 @@ import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
 import { useTargetBearing } from '@/compass/useTargetBearing';
 import { useArrivalDetector } from '@/compass/useArrivalDetector';
-import { checkLocationPermission, ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
+import { checkLocationPermission, ensureLocationPermission } from '@/compass/permissions';
 import { formatDistanceCs, haversineMeters } from '@/compass/distance';
 import { compassArrowRotation } from '@/compass/rotation';
 import type { PermissionState } from '@/compass/permissions';
@@ -722,12 +722,11 @@ export function useCompass(
 
   // Local optimistic community override for the current pub, keyed by its
   // geohash-8 cell so it follows the physical place across unstable Mapy.cz ids.
-  const overrides = useCommunityStore((s) => s.overrides);
   const currentCell = useMemo(
     () => (currentPub ? geohash8(currentPub.lat, currentPub.lng) : null),
     [currentPub],
   );
-  const overrideForCurrent = currentCell ? overrides[currentCell] : undefined;
+  const overrideForCurrent = useCommunityStore((s) => (currentCell ? s.overrides[currentCell] : undefined));
 
   // Merge the resolved hours onto the targeted pub so consumers can read
   // pub.isOpenNow / pub.hoursStatus. A new object is only created when the pub,
@@ -878,7 +877,9 @@ export function useCompass(
   // eslint-disable-next-line react-hooks/refs
   const shouldRetryPendingHours = currentPubId ? pendingHoursRetryCountsRef.current.has(currentPubId) : false;
   useEffect(() => {
-    if (!currentPubId || !currentPub || !shouldRetryPendingHours) return;
+    // The compass tab stays mounted behind the others; nobody sees its hours
+    // there, so pause the poll on blur and resume the same attempt on refocus.
+    if (!focused || !currentPubId || !currentPub || !shouldRetryPendingHours) return;
 
     const retryId = currentPubId;
     const pubForLookup = currentPub;
@@ -892,7 +893,10 @@ export function useCompass(
     pendingHoursRetryCountsRef.current.set(retryId, attempt + 1);
 
     const controller = new AbortController();
+    const retryCounts = pendingHoursRetryCountsRef.current;
+    let fired = false;
     const timer = setTimeout(() => {
+      fired = true;
       fetchPubHours([pubForLookup], controller.signal)
         .then((resultMap) => {
           if (controller.signal.aborted) return;
@@ -922,9 +926,13 @@ export function useCompass(
     return () => {
       clearTimeout(timer);
       controller.abort();
+      // A blur before the timer fired must not burn this attempt.
+      if (!fired && retryCounts.get(retryId) === attempt + 1) {
+        retryCounts.set(retryId, attempt);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPubId, shouldRetryPendingHours, pendingHoursRetryNonce]);
+  }, [focused, currentPubId, shouldRetryPendingHours, pendingHoursRetryNonce]);
 
   useEffect(() => {
     if (!hideClosedPubs || !currentPubId) return;
@@ -1177,11 +1185,8 @@ export function useCompass(
   }, [activeBeerBrandKey, catalogRevision, excludeRevision, resetExclusions]);
 
   const requestPermission = useCallback(async () => {
-    const state = await ensureLocationPermission();
+    const state = await ensureLocationPermission({ openSettingsIfDenied: true });
     setPermissionState(state);
-    if (state === 'denied') {
-      await openSystemSettings();
-    }
   }, []);
 
   return {

@@ -4,7 +4,8 @@ stale PubHours rows via FirmyHoursSource.
 
 Intended to run via cron (e.g. every 5 minutes). Respects FIRMY_MIN_INTERVAL_SEC
 FIRMY_DAILY_CAP, and FIRMY_ERROR_RETRY_COOLDOWN_MINUTES settings. Each invocation
-processes up to --limit rows and writes nothing in --dry-run mode.
+processes up to --limit rows. --dry-run preserves hours/tasks but still reserves
+the shared request budget when fetching data.
 
 Usage
 -----
@@ -24,7 +25,13 @@ from django.core.management.base import BaseCommand
 from django.db import models
 from django.utils import timezone
 
-from pubs.enrichment import FirmyHoursSource, RawHours, classify_venue, geohash8
+from pubs.enrichment import (
+    FirmyDailyCapExceededError,
+    FirmyHoursSource,
+    RawHours,
+    classify_venue,
+    geohash8,
+)
 from pubs.external_api_budget import reserve_external_api_request
 from pubs.models import EnrichTask, PubHours
 
@@ -112,6 +119,7 @@ def _mark_task_done(task: EnrichTask, dry_run: bool) -> None:
     if dry_run:
         return
     task.done = True
+    task.error = None
     task.last_attempt_at = timezone.now()
     task.save(update_fields=["done", "last_attempt_at", "attempts", "error"])
 
@@ -158,7 +166,7 @@ class Command(BaseCommand):
             "--dry-run",
             action="store_true",
             default=False,
-            help="Fetch data from Firmy.cz but do NOT write anything to the database.",
+            help="Fetch data and reserve request budget, but do not change hours or tasks.",
         )
 
     def handle(self, *args, **options) -> None:
@@ -174,7 +182,7 @@ class Command(BaseCommand):
         )
 
         if dry_run:
-            self.stdout.write(self.style.WARNING("[dry-run] No database writes will occur."))
+            self.stdout.write(self.style.WARNING("[dry-run] Hours/tasks are unchanged; fetches still consume request budget."))
 
         processed = 0
         cap_exceeded = False
@@ -280,9 +288,9 @@ class Command(BaseCommand):
                 continue
 
             if not dry_run:
+                # Persist only after an actual outcome. A cap denial (including
+                # between search/detail requests) must not exhaust task retries.
                 task.attempts += 1
-                task.last_attempt_at = timezone.now()
-                task.save(update_fields=["attempts", "last_attempt_at"])
 
             logger.info(
                 "Processing EnrichTask %s: %s (attempt %d/%d)",
@@ -299,7 +307,7 @@ class Command(BaseCommand):
                     lng=task.lng,
                     city=task.city or None,
                 )
-            except RuntimeError as exc:
+            except FirmyDailyCapExceededError as exc:
                 # Daily cap exceeded
                 cap_exceeded = True
                 logger.warning("Daily cap exceeded during task processing: %s", exc)
@@ -398,7 +406,7 @@ class Command(BaseCommand):
                     lat=row.lat,
                     lng=row.lng,
                 )
-            except RuntimeError as exc:
+            except FirmyDailyCapExceededError as exc:
                 cap_exceeded = True
                 logger.warning("Daily cap exceeded during stale refresh: %s", exc)
                 break

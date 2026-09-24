@@ -48,6 +48,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { t } from '@/i18n';
+import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
 import {
   XIcon,
   CompassIcon,
@@ -148,6 +149,8 @@ interface MapPubSheetProps {
   hoursLabel?: string | null;
   hoursTone?: 'open' | 'closed' | 'unknown';
   beerLine?: string | null;
+  onShowMap?: () => void;
+  onNavigate?: () => void;
 }
 
 /** Same tones as the compass card. Never red — a closed pub is not an error. */
@@ -172,6 +175,8 @@ export function MapPubSheet({
   hoursLabel,
   hoursTone = 'unknown',
   beerLine,
+  onShowMap,
+  onNavigate,
 }: MapPubSheetProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
@@ -667,6 +672,12 @@ export function MapPubSheet({
             >
               <XIcon size={18} color={Colors.foamMuted} />
             </Pressable>
+
+            {onNavigate || onShowMap ? <View style={styles.searchActions}>
+              {info?.address || info?.city ? <Text style={styles.subtitle}>{[info.address, info.city].filter(Boolean).join(', ')}</Text> : null}
+              {onNavigate ? <CounterCta onPress={onNavigate} label={t.compass.navigateCta} accessibilityLabel={t.compass.navigateCta} /> : null}
+              {onShowMap ? <CounterSecondary onPress={onShowMap} label={t.pubSearch.showMap} /> : null}
+            </View> : null}
 
             <ScrollView
               ref={bodyRef}
@@ -1232,6 +1243,7 @@ function mergeAggregate(
 }
 
 const styles = StyleSheet.create({
+  searchActions: { gap: Spacing.sm, paddingTop: Spacing.sm },
   backdrop: {
     flex: 1,
     backgroundColor: withAlpha(Colors.black, 0.6),

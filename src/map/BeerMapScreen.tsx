@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import MapView, {
-  Marker,
   PROVIDER_GOOGLE,
   type MapPressEvent,
   type Region,
@@ -23,6 +22,7 @@ import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
+import { haversineMeters } from '@/compass/distance';
 import {
   BeerIcon,
   ChevronRightIcon,
@@ -38,6 +38,7 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
+import { PubSearchButton } from '@/search/PubSearchButton';
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
@@ -73,6 +74,7 @@ import {
   type VisitedCitySummary,
 } from './mapModel';
 import { useBeerMap } from './useBeerMap';
+import { StaticMapMarker, useMarkerSnapshotRefresh } from './StaticMapMarker';
 
 const DEFAULT_REGION: Region = {
   latitude: 49.8175,
@@ -91,6 +93,8 @@ type MapSelection =
   | { kind: 'city'; key: string; accountId: string | null };
 
 let rememberedRegion: Region | null = null;
+/** A fresher locate fix closer than this does not re-animate the map. */
+const LOCATE_FOLLOW_UP_M = 25;
 let rememberedLayer: Layer = 'all';
 let rememberedSelection: MapSelection | null = null;
 const layerListeners = new Set<() => void>();
@@ -113,6 +117,8 @@ export function resetBeerMapLayerForAddedPub(): void {
 
 export interface BeerMapScreenProps {
   initialPub?: Pub | null;
+  focusInitialPub?: boolean;
+  onSearch?: () => void;
   filters: PubSearchFilters;
   onApplyFilters: (filters: PubSearchFilters) => void;
   onShowCompass: () => void;
@@ -453,6 +459,7 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
   const avatarUrl = account?.avatarUrl;
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const showAvatar = Boolean(avatarUrl && avatarUrl !== failedAvatarUrl);
+  const refreshSnapshot = useMarkerSnapshotRefresh();
 
   return (
     <View style={styles.liveMarkerHit}>
@@ -461,7 +468,11 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
           <Image
             source={{ uri: avatarUrl }}
             style={styles.liveAvatar}
-            onError={() => setFailedAvatarUrl(avatarUrl)}
+            onLoad={refreshSnapshot}
+            onError={() => {
+              setFailedAvatarUrl(avatarUrl);
+              refreshSnapshot();
+            }}
             accessibilityIgnoresInvertColors
             testID="live-map-avatar"
           />
@@ -488,6 +499,8 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
 
 export default function BeerMapScreen({
   initialPub,
+  focusInitialPub = false,
+  onSearch,
   filters,
   onApplyFilters,
   onShowCompass,
@@ -511,13 +524,18 @@ export default function BeerMapScreen({
     loadingPubs,
     stale,
     requestPermission,
+    refreshPosition,
     loadRegion,
     refresh,
-  } = useBeerMap(filters);
+    // The layer store re-renders this screen on every change, so reading the
+    // remembered value here stays current for the live-friends poll gate.
+  } = useBeerMap(filters, rememberedLayer === 'friends');
   const activeFilterCount = activePubSearchFilterCount(filters);
+  const reportedPubIds = usePubStore((state) => state.reportedPubIds);
+  const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
   const initialRegion = useMemo<Region>(
     () =>
-      rememberedRegion ?? (initialPub
+      (!focusInitialPub && rememberedRegion) || (initialPub
         ? {
             latitude: initialPub.lat,
             longitude: initialPub.lng,
@@ -525,7 +543,7 @@ export default function BeerMapScreen({
             longitudeDelta: 0.035,
           }
         : DEFAULT_REGION),
-    [initialPub],
+    [focusInitialPub, initialPub],
   );
   const [region, setRegion] = useState<Region>(initialRegion);
   const layer = useSyncExternalStore(
@@ -533,7 +551,15 @@ export default function BeerMapScreen({
     () => rememberedLayer,
     () => rememberedLayer,
   );
-  const [selection, setSelection] = useState<MapSelection | null>(rememberedSelection);
+  const focusedPoint = useMemo(
+    () => focusInitialPub && initialPub
+      ? buildMapPubPoints([initialPub], [], false, false).points[0]
+      : null,
+    [focusInitialPub, initialPub],
+  );
+  const [selection, setSelection] = useState<MapSelection | null>(() => focusedPoint
+    ? { kind: 'pub', key: focusedPoint.key, accountId: null }
+    : rememberedSelection);
   const [detailOpen, setDetailOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
@@ -552,6 +578,15 @@ export default function BeerMapScreen({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!focusedPoint) return;
+    const next: MapSelection = { kind: 'pub', key: focusedPoint.key, accountId: null };
+    setRememberedLayer('all');
+    rememberedSelection = next;
+    rememberedRegion = initialRegion;
+    mapRef.current?.animateToRegion(initialRegion, 0);
+  }, [focusedPoint, initialRegion]);
 
   useEffect(() => {
     loadRegion(initialRegion);
@@ -573,14 +608,34 @@ export default function BeerMapScreen({
   }, [loadRegion, position, reduceMotion]);
 
   const points = useMemo(
-    () => buildMapPubPoints(
-      pubs,
-      visitedPubs,
-      layer === 'visited',
-      false,
-      activeFilterCount === 0,
-    ).points,
-    [activeFilterCount, layer, pubs, visitedPubs],
+    () => {
+      const points = buildMapPubPoints(
+        pubs,
+        visitedPubs,
+        layer === 'visited',
+        false,
+        activeFilterCount === 0,
+      ).points;
+      // Keep the searched place visible before its catalogue area is loaded.
+      // Later filters, layers and reports still apply; updates of the same pub win.
+      if (focusedPoint && (
+        reportedPubIds.includes(focusedPoint.pub.id) ||
+        reportedCacheKeys.includes(focusedPoint.key)
+      )) {
+        return points.filter((point) => point.key !== focusedPoint.key);
+      }
+      if (focusedPoint && layer === 'all' && activeFilterCount === 0) {
+        const index = points.findIndex((point) => point.key === focusedPoint.key);
+        if (index === -1) points.push(focusedPoint);
+        else if (points[index].pub.id !== focusedPoint.pub.id) {
+          // A matching cell can hold another cached pub or a historical visit.
+          // Preserve the explicit selection instead of changing its identity.
+          points[index] = { ...points[index], pub: focusedPoint.pub };
+        }
+      }
+      return points;
+    },
+    [activeFilterCount, focusedPoint, layer, pubs, reportedCacheKeys, reportedPubIds, visitedPubs],
   );
 
   const activeSelection =
@@ -855,25 +910,34 @@ export default function BeerMapScreen({
 
   const locate = useCallback(() => {
     trackUiInteraction('map_locate');
-    if (!position) {
-      void requestPermission();
-      return;
-    }
-    const next = {
-      latitude: position.lat,
-      longitude: position.lng,
-      // Recentring must not silently change the zoom. Cluster membership follows
-      // the zoom level, so forcing a new delta here made unchanged pub markers
-      // regroup whenever the user tapped the location button.
-      latitudeDelta: region.latitudeDelta,
-      longitudeDelta: region.longitudeDelta,
+    const recenter = (target: { lat: number; lng: number }) => {
+      const next = {
+        latitude: target.lat,
+        longitude: target.lng,
+        // Recentring must not silently change the zoom. Cluster membership follows
+        // the zoom level, so forcing a new delta here made unchanged pub markers
+        // regroup whenever the user tapped the location button.
+        latitudeDelta: region.latitudeDelta,
+        longitudeDelta: region.longitudeDelta,
+      };
+      mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 360);
+      handleRegionChange(next);
     };
-    mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 360);
-    handleRegionChange(next);
+    // The map keeps no live GPS watcher: jump to the last fix right away, then
+    // follow a fresh one-shot fix when the user has moved since.
+    if (position) recenter(position);
+    void refreshPosition().then((fresh) => {
+      if (!fresh) {
+        if (!position) void requestPermission();
+        return;
+      }
+      if (!position || haversineMeters(position, fresh) > LOCATE_FOLLOW_UP_M) recenter(fresh);
+    });
   }, [
     handleRegionChange,
     position,
     reduceMotion,
+    refreshPosition,
     region.latitudeDelta,
     region.longitudeDelta,
     requestPermission,
@@ -1171,8 +1235,8 @@ export default function BeerMapScreen({
       >
         {showCities && layer !== 'friends'
           ? visitedCities.map((city) => (
-              <Marker
-                key={`city:${city.key}`}
+              <StaticMapMarker
+                key={`city:${city.key}:${city.name}:${city.visitCount}`}
                 stopPropagation
                 coordinate={{ latitude: city.lat, longitude: city.lng }}
                 onPress={() => {
@@ -1201,7 +1265,7 @@ export default function BeerMapScreen({
                     {city.visitCount}
                   </Text>
                 </View>
-              </Marker>
+              </StaticMapMarker>
             ))
           : null}
 
@@ -1210,41 +1274,39 @@ export default function BeerMapScreen({
             const point = cluster.items[0];
             const selected = selectedPub?.key === point.key;
             return (
-              <Marker
+              <StaticMapMarker
                 key={`${point.key}:${point.visit?.visitCount ?? 0}:${selected ? 'selected' : 'idle'}`}
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 onPress={() => selectPub(point)}
-                tracksViewChanges={selected}
                 accessibilityLabel={t.a11y.mapPub(
                   point.pub.name,
                   point.visit?.visitCount ?? 0,
                 )}
               >
                 <PubMarker visited={Boolean(point.visit)} selected={selected} />
-              </Marker>
+              </StaticMapMarker>
             );
           }
           return (
-            <Marker
-              key={`cluster:${cluster.id}:${cluster.items.length}`}
+            <StaticMapMarker
+              key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}`}
               stopPropagation
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
-              tracksViewChanges={false}
               accessibilityLabel={t.a11y.mapCluster(cluster.items.length)}
             >
               <ClusterMarker
                 count={cluster.items.length}
                 visited={cluster.items.some((item) => item.visit != null)}
               />
-            </Marker>
+            </StaticMapMarker>
           );
         })}
 
         {layer !== 'visited' ? livePubs.map((live) => (
-          <Marker
-            key={`live:${live.cacheKey}:${selectedLive?.cacheKey === live.cacheKey ? 'selected' : 'idle'}`}
+          <StaticMapMarker
+            key={`live:${live.cacheKey}:${selectedLive?.cacheKey === live.cacheKey ? 'selected' : 'idle'}:${live.activities.length}:${friendName(live)}:${live.activities[0]?.account?.avatarUrl ?? ''}`}
             stopPropagation
             coordinate={{ latitude: live.lat, longitude: live.lng }}
             onPress={() => selectLive(live)}
@@ -1252,7 +1314,7 @@ export default function BeerMapScreen({
             accessibilityLabel={t.a11y.mapLive(friendName(live), live.name)}
           >
             <LiveMarker live={live} selected={selectedLive?.cacheKey === live.cacheKey} />
-          </Marker>
+          </StaticMapMarker>
         )) : null}
       </MapView>
 
@@ -1300,18 +1362,9 @@ export default function BeerMapScreen({
             onSelectMap={() => undefined}
           />
           <View style={styles.headerSpacer} />
-          {/* Centring the map on yourself is the classic map glyph, not an 84pt
-              amber promise. It used to be the screen's primary button, which
-              spent the whole bottom of the map on the least interesting verb. */}
-          <Pressable
-            onPress={locate}
-            style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={t.a11y.mapLocate}
-          >
-            <LocateFixedIcon size={19} color={Colors.amber} />
-          </Pressable>
+          <View style={styles.moreButton}>
+            <PubSearchButton onPress={onSearch} />
+          </View>
           <Pressable
             onPress={() => {
               trackUiInteraction('map_more_open');
@@ -1330,8 +1383,19 @@ export default function BeerMapScreen({
         </View>
         )}
         {!placingPin ? (
-          <View style={styles.nudgeWrap}>
-            <NudgeSlot nudge={nudge} />
+          <View style={styles.mapStatusRow} pointerEvents="box-none">
+            <View style={styles.nudgeWrap}>
+              <NudgeSlot nudge={nudge} />
+            </View>
+            <Pressable
+              onPress={locate}
+              style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.mapLocate}
+            >
+              <LocateFixedIcon size={19} color={Colors.amber} />
+            </Pressable>
           </View>
         ) : null}
       </View>
@@ -1657,13 +1721,19 @@ const styles = StyleSheet.create({
   },
   header: {
     minHeight: 40,
-    paddingHorizontal: 24,
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
   },
   headerSpacer: {
     flex: 1,
     minWidth: Spacing.sm,
+  },
+  mapStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: Spacing.sm,
+    paddingRight: 12,
   },
   headerBalanceSpacer: {
     width: 40,
@@ -1749,8 +1819,8 @@ const styles = StyleSheet.create({
     ...softDrop(),
   },
   moreButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1759,6 +1829,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.12),
   },
   nudgeWrap: {
+    flex: 1,
     paddingHorizontal: 24,
   },
 

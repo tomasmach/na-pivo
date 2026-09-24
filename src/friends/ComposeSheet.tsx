@@ -385,6 +385,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
     setSubmitting(true);
 
     const clientId = generateUuidV4();
+    const startedAt = new Date().toISOString();
     const trimmed = message.trim();
     let scheduledForISO: string | null = null;
     if (isPlan) {
@@ -394,7 +395,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
     }
     const call: Promise<FriendActionResult> = isPlan
       ? createFriendPlan(selectionPub, scheduledForISO as string, trimmed, clientId, targetRecipientIds)
-      : shareFriendPubActivity(selectionPub, trimmed, clientId, targetRecipientIds);
+      : shareFriendPubActivity(selectionPub, trimmed, clientId, targetRecipientIds, startedAt);
 
     void call.then((res) => {
       if (!mountedRef.current) return;
@@ -411,7 +412,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
         void enqueueFriendOp({
           op: 'activity',
           clientId,
-          payload: { pub: selectionPub, message: trimmed, scheduledFor: scheduledForISO, recipientIds: targetRecipientIds },
+          payload: { pub: selectionPub, message: trimmed, scheduledFor: scheduledForISO, recipientIds: targetRecipientIds, startedAt },
         });
         showToast(isPlan ? t.friends.planCreated : t.friends.composeQueued);
         onSubmitted();

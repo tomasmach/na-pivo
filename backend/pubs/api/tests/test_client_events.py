@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
+from django.db import close_old_connections, connection
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -32,6 +36,110 @@ def _register(client: APIClient, device_id: str = _DEVICE_ID) -> str:
 
 def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("deleted", [True, False])
+def test_event_authenticated_before_account_deletion_is_acknowledged_without_recreating_data(client, deleted):
+    _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    client.force_authenticate(user=account)
+    if deleted:
+        Account.objects.filter(pk=account.pk).delete()
+    else:
+        Account.objects.filter(pk=account.pk).update(status=Account.Status.PENDING_DELETION)
+
+    response = client.post("/v1/client-events", data={"event": "app_open"}, format="json")
+    assert response.status_code == 202
+    assert response.json() == {"accepted": True}
+    assert ClientEvent.objects.count() == 0
+    assert AccountUsageStats.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_stats_failure_rolls_back_event_before_a_retry(client, caplog):
+    token = _register(client)
+    with patch("pubs.api.views._update_usage_stats", side_effect=RuntimeError("private-error-value")):
+        response = client.post(
+            "/v1/client-events", data={"event": "app_open"}, format="json", **_auth(token),
+        )
+    assert response.status_code == 500
+    assert ClientEvent.objects.count() == 0
+    assert AccountUsageStats.objects.count() == 0
+    assert "private-error-value" not in caplog.text
+
+    retry = client.post("/v1/client-events", data={"event": "app_open"}, format="json", **_auth(token))
+    assert retry.status_code == 202
+    assert ClientEvent.objects.count() == 1
+    assert AccountUsageStats.objects.get().app_open_count == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("context, expected", [
+    ({"app_state": "background", "error_category": "secure_store_access"}, {"app_state": "background", "error_category": "secure_store_access"}),
+    ({"error_category": "notification_cancel"}, {"error_category": "notification_cancel"}),
+    ({"app_state": "user-private-text", "error_category": "native-exception-with-private-text"}, {}),
+    ({"app_state": ["active"], "error_category": {"private": "value"}}, {}),
+])
+def test_native_diagnostic_categories_are_closed_enums(client, context, expected):
+    response = client.post(
+        "/v1/client-events", data={"event": "console_error", "context": context}, format="json",
+    )
+    assert response.status_code == 202
+    assert ClientEvent.objects.get().context == expected
+
+
+@pytest.mark.django_db(transaction=True)
+def test_event_commit_finishes_before_concurrent_account_purge(client):
+    if connection.vendor != "postgresql":
+        pytest.skip("Row-lock ordering needs PostgreSQL")
+    from pubs.accounts import _hard_delete_locked, hard_delete
+    from pubs.api.views import _update_usage_stats
+
+    _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    event_inserted, allow_commit, purge_started, purge_locked = (Event() for _ in range(4))
+
+    def paused_stats(event):
+        event_inserted.set()
+        assert allow_commit.wait(5)
+        _update_usage_stats(event)
+
+    def post_event():
+        close_old_connections()
+        try:
+            http = APIClient()
+            http.force_authenticate(user=account)
+            return http.post("/v1/client-events", data={"event": "app_open"}, format="json").status_code
+        finally:
+            close_old_connections()
+
+    def purge_account():
+        close_old_connections()
+        try:
+            purge_started.set()
+            hard_delete(account)
+        finally:
+            close_old_connections()
+
+    def locked_purge(account):
+        purge_locked.set()
+        _hard_delete_locked(account)
+
+    with patch("pubs.api.views._update_usage_stats", side_effect=paused_stats), patch("pubs.accounts._hard_delete_locked", side_effect=locked_purge), ThreadPoolExecutor(max_workers=2) as pool:
+        pending_event = pool.submit(post_event)
+        assert event_inserted.wait(5)
+        pending_purge = pool.submit(purge_account)
+        try:
+            assert purge_started.wait(5)
+            assert not purge_locked.wait(0.2), "purge passed the in-flight event's account lock"
+        finally:
+            allow_commit.set()
+        assert pending_event.result(timeout=5) == 202
+        pending_purge.result(timeout=5)
+    assert not Account.objects.filter(pk=account.pk).exists()
+    assert AccountUsageStats.objects.count() == 0
+    assert ClientEvent.objects.count() == 0
 
 
 @pytest.mark.django_db
