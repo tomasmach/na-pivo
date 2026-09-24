@@ -8,16 +8,16 @@ export type PubVisitorsByKey = ReadonlyMap<string, number>;
 
 const ENDPOINT = '/v1/pubs/visitors-last-week';
 const REQUEST_TIMEOUT_MS = 8000;
-// The server answer changes once a week; a few hours keeps a long session fresh.
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+// Ghost mode changes reach the server within an hour; this bounds the rest.
+const CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 
 let cached: { expiresAt: number; visitors: PubVisitorsByKey } | null = null;
 
-/** When the server starts answering with the next week: the Monday after the
- *  current one, midnight Prague winter time (an hour late in summer at most). */
-export function nextWeekStartsAt(weekStart: string): number | null {
-  const monday = Date.parse(`${weekStart}T00:00:00+01:00`);
-  return Number.isFinite(monday) ? monday + 14 * 24 * 60 * 60 * 1000 : null;
+/** When the server starts answering with the next week. */
+export function nextWeekStartsAt(data: unknown): number | null {
+  const value = (data as { next_week_starts_at?: unknown } | null)?.next_week_starts_at;
+  const at = typeof value === 'string' ? Date.parse(value) : NaN;
+  return Number.isFinite(at) ? at : null;
 }
 
 export function parsePubVisitors(data: unknown): PubVisitorsByKey | null {
@@ -64,8 +64,7 @@ export async function fetchPubVisitorsLastWeek(
     const data: unknown = await resp.json();
     const visitors = parsePubVisitors(data);
     if (visitors) {
-      const weekStart = (data as { week_start?: unknown }).week_start;
-      const rollover = typeof weekStart === 'string' ? nextWeekStartsAt(weekStart) : null;
+      const rollover = nextWeekStartsAt(data);
       const now = Date.now();
       cached = {
         expiresAt: Math.min(now + CACHE_TTL_MS, rollover ?? now + CACHE_TTL_MS),

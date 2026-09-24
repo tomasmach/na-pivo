@@ -108,6 +108,7 @@ def test_counts_distinct_people_per_pub_last_week(client):
     assert resp.json() == {
         "week_start": "2026-09-14",
         "week_end": "2026-09-20",
+        "next_week_starts_at": "2026-09-28T00:00:00+02:00",
         "pubs": {"u2fkbn1z": 2, "u2fkbq00": 1},
     }
 

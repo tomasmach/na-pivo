@@ -756,6 +756,32 @@ describe('BeerMapScreen last-week visitors', () => {
     expect(screen.getByLabelText(t.a11y.mapPub('U Prázdných', 0))).toBeTruthy();
   });
 
+  it('keeps a slow counts request alive while the catalogue reloads', async () => {
+    let finish: (value: Map<string, number>) => void = () => undefined;
+    (fetchPubVisitorsLastWeek as jest.Mock).mockImplementation(
+      (signal: AbortSignal) =>
+        new Promise((resolve) => {
+          finish = resolve;
+          expect(signal.aborted).toBe(false);
+        }),
+    );
+    const props = {
+      filters: EMPTY_PUB_SEARCH_FILTERS,
+      onApplyFilters: jest.fn(),
+      onShowCompass: jest.fn(),
+    };
+    const screen = render(<BeerMapScreen {...props} />);
+    const data = mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS);
+    mockedUseBeerMap.mockReturnValue({ ...data, pubs: [busy, quiet] });
+    screen.rerender(<BeerMapScreen {...props} />);
+
+    expect(fetchPubVisitorsLastWeek).toHaveBeenCalledTimes(1);
+    const [signal] = (fetchPubVisitorsLastWeek as jest.Mock).mock.calls[0] as [AbortSignal];
+    expect(signal.aborted).toBe(false);
+    await act(async () => finish(new Map([[geohash8(busy.lat, busy.lng), 4]])));
+    expect(screen.getByLabelText(busyLabel)).toBeTruthy();
+  });
+
   it('hides the counts when the user turns them off', async () => {
     mockSettingsState.showPubVisitors = false;
     const screen = await renderMap();

@@ -18,10 +18,11 @@ describe('parsePubVisitors', () => {
 });
 
 describe('nextWeekStartsAt', () => {
-  it('expires counts for 14.–20. 9. when 28. 9. starts in Prague', () => {
-    expect(new Date(nextWeekStartsAt('2026-09-14')!).toISOString()).toBe(
-      '2026-09-27T23:00:00.000Z',
-    );
-    expect(nextWeekStartsAt('nonsense')).toBeNull();
+  it('reads the rollover instant the server sends', () => {
+    expect(
+      new Date(nextWeekStartsAt({ next_week_starts_at: '2026-09-28T00:00:00+02:00' })!).toISOString(),
+    ).toBe('2026-09-27T22:00:00.000Z');
+    expect(nextWeekStartsAt({ next_week_starts_at: 'nonsense' })).toBeNull();
+    expect(nextWeekStartsAt({})).toBeNull();
   });
 });

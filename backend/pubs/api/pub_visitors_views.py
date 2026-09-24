@@ -16,8 +16,9 @@ from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
 from pubs.models import Account, PubDirectory, PubHours, PubVisit, UserAddedPub
 
 PRAGUE_TZ = ZoneInfo("Europe/Prague")
-# The answer only changes when a new week starts; a day keeps workers roughly in sync.
-WEEKLY_VISITORS_CACHE_TTL = 24 * 60 * 60
+# Short enough that turning ghost mode on drops out within hours on every worker;
+# the query stays in tens of milliseconds even at a million visits.
+WEEKLY_VISITORS_CACHE_TTL = 60 * 60
 
 
 def last_week_bounds(now: datetime | None = None) -> tuple[date, datetime, datetime]:
@@ -68,6 +69,8 @@ def weekly_pub_visitors(now: datetime | None = None) -> dict:
     payload = {
         "week_start": monday.isoformat(),
         "week_end": (monday + timedelta(days=6)).isoformat(),
+        # When this answer is replaced by the next week, so clients need no zone math.
+        "next_week_starts_at": (end + timedelta(days=7)).isoformat(),
         "pubs": {row["cache_key"]: row["visitors"] for row in rows},
     }
     cache.set(key, payload, WEEKLY_VISITORS_CACHE_TTL)
@@ -79,6 +82,7 @@ class PubVisitorsLastWeekView(APIView):
 
     Response 200:
         {"week_start": "YYYY-MM-DD", "week_end": "YYYY-MM-DD",
+         "next_week_starts_at": "<ISO datetime>",
          "pubs": {"<geohash-8 cache_key>": <distinct accounts>, ...}}
     """
 

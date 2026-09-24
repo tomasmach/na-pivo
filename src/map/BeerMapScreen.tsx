@@ -660,15 +660,27 @@ export default function BeerMapScreen({
   }, [initialRegion, loadRegion]);
 
   // Retries ride on each catalogue load, so a failed first fetch (bad signal
-  // in the pub) recovers without a restart; a loaded week is a cache hit.
+  // in the pub) recovers without a restart; a loaded week is a cache hit. A
+  // pan must not cancel a slow request, so only hiding or leaving aborts it.
+  const visitorsRequest = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (!showPubVisitors) return;
+    if (!showPubVisitors || visitorsRequest.current) return;
     const controller = new AbortController();
+    visitorsRequest.current = controller;
     void fetchPubVisitorsLastWeek(controller.signal).then((visitors) => {
+      if (visitorsRequest.current === controller) visitorsRequest.current = null;
       if (!controller.signal.aborted && visitors) setPubVisitors(visitors);
     });
-    return () => controller.abort();
   }, [pubs, showPubVisitors]);
+  useEffect(() => {
+    if (showPubVisitors) return;
+    visitorsRequest.current?.abort();
+    visitorsRequest.current = null;
+  }, [showPubVisitors]);
+  useEffect(() => {
+    const request = visitorsRequest;
+    return () => request.current?.abort();
+  }, []);
 
   // Last week's counts only mean something while they are shown and loaded.
   const visibleVisitors = showPubVisitors && layer !== 'friends' ? pubVisitors : null;
@@ -1447,7 +1459,7 @@ export default function BeerMapScreen({
               onPress={() => openCluster(cluster.lat, cluster.lng)}
               accessibilityLabel={[
                 t.a11y.mapCluster(cluster.items.length),
-                clusterVisitors ? t.map.visitorsLastWeek(clusterVisitors) : null,
+                clusterVisitors ? t.map.visitorsClusterLastWeek(clusterVisitors) : null,
               ].filter(Boolean).join(', ')}
             >
               <ClusterMarker
