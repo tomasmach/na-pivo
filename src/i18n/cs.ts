@@ -2874,6 +2874,8 @@ export const cs = {
     compassNudge: (name: string) => `Tour: další ${name}`, open: 'Otevřít',
     openTour: (name: string) => `Otevřít tour, další zastávka ${name}`,
     counterAllDone: 'Tour: všechno odškrtnuté',
+    counterAtStop: (stop: number) => `Tour: sedíš na ${['jedničce', 'dvojce', 'trojce', 'čtyřce', 'pětce', 'šestce', 'sedmičce', 'osmičce'][stop - 1] ?? stop}, pivo ji odškrtne`,
+    stopCheckedOff: (stop: number) => `${['Jednička', 'Dvojka', 'Trojka', 'Čtyřka', 'Pětka', 'Šestka', 'Sedmička', 'Osmička'][stop - 1] ?? stop} v tour odškrtnutá`,
     countedAtStop: (beer: number, stop: number) => `${beer}. pivo, ${['jednička', 'dvojka', 'trojka', 'čtyřka', 'pětka', 'šestka', 'sedmička', 'osmička'][stop - 1] ?? stop} odškrtnutá`,
     logBeerAt: (stop: number) => `Zapsat pivo na ${['jedničce', 'dvojce', 'trojce', 'čtyřce', 'pětce', 'šestce', 'sedmičce', 'osmičce'][stop - 1] ?? stop}`,
     addMeetup: 'Přidat sraz', youAreHere: 'Tady sedíte', today: 'Dnes',

@@ -2275,6 +2275,8 @@ export const en: Strings = {
     compassNudge: (name: string) => `Tour: next ${name}`, open: 'Open',
     openTour: (name: string) => `Open the tour, next stop ${name}`,
     counterAllDone: 'Tour: all stops done',
+    counterAtStop: (stop: number) => `Tour: you're at stop ${stop}, a beer checks it off`,
+    stopCheckedOff: (stop: number) => `Stop ${stop} checked off`,
     countedAtStop: (beer: number, stop: number) => `Beer ${beer}, stop ${stop} checked off`,
     logBeerAt: (stop: number) => `Log a beer at stop ${stop}`,
     addMeetup: 'Add meetup', youAreHere: "You're here", today: 'Today',

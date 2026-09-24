@@ -26,6 +26,7 @@ import { t } from '@/i18n';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { MenuIcon } from '@/components/shared/IconGlyph';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
 import { reconcileLiveBeerActivityAndAutoArchive } from '@/liveActivity/liveBeerActivity';
 import CounterScreen from '@/counter/CounterScreen';
 import DiaryScreen from '@/diary/DiaryScreen';
@@ -86,6 +87,12 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 export default function BeerScreen() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<BeerTab>('count');
+  // A tour stop handing a pub to the counter must land on the counter, not the diary.
+  useEffect(() => {
+    const follow = ({ pub }: { pub: unknown }) => { if (pub) setTab('count'); };
+    follow(useCounterHandoffStore.getState());
+    return useCounterHandoffStore.subscribe(follow);
+  }, []);
   // Both halves hand their "…" door to this header, so their open state lives
   // here too. `counterMoreReady` goes false while the counter shows the location
   // permission gate — no counter, no overflow sheet, so no glyph either.
