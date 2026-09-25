@@ -53,7 +53,18 @@ interface WireResponse {
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-export type SubmitAddedPubResult = AddedPubResponse | 'permanent-error' | 'retry';
+export type SubmitAddedPubResult = AddedPubResponse | 'permanent-error' | 'retry' | 'location-not-found';
+
+async function isUnresolvedLocation(resp: Response): Promise<boolean> {
+  if (resp.status !== 503) return false;
+  try {
+    const body: unknown = await resp.json();
+    return typeof body === 'object' && body !== null &&
+      'code' in body && body.code === 'location_not_found';
+  } catch {
+    return false;
+  }
+}
 
 export interface AddedPubEditEntry {
   client_id: string;
@@ -112,7 +123,8 @@ export async function submitAddedPub(
     }
     if (!resp.ok) {
       const result: SubmitAddedPubResult =
-        resp.status === 400 || resp.status === 422 ? 'permanent-error' : 'retry';
+        await isUnresolvedLocation(resp) ? 'location-not-found'
+          : resp.status === 400 || resp.status === 422 ? 'permanent-error' : 'retry';
       trackApiFailure('added_pub_submit', {
         endpoint: '/v1/pubs',
         status: resp.status,
@@ -183,7 +195,7 @@ async function authenticatedAddedPubRequest(
     if (!resp.ok) {
       const result = resp.status === 400 || resp.status === 404 || resp.status === 422
         ? 'permanent-error'
-        : 'retry';
+        : await isUnresolvedLocation(resp) ? 'location-not-found' : 'retry';
       trackApiFailure('added_pub_edit', {
         endpoint: '/v1/pubs/<client_id>',
         status: resp.status,

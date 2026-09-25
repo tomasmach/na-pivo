@@ -1,7 +1,7 @@
 /**
  * Parta push opt-in — fully decoupled from pub reminders (Parta 3.0 §E / §8.5).
  *
- * Pub reminders gate push behind background-location; Parta only ever needs the
+ * Pub reminders are scheduled locally; Parta only ever needs the
  * OS notification permission. `registerFriendPush()` requests notifications ONLY
  * (never location), registers the device token, and records the choice in the
  * settings store so the in-context opt-in strip can react. Existing grantees are
@@ -13,7 +13,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type * as ExpoNotifications from 'expo-notifications';
 
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 import { disablePushDevice, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
 import { ensurePushTokenRegistered } from '@/notifications/pushToken';
 
@@ -32,86 +32,106 @@ const Notifications = loadNotifications();
 
 export type FriendPushResult =
   | { ok: true }
-  | { ok: false; reason: 'denied' | 'unavailable' };
+  | { ok: false; reason: 'denied' | 'unavailable' | 'cancelled' };
 
-/**
- * Prompt for notification permission (not location), register the push token,
- * and persist the opt-in state. Marks the prompt as shown either way so the
- * strip never re-nags. Returns whether push ended up enabled.
- */
-export async function registerFriendPush(): Promise<FriendPushResult> {
-  const { setFriendPushEnabled, setFriendPushPrompted, setFriendPushOptedOut } =
-    useSettingsStore.getState();
-  setFriendPushPrompted(true);
+// A DELETE must follow every earlier registration, including token acquisition.
+// Cancelling fetch is insufficient: the server may already be applying its PUT.
+let pendingChange: Promise<unknown> = Promise.resolve();
+let choiceVersion = 0;
 
-  if (!Notifications) {
-    setFriendPushEnabled(false);
-    return { ok: false, reason: 'unavailable' };
-  }
-
-  const existing = await Notifications.getPermissionsAsync();
-  let status = existing.status;
-  if (status === 'undetermined') {
-    const requested = await Notifications.requestPermissionsAsync({
-      ios: { allowAlert: true, allowBadge: false, allowSound: false },
-    });
-    status = requested.status;
-  }
-
-  if (status !== 'granted') {
-    setFriendPushEnabled(false);
-    return { ok: false, reason: 'denied' };
-  }
-
-  await ensurePushTokenRegistered('granted');
-  // An explicit enable clears any prior opt-out so the launch/focus re-register
-  // keeps push on (and re-enables the device server-side via the token register).
-  setFriendPushOptedOut(false);
-  setFriendPushEnabled(true);
-  return { ok: true };
+function inOrder<T>(operation: () => Promise<T>): Promise<T> {
+  const result = pendingChange.then(operation);
+  pendingChange = result.catch(() => undefined);
+  return result;
 }
 
-/**
- * Stop Parta push delivery when the user turns the toggle off (§E3). The backend
- * fanout gates only on the device being enabled + permission-granted, so we
- * disable THIS device server-side; the persisted opt-out flag (set by the caller)
- * then keeps the launch/focus re-register from turning it back on. Best-effort —
- * returns whether the server accepted the disable so the caller can revert on fail.
- *
- * Note: this disables the whole device, so an active pub-reminder subscription is
- * paused until its own next register. That is an accepted tradeoff — the backend
- * has no per-category push preference, and pub reminders and Parta push are rarely
- * both on for the same user.
- */
-export async function disableFriendPush(): Promise<boolean> {
+async function disableCachedDevice(): Promise<boolean> {
   try {
     const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
-    // No registered token → nothing is delivering; treat the opt-out as applied.
-    if (!token) return true;
-    return await disablePushDevice(token);
+    return token ? await disablePushDevice(token) : true;
   } catch {
     return false;
   }
 }
 
-/**
- * Silent opportunistic register: if notification permission is already granted,
- * refresh the device token so existing grantees receive Parta pushes without a
- * prompt. Safe to call on launch and on Parta focus.
- */
-export async function ensureFriendPushRegisteredIfGranted(): Promise<void> {
-  if (!Notifications) return;
-  // Respect an explicit opt-out: once the user turned Parta notifications off we
-  // must never silently re-register the device or force the toggle back on (§E3).
-  if (useSettingsStore.getState().friendPushOptedOut) return;
-  try {
-    const { status } = await Notifications.getPermissionsAsync();
-    if (status !== 'granted') return;
-    await ensurePushTokenRegistered('granted');
-    if (!useSettingsStore.getState().friendPushEnabled) {
-      useSettingsStore.getState().setFriendPushEnabled(true);
+/** Request notification permission and confirm the latest opt-in on the server. */
+export function registerFriendPush(): Promise<FriendPushResult> {
+  const version = ++choiceVersion;
+  return inOrder(async () => {
+    await waitForSettingsHydration();
+    const isCurrent = () => version === choiceVersion;
+    if (!isCurrent()) return { ok: false, reason: 'cancelled' };
+    const { setFriendPushEnabled, setFriendPushPrompted, setFriendPushOptedOut } =
+      useSettingsStore.getState();
+    setFriendPushPrompted(true);
+
+    try {
+      if (Notifications) {
+        const existing = await Notifications.getPermissionsAsync();
+        if (!isCurrent()) return { ok: false, reason: 'cancelled' };
+        let status = existing.status;
+        if (status === 'undetermined') {
+          const requested = await Notifications.requestPermissionsAsync({
+            ios: { allowAlert: true, allowBadge: false, allowSound: false },
+          });
+          status = requested.status;
+        }
+        if (!isCurrent()) return { ok: false, reason: 'cancelled' };
+        if (status !== 'granted') {
+          setFriendPushEnabled(false);
+          return { ok: false, reason: 'denied' };
+        }
+        const token = await ensurePushTokenRegistered('granted');
+        if (!isCurrent()) return { ok: false, reason: 'cancelled' };
+        if (token) {
+          setFriendPushOptedOut(false);
+          setFriendPushEnabled(true);
+          return { ok: true };
+        }
+      }
+    } catch {
+      // Native permission APIs can be unavailable in an incompatible client.
     }
-  } catch {
-    // Permission API unavailable — leave push state untouched.
-  }
+    if (!isCurrent()) return { ok: false, reason: 'cancelled' };
+    setFriendPushEnabled(false);
+    return { ok: false, reason: 'unavailable' };
+  });
+}
+
+/**
+ * Persist the opt-out and disable this device after earlier registrations finish.
+ * Keep the choice on failure so launch/focus/foreground can retry it. Local pub
+ * reminders have their own permission gate and do not change this device token.
+ */
+export function disableFriendPush(): Promise<boolean> {
+  ++choiceVersion;
+  // The settings UI is already hydrated. Persist immediately, before a possible
+  // background/termination while waiting for an older network request.
+  useSettingsStore.getState().setFriendPushEnabled(false);
+  useSettingsStore.getState().setFriendPushOptedOut(true);
+  return inOrder(disableCachedDevice);
+}
+
+/** Reconcile the persisted choice on launch, Parta focus and app foreground. */
+export function ensureFriendPushRegisteredIfGranted(): Promise<void> {
+  const version = choiceVersion;
+  return inOrder(async () => {
+    await waitForSettingsHydration();
+    if (version !== choiceVersion) return;
+    if (useSettingsStore.getState().friendPushOptedOut) {
+      await disableCachedDevice();
+      return;
+    }
+    if (!Notifications) return;
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted' || version !== choiceVersion || useSettingsStore.getState().friendPushOptedOut) return;
+      const token = await ensurePushTokenRegistered('granted');
+      if (token && version === choiceVersion && !useSettingsStore.getState().friendPushOptedOut) {
+        useSettingsStore.getState().setFriendPushEnabled(true);
+      }
+    } catch {
+      // Permission API unavailable — leave push state untouched.
+    }
+  });
 }

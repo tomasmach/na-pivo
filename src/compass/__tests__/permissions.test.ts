@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { Linking } from 'react-native';
 import {
   checkLocationPermission,
   ensureLocationPermission,
@@ -22,6 +23,17 @@ const requestForegroundPermissionsAsync = Location.requestForegroundPermissionsA
 describe('location permission helpers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('respects a first refusal and opens settings only on a later explicit attempt', async () => {
+    getForegroundPermissionsAsync.mockResolvedValueOnce({ status: 'undetermined' });
+    requestForegroundPermissionsAsync.mockResolvedValueOnce({ status: 'denied' });
+    await expect(ensureLocationPermission({ openSettingsIfDenied: true })).resolves.toBe('denied');
+    expect(Linking.openSettings).not.toHaveBeenCalled();
+    getForegroundPermissionsAsync.mockResolvedValueOnce({ status: 'denied' });
+    await expect(ensureLocationPermission({ openSettingsIfDenied: true })).resolves.toBe('denied');
+    expect(Linking.openSettings).toHaveBeenCalledTimes(1);
+    expect(requestForegroundPermissionsAsync).toHaveBeenCalledTimes(1);
   });
 
   it('checks current permission without prompting', async () => {

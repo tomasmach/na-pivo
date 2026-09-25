@@ -30,10 +30,11 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { AppState } from 'react-native';
 
 import { getBackendEndpoint } from './backendConfig';
 import { clearAccountMerge, hasPendingAccountMerge, prepareAccountMerge, readAccountMerge } from './accountMerge';
-import { setTelemetrySession, trackApiFailure } from './telemetryClient';
+import { setTelemetrySession, trackApiFailure, type DiagnosticAppState } from './telemetryClient';
 
 export interface AccountSession {
   /** Stable client-generated device identifier (UUID v4). */
@@ -77,6 +78,17 @@ let sessionCacheQueue: Promise<void> = Promise.resolve();
 let bootstrapFailureCount = 0;
 let bootstrapRetryAfter = 0;
 let anonymousSessionEvictionListener: (() => void | Promise<void>) | null = null;
+const SESSION_READ_RETRY_MS = 2_000;
+const SESSION_READ_REPORT_MS = 15 * 60_000;
+let sessionReadRetryAfter = 0;
+let failedReadAppState: DiagnosticAppState = 'unknown';
+// The key space is bounded by the fixed category/state enums, never native text.
+const sessionReadReports = new Map<string, number>();
+
+function diagnosticAppState(): DiagnosticAppState {
+  const state = AppState.currentState;
+  return state === 'active' || state === 'inactive' || state === 'background' ? state : 'unknown';
+}
 
 interface RegisterResponse {
   id?: string;
@@ -281,11 +293,33 @@ function applyBootstrapBackoff(): void {
 }
 
 async function readCachedAccountUnlocked(): Promise<CachedAccountRead> {
+  const appState = diagnosticAppState();
+  // A fan-out of background syncs must not hammer a temporarily unavailable
+  // Keychain. A transition back to active always gets an immediate fresh read.
+  if (Date.now() < sessionReadRetryAfter && appState === failedReadAppState) {
+    return { available: false, account: lastKnownAccount };
+  }
   let raw: string | null;
   try {
     raw = await SecureStore.getItemAsync(ACCOUNT_KEY);
-  } catch {
-    trackApiFailure('session_cache_read', { reason: 'session_cache_read_unavailable' });
+    sessionReadRetryAfter = 0;
+  } catch (error) {
+    sessionReadRetryAfter = Date.now() + SESSION_READ_RETRY_MS;
+    failedReadAppState = appState;
+    const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
+    const category = code === 'ERR_KEY_CHAIN' || code === 'ERR_SEC_ACCESS_CONTROL'
+      ? 'secure_store_access' : code === 'ERR_SECURESTORE_READ_ERROR' ? 'secure_store_read' : 'unknown';
+    const reportKey = `${appState}:${category}`;
+    const lastReport = sessionReadReports.get(reportKey);
+    if (lastReport === undefined || Date.now() - lastReport >= SESSION_READ_REPORT_MS) {
+      sessionReadReports.set(reportKey, Date.now());
+      trackApiFailure('session_cache_read', {
+        reason: 'session_cache_read_unavailable',
+        app_state: appState,
+        error_category: category,
+        retryable: true,
+      });
+    }
     // Keychain can be temporarily unavailable while iOS is locked or resuming.
     // Never interpret that as a missing credential: doing so could replace a
     // signed-in session with a freshly minted anonymous account.
@@ -329,6 +363,7 @@ async function writeCachedAccountUnlocked(account: CachedAccount): Promise<boole
       keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
     });
     lastKnownAccount = account;
+    sessionReadRetryAfter = 0;
     resetBootstrapBackoff();
     return true;
   } catch {
@@ -345,6 +380,8 @@ async function deleteCachedAccountUnlocked(): Promise<boolean> {
   try {
     await SecureStore.deleteItemAsync(ACCOUNT_KEY);
     lastKnownAccount = null;
+    sessionReadRetryAfter = 0;
+    sessionReadReports.clear();
     return true;
   } catch {
     trackApiFailure('session_cache_delete', { reason: 'session_cache_delete_failed' });

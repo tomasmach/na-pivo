@@ -3,8 +3,8 @@
  *
  * A friend card / plan / profile only ever holds a geohash-8 `cacheKey` for the
  * pub (privacy: ~19 m coarse, never raw GPS). This decodes that key to the cell
- * centre and drops it into `focusedPubStore`; the caller then `router.push('/')`
- * so the Kompas tab points its needle at the friend's coarse pub.
+ * centre and drops it into `focusedPubStore`; the caller opens `/` with
+ * `view=compass` so a remembered map choice cannot hide the friend's target.
  *
  * Returns false (and sets nothing) when there is no usable cacheKey, so the
  * caller can skip the navigation.

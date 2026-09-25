@@ -78,7 +78,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
     openSafetyMenu(account);
   }, [openSafetyMenu, account]);
   const showOnCompass = useCallback(() => {
-    if (focusPubFromActivity(activity)) router.push('/' as Href);
+    if (focusPubFromActivity(activity)) router.push({ pathname: '/', params: { view: 'compass' } });
   }, [activity, router]);
 
   const [cancelling, setCancelling] = useState(false);

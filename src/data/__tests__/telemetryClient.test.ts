@@ -27,6 +27,20 @@ afterEach(() => {
 });
 
 describe('trackClientEvent', () => {
+  it('accepts only fixed native diagnostic categories and app states', async () => {
+    const fetchSpy = jest.fn(async () => ({ ok: true }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    await trackClientEvent({ event: 'api_failure', context: {
+      app_state: 'background', error_category: 'secure_store_access',
+    } });
+    await trackClientEvent({ event: 'api_failure', message: 'bad category', context: {
+      app_state: 'private account state', error_category: 'private native error text',
+    } });
+    const bodies = fetchSpy.mock.calls.map((call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string));
+    expect(bodies[0].context).toEqual({ app_state: 'background', error_category: 'secure_store_access' });
+    expect(bodies[1].context).toEqual({});
+  });
+
   it('POSTs sanitized telemetry with app metadata and optional auth', async () => {
     const fetchSpy = jest.fn(async () => ({ ok: true }));
     global.fetch = fetchSpy as unknown as typeof fetch;

@@ -30,10 +30,17 @@ export const cs = {
 
   pubSearch: {
     open: 'Hledat hospodu',
-    placeholder: 'Název hospody, město',
+    placeholder: 'Název hospody nebo město',
     cancel: 'Zrušit',
     clear: 'Smazat hledání',
-    recent: 'Nedávno hledané',
+    recent: 'Poslední hledání',
+    nearby: 'V okolí',
+    frequent: 'Tvoje stálice',
+    distanceMeters: (value: string) => `${value} m`,
+    distanceKm: (value: string) => `${value} km`,
+    visitCount: (n: number) => czechPlural(n, {
+      one: '1 návštěva', few: `${n} návštěvy`, many: `${n} návštěv`,
+    }),
     tooShort: 'Napiš aspoň dvě písmena',
     loading: 'Hledám hospody…',
     empty: 'Nic jsem nenašel',
@@ -86,6 +93,16 @@ export const cs = {
     showMyPubs: 'Ukázat moje hospody',
     findMe: 'Najdi mě',
     liveNow: 'TEĎ NA PIVU',
+    visitorsLastWeek: (n: number) =>
+      czechPlural(n, {
+        one: 'Minulý týden tu byl 1 člověk',
+        few: `Minulý týden tu byli ${n} lidé`,
+        many: `Minulý týden tu bylo ${n} lidí`,
+      }),
+    visitorsClusterLastWeek: (n: number) => `Součet lidí z těchto hospod za minulý týden: ${n}`,
+    moreVisitors: 'Počty lidí za minulý týden',
+    moreVisitorsOnly: 'Jen hospody, kde někdo byl',
+    visitorsOnlyNudge: 'Jen kde někdo byl',
     friendFallback: 'Kamarád',
     friendIsHere: (name: string) => `${name} je tady teď`,
     friendsAreHere: (name: string, others: number) =>
@@ -798,6 +815,8 @@ export const cs = {
     findAddress: 'Najít podle adresy',
     confirmAddress: 'Použít tuto adresu',
     addressConfirmed: 'Potvrzená adresa',
+    fixLocation: 'Oprav polohu',
+    locationNeedsFix: 'Polohu podle adresy se nepodařilo ověřit. Oprav adresu a potvrď polohu.',
     addressLookupFailed: 'Adresu se nepodařilo ověřit. Zkontroluj připojení a zkus to znovu.',
 
     title: 'Přidat hospodu',
@@ -840,6 +859,7 @@ export const cs = {
     editQueuedToast: 'Opravu mám v telefonu a pošlu ji, až budeš online.',
     editSavedToast: 'Oprava je uložená.',
     myPubsTitle: 'Moje přidané hospody',
+    loading: 'Načítám hospody…',
     emptyTitle: 'Zatím tu žádná není.',
     emptyBody: 'Když v kompasu chybí hospoda, doplň ji. Přidám ji do mapy i ostatním.',
     syncedCaption: 'V KOMPASU',
@@ -848,6 +868,8 @@ export const cs = {
     allSynced: 'Všechno je venku.',
     listLabel: 'Tvoje hospody',
     statusPending: 'Čeká',
+    statusPendingEdit: 'Úprava čeká',
+    statusPendingCreate: 'Čeká na odeslání',
     statusSynced: 'V kompasu',
     statusFailed: 'Neprošla',
     pendingCount: (count: number) =>
@@ -879,7 +901,7 @@ export const cs = {
     edit: 'Opravit hospodu',
     openPubActions: (name: string) => `Otevřít akce hospody ${name}`,
     addFirstCta: 'Přidej první hospodu',
-    addCta: 'Přidej hospodu',
+    addCta: 'Přidat hospodu',
     addCtaHint: 'Chybí v kompasu? Doplním ji do mapy i ostatním.',
     editFromDetailHint: 'Jen u vlastní přidané hospody',
     openMyPubs: 'Moje přidané hospody',
@@ -1465,7 +1487,7 @@ export const cs = {
     settingsClose: 'Zavřít nastavení',
     ghostTitle: 'Neviditelný režim',
     ghostSubtitle:
-      'Parta nevidí, kde sedíš, ani co máš vypito. Tvoje cinknutí zůstanou jen u tebe.',
+      'Parta nevidí, kde sedíš, ani co máš vypito. Tvoje cinknutí zůstanou jen u tebe a dokud je zapnutý, nezapočítám tě ani do počtu lidí u hospod na mapě.',
     shareDrinksTitle: 'Ukazovat partě, kde sedím',
     shareDrinksSubtitle:
       'Kámoši uvidí, ve které hospodě zrovna jsi a co ti večer teklo. Nikdo jiný ne.',
@@ -1745,10 +1767,11 @@ export const cs = {
     pushPromptDismiss: 'Teď ne',
     pushEnabledToast: 'Platí, dám vědět.',
     pushDeniedHint: 'Upozornění máš vypnutá v systému.',
+    pushEnableError: 'Zapnutí se nepovedlo. Zkus to prosím znovu.',
     pushDeniedCta: 'Zapnout',
     pushToggleTitle: 'Upozornění na partu',
     pushToggleSub: 'Cinky, pozvánky a kdo je na pivu.',
-    pushDisableError: 'Vypnutí se nepovedlo. Zkus to prosím znovu.',
+    pushDisableError: 'Upozornění se zatím nepodařilo vypnout. Zkusím to znovu po návratu do appky.',
 
     // — Compass handoff (§F2) —
     showOnCompass: 'Ukaž na kompasu',
@@ -2779,7 +2802,7 @@ export const cs = {
     // Version badge shown next to the eyebrow, e.g. "v1.2.0".
     versionLabel: (version: string) => `v${version}`,
     // Full-screen three-card note shown once to people who updated to 2.1.0
-    // (the release that brought the simple app back). Czech only for now.
+    // (the release that brought the simple app back).
     apology: {
       skip: 'Přeskočit',
       slide1Title: 'Promiň za dvojku',
@@ -2794,6 +2817,21 @@ export const cs = {
       slide3Body:
         'Appku dělám pro vás, zadarmo a podle toho, co mi píšete. Pokud po dvojce zůstalo v obchodě špatné hodnocení, budu rád, když ho po dnešku přepíšeš.',
       slide3Review: 'Upravit hodnocení',
+      slide3Done: 'Jdu na pivo',
+    },
+    fixed211: {
+      skip: 'Přeskočit',
+      slide1Title: 'Mapa na Androidu je opravená',
+      slide1Body:
+        'Opravil jsem useknuté značky hospod i chybějící půllitry a čísla na mapě. Díky všem, kdo mi to nahlásili.',
+      slide1Next: 'Pokračovat',
+      slide2Title: 'Vyhledávání hospod je zpátky',
+      slide2Body:
+        'V kompasu i na mapě zase najdeš lupu. Hledej podle názvu nebo města, nebo rovnou vyber některou z hospod poblíž a svých stálic.',
+      slide2Next: 'Ještě pár drobností',
+      slide3Title: 'Pár oprav navíc',
+      slide3Body:
+        'Zapracoval jsem i na výkonu a opravil chyby v partě, upozorněních a ukládání zápisů. Přehlednější jsou taky tvoje přidané hospody.',
       slide3Done: 'Jdu na pivo',
     },
   },
@@ -2908,6 +2946,7 @@ export const cs = {
       'Profil může obsahovat přezdívku, jméno a avatar. U veřejného profilu tě podle přezdívky a fotky můžou najít ostatní; přesná poloha, deníček a jednotlivá piva se veřejně nezobrazují.',
       'Počítadlo, historie večerů, návštěvy hospod a tvoje soukromá hodnocení se ukládají lokálně a synchronizují se jen k tvému účtu. Po odhlášení nebo smazání účtu appka lokální soukromý deníček, hodnocení a čekající private sync fronty z tohohle zařízení vyčistí.',
       'Sdílení večera s Partou je ve výchozím stavu zapnuté: přijatí kamarádi můžou vidět, že jsi v hospodě, kolik piv máš a tvůj poslední zápis. V nastavení Party to vypneš, nebo použij ghost mode. Nikdo jiný než přijatí kamarádi tyhle údaje nevidí.',
+      'Na mapě u hospody ukazuju, kolik různých lidí v ní minulý týden bylo. Je to jedno číslo za celý týden, bez jmen, dnů a časů. Dokud máš zapnutý ghost mode, nezapočítám tě do něj. Zapnutí se v počtech projeví do několika hodin.',
       'Fotky piv ukládám na serveru bez metadat a GPS polohy. Ve výchozím stavu je vidí jen tvoje Parta; veřejné jsou jen fotky, které přihlásíš do fotosoutěže.',
       'Když vyfotíš pivní lístek přes „Vyfoť menu“, fotka se přes můj server pošle ke zpracování AI modelu (přes službu OpenRouter). Fotku neukládám a poskytovatel ji podle mého nastavení nesmí použít k trénování.',
       'Když povolíš notifikace, uložím si push token zařízení a zprávy z Party doručuju přes Expo Push Service. Hospodské připomínky se zobrazují přímo v telefonu a nikam se neposílají.',

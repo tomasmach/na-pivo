@@ -1,4 +1,5 @@
-import { intlLocale, t } from '@/i18n';
+import { t } from '@/i18n';
+import { numberFormat } from '@/utils/intlFormat';
 
 export type PriceCurrency = string;
 
@@ -32,7 +33,7 @@ export function currencyFractionDigits(currency: PriceCurrency): number {
 
 export function currencySuffix(currency: PriceCurrency): string {
   try {
-    const parts = new Intl.NumberFormat(intlLocale, {
+    const parts = numberFormat({
       style: 'currency',
       currency,
       currencyDisplay: 'narrowSymbol',
@@ -48,10 +49,10 @@ export function pricePlaceholder(currency: PriceCurrency): string {
 }
 
 function formatDecimal(value: number, maxFractionDigits: number): string {
-  const rounded = value.toLocaleString(intlLocale, {
+  const rounded = numberFormat({
     minimumFractionDigits: 0,
     maximumFractionDigits: maxFractionDigits,
-  });
+  }).format(value);
   return rounded.replace(/\u00a0/g, ' ');
 }
 
@@ -59,7 +60,7 @@ export function formatPrice(czk: number, currency: PriceCurrency): string {
   const rate = getCurrencyRate(currency) ?? 1;
   const amount = czk / rate;
   try {
-    return new Intl.NumberFormat(intlLocale, {
+    return numberFormat({
       style: 'currency',
       currency,
       currencyDisplay: 'narrowSymbol',

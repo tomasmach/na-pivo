@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearLocalPrivateAccountData } from '../privateAccountData';
+import { pulledRecently, trackForegroundPull } from '../foregroundPulls';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
@@ -205,4 +206,13 @@ it('removes retired 2.0 private data and settings while retaining public caches 
     pendingAccountPreferences: {}, pendingAccountPreferencesOwnerId: null,
     navigationProvider: 'mapy',
   });
+});
+
+it('forgets recent server pulls so a re-login restores the wiped data', async () => {
+  await trackForegroundPull('ratings', async () => true, () => 'acc-1');
+  expect(pulledRecently('ratings', 'acc-1')).toBe(true);
+
+  await clearLocalPrivateAccountData();
+
+  expect(pulledRecently('ratings', 'acc-1')).toBe(false);
 });

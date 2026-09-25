@@ -15,7 +15,7 @@ import {
 } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
-import { ensureAccount, setAnonymousSessionEvictionListener } from '@/data/account';
+import { ensureAccount, fetchAccountPreferences, setAnonymousSessionEvictionListener } from '@/data/account';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot } from '@/data/diarySync';
 
@@ -37,14 +37,18 @@ jest.mock('@/data/telemetryClient', () => ({
 jest.mock('@/data/diarySync', () => ({
   reconcileDiarySnapshot: jest.fn(async () => null),
 }));
+const mockSetHidePubNames = jest.fn();
 jest.mock('@/stores/settingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ setHidePubNames: jest.fn() }),
+    getState: () => ({ setHidePubNames: mockSetHidePubNames }),
   },
 }));
 
 const mockedAuth = auth as jest.Mocked<typeof auth>;
 const mockEnsureAccount = ensureAccount as jest.MockedFunction<typeof ensureAccount>;
+const mockFetchAccountPreferences = fetchAccountPreferences as jest.MockedFunction<
+  typeof fetchAccountPreferences
+>;
 const registeredAnonymousSessionEvictionListener = jest.mocked(setAnonymousSessionEvictionListener)
   .mock.calls[0]?.[0] as (() => Promise<void>) | undefined;
 const mockSetTelemetrySession = setTelemetrySession as jest.MockedFunction<typeof setTelemetrySession>;
@@ -114,6 +118,7 @@ beforeEach(() => {
   // fetchAccountProfile is used by refreshProfile (e.g. inside logout); default
   // it to null so it doesn't accidentally re-populate the profile.
   mockedAuth.fetchAccountProfile.mockResolvedValue(null);
+  mockFetchAccountPreferences.mockResolvedValue(null);
   mockedAuth.validateAccountSession.mockResolvedValue({
     status: 'valid',
     profile: signedInProfile(),
@@ -122,6 +127,28 @@ beforeEach(() => {
 });
 
 describe('initAccount', () => {
+  it('uses profile settings without a second account request', async () => {
+    const profile = signedInProfile({ settings: { hidePubNames: true } });
+    mockedAuth.fetchAccountProfile.mockResolvedValueOnce(profile);
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockedAuth.fetchAccountProfile).toHaveBeenCalledTimes(1);
+    expect(mockFetchAccountPreferences).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().profile).toEqual(profile);
+    expect(mockSetHidePubNames).toHaveBeenCalledWith(true);
+  });
+
+  it('falls back to the preferences request when the profile is unavailable', async () => {
+    mockFetchAccountPreferences.mockResolvedValueOnce({ hidePubNames: true });
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockFetchAccountPreferences).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState()).toMatchObject({ status: 'ready', profile: null });
+    expect(mockSetHidePubNames).toHaveBeenCalledWith(true);
+  });
+
   it('keeps a durable signed-in session signed in when the profile fetch is unavailable', async () => {
     await useAccountStore.getState().initAccount();
 

@@ -504,6 +504,8 @@ def test_sync_enrich_closes_open_enrich_task():
 
     task = EnrichTask.objects.get(cache_key=_FLEKY_KEY)
     assert task.done is False
+    task.error = "previous timeout"
+    task.save(update_fields=["error"])
 
     # Phase 2: same key sync-enriched successfully.
     mock_source = MagicMock()
@@ -513,6 +515,7 @@ def test_sync_enrich_closes_open_enrich_task():
 
     task.refresh_from_db()
     assert task.done is True
+    assert task.error is None
     # And a fresh PubHours row exists.
     assert PubHours.objects.get(cache_key=_FLEKY_KEY).status == PubHours.Status.OK
 
@@ -524,12 +527,81 @@ def test_sync_enrich_error_does_not_close_task():
         get_or_enrich([_PUB_ENTRY], sync_budget=0)
 
     mock_source = MagicMock()
-    mock_source.fetch.side_effect = RuntimeError("daily cap exceeded")
+    from pubs.enrichment import FirmyDailyCapExceededError
+
+    mock_source.fetch.side_effect = FirmyDailyCapExceededError("daily cap exceeded")
     with patch("pubs.api.cache.FirmyHoursSource", return_value=mock_source):
         get_or_enrich([_PUB_ENTRY], sync_budget=1)
 
     task = EnrichTask.objects.get(cache_key=_FLEKY_KEY)
     assert task.done is False
+
+
+@pytest.mark.django_db
+def test_sync_success_clears_error_on_exhausted_task():
+    task = EnrichTask.objects.create(
+        cache_key=_FLEKY_KEY,
+        name=_FLEKY_NAME,
+        lat=_FLEKY_LAT,
+        lng=_FLEKY_LNG,
+        done=True,
+        attempts=3,
+        max_attempts=3,
+        error="previous timeout",
+    )
+    _make_fresh_row(
+        status=PubHours.Status.ERROR,
+        opening_hours_raw=None,
+        error="previous timeout",
+        fetched_at=dj_tz.now() - timedelta(hours=1),
+    )
+    mock_source = MagicMock()
+    mock_source.fetch.return_value = _GOOD_RAW
+
+    with patch("pubs.api.cache.FirmyHoursSource", return_value=mock_source):
+        result = get_or_enrich([_PUB_ENTRY], sync_budget=1)[0]
+
+    mock_source.fetch.assert_called_once()
+    task.refresh_from_db()
+    hours = PubHours.objects.get(cache_key=_FLEKY_KEY)
+    assert result["status"] == "ok"
+    assert task.done is True
+    assert task.error is None
+    assert hours.status == PubHours.Status.OK
+    assert hours.error is None
+
+
+@pytest.mark.django_db
+def test_sync_retry_failure_preserves_error_on_exhausted_task():
+    task = EnrichTask.objects.create(
+        cache_key=_FLEKY_KEY,
+        name=_FLEKY_NAME,
+        lat=_FLEKY_LAT,
+        lng=_FLEKY_LNG,
+        done=True,
+        attempts=3,
+        max_attempts=3,
+        error="previous timeout",
+    )
+    _make_fresh_row(
+        status=PubHours.Status.ERROR,
+        opening_hours_raw=None,
+        error="previous timeout",
+        fetched_at=dj_tz.now() - timedelta(hours=1),
+    )
+    mock_source = MagicMock()
+    mock_source.fetch.side_effect = RuntimeError("new timeout")
+
+    with patch("pubs.api.cache.FirmyHoursSource", return_value=mock_source):
+        result = get_or_enrich([_PUB_ENTRY], sync_budget=1)[0]
+
+    task.refresh_from_db()
+    hours = PubHours.objects.get(cache_key=_FLEKY_KEY)
+    assert result["status"] == "error"
+    assert task.done is True
+    assert task.error == "previous timeout"
+    assert hours.status == PubHours.Status.ERROR
+    assert hours.error == "new timeout"
 
 
 # ---------------------------------------------------------------------------
