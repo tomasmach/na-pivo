@@ -39,6 +39,9 @@ export function tourDate(plan: Pick<TourPlan, 'scheduledDate' | 'scheduledTime' 
 export function stopCount(n: number) {
   return `${n} ${plural(n, { cs: { one: 'zastávka', few: 'zastávky', many: 'zastávek' }, en: { one: 'stop', other: 'stops' } })}`;
 }
+export function pubCount(n: number) {
+  return `${n} ${plural(n, { cs: { one: 'hospoda', few: 'hospody', many: 'hospod' }, en: { one: 'pub', other: 'pubs' } })}`;
+}
 export function tourError(code: string | null | undefined) {
   if (!code) return null;
   const e = t.tours.errors;

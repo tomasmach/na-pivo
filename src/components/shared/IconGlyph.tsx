@@ -93,6 +93,7 @@ import ArrowUp from 'lucide-react-native/icons/arrow-up';
 import ArrowDown from 'lucide-react-native/icons/arrow-down';
 import GripVertical from 'lucide-react-native/icons/grip-vertical';
 import Ellipsis from 'lucide-react-native/icons/ellipsis';
+import Footprints from 'lucide-react-native/icons/footprints';
 import type { LucideProps } from 'lucide-react-native';
 
 export interface IconProps {
@@ -219,3 +220,4 @@ export const ArrowUpIcon = wrap(ArrowUp, 'ArrowUpIcon');
 export const ArrowDownIcon = wrap(ArrowDown, 'ArrowDownIcon');
 export const GripVerticalIcon = wrap(GripVertical, 'GripVerticalIcon');
 export const EllipsisIcon = wrap(Ellipsis, 'EllipsisIcon');
+export const FootprintsIcon = wrap(Footprints, 'FootprintsIcon');

@@ -21,7 +21,6 @@ import { useRouter, type Href } from 'expo-router';
 import {
   ChevronRightIcon,
   HouseIcon,
-  MapIcon,
   type IconProps,
 } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
@@ -34,7 +33,7 @@ import HairlineRow from './HairlineRow';
 interface PlanRow {
   key: string;
   title: string;
-  body?: string;
+  body: string;
   Icon: React.ComponentType<IconProps>;
   onPress: () => void;
 }
@@ -43,12 +42,6 @@ export function PartaPlans() {
   const router = useRouter();
 
   const rows: PlanRow[] = [
-    {
-      key: 'tour',
-      title: t.tours.title,
-      Icon: MapIcon,
-      onPress: () => router.push('/tours' as Href),
-    },
     {
       key: 'home-party',
       title: t.friends.planHomePartyTitle,
@@ -78,13 +71,13 @@ export function PartaPlans() {
                 >
                   {row.title}
                 </Text>
-                {row.body ? <Text
+                <Text
                   style={styles.body}
                   numberOfLines={2}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
                   {row.body}
-                </Text> : null}
+                </Text>
               </View>
               <ChevronRightIcon size={18} color={Colors.mutedText} />
             </View>
