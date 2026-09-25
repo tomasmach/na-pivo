@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15120f">
+<title>Na pivo, mock C: Půllitr</title>
+<link rel="icon" href="assets/icon-512.png">
+<link rel="stylesheet" href="assets/base.css">
+<style>
+  /* Same foam edge as the store screenshots, so the site and the listing read as one thing. */
+  .foam {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 4;
+    height: clamp(80px, 10vw, 150px);
+    background: url("assets/gen/foam-top.webp") top center / cover no-repeat;
+    -webkit-mask-image: linear-gradient(#000 55%, transparent 92%);
+            mask-image: linear-gradient(#000 55%, transparent 92%);
+    pointer-events: none;
+  }
+
+  .top {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: clamp(56px, 7vw, 104px) var(--gutter) 0;
+  }
+
+  /* The stage: chapters scroll on the left, the mug stays put on the right and fills up. */
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .mug-rail { grid-column: 2; grid-row: 1; }
+  .mug {
+    position: sticky;
+    top: 0;
+    height: 100svh;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+  .mug:active { cursor: grabbing; }
+  .mug canvas { display: block; width: 100%; height: 100%; }
+
+  .chapters { grid-column: 1; grid-row: 1; padding: 0 0 0 var(--gutter); }
+
+  .chapter {
+    display: grid;
+    align-content: center;
+    min-height: 92svh;
+    max-width: 34rem;
+  }
+
+  .chapter--hero { min-height: 100svh; padding-top: clamp(120px, 12vw, 180px); }
+  .chapter--hero h1 {
+    font-size: clamp(64px, 8vw, 128px);
+    line-height: 0.92;
+    letter-spacing: -0.04em;
+  }
+  .chapter--hero .lede { margin-top: 28px; color: var(--foam-muted); font-size: 20px; }
+  .chapter--hero .stores { margin-top: 36px; }
+
+  .chapter h2 {
+    font-size: clamp(44px, 5vw, 76px);
+    line-height: 1;
+    letter-spacing: -0.035em;
+  }
+  .chapter p { margin-top: 18px; color: var(--foam-muted); font-size: 19px; }
+
+  .chapter figure { margin: 32px 0 0; }
+  .chapter figure img { width: 210px; border-radius: 26px; box-shadow: 0 0 0 1px var(--hair-strong); }
+
+  /* Promises: one quiet row, hairlines between. */
+  .promises {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 80px var(--gutter) 0;
+    border-top: 1px solid var(--hair);
+    border-bottom: 1px solid var(--hair);
+  }
+  .promise { padding: 32px 28px 36px 0; }
+  .promise + .promise { padding-left: 28px; border-left: 1px solid var(--hair); }
+  .promise h3 { font-size: 26px; line-height: 1.24; letter-spacing: -0.01em; }
+  .promise p { margin-top: 6px; color: var(--foam-muted); font-size: 16px; }
+
+  .closing {
+    display: grid;
+    justify-items: center;
+    gap: 36px;
+    padding: 160px var(--gutter) 140px;
+    text-align: center;
+  }
+  .closing h2 {
+    font-size: clamp(72px, 12vw, 200px);
+    line-height: 0.9;
+    letter-spacing: -0.05em;
+  }
+  .closing p { color: var(--foam-muted); font-size: 20px; }
+
+  footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 28px var(--gutter) 40px;
+    border-top: 1px solid var(--hair);
+    color: var(--muted);
+    font-size: 15px;
+  }
+  footer nav { display: flex; flex-wrap: wrap; gap: 20px; }
+  footer a { color: var(--foam-muted); text-decoration: none; }
+  footer a:hover { color: var(--foam); text-decoration: underline; }
+
+  @media (max-width: 900px) {
+    .top .site-nav a:not(:last-child) { display: none; }
+    .stage { display: block; }
+    .mug-rail { position: sticky; top: 0; z-index: 2; height: 40svh; }
+    .mug { height: 40svh; }
+    /* Chapters slide under the mug; a short fade keeps the cut from looking like a bug. */
+    .mug-rail::after { content: ""; position: absolute; inset: auto 0 -28px; height: 28px; background: linear-gradient(var(--canvas), transparent); }
+    .chapters { padding: 0 var(--gutter); }
+    .chapter { min-height: 64svh; }
+    .chapter--hero { min-height: 0; padding: 32px 0 64px; }
+    .chapter figure img { width: 180px; }
+    .promises { grid-template-columns: 1fr; }
+    .promise + .promise { padding-left: 0; border-left: 0; border-top: 1px solid var(--hair); }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#obsah">Přeskočit na obsah</a>
+<div class="foam" aria-hidden="true"></div>
+
+<header class="top">
+  <a class="wordmark" href="#"><img src="assets/icon-512.png" alt="">Na pivo</a>
+  <nav class="site-nav" aria-label="Hlavní">
+    <a href="#kompas">Co umí</a>
+    <a href="../../docs/privacy.html">Soukromí</a>
+    <a href="#" lang="en">English</a>
+  </nav>
+</header>
+
+<main id="obsah">
+  <div class="stage">
+    <div class="mug-rail" aria-hidden="true"><div class="mug" data-mug><img class="still" src="assets/stills/mug.webp" alt=""></div></div>
+
+    <div class="chapters">
+      <section class="chapter chapter--hero" data-fill="0.16" aria-labelledby="hero-title">
+        <h1 id="hero-title">Načepuj si večer.</h1>
+        <p class="lede">Na pivo najde hospodu a spočítá piva. Ty cinkneš partě a ráno uvidíš, jak večer dopadl.</p>
+        <div class="stores">
+          <a class="store" data-store="ios" href="https://apps.apple.com/cz/app/id6773790025">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 1.43c0 1.14-.5 2.27-1.18 3.08-.74.9-1.99 1.57-2.99 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.57-2.27 1.21-2.98.8-.94 2.14-1.64 3.25-1.68.03.13.05.28.05.43Zm4.56 15.71c-.03.07-.46 1.58-1.52 3.12-.94 1.34-1.94 2.71-3.43 2.71-1.52 0-1.9-.88-3.63-.88-1.7 0-2.3.91-3.67.91-1.38 0-2.33-1.26-3.43-2.8-1.29-1.82-2.32-4.63-2.32-7.28 0-4.28 2.8-6.55 5.55-6.55 1.45 0 2.68.95 3.6.95.87 0 2.22-1.01 3.9-1.01.62 0 2.89.06 4.38 2.19-.13.09-2.39 1.37-2.39 4.19 0 3.26 2.86 4.42 2.96 4.45Z"/></svg>
+            Stáhnout pro iPhone
+          </a>
+          <a class="store" data-store="android" href="https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.2 2.3c-.2.2-.3.6-.3 1v17.4c0 .4.1.8.3 1l9.5-9.7-9.5-9.7Zm10.7 8.5 2.8-2.9L5.6 1.1l9.3 9.7Zm0 2.4-9.3 9.7 12.1-6.8-2.8-2.9Zm4.1-4.4-3 3 3 3.2 3.4-1.9c1-.6 1-1.6 0-2.2L19 8.8Z"/></svg>
+            Stáhnout pro Android
+          </a>
+        </div>
+      </section>
+
+      <section class="chapter" id="kompas" data-fill="0.3" aria-labelledby="c1">
+        <h2 id="c1">Kde sedneme?</h2>
+        <p>Kompas ukáže směr k nejbližší hospodě, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na Dej mi jinou.</p>
+        <figure>
+          <img src="assets/screens/kompas.jpg" alt="Kompas míří na hospodu 2 kilometry daleko.">
+        </figure>
+      </section>
+
+      <section class="chapter" data-fill="0.55" aria-labelledby="c2">
+        <h2 id="c2">Ještě jedno.</h2>
+        <p>Každé pivo je jedno ťuknutí. Počítadlo hlídá počet i útratu a zápis projde i bez signálu.</p>
+        <figure>
+          <img src="assets/screens/pocitadlo.jpg" alt="Počítadlo ukazuje jedno pivo za 78 Kč.">
+        </figure>
+      </section>
+
+      <section class="chapter" data-fill="0.78" aria-labelledby="c3">
+        <h2 id="c3">Cinkni partě.</h2>
+        <p>Jdeš na pivo? Cinkni a parta to hned ví. Kámoši kývnou, jestli dorazí.</p>
+        <figure>
+          <img src="assets/screens/parta.jpg" alt="Parta ukazuje, kdo kde sedí.">
+        </figure>
+      </section>
+
+      <section class="chapter" data-fill="1" aria-labelledby="c4">
+        <h2 id="c4">Večer se zapíše sám.</h2>
+        <p>Piva, ceny, hospoda i poznámky zůstanou v deníku. Ráno víš, kolik to stálo a jestli se tam vrátíš.</p>
+        <figure>
+          <img src="assets/screens/historie.jpg" alt="Deník večera s pivem, cenou a hodnocením.">
+        </figure>
+      </section>
+    </div>
+  </div>
+
+  <section class="promises" aria-label="Co ti slibuju">
+    <div class="promise"><h3>Zdarma, bez reklam</h3><p>Appku dělám sám a platit za ni nemusíš.</p></div>
+    <div class="promise"><h3>GPS trasu neukládám</h3><p>Polohu potřebuju jen k hledání hospod kolem tebe.</p></div>
+    <div class="promise"><h3>Funguje i ve sklepě</h3><p>Pivo zapíšeš bez signálu, odešle se později.</p></div>
+    <div class="promise"><h3>Česky i anglicky</h3><p>Jazyk přepneš v Nastavení.</p></div>
+  </section>
+
+  <section class="closing" aria-labelledby="closing-title">
+    <h2 id="closing-title">Na zdraví.</h2>
+    <p>Dej si jedno za mě.</p>
+    <div class="stores">
+      <a class="store" data-store="ios" href="https://apps.apple.com/cz/app/id6773790025">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 1.43c0 1.14-.5 2.27-1.18 3.08-.74.9-1.99 1.57-2.99 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.57-2.27 1.21-2.98.8-.94 2.14-1.64 3.25-1.68.03.13.05.28.05.43Zm4.56 15.71c-.03.07-.46 1.58-1.52 3.12-.94 1.34-1.94 2.71-3.43 2.71-1.52 0-1.9-.88-3.63-.88-1.7 0-2.3.91-3.67.91-1.38 0-2.33-1.26-3.43-2.8-1.29-1.82-2.32-4.63-2.32-7.28 0-4.28 2.8-6.55 5.55-6.55 1.45 0 2.68.95 3.6.95.87 0 2.22-1.01 3.9-1.01.62 0 2.89.06 4.38 2.19-.13.09-2.39 1.37-2.39 4.19 0 3.26 2.86 4.42 2.96 4.45Z"/></svg>
+        Stáhnout pro iPhone
+      </a>
+      <a class="store" data-store="android" href="https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.2 2.3c-.2.2-.3.6-.3 1v17.4c0 .4.1.8.3 1l9.5-9.7-9.5-9.7Zm10.7 8.5 2.8-2.9L5.6 1.1l9.3 9.7Zm0 2.4-9.3 9.7 12.1-6.8-2.8-2.9Zm4.1-4.4-3 3 3 3.2 3.4-1.9c1-.6 1-1.6 0-2.2L19 8.8Z"/></svg>
+        Stáhnout pro Android
+      </a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>Na pivo dělá Tomáš Mach</span>
+  <nav aria-label="Dokumenty">
+    <a href="../../docs/privacy.html">Soukromí</a>
+    <a href="../../docs/terms.html">Podmínky</a>
+    <a href="../../docs/delete-account.html">Smazání účtu</a>
+    <a href="mailto:tomades1@gmail.com">Napiš mi</a>
+  </nav>
+</footer>
+
+<script src="assets/stores.js"></script>
+<script type="importmap">
+  { "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+  } }
+</script>
+<script type="module" src="assets/mug.js"></script>
+</body>
+</html>

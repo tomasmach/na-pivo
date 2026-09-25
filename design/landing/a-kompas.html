@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15120f">
+<title>Na pivo, mock A: Kompas</title>
+<link rel="icon" href="assets/icon-512.png">
+<link rel="stylesheet" href="assets/base.css">
+<style>
+  .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px var(--gutter);
+  }
+
+  /* Hero: headline left, the compass takes the right half and points at the download button. */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: center;
+    gap: 24px;
+    min-height: min(820px, calc(100svh - 84px));
+    padding: 0 var(--gutter) 48px;
+  }
+
+  .hero h1 {
+    font-size: clamp(60px, 8.6vw, 136px);
+    line-height: 0.94;
+    letter-spacing: -0.035em;
+    max-width: 7.2ch;
+    text-wrap: balance;
+  }
+
+  .hero-lede {
+    max-width: 30em;
+    margin-top: 28px;
+    color: var(--foam-muted);
+    font-size: 20px;
+    line-height: 1.5;
+  }
+
+  .hero .stores { margin-top: 36px; }
+
+  .compass-wrap { position: relative; align-self: stretch; display: grid; }
+
+  .compass {
+    position: relative;
+    min-height: 460px;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+  .compass:active { cursor: grabbing; }
+  .compass canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* One evening. Times are a real sequence, so they carry the structure. */
+  .evening {
+    padding: 120px var(--gutter) 80px;
+    border-top: 12px solid var(--band);
+  }
+
+  .evening > h2 {
+    font-size: clamp(40px, 5vw, 72px);
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+
+  .evening-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+    gap: clamp(32px, 6vw, 120px);
+    margin-top: 48px;
+  }
+
+  .steps { list-style: none; margin: 0; padding: 0; }
+
+  .step {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    column-gap: 24px;
+    min-height: 54vh;
+    padding-top: 28px;
+    border-top: 1px solid var(--hair);
+  }
+  .step:first-child { border-top: 0; padding-top: 0; }
+
+  .step time {
+    font: 800 44px/1.24 var(--display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    color: var(--muted);
+    transition: color 150ms ease-out;
+  }
+  .step.is-active time { color: var(--amber); }
+
+  .step h3 {
+    font-size: clamp(30px, 3vw, 44px);
+    line-height: 1.24;
+    letter-spacing: -0.02em;
+  }
+  .step p { margin-top: 12px; max-width: 30em; color: var(--foam-muted); font-size: 19px; }
+  .step .shot { display: none; }
+
+  .phone-rail { position: relative; }
+  .phone {
+    position: sticky;
+    top: max(40px, calc(50vh - 380px));
+    width: 100%;
+    aspect-ratio: 1206 / 2622;
+    border-radius: 48px;
+    padding: 10px;
+    background: #0c0a08;
+    box-shadow: 0 0 0 1px var(--hair-strong);
+  }
+  .phone img { width: 100%; height: 100%; border-radius: 38px; object-fit: cover; }
+
+  /* Promises: plain sentences, no cards. */
+  .promises {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 56px clamp(32px, 6vw, 96px);
+    padding: 96px var(--gutter);
+    background: var(--band);
+  }
+  .promises h2 {
+    grid-column: 1 / -1;
+    font-size: clamp(40px, 5vw, 72px);
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+  .promise h3 { font-size: 30px; line-height: 1.24; letter-spacing: -0.015em; }
+  .promise p { margin-top: 8px; max-width: 28em; color: var(--foam-muted); }
+
+  .closing {
+    display: grid;
+    justify-items: start;
+    gap: 32px;
+    padding: 140px var(--gutter) 120px;
+  }
+  .closing h2 {
+    font-size: clamp(56px, 9vw, 150px);
+    line-height: 0.94;
+    letter-spacing: -0.04em;
+    max-width: 9ch;
+  }
+
+  footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 28px var(--gutter) 40px;
+    border-top: 1px solid var(--hair);
+    color: var(--muted);
+    font-size: 15px;
+  }
+  footer nav { display: flex; flex-wrap: wrap; gap: 20px; }
+  footer a { color: var(--foam-muted); text-decoration: none; }
+  footer a:hover { color: var(--foam); text-decoration: underline; }
+
+  @media (max-width: 900px) {
+    .top .site-nav a:not(:last-child) { display: none; }
+    .hero { grid-template-columns: 1fr; min-height: 0; padding-top: 16px; }
+    .compass-wrap { order: -1; }
+    .compass { min-height: 0; aspect-ratio: 1 / 0.74; }
+    .hero h1 { font-size: 54px; }
+    .hero-lede { margin-top: 20px; font-size: 18px; }
+    .hero .stores { margin-top: 28px; }
+    .evening { padding-top: 80px; }
+    .evening-grid { grid-template-columns: 1fr; }
+    .phone-rail { display: none; }
+    .step { min-height: 0; grid-template-columns: 1fr; row-gap: 4px; padding: 32px 0 48px; }
+    .step .shot {
+      display: block;
+      width: min(300px, 80%);
+      margin-top: 28px;
+      border-radius: 32px;
+      box-shadow: 0 0 0 1px var(--hair-strong);
+    }
+    .promises { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#obsah">Přeskočit na obsah</a>
+
+<header class="top">
+  <a class="wordmark" href="#"><img src="assets/icon-512.png" alt="">Na pivo</a>
+  <nav class="site-nav" aria-label="Hlavní">
+    <a href="#vecer">Co umí</a>
+    <a href="../../docs/privacy.html">Soukromí</a>
+    <a href="#" lang="en">English</a>
+  </nav>
+</header>
+
+<main id="obsah">
+  <section class="hero" aria-labelledby="hero-title">
+    <div>
+      <h1 id="hero-title">Nejkratší cesta na pivo.</h1>
+      <p class="hero-lede">Kompas ukáže směr a vzdálenost k nejbližší hospodě. Pak čárkuješ piva, cinkneš partě a večer se ti sám zapíše do deníku.</p>
+      <div class="stores">
+        <a class="store" data-store="ios" href="https://apps.apple.com/cz/app/id6773790025">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 1.43c0 1.14-.5 2.27-1.18 3.08-.74.9-1.99 1.57-2.99 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.57-2.27 1.21-2.98.8-.94 2.14-1.64 3.25-1.68.03.13.05.28.05.43Zm4.56 15.71c-.03.07-.46 1.58-1.52 3.12-.94 1.34-1.94 2.71-3.43 2.71-1.52 0-1.9-.88-3.63-.88-1.7 0-2.3.91-3.67.91-1.38 0-2.33-1.26-3.43-2.8-1.29-1.82-2.32-4.63-2.32-7.28 0-4.28 2.8-6.55 5.55-6.55 1.45 0 2.68.95 3.6.95.87 0 2.22-1.01 3.9-1.01.62 0 2.89.06 4.38 2.19-.13.09-2.39 1.37-2.39 4.19 0 3.26 2.86 4.42 2.96 4.45Z"/></svg>
+          Stáhnout pro iPhone
+        </a>
+        <a class="store" data-store="android" href="https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.2 2.3c-.2.2-.3.6-.3 1v17.4c0 .4.1.8.3 1l9.5-9.7-9.5-9.7Zm10.7 8.5 2.8-2.9L5.6 1.1l9.3 9.7Zm0 2.4-9.3 9.7 12.1-6.8-2.8-2.9Zm4.1-4.4-3 3 3 3.2 3.4-1.9c1-.6 1-1.6 0-2.2L19 8.8Z"/></svg>
+          Stáhnout pro Android
+        </a>
+      </div>
+    </div>
+
+    <div class="compass-wrap">
+      <div class="compass" data-compass aria-hidden="true"><img class="still" src="assets/stills/compass.webp" alt=""></div>
+    </div>
+  </section>
+
+  <section class="evening" id="vecer" aria-labelledby="evening-title">
+    <h2 id="evening-title">Jeden večer</h2>
+    <div class="evening-grid">
+      <ol class="steps">
+        <li class="step is-active" data-screen="kompas">
+          <time>19:40</time>
+          <div>
+            <h3>Kde sedneme?</h3>
+            <p>Šipka ukáže směr k nejbližší hospodě, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na Dej mi jinou.</p>
+            <img class="shot" src="assets/screens/kompas.jpg" alt="Kompas míří na hospodu 2 kilometry daleko.">
+          </div>
+        </li>
+        <li class="step" data-screen="pocitadlo">
+          <time>20:15</time>
+          <div>
+            <h3>Ještě jedno</h3>
+            <p>Každé pivo je jedno ťuknutí. Počítadlo hlídá počet i útratu a zápis projde i bez signálu.</p>
+            <img class="shot" src="assets/screens/pocitadlo.jpg" alt="Počítadlo ukazuje jedno pivo za 78 Kč.">
+          </div>
+        </li>
+        <li class="step" data-screen="parta">
+          <time>21:30</time>
+          <div>
+            <h3>Cinkni partě</h3>
+            <p>Jdeš na pivo? Cinkni a parta to hned ví. Kámoši kývnou, jestli dorazí.</p>
+            <img class="shot" src="assets/screens/parta.jpg" alt="Parta ukazuje, kdo kde sedí.">
+          </div>
+        </li>
+        <li class="step" data-screen="historie">
+          <time>Ráno</time>
+          <div>
+            <h3>Večer se zapíše sám</h3>
+            <p>Piva, ceny, hospoda i poznámky zůstanou v deníku. Ráno víš, kolik to stálo a jestli se tam vrátíš.</p>
+            <img class="shot" src="assets/screens/historie.jpg" alt="Deník večera s pivem, cenou a hodnocením.">
+          </div>
+        </li>
+      </ol>
+      <div class="phone-rail" aria-hidden="true">
+        <div class="phone"><img data-phone src="assets/screens/kompas.jpg" alt=""></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="promises" aria-labelledby="promises-title">
+    <h2 id="promises-title">Co ti slibuju</h2>
+    <div class="promise">
+      <h3>Zdarma a bez reklam</h3>
+      <p>Appku dělám sám a platit za ni nemusíš.</p>
+    </div>
+    <div class="promise">
+      <h3>GPS trasu neukládám</h3>
+      <p>Polohu potřebuju jen k hledání hospod kolem tebe. Trasu ani historii polohy si nenechávám.</p>
+    </div>
+    <div class="promise">
+      <h3>Funguje i ve sklepě</h3>
+      <p>Pivo zapíšeš i bez signálu. Odešle se, až telefon zase chytne síť.</p>
+    </div>
+    <div class="promise">
+      <h3>Česky i anglicky</h3>
+      <p>Jazyk přepneš v Nastavení.</p>
+    </div>
+  </section>
+
+  <section class="closing" aria-labelledby="closing-title">
+    <h2 id="closing-title">Dej si jedno za mě.</h2>
+    <div class="stores">
+      <a class="store" data-store="ios" href="https://apps.apple.com/cz/app/id6773790025">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 1.43c0 1.14-.5 2.27-1.18 3.08-.74.9-1.99 1.57-2.99 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.57-2.27 1.21-2.98.8-.94 2.14-1.64 3.25-1.68.03.13.05.28.05.43Zm4.56 15.71c-.03.07-.46 1.58-1.52 3.12-.94 1.34-1.94 2.71-3.43 2.71-1.52 0-1.9-.88-3.63-.88-1.7 0-2.3.91-3.67.91-1.38 0-2.33-1.26-3.43-2.8-1.29-1.82-2.32-4.63-2.32-7.28 0-4.28 2.8-6.55 5.55-6.55 1.45 0 2.68.95 3.6.95.87 0 2.22-1.01 3.9-1.01.62 0 2.89.06 4.38 2.19-.13.09-2.39 1.37-2.39 4.19 0 3.26 2.86 4.42 2.96 4.45Z"/></svg>
+        Stáhnout pro iPhone
+      </a>
+      <a class="store" data-store="android" href="https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.2 2.3c-.2.2-.3.6-.3 1v17.4c0 .4.1.8.3 1l9.5-9.7-9.5-9.7Zm10.7 8.5 2.8-2.9L5.6 1.1l9.3 9.7Zm0 2.4-9.3 9.7 12.1-6.8-2.8-2.9Zm4.1-4.4-3 3 3 3.2 3.4-1.9c1-.6 1-1.6 0-2.2L19 8.8Z"/></svg>
+        Stáhnout pro Android
+      </a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>Na pivo dělá Tomáš Mach</span>
+  <nav aria-label="Dokumenty">
+    <a href="../../docs/privacy.html">Soukromí</a>
+    <a href="../../docs/terms.html">Podmínky</a>
+    <a href="../../docs/delete-account.html">Smazání účtu</a>
+    <a href="mailto:tomades1@gmail.com">Napiš mi</a>
+  </nav>
+</footer>
+
+<script src="assets/stores.js"></script>
+<script>
+  // Sticky phone follows the step in the middle of the viewport.
+  (function () {
+    const phone = document.querySelector('[data-phone]');
+    const steps = [...document.querySelectorAll('.step')];
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (!e.isIntersecting) return;
+        steps.forEach((s) => s.classList.toggle('is-active', s === e.target));
+        phone.src = `assets/screens/${e.target.dataset.screen}.jpg`;
+      });
+    }, { rootMargin: '-45% 0px -45% 0px' });
+    steps.forEach((s) => io.observe(s));
+  })();
+</script>
+<script type="importmap">
+  { "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+  } }
+</script>
+<script type="module" src="assets/compass.js"></script>
+</body>
+</html>
