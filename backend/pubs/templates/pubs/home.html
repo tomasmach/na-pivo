@@ -14,6 +14,7 @@
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preload" href="{{ asset.baloo2_extrabold_woff2 }}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{{ asset.bricolage_grotesque_woff2 }}" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Na pivo">
 <meta property="og:locale" content="{{ og_locale }}">
@@ -33,23 +34,30 @@
     font-weight: 700 800;
     font-display: swap;
   }
+  @font-face {
+    font-family: "Bricolage Grotesque";
+    src: url("{{ asset.bricolage_grotesque_woff2 }}") format("woff2");
+    font-weight: 400 700;
+    font-display: swap;
+  }
 
-  /* Values from DESIGN.md and src/theme/colors.ts. The page ground is the brown the linocut prints are pulled on. */
+  /* Values from DESIGN.md and src/theme/colors.ts. The ground is the brown the linocut prints are pulled on,
+     so every print bleeds into the page without an edge. */
   :root {
     color-scheme: dark;
     --ground: #231407;
     --stout: #1f1308;
     --stout-3: #3a2515;
-    --ink: #120b05;
+    --ink: #1f1308;
     --amber: #e8a317;
     --amber-light: #f5b642;
     --foam: #fbf3e0;
     --foam-muted: #e8dcc0;
     --muted: #a8896a;
+    --paper-muted: #6b5440;
     --hair: rgb(251 243 224 / 0.1);
-    --hair-strong: rgb(251 243 224 / 0.14);
     --display: "Baloo 2", ui-rounded, system-ui, sans-serif;
-    --text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+    --text: "Bricolage Grotesque", system-ui, sans-serif;
     --gutter: clamp(20px, 5vw, 72px);
   }
 
@@ -63,8 +71,8 @@
     -webkit-font-smoothing: antialiased;
   }
   img { display: block; max-width: 100%; }
-  p { margin: 0; }
-  h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: 800; }
+  p { margin: 0; text-wrap: pretty; }
+  h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: 800; text-wrap: balance; }
   :focus-visible { outline: 3px solid var(--foam); outline-offset: 4px; }
 
   .skip-link {
@@ -75,7 +83,7 @@
     padding: 12px 16px;
     border-radius: 12px;
     background: var(--foam);
-    color: var(--stout);
+    color: var(--ink);
     font-weight: 700;
     text-decoration: none;
   }
@@ -99,7 +107,7 @@
     font: 800 24px/1 var(--display);
     text-decoration: none;
   }
-  .wordmark img { width: 36px; height: 36px; border-radius: 10px; }
+  .wordmark img { width: 36px; height: 36px; border-radius: 50%; }
   .site-nav { display: flex; gap: 4px; }
   .site-nav a {
     display: inline-flex;
@@ -108,11 +116,12 @@
     padding: 0 12px;
     border-radius: 10px;
     color: var(--foam-muted);
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 600;
     text-decoration: none;
   }
-  .site-nav a:hover { color: var(--foam); background: rgb(251 243 224 / 0.06); }
+  .site-nav a { background: rgb(35 20 7 / 0.82); }
+  .site-nav a:hover { color: var(--foam); background: rgb(58 37 21 / 0.95); }
 
   /* Store buttons: the visitor's platform gets the one amber surface, the other stays quiet. */
   .stores { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -132,20 +141,25 @@
   .store svg { width: 20px; height: 20px; flex: none; }
   .store:hover { background: #47301c; }
   .store:active { transform: scale(0.97); }
-  .store.is-primary { background: var(--amber); color: var(--stout); }
+  .store.is-primary { background: var(--amber); color: var(--ink); }
   .store.is-primary:hover { background: var(--amber-light); }
 
-  /* Hero: a real table and a real coaster. The still shows at once; the 3D scene replaces it. */
-  .hero {
-    position: relative;
-    min-height: max(640px, 100svh);
-    overflow: hidden;
-    background: #1a0f07;
+  /* Hero: the table is a linocut, the coaster on it takes tally marks. */
+  .hero { position: relative; min-height: max(660px, 100svh); overflow: hidden; }
+  /* Calms the woodgrain under the headline so the text reads; the coaster side stays untouched. */
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(90deg, rgb(35 20 7 / 0.9) 0%, rgb(35 20 7 / 0.72) 34%, rgb(35 20 7 / 0) 52%);
+    pointer-events: none;
   }
-  .scene { position: absolute; inset: 0; }
-  .scene canvas { display: block; width: 100%; height: 100%; }
-  .still { position: absolute; inset: 0; }
-  .still img { width: 100%; height: 100%; object-fit: cover; object-position: 80% 50%; }
+  .table { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .table .marks { fill: var(--ink); }
+  .table .coaster-name { font: 800 44px var(--display); fill: var(--ink); }
+  .marks .is-new { transform-box: fill-box; transform-origin: 0 50%; animation: carve 170ms ease-out; }
+  @keyframes carve { from { transform: scaleX(0); } }
 
   .hero-copy {
     position: relative;
@@ -154,24 +168,13 @@
     align-content: center;
     gap: 28px;
     min-height: inherit;
-    max-width: calc(720px + var(--gutter));
+    max-width: calc(700px + var(--gutter));
     padding: 120px var(--gutter) 96px;
     pointer-events: none;
   }
   .hero-copy > * { pointer-events: auto; }
-  .hero h1 {
-    font-size: clamp(64px, 8.4vw, 132px);
-    line-height: 0.92;
-    letter-spacing: -0.04em;
-    text-wrap: balance;
-    text-shadow: 0 2px 24px rgb(18 11 5 / 0.6);
-  }
-  .lede {
-    max-width: 26em;
-    color: var(--foam-muted);
-    font-size: 20px;
-    text-shadow: 0 1px 12px rgb(18 11 5 / 0.8);
-  }
+  .hero h1 { font-size: clamp(60px, 7.2vw, 112px); line-height: 0.92; letter-spacing: -0.04em; }
+  .lede { max-width: 25em; color: var(--foam-muted); font-size: 21px; line-height: 1.5; }
 
   .coaster-hit {
     position: absolute;
@@ -184,94 +187,118 @@
     -webkit-tap-highlight-color: transparent;
   }
   .coaster-hit[aria-disabled="true"] { cursor: default; }
-  .coaster-hit:focus-visible { outline-offset: 6px; }
+  .coaster-hit:focus-visible { outline-color: var(--amber); outline-offset: 2px; }
 
+  /* The count is a torn slip of paper, like the bill further down. */
   .tally {
     position: absolute;
-    right: var(--gutter);
-    bottom: 40px;
+    right: calc(var(--gutter) + 8px);
+    bottom: 56px;
     z-index: 3;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     column-gap: 16px;
-    width: 340px;
-    padding: 12px 12px 14px 22px;
-    border-radius: 18px;
-    background: rgb(18 11 5 / 0.72);
-    box-shadow: 0 0 0 1px var(--hair-strong);
-    -webkit-backdrop-filter: blur(10px);
-            backdrop-filter: blur(10px);
+    width: 320px;
+    padding: 16px 16px 26px 22px;
+    background: var(--foam);
+    color: var(--ink);
+    transform: rotate(-2deg);
+    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 16px 100%;
+            mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 16px 100%;
   }
   .tally[hidden], .coaster-hit[hidden] { display: none; }
-  .tally output { font: 800 26px/1.24 var(--display); font-variant-numeric: tabular-nums; }
-  .tally [data-hint] { grid-column: 1 / -1; color: var(--muted); font-size: 15px; }
+  .tally output { font: 800 28px/1.24 var(--display); font-variant-numeric: tabular-nums; }
+  .tally [data-hint] { grid-column: 1 / -1; color: var(--paper-muted); font-size: 16px; }
   .undo {
     min-height: 44px;
-    padding: 0 18px;
-    border: 0;
-    border-radius: 12px;
-    background: var(--stout-3);
-    color: var(--foam);
-    font: 600 15px/1 var(--text);
+    padding: 0 16px;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--ink);
+    font: 700 15px/1 var(--text);
     cursor: pointer;
   }
-  .undo:hover { background: #47301c; }
-  .undo:disabled { background: transparent; color: var(--muted); cursor: default; }
+  .undo:hover { background: rgb(31 19 8 / 0.08); }
+  .undo:focus-visible { outline-color: var(--ink); }
+  .undo:disabled { border-color: rgb(31 19 8 / 0.25); color: rgb(31 19 8 / 0.4); background: transparent; cursor: default; }
 
   /* Prints: the illustration is the section, the text sits in its calm area. */
   .print { position: relative; }
   .print > img { width: 100%; height: auto; }
-  .print h2 { font-size: clamp(44px, 5.6vw, 88px); line-height: 0.96; letter-spacing: -0.035em; text-wrap: balance; }
-  .print p { margin-top: 20px; color: var(--foam-muted); font-size: 19px; }
+  .print h2 { font-size: clamp(44px, 5.6vw, 88px); line-height: 0.96; letter-spacing: -0.035em; }
+  .print p { margin-top: 20px; color: var(--foam-muted); font-size: 20px; }
   .print--map .print-copy { position: absolute; top: 47%; left: 31%; width: 38%; }
   .print--pub .print-copy { position: absolute; top: 50%; left: var(--gutter); width: 36%; transform: translateY(-50%); }
 
-  .pair {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: clamp(40px, 6vw, 96px);
-    padding: clamp(96px, 10vw, 140px) var(--gutter);
+  /* Two phones standing on the bar counter of the print. The counter top sits at 70.5 % of its height. */
+  .bar { padding-bottom: clamp(72px, 9vw, 120px); }
+  .bar-scene { position: relative; aspect-ratio: 1536 / 1024; overflow: hidden; }
+  .bar-scene > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 55% 50%; }
+  .phone {
+    position: absolute;
+    bottom: 29.5%;
+    height: 54%;
+    aspect-ratio: 536 / 1147;
+    padding: 1.3%;
+    border-radius: 11% / 5.2%;
+    background: #0c0906;
+    box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px rgb(251 243 224 / 0.25);
   }
-  .pair article { display: grid; grid-template-columns: minmax(180px, 250px) minmax(0, 1fr); gap: 36px; align-items: center; }
-  .phone { padding: 8px; border-radius: 36px; background: #0c0906; box-shadow: 0 0 0 1px var(--hair-strong); }
-  .phone img { width: 100%; height: auto; border-radius: 28px; }
-  .pair h3 { font-size: clamp(30px, 2.8vw, 40px); line-height: 1.05; letter-spacing: -0.02em; text-wrap: balance; }
-  .lede, .print p, .pair p { text-wrap: pretty; }
-  .pair p { margin-top: 14px; color: var(--foam-muted); }
+  .phone img { width: 100%; height: 100%; border-radius: 9% / 4.2%; object-fit: cover; }
+  .phone--diary { left: 35%; transform: rotate(-2deg); transform-origin: bottom center; }
+  .phone--map { left: 58%; transform: rotate(2deg); transform-origin: bottom center; }
+  .bar-copy {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 26rem));
+    justify-content: center;
+    gap: clamp(32px, 6vw, 96px);
+    padding: 40px var(--gutter) 0;
+  }
+  .bar-copy h3 { font-size: clamp(28px, 2.6vw, 38px); line-height: 1.1; letter-spacing: -0.02em; }
+  .bar-copy p { margin-top: 12px; color: var(--foam-muted); font-size: 18px; }
 
-  /* The promises are a bill, because that is what a pub hands you. */
-  .bill-wrap { display: grid; justify-items: center; padding: 24px var(--gutter) 150px; }
+  /* The bill lies on the table after the round. */
+  .bill-table {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: clamp(760px, 66vw, 1000px);
+    padding: 80px var(--gutter);
+  }
+  .bill-table > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .bill {
-    width: min(460px, 100%);
+    position: relative;
+    width: min(440px, 100%);
     padding: 40px 36px 58px;
     background: var(--foam);
     color: var(--ink);
     font-size: 17px;
-    transform: rotate(-1.2deg);
+    transform: rotate(-2.5deg);
     -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
             mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
   }
-  .bill h2 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; }
-  .bill .sub { margin-top: 4px; color: #6b5440; font-size: 15px; }
+  .bill h2 { font-size: 44px; line-height: 1.1; letter-spacing: -0.02em; }
+  .bill .sub { margin-top: 4px; color: var(--paper-muted); font-size: 16px; }
   .bill dl { margin: 28px 0 0; }
   .bill .row { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; }
   .bill dt { display: flex; flex: 1; gap: 8px; }
-  .bill dt::after { content: ""; flex: 1; transform: translateY(-4px); border-bottom: 2px dotted rgb(18 11 5 / 0.35); }
+  .bill dt::after { content: ""; flex: 1; transform: translateY(-4px); border-bottom: 2px dotted rgb(31 19 8 / 0.35); }
   .bill dd { flex: none; margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
   .bill .total { margin-top: 14px; padding-top: 14px; border-top: 2px solid var(--ink); font-size: 20px; }
-  .bill .sign { margin-top: 28px; font: 800 22px/1.2 var(--display); }
+  .bill .sign { margin-top: 28px; font: 800 24px/1.2 var(--display); }
 
   .closing {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: center;
     gap: clamp(32px, 6vw, 96px);
-    padding: 0 var(--gutter) 120px;
+    padding: clamp(80px, 9vw, 140px) var(--gutter) 120px;
   }
   .closing h2 { font-size: clamp(64px, 10vw, 168px); line-height: 0.9; letter-spacing: -0.045em; }
   .closing .stores { margin-top: 36px; }
-  .closing img { width: 100%; height: auto; border-radius: 24px; }
+  .closing img { width: 100%; height: auto; }
 
   footer {
     display: flex;
@@ -300,27 +327,32 @@
   @media (max-width: 1300px) {
     .print--map .print-copy { position: static; width: auto; max-width: 40rem; padding: 32px var(--gutter) 0; }
     .print--map { padding-bottom: 56px; }
-    .pair article { grid-template-columns: 1fr; }
-    .pair .phone { width: min(260px, 80%); }
   }
 
   /* coaster.js uses the same query; keep them in sync. */
   @media (max-width: 1180px), (max-aspect-ratio: 23/20) {
     .site-nav a:not([hreflang]) { display: none; }
-    .hero { display: flex; flex-direction: column; min-height: 0; }
-    .scene { position: relative; inset: auto; height: clamp(440px, 52vw, 580px); }
-    .tally { order: 1; position: relative; right: auto; bottom: auto; align-self: stretch; width: auto; max-width: 560px; margin: -84px var(--gutter) 0; background: var(--stout); -webkit-backdrop-filter: none; backdrop-filter: none; }
-    .hero .store { flex: 1 1 260px; max-width: 360px; justify-content: center; }
+    .hero { display: flex; flex-direction: column; min-height: 0; padding-top: 84px; }
+    .hero::before { content: none; }
+    .table { position: relative; inset: auto; height: clamp(320px, min(58svh, 90vw), 620px); }
+    .tally { order: 1; position: relative; right: auto; bottom: auto; align-self: flex-end; width: min(320px, calc(100% - 2 * var(--gutter))); margin: -48px var(--gutter) 0; }
     .hero-copy { order: 2; min-height: 0; padding: 40px var(--gutter) 72px; }
-    .print--map .print-copy,
+    .hero .store { flex: 1 1 260px; max-width: 360px; justify-content: center; }
+  }
+
+  @media (max-width: 900px) {
     .print--pub .print-copy { position: static; width: auto; transform: none; padding: 32px var(--gutter) 0; }
-    .print { padding-bottom: 56px; }
-    .pair { grid-template-columns: 1fr; padding-top: 48px; padding-bottom: 72px; }
+    .print--pub { padding-bottom: 56px; }
+    .bar-scene { aspect-ratio: 4 / 5; }
+    .phone { height: 50%; }
+    .phone--diary { left: 12%; }
+    .phone--map { left: 54%; }
+    .bar-copy { grid-template-columns: 1fr; }
     .closing { grid-template-columns: 1fr; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { transition-duration: 0ms !important; }
+    *, *::before, *::after { transition-duration: 0ms !important; animation: none !important; }
   }
 </style>
 </head>
@@ -342,12 +374,21 @@
 
 <main id="obsah">
   <section class="hero" aria-labelledby="hero-title">
-    <div class="scene" data-scene data-wood="{{ asset.oak_table_webp }}" data-logo="{{ asset.icon_144_png }}" aria-hidden="true">
-      <picture class="still">
-        <source media="(max-width: 1180px), (max-aspect-ratio: 23/20)" srcset="{{ asset.still_narrow_webp }}">
-        <img src="{{ asset.still_wide_webp }}" alt="" fetchpriority="high">
-      </picture>
-    </div>
+    <svg class="table" data-table viewBox="0 0 1536 1024" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+      <defs>
+        <!-- Roughens the printed edges so marks and the name look cut and inked, not drawn. -->
+        <filter id="ink" x="-5%" y="-5%" width="110%" height="110%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="7"/>
+          <feDisplacementMap in="SourceGraphic" scale="3.5"/>
+        </filter>
+      </defs>
+      <image href="{{ asset.hero_table_1536_webp }}" width="1536" height="1024"/>
+      <g filter="url(#ink)">
+        <text class="coaster-name" x="991" y="330" text-anchor="middle">Na pivo</text>
+        <g class="marks" data-marks></g>
+      </g>
+      <circle data-coaster cx="991" cy="483" r="290" fill="none"/>
+    </svg>
 
     <div class="hero-copy">
       <h1 id="hero-title">{% translate "Čárkuj piva jak na tácku." %}</h1>
@@ -381,24 +422,26 @@
     </div>
   </section>
 
-  <section class="pair" aria-label="{% translate "Deník a mapování hospod" %}">
-    <article>
-      <div class="phone"><img src="{{ asset.screen_historie_webp }}" width="520" height="1131" alt="{% translate "Deník večera s pivem, cenou a hodnocením." %}" loading="lazy"></div>
-      <div>
+  <section class="bar" aria-label="{% translate "Deník a mapování hospod" %}">
+    <div class="bar-scene">
+      <img src="{{ asset.pub_bar_1536_webp }}" srcset="{{ asset.pub_bar_800_webp }} 800w, {{ asset.pub_bar_1536_webp }} 1536w" sizes="100vw" width="1536" height="1024" alt="" loading="lazy">
+      <div class="phone phone--diary"><img src="{{ asset.screen_historie_webp }}" width="520" height="1131" alt="{% translate "Deník večera s pivem, cenou a hodnocením." %}" loading="lazy"></div>
+      <div class="phone phone--map"><img src="{{ asset.screen_zmapuj_webp }}" width="520" height="1131" alt="{% translate "Mapování hospody: platba kartou, zahrádka, šipky." %}" loading="lazy"></div>
+    </div>
+    <div class="bar-copy">
+      <article>
         <h3>{% translate "Ráno víš, kolik to stálo" %}</h3>
         <p>{% blocktranslate trimmed %}Piva, ceny, hospoda i poznámky zůstanou v deníku. A napíšeš si, jestli se tam vrátíš.{% endblocktranslate %}</p>
-      </div>
-    </article>
-    <article>
-      <div class="phone"><img src="{{ asset.screen_zmapuj_webp }}" width="520" height="1131" alt="{% translate "Mapování hospody: platba kartou, zahrádka, šipky." %}" loading="lazy"></div>
-      <div>
+      </article>
+      <article>
         <h3>{% translate "Zmapuj hospodu pro ostatní" %}</h3>
         <p>{% blocktranslate trimmed %}Šipky, kulečník, zahrádka nebo sport v telce. Co zapíšeš ty, uvidí další, kdo hledá, kam zapadnout.{% endblocktranslate %}</p>
-      </div>
-    </article>
+      </article>
+    </div>
   </section>
 
-  <section class="bill-wrap" aria-labelledby="bill-title">
+  <section class="bill-table" aria-labelledby="bill-title">
+    <img src="{{ asset.table_bill_1024_webp }}" width="1024" height="1024" alt="" loading="lazy">
     <div class="bill">
       <h2 id="bill-title">{% translate "Účet" %}</h2>
       <p class="sub">{% translate "Co tě Na pivo stojí" %}</p>
@@ -423,6 +466,7 @@
   </section>
 </main>
 
+
 <footer>
   <p>{% translate "Na pivo dělá Tomáš Mach" %}</p>
   <nav aria-label="{% translate "Dokumenty a kontakt" %}">
@@ -446,6 +490,6 @@
     });
   })();
 </script>
-<script type="module" src="{{ asset.coaster_min_js }}"></script>
+<script src="{{ asset.coaster_js }}" defer></script>
 </body>
 </html>

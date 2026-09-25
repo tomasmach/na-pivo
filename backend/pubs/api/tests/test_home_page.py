@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from io import BytesIO
 
 import pytest
@@ -43,11 +44,12 @@ def test_english_home_is_translated_and_links_english_documents(client, settings
 
 def test_home_loads_nothing_from_other_origins(client):
     html = client.get("/").content.decode()
+    loaded = re.findall(r'(?:src|srcset|<image href|rel="preload" href)="([^"]+)"', html)
+    loaded += re.findall(r'url\("([^"]+)"\)', html)
 
-    for attribute in ("src=", "srcset=", 'rel="preload" href=', "data-wood=", "data-logo=", "url("):
-        for chunk in html.split(attribute)[1:]:
-            url = chunk[1:].split('"', 1)[0]
-            assert url.startswith("/landing/"), url
+    assert len(loaded) >= 10
+    for url in loaded:
+        assert url.startswith("/landing/"), url
 
 
 def test_every_home_asset_is_served(client):
@@ -61,7 +63,7 @@ def test_every_home_asset_is_served(client):
         assert "immutable" in response["Cache-Control"]
 
 
-@pytest.mark.parametrize("name", ["missing.js", "..%2Fhome_views.py", "coaster.js"])
+@pytest.mark.parametrize("name", ["missing.js", "..%2Fhome_views.py", "coaster.min.js"])
 def test_landing_serves_only_known_files(client, name):
     assert client.get(f"/landing/{name}").status_code == 404
 

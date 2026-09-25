@@ -30,7 +30,7 @@ _LANDING_FILES: dict[str, Path] = {
     for path in sorted(_LANDING_ROOT.iterdir())
     if path.is_file() and path.suffix in _CONTENT_TYPES
 }
-# The bundle is read once; a complete response lets the gzip middleware compress it.
+# Scripts are read once; a complete response lets the gzip middleware compress them.
 _SCRIPTS = {name: path.read_bytes() for name, path in _LANDING_FILES.items() if path.suffix == ".js"}
 # Content hash in the URL lets browsers keep a file for a year and still pick up a new deploy.
 _LANDING_URLS: dict[str, str] = {
