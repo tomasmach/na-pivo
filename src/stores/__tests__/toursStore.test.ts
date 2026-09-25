@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useToursStore as store, clearToursPrivateData, adoptToursOwner, releaseToursToDevice, TOURS_STORAGE_KEY, TOURS_QUARANTINE_KEY, tourContentSignature } from '../toursStore';
 import { beginTourAccountChange, endTourAccountChange } from '@/data/toursBoundary';
-import { publishTour, shareTour, fetchSharedTour } from '@/data/toursClient';
+import { publishTour, shareTour, fetchSharedTour, publishPublicTour } from '@/data/toursClient';
 import { validPlan, cloneTour } from '@/tours/model';
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock') }));
 jest.mock('@/data/account', () => ({
@@ -14,6 +14,7 @@ jest.mock('@/data/account', () => ({
 jest.mock('@/data/accountMerge', () => ({ readAccountMerge: jest.fn(async () => ({ ok: true, intent: null })) }));
 jest.mock('@/data/toursClient', () => ({
   toTourWire: jest.requireActual('@/data/toursClient').toTourWire, fetchSharedTour: jest.fn(), publishTour: jest.fn(), shareTour: jest.fn(), revokeTour: jest.fn(), deletePublishedTour: jest.fn(), fetchPublishedTours: jest.fn(),
+  publishPublicTour: jest.fn(), unpublishPublicTour: jest.fn(), reportPublicTour: jest.fn(),
 }));
 const pub = (id: number) => ({ id: String(id), name: `Pub ${id}`, lat: 50 + id / 100, lng: 14 });
 async function makePlan() {
@@ -309,5 +310,38 @@ describe('Tours durable lifecycle', () => {
     await store.getState().beginDraft(id);
     await store.getState().setChallenge(store.getState().draft!.stops[0].id, '   ');
     expect(store.getState().draft!.stops[0]).not.toHaveProperty('challenge');
+  });
+  it('uploads the plan before its frozen public copy and passes a refusal through with its stop', async () => {
+    const id = await makePlan();
+    const publication = { id: '33333333-3333-4333-8333-333333333333', token: 'publicTokenForTests12', url: 'https://na-pivo.cz/t/publicTokenForTests12', status: 'active' as const, revision: 1, planRevision: 1, peopleCount: 0 };
+    jest.mocked(publishTour).mockImplementation(async (plan) => ({ ok: true, tour: { ...cloneTour(plan), revision: 1 } }));
+    jest.mocked(publishPublicTour).mockResolvedValueOnce({ ok: false, error: 'text_rejected', field: 'challenge', stop: 1 });
+    expect(await store.getState().publishPublic(id)).toEqual({ ok: false, error: 'text_rejected', field: 'challenge', stop: 1 });
+    expect(publishTour).toHaveBeenCalledTimes(1);
+    expect(publishPublicTour).toHaveBeenCalledWith(id, 1);
+    jest.mocked(publishPublicTour).mockImplementationOnce(async () => ({ ok: true, tour: { ...cloneTour(store.getState().plans[0]), publication } }));
+    expect(await store.getState().publishPublic(id)).toEqual({ ok: true });
+    // The server plan already matched, so only the public copy was sent again.
+    expect(publishTour).toHaveBeenCalledTimes(1);
+    expect(store.getState().plans[0].publication).toEqual(publication);
+  });
+  it('saves a public tour as an own editable copy once, and drops the link when its pubs change', async () => {
+    const remote = { ...cloneTour(store.getState().plans[0] ?? { id: '44444444-4444-4444-8444-444444444444' }), id: '44444444-4444-4444-8444-444444444444', title: 'Veřejná', scheduledDate: null, scheduledTime: null, timezone: 'Europe/Prague', revision: 2, updatedAt: new Date().toISOString(),
+      stops: [1, 2].map((n) => ({ id: `00000000-0000-4000-8000-00000000000${n}`, pubId: `directory:p${n}`, cacheKey: null, name: `Pub ${n}`, address: 'Praha', lat: 50 + n / 100, lon: 14 })) };
+    const info = { id: remote.id, peopleCount: 0, city: 'Praha', walkM: 900, author: { id: 'a', nickname: 'pivni_vlk', displayName: '', avatarUrl: null } };
+    jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: remote, public: info });
+    const saved = await store.getState().savePublic('publicTokenForTests12');
+    expect(saved.ok && saved.id).toBeTruthy();
+    const id = (saved as { id: string }).id;
+    expect(await store.getState().savePublic('publicTokenForTests12')).toEqual({ ok: true, id });
+    expect(store.getState().plans.find((p) => p.id === id)!.publicSource).toEqual({ publicId: remote.id, token: 'publicTokenForTests12', pubIds: ['directory:p1', 'directory:p2'] });
+    await store.getState().beginDraft(id);
+    await store.getState().updateDraft({ title: 'Náš pátek' });
+    await store.getState().saveDraft();
+    expect(store.getState().plans.find((p) => p.id === id)!.publicSource).toBeDefined();
+    await store.getState().beginDraft(id);
+    await store.getState().replaceStop(store.getState().draft!.stops[0].id, pub(7));
+    await store.getState().saveDraft();
+    expect(store.getState().plans.find((p) => p.id === id)!.publicSource).toBeUndefined();
   });
 });

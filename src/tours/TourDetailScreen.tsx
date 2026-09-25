@@ -5,7 +5,7 @@ import { usePreventRemove } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
 import * as Clipboard from 'expo-clipboard';
-import { BeerIcon, CompassIcon, EllipsisIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, CompassIcon, EllipsisIcon, GlobeIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
@@ -101,6 +101,13 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
       ...(!plan.source && !active ? [{ text: t.tours.edit, onPress: () => { void edit(); } }] : []),
       { text: t.tours.repeat, onPress: () => { void action(() => store.copyPlan(id, shareMode ? undefined : history?.id), (r) => { if (r.id) router.push({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); } },
       ...(plan.source ? [{ text: t.tours.checkUpdate, onPress: () => router.push(`/t/${plan.source!.token}` as Href) }] : [{ text: t.tours.share, onPress: () => setShareMode(true) }]),
+      // A saved public tour is someone else's route until its pubs change; a hidden one waits for moderation.
+      ...(!plan.source && !plan.publicSource && plan.publication?.status !== 'hidden' ? [
+        { text: plan.publication?.status === 'active' ? t.tours.updatePublic : t.tours.publishPublic, onPress: () => router.push({ pathname: '/tours/publish', params: { id } } as Href) },
+        ...(plan.publication?.status === 'active' ? [{ text: t.tours.unpublish, onPress: () => showAppDialog({ title: t.tours.unpublishTitle, message: t.tours.unpublishMessage, buttons: [
+          { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.unpublish, style: 'destructive', onPress: () => { void action(() => store.unpublishPublic(id)); } },
+        ] }) }] : []),
+      ] : []),
       ...(active ? [{ text: t.tours.end, onPress: end }] : [{ text: t.tours.delete, style: 'destructive' as const, onPress: () => showAppDialog({ title: t.tours.deleteTitle, message: t.tours.deleteMessage, buttons: [
         { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.delete, style: 'destructive', onPress: () => { void action(() => store.deletePlan(id), () => router.replace('/tours' as Href)); } },
       ] }) }]),
@@ -164,6 +171,10 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
       right={<Pressable style={ui.iconButton} accessibilityRole="button" accessibilityLabel={t.tours.more} onPress={more}><EllipsisIcon color={Colors.foam} size={23} /></Pressable>} />
     <ScrollView ref={scroll} contentContainerStyle={styles.content}>
       <View><TourText maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{current.title}</TourText><TourText style={styles.date}>{meta}</TourText>
+        {!shareMode && !history && plan.publication && plan.publication.status !== 'unpublished' && <View style={styles.public}>
+          <GlobeIcon size={15} color={Colors.foam} />
+          <TourText style={styles.publicText}>{plan.publication.status === 'active' ? t.tours.publicState : t.tours.publicHiddenState}</TourText>
+        </View>}
         {editable && !current.scheduledDate && <Pressable onPress={() => { void edit(); }} style={styles.addMeetup} accessibilityRole="button" accessibilityLabel={t.tours.addMeetup}><TourText style={ui.linkText}>{t.tours.addMeetup}</TourText></Pressable>}
         {closedOnMeetup.length > 0 && <TourText style={styles.closed}>{t.tours.closedOnMeetup(closedOnMeetup.join(', '), closedOnMeetup.length)}</TourText>}</View>
       <TourJourneyIllustration stops={current.stops} statuses={!shareMode ? run?.statuses : undefined} nextStopId={!shareMode && active && !history ? next?.id : undefined} />
@@ -253,6 +264,8 @@ const styles = StyleSheet.create({
   section: { fontFamily: undefined, fontWeight: '600', fontSize: 14, lineHeight: 20, color: Colors.foam },
   addMeetup: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
   closed: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.closed, marginTop: Spacing.xs },
+  public: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs + 2, marginTop: Spacing.sm },
+  publicText: { fontFamily: undefined, fontSize: 14, lineHeight: 20, fontWeight: '600', color: Colors.foam },
   privacy: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', minHeight: 44, gap: Spacing.xs },
   privacyText: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.mutedText },
   footer: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, .1), backgroundColor: Colors.stout },

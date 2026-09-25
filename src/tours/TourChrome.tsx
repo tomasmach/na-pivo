@@ -52,6 +52,11 @@ export function pubCount(n: number) {
 export function tourError(code: string | null | undefined) {
   if (!code) return null;
   const e = t.tours.errors;
+  const publicErrors: Record<string, string> = {
+    sign_in: e.publicSignIn, nickname: e.publicNickname, profile_private: e.publicPrivate, rules: e.publicRules,
+    text_rejected: e.publicText, publication_hidden: e.publicHidden, unknown_pub: e.invalid, hidden_pub: e.invalid,
+  };
+  if (publicErrors[code]) return publicErrors[code];
   if (/storage|persist|corrupt/.test(code)) return e.storage;
   if (/date|time/.test(code)) return e.date;
   if (/duplicate/.test(code)) return e.duplicate;

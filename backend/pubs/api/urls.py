@@ -66,6 +66,8 @@ from .tour_views import (
     PublicTourView,
     TourDetailView,
     TourListView,
+    TourPublicationReportView,
+    TourPublicationView,
     TourPubSearchView,
     TourShareView,
 )
@@ -145,6 +147,8 @@ urlpatterns = [
     path("tours", TourListView.as_view()),
     path("tours/<uuid:plan_id>", TourDetailView.as_view()),
     path("tours/<uuid:plan_id>/share", TourShareView.as_view()),
+    path("tours/<uuid:plan_id>/publication", TourPublicationView.as_view()),
+    path("tour-publications/<uuid:public_id>/report", TourPublicationReportView.as_view()),
     path("tour-shares/<slug:token>", PublicTourView.as_view()),
     path("pubs/search", TourPubSearchView.as_view()),
     path("challenges", ChallengeListView.as_view(), name="challenges"),

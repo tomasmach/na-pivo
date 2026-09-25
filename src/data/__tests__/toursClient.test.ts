@@ -1,4 +1,4 @@
-import { fetchPublishedTours, fetchSharedTour, publishTour, shareTour, revokeTour } from '../toursClient';
+import { fetchPublishedTours, fetchSharedTour, publishPublicTour, publishTour, shareTour, revokeTour } from '../toursClient';
 import { beginTourAccountChange, endTourAccountChange } from '../toursBoundary';
 import { newTour, type TourPlan } from '@/tours/model';
 import { ensureAccount } from '../account';
@@ -86,4 +86,18 @@ it('always sends a challenge key so clearing reaches the server, and reads only 
   const sent = JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string).stops;
   expect(sent.map((stop: { challenge: string }) => stop.challenge)).toEqual(['Najdi nejstarší pípu', '']);
   expect(result.ok && result.tour.stops.map((stop) => stop.challenge)).toEqual(['Najdi nejstarší pípu', undefined]);
+});
+
+it('reads the publication of an owner tour, the author of a public link, and why publishing was refused', async () => {
+  const publication = { id: '33333333-3333-4333-8333-333333333333', token: 'publicTokenForTests12', url: 'https://na-pivo.cz/t/publicTokenForTests12', status: 'active', revision: 1, plan_revision: 1, people_count: 4 };
+  jest.mocked(fetch).mockResolvedValueOnce(response(200, { ...envelope(), publication }));
+  const published = await publishPublicTour(plan.id, 1);
+  expect(JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string)).toEqual({ revision: 1, accept_rules: true });
+  expect(published.ok && published.tour.publication).toEqual({ id: publication.id, token: publication.token, url: publication.url, status: 'active', revision: 1, planRevision: 1, peopleCount: 4 });
+  jest.mocked(fetch).mockResolvedValueOnce(response(400, { error: 'text_rejected', detail: 'x', field: 'challenge', stop: 1 }));
+  expect(await publishPublicTour(plan.id, 1)).toEqual({ ok: false, error: 'text_rejected', field: 'challenge', stop: 1 });
+  const author = { id: 'author', nickname: 'pivni_vlk', display_name: 'Pavel', avatar_url: null };
+  jest.mocked(fetch).mockResolvedValueOnce(response(200, { ...envelope(), expires_at: null, public: { id: publication.id, author, people_count: 4, city: 'Praha', walk_m: 1200 } }));
+  const opened = await fetchSharedTour('publicTokenForTests12');
+  expect(opened.ok && opened.public).toEqual({ id: publication.id, peopleCount: 4, city: 'Praha', walkM: 1200, author: { id: 'author', nickname: 'pivni_vlk', displayName: 'Pavel', avatarUrl: null } });
 });

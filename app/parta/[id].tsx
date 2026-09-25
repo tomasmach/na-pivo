@@ -19,6 +19,7 @@ import { GlowButton } from '@/components/shared/GlowButton';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import {
   ChevronLeftIcon,
+  ChevronRightIcon,
   CompassIcon,
   BeerIcon,
   MenuIcon,
@@ -44,6 +45,7 @@ import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { Avatar } from '@/profile/Avatar';
+import { pubCount } from '@/tours/TourChrome';
 import { t, intlLocale } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -449,6 +451,33 @@ export default function FriendProfileScreen() {
             </View>
           ) : null}
 
+          {/* Veřejné tour — who made which Tour de pub; each row opens the public copy. */}
+          {detail?.publicTours.length ? (
+            <View style={styles.recentSection}>
+              <SectionHeader label={t.friends.publicToursHeader} />
+              {detail.publicTours.map((tour, i) => (
+                <HairlineRow key={tour.id} first={i === 0}>
+                  <Pressable
+                    onPress={() => router.push(`/t/${tour.token}` as Href)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${tour.title}. ${[tour.city, pubCount(tour.stopCount)].filter(Boolean).join(' · ')}`}
+                    style={({ pressed }) => [styles.tourRow, pressed && styles.tourRowPressed]}
+                  >
+                    <View style={styles.tourText}>
+                      <Text style={styles.tourTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {tour.title}
+                      </Text>
+                      <Text style={styles.recentDate} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {[tour.city, pubCount(tour.stopCount)].filter(Boolean).join(' · ')}
+                      </Text>
+                    </View>
+                    <ChevronRightIcon size={16} color={Colors.mutedText} />
+                  </Pressable>
+                </HairlineRow>
+              ))}
+            </View>
+          ) : null}
+
           {/* Naposledy spolu + recent štace — shared history is friends-only. */}
           {isFriend ? (
             <View style={styles.recentSection}>
@@ -782,6 +811,24 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
+  },
+  tourRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    minHeight: 56,
+  },
+  tourRowPressed: {
+    opacity: 0.65,
+  },
+  tourText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tourTitle: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
   },
   recentDate: {
     flexShrink: 0,

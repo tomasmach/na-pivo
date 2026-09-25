@@ -35,6 +35,7 @@ from .models import (
     PushDevice,
     ReleaseNote,
     ReleaseNoteItem,
+    TourPublication,
     UserAddedPub,
 )
 
@@ -748,3 +749,26 @@ class ReleaseNoteAdmin(admin.ModelAdmin):
     readonly_fields = ("published_at", "created_at", "updated_at")
     ordering = ("-created_at",)
     inlines = [ReleaseNoteItemInline]
+
+
+@admin.register(TourPublication)
+class TourPublicationAdmin(admin.ModelAdmin):
+    """Public tours: a reported one hides itself, and only this admin brings it back."""
+
+    list_display = ("title", "status", "hidden_reason", "city", "stop_count", "people_count", "published_at")
+    list_filter = ("status", "hidden_reason")
+    search_fields = ("title", "city", "plan__owner__nickname", "public_id", "token")
+    readonly_fields = ("plan", "public_id", "token", "snapshot", "published_at", "updated_at")
+    actions = ("restore_publications", "hide_publications", "reset_people_counts")
+
+    @admin.action(description="Restore selected tours")
+    def restore_publications(self, request, queryset) -> None:  # noqa: ARG002
+        queryset.filter(status=TourPublication.Status.HIDDEN).update(status=TourPublication.Status.ACTIVE, hidden_reason="")
+
+    @admin.action(description="Hide selected tours")
+    def hide_publications(self, request, queryset) -> None:  # noqa: ARG002
+        queryset.update(status=TourPublication.Status.HIDDEN, hidden_reason="admin")
+
+    @admin.action(description="Reset people counts")
+    def reset_people_counts(self, request, queryset) -> None:  # noqa: ARG002
+        queryset.update(people_count=0)

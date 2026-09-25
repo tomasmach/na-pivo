@@ -6037,6 +6037,16 @@ def _published_profile_timeline(
     }
 
 
+def _public_tours(account: Account) -> list[dict]:
+    """The author's public Tour de pub copies, newest first; hidden ones never list."""
+    from pubs.tours import publication_summary, readable_publications
+
+    return [
+        publication_summary(publication)
+        for publication in readable_publications().filter(plan__owner=account).order_by("-published_at")[:20]
+    ]
+
+
 class FriendDetailView(APIView):
     """GET/DELETE /v1/friends/<account_id> — friend profile / remove friend or cancel invite."""
 
@@ -6160,6 +6170,7 @@ class FriendDetailView(APIView):
                     now=now,
                 ),
                 "achievements": derive_account_public_achievements(friend, public_profile_stats),
+                "public_tours": _public_tours(friend),
                 "stats": {
                     "shared_pub_count": shared_count,
                     "nights_together": shared_count,

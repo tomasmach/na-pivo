@@ -2949,6 +2949,8 @@ class ContentReport(models.Model):
         INAPPROPRIATE_AVATAR = "inappropriate_avatar", "Inappropriate avatar"
         # Additive (photo diary / FotoPivař): a reported beer photo.
         INAPPROPRIATE_PHOTO = "inappropriate_photo", "Inappropriate photo"
+        # Additive (public Tour de pub): a reported title or challenge.
+        INAPPROPRIATE_TOUR = "inappropriate_tour", "Inappropriate tour"
         IMPERSONATION = "impersonation", "Impersonation"
         SPAM = "spam", "Spam"
         OTHER = "other", "Other"
@@ -4993,3 +4995,40 @@ class TourOperation(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["plan", "operation_id"], name="tour_operation_identity"),
         ]
+
+
+class TourPublication(models.Model):
+    """A frozen public copy of a tour, changed only by publishing it again.
+
+    Editing the plan or its party link never reaches the public copy. The author
+    stays attached through the plan owner and is shown by nickname and avatar.
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        HIDDEN = "hidden", "Hidden"
+        UNPUBLISHED = "unpublished", "Unpublished"
+
+    plan = models.OneToOneField(TourPlan, on_delete=models.CASCADE, related_name="publication")
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    # Public links are not secrets, so a random stored token is enough.
+    token = models.CharField(max_length=32, unique=True)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE, db_index=True)
+    hidden_reason = models.CharField(max_length=32, blank=True, default="")
+    revision = models.PositiveIntegerField(default=1)
+    plan_revision = models.PositiveIntegerField()
+    snapshot = models.JSONField()
+    title = models.CharField(max_length=60)
+    city = models.CharField(max_length=128, blank=True, default="")
+    start_lat = models.FloatField()
+    start_lon = models.FloatField()
+    stop_count = models.PositiveSmallIntegerField()
+    walk_m = models.PositiveIntegerField()
+    has_challenges = models.BooleanField(default=False)
+    people_count = models.PositiveIntegerField(default=0)
+    rules_accepted_at = models.DateTimeField()
+    published_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["status", "start_lat", "start_lon"], name="tour_publication_geo")]
