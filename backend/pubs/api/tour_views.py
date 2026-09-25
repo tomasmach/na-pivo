@@ -411,7 +411,7 @@ class TourPublicationView(OwnerTourView):
                     publication.revision += 1
                 # Another route under the same title must not inherit who walked the old one.
                 if publication.snapshot.get("pub_keys") != snapshot["pub_keys"]:
-                    publication.people_count = 0
+                    publication.count_since, publication.people_count, publication.people_count_at = timezone.now(), 0, None
                 for field, value in fields.items():
                     setattr(publication, field, value)
             publication.save()

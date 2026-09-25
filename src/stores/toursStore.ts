@@ -3,9 +3,10 @@ import { create } from 'zustand';
 import { ensureAccount, generateUuidV4, getOrCreateDeviceId } from '@/data/account';
 import { readAccountMerge } from '@/data/accountMerge';
 import { beginTourAccountChange, endTourAccountChange, invalidateTours, tourBoundary } from '@/data/toursBoundary';
-import { deletePublishedTour, fetchPublishedTours, fetchSharedTour, publishPublicTour, publishTour, reportPublicTour, revokeTour, shareTour, toTourWire, unpublishPublicTour } from '@/data/toursClient';
+import { deletePublishedTour, fetchPublishedTours, fetchSharedTour, fetchTourRun, publishPublicTour, publishTour, reportPublicTour, revokeTour, shareTour, toTourWire, unpublishPublicTour } from '@/data/toursClient';
+import { dropTourRunOps, enqueueTourRunOp, setTourRunDeliveryListener, type TourRunQueueItem } from '@/data/tourRunQueue';
 import type { Pub } from '@/data/pubs';
-import { CHALLENGE_MAX, cleanChallenge, cloneTour, newTour, pubIdsOf, samePub, stopFromPub, TOUR_LIMIT, validPlan, validRun, validSchedule, uuidValid, type TourPlan, type TourRun, type TourResult, type TourError } from '@/tours/model';
+import { CHALLENGE_MAX, cleanChallenge, cloneTour, crewThreshold, newTour, pubIdsOf, samePub, stopFromPub, TOUR_LIMIT, validPlan, validRun, validSchedule, uuidValid, type TourPlan, type TourRun, type TourResult, type TourError } from '@/tours/model';
 export const TOURS_STORAGE_KEY = 'na-pivo-tours-v1';
 export const TOURS_QUARANTINE_KEY = 'na-pivo-tours-quarantine-v1';
 interface PendingPublication {
@@ -43,7 +44,12 @@ interface ToursState extends ToursData {
   discardDraft: () => Promise<TourResult>;
   deletePlan: (id: string) => Promise<TourResult>;
   copyPlan: (id: string, runId?: string) => Promise<TourResult>;
-  startRun: (id: string) => Promise<TourResult>;
+  /** `crew` joins a party run (`joinRunId`) or, for a signed-in walker of a public tour, starts one. */
+  startRun: (id: string, crew?: { eligible: boolean; joinRunId?: string }) => Promise<TourResult>;
+  joinCrew: (token: string, runId: string) => Promise<TourResult>;
+  setCrewOptOut: (optOut: boolean) => Promise<TourResult>;
+  refreshCrew: () => Promise<TourResult>;
+  refreshPublicCount: (id: string) => Promise<TourResult>;
   markStop: (id: string, status: 'visited' | 'skipped' | null) => Promise<TourResult>;
   endRun: () => Promise<TourResult>;
   publish: (id: string, rotate?: boolean) => Promise<TourResult>;
@@ -222,6 +228,21 @@ function networkAction(fn: (generation: number) => Promise<TourResult>): Promise
 function withLocalFields(server: TourPlan, local: TourPlan | undefined): TourPlan {
   return local?.publicSource ? { ...server, publicSource: local.publicSource } : server;
 }
+type RunOp = Omit<TourRunQueueItem, 'createdAt'>;
+/** The public tour a plan walks: its own publication, or the one a saved copy came from. */
+function publicLink(p: TourPlan): { publicId: string; token: string } | null {
+  if (p.publicSource) return { publicId: p.publicSource.publicId, token: p.publicSource.token };
+  return p.publication?.status === 'active' ? { publicId: p.publication.id, token: p.publication.token } : null;
+}
+/** Marks the "walked half" flag once, when the walker has not opted out. */
+function crewCompletion(run: TourRun | null): RunOp | null {
+  const crew = run?.crew;
+  if (!run || !crew || crew.optOut || crew.refused || crew.completion) return null;
+  const visited = Object.values(run.statuses).filter((status) => status === 'visited').length;
+  if (visited < crewThreshold(run.snapshot.stops.length)) return null;
+  crew.completion = 'pending';
+  return { runId: crew.runId, publicId: crew.publicId, op: 'complete' };
+}
 function putPlan(d: ToursData, p: TourPlan) {
   const index = d.plans.findIndex((old) => old.id === p.id);
   if (index < 0)
@@ -339,33 +360,132 @@ export const useToursStore = create<ToursState>(() => ({
     putPlan(d, copy);
     return { ok: true, id: copy.id };
   }),
-  startRun: (id) => mutate((d) => {
-    if (d.activeRun)
+  startRun: async (id, crew): Promise<TourResult> => {
+    const queued: RunOp[] = [];
+    const result = await mutate((d) => {
+      if (d.activeRun)
+        return { ok: false, error: 'active_run' };
+      const p = d.plans.find((p) => p.id === id);
+      if (!p)
+        return { ok: false, error: 'not_found' };
+      const snapshot = cloneTour(p);
+      delete snapshot.share;
+      delete snapshot.source;
+      delete snapshot.conflict;
+      delete snapshot.publication;
+      d.activeRun = { id: generateUuidV4(), planId: id, snapshot, startedAt: new Date().toISOString(), endedAt: null, statuses: {} };
+      const link = publicLink(p);
+      if (crew?.eligible && link) {
+        // The phone makes the run id, so the party QR works without signal.
+        const runId = crew.joinRunId ?? d.activeRun.id;
+        d.activeRun.crew = { runId, publicId: link.publicId, token: link.token, organizer: !crew.joinRunId };
+        queued.push({ runId, publicId: link.publicId, op: crew.joinRunId ? 'join' : 'register' });
+      }
+    });
+    if (result.ok)
+      queued.forEach((op) => { void enqueueTourRunOp(op); });
+    return result;
+  },
+  joinCrew: async (token, runId): Promise<TourResult> => {
+    if (useToursStore.getState().activeRun)
       return { ok: false, error: 'active_run' };
-    const p = d.plans.find((p) => p.id === id);
-    if (!p)
+    const saved = await useToursStore.getState().savePublic(token);
+    if (!saved.ok || !saved.id)
+      return saved;
+    const started = await useToursStore.getState().startRun(saved.id, { eligible: true, joinRunId: runId });
+    return started.ok ? { ok: true, id: saved.id } : started;
+  },
+  markStop: async (id, status): Promise<TourResult> => {
+    const queued: RunOp[] = [];
+    const result = await mutate((d) => {
+      if (!d.activeRun || !d.activeRun.snapshot.stops.some((s) => s.id === id))
+        return { ok: false, error: 'not_found' };
+      if (status === null)
+        delete d.activeRun.statuses[id];
+      else
+        d.activeRun.statuses[id] = status;
+      // Once sent, the flag stays even if a check-off is undone later.
+      const op = crewCompletion(d.activeRun);
+      if (op) queued.push(op);
+    });
+    if (result.ok)
+      queued.forEach((op) => { void enqueueTourRunOp(op); });
+    return result;
+  },
+  setCrewOptOut: async (optOut): Promise<TourResult> => {
+    const queued: RunOp[] = [];
+    let unsent = null as string | null;
+    const result = await mutate((d) => {
+      const crew = d.activeRun?.crew;
+      if (!d.activeRun || !crew)
+        return { ok: false, error: 'not_found' };
+      crew.optOut = optOut;
+      if (optOut && crew.completion === 'pending')
+        unsent = crew.runId;
+      // A completion the server already has is taken back, so the number drops again.
+      else if (optOut && crew.completion === 'sent')
+        queued.push({ runId: crew.runId, publicId: crew.publicId, op: 'uncount' });
+      if (optOut) {
+        delete crew.completion;
+        delete crew.counted;
+      }
+      const op = crewCompletion(d.activeRun);
+      if (op) queued.push(op);
+    });
+    if (result.ok) {
+      if (unsent) await dropTourRunOps(unsent, ['complete']);
+      queued.forEach((op) => { void enqueueTourRunOp(op); });
+    }
+    return result;
+  },
+  refreshCrew: async (): Promise<TourResult> => {
+    const crew = useToursStore.getState().activeRun?.crew;
+    if (!crew)
       return { ok: false, error: 'not_found' };
-    const snapshot = cloneTour(p);
-    delete snapshot.share;
-    delete snapshot.source;
-    delete snapshot.conflict;
-    delete snapshot.publication;
-    d.activeRun = { id: generateUuidV4(), planId: id, snapshot, startedAt: new Date().toISOString(), endedAt: null, statuses: {} };
-  }),
-  markStop: (id, status) => mutate((d) => {
-    if (!d.activeRun || !d.activeRun.snapshot.stops.some((s) => s.id === id))
+    const result = await fetchTourRun(crew.runId);
+    if (!result.run)
+      return { ok: false, error: result.status === 404 ? 'not_found' : 'network' };
+    const run = result.run;
+    return mutate((d) => {
+      if (d.activeRun?.crew?.runId !== crew.runId)
+        return;
+      d.activeRun.crew.members = run.members;
+      d.activeRun.crew.closed = run.ended;
+    });
+  },
+  // The author sees how many walked their tour; the server caches the number, so reading it on focus is cheap.
+  refreshPublicCount: async (id: string): Promise<TourResult> => {
+    const publication = useToursStore.getState().plans.find((p) => p.id === id)?.publication;
+    if (publication?.status !== 'active')
       return { ok: false, error: 'not_found' };
-    if (status === null)
-      delete d.activeRun.statuses[id];
-    else
-      d.activeRun.statuses[id] = status;
-  }),
-  endRun: () => mutate((d) => {
-    if (!d.activeRun)
+    const result = await fetchSharedTour(publication.token);
+    if (!result.ok)
+      return result;
+    const count = result.public?.peopleCount;
+    if (count === undefined)
       return { ok: false, error: 'not_found' };
-    d.runs.unshift({ ...d.activeRun, endedAt: new Date().toISOString() });
-    d.activeRun = null;
-  }),
+    return mutate((d) => {
+      const local = d.plans.find((p) => p.id === id)?.publication;
+      if (local?.token === publication.token)
+        local.peopleCount = count;
+    });
+  },
+  endRun: async (): Promise<TourResult> => {
+    const queued: RunOp[] = [];
+    const result = await mutate((d) => {
+      if (!d.activeRun)
+        return { ok: false, error: 'not_found' };
+      const crew = d.activeRun.crew;
+      // The organizer ending closes joining; nobody else's walk ends with it.
+      if (crew)
+        queued.push({ runId: crew.runId, publicId: crew.publicId, op: crew.organizer ? 'end' : 'leave' });
+      d.runs.unshift({ ...d.activeRun, endedAt: new Date().toISOString() });
+      d.activeRun = null;
+    });
+    if (result.ok)
+      queued.forEach((op) => { void enqueueTourRunOp(op); });
+    return result;
+  },
   deletePlan: (id) => networkAction(async (g) => {
     const d = data();
     const plan = d.plans.find((p) => p.id === id);
@@ -676,6 +796,39 @@ export const useToursStore = create<ToursState>(() => ({
     return { ok: true, id: copy.id };
   }),
 }));
+// Delivered queue items update the run they belong to, live or already in history.
+setTourRunDeliveryListener((item, { run, refused }) => {
+  let takeBack = null as RunOp | null;
+  void mutate((d) => {
+    const target = [d.activeRun, ...d.runs].find((candidate) => candidate?.crew?.runId === item.runId);
+    const crew = target?.crew;
+    if (!crew)
+      return;
+    if (refused) {
+      // Nothing about a party this walker is not in stays on the phone.
+      crew.refused = true;
+      delete crew.members;
+      delete crew.completion;
+      return;
+    }
+    if (run) {
+      crew.members = run.members;
+      crew.closed = run.ended;
+    }
+    if (item.op === 'complete' && run) {
+      // "Nezapočítávat mě" tapped while this completion was already on its way.
+      if (crew.optOut)
+        takeBack = { runId: crew.runId, publicId: crew.publicId, op: 'uncount' };
+      else {
+        crew.completion = 'sent';
+        crew.counted = run.counted === true;
+      }
+    }
+  }).then(() => {
+    if (refused) void dropTourRunOps(item.runId);
+    if (takeBack) void enqueueTourRunOp(takeBack);
+  });
+});
 /**
  * Called while auth owns its session-transition lock; claim keeps the local run.
  * Tour storage must never block signing in: unreadable data stays for hydrate to

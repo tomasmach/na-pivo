@@ -70,6 +70,8 @@ const mockTally = { current: null as null | { pubKey: string; drinks: { drinkTyp
 jest.mock('@/stores/tallyStore', () => ({ useTallyStore: (select: (s: typeof mockTally) => unknown) => select(mockTally) }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn(async () => new Map()) }));
 jest.mock('../TourJourneyIllustration', () => ({ TourJourneyIllustration: jest.fn(() => null) }));
+jest.mock('../TourCrew', () => ({ TourCrewRow: () => null, TourCrewSheet: () => null }));
+jest.mock('@/stores/accountStore', () => ({ useAccountStore: () => false, selectIsSignedIn: () => false, selectNickname: () => null }));
 jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: () => null, CheckIcon: () => null, ChevronLeftIcon: () => null, ChevronRightIcon: () => null,
   CompassIcon: () => null, EllipsisIcon: () => null, FootprintsIcon: () => null, HistoryIcon: () => null,

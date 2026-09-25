@@ -2,7 +2,7 @@ import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 import { tourBoundary } from './toursBoundary';
-import { CHALLENGE_MAX, type TourPlan, type TourError, type TourPublication, uuidValid, validPlan, validPublication } from '@/tours/model';
+import { CHALLENGE_MAX, type CrewMember, type TourPlan, type TourError, type TourPublication, uuidValid, validPlan, validPublication } from '@/tours/model';
 export interface PublicTourAuthor {
   id: string;
   nickname: string;
@@ -244,4 +244,59 @@ export async function fetchPublishedTours(): Promise<{
     }
   } while (cursor);
   return { ok: true, tours };
+}
+
+/** The party of one joint run, as the server shows it to its members. */
+export interface TourCrewRun {
+  id: string;
+  ended: boolean;
+  /** Null once the organizer deleted their account. */
+  organizerId: string | null;
+  members: CrewMember[];
+  me: { completed: boolean; left: boolean };
+  peopleCount: number;
+  counted?: boolean;
+}
+function parseAuthor(raw: unknown): PublicTourAuthor | null {
+  const a = raw as { id?: unknown; nickname?: unknown; display_name?: unknown; avatar_url?: unknown } | null;
+  if (!a || typeof a.id !== 'string' || typeof a.nickname !== 'string' || !a.nickname)
+    return null;
+  return { id: a.id, nickname: a.nickname, displayName: typeof a.display_name === 'string' ? a.display_name : '', avatarUrl: typeof a.avatar_url === 'string' ? a.avatar_url : null };
+}
+function parseCrewRun(raw: unknown): TourCrewRun | null {
+  const r = raw as { id?: unknown; ended?: unknown; organizer_id?: unknown; members?: unknown[]; me?: { completed?: unknown; left?: unknown };
+    people_count?: unknown; counted?: unknown } | null;
+  if (!r || !uuidValid(r.id) || (typeof r.organizer_id !== 'string' && r.organizer_id !== null) || !Array.isArray(r.members))
+    return null;
+  const members = r.members.flatMap((item) => {
+    const author = parseAuthor(item);
+    const flags = item as { left?: unknown; completed?: unknown };
+    return author ? [{ ...author, left: flags.left === true, completed: flags.completed === true }] : [];
+  }).slice(0, 20);
+  return {
+    id: r.id, ended: r.ended === true, organizerId: r.organizer_id, members,
+    me: { completed: r.me?.completed === true, left: r.me?.left === true },
+    peopleCount: Number.isInteger(r.people_count) ? r.people_count as number : 0,
+    ...(typeof r.counted === 'boolean' ? { counted: r.counted } : {}),
+  };
+}
+/** `refused`: the run is over or full, so this walker is not in the party. */
+export type TourRunResult = { status: number; stale?: boolean; run: TourCrewRun | null; refused?: boolean };
+async function runRequest(path: string, method: string, body?: unknown): Promise<TourRunResult> {
+  const r = await request(path, method, body);
+  const refused = r.ok && (r.data as { joined?: unknown } | null)?.joined === false;
+  return { status: r.status, ...(r.stale ? { stale: true } : {}), run: r.ok ? parseCrewRun(r.data) : null, ...(refused ? { refused: true } : {}) };
+}
+export const putTourRun = (runId: string, publicId: string, ended: boolean) => runRequest(`/v1/tour-runs/${runId}`, 'PUT', { publication_id: publicId, ended });
+export const putTourRunMember = (runId: string, state: 'joined' | 'left' | 'completed' | 'uncounted') => runRequest(`/v1/tour-runs/${runId}/me`, 'PUT', { state });
+export const fetchTourRun = (runId: string) => runRequest(`/v1/tour-runs/${runId}`, 'GET');
+export interface TourRunPreview { organizer: PublicTourAuthor; going: number; members: PublicTourAuthor[] }
+export async function fetchTourRunPreview(runId: string): Promise<TourRunPreview | null> {
+  const r = await request(`/v1/tour-runs/${runId}/preview`, 'GET');
+  const data = r.data as { organizer?: unknown; going?: unknown; members?: unknown[] } | null;
+  const organizer = r.ok ? parseAuthor(data?.organizer) : null;
+  if (!organizer)
+    return null;
+  return { organizer, going: Number.isInteger(data?.going) ? data!.going as number : 1,
+    members: (Array.isArray(data?.members) ? data!.members : []).map(parseAuthor).filter((a): a is PublicTourAuthor => !!a) };
 }

@@ -973,3 +973,18 @@ msgstr "Public tour by %(nickname)s"
 
 msgid "Navigovat na první hospodu"
 msgstr "Directions to the first pub"
+
+msgid "Připojit partu může jen přihlášený s přezdívkou."
+msgstr "Only a signed-in walker with a nickname can bring a crew."
+
+msgid "Tahle veřejná tour už není."
+msgstr "This public tour is gone."
+
+msgid "Tenhle průchod patří někomu jinému."
+msgstr "This walk belongs to someone else."
+
+msgid "Připojit se může jen přihlášený s přezdívkou."
+msgstr "Only a signed-in walker with a nickname can join."
+
+msgid "K tomuhle průchodu se připojit nejde."
+msgstr "You can't join this walk."
