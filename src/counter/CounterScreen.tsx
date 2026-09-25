@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Linking, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -47,6 +47,7 @@ import {
   GlassWaterIcon,
   WineIcon,
   CircleDotIcon,
+  MapIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -120,6 +121,10 @@ import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
 import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
+import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
+import { useToursStore } from '@/stores/toursStore';
+import { tourStopAtPub } from '@/tours/counterLink';
+import { runGlance } from '@/tours/glance';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
 // ─── Timings ──────────────────────────────────────────────────────────────────
@@ -388,7 +393,11 @@ function Tacek({
    *  has been written; a timeout is a no. */
   const [pendingRapid, setPendingRapid] = useState<{ beer: CountableBeer; minutes: number | null } | null>(null);
   /** The drink counted within the last UNDO_WINDOW_MS, undoable from the strip. */
-  const [lastCounted, setLastCounted] = useState<{ id: string; ordinal: number; isBeer: boolean } | null>(null);
+  const [lastCounted, setLastCounted] = useState<{ id: string; ordinal: number; isBeer: boolean; tourStop?: number } | null>(null);
+  /** Tour stops a counted drink checked off, so undoing the drink undoes the mark. */
+  const tourMarks = useRef<Map<string, { stopId: string; cell: string }>>(new Map());
+  const activeTourRun = useToursStore((s) => s.activeRun);
+  useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
   const [checkInVisitClientId, setCheckInVisitClientId] = useState<string | null>(null);
   /** Session clientId whose "Dopito?" nudge was already shown and answered. */
@@ -411,6 +420,8 @@ function Tacek({
   const broadcasted = cell !== null && broadcastCell === cell;
 
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const tour = useMemo(() => runGlance(activeTourRun, nowMs), [activeTourRun, nowMs]);
+  const tourHere = useMemo(() => (pub && cell ? tourStopAtPub(activeTourRun, cell, pub.id, nowMs) : null), [activeTourRun, cell, nowMs, pub]);
 
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
@@ -754,6 +765,12 @@ function Tacek({
       if (!atOverride && drinkType === 'beer' && landedSession) {
         void refreshBeerCountReminderAfterBeer(landedSession.clientId);
       }
+      // A live drink in a pub of the running tour checks that stop off.
+      const tourStop = pub && !atOverride ? tourStopAtPub(useToursStore.getState().activeRun, cell, pub.id) : null;
+      if (tourStop) {
+        tourMarks.current.set(id, { stopId: tourStop.stop.id, cell });
+        void useToursStore.getState().markStop(tourStop.stop.id, 'visited');
+      }
       // An outside evening is NOT a pub visit — skip the visit record there.
       if (pub) syncVisit(landedSession);
       if (!atOverride && startsSession) {
@@ -818,7 +835,7 @@ function Tacek({
       // drink is not "the beer you just had", so it gets no strip.
       if (!atOverride) {
         const liveCountAfter = sessionCount(useTallyStore.getState().current);
-        setLastCounted({ id, ordinal: liveCountAfter, isBeer: drinkType === 'beer' });
+        setLastCounted({ id, ordinal: liveCountAfter, isBeer: drinkType === 'beer', tourStop: tourStop?.number });
       }
 
       if (hapticEnabled) fireSuccessHaptic();
@@ -928,6 +945,17 @@ function Tacek({
       const visitUpdatedAt = new Date().toISOString();
       const currentVisitClientId = current?.clientId;
       removeDrink(targetId);
+
+      // Undo the tour check-off only while it is still ours and no other drink keeps the group there.
+      const tourMark = tourMarks.current.get(targetId);
+      if (tourMark) {
+        tourMarks.current.delete(targetId);
+        const live = useTallyStore.getState().current;
+        const stillThere = live?.pubKey === tourMark.cell && live.drinks.length > 0;
+        if (!stillThere && useToursStore.getState().activeRun?.statuses[tourMark.stopId] === 'visited') {
+          void useToursStore.getState().markStop(tourMark.stopId, null);
+        }
+      }
 
       // Outside evenings never had a visit record, so there's none to touch.
       if (pub) {
@@ -1417,9 +1445,13 @@ function Tacek({
     if (lastCounted) {
       return {
         kind: 'counted',
-        text: lastCounted.isBeer
-          ? t.counter.countedStrip(lastCounted.ordinal)
-          : t.counter.countedStripOther,
+        text: lastCounted.tourStop
+          ? lastCounted.isBeer
+            ? t.tours.countedAtStop(lastCounted.ordinal, lastCounted.tourStop)
+            : t.tours.stopCheckedOff(lastCounted.tourStop)
+          : lastCounted.isBeer
+            ? t.counter.countedStrip(lastCounted.ordinal)
+            : t.counter.countedStripOther,
         undoLabel: t.counter.undo,
         onUndo: () => removeDrinkById(lastCounted.id),
       };
@@ -1436,11 +1468,24 @@ function Tacek({
         onDismiss: () => setCheckInBeerName(null),
       };
     }
+    if (tour) {
+      return {
+        kind: 'rapid',
+        text: tourHere ? t.tours.counterAtStop(tourHere.number) : tour.next ? t.tours.compassNudge(tour.next.name) : t.tours.counterAllDone,
+        confirmLabel: t.tours.open,
+        confirmAccessibilityLabel: tour.next ? t.tours.openTour(tour.next.name) : t.tours.open,
+        icon: MapIcon,
+        onConfirm: () => router.push({ pathname: '/tours/[id]', params: { id: tour.planId } } as Href),
+      };
+    }
     if (count > 0) {
       return { kind: 'rank', node: <WeeklyRankChip sessionBeerCount={count} /> };
     }
     return null;
   }, [
+    tour,
+    tourHere,
+    router,
     checkInBeerName,
     confirmRapid,
     count,
@@ -1672,6 +1717,20 @@ export default function CounterScreen({
   });
   const hadActiveSessionOnOpen = useRef((useTallyStore.getState().current?.drinks.length ?? 0) > 0);
 
+  const [handedOff, setHandedOff] = useState(false);
+  // A tour stop asked to log a beer here: open on that pub, as a manual pick.
+  // Taken on focus, so only the counter the user actually lands on consumes it.
+  useFocusEffect(
+    useCallback(() => {
+      const pub = useCounterHandoffStore.getState().pub;
+      if (!pub) return;
+      useCounterHandoffStore.getState().clear();
+      setHandedOff(true);
+      setOutsideContext(null);
+      selectPub(pub);
+    }, [selectPub]),
+  );
+
   useEffect(() => {
     void trackCounterTabOpened(hadActiveSessionOnOpen.current);
   }, []);
@@ -1693,7 +1752,7 @@ export default function CounterScreen({
 
   // The gate replaces the whole counter, sheets included — tell the host so its
   // "…" glyph disappears with them instead of turning into a no-op.
-  const gated = permissionState !== 'granted' && !outsideContext;
+  const gated = permissionState !== 'granted' && !outsideContext && !handedOff;
   useEffect(() => {
     onMoreAvailability?.(!gated);
   }, [gated, onMoreAvailability]);

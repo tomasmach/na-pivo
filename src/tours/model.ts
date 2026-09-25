@@ -133,3 +133,12 @@ export function validRun(value: unknown): value is TourRun {
     !!v.statuses && typeof v.statuses === 'object' && !Array.isArray(v.statuses) &&
     Object.entries(v.statuses).every(([id, status]) => v.snapshot.stops.some((s) => s.id === id) && (status === 'visited' || status === 'skipped'));
 }
+/** Where a group is in a run: the next unmarked stop and the last visited stop before it. */
+export function runPosition(run: Pick<TourRun, 'snapshot' | 'statuses'>): { next?: TourStop; nextIndex: number; here?: TourStop } {
+  const stops = run.snapshot.stops;
+  const nextIndex = stops.findIndex((stop) => !run.statuses[stop.id]);
+  const next = nextIndex >= 0 ? stops[nextIndex] : undefined;
+  // Skipped stops do not move the group; the last visited one before the next stop does.
+  const here = stops.slice(0, next ? nextIndex : stops.length).reverse().find((stop) => run.statuses[stop.id] === 'visited');
+  return { next, nextIndex, here };
+}
