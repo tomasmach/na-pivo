@@ -1,14 +1,7 @@
 /**
- * Shared Expo push-token acquisition + device registration.
- *
- * Both notification features register the same device token, so the token dance
- * (getExpoPushTokenAsync → persist → registerPushDevice) lives here once:
- *   - pub reminders call it after the geofence permission gate (unchanged),
- *   - Parta calls it after its notification-only opt-in (Parta 3.0 §E / §8.5),
- *     fully independent of background location.
- *
- * Best-effort and never throws — a missing native module or offline backend just
- * means push stays dark until the next attempt.
+ * Expo push-token acquisition and device registration for Parta notifications.
+ * Pub reminders are scheduled locally and do not use the remote device token.
+ * Best-effort and never throws; offline registration can be retried later.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -47,8 +40,8 @@ export async function ensurePushTokenRegistered(status: PushPermissionStatus): P
       : await Notifications.getExpoPushTokenAsync();
     const token = response.data;
     await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
-    void registerPushDevice(token, status);
-    return token;
+    const registered = await registerPushDevice(token, status);
+    return registered ? token : null;
   } catch {
     return null;
   }

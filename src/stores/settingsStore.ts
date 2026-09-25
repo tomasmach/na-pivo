@@ -22,6 +22,8 @@ export type BeerCountReminderIntervalMinutes =
 
 interface SettingsState {
   mode: Mode;
+  /** Explicit map fallback survives relaunch without requesting location. */
+  mapWithoutLocation: boolean;
   homePoint: HomePoint | null;
   navigationProvider: NavigationProvider;
   maxDistanceKm: number | null;
@@ -33,6 +35,8 @@ interface SettingsState {
   preferRatedPubs: boolean;
   preferGardenPubs: boolean;
   hidePubNames: boolean;
+  /** Map pins show how many people drank in each pub last week. */
+  showPubVisitors: boolean;
   marketingEmailsEnabled: boolean;
   pubReminderEnabled: boolean;
   /** One-shot reminder refreshed by each beer of an active evening. */
@@ -54,6 +58,7 @@ interface SettingsState {
   surpriseSeed: number;
   lastSeenPartyStreak: number;
   setMode: (m: Mode) => void;
+  setMapWithoutLocation: (value: boolean) => void;
   setHomePoint: (point: HomePoint | null) => void;
   setNavigationProvider: (provider: NavigationProvider) => void;
   setMaxDistanceKm: (km: number | null) => void;
@@ -64,6 +69,7 @@ interface SettingsState {
   setPreferRatedPubs: (v: boolean) => void;
   setPreferGardenPubs: (v: boolean) => void;
   setHidePubNames: (v: boolean) => void;
+  setShowPubVisitors: (v: boolean) => void;
   setMarketingEmailsEnabled: (v: boolean) => void;
   setPubReminderEnabled: (v: boolean) => void;
   setBeerCountReminderEnabled: (v: boolean) => void;
@@ -80,6 +86,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       mode: 'nearest',
+      mapWithoutLocation: false,
       homePoint: null,
       navigationProvider: 'google',
       maxDistanceKm: null,
@@ -91,6 +98,7 @@ export const useSettingsStore = create<SettingsState>()(
       preferRatedPubs: false,
       preferGardenPubs: false,
       hidePubNames: false,
+      showPubVisitors: true,
       marketingEmailsEnabled: false,
       pubReminderEnabled: false,
       beerCountReminderEnabled: true,
@@ -105,6 +113,7 @@ export const useSettingsStore = create<SettingsState>()(
       lastSeenPartyStreak: 0,
 
       setMode: (m) => set({ mode: m }),
+      setMapWithoutLocation: (value) => set({ mapWithoutLocation: value }),
       setHomePoint: (point) => set({ homePoint: point }),
       setNavigationProvider: (provider) => set({ navigationProvider: provider }),
       setMaxDistanceKm: (km) => set({ maxDistanceKm: km }),
@@ -119,6 +128,7 @@ export const useSettingsStore = create<SettingsState>()(
       setPreferRatedPubs: (v) => set({ preferRatedPubs: v }),
       setPreferGardenPubs: (v) => set({ preferGardenPubs: v }),
       setHidePubNames: (v) => set({ hidePubNames: v }),
+      setShowPubVisitors: (v) => set({ showPubVisitors: v }),
       setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
       setPubReminderEnabled: (v) => set({ pubReminderEnabled: v }),
       setBeerCountReminderEnabled: (v) => set({ beerCountReminderEnabled: v }),
@@ -137,6 +147,7 @@ export const useSettingsStore = create<SettingsState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         mode: state.mode,
+        mapWithoutLocation: state.mapWithoutLocation,
         homePoint: state.homePoint,
         navigationProvider: state.navigationProvider,
         maxDistanceKm: state.maxDistanceKm,
@@ -148,6 +159,7 @@ export const useSettingsStore = create<SettingsState>()(
         preferRatedPubs: state.preferRatedPubs,
         preferGardenPubs: state.preferGardenPubs,
         hidePubNames: state.hidePubNames,
+        showPubVisitors: state.showPubVisitors,
         marketingEmailsEnabled: state.marketingEmailsEnabled,
         pubReminderEnabled: state.pubReminderEnabled,
         beerCountReminderEnabled: state.beerCountReminderEnabled,

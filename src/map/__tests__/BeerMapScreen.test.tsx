@@ -9,6 +9,7 @@ import { EMPTY_PUB_SEARCH_FILTERS } from '@/data/pubSearchFilters';
 import BeerMapScreen, { resetBeerMapLayerForAddedPub } from '../BeerMapScreen';
 import { fetchPubHours } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
+import { fetchPubVisitorsLastWeek } from '@/data/pubVisitorsClient';
 import { useBeerMap } from '../useBeerMap';
 
 const mockPubStoreState = {
@@ -102,9 +103,17 @@ jest.mock('@/theme/fonts', () => ({
   },
   FontScaleCap: { display: 1.1, heading: 1.2, body: 1.3 },
 }));
+const mockSettingsState = {
+  hapticEnabled: false,
+  showPubVisitors: false,
+  setShowPubVisitors: jest.fn(),
+};
 jest.mock('@/stores/settingsStore', () => ({
-  useSettingsStore: (selector: (state: { hapticEnabled: boolean }) => unknown) =>
-    selector({ hapticEnabled: false }),
+  useSettingsStore: (selector: (state: typeof mockSettingsState) => unknown) =>
+    selector(mockSettingsState),
+}));
+jest.mock('@/data/pubVisitorsClient', () => ({
+  fetchPubVisitorsLastWeek: jest.fn(async () => null),
 }));
 jest.mock('@/stores/accountStore', () => ({
   useAccountStore: (selector: (state: { session: null }) => unknown) => selector({ session: null }),
@@ -198,6 +207,7 @@ function mockLiveMap(avatarUrl: string | null) {
     requestPermission: jest.fn(async () => undefined),
     loadRegion: jest.fn(),
     refresh: jest.fn(),
+    refreshPosition: jest.fn(async () => null),
   });
 
   return activity;
@@ -227,6 +237,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       requestPermission: jest.fn(async () => undefined),
       loadRegion: jest.fn(),
       refresh: jest.fn(),
+      refreshPosition: jest.fn(async () => null),
     });
     mockedFetchPubHours.mockResolvedValue(new Map([
       ['pub-1', {
@@ -325,6 +336,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       requestPermission: jest.fn(async () => undefined),
       loadRegion: jest.fn(),
       refresh: jest.fn(),
+      refreshPosition: jest.fn(async () => null),
     });
     const screen = render(
       <BeerMapScreen
@@ -352,6 +364,33 @@ describe('BeerMapScreen opening-hours loading', () => {
         latitudeDelta: 0.055,
         longitudeDelta: 0.055,
       },
+      0,
+    );
+  });
+
+  it('follows a fresh one-shot fix when the user moved since the last one', async () => {
+    const refreshPosition = jest.fn(async () => ({ lat: 50.0901, lng: 14.4301, accuracyMeters: 10 }));
+    mockedUseBeerMap.mockReturnValue({
+      ...mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS),
+      position: { lat: 50.0821, lng: 14.4213, accuracyMeters: 12 },
+      refreshPosition,
+    });
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText(t.a11y.mapLocate));
+      await Promise.resolve();
+    });
+
+    expect(refreshPosition).toHaveBeenCalledTimes(1);
+    expect(mockAnimateToRegion).toHaveBeenLastCalledWith(
+      expect.objectContaining({ latitude: 50.0901, longitude: 14.4301 }),
       0,
     );
   });
@@ -599,7 +638,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     mockedUseBeerMap.mockReturnValue({
       pubs: [], nearbyPrices: [], visitedCities: [], livePubs: [], position: null,
       permissionState: 'granted', loadingPubs: false, stale: false,
-      requestPermission: jest.fn(), loadRegion: jest.fn(), refresh: jest.fn(),
+      requestPermission: jest.fn(), loadRegion: jest.fn(), refresh: jest.fn(), refreshPosition: jest.fn(async () => null),
       visitedPubs: [{ cacheKey: geohash8(found.lat, found.lng), name: 'Bar Dawu',
         lat: found.lat, lng: found.lng, city: 'Praha', visitCount: 1, lastVisitedAt: '2026-09-18T12:00:00Z' }],
     });
@@ -629,4 +668,126 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(mockedFetchPubHours).toHaveBeenCalledWith([found], expect.anything());
   });
 
+});
+
+describe('BeerMapScreen last-week visitors', () => {
+  const busy = { id: 'pub-busy', name: 'U Plných', lat: 50.0876, lng: 14.4214 };
+  const quiet = { id: 'pub-quiet', name: 'U Prázdných', lat: 50.0886, lng: 14.4234 };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSettingsState.showPubVisitors = true;
+    mockPubStoreState.reportedPubIds = [];
+    mockPubStoreState.reportedCacheKeys = [];
+    mockedUseBeerMap.mockReturnValue({
+      pubs: [busy, quiet],
+      nearbyPrices: [],
+      visitedPubs: [],
+      visitedCities: [],
+      livePubs: [],
+      position: null,
+      permissionState: 'granted',
+      loadingPubs: false,
+      stale: false,
+      requestPermission: jest.fn(async () => undefined),
+      loadRegion: jest.fn(),
+      refresh: jest.fn(),
+      refreshPosition: jest.fn(async () => null),
+    });
+    mockedFetchPubHours.mockResolvedValue(new Map());
+    (fetchPubVisitorsLastWeek as jest.Mock).mockResolvedValue(
+      new Map([[geohash8(busy.lat, busy.lng), 4]]),
+    );
+  });
+
+  afterEach(() => {
+    mockSettingsState.showPubVisitors = false;
+  });
+
+  async function renderMap() {
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+    await act(async () => undefined);
+    return screen;
+  }
+
+  const busyLabel = `${t.a11y.mapPub('U Plných', 0)}, ${t.map.visitorsLastWeek(4)}`;
+
+  it('shows how many people were in a pub last week on its pin and card', async () => {
+    const screen = await renderMap();
+
+    expect(screen.getByLabelText(busyLabel)).toBeTruthy();
+    expect(screen.getByText('4')).toBeTruthy();
+    expect(screen.getByLabelText(t.a11y.mapPub('U Prázdných', 0))).toBeTruthy();
+
+    await act(async () => fireEvent.press(screen.getByLabelText(busyLabel)));
+    expect(screen.getByText(t.map.visitorsLastWeek(4))).toBeTruthy();
+  });
+
+  it('can narrow the map to pubs someone visited and clear it from the nudge', async () => {
+    const screen = await renderMap();
+
+    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    fireEvent.press(screen.getByText(t.map.moreVisitorsOnly));
+
+    expect(screen.getByLabelText(busyLabel)).toBeTruthy();
+    expect(screen.queryByLabelText(t.a11y.mapPub('U Prázdných', 0))).toBeNull();
+    expect(screen.getByText(t.map.visitorsOnlyNudge)).toBeTruthy();
+
+    fireEvent.press(screen.getByText(t.compass.nudgeFiltersClear));
+    expect(screen.getByLabelText(t.a11y.mapPub('U Prázdných', 0))).toBeTruthy();
+  });
+
+  it('drops the narrowed view when the counts are turned off', async () => {
+    const screen = await renderMap();
+
+    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    fireEvent.press(screen.getByText(t.map.moreVisitorsOnly));
+    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    fireEvent.press(screen.getByText(t.map.moreVisitors));
+
+    expect(mockSettingsState.setShowPubVisitors).toHaveBeenCalledWith(false);
+    expect(screen.queryByText(t.map.visitorsOnlyNudge)).toBeNull();
+    expect(screen.getByLabelText(t.a11y.mapPub('U Prázdných', 0))).toBeTruthy();
+  });
+
+  it('keeps a slow counts request alive while the catalogue reloads', async () => {
+    let finish: (value: Map<string, number>) => void = () => undefined;
+    (fetchPubVisitorsLastWeek as jest.Mock).mockImplementation(
+      (signal: AbortSignal) =>
+        new Promise((resolve) => {
+          finish = resolve;
+          expect(signal.aborted).toBe(false);
+        }),
+    );
+    const props = {
+      filters: EMPTY_PUB_SEARCH_FILTERS,
+      onApplyFilters: jest.fn(),
+      onShowCompass: jest.fn(),
+    };
+    const screen = render(<BeerMapScreen {...props} />);
+    const data = mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS);
+    mockedUseBeerMap.mockReturnValue({ ...data, pubs: [busy, quiet] });
+    screen.rerender(<BeerMapScreen {...props} />);
+
+    expect(fetchPubVisitorsLastWeek).toHaveBeenCalledTimes(1);
+    const [signal] = (fetchPubVisitorsLastWeek as jest.Mock).mock.calls[0] as [AbortSignal];
+    expect(signal.aborted).toBe(false);
+    await act(async () => finish(new Map([[geohash8(busy.lat, busy.lng), 4]])));
+    expect(screen.getByLabelText(busyLabel)).toBeTruthy();
+  });
+
+  it('hides the counts when the user turns them off', async () => {
+    mockSettingsState.showPubVisitors = false;
+    const screen = await renderMap();
+
+    expect(fetchPubVisitorsLastWeek).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(t.a11y.mapPub('U Plných', 0))).toBeTruthy();
+    expect(screen.queryByText('4')).toBeNull();
+  });
 });

@@ -32,6 +32,7 @@ import {
   type VisitEntry,
 } from './visitsClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { flushFriendsQueue } from './friendsQueue';
 
 const STORAGE_KEY = 'na-pivo-visits-queue';
 /** Hard cap — one item per evening; only bites with a very long offline backlog,
@@ -72,8 +73,8 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<VisitQueueItem>(
  *  from being persisted immediately. */
 const runMutation = createQueueLock();
 
-async function deliver(item: VisitQueueItem): Promise<SubmitVisitResult> {
-  return item.op === 'upsert' ? submitVisit(item.entry) : deleteVisit(item.clientId);
+async function deliver(item: VisitQueueItem, signal: AbortSignal): Promise<SubmitVisitResult> {
+  return item.op === 'upsert' ? submitVisit(item.entry, signal) : deleteVisit(item.clientId, signal);
 }
 
 /** Stable content signature for an op, used to tell whether the queued op for a
@@ -92,6 +93,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   // client_id) is kept rather than clobbered by the stale result.
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
+  let openedVisit = false;
   for (const item of queue) {
     // Stop before delivering the next op once an account-boundary clear has
     // aborted us, so a previous account's queued visits are never POSTed under
@@ -100,7 +102,8 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     // account.)
     if (signal.aborted) break;
     attempted.set(item.clientId, signature(item));
-    const result = await deliver(item);
+    const result = await deliver(item, signal);
+    if (result === 'ok' && item.op === 'upsert' && item.entry.closed_at === null) openedVisit = true;
     if (result !== 'retry') settled.add(item.clientId);
   }
 
@@ -113,6 +116,9 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     });
     await saveQueue(remaining);
   });
+  // Resume and broadcast use separate persisted queues. Retry a broadcast that
+  // reached the server before the reopen, including after an offline restart.
+  if (openedVisit && !signal.aborted) void flushFriendsQueue();
 }
 
 /**

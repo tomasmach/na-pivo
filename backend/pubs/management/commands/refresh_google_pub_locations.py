@@ -7,9 +7,11 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from django.utils import timezone
 
 from pubs.enrichment import (
+    GoogleGeocodingDailyCapExceededError,
     GoogleGeocodingSource,
     GoogleGeocodingUnavailableError,
     geohash8,
@@ -20,14 +22,14 @@ from pubs.models import UserAddedPub
 logger = logging.getLogger(__name__)
 
 _REFRESH_AFTER_DAYS = 25
+_RETRY_AFTER = timedelta(days=1)
 
 
 class Command(BaseCommand):
     """Refresh Google-derived coordinates before their cache deadline."""
 
     help = (
-        "Refresh active Google-geocoded user-added pubs whose coordinates are "
-        "older than 25 days."
+        "Refresh active Google-geocoded user-added pubs whose coordinates are older than 25 days."
     )
 
     def add_arguments(self, parser) -> None:
@@ -46,8 +48,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         limit = max(0, int(options["limit"]))
         dry_run = bool(options["dry_run"])
-        cutoff = timezone.now() - timedelta(days=_REFRESH_AFTER_DAYS)
+        now = timezone.now()
+        cutoff = now - timedelta(days=_REFRESH_AFTER_DAYS)
+        eligible = Q(location_refresh_after__isnull=True) | Q(location_refresh_after__lte=now)
         queryset = UserAddedPub.objects.filter(
+            eligible,
             active=True,
             location_source=UserAddedPub.LocationSource.GOOGLE_GEOCODE,
             location_synced_at__lt=cutoff,
@@ -60,9 +65,7 @@ class Command(BaseCommand):
                     f"[dry-run] would refresh pub id={pub.pk} cache_key={pub.cache_key}"
                 )
             self.stdout.write(
-                self.style.WARNING(
-                    f"[dry-run] Would refresh {len(pubs)} Google pub location(s)."
-                )
+                self.style.WARNING(f"[dry-run] Would refresh {len(pubs)} Google pub location(s).")
             )
             return
 
@@ -73,9 +76,7 @@ class Command(BaseCommand):
         api_key = getattr(settings, "GOOGLE_MAPS_SERVER_API_KEY", "") or ""
         if not api_key:
             logger.warning("Google pub location refresh stopped: geocoding is not configured.")
-            self.stdout.write(
-                self.style.WARNING("Stopped: Google Geocoding is not configured.")
-            )
+            self.stdout.write(self.style.WARNING("Stopped: Google Geocoding is not configured."))
             return
 
         timeout = int(getattr(settings, "GOOGLE_MAPS_TIMEOUT", 8))
@@ -93,6 +94,18 @@ class Command(BaseCommand):
             ),
         ) as source:
             for pub in pubs:
+                # Persist before the request: errors and worker restarts must not
+                # turn one stale pub into a lookup every five minutes. The guarded
+                # update also prevents overlapping workers claiming the same row.
+                claimed = UserAddedPub.objects.filter(
+                    eligible,
+                    pk=pub.pk,
+                    active=True,
+                    location_source=UserAddedPub.LocationSource.GOOGLE_GEOCODE,
+                    location_synced_at=pub.location_synced_at,
+                ).update(location_refresh_after=timezone.now() + _RETRY_AFTER)
+                if not claimed:
+                    continue
                 try:
                     if pub.google_place_id:
                         candidate = source.geocode_place_id(pub.google_place_id)
@@ -101,12 +114,21 @@ class Command(BaseCommand):
                             address=pub.address,
                             city=pub.city,
                         )
+                except GoogleGeocodingDailyCapExceededError:
+                    # No further call is possible; let the next budget window retry.
+                    UserAddedPub.objects.filter(pk=pub.pk).update(location_refresh_after=None)
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"Stopped after {refreshed} refresh(es): Google daily cap reached."
+                        )
+                    )
+                    return
                 except GoogleGeocodingUnavailableError as exc:
+                    failed += 1
                     logger.warning(
-                        "Google pub location refresh stopped for pub id=%s cache_key=%s: %s",
+                        "Google pub location refresh failed for pub id=%s: %s",
                         pub.pk,
-                        pub.cache_key,
-                        type(exc).__name__,
+                        str(exc),
                     )
                     self.stdout.write(
                         self.style.WARNING(
@@ -118,9 +140,8 @@ class Command(BaseCommand):
                 if candidate is None:
                     failed += 1
                     logger.warning(
-                        "Google pub location lookup failed for pub id=%s cache_key=%s.",
+                        "Google pub location lookup failed for pub id=%s.",
                         pub.pk,
-                        pub.cache_key,
                     )
                     continue
 
@@ -130,6 +151,7 @@ class Command(BaseCommand):
                 if candidate.place_id:
                     pub.google_place_id = candidate.place_id
                 pub.location_synced_at = timezone.now()
+                pub.location_refresh_after = None
                 pub.save(
                     update_fields=[
                         "lat",
@@ -137,6 +159,7 @@ class Command(BaseCommand):
                         "cache_key",
                         "google_place_id",
                         "location_synced_at",
+                        "location_refresh_after",
                         "updated_at",
                     ]
                 )

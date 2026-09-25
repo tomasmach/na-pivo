@@ -15,6 +15,8 @@ module.exports = {
           baseUrl: '.',
           paths: {
             '@/*': ['src/*'],
+            // moduleResolution "node" ignores package exports; point per-icon imports at their types.
+            'lucide-react-native/icons/*': ['node_modules/lucide-react-native/dist/types/icons/*'],
           },
           types: ['jest', 'node'],
         },

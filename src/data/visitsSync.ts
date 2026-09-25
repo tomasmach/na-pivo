@@ -23,6 +23,7 @@ import { enqueueVisitOp, flushVisitsQueue } from './visitsQueue';
 import type { VisitEntry } from './visitsClient';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
+import { cancelQueuedPubBroadcasts } from './friendsQueue';
 
 /** AsyncStorage flag guarding the one-time history seed. */
 const SEEDED_KEY = 'na-pivo-visits-seeded';
@@ -52,6 +53,10 @@ export function buildVisitEntry(session: TallySession, updatedAt?: string): Visi
   if (isContextPubKey(session.pubKey)) return null;
   const { lat, lng } = decodeGeohash8(session.pubKey);
   const endedAt = lastDrinkAt(session);
+  const closedAt = session.closedAt ?? (session.archivedReason ? endedAt ?? session.startedAt : null);
+  const latestChange = [session.visitUpdatedAt, closedAt, endedAt, session.startedAt]
+    .filter((value): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value)))
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
   const entry: VisitEntry = {
     client_id: session.clientId,
     name: session.pubName,
@@ -61,7 +66,8 @@ export function buildVisitEntry(session: TallySession, updatedAt?: string): Visi
     ...(session.pubExternalId ? { external_id: session.pubExternalId } : {}),
     started_at: session.startedAt,
     ended_at: endedAt,
-    updated_at: updatedAt ?? endedAt ?? session.startedAt,
+    closed_at: closedAt,
+    updated_at: updatedAt ?? latestChange,
   };
   return entry;
 }
@@ -75,6 +81,7 @@ export function syncVisit(session: TallySession | null, updatedAt?: string): voi
   if (!session) return;
   const entry = buildVisitEntry(session, updatedAt);
   if (!entry) return;
+  if (entry.closed_at) void cancelQueuedPubBroadcasts(session.pubKey, entry.closed_at);
   void enqueueVisitOp({ op: 'upsert', clientId: entry.client_id, entry });
 }
 

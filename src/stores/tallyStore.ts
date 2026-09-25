@@ -89,6 +89,10 @@ export interface TallySession {
   /** Set only on archived (history) sessions — why the evening was closed. The
    *  live `current` session never carries it. Drives the resume affordance. */
   archivedReason?: ArchivedReason;
+  /** Explicit departure, persisted separately from the last counted drink. */
+  closedAt?: string;
+  /** Last close/resume revision, so retries cannot reopen a finished visit. */
+  visitUpdatedAt?: string;
 }
 
 /** The minimal place identity a count needs. */
@@ -265,9 +269,23 @@ export function migrateTally(persisted: unknown, version: number): TallyState {
   return { ...(base as TallyState), current, history };
 }
 
+function syncSessionLifecycle(session: TallySession): void {
+  // visitsSync reads this store too; resolve it only after the store exists.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { syncVisit } = require('@/data/visitsSync') as typeof import('@/data/visitsSync');
+  syncVisit(session);
+}
+
+function closeSession(session: TallySession, reason: ArchivedReason, nowMs = Date.now()): TallySession {
+  const closedAt = new Date(Math.max(nowMs, sessionLastActivityMs(session))).toISOString();
+  const archived = { ...session, archivedReason: reason, closedAt, visitUpdatedAt: closedAt };
+  syncSessionLifecycle(archived);
+  return archived;
+}
+
 export const useTallyStore = create<TallyState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       current: null,
       history: [],
 
@@ -296,7 +314,7 @@ export const useTallyStore = create<TallyState>()(
               state.current && state.current.pubKey !== pub.pubKey ? 'pub-change' : 'day-rollover';
             const history =
               state.current && state.current.drinks.length > 0
-                ? [{ ...state.current, archivedReason: reason }, ...state.history].slice(0, MAX_HISTORY)
+                ? [closeSession(state.current, reason), ...state.history].slice(0, MAX_HISTORY)
                 : state.history;
             return {
               current: {
@@ -572,17 +590,22 @@ export const useTallyStore = create<TallyState>()(
           if (!state.current) return state;
           // An empty pinned session is not an evening — just drop it.
           if (state.current.drinks.length === 0) return { current: null };
-          const archived: TallySession = { ...state.current, archivedReason: reason };
+          const archived = closeSession(state.current, reason);
           return { current: null, history: [archived, ...state.history].slice(0, MAX_HISTORY) };
         }),
 
       maybeAutoArchive: (nowMs = Date.now()) => {
+        // Runs on every foreground. Bail out before set(): persist rewrites the
+        // whole tally blob on every set, even one that returns the same state.
+        const pending = get().current;
+        if (!pending || pending.drinks.length === 0) return false;
+        if (nowMs - sessionLastActivityMs(pending) < IDLE_TIMEOUT_MS) return false;
         let archived = false;
         set((state) => {
           if (!state.current || state.current.drinks.length === 0) return state;
           if (nowMs - sessionLastActivityMs(state.current) < IDLE_TIMEOUT_MS) return state;
           archived = true;
-          const arch: TallySession = { ...state.current, archivedReason: 'timeout' };
+          const arch = closeSession(state.current, 'timeout', nowMs);
           return { current: null, history: [arch, ...state.history].slice(0, MAX_HISTORY) };
         });
         return archived;
@@ -601,7 +624,9 @@ export const useTallyStore = create<TallyState>()(
             return state;
           }
           resumed = true;
-          const { archivedReason: _omit, ...restored } = last;
+          const { archivedReason: _omit, closedAt: _closedAt, ...openSession } = last;
+          const restored = { ...openSession, visitUpdatedAt: new Date(nowMs).toISOString() };
+          syncSessionLifecycle(restored);
           return { current: restored, history: state.history.slice(1) };
         });
         return resumed;

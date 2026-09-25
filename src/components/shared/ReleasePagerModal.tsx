@@ -1,10 +1,11 @@
 /**
- * Full-screen three-card release note, used for the 2.1.0 "sorry, the old app
- * is back" message (see src/data/localReleaseNote.ts). Same bones as the
+ * Full-screen three-card release note for bundled updates (see
+ * src/data/localReleaseNote.ts). Same bones as the
  * onboarding pager in app/onboarding.tsx: stout background, illustration on
  * top, Baloo title, dots in the header, one amber CTA whose label says what
  * the tap does. The last card offers to open the store rating form; both
- * buttons there dismiss the note so it never shows twice.
+ * buttons there dismiss the note so it never shows twice. The 2.1.1 finale
+ * simply dismisses without opening the store.
  */
 
 import React, { useCallback, useRef, useState } from 'react';
@@ -38,33 +39,56 @@ interface Slide {
   image: number;
 }
 
-const copy = t.whatsNew.apology;
+const apology = t.whatsNew.apology;
+const fixed211 = t.whatsNew.fixed211;
 
-const SLIDES: Slide[] = [
+const APOLOGY_SLIDES: Slide[] = [
   {
     key: 'sorry',
-    title: copy.slide1Title,
-    body: copy.slide1Body,
-    next: copy.slide1Next,
+    title: apology.slide1Title,
+    body: apology.slide1Body,
+    next: apology.slide1Next,
     image: require('../../../assets/images/whats-new/sorry-overflow.png'),
   },
   {
     key: 'back',
-    title: copy.slide2Title,
-    body: copy.slide2Body,
-    next: copy.slide2Next,
+    title: apology.slide2Title,
+    body: apology.slide2Body,
+    next: apology.slide2Next,
     image: require('../../../assets/images/whats-new/back-classic.png'),
   },
   {
     key: 'review',
-    title: copy.slide3Title,
-    body: copy.slide3Body,
-    next: copy.slide3Review,
+    title: apology.slide3Title,
+    body: apology.slide3Body,
+    next: apology.slide3Review,
     image: require('../../../assets/images/whats-new/five-stars.png'),
   },
 ];
 
-const LAST_INDEX = SLIDES.length - 1;
+const FIXED_211_SLIDES: Slide[] = [
+  {
+    key: 'map',
+    title: fixed211.slide1Title,
+    body: fixed211.slide1Body,
+    next: fixed211.slide1Next,
+    image: require('../../../assets/images/whats-new/map-fixed-211.png'),
+  },
+  {
+    key: 'search',
+    title: fixed211.slide2Title,
+    body: fixed211.slide2Body,
+    next: fixed211.slide2Next,
+    image: require('../../../assets/images/whats-new/search-back-211.png'),
+  },
+  {
+    key: 'improvements',
+    title: fixed211.slide3Title,
+    body: fixed211.slide3Body,
+    next: fixed211.slide3Done,
+    image: require('../../../assets/images/whats-new/improvements-211.png'),
+  },
+];
 
 function PagerSlide({ item, width }: { item: Slide; width: number }) {
   const [artHeight, setArtHeight] = useState(0);
@@ -108,6 +132,10 @@ export function ReleasePagerModal({
 }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const is211 = version === '2.1.1';
+  const slides = is211 ? FIXED_211_SLIDES : APOLOGY_SLIDES;
+  const lastIndex = slides.length - 1;
+  const copy = is211 ? fixed211 : apology;
 
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
@@ -121,15 +149,17 @@ export function ReleasePagerModal({
   }, [onDismiss]);
 
   const handlePrimary = useCallback(() => {
-    if (indexRef.current >= LAST_INDEX) {
+    if (indexRef.current >= lastIndex) {
       finish();
-      void openStoreReview().catch(() => {
-        // The store app is missing or refused the URL; the note is done anyway.
-      });
+      if (!is211) {
+        void openStoreReview().catch(() => {
+          // The store app is missing or refused the URL; the note is done anyway.
+        });
+      }
       return;
     }
     listRef.current?.scrollToIndex({ index: indexRef.current + 1, animated: true });
-  }, [finish]);
+  }, [finish, is211, lastIndex]);
 
   const [viewabilityConfig] = useState(() => ({ itemVisiblePercentThreshold: 60 }));
   const [onViewableItemsChanged] = useState(
@@ -148,8 +178,8 @@ export function ReleasePagerModal({
     [width],
   );
 
-  const isLast = index === LAST_INDEX;
-  const primaryLabel = SLIDES[index]?.next ?? copy.slide3Review;
+  const isLast = index === lastIndex;
+  const primaryLabel = slides[index]?.next ?? copy.slide3Done;
   const secondaryLabel = isLast ? copy.slide3Done : copy.skip;
 
   return (
@@ -176,9 +206,9 @@ export function ReleasePagerModal({
           <View
             style={styles.dots}
             accessibilityRole="text"
-            accessibilityLabel={t.a11y.onboardingStep(index + 1, SLIDES.length)}
+            accessibilityLabel={t.a11y.onboardingStep(index + 1, slides.length)}
           >
-            {SLIDES.map((slide, i) => (
+            {slides.map((slide, i) => (
               <View
                 key={slide.key}
                 style={[styles.dot, i === index && styles.dotActive, i < index && styles.dotDone]}
@@ -190,7 +220,7 @@ export function ReleasePagerModal({
         <FlatList
           ref={listRef}
           style={styles.pager}
-          data={SLIDES}
+          data={slides}
           keyExtractor={(item) => item.key}
           renderItem={renderSlide}
           horizontal
@@ -211,17 +241,19 @@ export function ReleasePagerModal({
         </View>
 
         <View style={styles.secondaryCtaSlot}>
-          <Pressable
-            onPress={finish}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={secondaryLabel}
-            hitSlop={8}
-          >
-            <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {secondaryLabel}
-            </Text>
-          </Pressable>
+          {is211 && isLast ? null : (
+            <Pressable
+              onPress={finish}
+              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={secondaryLabel}
+              hitSlop={8}
+            >
+              <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {secondaryLabel}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </Modal>

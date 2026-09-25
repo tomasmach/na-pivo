@@ -83,7 +83,7 @@ const PresenceRow = memo(function PresenceRow({
 
   const showOnCompass = useCallback(() => {
     if (focusPubFromActivity({ cacheKey: presence.cacheKey, name: presence.pubName })) {
-      router.push('/' as Href);
+      router.push({ pathname: '/', params: { view: 'compass' } });
     }
   }, [presence.cacheKey, presence.pubName, router]);
 

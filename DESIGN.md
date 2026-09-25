@@ -6,6 +6,28 @@
 > Produktová část I a mockový jazyk 3.0 jsou reference pro případný návrat některé
 > funkce, ne zadání.
 
+## Schválená obnova plochých seznamů (22. 9. 2026)
+
+Varianta C pro **Moje přidané hospody** vrací na této obrazovce plochý seznam:
+`Colors.canvas` (`#15120F`), systémové písmo bez `fontFamily`, stávající `amber`
+(`#E8A317`), `foam` (`#FBF3E0`) a `mutedText` (`#A8896A`). Canvas je sdílený
+pojmenovaný token, nikoli soukromá barva obrazovky. `Colors.stout` dál znamená
+hnědý základ vydané 2.1 (`#1F1308`); jeho změna by přebarvila ostatní obrazovky.
+Toto rozhodnutí neobnovuje celé téma ani historickou architekturu 3.0.
+
+Seznam má okraj 20 bodů, záhlaví 52 bodů s titulkem 18/700, názvy 16/600,
+adresy a stavy 14 bodů. Řádky odděluje hairline z pěny s alfou 0,1; název a
+adresa se zalamují. Stav patří pod adresu jen při čekání nebo chybě. Pořadí je
+podle poslední změny od nejnovější. Dole je jediná jantarová akce vysoká nejméně
+48 bodů bez podtextu; výška může růst s textem. Prázdný seznam říká pouze
+„Zatím tu žádná není.“. Obnovení tažením, lokální fronta a stávající nabídka
+úprav zůstávají. Formulář a sdílené sheety drží současný vzhled 2.1.
+
+Následující tabulky palety a `MockType` popisují historickou 3.0 referenci,
+nikoli dnešní globální exporty. `src/mocks/mockTheme.ts` už v obnovené 2.1 není;
+`Fonts.display` a `Fonts.ui` stále načítají Baloo a Inter pro původní obrazovky.
+Další změna vzhledu potřebuje vlastní schválený rozsah, nepřebarvuje se tímto PR.
+
 Jeden dokument pro celý design Na pivo: **co produkt je** (Část I), **podle
 jakých pravidel se kreslí a staví** (Část II) a **co je rozpracované nebo
 nerozhodnuté** (Část III). Vznikl v srpnu 2026 sloučením `design-system.md`,

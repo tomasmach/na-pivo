@@ -18,8 +18,6 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AddedPubsCard } from '@/addedPubs/AddedPubsCard';
-import { PinMat } from '@/addedPubs/PinMat';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import {
   ChevronLeftIcon,
@@ -27,8 +25,6 @@ import {
   PencilIcon,
   RefreshCwIcon,
 } from '@/components/shared/IconGlyph';
-import { CounterCta } from '@/counter/CounterCta';
-import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import {
   loadAddedPubSubmissions,
   retryAddedPub,
@@ -38,15 +34,10 @@ import {
 import { t } from '@/i18n';
 import { usePubStore } from '@/stores/pubStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const SHEET_DISMISS_MS = 260;
-const STATE_ORDER: Record<AddedPubSubmission['syncState'], number> = {
-  failed: 0,
-  pending: 1,
-  synced: 2,
-};
 
 export default function MyAddedPubsScreen() {
   const router = useRouter();
@@ -56,6 +47,7 @@ export default function MyAddedPubsScreen() {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const sheetActionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -70,7 +62,10 @@ export default function MyAddedPubsScreen() {
       setLoadFailed(!synced);
       setSubmissions(await loadAddedPubSubmissions());
       bumpCatalogRevision();
+    } catch {
+      setLoadFailed(true);
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
   }, [bumpCatalogRevision]);
@@ -78,12 +73,22 @@ export default function MyAddedPubsScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setLoading(true);
       void (async () => {
-        const synced = await syncOwnAddedPubs();
-        const rows = await loadAddedPubSubmissions();
-        if (active) {
-          setLoadFailed(!synced);
-          setSubmissions(rows);
+        try {
+          const cached = await loadAddedPubSubmissions();
+          if (!active) return;
+          setSubmissions(cached);
+          const synced = await syncOwnAddedPubs();
+          const rows = await loadAddedPubSubmissions();
+          if (active) {
+            setLoadFailed(!synced);
+            setSubmissions(rows);
+          }
+        } catch {
+          if (active) setLoadFailed(true);
+        } finally {
+          if (active) setLoading(false);
         }
       })();
       return () => {
@@ -105,47 +110,19 @@ export default function MyAddedPubsScreen() {
   }, [bumpCatalogRevision, retryingId]);
 
   const sortedSubmissions = useMemo(
-    () => [...submissions].sort((left, right) => {
-      const stateDifference = STATE_ORDER[left.syncState] - STATE_ORDER[right.syncState];
-      if (stateDifference !== 0) return stateDifference;
-      return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
-    }),
-    [submissions],
-  );
-  const failedSubmissions = useMemo(
-    () => sortedSubmissions.filter((submission) => submission.syncState === 'failed'),
-    [sortedSubmissions],
-  );
-  const pendingCount = useMemo(
-    () => submissions.filter((submission) => submission.syncState === 'pending').length,
-    [submissions],
-  );
-  const syncedCount = useMemo(
-    () => submissions.filter((submission) => submission.syncState === 'synced').length,
-    [submissions],
-  );
-  const latestSubmission = useMemo(
     () => [...submissions].sort(
       (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
-    )[0] ?? null,
+    ),
     [submissions],
   );
   const selectedSubmission =
     submissions.find((submission) => submission.client_id === selectedId) ?? null;
-
-  const handleRetryAll = useCallback(async () => {
-    if (retryingId !== null || failedSubmissions.length === 0) return;
-    try {
-      for (const submission of failedSubmissions) {
-        setRetryingId(submission.client_id);
-        await retryAddedPub(submission.client_id);
-      }
-      setSubmissions(await loadAddedPubSubmissions());
-      bumpCatalogRevision();
-    } finally {
-      setRetryingId(null);
-    }
-  }, [bumpCatalogRevision, failedSubmissions, retryingId]);
+  const lastAddPress = useRef(0);
+  const handleAdd = useCallback(() => {
+    if (Date.now() - lastAddPress.current < 700) return;
+    lastAddPress.current = Date.now();
+    router.push('/add-pub');
+  }, [router]);
 
   const handleEdit = useCallback((submission: AddedPubSubmission) => {
     router.push({
@@ -157,6 +134,7 @@ export default function MyAddedPubsScreen() {
         address: submission.address ?? '',
         lat: String(submission.lat),
         lng: String(submission.lng),
+        ...(submission.failureReason === 'location-not-found' ? { needsLocation: '1' } : {}),
       },
     });
   }, [router]);
@@ -195,51 +173,12 @@ export default function MyAddedPubsScreen() {
     ];
   }, [handleEdit, handleRetry, retryingId, runAfterSheetClose, selectedSubmission]);
 
-  const nudge = useMemo<Nudge | null>(() => {
-    if (retryingId !== null) {
-      return { kind: 'dopito', label: t.addPub.retryingAll, onPress: () => undefined };
-    }
-    if (failedSubmissions.length > 0) {
-      return {
-        kind: 'counted',
-        text: t.addPub.failedCount(failedSubmissions.length),
-        undoLabel: t.addPub.retry,
-        onUndo: () => void handleRetryAll(),
-        actionAccessibilityLabel: t.addPub.retryAll,
-      };
-    }
-    if (loadFailed) {
-      return {
-        kind: 'counted',
-        text: t.addPub.loadFailed,
-        undoLabel: t.addPub.retry,
-        onUndo: () => void refresh(),
-        actionAccessibilityLabel: t.addPub.retryLoad,
-      };
-    }
-    if (pendingCount > 0) {
-      return {
-        kind: 'dopito',
-        label: t.addPub.pendingCount(pendingCount),
-        onPress: () => void refresh(),
-      };
-    }
-    return null;
-  }, [failedSubmissions.length, handleRetryAll, loadFailed, pendingCount, refresh, retryingId]);
-
-  const heroFact =
-    pendingCount > 0
-      ? t.addPub.pendingCount(pendingCount)
-      : failedSubmissions.length > 0
-        ? t.addPub.needsFixCount(failedSubmissions.length)
-        : t.addPub.allSynced;
-
   return (
     <View
       style={[
         styles.root,
         {
-          paddingTop: insets.top + 8,
+          paddingTop: insets.top,
           paddingBottom: Math.max(insets.bottom, Spacing.sm),
         },
       ]}
@@ -255,12 +194,10 @@ export default function MyAddedPubsScreen() {
         </Pressable>
         <Text
           style={styles.headerTitle}
-          numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {t.addPub.myPubsTitle}
         </Text>
-        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView
@@ -275,94 +212,101 @@ export default function MyAddedPubsScreen() {
           />
         }
       >
+        {loadFailed ? (
+          <Pressable
+            onPress={() => void refresh()}
+            disabled={refreshing}
+            accessibilityRole="button"
+            accessibilityLabel={t.addPub.retryLoad}
+            accessibilityState={{ disabled: refreshing }}
+            style={({ pressed }) => [styles.loadFailure, pressed && styles.pressed]}
+          >
+            <Text style={styles.meta} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.addPub.loadFailed}
+            </Text>
+            <Text style={styles.retryLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.addPub.retry}
+            </Text>
+          </Pressable>
+        ) : null}
         {submissions.length === 0 ? (
-          <View style={styles.empty}>
-            <PinMat count={0} width={96} />
-            <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.addPub.emptyTitle}
+          !loadFailed ? (
+            <Text
+              style={styles.emptyTitle}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+              accessibilityLiveRegion="polite"
+            >
+              {loading ? t.addPub.loading : t.addPub.emptyTitle}
             </Text>
-            <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.addPub.emptyBody}
-            </Text>
-          </View>
-        ) : (
-          <>
-            <AddedPubsCard
-              syncedCount={syncedCount}
-              totalCount={submissions.length}
-              caption={syncedCount === 0 ? t.addPub.noneSyncedCaption : t.addPub.syncedCaption}
-              headline={
-                latestSubmission === null ? null : t.addPub.latestPub(latestSubmission.name)
-              }
-              factStrong={heroFact}
-              factMuted={t.addPub.totalCount(submissions.length)}
-            />
-
-            <Text style={styles.listLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.addPub.listLabel}
-            </Text>
-            <View style={styles.rowsCard}>
-              {sortedSubmissions.map((submission, index) => {
-                const status =
-                  submission.syncState === 'pending'
-                    ? t.addPub.statusPending
-                    : submission.syncState === 'failed'
-                      ? t.addPub.statusFailed
-                      : t.addPub.statusSynced;
-                return (
-                  <Pressable
-                    key={submission.client_id}
-                    onPress={() => setSelectedId(submission.client_id)}
-                    style={({ pressed }) => [
-                      styles.row,
-                      index > 0 && styles.rowDivider,
-                      pressed && styles.rowPressed,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.addPub.openPubActions(submission.name)}
+          ) : null
+        ) : sortedSubmissions.map((submission, index) => {
+          const status = retryingId === submission.client_id
+            ? t.addPub.retrying
+            : submission.failureReason === 'location-not-found'
+              ? t.addPub.fixLocation
+              : submission.syncState === 'pending'
+                ? submission.pendingOperation === 'edit'
+                  ? t.addPub.statusPendingEdit
+                  : t.addPub.statusPendingCreate
+                : submission.syncState === 'failed'
+                  ? t.addPub.retry
+                  : null;
+          const address = [submission.address, submission.city].filter(Boolean).join(', ');
+          return (
+            <Pressable
+              key={submission.client_id}
+              onPress={() => submission.failureReason === 'location-not-found'
+                ? handleEdit(submission)
+                : setSelectedId(submission.client_id)}
+              style={({ pressed }) => [
+                styles.row,
+                index === 0 ? styles.firstRow : styles.rowDivider,
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={[
+                submission.failureReason === 'location-not-found'
+                  ? `${t.addPub.fixLocation}: ${submission.name}`
+                  : t.addPub.openPubActions(submission.name),
+                address,
+                status,
+              ].filter(Boolean).join('. ')}
+              accessibilityState={{ busy: retryingId === submission.client_id }}
+            >
+              <View style={styles.rowCopy}>
+                <Text style={styles.pubName} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {submission.name}
+                </Text>
+                {address ? (
+                  <Text style={styles.meta} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {address}
+                  </Text>
+                ) : null}
+                {status ? (
+                  <Text
+                    style={[styles.status, submission.syncState === 'failed' && styles.statusFailed]}
+                    maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    <View style={styles.rowCopy}>
-                      <Text
-                        style={styles.pubName}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={FontScaleCap.heading}
-                      >
-                        {submission.name}
-                      </Text>
-                      <Text
-                        style={styles.meta}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {[submission.address, submission.city].filter(Boolean).join(', ')}
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.status,
-                        submission.syncState === 'failed' && styles.statusFailed,
-                      ]}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {status}
-                    </Text>
-                    <ChevronRightIcon size={18} color={Colors.mutedText} />
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        )}
+                    {status}
+                  </Text>
+                ) : null}
+              </View>
+              <ChevronRightIcon size={18} color={Colors.mutedText} />
+            </Pressable>
+          );
+        })}
       </ScrollView>
 
-      <NudgeSlot nudge={nudge} />
-      <CounterCta
-        label={submissions.length === 0 ? t.addPub.addFirstCta : t.addPub.addCta}
-        subLabel={t.addPub.addCtaHint}
-        onPress={() => router.push('/add-pub')}
-        accessibilityLabel={submissions.length === 0 ? t.addPub.addFirstCta : t.addPub.addCta}
-      />
+      <Pressable
+        onPress={handleAdd}
+        style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={t.addPub.addCta}
+      >
+        <Text style={styles.primaryLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {t.addPub.addCta}
+        </Text>
+      </Pressable>
 
       <MoreSheet
         visible={selectedSubmission !== null}
@@ -377,127 +321,100 @@ export default function MyAddedPubsScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.stout,
-    paddingHorizontal: 24,
-    gap: 12,
+    backgroundColor: Colors.canvas,
+    paddingHorizontal: Spacing.lg,
   },
   header: {
-    minHeight: 44,
-    marginBottom: 8,
+    minHeight: 52,
+    marginBottom: 24,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.sm,
   },
   backButton: {
     width: 44,
     height: 44,
-    borderRadius: Radius.pill,
+    marginLeft: -Spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   headerTitle: {
     flex: 1,
-    textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    fontWeight: '700',
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.2,
     color: Colors.foam,
     includeFontPadding: false,
   },
-  headerSpacer: {
-    width: 44,
-    height: 44,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    flexGrow: 1,
-    paddingBottom: 12,
-  },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
-    paddingHorizontal: 12,
-  },
+  scroll: { flex: 1 },
+  content: { flexGrow: 1, paddingBottom: Spacing.lg },
   emptyTitle: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
-    color: Colors.foam,
-    textAlign: 'center',
-    includeFontPadding: false,
-  },
-  emptyBody: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.mutedText,
-    textAlign: 'center',
-    includeFontPadding: false,
-  },
-  listLabel: {
-    marginTop: 24,
-    marginBottom: 8,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
+    marginTop: Spacing.xxl,
+    fontSize: 18,
+    lineHeight: 24,
     color: Colors.mutedText,
     includeFontPadding: false,
-  },
-  rowsCard: {
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingVertical: 4,
   },
   row: {
-    minHeight: 64,
+    minHeight: 76,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    gap: Spacing.sm,
+    paddingVertical: Spacing.lg,
   },
+  firstRow: { paddingTop: Spacing.md },
   rowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  rowPressed: {
-    opacity: 0.6,
-  },
-  rowCopy: {
-    flex: 1,
-    gap: 2,
-    minWidth: 0,
-  },
+  rowCopy: { flex: 1, minWidth: 0 },
   pubName: {
-    flexShrink: 1,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '600',
     fontSize: 16,
+    lineHeight: 21,
     color: Colors.foam,
     includeFontPadding: false,
   },
   meta: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
+    marginTop: Spacing.xs,
+    fontSize: 14,
+    lineHeight: 19,
     color: Colors.mutedText,
     includeFontPadding: false,
   },
   status: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
+    marginTop: Spacing.sm,
+    fontWeight: '500',
+    fontSize: 14,
+    lineHeight: 19,
     color: Colors.mutedText,
     includeFontPadding: false,
   },
-  statusFailed: {
+  statusFailed: { color: Colors.amber },
+  loadFailure: { paddingVertical: Spacing.md, minHeight: 44 },
+  retryLabel: {
+    marginTop: Spacing.sm,
+    fontSize: 14,
+    fontWeight: '500',
     color: Colors.amber,
   },
-  pressed: {
-    opacity: 0.78,
+  primary: {
+    minHeight: 48,
+    marginTop: Spacing.md,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.amber,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  primaryLabel: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
+    color: Colors.canvas,
+    includeFontPadding: false,
+  },
+  pressed: { opacity: 0.65 },
 });

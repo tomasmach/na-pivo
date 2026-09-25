@@ -41,6 +41,7 @@ from django.conf import settings
 from django.utils import timezone as dj_tz
 
 from pubs.enrichment import (
+    FirmyDailyCapExceededError,
     FirmyHoursSource,
     classify_venue,
     geohash8,
@@ -462,13 +463,14 @@ def _upsert_enrich_task(
 
 
 def _close_enrich_task(cache_key: str) -> None:
-    """Mark any open EnrichTask for *cache_key* as done.
+    """Close any EnrichTask for *cache_key* and clear its stale error.
 
-    Called after a successful synchronous enrich so the background
-    refresh_hours command does not re-fetch a pub we just refreshed.
+    A synchronous enrich can succeed after a task exhausted its retries. Clear
+    that terminal task too; the pub now has a successful cached result.
     """
-    EnrichTask.objects.filter(cache_key=cache_key, done=False).update(
+    EnrichTask.objects.filter(cache_key=cache_key).update(
         done=True,
+        error=None,
         last_attempt_at=dj_tz.now(),
     )
 
@@ -508,7 +510,7 @@ def _enrich_sync(
 
     try:
         raw = source.fetch(name, lat, lng, city=city)
-    except RuntimeError as exc:
+    except FirmyDailyCapExceededError as exc:
         # Daily cap exceeded — treat as transient error
         logger.warning("firmy: daily cap exceeded for %r: %s", name, exc)
         return _save_error_row(cache_key, name, lat, lng, exc, now)
@@ -774,8 +776,8 @@ def get_or_enrich(
                 )
             row = _enrich_sync(source, key, name, lat, lng, city)
             budget_remaining -= 1
-            # If the sync fetch succeeded (not a transient error), close any
-            # open EnrichTask for this key so refresh_hours won't re-fetch it.
+            # If the sync fetch succeeded, close the EnrichTask and clear any
+            # stale error, including one from exhausted background retries.
             if row.status != PubHours.Status.ERROR:
                 _close_enrich_task(key)
             results.append(_result_from_row(row))

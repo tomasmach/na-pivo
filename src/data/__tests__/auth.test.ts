@@ -878,8 +878,24 @@ describe('validateAccountSession', () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchAccountProfile — parseMapper + extended parseAchievements (spec §5)
+// fetchAccountProfile — account settings and profile blocks
 // ---------------------------------------------------------------------------
+describe('fetchAccountProfile legacy settings', () => {
+  it.each([
+    [{ hide_pub_names: true }, true],
+    [{ hide_pub_names: false }, false],
+    [{ hide_pub_names: true, settings: { hide_pub_names: false } }, false],
+    [{ hide_pub_names: false, settings: { hide_pub_names: true } }, true],
+  ])('restores hidePubNames from one response (%j)', async (fields, expected) => {
+    const spy = installFetch(fetchResolving(200, { id: 'acc', ...fields }));
+
+    const profile = await auth.fetchAccountProfile();
+
+    expect(profile?.settings?.hidePubNames).toBe(expected);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('fetchAccountProfile — Mapér block + new badges', () => {
   it('parses the mapper block (xp key, levels, xp_rules) and the 5 new badges', async () => {
     installFetch(

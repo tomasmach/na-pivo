@@ -229,12 +229,12 @@ export function installPubAmenitiesSync(): () => void {
  *   - hydrateVotes does the actual per-(pubKey, amenityKey) LWW; we run it under
  *     suppressSync so the merged-in entries are not echoed back as upserts.
  */
-export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
+export async function restorePubAmenities(signal?: AbortSignal): Promise<boolean> {
   await flushPubAmenitiesQueue();
   const pendingDeletes = await getQueuedAmenityDeletes();
   const serverVotes = await fetchMyAmenityVotes(signal);
   if (serverVotes === null) {
-    return;
+    return false;
   }
 
   // Map wire → entries, keyed by (pubIdentityKey, amenityKey). Track the live
@@ -286,4 +286,5 @@ export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
   }
 
   await flushPubAmenitiesQueue();
+  return true;
 }

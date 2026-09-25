@@ -21,7 +21,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Linking } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Linking, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
@@ -253,28 +253,19 @@ function PermissionGate({
       <Text style={styles.gateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
         {t.counter.permTitle}
       </Text>
-      <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.counter.permBody}
-      </Text>
+      {Platform.OS !== 'ios' && (
+        <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
+          {t.counter.permBody}
+        </Text>
+      )}
       <View style={styles.gateButton}>
         <GlowButton
-          label={t.counter.permCta}
-          onPress={requestPermission}
+          label={permissionState === 'denied' ? t.counter.permOpenSettings : t.counter.permCta}
+          onPress={permissionState === 'denied' ? () => Linking.openSettings() : requestPermission}
           glow="soft"
-          accessibilityLabel={t.a11y.counterRequestLocation}
+          accessibilityLabel={permissionState === 'denied' ? t.counter.permOpenSettings : t.a11y.counterRequestLocation}
         />
       </View>
-      {permissionState === 'denied' && (
-        <View style={styles.gateButtonSecondary}>
-          <GlowButton
-            label={t.counter.permOpenSettings}
-            onPress={() => Linking.openSettings()}
-            variant="secondary"
-            glow="none"
-            height={50}
-          />
-        </View>
-      )}
       <Pressable
         onPress={onLogOutside}
         style={styles.gateLink}
@@ -408,6 +399,7 @@ function Tacek({
   const activeTourRun = useToursStore((s) => s.activeRun);
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
+  const [checkInVisitClientId, setCheckInVisitClientId] = useState<string | null>(null);
   /** Session clientId whose "Dopito?" nudge was already shown and answered. */
   const [dopitoNudgedFor, setDopitoNudgedFor] = useState<string | null>(null);
 
@@ -486,6 +478,7 @@ function Tacek({
     setNudgeCell(cell);
     setLastCounted(null);
     setCheckInBeerName(null);
+    setCheckInVisitClientId(null);
     setCheckInSheetOpen(false);
     setPendingRapid(null);
   }
@@ -796,11 +789,17 @@ function Tacek({
       // Merge into the local community menu so the price shows instantly across
       // the app. Pub only — an outside beer must never enter community data.
       if (pub && drinkType === 'beer' && typeof beer.priceCzk === 'number') {
-        setOverride(cell, { beers: mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk }) });
+        const nextMenu = mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk });
+        // Same price already on the menu: skip the persisted write and the
+        // re-render of every tab that reads community overrides.
+        if (nextMenu !== menu) setOverride(cell, { beers: nextMenu });
       }
       // The check-in prompt is now-semantic and pub-bound — skip it for a
       // backdated or outside log.
-      if (pub && !atOverride && drinkType === 'beer') setCheckInBeerName(beer.name);
+      if (pub && !atOverride && drinkType === 'beer') {
+        setCheckInBeerName(beer.name);
+        setCheckInVisitClientId(useTallyStore.getState().current?.clientId ?? null);
+      }
 
       const entry = buildDrinkEntry(
         {
@@ -1300,16 +1299,18 @@ function Tacek({
           text: t.counter.doneConfirm,
           onPress: () => {
             archiveCurrent('manual');
+            setBroadcastCell(null);
             setDopitoNudgedFor(clientId);
             setLastCounted(null);
-            setCheckInBeerName(null);
+            setCheckInBeerName(pub && isThisSession ? latestBeer?.beerName ?? null : null);
+            setCheckInVisitClientId(clientId);
             void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
             if (hapticEnabled) fireLightImpactHaptic();
           },
         },
       ],
     });
-  }, [archiveCurrent, current, hapticEnabled]);
+  }, [archiveCurrent, current, hapticEnabled, isThisSession, latestBeer, pub]);
 
   const handleResume = useCallback(() => {
     if (!cell) return;
@@ -1327,14 +1328,16 @@ function Tacek({
     trackUiInteraction('counter_share_friends', 'share');
     setSharingWithFriends(true);
     const shareClientId = isThisSession && current?.clientId ? current.clientId : generateUuidV4();
-    const result = await shareFriendPubActivity(pub, '', shareClientId);
+    const startedAt = new Date().toISOString();
+    const result = await shareFriendPubActivity(pub, '', shareClientId, undefined, startedAt);
     setSharingWithFriends(false);
+    if (useTallyStore.getState().history.some((session) => session.clientId === shareClientId && session.closedAt)) return;
     if (result.ok) {
       setBroadcastCell(cell);
       showToast(t.friends.shareSuccess);
       if (hapticEnabled) fireLightImpactHaptic();
     } else if (isRetriableFriendError(result)) {
-      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '' } });
+      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '', startedAt } });
       setBroadcastCell(cell);
       showToast(t.friends.composeQueued);
     } else {
@@ -1595,7 +1598,7 @@ function Tacek({
       <CounterMoreSheet
         visible={moreVisible}
         onClose={closeMore}
-        onDone={count > 0 ? () => runAfterSheetClose(handleDone) : undefined}
+        onDone={sessionDrinks.length > 0 ? () => runAfterSheetClose(handleDone) : undefined}
         onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
         onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
         broadcasted={broadcasted}
@@ -1662,7 +1665,7 @@ function Tacek({
           beerName={checkInBeerName}
           pub={pub}
           pubKey={cell}
-          visitClientId={isThisSession ? current?.clientId : null}
+          visitClientId={checkInVisitClientId ?? (isThisSession ? current?.clientId : null)}
           onClose={() => setCheckInSheetOpen(false)}
           onSubmitted={() => setCheckInBeerName(null)}
         />
@@ -1690,9 +1693,21 @@ export default function CounterScreen({
   onMoreAvailability,
 }: CounterScreenProps = {}) {
   const router = useRouter();
-  const { candidates, selected, selectPub, permissionState, requestPermission, loading, retry } =
-    useNearbyPub();
+  const {
+    candidates,
+    selected,
+    selectPub,
+    permissionState,
+    requestPermission,
+    loading,
+    retry,
+    setPicking,
+  } = useNearbyPub({ pauseWhenPinned: true });
   const [pickerOpen, setPickerOpen] = useState(false);
+  // The picker lists distances, so GPS stays live while it is open.
+  useEffect(() => {
+    setPicking(pickerOpen);
+  }, [pickerOpen, setPicking]);
   // "Mimo hospodu" mode, restored from a live outside session so returning to
   // the tab mid-evening lands back in it (useNearbyPub ignores ctx sessions).
   const [outsideContext, setOutsideContext] = useState<OutsidePlaceContext | null>(() => {
@@ -1863,7 +1878,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   gateButton: { alignSelf: 'stretch', marginTop: Spacing.sm },
-  gateButtonSecondary: { alignSelf: 'stretch', marginTop: -Spacing.xs },
   gateLink: {
     flexDirection: 'row',
     alignItems: 'center',

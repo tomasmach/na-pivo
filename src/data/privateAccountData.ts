@@ -16,6 +16,7 @@ import { clearBeerCheckinsQueue } from './beerCheckinsQueue';
 import { clearFeedbackQueue } from './feedbackQueue';
 import { clearFriendsQueue } from './friendsQueue';
 import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
+import { resetForegroundPulls } from './foregroundPulls';
 import { clearNightsQueue } from './nightsQueue';
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
@@ -120,6 +121,9 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // clear can yield, so it cannot be enqueued under the replacement account.
   cancelDrinksHistorySeed();
   const toursCleanup = clearToursPrivateData();
+  // The wiped ratings, votes and own pubs must come back on the next foreground
+  // even when the same account signs in again within the pull interval.
+  resetForegroundPulls();
   useTallyStore.setState({ current: null, history: [] });
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });

@@ -62,6 +62,12 @@ export const usePartyGroupsStore = create<PartyGroupsState>()(
 
       pruneMemberIds: (validIds) => {
         const valid = new Set(validIds);
+        // Nothing to prune: skip set() so ComposeSheet keeps its groups
+        // reference and persist does not rewrite the blob.
+        const clean = get().groups.every(
+          (group) => group.memberIds.length > 0 && group.memberIds.every((id) => valid.has(id)),
+        );
+        if (clean) return;
         set((state) => ({
           groups: state.groups
             .map((group) => ({

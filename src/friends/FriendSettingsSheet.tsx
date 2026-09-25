@@ -80,8 +80,6 @@ function FriendSettingsSheet({
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
   const friendPushEnabled = useSettingsStore((s) => s.friendPushEnabled);
-  const setFriendPushEnabled = useSettingsStore((s) => s.setFriendPushEnabled);
-  const setFriendPushOptedOut = useSettingsStore((s) => s.setFriendPushOptedOut);
   const [pushBusy, setPushBusy] = useState(false);
 
   // Optimistic display state. `draftRef` mirrors it so the (stable) handlers can
@@ -109,21 +107,15 @@ function FriendSettingsSheet({
   // Push opt-in toggle (§E3): turning on requests the notification permission and
   // registers the device token; turning off persists an explicit opt-out (so the
   // launch/focus re-register can't flip it back on) AND disables the device
-  // server-side so delivery actually stops. Optimistic with revert-on-fail, like
-  // the ghost/quiet toggles.
+  // server-side so delivery actually stops. Failed delivery is retried on return.
   const handlePushToggle = useCallback(() => {
     if (pushBusy) return;
     if (friendPushEnabled) {
-      setFriendPushEnabled(false);
-      setFriendPushOptedOut(true);
       setPushBusy(true);
       void disableFriendPush().then((ok) => {
         if (!mountedRef.current) return;
         setPushBusy(false);
         if (!ok) {
-          // Server disable failed → revert so the toggle reflects reality.
-          setFriendPushEnabled(true);
-          setFriendPushOptedOut(false);
           showToast(t.friends.pushDisableError, {
             icon: <XIcon size={18} color={Colors.closed} />,
           });
@@ -135,13 +127,13 @@ function FriendSettingsSheet({
     void registerFriendPush().then((result) => {
       if (!mountedRef.current) return;
       setPushBusy(false);
-      if (!result.ok) {
-        showToast(t.friends.pushDeniedHint, {
+      if (!result.ok && result.reason !== 'cancelled') {
+        showToast(result.reason === 'denied' ? t.friends.pushDeniedHint : t.friends.pushEnableError, {
           icon: <XIcon size={18} color={Colors.amber} />,
         });
       }
     });
-  }, [friendPushEnabled, pushBusy, setFriendPushEnabled, setFriendPushOptedOut, showToast]);
+  }, [friendPushEnabled, pushBusy, showToast]);
 
   // Debounced hour PATCH bookkeeping.
   const hourTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

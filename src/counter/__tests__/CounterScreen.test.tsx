@@ -75,6 +75,7 @@ jest.mock('@/components/shared/AppDialog', () => ({
 // The modals wrap RN Modal/TextInput (not in the lean react-native test mock);
 // they aren't under test here, so stub them out.
 jest.mock('@/counter/BeerFormModal', () => ({ BeerFormModal: jest.fn(() => null) }));
+jest.mock('@/counter/BeerCheckInSheet', () => ({ BeerCheckInSheet: jest.fn(() => null) }));
 jest.mock('@/counter/PubPickerModal', () => ({ PubPickerModal: jest.fn(() => null) }));
 jest.mock('@/components/contribute/ScanMenuSheet', () => ({ ScanMenuSheet: jest.fn(() => null) }));
 jest.mock('@/counter/ScannedDrinkPicker', () => ({ ScannedDrinkPicker: jest.fn(() => null) }));
@@ -183,6 +184,8 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { geohash8 } from '@/data/geohash';
 import { BeerFormModal } from '@/counter/BeerFormModal';
+import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
+import { CounterMoreSheet } from '@/counter/CounterMoreSheet';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
@@ -204,6 +207,7 @@ function nearbyState(over: Record<string, unknown> = {}) {
     requestPermission: jest.fn(),
     loading: false,
     retry: jest.fn(),
+    setPicking: jest.fn(),
     ...over,
   };
 }
@@ -327,6 +331,50 @@ afterEach(() => {
 // ─── 1. The CTA state machine ────────────────────────────────────────────────
 
 describe('CounterScreen CTA state machine', () => {
+  it('offers a review of the last beer after Dopito and keeps the finished visit', () => {
+    useTallyStore.setState({
+      current: session({ drinks: [beerDrink('first', 60), { ...beerDrink('last', 30), beerName: 'Kozel' }] }),
+      history: [],
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    act(() => {
+      renderer.root.findByType(CounterMoreSheet).props.onDone();
+      jest.advanceTimersByTime(1000);
+    });
+    act(() => {
+      const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+      dialog.buttons.find((button: { text: string }) => button.text === copy.counter.doneConfirm).onPress();
+    });
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(surfaceText(renderer)).toContain(copy.counter.checkinNudge);
+    act(() => surface(renderer, copy.counter.checkinNudgeCta).props.onPress());
+    expect(lastProps(BeerCheckInSheet)).toMatchObject({ beerName: 'Kozel', visitClientId: 'session-1' });
+    act(() => lastProps(BeerCheckInSheet).onClose());
+    expect(useTallyStore.getState().current).toBeNull();
+    act(() => surface(renderer, copy.a11y.counterCheckinDismiss).props.onPress());
+    expect(surfaceText(renderer)).not.toContain(copy.counter.checkinNudge);
+  });
+
+  it('does not offer a review when Dopito is cancelled', () => {
+    useTallyStore.setState({
+      current: session({ drinks: [beerDrink('first', 30)] }),
+      history: [],
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    act(() => {
+      renderer.root.findByType(CounterMoreSheet).props.onDone();
+      jest.advanceTimersByTime(1000);
+    });
+    act(() => {
+      const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+      dialog.buttons.find((button: { text: string }) => button.text === copy.counter.cancel).onPress();
+    });
+    expect(useTallyStore.getState().current?.clientId).toBe('session-1');
+    expect(surfaceText(renderer)).not.toContain(copy.counter.checkinNudge);
+  });
+
   it('with no place resolved the CTA opens the pub picker and writes no drink', () => {
     useNearbyPub.mockReturnValue(nearbyState({ selected: null, candidates: [] }));
     const renderer = render();
@@ -477,6 +525,29 @@ describe('CounterScreen CTA state machine', () => {
 
     expect(groups.map((group: any) => group.name)).toEqual(['Plzeň', 'Kozel']);
     expect(groups[0].beers.map((beer: any) => beer.volumeMl)).toEqual([300, 500]);
+  });
+
+  it('can finish an evening containing only a soft drink through the overflow menu', () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    useTallyStore.setState({ current: session({ drinks: [{
+      ...beerDrink('kofola-1', 30), beerName: 'Kofola', drinkType: 'soft_drink',
+    }] }), history: [] });
+    const renderer = render();
+    const { CounterMoreSheet } = require('../CounterMoreSheet');
+    const more = renderer.root.findByType(CounterMoreSheet);
+    expect(more.props.onDone).toEqual(expect.any(Function));
+    act(() => {
+      more.props.onDone();
+      jest.advanceTimersByTime(500);
+    });
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(dialog.title).toBe(copy.counter.doneTitle);
+    act(() => dialog.buttons.find((button: { text: string }) => button.text === copy.counter.doneConfirm).onPress());
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(useTallyStore.getState().history[0]).toMatchObject({
+      archivedReason: 'manual', closedAt: expect.any(String),
+      drinks: [expect.objectContaining({ drinkType: 'soft_drink', beerName: 'Kofola' })],
+    });
   });
 });
 
@@ -958,6 +1029,15 @@ describe('CounterScreen outside a pub', () => {
 // ─── 7. Permission gate ──────────────────────────────────────────────────────
 
 describe('CounterScreen permission gate', () => {
+  it('shows only the settings action after location was denied', () => {
+    useNearbyPub.mockReturnValue(
+      nearbyState({ permissionState: 'denied', selected: null, candidates: [] }),
+    );
+    const renderer = render();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: copy.counter.permOpenSettings })).toHaveLength(1);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: copy.a11y.counterRequestLocation })).toHaveLength(0);
+  });
+
   it('renders the gate and still lets you start an outside evening', () => {
     useNearbyPub.mockReturnValue(
       nearbyState({ permissionState: 'undetermined', selected: null, candidates: [] }),
@@ -965,6 +1045,7 @@ describe('CounterScreen permission gate', () => {
     const renderer = render();
 
     expect(surfaceText(renderer)).toContain(copy.counter.permTitle);
+    expect(surfaceText(renderer)).not.toContain(copy.counter.permBody);
 
     act(() => surface(renderer, copy.counter.outsideNoLocationCta).props.onPress());
 

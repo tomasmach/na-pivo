@@ -14,6 +14,24 @@ export type PushPermissionStatus = 'granted' | 'denied' | 'undetermined';
 const REQUEST_TIMEOUT_MS = 8000;
 export const PUSH_TOKEN_KEY = 'na-pivo-expo-push-token';
 
+// Installation-wide (not account data): a later opt-out must survive a timed-out
+// PUT that is still running on the server, including across an app restart.
+const REVISION_KEY = 'na-pivo-push-device-revision';
+let revisionWrite: Promise<unknown> = Promise.resolve();
+
+function nextRevision(): Promise<number> {
+  const result = revisionWrite.then(async () => {
+    const saved = Number(await AsyncStorage.getItem(REVISION_KEY));
+    const previous = Number.isSafeInteger(saved) && saved >= 0 ? saved : 0;
+    const revision = Math.max(Date.now(), previous + 1);
+    if (!Number.isSafeInteger(revision)) throw new Error('Invalid push device revision');
+    await AsyncStorage.setItem(REVISION_KEY, String(revision));
+    return revision;
+  });
+  revisionWrite = result.catch(() => undefined);
+  return result;
+}
+
 async function handleUnauthorized(session: AccountSession, source: string): Promise<void> {
   await clearCachedAnonymousAccount(session, { source, endpoint: '/v1/push-device' });
 }
@@ -38,6 +56,7 @@ export async function registerPushDevice(
         Authorization: `Bearer ${session.token}`,
       },
       body: JSON.stringify({
+        client_revision: await nextRevision(),
         push_token: pushToken,
         platform: Platform.OS === 'android' || Platform.OS === 'ios' ? Platform.OS : 'unknown',
         permission_status: permissionStatus,
@@ -59,7 +78,8 @@ export async function registerPushDevice(
       });
       return false;
     }
-    return true;
+    const result = await resp.json();
+    return result.applied !== false;
   } catch (err) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';
     if (!signal?.aborted && !isAbortError) {
@@ -93,7 +113,7 @@ export async function disablePushDevice(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
       },
-      body: JSON.stringify({ push_token: pushToken }),
+      body: JSON.stringify({ push_token: pushToken, client_revision: await nextRevision() }),
       signal: abort.signal,
     });
 
@@ -147,7 +167,7 @@ export async function disableCachedPushDeviceWithBearer(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${bearerToken}`,
       },
-      body: JSON.stringify({ push_token: pushToken }),
+      body: JSON.stringify({ push_token: pushToken, client_revision: await nextRevision() }),
       signal: abort.signal,
     });
 
