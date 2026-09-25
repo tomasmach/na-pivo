@@ -1009,20 +1009,8 @@ msgstr "Ping the crew when you sit down."
 msgid "Jdeš na pivo? Cinkni a parta to hned ví. Kámoši kývnou, jestli dorazí."
 msgstr "Going for a beer? Ping and the crew knows right away. Your mates say whether they are coming."
 
-msgid "Deník a mapování hospod"
-msgstr "Diary and pub mapping"
-
 msgid "Ráno víš, kolik to stálo"
 msgstr "In the morning you know what it cost"
-
-msgid "Piva, ceny, hospoda i poznámky zůstanou v deníku. A napíšeš si, jestli se tam vrátíš."
-msgstr "Beers, prices, the pub and your notes stay in the diary, along with whether you would go back."
-
-msgid "Zmapuj hospodu pro ostatní"
-msgstr "Map the pub for others"
-
-msgid "Šipky, kulečník, zahrádka nebo sport v telce. Co zapíšeš ty, uvidí další, kdo hledá, kam zapadnout."
-msgstr "Darts, pool, a beer garden or sport on TV. What you add helps the next person looking for a place to settle in."
 
 msgid "Účet"
 msgstr "The bill"
@@ -1086,3 +1074,33 @@ msgstr "Email me"
 
 msgid "Ťukni a čárkuj!"
 msgstr "Tap to tally!"
+
+msgid "Co dalšího Na pivo umí"
+msgstr "What else Na pivo does"
+
+msgid "Piva, ceny i hospody zůstanou v deníku."
+msgstr "Beers, prices and pubs stay in your diary."
+
+msgid "Zmapuj hospodu"
+msgstr "Map a pub"
+
+msgid "Šipky, kulečník nebo zahrádka. Co zapíšeš ty, uvidí další."
+msgstr "Darts, pool or a beer garden. What you add, the next person sees."
+
+msgid "Staň se FotoPivařem"
+msgstr "Win Beer Snap"
+
+msgid "Soutěž o nejlepší pivní fotku. Každých 14 dní nové kolo."
+msgstr "A contest for the best beer photo. A new round every 14 days."
+
+msgid "Stoupej po levelech"
+msgstr "Level up"
+
+msgid "Za piva sbíráš XP jako Pivař, za zmapované hospody jako Mapér."
+msgstr "Beers earn you XP as a Drinker, mapped pubs as a Mapper."
+
+msgid "Naplánuj tah po hospodách a pošli partě odkaz."
+msgstr "Plan a pub crawl and send the crew a link."
+
+msgid "Brzy"
+msgstr "Soon"

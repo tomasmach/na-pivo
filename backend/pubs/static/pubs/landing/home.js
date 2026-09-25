@@ -139,24 +139,33 @@ const revealer = new IntersectionObserver((entries) => {
 }, { threshold: 0.3 });
 document.querySelectorAll('[data-reveal]').forEach((el) => revealer.observe(el));
 
-// The map dot follows the printed route, from "you are here" to the pub, as the map passes through the viewport.
+// The map holds still while scrolling walks the "you are here" dot along the printed route to the pub;
+// once the dot arrives the page scrolls on. Reduced motion leaves the map static with the dot at the start.
+const mapRun = document.querySelector('[data-map-run]');
 const walk = document.querySelector('[data-walk]');
-if (walk) {
+if (mapRun && walk && !reduced) {
+  mapRun.classList.add('is-live');
   const route = walk.querySelector('[data-route]');
   const walker = walk.querySelector('[data-walker]');
+  const pan = mapRun.querySelector('[data-map-pan]');
   const total = route.getTotalLength();
   let queued = false;
   const step = () => {
     queued = false;
-    const r = walk.getBoundingClientRect();
+    const r = mapRun.getBoundingClientRect();
     if (r.bottom < 0 || r.top > innerHeight) return;
-    // Starts once the top third of the map is well on screen and takes a comfortable stretch of scrolling,
-    // so on a phone, where the map is short, the walk does not finish in one flick.
-    const distance = Math.max(r.height * 0.4, innerHeight * 0.35);
-    const progress = Math.min(Math.max((innerHeight * 0.6 - (r.top + r.height * 0.3)) / distance, 0), 1);
+    const held = Math.min(Math.max(-r.top / (r.height - innerHeight), 0), 1);
+    // A short pause at both ends, so the start and the arrival both register.
+    const progress = Math.min(Math.max((held - 0.08) / 0.8, 0), 1);
     const p = route.getPointAtLength(total * progress);
     walker.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`);
     walk.classList.toggle('is-there', progress >= 1);
+    // When the map is wider than the screen, pan it so the dot stays near the middle.
+    const frameW = pan.parentElement.clientWidth;
+    const panW = pan.offsetWidth;
+    const dotX = (p.x / 1536) * panW;
+    const shift = panW > frameW ? Math.min(Math.max(frameW / 2 - dotX, frameW - panW), 0) : 0;
+    pan.style.transform = `translateX(${shift.toFixed(1)}px)`;
   };
   addEventListener('scroll', () => {
     if (queued) return;
@@ -164,4 +173,118 @@ if (walk) {
     requestAnimationFrame(step);
   }, { passive: true });
   step();
+}
+
+// The bill spike. Slips start pinned on the bar wall. Scrolling through the section takes them down one by one:
+// each slip leaves the wall, tips over flat in 3D, spins over the spike and slides down the nail onto the pile.
+// Reduced motion keeps the static layout from the CSS.
+const spikeSection = document.querySelector('[data-spike]');
+if (spikeSection && !reduced) {
+  const stage = spikeSection.querySelector('.spike-stage');
+  const nail = spikeSection.querySelector('[data-spike-nail]');
+  const base = spikeSection.querySelector('[data-spike-base]');
+  const slips = [...spikeSection.querySelectorAll('.slip')];
+  const n = slips.length;
+  spikeSection.style.setProperty('--slips', n);
+  spikeSection.classList.add('is-live');
+
+  const FLAT = 62; // degrees a spiked slip is tipped back towards lying flat, seen from above
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+  const noise = (i, k) => {
+    const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453;
+    return x - Math.floor(x) - 0.5;
+  };
+  let geo = null;
+
+  function measure() {
+    const W = stage.clientWidth;
+    const H = stage.clientHeight;
+    // Where the counter of the cover-fitted print lands on screen (object-position 55 % 60 %).
+    const scale = Math.max(W / 1536, H / 1024);
+    const imgH = 1024 * scale;
+    const counterY = (H - imgH) * 0.6 + 0.705 * imgH;
+    const wide = W >= 1100;
+    const cols = wide ? 3 : 2;
+    const rows = Math.ceil(n / cols);
+    // Wall area between the taps and the darts board on wide screens; the middle of the wall on narrow ones.
+    const x0 = wide ? W * 0.17 : W * 0.04;
+    const x1 = wide ? W * 0.72 : W * 0.96;
+    const y0 = Math.max(70, counterY * 0.12);
+    const y1 = counterY - (wide ? 40 : 170);
+    const cellW = (x1 - x0) / cols;
+    const cellH = (y1 - y0) / rows;
+    const width = Math.min(cellW * 0.92, 320);
+    slips.forEach((slip) => { slip.style.width = `${width}px`; });
+    const heights = slips.map((slip) => slip.offsetHeight);
+    const spikeX = wide ? W * 0.79 : W * 0.5;
+    const baseY = counterY + (wide ? 6 : 40);
+    const tipY = baseY - 18 - n * 8 - (wide ? 190 : 150);
+
+    const wall = slips.map((slip, i) => {
+      const row = Math.floor(i / cols);
+      const inRow = Math.min(cols, n - row * cols);
+      const col = (i % cols) + (cols - inRow) / 2; // a short last row is centred
+      return { x: x0 + cellW * (col + 0.5) + noise(i, 1) * 10, y: y0 + cellH * (row + 0.5), rot: noise(i, 2) * 7 };
+    });
+    const spiked = slips.map((slip, i) => ({ y: baseY - 18 - i * 8, spin: 40 + i * 67 + noise(i, 3) * 30 }));
+    geo = { W, H, width, heights, spikeX, baseY, tipY, wall, spiked };
+
+    // Camera above the counter, looking down on the pile.
+    stage.style.perspectiveOrigin = `${spikeX}px ${tipY - H * 0.15}px`;
+    Object.assign(nail.style, { left: `${spikeX - 5}px`, top: `${tipY}px`, height: `${baseY - tipY}px` });
+    base.style.transform = `translate3d(${spikeX - 70}px, ${baseY - 70}px, 0) rotateX(${FLAT}deg)`;
+  }
+
+  function render() {
+    if (!geo) return;
+    const r = spikeSection.getBoundingClientRect();
+    const raw = Math.min(Math.max(-r.top / (r.height - geo.H), 0), 1) * (n + 0.5) - 0.2;
+    slips.forEach((slip, i) => {
+      const t = Math.min(Math.max(raw - i, 0), 1);
+      const from = geo.wall[i];
+      const to = geo.spiked[i];
+      const half = geo.heights[i] / 2;
+      const above = geo.tipY - 36;
+      let x;
+      let y;
+      let z;
+      let tilt;
+      let spin;
+      if (t < 0.6) {
+        // Off the wall, towards the viewer and over the spike, tipping flat and turning as it goes.
+        const k = ease(t / 0.6);
+        x = lerp(from.x, geo.spikeX, k);
+        y = lerp(from.y, above, k) - Math.sin(Math.PI * k) * 90;
+        z = lerp(-30, 0, k) + Math.sin(Math.PI * k) * 160;
+        tilt = lerp(0, FLAT, Math.min(k * 1.3, 1));
+        spin = lerp(from.rot, to.spin - 110, k);
+      } else {
+        // Straight down the nail, still turning a little, with a small bounce as it lands.
+        const k = ease((t - 0.6) / 0.4);
+        x = geo.spikeX;
+        y = lerp(above, to.y, k);
+        z = 0;
+        tilt = FLAT + Math.sin(Math.PI * k) * 6;
+        spin = lerp(to.spin - 110, to.spin, k);
+      }
+      slip.style.transform = `translate3d(${(x - geo.width / 2).toFixed(1)}px, ${(y - half).toFixed(1)}px, ${z.toFixed(1)}px) rotateX(${tilt.toFixed(2)}deg) rotateZ(${spin.toFixed(2)}deg)`;
+      // Paper lying flat under the lamp catches less light.
+      slip.style.filter = `brightness(${(1 - (tilt / FLAT) * 0.14).toFixed(3)})`;
+      slip.classList.toggle('is-down', t > 0);
+      slip.classList.toggle('is-spiked', t >= 0.6);
+    });
+  }
+
+  let queued = false;
+  const schedule = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; render(); });
+  };
+  addEventListener('scroll', schedule, { passive: true });
+  new ResizeObserver(() => { measure(); render(); }).observe(stage);
+  document.fonts.ready.then(() => { measure(); render(); });
+  measure();
+  render();
 }
