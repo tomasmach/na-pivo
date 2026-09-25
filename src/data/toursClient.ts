@@ -28,11 +28,13 @@ export interface TourWire {
     address: string;
     lat: number;
     lon: number;
+    challenge?: string;
   }[];
 }
 export function toTourWire(plan: TourPlan) {
   return { title: plan.title, scheduled_date: plan.scheduledDate, scheduled_time: plan.scheduledTime, timezone: plan.timezone,
-    stops: plan.stops.map((s) => ({ id: s.id, pub_id: s.pubId, cache_key: s.cacheKey, name: s.name, address: s.address, lat: s.lat, lon: s.lon })) };
+    // Always send the key: an empty string clears a challenge, a missing key keeps it (released apps).
+    stops: plan.stops.map((s) => ({ id: s.id, pub_id: s.pubId, cache_key: s.cacheKey, name: s.name, address: s.address, lat: s.lat, lon: s.lon, challenge: s.challenge ?? '' })) };
 }
 function parseEnvelope(raw: unknown): TourPlan | null {
   try {
@@ -44,7 +46,7 @@ function parseEnvelope(raw: unknown): TourPlan | null {
       } | null;
     };
     const plan: TourPlan = { id: w.id, title: w.title, scheduledDate: w.scheduled_date, scheduledTime: w.scheduled_time?.slice(0, 5) ?? null, timezone: w.timezone, revision: w.revision, updatedAt: w.updated_at,
-      stops: w.stops.map((s) => ({ id: s.id, pubId: s.pub_id, cacheKey: s.cache_key, name: s.name, address: s.address, lat: s.lat, lon: s.lon })),
+      stops: w.stops.map((s) => ({ id: s.id, pubId: s.pub_id, cacheKey: s.cache_key, name: s.name, address: s.address, lat: s.lat, lon: s.lon, ...(s.challenge ? { challenge: s.challenge } : {}) })),
       ...(share ? { share: { url: share.url, expiresAt: share.expires_at } } : {}) };
     return validPlan(plan) ? plan : null;
   }

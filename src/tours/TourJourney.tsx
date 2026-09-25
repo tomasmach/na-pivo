@@ -5,6 +5,7 @@ import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t, intlLocale } from '@/i18n';
 import { TourMap } from './TourMap';
+import { TourChallengeText } from './TourChrome';
 import type { TourRun, TourStop } from './model';
 
 export interface StopFactsLine { hours?: string; closed?: boolean; beers?: string }
@@ -16,7 +17,7 @@ export function TourJourneyStop({ stop, index, count, status, caption, facts, he
   const factsText = [facts?.hours, facts?.beers].filter(Boolean).join(' · ');
   return <View style={styles.stop}>
     <View pointerEvents="none" style={[styles.rail, index === 0 && styles.railFirst, index === count - 1 && styles.railLast]} />
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${index + 1}. ${stop.name}. ${caption}${factsText ? `. ${factsText}` : ''}`}
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={[`${index + 1}. ${stop.name}`, caption, factsText, stop.challenge ? t.tours.challengeA11y(stop.challenge) : null].filter(Boolean).join('. ')}
       accessibilityState={{ selected }} style={({ pressed }) => [styles.stopPress, (selected || pressed) && styles.highlight]}>
       <View style={[styles.number, next && styles.nextNumber, status === 'visited' && styles.visitedNumber]}>
         {status === 'visited' ? <CheckIcon size={16} color={Colors.stout} /> : status === 'skipped' ? <MinusIcon size={15} color={Colors.foamMuted} /> :
@@ -29,6 +30,7 @@ export function TourJourneyStop({ stop, index, count, status, caption, facts, he
           {facts?.hours && <Text style={facts.closed ? styles.closed : styles.open}>{facts.hours}</Text>}
           {facts?.hours && facts.beers ? ' · ' : ''}{facts?.beers}
         </Text>}
+        {!!stop.challenge && <TourChallengeText text={stop.challenge} emphasized={next} />}
       </View>
       <ChevronRightIcon size={16} color={Colors.mutedText} />
     </Pressable>

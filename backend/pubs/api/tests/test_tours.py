@@ -276,3 +276,38 @@ def test_export_prefetches_tours_and_stops_without_serialization_queries(client)
     assert [tour["id"] for tour in exported["tours"]] == [plan_id]
     assert len(exported["tours"][0]["stops"]) == 2
     assert not any('"pubs_tour' in query["sql"].lower() for query in queries.captured_queries)
+
+
+def test_challenges_survive_released_app_edits_and_clear_explicitly(client):
+    body = payload()
+    body["stops"][0]["challenge"] = "  Zeptej se\nvýčepního,  jak dlouho čepuje "
+    plan_id, body = publish(client, body)
+    stops = client.get(f"/v1/tours/{plan_id}").json()["tour"]["stops"]
+    assert [s["challenge"] for s in stops] == ["Zeptej se výčepního, jak dlouho čepuje", ""]
+
+    # A released app never sends the key. Its edit, even a reorder, keeps each stop's challenge.
+    released = {**body, "operation_id": str(uuid.uuid4()), "base_revision": 1, "title": "Stará appka",
+                "stops": [{k: v for k, v in s.items() if k != "challenge"} for s in reversed(body["stops"])]}
+    response = client.put(f"/v1/tours/{plan_id}", released, format="json")
+    assert response.status_code == 200, response.content
+    assert [s["challenge"] for s in response.json()["tour"]["stops"]] == ["", "Zeptej se výčepního, jak dlouho čepuje"]
+
+    cleared = {**released, "operation_id": str(uuid.uuid4()), "base_revision": 2,
+               "stops": [{**s, "challenge": ""} for s in released["stops"]]}
+    response = client.put(f"/v1/tours/{plan_id}", cleared, format="json")
+    assert [s["challenge"] for s in response.json()["tour"]["stops"]] == ["", ""]
+
+
+def test_challenge_limit_public_snapshot_and_escaped_web_page(client):
+    body = payload()
+    body["stops"][0]["challenge"] = "x" * 121
+    assert client.put(f"/v1/tours/{uuid.uuid4()}", body, format="json").status_code == 400
+    body = payload()
+    body["stops"][1]["challenge"] = "<b>Najdi nejstarší pípu</b>"
+    plan_id, _ = publish(client, body)
+    token, _ = share(client, plan_id)
+    public = APIClient().get(f"/v1/tour-shares/{token}").json()["tour"]
+    assert [s["challenge"] for s in public["stops"]] == ["", "<b>Najdi nejstarší pípu</b>"]
+    page = Client().get(f"/t/{token}").content.decode()
+    assert "&lt;b&gt;Najdi nejstarší pípu&lt;/b&gt;" in page
+    assert "<b>Najdi" not in page

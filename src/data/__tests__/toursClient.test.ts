@@ -21,7 +21,7 @@ it('serializes explicit publish and idempotency keys without local run/source me
   expect(result.ok).toBe(true);
   const [url, options] = jest.mocked(fetch).mock.calls[0];
   expect(url).toBe(`http://127.0.0.1:8012/v1/tours/${plan.id}`);
-  expect(JSON.parse(options!.body as string)).toEqual({ operation_id: 'operation', base_revision: 0, title: 'Tour', scheduled_date: null, scheduled_time: null, timezone: 'Europe/Prague', stops: envelope().tour.stops });
+  expect(JSON.parse(options!.body as string)).toEqual({ operation_id: 'operation', base_revision: 0, title: 'Tour', scheduled_date: null, scheduled_time: null, timezone: 'Europe/Prague', stops: envelope().tour.stops.map((stop) => ({ ...stop, challenge: '' })) });
   expect(options!.headers).toMatchObject({ Authorization: 'Bearer private-bearer' });
 });
 it('public link reads send no account bearer and reject bad tokens locally', async () => {
@@ -75,4 +75,15 @@ it('distinguishes missing owner tours from expired public links', async () => {
   expect(await shareTour(plan.id, 'operation')).toEqual({ ok: false, error: 'not_found' });
   expect(await revokeTour(plan.id)).toEqual({ ok: false, error: 'not_found' });
   expect(await fetchSharedTour('x'.repeat(43))).toEqual({ ok: false, error: 'expired' });
+});
+
+it('always sends a challenge key so clearing reaches the server, and reads only real challenges back', async () => {
+  const withChallenge = { ...plan, stops: [{ ...plan.stops[0], challenge: 'Najdi nejstarší pípu' }, plan.stops[1]] };
+  const remote = envelope();
+  remote.tour.stops = remote.tour.stops.map((stop, index) => ({ ...stop, challenge: index ? '' : 'Najdi nejstarší pípu' }));
+  jest.mocked(fetch).mockResolvedValue(response(200, remote));
+  const result = await publishTour(withChallenge, 'operation');
+  const sent = JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string).stops;
+  expect(sent.map((stop: { challenge: string }) => stop.challenge)).toEqual(['Najdi nejstarší pípu', '']);
+  expect(result.ok && result.tour.stops.map((stop) => stop.challenge)).toEqual(['Najdi nejstarší pípu', undefined]);
 });

@@ -40,6 +40,11 @@ class StopSerializer(serializers.Serializer):
     address = serializers.CharField(max_length=500, allow_blank=True, default="")
     lat = serializers.FloatField(min_value=-90, max_value=90)
     lon = serializers.FloatField(min_value=-180, max_value=180)
+    # Optional without a default: a missing key means "keep what is stored".
+    challenge = serializers.CharField(max_length=120, allow_blank=True, required=False)
+
+    def validate_challenge(self, value):
+        return " ".join(value.split())
 
     def validate(self, attrs):
         if not all(math.isfinite(attrs[key]) for key in ("lat", "lon")):
@@ -179,10 +184,13 @@ class TourDetailView(OwnerTourView):
             for field in ("title", "scheduled_date", "scheduled_time", "timezone"):
                 setattr(plan, field, data[field])
             plan.save()
+            # Released apps do not know challenges; their edits must not erase them.
+            kept = dict(plan.stops.exclude(challenge="").values_list("client_id", "challenge"))
             plan.stops.all().delete()
             TourStop.objects.bulk_create([
                 TourStop(plan=plan, position=index, client_id=stop["id"],
-                         **{k: v for k, v in stop.items() if k != "id"})
+                         challenge=stop.get("challenge", kept.get(stop["id"], "")),
+                         **{k: v for k, v in stop.items() if k not in ("id", "challenge")})
                 for index, stop in enumerate(data["stops"])
             ])
             share = TourShare.objects.filter(plan=plan, revoked_at__isnull=True, expires_at__gt=timezone.now()).first()

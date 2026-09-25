@@ -4956,6 +4956,8 @@ class TourStop(models.Model):
     address = models.CharField(max_length=500, blank=True)
     lat = models.FloatField()
     lon = models.FloatField()
+    # Author-written, one line. Released apps omit the key; the owner PUT keeps it then.
+    challenge = models.CharField(max_length=120, blank=True, default="")
 
     class Meta:
         ordering = ["position"]

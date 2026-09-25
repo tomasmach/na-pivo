@@ -918,6 +918,9 @@ msgstr "Ask the author for a new link."
 msgid "Sraz"
 msgstr "Meeting"
 
+msgid "Výzva:"
+msgstr "Challenge:"
+
 msgid "Otevřít v Na pivo"
 msgstr "Open in Na pivo"
 
