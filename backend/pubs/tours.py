@@ -113,7 +113,7 @@ def public_payload(publication, request=None):
     return {
         "tour": {
             "id": str(publication.public_id), "title": snapshot["title"],
-            "scheduled_date": None, "scheduled_time": None, "timezone": publication.plan.timezone,
+            "scheduled_date": None, "scheduled_time": None, "timezone": snapshot.get("timezone", publication.plan.timezone),
             "revision": publication.revision, "created_at": publication.published_at.isoformat(),
             "updated_at": publication.updated_at.isoformat(), "stops": snapshot["stops"],
         },

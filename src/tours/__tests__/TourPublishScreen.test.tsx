@@ -21,9 +21,15 @@ const mockStore = {
   beginDraft: jest.fn(async () => ({ ok: true })),
   clearError: jest.fn(),
 };
-jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({ id: '11111111-1111-4111-8111-111111111111' }), useRouter: () => ({ back: mockBack, push: mockPush, replace: mockReplace }) }));
+jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({ id: '11111111-1111-4111-8111-111111111111' }), useRouter: () => ({ back: mockBack, push: mockPush, replace: mockReplace }), useFocusEffect: jest.fn() }));
+jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
+jest.mock('@/stores/toastStore', () => ({ useToastStore: { getState: () => ({ show: jest.fn() }) } }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 jest.mock('@/stores/toursStore', () => ({ useToursStore: Object.assign(() => mockStore, { getState: () => mockStore }) }));
+jest.mock('react-native', () => {
+  const native = jest.requireActual<typeof import('react-native')>('react-native');
+  return Object.assign(Object.create(native), { AccessibilityInfo: { ...native.AccessibilityInfo, announceForAccessibility: jest.fn() } });
+});
 jest.mock('@/components/shared/IconGlyph', () => ({ ChevronLeftIcon: () => null, ChevronRightIcon: () => null }));
 
 beforeEach(() => jest.clearAllMocks());
@@ -43,7 +49,7 @@ it('names the pub whose challenge was refused and offers to edit the tour', asyn
   const screen = render(<TourPublishScreen />);
   await act(async () => { fireEvent.press(screen.getByTestId('tour-publish')); });
   expect(screen.getByText(t.tours.errors.publicChallenge('U Pinkasů'))).toBeTruthy();
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.editTour)); });
+  await act(async () => { fireEvent.press(screen.getByTestId('tour-publish-fix')); });
   expect(mockStore.beginDraft).toHaveBeenCalledWith(plan.id);
   expect(mockReplace).toHaveBeenCalledWith('/tours/edit');
   expect(mockBack).not.toHaveBeenCalled();
@@ -54,6 +60,6 @@ it('sends a signed-out author to sign in', async () => {
   const screen = render(<TourPublishScreen />);
   await act(async () => { fireEvent.press(screen.getByTestId('tour-publish')); });
   expect(screen.getByText(t.tours.errors.publicSignIn)).toBeTruthy();
-  fireEvent.press(screen.getByLabelText(t.tours.signIn));
+  fireEvent.press(screen.getByTestId('tour-publish-fix'));
   expect(mockPush).toHaveBeenCalledWith('/auth');
 });

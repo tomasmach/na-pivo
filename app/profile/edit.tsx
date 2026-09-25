@@ -16,7 +16,7 @@
  * apply immediately (their own endpoints) and are NOT part of the Uložit batch.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -50,6 +50,7 @@ import {
   selectIsPublic,
 } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
+import { useToursStore } from '@/stores/toursStore';
 
 export default function ProfileEditScreen() {
   const router = useRouter();
@@ -69,6 +70,8 @@ export default function ProfileEditScreen() {
   const [nicknameError, setNicknameError] = useState('');
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
   const [isPublic, setIsPublic] = useState(initialIsPublic);
+  const hasPublicTours = useToursStore((s) => s.plans.some((plan) => plan.publication?.status === 'active'));
+  useEffect(() => { void useToursStore.getState().hydrate(); }, []);
 
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState('');
@@ -329,6 +332,11 @@ export default function ProfileEditScreen() {
             {!isPublic && (
               <Text style={styles.consentPrivate} maxFontSizeMultiplier={FontScaleCap.body}>
                 {t.profile.edit.consentPrivate}
+              </Text>
+            )}
+            {!isPublic && hasPublicTours && (
+              <Text style={styles.consentPrivate} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.tours.privateHidesPublic}
               </Text>
             )}
           </View>

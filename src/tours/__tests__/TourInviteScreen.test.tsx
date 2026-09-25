@@ -38,7 +38,14 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   ChevronLeftIcon: () => null,
   ChevronRightIcon: () => null,
   EllipsisIcon: () => null,
+  CheckIcon: () => null,
+  MinusIcon: () => null,
+  FootprintsIcon: () => null,
+  MapIcon: () => null,
+  HistoryIcon: () => null,
 }));
+jest.mock('../TourJourneyIllustration', () => ({ TourJourneyIllustration: () => null }));
+jest.mock('@/stores/toastStore', () => ({ useToastStore: { getState: () => ({ show: jest.fn() }) } }));
 jest.mock('@/profile/Avatar', () => ({ Avatar: () => null }));
 jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
 

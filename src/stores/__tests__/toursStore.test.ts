@@ -344,4 +344,17 @@ describe('Tours durable lifecycle', () => {
     await store.getState().saveDraft();
     expect(store.getState().plans.find((p) => p.id === id)!.publicSource).toBeUndefined();
   });
+  it('publishes a tour whose meetup already passed and forgets reported tours at an account boundary', async () => {
+    const id = await makePlan();
+    store.setState({ plans: store.getState().plans.map((p) => (p.id === id ? { ...p, scheduledDate: '2020-01-01' } : p)) });
+    jest.mocked(publishTour).mockImplementation(async (plan) => ({ ok: true, tour: { ...cloneTour(plan), revision: 1 } }));
+    jest.mocked(publishPublicTour).mockResolvedValueOnce({ ok: false, error: 'network' });
+    await store.getState().publishPublic(id);
+    expect(publishPublicTour).toHaveBeenCalledWith(id, 1);
+    store.setState({ hiddenPublic: ['55555555-5555-4555-8555-555555555555'] });
+    await clearToursPrivateData();
+    await store.getState().hydrate();
+    expect(store.getState().hiddenPublic).toBeUndefined();
+  });
 });
+

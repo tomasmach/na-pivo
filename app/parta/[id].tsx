@@ -46,6 +46,7 @@ import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { Avatar } from '@/profile/Avatar';
 import { pubCount } from '@/tours/TourChrome';
+import { useToursStore } from '@/stores/toursStore';
 import { t, intlLocale } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -288,6 +289,9 @@ export default function FriendProfileScreen() {
   const latestBeers = detail?.latestBeers ?? [];
   const publicStats = detail?.publicStats ?? null;
   const showcase = detail?.achievements ? unlockedBadges(detail.achievements) : [];
+  // A tour this phone reported stays out of the author's list too.
+  const hiddenPublic = useToursStore((s) => s.hiddenPublic);
+  const publicTours = (detail?.publicTours ?? []).filter((tour) => !hiddenPublic?.includes(tour.id));
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
@@ -452,10 +456,10 @@ export default function FriendProfileScreen() {
           ) : null}
 
           {/* Veřejné tour — who made which Tour de pub; each row opens the public copy. */}
-          {detail?.publicTours.length ? (
+          {publicTours.length ? (
             <View style={styles.recentSection}>
               <SectionHeader label={t.friends.publicToursHeader} />
-              {detail.publicTours.map((tour, i) => (
+              {publicTours.map((tour, i) => (
                 <HairlineRow key={tour.id} first={i === 0}>
                   <Pressable
                     onPress={() => router.push(`/t/${tour.token}` as Href)}

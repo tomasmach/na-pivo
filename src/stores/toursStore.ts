@@ -58,7 +58,8 @@ interface ToursState extends ToursData {
   copyLocalConflict: (id: string) => Promise<TourResult>;
   clearError: () => void;
 }
-const empty = (): ToursData => ({ version: 1, owner: null, plans: [], draft: null, activeRun: null, runs: [], published: {}, pending: {} });
+// hiddenPublic is spelled out: zustand merges state, so a missing key would keep the previous account's list.
+const empty = (): ToursData => ({ version: 1, owner: null, plans: [], draft: null, activeRun: null, runs: [], published: {}, pending: {}, hiddenPublic: undefined });
 // Empty challenges stay out, so tours published before challenges keep their signature.
 export const tourContentSignature = (p: TourPlan) => {
   const wire = toTourWire(p);
@@ -157,7 +158,7 @@ async function hydrateOnce(): Promise<TourResult> {
       else
         return failure('account_changed');
     }
-    useToursStore.setState({ ...saved, hydrated: true, error: null });
+    useToursStore.setState({ hiddenPublic: undefined, ...saved, hydrated: true, error: null });
     return { ok: true };
   }
   catch {
@@ -308,7 +309,8 @@ export const useToursStore = create<ToursState>(() => ({
     d.draft.title = d.draft.title.trim();
     d.draft.updatedAt = new Date().toISOString();
     // Another route is the author's own tour now, not the public one it started from.
-    if (d.draft.publicSource && pubIdsOf(d.draft).join('|') !== d.draft.publicSource.pubIds.join('|'))
+    // Reordering keeps the same pubs, like the server's count; only a new set is another route.
+    if (d.draft.publicSource && [...pubIdsOf(d.draft)].sort().join('|') !== [...d.draft.publicSource.pubIds].sort().join('|'))
       delete d.draft.publicSource;
     putPlan(d, d.draft);
     const id = d.draft.id;
@@ -550,7 +552,8 @@ export const useToursStore = create<ToursState>(() => ({
     const plan = d.plans.find((p) => p.id === id);
     if (!plan)
       return { ok: false, error: 'not_found' };
-    if (plan.source || plan.publicSource || !validSchedule(plan))
+    // A past meetup is fine: the public copy has no date, and the day after the walk is when people publish.
+    if (plan.source || plan.publicSource)
       return { ok: false, error: 'invalid' };
     let revision = plan.revision;
     // The public copy is frozen from the server plan, so that has to match this phone first.
@@ -578,6 +581,9 @@ export const useToursStore = create<ToursState>(() => ({
         local.share = put.tour.share;
       }
       d.published[id] = tourContentSignature(put.tour);
+      // A party-link publish stuck before its plan upload no longer needs that upload.
+      if (d.pending[id]?.stage === 'plan')
+        d.pending[id] = { ...d.pending[id], plan: cloneTour(local), stage: 'share' };
       const saved = await persist(d, g);
       if (!saved.ok)
         return saved;
@@ -586,8 +592,16 @@ export const useToursStore = create<ToursState>(() => ({
     const result = await publishPublicTour(id, revision);
     if (!current(g))
       return { ok: false, error: 'account_changed' };
-    if (!result.ok)
+    if (!result.ok) {
+      if (result.error === 'conflict' && result.tour) {
+        d = data();
+        d.plans.find((p) => p.id === id)!.conflict = result.tour;
+        const saved = await persist(d, g);
+        if (!saved.ok)
+          return saved;
+      }
       return result;
+    }
     d = data();
     const local = d.plans.find((p) => p.id === id);
     if (local && result.tour.publication)
@@ -602,7 +616,7 @@ export const useToursStore = create<ToursState>(() => ({
       return result;
     const d = data();
     const local = d.plans.find((p) => p.id === id);
-    if (local?.publication)
+    if (local?.publication?.status === 'active')
       local.publication.status = 'unpublished';
     return persist(d, g);
   }),
@@ -654,6 +668,8 @@ export const useToursStore = create<ToursState>(() => ({
     delete copy.conflict;
     delete copy.share;
     delete copy.source;
+    delete copy.publication;
+    delete copy.publicSource;
     putPlan(d, local.conflict);
     putPlan(d, copy);
     delete d.pending[id];

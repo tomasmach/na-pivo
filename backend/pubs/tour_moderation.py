@@ -10,7 +10,7 @@ _PATTERNS = [
     # Speed, quantity and forced drinking.
     r"\bna ex\b",
     r"\bexn\w*",
-    r"\bkdo (driv|drive|rychlej\w*|nejrychlej\w*|vic|nejvic)\b",
+    r"\bkdo (driv|drive|rychlej\w*|nejrychlej\w*|vic|nejvic) (vy|do)?pij\w*",
     r"\b\d+\s*(piv|piva|pivo|panak\w*|shot\w*|drink\w*|beers?)\b",
     r"\b(panak\w*|shots?|shotu|chug\w*|shotgun\w*|beer ?bong|drinking games?|down it)\b",
     # Links and phone numbers are spam or doxxing, never a pub challenge.

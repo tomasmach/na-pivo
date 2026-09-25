@@ -192,8 +192,37 @@ def test_author_profile_lists_public_tours_and_web_page_names_the_author():
     ("Kdo dřív dopije, platí", True),
     ("Každý 3 panáky", True),
     ("Kdo víc vypije", True),
+    ("Kdo víc ví o historii hospody", False),
     ("Napiš mi na 777 123 456", True),
     ("Více na www.example.cz", True),
 ])
 def test_text_rules(text, blocked):
     assert rejected_text(text) is blocked
+
+
+def test_public_pins_come_from_the_pub_and_a_restore_settles_old_reports():
+    author = account_client()
+    body = plan_body()
+    body["stops"][0].update(lat=49.0, lon=16.0)
+    plan_id, revision = save_plan(author, body)
+    publication = publish(author, plan_id, revision).json()["publication"]
+    first = public_read(publication["token"]).json()["tour"]["stops"][0]
+    row = PubDirectory.objects.get(name=PUBS[0])
+    assert (first["lat"], first["lon"]) == (row.lat, row.lng)
+    report = {"reason": "inappropriate_tour"}
+    for _ in range(3):
+        account_client(nickname=None, trusted=True).post(f"/v1/tour-publications/{publication['id']}/report", report, format="json")
+    assert public_read(publication["token"]).status_code == 404
+    TourPublicationAdmin.restore_publications(None, None, TourPublication.objects.all())
+    assert account_client(nickname=None).post(f"/v1/tour-publications/{publication['id']}/report", report, format="json").json() == {"hidden": False}
+    assert public_read(publication["token"]).status_code == 200
+
+
+def test_admin_hide_leaves_a_withdrawn_tour_withdrawn():
+    author = account_client()
+    plan_id, revision = save_plan(author, plan_body())
+    token = publish(author, plan_id, revision).json()["publication"]["token"]
+    author.delete(f"/v1/tours/{plan_id}/publication")
+    TourPublicationAdmin.hide_publications(None, None, TourPublication.objects.all())
+    TourPublicationAdmin.restore_publications(None, None, TourPublication.objects.all())
+    assert public_read(token).status_code == 404

@@ -326,21 +326,25 @@ def _public_stops(stops):
         cache_key = stop.cache_key or ""
         identity = resolve_pub_identity(cache_key, stop.name, lat=stop.lat, lng=stop.lon) if cache_key else None
         if identity and identity.canonical_id:
-            key, name, city, pub_id = f"canonical:{identity.canonical_id}", identity.name, identity.city, identity.canonical_id
-            cache_key = identity.cache_key or cache_key
+            canonical = CanonicalPub.objects.filter(public_id=identity.canonical_id).first()
+            if canonical is None:
+                raise _RejectedStopError("unknown_pub", _("Tuhle hospodu u veřejné tour neznám. Vyměň ji za hospodu z hledání."), index)
+            key, name, city, pub_id = f"canonical:{identity.canonical_id}", canonical.name, canonical.city, identity.canonical_id
+            cache_key, lat, lon = canonical.cache_key or cache_key, canonical.lat, canonical.lng
         else:
             row = (PubDirectory.objects.filter(active=True, cache_key=cache_key, name_key=normalize_pub_name(stop.name))
                    .exclude(venue_kind=PubHours.VenueKind.NOT_PUB).first()) if cache_key else None
             if row is None:
                 raise _RejectedStopError("unknown_pub", _("Tuhle hospodu u veřejné tour neznám. Vyměň ji za hospodu z hledání."), index)
             key, name, city = f"directory:{row.cache_key}:{row.name_key}", row.name, row.city
-            pub_id = f"directory:{row.cache_key}:{row.name_key}"
+            pub_id, lat, lon = f"directory:{row.cache_key}:{row.name_key}", row.lat, row.lng
         if key in keys:
             raise _RejectedStopError("duplicate_pub", _("Každou hospodu přidej jen jednou."), index)
         keys.add(key)
         resolved.append({"key": key, "stop": {
             "id": str(stop.client_id), "pub_id": pub_id, "cache_key": cache_key, "name": name,
-            "address": city, "lat": stop.lat, "lon": stop.lon, "challenge": stop.challenge,
+            # The pub's own position: an author must not pin a real pub on someone's house.
+            "address": city, "lat": lat, "lon": lon, "challenge": stop.challenge,
         }})
     hidden = _globally_reported_pub_cache_keys({item["stop"]["cache_key"] for item in resolved})
     for index, item in enumerate(resolved):
@@ -379,7 +383,7 @@ class TourPublicationView(OwnerTourView):
             others = TourPublication.objects.filter(plan__owner=account, status=TourPublication.Status.ACTIVE).exclude(plan=plan)
             if others.count() >= settings.TOUR_PUBLICATION_LIMIT and str(account.public_id) not in settings.TOUR_PUBLICATION_LIMIT_EXEMPT:
                 return _error("publication_limit", _("Veřejných tour můžeš mít nejvýš %(count)s.") % {"count": settings.TOUR_PUBLICATION_LIMIT}, 400)
-            rejected = _("Tohle nezveřejním. Veřejné tour nesmí být o tom, kdo víc nebo rychleji vypije, ani nést odkazy a čísla.")
+            rejected = _("Tohle nezveřejním. Veřejné tour nesmí být o tom, kdo víc nebo rychleji vypije, ani obsahovat odkazy nebo telefonní čísla.")
             if rejected_text(plan.title):
                 return _error("text_rejected", rejected, 400, field="title")
             stops = list(plan.stops.all())
@@ -391,7 +395,8 @@ class TourPublicationView(OwnerTourView):
             except _RejectedStopError as reason:
                 return _error(reason.code, reason.text, 400, stop=reason.stop)
             public_stops = [item["stop"] for item in resolved]
-            snapshot = {"title": plan.title, "stops": public_stops, "pub_keys": sorted(item["key"] for item in resolved)}
+            snapshot = {"title": plan.title, "timezone": plan.timezone, "stops": public_stops,
+                        "pub_keys": sorted(item["key"] for item in resolved)}
             fields = {
                 "plan_revision": plan.revision, "snapshot": snapshot, "title": plan.title,
                 "city": public_stops[0]["address"], "start_lat": public_stops[0]["lat"], "start_lon": public_stops[0]["lon"],

@@ -763,11 +763,17 @@ class TourPublicationAdmin(admin.ModelAdmin):
 
     @admin.action(description="Restore selected tours")
     def restore_publications(self, request, queryset) -> None:  # noqa: ARG002
-        queryset.filter(status=TourPublication.Status.HIDDEN).update(status=TourPublication.Status.ACTIVE, hidden_reason="")
+        restored = list(queryset.filter(status=TourPublication.Status.HIDDEN).values_list("public_id", flat=True))
+        # The reports behind a restore are settled; otherwise one new report would hide it again.
+        ContentReport.objects.filter(
+            target_snapshot__tour_publication_id__in=[str(public_id) for public_id in restored],
+            status__in=[ContentReport.Status.NEW, ContentReport.Status.TRIAGED],
+        ).update(status=ContentReport.Status.DISMISSED)
+        TourPublication.objects.filter(public_id__in=restored).update(status=TourPublication.Status.ACTIVE, hidden_reason="")
 
     @admin.action(description="Hide selected tours")
     def hide_publications(self, request, queryset) -> None:  # noqa: ARG002
-        queryset.update(status=TourPublication.Status.HIDDEN, hidden_reason="admin")
+        queryset.filter(status=TourPublication.Status.ACTIVE).update(status=TourPublication.Status.HIDDEN, hidden_reason="admin")
 
     @admin.action(description="Reset people counts")
     def reset_people_counts(self, request, queryset) -> None:  # noqa: ARG002

@@ -7,6 +7,7 @@ import { showAppDialog } from '@/components/shared/AppDialog';
 import { fetchSharedTour, type PublicTourInfo } from '@/data/toursClient';
 import { tourBoundary } from '@/data/toursBoundary';
 import { Avatar } from '@/profile/Avatar';
+import { useToastStore } from '@/stores/toastStore';
 import { useToursStore } from '@/stores/toursStore';
 import { openPubInMaps } from '@/utils/maps';
 import { t } from '@/i18n';
@@ -15,7 +16,9 @@ import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
 import { TourButton, TourError, TourHeader, TourStopRow, TourText, pubCount, stopCount, tourDate, ui } from './TourChrome';
 import { TourMap } from './TourMap';
-import { formatWalkDistance } from './stopFacts';
+import { TourJourneyIllustration } from './TourJourneyIllustration';
+import { TourJourneyStop, TourLeg } from './TourJourney';
+import { formatWalkDistance, walkingLeg } from './stopFacts';
 import type { TourPlan } from './model';
 
 export default function TourInviteScreen() {
@@ -62,7 +65,11 @@ function TourInvite({ token }: { token: string }) {
       { text: t.tours.shareLink, onPress: () => { void Share.share({ message: `https://na-pivo.cz/t/${token}` }).catch(() => setError(t.tours.errors.unavailable)); } },
       ...(own ? [] : [{ text: t.tours.report, style: 'destructive' as const, onPress: () => showAppDialog({ title: t.tours.reportTitle, message: t.tours.reportMessage, buttons: [
         { text: t.tours.cancel, style: 'cancel' },
-        { text: t.tours.report, style: 'destructive', onPress: () => { void store.reportPublic(info.id).then((r) => { if (!r.ok) return; if (router.canGoBack()) router.back(); else router.replace('/tours' as Href); }); } },
+        { text: t.tours.report, style: 'destructive', onPress: () => { void store.reportPublic(info.id).then((r) => {
+          useToastStore.getState().show(r.ok ? t.tours.reported : t.tours.reportFailed);
+          if (!r.ok) return;
+          if (router.canGoBack()) router.back(); else router.replace('/tours' as Href);
+        }); } },
       ] }) }]),
       { text: t.tours.cancel, style: 'cancel' },
     ] });
@@ -70,14 +77,16 @@ function TourInvite({ token }: { token: string }) {
   const meta = plan ? publicInfo ? t.tours.publicMeta(publicInfo.city, pubCount(plan.stops.length), formatWalkDistance(publicInfo.walkM)) : tourDate(plan) : '';
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
     <TourHeader title={publicInfo ? t.tours.publicTour : t.tours.invite} onBack={() => router.canGoBack() ? router.back() : router.replace('/tours' as Href)}
-      right={publicInfo ? <Pressable style={ui.iconButton} accessibilityRole="button" accessibilityLabel={t.tours.more} onPress={more}><EllipsisIcon color={Colors.foam} size={23} /></Pressable> : undefined} />
+      right={publicInfo && !reported ? <Pressable style={ui.iconButton} accessibilityRole="button" accessibilityLabel={t.tours.more} onPress={more}><EllipsisIcon color={Colors.foam} size={23} /></Pressable> : undefined} />
     <ScrollView ref={scroll} contentContainerStyle={ui.content}>
-      <TourError message={reported ? t.tours.reported : error} code={store.error} />
+      <TourError message={error} code={store.error} />
+      {/* A reported tour is gone from this phone, not broken; say so plainly. */}
+      {reported && <TourText style={styles.reported}>{t.tours.reported}</TourText>}
       {loading && <TourText>{t.tours.loading}</TourText>}
       {error && <TourButton label={t.tours.retry} secondary onPress={() => { setError(null); setLoading(true); setRetry((r) => r + 1); }} />}
-      {plan && !reported && <>
-        <View><TourText style={ui.heading}>{plan.title}</TourText><TourText style={ui.meta}>{meta}</TourText>
-          {publicInfo && <Pressable accessibilityRole="button" accessibilityLabel={t.tours.authorA11y(publicInfo.author.nickname)} style={({ pressed }) => [styles.author, pressed && styles.pressed]}
+      {plan && publicInfo && !reported && <>
+        <View><Text maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{plan.title}</Text><TourText style={styles.meta}>{meta}</TourText>
+          <Pressable accessibilityRole="button" accessibilityLabel={t.tours.authorA11y(publicInfo.author.nickname)} style={({ pressed }) => [styles.author, pressed && styles.pressed]}
             onPress={() => router.push(`/parta/${publicInfo.author.id}` as Href)}>
             <Avatar uri={publicInfo.author.avatarUrl} nickname={publicInfo.author.nickname} displayName={publicInfo.author.displayName} size={32} />
             <View style={ui.grow}>
@@ -85,8 +94,23 @@ function TourInvite({ token }: { token: string }) {
               {!!publicInfo.author.displayName && <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={1} style={styles.displayName}>{publicInfo.author.displayName}</Text>}
             </View>
             <ChevronRightIcon size={16} color={Colors.mutedText} />
-          </Pressable>}
+          </Pressable>
         </View>
+        <TourJourneyIllustration stops={plan.stops} />
+        <View>
+          <TourText style={styles.section}>{t.tours.stops}</TourText>
+          {plan.stops.map((stop, index) => <View key={stop.id}>
+            {index > 0 && <TourLeg label={t.tours.walkLeg(formatWalkDistance(walkingLeg(plan.stops[index - 1], stop).meters), walkingLeg(plan.stops[index - 1], stop).minutes)} done={false} />}
+            <TourJourneyStop stop={stop} index={index} count={plan.stops.length} next={false} selected={selected === stop.id}
+              caption={stop.address} onPress={() => setSelected(stop.id === selected ? null : stop.id)} />
+          </View>)}
+        </View>
+        <TourMap stops={plan.stops} height={180} selectedId={selected} onSelect={setSelected} />
+        {selected && <TourButton label={t.tours.navigate} secondary onPress={() => { const stop = plan.stops.find((s) => s.id === selected); if (stop) void openPubInMaps({ lat: stop.lat, lng: stop.lon }).catch(() => setError(t.tours.errors.navigation)); }} />}
+        <TourText style={ui.notice}>{t.tours.runPrivacy}</TourText>
+      </>}
+      {plan && !publicInfo && <>
+        <View><TourText style={ui.heading}>{plan.title}</TourText><TourText style={ui.meta}>{meta}</TourText></View>
         <TourMap stops={plan.stops} height={180} selectedId={selected} onSelect={select} />
         <View onLayout={(event) => { listY.current = event.nativeEvent.layout.y; }}><TourText style={ui.section}>{stopCount(plan.stops.length)}</TourText>
           {plan.stops.map((stop, index) => <View key={stop.id} onLayout={(event) => { rowY.current[stop.id] = event.nativeEvent.layout.y; }}><TourStopRow stop={stop} index={index} selected={selected === stop.id} onPress={() => { setSelected(stop.id); }} /></View>)}
@@ -100,13 +124,18 @@ function TourInvite({ token }: { token: string }) {
         <TourText style={ui.notice}>{t.tours.runPrivacy}</TourText>
       </>}
     </ScrollView>
-    {plan && !reported && <View style={[ui.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
-      <TourButton label={own ? t.tours.open : update ? t.tours.update : existing ? t.tours.openSaved : t.tours.import} busy={store.busy} onPress={() => { void save(); }} />
+    {plan && <View style={[ui.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
+      {reported && !existing ? <TourButton label={t.tours.backToTours} quiet onPress={() => router.replace('/tours' as Href)} />
+        : <TourButton label={own ? t.tours.open : update ? t.tours.update : existing ? t.tours.openSaved : t.tours.import} busy={store.busy} onPress={() => { void save(); }} />}
     </View>}
   </View>;
 }
 
 const styles = StyleSheet.create({
+  title: { fontWeight: '800', fontSize: 30, lineHeight: 34, letterSpacing: -0.7, color: Colors.foam },
+  meta: { fontFamily: undefined, fontSize: 12, lineHeight: 18, color: Colors.foamMuted, marginTop: Spacing.sm },
+  section: { fontFamily: undefined, fontWeight: '600', fontSize: 14, lineHeight: 20, color: Colors.foam, marginBottom: Spacing.xs },
+  reported: { fontSize: 15, lineHeight: 22, color: Colors.foam },
   author: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2, minHeight: HitArea.min, marginTop: Spacing.sm },
   pressed: { opacity: 0.65 },
   nickname: { fontSize: 16, lineHeight: 21, fontWeight: '600', color: Colors.foam },
