@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Keyboard, Modal, PanResponder, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useNavigation, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,6 +55,17 @@ function TourEditor() {
   const store = useToursStore(); const draft = store.draft;
   const keyboardHeight = useKeyboardHeight();
   const [title, setTitle] = useState(draft?.title ?? '');
+  // Typing persists the draft after a short pause, not on every keystroke; blur and leaving flush it.
+  const pendingTitle = useRef<string | null>(null);
+  const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushTitle = useCallback(() => {
+    if (titleTimer.current) clearTimeout(titleTimer.current);
+    titleTimer.current = null;
+    const value = pendingTitle.current;
+    pendingTitle.current = null;
+    if (value !== null) void useToursStore.getState().updateDraft({ title: value });
+  }, []);
+  useEffect(() => flushTitle, [flushTitle]);
   const [date, setDate] = useState(() => dateDisplay(draft?.scheduledDate ?? null));
   const [time, setTime] = useState(draft?.scheduledTime ?? '');
   const [dateError, setDateError] = useState(false);
@@ -77,6 +88,8 @@ function TourEditor() {
   async function save() {
     if (saving.current) return;
     saving.current = true;
+    pendingTitle.current = null;
+    if (titleTimer.current) clearTimeout(titleTimer.current);
     if (!(await store.updateDraft({ title })).ok) { saving.current = false; return; }
     if (!(await persistDate())) { saving.current = false; return; }
     const result = await store.saveDraft(); saving.current = false;
@@ -115,7 +128,7 @@ function TourEditor() {
     <TourHeader title={draft.revision || store.plans.some((p) => p.id === draft.id) ? t.tours.editTour : t.tours.newTour} onBack={() => router.canGoBack() ? router.back() : askExit(() => router.replace('/tours' as Href))} />
     <KeyboardAwareScrollView ref={scroll} scrollEnabled={!drag} contentContainerStyle={ui.content} keyboardShouldPersistTaps="handled">
       <View style={ui.field}><TourText style={ui.section}>{t.tours.name}</TourText>
-        <TextInput returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} testID="tour-title" accessibilityLabel={t.tours.name} maxLength={60} value={title} onChangeText={(value) => { setTitle(value); void store.updateDraft({ title: value }); }} placeholder={t.tours.namePlaceholder} placeholderTextColor={Colors.foamMuted} style={ui.input} maxFontSizeMultiplier={1.3} />
+        <TextInput returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} testID="tour-title" accessibilityLabel={t.tours.name} maxLength={60} value={title} onChangeText={(value) => { setTitle(value); pendingTitle.current = value; if (titleTimer.current) clearTimeout(titleTimer.current); titleTimer.current = setTimeout(flushTitle, 300); }} onBlur={flushTitle} placeholder={t.tours.namePlaceholder} placeholderTextColor={Colors.foamMuted} style={ui.input} maxFontSizeMultiplier={1.3} />
       </View>
       <View style={[ui.row, { alignItems: 'flex-start' }]}>
         <View style={[ui.field, { flex: 3 }]}><TourText style={ui.section}>{t.tours.date}</TourText>
