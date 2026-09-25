@@ -1089,3 +1089,6 @@ msgstr "Delete account"
 
 msgid "Napiš mi"
 msgstr "Email me"
+
+msgid "Ťukni a čárkuj!"
+msgstr "Tap to tally!"

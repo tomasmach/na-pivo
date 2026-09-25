@@ -49,7 +49,8 @@ def test_home_loads_nothing_from_other_origins(client):
 
     assert len(loaded) >= 10
     for url in loaded:
-        assert url.startswith("/landing/"), url
+        # Inline data: URLs (the pencil cursor) stay on the page too.
+        assert url.startswith(("/landing/", "data:")), url
 
 
 def test_every_home_asset_is_served(client):

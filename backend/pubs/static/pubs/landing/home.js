@@ -1,5 +1,5 @@
-// Home page hero: the coaster in the linocut is a button. Every tap carves one more tally mark into it.
-// Marks live in an SVG layer on top of the print, in the print's own coordinates.
+// Home page behaviour. The coaster in the hero print is a button: every tap carves one more tally mark into it.
+// Further down, the map dot walks its route as the page scrolls and sections reveal once they come into view.
 
 const svg = document.querySelector('[data-table]');
 const marksLayer = svg.querySelector('[data-marks]');
@@ -109,6 +109,7 @@ function layout() {
 
 hitButton.addEventListener('click', () => {
   if (marks >= MAX_MARKS) return;
+  hero.classList.add('is-tallied');
   addMarkShape(marks, !reduced);
   marks += 1;
   sync();
@@ -127,3 +128,37 @@ sync();
 layout();
 hitButton.hidden = false;
 tally.hidden = false;
+
+// Sections with data-reveal play their entrance once, when a third of them is on screen.
+const revealer = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (!entry.isIntersecting) return;
+    entry.target.classList.add('is-in');
+    revealer.unobserve(entry.target);
+  });
+}, { threshold: 0.3 });
+document.querySelectorAll('[data-reveal]').forEach((el) => revealer.observe(el));
+
+// The map dot follows the printed route, from "you are here" to the pub, as the map passes through the viewport.
+const walk = document.querySelector('[data-walk]');
+if (walk) {
+  const route = walk.querySelector('[data-route]');
+  const walker = walk.querySelector('[data-walker]');
+  const total = route.getTotalLength();
+  let queued = false;
+  const step = () => {
+    queued = false;
+    const r = walk.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return;
+    const progress = Math.min(Math.max((innerHeight * 0.85 - r.top) / (r.height * 0.85), 0), 1);
+    const p = route.getPointAtLength(total * progress);
+    walker.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`);
+    walk.classList.toggle('is-there', progress >= 1);
+  };
+  addEventListener('scroll', () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(step);
+  }, { passive: true });
+  step();
+}
