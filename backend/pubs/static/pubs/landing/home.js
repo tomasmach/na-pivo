@@ -137,7 +137,13 @@ const revealer = new IntersectionObserver((entries) => {
     revealer.unobserve(entry.target);
   });
 }, { threshold: 0.3 });
-document.querySelectorAll('[data-reveal]').forEach((el) => revealer.observe(el));
+// Reduced motion leaves them in their final state; otherwise arm them so CSS can hide them until they arrive.
+if (!reduced) {
+  document.querySelectorAll('[data-reveal]').forEach((el) => {
+    el.classList.add('is-armed');
+    revealer.observe(el);
+  });
+}
 
 // The map holds still while scrolling walks the "you are here" dot along the printed route to the pub;
 // once the dot arrives the page scrolls on. Reduced motion leaves the map static with the dot at the start.
@@ -167,10 +173,12 @@ if (mapRun && walk && !reduced) {
     const shift = panW > frameW ? Math.min(Math.max(frameW / 2 - dotX, frameW - panW), 0) : 0;
     pan.style.transform = `translateX(${shift.toFixed(1)}px)`;
   };
-  addEventListener('scroll', () => {
+  const schedule = () => {
     if (queued) return;
     queued = true;
     requestAnimationFrame(step);
-  }, { passive: true });
+  };
+  addEventListener('scroll', schedule, { passive: true });
+  addEventListener('resize', schedule, { passive: true });
   step();
 }

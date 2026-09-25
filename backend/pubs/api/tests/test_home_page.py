@@ -44,7 +44,12 @@ def test_english_home_is_translated_and_links_english_documents(client, settings
 
 def test_home_loads_nothing_from_other_origins(client):
     html = client.get("/").content.decode()
-    loaded = re.findall(r'(?:src|srcset|<image href|rel="preload" href)="([^"]+)"', html)
+    loaded = re.findall(r'(?:src|<image href|rel="preload" href)="([^"]+)"', html)
+    loaded += [
+        candidate.strip().split(maxsplit=1)[0]
+        for srcset in re.findall(r'srcset="([^"]+)"', html)
+        for candidate in srcset.split(",")
+    ]
     loaded += re.findall(r'url\("([^"]+)"\)', html)
 
     assert len(loaded) >= 10

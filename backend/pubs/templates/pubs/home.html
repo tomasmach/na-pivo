@@ -345,12 +345,14 @@
     transform: rotate(-2.5deg);
     -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
             mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
-    /* Tossed onto the table once it scrolls into view. */
+  }
+  /* Tossed onto the table once it scrolls into view; home.js marks the section, so without JS the bill just lies there. */
+  .bill-table[data-reveal].is-armed .bill {
     opacity: 0;
     transform: translateY(-48px) rotate(-9deg) scale(1.05);
     transition: opacity 180ms ease-out, transform 420ms cubic-bezier(0.25, 1.4, 0.5, 1);
   }
-  .bill-table.is-in .bill { opacity: 1; transform: rotate(-2.5deg); }
+  .bill-table.is-armed.is-in .bill { opacity: 1; transform: rotate(-2.5deg); }
   .bill h2 { font-size: 44px; line-height: 1.1; letter-spacing: -0.02em; }
   .bill .sub { margin-top: 4px; color: var(--paper-muted); font-size: 16px; }
   .bill dl { margin: 28px 0 0; }
@@ -453,7 +455,6 @@
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition-duration: 0ms !important; transition-delay: 0ms !important; animation: none !important; }
-    .bill { opacity: 1; transform: rotate(-2.5deg); }
   }
 </style>
 </head>
