@@ -33,6 +33,8 @@ const readout = tally.querySelector('output');
 const hint = tally.querySelector('[data-hint]');
 const copy = JSON.parse(document.getElementById('landing-copy').textContent);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Same query as the stacked layout in home.html, so the CSS and the scene never disagree.
+const stacked = matchMedia('(max-width: 1180px), (max-aspect-ratio: 23/20)');
 
 const MAX_MARKS = 20;
 let marks = 0;
@@ -101,13 +103,13 @@ function markSegment(i) {
   const inGroup = i % 5;
   const row = Math.floor(group / 2);
   const col = group % 2;
-  const gx = 512 - 205 + col * 250;
-  const gy = 468 + row * 215;
+  const gx = 512 - 235 + col * 290;
+  const gy = 445 + row * 255;
   if (inGroup < 4) {
-    const x = gx + inGroup * 42 + wobble(i, 1) * 8;
-    return [x + wobble(i, 2) * 12, gy - 85 + wobble(i, 3) * 10, x + wobble(i, 4) * 12, gy + 85 + wobble(i, 5) * 10];
+    const x = gx + inGroup * 50 + wobble(i, 1) * 8;
+    return [x + wobble(i, 2) * 12, gy - 100 + wobble(i, 3) * 10, x + wobble(i, 4) * 12, gy + 100 + wobble(i, 5) * 10];
   }
-  return [gx - 26, gy + 70 + wobble(i, 6) * 10, gx + 156, gy - 62 + wobble(i, 7) * 10];
+  return [gx - 30, gy + 82 + wobble(i, 6) * 10, gx + 185, gy - 72 + wobble(i, 7) * 10];
 }
 
 // A pencil line is a few thin passes, not one clean stroke.
@@ -149,7 +151,14 @@ function drawFace(progress = 1) {
   g.strokeStyle = '#1f1308';
   g.beginPath(); g.arc(c, c, 432, 0, Math.PI * 2); g.stroke();
 
-  if (logo.complete && logo.naturalWidth) g.drawImage(logo, c - 44, 128, 88, 88);
+  if (logo.complete && logo.naturalWidth) {
+    g.save();
+    g.beginPath();
+    g.arc(c, 172, 44, 0, Math.PI * 2);
+    g.clip();
+    g.drawImage(logo, c - 44, 128, 88, 88);
+    g.restore();
+  }
   g.fillStyle = '#1f1308';
   g.font = '800 64px "Baloo 2"';
   g.textAlign = 'center';
@@ -169,7 +178,8 @@ const R = 1.55;
 const cardboard = new MeshStandardMaterial({ color: 0xe8dcc0, roughness: 0.95 });
 const coaster = new Mesh(new CylinderGeometry(R, R, 0.08, 128), [
   cardboard,
-  new MeshStandardMaterial({ map: faceTex, roughness: 0.9 }),
+  // A little self light keeps the paper reading as paper next to the cream headline.
+  new MeshStandardMaterial({ map: faceTex, roughness: 0.9, emissiveMap: faceTex, emissive: 0xffffff, emissiveIntensity: 0.15 }),
   cardboard,
 ]);
 coaster.castShadow = true;
@@ -201,21 +211,23 @@ pencilRig.rotation.y = 0.62;
 scene.add(pencilRig);
 
 // On wide screens the coaster sits right of the headline; on phones it is centred.
-const view = { cam: new Vector3(), look: new Vector3(), px: 0, py: 0, tx: 0, ty: 0 };
+const view = { cam: new Vector3(), look: new Vector3() };
 
 function layout() {
   const { width, height } = host.getBoundingClientRect();
   if (!width || !height) return;
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
-  if (width / height > 1.15) {
+  if (!stacked.matches) {
+    // Narrower desktop windows pull the camera back so the coaster stays whole.
+    const back = Math.max(1, 1.7 / (width / height));
     coasterRig.position.set(2.65, 0, 0.35);
-    pencilRig.position.set(4.95, 0.08, 1.2);
-    view.cam.set(0.4, 6.9, 5.6);
-    view.look.set(0.9, 0, 0.1);
+    pencilRig.position.set(4.4, 0.08, 1.2);
+    view.cam.set(0.4 + 0.9 * (back - 1), 6.9 * back, 5.6 * back);
+    view.look.set(0.9 + 0.9 * (back - 1), 0, 0.1);
   } else {
     coasterRig.position.set(0, 0, 0);
-    pencilRig.position.set(1.9, 0.08, 1.5);
+    pencilRig.position.set(1.9, 0.08, 0.6);
     view.cam.set(0, 7.2, 4.6);
     view.look.set(0.1, 0, 0.35);
   }
@@ -234,7 +246,11 @@ function project(x, z) {
 }
 function placeHit() {
   const p = coasterRig.position;
-  const pts = [project(p.x - R, p.z), project(p.x + R, p.z), project(p.x, p.z - R), project(p.x, p.z + R)];
+  // Enough points around the rim that the box hugs the coaster in perspective.
+  const pts = Array.from({ length: 32 }, (_, i) => {
+    const a = (i / 32) * Math.PI * 2;
+    return project(p.x + Math.cos(a) * R, p.z + Math.sin(a) * R);
+  });
   const xs = pts.map((q) => q[0]);
   const ys = pts.map((q) => q[1]);
   Object.assign(hitButton.style, {
@@ -276,10 +292,7 @@ function frame(now) {
     if (popStart >= 0) busy = true;
   }
 
-  view.px += (view.tx - view.px) * 0.12;
-  view.py += (view.ty - view.py) * 0.12;
-  if (Math.abs(view.tx - view.px) > 1e-4 || Math.abs(view.ty - view.py) > 1e-4) busy = true;
-  camera.position.set(view.cam.x + view.px * 0.5, view.cam.y, view.cam.z + view.py * 0.35);
+  camera.position.copy(view.cam);
   camera.lookAt(view.look);
 
   renderer.render(scene, camera);
@@ -317,20 +330,11 @@ hitButton.addEventListener('click', () => {
 undoButton.addEventListener('click', () => {
   if (marks === 0) return;
   marks -= 1;
+  strokeStart = -1;
   drawFace();
   sync();
   requestRender();
 });
-
-// The camera leans a little toward the mouse, only while the hero is on screen.
-let heroVisible = true;
-new IntersectionObserver(([entry]) => { heroVisible = entry.isIntersecting; }).observe(hero);
-addEventListener('pointermove', (e) => {
-  if (e.pointerType !== 'mouse' || reduced || !heroVisible) return;
-  view.tx = (e.clientX / innerWidth) * 2 - 1;
-  view.ty = (e.clientY / innerHeight) * 2 - 1;
-  requestRender();
-}, { passive: true });
 
 // Swap the still for the live scene only once the table texture and the face are ready.
 let faceReady = false;

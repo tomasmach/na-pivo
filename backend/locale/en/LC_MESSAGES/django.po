@@ -956,7 +956,7 @@ msgid "Soukromí"
 msgstr "Privacy"
 
 msgid "Čárkuj piva jak na tácku."
-msgstr "Tally your beers like on a coaster."
+msgstr "Keep a tally, pub style."
 
 msgid "Každé pivo je jedno ťuknutí. Počítadlo hlídá počet i útratu, zapíše se i bez signálu a ráno z něj máš deník celého večera."
 msgstr "Every beer is one tap. The counter keeps the count and the tab, saves without signal, and in the morning you have a diary of the whole night."
@@ -1000,8 +1000,8 @@ msgstr "beers"
 msgid "Kompas tě dovede."
 msgstr "The compass gets you there."
 
-msgid "Šipka ukáže nejbližší hospodu, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na Dej mi jinou."
-msgstr "The arrow points to the nearest pub and shows how far it is and what they pour. Not your place? Tap Give me another."
+msgid "Šipka ukáže nejbližší hospodu, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na „Dej mi jinou“."
+msgstr "The arrow points to the nearest pub and shows how far it is and what they pour. Not your place? Tap “Give me another”."
 
 msgid "Cinkni partě, že sedíš."
 msgstr "Ping the crew when you sit down."

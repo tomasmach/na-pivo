@@ -35,7 +35,7 @@ def test_english_home_is_translated_and_links_english_documents(client, settings
     assert response["Content-Language"] == "en"
     html = response.content.decode()
     assert '<html lang="en">' in html
-    assert "Tally your beers like on a coaster." in html
+    assert "Keep a tally, pub style." in html
     assert "Čárkuj" not in html
     assert '"empty": "Clean coaster."' in html
     assert "https://tomasmach.github.io/na-pivo/en/privacy.html" in html
@@ -44,7 +44,7 @@ def test_english_home_is_translated_and_links_english_documents(client, settings
 def test_home_loads_nothing_from_other_origins(client):
     html = client.get("/").content.decode()
 
-    for attribute in ("src=", "srcset=", 'rel="preload" href='):
+    for attribute in ("src=", "srcset=", 'rel="preload" href=', "data-wood=", "data-logo=", "url("):
         for chunk in html.split(attribute)[1:]:
             url = chunk[1:].split('"', 1)[0]
             assert url.startswith("/landing/"), url

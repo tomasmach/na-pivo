@@ -4,6 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic import RedirectView
 
 from pubs.home_views import home, landing_asset
 from pubs.web_views import (
@@ -18,6 +19,7 @@ from pubs.web_views import (
 urlpatterns = [
     path("", home, name="home"),
     path("en", home, {"lang": "en"}, name="home-en"),
+    path("en/", RedirectView.as_view(url="/en", permanent=True)),
     path("landing/<str:filename>", landing_asset, name="landing-asset"),
     path("t/<slug:token>", tour_invite_landing, name="tour-invite-landing"),
     path("p/<slug:code>", invite_landing, name="friend-invite-landing"),

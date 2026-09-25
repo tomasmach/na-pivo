@@ -30,6 +30,8 @@ _LANDING_FILES: dict[str, Path] = {
     for path in sorted(_LANDING_ROOT.iterdir())
     if path.is_file() and path.suffix in _CONTENT_TYPES
 }
+# The bundle is read once; a complete response lets the gzip middleware compress it.
+_SCRIPTS = {name: path.read_bytes() for name, path in _LANDING_FILES.items() if path.suffix == ".js"}
 # Content hash in the URL lets browsers keep a file for a year and still pick up a new deploy.
 _LANDING_URLS: dict[str, str] = {
     name.replace(".", "_").replace("-", "_"): (
@@ -93,9 +95,8 @@ def landing_asset(_request: HttpRequest, filename: str) -> HttpResponse:
     if path is None:
         raise Http404
     content_type = _CONTENT_TYPES[path.suffix]
-    if path.suffix == ".js":
-        # A complete response, so the gzip middleware compresses the bundle.
-        response = HttpResponse(path.read_bytes(), content_type=content_type)
+    if filename in _SCRIPTS:
+        response = HttpResponse(_SCRIPTS[filename], content_type=content_type)
     else:
         response = FileResponse(path.open("rb"), content_type=content_type)
     response.headers["Cache-Control"] = "public, max-age=31536000, immutable"

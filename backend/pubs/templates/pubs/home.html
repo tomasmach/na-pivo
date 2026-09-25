@@ -225,7 +225,7 @@
   .print h2 { font-size: clamp(44px, 5.6vw, 88px); line-height: 0.96; letter-spacing: -0.035em; text-wrap: balance; }
   .print p { margin-top: 20px; color: var(--foam-muted); font-size: 19px; }
   .print--map .print-copy { position: absolute; top: 47%; left: 31%; width: 38%; }
-  .print--pub .print-copy { position: absolute; top: 50%; left: var(--gutter); width: 30%; transform: translateY(-50%); }
+  .print--pub .print-copy { position: absolute; top: 50%; left: var(--gutter); width: 36%; transform: translateY(-50%); }
 
   .pair {
     display: grid;
@@ -236,7 +236,8 @@
   .pair article { display: grid; grid-template-columns: minmax(180px, 250px) minmax(0, 1fr); gap: 36px; align-items: center; }
   .phone { padding: 8px; border-radius: 36px; background: #0c0906; box-shadow: 0 0 0 1px var(--hair-strong); }
   .phone img { width: 100%; height: auto; border-radius: 28px; }
-  .pair h3 { font-size: clamp(30px, 2.8vw, 40px); line-height: 1.05; letter-spacing: -0.02em; }
+  .pair h3 { font-size: clamp(30px, 2.8vw, 40px); line-height: 1.05; letter-spacing: -0.02em; text-wrap: balance; }
+  .lede, .print p, .pair p { text-wrap: pretty; }
   .pair p { margin-top: 14px; color: var(--foam-muted); }
 
   /* The promises are a bill, because that is what a pub hands you. */
@@ -255,8 +256,8 @@
   .bill .sub { margin-top: 4px; color: #6b5440; font-size: 15px; }
   .bill dl { margin: 28px 0 0; }
   .bill .row { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; }
-  .bill dt { flex: none; }
-  .bill .dots { flex: 1; transform: translateY(-4px); border-bottom: 2px dotted rgb(18 11 5 / 0.35); }
+  .bill dt { display: flex; flex: 1; gap: 8px; }
+  .bill dt::after { content: ""; flex: 1; transform: translateY(-4px); border-bottom: 2px dotted rgb(18 11 5 / 0.35); }
   .bill dd { flex: none; margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
   .bill .total { margin-top: 14px; padding-top: 14px; border-top: 2px solid var(--ink); font-size: 20px; }
   .bill .sign { margin-top: 28px; font: 800 22px/1.2 var(--display); }
@@ -282,7 +283,7 @@
     color: var(--muted);
     font-size: 15px;
   }
-  footer nav { display: flex; flex-wrap: wrap; gap: 0 8px; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0 -8px; }
   footer p, footer a { display: inline-flex; min-height: 44px; align-items: center; }
   footer a { padding: 0 8px; color: var(--foam-muted); text-decoration: none; }
   footer a:hover { color: var(--foam); text-decoration: underline; }
@@ -296,18 +297,20 @@
     white-space: nowrap;
   }
 
-  @media (max-width: 1100px) {
-    .print--map .print-copy { left: 26%; width: 48%; }
-    .print--pub .print-copy { width: 36%; }
+  @media (max-width: 1300px) {
+    .print--map .print-copy { position: static; width: auto; max-width: 40rem; padding: 32px var(--gutter) 0; }
+    .print--map { padding-bottom: 56px; }
     .pair article { grid-template-columns: 1fr; }
     .pair .phone { width: min(260px, 80%); }
   }
 
-  @media (max-width: 900px) {
+  /* coaster.js uses the same query; keep them in sync. */
+  @media (max-width: 1180px), (max-aspect-ratio: 23/20) {
     .site-nav a:not([hreflang]) { display: none; }
     .hero { display: flex; flex-direction: column; min-height: 0; }
-    .scene { position: relative; inset: auto; height: 460px; }
-    .tally { order: 1; position: relative; right: auto; bottom: auto; align-self: stretch; width: auto; margin: -84px var(--gutter) 0; }
+    .scene { position: relative; inset: auto; height: clamp(440px, 52vw, 580px); }
+    .tally { order: 1; position: relative; right: auto; bottom: auto; align-self: stretch; width: auto; max-width: 560px; margin: -84px var(--gutter) 0; background: var(--stout); -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .hero .store { flex: 1 1 260px; max-width: 360px; justify-content: center; }
     .hero-copy { order: 2; min-height: 0; padding: 40px var(--gutter) 72px; }
     .print--map .print-copy,
     .print--pub .print-copy { position: static; width: auto; transform: none; padding: 32px var(--gutter) 0; }
@@ -341,7 +344,7 @@
   <section class="hero" aria-labelledby="hero-title">
     <div class="scene" data-scene data-wood="{{ asset.oak_table_webp }}" data-logo="{{ asset.icon_144_png }}" aria-hidden="true">
       <picture class="still">
-        <source media="(max-width: 900px)" srcset="{{ asset.still_narrow_webp }}">
+        <source media="(max-width: 1180px), (max-aspect-ratio: 23/20)" srcset="{{ asset.still_narrow_webp }}">
         <img src="{{ asset.still_wide_webp }}" alt="" fetchpriority="high">
       </picture>
     </div>
@@ -366,7 +369,7 @@
     <img src="{{ asset.old_town_map_1536_webp }}" srcset="{{ asset.old_town_map_768_webp }} 768w, {{ asset.old_town_map_1536_webp }} 1536w" sizes="100vw" width="1536" height="1024" alt="" loading="lazy">
     <div class="print-copy">
       <h2 id="map-title">{% translate "Kompas tě dovede." %}</h2>
-      <p>{% blocktranslate trimmed %}Šipka ukáže nejbližší hospodu, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na Dej mi jinou.{% endblocktranslate %}</p>
+      <p>{% blocktranslate trimmed %}Šipka ukáže nejbližší hospodu, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na „Dej mi jinou“.{% endblocktranslate %}</p>
     </div>
   </section>
 
@@ -400,12 +403,12 @@
       <h2 id="bill-title">{% translate "Účet" %}</h2>
       <p class="sub">{% translate "Co tě Na pivo stojí" %}</p>
       <dl>
-        <div class="row"><dt>{% translate "Appka" %}</dt><span class="dots"></span><dd>{% translate "0 Kč" %}</dd></div>
-        <div class="row"><dt>{% translate "Reklamy" %}</dt><span class="dots"></span><dd>{% translate "žádné" %}</dd></div>
-        <div class="row"><dt>{% translate "GPS trasa" %}</dt><span class="dots"></span><dd>{% translate "neukládám" %}</dd></div>
-        <div class="row"><dt>{% translate "Bez signálu" %}</dt><span class="dots"></span><dd>{% translate "zapíše se" %}</dd></div>
-        <div class="row"><dt>{% translate "Jazyk" %}</dt><span class="dots"></span><dd>{% translate "česky, anglicky" %}</dd></div>
-        <div class="row total"><dt>{% translate "Celkem" %}</dt><span class="dots"></span><dd>{% translate "0 Kč" %}</dd></div>
+        <div class="row"><dt>{% translate "Appka" %}</dt><dd>{% translate "0 Kč" %}</dd></div>
+        <div class="row"><dt>{% translate "Reklamy" %}</dt><dd>{% translate "žádné" %}</dd></div>
+        <div class="row"><dt>{% translate "GPS trasa" %}</dt><dd>{% translate "neukládám" %}</dd></div>
+        <div class="row"><dt>{% translate "Bez signálu" %}</dt><dd>{% translate "zapíše se" %}</dd></div>
+        <div class="row"><dt>{% translate "Jazyk" %}</dt><dd>{% translate "česky, anglicky" %}</dd></div>
+        <div class="row total"><dt>{% translate "Celkem" %}</dt><dd>{% translate "0 Kč" %}</dd></div>
       </dl>
       <p class="sign">{% translate "Díky a přijď zas. Tomáš" %}</p>
     </div>
