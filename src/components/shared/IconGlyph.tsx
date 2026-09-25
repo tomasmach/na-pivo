@@ -89,6 +89,11 @@ import HandPlatter from 'lucide-react-native/icons/hand-platter';
 import Share2 from 'lucide-react-native/icons/share-2';
 import Globe from 'lucide-react-native/icons/globe';
 import TriangleAlert from 'lucide-react-native/icons/triangle-alert';
+import ArrowUp from 'lucide-react-native/icons/arrow-up';
+import ArrowDown from 'lucide-react-native/icons/arrow-down';
+import GripVertical from 'lucide-react-native/icons/grip-vertical';
+import Ellipsis from 'lucide-react-native/icons/ellipsis';
+import Footprints from 'lucide-react-native/icons/footprints';
 import type { LucideProps } from 'lucide-react-native';
 
 export interface IconProps {
@@ -210,3 +215,9 @@ export const QrCodeIcon = wrap(QrCode, 'QrCodeIcon');
 export const MenuIcon = wrap(Menu, 'MenuIcon');
 export const GlobeIcon = wrap(Globe, 'GlobeIcon');
 export const TriangleAlertIcon = wrap(TriangleAlert, 'TriangleAlertIcon');
+
+export const ArrowUpIcon = wrap(ArrowUp, 'ArrowUpIcon');
+export const ArrowDownIcon = wrap(ArrowDown, 'ArrowDownIcon');
+export const GripVerticalIcon = wrap(GripVertical, 'GripVerticalIcon');
+export const EllipsisIcon = wrap(Ellipsis, 'EllipsisIcon');
+export const FootprintsIcon = wrap(Footprints, 'FootprintsIcon');

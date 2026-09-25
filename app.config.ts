@@ -232,6 +232,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
               host: 'na-pivo.cz',
               pathPrefix: '/p',
             },
+            { scheme: 'https', host: 'na-pivo.cz', pathPrefix: '/t/' },
           ],
           category: ['BROWSABLE', 'DEFAULT'],
         },

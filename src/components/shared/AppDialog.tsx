@@ -243,6 +243,7 @@ export function AppDialogHost() {
       onDismiss={runPendingAction}
     >
       <Pressable
+        accessible={false}
         style={[styles.backdrop, !isActionMenu && styles.centerBackdrop]}
         onPress={closeFromBackdrop}
       >
@@ -255,7 +256,7 @@ export function AppDialogHost() {
             { marginBottom: isActionMenu ? Math.max(insets.bottom, Spacing.lg) : 0 },
           ]}
         >
-          <Pressable onPress={(event) => event.stopPropagation()}>{content}</Pressable>
+          <Pressable accessible={false} onPress={(event) => event.stopPropagation()}>{content}</Pressable>
         </Animated.View>
       </Pressable>
     </Modal>

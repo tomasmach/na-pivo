@@ -223,6 +223,7 @@ from pubs.models import (
     PubVisit,
     PushDevice,
     ReleaseNote,
+    TourPlan,
     UserAddedPub,
     account_deletion_fingerprint,
     account_deletion_fingerprint_matches,
@@ -10563,6 +10564,7 @@ def _load_export_account(account: Account) -> Account:
     loaded_account = (
         Account.objects.select_related("email_credential", "usage_stats")
         .annotate(
+            has_tours=Exists(TourPlan.objects.filter(owner=OuterRef("pk"), deleted_at__isnull=True)),
             has_amenity_vote_tombstones=Exists(
                 PubAmenityVoteTombstone.objects.filter(account=OuterRef("pk"))
             ),
@@ -10736,6 +10738,11 @@ def _load_export_account(account: Account) -> Account:
     )
 
     conditional_prefetches: list[tuple[str, str, Prefetch | None]] = [
+        (
+            "tours",
+            "has_tours",
+            Prefetch("tours", queryset=TourPlan.objects.filter(deleted_at__isnull=True).prefetch_related("stops")),
+        ),
         (
             "amenity_vote_tombstones",
             "has_amenity_vote_tombstones",
@@ -10924,7 +10931,9 @@ def _export_account_data(account: Account) -> dict:
     usage = getattr(account, "usage_stats", None)
     credential = getattr(account, "email_credential", None)
     identity = _export_account_identity(account)
+    from pubs.tours import tour_snapshot
     return {
+        "tours": [tour_snapshot(plan) for plan in account.tours.all() if plan.deleted_at is None],
         "exported_at": dj_timezone.now().isoformat(),
         "account": {
             "id": str(account.public_id),

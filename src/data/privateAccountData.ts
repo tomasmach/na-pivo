@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearToursPrivateData } from '@/stores/toursStore';
 
 import { clearAddedPubsQueue } from './addedPubsQueue';
 import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueue';
@@ -119,6 +120,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // Invalidate a captured pre-logout history snapshot before any async queue
   // clear can yield, so it cannot be enqueued under the replacement account.
   cancelDrinksHistorySeed();
+  const toursCleanup = clearToursPrivateData();
   // The wiped ratings, votes and own pubs must come back on the next foreground
   // even when the same account signs in again within the pull interval.
   resetForegroundPulls();
@@ -146,6 +148,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   });
 
   await Promise.all([
+    toursCleanup,
     clearAddedPubsQueue(),
     clearCommunityQueue(),
     clearDrinksQueue(),

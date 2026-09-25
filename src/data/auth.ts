@@ -35,6 +35,8 @@ import {
 import { getBackendEndpoint } from './backendConfig';
 import { createQueueLock } from './createQueue';
 import { clearLocalPrivateAccountData } from './privateAccountData';
+import { adoptToursOwner } from '@/stores/toursStore';
+import { beginTourAccountChange, endTourAccountChange } from './toursBoundary';
 import { disableCachedPushDeviceWithBearer } from './pushDeviceClient';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from './socialAuth';
 import { trackApiFailure } from './telemetryClient';
@@ -42,7 +44,13 @@ import { trackApiFailure } from './telemetryClient';
 const REQUEST_TIMEOUT_MS = 12000;
 // A slow credential response must finish before logout/delete can move the
 // session boundary. Only these lifecycle operations publish a new identity.
-const runSessionChange = createQueueLock();
+const sessionChangeLock = createQueueLock();
+function runSessionChange<T>(task: () => Promise<T>): Promise<T> {
+  return sessionChangeLock(async () => {
+    beginTourAccountChange();
+    try { return await task(); } finally { endTourAccountChange(); }
+  });
+}
 
 export type AuthProvider = 'email' | 'google' | 'apple';
 
@@ -577,6 +585,9 @@ async function applyAuthSuccess(
   }
   try {
     await bindAccountMerge(profile.id);
+    // Persist tour ownership while the merge proof is durable and before the
+    // bearer changes, so a restart cannot strand anonymous local plans.
+    await adoptToursOwner(outgoing?.accountId ?? null, profile.id);
     await setSession({
       deviceId: profile.deviceId || undefined,
       accountId: profile.id,

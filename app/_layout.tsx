@@ -107,7 +107,8 @@ function OnboardingGate() {
     if (
       decision === 'show' &&
       pathname !== '/onboarding' &&
-      !pathname.startsWith('/parta/pozvanka')
+      !pathname.startsWith('/parta/pozvanka') &&
+      !pathname.startsWith('/t/')
     ) {
       router.replace('/onboarding' as Href);
     }

@@ -666,6 +666,11 @@ REST_FRAMEWORK = {
     # Scoped throttle rates. SharedScopedRateThrottle stores its counters in
     # the database, so adding gunicorn workers does not multiply the limits.
     "DEFAULT_THROTTLE_RATES": {
+        "tour_read": "120/min",
+        "tour_write": "20/hour",
+        "tour_share": "10/hour",
+        "tour_public": "60/min",
+        "tour_search": "60/min",
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
         "account_export": ACCOUNT_EXPORT_THROTTLE_RATE,
         "feedback": FEEDBACK_THROTTLE_RATE,

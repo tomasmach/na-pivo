@@ -87,6 +87,8 @@ jest.mock('@/photos/BeerPhotoCaptureFlow', () => ({ BeerPhotoCaptureFlow: () => 
 const mockRouterPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ push: mockRouterPush, back: jest.fn() })),
+  // The counter is always the focused screen in these tests.
+  useFocusEffect: (effect: () => void) => jest.requireActual<typeof import('react')>('react').useEffect(effect, [effect]),
 }));
 
 jest.mock('@/components/shared/IconGlyph', () => {
@@ -161,6 +163,21 @@ jest.mock('@/data/visitsSync', () => ({ syncVisit, deleteVisitByClientId }));
 const useNearbyPub = jest.fn();
 jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() }));
 
+// Tour de pub: only the running tour and its stop marks matter to the counter.
+const mockTours: { activeRun: any; hydrate: jest.Mock; markStop: jest.Mock } = {
+  activeRun: null,
+  hydrate: jest.fn(async () => ({ ok: true })),
+  markStop: jest.fn(async (id: string, status: 'visited' | 'skipped' | null) => {
+    const statuses = { ...mockTours.activeRun.statuses };
+    if (status) statuses[id] = status; else delete statuses[id];
+    mockTours.activeRun = { ...mockTours.activeRun, statuses };
+    return { ok: true };
+  }),
+};
+jest.mock('@/stores/toursStore', () => ({
+  useToursStore: Object.assign((select?: (s: unknown) => unknown) => (select ? select(mockTours) : mockTours), { getState: () => mockTours }),
+}));
+
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -171,6 +188,7 @@ import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { CounterMoreSheet } from '@/counter/CounterMoreSheet';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
 
 const { default: CounterScreen, groupMenuBeers, UNDO_WINDOW_MS } = require('../CounterScreen');
 const TestRenderer = require('react-test-renderer');
@@ -607,6 +625,61 @@ describe('CounterScreen counting', () => {
     expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
     expect(lastProps(BeerFormModal).visible).toBe(false);
     expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(false);
+  });
+});
+
+// ─── Tour de pub link ────────────────────────────────────────────────────────
+
+describe('CounterScreen and a running tour', () => {
+  const stop = (n: number, cacheKey: string) => ({ id: `stop-${n}`, pubId: `pub-${n}`, cacheKey, name: `Hospoda ${n}`, address: '', lat: 50, lon: 14 });
+  beforeEach(() => {
+    mockTours.markStop.mockClear();
+    mockTours.activeRun = {
+      id: 'run', planId: 'plan', startedAt: new Date().toISOString(), endedAt: null, statuses: { 'stop-1': 'visited' },
+      snapshot: { id: 'plan', title: 'Pátek', scheduledDate: null, scheduledTime: null, timezone: 'Europe/Prague', revision: 1, updatedAt: new Date().toISOString(), stops: [stop(1, 'aaaaaaaa'), stop(2, CELL), stop(3, 'cccccccc')] },
+    };
+  });
+  afterAll(() => { mockTours.activeRun = null; });
+
+  it('a beer in a tour pub checks that stop off, and undo takes it back', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    expect(surfaceText(renderer)).toContain(copy.tours.counterAtStop(2));
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+    expect(mockTours.markStop).toHaveBeenLastCalledWith('stop-2', 'visited');
+    expect(surfaceText(renderer)).toContain(copy.tours.countedAtStop(1, 2));
+
+    await act(async () => {
+      surface(renderer, copy.a11y.counterUndoStrip).props.onPress();
+      await Promise.resolve();
+    });
+    expect(mockTours.markStop).toHaveBeenLastCalledWith('stop-2', null);
+  });
+
+  it('opens on the pub a tour stop handed over, once', () => {
+    const state = nearbyState();
+    useNearbyPub.mockReturnValue(state);
+    const lokal = { id: 'pub-3', name: 'Lokál Dlouhááá', lat: 50.09, lng: 14.42 };
+    useCounterHandoffStore.getState().handOff(lokal);
+    render();
+    expect(state.selectPub).toHaveBeenCalledWith(lokal);
+    expect(useCounterHandoffStore.getState().pub).toBeNull();
+  });
+
+  it('leaves a stop marked by hand alone when its drink is undone', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+    mockTours.activeRun.statuses['stop-2'] = 'skipped';
+    mockTours.markStop.mockClear();
+    await act(async () => {
+      surface(renderer, copy.a11y.counterUndoStrip).props.onPress();
+      await Promise.resolve();
+    });
+    expect(mockTours.markStop).not.toHaveBeenCalled();
   });
 });
 
