@@ -367,6 +367,15 @@ export const useToursStore = create<ToursState>(() => ({
       if (!r.ok)
         return r;
     }
+    else if (rotate && !pending.rotate) {
+      // A requested rotation must cut off the old link even behind a stalled share;
+      // a fresh operation id keeps the earlier, non-rotating one replay-safe.
+      pending = { ...pending, rotate: true, shareOperationId: generateUuidV4() };
+      d.pending[id] = pending;
+      const r = await persist(d, g);
+      if (!r.ok)
+        return r;
+    }
     if (pending.stage === 'plan') {
       const result = await publishTour(pending.plan, pending.operationId);
       if (!current(g))

@@ -161,6 +161,22 @@ describe('Tours durable lifecycle', () => {
     expect(store.getState().plans[0].share).toEqual(shared.share);
     expect(store.getState().published[id]).toEqual(tourContentSignature(store.getState().plans[0]));
   });
+  it('still rotates the link when a stalled share was not a rotation', async () => {
+    const id = await makePlan();
+    const local = cloneTour(store.getState().plans[0]);
+    const canonical = { ...local, revision: 1 };
+    const shared = { ...canonical, share: { url: `https://na-pivo.cz/t/${'y'.repeat(43)}`, expiresAt: '2026-11-01T00:00:00Z' } };
+    (publishTour as jest.Mock).mockResolvedValue({ ok: true, tour: canonical });
+    (shareTour as jest.Mock).mockResolvedValueOnce({ ok: false, error: 'network' }).mockResolvedValueOnce({ ok: true, tour: shared });
+    expect(await store.getState().publish(id)).toEqual({ ok: false, error: 'network' });
+    const [, stalledOperation, stalledRotate] = (shareTour as jest.Mock).mock.calls[0];
+    expect(stalledRotate).toBe(false);
+    expect(await store.getState().publish(id, true)).toEqual({ ok: true });
+    const [, operation, rotated] = (shareTour as jest.Mock).mock.calls[1];
+    expect(rotated).toBe(true);
+    expect(operation).not.toBe(stalledOperation);
+    expect(publishTour).toHaveBeenCalledTimes(1);
+  });
   it.each([true, false])('shares unchanged content without a new revision and retries the same operation (rotate=%s)', async (rotate) => {
     const id = await makePlan();
     const remote = { ...cloneTour(store.getState().plans[0]), revision: 1 };
