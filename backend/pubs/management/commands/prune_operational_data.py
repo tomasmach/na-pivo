@@ -12,6 +12,7 @@ from pubs.models import (
     ApiRateLimitBucket,
     ContentReport,
     FeedbackReport,
+    PubGeocodingMiss,
     TourShare,
 )
 
@@ -49,6 +50,13 @@ class Command(BaseCommand):
             batch_size=batch_size,
         )
         self.stdout.write(f"rate_limit_buckets={buckets} export_jobs={exports}")
+
+        # Keep the expiry predicate on the DELETE as well: a lookup may have
+        # refreshed a miss since the bounded list of keys was selected.
+        misses = PubGeocodingMiss.objects.filter(expires_at__lte=now)
+        miss_ids = list(misses.order_by("pk").values_list("pk", flat=True)[:batch_size])
+        deleted_misses, _ = misses.filter(pk__in=miss_ids).delete()
+        self.stdout.write(f"pub_geocoding_misses={deleted_misses}")
 
         proof_cutoff = now - timedelta(
             days=settings.ACCOUNT_OPERATION_PROOF_RETENTION_DAYS

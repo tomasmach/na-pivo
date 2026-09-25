@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { AppState } from 'react-native';
 
 import {
   clearCachedAccount,
@@ -85,6 +86,7 @@ async function seedAccount(blob: {
 }
 
 beforeEach(async () => {
+  AppState.currentState = 'active';
   // Clear the in-memory AsyncStorage + SecureStore mocks so persisted
   // ids/accounts don't bleed across tests.
   (AsyncStorage as any).__INTERNAL_MOCK_STORAGE__ = {};
@@ -94,6 +96,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   global.fetch = ORIGINAL_FETCH;
   setBackend(ORIGINAL_URL);
   jest.clearAllMocks();
@@ -147,6 +150,9 @@ describe('getCachedAuthenticationState', () => {
     await expect(getCachedAuthenticationState()).resolves.toBeNull();
     expect(mockTrackApiFailure).toHaveBeenCalledWith('session_cache_read', {
       reason: 'session_cache_read_unavailable',
+      app_state: 'active',
+      error_category: 'unknown',
+      retryable: true,
     });
   });
 
@@ -177,6 +183,46 @@ describe('ensureAccount — dormant feature', () => {
 });
 
 describe('ensureAccount — registration (no cache yet)', () => {
+  it('bounds unavailable keychain retries without recreating an account and reads again on foreground', async () => {
+    jest.useFakeTimers();
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    AppState.currentState = 'background';
+    const error = Object.assign(new Error('sensitive account contents'), { code: 'ERR_KEY_CHAIN' });
+    jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(error).mockRejectedValueOnce(error);
+
+    for (let i = 0; i < 10; i += 1) await expect(ensureAccount()).resolves.toBeNull();
+    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+    expect(mockTrackApiFailure).toHaveBeenCalledTimes(1);
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('session_cache_read', {
+      reason: 'session_cache_read_unavailable', app_state: 'background',
+      error_category: 'secure_store_access', retryable: true,
+    });
+    await jest.advanceTimersByTimeAsync(2_000);
+    await expect(ensureAccount()).resolves.toBeNull();
+    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
+    expect(mockTrackApiFailure).toHaveBeenCalledTimes(1);
+
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'secret', authenticated: true });
+    AppState.currentState = 'active';
+    await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1', authenticated: true });
+    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('continues using the last-known signed-in account during the keychain retry cooldown', async () => {
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'secret', authenticated: true });
+    await ensureAccount();
+    jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('unavailable'));
+    for (let i = 0; i < 3; i += 1) {
+      await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1', token: 'secret' });
+    }
+    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
+  });
+
   it('does not mint an anonymous account when SecureStore is temporarily unavailable', async () => {
     setBackend('https://api.example.com');
     const fetchSpy = jest.fn();

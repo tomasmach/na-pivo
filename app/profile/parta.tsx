@@ -14,7 +14,7 @@
  * cross-link back to Parta, where they are accepted.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -52,13 +52,15 @@ import { HitArea, Spacing } from '@/theme/layout';
 
 import { AddFriendTools } from '@/friends/AddFriendTools';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import CodeSheet from '@/friends/CodeSheet';
 import { FriendListRow } from '@/friends/FriendListRow';
 import { useFriendSafety } from '@/friends/friendSafety';
 import FriendsSkeleton from '@/friends/FriendsSkeleton';
 import OfflineBanner from '@/friends/OfflineBanner';
 import { OutgoingInvites } from '@/friends/OutgoingInvites';
 import SectionHeader from '@/friends/SectionHeader';
+
+// The QR code pulls in ~450 KB of SVG/CSS parsing; load it when the sheet opens.
+const CodeSheet = lazy(() => import('@/friends/CodeSheet'));
 
 export default function ManagePartaScreen() {
   const insets = useSafeAreaInsets();
@@ -211,6 +213,7 @@ export default function ManagePartaScreen() {
         // above the keyboard — pad it here (iOS pads via keyboard insets below).
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" enabled={Platform.OS === 'android'}>
         <KeyboardAwareScrollView
+          keyboardAvoidedExternally={Platform.OS === 'android'}
           contentContainerStyle={[
             styles.content,
             { paddingBottom: Math.max(insets.bottom + 18, 32) },
@@ -299,7 +302,11 @@ export default function ManagePartaScreen() {
         </KeyboardAvoidingView>
       )}
 
-      {codeVisible ? <CodeSheet onClose={() => setCodeVisible(false)} /> : null}
+      {codeVisible ? (
+        <Suspense fallback={null}>
+          <CodeSheet onClose={() => setCodeVisible(false)} />
+        </Suspense>
+      ) : null}
     </View>
   );
 }

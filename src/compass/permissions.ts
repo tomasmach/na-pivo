@@ -32,8 +32,13 @@ export async function requestLocationPermission(): Promise<PermissionState> {
  * Ensures foreground location permission by checking first, then prompting only
  * when still undetermined. Keep this for explicit CTA flows.
  */
-export async function ensureLocationPermission(): Promise<PermissionState> {
+export async function ensureLocationPermission(
+  { openSettingsIfDenied = false }: { openSettingsIfDenied?: boolean } = {},
+): Promise<PermissionState> {
   const current = await checkLocationPermission();
+  // A fresh refusal is a complete user choice. Only a later explicit attempt
+  // with permission already denied should offer the system settings route.
+  if (current === 'denied' && openSettingsIfDenied) await openSystemSettings();
   if (current !== 'undetermined') return current;
   return requestLocationPermission();
 }

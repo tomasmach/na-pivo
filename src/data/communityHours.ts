@@ -111,9 +111,16 @@ export function mergeBeerIntoMenu(
   beer: CommunityBeer,
 ): CommunityBeer[] {
   let matched = false;
+  let changed = false;
   const next = menu.map((existing) => {
     if (!matched && isSameBeerIdentity(existing, beer)) {
       matched = true;
+      const samePrice =
+        typeof beer.priceCzk === 'number'
+          ? existing.priceCzk === beer.priceCzk
+          : existing.priceCzk === undefined;
+      if (samePrice) return existing;
+      changed = true;
       const merged: CommunityBeer = { name: existing.name };
       if (typeof beer.priceCzk === 'number') merged.priceCzk = beer.priceCzk;
       if (typeof existing.volumeMl === 'number') merged.volumeMl = existing.volumeMl;
@@ -122,8 +129,11 @@ export function mergeBeerIntoMenu(
     return existing;
   });
 
-  if (matched) return next;
-  if (next.length >= MAX_MENU_BEERS) return next;
+  // The same reference tells callers nothing changed, so they can skip a store
+  // write (and the re-renders it triggers) when the price is already on the menu.
+  if (matched || next.length >= MAX_MENU_BEERS) {
+    return changed ? next : (menu as CommunityBeer[]);
+  }
 
   const appended: CommunityBeer = { name: beer.name.trim() };
   if (typeof beer.priceCzk === 'number') appended.priceCzk = beer.priceCzk;

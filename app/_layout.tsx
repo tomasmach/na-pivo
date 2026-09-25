@@ -23,6 +23,13 @@ import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
 import { installPubAmenitiesSync, restorePubAmenities } from '@/data/pubAmenitiesSync';
+import { flushPubRatingsQueue } from '@/data/pubRatingsQueue';
+import { flushPubAmenitiesQueue } from '@/data/pubAmenitiesQueue';
+import {
+  pulledRecently,
+  trackForegroundPull,
+  type ForegroundPull,
+} from '@/data/foregroundPulls';
 import { flushVisitsQueue } from '@/data/visitsQueue';
 import { flushFriendsQueue } from '@/data/friendsQueue';
 import { fetchFriendsLive } from '@/data/friendsClient';
@@ -150,14 +157,23 @@ function seedPartaBadge(): void {
   });
 }
 
-function restoreAndFlushAddedPubsQueue(): void {
+function currentAccountId(): string | null {
+  return useAccountStore.getState().session?.accountId ?? null;
+}
+
+/** Run a server pull and remember it only when it reached the server. */
+function trackPull(name: ForegroundPull, run: () => Promise<boolean>): Promise<boolean> {
+  return trackForegroundPull(name, run, currentAccountId);
+}
+
+function restoreAndFlushAddedPubsQueue(pullOwnAddedPubs = true): void {
   void restoreQueuedAddedPubs()
     .then((restoredCount) => {
       if (restoredCount > 0) {
         usePubStore.getState().bumpCatalogRevision();
       }
       return flushAddedPubsQueue()
-        .then(() => syncOwnAddedPubs())
+        .then(() => (pullOwnAddedPubs ? trackPull('addedPubs', syncOwnAddedPubs) : undefined))
         .then(() => restoredCount);
     })
     .then((restoredCount) => {
@@ -344,9 +360,9 @@ export default function RootLayout() {
     void flushUpdateDrinksQueue();
     // Personal ratings: pull + merge the server set (LWW), pushing local-newer
     // ratings, then flush. Visits: one-time seed of existing history, then flush.
-    void restorePubRatings();
+    void trackPull('ratings', () => restorePubRatings());
     // Amenity votes: same pull + merge + push + flush as ratings (spec §4.7).
-    void restorePubAmenities();
+    void trackPull('amenities', () => restorePubAmenities());
     void seedVisitsFromHistory();
     void flushVisitsQueue();
     // Parta: retry queued RSVP/cinknutí/reactions, and light up push for
@@ -373,6 +389,10 @@ export default function RootLayout() {
           void seedDrinksFromHistory();
         });
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
+        // Every queue FLUSH below runs on each foreground. A server PULL that
+        // succeeded in the last few minutes is skipped (see foregroundPulls).
+        const accountId = currentAccountId();
+        const pull = (name: ForegroundPull) => !pulledRecently(name, accountId);
         // Commit any lock-screen `+ pivo` taps before applying the idle cutoff;
         // the native action's timestamp may be the latest activity tonight.
         void reconcileLiveBeerActivityAndAutoArchive();
@@ -380,17 +400,23 @@ export default function RootLayout() {
         void flushPubNameCorrectionsQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
-        restoreAndFlushAddedPubsQueue();
+        restoreAndFlushAddedPubsQueue(pull('addedPubs'));
         void flushDrinksQueue();
         void flushDeleteDrinksQueue();
         void flushUpdateDrinksQueue();
-        void restorePubRatings();
-        void restorePubAmenities();
+        // restore* = flush + pull + merge; a throttled foreground still flushes.
+        if (pull('ratings')) void trackPull('ratings', () => restorePubRatings());
+        else void flushPubRatingsQueue();
+        if (pull('amenities')) void trackPull('amenities', () => restorePubAmenities());
+        else void flushPubAmenitiesQueue();
         void flushVisitsQueue();
         void flushFriendsQueue();
+        void ensureFriendPushRegisteredIfGranted();
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
-        void useAccountStore.getState().refreshDiarySnapshot();
+        if (pull('diary')) {
+          void trackPull('diary', () => useAccountStore.getState().refreshDiarySnapshot());
+        }
         // Re-seed pub geofences for wherever the user is now (no-op when the
         // feature is off; cheap unless they moved a few km since last fetch).
         if ((useTallyStore.getState().current?.drinks.length ?? 0) > 0) {
@@ -434,6 +460,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="pub-search" options={{ animation: 'none' }} />
           <Stack.Screen
             name="onboarding"
             options={{

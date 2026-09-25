@@ -6,6 +6,7 @@ import {
   flushAddedPubsQueue,
   loadAddedPubSubmissions,
   retryAddedPub,
+  restoreQueuedAddedPubs,
   syncOwnAddedPubs,
 } from '../addedPubsQueue';
 import { fetchOwnAddedPubs, submitAddedPub, submitAddedPubEdit } from '../addedPubsClient';
@@ -43,6 +44,64 @@ beforeEach(async () => {
 });
 
 describe('added pub state registry', () => {
+  it('retains an unresolved legacy addition across reloads without repeating it, then submits its corrected address', async () => {
+    await AsyncStorage.setItem('na-pivo-added-pubs-queue', JSON.stringify([ENTRY]));
+    (submitAddedPub as jest.Mock).mockResolvedValue('location-not-found');
+    await flushAddedPubsQueue();
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
+      expect.objectContaining({ ...ENTRY, syncState: 'failed', failureReason: 'location-not-found' }),
+    ]);
+    await flushAddedPubsQueue();
+    expect(submitAddedPub).toHaveBeenCalledTimes(1);
+
+    const corrected = { lat: 49.1951, lng: 16.6068, city: 'Brno', address: 'Česká 12' };
+    (submitAddedPub as jest.Mock).mockResolvedValue({
+      clientId: ENTRY.client_id, cacheKey: 'confirmed', name: ENTRY.name, ...corrected,
+    });
+    await expect(enqueueAddedPubEdit({ client_id: ENTRY.client_id, ...corrected })).resolves.toBe('synced');
+    expect(submitAddedPub).toHaveBeenLastCalledWith(expect.objectContaining({
+      client_id: ENTRY.client_id, ...corrected,
+    }));
+    const [saved] = await loadAddedPubSubmissions();
+    expect(saved.syncState).toBe('synced');
+    expect(saved).not.toHaveProperty('failureReason');
+    expect(submitAddedPubEdit).not.toHaveBeenCalled();
+  });
+
+  it('keeps a rejected location edit and restores the last confirmed point', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue({
+      clientId: ENTRY.client_id, cacheKey: 'confirmed', ...ENTRY,
+    });
+    await enqueueAddedPub(ENTRY);
+    jest.clearAllMocks();
+    (submitAddedPubEdit as jest.Mock).mockResolvedValue('location-not-found');
+    await expect(enqueueAddedPubEdit({
+      client_id: ENTRY.client_id, lat: 49.19, lng: 16.61, city: 'Brno', address: 'Neznámá 1',
+    })).resolves.toBe('failed');
+    await flushAddedPubsQueue();
+    expect(submitAddedPubEdit).toHaveBeenCalledTimes(1);
+    expect(upsertLocalPub).toHaveBeenLastCalledWith(expect.objectContaining({
+      lat: ENTRY.lat, lng: ENTRY.lng, address: ENTRY.address,
+    }));
+    expect((await loadAddedPubSubmissions())[0]).toEqual(expect.objectContaining({
+      address: 'Neznámá 1', failureReason: 'location-not-found', pendingOperation: 'edit',
+    }));
+    // Cold startup must restore the confirmed pin without losing the failed edit.
+    jest.clearAllMocks();
+    await restoreQueuedAddedPubs();
+    (fetchOwnAddedPubs as jest.Mock).mockResolvedValueOnce([{
+      clientId: ENTRY.client_id, cacheKey: 'confirmed', ...ENTRY,
+    }]);
+    await syncOwnAddedPubs();
+    expect(upsertLocalPub).toHaveBeenLastCalledWith(expect.objectContaining({
+      lat: ENTRY.lat, lng: ENTRY.lng, address: ENTRY.address,
+    }));
+    const before = await loadAddedPubSubmissions();
+    await expect(enqueueAddedPubEdit({ client_id: ENTRY.client_id, name: 'Pouze nové jméno' })).resolves.toBe('failed');
+    expect(submitAddedPubEdit).not.toHaveBeenCalled();
+    expect(await loadAddedPubSubmissions()).toEqual(before);
+  });
+
   it('keeps a retryable submit visible as pending and syncs after connectivity returns', async () => {
     (submitAddedPub as jest.Mock).mockResolvedValueOnce('retry');
 

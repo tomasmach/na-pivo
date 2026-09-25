@@ -1134,6 +1134,8 @@ class PushDevice(models.Model):
         db_index=True,
     )
     enabled = models.BooleanField(default=True, db_index=True)
+    # Optional ordering marker from newer installs. Old released clients omit it.
+    client_revision = models.PositiveBigIntegerField(null=True, blank=True)
     app_version = models.CharField(max_length=64, blank=True, default="")
     locale = models.CharField(
         max_length=8,
@@ -2697,6 +2699,7 @@ class UserAddedPub(models.Model):
     )
     google_place_id = models.CharField(max_length=256, blank=True, default="")
     location_synced_at = models.DateTimeField(null=True, blank=True)
+    location_refresh_after = models.DateTimeField(null=True, blank=True)
     city = models.TextField(blank=True, default="")
     address = models.TextField(blank=True, default="")
     active = models.BooleanField(
@@ -4662,6 +4665,13 @@ class PubCommunityXpLedger(models.Model):
 
     def __str__(self) -> str:
         return f"PubCommunityXpLedger({self.kind} [{self.cache_key}])"
+
+
+class PubGeocodingMiss(models.Model):
+    """Short-lived, shared negative cache; never stores an address or GPS."""
+
+    address_hash = models.CharField(max_length=64, primary_key=True)
+    expires_at = models.DateTimeField(db_index=True)
 
 
 class ExternalApiDailyUsage(models.Model):

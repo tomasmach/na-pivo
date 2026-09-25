@@ -28,7 +28,12 @@ GoogleGeocodingSource — narrow Google Geocoding v4 address client
 GooglePlacesAutocompleteSource — Google Places name autocomplete client
 """
 
-from .firmy import FirmyHoursSource, RawHours, TransientFetchError  # noqa: F401
+from .firmy import (  # noqa: F401
+    FirmyDailyCapExceededError,
+    FirmyHoursSource,
+    RawHours,
+    TransientFetchError,
+)
 from .google_geocoding import (  # noqa: F401
     GoogleAddressCandidate,
     GoogleGeocodingDailyCapExceededError,
@@ -62,6 +67,7 @@ from .venue import classify_venue  # noqa: F401
 __all__ = [
     "RawHours",
     "FirmyHoursSource",
+    "FirmyDailyCapExceededError",
     "TransientFetchError",
     "OpenRouterVisionSource",
     "OpenRouterDailyCapExceededError",

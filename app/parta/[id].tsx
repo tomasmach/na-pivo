@@ -161,7 +161,7 @@ export default function FriendProfileScreen() {
   const handleShowOnCompass = useCallback(() => {
     if (!compassTarget) return;
     if (focusPubFromActivity(compassTarget)) {
-      router.push('/' as Href);
+      router.push({ pathname: '/', params: { view: 'compass' } });
     }
   }, [compassTarget, router]);
 
@@ -511,6 +511,7 @@ export default function FriendProfileScreen() {
                       source={{ uri: photo.imageUrl }}
                       style={StyleSheet.absoluteFill}
                       resizeMode="cover"
+                      resizeMethod="resize"
                       accessibilityIgnoresInvertColors
                     />
                   </ScalePressable>
