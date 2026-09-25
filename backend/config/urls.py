@@ -5,6 +5,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from pubs.home_views import home, landing_asset
 from pubs.web_views import (
     android_asset_statements,
     apple_app_site_association,
@@ -15,6 +16,9 @@ from pubs.web_views import (
 )
 
 urlpatterns = [
+    path("", home, name="home"),
+    path("en", home, {"lang": "en"}, name="home-en"),
+    path("landing/<str:filename>", landing_asset, name="landing-asset"),
     path("t/<slug:token>", tour_invite_landing, name="tour-invite-landing"),
     path("p/<slug:code>", invite_landing, name="friend-invite-landing"),
     path("party/<slug:code>", party_invite_landing, name="party-invite-landing"),

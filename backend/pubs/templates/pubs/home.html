@@ -1,0 +1,448 @@
+<!doctype html>
+{% load i18n %}
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#231407">
+<title>{% translate "Na pivo: kompas na hospodu a pivní deníček" %}</title>
+<meta name="description" content="{% translate "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam." %}">
+<link rel="canonical" href="{{ canonical_url }}">
+<link rel="alternate" hreflang="cs" href="{{ cs_url }}">
+<link rel="alternate" hreflang="en" href="{{ en_url }}">
+<link rel="alternate" hreflang="x-default" href="{{ cs_url }}">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="{{ asset.baloo2_extrabold_woff2 }}" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Na pivo">
+<meta property="og:locale" content="{{ og_locale }}">
+<meta property="og:title" content="{% translate "Na pivo: kompas na hospodu a pivní deníček" %}">
+<meta property="og:description" content="{% translate "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam." %}">
+<meta property="og:url" content="{{ canonical_url }}">
+<meta property="og:image" content="{{ og_image_url }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{% translate "Pivní tácek s čárkami na dubovém stole." %}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="apple-itunes-app" content="app-id=6773790025">
+<style>
+  @font-face {
+    font-family: "Baloo 2";
+    src: url("{{ asset.baloo2_extrabold_woff2 }}") format("woff2");
+    font-weight: 700 800;
+    font-display: swap;
+  }
+
+  /* Values from DESIGN.md and src/theme/colors.ts. The page ground is the brown the linocut prints are pulled on. */
+  :root {
+    color-scheme: dark;
+    --ground: #231407;
+    --stout: #1f1308;
+    --stout-3: #3a2515;
+    --ink: #120b05;
+    --amber: #e8a317;
+    --amber-light: #f5b642;
+    --foam: #fbf3e0;
+    --foam-muted: #e8dcc0;
+    --muted: #a8896a;
+    --hair: rgb(251 243 224 / 0.1);
+    --hair-strong: rgb(251 243 224 / 0.14);
+    --display: "Baloo 2", ui-rounded, system-ui, sans-serif;
+    --text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+    --gutter: clamp(20px, 5vw, 72px);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--foam);
+    font: 400 18px/1.55 var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  img { display: block; max-width: 100%; }
+  p { margin: 0; }
+  h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: 800; }
+  :focus-visible { outline: 3px solid var(--foam); outline-offset: 4px; }
+
+  .skip-link {
+    position: absolute;
+    top: -80px;
+    left: 16px;
+    z-index: 50;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: var(--foam);
+    color: var(--stout);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .skip-link:focus { top: 16px; }
+
+  .top {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px var(--gutter);
+  }
+  .wordmark {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 10px;
+    color: var(--foam);
+    font: 800 24px/1 var(--display);
+    text-decoration: none;
+  }
+  .wordmark img { width: 36px; height: 36px; border-radius: 10px; }
+  .site-nav { display: flex; gap: 4px; }
+  .site-nav a {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    padding: 0 12px;
+    border-radius: 10px;
+    color: var(--foam-muted);
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .site-nav a:hover { color: var(--foam); background: rgb(251 243 224 / 0.06); }
+
+  /* Store buttons: the visitor's platform gets the one amber surface, the other stays quiet. */
+  .stores { display: flex; flex-wrap: wrap; gap: 12px; }
+  .store {
+    display: inline-flex;
+    min-height: 56px;
+    align-items: center;
+    gap: 10px;
+    padding: 0 22px;
+    border-radius: 14px;
+    background: var(--stout-3);
+    color: var(--foam);
+    font: 700 17px/1 var(--text);
+    text-decoration: none;
+    transition: background-color 120ms ease-out, transform 120ms ease-out;
+  }
+  .store svg { width: 20px; height: 20px; flex: none; }
+  .store:hover { background: #47301c; }
+  .store:active { transform: scale(0.97); }
+  .store.is-primary { background: var(--amber); color: var(--stout); }
+  .store.is-primary:hover { background: var(--amber-light); }
+
+  /* Hero: a real table and a real coaster. The still shows at once; the 3D scene replaces it. */
+  .hero {
+    position: relative;
+    min-height: max(640px, 100svh);
+    overflow: hidden;
+    background: #1a0f07;
+  }
+  .scene { position: absolute; inset: 0; }
+  .scene canvas { display: block; width: 100%; height: 100%; }
+  .still { position: absolute; inset: 0; }
+  .still img { width: 100%; height: 100%; object-fit: cover; object-position: 80% 50%; }
+
+  .hero-copy {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    align-content: center;
+    gap: 28px;
+    min-height: inherit;
+    max-width: calc(720px + var(--gutter));
+    padding: 120px var(--gutter) 96px;
+    pointer-events: none;
+  }
+  .hero-copy > * { pointer-events: auto; }
+  .hero h1 {
+    font-size: clamp(64px, 8.4vw, 132px);
+    line-height: 0.92;
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+    text-shadow: 0 2px 24px rgb(18 11 5 / 0.6);
+  }
+  .lede {
+    max-width: 26em;
+    color: var(--foam-muted);
+    font-size: 20px;
+    text-shadow: 0 1px 12px rgb(18 11 5 / 0.8);
+  }
+
+  .coaster-hit {
+    position: absolute;
+    z-index: 2;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .coaster-hit[aria-disabled="true"] { cursor: default; }
+  .coaster-hit:focus-visible { outline-offset: 6px; }
+
+  .tally {
+    position: absolute;
+    right: var(--gutter);
+    bottom: 40px;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 16px;
+    width: 340px;
+    padding: 12px 12px 14px 22px;
+    border-radius: 18px;
+    background: rgb(18 11 5 / 0.72);
+    box-shadow: 0 0 0 1px var(--hair-strong);
+    -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+  }
+  .tally[hidden], .coaster-hit[hidden] { display: none; }
+  .tally output { font: 800 26px/1.24 var(--display); font-variant-numeric: tabular-nums; }
+  .tally [data-hint] { grid-column: 1 / -1; color: var(--muted); font-size: 15px; }
+  .undo {
+    min-height: 44px;
+    padding: 0 18px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--stout-3);
+    color: var(--foam);
+    font: 600 15px/1 var(--text);
+    cursor: pointer;
+  }
+  .undo:hover { background: #47301c; }
+  .undo:disabled { background: transparent; color: var(--muted); cursor: default; }
+
+  /* Prints: the illustration is the section, the text sits in its calm area. */
+  .print { position: relative; }
+  .print > img { width: 100%; height: auto; }
+  .print h2 { font-size: clamp(44px, 5.6vw, 88px); line-height: 0.96; letter-spacing: -0.035em; text-wrap: balance; }
+  .print p { margin-top: 20px; color: var(--foam-muted); font-size: 19px; }
+  .print--map .print-copy { position: absolute; top: 47%; left: 31%; width: 38%; }
+  .print--pub .print-copy { position: absolute; top: 50%; left: var(--gutter); width: 30%; transform: translateY(-50%); }
+
+  .pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: clamp(40px, 6vw, 96px);
+    padding: clamp(96px, 10vw, 140px) var(--gutter);
+  }
+  .pair article { display: grid; grid-template-columns: minmax(180px, 250px) minmax(0, 1fr); gap: 36px; align-items: center; }
+  .phone { padding: 8px; border-radius: 36px; background: #0c0906; box-shadow: 0 0 0 1px var(--hair-strong); }
+  .phone img { width: 100%; height: auto; border-radius: 28px; }
+  .pair h3 { font-size: clamp(30px, 2.8vw, 40px); line-height: 1.05; letter-spacing: -0.02em; }
+  .pair p { margin-top: 14px; color: var(--foam-muted); }
+
+  /* The promises are a bill, because that is what a pub hands you. */
+  .bill-wrap { display: grid; justify-items: center; padding: 24px var(--gutter) 150px; }
+  .bill {
+    width: min(460px, 100%);
+    padding: 40px 36px 58px;
+    background: var(--foam);
+    color: var(--ink);
+    font-size: 17px;
+    transform: rotate(-1.2deg);
+    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
+            mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
+  }
+  .bill h2 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; }
+  .bill .sub { margin-top: 4px; color: #6b5440; font-size: 15px; }
+  .bill dl { margin: 28px 0 0; }
+  .bill .row { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; }
+  .bill dt { flex: none; }
+  .bill .dots { flex: 1; transform: translateY(-4px); border-bottom: 2px dotted rgb(18 11 5 / 0.35); }
+  .bill dd { flex: none; margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .bill .total { margin-top: 14px; padding-top: 14px; border-top: 2px solid var(--ink); font-size: 20px; }
+  .bill .sign { margin-top: 28px; font: 800 22px/1.2 var(--display); }
+
+  .closing {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(32px, 6vw, 96px);
+    padding: 0 var(--gutter) 120px;
+  }
+  .closing h2 { font-size: clamp(64px, 10vw, 168px); line-height: 0.9; letter-spacing: -0.045em; }
+  .closing .stores { margin-top: 36px; }
+  .closing img { width: 100%; height: auto; border-radius: 24px; }
+
+  footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 24px;
+    padding: 20px var(--gutter) 32px;
+    border-top: 1px solid var(--hair);
+    color: var(--muted);
+    font-size: 15px;
+  }
+  footer nav { display: flex; flex-wrap: wrap; gap: 0 8px; }
+  footer p, footer a { display: inline-flex; min-height: 44px; align-items: center; }
+  footer a { padding: 0 8px; color: var(--foam-muted); text-decoration: none; }
+  footer a:hover { color: var(--foam); text-decoration: underline; }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 1100px) {
+    .print--map .print-copy { left: 26%; width: 48%; }
+    .print--pub .print-copy { width: 36%; }
+    .pair article { grid-template-columns: 1fr; }
+    .pair .phone { width: min(260px, 80%); }
+  }
+
+  @media (max-width: 900px) {
+    .site-nav a:not([hreflang]) { display: none; }
+    .hero { display: flex; flex-direction: column; min-height: 0; }
+    .scene { position: relative; inset: auto; height: 460px; }
+    .tally { order: 1; position: relative; right: auto; bottom: auto; align-self: stretch; width: auto; margin: -84px var(--gutter) 0; }
+    .hero-copy { order: 2; min-height: 0; padding: 40px var(--gutter) 72px; }
+    .print--map .print-copy,
+    .print--pub .print-copy { position: static; width: auto; transform: none; padding: 32px var(--gutter) 0; }
+    .print { padding-bottom: 56px; }
+    .pair { grid-template-columns: 1fr; padding-top: 48px; padding-bottom: 72px; }
+    .closing { grid-template-columns: 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0ms !important; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#obsah">{% translate "Přeskočit na obsah" %}</a>
+
+<header class="top">
+  <a class="wordmark" href="{% if LANGUAGE_CODE == 'en' %}/en{% else %}/{% endif %}"><img src="{{ asset.icon_144_png }}" alt="" width="36" height="36">Na pivo</a>
+  <nav class="site-nav" aria-label="{% translate "Hlavní navigace" %}">
+    <a href="#kompas">{% translate "Co umí" %}</a>
+    <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
+    {% if LANGUAGE_CODE == "en" %}
+      <a href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>
+    {% else %}
+      <a href="{{ switch_url }}" hreflang="en" lang="en">English</a>
+    {% endif %}
+  </nav>
+</header>
+
+<main id="obsah">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="scene" data-scene data-wood="{{ asset.oak_table_webp }}" data-logo="{{ asset.icon_144_png }}" aria-hidden="true">
+      <picture class="still">
+        <source media="(max-width: 900px)" srcset="{{ asset.still_narrow_webp }}">
+        <img src="{{ asset.still_wide_webp }}" alt="" fetchpriority="high">
+      </picture>
+    </div>
+
+    <div class="hero-copy">
+      <h1 id="hero-title">{% translate "Čárkuj piva jak na tácku." %}</h1>
+      <p class="lede">{% blocktranslate trimmed %}Každé pivo je jedno ťuknutí. Počítadlo hlídá počet i útratu, zapíše se i bez signálu a ráno z něj máš deník celého večera.{% endblocktranslate %}</p>
+      {% include "pubs/_store_buttons.html" %}
+    </div>
+
+    <button class="coaster-hit" type="button" data-hit aria-describedby="tally-state" hidden>
+      <span class="sr-only">{% translate "Přičárkovat pivo na tácek" %}</span>
+    </button>
+    <div class="tally" data-tally hidden>
+      <output id="tally-state" aria-live="polite">{% translate "Čistej tácek." %}</output>
+      <button class="undo" type="button" data-undo disabled>{% translate "Ubrat" %}</button>
+      <span data-hint>{% translate "Ťukni na tácek." %}</span>
+    </div>
+  </section>
+
+  <section class="print print--map" id="kompas" aria-labelledby="map-title">
+    <img src="{{ asset.old_town_map_1536_webp }}" srcset="{{ asset.old_town_map_768_webp }} 768w, {{ asset.old_town_map_1536_webp }} 1536w" sizes="100vw" width="1536" height="1024" alt="" loading="lazy">
+    <div class="print-copy">
+      <h2 id="map-title">{% translate "Kompas tě dovede." %}</h2>
+      <p>{% blocktranslate trimmed %}Šipka ukáže nejbližší hospodu, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na Dej mi jinou.{% endblocktranslate %}</p>
+    </div>
+  </section>
+
+  <section class="print print--pub" aria-labelledby="pub-title">
+    <img src="{{ asset.pub_night_1536_webp }}" srcset="{{ asset.pub_night_768_webp }} 768w, {{ asset.pub_night_1536_webp }} 1536w" sizes="100vw" width="1536" height="1024" alt="" loading="lazy">
+    <div class="print-copy">
+      <h2 id="pub-title">{% translate "Cinkni partě, že sedíš." %}</h2>
+      <p>{% blocktranslate trimmed %}Jdeš na pivo? Cinkni a parta to hned ví. Kámoši kývnou, jestli dorazí.{% endblocktranslate %}</p>
+    </div>
+  </section>
+
+  <section class="pair" aria-label="{% translate "Deník a mapování hospod" %}">
+    <article>
+      <div class="phone"><img src="{{ asset.screen_historie_webp }}" width="520" height="1131" alt="{% translate "Deník večera s pivem, cenou a hodnocením." %}" loading="lazy"></div>
+      <div>
+        <h3>{% translate "Ráno víš, kolik to stálo" %}</h3>
+        <p>{% blocktranslate trimmed %}Piva, ceny, hospoda i poznámky zůstanou v deníku. A napíšeš si, jestli se tam vrátíš.{% endblocktranslate %}</p>
+      </div>
+    </article>
+    <article>
+      <div class="phone"><img src="{{ asset.screen_zmapuj_webp }}" width="520" height="1131" alt="{% translate "Mapování hospody: platba kartou, zahrádka, šipky." %}" loading="lazy"></div>
+      <div>
+        <h3>{% translate "Zmapuj hospodu pro ostatní" %}</h3>
+        <p>{% blocktranslate trimmed %}Šipky, kulečník, zahrádka nebo sport v telce. Co zapíšeš ty, uvidí další, kdo hledá, kam zapadnout.{% endblocktranslate %}</p>
+      </div>
+    </article>
+  </section>
+
+  <section class="bill-wrap" aria-labelledby="bill-title">
+    <div class="bill">
+      <h2 id="bill-title">{% translate "Účet" %}</h2>
+      <p class="sub">{% translate "Co tě Na pivo stojí" %}</p>
+      <dl>
+        <div class="row"><dt>{% translate "Appka" %}</dt><span class="dots"></span><dd>{% translate "0 Kč" %}</dd></div>
+        <div class="row"><dt>{% translate "Reklamy" %}</dt><span class="dots"></span><dd>{% translate "žádné" %}</dd></div>
+        <div class="row"><dt>{% translate "GPS trasa" %}</dt><span class="dots"></span><dd>{% translate "neukládám" %}</dd></div>
+        <div class="row"><dt>{% translate "Bez signálu" %}</dt><span class="dots"></span><dd>{% translate "zapíše se" %}</dd></div>
+        <div class="row"><dt>{% translate "Jazyk" %}</dt><span class="dots"></span><dd>{% translate "česky, anglicky" %}</dd></div>
+        <div class="row total"><dt>{% translate "Celkem" %}</dt><span class="dots"></span><dd>{% translate "0 Kč" %}</dd></div>
+      </dl>
+      <p class="sign">{% translate "Díky a přijď zas. Tomáš" %}</p>
+    </div>
+  </section>
+
+  <section class="closing" aria-labelledby="closing-title">
+    <div>
+      <h2 id="closing-title">{% translate "Na zdraví." %}</h2>
+      {% include "pubs/_store_buttons.html" %}
+    </div>
+    <img src="{{ asset.table_top_1024_webp }}" srcset="{{ asset.table_top_640_webp }} 640w, {{ asset.table_top_1024_webp }} 1024w" sizes="(max-width: 900px) 100vw, 50vw" width="1024" height="1024" alt="" loading="lazy">
+  </section>
+</main>
+
+<footer>
+  <p>{% translate "Na pivo dělá Tomáš Mach" %}</p>
+  <nav aria-label="{% translate "Dokumenty a kontakt" %}">
+    <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
+    <a href="{{ terms_url }}">{% translate "Podmínky" %}</a>
+    <a href="{{ delete_account_url }}">{% translate "Smazání účtu" %}</a>
+    <a href="https://www.instagram.com/jsem_mach/">Instagram</a>
+    <a href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a>
+  </nav>
+</footer>
+
+{{ tally_copy|json_script:"landing-copy" }}
+<script>
+  // The store matching the visitor's phone gets the amber button; desktop defaults to iPhone.
+  (function () {
+    var android = /Android/i.test(navigator.userAgent);
+    document.querySelectorAll('.stores').forEach(function (group) {
+      var primary = group.querySelector(android ? '[data-store="android"]' : '[data-store="ios"]');
+      primary.classList.add('is-primary');
+      group.prepend(primary);
+    });
+  })();
+</script>
+<script type="module" src="{{ asset.coaster_min_js }}"></script>
+</body>
+</html>
