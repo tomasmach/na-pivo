@@ -108,7 +108,7 @@
     text-decoration: none;
   }
   .wordmark img { width: 36px; height: 36px; border-radius: 50%; }
-  .site-nav { display: flex; gap: 4px; }
+  .site-nav { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: var(--ground); }
   .site-nav a {
     display: inline-flex;
     min-height: 44px;
@@ -120,8 +120,7 @@
     font-weight: 600;
     text-decoration: none;
   }
-  .site-nav a { background: rgb(35 20 7 / 0.82); }
-  .site-nav a:hover { color: var(--foam); background: rgb(58 37 21 / 0.95); }
+  .site-nav a:hover { color: var(--foam); background: var(--stout-3); }
 
   /* Store buttons: the visitor's platform gets the one amber surface, the other stays quiet. */
   .stores { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -174,7 +173,7 @@
   }
   .hero-copy > * { pointer-events: auto; }
   .hero h1 { font-size: clamp(60px, 7.2vw, 112px); line-height: 0.92; letter-spacing: -0.04em; }
-  .lede { max-width: 25em; color: var(--foam-muted); font-size: 21px; line-height: 1.5; }
+  .lede { max-width: 22em; color: var(--foam-muted); font-size: 21px; line-height: 1.5; }
 
   .coaster-hit {
     position: absolute;
@@ -187,7 +186,7 @@
     -webkit-tap-highlight-color: transparent;
   }
   .coaster-hit[aria-disabled="true"] { cursor: default; }
-  .coaster-hit:focus-visible { outline-color: var(--amber); outline-offset: 2px; }
+  .coaster-hit:focus-visible { outline-color: var(--foam); outline-offset: 10px; }
 
   /* The count is a torn slip of paper, like the bill further down. */
   .tally {
@@ -227,15 +226,30 @@
   /* Prints: the illustration is the section, the text sits in its calm area. */
   .print { position: relative; }
   .print > img { width: 100%; height: auto; }
+  /* Prints fade into the ground at their top and bottom, so the page reads as one sheet. */
+  .print > img, .bill-table > img, .closing img {
+    -webkit-mask-image: linear-gradient(#0000, #000 9%, #000 91%, #0000);
+            mask-image: linear-gradient(#0000, #000 9%, #000 91%, #0000);
+  }
   .print h2 { font-size: clamp(44px, 5.6vw, 88px); line-height: 0.96; letter-spacing: -0.035em; }
   .print p { margin-top: 20px; color: var(--foam-muted); font-size: 20px; }
   .print--map .print-copy { position: absolute; top: 47%; left: 31%; width: 38%; }
   .print--pub .print-copy { position: absolute; top: 50%; left: var(--gutter); width: 36%; transform: translateY(-50%); }
 
   /* Two phones standing on the bar counter of the print. The counter top sits at 70.5 % of its height. */
-  .bar { padding-bottom: clamp(72px, 9vw, 120px); }
+  .bar { padding-bottom: clamp(48px, 6vw, 88px); }
   .bar-scene { position: relative; aspect-ratio: 1536 / 1024; overflow: hidden; }
-  .bar-scene > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 55% 50%; }
+  .bar-scene > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 55% 50%;
+    /* The counter front fades out, and the captions below sit on what is left of it. */
+    -webkit-mask-image: linear-gradient(#0000, #000 8%, #000 78%, #0000);
+            mask-image: linear-gradient(#0000, #000 8%, #000 78%, #0000);
+  }
   .phone {
     position: absolute;
     bottom: 29.5%;
@@ -247,14 +261,16 @@
     box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px rgb(251 243 224 / 0.25);
   }
   .phone img { width: 100%; height: 100%; border-radius: 9% / 4.2%; object-fit: cover; }
-  .phone--diary { left: 35%; transform: rotate(-2deg); transform-origin: bottom center; }
-  .phone--map { left: 58%; transform: rotate(2deg); transform-origin: bottom center; }
+  .phone--diary { left: 35%; }
+  .phone--map { left: 58%; }
   .bar-copy {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 26rem));
     justify-content: center;
     gap: clamp(32px, 6vw, 96px);
-    padding: 40px var(--gutter) 0;
+    position: relative;
+    margin-top: -9%;
+    padding: 0 var(--gutter);
   }
   .bar-copy h3 { font-size: clamp(28px, 2.6vw, 38px); line-height: 1.1; letter-spacing: -0.02em; }
   .bar-copy p { margin-top: 12px; color: var(--foam-muted); font-size: 18px; }
@@ -324,7 +340,7 @@
     white-space: nowrap;
   }
 
-  @media (max-width: 1300px) {
+  @media (max-width: 1000px) {
     .print--map .print-copy { position: static; width: auto; max-width: 40rem; padding: 32px var(--gutter) 0; }
     .print--map { padding-bottom: 56px; }
   }
@@ -334,10 +350,26 @@
     .site-nav a:not([hreflang]) { display: none; }
     .hero { display: flex; flex-direction: column; min-height: 0; padding-top: 84px; }
     .hero::before { content: none; }
-    .table { position: relative; inset: auto; height: clamp(320px, min(58svh, 90vw), 620px); }
+    .table {
+      position: relative;
+      inset: auto;
+      height: clamp(300px, min(52svh, 80vw), 620px);
+      -webkit-mask-image: linear-gradient(#000 85%, #0000);
+              mask-image: linear-gradient(#000 85%, #0000);
+    }
     .tally { order: 1; position: relative; right: auto; bottom: auto; align-self: flex-end; width: min(320px, calc(100% - 2 * var(--gutter))); margin: -48px var(--gutter) 0; }
     .hero-copy { order: 2; min-height: 0; padding: 40px var(--gutter) 72px; }
-    .hero .store { flex: 1 1 260px; max-width: 360px; justify-content: center; }
+    .store { flex: 1 1 260px; max-width: 360px; justify-content: center; }
+  }
+
+  /* Landscape tablets and small laptops: the cropped coaster sits beside the copy. */
+  @media (min-width: 901px) and (max-width: 1180px) and (min-aspect-ratio: 23/20) {
+    .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; min-height: max(620px, 100svh); padding-top: 0; }
+    .hero-copy { grid-column: 1; grid-row: 1; order: 0; min-height: 0; padding: 110px 0 72px var(--gutter); }
+    .table { grid-column: 2; grid-row: 1; height: 100%; -webkit-mask-image: none; mask-image: none; }
+    .tally { position: absolute; right: var(--gutter); bottom: 40px; margin: 0; }
+    .hero h1 { font-size: clamp(52px, 6.4vw, 76px); }
+    .store { flex: 0 1 auto; }
   }
 
   @media (max-width: 900px) {
@@ -378,8 +410,8 @@
       <defs>
         <!-- Roughens the printed edges so marks and the name look cut and inked, not drawn. -->
         <filter id="ink" x="-5%" y="-5%" width="110%" height="110%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="7"/>
-          <feDisplacementMap in="SourceGraphic" scale="3.5"/>
+          <feTurbulence type="fractalNoise" baseFrequency="0.12" numOctaves="2" seed="7"/>
+          <feDisplacementMap in="SourceGraphic" scale="4"/>
         </filter>
       </defs>
       <image href="{{ asset.hero_table_1536_webp }}" width="1536" height="1024"/>

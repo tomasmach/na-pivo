@@ -87,9 +87,13 @@ function layout() {
   if (stacked.matches) {
     // A crop around the coaster, as wide as the box allows but never past the edge of the print.
     const box = svg.getBoundingClientRect();
-    const w = Math.min(1536, 740 * (box.width / box.height || 1));
+    const ratio = box.width / box.height || 1;
+    // Tall enough for the coaster at any ratio, but never taller or wider than the print.
+    const h = Math.min(1024, 1536 / ratio, Math.max(740, 720 / ratio));
+    const w = h * ratio;
     const x = Math.min(Math.max(CX - w / 2, 0), 1536 - w);
-    svg.setAttribute('viewBox', `${x} ${CY - 310} ${w} 740`);
+    const y = Math.min(Math.max(CY - h * (310 / 740), 0), 1024 - h);
+    svg.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
   } else {
     svg.setAttribute('viewBox', '0 0 1536 1024');
   }
