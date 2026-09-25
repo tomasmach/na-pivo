@@ -78,6 +78,7 @@ Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testo
 - `ios/` a `android/` jsou generované a gitignorované. Před vynuceným rebuildem zkontroluj případné ruční nativní změny. `postinstall` patchuje `node_modules` — instalace s `--ignore-scripts` je rozbitý build.
 - Backend potřebuje ASGI kvůli SSE. Runner používá SQLite `backend/db.sqlite3` tohoto checkoutu i při jiném `DATABASE_URL` v prostředí. Prázdná databáze je špatný test: `cd backend && uv run python manage.py seed_dev_3_0` naseje dev data; před samostatným seedem ověř efektivní DB.
 - Nespouštěj zbytečně druhý simulátor ani druhý dev server vedle běžícího. Po práci zastav vlastní procesy. Když necháváš appku k proklikání, napiš checkout, porty a stop příkaz. Cizí procesy a session zachovej.
+- Po dokončení úkolu (commit, push, PR) ukliď build balast tohoto worktree, jeden iOS build tu nechá několik GB. Smaž `ios/`, `android/`, `.expo/dev-client-ios-*`, `.expo/xcodebuild.log`, `node_modules` a `backend/.venv`. V `~/Library/Developer/Xcode/DerivedData` smaž jen složku `Napivo-*`, jejíž `info.plist` má `WorkspacePath` v tomhle worktree. Když necháváš appku k proklikání, úklid počká; jinak nejdřív `npm run dev:stop`. Další práce obnoví závislosti přes `npm ci` a `uv sync`. Chybějící `ios/` nový build nevynutí, fingerprint na něm nezávisí. Sdílené cache (`*.noindex` v DerivedData, CocoaPods, npm), simulátory a appku v nich nech, používají je ostatní worktrees. Ze simulátorů smí pryč jen `xcrun simctl delete unavailable`.
 
 ## Verifikace
 
