@@ -11,6 +11,7 @@ const mockStore = {
   hydrate: jest.fn(async () => ({ ok: true })),
   updateDraft: jest.fn(async () => ({ ok: true })),
   setChallenge: jest.fn(async () => ({ ok: true })),
+  removeStop: jest.fn(async () => ({ ok: true })),
 };
 jest.mock('@/stores/toursStore', () => ({ useToursStore: Object.assign((select?: (s: typeof mockStore) => unknown) => (select ? select(mockStore) : mockStore), { getState: () => mockStore }) }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn(), replace: jest.fn(), canGoBack: () => true }), useNavigation: () => ({ dispatch: jest.fn() }) }));
@@ -67,6 +68,26 @@ it('adds a challenge from the stop menu through its own sheet', async () => {
     await act(async () => { fireEvent.press(screen.getByTestId('tour-challenge-save')); });
     expect(mockStore.setChallenge).toHaveBeenCalledWith(stop.id, 'Najdi nejstarší pípu');
     expect(screen.queryByTestId('tour-challenge')).toBeNull();
+  } finally {
+    mockStore.draft = draft;
+  }
+});
+
+it('drops the pending undo once a challenge is saved, so undo cannot erase it', async () => {
+  const stops = [1, 2].map((n) => ({ id: `00000000-0000-4000-8000-00000000000${n}`, pubId: String(n), cacheKey: null, name: `Pub ${n}`, address: 'Praha', lat: 50, lon: 14 }));
+  const draft = mockStore.draft;
+  mockStore.draft = { ...draft, stops: stops as never[] };
+  try {
+    const screen = render(<TourEditorScreen />);
+    fireEvent.press(screen.getByLabelText('1. Pub 1. Praha'));
+    const remove = jest.mocked(showAppDialog).mock.calls.at(-1)![0].buttons!.find((b) => b.text === 'Odebrat zastávku')!;
+    await act(async () => { remove.onPress!(); });
+    expect(screen.getByText('Vrátit')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('2. Pub 2. Praha'));
+    act(() => { jest.mocked(showAppDialog).mock.calls.at(-1)![0].buttons![0].onPress!(); });
+    fireEvent.changeText(screen.getByTestId('tour-challenge'), 'Najdi pípu');
+    await act(async () => { fireEvent.press(screen.getByTestId('tour-challenge-save')); });
+    expect(screen.queryByText('Vrátit')).toBeNull();
   } finally {
     mockStore.draft = draft;
   }

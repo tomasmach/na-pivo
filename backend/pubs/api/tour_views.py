@@ -158,7 +158,10 @@ class TourDetailView(OwnerTourView):
         serializer = PlanSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        fingerprint = _fingerprint(data)
+        # An empty challenge and a missing one mean the same on a retry across app versions.
+        fingerprint = _fingerprint({**data, "stops": [
+            {k: v for k, v in stop.items() if k != "challenge" or v} for stop in data["stops"]
+        ]})
         with transaction.atomic():
             account = _locked_account(request)
             plan = TourPlan.objects.select_for_update().filter(pk=plan_id).first()

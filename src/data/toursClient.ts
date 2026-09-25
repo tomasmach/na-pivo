@@ -2,7 +2,7 @@ import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 import { tourBoundary } from './toursBoundary';
-import { type TourPlan, type TourError, validPlan } from '@/tours/model';
+import { CHALLENGE_MAX, type TourPlan, type TourError, validPlan } from '@/tours/model';
 export type TourResponse = {
   ok: true;
   tour: TourPlan;
@@ -46,7 +46,9 @@ function parseEnvelope(raw: unknown): TourPlan | null {
       } | null;
     };
     const plan: TourPlan = { id: w.id, title: w.title, scheduledDate: w.scheduled_date, scheduledTime: w.scheduled_time?.slice(0, 5) ?? null, timezone: w.timezone, revision: w.revision, updatedAt: w.updated_at,
-      stops: w.stops.map((s) => ({ id: s.id, pubId: s.pub_id, cacheKey: s.cache_key, name: s.name, address: s.address, lat: s.lat, lon: s.lon, ...(s.challenge ? { challenge: s.challenge } : {}) })),
+      stops: w.stops.map((s) => ({ id: s.id, pubId: s.pub_id, cacheKey: s.cache_key, name: s.name, address: s.address, lat: s.lat, lon: s.lon,
+        // A challenge this app could not have written is dropped, not a reason to refuse the whole tour.
+        ...(typeof s.challenge === 'string' && s.challenge && s.challenge.length <= CHALLENGE_MAX ? { challenge: s.challenge } : {}) })),
       ...(share ? { share: { url: share.url, expiresAt: share.expires_at } } : {}) };
     return validPlan(plan) ? plan : null;
   }

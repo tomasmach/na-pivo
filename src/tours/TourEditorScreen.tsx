@@ -177,7 +177,12 @@ function TourEditor() {
       void action.then((r) => { if (r.ok) { setPicker(false); setRegion(undefined); setUndo(null); } });
     }} />
     {challengeStop && <TourChallengeSheet key={challengeStop.id} stop={challengeStop} onClose={() => setChallengeStop(null)}
-      onSave={async (text) => (await store.setChallenge(challengeStop.id, text)).ok} />}
+      onSave={async (text) => {
+        const result = await store.setChallenge(challengeStop.id, text);
+        // Undo restores a whole stop list; it must not bring back a list without this challenge.
+        if (result.ok) setUndo(null);
+        return result.ok;
+      }} />}
     <Modal visible={largeMap} animationType="slide" onRequestClose={() => setLargeMap(false)}>
       <View style={[ui.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}><TourHeader title={t.tours.map} onBack={() => setLargeMap(false)} />
         <View style={ui.grow} onLayout={(event) => setMapHeight(event.nativeEvent.layout.height)}><TourMap key={draft.stops.map((s) => s.id).sort().join()} stops={draft.stops} selectedId={selected} onSelect={setSelected} height={mapHeight} region={region} onRegionChange={setRegion} /></View>

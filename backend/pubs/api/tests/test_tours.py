@@ -311,3 +311,11 @@ def test_challenge_limit_public_snapshot_and_escaped_web_page(client):
     page = Client().get(f"/t/{token}").content.decode()
     assert "&lt;b&gt;Najdi nejstarší pípu&lt;/b&gt;" in page
     assert "<b>Najdi" not in page
+
+
+def test_retry_of_same_operation_accepts_empty_challenge_from_newer_app(client):
+    body = payload()
+    plan_id = str(uuid.uuid4())
+    assert client.put(f"/v1/tours/{plan_id}", body, format="json").status_code == 201
+    retried = {**body, "stops": [{**s, "challenge": ""} for s in body["stops"]]}
+    assert client.put(f"/v1/tours/{plan_id}", retried, format="json").status_code == 200

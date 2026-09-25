@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
@@ -32,7 +32,8 @@ export function TourChallengeSheet({ stop, onSave, onClose }: {
   }
   return <Modal visible={!!stop} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
     <View style={styles.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel={t.tours.close} />
+      {/* A tap above the card first only hides the keyboard, so typed text is not lost by accident. */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => { if (keyboardHeight) Keyboard.dismiss(); else onClose(); }} accessibilityRole="button" accessibilityLabel={t.tours.close} />
       <View style={[styles.card, { marginBottom: keyboardHeight, paddingBottom: keyboardHeight ? Spacing.md : Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
