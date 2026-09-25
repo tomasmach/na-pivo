@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useToursStore as store, clearToursPrivateData, adoptToursOwner, TOURS_STORAGE_KEY, TOURS_QUARANTINE_KEY, tourContentSignature } from '../toursStore';
+import { useToursStore as store, clearToursPrivateData, adoptToursOwner, releaseToursToDevice, TOURS_STORAGE_KEY, TOURS_QUARANTINE_KEY, tourContentSignature } from '../toursStore';
 import { beginTourAccountChange, endTourAccountChange } from '@/data/toursBoundary';
 import { publishTour, shareTour, fetchSharedTour } from '@/data/toursClient';
 import { validPlan, cloneTour } from '@/tours/model';
@@ -115,6 +115,23 @@ describe('Tours durable lifecycle', () => {
     await clearToursPrivateData();
     expect(store.getState().plans).toEqual([]);
     expect(await AsyncStorage.getItem(TOURS_STORAGE_KEY)).toBeNull();
+  });
+  it('never blocks signing in, and hands an evicted anonymous account\'s plans to the device', async () => {
+    await makePlan();
+    const raw = JSON.parse((await AsyncStorage.getItem(TOURS_STORAGE_KEY))!);
+    await AsyncStorage.setItem(TOURS_STORAGE_KEY, JSON.stringify({ ...raw, owner: 'evicted-a' }));
+    // An unknown owner is left alone instead of throwing inside the auth transition.
+    await expect(adoptToursOwner('owner-a2', 'owner-b')).resolves.toBeUndefined();
+    expect(JSON.parse((await AsyncStorage.getItem(TOURS_STORAGE_KEY))!).owner).toBe('evicted-a');
+    await AsyncStorage.setItem(TOURS_STORAGE_KEY, '{bad');
+    await expect(adoptToursOwner('owner-a2', 'owner-b')).resolves.toBeUndefined();
+
+    await AsyncStorage.setItem(TOURS_STORAGE_KEY, JSON.stringify({ ...raw, owner: 'evicted-a' }));
+    await releaseToursToDevice('evicted-a');
+    expect(JSON.parse((await AsyncStorage.getItem(TOURS_STORAGE_KEY))!).owner).toBe('device:device-a');
+    await adoptToursOwner('owner-a2', 'owner-b');
+    expect(JSON.parse((await AsyncStorage.getItem(TOURS_STORAGE_KEY))!).owner).toBe('owner-b');
+    expect(store.getState().plans).toHaveLength(1);
   });
   it('retries exactly the same operation after a lost response, retains conflict versions', async () => {
     const id = await makePlan();

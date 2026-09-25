@@ -77,7 +77,7 @@ let lastKnownAccount: CachedAccount | null = null;
 let sessionCacheQueue: Promise<void> = Promise.resolve();
 let bootstrapFailureCount = 0;
 let bootstrapRetryAfter = 0;
-let anonymousSessionEvictionListener: (() => void | Promise<void>) | null = null;
+let anonymousSessionEvictionListener: ((evictedAccountId: string) => void | Promise<void>) | null = null;
 const SESSION_READ_RETRY_MS = 2_000;
 const SESSION_READ_REPORT_MS = 15 * 60_000;
 let sessionReadRetryAfter = 0;
@@ -400,7 +400,7 @@ export async function clearCachedAccount(
 }
 
 export function setAnonymousSessionEvictionListener(
-  listener: (() => void | Promise<void>) | null,
+  listener: ((evictedAccountId: string) => void | Promise<void>) | null,
 ): void {
   anonymousSessionEvictionListener = listener;
 }
@@ -445,7 +445,7 @@ export async function clearCachedAnonymousAccount(
 
   if (evicted && anonymousSessionEvictionListener) {
     try {
-      void Promise.resolve(anonymousSessionEvictionListener()).catch(() => undefined);
+      void Promise.resolve(anonymousSessionEvictionListener(session.accountId)).catch(() => undefined);
     } catch {
       // Store synchronization is best effort and must not undo a safe eviction.
     }

@@ -26,6 +26,7 @@ import {
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { releaseToursToDevice } from '@/stores/toursStore';
 
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'reauth-required' | 'error';
 export type SessionResumeResult = 'valid' | 'invalid' | 'unavailable' | 'anonymous';
@@ -403,7 +404,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
   };
 });
 
-setAnonymousSessionEvictionListener(async () => {
+setAnonymousSessionEvictionListener(async (evictedAccountId) => {
+  await releaseToursToDevice(evictedAccountId);
   useAccountStore.setState({ session: null, status: 'idle' });
   await useAccountStore.getState().initAccount();
 });

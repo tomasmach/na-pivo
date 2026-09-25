@@ -516,7 +516,11 @@ export const useToursStore = create<ToursState>(() => ({
     return { ok: true, id: copy.id };
   }),
 }));
-/** Called while auth owns its session-transition lock; claim keeps the local run. */
+/**
+ * Called while auth owns its session-transition lock; claim keeps the local run.
+ * Tour storage must never block signing in: unreadable data stays for hydrate to
+ * quarantine, and plans of an unknown owner are simply not adopted.
+ */
 export function adoptToursOwner(from: string | null, to: string): Promise<void> {
   return locked(async () => {
     const raw = await AsyncStorage.getItem(TOURS_STORAGE_KEY);
@@ -527,16 +531,35 @@ export function adoptToursOwner(from: string | null, to: string): Promise<void> 
       saved = JSON.parse(raw);
     }
     catch {
-      throw new Error('Invalid tour storage');
+      return;
     }
     if (!validateData(saved))
-      throw new Error('Invalid tour storage');
+      return;
     if (saved.owner !== null && saved.owner !== from && saved.owner !== to && !saved.owner.startsWith('device:'))
-      throw new Error('Tour owner mismatch');
+      return;
     saved.owner = to;
     const result = await persist(saved, tourBoundary().generation, true);
     if (!result.ok)
       throw new Error('Tour owner persistence failed');
+  });
+}
+/**
+ * An evicted anonymous account leaves its plans on this phone. Hand them to the
+ * device, the owner the next anonymous or signed-in account adopts.
+ */
+export function releaseToursToDevice(accountId: string): Promise<void> {
+  return locked(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(TOURS_STORAGE_KEY);
+      if (!raw) return;
+      const saved: unknown = JSON.parse(raw);
+      if (!validateData(saved) || saved.owner !== accountId) return;
+      saved.owner = `device:${await getOrCreateDeviceId()}`;
+      await persist(saved, tourBoundary().generation, true);
+    }
+    catch {
+      // Best effort: hydrate still refuses a foreign owner instead of leaking it.
+    }
   });
 }
 export function clearToursPrivateData(): Promise<void> {
