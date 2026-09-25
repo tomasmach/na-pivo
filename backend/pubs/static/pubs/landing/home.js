@@ -150,7 +150,10 @@ if (walk) {
     queued = false;
     const r = walk.getBoundingClientRect();
     if (r.bottom < 0 || r.top > innerHeight) return;
-    const progress = Math.min(Math.max((innerHeight * 0.85 - r.top) / (r.height * 0.85), 0), 1);
+    // Starts once the top third of the map is well on screen and takes a comfortable stretch of scrolling,
+    // so on a phone, where the map is short, the walk does not finish in one flick.
+    const distance = Math.max(r.height * 0.4, innerHeight * 0.35);
+    const progress = Math.min(Math.max((innerHeight * 0.6 - (r.top + r.height * 0.3)) / distance, 0), 1);
     const p = route.getPointAtLength(total * progress);
     walker.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`);
     walk.classList.toggle('is-there', progress >= 1);

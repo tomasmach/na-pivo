@@ -124,7 +124,7 @@
   .site-nav a:hover { color: var(--foam); background: var(--stout-3); }
 
   /* Buttons are printed blocks: an ink outline and a hard ink offset like a stamp. Pressed, they sink into it.
-     The visitor's platform gets the one amber button, the other one is an outline. */
+     Both stores get the same amber block; the visitor's platform goes first. */
   .stores { display: flex; flex-wrap: wrap; gap: 16px; }
   .store {
     display: inline-flex;
@@ -132,10 +132,10 @@
     align-items: center;
     gap: 10px;
     padding: 0 24px;
-    border: 2.5px solid var(--foam);
+    border: 2.5px solid var(--ink-deep);
     border-radius: 14px;
-    background: var(--ground);
-    color: var(--foam);
+    background: var(--amber);
+    color: var(--ink);
     box-shadow: 4px 5px 0 var(--ink-deep);
     font: 700 17px/1 var(--text);
     text-decoration: none;
@@ -144,8 +144,7 @@
   .store svg { width: 20px; height: 20px; flex: none; }
   .store:hover { transform: translate(-1px, -2px); box-shadow: 5px 7px 0 var(--ink-deep); }
   .store:active { transform: translate(3px, 4px); box-shadow: 1px 1px 0 var(--ink-deep); }
-  .store.is-primary { border-color: var(--ink-deep); background: var(--amber); color: var(--ink); }
-  .store.is-primary:hover { background: var(--amber-light); }
+  .store:hover { background: var(--amber-light); }
 
   /* Hero: the table is a linocut, the coaster on it takes tally marks. */
   .hero { position: relative; min-height: max(660px, 100svh); overflow: hidden; }
@@ -257,16 +256,12 @@
   .print--map .print-copy { position: absolute; top: 47%; left: 31%; width: 38%; }
   /* The "you are here" dot walks the printed route to the pub as the page scrolls. */
   .walk { position: absolute; top: 0; left: 0; width: 100%; height: auto; aspect-ratio: 1536 / 1024; pointer-events: none; }
-  .walk .walker { transition: scale 200ms ease-out; }
-  .walk.is-there .walker { scale: 1.25; }
+  .walk .dot { transform-box: fill-box; transform-origin: center; transition: scale 200ms ease-out; }
+  .walk.is-there .dot { scale: 1.3; }
   .print--pub .print-copy { position: absolute; top: 50%; left: var(--gutter); width: 36%; transform: translateY(-50%); }
 
-  /* Two phones stand on the bar counter of the print; its top edge is at 70.5 % of the scene height.
-     They rise from behind the counter when the scene scrolls into view. */
-  .bar { position: relative; padding-bottom: clamp(40px, 5vw, 72px); }
-  /* Same box as the scene, so the notes can be placed in scene percentages. */
-  .bar-notes { position: absolute; top: 0; left: 0; right: 0; aspect-ratio: 1536 / 1024; pointer-events: none; }
-  .bar-notes .note { pointer-events: auto; }
+  /* Two paper notes pinned on the bar wall, between the taps and the darts board. */
+  .bar { position: relative; padding-bottom: clamp(24px, 3vw, 48px); }
   .bar-scene { position: relative; aspect-ratio: 1536 / 1024; overflow: hidden; }
   .bar-scene > img {
     position: absolute;
@@ -278,47 +273,40 @@
     -webkit-mask-image: linear-gradient(#0000, #000 8%, #000 86%, #0000);
             mask-image: linear-gradient(#0000, #000 8%, #000 86%, #0000);
   }
-  .shelf { position: absolute; inset: 0 0 29.5% 0; overflow: hidden; }
-  .phone {
-    position: absolute;
-    bottom: 0;
-    box-sizing: content-box;
-    /* Width is set from the scene width so the phone keeps the screenshot's own ratio (1206 × 2622). */
-    width: 15%;
-    max-width: none;
-    height: auto;
-    aspect-ratio: 1206 / 2622;
-    border: clamp(4px, 0.55vw, 8px) solid #0c0906;
-    border-bottom-width: 0;
-    border-radius: clamp(18px, 2.4vw, 34px) clamp(18px, 2.4vw, 34px) 0 0;
-    background: #0c0906;
-    object-fit: cover;
-    object-position: top;
-    transform: translateY(105%);
-    transition: transform 800ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .phone--diary { left: 30%; }
-  .phone--map { left: 55%; transition-delay: 160ms; }
-  .bar.is-in .phone { transform: none; }
-
+  /* Same box as the scene, so the notes are placed in scene percentages. */
+  .bar-notes { position: absolute; top: 0; left: 0; right: 0; aspect-ratio: 1536 / 1024; }
   .note {
     position: absolute;
-    top: 73%;
-    width: 22%;
-    padding: 18px 22px 30px;
+    width: 25%;
+    padding: 34px 26px 34px;
     background: var(--foam);
     color: var(--ink);
     -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
             mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+    transform-origin: 50% 14px;
     opacity: 0;
-    transition: opacity 400ms ease-out 700ms, translate 400ms ease-out 700ms;
-    translate: 0 12px;
+    transform: translateY(-24px) rotate(-12deg);
+    transition: opacity 160ms ease-out, transform 520ms cubic-bezier(0.3, 1.6, 0.5, 1);
   }
-  .note--diary { left: 26.5%; rotate: -1.5deg; }
-  .note--map { left: 51.5%; rotate: 1.2deg; transition-delay: 860ms; }
-  .bar.is-in .note { opacity: 1; translate: 0 0; }
-  .note h3 { font-size: clamp(22px, 1.9vw, 30px); line-height: 1.1; }
-  .note p { margin-top: 8px; color: var(--paper-muted); font-size: clamp(15px, 1.15vw, 18px); line-height: 1.45; }
+  /* The pin. */
+  .note::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    border: 3px solid var(--ink-deep);
+    border-radius: 50%;
+    background: var(--amber);
+  }
+  .note--diary { top: 20%; left: 26%; }
+  .note--map { top: 26%; left: 55%; transition-delay: 0ms, 140ms; }
+  .bar.is-in .note--diary { opacity: 1; transform: rotate(-2.5deg); }
+  .bar.is-in .note--map { opacity: 1; transform: rotate(2deg); }
+  .note h3 { font-size: clamp(24px, 2.1vw, 34px); line-height: 1.08; }
+  .note p { margin-top: 10px; color: var(--paper-muted); font-size: clamp(15px, 1.2vw, 18px); line-height: 1.45; }
 
   /* The bill lies on the table after the round. */
   .bill-table {
@@ -339,11 +327,12 @@
     transform: rotate(-2.5deg);
     -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
             mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
-    /* Printed line by line from the top once it scrolls into view. */
-    clip-path: inset(0 0 100% 0);
-    transition: clip-path 1400ms steps(14, end);
+    /* Tossed onto the table once it scrolls into view. */
+    opacity: 0;
+    transform: translateY(-48px) rotate(-9deg) scale(1.05);
+    transition: opacity 180ms ease-out, transform 420ms cubic-bezier(0.25, 1.4, 0.5, 1);
   }
-  .bill-table.is-in .bill { clip-path: inset(0 0 -10% 0); }
+  .bill-table.is-in .bill { opacity: 1; transform: rotate(-2.5deg); }
   .bill h2 { font-size: 44px; line-height: 1.1; letter-spacing: -0.02em; }
   .bill .sub { margin-top: 4px; color: var(--paper-muted); font-size: 16px; }
   .bill dl { margin: 28px 0 0; }
@@ -425,19 +414,21 @@
     .print--pub .print-copy { position: static; width: auto; transform: none; padding: 32px var(--gutter) 0; }
     .print--pub { padding-bottom: 56px; }
     .bar-scene { aspect-ratio: 4 / 5; }
-    .phone { width: 30%; }
-    .phone--diary { left: 12%; }
-    .phone--map { left: 54%; }
-    .bar-notes { position: relative; display: grid; gap: 20px; aspect-ratio: auto; margin-top: -16%; padding: 0 var(--gutter); }
-    .note { position: relative; top: auto; left: auto; width: auto; max-width: 420px; }
+    /* The scene is 125vw tall here; the notes start on the wall, 16vw below its top. */
+    .bar-notes { position: relative; display: grid; gap: 18px; aspect-ratio: auto; margin-top: -109vw; padding: 0 calc(var(--gutter) + 8px); }
+    .note { position: relative; top: auto; left: auto; width: auto; max-width: 400px; padding: 28px 20px 28px; }
+    .note h3 { font-size: 22px; }
+    .note p { font-size: 15px; }
     .note--map { justify-self: end; }
     .closing { grid-template-columns: 1fr; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition-duration: 0ms !important; transition-delay: 0ms !important; animation: none !important; }
-    .phone, .note { transform: none; translate: none; opacity: 1; }
-    .bill { clip-path: none; }
+    .note, .bill { opacity: 1; }
+    .note--diary { transform: rotate(-2.5deg); }
+    .note--map { transform: rotate(2deg); }
+    .bill { transform: rotate(-2.5deg); }
   }
 </style>
 </head>
@@ -504,8 +495,10 @@
     <svg class="walk" data-walk viewBox="0 0 1536 1024" aria-hidden="true" focusable="false">
       <path data-route fill="none" d="M300 485 L346 475 L381 467 L417 460 L452 448 L482 427 L508 399 L536 375 L569 360 L605 350 L640 346 L676 348 L710 355 L743 364 L776 372 L809 377 L843 379 L879 380 L915 379 L952 376 L989 365 L1022 337 L1046 305 L1074 279 L1105 261 L1135 244 L1164 224 L1200 192"/>
       <g class="walker" data-walker transform="translate(300 485)">
-        <circle r="20" fill="#e8a317" stroke="#0d0703" stroke-width="6"/>
-        <circle r="7" fill="#0d0703"/>
+        <g class="dot">
+          <circle r="20" fill="#e8a317" stroke="#0d0703" stroke-width="6"/>
+          <circle r="7" fill="#0d0703"/>
+        </g>
       </g>
     </svg>
     <div class="print-copy">
@@ -525,10 +518,6 @@
   <section class="bar" data-reveal aria-label="{% translate "Deník a mapování hospod" %}">
     <div class="bar-scene">
       <img src="{{ asset.pub_bar_1536_webp }}" srcset="{{ asset.pub_bar_800_webp }} 800w, {{ asset.pub_bar_1536_webp }} 1536w" sizes="100vw" width="1536" height="1024" alt="" loading="lazy">
-      <div class="shelf">
-        <img class="phone phone--diary" src="{{ asset.screen_historie_webp }}" width="520" height="1131" alt="{% translate "Deník večera s pivem, cenou a hodnocením." %}" loading="lazy">
-        <img class="phone phone--map" src="{{ asset.screen_zmapuj_webp }}" width="520" height="1131" alt="{% translate "Mapování hospody: platba kartou, zahrádka, šipky." %}" loading="lazy">
-      </div>
     </div>
     <div class="bar-notes">
         <article class="note note--diary">
@@ -582,12 +571,11 @@
 
 {{ tally_copy|json_script:"landing-copy" }}
 <script>
-  // The store matching the visitor's phone gets the amber button; desktop defaults to iPhone.
+  // The store matching the visitor's phone goes first; desktop defaults to iPhone.
   (function () {
     var android = /Android/i.test(navigator.userAgent);
     document.querySelectorAll('.stores').forEach(function (group) {
       var primary = group.querySelector(android ? '[data-store="android"]' : '[data-store="ios"]');
-      primary.classList.add('is-primary');
       group.prepend(primary);
     });
   })();

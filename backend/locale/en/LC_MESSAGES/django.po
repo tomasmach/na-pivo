@@ -1012,17 +1012,11 @@ msgstr "Going for a beer? Ping and the crew knows right away. Your mates say whe
 msgid "Deník a mapování hospod"
 msgstr "Diary and pub mapping"
 
-msgid "Deník večera s pivem, cenou a hodnocením."
-msgstr "Diary of a night with the beer, its price and a rating."
-
 msgid "Ráno víš, kolik to stálo"
 msgstr "In the morning you know what it cost"
 
 msgid "Piva, ceny, hospoda i poznámky zůstanou v deníku. A napíšeš si, jestli se tam vrátíš."
 msgstr "Beers, prices, the pub and your notes stay in the diary, along with whether you would go back."
-
-msgid "Mapování hospody: platba kartou, zahrádka, šipky."
-msgstr "Mapping a pub: card payment, beer garden, darts."
 
 msgid "Zmapuj hospodu pro ostatní"
 msgstr "Map the pub for others"
