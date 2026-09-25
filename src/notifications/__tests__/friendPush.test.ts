@@ -1,6 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 
-const mockEnsurePushTokenRegistered = jest.fn(async () => 'ExponentPushToken[test]');
+import {
+  disableFriendPush,
+  ensureFriendPushRegisteredIfGranted,
+  registerFriendPush,
+} from '../friendPush';
+import { useSettingsStore } from '@/stores/settingsStore';
+
+const mockEnsurePushTokenRegistered = jest.fn<Promise<string | null>, []>(
+  async () => 'ExponentPushToken[test]',
+);
 const mockDisablePushDevice = jest.fn(async () => true);
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -22,17 +32,13 @@ jest.mock('@/data/pushDeviceClient', () => ({
   disablePushDevice: (...a: unknown[]) => mockDisablePushDevice(...(a as [])),
 }));
 
-import {
-  disableFriendPush,
-  ensureFriendPushRegisteredIfGranted,
-  registerFriendPush,
-} from '../friendPush';
-import { useSettingsStore } from '@/stores/settingsStore';
-
 beforeEach(async () => {
   jest.clearAllMocks();
   mockEnsurePushTokenRegistered.mockResolvedValue('ExponentPushToken[test]');
   mockDisablePushDevice.mockResolvedValue(true);
+  jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue({
+    status: 'granted',
+  } as Notifications.NotificationPermissionsStatus);
   await AsyncStorage.clear();
   useSettingsStore.setState({
     friendPushEnabled: false,
@@ -59,6 +65,27 @@ it('lights up push for an existing grantee who has not opted out', async () => {
   expect(useSettingsStore.getState().friendPushEnabled).toBe(true);
 });
 
+it('keeps a later opt-out after an in-flight registration resolves', async () => {
+  let finishRegistration!: (token: string) => void;
+  mockEnsurePushTokenRegistered.mockReturnValue(new Promise((resolve) => { finishRegistration = resolve; }));
+  const registration = ensureFriendPushRegisteredIfGranted();
+  await Promise.resolve();
+  useSettingsStore.setState({ friendPushOptedOut: true, friendPushEnabled: false });
+  finishRegistration('ExponentPushToken[test]');
+  await registration;
+  expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
+});
+
+it('does not register after opting out while permission is being checked', async () => {
+  let finishPermission!: (status: Notifications.NotificationPermissionsStatus) => void;
+  jest.mocked(Notifications.getPermissionsAsync).mockReturnValueOnce(new Promise((resolve) => { finishPermission = resolve; }));
+  const registration = ensureFriendPushRegisteredIfGranted();
+  useSettingsStore.setState({ friendPushOptedOut: true, friendPushEnabled: false });
+  finishPermission({ status: 'granted' } as Notifications.NotificationPermissionsStatus);
+  await registration;
+  expect(mockEnsurePushTokenRegistered).not.toHaveBeenCalled();
+});
+
 it('clears the opt-out on an explicit enable', async () => {
   useSettingsStore.setState({ friendPushOptedOut: true, friendPushEnabled: false });
 
@@ -67,6 +94,40 @@ it('clears the opt-out on an explicit enable', async () => {
   expect(result).toEqual({ ok: true });
   expect(useSettingsStore.getState().friendPushOptedOut).toBe(false);
   expect(useSettingsStore.getState().friendPushEnabled).toBe(true);
+});
+
+it('keeps push off when device registration fails', async () => {
+  useSettingsStore.setState({ friendPushOptedOut: true });
+  mockEnsurePushTokenRegistered.mockResolvedValue(null);
+
+  await expect(registerFriendPush()).resolves.toEqual({ ok: false, reason: 'unavailable' });
+
+  expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
+  expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
+});
+
+it('does not enable push after a failed silent registration', async () => {
+  mockEnsurePushTokenRegistered.mockResolvedValue(null);
+
+  await ensureFriendPushRegisteredIfGranted();
+
+  expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
+});
+
+it('preserves an existing registration during a failed refresh', async () => {
+  useSettingsStore.setState({ friendPushEnabled: true });
+  mockEnsurePushTokenRegistered.mockResolvedValue(null);
+
+  await ensureFriendPushRegisteredIfGranted();
+
+  expect(useSettingsStore.getState().friendPushEnabled).toBe(true);
+});
+
+it('returns a retryable failure if the permission API throws', async () => {
+  jest.mocked(Notifications.getPermissionsAsync).mockRejectedValueOnce(new Error('Unavailable'));
+
+  await expect(registerFriendPush()).resolves.toEqual({ ok: false, reason: 'unavailable' });
+  expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
 });
 
 it('disables the device server-side on toggle-off', async () => {

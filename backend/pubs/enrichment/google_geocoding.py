@@ -9,16 +9,15 @@ from urllib.parse import quote
 import requests
 
 _GEOCODING_URL = "https://geocode.googleapis.com/v4/geocode"
-_FIELD_MASK = ",".join(
-    (
-        "results.placeId",
-        "results.location",
-        "results.granularity",
-        "results.formattedAddress",
-        "results.addressComponents",
-        "results.types",
-    )
+_RESULT_FIELDS = (
+    "placeId",
+    "location",
+    "granularity",
+    "formattedAddress",
+    "addressComponents",
+    "types",
 )
+_FIELD_MASK = ",".join(f"results.{field}" for field in _RESULT_FIELDS)
 _PRECISE_TYPES = ("street_address", "premise", "subpremise")
 _PRECISE_GRANULARITIES = {"ROOFTOP"}
 
@@ -66,9 +65,7 @@ def _candidate(
 ) -> GoogleAddressCandidate | None:
     if not isinstance(result, dict):
         return None
-    result_types = {
-        value for value in result.get("types", []) if isinstance(value, str)
-    }
+    result_types = {value for value in result.get("types", []) if isinstance(value, str)}
     result_type = next(
         (value for value in _PRECISE_TYPES if value in result_types),
         "",
@@ -149,9 +146,7 @@ class GoogleGeocodingSource:
 
     def _check_cap(self) -> None:
         if not self._reserve_request():
-            raise GoogleGeocodingDailyCapExceededError(
-                "Google Geocoding daily cap exceeded."
-            )
+            raise GoogleGeocodingDailyCapExceededError("Google Geocoding daily cap exceeded.")
 
     def geocode_address(
         self,
@@ -173,7 +168,7 @@ class GoogleGeocodingSource:
         if not place_id:
             return None
         url = f"{_GEOCODING_URL}/places/{quote(place_id, safe='')}"
-        return self._geocode(url=url, require_precise=False)
+        return self._geocode(url=url, require_precise=False, single_result=True)
 
     def reverse_geocode(
         self,
@@ -192,10 +187,12 @@ class GoogleGeocodingSource:
         *,
         url: str,
         require_precise: bool,
+        single_result: bool = False,
     ) -> GoogleAddressCandidate | None:
         headers = {
             "X-Goog-Api-Key": self._api_key,
-            "X-Goog-FieldMask": _FIELD_MASK,
+            # GeocodePlace returns one GeocodeResult, unlike address/location.
+            "X-Goog-FieldMask": ",".join(_RESULT_FIELDS) if single_result else _FIELD_MASK,
         }
         response = None
         for attempt in range(2):
@@ -208,15 +205,12 @@ class GoogleGeocodingSource:
                     timeout=self._timeout,
                 )
             except requests.RequestException as exc:
-                raise GoogleGeocodingUnavailableError(
-                    "Google Geocoding request failed."
-                ) from exc
+                raise GoogleGeocodingUnavailableError("Google Geocoding request failed.") from exc
             if response.status_code < 500:
                 break
             if attempt == 1:
                 raise GoogleGeocodingUnavailableError(
-                    f"Google Geocoding retry budget exhausted "
-                    f"(HTTP {response.status_code})."
+                    f"Google Geocoding retry budget exhausted (HTTP {response.status_code})."
                 )
 
         if response is None or not response.ok:
@@ -224,9 +218,7 @@ class GoogleGeocodingSource:
             # disabled API or a key restriction, 429 as a spent quota. It never
             # carries user data, so it is safe to log.
             status_code = "none" if response is None else response.status_code
-            raise GoogleGeocodingUnavailableError(
-                f"Google Geocoding returned HTTP {status_code}."
-            )
+            raise GoogleGeocodingUnavailableError(f"Google Geocoding returned HTTP {status_code}.")
         try:
             payload = response.json()
         except ValueError as exc:
@@ -234,14 +226,10 @@ class GoogleGeocodingSource:
                 "Google Geocoding returned invalid JSON."
             ) from exc
         if not isinstance(payload, dict):
-            raise GoogleGeocodingUnavailableError(
-                "Google Geocoding returned an invalid payload."
-            )
-        results = payload.get("results", [])
+            raise GoogleGeocodingUnavailableError("Google Geocoding returned an invalid payload.")
+        results = [payload] if single_result else payload.get("results", [])
         if not isinstance(results, list):
-            raise GoogleGeocodingUnavailableError(
-                "Google Geocoding returned invalid results."
-            )
+            raise GoogleGeocodingUnavailableError("Google Geocoding returned invalid results.")
         return next(
             (
                 candidate

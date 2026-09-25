@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { intlLocale, t } from '@/i18n';
+import { t } from '@/i18n';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
@@ -10,6 +10,7 @@ import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { dateTimeFormat } from '@/utils/intlFormat';
 
 interface PubEventsSectionProps {
   visible: boolean;
@@ -35,8 +36,7 @@ function formatEventValidity(event: PubEvent, now = new Date()): string {
     start.getDate() === now.getDate();
   const time = (date: Date) => `${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}`;
   if (startsToday && sameDay) return t.pubDetail.eventToday(`${time(start)}-${time(end)}`);
-  const date = (value: Date) =>
-    new Intl.DateTimeFormat(intlLocale, { day: 'numeric', month: 'numeric' }).format(value);
+  const date = (value: Date) => dateTimeFormat({ day: 'numeric', month: 'numeric' }).format(value);
   return sameDay
     ? `${date(start)} ${time(start)}-${time(end)}`
     : `${date(start)} ${time(start)} - ${date(end)} ${time(end)}`;

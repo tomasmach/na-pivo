@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pubs', '0138_release_note_2_1_0'),
+        ('pubs', '0141_useraddedpub_location_refresh_after'),
     ]
 
     operations = [

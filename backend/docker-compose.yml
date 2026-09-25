@@ -6,9 +6,10 @@ services:
   # culinair's own "web" service alias on culinair_default.
   napivo-web:
     build: .
-    image: na-pivo-backend:local
+    image: ${NAPIVO_BACKEND_IMAGE:-na-pivo-backend:local}
     container_name: napivo-web
     restart: unless-stopped
+    stop_grace_period: 60s
     env_file: .env
     depends_on:
       db:
@@ -37,7 +38,7 @@ services:
   # budget) and refreshes stale rows. Honours the Firmy.cz rate limits itself.
   worker:
     build: .
-    image: na-pivo-backend:local
+    image: ${NAPIVO_BACKEND_IMAGE:-na-pivo-backend:local}
     container_name: napivo-worker
     restart: unless-stopped
     env_file: .env

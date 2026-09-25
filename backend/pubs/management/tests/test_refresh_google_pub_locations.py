@@ -8,6 +8,7 @@ from django.core.management import call_command
 from django.utils import timezone
 
 from pubs.enrichment import GoogleAddressCandidate, geohash8
+from pubs.enrichment.tests.test_google_geocoding import _response, _result
 from pubs.models import UserAddedPub
 
 
@@ -139,4 +140,96 @@ def test_refresh_stops_gracefully_when_budget_is_exhausted(settings, capsys):
     )
     assert pub.location_synced_at == original_synced_at
     assert pub.lat == 50.08
+    assert pub.location_refresh_after is None
     assert "Stopped after 0 refresh(es)" in capsys.readouterr().out
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("failure", ["http_400", "no_match", "timeout"])
+def test_failed_refresh_waits_a_day_and_does_not_block_other_pubs(settings, failure):
+    import requests
+
+    settings.GOOGLE_MAPS_SERVER_API_KEY = "test-key"
+    failed = _pub(1, synced_days_ago=28)
+    healthy = _pub(2, synced_days_ago=27)
+    original_synced_at = failed.location_synced_at
+    failed_response = {
+        "http_400": _response({"error": {"code": 400}}, status_code=400),
+        "no_match": _response({}),
+        "timeout": requests.Timeout(),
+    }[failure]
+    with patch("requests.Session.get", side_effect=[failed_response, _response(_result())]) as get:
+        call_command("refresh_google_pub_locations")
+        assert get.call_count == (2 if failure == "no_match" else 1)
+        # A new command instance must still honour the persisted delay.
+        call_command("refresh_google_pub_locations")
+        call_command("refresh_google_pub_locations")
+    assert get.call_count == 2
+    failed.refresh_from_db()
+    healthy.refresh_from_db()
+    assert failed.location_synced_at == original_synced_at
+    assert failed.lat == 50.08
+    assert failed.location_refresh_after > timezone.now() + timedelta(hours=23)
+    assert healthy.location_synced_at > timezone.now() - timedelta(minutes=1)
+    assert healthy.location_refresh_after is None
+
+    UserAddedPub.objects.filter(pk=failed.pk).update(
+        location_refresh_after=timezone.now() - timedelta(seconds=1)
+    )
+    with patch("requests.Session.get", return_value=_response(_result())) as get:
+        call_command("refresh_google_pub_locations")
+    get.assert_called_once()
+    failed.refresh_from_db()
+    assert failed.location_refresh_after is None
+    assert failed.location_synced_at > original_synced_at
+
+
+@pytest.mark.django_db
+def test_refresh_uses_real_place_contract_and_dry_run_spends_nothing(settings):
+    settings.GOOGLE_MAPS_SERVER_API_KEY = "test-key"
+    pub = _pub(1)
+    with patch("requests.Session.get", return_value=_response(_result())) as get:
+        call_command("refresh_google_pub_locations", "--dry-run")
+        get.assert_not_called()
+        pub.refresh_from_db()
+        assert pub.location_refresh_after is None
+        call_command("refresh_google_pub_locations")
+        call_command("refresh_google_pub_locations")
+    get.assert_called_once()
+    assert get.call_args.kwargs["headers"]["X-Goog-FieldMask"] == (
+        "placeId,location,granularity,formattedAddress,addressComponents,types"
+    )
+    pub.refresh_from_db()
+    assert pub.lat == pytest.approx(49.1951)
+    assert pub.name == "Hospoda 1"
+    assert pub.address == "Testovací 12"
+    assert pub.city == "Praha"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", [403, 429, 503])
+def test_provider_failure_stops_batch_without_spending_on_other_pubs(settings, status):
+    settings.GOOGLE_MAPS_SERVER_API_KEY = "test-key"
+    failed = _pub(1, synced_days_ago=28)
+    untouched = _pub(2, synced_days_ago=27)
+    with patch("requests.Session.get", return_value=_response({}, status_code=status)) as get:
+        call_command("refresh_google_pub_locations")
+    assert get.call_count == (2 if status == 503 else 1)
+    failed.refresh_from_db()
+    untouched.refresh_from_db()
+    assert failed.location_refresh_after is not None
+    assert untouched.location_refresh_after is None
+
+
+@pytest.mark.django_db
+def test_overlapping_worker_skips_an_already_claimed_pub(settings):
+    settings.GOOGLE_MAPS_SERVER_API_KEY = "test-key"
+    _pub(1)
+
+    def provider_response(*args, **kwargs):
+        call_command("refresh_google_pub_locations")
+        return _response(_result())
+
+    with patch("requests.Session.get", side_effect=provider_response) as get:
+        call_command("refresh_google_pub_locations")
+    get.assert_called_once()

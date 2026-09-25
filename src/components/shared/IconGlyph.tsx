@@ -6,94 +6,94 @@
 
 import React, { memo, ComponentType } from 'react';
 import Svg, { Circle as SvgCircle, Path as SvgPath } from 'react-native-svg';
-import {
-  Armchair,
-  ArrowUp,
-  ArrowDown,
-  GripVertical,
-  Ellipsis,
-  Beer,
-  BeerOff,
-  Compass,
-  Undo2,
-  LockKeyhole,
-  Eye,
-  EyeOff,
-  MapPin,
-  ExternalLink,
-  RefreshCw,
-  Settings,
-  BellRing,
-  Volume2,
-  Info,
-  Shield,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Heart,
-  Flag,
-  MessageSquare,
-  Radius,
-  Wifi,
-  Pencil,
-  Plus,
-  Minus,
-  Trash2,
-  Copy,
-  X,
-  Coins,
-  Star,
-  ThumbsUp,
-  ThumbsDown,
-  History,
-  Clock,
-  User,
-  Users,
-  UserPlus,
-  Mail,
-  Link,
-  Check,
-  BadgeCheck,
-  KeyRound,
-  Crown,
-  Camera,
-  Images,
-  Sparkles,
-  TreePine,
-  Search,
-  CreditCard,
-  Accessibility,
-  Target,
-  CircleDot,
-  Radio,
-  Mic,
-  Tv,
-  SquareParking,
-  MapPinned,
-  MapPinPlus,
-  Map,
-  List,
-  LocateFixed,
-  SlidersHorizontal,
-  Sprout,
-  ClipboardList,
-  Flame,
-  Trophy,
-  Moon,
-  QrCode,
-  Menu,
-  GlassWater,
-  Wine,
-  ListFilter,
-  House,
-  Milk,
-  CupSoda,
-  HandPlatter,
-  Share2,
-  Globe,
-  TriangleAlert,
-  LucideProps,
-} from 'lucide-react-native';
+// Per-icon deep imports: the package root re-exports all ~1,850 icons and
+// Metro evaluates every one of them at startup.
+import Armchair from 'lucide-react-native/icons/armchair';
+import Beer from 'lucide-react-native/icons/beer';
+import BeerOff from 'lucide-react-native/icons/beer-off';
+import Compass from 'lucide-react-native/icons/compass';
+import Undo2 from 'lucide-react-native/icons/undo-2';
+import LockKeyhole from 'lucide-react-native/icons/lock-keyhole';
+import Eye from 'lucide-react-native/icons/eye';
+import EyeOff from 'lucide-react-native/icons/eye-off';
+import MapPin from 'lucide-react-native/icons/map-pin';
+import ExternalLink from 'lucide-react-native/icons/external-link';
+import RefreshCw from 'lucide-react-native/icons/refresh-cw';
+import Settings from 'lucide-react-native/icons/settings';
+import BellRing from 'lucide-react-native/icons/bell-ring';
+import Volume2 from 'lucide-react-native/icons/volume-2';
+import Info from 'lucide-react-native/icons/info';
+import Shield from 'lucide-react-native/icons/shield';
+import ChevronLeft from 'lucide-react-native/icons/chevron-left';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
+import ChevronDown from 'lucide-react-native/icons/chevron-down';
+import Heart from 'lucide-react-native/icons/heart';
+import Flag from 'lucide-react-native/icons/flag';
+import MessageSquare from 'lucide-react-native/icons/message-square';
+import Radius from 'lucide-react-native/icons/radius';
+import Wifi from 'lucide-react-native/icons/wifi';
+import Pencil from 'lucide-react-native/icons/pencil';
+import Plus from 'lucide-react-native/icons/plus';
+import Minus from 'lucide-react-native/icons/minus';
+import Trash2 from 'lucide-react-native/icons/trash';
+import Copy from 'lucide-react-native/icons/copy';
+import X from 'lucide-react-native/icons/x';
+import Coins from 'lucide-react-native/icons/coins';
+import Star from 'lucide-react-native/icons/star';
+import ThumbsUp from 'lucide-react-native/icons/thumbs-up';
+import ThumbsDown from 'lucide-react-native/icons/thumbs-down';
+import History from 'lucide-react-native/icons/rotate-ccw-clock';
+import Clock from 'lucide-react-native/icons/clock';
+import User from 'lucide-react-native/icons/user';
+import Users from 'lucide-react-native/icons/users';
+import UserPlus from 'lucide-react-native/icons/user-plus';
+import Mail from 'lucide-react-native/icons/mail';
+import Link from 'lucide-react-native/icons/link';
+import Check from 'lucide-react-native/icons/check';
+import BadgeCheck from 'lucide-react-native/icons/badge-check';
+import KeyRound from 'lucide-react-native/icons/key-round';
+import Crown from 'lucide-react-native/icons/crown';
+import Camera from 'lucide-react-native/icons/camera';
+import Images from 'lucide-react-native/icons/images';
+import Sparkles from 'lucide-react-native/icons/sparkles';
+import TreePine from 'lucide-react-native/icons/tree-pine';
+import Search from 'lucide-react-native/icons/search';
+import CreditCard from 'lucide-react-native/icons/credit-card';
+import Accessibility from 'lucide-react-native/icons/accessibility';
+import Target from 'lucide-react-native/icons/target';
+import CircleDot from 'lucide-react-native/icons/circle-dot';
+import Radio from 'lucide-react-native/icons/radio';
+import Mic from 'lucide-react-native/icons/mic';
+import Tv from 'lucide-react-native/icons/tv';
+import SquareParking from 'lucide-react-native/icons/square-parking';
+import MapPinned from 'lucide-react-native/icons/map-pinned';
+import MapPinPlus from 'lucide-react-native/icons/map-pin-plus';
+import Map from 'lucide-react-native/icons/map';
+import List from 'lucide-react-native/icons/list';
+import LocateFixed from 'lucide-react-native/icons/locate-fixed';
+import SlidersHorizontal from 'lucide-react-native/icons/sliders-horizontal';
+import Sprout from 'lucide-react-native/icons/sprout';
+import ClipboardList from 'lucide-react-native/icons/clipboard-list';
+import Flame from 'lucide-react-native/icons/flame';
+import Trophy from 'lucide-react-native/icons/trophy';
+import Moon from 'lucide-react-native/icons/moon';
+import QrCode from 'lucide-react-native/icons/qr-code';
+import Menu from 'lucide-react-native/icons/menu';
+import GlassWater from 'lucide-react-native/icons/glass-water';
+import Wine from 'lucide-react-native/icons/wine';
+import ListFilter from 'lucide-react-native/icons/list-filter';
+import House from 'lucide-react-native/icons/house';
+import Milk from 'lucide-react-native/icons/milk';
+import CupSoda from 'lucide-react-native/icons/cup-soda';
+import HandPlatter from 'lucide-react-native/icons/hand-platter';
+import Share2 from 'lucide-react-native/icons/share-2';
+import Globe from 'lucide-react-native/icons/globe';
+import TriangleAlert from 'lucide-react-native/icons/triangle-alert';
+import ArrowUp from 'lucide-react-native/icons/arrow-up';
+import ArrowDown from 'lucide-react-native/icons/arrow-down';
+import GripVertical from 'lucide-react-native/icons/grip-vertical';
+import Ellipsis from 'lucide-react-native/icons/ellipsis';
+import type { LucideProps } from 'lucide-react-native';
 
 export interface IconProps {
   size?: number;

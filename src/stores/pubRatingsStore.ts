@@ -121,7 +121,7 @@ export function migratePubRatings(persisted: unknown, version: number): PubRatin
 
 export const usePubRatingsStore = create<PubRatingsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ratings: {},
 
       setRating: (pubKey, input) =>
@@ -159,24 +159,25 @@ export const usePubRatingsStore = create<PubRatingsState>()(
           return { ratings: next };
         }),
 
-      hydrateRatings: (serverRatings) =>
-        set((state) => {
-          let changed = false;
-          const next = { ...state.ratings };
-          for (const { pubKey, rating } of serverRatings) {
-            const local = next[pubKey];
-            // LWW: keep local unless the server copy is strictly newer. Compare
-            // by parsed ISO time so timezone/format differences don't matter.
-            if (local) {
-              const localMs = Date.parse(local.updatedAt);
-              const serverMs = Date.parse(rating.updatedAt);
-              if (!(Number.isFinite(serverMs) && serverMs > localMs)) continue;
-            }
-            next[pubKey] = rating;
-            changed = true;
+      hydrateRatings: (serverRatings) => {
+        let changed = false;
+        const next = { ...get().ratings };
+        for (const { pubKey, rating } of serverRatings) {
+          const local = next[pubKey];
+          // LWW: keep local unless the server copy is strictly newer. Compare
+          // by parsed ISO time so timezone/format differences don't matter.
+          if (local) {
+            const localMs = Date.parse(local.updatedAt);
+            const serverMs = Date.parse(rating.updatedAt);
+            if (!(Number.isFinite(serverMs) && serverMs > localMs)) continue;
           }
-          return changed ? { ratings: next } : state;
-        }),
+          next[pubKey] = rating;
+          changed = true;
+        }
+        // Runs on every foreground; skip set() (and the persisted rewrite) when
+        // the server had nothing newer.
+        if (changed) set({ ratings: next });
+      },
     }),
     {
       name: 'na-pivo-pub-ratings',

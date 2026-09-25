@@ -173,7 +173,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: 'na-pivo',
     owner: 'tomasmachs-organization',
     scheme: 'napivo',
-    version: '2.1.0',
+    version: '2.1.1',
     icon: './assets/images/icon.png',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',

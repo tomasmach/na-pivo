@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import * as Location from 'expo-location';
 import type { Region } from 'react-native-maps';
 
-import { useDevicePosition } from '@/compass/useDevicePosition';
+import type { DevicePosition } from '@/compass/useDevicePosition';
+import { updateCurrencyFromCoordinates } from '@/location/locationCurrency';
 import {
   checkLocationPermission,
   ensureLocationPermission,
-  openSystemSettings,
   type PermissionState,
 } from '@/compass/permissions';
 import { geohash8 } from '@/data/geohash';
@@ -46,6 +47,35 @@ import {
 
 const VIEWPORT_DEBOUNCE_MS = 650;
 const LIVE_REFRESH_MS = 35_000;
+const IDLE_LIVE_REFRESH_MS = 3 * 60_000;
+/** The map draws its own native location dot, so JS only needs one fix to
+ *  centre the first view and one per tap on the locate button. */
+const MOUNT_FIX_MAX_AGE_MS = 5 * 60 * 1000;
+const LOCATE_FIX_MAX_AGE_MS = 15 * 1000;
+const CACHED_FIX_REQUIRED_ACCURACY_M = 100;
+
+async function readOneShotPosition(maxAgeMs: number): Promise<DevicePosition | null> {
+  try {
+    const fix =
+      (await Location.getLastKnownPositionAsync({
+        maxAge: maxAgeMs,
+        requiredAccuracy: CACHED_FIX_REQUIRED_ACCURACY_M,
+      })) ??
+      (await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+        // A passive map fix must not open Android's location-settings dialog on
+        // every focus; the watcher it replaces never showed it either.
+        mayShowUserSettingsDialog: false,
+      }));
+    const { latitude, longitude, accuracy } = fix.coords;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    // The removed watcher also kept the price currency in step with the country.
+    void updateCurrencyFromCoordinates(latitude, longitude);
+    return { lat: latitude, lng: longitude, accuracyMeters: accuracy ?? 999 };
+  } catch {
+    return null;
+  }
+}
 
 function viewportRadiusKm(region: Region): number {
   return Math.min(100, Math.max(1, viewportCoverageKm(region) * 1.25));
@@ -84,11 +114,16 @@ export interface BeerMapData {
   loadingPubs: boolean;
   stale: boolean;
   requestPermission: () => Promise<void>;
+  /** Take one fresh position fix (locate button); null without permission or a fix. */
+  refreshPosition: () => Promise<DevicePosition | null>;
   loadRegion: (region: Region) => void;
   refresh: () => void;
 }
 
-export function useBeerMap(filters: PubSearchFilters): BeerMapData {
+export function useBeerMap(
+  filters: PubSearchFilters,
+  friendsLayerVisible = false,
+): BeerMapData {
   // Fetch/cache identity deliberately EXCLUDES the price range: price filtering
   // is client-side over prices already attached to the loaded pubs, so moving
   // the price slider must never trigger a refetch or hide the catalogue.
@@ -129,7 +164,26 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
     }, []),
   );
 
-  const { position } = useDevicePosition(focused && permissionState === 'granted');
+  const [position, setPosition] = useState<DevicePosition | null>(null);
+  const positionEnabled = focused && permissionState === 'granted';
+
+  useEffect(() => {
+    if (!positionEnabled) return;
+    let cancelled = false;
+    void readOneShotPosition(MOUNT_FIX_MAX_AGE_MS).then((next) => {
+      if (!cancelled && next) setPosition(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [positionEnabled]);
+
+  const refreshPosition = useCallback(async (): Promise<DevicePosition | null> => {
+    if (!positionEnabled) return null;
+    const next = await readOneShotPosition(LOCATE_FIX_MAX_AGE_MS);
+    if (next) setPosition(next);
+    return next;
+  }, [positionEnabled]);
 
   useEffect(() => {
     let mounted = true;
@@ -214,6 +268,10 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
     [friendActivities, nowMs],
   );
 
+  // Poll friends' live status at full rate only while it matters on screen:
+  // someone is live (their markers must expire/update) or the friends layer is
+  // open. Otherwise a slow poll still notices a friend who just sat down.
+  const pollFriendsLive = hasLive || friendsLayerVisible;
   useEffect(() => {
     if (!focused) return;
     const timer = setInterval(() => {
@@ -229,9 +287,9 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
           setFriendActivities(live.activeFriends);
         }
       });
-    }, LIVE_REFRESH_MS);
+    }, pollFriendsLive ? LIVE_REFRESH_MS : IDLE_LIVE_REFRESH_MS);
     return () => clearInterval(timer);
-  }, [focused, hasLive]);
+  }, [focused, pollFriendsLive]);
 
   useEffect(() => {
     if (!focused || !requestedRegion) return;
@@ -306,9 +364,8 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   );
 
   const requestPermission = useCallback(async () => {
-    const next = await ensureLocationPermission();
+    const next = await ensureLocationPermission({ openSettingsIfDenied: true });
     setPermissionState(next);
-    if (next === 'denied') await openSystemSettings();
   }, []);
 
   const loadRegion = useCallback((region: Region) => setRequestedRegion(region), []);
@@ -349,6 +406,7 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
     loadingPubs,
     stale,
     requestPermission,
+    refreshPosition,
     loadRegion,
     refresh,
   };

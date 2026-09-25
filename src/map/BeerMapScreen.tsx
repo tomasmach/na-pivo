@@ -9,9 +9,10 @@ import {
   Text,
   useColorScheme,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import MapView, {
-  Marker,
   PROVIDER_GOOGLE,
   type MapPressEvent,
   type Region,
@@ -23,6 +24,7 @@ import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
+import { haversineMeters } from '@/compass/distance';
 import {
   BeerIcon,
   ChevronRightIcon,
@@ -35,6 +37,7 @@ import {
   MapPinnedIcon,
   RefreshCwIcon,
   StarIcon,
+  UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
@@ -48,6 +51,7 @@ import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
+import { fetchPubVisitorsLastWeek, type PubVisitorsByKey } from '@/data/pubVisitorsClient';
 import {
   EMPTY_PUB_SEARCH_FILTERS,
   activePubSearchFilterCount,
@@ -74,7 +78,7 @@ import {
   type VisitedCitySummary,
 } from './mapModel';
 import { useBeerMap } from './useBeerMap';
-import { StaticMapMarker } from './StaticMapMarker';
+import { StaticMapMarker, useMarkerSnapshotRefresh } from './StaticMapMarker';
 
 const DEFAULT_REGION: Region = {
   latitude: 49.8175,
@@ -93,7 +97,10 @@ type MapSelection =
   | { kind: 'city'; key: string; accountId: string | null };
 
 let rememberedRegion: Region | null = null;
+/** A fresher locate fix closer than this does not re-animate the map. */
+const LOCATE_FOLLOW_UP_M = 25;
 let rememberedLayer: Layer = 'all';
+let rememberedVisitorsOnly = false;
 let rememberedSelection: MapSelection | null = null;
 const layerListeners = new Set<() => void>();
 
@@ -195,6 +202,8 @@ interface PlaceCardProps {
   metaTone: MetaTone;
   /** The quiet tail of the same line (city, "navštíveno"), or null. */
   fact: string | null;
+  /** How many people were in the selected pub last week, on its own quiet line. */
+  people?: string | null;
   /** Star rating, rendered with a ★ glyph ahead of the fact text. */
   rating?: { value: string; count: string | null } | null;
   titlePress?: {
@@ -215,6 +224,7 @@ function PlaceCard({
   meta,
   metaTone,
   fact,
+  people,
   rating,
   titlePress,
   door,
@@ -274,6 +284,19 @@ function PlaceCard({
             maxFontSizeMultiplier={FontScaleCap.body}
           >
             {meta}
+          </Text>
+        </View>
+      ) : null}
+
+      {people ? (
+        <View style={styles.placeMetaRow}>
+          <UsersIcon size={13} color={Colors.mutedText} />
+          <Text
+            style={styles.placeFact}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {people}
           </Text>
         </View>
       ) : null}
@@ -408,14 +431,45 @@ function pubWithDetails(pub: Pub, details: PubHoursResult | undefined): Pub {
   };
 }
 
-function PubMarker({ visited, selected }: { visited: boolean; selected: boolean }) {
+function PubMarker({
+  visited,
+  selected,
+  visitors,
+}: {
+  visited: boolean;
+  selected: boolean;
+  visitors?: number;
+}) {
   return (
-    <View style={styles.pinHit}>
+    <View style={[styles.pinHit, visitors ? styles.pinHitWide : null]}>
       {selected ? <View style={styles.pubPinRing} /> : null}
       <View style={[styles.pubPin, visited && styles.pubPinVisited, selected && styles.pubPinSelected]}>
         <BeerIcon size={selected ? 18 : 15} color={visited ? Colors.stout : Colors.foam} />
       </View>
       {visited ? <View style={styles.visitedNotch} /> : null}
+      {visitors ? (
+        <VisitorsBadge
+          visitors={visitors}
+          style={[styles.pinVisitorsBadge, selected && styles.pinVisitorsBadgeSelected]}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function VisitorsBadge({
+  visitors,
+  style,
+}: {
+  visitors: number;
+  style: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[styles.visitorsBadge, style]}>
+      <UsersIcon size={10} color={Colors.stout} />
+      <Text style={styles.visitorsBadgeText} maxFontSizeMultiplier={FontScaleCap.display}>
+        {visitors > 99 ? '99+' : visitors}
+      </Text>
     </View>
   );
 }
@@ -426,10 +480,18 @@ function clusterTier(count: number): { size: number; fontSize: number } {
   return { size: 34, fontSize: 13 };
 }
 
-function ClusterMarker({ count, visited }: { count: number; visited: boolean }) {
+function ClusterMarker({
+  count,
+  visited,
+  visitors,
+}: {
+  count: number;
+  visited: boolean;
+  visitors: number;
+}) {
   const { size, fontSize } = clusterTier(count);
   return (
-    <View style={styles.clusterHit}>
+    <View style={[styles.clusterHit, visitors ? styles.clusterHitWithBadge : null]}>
       <View
         style={[
           styles.clusterPin,
@@ -448,6 +510,9 @@ function ClusterMarker({ count, visited }: { count: number; visited: boolean }) 
           {count}
         </Text>
       </View>
+      {visitors ? (
+        <VisitorsBadge visitors={visitors} style={styles.clusterVisitorsBadge} />
+      ) : null}
     </View>
   );
 }
@@ -457,6 +522,7 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
   const avatarUrl = account?.avatarUrl;
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const showAvatar = Boolean(avatarUrl && avatarUrl !== failedAvatarUrl);
+  const refreshSnapshot = useMarkerSnapshotRefresh();
 
   return (
     <View style={styles.liveMarkerHit}>
@@ -465,7 +531,11 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
           <Image
             source={{ uri: avatarUrl }}
             style={styles.liveAvatar}
-            onError={() => setFailedAvatarUrl(avatarUrl)}
+            onLoad={refreshSnapshot}
+            onError={() => {
+              setFailedAvatarUrl(avatarUrl);
+              refreshSnapshot();
+            }}
             accessibilityIgnoresInvertColors
             testID="live-map-avatar"
           />
@@ -505,6 +575,8 @@ export default function BeerMapScreen({
   const mapRef = useRef<MapView>(null);
   const reduceMotion = useReduceMotion();
   const hapticEnabled = useSettingsStore((state) => state.hapticEnabled);
+  const showPubVisitors = useSettingsStore((state) => state.showPubVisitors);
+  const setShowPubVisitors = useSettingsStore((state) => state.setShowPubVisitors);
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const {
     pubs,
@@ -517,9 +589,12 @@ export default function BeerMapScreen({
     loadingPubs,
     stale,
     requestPermission,
+    refreshPosition,
     loadRegion,
     refresh,
-  } = useBeerMap(filters);
+    // The layer store re-renders this screen on every change, so reading the
+    // remembered value here stays current for the live-friends poll gate.
+  } = useBeerMap(filters, rememberedLayer === 'friends');
   const activeFilterCount = activePubSearchFilterCount(filters);
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
@@ -553,6 +628,8 @@ export default function BeerMapScreen({
   const [detailOpen, setDetailOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [pubVisitors, setPubVisitors] = useState<PubVisitorsByKey | null>(null);
+  const [visitorsOnlyChoice, setVisitorsOnlyChoice] = useState(rememberedVisitorsOnly);
   const [listOpen, setListOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [placingPin, setPlacingPin] = useState(false);
@@ -582,6 +659,37 @@ export default function BeerMapScreen({
     loadRegion(initialRegion);
   }, [initialRegion, loadRegion]);
 
+  // Retries ride on each catalogue load, so a failed first fetch (bad signal
+  // in the pub) recovers without a restart; a loaded week is a cache hit. A
+  // pan must not cancel a slow request, so only hiding or leaving aborts it.
+  const visitorsRequest = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!showPubVisitors || visitorsRequest.current) return;
+    const controller = new AbortController();
+    visitorsRequest.current = controller;
+    void fetchPubVisitorsLastWeek(controller.signal).then((visitors) => {
+      if (visitorsRequest.current === controller) visitorsRequest.current = null;
+      if (!controller.signal.aborted && visitors) setPubVisitors(visitors);
+    });
+  }, [pubs, showPubVisitors]);
+  useEffect(() => {
+    if (showPubVisitors) return;
+    visitorsRequest.current?.abort();
+    visitorsRequest.current = null;
+  }, [showPubVisitors]);
+  useEffect(() => {
+    const request = visitorsRequest;
+    return () => request.current?.abort();
+  }, []);
+
+  // Last week's counts only mean something while they are shown and loaded.
+  const visibleVisitors = showPubVisitors && layer !== 'friends' ? pubVisitors : null;
+  const visitorsOnly = visitorsOnlyChoice && visibleVisitors != null;
+  const setVisitorsOnly = useCallback((next: boolean) => {
+    rememberedVisitorsOnly = next;
+    setVisitorsOnlyChoice(next);
+  }, []);
+
   useEffect(() => {
     if (!position || didAutoLocate.current) return;
     didAutoLocate.current = true;
@@ -599,13 +707,16 @@ export default function BeerMapScreen({
 
   const points = useMemo(
     () => {
-      const points = buildMapPubPoints(
+      let points = buildMapPubPoints(
         pubs,
         visitedPubs,
         layer === 'visited',
         false,
         activeFilterCount === 0,
       ).points;
+      if (visitorsOnly && visibleVisitors) {
+        points = points.filter((point) => visibleVisitors.has(point.key));
+      }
       // Keep the searched place visible before its catalogue area is loaded.
       // Later filters, layers and reports still apply; updates of the same pub win.
       if (focusedPoint && (
@@ -625,7 +736,17 @@ export default function BeerMapScreen({
       }
       return points;
     },
-    [activeFilterCount, focusedPoint, layer, pubs, reportedCacheKeys, reportedPubIds, visitedPubs],
+    [
+      activeFilterCount,
+      focusedPoint,
+      layer,
+      pubs,
+      reportedCacheKeys,
+      reportedPubIds,
+      visibleVisitors,
+      visitedPubs,
+      visitorsOnly,
+    ],
   );
 
   const activeSelection =
@@ -900,25 +1021,34 @@ export default function BeerMapScreen({
 
   const locate = useCallback(() => {
     trackUiInteraction('map_locate');
-    if (!position) {
-      void requestPermission();
-      return;
-    }
-    const next = {
-      latitude: position.lat,
-      longitude: position.lng,
-      // Recentring must not silently change the zoom. Cluster membership follows
-      // the zoom level, so forcing a new delta here made unchanged pub markers
-      // regroup whenever the user tapped the location button.
-      latitudeDelta: region.latitudeDelta,
-      longitudeDelta: region.longitudeDelta,
+    const recenter = (target: { lat: number; lng: number }) => {
+      const next = {
+        latitude: target.lat,
+        longitude: target.lng,
+        // Recentring must not silently change the zoom. Cluster membership follows
+        // the zoom level, so forcing a new delta here made unchanged pub markers
+        // regroup whenever the user tapped the location button.
+        latitudeDelta: region.latitudeDelta,
+        longitudeDelta: region.longitudeDelta,
+      };
+      mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 360);
+      handleRegionChange(next);
     };
-    mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 360);
-    handleRegionChange(next);
+    // The map keeps no live GPS watcher: jump to the last fix right away, then
+    // follow a fresh one-shot fix when the user has moved since.
+    if (position) recenter(position);
+    void refreshPosition().then((fresh) => {
+      if (!fresh) {
+        if (!position) void requestPermission();
+        return;
+      }
+      if (!position || haversineMeters(position, fresh) > LOCATE_FOLLOW_UP_M) recenter(fresh);
+    });
   }, [
     handleRegionChange,
     position,
     reduceMotion,
+    refreshPosition,
     region.latitudeDelta,
     region.longitudeDelta,
     requestPermission,
@@ -967,6 +1097,7 @@ export default function BeerMapScreen({
         ? t.map.viewportKnownNone
         : t.map.viewportKnown(visitedInView);
 
+  const selectedVisitors = selectedPub ? visibleVisitors?.get(selectedPub.key) ?? 0 : 0;
   const cardState = useMemo(() => {
     if (selectedPub) {
       const hours = openingMeta(selectedDetailPub ?? selectedPub.pub, selectedHoursStatus);
@@ -988,6 +1119,7 @@ export default function BeerMapScreen({
           [selectedPub.pub.city, selectedPub.visit ? t.map.visited : null]
             .filter(Boolean)
             .join(' · ') || null,
+        people: selectedVisitors ? t.map.visitorsLastWeek(selectedVisitors) : null,
       };
     }
     if (selectedLive) {
@@ -1031,6 +1163,7 @@ export default function BeerMapScreen({
     selectedPub,
     selectedRating,
     selectedRatingCount,
+    selectedVisitors,
     viewportDetail,
     viewportHeadline,
   ]);
@@ -1042,6 +1175,14 @@ export default function BeerMapScreen({
         text: t.map.offline,
         undoLabel: t.map.retry,
         onUndo: refresh,
+      };
+    }
+    if (visitorsOnly) {
+      return {
+        kind: 'rapid',
+        text: t.map.visitorsOnlyNudge,
+        confirmLabel: t.compass.nudgeFiltersClear,
+        onConfirm: () => setVisitorsOnly(false),
       };
     }
     if (activeFilterCount > 0) {
@@ -1081,7 +1222,9 @@ export default function BeerMapScreen({
     permissionState,
     refresh,
     region.latitudeDelta,
+    setVisitorsOnly,
     stale,
+    visitorsOnly,
   ]);
 
   const primaryAction = useMemo(() => {
@@ -1156,6 +1299,32 @@ export default function BeerMapScreen({
         onPress: () => runAfterMoreClose(() => setFilterSheetOpen(true)),
       },
       {
+        key: 'visitors',
+        label: t.map.moreVisitors,
+        icon: UsersIcon,
+        selected: showPubVisitors,
+        onPress: () => {
+          setMoreOpen(false);
+          // Hidden counts cannot narrow the map, so turning them back on starts unfiltered.
+          if (showPubVisitors) setVisitorsOnly(false);
+          setShowPubVisitors(!showPubVisitors);
+        },
+      },
+      ...(showPubVisitors
+        ? [
+            {
+              key: 'visitors-only',
+              label: t.map.moreVisitorsOnly,
+              icon: BeerIcon,
+              selected: visitorsOnly,
+              onPress: () => {
+                setMoreOpen(false);
+                setVisitorsOnly(!visitorsOnly);
+              },
+            },
+          ]
+        : []),
+      {
         key: 'refresh',
         label: t.map.refresh,
         icon: RefreshCwIcon,
@@ -1190,7 +1359,11 @@ export default function BeerMapScreen({
     refresh,
     runAfterMoreClose,
     selectedPub,
+    setShowPubVisitors,
+    setVisitorsOnly,
+    showPubVisitors,
     startPinPlacement,
+    visitorsOnly,
   ]);
 
   return (
@@ -1216,8 +1389,8 @@ export default function BeerMapScreen({
       >
         {showCities && layer !== 'friends'
           ? visitedCities.map((city) => (
-              <Marker
-                key={`city:${city.key}`}
+              <StaticMapMarker
+                key={`city:${city.key}:${city.name}:${city.visitCount}`}
                 stopPropagation
                 coordinate={{ latitude: city.lat, longitude: city.lng }}
                 onPress={() => {
@@ -1246,7 +1419,7 @@ export default function BeerMapScreen({
                     {city.visitCount}
                   </Text>
                 </View>
-              </Marker>
+              </StaticMapMarker>
             ))
           : null}
 
@@ -1254,40 +1427,53 @@ export default function BeerMapScreen({
           if (cluster.items.length === 1) {
             const point = cluster.items[0];
             const selected = selectedPub?.key === point.key;
+            const visitors = visibleVisitors?.get(point.key) ?? 0;
             return (
               <StaticMapMarker
-                key={`${point.key}:${point.visit?.visitCount ?? 0}:${selected ? 'selected' : 'idle'}`}
+                key={`${point.key}:${point.visit?.visitCount ?? 0}:${visitors}:${selected ? 'selected' : 'idle'}`}
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 onPress={() => selectPub(point)}
-                accessibilityLabel={t.a11y.mapPub(
-                  point.pub.name,
-                  point.visit?.visitCount ?? 0,
-                )}
+                accessibilityLabel={[
+                  t.a11y.mapPub(point.pub.name, point.visit?.visitCount ?? 0),
+                  visitors ? t.map.visitorsLastWeek(visitors) : null,
+                ].filter(Boolean).join(', ')}
               >
-                <PubMarker visited={Boolean(point.visit)} selected={selected} />
+                <PubMarker
+                  visited={Boolean(point.visit)}
+                  selected={selected}
+                  visitors={visitors}
+                />
               </StaticMapMarker>
             );
           }
+          // A sum over pubs: someone who went to two of them counts twice.
+          const clusterVisitors = visibleVisitors
+            ? cluster.items.reduce((sum, item) => sum + (visibleVisitors.get(item.key) ?? 0), 0)
+            : 0;
           return (
             <StaticMapMarker
-              key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}`}
+              key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}:${clusterVisitors}`}
               stopPropagation
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
-              accessibilityLabel={t.a11y.mapCluster(cluster.items.length)}
+              accessibilityLabel={[
+                t.a11y.mapCluster(cluster.items.length),
+                clusterVisitors ? t.map.visitorsClusterLastWeek(clusterVisitors) : null,
+              ].filter(Boolean).join(', ')}
             >
               <ClusterMarker
                 count={cluster.items.length}
                 visited={cluster.items.some((item) => item.visit != null)}
+                visitors={clusterVisitors}
               />
             </StaticMapMarker>
           );
         })}
 
         {layer !== 'visited' ? livePubs.map((live) => (
-          <Marker
-            key={`live:${live.cacheKey}:${selectedLive?.cacheKey === live.cacheKey ? 'selected' : 'idle'}`}
+          <StaticMapMarker
+            key={`live:${live.cacheKey}:${selectedLive?.cacheKey === live.cacheKey ? 'selected' : 'idle'}:${live.activities.length}:${friendName(live)}:${live.activities[0]?.account?.avatarUrl ?? ''}`}
             stopPropagation
             coordinate={{ latitude: live.lat, longitude: live.lng }}
             onPress={() => selectLive(live)}
@@ -1295,7 +1481,7 @@ export default function BeerMapScreen({
             accessibilityLabel={t.a11y.mapLive(friendName(live), live.name)}
           >
             <LiveMarker live={live} selected={selectedLive?.cacheKey === live.cacheKey} />
-          </Marker>
+          </StaticMapMarker>
         )) : null}
       </MapView>
 
@@ -1404,6 +1590,7 @@ export default function BeerMapScreen({
           meta={cardState.meta}
           metaTone={cardState.metaTone}
           fact={cardState.fact}
+          people={'people' in cardState ? cardState.people : null}
           rating={'rating' in cardState ? cardState.rating : null}
           titlePress={
             cardState.kind === 'pub' && selectedPub
@@ -1815,6 +2002,31 @@ const styles = StyleSheet.create({
   },
 
   pinHit: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  // Symmetric so the pin stays on the coordinate; the badge needs the right half.
+  pinHitWide: { width: 80 },
+  pinVisitorsBadge: { top: 5, left: 47 },
+  pinVisitorsBadgeSelected: { top: 2, left: 50 },
+  clusterHitWithBadge: { paddingTop: 10, paddingHorizontal: 26 },
+  clusterVisitorsBadge: { top: 0, right: 0 },
+  visitorsBadge: {
+    position: 'absolute',
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: Colors.foam,
+    borderWidth: 1.5,
+    borderColor: Colors.stout,
+  },
+  visitorsBadgeText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 10,
+    color: Colors.stout,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
   pubPin: {
     width: 31,
     height: 31,

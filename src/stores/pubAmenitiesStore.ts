@@ -131,7 +131,7 @@ export function migratePubAmenities(persisted: unknown, _version: number): PubAm
 
 export const usePubAmenitiesStore = create<PubAmenitiesState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       votes: {},
 
       setVote: (pubKey, amenityKey, vote) =>
@@ -166,39 +166,40 @@ export const usePubAmenitiesStore = create<PubAmenitiesState>()(
           return { votes: next };
         }),
 
-      hydrateVotes: (rows) =>
-        set((state) => {
-          let changed = false;
-          const next = { ...state.votes };
+      hydrateVotes: (rows) => {
+        let changed = false;
+        const next = { ...get().votes };
 
-          for (const { pubKey, amenityKey, entry } of rows) {
-            if (!isKnownAmenityKey(amenityKey)) continue;
-            const currentPub = next[pubKey];
-            const local = currentPub?.[amenityKey];
+        for (const { pubKey, amenityKey, entry } of rows) {
+          if (!isKnownAmenityKey(amenityKey)) continue;
+          const currentPub = next[pubKey];
+          const local = currentPub?.[amenityKey];
 
-            // Retraction. An untimed null removes unconditionally (caller
-            // pre-filters); a timestamped tombstone removes only when it wins LWW
-            // so a newer local edit is never silently destroyed.
-            if (entry == null || 'tombstone' in entry) {
-              if (!local) continue;
-              const tombstoneAt = entry == null ? undefined : entry.updatedAt;
-              if (tombstoneAt != null && !isStrictlyNewer(tombstoneAt, local.updatedAt)) continue;
-              const nextPub: PubAmenityVotes = { ...currentPub };
-              delete nextPub[amenityKey];
-              if (Object.keys(nextPub).length === 0) delete next[pubKey];
-              else next[pubKey] = nextPub;
-              changed = true;
-              continue;
-            }
-
-            // LWW: keep local unless the server copy is strictly newer.
-            if (!isStrictlyNewer(entry.updatedAt, local?.updatedAt)) continue;
-            next[pubKey] = { ...currentPub, [amenityKey]: entry };
+          // Retraction. An untimed null removes unconditionally (caller
+          // pre-filters); a timestamped tombstone removes only when it wins LWW
+          // so a newer local edit is never silently destroyed.
+          if (entry == null || 'tombstone' in entry) {
+            if (!local) continue;
+            const tombstoneAt = entry == null ? undefined : entry.updatedAt;
+            if (tombstoneAt != null && !isStrictlyNewer(tombstoneAt, local.updatedAt)) continue;
+            const nextPub: PubAmenityVotes = { ...currentPub };
+            delete nextPub[amenityKey];
+            if (Object.keys(nextPub).length === 0) delete next[pubKey];
+            else next[pubKey] = nextPub;
             changed = true;
+            continue;
           }
 
-          return changed ? { votes: next } : state;
-        }),
+          // LWW: keep local unless the server copy is strictly newer.
+          if (!isStrictlyNewer(entry.updatedAt, local?.updatedAt)) continue;
+          next[pubKey] = { ...currentPub, [amenityKey]: entry };
+          changed = true;
+        }
+
+        // Runs on every foreground; skip set() (and the persisted rewrite) when
+        // the server had nothing newer.
+        if (changed) set({ votes: next });
+      },
     }),
     {
       name: 'na-pivo-pub-amenities',

@@ -39,7 +39,7 @@ export function WhatsNewModal() {
   const note = useReleaseStore((s) => s.pendingNote);
   const dismissNote = useReleaseStore((s) => s.dismissNote);
 
-  // A bundled note (2.1.0 apology) takes the full screen instead of the card.
+  // Bundled notes (2.1.0 and 2.1.1) take the full screen instead of the card.
   if (note?.pager) {
     return <ReleasePagerModal visible version={note.version} onDismiss={dismissNote} />;
   }
