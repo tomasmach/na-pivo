@@ -5025,6 +5025,8 @@ class TourPublication(models.Model):
     stop_count = models.PositiveSmallIntegerField()
     walk_m = models.PositiveIntegerField()
     has_challenges = models.BooleanField(default=False)
+    # Title, pubs and addresses folded to plain lowercase ASCII, so "tygr" finds "U Zlatého tygra".
+    search_text = models.TextField(blank=True, default="")
     # A cache of who walked it, refreshed from TourRunMember at most every few minutes.
     people_count = models.PositiveIntegerField(default=0)
     people_count_at = models.DateTimeField(null=True, blank=True)

@@ -1,4 +1,4 @@
-import React, { type ReactNode } from 'react';
+import React, { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type TextProps } from 'react-native';
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { t, intlLocale, plural } from '@/i18n';
@@ -29,12 +29,15 @@ export function TourButton({ label, onPress, secondary, quiet, icon, disabled, b
   </Pressable>;
 }
 export function TourHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: ReactNode }) {
+  // The title keeps the same room on both sides as the wider of the back button and the right-hand icons.
+  const [side, setSide] = useState<number>(HitArea.min);
   return <View style={ui.header}>
     <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel={t.tours.back} style={ui.iconButton}>
       <ChevronLeftIcon color={Colors.foam} size={22} />
     </Pressable>
-    <TourText style={ui.headerTitle} numberOfLines={1}>{title}</TourText>
-    <View style={ui.headerRight}>{right}</View>
+    {/* Centred on the screen, not between the buttons, so two icons on the right do not push it aside. */}
+    <View style={[ui.headerTitleWrap, { left: Spacing.sm + side, right: Spacing.sm + side }]} pointerEvents="none"><TourText style={ui.headerTitle} numberOfLines={1}>{title}</TourText></View>
+    <View style={ui.headerRight} onLayout={(event) => setSide(Math.max(HitArea.min, event.nativeEvent.layout.width))}>{right}</View>
   </View>;
 }
 export function tourDate(plan: Pick<TourPlan, 'scheduledDate' | 'scheduledTime' | 'timezone'>) {
@@ -99,8 +102,9 @@ export const ui = StyleSheet.create({
   muted: { color: Colors.mutedText },
   grow: { flex: 1, minWidth: 0 },
   header: { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingHorizontal: Spacing.sm, marginBottom: Spacing.sm },
-  headerTitle: { flex: 1, textAlign: 'center', fontFamily: Fonts.ui.semibold, fontSize: 16, color: Colors.foam },
-  headerRight: { minWidth: HitArea.min },
+  headerTitleWrap: { position: 'absolute', top: 0, bottom: 0, justifyContent: 'center' },
+  headerTitle: { textAlign: 'center', fontFamily: Fonts.ui.semibold, fontSize: 16, color: Colors.foam },
+  headerRight: { minWidth: HitArea.min, marginLeft: 'auto', flexDirection: 'row', justifyContent: 'flex-end' },
   iconButton: { width: HitArea.min, minHeight: HitArea.min, alignItems: 'center', justifyContent: 'center' },
   button: { minHeight: 48, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg, borderRadius: Radius.pill, backgroundColor: Colors.amber, flexDirection: 'row', gap: Spacing.sm, alignItems: 'center', justifyContent: 'center' },
   buttonText: { color: Colors.stout, fontFamily: undefined, fontWeight: '700', fontSize: 16, lineHeight: 22, includeFontPadding: false, textAlign: 'center', flexShrink: 1 },

@@ -40,6 +40,7 @@ from pubs.tours import (
     protect_response,
     public_payload,
     public_share,
+    publication_search_text,
     readable_publications,
     share_expiry,
     share_token,
@@ -402,6 +403,7 @@ class TourPublicationView(OwnerTourView):
                 "city": public_stops[0]["address"], "start_lat": public_stops[0]["lat"], "start_lon": public_stops[0]["lon"],
                 "stop_count": len(public_stops), "walk_m": walking_meters(public_stops),
                 "has_challenges": any(stop["challenge"] for stop in public_stops),
+                "search_text": publication_search_text(snapshot),
                 "status": TourPublication.Status.ACTIVE, "hidden_reason": "", "rules_accepted_at": timezone.now(),
             }
             if publication is None:
