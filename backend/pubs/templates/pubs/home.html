@@ -286,29 +286,37 @@
     flex-wrap: wrap;
     justify-content: center;
     align-content: center;
-    gap: 1.6vw;
+    gap: 0;
   }
+  /* Each slip is a printed paper scrap with its own pin (slip-1…5); the text is set over it.
+     Slips are larger than a third of the wall, so the rows overlap a little like notes pinned over each other. */
   .slip {
     position: relative;
-    width: calc((100% - 3.2vw) / 3);
-    padding: 30px 20px 30px;
-    background: var(--foam);
+    box-sizing: border-box;
+    flex: none;
+    width: 34%;
+    --slip-w: 18vw;
+    margin: 0 -0.5% -1.5%;
+    /* At least the paper's own ratio; taller when the text needs it, the paper stretches with it. */
+    min-height: calc(var(--slip-w, 1px) * 0.75);
+    padding: 3.2vw 2.6vw 2.4vw;
+    background: center / 100% 100% no-repeat;
     color: var(--ink);
-    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
-            mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+    /* A hard ink offset plus a soft cast shadow, so overlapping slips separate from each other and from the wall. */
+    filter: drop-shadow(4px 6px 0 rgb(13 7 3 / 0.7)) drop-shadow(0 10px 14px rgb(0 0 0 / 0.45));
   }
-  .slip:nth-child(1) { rotate: -2.5deg; }
-  .slip:nth-child(2) { rotate: 1.5deg; translate: 0 10px; }
-  .slip:nth-child(3) { rotate: -1deg; }
-  .slip:nth-child(4) { rotate: 2deg; translate: 0 -6px; }
-  .slip:nth-child(5) { rotate: -1.8deg; }
-  .slip h3 { font-size: clamp(18px, 1.7vw, 27px); line-height: 1.08; }
-  .slip p { margin-top: 8px; color: var(--paper-muted); font-size: clamp(13.5px, 1.05vw, 16px); line-height: 1.4; }
+  .slip:nth-child(1) { background-image: url("{{ asset.slip_1_webp }}"); rotate: -4deg; z-index: 1; }
+  .slip:nth-child(2) { background-image: url("{{ asset.slip_2_webp }}"); rotate: 3deg; translate: 0 16px; z-index: 3; }
+  .slip:nth-child(3) { background-image: url("{{ asset.slip_3_webp }}"); rotate: -2deg; translate: 0 -4px; z-index: 2; }
+  .slip:nth-child(4) { background-image: url("{{ asset.slip_4_webp }}"); rotate: 3.5deg; translate: -8px 0; z-index: 4; }
+  .slip:nth-child(5) { background-image: url("{{ asset.slip_5_webp }}"); rotate: -3deg; translate: 10px 8px; z-index: 5; }
+  .slip h3 { font-size: clamp(19px, 1.85vw, 30px); line-height: 1.05; }
+  .slip p { margin-top: 0.4em; color: var(--paper-muted); font-size: clamp(14px, 1.2vw, 18px); line-height: 1.35; }
   /* A rubber stamp for what is coming in the next update. */
   .stamp {
     position: absolute;
-    top: 14px;
-    right: 14px;
+    top: 14%;
+    right: 9%;
     padding: 2px 10px;
     border: 3px solid var(--amber);
     border-radius: 8px;
@@ -317,19 +325,6 @@
     rotate: 8deg;
   }
   .slip--soon h3 { padding-right: 64px; }
-  /* The pin that holds a slip on the wall. */
-  .slip::before {
-    content: "";
-    position: absolute;
-    top: 9px;
-    left: 50%;
-    width: 13px;
-    height: 13px;
-    margin-left: -6.5px;
-    border: 3px solid var(--ink-deep);
-    border-radius: 50%;
-    background: var(--amber);
-  }
 
   /* The bill lies on the table after the round. */
   .bill-table {
@@ -414,8 +409,10 @@
 
   /* Below this the wall is too small for the slips, so they sit over the lower part of the print instead. */
   @media (max-width: 900px) {
-    .slips { position: relative; inset: auto; margin-top: -30%; padding: 0 var(--gutter) 40px; gap: 18px; }
-    .slip { width: min(100%, 340px); }
+    .slips { position: relative; inset: auto; margin-top: -30%; padding: 0 var(--gutter) 40px; gap: 14px; }
+    .slip { width: min(100%, 380px); min-height: 0; margin: 0; padding: 34px 30px 26px; }
+    .slip h3 { font-size: 22px; }
+    .slip p { font-size: 16px; }
   }
   @media (max-width: 600px) {
     .slips { margin-top: -45%; }
