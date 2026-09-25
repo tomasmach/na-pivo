@@ -230,7 +230,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
         <TourHeader title={detail?.name ?? t.tours.map} onBack={() => { setLargeMap(false); setDetail(null); }} />
         <ScrollView contentContainerStyle={[ui.content, { flexGrow: 1 }]}>
           <TourMap key={detail ? "stop-detail" : "overview"} stops={current.stops} selectedId={detail?.id ?? selected} onSelect={(stopId) => { setSelected(stopId); setDetail(current.stops.find((s) => s.id === stopId) ?? null); }} height={detail ? 160 : Math.max(240, dimensions.height - insets.top - insets.bottom - 150)} region={region} onRegionChange={setRegion} />
-          {detail && <><TourText style={ui.heading}>{current.stops.findIndex((s) => s.id === detail.id) + 1}. {detail.name}</TourText><TourText>{detail.address}</TourText>{!!detail.challenge && <TourChallengeText text={detail.challenge} emphasized />}<TourText style={ui.notice}>{factsLine(detail, true)?.hours ?? t.tours.openingHoursUnknown}</TourText>
+          {detail && <><TourText style={ui.heading}>{current.stops.findIndex((s) => s.id === detail.id) + 1}. {detail.name}</TourText><TourText>{detail.address}</TourText><TourText style={ui.notice}>{factsLine(detail, true)?.hours ?? t.tours.openingHoursUnknown}</TourText>{!!detail.challenge && <TourChallengeText text={detail.challenge} emphasized />}
             <TourButton label={t.tours.fullPubDetail} secondary onPress={() => setPubDetail(true)} />
             {!shareMode && active && !history && <><TourText style={ui.notice}>{t.tours.runPrivacy}</TourText>
               <TourButton label={active.statuses[detail.id] ? t.tours.undoMark : t.tours.markVisited} disabled={acting} onPress={() => mark(detail, active.statuses[detail.id] ? null : 'visited')} />

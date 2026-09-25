@@ -30,7 +30,8 @@ export function TourJourneyStop({ stop, index, count, status, caption, facts, he
           {facts?.hours && <Text style={facts.closed ? styles.closed : styles.open}>{facts.hours}</Text>}
           {facts?.hours && facts.beers ? ' · ' : ''}{facts?.beers}
         </Text>}
-        {!!stop.challenge && <TourChallengeText text={stop.challenge} emphasized={next} />}
+        {/* The next stop reads in full; the others stay short so their number sits by the name. */}
+        {!!stop.challenge && <TourChallengeText text={stop.challenge} emphasized={next} lines={next ? undefined : 2} />}
       </View>
       <ChevronRightIcon size={16} color={Colors.mutedText} />
     </Pressable>

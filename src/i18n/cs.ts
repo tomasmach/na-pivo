@@ -2871,6 +2871,7 @@ export const cs = {
     removeChallenge: 'Odebrat výzvu', writeChallenge: 'Napiš výzvu', challengeHint: 'Něco, co zvládne každý u stolu.',
     challengePlaceholder: 'Třeba: zeptej se výčepního, jak dlouho tu čepuje',
     challengeCount: (length: number, max: number) => `${length}/${max}`,
+    challengeCountA11y: (left: number) => czechPlural(left, { one: 'Zbývá 1 znak', few: `Zbývají ${left} znaky`, many: `Zbývá ${left} znaků` }),
     stops: 'Zastávky', reorder: 'Změnit pořadí', reorderDone: 'Hotovo', moveUp: 'Posunout nahoru',
     moveDown: 'Posunout dolů', dragHint: 'Podrž úchyt a přesuň zastávku. Pořadí lze měnit i šipkami.',
     stopRemoved: 'Zastávka odebraná',

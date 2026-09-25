@@ -11,10 +11,11 @@ export function TourText(props: TextProps) {
   return <Text maxFontSizeMultiplier={FontScaleCap.body} {...props} style={[ui.text, props.style]} />;
 }
 /** The author's challenge under a stop; the next stop in a run reads it larger. */
-export function TourChallengeText({ text, emphasized }: { text: string; emphasized?: boolean }) {
-  return <Text maxFontSizeMultiplier={FontScaleCap.body} style={[ui.challenge, emphasized && ui.challengeNext]}>
+export function TourChallengeText({ text, emphasized, lines, inter }: { text: string; emphasized?: boolean; lines?: number; inter?: boolean }) {
+  const Line = inter ? TourText : Text;
+  return <Line maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={lines} style={[ui.challenge, emphasized && ui.challengeNext]}>
     <Text style={ui.challengeLabel}>{t.tours.challengeLabel}</Text> {text}
-  </Text>;
+  </Line>;
 }
 export function TourButton({ label, onPress, secondary, quiet, icon, disabled, busy, testID }: {
   label: string; onPress: () => void; secondary?: boolean; quiet?: boolean; icon?: ReactNode; disabled?: boolean; busy?: boolean; testID?: string;
@@ -76,7 +77,8 @@ export function TourStopRow({ stop, index, selected, status, onPress, children }
       <View style={[ui.number, selected && ui.selectedNumber]}><Text allowFontScaling={false} style={ui.numberText}>{index + 1}</Text></View>
       <View style={ui.grow}><TourText numberOfLines={2} style={ui.stopName}>{stop.name}</TourText>
         <TourText numberOfLines={2} style={ui.meta}>{status || stop.address || t.tours.openingHoursUnknown}</TourText>
-        {!!stop.challenge && <TourChallengeText text={stop.challenge} />}</View>
+        {/* One line keeps the stop number beside its pub; the sheet shows the whole text. */}
+        {!!stop.challenge && <TourChallengeText text={stop.challenge} lines={1} inter />}</View>
       {!children && <ChevronRightIcon size={18} color={Colors.foamMuted} />}
     </Pressable>
     {children}
@@ -117,7 +119,7 @@ export const ui = StyleSheet.create({
   field: { gap: Spacing.sm },
   error: { padding: Spacing.md, backgroundColor: Colors.stout3, borderRadius: Radius.small, color: Colors.foam },
   notice: { fontSize: 13, lineHeight: 20, color: Colors.foamMuted },
-  challenge: { fontSize: 13, lineHeight: 19, color: Colors.foamMuted, marginTop: Spacing.xs },
-  challengeNext: { fontSize: 15, lineHeight: 21, color: Colors.foam },
+  challenge: { fontSize: 12, lineHeight: 18, color: Colors.foamMuted, marginTop: 2 },
+  challengeNext: { fontSize: 15, lineHeight: 21 },
   challengeLabel: { fontWeight: '600', color: Colors.mutedText },
 });
