@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { ensureAccount, generateUuidV4, getOrCreateDeviceId } from '@/data/account';
 import { readAccountMerge } from '@/data/accountMerge';
 import { beginTourAccountChange, endTourAccountChange, invalidateTours, tourBoundary } from '@/data/toursBoundary';
-import { deletePublishedTour, fetchPublishedTours, fetchSharedTour, fetchTourRun, publishPublicTour, publishTour, reportPublicTour, revokeTour, shareTour, toTourWire, unpublishPublicTour } from '@/data/toursClient';
+import { deletePublishedTour, fetchPublishedTours, fetchSharedTour, fetchTourRun, type PublicTourInfo, publishPublicTour, publishTour, reportPublicTour, revokeTour, shareTour, toTourWire, unpublishPublicTour } from '@/data/toursClient';
 import { dropTourRunOps, enqueueTourRunOp, setTourRunDeliveryListener, type TourRunQueueItem } from '@/data/tourRunQueue';
 import type { Pub } from '@/data/pubs';
 import { CHALLENGE_MAX, cleanChallenge, cloneTour, crewThreshold, newTour, pubIdsOf, samePub, stopFromPub, TOUR_LIMIT, validPlan, validRun, validSchedule, uuidValid, type TourPlan, type TourRun, type TourResult, type TourError } from '@/tours/model';
@@ -46,7 +46,7 @@ interface ToursState extends ToursData {
   copyPlan: (id: string, runId?: string) => Promise<TourResult>;
   /** `crew` joins a party run (`joinRunId`) or, for a signed-in walker of a public tour, starts one. */
   startRun: (id: string, crew?: { eligible: boolean; joinRunId?: string; route?: TourPlan; token?: string }) => Promise<TourResult>;
-  joinCrew: (token: string, runId: string) => Promise<TourResult>;
+  joinCrew: (token: string, runId: string, loaded?: { tour: TourPlan; public: PublicTourInfo }) => Promise<TourResult>;
   setCrewOptOut: (optOut: boolean, runId?: string) => Promise<TourResult>;
   refreshCrew: () => Promise<TourResult>;
   refreshPublicCount: (id: string) => Promise<TourResult>;
@@ -59,7 +59,7 @@ interface ToursState extends ToursData {
   chooseServerVersion: (id: string) => Promise<TourResult>;
   publishPublic: (id: string) => Promise<TourResult>;
   unpublishPublic: (id: string) => Promise<TourResult>;
-  savePublic: (token: string) => Promise<TourResult>;
+  savePublic: (token: string, loaded?: { tour: TourPlan; public: PublicTourInfo }) => Promise<TourResult>;
   reportPublic: (publicId: string) => Promise<TourResult>;
   copyLocalConflict: (id: string) => Promise<TourResult>;
   clearError: () => void;
@@ -405,10 +405,10 @@ export const useToursStore = create<ToursState>(() => ({
       queued.forEach((op) => { void enqueueTourRunOp(op); });
     return result;
   },
-  joinCrew: async (token, runId): Promise<TourResult> => {
+  joinCrew: async (token, runId, loaded): Promise<TourResult> => {
     if (useToursStore.getState().activeRun)
       return { ok: false, error: 'active_run' };
-    const saved = await useToursStore.getState().savePublic(token);
+    const saved = await useToursStore.getState().savePublic(token, loaded);
     if (!saved.ok || !saved.id)
       return saved;
     // The party walks the route the organizer's QR stands for, even if this phone's copy is older or reordered.
@@ -765,8 +765,9 @@ export const useToursStore = create<ToursState>(() => ({
       local.publication.status = 'unpublished';
     return persist(d, g);
   }),
-  savePublic: (token) => networkAction(async (g) => {
-    const result = await fetchSharedTour(token);
+  savePublic: (token, loaded) => networkAction(async (g) => {
+    // A tour the screen already loaded is saved as it is, so joining a party works after the signal drops.
+    const result = loaded ? { ok: true as const, ...loaded } : await fetchSharedTour(token);
     if (!current(g))
       return { ok: false, error: 'account_changed' };
     if (!result.ok)

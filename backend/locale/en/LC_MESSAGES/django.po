@@ -992,7 +992,7 @@ msgid "Tahle veřejná tour už není."
 msgstr "This public tour is gone."
 
 msgid "Tahle tour se mezitím změnila, parta jde podle nové verze."
-msgstr "This tour has changed since, the crew follows the new version."
+msgstr "This tour has changed. The crew follows the new version."
 
 msgid "Tenhle průchod patří někomu jinému."
 msgstr "This walk belongs to someone else."
