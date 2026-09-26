@@ -3011,3 +3011,16 @@ def test_tour_ping_names_the_tour_and_old_payload_keeps_its_wording(client, monk
     plain = ping("U Pinkasů", 2)
     assert (plain["title"], plain["body"]) == ("Kamarád je na pivu", "@janek sedí v U Pinkasů. Nechceš se přidat?")
     assert FriendPubActivity.objects.get(account=owner, active=True).message == "Tour de pub: Okruh"
+
+    # Pinged from the counter first, then from a tour at the same pub: friends hear about the tour, once.
+    def post(**body):
+        response = client.post("/v1/friends/pub-activity", data={
+            "client_id": str(uuid.uuid4()), "name": "U Hrocha", "lat": _LAT + 0.05, "lng": _LNG, **body,
+        }, format="json", **_auth(token_owner))
+        assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED), response.content
+        return len(_flatten_push(sent_payloads))
+
+    counted = post(message="")
+    assert post(message="Tour de pub: Okruh", tour_title="Okruh") == counted + 1
+    assert _flatten_push(sent_payloads)[-1]["title"] == "Kamarád jde tour de pub"
+    assert post(message="Tour de pub: Okruh", tour_title="Okruh") == counted + 1

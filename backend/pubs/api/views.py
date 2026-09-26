@@ -6589,6 +6589,8 @@ class FriendActivityView(APIView):
                     or activity.expires_at <= now
                     or activity.cache_key != cache_key
                     or previous_target_signature != target_signature
+                    # Pinged from the counter first, then from a tour: friends hear it is a tour now.
+                    or (bool(data.get("tour_title")) and activity.message != (data.get("message") or ""))
                 )
                 if activity is None:
                     activity = FriendPubActivity.objects.create(
