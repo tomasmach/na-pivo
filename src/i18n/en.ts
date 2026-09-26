@@ -1206,7 +1206,8 @@ export const en: Strings = {
     shareHereShort: 'Ping the crew',
     shareSuccess: 'Pinged!',
     shareError: "Couldn't tell the crew.",
-    pingSheetDetail: (pub: string) => `Your mates will see you’re sitting in ${pub}.`,
+    pingSheetDetail: (pub: string) => `I’ll tell them where you’re sitting: ${pub}.`,
+    pingSheetGhost: 'Invisible mode is on, so the ping would reach nobody.',
     counterAlreadyLive: "You're already live",
     sharedCount: (n: number) =>
     n === 0 ? 'No beers together yet' : `${beerCountLabel(n)} together`,
@@ -1394,9 +1395,8 @@ export const en: Strings = {
     recipientCustomSummary: (n: number) =>
     n === 0
       ? 'Pick who you want to drag out for a beer.'
-      : `${n} ${englishPlural(n, { one: 'mate', other: 'mates' })} picked.`,
+      : `The ping goes to ${n} ${englishPlural(n, { one: 'mate', other: 'mates' })}.`,
     recipientNoFriends: 'Add some mates to the crew first.',
-    recipientNoSelection: 'Pick who gets the ping.',
     recipientGroupPlaceholder: 'Group name',
     recipientGroupSave: 'Save',
     recipientGroupSaved: 'Group saved.',
