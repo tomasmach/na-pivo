@@ -431,7 +431,8 @@ class TourPublicationView(OwnerTourView):
     def delete(self, request, plan_id):
         with transaction.atomic():
             account = _locked_account(request)
-            TourPublication.objects.filter(plan_id=plan_id, plan__owner=account, status=TourPublication.Status.ACTIVE).update(
+            # A tour hidden after reports can be withdrawn too, so a later admin restore never brings it back.
+            TourPublication.objects.filter(plan_id=plan_id, plan__owner=account).exclude(status=TourPublication.Status.UNPUBLISHED).update(
                 status=TourPublication.Status.UNPUBLISHED)
         return Response(status=204)
 

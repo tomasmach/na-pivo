@@ -245,6 +245,22 @@ def test_public_pins_come_from_the_pub_and_a_restore_settles_old_reports():
     assert public_read(publication["token"]).status_code == 200
 
 
+def test_owner_withdraws_a_hidden_tour_and_the_export_keeps_the_public_copy():
+    from pubs.api.views import _export_account_data, _load_export_account
+
+    author = account_client()
+    plan_id, revision = save_plan(author, plan_body(challenges={0: "Najdi pípu"}))
+    publish(author, plan_id, revision)
+    save_plan(author, plan_body(title="Tajná rozlučka", revision=revision), plan_id)
+    exported = _export_account_data(_load_export_account(author.account))["tours"][0]
+    assert (exported["title"], exported["publication"]["title"]) == ("Tajná rozlučka", "Pátek po Starém Městě")
+    assert exported["publication"]["stops"][0] == {"name": "U Zlatého tygra", "challenge": "Najdi pípu"}
+    TourPublication.objects.update(status=TourPublication.Status.HIDDEN, hidden_reason="reports")
+    author.delete(f"/v1/tours/{plan_id}/publication")
+    TourPublicationAdmin.restore_publications(None, None, TourPublication.objects.all())
+    assert TourPublication.objects.get().status == TourPublication.Status.UNPUBLISHED
+
+
 def test_admin_hide_leaves_a_withdrawn_tour_withdrawn():
     author = account_client()
     plan_id, revision = save_plan(author, plan_body())

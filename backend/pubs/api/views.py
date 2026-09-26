@@ -10752,7 +10752,7 @@ def _load_export_account(account: Account) -> Account:
         (
             "tours",
             "has_tours",
-            Prefetch("tours", queryset=TourPlan.objects.filter(deleted_at__isnull=True).prefetch_related("stops")),
+            Prefetch("tours", queryset=TourPlan.objects.filter(deleted_at__isnull=True).prefetch_related("stops").select_related("publication")),
         ),
         (
             "amenity_vote_tombstones",
@@ -10942,9 +10942,9 @@ def _export_account_data(account: Account) -> dict:
     usage = getattr(account, "usage_stats", None)
     credential = getattr(account, "email_credential", None)
     identity = _export_account_identity(account)
-    from pubs.tours import tour_snapshot
+    from pubs.tours import tour_export
     return {
-        "tours": [tour_snapshot(plan) for plan in account.tours.all() if plan.deleted_at is None],
+        "tours": [tour_export(plan) for plan in account.tours.all() if plan.deleted_at is None],
         "exported_at": dj_timezone.now().isoformat(),
         "account": {
             "id": str(account.public_id),
