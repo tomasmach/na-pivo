@@ -835,7 +835,7 @@ export const cs = {
     pickOnMapHint: 'Zamiř ho přesně na hospodu.',
     pickOnMapSelectedHint: 'Špendlík je zapíchnutý. Klepni a posuň ho.',
     mapPinSelectedTitle: 'Použije se špendlík z mapy',
-    mapPinSelectedBody: 'Bod, kam míří špendlík. Doplň k němu adresu a město.',
+    mapPinSelectedBody: 'Bod, kam míří špendlík. Zkontroluj nebo doplň k němu adresu a město.',
     editUseCurrentLocation: 'Opravit adresu a polohu',
     editUseCurrentLocationHint: 'Zjistím adresu místa, kde právě stojíš.',
     locating: 'Zjišťuju polohu…',

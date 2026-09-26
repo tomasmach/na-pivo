@@ -322,6 +322,31 @@ describe('AddPubScreen location confirmation', () => {
     expect(mockResetBeerMapLayerForAddedPub).toHaveBeenCalledTimes(1);
   });
 
+  it('prefills the address of an aimed pin but keeps the pin point', async () => {
+    mockSearchParams = { lat: '50.087', lng: '14.421' };
+    await renderScreen();
+    change(t.a11y.addPubNameInput, 'Hospoda U Testu');
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-confirm');
+    expect(mockLookupAddedPubLocation).toHaveBeenCalledWith({ lat: 49.2, lng: 16.61 }, expect.anything());
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubCityInput }).props.value).toBe('Brno');
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubAddressInput }).props.value).toBe('Česká 12');
+    await submit();
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({
+      lat: 49.2, lng: 16.61, location_source: 'map_pin', address: 'Česká 12', city: 'Brno',
+    }));
+  });
+
+  it('does not overwrite an address field the user already filled', async () => {
+    mockSearchParams = { lat: '50.087', lng: '14.421' };
+    await renderScreen();
+    change(t.a11y.addPubCityInput, 'Kostelec');
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-confirm');
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubCityInput }).props.value).toBe('Kostelec');
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubAddressInput }).props.value).toBe('Česká 12');
+  });
+
   it('does not treat the entry coordinates as a location when the map is closed without aiming', async () => {
     await renderScreen();
     fillAddress();

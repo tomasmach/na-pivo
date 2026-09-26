@@ -743,7 +743,7 @@ export const en: Strings = {
     pickOnMapHint: 'Aim it right at the pub.',
     pickOnMapSelectedHint: 'The pin is in place. Tap to move it.',
     mapPinSelectedTitle: 'The pin from the map will be used',
-    mapPinSelectedBody: 'The point the pin points to. Add the address and town to it.',
+    mapPinSelectedBody: 'The point the pin points to. Check or add its address and town.',
     editUseCurrentLocation: 'Fix the address and location',
     editUseCurrentLocationHint: 'Look up the address of your current location.',
     locating: 'Getting your location…',

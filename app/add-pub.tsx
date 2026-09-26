@@ -205,7 +205,21 @@ export default function AddPubScreen() {
     setPickerOpen(false);
     clearLookup();
     setSelectedLocation({ ...coords, source: 'pin', displayLocation: t.addPub.mapPinSelectedBody });
-  }, [clearLookup]);
+    // Prefill empty address fields; the pin keeps its exact point either way.
+    // Typing into a field aborts this through clearLookup.
+    if (city.trim() && address.trim()) return;
+    const request = new AbortController();
+    lookupRequest.current = request;
+    setLocating(true);
+    void lookupAddedPubLocation(coords, request.signal).then((result) => {
+      if (request.signal.aborted) return;
+      lookupRequest.current = null;
+      setLocating(false);
+      if (!result) return;
+      setCity((value) => value.trim() ? value : result.city);
+      setAddress((value) => value.trim() ? value : result.address);
+    });
+  }, [address, city, clearLookup]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit || submitting.current) return;
