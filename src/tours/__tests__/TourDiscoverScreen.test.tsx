@@ -24,7 +24,7 @@ jest.mock('expo-location', () => ({
 jest.mock('@/compass/permissions', () => ({ checkLocationPermission: jest.fn(async () => 'undetermined'), ensureLocationPermission: jest.fn(async () => 'denied') }));
 jest.mock('@/data/toursClient', () => ({ searchPublicTours: jest.fn() }));
 jest.mock('@/stores/toursStore', () => ({
-  useToursStore: Object.assign((select: (s: typeof mockStore) => unknown) => select(mockStore), { getState: () => ({ beginDraft: jest.fn(async () => ({ ok: true })) }) }),
+  useToursStore: Object.assign((select: (s: typeof mockStore) => unknown) => select(mockStore), { getState: () => ({ beginDraft: jest.fn(async () => ({ ok: true })), hydrate: jest.fn(async () => ({ ok: true })) }) }),
 }));
 jest.mock('@/components/shared/IconGlyph', () => ({ CheckIcon: () => null, ChevronDownIcon: () => null, ChevronLeftIcon: () => null, ChevronRightIcon: () => null, SearchIcon: () => null, XIcon: () => null }));
 

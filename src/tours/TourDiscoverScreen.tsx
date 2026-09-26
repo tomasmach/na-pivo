@@ -128,7 +128,7 @@ export default function TourDiscoverScreen() {
     void checkLocationPermission().then(async (state) => {
       const fix = state === 'granted' ? await readPosition() : null;
       if (alive && fix) setPosition(fix);
-    }).finally(() => { if (alive) setRetry((r) => r + 1); });
+    }).catch(() => undefined).finally(() => { if (alive) setRetry((r) => r + 1); });
     return () => { alive = false; };
   }, []);
 
@@ -164,10 +164,16 @@ export default function TourDiscoverScreen() {
   async function nearMe() {
     if (position) { setPosition(null); return; }
     setLocating(true);
-    // A second tap after a refusal leads to the system settings, the only place to change it.
-    const state = await ensureLocationPermission({ openSettingsIfDenied: noLocation });
-    const fix = state === 'granted' ? await readPosition() : null;
-    setLocating(false);
+    let fix: Position | null = null;
+    try {
+      // A second tap after a refusal leads to the system settings, the only place to change it.
+      const state = await ensureLocationPermission({ openSettingsIfDenied: noLocation });
+      fix = state === 'granted' ? await readPosition() : null;
+    } catch {
+      // Location services failing is the same as no position: the city field still works.
+    } finally {
+      setLocating(false);
+    }
     if (fix) { setNoLocation(false); setPosition(fix); return; }
     // Without a position the city field is the way to go.
     setNoLocation(true);
