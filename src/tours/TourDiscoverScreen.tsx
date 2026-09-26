@@ -183,8 +183,13 @@ export default function TourDiscoverScreen() {
   const clearFilters = () => { setStops(null); setChallenges(false); };
   const hits = (results?.hits ?? []).filter((hit) => !(hidden ?? []).includes(hit.id));
   const settled = !loading && !failure && !!results;
+  // A double tap would stack two editors on top of each other.
+  const planning = useRef(false);
   const planOwn = async () => {
+    if (planning.current) return;
+    planning.current = true;
     const started = await useToursStore.getState().beginDraft();
+    planning.current = false;
     if (started.ok) router.push('/tours/edit' as Href);
   };
   const link = (label: string, onPress: () => void) => <Pressable onPress={onPress} accessibilityRole="button" style={styles.link}>
