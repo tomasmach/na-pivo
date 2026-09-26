@@ -33,7 +33,7 @@ function sheet(onSend: jest.Mock, onClose = jest.fn(), extra: { friends?: Friend
   return render(<PingSheet title={t.friends.shareHereShort} detail={t.friends.pingSheetDetail('U Pinkasů')} friends={extra.friends ?? friends} ghost={extra.ghost} onSend={onSend} onClose={onClose} />);
 }
 
-it('pings the whole party by default and closes once it went out', async () => {
+it('pings the whole party by default, once per double tap, and closes once it went out', async () => {
   const onSend = jest.fn(async () => null);
   const onClose = jest.fn();
   const screen = sheet(onSend, onClose);
@@ -41,7 +41,11 @@ it('pings the whole party by default and closes once it went out', async () => {
   expect(screen.getByText(t.friends.recipientAllSummary(4))).toBeTruthy();
   // A quick sheet: no heading kicker and no group naming that would need the keyboard.
   expect(screen.queryByText(t.friends.composeAudienceLabel)).toBeNull();
-  await act(async () => { fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
+  await act(async () => {
+    fireEvent.press(screen.getByText(t.friends.composeSubmitNow));
+    fireEvent.press(screen.getByText(t.friends.composeSubmitNow));
+  });
+  expect(onSend).toHaveBeenCalledTimes(1);
   expect(onSend).toHaveBeenCalledWith(undefined);
   expect(onClose).toHaveBeenCalled();
 });
