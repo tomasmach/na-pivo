@@ -51,7 +51,7 @@ export function TourCrewRow({ crew, self, ping, pingStatus, onInvite, onPing }: 
     {link && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.linkText}>{link}</Text>}
   </>;
   return <View style={styles.rowWrap}>
-    {(joined || ping) && (link ? <Pressable onPress={invite ? onInvite : onPing} style={({ pressed }) => [styles.row, pressed && styles.pressed]} accessibilityRole="button"
+    {(joined || ping || !!pingStatus) && (link ? <Pressable onPress={invite ? onInvite : onPing} style={({ pressed }) => [styles.row, pressed && styles.pressed]} accessibilityRole="button"
       accessibilityLabel={`${label}. ${link}`} accessibilityHint={invite ? t.tours.crewInviteHint : t.tours.crewPingHint}>{row}</Pressable>
       : <View style={styles.row}>{row}</View>)}
     {crew?.refused && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{t.tours.crewRefused}</Text>}

@@ -25,6 +25,7 @@ const mockStore = {
   error: null,
   busy: false,
   hydrate: jest.fn(async () => ({ ok: true })),
+  refreshCrew: jest.fn(async () => undefined),
   copyPlan: jest.fn(async () => ({ ok: true as const, id: 'copied-plan' })),
   markStop: jest.fn(async (id: string, status: 'visited' | 'skipped' | null) => {
     if (!mockStore.activeRun) throw new Error('No active run');
@@ -311,4 +312,21 @@ it('offers pinging friends on a run without a crew, but not in invisible mode or
   const ghost = render(<TourDetailScreen />);
   await act(async () => undefined);
   expect(ghost.queryByText(/crew-row/)).toBeNull();
+});
+
+
+it('pings everyone away from the table and then stops offering the same pub', async () => {
+  mockStore.activeRun = { ...mockStore.activeRun!, crew: { runId: 'r', publicId: 'p', token: 't', organizer: false, closed: true,
+    members: [{ id: 'me', nickname: 'vojta', displayName: '', avatarUrl: null, left: false, completed: false }, { id: 'pepa', nickname: 'pepa', displayName: '', avatarUrl: null, left: false, completed: false }] } };
+  mockFriends.current = { ghost: false, friends: [{ id: 'pepa' }, { id: 'eva' }] };
+  const screen = render(<TourDetailScreen />);
+  fireEvent.press(await screen.findByText('crew-row ping:true'));
+  const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
+  const sheet = PingSheet.mock.calls.at(-1)[0];
+  // Pepa walks along: not offered, and "Celá parta" means everyone but him.
+  expect(sheet.friends).toEqual([{ id: 'eva' }]);
+  const { sendPing } = jest.requireMock('../crewPing');
+  await act(async () => { await sheet.onSend(undefined); });
+  expect(sendPing).toHaveBeenLastCalledWith('Probíhající večer', expect.anything(), ['eva']);
+  expect(screen.getByText('crew-row ping:false')).toBeTruthy();
 });

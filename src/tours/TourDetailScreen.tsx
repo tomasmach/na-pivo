@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, BackHandler, Pressable, ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, AppState, BackHandler, Pressable, ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter, useIsFocused, type Href } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +22,7 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { FontScaleCap } from '@/theme/fonts';
 import { TourButton, TourChallengeText, TourError, TourHeader, TourText, pubCount, tourDate, ui } from './TourChrome';
 import { TourMap } from './TourMap';
-import { TourCrewRow, TourCrewSheet, going, inviting, type CrewPingState, type CrewPingView } from './TourCrew';
+import { TourCrewRow, TourCrewSheet, going, type CrewPingState, type CrewPingView } from './TourCrew';
 import { pingRecipients, pingStop, sendPing } from './crewPing';
 import { loadPartyFriends, type FriendProfile } from '@/data/friendsClient';
 import { friendActivityState } from '@/data/friendsQueue';
@@ -87,12 +87,17 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   useEffect(() => {
     if (!waiting || !focused) return;
     let alive = true;
-    void friendActivityState(waiting.clientId).then((state) => {
+    const check = () => void friendActivityState(waiting.clientId).then((state) => {
       // A newer ping may have replaced this one meanwhile; its state wins.
       if (alive && state !== 'queued') setPing(state === 'sent' ? { ...waiting, status: 'sent' } : null);
     });
-    return () => { alive = false; };
+    check();
+    // The queue flushes when the app comes back to the front, which does not change focus.
+    const foreground = AppState.addEventListener('change', (next) => { if (next === 'active') check(); });
+    return () => { alive = false; foreground.remove(); };
   }, [waiting, focused, crewSheet, pingSheet]);
+  // A ping sheet waiting for the crew sheet to leave must not open on another screen.
+  useEffect(() => { if (!focused && pingTimer.current) { clearTimeout(pingTimer.current); pingTimer.current = null; } }, [focused]);
   useEffect(() => () => { if (pingTimer.current) clearTimeout(pingTimer.current); }, []);
   // In invisible mode a ping would reach nobody, so the row does not offer one.
   const canPing = !!friends?.friends.length && !friends.ghost;
@@ -176,14 +181,18 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const awayFriends = friends ? friends.friends.filter((friend) => !crewIds.includes(friend.id)) : [];
   const pingDone = ping && active && pingTarget && ping.runId === active.id && ping.stopId === pingTarget.stop.id ? ping.status : null;
   const pingNote = pingTarget ? t.tours.crewPingNote(pingTarget.stop.name, pingTarget.heading, crewIds.length > 1) : '';
-  const pingView: CrewPingView | null = pingTarget && friends?.friends.length && inviting(active?.crew)
+  const pingView: CrewPingView | null = pingTarget && friends?.friends.length
     ? { note: pingNote, state: friends.ghost ? 'ghost' : awayFriends.length === 0 ? 'allHere' : pingDone } : null;
+  // The row offers a ping only while there is someone away to tell and this pub was not pinged yet.
+  const rowPing = canPing && !!pingTarget && awayFriends.length > 0 && !pingDone;
+  const rowPingStatus = pingDone === 'sent' ? t.tours.crewPingSent : pingDone === 'queued' ? t.tours.crewPingQueued
+    : canPing && pingTarget && awayFriends.length === 0 ? t.tours.crewPingAllHere : null;
   // iOS will not present the ping sheet while the crew sheet is still leaving.
   function openPing() {
     if (!crewSheet) { setPingSheet(true); return; }
     setCrewSheet(false);
     if (pingTimer.current) clearTimeout(pingTimer.current);
-    pingTimer.current = setTimeout(() => setPingSheet(true), 350);
+    pingTimer.current = setTimeout(() => { pingTimer.current = null; setPingSheet(true); }, 300);
   }
   async function sendTourPing(recipientIds?: string[]): Promise<string | null> {
     if (!active || !pingTarget || !friends) return null;
@@ -246,7 +255,8 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             : store.published[id] !== tourContentSignature(plan) || plan.revision > plan.publication.planRevision ? t.tours.publicNewer
               : plan.publication.peopleCount > 0 ? t.tours.publicWithPeople(plan.publication.peopleCount) : t.tours.publicState}</TourText>
         </Pressable>}
-        {!shareMode && live && active && (active.crew || canPing) && <TourCrewRow crew={active.crew} self={crewSelf} ping={canPing && !!pingTarget} pingStatus={pingDone === 'sent' ? t.tours.crewPingSent : pingDone === 'queued' ? t.tours.crewPingQueued : null} onInvite={() => setCrewSheet(true)} onPing={openPing} />}
+        {!shareMode && live && active && (active.crew || canPing) && <TourCrewRow crew={active.crew} self={crewSelf} ping={rowPing} pingStatus={rowPingStatus}
+          onInvite={() => { if (pingTimer.current) { clearTimeout(pingTimer.current); pingTimer.current = null; } setCrewSheet(true); }} onPing={openPing} />}
         {editable && !current.scheduledDate && <Pressable onPress={() => { void edit(); }} style={styles.addMeetup} accessibilityRole="button" accessibilityLabel={t.tours.addMeetup}><TourText style={ui.linkText}>{t.tours.addMeetup}</TourText></Pressable>}
         {closedOnMeetup.length > 0 && <TourText style={styles.closed}>{t.tours.closedOnMeetup(closedOnMeetup.join(', '), closedOnMeetup.length)}</TourText>}</View>
       <TourJourneyIllustration stops={current.stops} statuses={!shareMode ? run?.statuses : undefined} nextStopId={!shareMode && active && !history ? next?.id : undefined} />
