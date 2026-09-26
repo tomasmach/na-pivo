@@ -130,7 +130,9 @@ const mockTrackCounterTabOpened = jest.fn(async () => undefined);
 jest.mock('@/data/counterTelemetry', () => ({ trackCounterTabOpened: mockTrackCounterTabOpened }));
 
 const mockShareFriendPubActivity = jest.fn(async () => ({ ok: true }));
-jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: mockShareFriendPubActivity }));
+const mockLoadPartyFriends = jest.fn(async (): Promise<{ friends: { id: string }[]; ghost: boolean } | null> => null);
+jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: mockShareFriendPubActivity, loadPartyFriends: mockLoadPartyFriends }));
+jest.mock('@/friends/PingSheet', () => ({ __esModule: true, default: jest.fn(() => null) }));
 
 const fetchPubHours = jest.fn(async () => new Map());
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
@@ -548,6 +550,55 @@ describe('CounterScreen CTA state machine', () => {
       archivedReason: 'manual', closedAt: expect.any(String),
       drinks: [expect.objectContaining({ drinkType: 'soft_drink', beerName: 'Kofola' })],
     });
+  });
+});
+
+describe('CounterScreen pinging the party', () => {
+  it('lets the party ping go to chosen friends only', async () => {
+    const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
+    useNearbyPub.mockReturnValue(nearbyState());
+    mockLoadPartyFriends.mockResolvedValueOnce({ friends: [{ id: 'eva' }, { id: 'pepa' }], ghost: false });
+    const renderer = render();
+    await act(async () => {
+      renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
+      jest.advanceTimersByTime(1000);
+    });
+    const sheet = PingSheet.mock.calls.at(-1)[0];
+    expect(sheet.friends).toEqual([{ id: 'eva' }, { id: 'pepa' }]);
+    await act(async () => { expect(await sheet.onSend(['eva'])).toBeNull(); });
+    expect(mockShareFriendPubActivity).toHaveBeenCalledWith(expect.objectContaining({ name: PUB.name }), '', expect.any(String), ['eva'], expect.any(String));
+  });
+
+  it('keeps the chosen friends through a wait for signal and hands a hard error back to the sheet', async () => {
+    const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
+    const enqueueFriendOp = jest.spyOn(jest.requireActual('@/data/friendsQueue'), 'enqueueFriendOp').mockResolvedValue(undefined);
+    useNearbyPub.mockReturnValue(nearbyState());
+    mockLoadPartyFriends.mockResolvedValueOnce({ friends: [{ id: 'eva' }], ghost: true });
+    const renderer = render();
+    await act(async () => {
+      renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
+      jest.advanceTimersByTime(1000);
+    });
+    const sheet = PingSheet.mock.calls.at(-1)[0];
+    expect(sheet.ghost).toBe(true);
+    mockShareFriendPubActivity.mockResolvedValueOnce({ ok: false, code: 'no_recipients', detail: 'Nikdo z party.' } as never);
+    await act(async () => { expect(await sheet.onSend(['eva'])).toBe('Nikdo z party.'); });
+    mockShareFriendPubActivity.mockResolvedValueOnce({ ok: false, code: 'offline', detail: '' } as never);
+    await act(async () => { expect(await PingSheet.mock.calls.at(-1)[0].onSend(['eva'])).toBeNull(); });
+    expect(enqueueFriendOp).toHaveBeenCalledWith(expect.objectContaining({ op: 'activity', payload: expect.objectContaining({ recipientIds: ['eva'] }) }));
+    enqueueFriendOp.mockRestore();
+  });
+
+  it.each([['no', null], ['an empty', { friends: [], ghost: false }]])('with %s saved party still pings everyone, as before', async (_label, saved) => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    // An empty party saved before a friend accepted elsewhere must not block the ping offline.
+    mockLoadPartyFriends.mockResolvedValueOnce(saved);
+    const renderer = render();
+    await act(async () => {
+      renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
+      jest.advanceTimersByTime(1000);
+    });
+    expect(mockShareFriendPubActivity).toHaveBeenCalledWith(expect.objectContaining({ name: PUB.name }), '', expect.any(String), undefined, expect.any(String));
   });
 });
 

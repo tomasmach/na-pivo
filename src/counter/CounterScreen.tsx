@@ -65,8 +65,9 @@ import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
-import { shareFriendPubActivity } from '@/data/friendsClient';
+import { loadPartyFriends, shareFriendPubActivity, type PartyFriends } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import PingSheet from '@/friends/PingSheet';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { ShareNightModal } from '@/vycep/ShareNightModal';
@@ -417,6 +418,9 @@ function Tacek({
   // — Friends broadcast —
   const [sharingWithFriends, setSharingWithFriends] = useState(false);
   const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
+  // The party a quick ping can go to while its sheet is open, and the place it was opened for.
+  const [pingParty, setPingParty] = useState<(PartyFriends & { cell: string | null }) | null>(null);
+  const pingLoading = useRef(false);
   const broadcasted = cell !== null && broadcastCell === cell;
 
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -481,6 +485,8 @@ function Tacek({
     setCheckInVisitClientId(null);
     setCheckInSheetOpen(false);
     setPendingRapid(null);
+    // A ping sheet names one pub; a new place must not quietly retarget it.
+    setPingParty(null);
   }
 
   const moreControlled = moreOpenProp !== undefined;
@@ -1323,27 +1329,48 @@ function Tacek({
 
   // ── Friends ─────────────────────────────────────────────────────────────────
 
-  const handleShareWithFriends = useCallback(async () => {
-    if (!pub || !cell || sharingWithFriends || broadcasted) return;
+  /** Sends to the chosen friends (undefined = the whole party); a hard failure comes back for the sheet to show. */
+  const handleShareWithFriends = useCallback(async (recipientIds?: string[]): Promise<string | null> => {
+    if (!pub || !cell || sharingWithFriends || broadcasted) return null;
     trackUiInteraction('counter_share_friends', 'share');
     setSharingWithFriends(true);
     const shareClientId = isThisSession && current?.clientId ? current.clientId : generateUuidV4();
     const startedAt = new Date().toISOString();
-    const result = await shareFriendPubActivity(pub, '', shareClientId, undefined, startedAt);
+    const result = await shareFriendPubActivity(pub, '', shareClientId, recipientIds, startedAt);
     setSharingWithFriends(false);
-    if (useTallyStore.getState().history.some((session) => session.clientId === shareClientId && session.closedAt)) return;
+    if (useTallyStore.getState().history.some((session) => session.clientId === shareClientId && session.closedAt)) return null;
     if (result.ok) {
       setBroadcastCell(cell);
       showToast(t.friends.shareSuccess);
       if (hapticEnabled) fireLightImpactHaptic();
     } else if (isRetriableFriendError(result)) {
-      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '', startedAt } });
+      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '', recipientIds, startedAt } });
       setBroadcastCell(cell);
       showToast(t.friends.composeQueued);
     } else {
-      showToast(result.detail || t.friends.shareError);
+      return result.detail || t.friends.shareError;
     }
+    return null;
   }, [broadcasted, cell, current, hapticEnabled, isThisSession, pub, sharingWithFriends, showToast]);
+
+  // Who can hear it. Without a saved party (offline, Parta never opened) or with an empty one, which may be
+  // out of date, the ping goes to everyone as before and the server works out who that is.
+  async function openPingSheet() {
+    if (pingLoading.current) return;
+    pingLoading.current = true;
+    const from = cell;
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(), 3000);
+    // A newer party only refreshes a sheet still open for the same pub.
+    const party = await loadPartyFriends(timeout.signal, (fresh) => setPingParty((open) => (open?.cell === from ? { ...fresh, cell: from } : open)));
+    clearTimeout(timer);
+    pingLoading.current = false;
+    if (party?.friends.length) setPingParty({ ...party, cell: from });
+    else {
+      const failure = await handleShareWithFriends();
+      if (failure) showToast(failure);
+    }
+  }
 
   // ── The one button ──────────────────────────────────────────────────────────
 
@@ -1600,7 +1627,7 @@ function Tacek({
         onClose={closeMore}
         onDone={sessionDrinks.length > 0 ? () => runAfterSheetClose(handleDone) : undefined}
         onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
-        onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
+        onPingFriends={pub ? () => runAfterSheetClose(() => { void openPingSheet(); }) : undefined}
         broadcasted={broadcasted}
         onBackdate={() => runAfterSheetClose(handleBackdatePress)}
         onScanMenu={pub ? () => runAfterSheetClose(() => setScanSourceVisible(true)) : undefined}
@@ -1640,6 +1667,17 @@ function Tacek({
         onSelect={handleSelectScannedDrink}
       />
       <BeerPhotoCaptureFlow open={photoCaptureOpen} onClose={() => setPhotoCaptureOpen(false)} />
+      {/* A sheet opened for another place never shows: the ping names one pub. */}
+      {pub && pingParty && pingParty.cell === cell ? (
+        <PingSheet
+          title={t.friends.shareHereShort}
+          detail={t.friends.pingSheetDetail(pub.name)}
+          friends={pingParty.friends}
+          ghost={pingParty.ghost}
+          onSend={handleShareWithFriends}
+          onClose={() => setPingParty(null)}
+        />
+      ) : null}
       {liveNight ? (
         <ShareNightModal
           visible={stickerOpen}
