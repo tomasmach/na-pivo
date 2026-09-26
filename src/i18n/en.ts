@@ -768,7 +768,7 @@ export const en: Strings = {
     savedToast: 'Got it, thanks!',
     queuedToast: 'The pub is waiting for a connection. I saved it on your phone.',
     failedToast: "The pub couldn't be verified. Fix the details or try again.",
-    addressNotFoundToast: "I couldn't find that address. Fix it in Settings under Pubs I added.",
+    addressNotFoundToast: "I couldn't find that address. Fix it in Pubs I added.",
     editQueuedToast: "I have the fix on your phone and I'll send it once you're online.",
     editSavedToast: 'The fix is saved.',
     myPubsTitle: 'Pubs I added',

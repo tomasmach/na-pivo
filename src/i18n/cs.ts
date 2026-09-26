@@ -860,7 +860,7 @@ export const cs = {
     savedToast: 'Mám ji, díky!',
     queuedToast: 'Hospoda čeká na připojení. Uložil jsem ji v telefonu.',
     failedToast: 'Hospodu se nepodařilo ověřit. Oprav údaje nebo to zkus znovu.',
-    addressNotFoundToast: 'Tuhle adresu jsem nenašel. Opravit ji můžeš v Nastavení pod Moje přidané hospody.',
+    addressNotFoundToast: 'Tuhle adresu jsem nenašel. Oprav ji v Mých přidaných hospodách.',
     editQueuedToast: 'Opravu mám v telefonu a pošlu ji, až budeš online.',
     editSavedToast: 'Oprava je uložená.',
     myPubsTitle: 'Moje přidané hospody',
