@@ -45,7 +45,7 @@ interface ToursState extends ToursData {
   deletePlan: (id: string) => Promise<TourResult>;
   copyPlan: (id: string, runId?: string) => Promise<TourResult>;
   /** `crew` joins a party run (`joinRunId`) or, for a signed-in walker of a public tour, starts one. */
-  startRun: (id: string, crew?: { eligible: boolean; joinRunId?: string; route?: TourPlan }) => Promise<TourResult>;
+  startRun: (id: string, crew?: { eligible: boolean; joinRunId?: string; route?: TourPlan; token?: string }) => Promise<TourResult>;
   joinCrew: (token: string, runId: string) => Promise<TourResult>;
   setCrewOptOut: (optOut: boolean, runId?: string) => Promise<TourResult>;
   refreshCrew: () => Promise<TourResult>;
@@ -378,12 +378,14 @@ export const useToursStore = create<ToursState>(() => ({
       if (crew?.joinRunId && crew.route)
         snapshot.stops = cloneTour(crew.route).stops;
       d.activeRun = { id: generateUuidV4(), planId: id, snapshot, startedAt: new Date().toISOString(), endedAt: null, statuses: {} };
-      const link = publicLink({ ...p, stops: snapshot.stops });
+      // A join follows the tour the QR loaded; the phone's own copy of it may be out of date.
+      const link = crew?.joinRunId && crew.route && crew.token ? { publicId: crew.route.id, token: crew.token } : publicLink({ ...p, stops: snapshot.stops });
       if (crew?.eligible && link) {
         // The phone makes the run id, so the party QR works without signal.
         const runId = crew.joinRunId ?? d.activeRun.id;
         d.activeRun.crew = { runId, publicId: link.publicId, token: link.token, organizer: !crew.joinRunId };
-        queued.push({ runId, publicId: link.publicId, op: crew.joinRunId ? 'join' : 'register' });
+        queued.push(crew.joinRunId ? { runId, publicId: link.publicId, op: 'join' }
+          : { runId, publicId: link.publicId, op: 'register', stopIds: snapshot.stops.map((stop) => stop.id) });
       }
     });
     if (result.ok)
@@ -397,7 +399,7 @@ export const useToursStore = create<ToursState>(() => ({
     if (!saved.ok || !saved.id)
       return saved;
     // The party walks the route the organizer's QR stands for, even if this phone's copy is older or reordered.
-    const started = await useToursStore.getState().startRun(saved.id, { eligible: true, joinRunId: runId, route: saved.tour });
+    const started = await useToursStore.getState().startRun(saved.id, { eligible: true, joinRunId: runId, route: saved.tour, token });
     return started.ok ? { ok: true, id: saved.id } : started;
   },
   markStop: async (id, status): Promise<TourResult> => {
@@ -746,7 +748,7 @@ export const useToursStore = create<ToursState>(() => ({
       return result;
     const d = data();
     const local = d.plans.find((p) => p.id === id);
-    if (local?.publication?.status === 'active')
+    if (local?.publication)
       local.publication.status = 'unpublished';
     return persist(d, g);
   }),

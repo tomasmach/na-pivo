@@ -54,7 +54,8 @@ export function TourCrewRow({ crew, self, ping, pingStatus, onInvite, onPing }: 
     {(joined || ping || !!pingStatus) && (link ? <Pressable onPress={invite ? onInvite : onPing} style={({ pressed }) => [styles.row, pressed && styles.pressed]} accessibilityRole="button"
       accessibilityLabel={`${label}. ${link}`} accessibilityHint={invite ? t.tours.crewInviteHint : t.tours.crewPingHint}>{row}</Pressable>
       : <View style={styles.row}>{row}</View>)}
-    {crew?.refused && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{t.tours.crewRefused}</Text>}
+    {/* An organizer is refused when the tour changed or went away since the phone saved it. */}
+    {crew?.refused && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{crew.organizer ? t.tours.crewRefusedOrganizer : t.tours.crewRefused}</Text>}
     {left.length > 0 && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{t.tours.crewLeftMember(left.map((member) => member.nickname))}</Text>}
     {crew?.closed && !crew.organizer && !crew.refused && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{t.tours.crewClosed}</Text>}
     {status && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption} accessibilityLiveRegion="polite">{status}</Text>}

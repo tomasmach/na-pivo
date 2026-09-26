@@ -37,8 +37,8 @@ async function readPosition(): Promise<Position | null> {
 
 /** Far tours need no decimals; "187,5 km" would not fit the tile. */
 const tileDistance = (meters: number) => meters >= 10000 ? `${Math.round(meters / 1000).toLocaleString(intlLocale)} km` : formatWalkDistance(meters);
-/** The server searches letters and digits only, so "!!" is no search at all. */
-const searchTerm = (query: string) => /[\p{L}\p{N}].*[\p{L}\p{N}]/u.test(query.trim()) ? query.trim() : '';
+/** The server searches letters and digits only, so "!!" is no search at all; "7" is. */
+const searchTerm = (query: string) => /[\p{L}\p{N}]/u.test(query.trim()) ? query.trim() : '';
 
 function Chip({ label, active, busy, dropdown, accessibilityLabel, onPress }: {
   label: string; active: boolean; busy?: boolean; dropdown?: boolean; accessibilityLabel?: string; onPress: () => void;
