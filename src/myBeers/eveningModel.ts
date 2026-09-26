@@ -35,22 +35,27 @@ export interface BreakdownLine {
 export interface DrinkActionGroup extends BreakdownLine {
   key: string;
   servingType?: TallyDrink['servingType'];
+  /** Every drink in the row was refused by the server and needs fixing. */
+  rejected?: true;
   drinks: TallyDrink[];
 }
 
 /** Group repeated drinks for the editable list. Serving stays in the identity
- * so a bottled and a draft beer never collapse into a misleading single row. */
+ * so a bottled and a draft beer never collapse into a misleading single row, and
+ * rejected drinks get their own row so a fix never touches a delivered one. */
 export function sessionDrinkActionGroups(session: TallySession | null): DrinkActionGroup[] {
   if (!session) return [];
   const groups = new Map<string, DrinkActionGroup>();
   for (const drink of session.drinks) {
     const drinkType = normalizeDrinkType(drink.drinkType);
     const servingType = drink.servingType ?? 'unknown';
+    const rejected = drink.syncStatus === 'rejected';
     const key = [
       drinkType,
       drink.beerName.trim().toLowerCase(),
       drink.volumeMl ?? '',
       servingType,
+      rejected ? 'rejected' : '',
     ].join('|');
     const priceCzk = typeof drink.priceCzk === 'number' ? drink.priceCzk : 0;
     const existing = groups.get(key);
@@ -75,6 +80,7 @@ export function sessionDrinkActionGroups(session: TallySession | null): DrinkAct
     if (drink.servingType && drink.servingType !== 'unknown') {
       group.servingType = drink.servingType;
     }
+    if (rejected) group.rejected = true;
     groups.set(key, group);
   }
   return Array.from(groups.values());

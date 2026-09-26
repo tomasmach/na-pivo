@@ -11,6 +11,9 @@ import {
   updateQueuedDrinkBeerName,
 } from '../drinksQueue';
 import { submitDrink, type DrinkEntry } from '../drinksClient';
+import { t } from '@/i18n';
+import { useTallyStore } from '@/stores/tallyStore';
+import { useToastStore } from '@/stores/toastStore';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -56,9 +59,22 @@ async function flushMicrotasks(times = 5): Promise<void> {
   }
 }
 
+function countLocally(clientId: string): void {
+  useTallyStore.getState().addDrink(
+    { pubKey: 'u2fkbnhu', pubName: 'U Testu' },
+    { id: clientId, beerName: 'Plzeň', priceCzk: 62, volumeMl: 500 },
+  );
+}
+
+function localStatus(clientId: string): string | undefined {
+  return useTallyStore.getState().current?.drinks.find((d) => d.id === clientId)?.syncStatus;
+}
+
 beforeEach(async () => {
   seq = 0;
   jest.clearAllMocks();
+  useTallyStore.setState({ current: null, history: [] });
+  useToastStore.getState().hide();
   (submitDrink as jest.Mock).mockResolvedValue('ok');
   await AsyncStorage.clear();
 });
@@ -161,6 +177,57 @@ describe('flushDrinksQueue', () => {
     (submitDrink as jest.Mock).mockResolvedValue('permanent-error');
     await flushDrinksQueue();
     expect(await readQueue()).toHaveLength(0);
+  });
+
+  it('keeps a rejected drink in the diary, flags it once and never resends it', async () => {
+    countLocally('a');
+    await enqueueDrink(entry({ client_id: 'a' }), { deliver: false });
+
+    (submitDrink as jest.Mock).mockResolvedValue('permanent-error');
+    await flushDrinksQueue();
+
+    expect(await readQueue()).toEqual([]);
+    expect(localStatus('a')).toBe('rejected');
+    expect(useToastStore.getState().message).toBe(t.counter.drinkRejectedToast(1));
+
+    // The counter marks a drink synced once it left the queue; that must not
+    // hide the rejection, and later flushes must not retry the payload.
+    useTallyStore.getState().markDrinkSynced('a');
+    await flushDrinksQueue();
+    expect(localStatus('a')).toBe('rejected');
+    expect(submitDrink).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a drink over the daily cap without flagging it for a fix', async () => {
+    countLocally('a');
+    await enqueueDrink(entry({ client_id: 'a' }), { deliver: false });
+
+    (submitDrink as jest.Mock).mockResolvedValue('limited');
+    await flushDrinksQueue();
+
+    expect(await readQueue()).toEqual([]);
+    expect(localStatus('a')).toBe('pending');
+    expect(useToastStore.getState().message).toBeNull();
+  });
+
+  it('does not flag a rejection that lands after an account-boundary clear', async () => {
+    countLocally('a');
+    let resolveFirst!: (value: 'permanent-error') => void;
+    (submitDrink as jest.Mock).mockReturnValueOnce(
+      new Promise<'permanent-error'>((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks();
+    await clearDrinksQueue();
+    resolveFirst('permanent-error');
+    await flushing;
+
+    expect(localStatus('a')).toBe('pending');
+    expect(useToastStore.getState().message).toBeNull();
   });
 
   it('persists a new drink while a slow flush is still delivering an older snapshot', async () => {

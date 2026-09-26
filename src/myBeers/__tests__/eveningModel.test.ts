@@ -115,6 +115,21 @@ describe('sessionBreakdown', () => {
 });
 
 describe('sessionDrinkActionGroups', () => {
+  it('keeps server-rejected drinks in their own row so a fix never touches delivered ones', () => {
+    const evening = session([
+      drink({ beerName: 'Pilsner Urquell', volumeMl: 500 }),
+      drink({ beerName: 'Pilsner Urquell', volumeMl: 500 }),
+    ]);
+    evening.drinks[1] = { ...evening.drinks[1], syncStatus: 'rejected' };
+
+    const groups = sessionDrinkActionGroups(evening);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0].rejected).toBeUndefined();
+    expect(groups[1]).toMatchObject({ rejected: true, count: 1 });
+    expect(groups[1].drinks.map((d) => d.id)).toEqual([evening.drinks[1].id]);
+  });
+
   it('collapses repeated drinks into one editable row with a count and total', () => {
     const groups = sessionDrinkActionGroups(
       session([

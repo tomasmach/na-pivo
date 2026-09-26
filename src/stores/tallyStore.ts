@@ -63,8 +63,10 @@ export interface TallyDrink {
   servingType?: ServingType;
   /** ISO-8601 timestamp of when it was counted. */
   at: string;
-  /** Delivery state for undo safety. Pending drinks may still be removed from the queue. */
-  syncStatus?: 'pending' | 'sent';
+  /** Delivery state. Pending drinks may still be removed from the queue;
+   *  `rejected` means the server refused the payload, so it only lives here
+   *  until the user fixes or removes it. */
+  syncStatus?: 'pending' | 'sent' | 'rejected';
 }
 
 /** One sitting at one place on one drinking day. Usually a pub; an outside
@@ -116,6 +118,15 @@ export interface TallyBeerInput {
   servingType?: ServingType;
   /** ISO timestamp; defaults to now. */
   at?: string;
+}
+
+/** The editable details of a counted drink. */
+export interface DrinkFix {
+  beerName: string;
+  drinkType: DrinkType;
+  priceCzk?: number;
+  volumeMl?: number;
+  servingType?: ServingType;
 }
 
 export interface RemovedDrinkResult {
@@ -170,8 +181,13 @@ interface TallyState {
   removeDrinkFromSession: (startedAt: string, drinkId: string) => RemovedDrinkResult | null;
   /** Rename one logged beer in the selected evening. Used for typo fixes. */
   updateDrinkNameInSession: (startedAt: string, drinkId: string, beerName: string) => boolean;
-  /** Mark a drink as no longer queued, so the UI does not offer a local-only undo. */
+  /** Mark a drink as no longer queued, so the UI does not offer a local-only undo.
+   *  A rejected drink stays rejected until it is fixed. */
   markDrinkSynced: (id: string) => void;
+  /** The server refused this drink for good; keep it and flag it for fixing. */
+  markDrinkRejected: (id: string) => void;
+  /** Replace a rejected drink's details and mark it pending for a new send. */
+  fixDrinkInSession: (startedAt: string, drinkId: string, fix: DrinkFix) => boolean;
   /** The pub was renamed from the mapping hub — keep the live session's display
    *  name in step. Archived evenings keep the name they were logged under. */
   renameCurrentPub: (pubKey: string, pubName: string) => void;
@@ -281,6 +297,33 @@ function closeSession(session: TallySession, reason: ArchivedReason, nowMs = Dat
   const archived = { ...session, archivedReason: reason, closedAt, visitUpdatedAt: closedAt };
   syncSessionLifecycle(archived);
   return archived;
+}
+
+/** Set one drink's delivery state wherever it lives. A drink the server
+ *  rejected is only un-rejected by fixDrinkInSession, so a late "no longer
+ *  queued" signal can never make it look delivered. */
+function setDrinkSyncStatus(
+  state: TallyState,
+  id: string,
+  status: 'sent' | 'rejected',
+): Partial<TallyState> {
+  let changed = false;
+  const mark = (session: TallySession): TallySession => {
+    const drinks = session.drinks.map((drink) => {
+      if (drink.id !== id || drink.syncStatus === status) return drink;
+      if (status === 'sent' && drink.syncStatus === 'rejected') return drink;
+      changed = true;
+      return { ...drink, syncStatus: status };
+    });
+    return changed ? { ...session, drinks } : session;
+  };
+
+  if (state.current) {
+    const current = mark(state.current);
+    if (changed) return { current };
+  }
+  const history = state.history.map((session) => (changed ? session : mark(session)));
+  return changed ? { history } : state;
 }
 
 export const useTallyStore = create<TallyState>()(
@@ -557,25 +600,44 @@ export const useTallyStore = create<TallyState>()(
       },
 
       markDrinkSynced: (id) =>
+        set((state) => setDrinkSyncStatus(state, id, 'sent')),
+
+      markDrinkRejected: (id) =>
+        set((state) => setDrinkSyncStatus(state, id, 'rejected')),
+
+      fixDrinkInSession: (startedAt, drinkId, fix) => {
+        const beerName = fix.beerName.trim();
+        if (!beerName) return false;
+        let changed = false;
+        const apply = (session: TallySession): TallySession => {
+          if (session.startedAt !== startedAt) return session;
+          const drinks = session.drinks.map((drink) => {
+            if (drink.id !== drinkId) return drink;
+            changed = true;
+            const next: TallyDrink = {
+              id: drink.id,
+              beerName,
+              at: drink.at,
+              syncStatus: 'pending',
+            };
+            if (fix.drinkType !== 'beer') next.drinkType = fix.drinkType;
+            if (typeof fix.priceCzk === 'number') next.priceCzk = fix.priceCzk;
+            if (typeof fix.volumeMl === 'number') next.volumeMl = fix.volumeMl;
+            if (fix.servingType) next.servingType = fix.servingType;
+            return next;
+          });
+          return changed ? { ...session, drinks } : session;
+        };
         set((state) => {
-          let changed = false;
-          const mark = (session: TallySession): TallySession => {
-            const drinks = session.drinks.map((drink) => {
-              if (drink.id !== id) return drink;
-              changed = true;
-              return { ...drink, syncStatus: 'sent' as const };
-            });
-            return changed ? { ...session, drinks } : session;
-          };
-
-          if (state.current) {
-            const current = mark(state.current);
-            if (changed) return { current };
+          if (state.current?.startedAt === startedAt) {
+            const current = apply(state.current);
+            return changed ? { current } : state;
           }
-
-          const history = state.history.map((session) => (changed ? session : mark(session)));
+          const history = state.history.map(apply);
           return changed ? { history } : state;
-        }),
+        });
+        return changed;
+      },
 
       renameCurrentPub: (pubKey, pubName) =>
         set((state) => {

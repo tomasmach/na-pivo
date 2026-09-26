@@ -382,6 +382,52 @@ describe('markDrinkSynced', () => {
 
     expect(useTallyStore.getState().history[0].drinks[0].syncStatus).toBe('sent');
   });
+
+  it('never turns a server-rejected drink into a delivered one', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().markDrinkRejected('id-1');
+    useTallyStore.getState().markDrinkSynced('id-1');
+
+    expect(useTallyStore.getState().current?.drinks[0].syncStatus).toBe('rejected');
+  });
+});
+
+describe('fixDrinkInSession', () => {
+  it('replaces the details of a rejected drink and makes it pending again', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ volumeMl: 250, at: '2026-06-14T19:00:00.000Z' }));
+    useTallyStore.getState().archiveCurrent('manual');
+    useTallyStore.getState().markDrinkRejected('id-1');
+    const startedAt = useTallyStore.getState().history[0].startedAt;
+
+    expect(
+      useTallyStore.getState().fixDrinkInSession(startedAt, 'id-1', {
+        beerName: ' Kozel ',
+        drinkType: 'beer',
+        priceCzk: 55,
+        volumeMl: 500,
+      }),
+    ).toBe(true);
+
+    expect(useTallyStore.getState().history[0].drinks[0]).toEqual({
+      id: 'id-1',
+      beerName: 'Kozel',
+      priceCzk: 55,
+      volumeMl: 500,
+      at: '2026-06-14T19:00:00.000Z',
+      syncStatus: 'pending',
+    });
+    useTallyStore.getState().markDrinkSynced('id-1');
+    expect(useTallyStore.getState().history[0].drinks[0].syncStatus).toBe('sent');
+  });
+
+  it('refuses an empty name', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    const startedAt = useTallyStore.getState().current!.startedAt;
+    expect(
+      useTallyStore.getState().fixDrinkInSession(startedAt, 'id-1', { beerName: ' ', drinkType: 'beer' }),
+    ).toBe(false);
+    expect(useTallyStore.getState().current?.drinks[0].beerName).toBe('Pilsner Urquell');
+  });
 });
 
 describe('history cap', () => {

@@ -2050,6 +2050,9 @@ export const cs = {
         : count < 5
           ? `${count} zápisy čekají na odeslání`
           : `${count} zápisů čeká na odeslání`,
+    rejected: (count: number) =>
+      `Server nevzal ${count} ${czechPlural(count, { one: 'zápis', few: 'zápisy', many: 'zápisů' })}`,
+    rejectedFix: 'Opravit',
 
     // — The one button —
     cta: 'Dopiš večer',
@@ -2346,6 +2349,11 @@ export const cs = {
     // Server hard-rejected a drink over the daily anti-abuse cap ("drink_limited"):
     // the entry stays in the local diary only, so no data is lost — just not synced.
     drinkLimitedToast: 'Dneska už toho bylo na server moc, tenhle zápis zůstává jen v tvém deníčku.',
+    // Server refused a drink as invalid: it stays in the diary, flagged for fixing.
+    drinkRejectedToast: (count: number) =>
+      count === 1
+        ? 'Server zápis nevzal. Oprav ho v Deníku.'
+        : `Server nevzal ${count} ${czechPlural(count, { one: 'zápis', few: 'zápisy', many: 'zápisů' })}. Oprav je v Deníku.`,
 
     // ── "Tácek" surface ──────────────────────────────────────────────────────
     // The counter is four blocks: place chip, coaster (čárky), one nudge slot,
@@ -2700,6 +2708,11 @@ export const cs = {
     deleteDrinkBody: 'Počet na řádku snížím o jeden.',
     deleteDrinkConfirm: 'Odebrat',
     deleteDrinkCancel: 'Zrušit',
+    // A drink the server refused: shown under its row until fixed or removed.
+    drinkRejected: 'Server tohle nevzal. Oprav to, nebo odeber.',
+    fixDrinkTitle: 'Oprav zápis',
+    fixDrinkSubmit: 'Uložit znovu',
+    fixDrinkSaved: 'Beru. Zkusím to uložit znovu.',
     priceUnknown: 'Cena chybí',
     pricePartial: (price: string) => `Nejméně ${price}`,
     totalLabel: 'Celkem',

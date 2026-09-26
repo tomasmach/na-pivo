@@ -1666,6 +1666,12 @@ export const en: Strings = {
       one: '1 entry waiting to send',
       other: `${count} entries waiting to send`,
     }),
+    rejected: (count: number) =>
+    englishPlural(count, {
+      one: "The server didn't take 1 entry",
+      other: `The server didn't take ${count} entries`,
+    }),
+    rejectedFix: 'Fix',
     cta: 'Write up a night',
     emptyTitle: 'No trail yet',
     emptyBody: 'Tap a beer in the Counter, or write up a night you remember.',
@@ -1877,6 +1883,10 @@ export const en: Strings = {
       return lines[index];
     },
     drinkLimitedToast: "That's more than the server takes in one day, so this one stays in your diary only.",
+    drinkRejectedToast: (count: number) =>
+      count === 1
+        ? "The server didn't take this entry. Fix it in the Diary."
+        : `The server didn't take ${count} entries. Fix them in the Diary.`,
     coasterEmpty: 'Clean coaster',
     ctaPick: 'What are you having?',
     ctaFirstBeer: 'Log your first beer',
@@ -2138,6 +2148,10 @@ export const en: Strings = {
     deleteDrinkBody: "I'll drop the count on that line by one.",
     deleteDrinkConfirm: 'Remove',
     deleteDrinkCancel: 'Cancel',
+    drinkRejected: "The server didn't take this. Fix it or remove it.",
+    fixDrinkTitle: 'Fix the entry',
+    fixDrinkSubmit: 'Save again',
+    fixDrinkSaved: "Got it. I'll try saving it again.",
     priceUnknown: 'Price missing',
     pricePartial: (price: string) => `At least ${price}`,
     totalLabel: 'Total',

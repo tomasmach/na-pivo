@@ -13,13 +13,15 @@
  *
  * Wire format is snake_case; the app speaks camelCase and this module maps
  * between the two. Unlike submitPubCommunity (which returns the parsed body or
- * null), submitDrink returns a THREE-state result the queue uses to decide
- * whether to drop or keep a payload:
+ * null), submitDrink returns a result the queue uses to decide whether to drop
+ * or keep a payload:
  *   - 'ok'              → 2xx: the drink reached the backend, drop from queue.
- *   - 'permanent-error' → validation error or the server's daily anti-abuse cap
- *                          (422 code "drink_limited", which also toasts the
- *                          user): retrying this byte-stable payload will never
- *                          succeed, drop from queue.
+ *   - 'permanent-error' → validation error: retrying this byte-stable payload
+ *                          will never succeed, drop from queue. The local drink
+ *                          is kept and flagged so the user can fix or remove it.
+ *   - 'limited'         → the server's daily anti-abuse cap (422 code
+ *                          "drink_limited", which also toasts the user): drop
+ *                          from queue, the drink stays in the local diary.
  *   - 'retry'           → network error / timeout / 5xx / 429 / dormant: keep in
  *                          queue and retry on the next flush.
  */
@@ -110,6 +112,8 @@ export interface WireDrink {
 
 /** Outcome of one POST attempt — drives queue keep/drop decisions. */
 export type SubmitDrinkResult = 'ok' | 'permanent-error' | 'retry';
+/** submitDrink also tells the daily cap apart from a validation rejection. */
+export type SubmitDrinkOutcome = SubmitDrinkResult | 'limited';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
@@ -266,8 +270,7 @@ export function buildDrinkEntry(input: DrinkInput, clientId: string): DrinkEntry
 }
 
 /**
- * POST one counted drink. Returns a three-state result (see SubmitDrinkResult).
- * Never throws.
+ * POST one counted drink. Returns a SubmitDrinkOutcome. Never throws.
  *
  * Dormant backend (no EXPO_PUBLIC_BACKEND_URL) or a missing account →
  * 'retry' so the payload stays queued; the local tally still works regardless.
@@ -275,7 +278,7 @@ export function buildDrinkEntry(input: DrinkInput, clientId: string): DrinkEntry
 export async function submitDrink(
   entry: DrinkEntry,
   signal?: AbortSignal,
-): Promise<SubmitDrinkResult> {
+): Promise<SubmitDrinkOutcome> {
   if (signal?.aborted) return 'retry';
 
   const endpoint = getBackendEndpoint('/v1/drinks');
@@ -324,9 +327,9 @@ export async function submitDrink(
       return 'ok';
     }
     if (resp.status === 422 && (await isDrinkLimitedResponse(resp))) {
-      // Server anti-abuse daily cap: drop from the queue like any permanent
-      // error, but tell the user their entry stays local-only instead of
-      // letting it vanish silently.
+      // Server anti-abuse daily cap: drop from the queue, but tell the user
+      // their entry stays local-only. There is nothing to fix, so it is not
+      // flagged as rejected.
       trackDrinkSyncFailed('submit_drink', {
         status: resp.status,
         reason: 'drink_limited',
@@ -334,7 +337,7 @@ export async function submitDrink(
         retryable: false,
       });
       showDrinkLimitedToast();
-      return 'permanent-error';
+      return 'limited';
     }
     const result = await classifyQueueHttpFailure(resp.status, session, {
       source: 'drink_submit',

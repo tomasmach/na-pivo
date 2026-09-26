@@ -239,7 +239,7 @@ describe('submitDrink', () => {
     await expect(submitDrink(entry)).resolves.toBe('permanent-error');
   });
 
-  it('drops a drink_limited 422 permanently and toasts the user (once per gap)', async () => {
+  it('tells the daily drink_limited 422 apart and toasts the user (once per gap)', async () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({
       ok: false,
@@ -247,13 +247,13 @@ describe('submitDrink', () => {
       json: async () => ({ code: 'drink_limited', detail: 'daily drink limit reached' }),
     })) as unknown as typeof fetch;
 
-    await expect(submitDrink(entry)).resolves.toBe('permanent-error');
+    await expect(submitDrink(entry)).resolves.toBe('limited');
     expect(useToastStore.getState().message).toBe(t.counter.drinkLimitedToast);
 
     // A second rejection inside the toast gap stays quiet — a flush of several
     // over-limit drinks must not nag repeatedly.
     useToastStore.getState().hide();
-    await expect(submitDrink(entry)).resolves.toBe('permanent-error');
+    await expect(submitDrink(entry)).resolves.toBe('limited');
     expect(useToastStore.getState().message).toBeNull();
   });
 
