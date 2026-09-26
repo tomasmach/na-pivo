@@ -321,10 +321,8 @@ export const useToursStore = create<ToursState>(() => ({
     const challenge = cleanChallenge(text);
     if (challenge.length > CHALLENGE_MAX)
       return { ok: false, error: 'invalid' };
-    if (challenge)
-      stop.challenge = challenge;
-    else
-      delete stop.challenge;
+    // Empty is a removal the server must hear; a missing challenge means this phone never knew it.
+    stop.challenge = challenge;
   }),
   saveDraft: () => mutate((d) => {
     if (!d.draft || !validPlan(d.draft) || !validSchedule(d.draft))

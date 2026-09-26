@@ -51,8 +51,9 @@ export interface TourWire {
 }
 export function toTourWire(plan: TourPlan) {
   return { title: plan.title, scheduled_date: plan.scheduledDate, scheduled_time: plan.scheduledTime, timezone: plan.timezone,
-    // Always send the key: an empty string clears a challenge, a missing key keeps it (released apps).
-    stops: plan.stops.map((s) => ({ id: s.id, pub_id: s.pubId, cache_key: s.cacheKey, name: s.name, address: s.address, lat: s.lat, lon: s.lon, challenge: s.challenge ?? '' })) };
+    // An empty string clears a challenge; a missing key keeps the server's, for a phone that never knew it.
+    stops: plan.stops.map((s) => ({ id: s.id, pub_id: s.pubId, cache_key: s.cacheKey, name: s.name, address: s.address, lat: s.lat, lon: s.lon,
+      ...(s.challenge !== undefined ? { challenge: s.challenge } : {}) })) };
 }
 interface PublicationWire {
   id: string;
@@ -95,8 +96,8 @@ function parseEnvelope(raw: unknown): TourPlan | null {
     const publication = parsePublication(pw);
     const plan: TourPlan = { id: w.id, title: w.title, scheduledDate: w.scheduled_date, scheduledTime: w.scheduled_time?.slice(0, 5) ?? null, timezone: w.timezone, revision: w.revision, updatedAt: w.updated_at,
       stops: w.stops.map((s) => ({ id: s.id, pubId: s.pub_id, cacheKey: s.cache_key, name: s.name, address: s.address, lat: s.lat, lon: s.lon,
-        // A challenge this app could not have written is dropped, not a reason to refuse the whole tour.
-        ...(typeof s.challenge === 'string' && s.challenge && s.challenge.length <= CHALLENGE_MAX ? { challenge: s.challenge } : {}) })),
+        // A challenge this app could not have written is left unknown, not a reason to refuse the whole tour.
+        ...(typeof s.challenge === 'string' && s.challenge.length <= CHALLENGE_MAX ? { challenge: s.challenge } : {}) })),
       ...(share ? { share: { url: share.url, expiresAt: share.expires_at } } : {}),
       ...(publication ? { publication } : {}) };
     return validPlan(plan) ? plan : null;

@@ -988,3 +988,175 @@ msgstr "Only a signed-in walker with a nickname can join."
 
 msgid "K tomuhle průchodu se připojit nejde."
 msgstr "You can't join this walk."
+
+# Home page (pubs/templates/pubs/home.html, pubs/home_views.py)
+msgid "Na pivo: kompas na hospodu a pivní deníček"
+msgstr "Na pivo: a compass to the pub and a beer diary"
+
+msgid "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam."
+msgstr "The compass points to the nearest pub, the counter keeps a tally of your beers and your crew knows where you are sitting. Free, no ads."
+
+msgid "Pivní tácek s čárkami na dubovém stole."
+msgstr "A beer coaster with tally marks on an oak table."
+
+msgid "Přeskočit na obsah"
+msgstr "Skip to content"
+
+msgid "Hlavní navigace"
+msgstr "Main navigation"
+
+msgid "Co umí"
+msgstr "What it does"
+
+msgid "Soukromí"
+msgstr "Privacy"
+
+msgid "Čárkuj piva jak na tácku."
+msgstr "Keep a tally, pub style."
+
+msgid "Každé pivo je jedno ťuknutí. Počítadlo hlídá počet i útratu, zapíše se i bez signálu a ráno z něj máš deník celého večera."
+msgstr "Every beer is one tap. The counter keeps the count and the tab, saves without signal, and in the morning you have a diary of the whole night."
+
+msgid "Stáhnout pro iPhone"
+msgstr "Download for iPhone"
+
+msgid "Stáhnout pro Android"
+msgstr "Download for Android"
+
+msgid "Přičárkovat pivo na tácek"
+msgstr "Add a beer to the coaster"
+
+msgid "Čistej tácek."
+msgstr "Clean coaster."
+
+msgid "Ubrat"
+msgstr "Take one off"
+
+msgid "Ťukni na tácek."
+msgstr "Tap the coaster."
+
+msgid "Ještě jedno?"
+msgstr "One more?"
+
+msgid "Pátá čárka se škrtá."
+msgstr "The fifth mark crosses out the other four."
+
+msgid "Víc se jich sem nevejde. Do appky jo."
+msgstr "No room for more here. The app has plenty."
+
+msgid "pivo"
+msgstr "beer"
+
+msgid "piva"
+msgstr "beers"
+
+msgid "piv"
+msgstr "beers"
+
+msgid "Kompas tě dovede."
+msgstr "The compass gets you there."
+
+msgid "Šipka ukáže nejbližší hospodu, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na „Dej mi jinou“."
+msgstr "The arrow points to the nearest pub and shows how far it is and what they pour. Not your place? Tap “Give me another”."
+
+msgid "Cinkni partě, že sedíš."
+msgstr "Ping the crew when you sit down."
+
+msgid "Jdeš na pivo? Cinkni a parta to hned ví. Kámoši kývnou, jestli dorazí."
+msgstr "Going for a beer? Ping and the crew knows right away. Your mates say whether they are coming."
+
+msgid "Ráno víš, kolik to stálo"
+msgstr "In the morning you know what it cost"
+
+msgid "Účet"
+msgstr "The bill"
+
+msgid "Co tě Na pivo stojí"
+msgstr "What Na pivo costs you"
+
+msgid "Appka"
+msgstr "The app"
+
+msgid "0 Kč"
+msgstr "0 CZK"
+
+msgid "Reklamy"
+msgstr "Ads"
+
+msgid "žádné"
+msgstr "none"
+
+msgid "GPS trasa"
+msgstr "GPS track"
+
+msgid "neukládám"
+msgstr "not stored"
+
+msgid "Bez signálu"
+msgstr "No signal"
+
+msgid "zapíše se"
+msgstr "still saved"
+
+msgid "Jazyk"
+msgstr "Language"
+
+msgid "česky, anglicky"
+msgstr "Czech, English"
+
+msgid "Celkem"
+msgstr "Total"
+
+msgid "Díky a přijď zas. Tomáš"
+msgstr "Thanks, come again. Tomáš"
+
+msgid "Na zdraví."
+msgstr "Cheers."
+
+msgid "Na pivo dělá Tomáš Mach"
+msgstr "Na pivo is made by Tomáš Mach"
+
+msgid "Dokumenty a kontakt"
+msgstr "Documents and contact"
+
+msgid "Podmínky"
+msgstr "Terms"
+
+msgid "Smazání účtu"
+msgstr "Delete account"
+
+msgid "Napiš mi"
+msgstr "Email me"
+
+msgid "Ťukni a čárkuj!"
+msgstr "Tap to tally!"
+
+msgid "Co dalšího Na pivo umí"
+msgstr "What else Na pivo does"
+
+msgid "Piva, ceny i hospody zůstanou v deníku."
+msgstr "Beers, prices and pubs stay in your diary."
+
+msgid "Zmapuj hospodu"
+msgstr "Map a pub"
+
+msgid "Šipky, kulečník nebo zahrádka. Co zapíšeš ty, uvidí další."
+msgstr "Darts, pool or a beer garden. What you add, the next person sees."
+
+msgid "Staň se FotoPivařem"
+msgstr "Win Beer Snap"
+
+msgid "Soutěž o nejlepší pivní fotku. Každých 14 dní nové kolo."
+msgstr "A contest for the best beer photo. A new round every 14 days."
+
+msgid "Stoupej po levelech"
+msgstr "Level up"
+
+msgid "Za piva sbíráš XP jako Pivař, za zmapované hospody jako Mapér."
+msgstr "Beers earn you XP as a Drinker, mapped pubs as a Mapper."
+
+msgid "Naplánuj tah po hospodách a pošli partě odkaz."
+msgstr "Plan a pub crawl and send the crew a link."
+
+msgid "Brzy"
+msgstr "Soon"
