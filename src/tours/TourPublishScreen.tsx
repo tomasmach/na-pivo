@@ -90,12 +90,13 @@ export default function TourPublishScreen() {
       <TourText style={ui.notice}>{t.tours.publishUndoNote}</TourText>
     </ScrollView>
     <View style={[ui.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
-      {!updating && <Pressable accessibilityRole="link" accessibilityLabel={`${t.tours.rulesPrefix}${t.tours.rulesLink}`} style={styles.legal}
+      {/* Every publish records consent again, so every publish shows what is agreed to. */}
+      <Pressable accessibilityRole="link" accessibilityLabel={`${t.tours.rulesPrefix}${t.tours.rulesLink}`} style={styles.legal}
         onPress={() => { void Linking.openURL(t.tours.rulesUrl).catch(() => undefined); }}>
         <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.legalText}>
           {t.tours.rulesPrefix}<Text style={styles.link}>{t.tours.rulesLink}</Text>{t.tours.rulesSuffix}
         </Text>
-      </Pressable>}
+      </Pressable>
       {/* When a fix exists, retrying would fail the same way; the fix is the one action. */}
       {fix ? <TourButton testID="tour-publish-fix" label={fix.label} onPress={fix.onPress} />
         : <TourButton testID="tour-publish" label={updating ? t.tours.updatePublic : t.tours.publishAction} busy={store.busy} onPress={() => { void publish(); }} />}
