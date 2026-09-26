@@ -78,6 +78,8 @@ jest.mock('@/components/shared/GlowButton', () => {
 jest.mock('@/components/shared/IconGlyph', () => ({
   CheckIcon: jest.fn(() => null),
   ChevronLeftIcon: jest.fn(() => null),
+  ChevronRightIcon: jest.fn(() => null),
+  MapIcon: jest.fn(() => null),
   MapPinIcon: jest.fn(() => null),
   TargetIcon: jest.fn(() => null),
 }));
@@ -117,6 +119,29 @@ jest.mock('@/map/BeerMapScreen', () => ({
   resetBeerMapLayerForAddedPub: () => mockResetBeerMapLayerForAddedPub(),
 }));
 
+const mockPickerStarts: unknown[] = [];
+jest.mock('@/map/MapPinPicker', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    MapPinPicker: ({ visible, start, onCancel, onConfirm }: {
+      visible: boolean;
+      start: unknown;
+      onCancel: () => void;
+      onConfirm: (coords: { lat: number; lng: number }) => void;
+    }) => {
+      if (!visible) return null;
+      mockPickerStarts.push(start);
+      return React.createElement(React.Fragment, null,
+        React.createElement('Pressable', {
+          accessibilityLabel: 'mock-pin-confirm',
+          onPress: () => onConfirm({ lat: 49.2, lng: 16.61 }),
+        }),
+        React.createElement('Pressable', { accessibilityLabel: 'mock-pin-cancel', onPress: onCancel }),
+      );
+    },
+  };
+});
+
 jest.mock('@/stores/pubStore', () => ({
   usePubStore: (selector: (state: { bumpCatalogRevision: () => void }) => unknown) =>
     selector({ bumpCatalogRevision: mockBumpCatalogRevision }),
@@ -155,6 +180,7 @@ describe('AddPubScreen location confirmation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPickerStarts.length = 0;
     mockSearchParams = { lat: '50.087', lng: '14.421', city: 'Praha' };
     mockLoadAddedPubSubmissions.mockResolvedValue([]);
     mockEnsureLocationPermission.mockResolvedValue('granted');
@@ -261,13 +287,15 @@ describe('AddPubScreen location confirmation', () => {
 
   it('drops a map pin when a place is picked until its address is confirmed', async () => {
     const place = { lat: 50.0884, lng: 14.4036, city: 'Praha', address: 'Nerudova 2' };
-    mockSearchParams = { lat: '49.195', lng: '16.606', source: 'map' };
     mockLookupAddedPubLocation.mockResolvedValue(place);
     mockSuggestPubsToAdd.mockResolvedValue([{ id: 'google:abc', name: 'U Kocoura', providerPlaceId: 'abc' }]);
     mockResolvePubSearchResult.mockResolvedValue({ id: 'google:abc', name: 'U Kocoura', ...place });
     jest.useFakeTimers();
     try {
       await renderScreen();
+      await press(t.a11y.addPubPickOnMapButton);
+      await press('mock-pin-confirm');
+      expect(button(t.a11y.addPubMapPinSelected)).toBeDefined();
       change(t.a11y.addPubNameInput, 'U Koc');
       await act(async () => { jest.advanceTimersByTime(400); });
       await press(t.a11y.addPubSuggestion('U Kocoura'));
@@ -341,37 +369,70 @@ describe('AddPubScreen location confirmation', () => {
     expectNoWrite();
   });
 
-  it('preserves an explicitly aimed map pin while offline and marks its origin', async () => {
-    mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
+  it('saves an explicitly aimed map pin while offline and marks its origin', async () => {
     mockLookupAddedPubLocation.mockResolvedValue(null);
     await renderScreen();
     fillAddress();
+    await press(t.a11y.addPubPickOnMapButton);
+    expect(mockPickerStarts.at(-1)).toEqual({ lat: 50.087, lng: 14.421 });
+    await press('mock-pin-confirm');
     await submit();
     expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({
-      lat: 50.087, lng: 14.421, location_source: 'map_pin', address: 'Česká 12', city: 'Brno',
+      lat: 49.2, lng: 16.61, location_source: 'map_pin', address: 'Česká 12', city: 'Brno',
     }));
     expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
     expect(mockResetBeerMapLayerForAddedPub).toHaveBeenCalledTimes(1);
   });
 
-  it('lets the user deselect a map pin and blocks saving', async () => {
-    mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
+  it('prefills the address of an aimed pin but keeps the pin point', async () => {
+    mockSearchParams = { lat: '50.087', lng: '14.421' };
+    await renderScreen();
+    change(t.a11y.addPubNameInput, 'Hospoda U Testu');
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-confirm');
+    expect(mockLookupAddedPubLocation).toHaveBeenCalledWith({ lat: 49.2, lng: 16.61 }, expect.anything());
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubCityInput }).props.value).toBe('Brno');
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubAddressInput }).props.value).toBe('Česká 12');
+    await submit();
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({
+      lat: 49.2, lng: 16.61, location_source: 'map_pin', address: 'Česká 12', city: 'Brno',
+    }));
+  });
+
+  it('does not overwrite an address field the user already filled', async () => {
+    mockSearchParams = { lat: '50.087', lng: '14.421' };
+    await renderScreen();
+    change(t.a11y.addPubCityInput, 'Kostelec');
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-confirm');
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubCityInput }).props.value).toBe('Kostelec');
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubAddressInput }).props.value).toBe('Česká 12');
+  });
+
+  it('does not treat the entry coordinates as a location when the map is closed without aiming', async () => {
     await renderScreen();
     fillAddress();
-    await press(t.a11y.addPubMapPinSelected);
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-cancel');
     await submit();
     expectNoWrite();
   });
 
+  it('reopens the map at the chosen pin', async () => {
+    await renderScreen();
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-confirm');
+    await press(t.a11y.addPubMapPinSelected);
+    expect(mockPickerStarts.at(-1)).toEqual(expect.objectContaining({ lat: 49.2, lng: 16.61, source: 'pin' }));
+  });
+
   it.each<Record<string, string>>([{ lng: '14.421' }, { lat: '50.087' }])(
-    'does not turn a missing map coordinate into zero (%j)', async (coordinates) => {
-      mockSearchParams = { ...coordinates, source: 'map' };
+    'does not turn a missing entry coordinate into zero (%j)', async (coordinates) => {
+      mockSearchParams = coordinates;
       await renderScreen();
-      fillAddress();
-      await submit();
-      expectNoWrite();
-      expect(button(t.a11y.addPubMapPinSelected)).toBeUndefined();
+      await press(t.a11y.addPubPickOnMapButton);
+      expect(mockPickerStarts.at(-1)).toBeNull();
     },
   );
 
@@ -381,6 +442,7 @@ describe('AddPubScreen location confirmation', () => {
       address: 'Stará 1', lat: '50.087', lng: '14.421',
     };
     await renderScreen();
+    expect(button(t.a11y.addPubPickOnMapButton)).toBeUndefined();
     change(t.a11y.addPubNameInput, 'Nové jméno');
     await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({

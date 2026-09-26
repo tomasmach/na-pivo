@@ -28,7 +28,9 @@ import { t } from '@/i18n';
 import {
   CheckIcon,
   ChevronLeftIcon,
+  ChevronRightIcon,
   MapPinIcon,
+  MapIcon,
   TargetIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -45,6 +47,7 @@ import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { resetBeerMapLayerForAddedPub } from '@/map/BeerMapScreen';
+import { MapPinPicker, type PinCoordinates } from '@/map/MapPinPicker';
 
 function parseStringParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
@@ -111,12 +114,6 @@ export default function AddPubScreen() {
     [initialLat, initialLng],
   );
 
-  // The map hands over a pin the user aimed deliberately, so it arrives
-  // pre-selected and the location card talks about the pin, not "current
-  // location" — the user may be nowhere near the pub.
-  const fromMapPin =
-    !isEditing && parseStringParam(params.source) === 'map' && initialCoords !== null;
-
   const initialName = useMemo(() => parseStringParam(params.name).trim(), [params.name]);
   const initialCity = useMemo(() => parseStringParam(params.city).trim(), [params.city]);
   const initialAddress = useMemo(() => parseStringParam(params.address).trim(), [params.address]);
@@ -126,15 +123,8 @@ export default function AddPubScreen() {
   const [submitted, setSubmitted] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(() =>
-    fromMapPin && initialCoords
-      ? {
-          ...initialCoords,
-          displayLocation: t.addPub.mapPinSelectedBody,
-          source: 'pin',
-        }
-      : null,
-  );
+  const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [candidate, setCandidate] = useState<AddedPubLocation | null>(null);
   const [suggestions, setSuggestions] = useState<PubSearchResult[] | null>(null);
   const [searchingPlaces, setSearchingPlaces] = useState(false);
@@ -177,7 +167,7 @@ export default function AddPubScreen() {
     !locating &&
     !loadingSubmission &&
     !submitted;
-  const currentLocationSelected = selectedLocation?.source === 'pin';
+  const mapPinSelected = selectedLocation?.source === 'pin';
 
   const clearLookup = useCallback(() => {
     lookupRequest.current?.abort();
@@ -245,22 +235,8 @@ export default function AddPubScreen() {
 
   const handleUseCurrentLocation = useCallback(async () => {
     trackUiInteraction('add_pub_location', 'select');
-    if (currentLocationSelected) {
-      setSelectedLocation(null);
-      if (isEditing) {
-        setCity(initialCity);
-        setAddress(initialAddress);
-      }
-      setLocationError('');
-      return;
-    }
-
     clearLookup();
     setSelectedLocation(null);
-    if (fromMapPin && initialCoords) {
-      setSelectedLocation({ ...initialCoords, source: 'pin', displayLocation: t.addPub.mapPinSelectedBody });
-      return;
-    }
     const request = new AbortController();
     lookupRequest.current = request;
     setLocating(true);
@@ -283,7 +259,33 @@ export default function AddPubScreen() {
     } finally {
       if (!request.signal.aborted) setLocating(false);
     }
-  }, [clearLookup, currentLocationSelected, fromMapPin, initialAddress, initialCity, initialCoords, isEditing]);
+  }, [clearLookup]);
+
+  const handleOpenMap = useCallback(() => {
+    trackUiInteraction('add_pub_location', 'tap');
+    setPickerOpen(true);
+  }, []);
+
+  const handlePinPicked = useCallback((coords: PinCoordinates) => {
+    trackUiInteraction('add_pub_location', 'submit');
+    setPickerOpen(false);
+    clearLookup();
+    setSelectedLocation({ ...coords, source: 'pin', displayLocation: t.addPub.mapPinSelectedBody });
+    // Prefill empty address fields; the pin keeps its exact point either way.
+    // Typing into a field aborts this through clearLookup.
+    if (city.trim() && address.trim()) return;
+    const request = new AbortController();
+    lookupRequest.current = request;
+    setLocating(true);
+    void lookupAddedPubLocation(coords, request.signal).then((result) => {
+      if (request.signal.aborted) return;
+      lookupRequest.current = null;
+      setLocating(false);
+      if (!result) return;
+      setCity((value) => value.trim() ? value : result.city);
+      setAddress((value) => value.trim() ? value : result.address);
+    });
+  }, [address, city, clearLookup]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit || submitting.current) return;
@@ -308,7 +310,8 @@ export default function AddPubScreen() {
     }
 
     if (location) {
-      if (fromMapPin) resetBeerMapLayerForAddedPub();
+      // Otherwise a map left on the visited layer would hide the new pub.
+      if (selectedLocation) resetBeerMapLayerForAddedPub();
       upsertLocalPub({
         id: pubIdForCoords(location.lat, location.lng),
         name: trimmedName,
@@ -368,7 +371,6 @@ export default function AddPubScreen() {
     canSubmit,
     city,
     editedClientId,
-    fromMapPin,
     initialCoords,
     isEditing,
     nameChanged,
@@ -501,7 +503,7 @@ export default function AddPubScreen() {
                 style={[styles.selectedSuggestion, styles.selectedCurrentLocation]}
                 accessibilityLabel={
                   selectedLocation.source === 'pin'
-                    ? t.a11y.addPubMapPinSelected
+                    ? t.addPub.mapPinSelectedTitle
                     : t.addPub.addressConfirmed
                 }
               >
@@ -529,85 +531,72 @@ export default function AddPubScreen() {
         <View style={styles.locationCard}>
           <Text style={styles.locationHeader}>{isEditing && !needsLocation ? t.addPub.editLocationHeader : t.addPub.locationHeader}</Text>
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isEditing && !needsLocation
-              ? t.addPub.editLocationBody
-              : fromMapPin
-                ? t.addPub.mapPinLocationBody
-                : t.addPub.locationBody}
+            {isEditing && !needsLocation ? t.addPub.editLocationBody : t.addPub.locationBody}
           </Text>
           <Pressable
-              onPress={() => void handleUseCurrentLocation()}
-              style={({ pressed }) => [
-                styles.currentLocationButton,
-                currentLocationSelected && styles.currentLocationButtonSelected,
-                pressed && styles.currentLocationButtonPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={
-                currentLocationSelected
-                  ? fromMapPin
-                    ? t.a11y.addPubMapPinSelected
-                    : t.a11y.addPubCurrentLocationSelected
-                  : t.a11y.addPubUseCurrentLocationButton
-              }
-              accessibilityState={{ selected: currentLocationSelected }}
-            >
-              <View
-                style={[
-                  styles.currentLocationIcon,
-                  currentLocationSelected && styles.currentLocationIconSelected,
-                ]}
-              >
-                {fromMapPin ? (
-                  <MapPinIcon
-                    size={18}
-                    color={currentLocationSelected ? Colors.stout : Colors.amber}
-                  />
-                ) : (
-                  <TargetIcon
-                    size={18}
-                    color={currentLocationSelected ? Colors.stout : Colors.amber}
-                  />
-                )}
-              </View>
-              <View style={styles.currentLocationCopy}>
-                <Text
-                  style={styles.currentLocationTitle}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {locating
-                    ? t.addPub.locating
-                    : isEditing
-                      ? t.addPub.editUseCurrentLocation
-                      : fromMapPin
-                        ? t.addPub.useMapPin
-                        : t.addPub.useCurrentLocation}
-                </Text>
-                <Text
-                  style={styles.currentLocationBody}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                  numberOfLines={3}
-                >
-                  {isEditing
-                    ? t.addPub.editUseCurrentLocationHint
-                    : fromMapPin
-                      ? t.addPub.useMapPinHint
-                      : t.addPub.useCurrentLocationHint}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.currentLocationStatus,
-                  currentLocationSelected && styles.currentLocationStatusSelected,
-                ]}
-              >
-                {currentLocationSelected ? (
-                  <CheckIcon size={15} color={Colors.stout} />
-                ) : (
-                  <MapPinIcon size={15} color={Colors.amber} />
-                )}
-              </View>
-            </Pressable>
+            onPress={() => void handleUseCurrentLocation()}
+            style={({ pressed }) => [
+              styles.locationRow,
+              isEditing && styles.locationRowLast,
+              pressed && styles.locationRowPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t.a11y.addPubUseCurrentLocationButton}
+          >
+            <View style={styles.locationRowIcon}>
+              <TargetIcon size={18} color={Colors.amber} />
+            </View>
+            <View style={styles.locationRowCopy}>
+              <Text style={styles.locationRowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                {locating
+                  ? t.addPub.locating
+                  : isEditing
+                    ? t.addPub.editUseCurrentLocation
+                    : t.addPub.useCurrentLocation}
+              </Text>
+              <Text style={styles.locationRowBody} maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={3}>
+                {isEditing ? t.addPub.editUseCurrentLocationHint : t.addPub.useCurrentLocationHint}
+              </Text>
+            </View>
+            <View style={styles.locationRowStatus}>
+              <MapPinIcon size={15} color={Colors.amber} />
+            </View>
+          </Pressable>
+          {/* Edits are re-geocoded from the address on the server, so a pin
+              there would be silently overruled. */}
+          {!isEditing && (
+          <Pressable
+            onPress={handleOpenMap}
+            style={({ pressed }) => [
+              styles.locationRow,
+              styles.locationRowLast,
+              mapPinSelected && styles.locationRowSelected,
+              pressed && styles.locationRowPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={mapPinSelected ? t.a11y.addPubMapPinSelected : t.a11y.addPubPickOnMapButton}
+            accessibilityState={{ selected: mapPinSelected }}
+          >
+            <View style={[styles.locationRowIcon, mapPinSelected && styles.locationRowIconSelected]}>
+              <MapIcon size={18} color={mapPinSelected ? Colors.stout : Colors.amber} />
+            </View>
+            <View style={styles.locationRowCopy}>
+              <Text style={styles.locationRowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.addPub.pickOnMap}
+              </Text>
+              <Text style={styles.locationRowBody} maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={3}>
+                {mapPinSelected ? t.addPub.pickOnMapSelectedHint : t.addPub.pickOnMapHint}
+              </Text>
+            </View>
+            <View style={[styles.locationRowStatus, mapPinSelected && styles.locationRowStatusSelected]}>
+              {mapPinSelected ? (
+                <CheckIcon size={15} color={Colors.stout} />
+              ) : (
+                <ChevronRightIcon size={15} color={Colors.amber} />
+              )}
+            </View>
+          </Pressable>
+          )}
         </View>
 
         <View style={styles.fieldGroup}>
@@ -644,7 +633,7 @@ export default function AddPubScreen() {
           accessibilityState={{ disabled: locating || !city.trim() || !address.trim(), busy: locating }}
           style={styles.lookupButton}
         >
-          <Text style={styles.currentLocationTitle}>{locating ? t.addPub.locating : t.addPub.findAddress}</Text>
+          <Text style={styles.locationRowTitle}>{locating ? t.addPub.locating : t.addPub.findAddress}</Text>
         </Pressable>
 
         {candidate && (
@@ -664,7 +653,7 @@ export default function AddPubScreen() {
             <MapPinIcon size={18} color={Colors.amber} />
             <View style={styles.suggestionText}>
               <Text style={styles.suggestionName}>{candidate.address}, {candidate.city}</Text>
-              <Text style={styles.currentLocationTitle}>{t.addPub.confirmAddress}</Text>
+              <Text style={styles.locationRowTitle}>{t.addPub.confirmAddress}</Text>
               <Text style={styles.suggestionLocation}>Google Maps</Text>
             </View>
           </Pressable>
@@ -688,6 +677,13 @@ export default function AddPubScreen() {
         </View>
       </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
+
+      <MapPinPicker
+        visible={pickerOpen}
+        start={selectedLocation ?? initialCoords}
+        onCancel={() => setPickerOpen(false)}
+        onConfirm={handlePinPicked}
+      />
     </View>
   );
 }
@@ -865,26 +861,28 @@ const styles = StyleSheet.create({
     color: Colors.foamMuted,
     marginBottom: Spacing.md,
   },
-  currentLocationButton: {
+  locationRow: {
     minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
     marginHorizontal: -Spacing.lg,
-    marginBottom: -Spacing.md,
     borderTopWidth: 1,
     borderTopColor: withAlpha(Colors.amber, 0.2),
     paddingHorizontal: Spacing.lg,
     paddingTop: 14,
     paddingBottom: 15,
   },
-  currentLocationButtonSelected: {
+  locationRowLast: {
+    marginBottom: -Spacing.md,
+  },
+  locationRowSelected: {
     backgroundColor: withAlpha(Colors.amber, 0.1),
   },
-  currentLocationButtonPressed: {
+  locationRowPressed: {
     backgroundColor: withAlpha(Colors.amber, 0.16),
   },
-  currentLocationIcon: {
+  locationRowIcon: {
     width: 34,
     height: 34,
     borderRadius: Radius.pill,
@@ -894,35 +892,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  currentLocationIconSelected: {
+  locationRowIconSelected: {
     borderColor: Colors.amber,
     backgroundColor: Colors.amber,
   },
-  currentLocationCopy: {
+  locationRowCopy: {
     flex: 1,
     minWidth: 0,
     gap: 2,
   },
-  currentLocationTitle: {
+  locationRowTitle: {
     fontFamily: Fonts.ui.bold,
     fontSize: 15,
     lineHeight: 19,
     color: Colors.foam,
   },
-  currentLocationBody: {
+  locationRowBody: {
     fontFamily: Fonts.ui.regular,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foamMuted,
   },
-  currentLocationStatus: {
+  locationRowStatus: {
     width: 28,
     height: 28,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  currentLocationStatusSelected: {
+  locationRowStatusSelected: {
     backgroundColor: Colors.amber,
   },
   invalidText: {
