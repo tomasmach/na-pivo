@@ -116,3 +116,14 @@ it('never drops people from saved groups when shown only part of the party', () 
   sheet(jest.fn(), jest.fn(), { friends: friends.filter((friend) => friend.id !== 'pepa') });
   expect(usePartyGroupsStore.getState().groups.map((group) => group.memberIds)).toEqual([['eva', 'pepa'], ['pepa']]);
 });
+
+it('recovers from a send that throws, so the ping can be tried again', async () => {
+  const onSend = jest.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(null);
+  const onClose = jest.fn();
+  const screen = sheet(onSend, onClose);
+  await act(async () => { fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
+  expect(screen.getByText(t.friends.shareError)).toBeTruthy();
+  await act(async () => { fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
+  expect(onSend).toHaveBeenCalledTimes(2);
+  expect(onClose).toHaveBeenCalled();
+});
