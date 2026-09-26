@@ -18,14 +18,14 @@ export interface PinCoordinates {
   lng: number;
 }
 
-// Whole Czechia, for when the form has no point to start from.
 const STREET_DELTA = 0.004;
 
-const COUNTRY_REGION: Region = {
-  latitude: 49.8175,
-  longitude: 15.473,
-  latitudeDelta: 4.7,
-  longitudeDelta: 4.2,
+// Czechia and Slovakia, for when the form has no point to start from.
+const COUNTRIES_REGION: Region = {
+  latitude: 49.4,
+  longitude: 17.3,
+  latitudeDelta: 3.6,
+  longitudeDelta: 10.8,
 };
 
 interface MapPinPickerProps {
@@ -45,7 +45,7 @@ export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPick
   const mapRef = useRef<MapView>(null);
   const initialRegion: Region = start
     ? { latitude: start.lat, longitude: start.lng, latitudeDelta: STREET_DELTA, longitudeDelta: STREET_DELTA }
-    : COUNTRY_REGION;
+    : COUNTRIES_REGION;
   const region = useRef(initialRegion);
   const moved = useRef(false);
   const [locationGranted, setLocationGranted] = useState(false);
@@ -70,7 +70,7 @@ export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPick
           longitudeDelta: STREET_DELTA,
         }, 0);
       } catch {
-        // The whole country stays in view.
+        // Both countries stay in view.
       }
     })();
     return () => { active = false; };
