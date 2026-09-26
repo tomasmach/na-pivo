@@ -23,7 +23,7 @@ import { FontScaleCap } from '@/theme/fonts';
 import { TourButton, TourChallengeText, TourError, TourHeader, TourText, pubCount, tourDate, ui } from './TourChrome';
 import { TourMap } from './TourMap';
 import { TourCrewRow, TourCrewSheet, going, type CrewPingState, type CrewPingView } from './TourCrew';
-import { pingRecipients, pingStop, sendPing } from './crewPing';
+import { loadLastPing, pingRecipients, pingStop, saveLastPing, sendPing } from './crewPing';
 import { loadPartyFriends, type PartyFriends } from '@/data/friendsClient';
 import { flushFriendsQueue, friendActivityState } from '@/data/friendsQueue';
 import PingSheet from '@/friends/PingSheet';
@@ -52,6 +52,9 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const [crewSheet, setCrewSheet] = useState(false);
   const [friends, setFriends] = useState<PartyFriends | null>(null); const [ping, setPing] = useState<CrewPingState | null>(null);
   const [pingSheet, setPingSheet] = useState(false); const pingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // One ping per stop, even across a restart of the app.
+  useEffect(() => { void loadLastPing().then((saved) => { if (saved) setPing((current) => current ?? saved); }); }, []);
+  const rememberPing = (next: CrewPingState | null) => { setPing(next); saveLastPing(next); };
   // Only a signed-in walker with a nickname can be seen by a party and counted.
   const crewEligible = useAccountStore((s) => selectIsSignedIn(s) && !!selectNickname(s));
   const profile = useAccountStore((s) => s.profile);
@@ -90,7 +93,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     let alive = true;
     const check = () => void friendActivityState(waiting.clientId).then((state) => {
       // A newer ping may have replaced this one meanwhile; its state wins.
-      if (alive && state !== 'queued') setPing(state === 'sent' ? { ...waiting, status: 'sent' } : null);
+      if (alive && state !== 'queued') rememberPing(state === 'sent' ? { ...waiting, status: 'sent' } : null);
     });
     check();
     // The queue flushes when the app comes back to the front, which does not change focus; look once that flush is done.
@@ -202,7 +205,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     const ids = recipientIds ?? pingRecipients(friends.friends.map((friend) => friend.id), crewIds);
     const result = await sendPing(active.snapshot.title, pingTarget, ids);
     if ('error' in result) return result.error;
-    setPing({ runId: active.id, stopId: pingTarget.stop.id, ...result });
+    rememberPing({ runId: active.id, stopId: pingTarget.stop.id, ...result });
     return null;
   }
   const stops = current.stops;

@@ -31,7 +31,6 @@ import {
   dropQueuedTourPings,
   flushFriendsQueue,
   friendActivityState,
-  friendsQueueIdle,
   isRetriableFriendError,
   type FriendQueueItem,
 } from '../friendsQueue';
@@ -254,7 +253,7 @@ it('drops only waiting tour pings when a newer one takes over', async () => {
   expect(await friendActivityState('tour-old')).toBe('gone');
 });
 
-it('lets a flush on its way finish first and skips a tour ping taken out meanwhile', async () => {
+it('skips a tour ping taken out while the flush was on its way', async () => {
   let release: () => void = () => undefined;
   // The first op hangs on the network, so the flush is still on its way when a newer tour ping takes over.
   respondToActivity.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve({ ok: true }); }));
@@ -264,11 +263,7 @@ it('lets a flush on its way finish first and skips a tour ping taken out meanwhi
   ]));
   const flushing = flushFriendsQueue();
   await dropQueuedTourPings();
-  let idle = false;
-  const waiting = friendsQueueIdle().then(() => { idle = true; });
-  await Promise.resolve();
-  expect(idle).toBe(false);
   release();
-  await Promise.all([flushing, waiting]);
+  await flushing;
   expect(shareFriendPubActivity).not.toHaveBeenCalled();
 });

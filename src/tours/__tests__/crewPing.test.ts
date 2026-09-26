@@ -1,14 +1,18 @@
 import { shareFriendPubActivity } from '@/data/friendsClient';
-import { dropQueuedTourPings, enqueueFriendOp, friendsQueueIdle } from '@/data/friendsQueue';
-import { pingRecipients, pingStop, sendPing } from '../crewPing';
+import { dropQueuedTourPings, enqueueFriendOp, flushFriendsQueue } from '@/data/friendsQueue';
+import { loadLastPing, pingRecipients, pingStop, saveLastPing, sendPing } from '../crewPing';
 import type { TourStop } from '../model';
 
+jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 jest.mock('@/data/account', () => ({ generateUuidV4: () => '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab' }));
 jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: jest.fn(), fetchFriendsDashboard: jest.fn() }));
 jest.mock('@/data/friendsQueue', () => ({
   enqueueFriendOp: jest.fn(async () => undefined),
   dropQueuedTourPings: jest.fn(async () => undefined),
-  friendsQueueIdle: jest.fn(async () => undefined),
+  flushFriendsQueue: jest.fn(async () => undefined),
   isRetriableFriendError: (result: { code: string }) => result.code === 'offline',
 }));
 jest.mock('@/data/friendsSnapshot', () => ({ loadFriendsDashboardSnapshot: jest.fn() }));
@@ -57,10 +61,21 @@ it('lets a newer ping replace the waiting one and never widens to the whole part
   await sendPing('Pivní okruh', { stop: { ...stops[1], name: 'U '.repeat(150) }, heading: false });
   // Whatever still waits for signal gives way before this one goes out.
   expect(dropQueuedTourPings).toHaveBeenCalled();
-  expect(jest.mocked(dropQueuedTourPings).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(friendsQueueIdle).mock.invocationCallOrder[0]);
-  expect(jest.mocked(friendsQueueIdle).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(shareFriendPubActivity).mock.invocationCallOrder[0]);
+  // Whatever else still waits (a counter cinknutí too) is delivered before this one goes out.
+  expect(jest.mocked(dropQueuedTourPings).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(flushFriendsQueue).mock.invocationCallOrder[0]);
+  expect(jest.mocked(flushFriendsQueue).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(shareFriendPubActivity).mock.invocationCallOrder[0]);
   expect(jest.mocked(shareFriendPubActivity).mock.calls[0][0].name).toHaveLength(200);
   jest.mocked(shareFriendPubActivity).mockClear();
   expect(await sendPing('Pivní okruh', { stop: stops[1], heading: false }, [])).toHaveProperty('error');
   expect(shareFriendPubActivity).not.toHaveBeenCalled();
+});
+
+it('remembers the last ping across a restart and reads anything broken as none', async () => {
+  const AsyncStorage = jest.requireMock('@react-native-async-storage/async-storage');
+  const ping = { runId: 'r1', stopId: 'a', status: 'sent' as const, clientId: 'c1' };
+  saveLastPing(ping);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(await loadLastPing()).toEqual(ping);
+  await AsyncStorage.setItem('na-pivo-tour-last-ping', '{"runId":7}');
+  expect(await loadLastPing()).toBeNull();
 });

@@ -316,12 +316,7 @@ export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Pro
   });
 }
 
-const { flush: _flush, abortInFlight, idle } = createCoalescingFlush(flushUnlocked);
-
-/** Resolves once a flush already delivering has finished, so a direct send lands after anything it had on its way. */
-export function friendsQueueIdle(): Promise<void> {
-  return idle();
-}
+const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
 
 /** Drop all pending Parta ops without attempting delivery (account boundary). */
 export function clearFriendsQueue(): Promise<void> {

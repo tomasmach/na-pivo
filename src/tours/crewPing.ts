@@ -1,8 +1,10 @@
 import { generateUuidV4 } from '@/data/account';
 import { shareFriendPubActivity } from '@/data/friendsClient';
-import { dropQueuedTourPings, enqueueFriendOp, friendsQueueIdle, isRetriableFriendError } from '@/data/friendsQueue';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { dropQueuedTourPings, enqueueFriendOp, flushFriendsQueue, isRetriableFriendError } from '@/data/friendsQueue';
 import { t } from '@/i18n';
 import { pubFromStop } from './counterLink';
+import type { CrewPingState } from './TourCrew';
 import type { TourRun, TourStop } from './model';
 
 /** Where friends should come: the last stop checked off, else the one the crew walks to. */
@@ -35,11 +37,28 @@ export async function sendPing(title: string, target: { stop: TourStop; heading:
   const clientId = generateUuidV4();
   const startedAt = new Date().toISOString();
   await dropQueuedTourPings();
-  // An older ping already on its way must reach the server first, or it would win over this one.
-  await friendsQueueIdle();
+  // Anything still waiting (an older cinknutí from the counter too) goes first, so it cannot land after this one.
+  await flushFriendsQueue();
   const result = await shareFriendPubActivity(pub, message, clientId, recipientIds, startedAt, tour);
   if (result.ok) return { status: 'sent', clientId };
   if (!isRetriableFriendError(result)) return { error: result.detail || t.friends.shareError };
   await enqueueFriendOp({ op: 'activity', clientId, payload: { pub, message, recipientIds, startedAt, tour } });
   return { status: 'queued', clientId };
+}
+
+const LAST_PING_KEY = 'na-pivo-tour-last-ping';
+
+/** The last tour ping survives a restart, so the same stop is not offered again. Anything malformed reads as none. */
+export async function loadLastPing(): Promise<CrewPingState | null> {
+  try {
+    const ping = JSON.parse((await AsyncStorage.getItem(LAST_PING_KEY)) ?? 'null') as CrewPingState | null;
+    return ping && typeof ping.runId === 'string' && typeof ping.stopId === 'string' && typeof ping.clientId === 'string'
+      && (ping.status === 'sent' || ping.status === 'queued') ? ping : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastPing(ping: CrewPingState | null): void {
+  void (ping ? AsyncStorage.setItem(LAST_PING_KEY, JSON.stringify(ping)) : AsyncStorage.removeItem(LAST_PING_KEY)).catch(() => undefined);
 }

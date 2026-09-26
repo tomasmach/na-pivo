@@ -6581,8 +6581,9 @@ class FriendActivityView(APIView):
                     or activity.expires_at <= now
                     or activity.cache_key != cache_key
                     or previous_target_signature != target_signature
-                    # Pinged from the counter first, then from a tour: friends hear it is a tour now.
-                    or (bool(data.get("tour_title")) and activity.message != (data.get("message") or ""))
+                    # Every new tour ping tells friends (the app offers one per stop), even at a pub they heard
+                    # about from the counter or an earlier walk; a retry of the same ping stays quiet.
+                    or (bool(data.get("tour_title")) and activity.client_id != data["client_id"])
                 )
                 if activity is None:
                     activity = FriendPubActivity.objects.create(
