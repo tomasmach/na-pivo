@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronRightIcon, EllipsisIcon, HistoryIcon } from '@/components/shared/IconGlyph';
+import { ChevronRightIcon, EllipsisIcon, HistoryIcon, SearchIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { useToursStore } from '@/stores/toursStore';
 import { t, intlLocale } from '@/i18n';
@@ -78,7 +78,11 @@ export default function ToursScreen() {
 
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
     <TourHeader title={t.tours.title} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/friends' as Href)}
-      right={empty ? undefined : <Pressable style={ui.iconButton} accessibilityRole="button" accessibilityLabel={t.tours.more} onPress={more}><EllipsisIcon color={Colors.foam} size={23} /></Pressable>} />
+      right={<>
+        {/* Search works with an empty list and offline too, so the magnifier is always there. */}
+        <Pressable style={ui.iconButton} accessibilityRole="button" accessibilityLabel={t.tours.discoverOpen} onPress={() => router.push('/tours/discover' as Href)}><SearchIcon color={Colors.foam} size={21} /></Pressable>
+        {!empty && <Pressable style={ui.iconButton} accessibilityRole="button" accessibilityLabel={t.tours.more} onPress={more}><EllipsisIcon color={Colors.foam} size={23} /></Pressable>}
+      </>} />
     <ScrollView contentContainerStyle={styles.content}>
       <TourText style={ui.heading}>{t.tours.mine}</TourText>
       <TourError code={store.error} />

@@ -2,7 +2,7 @@ import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 import { tourBoundary } from './toursBoundary';
-import { CHALLENGE_MAX, type CrewMember, type TourPlan, type TourError, type TourPublication, uuidValid, validPlan, validPublication } from '@/tours/model';
+import { CHALLENGE_MAX, type CrewMember, publicTokenValid, type TourPlan, type TourError, type TourPublication, uuidValid, validPlan, validPublication } from '@/tours/model';
 export interface PublicTourAuthor {
   id: string;
   nickname: string;
@@ -306,4 +306,47 @@ export async function fetchTourRunPreview(runId: string, publicId: string): Prom
     return null;
   return { organizer, going: Number.isInteger(data?.going) ? data!.going as number : 1,
     members: (Array.isArray(data?.members) ? data!.members : []).map(parseAuthor).filter((a): a is PublicTourAuthor => !!a) };
+}
+
+export type TourStopsFilter = '2-3' | '4-5' | '6-8';
+export interface TourSearchQuery { q?: string; lat?: number; lon?: number; stops?: TourStopsFilter | null; challenges?: boolean; page?: number }
+export interface PublicTourHit {
+  id: string;
+  token: string;
+  title: string;
+  city: string;
+  stopCount: number;
+  walkM: number;
+  hasChallenges: boolean;
+  peopleCount: number;
+  author: PublicTourAuthor;
+  /** Metres to the first pub; null when the phone sent no position. */
+  distanceM: number | null;
+}
+/** `nearby: false` means nothing within 25 km; the results are the nearest from elsewhere. */
+export type TourSearchResult = { ok: true; results: PublicTourHit[]; nextPage: number | null; nearby: boolean } | { ok: false; offline: boolean };
+function parseHit(raw: unknown): PublicTourHit | null {
+  const h = raw as { id?: unknown; token?: unknown; title?: unknown; city?: unknown; stop_count?: unknown; walk_m?: unknown; has_challenges?: unknown;
+    people_count?: unknown; author?: unknown; distance_m?: unknown } | null;
+  const author = parseAuthor(h?.author);
+  if (!h || !author || !uuidValid(h.id) || !publicTokenValid(h.token) || typeof h.title !== 'string' || !h.title)
+    return null;
+  return {
+    id: h.id, token: h.token, title: h.title, city: typeof h.city === 'string' ? h.city : '',
+    stopCount: Number.isInteger(h.stop_count) ? h.stop_count as number : 0, walkM: Number.isFinite(h.walk_m) ? h.walk_m as number : 0,
+    hasChallenges: h.has_challenges === true, peopleCount: Number.isInteger(h.people_count) ? h.people_count as number : 0, author,
+    distanceM: Number.isFinite(h.distance_m) ? h.distance_m as number : null,
+  };
+}
+/** POST keeps the walker's position out of URLs and server logs. */
+export async function searchPublicTours(query: TourSearchQuery): Promise<TourSearchResult> {
+  const r = await request('/v1/tour-publications/search', 'POST', query);
+  if (!r.ok)
+    // A sign-in switching accounts is not a lost connection; it just did not load this time.
+    return { ok: false, offline: r.status === 0 && !r.stale };
+  const data = r.data as { results?: unknown[]; next_page?: unknown; nearby?: unknown } | null;
+  return {
+    ok: true, results: (Array.isArray(data?.results) ? data!.results : []).map(parseHit).filter((hit): hit is PublicTourHit => !!hit),
+    nextPage: Number.isInteger(data?.next_page) ? data!.next_page as number : null, nearby: data?.nearby !== false,
+  };
 }
