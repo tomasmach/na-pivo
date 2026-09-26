@@ -105,3 +105,10 @@ it('saves a group in the full compose only once it has a name and someone in it'
   fireEvent.changeText(screen.getByPlaceholderText(t.friends.recipientGroupPlaceholder), 'Pátek');
   expect(save()).toEqual({ disabled: false });
 });
+
+it('never drops people from saved groups when shown only part of the party', () => {
+  usePartyGroupsStore.setState({ groups: [{ id: 'g1', name: 'Kluci', memberIds: ['eva', 'pepa'], updatedAt: '' }, { id: 'g2', name: 'Jen Pepa', memberIds: ['pepa'], updatedAt: '' }] });
+  // Pepa walks along, so the sheet lists everyone but him.
+  sheet(jest.fn(), jest.fn(), { friends: friends.filter((friend) => friend.id !== 'pepa') });
+  expect(usePartyGroupsStore.getState().groups.map((group) => group.memberIds)).toEqual([['eva', 'pepa'], ['pepa']]);
+});

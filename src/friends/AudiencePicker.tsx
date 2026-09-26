@@ -3,9 +3,11 @@
  * party, a saved group, or friends picked one by one (and saved as a group).
  *
  * Controlled: the host keeps the {@link Audience} and turns it into recipient
- * ids with {@link audienceIds} when it sends.
+ * ids with {@link audienceIds} when it sends. `friends` may be a subset of the
+ * party (a tour leaves out who walks along), so this never prunes saved groups;
+ * only a host that shows the whole party does.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CheckIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import type { FriendProfile } from '@/data/friendsClient';
@@ -90,15 +92,10 @@ export default function AudiencePicker({ friends, value, onChange, header = true
   const showToast = useToastStore((s) => s.show);
   const groups = usePartyGroupsStore((s) => s.groups);
   const upsertGroup = usePartyGroupsStore((s) => s.upsertGroup);
-  const pruneMemberIds = usePartyGroupsStore((s) => s.pruneMemberIds);
   const [groupName, setGroupName] = useState('');
   const picked = useMemo(() => audienceIds(value, friends) ?? [], [friends, value]);
   const count = value.mode === 'all' ? friends.length : picked.length;
   const canSave = picked.length > 0 && groupName.trim().length > 0;
-
-  useEffect(() => {
-    pruneMemberIds(friends.map((friend) => friend.id));
-  }, [friends, pruneMemberIds]);
 
   const selectGroup = useCallback((groupId: string) => {
     const group = usePartyGroupsStore.getState().groups.find((item) => item.id === groupId);

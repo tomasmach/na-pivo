@@ -51,6 +51,7 @@ import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { t } from '@/i18n';
+import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -138,6 +139,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
   const [placeTab, setPlaceTab] = useState<0 | 1>(0);
   const [timeTab, setTimeTab] = useState<0 | 1>(0);
   const [audience, setAudience] = useState<Audience>(EVERYONE);
+  const pruneMemberIds = usePartyGroupsStore((s) => s.pruneMemberIds);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedPub, setSelectedPub] = useState<Pub | null>(null);
   const [message, setMessage] = useState('');
@@ -196,6 +198,11 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
 
   const options = placeTab === 0 ? nearbyOptions : recentOptions;
   const targetRecipientIds = useMemo(() => audienceIds(audience, friends), [audience, friends]);
+
+  // The whole party is here, so friends who left can drop out of saved groups.
+  useEffect(() => {
+    pruneMemberIds(friends.map((friend) => friend.id));
+  }, [friends, pruneMemberIds]);
 
   // Effective selection: an explicit pick, else the first option in the current
   // tab (so the CTA lights up without a tap, and the default follows the tab).
