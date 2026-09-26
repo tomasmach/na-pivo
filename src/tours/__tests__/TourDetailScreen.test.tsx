@@ -77,7 +77,7 @@ jest.mock('../TourCrew', () => ({ TourCrewRow: ({ ping, onPing }: { ping: boolea
 }, TourCrewSheet: () => null, going: (crew: { members?: { left: boolean }[] }) => (crew.members ?? []).filter((member) => !member.left),
 inviting: (crew?: { closed?: boolean; refused?: boolean }) => !!crew && !crew.closed && !crew.refused }));
 jest.mock('@/friends/PingSheet', () => ({ __esModule: true, default: jest.fn(() => null) }));
-jest.mock('@/data/friendsQueue', () => ({ friendActivityState: jest.fn(async () => 'queued') }));
+jest.mock('@/data/friendsQueue', () => ({ friendActivityState: jest.fn(async () => 'queued'), flushFriendsQueue: jest.fn(async () => undefined) }));
 // Undefined keeps the party unknown for tests that do not care, so no late state update lands after them.
 const mockFriends = { current: undefined as { ghost: boolean; friends: { id: string }[] } | null | undefined };
 jest.mock('@/data/friendsClient', () => ({

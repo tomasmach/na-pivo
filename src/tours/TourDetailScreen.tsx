@@ -25,7 +25,7 @@ import { TourMap } from './TourMap';
 import { TourCrewRow, TourCrewSheet, going, type CrewPingState, type CrewPingView } from './TourCrew';
 import { pingRecipients, pingStop, sendPing } from './crewPing';
 import { loadPartyFriends, type PartyFriends } from '@/data/friendsClient';
-import { friendActivityState } from '@/data/friendsQueue';
+import { flushFriendsQueue, friendActivityState } from '@/data/friendsQueue';
 import PingSheet from '@/friends/PingSheet';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
 import { TourHistoryRow, TourJourneyStop, TourLeg, TourMapPreview, type StopFactsLine } from './TourJourney';
@@ -93,8 +93,8 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
       if (alive && state !== 'queued') setPing(state === 'sent' ? { ...waiting, status: 'sent' } : null);
     });
     check();
-    // The queue flushes when the app comes back to the front, which does not change focus.
-    const foreground = AppState.addEventListener('change', (next) => { if (next === 'active') check(); });
+    // The queue flushes when the app comes back to the front, which does not change focus; look once that flush is done.
+    const foreground = AppState.addEventListener('change', (next) => { if (next === 'active') void flushFriendsQueue().then(check); });
     return () => { alive = false; foreground.remove(); };
   }, [waiting, focused, crewSheet, pingSheet]);
   // A ping sheet waiting for the crew sheet to leave must not open on another screen.
