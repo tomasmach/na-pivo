@@ -254,6 +254,20 @@ describe('flushDrinksQueue', () => {
     jest.restoreAllMocks();
   });
 
+  it('stays quiet when the rejected drink was already removed from the diary', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'gone' })]));
+    (submitDrink as jest.Mock).mockImplementation(
+      async (_entry: DrinkEntry, _signal: AbortSignal, onRejected: (field?: string) => void) => {
+        onRejected();
+        return 'permanent-error';
+      },
+    );
+    await flushDrinksQueue();
+
+    expect(await readQueue()).toEqual([]);
+    expect(useToastStore.getState().message).toBeNull();
+  });
+
   it('drops a drink over the daily cap without flagging it for a fix', async () => {
     countLocally('a');
     await enqueueDrink(entry({ client_id: 'a' }), { deliver: false });

@@ -85,10 +85,15 @@ const runMutation = createQueueLock();
 /** Keep a drink the server refused in the local diary, flagged for fixing. One
  *  toast per flush is enough, however many drinks it rejected. */
 function noteRejectedDrinks(rejected: { clientId: string; field?: string }[]): void {
-  if (rejected.length === 0) return;
-  const { markDrinkRejected } = useTallyStore.getState();
-  rejected.forEach(({ clientId, field }) => markDrinkRejected(clientId, field));
-  useToastStore.getState().show(t.counter.drinkRejectedToast(rejected.length), {
+  // A drink removed while its POST was in flight has no row left to fix.
+  const { current, history, markDrinkRejected } = useTallyStore.getState();
+  const localIds = new Set(
+    [...(current ? [current] : []), ...history].flatMap((s) => s.drinks.map((d) => d.id)),
+  );
+  const kept = rejected.filter(({ clientId }) => localIds.has(clientId));
+  if (kept.length === 0) return;
+  kept.forEach(({ clientId, field }) => markDrinkRejected(clientId, field));
+  useToastStore.getState().show(t.counter.drinkRejectedToast(kept.length), {
     icon: React.createElement(InfoIcon, { size: 20, color: Colors.amber }),
   });
 }
