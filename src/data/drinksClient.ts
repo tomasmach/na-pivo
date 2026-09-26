@@ -184,17 +184,21 @@ export async function fetchDrinks(signal?: AbortSignal): Promise<WireDrink[] | n
 const DRINK_LIMITED_TOAST_GAP_MS = 60_000;
 let lastDrinkLimitedToastAt = 0;
 
-/**
- * True when a 422 response is the server's daily anti-abuse cap
- * (`{"code": "drink_limited"}`) rather than a validation error. Body parsing is
- * best-effort — any malformed body reads as a plain validation 422.
- */
-async function isDrinkLimitedResponse(resp: Response): Promise<boolean> {
+/** Best-effort parse of a 400/422 body: the daily cap code and the first
+ *  rejected field path (`validation_errors: [{field, code}]`). Malformed or
+ *  older bodies read as a plain validation error with no field. */
+async function readRejection(resp: Response): Promise<{ limited: boolean; field?: string }> {
   try {
-    const body = (await resp.json()) as { code?: unknown };
-    return body?.code === 'drink_limited';
+    const body = (await resp.json()) as { code?: unknown; validation_errors?: unknown };
+    const first = Array.isArray(body?.validation_errors)
+      ? (body.validation_errors[0] as { field?: unknown } | undefined)
+      : undefined;
+    return {
+      limited: body?.code === 'drink_limited',
+      ...(typeof first?.field === 'string' ? { field: first.field } : {}),
+    };
   } catch {
-    return false;
+    return { limited: false };
   }
 }
 
@@ -278,6 +282,8 @@ export function buildDrinkEntry(input: DrinkInput, clientId: string): DrinkEntry
 export async function submitDrink(
   entry: DrinkEntry,
   signal?: AbortSignal,
+  /** Called with the first rejected field path on a validation rejection. */
+  onRejected?: (field?: string) => void,
 ): Promise<SubmitDrinkOutcome> {
   if (signal?.aborted) return 'retry';
 
@@ -326,7 +332,9 @@ export async function submitDrink(
       }
       return 'ok';
     }
-    if (resp.status === 422 && (await isDrinkLimitedResponse(resp))) {
+    const rejection =
+      resp.status === 400 || resp.status === 422 ? await readRejection(resp) : null;
+    if (resp.status === 422 && rejection?.limited) {
       // Server anti-abuse daily cap: drop from the queue, but tell the user
       // their entry stays local-only. There is nothing to fix, so it is not
       // flagged as rejected.
@@ -349,6 +357,7 @@ export async function submitDrink(
       result,
       retryable: result === 'retry',
     });
+    if (result === 'permanent-error') onRejected?.(rejection?.field);
     return result;
   } catch {
     // network / timeout / abort / malformed response — keep for a later flush.

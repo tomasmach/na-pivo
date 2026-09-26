@@ -27,6 +27,7 @@ import {
   resumableSession,
   IDLE_TIMEOUT_MS,
   migrateTally,
+  rejectedFieldOf,
   type TallySession,
 } from '../tallyStore';
 
@@ -396,7 +397,8 @@ describe('fixDrinkInSession', () => {
   it('replaces the details of a rejected drink and makes it pending again', () => {
     useTallyStore.getState().addDrink(PUB_A, beer({ volumeMl: 250, at: '2026-06-14T19:00:00.000Z' }));
     useTallyStore.getState().archiveCurrent('manual');
-    useTallyStore.getState().markDrinkRejected('id-1');
+    useTallyStore.getState().markDrinkRejected('id-1', 'beer.volume_ml');
+    expect(rejectedFieldOf(useTallyStore.getState().history[0].drinks[0])).toBe('beer.volume_ml');
     const startedAt = useTallyStore.getState().history[0].startedAt;
 
     expect(
@@ -418,6 +420,13 @@ describe('fixDrinkInSession', () => {
     });
     useTallyStore.getState().markDrinkSynced('id-1');
     expect(useTallyStore.getState().history[0].drinks[0].syncStatus).toBe('sent');
+  });
+
+  it('ignores a malformed persisted rejected field', () => {
+    const drink = { id: 'x', beerName: 'Pivo', at: '2026-06-14T19:00:00.000Z', syncStatus: 'rejected' as const };
+    expect(rejectedFieldOf({ ...drink, rejectedField: 42 as unknown as string })).toBeUndefined();
+    expect(rejectedFieldOf(drink)).toBeUndefined();
+    expect(rejectedFieldOf({ ...drink, syncStatus: 'sent', rejectedField: 'beer.name' })).toBeUndefined();
   });
 
   it('refuses an empty name', () => {

@@ -239,6 +239,42 @@ describe('submitDrink', () => {
     await expect(submitDrink(entry)).resolves.toBe('permanent-error');
   });
 
+  it('reports the first rejected field of a validation 400, and none for malformed bodies', async () => {
+    setBackend('https://api.example.com');
+    const onRejected = jest.fn();
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        code: 'drink_validation_failed',
+        validation_errors: [
+          { field: 'beer.volume_ml', code: 'max_value' },
+          { field: 'beer.price_czk', code: 'min_value' },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+    await expect(submitDrink(entry, undefined, onRejected)).resolves.toBe('permanent-error');
+    expect(onRejected).toHaveBeenCalledWith('beer.volume_ml');
+
+    onRejected.mockClear();
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ validation_errors: [{ field: 42 }] }),
+    })) as unknown as typeof fetch;
+    await expect(submitDrink(entry, undefined, onRejected)).resolves.toBe('permanent-error');
+    expect(onRejected).toHaveBeenCalledWith(undefined);
+
+    onRejected.mockClear();
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 422,
+      json: async () => ({ code: 'drink_limited' }),
+    })) as unknown as typeof fetch;
+    await expect(submitDrink(entry, undefined, onRejected)).resolves.toBe('limited');
+    expect(onRejected).not.toHaveBeenCalled();
+  });
+
   it('tells the daily drink_limited 422 apart and toasts the user (once per gap)', async () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({

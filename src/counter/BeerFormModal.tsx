@@ -37,7 +37,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { CameraIcon, PlusIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
+import { CameraIcon, InfoIcon, PlusIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
 import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { formatVolume, t } from '@/i18n';
@@ -132,6 +132,10 @@ interface BeerFormModalProps {
   /** Menu mode only: add a 0,3 l sibling directly below this row. */
   onAddSmallVariant?: () => void;
   canAddSmallVariant?: boolean;
+  /** One line under the title, e.g. why a saved drink needs fixing. */
+  notice?: string;
+  /** Keep submit disabled until something differs from the prefilled form. */
+  requireChange?: boolean;
 }
 
 /**
@@ -155,6 +159,8 @@ export function BeerFormModal({
   onRemove,
   onAddSmallVariant,
   canAddSmallVariant = false,
+  notice,
+  requireChange = false,
 }: BeerFormModalProps) {
   return (
     <Modal
@@ -181,6 +187,8 @@ export function BeerFormModal({
           onRemove={onRemove}
           onAddSmallVariant={onAddSmallVariant}
           canAddSmallVariant={canAddSmallVariant}
+          notice={notice}
+          requireChange={requireChange}
         />
       ) : null}
     </Modal>
@@ -201,6 +209,8 @@ interface BeerFormBodyProps {
   onRemove?: () => void;
   onAddSmallVariant?: () => void;
   canAddSmallVariant: boolean;
+  notice?: string;
+  requireChange: boolean;
 }
 
 function BeerFormBody({
@@ -217,6 +227,8 @@ function BeerFormBody({
   onRemove,
   onAddSmallVariant,
   canAddSmallVariant,
+  notice,
+  requireChange,
 }: BeerFormBodyProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -286,7 +298,6 @@ function BeerFormBody({
   const priceValid =
     outside || menuMode ? priceText.trim() === '' || priceCzk !== null : priceCzk !== null;
   const nameValid = nameLocked || trimmedName.length > 0;
-  const canSubmit = priceValid && nameValid;
   const placeholder = menuMode
     ? t.contribute.beerPriceOptional
     : outside
@@ -329,6 +340,17 @@ function BeerFormBody({
       ? undefined
       : parseCustomMl(customMl, drinkType)
     : selectedPreset;
+
+  // What submit would send, compared with the form as it opened.
+  const formState = [
+    drinkType,
+    trimmedName,
+    priceText.trim(),
+    volumeMl ?? '',
+    outside && drinkType === 'beer' ? servingType : '',
+  ].join('|');
+  const [openedFormState] = useState(formState);
+  const canSubmit = priceValid && nameValid && (!requireChange || formState !== openedFormState);
 
   const title =
     titleOverride ??
@@ -421,6 +443,17 @@ function BeerFormBody({
               <XIcon size={20} color={Colors.foamMuted} />
             </Pressable>
           </View>
+
+          {notice ? (
+            <View style={styles.notice}>
+              <View style={styles.noticeIcon}>
+                <InfoIcon size={14} color={Colors.amber} />
+              </View>
+              <Text style={styles.noticeText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {notice}
+              </Text>
+            </View>
+          ) : null}
 
           <KeyboardAwareScrollView
             style={[styles.list, contentHeight > 0 ? { height: contentHeight } : null]}
@@ -743,6 +776,20 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     ...softDrop(),
+  },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  noticeIcon: { marginTop: 2 },
+  noticeText: {
+    flex: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    lineHeight: 19,
+    color: Colors.amber,
   },
   grabber: {
     width: 40,

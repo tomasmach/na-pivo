@@ -6,6 +6,7 @@ import {
   sessionBreakdown,
   eveningPriceLabel,
   sessionDrinkActionGroups,
+  canFixRejectedField,
   drinkingDaysBetween,
   eveningDayRelation,
   formatEveningDate,
@@ -111,6 +112,17 @@ describe('sessionBreakdown', () => {
       'shot',
     ]);
     expect(sessionDrinkSummary(s)).toBe('1 pivo · 1 nealko · 2 panáky');
+  });
+});
+
+describe('canFixRejectedField', () => {
+  it('lets the drink form fix drink fields and unknown rejections, not the place or time', () => {
+    expect(canFixRejectedField('beer.volume_ml')).toBe(true);
+    expect(canFixRejectedField('beer.name')).toBe(true);
+    expect(canFixRejectedField(undefined)).toBe(true);
+    expect(canFixRejectedField('lat')).toBe(false);
+    expect(canFixRejectedField('name')).toBe(false);
+    expect(canFixRejectedField('drank_at')).toBe(false);
   });
 });
 

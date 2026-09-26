@@ -249,16 +249,11 @@ export default function DiaryScreen({
   const lastNight = nights[0] ?? null;
   const olderNights = nights.slice(1);
   // Drinks the server refused stay here until fixed; the nudge leads to the
-  // newest evening that holds one.
+  // newest evening that holds one and counts only what that evening shows.
   const rejected = useMemo(() => {
-    let count = 0;
-    let session: TallySession | null = null;
-    for (const night of nights) {
-      const inNight = night.drinks.filter((drink) => drink.syncStatus === 'rejected').length;
-      if (inNight > 0 && !session) session = night;
-      count += inNight;
-    }
-    return session ? { count, session } : null;
+    const isRejected = (drink: TallySession['drinks'][number]) => drink.syncStatus === 'rejected';
+    const session = nights.find((night) => night.drinks.some(isRejected));
+    return session ? { count: session.drinks.filter(isRejected).length, session } : null;
   }, [nights]);
 
   // ── Lifetime numbers for the sheet. This precedence is lifted verbatim from

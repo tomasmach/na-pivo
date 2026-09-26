@@ -10,6 +10,7 @@
 
 import {
   drinkingDayKey,
+  rejectedFieldOf,
   sessionDrinkTypeCounts,
   type TallyDrink,
   type TallySession,
@@ -37,6 +38,8 @@ export interface DrinkActionGroup extends BreakdownLine {
   servingType?: TallyDrink['servingType'];
   /** Every drink in the row was refused by the server and needs fixing. */
   rejected?: true;
+  /** First field the server refused, when it said which. */
+  rejectedField?: string;
   drinks: TallyDrink[];
 }
 
@@ -50,12 +53,13 @@ export function sessionDrinkActionGroups(session: TallySession | null): DrinkAct
     const drinkType = normalizeDrinkType(drink.drinkType);
     const servingType = drink.servingType ?? 'unknown';
     const rejected = drink.syncStatus === 'rejected';
+    const rejectedField = rejectedFieldOf(drink);
     const key = [
       drinkType,
       drink.beerName.trim().toLowerCase(),
       drink.volumeMl ?? '',
       servingType,
-      rejected ? 'rejected' : '',
+      rejected ? `rejected:${rejectedField ?? ''}` : '',
     ].join('|');
     const priceCzk = typeof drink.priceCzk === 'number' ? drink.priceCzk : 0;
     const existing = groups.get(key);
@@ -81,9 +85,22 @@ export function sessionDrinkActionGroups(session: TallySession | null): DrinkAct
       group.servingType = drink.servingType;
     }
     if (rejected) group.rejected = true;
+    if (rejectedField) group.rejectedField = rejectedField;
     groups.set(key, group);
   }
   return Array.from(groups.values());
+}
+
+/** Fields of the queued payload the drink form cannot change: the place and
+ *  time come from the evening, so a rejection there can only be removed. */
+const UNFIXABLE_REJECTED_FIELDS = new Set([
+  'name', 'lat', 'lng', 'city', 'external_id', 'place_context', 'drank_at',
+  'client_id', 'evening_client_id', 'party_code',
+]);
+
+/** Whether the drink form can fix a rejection of `field`. Unknown means yes. */
+export function canFixRejectedField(field: string | undefined): boolean {
+  return !field || !UNFIXABLE_REJECTED_FIELDS.has(field);
 }
 
 /**

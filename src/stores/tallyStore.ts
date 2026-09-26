@@ -67,6 +67,9 @@ export interface TallyDrink {
    *  `rejected` means the server refused the payload, so it only lives here
    *  until the user fixes or removes it. */
   syncStatus?: 'pending' | 'sent' | 'rejected';
+  /** Wire path of the first field the server refused (e.g. `beer.volume_ml`),
+   *  kept only while rejected. Read it through rejectedFieldOf(). */
+  rejectedField?: string;
 }
 
 /** One sitting at one place on one drinking day. Usually a pub; an outside
@@ -185,7 +188,7 @@ interface TallyState {
    *  A rejected drink stays rejected until it is fixed. */
   markDrinkSynced: (id: string) => void;
   /** The server refused this drink for good; keep it and flag it for fixing. */
-  markDrinkRejected: (id: string) => void;
+  markDrinkRejected: (id: string, field?: string) => void;
   /** Replace a rejected drink's details and mark it pending for a new send. */
   fixDrinkInSession: (startedAt: string, drinkId: string, fix: DrinkFix) => boolean;
   /** The pub was renamed from the mapping hub — keep the live session's display
@@ -306,14 +309,23 @@ function setDrinkSyncStatus(
   state: TallyState,
   id: string,
   status: 'sent' | 'rejected',
+  rejectedField?: string,
 ): Partial<TallyState> {
   let changed = false;
   const mark = (session: TallySession): TallySession => {
     const drinks = session.drinks.map((drink) => {
-      if (drink.id !== id || drink.syncStatus === status) return drink;
-      if (status === 'sent' && drink.syncStatus === 'rejected') return drink;
+      if (drink.id !== id) return drink;
+      if (status === 'sent' && drink.syncStatus !== 'pending' && drink.syncStatus !== undefined) {
+        return drink;
+      }
+      if (status === 'rejected' && drink.syncStatus === 'rejected' && drink.rejectedField === rejectedField) {
+        return drink;
+      }
       changed = true;
-      return { ...drink, syncStatus: status };
+      const next: TallyDrink = { ...drink, syncStatus: status };
+      delete next.rejectedField;
+      if (status === 'rejected' && rejectedField) next.rejectedField = rejectedField;
+      return next;
     });
     return changed ? { ...session, drinks } : session;
   };
@@ -324,6 +336,13 @@ function setDrinkSyncStatus(
   }
   const history = state.history.map((session) => (changed ? session : mark(session)));
   return changed ? { history } : state;
+}
+
+/** The refused field of a rejected drink; malformed persisted values read as unknown. */
+export function rejectedFieldOf(drink: TallyDrink): string | undefined {
+  return drink.syncStatus === 'rejected' && typeof drink.rejectedField === 'string'
+    ? drink.rejectedField
+    : undefined;
 }
 
 export const useTallyStore = create<TallyState>()(
@@ -602,8 +621,8 @@ export const useTallyStore = create<TallyState>()(
       markDrinkSynced: (id) =>
         set((state) => setDrinkSyncStatus(state, id, 'sent')),
 
-      markDrinkRejected: (id) =>
-        set((state) => setDrinkSyncStatus(state, id, 'rejected')),
+      markDrinkRejected: (id, field) =>
+        set((state) => setDrinkSyncStatus(state, id, 'rejected', field)),
 
       fixDrinkInSession: (startedAt, drinkId, fix) => {
         const beerName = fix.beerName.trim();

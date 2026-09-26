@@ -1668,10 +1668,10 @@ export const en: Strings = {
     }),
     rejected: (count: number) =>
     englishPlural(count, {
-      one: "The server didn't take 1 entry",
-      other: `The server didn't take ${count} entries`,
+      one: '1 entry to fix',
+      other: `${count} entries to fix`,
     }),
-    rejectedFix: 'Fix',
+    rejectedFix: 'Show',
     cta: 'Write up a night',
     emptyTitle: 'No trail yet',
     emptyBody: 'Tap a beer in the Counter, or write up a night you remember.',
@@ -1884,9 +1884,10 @@ export const en: Strings = {
     },
     drinkLimitedToast: "That's more than the server takes in one day, so this one stays in your diary only.",
     drinkRejectedToast: (count: number) =>
-      count === 1
-        ? "The server didn't take this entry. Fix it in the Diary."
-        : `The server didn't take ${count} entries. Fix them in the Diary.`,
+      englishPlural(count, {
+        one: "1 entry didn't save. It's in your Diary.",
+        other: `${count} entries didn't save. They're in your Diary.`,
+      }),
     coasterEmpty: 'Clean coaster',
     ctaPick: 'What are you having?',
     ctaFirstBeer: 'Log your first beer',
@@ -2148,7 +2149,11 @@ export const en: Strings = {
     deleteDrinkBody: "I'll drop the count on that line by one.",
     deleteDrinkConfirm: 'Remove',
     deleteDrinkCancel: 'Cancel',
-    drinkRejected: "The server didn't take this. Fix it or remove it.",
+    drinkRejected: "This didn't save, it's only on your phone. Fix it or remove it.",
+    drinkRejectedRemoveOnly: "This didn't save and can't be fixed here. Remove it.",
+    fixDrinkHintVolume: "I couldn't take this size. Pick another one.",
+    fixDrinkHintPrice: "I couldn't take this price. Try 1 to 1000 CZK.",
+    fixDrinkHintName: "I couldn't take this name. Try a shorter one.",
     fixDrinkTitle: 'Fix the entry',
     fixDrinkSubmit: 'Save again',
     fixDrinkSaved: "Got it. I'll try saving it again.",

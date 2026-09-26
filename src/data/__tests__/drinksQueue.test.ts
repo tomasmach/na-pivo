@@ -183,11 +183,17 @@ describe('flushDrinksQueue', () => {
     countLocally('a');
     await enqueueDrink(entry({ client_id: 'a' }), { deliver: false });
 
-    (submitDrink as jest.Mock).mockResolvedValue('permanent-error');
+    (submitDrink as jest.Mock).mockImplementation(
+      async (_entry: DrinkEntry, _signal: AbortSignal, onRejected: (field?: string) => void) => {
+        onRejected('beer.volume_ml');
+        return 'permanent-error';
+      },
+    );
     await flushDrinksQueue();
 
     expect(await readQueue()).toEqual([]);
     expect(localStatus('a')).toBe('rejected');
+    expect(useTallyStore.getState().current?.drinks[0].rejectedField).toBe('beer.volume_ml');
     expect(useToastStore.getState().message).toBe(t.counter.drinkRejectedToast(1));
 
     // The counter marks a drink synced once it left the queue; that must not
@@ -213,10 +219,14 @@ describe('flushDrinksQueue', () => {
   it('does not flag a rejection that lands after an account-boundary clear', async () => {
     countLocally('a');
     let resolveFirst!: (value: 'permanent-error') => void;
-    (submitDrink as jest.Mock).mockReturnValueOnce(
-      new Promise<'permanent-error'>((resolve) => {
-        resolveFirst = resolve;
-      }),
+    (submitDrink as jest.Mock).mockImplementationOnce(
+      (_entry: DrinkEntry, _signal: AbortSignal, onRejected: (field?: string) => void) =>
+        new Promise<'permanent-error'>((resolve) => {
+          resolveFirst = (value) => {
+            onRejected();
+            resolve(value);
+          };
+        }),
     );
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
 
@@ -244,6 +254,7 @@ describe('flushDrinksQueue', () => {
     expect(submitDrink).toHaveBeenCalledWith(
       expect.objectContaining({ client_id: 'a' }),
       expect.anything(),
+      expect.any(Function),
     );
 
     const enqueueing = enqueueDrink(entry({ client_id: 'b' }), { deliver: false });
@@ -274,6 +285,7 @@ describe('flushDrinksQueue', () => {
     expect(submitDrink).toHaveBeenCalledWith(
       expect.objectContaining({ client_id: 'a' }),
       expect.anything(),
+      expect.any(Function),
     );
 
     resolveSubmit('ok');
@@ -308,6 +320,7 @@ describe('flushDrinksQueue', () => {
     expect(submitDrink).toHaveBeenCalledWith(
       expect.objectContaining({ client_id: 'b' }),
       expect.anything(),
+      expect.any(Function),
     );
     expect(await readQueue()).toEqual([]);
   });

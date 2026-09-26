@@ -23,7 +23,11 @@
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
  */
 
+import React from 'react';
+
 import { submitDrink, type DrinkEntry } from './drinksClient';
+import { InfoIcon } from '@/components/shared/IconGlyph';
+import { Colors } from '@/theme/colors';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import { isDrinkType, isOutsidePlaceContext, isServingType } from '@/drinks/drinkTypes';
 import { t } from '@/i18n';
@@ -80,11 +84,13 @@ const runMutation = createQueueLock();
 
 /** Keep a drink the server refused in the local diary, flagged for fixing. One
  *  toast per flush is enough, however many drinks it rejected. */
-function noteRejectedDrinks(clientIds: string[]): void {
-  if (clientIds.length === 0) return;
+function noteRejectedDrinks(rejected: { clientId: string; field?: string }[]): void {
+  if (rejected.length === 0) return;
   const { markDrinkRejected } = useTallyStore.getState();
-  clientIds.forEach(markDrinkRejected);
-  useToastStore.getState().show(t.counter.drinkRejectedToast(clientIds.length));
+  rejected.forEach(({ clientId, field }) => markDrinkRejected(clientId, field));
+  useToastStore.getState().show(t.counter.drinkRejectedToast(rejected.length), {
+    icon: React.createElement(InfoIcon, { size: 20, color: Colors.amber }),
+  });
 }
 
 /** Attempts to send every queued drink, keeping only the ones that should
@@ -94,7 +100,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   if (queue.length === 0) return;
 
   const deliveredOrDropped = new Set<string>();
-  const rejected: string[] = [];
+  const rejected: { clientId: string; field?: string }[] = [];
   const snapshotIds = new Set(queue.map((entry) => entry.client_id));
   for (const entry of queue) {
     // Stop before delivering the next drink once an account-boundary clear has
@@ -105,9 +111,10 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     if (signal.aborted) break;
     deliveringIds.add(entry.client_id);
     try {
-      const result = await submitDrink(entry, signal);
+      const result = await submitDrink(entry, signal, (field) => {
+        rejected.push({ clientId: entry.client_id, ...(field ? { field } : {}) });
+      });
       if (result !== 'retry') deliveredOrDropped.add(entry.client_id);
-      if (result === 'permanent-error') rejected.push(entry.client_id);
     } finally {
       deliveringIds.delete(entry.client_id);
     }
