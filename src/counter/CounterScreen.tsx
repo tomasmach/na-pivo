@@ -421,6 +421,8 @@ function Tacek({
   // The party a quick ping can go to, while its sheet is open.
   const [pingParty, setPingParty] = useState<{ friends: FriendProfile[]; ghost: boolean } | null>(null);
   const pingLoading = useRef(false);
+  const liveCell = useRef(cell);
+  useEffect(() => { liveCell.current = cell; }, [cell]);
   const broadcasted = cell !== null && broadcastCell === cell;
 
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -1357,11 +1359,15 @@ function Tacek({
   async function openPingSheet() {
     if (pingLoading.current) return;
     pingLoading.current = true;
+    const from = cell;
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(), 3000);
-    const party = await loadPartyFriends(timeout.signal);
+    // A newer party only refreshes a sheet still open for the same pub.
+    const party = await loadPartyFriends(timeout.signal, (fresh) => setPingParty((open) => (open && liveCell.current === from ? fresh : open)));
     clearTimeout(timer);
     pingLoading.current = false;
+    // The place changed while the party loaded: this ping was about the old one.
+    if (liveCell.current !== from) return;
     if (party) setPingParty(party);
     else {
       const failure = await handleShareWithFriends();

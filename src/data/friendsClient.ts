@@ -750,10 +750,26 @@ async function requestJson(
   }
 }
 
-/** The party as the phone last saw it, for picking who hears a cinknutí; fetched once when Parta was never opened here. Null offline with nothing saved. */
-export async function loadPartyFriends(signal?: AbortSignal): Promise<{ friends: FriendProfile[]; ghost: boolean } | null> {
-  const dashboard = (await loadFriendsDashboardSnapshot())?.dashboard ?? await fetchFriendsDashboard(signal);
+export interface PartyFriends { friends: FriendProfile[]; ghost: boolean }
+
+function partyOf(dashboard: FriendsDashboard | null | undefined): PartyFriends | null {
   return dashboard ? { friends: dashboard.friends, ghost: dashboard.settings?.ghostMode === true } : null;
+}
+
+/**
+ * The party for picking who hears a cinknutí. Answers at once from the party the
+ * phone last saw and still asks the server, since a friend may have accepted or
+ * invisible mode changed since Parta was open: `onFresh` gets the newer party.
+ * Without a saved party it waits for the server. Null offline with nothing saved.
+ */
+export async function loadPartyFriends(signal?: AbortSignal, onFresh?: (party: PartyFriends) => void): Promise<PartyFriends | null> {
+  const saved = partyOf((await loadFriendsDashboardSnapshot())?.dashboard);
+  if (!saved) return partyOf(await fetchFriendsDashboard(signal));
+  void fetchFriendsDashboard().then((dashboard) => {
+    const fresh = partyOf(dashboard);
+    if (fresh) onFresh?.(fresh);
+  });
+  return saved;
 }
 
 export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
