@@ -48,9 +48,15 @@ export default function PingSheet({ title, detail, friends, ghost = false, onSen
     sending.current = true;
     setBusy(true);
     setError(null);
-    const failure = await onSend(recipients);
-    sending.current = false;
-    setBusy(false);
+    let failure: string | null;
+    try {
+      failure = await onSend(recipients);
+    } catch {
+      failure = t.friends.shareError;
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
     if (failure) setError(failure);
     else onClose();
   }
