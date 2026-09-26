@@ -5,14 +5,12 @@ import { dropQueuedTourPings, enqueueFriendOp, flushFriendsQueue, isRetriableFri
 import { t } from '@/i18n';
 import { pubFromStop } from './counterLink';
 import type { CrewPingState } from './TourCrew';
-import type { TourRun, TourStop } from './model';
+import { runPosition, type TourRun, type TourStop } from './model';
 
-/** Where friends should come: the last stop checked off, else the one the crew walks to. */
+/** Where friends should come: where the screen says the crew is, else the stop it walks to. */
 export function pingStop(run: Pick<TourRun, 'snapshot' | 'statuses'>): { stop: TourStop; heading: boolean } | null {
-  const { stops } = run.snapshot;
-  for (let index = stops.length - 1; index >= 0; index--)
-    if (run.statuses[stops[index].id] === 'visited') return { stop: stops[index], heading: false };
-  const next = stops.find((stop) => !run.statuses[stop.id]);
+  const { here, next } = runPosition(run);
+  if (here) return { stop: here, heading: false };
   return next ? { stop: next, heading: true } : null;
 }
 

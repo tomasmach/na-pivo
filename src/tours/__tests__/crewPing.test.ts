@@ -29,6 +29,8 @@ it('points friends at the last pub checked off, or the one the crew walks to', (
   expect(pingStop(run({ a: 'visited', b: 'visited' }))?.stop.name).toBe('U Medvídků');
   expect(pingStop(run({ a: 'skipped' }))).toEqual({ stop: stops[1], heading: true });
   expect(pingStop(run({ a: 'skipped', b: 'skipped', c: 'skipped' }))).toBeNull();
+  // A stop checked off out of order does not move the crew past the one still ahead, as on screen.
+  expect(pingStop(run({ a: 'visited', c: 'visited' }))).toEqual({ stop: stops[0], heading: false });
 });
 
 it('leaves out friends already walking and keeps the plain audience when nobody is left out', () => {
