@@ -589,8 +589,10 @@ describe('CounterScreen pinging the party', () => {
     enqueueFriendOp.mockRestore();
   });
 
-  it('without a saved party still pings everyone, as before', async () => {
+  it.each([['no', null], ['an empty', { friends: [], ghost: false }]])('with %s saved party still pings everyone, as before', async (_label, saved) => {
     useNearbyPub.mockReturnValue(nearbyState());
+    // An empty party saved before a friend accepted elsewhere must not block the ping offline.
+    mockLoadPartyFriends.mockResolvedValueOnce(saved);
     const renderer = render();
     await act(async () => {
       renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
