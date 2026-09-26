@@ -287,13 +287,15 @@ describe('AddPubScreen location confirmation', () => {
 
   it('drops a map pin when a place is picked until its address is confirmed', async () => {
     const place = { lat: 50.0884, lng: 14.4036, city: 'Praha', address: 'Nerudova 2' };
-    mockSearchParams = { lat: '49.195', lng: '16.606', source: 'map' };
     mockLookupAddedPubLocation.mockResolvedValue(place);
     mockSuggestPubsToAdd.mockResolvedValue([{ id: 'google:abc', name: 'U Kocoura', providerPlaceId: 'abc' }]);
     mockResolvePubSearchResult.mockResolvedValue({ id: 'google:abc', name: 'U Kocoura', ...place });
     jest.useFakeTimers();
     try {
       await renderScreen();
+      await press(t.a11y.addPubPickOnMapButton);
+      await press('mock-pin-confirm');
+      expect(button(t.a11y.addPubMapPinSelected)).toBeDefined();
       change(t.a11y.addPubNameInput, 'U Koc');
       await act(async () => { jest.advanceTimersByTime(400); });
       await press(t.a11y.addPubSuggestion('U Kocoura'));
