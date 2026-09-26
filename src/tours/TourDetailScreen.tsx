@@ -96,7 +96,8 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
       if (alive && state !== 'queued') rememberPing(state === 'sent' ? { ...waiting, status: 'sent' } : null);
     });
     check();
-    // The queue flushes when the app comes back to the front, which does not change focus; look once that flush is done.
+    // A cold start or coming back to the front flushes the queue without changing focus; look again once that is done.
+    void flushFriendsQueue().then(check);
     const foreground = AppState.addEventListener('change', (next) => { if (next === 'active') void flushFriendsQueue().then(check); });
     return () => { alive = false; foreground.remove(); };
   }, [waiting, focused, crewSheet, pingSheet]);
@@ -185,7 +186,8 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const crewIds = active?.crew && !active.crew.refused ? going(active.crew).map((member) => member.id) : [];
   const awayFriends = friends ? friends.friends.filter((friend) => !crewIds.includes(friend.id)) : [];
   const pingDone = ping && active && pingTarget && ping.runId === active.id && ping.stopId === pingTarget.stop.id ? ping.status : null;
-  const pingNote = pingTarget ? t.tours.crewPingNote(pingTarget.stop.name, pingTarget.heading, crewIds.length > 1) : '';
+  // The tour's name goes out with the ping, so the note says so before anything leaves the phone.
+  const pingNote = pingTarget && active ? t.tours.crewPingNote(active.snapshot.title, pingTarget.stop.name, pingTarget.heading, crewIds.length > 1) : '';
   const pingView: CrewPingView | null = pingTarget && friends?.friends.length
     ? { note: pingNote, state: friends.ghost ? 'ghost' : awayFriends.length === 0 ? 'allHere' : pingDone } : null;
   // The row offers a ping only while there is someone away to tell and this pub was not pinged yet.

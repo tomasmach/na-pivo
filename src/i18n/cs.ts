@@ -2922,8 +2922,8 @@ export const cs = {
     // Cinknutí to friends from Parta who are not at the table; "parta" on the tour screen is the crew, so these say "kámoši".
     crewPing: 'Cinknout kámošům', crewPingShort: 'Cinknout', crewPingThem: 'Cinknout jim', crewPingFriends: 'Kámoši z Party',
     crewPingAway: 'Kámoši, co tu nejsou', crewPingHint: 'Vybereš, kterým kámošům z Party cinkneš',
-    crewPingNote: (pub: string, heading: boolean, together: boolean) =>
-      `Dám vědět, ${heading ? (together ? 'kam míříte' : 'kam míříš') : (together ? 'kde sedíte' : 'kde sedíš')}: ${pub}.`,
+    crewPingNote: (title: string, pub: string, heading: boolean, together: boolean) =>
+      `Dám vědět, že ${together ? 'jdete' : 'jdeš'} tour „${title}“ a ${heading ? (together ? 'kam míříte' : 'kam míříš') : (together ? 'kde sedíte' : 'kde sedíš')}: ${pub}.`,
     crewPingSent: 'Cinknuto. Kámoši to vidí v Partě.', crewPingQueued: 'Cinknu, až chytneš signál.',
     crewPingGhost: 'Máš zapnutý neviditelný režim, cinknutí by nikomu nepřišlo.', crewPingAllHere: 'Všichni kámoši už jdou s tebou.',
     crewPingMessage: (title: string) => `Tour de pub: ${title}`,

@@ -2321,8 +2321,8 @@ export const en: Strings = {
     crewQrA11y: 'QR code to join the crew',
     crewPing: 'Ping your mates', crewPingShort: 'Ping', crewPingThem: 'Ping them', crewPingFriends: 'Mates from Parta',
     crewPingAway: 'Mates who aren’t here', crewPingHint: 'Pick which mates from Parta hear it',
-    crewPingNote: (pub: string, heading: boolean, together: boolean) =>
-      `I’ll tell them where ${together ? 'you’re all' : 'you’re'} ${heading ? 'heading' : 'sitting'}: ${pub}.`,
+    crewPingNote: (title: string, pub: string, heading: boolean, together: boolean) =>
+      `I’ll tell them you’re on the tour “${title}” and where ${together ? 'you’re all' : 'you’re'} ${heading ? 'heading' : 'sitting'}: ${pub}.`,
     crewPingSent: 'Pinged. Your mates see it in Parta.', crewPingQueued: 'I’ll ping them once you get a signal.',
     crewPingGhost: 'Invisible mode is on, so the ping would reach nobody.', crewPingAllHere: 'All your mates are already walking with you.',
     crewPingMessage: (title: string) => `Pub crawl: ${title}`,

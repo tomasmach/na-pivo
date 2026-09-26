@@ -70,11 +70,11 @@ it('offers the ping where there is no crew to invite, next to a refusal too, and
 it('lets friends who are not at the table be pinged from under the QR, or says why not', () => {
   const onPing = jest.fn();
   const run = tourRun({ crew: { ...crew, members: [person('vojta'), person('pepa')] } });
-  const view = (state: CrewPingView['state']): CrewPingView => ({ note: t.tours.crewPingNote('U Pinkasů', false, true), state });
+  const view = (state: CrewPingView['state']): CrewPingView => ({ note: t.tours.crewPingNote('Pivní okruh', 'U Pinkasů', false, true), state });
   const screen = render(<TourCrewSheet run={run} pingView={view(null)} onPing={onPing} onClose={jest.fn()} />);
   expect(screen.getByText(t.tours.crewSheetNote)).toBeTruthy();
   expect(screen.getByText(t.tours.crewPingAway)).toBeTruthy();
-  expect(screen.getByText(t.tours.crewPingNote('U Pinkasů', false, true))).toBe(screen.getByText('Dám vědět, kde sedíte: U Pinkasů.'));
+  expect(screen.getByText(t.tours.crewPingNote('Pivní okruh', 'U Pinkasů', false, true))).toBe(screen.getByText('Dám vědět, že jdete tour „Pivní okruh“ a kde sedíte: U Pinkasů.'));
   fireEvent.press(screen.getByText(t.tours.crewPingThem));
   expect(onPing).toHaveBeenCalled();
   for (const [state, text] of [['sent', t.tours.crewPingSent], ['queued', t.tours.crewPingQueued], ['ghost', t.tours.crewPingGhost], ['allHere', t.tours.crewPingAllHere]] as const) {
