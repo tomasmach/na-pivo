@@ -22,7 +22,7 @@ function failureText(failure: Failure, plan: TourPlan): string {
     return name && failure.field === 'challenge' ? e.publicChallenge(name) : failure.field === 'title' ? e.publicTitle(plan.title) : e.publicText;
   if (failure.error === 'unknown_pub' && name) return e.publicUnknownPub(name);
   if (failure.error === 'hidden_pub' && name) return e.publicHiddenPub(name);
-  if (failure.error === 'limit') return e.publicLimit;
+  if (failure.error === 'limit') return e.publicLimit(failure.limit ?? 10);
   if (failure.error === 'throttled') return e.publicThrottled;
   if (failure.error === 'network') return e.publicNetwork;
   return tourError(failure.error) ?? e.publicNetwork;
