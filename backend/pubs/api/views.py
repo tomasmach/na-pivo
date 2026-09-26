@@ -6581,6 +6581,9 @@ class FriendActivityView(APIView):
                     or activity.expires_at <= now
                     or activity.cache_key != cache_key
                     or previous_target_signature != target_signature
+                    # Every new tour ping tells friends (the app offers one per stop), even at a pub they heard
+                    # about from the counter or an earlier walk; a retry of the same ping stays quiet.
+                    or (bool(data.get("tour_title")) and activity.client_id != data["client_id"])
                 )
                 if activity is None:
                     activity = FriendPubActivity.objects.create(
@@ -6667,6 +6670,17 @@ class FriendActivityView(APIView):
                 )
                 notif_kind = FriendNotification.Kind.FRIEND_PLAN
                 push_kind = "friend_plan"
+            elif data.get("tour_title"):
+                # Same kind as a plain broadcast, so older apps still open Parta on tap.
+                title = LocalizedText(gettext_lazy("Kamarád jde tour de pub"))
+                body = LocalizedText(
+                    gettext_lazy("%(name)s jde tour „%(tour)s“ a teď míří sem: %(pub)s. Přidáš se na jedno?")
+                    if data.get("tour_heading")
+                    else gettext_lazy("%(name)s jde tour „%(tour)s“ a teď sedí tady: %(pub)s. Přidáš se na jedno?"),
+                    {"name": actor, "tour": data["tour_title"], "pub": activity.name},
+                )
+                notif_kind = FriendNotification.Kind.FRIEND_AT_PUB
+                push_kind = "friend_at_pub"
             else:
                 title = LocalizedText(gettext_lazy("Kamarád je na pivu"))
                 body = LocalizedText(

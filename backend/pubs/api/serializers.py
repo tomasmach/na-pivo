@@ -1066,6 +1066,16 @@ class FriendActivityRequestSerializer(_Pub200NameValidationMixin, PubInputSerial
         required=False,
         allow_empty=False,
     )
+    # Sent from a Tour de pub run: only picks the push wording, no new column.
+    tour_title = serializers.CharField(
+        max_length=120,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    # True while the crew is still walking to the stop rather than sitting in it.
+    tour_heading = serializers.BooleanField(required=False, default=False)
 
 
 class FriendshipSerializer(serializers.ModelSerializer):

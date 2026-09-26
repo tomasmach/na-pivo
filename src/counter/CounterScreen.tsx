@@ -66,7 +66,7 @@ import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { loadPartyFriends, shareFriendPubActivity, type PartyFriends } from '@/data/friendsClient';
-import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { dropQueuedTourPings, enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import PingSheet from '@/friends/PingSheet';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
@@ -1343,6 +1343,8 @@ function Tacek({
     setSharingWithFriends(true);
     const shareClientId = isThisSession && current?.clientId ? current.clientId : generateUuidV4();
     const startedAt = new Date().toISOString();
+    // A tour ping still waiting for signal must not land after this newer one.
+    await dropQueuedTourPings();
     const result = await shareFriendPubActivity(pub, '', shareClientId, recipientIds, startedAt);
     setSharingWithFriends(false);
     if (useTallyStore.getState().history.some((session) => session.clientId === shareClientId && session.closedAt)) return null;

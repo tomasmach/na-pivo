@@ -2319,6 +2319,13 @@ export const en: Strings = {
     crewRefusedOrganizer: 'You can’t bring a crew to this tour right now. You can still do it your own way.',
     crewSheetNote: 'Whoever scans it joins you. They will see your nickname and who else is going.',
     crewQrA11y: 'QR code to join the crew',
+    crewPing: 'Ping your mates', crewPingShort: 'Ping', crewPingThem: 'Ping them', crewPingFriends: 'Mates from Parta',
+    crewPingAway: 'Mates who aren’t here', crewPingHint: 'Pick which mates from Parta hear it',
+    crewPingNote: (title: string, pub: string, heading: boolean, together: boolean) =>
+      `I’ll tell them you’re on the tour “${title}” and where ${together ? 'you’re all' : 'you’re'} ${heading ? 'heading' : 'sitting'}: ${pub}.`,
+    crewPingSent: 'Pinged. Your mates see it in Parta.', crewPingQueued: 'I’ll ping them once you get a signal.',
+    crewPingGhost: 'Invisible mode is on, so the ping would reach nobody.', crewPingAllHere: 'All your mates are already walking with you.',
+    crewPingMessage: (title: string) => `Pub crawl: ${title}`,
     crewPrivacyTitle: 'Who sees what',
     crewPrivacyBody: 'Your crew only sees who walks with you. Stops and beers stay on your phone. When you get through at least half the pubs, I’ll count you in this tour’s number.',
     crewPrivacyOptedOut: 'Your crew only sees who walks with you. Stops and beers stay on your phone. I won’t count you in this tour’s number.',

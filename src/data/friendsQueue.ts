@@ -34,7 +34,9 @@ import {
   type ActivityResponseKind,
   type FriendActionError,
   type FriendActionResult,
+  type TourPing,
 } from './friendsClient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
 import type { Pub } from './pubs';
@@ -56,6 +58,8 @@ interface ActivityPayload {
   recipientIds?: string[];
   /** Original send time, preserved on offline retry. Missing on legacy ops. */
   startedAt?: string;
+  /** Set when the broadcast comes from a Tour de pub run. Missing on legacy ops. */
+  tour?: TourPing;
 }
 
 /** One pending Parta write, keyed (and deduped) by {@link dedupKey}. */
@@ -116,7 +120,9 @@ function isQueueItem(value: unknown): value is FriendQueueItem {
         (i.payload.startedAt === undefined ||
           (typeof i.payload.startedAt === 'string' && Number.isFinite(Date.parse(i.payload.startedAt)))) &&
         ((i as { payload?: ActivityPayload }).payload?.recipientIds === undefined ||
-          Array.isArray((i as { payload?: ActivityPayload }).payload?.recipientIds))
+          Array.isArray((i as { payload?: ActivityPayload }).payload?.recipientIds)) &&
+        (i.payload.tour === undefined ||
+          (typeof i.payload.tour?.title === 'string' && typeof i.payload.tour.heading === 'boolean'))
       );
     case 'end':
       return typeof i.clientId === 'string';
@@ -193,8 +199,10 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
       const { pub, message, scheduledFor } = item.payload;
       const result = scheduledFor
         ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
-        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt);
-      return classify(result);
+        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour);
+      const verdict = classify(result);
+      if (verdict === 'ok') await markDelivered(item.clientId);
+      return verdict;
     }
     case 'end':
       // No server id means the broadcast never synced (its pending upsert was
@@ -231,6 +239,8 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     // captured before the boundary, so it still lands on the right account.)
     if (signal.aborted) break;
     const key = dedupKey(item);
+    // A newer tour ping took this one out while the flush was on its way; sending it would move friends back.
+    if (item.op === 'activity' && item.payload.tour && !(await loadQueue()).some((queued) => dedupKey(queued) === key)) continue;
     attempted.set(key, signature(item));
     const result = await deliver(item);
     if (result !== 'retry') settled.add(key);
@@ -279,6 +289,39 @@ function isFinishedBroadcast(item: Extract<FriendQueueItem, { op: 'activity' }>)
   ));
 }
 
+/** A newer tour ping replaces any that still wait, so a late flush never moves friends back to a pub the crew left. */
+export function dropQueuedTourPings(): Promise<void> {
+  return runMutation(async () => {
+    await saveQueue((await loadQueue()).filter((item) => item.op !== 'activity' || !item.payload.tour));
+  });
+}
+
+/** Broadcasts delivered from the queue, kept past a restart, so a screen can tell sent from dropped. */
+const DELIVERED_KEY = 'na-pivo-friends-delivered';
+const delivered = new Set<string>();
+
+async function readDelivered(): Promise<string[]> {
+  try {
+    const ids = JSON.parse((await AsyncStorage.getItem(DELIVERED_KEY)) ?? '[]') as unknown;
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+// Stored before the queue entry goes, so a restart in between still knows it went out.
+async function markDelivered(clientId: string): Promise<void> {
+  delivered.add(clientId);
+  const ids = (await readDelivered()).filter((id) => id !== clientId);
+  await AsyncStorage.setItem(DELIVERED_KEY, JSON.stringify([...ids, clientId].slice(-20))).catch(() => undefined);
+}
+
+/** Whether a queued broadcast still waits, reached the server, or was dropped (rejected, Dopito). */
+export async function friendActivityState(clientId: string): Promise<'queued' | 'sent' | 'gone'> {
+  if ((await loadQueue()).some((item) => item.op === 'activity' && item.clientId === clientId)) return 'queued';
+  return delivered.has(clientId) || (await readDelivered()).includes(clientId) ? 'sent' : 'gone';
+}
+
 /** Dopito also cancels broadcasts that have not reached the server yet. */
 export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Promise<void> {
   return runMutation(async () => {
@@ -299,8 +342,10 @@ export function clearFriendsQueue(): Promise<void> {
   // so without this it could keep sending the previous account's ops under the
   // session that replaces this one.
   abortInFlight();
+  delivered.clear();
   return runMutation(async () => {
     await saveQueue([]);
+    await AsyncStorage.removeItem(DELIVERED_KEY).catch(() => undefined);
   });
 }
 

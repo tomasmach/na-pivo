@@ -167,7 +167,7 @@ it('Dopito discards offline broadcasts and delayed retries without blocking a ne
   });
   expect(shareFriendPubActivity).toHaveBeenCalledTimes(2);
   expect(shareFriendPubActivity).toHaveBeenLastCalledWith(
-    broadcastPub, undefined, useTallyStore.getState().current!.clientId, undefined, returnedAt,
+    broadcastPub, undefined, useTallyStore.getState().current!.clientId, undefined, returnedAt, undefined,
   );
 });
 

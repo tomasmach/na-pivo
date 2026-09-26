@@ -4,6 +4,7 @@ import { ensureAccount, generateUuidV4, getOrCreateDeviceId } from '@/data/accou
 import { readAccountMerge } from '@/data/accountMerge';
 import { beginTourAccountChange, endTourAccountChange, invalidateTours, tourBoundary } from '@/data/toursBoundary';
 import { deletePublishedTour, fetchPublishedTours, fetchSharedTour, fetchTourRun, type PublicTourInfo, publishPublicTour, publishTour, reportPublicTour, revokeTour, shareTour, toTourWire, unpublishPublicTour } from '@/data/toursClient';
+import { dropQueuedTourPings } from '@/data/friendsQueue';
 import { dropTourRunOps, enqueueTourRunOp, setTourRunDeliveryListener, type TourRunQueueItem } from '@/data/tourRunQueue';
 import type { Pub } from '@/data/pubs';
 import { CHALLENGE_MAX, cleanChallenge, cloneTour, crewThreshold, newTour, pubIdsOf, samePub, stopFromPub, TOUR_LIMIT, validPlan, validRun, validSchedule, uuidValid, type TourPlan, type TourRun, type TourResult, type TourError } from '@/tours/model';
@@ -515,7 +516,11 @@ export const useToursStore = create<ToursState>(() => ({
       d.runs.unshift({ ...d.activeRun, endedAt: new Date().toISOString() });
       d.activeRun = null;
     });
-    if (!result.ok || !queued.length)
+    if (!result.ok)
+      return result;
+    // A tour ping still waiting for signal would tell friends about a walk that is over.
+    void dropQueuedTourPings();
+    if (!queued.length)
       return result;
     const stored = await queueRunOps(queued);
     return stored.ok ? result : stored;

@@ -48,6 +48,8 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-pub',
   'na-pivo-added-pubs-queue',
   'na-pivo-party-groups',
+  'na-pivo-friends-delivered',
+  'na-pivo-tour-last-ping',
   'na-pivo-beer-photos',
   'na-pivo-vycep',
   // Retired 2.0 features can still have private data after an app update.

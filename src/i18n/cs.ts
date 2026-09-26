@@ -2919,6 +2919,14 @@ export const cs = {
     crewRefusedOrganizer: 'Partu k týhle tour teď přizvat nejde. Tour můžeš jít i po svém.',
     crewSheetNote: 'Kdo to naskenuje, přidá se k vám. Uvidí tvoji přezdívku a kdo další jde.',
     crewQrA11y: 'QR kód pro připojení k partě',
+    // Cinknutí to friends from Parta who are not at the table; "parta" on the tour screen is the crew, so these say "kámoši".
+    crewPing: 'Cinknout kámošům', crewPingShort: 'Cinknout', crewPingThem: 'Cinknout jim', crewPingFriends: 'Kámoši z Party',
+    crewPingAway: 'Kámoši, co tu nejsou', crewPingHint: 'Vybereš, kterým kámošům z Party cinkneš',
+    crewPingNote: (title: string, pub: string, heading: boolean, together: boolean) =>
+      `Dám vědět, že ${together ? 'jdete' : 'jdeš'} tour „${title}“ a ${heading ? (together ? 'kam míříte' : 'kam míříš') : (together ? 'kde sedíte' : 'kde sedíš')}: ${pub}.`,
+    crewPingSent: 'Cinknuto. Kámoši to vidí v Partě.', crewPingQueued: 'Cinknu, až chytneš signál.',
+    crewPingGhost: 'Máš zapnutý neviditelný režim, cinknutí by nikomu nepřišlo.', crewPingAllHere: 'Všichni kámoši už jdou s tebou.',
+    crewPingMessage: (title: string) => `Tour de pub: ${title}`,
     crewPrivacyTitle: 'Kdo co vidí',
     crewPrivacyBody: 'Parta vidí jen, kdo jde s vámi. Zastávky a piva zůstávají v telefonu. Když projdeš aspoň polovinu hospod, započítám tě do čísla u tour.',
     crewPrivacyOptedOut: 'Parta vidí jen, kdo jde s vámi. Zastávky a piva zůstávají v telefonu. Do čísla u tour tě nezapočítám.',
