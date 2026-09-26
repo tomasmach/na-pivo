@@ -82,7 +82,11 @@ export default function AddPubScreen() {
   const params = useLocalSearchParams();
   const editedClientId = useMemo(() => parseStringParam(params.clientId), [params.clientId]);
   const isEditing = editedClientId.length > 0;
-  const [locationCheck, setLocationCheck] = useState<{ clientId: string; required: boolean } | null>(null);
+  const [locationCheck, setLocationCheck] = useState<{
+    clientId: string;
+    required: boolean;
+    unsentCreate: boolean;
+  } | null>(null);
   const loadingSubmission = isEditing && locationCheck?.clientId !== editedClientId;
   const needsLocation = isEditing && (
     (locationCheck?.clientId === editedClientId && locationCheck.required) ||
@@ -93,14 +97,20 @@ export default function AddPubScreen() {
     let active = true;
     void loadAddedPubSubmissions().then((submissions) => {
       if (!active) return;
+      const submission = submissions.find((item) => item.client_id === editedClientId);
       setLocationCheck({
         clientId: editedClientId,
-        required: submissions.some((submission) =>
-          submission.client_id === editedClientId && submission.failureReason === 'location-not-found'),
+        required: submission?.failureReason === 'location-not-found',
+        unsentCreate: submission?.pendingOperation === 'create',
       });
     });
     return () => { active = false; };
   }, [editedClientId, isEditing]);
+  // An unsent addition is still a create, so an aimed pin is kept as is.
+  // Owner edits of a published pub are verified against the address instead.
+  const canPickOnMap = !isEditing || (
+    locationCheck?.clientId === editedClientId && locationCheck.unsentCreate
+  );
   const bumpCatalogRevision = usePubStore((s) => s.bumpCatalogRevision);
   const showToast = useToastStore((s) => s.show);
 
@@ -326,18 +336,21 @@ export default function AddPubScreen() {
       void clearPubsSnapshot();
     }
     const sync = isEditing
-      ? enqueueAddedPubEdit({
-          client_id: editedClientId,
-          ...(nameChanged ? { name: trimmedName } : {}),
-          ...(selectedLocation
-            ? {
-                lat: selectedLocation.lat,
-                lng: selectedLocation.lng,
-                city: trimmedCity,
-                address: trimmedAddress,
-              }
-            : {}),
-        })
+      ? enqueueAddedPubEdit(
+          {
+            client_id: editedClientId,
+            ...(nameChanged ? { name: trimmedName } : {}),
+            ...(selectedLocation
+              ? {
+                  lat: selectedLocation.lat,
+                  lng: selectedLocation.lng,
+                  city: trimmedCity,
+                  address: trimmedAddress,
+                }
+              : {}),
+          },
+          { locationSource: selectedLocation?.source === 'pin' ? 'map_pin' : undefined },
+        )
       : enqueueAddedPub(buildAddedPubEntry(
           {
             name: trimmedName,
@@ -350,24 +363,45 @@ export default function AddPubScreen() {
           clientId,
         ));
     void sync.then((state) => {
-      trackUiInteraction('add_pub_submit', state === 'failed' ? 'failure' : 'success');
+      const failed = state === 'failed' || state === 'location-not-found';
+      trackUiInteraction('add_pub_submit', failed ? 'failure' : 'success');
       bumpCatalogRevision();
+      if (state === 'synced') void fireSuccessHaptic();
+      if (state === 'location-not-found' && !isEditing) {
+        // The form explains what to fix, so the user lands right in it.
+        router.push({
+          pathname: '/add-pub',
+          params: {
+            clientId,
+            name: trimmedName,
+            city: trimmedCity,
+            address: trimmedAddress,
+            lat: String(selectedLocation!.lat),
+            lng: String(selectedLocation!.lng),
+            needsLocation: '1',
+          },
+        });
+        return;
+      }
       showToast(
         state === 'synced'
           ? isEditing
             ? t.addPub.editSavedToast
             : t.addPub.savedToast
-          : state === 'failed'
-            ? t.addPub.failedToast
-            : t.addPub.queuedToast,
+          : state === 'location-not-found' && canPickOnMap
+            ? t.addPub.stillNotFoundToast
+            : failed
+              ? t.addPub.failedToast
+              : isEditing
+                ? t.addPub.editQueuedToast
+                : t.addPub.queuedToast,
       );
     });
-    void fireSuccessHaptic();
-    showToast(isEditing ? t.addPub.editQueuedToast : t.addPub.queuedToast);
     router.back();
   }, [
     address,
     bumpCatalogRevision,
+    canPickOnMap,
     canSubmit,
     city,
     editedClientId,
@@ -414,14 +448,19 @@ export default function AddPubScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.iconRow}>
-          <View style={styles.iconWell}>
-            <MapPinIcon size={18} color={Colors.amber} />
+        {/* Once a pin fixes the unfound address, the warning has done its job. */}
+        {!(needsLocation && mapPinSelected) && (
+          <View style={styles.iconRow}>
+            <View style={styles.iconWell}>
+              <MapPinIcon size={18} color={Colors.amber} />
+            </View>
+            <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
+              {needsLocation
+                ? canPickOnMap ? t.addPub.locationNeedsFixOrPin : t.addPub.locationNeedsFix
+                : isEditing ? t.addPub.editIntro : t.addPub.intro}
+            </Text>
           </View>
-          <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-            {needsLocation ? t.addPub.locationNeedsFix : isEditing ? t.addPub.editIntro : t.addPub.intro}
-          </Text>
-        </View>
+        )}
 
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>{t.addPub.nameLabel}</Text>
@@ -530,14 +569,16 @@ export default function AddPubScreen() {
 
         <View style={styles.locationCard}>
           <Text style={styles.locationHeader}>{isEditing && !needsLocation ? t.addPub.editLocationHeader : t.addPub.locationHeader}</Text>
-          <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isEditing && !needsLocation ? t.addPub.editLocationBody : t.addPub.locationBody}
-          </Text>
+          {!needsLocation && (
+            <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
+              {isEditing ? t.addPub.editLocationBody : t.addPub.locationBody}
+            </Text>
+          )}
           <Pressable
             onPress={() => void handleUseCurrentLocation()}
             style={({ pressed }) => [
               styles.locationRow,
-              isEditing && styles.locationRowLast,
+              !canPickOnMap && styles.locationRowLast,
               pressed && styles.locationRowPressed,
             ]}
             accessibilityRole="button"
@@ -550,21 +591,19 @@ export default function AddPubScreen() {
               <Text style={styles.locationRowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
                 {locating
                   ? t.addPub.locating
-                  : isEditing
+                  : isEditing && !canPickOnMap
                     ? t.addPub.editUseCurrentLocation
                     : t.addPub.useCurrentLocation}
               </Text>
               <Text style={styles.locationRowBody} maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={3}>
-                {isEditing ? t.addPub.editUseCurrentLocationHint : t.addPub.useCurrentLocationHint}
+                {isEditing && !canPickOnMap ? t.addPub.editUseCurrentLocationHint : t.addPub.useCurrentLocationHint}
               </Text>
             </View>
             <View style={styles.locationRowStatus}>
               <MapPinIcon size={15} color={Colors.amber} />
             </View>
           </Pressable>
-          {/* Edits are re-geocoded from the address on the server, so a pin
-              there would be silently overruled. */}
-          {!isEditing && (
+          {canPickOnMap && (
           <Pressable
             onPress={handleOpenMap}
             style={({ pressed }) => [

@@ -68,6 +68,35 @@ describe('added pub state registry', () => {
     expect(submitAddedPubEdit).not.toHaveBeenCalled();
   });
 
+  it('reports an unfindable address and saves the addition once a map pin replaces it', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue('location-not-found');
+    await expect(enqueueAddedPub(ENTRY)).resolves.toBe('location-not-found');
+    await flushAddedPubsQueue();
+    expect(submitAddedPub).toHaveBeenCalledTimes(1);
+
+    const pinned = { lat: 50.0815, lng: 14.4179, city: ENTRY.city, address: ENTRY.address };
+    (submitAddedPub as jest.Mock).mockResolvedValue({
+      clientId: ENTRY.client_id, cacheKey: 'pinned', name: ENTRY.name, ...pinned,
+    });
+    await expect(
+      enqueueAddedPubEdit({ client_id: ENTRY.client_id, ...pinned }, { locationSource: 'map_pin' }),
+    ).resolves.toBe('synced');
+    expect(submitAddedPub).toHaveBeenLastCalledWith(expect.objectContaining({
+      client_id: ENTRY.client_id, ...pinned, location_source: 'map_pin',
+    }));
+    expect(submitAddedPubEdit).not.toHaveBeenCalled();
+  });
+
+  it('drops an earlier map pin origin when an unsent addition gets a confirmed address', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
+    await enqueueAddedPub({ ...ENTRY, location_source: 'map_pin' });
+    const corrected = { lat: 49.1951, lng: 16.6068, city: 'Brno', address: 'Česká 12' };
+    await enqueueAddedPubEdit({ client_id: ENTRY.client_id, ...corrected });
+    expect(submitAddedPub).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ location_source: 'map_pin' }),
+    );
+  });
+
   it('keeps a rejected location edit and restores the last confirmed point', async () => {
     (submitAddedPub as jest.Mock).mockResolvedValue({
       clientId: ENTRY.client_id, cacheKey: 'confirmed', ...ENTRY,
@@ -77,7 +106,7 @@ describe('added pub state registry', () => {
     (submitAddedPubEdit as jest.Mock).mockResolvedValue('location-not-found');
     await expect(enqueueAddedPubEdit({
       client_id: ENTRY.client_id, lat: 49.19, lng: 16.61, city: 'Brno', address: 'Neznámá 1',
-    })).resolves.toBe('failed');
+    })).resolves.toBe('location-not-found');
     await flushAddedPubsQueue();
     expect(submitAddedPubEdit).toHaveBeenCalledTimes(1);
     expect(upsertLocalPub).toHaveBeenLastCalledWith(expect.objectContaining({
