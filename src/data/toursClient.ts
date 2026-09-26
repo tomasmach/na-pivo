@@ -297,8 +297,8 @@ export const putTourRunMember = (runId: string, state: 'joined' | 'left' | 'comp
   runRequest(`/v1/tour-runs/${runId}/me`, 'PUT', { state, publication_id: publicId });
 export const fetchTourRun = (runId: string) => runRequest(`/v1/tour-runs/${runId}`, 'GET');
 export interface TourRunPreview { organizer: PublicTourAuthor; going: number; members: PublicTourAuthor[] }
-export async function fetchTourRunPreview(runId: string): Promise<TourRunPreview | null> {
-  const r = await request(`/v1/tour-runs/${runId}/preview`, 'GET');
+export async function fetchTourRunPreview(runId: string, publicId: string): Promise<TourRunPreview | null> {
+  const r = await request(`/v1/tour-runs/${runId}/preview?publication=${encodeURIComponent(publicId)}`, 'GET');
   const data = r.data as { organizer?: unknown; going?: unknown; members?: unknown[] } | null;
   const organizer = r.ok ? parseAuthor(data?.organizer) : null;
   if (!organizer)

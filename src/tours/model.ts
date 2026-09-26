@@ -8,6 +8,8 @@ export type TourError = 'storage' | 'corrupt_storage' | 'account_changed' | 'bus
 export type TourResult = {
   ok: true;
   id?: string;
+  /** The public tour as the server has it now, when saving one. */
+  tour?: TourPlan;
 } | {
   ok: false;
   error: TourError;

@@ -106,6 +106,29 @@ it('takes a completion back after "Nezapočítávat mě", whether it is still wa
   expect(store.getState().activeRun!.crew).not.toHaveProperty('counted');
 });
 
+it('lets a finished walk leave the number but not rejoin it', async () => {
+  const id = await savedPublicPlan();
+  await store.getState().startRun(id, { eligible: true });
+  const run = store.getState().activeRun!;
+  await store.getState().markStop(run.snapshot.stops[0].id, 'visited');
+  await store.getState().markStop(run.snapshot.stops[1].id, 'visited');
+  deliver({ runId: run.id, publicId, op: 'complete', createdAt: new Date().toISOString() }, { run: serverRun(run.id), refused: false });
+  await settle();
+  await store.getState().endRun();
+  expect(await store.getState().setCrewOptOut(true, run.id)).toEqual({ ok: true });
+  expect(ops()).toContain('uncount');
+  expect(await store.getState().setCrewOptOut(false, run.id)).toEqual({ ok: false, error: 'invalid' });
+});
+
+it('joins on the route the organizer published, not an older saved copy', async () => {
+  await savedPublicPlan();
+  // The author swapped a pub since this phone saved the tour.
+  const republished = { ...remote, revision: 3, stops: [remote.stops[0], { ...remote.stops[1], id: '00000000-0000-4000-8000-000000000009', pubId: 'directory:p9', name: 'Pub 9' }] };
+  jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: republished, public: info });
+  await store.getState().joinCrew(token, '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab');
+  expect(store.getState().activeRun!.snapshot.stops.map((stop) => stop.name)).toEqual(['Pub 1', 'Pub 9']);
+});
+
 it('drops the party quietly when the server turns the join down', async () => {
   const runId = '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab';
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: remote, public: info });

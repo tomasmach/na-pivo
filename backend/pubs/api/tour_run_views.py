@@ -45,8 +45,9 @@ def _run_payload(run, viewer, request):
     return {
         "id": str(run.id), "publication_id": str(run.publication.public_id), "ended": run.ended_at is not None,
         "organizer_id": str(run.organizer.public_id) if run.organizer else None,
-        "members": [{**author_payload(m.account, request), "left": m.left_at is not None, "completed": m.completed_at is not None}
-                    for m in members],
+        # Only the walker learns their own completion; the party sees who walks, the public only the number.
+        "members": [{**author_payload(m.account, request), "left": m.left_at is not None,
+                     "completed": m.account_id == viewer.pk and m.completed_at is not None} for m in members],
         "me": {"completed": bool(me and me.completed_at), "left": bool(me and me.left_at)},
         "people_count": fresh_people_count(run.publication),
     }
@@ -108,8 +109,9 @@ class TourRunPreviewView(TourRunBase):
     def get(self, request, run_id):
         run = TourRun.objects.select_related("publication", "organizer").filter(pk=run_id, ended_at__isnull=True).first()
         hidden = _hidden_from(request.user)
+        expected = request.query_params.get("publication")
         if (run is None or run.organizer is None or run.registered_at <= timezone.now() - JOIN_WINDOW
-                or run.organizer_id in hidden):
+                or run.organizer_id in hidden or (expected and expected != str(run.publication.public_id))):
             return Response(status=404)
         members = [m.account for m in run.members.select_related("account").filter(left_at__isnull=True).order_by("joined_at")]
         visible = [account for account in members if account.pk not in hidden]
@@ -177,7 +179,8 @@ class TourRunMemberView(TourRunBase):
             # "Counted" means this walker will be in the public number; it shows up there
             # half an hour after joining, so a quick fake walk never bumps it at once.
             counted = bool(member and member.completed_at and is_quorum_trusted(account, now)
-                           and not account.ghost_mode and not account.excluded_from_leaderboards)
+                           and not account.ghost_mode and not account.excluded_from_leaderboards
+                           and run.registered_at >= run.publication.count_since)
         if state in ("completed", "uncounted"):
             fresh_people_count(run.publication, force=True)
         return Response({**_run_payload(run, account, request), "joined": state != "left", "counted": counted})
