@@ -47,9 +47,9 @@ it('sends only to the friends picked, and keeps the sheet open on a hard error',
   const onClose = jest.fn();
   const screen = sheet(onSend, onClose);
   fireEvent.press(screen.getByLabelText(t.friends.recipientCustom));
-  // "Vybrat" starts from the first three; leave only Eva.
-  fireEvent.press(screen.getByLabelText('pepa'));
-  fireEvent.press(screen.getByLabelText('karel'));
+  // Picking starts from nobody, so there is nothing to send yet.
+  expect(screen.getByLabelText(t.friends.composeSubmitNow).props.accessibilityState).toEqual({ disabled: true });
+  fireEvent.press(screen.getByLabelText('eva'));
   expect(screen.getByText(t.friends.recipientCustomSummary(1))).toBeTruthy();
   await act(async () => { fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
   expect(onSend).toHaveBeenCalledWith(['eva']);
