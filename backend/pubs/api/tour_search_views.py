@@ -26,6 +26,8 @@ PAGE = 20
 MAX_PAGE = 10
 NEARBY_KM = 25
 FALLBACK = 5
+# Most tours keep their number fresh from reads and completions; this only catches up the rest.
+RECOUNT_BATCH = 100
 STOP_BUCKETS = {"2-3": (2, 3), "4-5": (4, 5), "6-8": (6, 8)}
 KM_PER_DEGREE = 111.32
 
@@ -64,6 +66,13 @@ def _refresh_counts(publications):
         # A route republished meanwhile reset its count; never write the old walkers back over it.
         TourPublication.objects.filter(pk=publication.pk, count_since=publication.count_since).update(
             people_count=publication.people_count, people_count_at=now)
+
+
+def _most_walked(rows):
+    """Stale numbers would misplace tours in "most walked first", so a bounded batch is recounted before ranking."""
+    stale = Q(people_count_at__isnull=True) | Q(people_count_at__lte=timezone.now() - COUNT_TTL)
+    _refresh_counts(list(rows.filter(stale)[:RECOUNT_BATCH]))
+    return rows.order_by("-people_count", "-published_at", "pk")
 
 
 def _row(publication, request, lat, lon):
@@ -118,7 +127,7 @@ class TourSearchView(APIView):
                 rows = rows.filter(search_text__contains=word)
             # Near first when the walker shared a position, otherwise the most walked.
             rows = (rows.annotate(closeness=closeness).order_by("closeness", "pk") if closeness is not None
-                    else rows.order_by("-people_count", "-published_at", "pk"))
+                    else _most_walked(rows))
         elif closeness is not None:
             reach = NEARBY_KM / KM_PER_DEGREE
             dlon = reach / max(math.cos(math.radians(lat)), 0.01)
@@ -130,7 +139,7 @@ class TourSearchView(APIView):
                 nearby = False
                 rows = filtered.annotate(closeness=closeness).order_by("closeness", "pk")
         else:
-            rows = rows.order_by("-people_count", "-published_at", "pk")
+            rows = _most_walked(rows)
         limit = FALLBACK if not nearby else PAGE
         page = list(rows[start:start + limit + 1])
         more = nearby and len(page) > limit

@@ -43,7 +43,7 @@ async function deliver(item: TourRunQueueItem): Promise<'ok' | 'drop' | 'retry'>
   if (age > MAX_AGE_MS) return 'drop';
   const result = item.op === 'register' || item.op === 'end'
     ? await putTourRun(item.runId, item.publicId, item.op === 'end')
-    : await putTourRunMember(item.runId, MEMBER_STATE[item.op]);
+    : await putTourRunMember(item.runId, MEMBER_STATE[item.op], item.publicId);
   if (result.stale) return 'retry';
   if (result.status >= 200 && result.status < 300) {
     listener?.(item, { run: result.run, refused: result.refused === true });

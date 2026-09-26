@@ -112,6 +112,11 @@ export default function TourDiscoverScreen() {
   const term = searchTerm(query);
   const filtered = !!stops || challenges;
   const key = JSON.stringify([term, position, stops, challenges, retry]);
+  // A page that arrives after the search changed belongs to the old list.
+  const liveKey = useRef(key);
+  useEffect(() => { liveKey.current = key; }, [key]);
+  // Opened straight from a link, the store may not know yet which tours this phone reported.
+  useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   const current = response?.key === key ? response : null;
   const loading = retry === 0 || !current;
   const failure = current?.failure ?? null;
@@ -149,10 +154,10 @@ export default function TourDiscoverScreen() {
     setMore(true);
     const result = await searchPublicTours({ q: term, ...(position ?? {}), stops, challenges, page: current.results.nextPage });
     setMore(false);
-    if (!result.ok) return;
+    if (!result.ok || liveKey.current !== asked) return;
     const grow = (list: Results): Results => ({ ...list, nextPage: result.nextPage,
       hits: [...list.hits, ...result.results.filter((hit) => !list.hits.some((old) => old.id === hit.id))] });
-    setResponse((latest) => latest?.key !== asked || !latest.results ? latest : { ...latest, results: grow(latest.results) });
+    setResponse((latest) => !latest?.results ? latest : { ...latest, results: grow(latest.results) });
     setShown((list) => list && grow(list));
   }
 

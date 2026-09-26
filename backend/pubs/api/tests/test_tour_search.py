@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 
 import pytest
 from django.utils import timezone
@@ -81,6 +82,15 @@ def test_text_finds_names_pubs_and_cities_without_diacritics():
     assert titles(search(q="praha")) == ["Od vola", "Pátek u tygra"]
     assert titles(search(q="PEGAS", **PRAGUE)) == ["Brněnský okruh"]
     assert search(q="pegas", **PRAGUE).json()["results"][0]["distance_m"] > 150000
+
+
+def test_most_walked_first_ranks_by_numbers_recounted_first():
+    published("prvni", title="Stará sláva")
+    published("druhy", pubs=(2, 3), title="Nová hvězda")
+    # A number nobody recounted for an hour must not keep a tour on top that nobody really walked.
+    TourPublication.objects.filter(title="Stará sláva").update(people_count=5, people_count_at=timezone.now() - timedelta(hours=1))
+    TourPublication.objects.filter(title="Nová hvězda").update(people_count=1, people_count_at=timezone.now())
+    assert titles(search()) == ["Nová hvězda", "Stará sláva"]
 
 
 def test_with_nothing_close_it_says_so_and_offers_the_nearest():
