@@ -337,7 +337,7 @@ def _public_stops(stops):
         identity = resolve_pub_identity(cache_key, stop.name, lat=stop.lat, lng=stop.lon) if cache_key else None
         canonical_id = (identity.canonical_id if identity else None) or (_merged_pub_id(cache_key, stop.name) if cache_key else None)
         if canonical_id:
-            canonical = CanonicalPub.objects.filter(public_id=canonical_id).first()
+            canonical = CanonicalPub.objects.filter(public_id=canonical_id, active=True).first()
             if canonical is None:
                 raise _RejectedStopError("unknown_pub", _("Tuhle hospodu u veřejné tour neznám. Vyměň ji za hospodu z hledání."), index)
             key, name, city, pub_id = f"canonical:{canonical_id}", canonical.name, canonical.city, canonical_id
@@ -466,14 +466,16 @@ class TourPublicationReportView(APIView):
             ContentReport.objects.create(
                 reporter=request.user, target_account=owner, reason=serializer.validated_data["reason"],
                 comment=serializer.validated_data["comment"],
-                target_snapshot={"tour_publication_id": str(publication.public_id), "title": publication.title,
+                target_snapshot={"tour_publication_id": str(publication.public_id), "revision": publication.revision, "title": publication.title,
                                  "stops": [{"name": stop["name"], "challenge": stop["challenge"]} for stop in publication.snapshot["stops"]],
                                  "author": author_payload(owner)},
             )
             # Like hidden pubs: only a quorum of trusted accounts hides it for everyone.
             threshold = max(2, int(getattr(settings, "PUB_REPORT_GLOBAL_HIDE_THRESHOLD", 3)))
             reporters = (ContentReport.objects.filter(
+                # Only reports on the content that is public now count; a corrected version starts over.
                 trusted_account_q("reporter__"), target_snapshot__tour_publication_id=str(publication.public_id),
+                target_snapshot__revision=publication.revision,
                 status__in=[ContentReport.Status.NEW, ContentReport.Status.TRIAGED],
             ).values("reporter_id").distinct().count())
             if reporters >= threshold and publication.status == TourPublication.Status.ACTIVE:
