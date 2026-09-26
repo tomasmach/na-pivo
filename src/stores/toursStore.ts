@@ -45,9 +45,9 @@ interface ToursState extends ToursData {
   deletePlan: (id: string) => Promise<TourResult>;
   copyPlan: (id: string, runId?: string) => Promise<TourResult>;
   /** `crew` joins a party run (`joinRunId`) or, for a signed-in walker of a public tour, starts one. */
-  startRun: (id: string, crew?: { eligible: boolean; joinRunId?: string }) => Promise<TourResult>;
+  startRun: (id: string, crew?: { eligible: boolean; joinRunId?: string; route?: TourPlan }) => Promise<TourResult>;
   joinCrew: (token: string, runId: string) => Promise<TourResult>;
-  setCrewOptOut: (optOut: boolean) => Promise<TourResult>;
+  setCrewOptOut: (optOut: boolean, runId?: string) => Promise<TourResult>;
   refreshCrew: () => Promise<TourResult>;
   refreshPublicCount: (id: string) => Promise<TourResult>;
   markStop: (id: string, status: 'visited' | 'skipped' | null) => Promise<TourResult>;
@@ -321,10 +321,8 @@ export const useToursStore = create<ToursState>(() => ({
     const challenge = cleanChallenge(text);
     if (challenge.length > CHALLENGE_MAX)
       return { ok: false, error: 'invalid' };
-    if (challenge)
-      stop.challenge = challenge;
-    else
-      delete stop.challenge;
+    // Empty is a removal the server must hear; a missing challenge means this phone never knew it.
+    stop.challenge = challenge;
   }),
   saveDraft: () => mutate((d) => {
     if (!d.draft || !validPlan(d.draft) || !validSchedule(d.draft))
@@ -377,8 +375,10 @@ export const useToursStore = create<ToursState>(() => ({
       delete snapshot.source;
       delete snapshot.conflict;
       delete snapshot.publication;
+      if (crew?.joinRunId && crew.route)
+        snapshot.stops = cloneTour(crew.route).stops;
       d.activeRun = { id: generateUuidV4(), planId: id, snapshot, startedAt: new Date().toISOString(), endedAt: null, statuses: {} };
-      const link = publicLink(p);
+      const link = publicLink({ ...p, stops: snapshot.stops });
       if (crew?.eligible && link) {
         // The phone makes the run id, so the party QR works without signal.
         const runId = crew.joinRunId ?? d.activeRun.id;
@@ -396,7 +396,8 @@ export const useToursStore = create<ToursState>(() => ({
     const saved = await useToursStore.getState().savePublic(token);
     if (!saved.ok || !saved.id)
       return saved;
-    const started = await useToursStore.getState().startRun(saved.id, { eligible: true, joinRunId: runId });
+    // The party walks the route the organizer's QR stands for, even if this phone's copy is older or reordered.
+    const started = await useToursStore.getState().startRun(saved.id, { eligible: true, joinRunId: runId, route: saved.tour });
     return started.ok ? { ok: true, id: saved.id } : started;
   },
   markStop: async (id, status): Promise<TourResult> => {
@@ -416,13 +417,17 @@ export const useToursStore = create<ToursState>(() => ({
       queued.forEach((op) => { void enqueueTourRunOp(op); });
     return result;
   },
-  setCrewOptOut: async (optOut): Promise<TourResult> => {
+  setCrewOptOut: async (optOut, runId): Promise<TourResult> => {
     const queued: RunOp[] = [];
     let unsent = null as string | null;
     const result = await mutate((d) => {
-      const crew = d.activeRun?.crew;
-      if (!d.activeRun || !crew)
+      const run = runId && d.activeRun?.id !== runId ? d.runs.find((r) => r.id === runId) : d.activeRun;
+      const crew = run?.crew;
+      if (!run || !crew)
         return { ok: false, error: 'not_found' };
+      // A finished walk can still leave the number, as the privacy note promises; it cannot rejoin it.
+      if (!optOut && run !== d.activeRun)
+        return { ok: false, error: 'invalid' };
       crew.optOut = optOut;
       if (optOut && crew.completion === 'pending')
         unsent = crew.runId;
@@ -433,7 +438,7 @@ export const useToursStore = create<ToursState>(() => ({
         delete crew.completion;
         delete crew.counted;
       }
-      const op = crewCompletion(d.activeRun);
+      const op = crewCompletion(run);
       if (op) queued.push(op);
     });
     if (result.ok) {
@@ -753,9 +758,10 @@ export const useToursStore = create<ToursState>(() => ({
     if (!result.public)
       return { ok: false, error: 'invalid' };
     const d = data();
-    const existing = d.plans.find((p) => p.publicSource?.publicId === result.public!.id);
+    // The author's own tour counts as saved, so joining a friend's party on it adds no copy.
+    const existing = d.plans.find((p) => p.publicSource?.publicId === result.public!.id || p.publication?.id === result.public!.id);
     if (existing)
-      return { ok: true, id: existing.id };
+      return { ok: true, id: existing.id, tour: result.tour };
     if (d.plans.length >= TOUR_LIMIT)
       return { ok: false, error: 'limit' };
     // An own, editable plan: add a meetup, send it to the party, walk it.
@@ -768,7 +774,7 @@ export const useToursStore = create<ToursState>(() => ({
     copy.publicSource = { publicId: result.public.id, token, pubIds: pubIdsOf(copy) };
     putPlan(d, copy);
     const saved = await persist(d, g);
-    return saved.ok ? { ok: true, id: copy.id } : saved;
+    return saved.ok ? { ok: true, id: copy.id, tour: result.tour } : saved;
   }),
   reportPublic: (publicId) => networkAction(async (g) => {
     const result = await reportPublicTour(publicId);

@@ -80,7 +80,12 @@ def test_a_join_names_its_tour_so_a_mismatched_link_joins_nothing():
     run_id = str(uuid.uuid4())
     register(organizer, run_id, publication)
     assert member(friend, run_id, "joined", other_tour).json()["error"] == "wrong_tour"
+    assert friend.get(f"/v1/tour-runs/{run_id}/preview?publication={other_tour['id']}").status_code == 404
+    assert friend.get(f"/v1/tour-runs/{run_id}/preview?publication={publication['id']}").status_code == 200
     assert member(friend, run_id, "joined", publication).json()["joined"] is True
+    # Only the walker learns their own completion.
+    assert member(organizer, run_id, "completed").json()["me"]["completed"] is True
+    assert [m["completed"] for m in friend.get(f"/v1/tour-runs/{run_id}").json()["members"]] == [False, False]
 
 
 def test_only_trusted_walkers_count_once_after_thirty_minutes():
@@ -141,7 +146,7 @@ def test_a_new_route_counts_walkers_from_then_on():
     publish(author, plan_id, revision)
     assert public_read(publication["token"]).json()["public"]["people_count"] == 0
     # Finishing the old route after the change still does not count for the new one.
-    member(late, old_run, "completed")
+    assert member(late, old_run, "completed").json()["counted"] is False
     walked_long_enough()
     TourPublication.objects.update(people_count_at=None)
     assert public_read(publication["token"]).json()["public"]["people_count"] == 0

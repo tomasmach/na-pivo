@@ -10,7 +10,14 @@ from pubs.accounts import issue_token, schedule_deletion
 from pubs.admin import TourPublicationAdmin
 from pubs.enrichment.matcher import geohash8
 from pubs.identity import normalize_pub_name
-from pubs.models import Account, CanonicalPub, EmailCredential, PubAlias, PubDirectory, TourPublication
+from pubs.models import (
+    Account,
+    CanonicalPub,
+    EmailCredential,
+    PubAlias,
+    PubDirectory,
+    TourPublication,
+)
 from pubs.tour_moderation import rejected_text
 
 pytestmark = pytest.mark.django_db

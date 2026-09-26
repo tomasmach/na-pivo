@@ -80,7 +80,8 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 jest.mock('../useBeerMap', () => ({ useBeerMap: jest.fn() }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn() }));
@@ -514,6 +515,31 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(screen.getByLabelText(t.map.layerAll).props.accessibilityState).toMatchObject({
       selected: true,
     });
+  });
+
+  it('opens the same add-pub form as the compass, seeded with the map center', () => {
+    jest.useFakeTimers();
+    try {
+      const screen = render(
+        <BeerMapScreen
+          filters={EMPTY_PUB_SEARCH_FILTERS}
+          onApplyFilters={jest.fn()}
+          onShowCompass={jest.fn()}
+        />,
+      );
+      mockPush.mockClear();
+      fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+      fireEvent.press(screen.getByLabelText(t.compass.moreAddPub));
+      act(() => { jest.runOnlyPendingTimers(); });
+
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      const target = mockPush.mock.calls[0][0];
+      expect(target.pathname).toBe('/add-pub');
+      expect(Object.keys(target.params).sort()).toEqual(['lat', 'lng']);
+      expect(screen.queryByText(t.map.pinConfirm)).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('asks for confirmation before reporting a pub from the overflow sheet', () => {
