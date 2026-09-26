@@ -7,18 +7,20 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
-import { TourButton, TourText, ui } from './TourChrome';
+import { TourButton, TourError, TourText, ui } from './TourChrome';
 import { CHALLENGE_MAX, cleanChallenge, type TourStop } from './model';
 
 /** One field for one stop's challenge. Mount it with `key={stop.id}` so a new stop starts clean. */
-export function TourChallengeSheet({ stop, onSave, onClose }: {
-  stop: TourStop | null; onSave: (text: string) => Promise<boolean>; onClose: () => void;
+export function TourChallengeSheet({ stop, error, onSave, onClose }: {
+  stop: TourStop | null; error?: string | null; onSave: (text: string) => Promise<boolean>; onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
   // A Modal hosts its own window, so lift the card above the keyboard manually.
   const keyboardHeight = useKeyboardHeight();
   const [text, setText] = useState(stop?.challenge ?? '');
   const [saving, setSaving] = useState(false);
+  // The editor behind the sheet is dimmed and hidden from VoiceOver, so a failed save says so here.
+  const [failed, setFailed] = useState(false);
   const cleaned = cleanChallenge(text);
   const existing = !!stop?.challenge;
   const disabled = !cleaned && !existing;
@@ -28,9 +30,11 @@ export function TourChallengeSheet({ stop, onSave, onClose }: {
   async function save() {
     if (disabled || saving) return;
     setSaving(true);
+    setFailed(false);
     const ok = await onSave(cleaned);
     setSaving(false);
     if (ok) onClose();
+    else setFailed(true);
   }
   return <Modal visible={!!stop} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
     <View style={styles.backdrop}>
@@ -53,6 +57,7 @@ export function TourChallengeSheet({ stop, onSave, onClose }: {
           <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>{t.tours.challengeHint}</Text>
           {text.length >= CHALLENGE_MAX - 20 && <Text style={styles.hint} allowFontScaling={false} accessibilityLabel={t.tours.challengeCountA11y(CHALLENGE_MAX - text.length)}>{t.tours.challengeCount(text.length, CHALLENGE_MAX)}</Text>}
         </View>
+        {failed && <TourError code={error} />}
         <TourButton testID="tour-challenge-save" label={label} secondary={removing} disabled={disabled} busy={saving} onPress={() => { void save(); }} />
       </View>
     </View>

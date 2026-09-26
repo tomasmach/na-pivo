@@ -51,16 +51,18 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
       if (generation !== tourBoundary().generation) { setLoading(false); setError(t.tours.errors.session); return; }
       setLoading(false);
       if (result.ok) { setPlan(result.tour); setPublicInfo(result.public ?? null); } else setError(result.error === 'expired' ? t.tours.invalidLink : t.tours.errors.network);
+      // Who invites is a nicety; an unknown run may still wait in the organizer's offline queue.
+      // The run has to belong to this tour, or the screen would show another tour's party.
+      if (result.ok && result.public && runId) void fetchTourRunPreview(runId, result.public.id).then((next) => { if (alive) setPreview(next); });
     });
-    // Who invites is a nicety; an unknown run may still wait in the organizer's offline queue.
-    if (runId) void fetchTourRunPreview(runId).then((next) => { if (alive) setPreview(next); });
     return () => { alive = false; };
   }, [token, runId, retry]);
   const own = publicInfo ? store.plans.find((p) => p.publication?.token === token) : undefined;
   const existing = plan ? store.plans.find((p) => publicInfo ? p.publicSource?.publicId === publicInfo.id : p.source?.tourId === plan.id) : undefined;
   const update = !publicInfo && !!existing?.source && existing.source.revision < (plan?.revision ?? 0);
   const reported = !!publicInfo && (store.hiddenPublic ?? []).includes(publicInfo.id);
-  const joining = !!runId && !!publicInfo && !own && !reported;
+  // A party invite stays joinable on the author's own tour too.
+  const joining = !!runId && !!publicInfo && !reported;
   async function join() {
     if (!runId) return;
     // The party knows each other by nickname, so a signed-in walker without one picks it first.

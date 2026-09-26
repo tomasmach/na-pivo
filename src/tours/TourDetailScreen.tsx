@@ -241,7 +241,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
         </View>}
         {run && (run.crew ? <Pressable accessibilityRole="button" accessibilityLabel={t.tours.crewPrivacyTitle} style={styles.privacy}
           onPress={() => showAppDialog({ title: t.tours.crewPrivacyTitle, message: run.crew?.optOut ? t.tours.crewPrivacyOptedOut : t.tours.crewPrivacyBody, buttons: [
-            ...(live ? [{ text: run.crew?.optOut ? t.tours.crewOptIn : t.tours.crewOptOut, onPress: () => { void store.setCrewOptOut(!run.crew?.optOut); } }] : []),
+            ...(live || !run.crew?.optOut ? [{ text: run.crew?.optOut ? t.tours.crewOptIn : t.tours.crewOptOut, onPress: () => { void store.setCrewOptOut(!run.crew?.optOut, run.id); } }] : []),
             { text: t.tours.close, style: 'cancel' as const },
           ] })}>
           <LockKeyholeIcon size={13} color={Colors.mutedText} /><TourText style={styles.privacyText}>{t.tours.crewPrivacyTitle}</TourText>
