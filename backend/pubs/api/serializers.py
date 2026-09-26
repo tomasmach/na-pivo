@@ -1066,7 +1066,7 @@ class FriendActivityRequestSerializer(_Pub200NameValidationMixin, PubInputSerial
         required=False,
         allow_empty=False,
     )
-    # Sent from a Tour de pub run: only picks the push wording, nothing is stored.
+    # Sent from a Tour de pub run: only picks the push wording, no new column.
     tour_title = serializers.CharField(
         max_length=120,
         required=False,

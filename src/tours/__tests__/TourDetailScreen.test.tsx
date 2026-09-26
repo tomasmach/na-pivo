@@ -70,7 +70,15 @@ const mockTally = { current: null as null | { pubKey: string; drinks: { drinkTyp
 jest.mock('@/stores/tallyStore', () => ({ useTallyStore: (select: (s: typeof mockTally) => unknown) => select(mockTally) }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn(async () => new Map()) }));
 jest.mock('../TourJourneyIllustration', () => ({ TourJourneyIllustration: jest.fn(() => null) }));
-jest.mock('../TourCrew', () => ({ TourCrewRow: () => null, TourCrewSheet: () => null }));
+jest.mock('../TourCrew', () => ({ TourCrewRow: ({ ping }: { ping: boolean }) => {
+  const { Text } = jest.requireActual('react-native');
+  return <Text>{`crew-row ping:${ping}`}</Text>;
+}, TourCrewSheet: () => null }));
+// Undefined keeps the party unknown for tests that do not care, so no late state update lands after them.
+const mockFriends = { current: undefined as { ghost: boolean; ids: string[] } | null | undefined };
+jest.mock('../crewPing', () => ({
+  loadPingFriends: jest.fn(() => mockFriends.current === undefined ? new Promise(() => undefined) : Promise.resolve(mockFriends.current)),
+}));
 jest.mock('@/stores/accountStore', () => ({ useAccountStore: () => false, selectIsSignedIn: () => false, selectNickname: () => null }));
 jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: () => null, CheckIcon: () => null, ChevronLeftIcon: () => null, ChevronRightIcon: () => null,
@@ -111,6 +119,7 @@ beforeEach(() => {
   };
   mockStore.runs = [];
   mockStore.published = {};
+  mockFriends.current = undefined;
 });
 
 it('marks the next stop, navigates to the following one, and restores the first with undo', async () => {
@@ -275,4 +284,19 @@ it('hands the next stop to the counter and shows beers counted at visited stops'
   expect(useCounterHandoffStore.getState().pub).toEqual({ id: second.pubId, name: second.name, lat: second.lat, lng: second.lon, address: 'Praha' });
   expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/beer');
   mockTally.current = null;
+});
+
+
+it('offers pinging friends on a run without a crew, but not in invisible mode or without friends', async () => {
+  mockFriends.current = null;
+  const screen = render(<TourDetailScreen />);
+  await act(async () => undefined);
+  expect(screen.queryByText(/crew-row/)).toBeNull();
+  mockFriends.current = { ghost: false, ids: ['eva'] };
+  const withFriends = render(<TourDetailScreen />);
+  expect(await withFriends.findByText('crew-row ping:true')).toBeTruthy();
+  mockFriends.current = { ghost: true, ids: ['eva'] };
+  const ghost = render(<TourDetailScreen />);
+  await act(async () => undefined);
+  expect(ghost.queryByText(/crew-row/)).toBeNull();
 });

@@ -199,7 +199,9 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
       const result = scheduledFor
         ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
         : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour);
-      return classify(result);
+      const verdict = classify(result);
+      if (verdict === 'ok') delivered.add(item.clientId);
+      return verdict;
     }
     case 'end':
       // No server id means the broadcast never synced (its pending upsert was
@@ -284,9 +286,20 @@ function isFinishedBroadcast(item: Extract<FriendQueueItem, { op: 'activity' }>)
   ));
 }
 
-/** Whether a broadcast still waits for signal, e.g. to stop saying so once it went out. */
-export async function isFriendActivityQueued(clientId: string): Promise<boolean> {
-  return (await loadQueue()).some((item) => item.op === 'activity' && item.clientId === clientId);
+/** A newer tour ping replaces any that still wait, so a late flush never moves friends back to a pub the crew left. */
+export function dropQueuedTourPings(): Promise<void> {
+  return runMutation(async () => {
+    await saveQueue((await loadQueue()).filter((item) => item.op !== 'activity' || !item.payload.tour));
+  });
+}
+
+/** Broadcasts this session delivered from the queue, so a screen can tell sent from dropped. */
+const delivered = new Set<string>();
+
+/** Whether a queued broadcast still waits, reached the server, or was dropped (rejected, Dopito, app restarted). */
+export async function friendActivityState(clientId: string): Promise<'queued' | 'sent' | 'gone'> {
+  if ((await loadQueue()).some((item) => item.op === 'activity' && item.clientId === clientId)) return 'queued';
+  return delivered.has(clientId) ? 'sent' : 'gone';
 }
 
 /** Dopito also cancels broadcasts that have not reached the server yet. */

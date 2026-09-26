@@ -78,6 +78,8 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     void loadPingFriends().then((next) => { if (alive) setFriends(next); });
     return () => { alive = false; };
   }, [focused, walking]);
+  // In invisible mode a ping would reach nobody, so the row does not offer one.
+  const canPing = !!friends?.ids.length && !friends.ghost;
   const publicToken = plan?.publication?.status === 'active' ? plan.publication.token : null;
   useEffect(() => { if (focused && publicToken) void useToursStore.getState().refreshPublicCount(id); }, [focused, publicToken, id]);
   const [openedAt] = useState(() => Date.now());
@@ -204,7 +206,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             : store.published[id] !== tourContentSignature(plan) || plan.revision > plan.publication.planRevision ? t.tours.publicNewer
               : plan.publication.peopleCount > 0 ? t.tours.publicWithPeople(plan.publication.peopleCount) : t.tours.publicState}</TourText>
         </Pressable>}
-        {!shareMode && live && active && (active.crew || !!friends?.ids.length) && <TourCrewRow crew={active.crew} self={crewSelf} ping={!!friends?.ids.length} onOpen={() => setCrewSheet(true)} />}
+        {!shareMode && live && active && (active.crew || canPing) && <TourCrewRow crew={active.crew} self={crewSelf} ping={canPing} onOpen={() => setCrewSheet(true)} />}
         {editable && !current.scheduledDate && <Pressable onPress={() => { void edit(); }} style={styles.addMeetup} accessibilityRole="button" accessibilityLabel={t.tours.addMeetup}><TourText style={ui.linkText}>{t.tours.addMeetup}</TourText></Pressable>}
         {closedOnMeetup.length > 0 && <TourText style={styles.closed}>{t.tours.closedOnMeetup(closedOnMeetup.join(', '), closedOnMeetup.length)}</TourText>}</View>
       <TourJourneyIllustration stops={current.stops} statuses={!shareMode ? run?.statuses : undefined} nextStopId={!shareMode && active && !history ? next?.id : undefined} />

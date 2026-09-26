@@ -28,7 +28,9 @@ jest.mock('../friendsClient', () => ({
 import {
   clearFriendsQueue,
   enqueueFriendOp,
+  dropQueuedTourPings,
   flushFriendsQueue,
+  friendActivityState,
   isRetriableFriendError,
   type FriendQueueItem,
 } from '../friendsQueue';
@@ -235,5 +237,18 @@ describe('tour pings', () => {
     expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'old', undefined, undefined, undefined);
     expect(shareFriendPubActivity).toHaveBeenCalledTimes(2);
     expect(await readQueue()).toEqual([]);
+    // Delivered is told apart from dropped, so a screen never claims a rejected ping went out.
+    expect(await friendActivityState('t1')).toBe('sent');
+    expect(await friendActivityState('bad')).toBe('gone');
   });
+});
+
+
+it('drops only waiting tour pings when a newer one takes over', async () => {
+  shareFriendPubActivity.mockResolvedValue(retry());
+  await enqueueFriendOp({ op: 'activity', clientId: 'tour-old', payload: { pub: PUB, tour: { title: 'Okruh', heading: false } } });
+  await enqueueFriendOp({ op: 'activity', clientId: 'counter', payload: { pub: PUB } });
+  await dropQueuedTourPings();
+  expect((await readQueue()).map((item) => (item as { clientId: string }).clientId)).toEqual(['counter']);
+  expect(await friendActivityState('tour-old')).toBe('gone');
 });

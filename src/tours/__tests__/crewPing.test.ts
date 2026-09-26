@@ -1,5 +1,5 @@
 import { shareFriendPubActivity } from '@/data/friendsClient';
-import { enqueueFriendOp } from '@/data/friendsQueue';
+import { dropQueuedTourPings, enqueueFriendOp } from '@/data/friendsQueue';
 import { pingRecipients, pingStop, sendPing } from '../crewPing';
 import type { TourStop } from '../model';
 
@@ -7,6 +7,7 @@ jest.mock('@/data/account', () => ({ generateUuidV4: () => '6f1c2d3e-4a5b-4c6d-8
 jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: jest.fn(), fetchFriendsDashboard: jest.fn() }));
 jest.mock('@/data/friendsQueue', () => ({
   enqueueFriendOp: jest.fn(async () => undefined),
+  dropQueuedTourPings: jest.fn(async () => undefined),
   isRetriableFriendError: (result: { code: string }) => result.code === 'offline',
 }));
 jest.mock('@/data/friendsSnapshot', () => ({ loadFriendsDashboardSnapshot: jest.fn() }));
@@ -48,4 +49,16 @@ it('sends the tour with the pub, and waits for signal instead of losing it', asy
 
   jest.mocked(shareFriendPubActivity).mockResolvedValue({ ok: false, code: 'no_recipients', detail: 'Nikdo z party.' });
   expect(await sendPing('Pivní okruh', { stop: stops[1], heading: true })).toEqual({ error: 'Nikdo z party.' });
+});
+
+it('lets a newer ping replace the waiting one and never widens to the whole party', async () => {
+  jest.mocked(shareFriendPubActivity).mockResolvedValue({ ok: true });
+  await sendPing('Pivní okruh', { stop: { ...stops[1], name: 'U '.repeat(150) }, heading: false });
+  // Whatever still waits for signal gives way before this one goes out.
+  expect(dropQueuedTourPings).toHaveBeenCalled();
+  expect(jest.mocked(dropQueuedTourPings).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(shareFriendPubActivity).mock.invocationCallOrder[0]);
+  expect(jest.mocked(shareFriendPubActivity).mock.calls[0][0].name).toHaveLength(200);
+  jest.mocked(shareFriendPubActivity).mockClear();
+  expect(await sendPing('Pivní okruh', { stop: stops[1], heading: false }, [])).toHaveProperty('error');
+  expect(shareFriendPubActivity).not.toHaveBeenCalled();
 });

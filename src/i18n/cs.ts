@@ -2892,12 +2892,12 @@ export const cs = {
     crewClosed: 'Průchod je uzavřený, nikdo další se nepřidá.', crewRefused: 'Do party se už přidat nešlo. Tour můžeš jít i po svém.',
     crewSheetNote: 'Kdo to naskenuje, přidá se k vám. Uvidí tvoji přezdívku a kdo další jde.',
     crewQrA11y: 'QR kód pro připojení k partě',
-    // Cinknutí to friends from Parta who are not at the table; "parta" on the tour screen is the crew.
-    crewPing: 'Cinknout partě', crewPingAway: 'Kámoši, co tu nejsou', crewPingHint: 'Pošle kámošům z Party upozornění, kde sedíte',
-    crewPingNote: 'Pošlu jim do appky, že jdeš tour a kde sedíte. Sejdete se v hospodě.',
-    crewPingNoteSolo: 'Pošlu kámošům z Party do appky, že jdeš tour a kde sedíš. Sejdete se v hospodě.',
-    crewPingFrom: (pub: string) => `Cinknout partě z ${pub}`, crewPingTo: (pub: string) => `Cinknout partě cestou do ${pub}`,
-    crewPingSent: (pub: string) => `Kámoši vidí ${pub}`, crewPingQueued: 'Cinknu, až chytneš signál.',
+    // Cinknutí to friends from Parta who are not at the table; "parta" on the tour screen is the crew, so these say "kámoši".
+    crewPing: 'Cinknout kámošům', crewPingShort: 'Cinknout', crewPingThem: 'Cinknout jim', crewPingFriends: 'Kámoši z Party',
+    crewPingAway: 'Kámoši, co tu nejsou', crewPingHint: 'Otevře cinknutí kámošům z Party',
+    crewPingNote: (pub: string, heading: boolean, together: boolean) =>
+      `Kámošům z Party pošlu, že ${heading ? `${together ? 'míříte' : 'míříš'} do hospody` : `${together ? 'sedíte' : 'sedíš'} v hospodě`} ${pub}.`,
+    crewPingSent: 'Cinknuto. Kámoši to vidí v Partě.', crewPingQueued: 'Cinknu, až chytneš signál.',
     crewPingGhost: 'Máš zapnutý neviditelný režim, cinknutí by nikomu nepřišlo.', crewPingAllHere: 'Všichni kámoši už jdou s tebou.',
     crewPingMessage: (title: string) => `Tour de pub: ${title}`,
     crewPrivacyTitle: 'Kdo co vidí',

@@ -1,6 +1,6 @@
 import { generateUuidV4 } from '@/data/account';
 import { fetchFriendsDashboard, shareFriendPubActivity } from '@/data/friendsClient';
-import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { dropQueuedTourPings, enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { t } from '@/i18n';
 import { pubFromStop } from './counterLink';
@@ -31,14 +31,19 @@ export function pingRecipients(friendIds: string[], crewIds: string[]): string[]
 
 export type PingResult = { status: 'sent' | 'queued'; clientId: string } | { error: string };
 
+/** One ping per tour at a time: whatever still waits for signal gives way to where the crew is now. */
 export async function sendPing(title: string, target: { stop: TourStop; heading: boolean }, recipientIds?: string[]): Promise<PingResult> {
+  // An empty list would reach the whole party, the crew at the table included.
+  if (recipientIds?.length === 0) return { error: t.tours.crewPingAllHere };
   const pub = pubFromStop(target.stop);
-  // Directory ids can outgrow the server's 128 characters; friends only need the name and the spot.
+  // The server takes 200 characters of name and 128 of id; anything longer would be dropped for good.
+  pub.name = pub.name.slice(0, 200);
   if (pub.id.length > 128) pub.id = '';
-  const message = t.tours.crewPingMessage(title).slice(0, 80);
-  const tour = { title: title.slice(0, 120), heading: target.heading };
+  const message = t.tours.crewPingMessage(title);
+  const tour = { title, heading: target.heading };
   const clientId = generateUuidV4();
   const startedAt = new Date().toISOString();
+  await dropQueuedTourPings();
   const result = await shareFriendPubActivity(pub, message, clientId, recipientIds, startedAt, tour);
   if (result.ok) return { status: 'sent', clientId };
   if (!isRetriableFriendError(result)) return { error: result.detail || t.friends.shareError };
