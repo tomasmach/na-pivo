@@ -99,9 +99,10 @@ export default function AudiencePicker({ friends, value, onChange }: { friends: 
     setGroupName(group.name);
   }, [friends, onChange]);
 
+  // Picking starts from nobody, so "only some" never begins as everyone.
   const startCustomSelection = useCallback(() => {
-    onChange({ mode: 'custom', groupId: null, ids: value.ids.length ? value.ids : friends.slice(0, 3).map((friend) => friend.id) });
-  }, [friends, onChange, value.ids]);
+    onChange({ mode: 'custom', groupId: null, ids: value.mode === 'custom' ? value.ids : [] });
+  }, [onChange, value.ids, value.mode]);
 
   const toggleRecipient = useCallback((id: string) => {
     onChange({ mode: 'custom', groupId: null, ids: value.ids.includes(id) ? value.ids.filter((item) => item !== id) : [...value.ids, id] });
