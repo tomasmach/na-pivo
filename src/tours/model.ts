@@ -3,13 +3,19 @@ import { generateUuidV4 } from '@/data/account';
 import { geohash8 } from '@/data/geohash';
 export const TOUR_LIMIT = 100;
 export const CHALLENGE_MAX = 120;
-export type TourError = 'storage' | 'corrupt_storage' | 'account_changed' | 'busy' | 'limit' | 'invalid' | 'duplicate' | 'active_run' | 'not_found' | 'network' | 'conflict' | 'expired' | 'throttled' | 'auth';
+export type TourError = 'storage' | 'corrupt_storage' | 'account_changed' | 'busy' | 'limit' | 'invalid' | 'duplicate' | 'active_run' | 'not_found' | 'network' | 'conflict' | 'expired' | 'throttled' | 'auth'
+  | 'sign_in' | 'nickname' | 'profile_private' | 'rules' | 'text_rejected' | 'unknown_pub' | 'hidden_pub' | 'publication_hidden';
 export type TourResult = {
   ok: true;
   id?: string;
 } | {
   ok: false;
   error: TourError;
+  /** Which stop or field the server refused when publishing publicly. */
+  stop?: number;
+  field?: 'title' | 'challenge';
+  /** How many public tours the server allows, when it refused one more. */
+  limit?: number;
 };
 export interface TourStop {
   id: string;
@@ -41,6 +47,25 @@ export interface TourPlan {
     expiresAt: string;
   };
   conflict?: TourPlan;
+  /** The frozen public copy of this plan, if it was ever published for everyone. */
+  publication?: TourPublication;
+  /** Set on an own copy saved from a public tour; dropped once its pubs change. */
+  publicSource?: TourPublicSource;
+}
+export type PublicationStatus = 'active' | 'hidden' | 'unpublished';
+export interface TourPublication {
+  id: string;
+  token: string;
+  url: string;
+  status: PublicationStatus;
+  revision: number;
+  planRevision: number;
+  peopleCount: number;
+}
+export interface TourPublicSource {
+  publicId: string;
+  token: string;
+  pubIds: string[];
 }
 export interface TourRun {
   id: string;
@@ -65,6 +90,17 @@ export function samePub(a: TourStop, b: TourStop): boolean {
 export function cleanChallenge(text: string): string {
   return text.split(/\s+/).filter(Boolean).join(' ');
 }
+export const publicTokenValid = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(v);
+export function validPublication(v: unknown): v is TourPublication {
+  if (!v || typeof v !== 'object')
+    return false;
+  const p = v as TourPublication;
+  return uuidValid(p.id) && publicTokenValid(p.token) && typeof p.url === 'string' && /^https:\/\/na-pivo\.cz\/t\/[A-Za-z0-9_-]+$/.test(p.url) &&
+    ['active', 'hidden', 'unpublished'].includes(p.status) && Number.isInteger(p.revision) && Number.isInteger(p.planRevision) &&
+    Number.isInteger(p.peopleCount) && p.peopleCount >= 0;
+}
+/** The pub identities of a plan, to notice when a saved public tour stops being the same route. */
+export const pubIdsOf = (plan: Pick<TourPlan, 'stops'>) => plan.stops.map((stop) => stop.pubId);
 export function validStop(s: unknown): s is TourStop {
   if (!s || typeof s !== 'object')
     return false;
@@ -101,6 +137,11 @@ export function validPlan(value: unknown, draft = false): value is TourPlan {
   if (v.source && (!uuidValid(v.source.tourId) || !Number.isInteger(v.source.revision) || v.source.revision < 1 || typeof v.source.token !== 'string' || !/^[A-Za-z0-9_-]{20,200}$/.test(v.source.token)))
     return false;
   if (v.share && (typeof v.share.url !== 'string' || !/^https:\/\/na-pivo\.cz\/t\/[A-Za-z0-9_-]+$/.test(v.share.url) || !Number.isFinite(Date.parse(v.share.expiresAt))))
+    return false;
+  if (v.publication && !validPublication(v.publication))
+    return false;
+  if (v.publicSource && (!uuidValid(v.publicSource.publicId) || !publicTokenValid(v.publicSource.token) || !Array.isArray(v.publicSource.pubIds) ||
+    v.publicSource.pubIds.length > 8 || !v.publicSource.pubIds.every((id) => typeof id === 'string')))
     return false;
   return !v.conflict || (!v.conflict.conflict && validPlan(v.conflict));
 }

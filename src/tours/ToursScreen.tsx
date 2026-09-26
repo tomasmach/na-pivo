@@ -18,7 +18,8 @@ import type { TourPlan, TourRun } from './model';
 const SAMPLE_STOPS = [{ id: 'sample-1' }, { id: 'sample-2' }, { id: 'sample-3' }];
 
 function planMeta(plan: TourPlan) {
-  return [plan.scheduledDate ? tourDate(plan) : t.tours.optional, t.tours.summary(pubCount(plan.stops.length), formatWalkDistance(walkingDistance(plan.stops))), plan.source ? t.tours.imported : null].filter(Boolean).join(' · ');
+  return [plan.scheduledDate ? tourDate(plan) : t.tours.optional, t.tours.summary(pubCount(plan.stops.length), formatWalkDistance(walkingDistance(plan.stops))),
+    plan.source ? t.tours.imported : plan.publicSource ? t.tours.fromPublic : plan.publication?.status === 'active' ? t.tours.publicState : null].filter(Boolean).join(' · ');
 }
 
 function Row({ title, meta, onPress, icon, first }: { title: string; meta: string; onPress: () => void; icon?: ReactNode; first?: boolean }) {

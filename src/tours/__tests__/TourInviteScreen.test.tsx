@@ -9,17 +9,21 @@ import TourInviteScreen from '../TourInviteScreen';
 
 const token = 'invite-token-for-component-regression';
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 const mockStore = {
   plans: [] as TourPlan[],
   error: null,
   busy: false,
   hydrate: jest.fn(async () => ({ ok: true })),
   importShared: jest.fn(async () => ({ ok: true, id: 'saved-copy' })),
+  savePublic: jest.fn(async () => ({ ok: true, id: 'public-copy' })),
+  reportPublic: jest.fn(async () => ({ ok: true })),
+  hiddenPublic: [] as string[],
 };
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ token }),
-  useRouter: () => ({ replace: mockReplace, canGoBack: () => false, back: jest.fn() }),
+  useRouter: () => ({ replace: mockReplace, push: mockPush, canGoBack: () => false, back: jest.fn() }),
 }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -33,7 +37,17 @@ jest.mock('../TourMap', () => ({ TourMap: () => null }));
 jest.mock('@/components/shared/IconGlyph', () => ({
   ChevronLeftIcon: () => null,
   ChevronRightIcon: () => null,
+  EllipsisIcon: () => null,
+  CheckIcon: () => null,
+  MinusIcon: () => null,
+  FootprintsIcon: () => null,
+  MapIcon: () => null,
+  HistoryIcon: () => null,
 }));
+jest.mock('../TourJourneyIllustration', () => ({ TourJourneyIllustration: () => null }));
+jest.mock('@/stores/toastStore', () => ({ useToastStore: { getState: () => ({ show: jest.fn() }) } }));
+jest.mock('@/profile/Avatar', () => ({ Avatar: () => null }));
+jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
 
 const plan: TourPlan = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -87,4 +101,34 @@ it.each([
   expect(!!screen.queryByText(t.tours.importUpdate)).toBe(update);
   fireEvent.press(action);
   await waitFor(() => expect(mockStore.importShared).toHaveBeenCalledWith(token, update));
+});
+
+it('shows a public tour with its author and saves it as an own plan', async () => {
+  const publicInfo = { id: '33333333-3333-4333-8333-333333333333', peopleCount: 0, city: 'Praha', walkM: 1200,
+    author: { id: 'author-id', nickname: 'pivni_vlk', displayName: 'Pavel V.', avatarUrl: null } };
+  jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan, public: publicInfo });
+  const screen = render(<TourInviteScreen />);
+  expect(await screen.findByText(t.tours.publicTour)).toBeTruthy();
+  expect(screen.getByText('@pivni_vlk')).toBeTruthy();
+  expect(screen.getByText('Praha · 2 hospody, asi 1,2 km pěšky')).toBeTruthy();
+  fireEvent.press(screen.getByLabelText(t.tours.authorA11y('pivni_vlk')));
+  expect(mockPush).toHaveBeenCalledWith('/parta/author-id');
+  fireEvent.press(screen.getByLabelText(t.tours.import));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith({ pathname: '/tours/[id]', params: { id: 'public-copy' } }));
+  expect(mockStore.savePublic).toHaveBeenCalledWith(token);
+  expect(mockStore.importShared).not.toHaveBeenCalled();
+});
+
+it('does not show a public tour this phone reported', async () => {
+  const publicInfo = { id: '33333333-3333-4333-8333-333333333333', peopleCount: 0, city: 'Praha', walkM: 1200,
+    author: { id: 'author-id', nickname: 'pivni_vlk', displayName: '', avatarUrl: null } };
+  mockStore.hiddenPublic = [publicInfo.id];
+  jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan, public: publicInfo });
+  try {
+    const screen = render(<TourInviteScreen />);
+    expect(await screen.findByText(t.tours.reported)).toBeTruthy();
+    expect(screen.queryByText(plan.title)).toBeNull();
+  } finally {
+    mockStore.hiddenPublic = [];
+  }
 });

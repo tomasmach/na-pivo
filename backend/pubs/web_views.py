@@ -192,7 +192,13 @@ def tour_invite_landing(request: HttpRequest, token: str) -> HttpResponse:
     from rest_framework.request import Request
 
     from pubs.api.throttling import SharedScopedRateThrottle
-    from pubs.tours import protect_response, public_share, tour_snapshot
+    from pubs.tours import (
+        protect_response,
+        public_payload,
+        public_share,
+        readable_publications,
+        tour_snapshot,
+    )
 
     throttle = SharedScopedRateThrottle()
     policy = type("TourPublicPolicy", (), {"throttle_scope": "tour_public"})()
@@ -201,15 +207,18 @@ def tour_invite_landing(request: HttpRequest, token: str) -> HttpResponse:
         response["Retry-After"] = str(throttle.wait())
         return protect_response(response)
     share = public_share(token)
-    if not share:
+    publication = None if share else readable_publications().filter(token=token).first()
+    if not share and not publication:
         return protect_response(render(request, "pubs/tour_landing.html", {
             "unavailable": True, **_language_context(),
         }, status=404))
-    tour = tour_snapshot(share.plan)
+    public = public_payload(publication) if publication else None
+    tour = public["tour"] if public else tour_snapshot(share.plan)
     first = tour["stops"][0]
     response = render(request, "pubs/tour_landing.html", {
         "tour": tour,
-        "meeting_date": share.plan.scheduled_date,
+        "author": public["public"]["author"] if public else None,
+        "meeting_date": share.plan.scheduled_date if share else None,
         "deep_link": f"napivo://t/{quote(token, safe='')}",
         "navigation_url": f"https://www.google.com/maps/dir/?api=1&destination={first['lat']},{first['lon']}&travelmode=walking",
         **_language_context(),

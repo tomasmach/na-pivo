@@ -443,6 +443,15 @@ PUB_REPORTS_THROTTLE_RATE: str = os.environ.get("PUB_REPORTS_THROTTLE_RATE", "30
 PUB_REPORT_GLOBAL_HIDE_THRESHOLD: int = int(
     os.environ.get("PUB_REPORT_GLOBAL_HIDE_THRESHOLD", "3")
 )
+# Public tours: extra blocked words on top of pubs/tour_moderation.py, and the
+# public ids of accounts (the owner seeding the catalog) exempt from the cap.
+TOUR_TEXT_BLOCKLIST: list[str] = [
+    word.strip() for word in os.environ.get("TOUR_TEXT_BLOCKLIST", "").split(",") if word.strip()
+]
+TOUR_PUBLICATION_LIMIT: int = int(os.environ.get("TOUR_PUBLICATION_LIMIT", "10"))
+TOUR_PUBLICATION_LIMIT_EXEMPT: set[str] = {
+    value.strip() for value in os.environ.get("TOUR_PUBLICATION_LIMIT_EXEMPT", "").split(",") if value.strip()
+}
 # Per-IP rate limit for privacy-safe client telemetry events. The client sends a
 # small lifecycle/error/distance whitelist only; this cap protects the endpoint
 # from noisy loops and scripted spam.
@@ -671,6 +680,7 @@ REST_FRAMEWORK = {
         "tour_share": "10/hour",
         "tour_public": "60/min",
         "tour_search": "60/min",
+        "tour_publish": "20/hour",
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
         "account_export": ACCOUNT_EXPORT_THROTTLE_RATE,
         "feedback": FEEDBACK_THROTTLE_RATE,

@@ -7,8 +7,9 @@
 </style></head><body><main><div class="brand">Na pivo / Tour de pub</div>
 {% if unavailable %}<h1>{% translate "Tenhle odkaz už neplatí." %}</h1><p>{% translate "Požádej autora o nový odkaz." %}</p>
 {% else %}<h1>{{ tour.title }}</h1>
+{% if author %}<div class="date">{% blocktranslate with nickname=author.nickname %}Veřejná tour od {{ nickname }}{% endblocktranslate %}</div>{% endif %}
 {% if tour.scheduled_date %}<div class="date">{% translate "Sraz" %}: {{ meeting_date|date:"DATE_FORMAT" }}{% if tour.scheduled_time %} · {{ tour.scheduled_time }}{% endif %} · {{ tour.timezone }}</div>{% endif %}
 <ol>{% for stop in tour.stops %}<li><span class="number">{{ forloop.counter }}</span><div class="pub"><strong>{{ stop.name }}</strong>{% if stop.address %}<div class="address">{{ stop.address }}</div>{% endif %}{% if stop.challenge %}<div class="challenge">{% translate "Výzva:" %} {{ stop.challenge }}</div>{% endif %}</div></li>{% endfor %}</ol>
-<div class="actions"><a href="{{ deep_link }}">{% translate "Otevřít v Na pivo" %}</a><a class="secondary" href="{{ navigation_url }}" rel="noreferrer">{% translate "Navigovat na sraz" %}</a></div>
+<div class="actions"><a href="{{ deep_link }}">{% translate "Otevřít v Na pivo" %}</a><a class="secondary" href="{{ navigation_url }}" rel="noreferrer">{% if author %}{% translate "Navigovat na první hospodu" %}{% else %}{% translate "Navigovat na sraz" %}{% endif %}</a></div>
 <p class="privacy">{% translate "Tohle je plán hospod. Poloha lidí ani jejich průchod se nesdílí." %}</p>
 {% endif %}</main></body></html>
