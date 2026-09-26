@@ -6,12 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
 import { checkLocationPermission, ensureLocationPermission } from '@/compass/permissions';
 import { searchPublicTours, type PublicTourHit, type TourStopsFilter } from '@/data/toursClient';
+import { useToastStore } from '@/stores/toastStore';
 import { useToursStore } from '@/stores/toursStore';
 import { intlLocale, t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { TourHeader, TourText, pubCount, ui } from './TourChrome';
+import { TourHeader, TourText, pubCount, tourError, ui } from './TourChrome';
 import { formatWalkDistance } from './stopFacts';
 
 type Position = { lat: number; lon: number };
@@ -113,6 +114,8 @@ export default function TourDiscoverScreen() {
   // The last list that loaded stays on screen while the next one is on its way, so typing does not blank it.
   const [shown, setShown] = useState<Results | null>(null);
   const [more, setMore] = useState(false);
+  // A page that failed to load says so and can be tried again; it belongs to the search it was asked for.
+  const [moreFailedFor, setMoreFailedFor] = useState<string | null>(null);
   // 0 until the location check settles, so the first request already knows where the walker is.
   const [retry, setRetry] = useState(0);
   const term = searchTerm(query);
@@ -158,9 +161,11 @@ export default function TourDiscoverScreen() {
     if (!current?.results?.nextPage || more) return;
     const asked = key;
     setMore(true);
+    setMoreFailedFor(null);
     const result = await searchPublicTours({ q: term, ...(position ?? {}), stops, challenges, page: current.results.nextPage });
     setMore(false);
-    if (!result.ok || liveKey.current !== asked) return;
+    if (liveKey.current !== asked) return;
+    if (!result.ok) { setMoreFailedFor(asked); return; }
     const grow = (list: Results): Results => ({ ...list, nextPage: result.nextPage,
       hits: [...list.hits, ...result.results.filter((hit) => !list.hits.some((old) => old.id === hit.id))] });
     setResponse((latest) => !latest?.results ? latest : { ...latest, results: grow(latest.results) });
@@ -197,6 +202,7 @@ export default function TourDiscoverScreen() {
     const started = await useToursStore.getState().beginDraft();
     planning.current = false;
     if (started.ok) router.push('/tours/edit' as Href);
+    else useToastStore.getState().show(tourError(started.error) ?? t.tours.errors.network);
   };
 
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
@@ -240,6 +246,7 @@ export default function TourDiscoverScreen() {
         </View>}
       </View>}
       ListFooterComponent={more ? <ActivityIndicator style={styles.more} color={Colors.amber} />
+        : moreFailedFor === key ? <TextLink label={t.tours.retry} onPress={() => { void loadMore(); }} />
         : settled && !results.nearby && hits.length > 0 ? <TextLink label={t.tours.discoverPlanOwn} onPress={() => { void planOwn(); }} /> : null} />
     {stopsSheet && <StopsSheet value={stops} onClose={() => setStopsSheet(false)} onPick={(value) => { setStops(value); setStopsSheet(false); }} />}
   </View>;

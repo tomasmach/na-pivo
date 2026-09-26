@@ -60,6 +60,9 @@ it('lets a new join replace a waiting leave, and takes back unsent ops', async (
   await enqueueTourRunOp({ runId: run, publicId, op: 'join' });
   expect(await pendingTourRunOps(run)).toEqual(['join']);
   await enqueueTourRunOp({ runId: run, publicId, op: 'complete' });
+  // Scanning the QR again puts the new join ahead of the completion that waits for it.
+  await enqueueTourRunOp({ runId: run, publicId, op: 'join' });
+  expect(await pendingTourRunOps(run)).toEqual(['join', 'complete']);
   await dropTourRunOps(run, ['complete']);
   expect(await pendingTourRunOps(run)).toEqual(['join']);
 });

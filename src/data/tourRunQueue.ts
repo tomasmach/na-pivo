@@ -83,7 +83,10 @@ export async function enqueueTourRunOp(item: Omit<TourRunQueueItem, 'createdAt'>
     // A new join replaces a waiting leave too, so a leave never ends up behind the join it undoes.
     const replaces = (op: TourRunOp) => op === item.op || (item.op === 'join' && op === 'leave');
     const queue = (await load()).filter((queued) => !(queued.runId === item.runId && replaces(queued.op)));
-    await save([...queue, { ...item, createdAt: new Date().toISOString() }].slice(-100));
+    const next = { ...item, createdAt: new Date().toISOString() };
+    // A completion waiting from before needs the join first, or its 404 would hold the run's queue until the join window closes.
+    const dependents = item.op === 'join' ? queue.filter((queued) => queued.runId === item.runId) : [];
+    await save([...queue.filter((queued) => !dependents.includes(queued)), next, ...dependents].slice(-100));
   });
   void flush();
 }
