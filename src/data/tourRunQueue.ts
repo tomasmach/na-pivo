@@ -78,7 +78,9 @@ const { flush, abortInFlight } = createCoalescingFlush(async (signal) => {
   });
 });
 
-export async function enqueueTourRunOp(item: Omit<TourRunQueueItem, 'createdAt'>): Promise<void> {
+/** Resolves true once the op is stored, so a caller confirms a step only when a closed app cannot lose it. */
+export async function enqueueTourRunOp(item: Omit<TourRunQueueItem, 'createdAt'>): Promise<boolean> {
+  let stored = false;
   await locked(async () => {
     // A new join replaces a waiting leave too, so a leave never ends up behind the join it undoes.
     const replaces = (op: TourRunOp) => op === item.op || (item.op === 'join' && op === 'leave');
@@ -86,9 +88,10 @@ export async function enqueueTourRunOp(item: Omit<TourRunQueueItem, 'createdAt'>
     const next = { ...item, createdAt: new Date().toISOString() };
     // A completion waiting from before needs the join first, or its 404 would hold the run's queue until the join window closes.
     const dependents = item.op === 'join' ? queue.filter((queued) => queued.runId === item.runId) : [];
-    await save([...queue.filter((queued) => !dependents.includes(queued)), next, ...dependents].slice(-100));
+    stored = await save([...queue.filter((queued) => !dependents.includes(queued)), next, ...dependents].slice(-100));
   });
   void flush();
+  return stored;
 }
 
 /** Takes back ops that have not left the phone yet, e.g. a completion after "Nezapočítávat mě". */

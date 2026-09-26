@@ -95,6 +95,11 @@ function failure(error: TourError): TourResult {
   useToursStore.setState({ error });
   return { ok: false, error };
 }
+/** A crew step counts only once it waits in the queue; a lost write says so instead of passing for done. */
+async function queueRunOps(ops: RunOp[]): Promise<TourResult> {
+  const stored = await Promise.all(ops.map((op) => enqueueTourRunOp(op)));
+  return stored.every(Boolean) ? { ok: true } : failure('storage');
+}
 function current(generation: number) {
   return generation === tourBoundary().generation && !tourBoundary().changing;
 }
@@ -401,9 +406,10 @@ export const useToursStore = create<ToursState>(() => ({
           : { runId, publicId: link.publicId, op: 'register', stopIds: snapshot.stops.map((stop) => stop.id) });
       }
     });
-    if (result.ok)
-      queued.forEach((op) => { void enqueueTourRunOp(op); });
-    return result;
+    if (!result.ok || !queued.length)
+      return result;
+    const stored = await queueRunOps(queued);
+    return stored.ok ? result : stored;
   },
   joinCrew: async (token, runId, loaded): Promise<TourResult> => {
     if (useToursStore.getState().activeRun)
@@ -428,9 +434,10 @@ export const useToursStore = create<ToursState>(() => ({
       const op = crewCompletion(d.activeRun);
       if (op) queued.push(op);
     });
-    if (result.ok)
-      queued.forEach((op) => { void enqueueTourRunOp(op); });
-    return result;
+    if (!result.ok || !queued.length)
+      return result;
+    const stored = await queueRunOps(queued);
+    return stored.ok ? result : stored;
   },
   setCrewOptOut: async (optOut, runId): Promise<TourResult> => {
     const queued: RunOp[] = [];
@@ -457,12 +464,12 @@ export const useToursStore = create<ToursState>(() => ({
       const op = crewCompletion(run);
       if (op) queued.push(op);
     });
-    if (result.ok) {
-      if (unsent) await dropTourRunOps(unsent, ['complete']);
-      // "Nezapočítávat mě" is confirmed only once taking the completion back is stored for delivery.
-      await Promise.all(queued.map((op) => enqueueTourRunOp(op)));
-    }
-    return result;
+    if (!result.ok)
+      return result;
+    if (unsent) await dropTourRunOps(unsent, ['complete']);
+    // "Nezapočítávat mě" is confirmed only once taking the completion back is stored for delivery.
+    const stored = await queueRunOps(queued);
+    return stored.ok ? result : stored;
   },
   refreshCrew: async (): Promise<TourResult> => {
     const crew = useToursStore.getState().activeRun?.crew;
@@ -508,9 +515,10 @@ export const useToursStore = create<ToursState>(() => ({
       d.runs.unshift({ ...d.activeRun, endedAt: new Date().toISOString() });
       d.activeRun = null;
     });
-    if (result.ok)
-      queued.forEach((op) => { void enqueueTourRunOp(op); });
-    return result;
+    if (!result.ok || !queued.length)
+      return result;
+    const stored = await queueRunOps(queued);
+    return stored.ok ? result : stored;
   },
   deletePlan: (id) => networkAction(async (g) => {
     const d = data();
