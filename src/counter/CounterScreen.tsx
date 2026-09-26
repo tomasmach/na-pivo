@@ -65,7 +65,7 @@ import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
-import { loadPartyFriends, shareFriendPubActivity, type FriendProfile } from '@/data/friendsClient';
+import { loadPartyFriends, shareFriendPubActivity, type PartyFriends } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import PingSheet from '@/friends/PingSheet';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
@@ -418,11 +418,9 @@ function Tacek({
   // — Friends broadcast —
   const [sharingWithFriends, setSharingWithFriends] = useState(false);
   const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
-  // The party a quick ping can go to, while its sheet is open.
-  const [pingParty, setPingParty] = useState<{ friends: FriendProfile[]; ghost: boolean } | null>(null);
+  // The party a quick ping can go to while its sheet is open, and the place it was opened for.
+  const [pingParty, setPingParty] = useState<(PartyFriends & { cell: string | null }) | null>(null);
   const pingLoading = useRef(false);
-  const liveCell = useRef(cell);
-  useEffect(() => { liveCell.current = cell; }, [cell]);
   const broadcasted = cell !== null && broadcastCell === cell;
 
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -1363,12 +1361,10 @@ function Tacek({
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(), 3000);
     // A newer party only refreshes a sheet still open for the same pub.
-    const party = await loadPartyFriends(timeout.signal, (fresh) => setPingParty((open) => (open && liveCell.current === from ? fresh : open)));
+    const party = await loadPartyFriends(timeout.signal, (fresh) => setPingParty((open) => (open?.cell === from ? { ...fresh, cell: from } : open)));
     clearTimeout(timer);
     pingLoading.current = false;
-    // The place changed while the party loaded: this ping was about the old one.
-    if (liveCell.current !== from) return;
-    if (party) setPingParty(party);
+    if (party) setPingParty({ ...party, cell: from });
     else {
       const failure = await handleShareWithFriends();
       if (failure) showToast(failure);
@@ -1670,7 +1666,8 @@ function Tacek({
         onSelect={handleSelectScannedDrink}
       />
       <BeerPhotoCaptureFlow open={photoCaptureOpen} onClose={() => setPhotoCaptureOpen(false)} />
-      {pub && pingParty ? (
+      {/* A sheet opened for another place never shows: the ping names one pub. */}
+      {pub && pingParty && pingParty.cell === cell ? (
         <PingSheet
           title={t.friends.shareHereShort}
           detail={t.friends.pingSheetDetail(pub.name)}

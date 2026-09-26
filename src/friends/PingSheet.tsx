@@ -5,7 +5,7 @@
  *
  * The host sends; the sheet only collects the audience and shows a hard error.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -36,15 +36,20 @@ export default function PingSheet({ title, detail, friends, ghost = false, onSen
   const [audience, setAudience] = useState<Audience>(EVERYONE);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A double tap lands before `busy` re-renders the button; two sends would ping everyone twice.
+  const sending = useRef(false);
   const recipients = audienceIds(audience, friends);
   const blocked = ghost || friends.length === 0 || recipients?.length === 0;
   // A send in flight still owes an answer; closing now would swallow a hard error.
   const close = () => { if (!busy) onClose(); };
 
   async function send() {
+    if (sending.current) return;
+    sending.current = true;
     setBusy(true);
     setError(null);
     const failure = await onSend(recipients);
+    sending.current = false;
     setBusy(false);
     if (failure) setError(failure);
     else onClose();
