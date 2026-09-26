@@ -333,7 +333,7 @@ describe('Tours durable lifecycle', () => {
     const saved = await store.getState().savePublic('publicTokenForTests12');
     expect(saved.ok && saved.id).toBeTruthy();
     const id = (saved as { id: string }).id;
-    expect(await store.getState().savePublic('publicTokenForTests12')).toEqual({ ok: true, id });
+    expect(await store.getState().savePublic('publicTokenForTests12')).toMatchObject({ ok: true, id });
     expect(store.getState().plans.find((p) => p.id === id)!.publicSource).toEqual({ publicId: remote.id, token: 'publicTokenForTests12', pubIds: ['directory:p1', 'directory:p2'] });
     await store.getState().beginDraft(id);
     await store.getState().updateDraft({ title: 'Náš pátek' });

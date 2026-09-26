@@ -165,6 +165,20 @@ def public_payload(publication, request=None):
     }
 
 
+def tour_export(plan):
+    """The private plan and, once published, the frozen public copy that is still stored and served."""
+    data = tour_snapshot(plan)
+    publication = getattr(plan, "publication", None)
+    if publication is not None:
+        data["publication"] = {
+            "status": publication.status, "revision": publication.revision,
+            "published_at": publication.published_at.isoformat(), "rules_accepted_at": publication.rules_accepted_at.isoformat(),
+            "title": publication.snapshot["title"],
+            "stops": [{"name": stop["name"], "challenge": stop["challenge"]} for stop in publication.snapshot["stops"]],
+        }
+    return data
+
+
 def public_share(token):
     share = TourShare.objects.select_related("plan").filter(
         token_hash=token_hash(token), revoked_at__isnull=True,
