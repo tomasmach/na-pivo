@@ -681,6 +681,7 @@ REST_FRAMEWORK = {
         "tour_public": "60/min",
         "tour_search": "60/min",
         "tour_publish": "20/hour",
+        "tour_run": "240/hour",
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
         "account_export": ACCOUNT_EXPORT_THROTTLE_RATE,
         "feedback": FEEDBACK_THROTTLE_RATE,

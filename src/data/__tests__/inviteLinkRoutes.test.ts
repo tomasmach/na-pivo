@@ -1,5 +1,5 @@
 import { redirectSystemPath } from '../../../app/+native-intent';
-import { isLegacyTableInviteUrl, parseInviteCodeFromUrl, parseTourTokenFromUrl } from '../inviteLinkRoutes';
+import { isLegacyTableInviteUrl, parseInviteCodeFromUrl, parseTourRunFromUrl, parseTourTokenFromUrl } from '../inviteLinkRoutes';
 
 describe('restored app invitation routes', () => {
   it.each([
@@ -73,4 +73,14 @@ describe('tour invitation routes', () => {
   ])('rejects malformed and third party tour URLs', (path) => {
     expect(parseTourTokenFromUrl(path)).toBeNull();
   });
+  it('keeps the party run of a public tour QR and ignores anything else in the query', () => {
+    const run = '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab';
+    const url = `https://na-pivo.cz/t/dScKWxNag_XfiHiQcx2BTA?r=${run}`;
+    expect(parseTourRunFromUrl(url)).toBe(run);
+    expect(redirectSystemPath({ path: url, initial: true })).toBe(`/t/dScKWxNag_XfiHiQcx2BTA?r=${run}`);
+    expect(parseTourRunFromUrl('https://na-pivo.cz/t/dScKWxNag_XfiHiQcx2BTA?r=not-a-run')).toBeNull();
+    expect(redirectSystemPath({ path: 'napivo://t/dScKWxNag_XfiHiQcx2BTA', initial: false })).toBe('/t/dScKWxNag_XfiHiQcx2BTA');
+    expect(parseTourRunFromUrl(`https://example.com/t/dScKWxNag_XfiHiQcx2BTA?r=${run}`)).toBeNull();
+  });
 });
+

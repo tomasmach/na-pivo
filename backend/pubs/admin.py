@@ -777,4 +777,4 @@ class TourPublicationAdmin(admin.ModelAdmin):
 
     @admin.action(description="Reset people counts")
     def reset_people_counts(self, request, queryset) -> None:  # noqa: ARG002
-        queryset.update(people_count=0)
+        queryset.update(people_count=0, people_count_at=None, count_since=timezone.now())

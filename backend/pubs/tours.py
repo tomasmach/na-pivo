@@ -11,7 +11,12 @@ from zoneinfo import ZoneInfo
 from django.conf import settings
 from django.utils import timezone
 
-from pubs.models import Account, TourPublication, TourShare
+from pubs.models import Account, TourPublication, TourRunMember, TourShare
+
+# Walking at least this long with the party before a walker counts, measured on the server.
+COUNT_MIN_WALK = timedelta(minutes=30)
+# The public number is recounted at most this often.
+COUNT_TTL = timedelta(minutes=10)
 
 
 def share_token(share):
@@ -88,14 +93,42 @@ def author_payload(account, request=None):
             "display_name": account.display_name, "avatar_url": avatar}
 
 
+def counted_people(publication_ids, now=None):
+    """Distinct trusted walkers per public tour, each counted once however often they walk it."""
+    from django.db.models import Count, F
+
+    from pubs.community_trust import trusted_account_q
+
+    now = now or timezone.now()
+    rows = (TourRunMember.objects.filter(
+        trusted_account_q("account__", now=now), run__publication_id__in=publication_ids,
+        completed_at__isnull=False, completed_at__gte=F("run__publication__count_since"),
+        # A run started on the old route does not count for the new one.
+        run__registered_at__gte=F("run__publication__count_since"),
+        joined_at__lte=now - COUNT_MIN_WALK, account__ghost_mode=False, account__excluded_from_leaderboards=False,
+    ).values("run__publication_id").annotate(people=Count("account_id", distinct=True)))
+    return {row["run__publication_id"]: row["people"] for row in rows}
+
+
+def fresh_people_count(publication, force=False):
+    now = timezone.now()
+    if force or publication.people_count_at is None or publication.people_count_at <= now - COUNT_TTL:
+        publication.people_count = counted_people([publication.pk], now).get(publication.pk, 0)
+        publication.people_count_at = now
+        TourPublication.objects.filter(pk=publication.pk).update(people_count=publication.people_count, people_count_at=now)
+    return publication.people_count
+
+
 def publication_summary(publication):
     return {
         "id": str(publication.public_id), "token": publication.token,
         "url": f"{settings.PUBLIC_WEB_ORIGIN}/t/{publication.token}",
         "status": publication.status, "revision": publication.revision,
-        "plan_revision": publication.plan_revision, "people_count": publication.people_count,
+        "plan_revision": publication.plan_revision, "people_count": fresh_people_count(publication),
         "title": publication.title, "city": publication.city, "stop_count": publication.stop_count,
         "walk_m": publication.walk_m, "has_challenges": publication.has_challenges,
+        # The author's app starts a crew only while its stops are still this route.
+        "stop_ids": [stop["id"] for stop in publication.snapshot["stops"]],
     }
 
 
@@ -120,7 +153,7 @@ def public_payload(publication, request=None):
         "expires_at": None,
         "public": {
             "id": str(publication.public_id), "author": author_payload(publication.plan.owner, request),
-            "people_count": publication.people_count, "city": publication.city, "walk_m": publication.walk_m,
+            "people_count": fresh_people_count(publication), "city": publication.city, "walk_m": publication.walk_m,
         },
     }
 

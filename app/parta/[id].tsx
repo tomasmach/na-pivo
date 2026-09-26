@@ -464,7 +464,7 @@ export default function FriendProfileScreen() {
                   <Pressable
                     onPress={() => router.push(`/t/${tour.token}` as Href)}
                     accessibilityRole="button"
-                    accessibilityLabel={`${tour.title}. ${[tour.city, pubCount(tour.stopCount)].filter(Boolean).join(' · ')}`}
+                    accessibilityLabel={`${tour.title}. ${[tour.city, pubCount(tour.stopCount), tour.peopleCount ? t.tours.peopleCount(tour.peopleCount) : null].filter(Boolean).join(' · ')}`}
                     style={({ pressed }) => [styles.tourRow, pressed && styles.tourRowPressed]}
                   >
                     <View style={styles.tourText}>
@@ -472,7 +472,7 @@ export default function FriendProfileScreen() {
                         {tour.title}
                       </Text>
                       <Text style={styles.recentDate} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {[tour.city, pubCount(tour.stopCount)].filter(Boolean).join(' · ')}
+                        {[tour.city, pubCount(tour.stopCount), tour.peopleCount ? t.tours.peopleCount(tour.peopleCount).toLocaleLowerCase(intlLocale) : null].filter(Boolean).join(' · ')}
                       </Text>
                     </View>
                     <ChevronRightIcon size={16} color={Colors.mutedText} />

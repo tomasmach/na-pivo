@@ -62,6 +62,7 @@ from .party_views import (
 )
 from .pub_event_views import PubEventView
 from .pub_visitors_views import PubVisitorsLastWeekView
+from .tour_run_views import TourRunMemberView, TourRunPreviewView, TourRunView
 from .tour_views import (
     PublicTourView,
     TourDetailView,
@@ -149,6 +150,9 @@ urlpatterns = [
     path("tours/<uuid:plan_id>/share", TourShareView.as_view()),
     path("tours/<uuid:plan_id>/publication", TourPublicationView.as_view()),
     path("tour-publications/<uuid:public_id>/report", TourPublicationReportView.as_view()),
+    path("tour-runs/<uuid:run_id>", TourRunView.as_view()),
+    path("tour-runs/<uuid:run_id>/me", TourRunMemberView.as_view()),
+    path("tour-runs/<uuid:run_id>/preview", TourRunPreviewView.as_view()),
     path("tour-shares/<slug:token>", PublicTourView.as_view()),
     path("pubs/search", TourPubSearchView.as_view()),
     path("challenges", ChallengeListView.as_view(), name="challenges"),

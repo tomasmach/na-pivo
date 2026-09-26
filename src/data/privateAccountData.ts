@@ -18,6 +18,7 @@ import { clearFriendsQueue } from './friendsQueue';
 import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
 import { resetForegroundPulls } from './foregroundPulls';
 import { clearNightsQueue } from './nightsQueue';
+import { clearTourRunQueue } from './tourRunQueue';
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
@@ -164,6 +165,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearFriendsQueue(),
     clearFriendsDashboardSnapshot(),
     clearNightsQueue(),
+    clearTourRunQueue(),
     clearPubRatingsQueue(),
     clearPubAmenitiesQueue(),
   ]);

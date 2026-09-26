@@ -2004,6 +2004,7 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
     # with an exact export JSON path where its rows land.
     exported_relations = {
         "tours": "tours[*].id",
+        "tour_run_memberships": "tour_runs[*].run_id",
         "auth_tokens": "auth_sessions[*].device_label",
         "email_credential": "email_credential.created_at",
         "beer_photo_deletion_tombstones": "beer_photo_deletion_tombstones[*].client_id",
@@ -2068,6 +2069,7 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
     # Reverse accessors deliberately absent from the export, each with a
     # concrete reason naming its exclusion category.
     intentionally_excluded_relations = {
+        "organized_tour_runs": "The organizer's runs are exported through tour_run_memberships: organizing makes the account a member of its own run.",
         "one_time_tokens": (
             "secret/operational row: single-use auth tokens never leave the server"
         ),

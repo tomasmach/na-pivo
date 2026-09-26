@@ -5025,10 +5025,41 @@ class TourPublication(models.Model):
     stop_count = models.PositiveSmallIntegerField()
     walk_m = models.PositiveIntegerField()
     has_challenges = models.BooleanField(default=False)
+    # A cache of who walked it, refreshed from TourRunMember at most every few minutes.
     people_count = models.PositiveIntegerField(default=0)
+    people_count_at = models.DateTimeField(null=True, blank=True)
+    # A new route or an admin reset counts walkers from here on.
+    count_since = models.DateTimeField(default=timezone.now)
     rules_accepted_at = models.DateTimeField()
     published_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [models.Index(fields=["status", "start_lat", "start_lon"], name="tour_publication_geo")]
+
+
+class TourRun(models.Model):
+    """A party walking one public tour together.
+
+    Only membership and a "walked half the pubs" flag reach the server; which
+    stops, when, beers and location stay on each phone.
+    """
+
+    id = models.UUIDField(primary_key=True, editable=False)  # the organizer's local run id
+    publication = models.ForeignKey(TourPublication, on_delete=models.CASCADE, related_name="runs")
+    # A deleted organizer must not take the rest of the party's walks with them.
+    organizer = models.ForeignKey(Account, null=True, on_delete=models.SET_NULL, related_name="organized_tour_runs")
+    registered_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+
+class TourRunMember(models.Model):
+    run = models.ForeignKey(TourRun, on_delete=models.CASCADE, related_name="members")
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="tour_run_memberships")
+    joined_at = models.DateTimeField(default=timezone.now)
+    left_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["run", "account"], name="tour_run_member_identity")]
+        indexes = [models.Index(fields=["account", "completed_at"], name="tour_run_member_done")]

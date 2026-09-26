@@ -58,7 +58,8 @@ export function TourMapPreview({ stops, onPress }: { stops: readonly TourStop[];
 }
 
 export function TourHistoryRow({ run, selected, onPress }: { run: TourRun; selected: boolean; onPress: () => void }) {
-  const summary = `${new Date(run.startedAt).toLocaleDateString(intlLocale)} · ${Object.values(run.statuses).filter((s) => s === 'visited').length} / ${run.snapshot.stops.length}`;
+  const crew = run.crew ? t.tours.crewHistory(run.crew.members?.length ?? 1, run.crew.completion === 'sent' && !!run.crew.counted) : null;
+  const summary = [`${new Date(run.startedAt).toLocaleDateString(intlLocale)} · ${Object.values(run.statuses).filter((s) => s === 'visited').length} / ${run.snapshot.stops.length}`, crew].filter(Boolean).join(' · ');
   return <Pressable accessibilityRole="button" accessibilityLabel={`${t.tours.pastRun}. ${summary}`} accessibilityState={{ selected }} onPress={onPress}
     style={({ pressed }) => [styles.history, pressed && styles.dim]}>
     <HistoryIcon size={18} color={Colors.foamMuted} />
