@@ -14,13 +14,25 @@
  *
  * Flush keep/drop rule (matches the mobile retry contract):
  *   - 'ok' (2xx)              → reached backend → drop from queue.
- *   - 'permanent-error'       → will never succeed → drop from queue.
+ *   - 'permanent-error'       → will never succeed → drop from queue, but flag
+ *                               the local drink as rejected (and tell the user)
+ *                               so it is not silently lost. The user fixes it,
+ *                               which re-enqueues it under the same client_id,
+ *                               or removes it.
+ *   - 'limited' (daily cap)   → drop from queue; the drink stays local-only.
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
  */
 
+import React from 'react';
+
 import { submitDrink, type DrinkEntry } from './drinksClient';
+import { InfoIcon } from '@/components/shared/IconGlyph';
+import { Colors } from '@/theme/colors';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import { isDrinkType, isOutsidePlaceContext, isServingType } from '@/drinks/drinkTypes';
+import { t } from '@/i18n';
+import { useTallyStore, whenTallyHydrated } from '@/stores/tallyStore';
+import { useToastStore } from '@/stores/toastStore';
 
 const STORAGE_KEY = 'na-pivo-drinks-queue';
 /** Historical backfill budget. Normal user counts are never evicted. */
@@ -70,13 +82,30 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<DrinkEntry>(
  *  from being persisted immediately. */
 const runMutation = createQueueLock();
 
+/** Keep a drink the server refused in the local diary, flagged for fixing. One
+ *  toast per flush is enough, however many drinks it rejected. */
+function noteRejectedDrinks(rejected: { clientId: string; field?: string }[]): void {
+  // A drink removed while its POST was in flight has no row left to fix.
+  const { current, history, markDrinkRejected } = useTallyStore.getState();
+  const localIds = new Set(
+    [...(current ? [current] : []), ...history].flatMap((s) => s.drinks.map((d) => d.id)),
+  );
+  const kept = rejected.filter(({ clientId }) => localIds.has(clientId));
+  if (kept.length === 0) return;
+  kept.forEach(({ clientId, field }) => markDrinkRejected(clientId, field));
+  useToastStore.getState().show(t.counter.drinkRejectedToast(kept.length), {
+    icon: React.createElement(InfoIcon, { size: 20, color: Colors.amber }),
+  });
+}
+
 /** Attempts to send every queued drink, keeping only the ones that should
- *  retry ('ok' and 'permanent-error' are both removed). */
+ *  retry ('ok', 'permanent-error' and 'limited' are removed). */
 async function flushUnlocked(signal: AbortSignal): Promise<void> {
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
   const deliveredOrDropped = new Set<string>();
+  const rejected: { clientId: string; field?: string }[] = [];
   const snapshotIds = new Set(queue.map((entry) => entry.client_id));
   for (const entry of queue) {
     // Stop before delivering the next drink once an account-boundary clear has
@@ -87,11 +116,22 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     if (signal.aborted) break;
     deliveringIds.add(entry.client_id);
     try {
-      const result = await submitDrink(entry, signal);
+      const result = await submitDrink(entry, signal, (field) => {
+        rejected.push({ clientId: entry.client_id, ...(field ? { field } : {}) });
+      });
       if (result !== 'retry') deliveredOrDropped.add(entry.client_id);
     } finally {
       deliveringIds.delete(entry.client_id);
     }
+  }
+
+  // Flag rejections before their payloads leave the queue, and only once the
+  // persisted tally has loaded: a cold-start flush must not flag the empty
+  // initial state. An account-boundary clear aborts the flush and wipes the
+  // tally; never flag anything in the replacement account's diary.
+  if (rejected.length > 0) {
+    await whenTallyHydrated();
+    if (!signal.aborted) noteRejectedDrinks(rejected);
   }
 
   await runMutation(async () => {
@@ -107,7 +147,8 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 /**
  * Persists the drink and (by default) immediately tries to sync the whole
  * queue. Resolves true when this drink reached the backend (or was permanently
- * rejected) on the first attempt — i.e. it left the queue; false means it stays
+ * rejected, which flags it in the tally) on the first attempt — i.e. it left
+ * the queue; false means it stays
  * queued for a later flush. Never throws.
  *
  * Pass `{ deliver: false }` to persist the drink WITHOUT sending it yet. The

@@ -321,6 +321,7 @@ from .serializers import (
     _amenity_aggregate_item,
     _amenity_vote_item,
     normalize_beer_checkin_tags,
+    shot_volume,
 )
 from .stats import compute_my_stats, drinking_day, drinking_day_bounds
 from .ugc_consent import ugc_consent_precondition, ugc_consent_snapshot, ugc_may_publish
@@ -2807,16 +2808,7 @@ class DrinksView(APIView):
                 old_drink_type = drink.drink_type
                 beer_name = update.get("beer_name", drink.beer_name)
                 drink_type = update.get("drink_type", drink.drink_type)
-                volume_ml = update.get("volume_ml", drink.volume_ml)
-                if (
-                    drink_type == DrinkLog.DrinkType.SHOT
-                    and volume_ml is not None
-                    and volume_ml > 200
-                ):
-                    return Response(
-                        {"volume_ml": ["A shot volume must not exceed 200 ml."]},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                volume_ml = shot_volume(drink_type, update.get("volume_ml", drink.volume_ml))
 
                 brand_match = (
                     match_beer_brand(beer_name, match_cache=match_cache)
