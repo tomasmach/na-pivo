@@ -12,6 +12,7 @@ import {
   Text,
   Pressable,
   TextInput,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -38,6 +39,7 @@ import { ensureLocationPermission } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
 import { lookupAddedPubLocation, type AddedPubLocation } from '@/data/addedPubLocationClient';
+import { resolvePubSearchResult, suggestPubsToAdd, type PubSearchResult } from '@/data/pubSearchClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { enqueueAddedPub, enqueueAddedPubEdit, loadAddedPubSubmissions } from '@/data/addedPubsQueue';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
@@ -124,9 +126,33 @@ export default function AddPubScreen() {
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [candidate, setCandidate] = useState<AddedPubLocation | null>(null);
+  const [suggestions, setSuggestions] = useState<PubSearchResult[] | null>(null);
+  const [searchingPlaces, setSearchingPlaces] = useState(false);
+  const [resolvingSuggestionId, setResolvingSuggestionId] = useState<string | null>(null);
   const lookupRequest = useRef<AbortController | null>(null);
+  // A picked place fills the name; it must not reopen its own suggestion list.
+  const pickedName = useRef<string | null>(null);
   const submitting = useRef(false);
   useEffect(() => () => lookupRequest.current?.abort(), []);
+
+  useEffect(() => {
+    const query = name.trim();
+    if (isEditing || query.length < 3 || query === pickedName.current) return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      setSearchingPlaces(true);
+      void suggestPubsToAdd(query, initialCoords, controller.signal).then((results) => {
+        if (controller.signal.aborted) return;
+        // Offline, the list disappears and the manual fields stay usable.
+        setSuggestions(results);
+        setSearchingPlaces(false);
+      });
+    }, 400);
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [initialCoords, isEditing, name]);
   const addressChanged = city.trim() !== initialCity || address.trim() !== initialAddress;
   const nameChanged = name.trim() !== initialName;
   const locationCorrectionSelected = selectedLocation !== null;
@@ -147,6 +173,7 @@ export default function AddPubScreen() {
     lookupRequest.current?.abort();
     lookupRequest.current = null;
     setLocating(false);
+    setResolvingSuggestionId(null);
     setCandidate(null);
     setLocationError('');
     // An explicitly aimed map pin is independent of its text label. An address
@@ -166,6 +193,45 @@ export default function AddPubScreen() {
     if (!result) setLocationError(t.addPub.addressLookupFailed);
     setLocating(false);
   }, [address, city, clearLookup]);
+
+  const handlePickSuggestion = useCallback(async (suggestion: PubSearchResult) => {
+    Keyboard.dismiss();
+    clearLookup();
+    // A map pin may point elsewhere; the picked place needs its own confirmation.
+    setSelectedLocation(null);
+    const request = new AbortController();
+    lookupRequest.current = request;
+    setLocating(true);
+    setResolvingSuggestionId(suggestion.id);
+    const place = await resolvePubSearchResult(suggestion, request.signal);
+    const placeCity = place?.city?.trim() ?? '';
+    const placeAddress = place?.address?.trim() ?? '';
+    // The server re-checks a new pub at address level, so a picked place goes
+    // through the same precise lookup and confirmation as a typed address.
+    const result = place && !request.signal.aborted
+      ? await lookupAddedPubLocation(
+          placeCity && placeAddress
+            ? { address: placeAddress, city: placeCity }
+            : { lat: place.lat, lng: place.lng },
+          request.signal,
+        )
+      : null;
+    if (request.signal.aborted) return;
+    setLocating(false);
+    setResolvingSuggestionId(null);
+    if (!place) {
+      setLocationError(t.addPub.addressLookupFailed);
+      return;
+    }
+    pickedName.current = place.name.trim();
+    setName(place.name);
+    setSuggestions(null);
+    setSearchingPlaces(false);
+    setCity(result?.city ?? placeCity);
+    setAddress(result?.address ?? placeAddress);
+    setCandidate(result);
+    if (!result) setLocationError(t.addPub.addressLookupFailed);
+  }, [clearLookup]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     trackUiInteraction('add_pub_location', 'select');
@@ -357,6 +423,111 @@ export default function AddPubScreen() {
           </Text>
         </View>
 
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{t.addPub.nameLabel}</Text>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={(value) => {
+              setName(value);
+              setLocationError('');
+              pickedName.current = null;
+              if (resolvingSuggestionId !== null) {
+                lookupRequest.current?.abort();
+                lookupRequest.current = null;
+                setLocating(false);
+                setResolvingSuggestionId(null);
+              }
+              setSuggestions(null);
+              setSearchingPlaces(false);
+            }}
+            placeholder={t.addPub.namePlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            maxLength={200}
+            accessibilityLabel={t.a11y.addPubNameInput}
+          />
+          {!isEditing && (searchingPlaces || suggestions) && (
+            <View style={styles.suggestions}>
+              {suggestions === null ? (
+                <Text style={styles.searchStatus} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.addPub.searchingPlaces}
+                </Text>
+              ) : suggestions.length === 0 ? (
+                <Text style={styles.searchStatus} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.addPub.noPlaceSuggestions}
+                </Text>
+              ) : (
+                suggestions.map((suggestion, index) => {
+                  const detail = suggestion.location ?? [suggestion.address, suggestion.city].filter(Boolean).join(', ');
+                  return (
+                  <Pressable
+                    key={suggestion.id}
+                    onPress={() => void handlePickSuggestion(suggestion)}
+                    disabled={resolvingSuggestionId !== null}
+                    style={({ pressed }) => [
+                      styles.suggestion,
+                      index > 0 && styles.suggestionDivider,
+                      pressed && styles.suggestionPressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.a11y.addPubSuggestion(suggestion.name)}
+                    accessibilityState={{ busy: resolvingSuggestionId === suggestion.id }}
+                  >
+                    <MapPinIcon size={16} color={Colors.amber} />
+                    <View style={styles.suggestionText}>
+                      <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {resolvingSuggestionId === suggestion.id ? t.addPub.loadingPlace : suggestion.name}
+                      </Text>
+                      {!!detail && (
+                        <Text
+                          style={styles.suggestionLocation}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                          numberOfLines={2}
+                        >
+                          {detail}
+                        </Text>
+                      )}
+                    </View>
+                  </Pressable>
+                  );
+                })
+              )}
+              {suggestions?.some((suggestion) => suggestion.id.startsWith('google:')) && (
+                <Text style={styles.googleMapsAttribution} maxFontSizeMultiplier={1}>Google Maps</Text>
+              )}
+            </View>
+          )}
+          {selectedLocation && (
+            <View style={styles.suggestions}>
+              <View
+                style={[styles.selectedSuggestion, styles.selectedCurrentLocation]}
+                accessibilityLabel={
+                  selectedLocation.source === 'pin'
+                    ? t.addPub.mapPinSelectedTitle
+                    : t.addPub.addressConfirmed
+                }
+              >
+                <MapPinIcon size={16} color={Colors.amber} />
+                <View style={styles.suggestionText}>
+                  <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {selectedLocation.source === 'pin'
+                      ? t.addPub.mapPinSelectedTitle
+                      : t.addPub.addressConfirmed}
+                  </Text>
+                  <Text
+                    style={styles.suggestionLocation}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                    numberOfLines={2}
+                  >
+                    {selectedLocation.displayLocation}
+                  </Text>
+                  {selectedLocation.source === 'address' && <Text style={styles.suggestionLocation}>Google Maps</Text>}
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+
         <View style={styles.locationCard}>
           <Text style={styles.locationHeader}>{isEditing && !needsLocation ? t.addPub.editLocationHeader : t.addPub.locationHeader}</Text>
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -425,51 +596,6 @@ export default function AddPubScreen() {
               )}
             </View>
           </Pressable>
-          )}
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t.addPub.nameLabel}</Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={(value) => {
-              setName(value);
-              setLocationError('');
-            }}
-            placeholder={t.addPub.namePlaceholder}
-            placeholderTextColor={Colors.mutedText}
-            maxLength={200}
-            accessibilityLabel={t.a11y.addPubNameInput}
-          />
-          {selectedLocation && (
-            <View style={styles.suggestions}>
-              <View
-                style={[styles.selectedSuggestion, styles.selectedCurrentLocation]}
-                accessibilityLabel={
-                  selectedLocation.source === 'pin'
-                    ? t.addPub.mapPinSelectedTitle
-                    : t.addPub.addressConfirmed
-                }
-              >
-                <MapPinIcon size={16} color={Colors.amber} />
-                <View style={styles.suggestionText}>
-                  <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {selectedLocation.source === 'pin'
-                      ? t.addPub.mapPinSelectedTitle
-                      : t.addPub.addressConfirmed}
-                  </Text>
-                  <Text
-                    style={styles.suggestionLocation}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                    numberOfLines={2}
-                  >
-                    {selectedLocation.displayLocation}
-                  </Text>
-                  {selectedLocation.source === 'address' && <Text style={styles.suggestionLocation}>Google Maps</Text>}
-                </View>
-              </View>
-            </View>
           )}
         </View>
 
@@ -633,6 +759,37 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.24),
     backgroundColor: withAlpha(Colors.stout2, 0.9),
+  },
+  suggestion: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  suggestionDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  suggestionPressed: {
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  searchStatus: {
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.foamMuted,
+  },
+  googleMapsAttribution: {
+    alignSelf: 'flex-end',
+    marginHorizontal: 10,
+    marginVertical: 5,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    color: Colors.foam,
   },
   selectedSuggestion: {
     minHeight: 62,

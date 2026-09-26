@@ -728,6 +728,9 @@ export const en: Strings = {
     fixLocation: 'Fix location',
     locationNeedsFix: 'The address could not be located. Correct the address and confirm its location.',
     addressLookupFailed: 'The address could not be verified. Check your connection and try again.',
+    searchingPlaces: 'Looking for places…',
+    noPlaceSuggestions: 'I found nothing. Fill in the city and address by hand.',
+    loadingPlace: 'Looking up the place…',
 
     title: 'Add a pub',
     editTitle: 'Fix the pub',
