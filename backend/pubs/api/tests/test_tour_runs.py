@@ -17,8 +17,8 @@ from pubs.models import Account, FriendBlock, Friendship, TourPublication, TourR
 pytestmark = pytest.mark.django_db
 
 
-def public_tour():
-    author = account_client(nickname="autor")
+def public_tour(nickname="autor"):
+    author = account_client(nickname=nickname)
     plan_id, revision = save_plan(author, plan_body())
     publication = publish(author, plan_id, revision).json()["publication"]
     return author, plan_id, publication
@@ -28,8 +28,9 @@ def register(client, run_id, publication, ended=False):
     return client.put(f"/v1/tour-runs/{run_id}", {"publication_id": publication["id"], "ended": ended}, format="json")
 
 
-def member(client, run_id, state):
-    return client.put(f"/v1/tour-runs/{run_id}/me", {"state": state}, format="json")
+def member(client, run_id, state, publication=None):
+    body = {"state": state, **({"publication_id": publication["id"]} if publication else {})}
+    return client.put(f"/v1/tour-runs/{run_id}/me", body, format="json")
 
 
 def walked_long_enough():
@@ -70,6 +71,16 @@ def test_blocked_people_cannot_join_each_others_run():
     register(organizer, run_id, publication)
     assert member(other, run_id, "joined").json()["error"] == "blocked"
     assert other.get(f"/v1/tour-runs/{run_id}/preview").status_code == 404
+
+
+def test_a_join_names_its_tour_so_a_mismatched_link_joins_nothing():
+    _, _, publication = public_tour()
+    _, _, other_tour = public_tour("jina_autorka")
+    organizer, friend = account_client(nickname="vojta"), account_client(nickname="pepa")
+    run_id = str(uuid.uuid4())
+    register(organizer, run_id, publication)
+    assert member(friend, run_id, "joined", other_tour).json()["error"] == "wrong_tour"
+    assert member(friend, run_id, "joined", publication).json()["joined"] is True
 
 
 def test_only_trusted_walkers_count_once_after_thirty_minutes():
@@ -123,8 +134,16 @@ def test_a_new_route_counts_walkers_from_then_on():
     walked_long_enough()
     TourPublication.objects.update(people_count_at=None)
     assert public_read(publication["token"]).json()["public"]["people_count"] == 1
+    late = account_client(nickname="honza", trusted=True)
+    old_run = str(uuid.uuid4())
+    register(late, old_run, publication)
     plan_id, revision = save_plan(author, plan_body(pubs=(0, 2), revision=1), plan_id)
     publish(author, plan_id, revision)
+    assert public_read(publication["token"]).json()["public"]["people_count"] == 0
+    # Finishing the old route after the change still does not count for the new one.
+    member(late, old_run, "completed")
+    walked_long_enough()
+    TourPublication.objects.update(people_count_at=None)
     assert public_read(publication["token"]).json()["public"]["people_count"] == 0
 
 
@@ -147,7 +166,7 @@ def test_the_preview_hides_people_who_blocked_each_other():
     register(organizer, run_id, publication)
     member(alice, run_id, "joined")
     preview = bob.get(f"/v1/tour-runs/{run_id}/preview").json()
-    assert [m["nickname"] for m in preview["members"]] == ["vojta"]
+    assert ([m["nickname"] for m in preview["members"]], preview["going"]) == (["vojta"], 1)
     assert [m["nickname"] for m in member(bob, run_id, "joined").json()["members"]] == ["vojta", "bob"]
 
 

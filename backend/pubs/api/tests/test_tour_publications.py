@@ -8,7 +8,9 @@ from rest_framework.test import APIClient
 
 from pubs.accounts import issue_token, schedule_deletion
 from pubs.admin import TourPublicationAdmin
-from pubs.models import Account, EmailCredential, PubDirectory, TourPublication
+from pubs.enrichment.matcher import geohash8
+from pubs.identity import normalize_pub_name
+from pubs.models import Account, CanonicalPub, EmailCredential, PubAlias, PubDirectory, TourPublication
 from pubs.tour_moderation import rejected_text
 
 pytestmark = pytest.mark.django_db
@@ -100,6 +102,22 @@ def test_public_copy_hides_meetup_uses_directory_names_and_stays_frozen():
     assert public_read(token).json()["tour"]["title"] == "Tajná rozlučka"
 
 
+def test_a_merged_pub_from_search_goes_public_under_its_canonical_name():
+    # A merge may rename and re-pin the pub; search then shows that name and position, which no alias shares.
+    canonical = CanonicalPub.objects.create(cache_key="u2fkbnhu", name="Tygr na Starém Městě", lat=50.0871, lng=14.4185, city="Praha")
+    PubAlias.objects.create(canonical_pub=canonical, cache_key="u2fkbnhu", name="U Zlatého tygra", name_key=normalize_pub_name("U Zlatého tygra"),
+                            lat=50.08, lng=14.42, is_primary=True)
+    client = account_client()
+    body = plan_body()
+    body["stops"][0].update(pub_id="search-item-1", cache_key=geohash8(canonical.lat, canonical.lng), name=canonical.name,
+                            lat=canonical.lat, lon=canonical.lng)
+    plan_id, revision = save_plan(client, body)
+    response = publish(client, plan_id, revision)
+    assert response.status_code == 200, response.content
+    first = public_read(response.json()["publication"]["token"]).json()["tour"]["stops"][0]
+    assert (first["name"], first["pub_id"]) == ("Tygr na Starém Městě", str(canonical.public_id))
+
+
 def test_unknown_pubs_and_drinking_dares_stay_private():
     client = account_client()
     body = plan_body()
@@ -167,7 +185,9 @@ def test_publication_limit_with_an_exempt_seeding_account():
     first_id, first_revision = save_plan(client, plan_body())
     assert publish(client, first_id, first_revision).status_code == 200
     second_id, second_revision = save_plan(client, plan_body(pubs=(2, 3)))
-    assert publish(client, second_id, second_revision).json()["error"] == "publication_limit"
+    refused = publish(client, second_id, second_revision).json()
+    # The app names the limit the server holds, not a number of its own.
+    assert (refused["error"], refused["limit"]) == ("publication_limit", 1)
     assert publish(client, first_id, first_revision).status_code == 200
     with override_settings(TOUR_PUBLICATION_LIMIT_EXEMPT={str(client.account.public_id)}):
         assert publish(client, second_id, second_revision).status_code == 200

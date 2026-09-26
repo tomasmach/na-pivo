@@ -113,13 +113,16 @@ class TourRunPreviewView(TourRunBase):
             return Response(status=404)
         members = [m.account for m in run.members.select_related("account").filter(left_at__isnull=True).order_by("joined_at")]
         visible = [account for account in members if account.pk not in hidden]
-        return Response({"organizer": author_payload(run.organizer, request), "going": len(members),
+        # Blocked people stay out of the count too, or "3 going" next to two faces gives them away.
+        return Response({"organizer": author_payload(run.organizer, request), "going": len(visible),
                          "members": [author_payload(account, request) for account in visible[:4]]})
 
 
 class MemberSerializer(serializers.Serializer):
     # "uncounted" takes back a completion after "Nezapočítávat mě".
     state = serializers.ChoiceField(choices=["joined", "left", "completed", "uncounted"])
+    # The public tour the joiner saw next to the QR; optional so a join without it still works.
+    publication_id = serializers.UUIDField(required=False)
 
 
 class TourRunMemberView(TourRunBase):
@@ -144,6 +147,9 @@ class TourRunMemberView(TourRunBase):
                         return Response({"joined": False, "reason": "closed"})
                     if run.organizer is None or run.organizer_id in _hidden_from(account):
                         return _error("blocked", _("K tomuhle průchodu se připojit nejde."), 400)
+                    expected = serializer.validated_data.get("publication_id")
+                    if expected and expected != run.publication.public_id:
+                        return _error("wrong_tour", _("K tomuhle průchodu se připojit nejde."), 400)
                     if run.members.filter(left_at__isnull=True).count() >= MAX_MEMBERS:
                         return Response({"joined": False, "reason": "full"})
                     if member is None:

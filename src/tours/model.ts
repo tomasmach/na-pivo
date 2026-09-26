@@ -14,6 +14,8 @@ export type TourResult = {
   /** Which stop or field the server refused when publishing publicly. */
   stop?: number;
   field?: 'title' | 'challenge';
+  /** How many public tours the server allows, when it refused one more. */
+  limit?: number;
 };
 export interface TourStop {
   id: string;
@@ -59,6 +61,8 @@ export interface TourPublication {
   revision: number;
   planRevision: number;
   peopleCount: number;
+  /** The stops of the public copy, in order. Missing from servers before crews. */
+  stopIds?: string[];
 }
 export interface TourPublicSource {
   publicId: string;
@@ -120,7 +124,8 @@ export function validPublication(v: unknown): v is TourPublication {
   const p = v as TourPublication;
   return uuidValid(p.id) && publicTokenValid(p.token) && typeof p.url === 'string' && /^https:\/\/na-pivo\.cz\/t\/[A-Za-z0-9_-]+$/.test(p.url) &&
     ['active', 'hidden', 'unpublished'].includes(p.status) && Number.isInteger(p.revision) && Number.isInteger(p.planRevision) &&
-    Number.isInteger(p.peopleCount) && p.peopleCount >= 0;
+    Number.isInteger(p.peopleCount) && p.peopleCount >= 0 &&
+    (p.stopIds === undefined || (Array.isArray(p.stopIds) && p.stopIds.length <= 8 && p.stopIds.every(uuidValid)));
 }
 /** The pub identities of a plan, to notice when a saved public tour stops being the same route. */
 export const pubIdsOf = (plan: Pick<TourPlan, 'stops'>) => plan.stops.map((stop) => stop.pubId);
