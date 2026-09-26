@@ -31,7 +31,7 @@ import { Colors } from '@/theme/colors';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import { isDrinkType, isOutsidePlaceContext, isServingType } from '@/drinks/drinkTypes';
 import { t } from '@/i18n';
-import { useTallyStore } from '@/stores/tallyStore';
+import { useTallyStore, whenTallyHydrated } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 
 const STORAGE_KEY = 'na-pivo-drinks-queue';
@@ -120,6 +120,15 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     }
   }
 
+  // Flag rejections before their payloads leave the queue, and only once the
+  // persisted tally has loaded: a cold-start flush must not flag the empty
+  // initial state. An account-boundary clear aborts the flush and wipes the
+  // tally; never flag anything in the replacement account's diary.
+  if (rejected.length > 0) {
+    await whenTallyHydrated();
+    if (!signal.aborted) noteRejectedDrinks(rejected);
+  }
+
   await runMutation(async () => {
     const current = await loadQueue();
     const remaining = current.filter((entry) => {
@@ -128,9 +137,6 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     });
     await saveQueue(remaining);
   });
-  // An account-boundary clear aborts the flush and wipes the tally; never flag
-  // anything in the replacement account's diary.
-  if (!signal.aborted) noteRejectedDrinks(rejected);
 }
 
 /**

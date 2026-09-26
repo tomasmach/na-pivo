@@ -59,7 +59,8 @@ export function sessionDrinkActionGroups(session: TallySession | null): DrinkAct
       drink.beerName.trim().toLowerCase(),
       drink.volumeMl ?? '',
       servingType,
-      rejected ? `rejected:${rejectedField ?? ''}` : '',
+      // A fix applies one price to the row, so rejected drinks also split by price.
+      rejected ? `rejected:${rejectedField ?? ''}:${drink.priceCzk ?? ''}` : '',
     ].join('|');
     const priceCzk = typeof drink.priceCzk === 'number' ? drink.priceCzk : 0;
     const existing = groups.get(key);

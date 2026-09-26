@@ -204,6 +204,56 @@ describe('flushDrinksQueue', () => {
     expect(submitDrink).toHaveBeenCalledTimes(1);
   });
 
+  it('waits for the persisted tally before flagging a cold-start rejection', async () => {
+    // The diary on disk holds the drink; memory is still the empty initial state.
+    await AsyncStorage.setItem(
+      'na-pivo-tally',
+      JSON.stringify({
+        state: {
+          current: {
+            clientId: 'v1',
+            pubKey: 'u2fkbnhu',
+            pubName: 'U Testu',
+            startedAt: '2026-06-12T19:45:00.000Z',
+            drinks: [{ id: 'a', beerName: 'Plzeň', at: '2026-06-12T19:45:00.000Z', syncStatus: 'pending' }],
+          },
+          history: [],
+        },
+        version: 1,
+      }),
+    );
+    const hydrated = jest.spyOn(useTallyStore.persist, 'hasHydrated').mockReturnValue(false);
+    const finished: (() => void)[] = [];
+    jest.spyOn(useTallyStore.persist, 'onFinishHydration').mockImplementation((listener) => {
+      finished.push(() => listener(useTallyStore.getState()));
+      return () => undefined;
+    });
+    const rehydrate = jest.spyOn(useTallyStore.persist, 'rehydrate').mockImplementation(async () => undefined);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+    (submitDrink as jest.Mock).mockImplementation(
+      async (_entry: DrinkEntry, _signal: AbortSignal, onRejected: (field?: string) => void) => {
+        onRejected('beer.volume_ml');
+        return 'permanent-error';
+      },
+    );
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks(20);
+    // Not flagged on the empty state and the payload is still queued.
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(await readQueue()).toHaveLength(1);
+
+    hydrated.mockRestore();
+    rehydrate.mockRestore();
+    await useTallyStore.persist.rehydrate();
+    finished.forEach((resolve) => resolve());
+    await flushing;
+
+    expect(localStatus('a')).toBe('rejected');
+    expect(await readQueue()).toEqual([]);
+    jest.restoreAllMocks();
+  });
+
   it('drops a drink over the daily cap without flagging it for a fix', async () => {
     countLocally('a');
     await enqueueDrink(entry({ client_id: 'a' }), { deliver: false });

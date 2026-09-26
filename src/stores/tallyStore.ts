@@ -847,3 +847,24 @@ export function sessionBeerCounts(session: TallySession | null): Map<string, num
   }
   return counts;
 }
+
+/** Resolve once the persisted tally has loaded, so a write cannot land on the
+ *  empty initial state and be overwritten by hydration. */
+export async function whenTallyHydrated(): Promise<void> {
+  const persist = useTallyStore.persist;
+  if (persist.hasHydrated()) return;
+
+  await new Promise<void>((resolve) => {
+    const unsubscribe = persist.onFinishHydration(() => {
+      unsubscribe();
+      resolve();
+    });
+
+    if (persist.hasHydrated()) {
+      unsubscribe();
+      resolve();
+    } else {
+      void persist.rehydrate();
+    }
+  });
+}

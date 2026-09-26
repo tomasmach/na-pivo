@@ -142,6 +142,18 @@ describe('sessionDrinkActionGroups', () => {
     expect(groups[1].drinks.map((d) => d.id)).toEqual([evening.drinks[1].id]);
   });
 
+  it('never groups rejected drinks with different prices, so a fix keeps each price', () => {
+    const evening = session([
+      drink({ beerName: 'Pilsner Urquell', volumeMl: 500, priceCzk: 60 }),
+      drink({ beerName: 'Pilsner Urquell', volumeMl: 500, priceCzk: 70 }),
+    ]);
+    evening.drinks = evening.drinks.map((d) => ({ ...d, syncStatus: 'rejected' as const }));
+
+    const groups = sessionDrinkActionGroups(evening);
+
+    expect(groups.map((g) => g.totalCzk)).toEqual([60, 70]);
+  });
+
   it('collapses repeated drinks into one editable row with a count and total', () => {
     const groups = sessionDrinkActionGroups(
       session([

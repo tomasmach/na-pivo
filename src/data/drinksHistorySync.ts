@@ -34,6 +34,7 @@ import {
 } from '@/drinks/drinkTypes';
 import {
   useTallyStore,
+  whenTallyHydrated,
   type TallyDrink,
   type TallySession,
 } from '@/stores/tallyStore';
@@ -47,25 +48,6 @@ let cancellationGeneration = 0;
 let seedPromise: Promise<void> | null = null;
 let nextWaveNotBeforeMs = 0;
 let scheduledWave: ReturnType<typeof setTimeout> | null = null;
-
-async function waitForTallyHydration(): Promise<void> {
-  const persist = useTallyStore.persist;
-  if (persist.hasHydrated()) return;
-
-  await new Promise<void>((resolve) => {
-    const unsubscribe = persist.onFinishHydration(() => {
-      unsubscribe();
-      resolve();
-    });
-
-    if (persist.hasHydrated()) {
-      unsubscribe();
-      resolve();
-    } else {
-      void persist.rehydrate();
-    }
-  });
-}
 
 /**
  * Reconstruct the exact queue payload a tally drink would have produced when it
@@ -204,7 +186,7 @@ async function runHistorySeed(): Promise<void> {
   const cancellationAtStart = cancellationGeneration;
   const queueBoundaryAtStart = getDrinksQueueBoundaryGeneration();
 
-  await waitForTallyHydration();
+  await whenTallyHydrated();
   if (cancellationAtStart !== cancellationGeneration) return;
 
   try {
