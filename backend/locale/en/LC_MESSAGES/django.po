@@ -483,12 +483,12 @@ msgid "Kamarád jde tour de pub"
 msgstr "A mate is on a pub crawl"
 
 #, python-format
-msgid "%(name)s jde tour „%(tour)s“ a sedí v hospodě %(pub)s. Přidáš se na jedno?"
-msgstr "%(name)s is on the tour “%(tour)s”, sitting in %(pub)s. Up for one?"
+msgid "%(name)s jde tour „%(tour)s“ a teď sedí tady: %(pub)s. Přidáš se na jedno?"
+msgstr "%(name)s is on the tour “%(tour)s”, sitting here now: %(pub)s. Up for one?"
 
 #, python-format
-msgid "%(name)s jde tour „%(tour)s“ a míří do hospody %(pub)s. Přidáš se na jedno?"
-msgstr "%(name)s is on the tour “%(tour)s”, heading to %(pub)s. Up for one?"
+msgid "%(name)s jde tour „%(tour)s“ a teď míří sem: %(pub)s. Přidáš se na jedno?"
+msgstr "%(name)s is on the tour “%(tour)s”, heading here now: %(pub)s. Up for one?"
 
 msgid "Tahle hláška už vyšuměla."
 msgstr "This ping has gone flat."

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,19 +10,19 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { TourButton } from './TourChrome';
-import { friendActivityState } from '@/data/friendsQueue';
-import { pingRecipients, pingStop, sendPing, type PingFriends } from './crewPing';
 import type { CrewMember, TourCrew, TourRun } from './model';
 
 const QR_SIZE = 184;
 
-/** The last cinknutí from this run, so reopening the sheet does not offer the same pub again. */
+/** The last cinknutí from this run, so the same pub is not offered again. */
 export type CrewPingState = { runId: string; stopId: string; status: 'sent' | 'queued'; clientId: string };
+/** What pinging friends from here would say, and why it cannot go out when it cannot. */
+export type CrewPingView = { note: string; state: 'sent' | 'queued' | 'ghost' | 'allHere' | null };
 
 export const crewLink = (crew: Pick<TourCrew, 'token' | 'runId'>) => `https://na-pivo.cz/t/${crew.token}?r=${crew.runId}`;
-const going = (crew: TourCrew) => (crew.members ?? []).filter((member) => !member.left);
+export const going = (crew: TourCrew) => (crew.members ?? []).filter((member) => !member.left);
 /** The QR only while the run still takes new walkers. */
-const inviting = (crew?: TourCrew) => !!crew && !crew.closed && !crew.refused;
+export const inviting = (crew?: TourCrew) => !!crew && !crew.closed && !crew.refused;
 
 function Coins({ members, ground }: { members: CrewMember[]; ground: string }) {
   return <View style={styles.coins} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -33,7 +33,9 @@ function Coins({ members, ground }: { members: CrewMember[]; ground: string }) {
 }
 
 /** Who walks together, inside the title block so the stops stay above the fold. Without a crew it is where friends get pinged. */
-export function TourCrewRow({ crew, self, ping, onOpen }: { crew?: TourCrew; self: CrewMember | null; ping: boolean; onOpen: () => void }) {
+export function TourCrewRow({ crew, self, ping, pingStatus, onInvite, onPing }: {
+  crew?: TourCrew; self: CrewMember | null; ping: boolean; pingStatus?: string | null; onInvite: () => void; onPing: () => void;
+}) {
   const joined = !!crew && !crew.refused;
   const members = joined ? going(crew) : [];
   const left = joined ? (crew.members ?? []).filter((member) => member.left) : [];
@@ -41,76 +43,48 @@ export function TourCrewRow({ crew, self, ping, onOpen }: { crew?: TourCrew; sel
   const coins = !joined ? [] : members.length ? members : self ? [self] : [];
   const label = !joined ? t.tours.crewPingFriends : members.length > 1 ? t.tours.crewGoing(members.length) : left.length ? t.tours.crewNone : t.tours.crewAlone;
   const status = crew?.completion === 'sent' && crew.counted ? t.tours.crewCounted : crew?.completion === 'pending' ? t.tours.crewPending : null;
-  const link = inviting(crew) ? members.length > 1 ? t.tours.crewInviteMore : t.tours.crewInvite : ping ? joined ? t.tours.crewPing : t.tours.crewPingShort : null;
+  const invite = inviting(crew);
+  const link = invite ? members.length > 1 ? t.tours.crewInviteMore : t.tours.crewInvite : ping ? joined ? t.tours.crewPing : t.tours.crewPingShort : null;
   const row = <>
     {coins.length > 0 && <Coins members={coins} ground={Colors.stout} />}
     <Text maxFontSizeMultiplier={FontScaleCap.heading} style={styles.label}>{label}</Text>
     {link && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.linkText}>{link}</Text>}
   </>;
   return <View style={styles.rowWrap}>
-    {(joined || ping) && (link ? <Pressable onPress={onOpen} style={({ pressed }) => [styles.row, pressed && styles.pressed]} accessibilityRole="button"
-      accessibilityLabel={`${label}. ${link}`} accessibilityHint={inviting(crew) ? t.tours.crewInviteHint : t.tours.crewPingHint}>{row}</Pressable>
+    {(joined || ping) && (link ? <Pressable onPress={invite ? onInvite : onPing} style={({ pressed }) => [styles.row, pressed && styles.pressed]} accessibilityRole="button"
+      accessibilityLabel={`${label}. ${link}`} accessibilityHint={invite ? t.tours.crewInviteHint : t.tours.crewPingHint}>{row}</Pressable>
       : <View style={styles.row}>{row}</View>)}
     {crew?.refused && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{t.tours.crewRefused}</Text>}
     {left.length > 0 && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{t.tours.crewLeftMember(left.map((member) => member.nickname))}</Text>}
     {crew?.closed && !crew.organizer && !crew.refused && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{t.tours.crewClosed}</Text>}
     {status && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption} accessibilityLiveRegion="polite">{status}</Text>}
+    {!invite && pingStatus && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption} accessibilityLiveRegion="polite">{pingStatus}</Text>}
   </View>;
 }
 
-/** Friends who are not at the table hear where the crew sits; joining still takes the QR in person. */
-function CrewPing({ run, friends, crewIds, underQr, ping, onPinged }: {
-  run: TourRun; friends: PingFriends; crewIds: string[]; underQr: boolean; ping: CrewPingState | null; onPinged: (state: CrewPingState | null) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const target = pingStop(run);
-  if (!target) return null;
-  const recipients = pingRecipients(friends.ids, crewIds);
-  const done = ping?.runId === run.id && ping.stopId === target.stop.id ? ping.status : null;
-  async function press() {
-    if (!target) return;
-    setBusy(true); setError(null);
-    const result = await sendPing(run.snapshot.title, target, recipients);
-    setBusy(false);
-    if ('error' in result) setError(result.error);
-    else onPinged({ runId: run.id, stopId: target.stop.id, ...result });
-  }
-  const quiet = friends.ghost ? t.tours.crewPingGhost : recipients?.length === 0 ? t.tours.crewPingAllHere : done === 'queued' ? t.tours.crewPingQueued : null;
+/** Friends who are not at the table hear where the crew sits; picking who happens in the ping sheet, joining still takes the QR. */
+function CrewPing({ view, onPing }: { view: CrewPingView; onPing: () => void }) {
+  const quiet = view.state === 'ghost' ? t.tours.crewPingGhost : view.state === 'allHere' ? t.tours.crewPingAllHere : view.state === 'queued' ? t.tours.crewPingQueued : null;
   return <>
-    <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.pingNote}>{t.tours.crewPingNote(target.stop.name, target.heading, crewIds.length > 1)}</Text>
-    {done === 'sent' ? <View style={styles.pingState} accessible accessibilityLiveRegion="polite">
+    <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.pingNote}>{view.note}</Text>
+    {view.state === 'sent' ? <View style={styles.pingState} accessible accessibilityLiveRegion="polite">
       <CheckIcon size={18} color={Colors.amber} />
       <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.pingSent}>{t.tours.crewPingSent}</Text>
     </View>
       : quiet ? <View style={styles.pingState}><Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.pingQuiet} accessibilityLiveRegion="polite">{quiet}</Text></View>
-        : <TourButton secondary busy={busy} label={underQr ? t.tours.crewPingThem : t.tours.crewPingShort} onPress={() => { void press(); }} />}
-    {error && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption} accessibilityLiveRegion="polite">{error}</Text>}
+        : <TourButton secondary label={t.tours.crewPingThem} onPress={onPing} />}
   </>;
 }
 
 /** The QR carries the tour link plus this run's id; the phone made the id, so it works offline.
  * There is deliberately no share button: a crew joins at the table, the walk is not an open event. */
-export function TourCrewSheet({ run, friends, ping, onPinged, onClose }: {
-  run: TourRun; friends: PingFriends | null; ping: CrewPingState | null; onPinged: (state: CrewPingState | null) => void; onClose: () => void;
-}) {
+export function TourCrewSheet({ run, pingView, onPing, onClose }: { run: TourRun; pingView: CrewPingView | null; onPing: () => void; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const crew = run.crew;
   const qr = inviting(crew) ? crew : undefined;
   const joined = !!crew && !crew.refused;
   // The roster refreshes when the sheet opens, not every few seconds.
   useEffect(() => { if (joined) void useToursStore.getState().refreshCrew(); }, [joined]);
-  // A ping that waited for signal may have gone out since, or been dropped; only a delivered one says so.
-  const waiting = ping?.status === 'queued' ? ping : null;
-  useEffect(() => {
-    if (!waiting) return;
-    let alive = true;
-    void friendActivityState(waiting.clientId).then((state) => {
-      // A newer ping may have replaced this one meanwhile; its state wins.
-      if (alive && state !== 'queued') onPinged(state === 'sent' ? { ...waiting, status: 'sent' } : null);
-    });
-    return () => { alive = false; };
-  }, [waiting, onPinged]);
   const members = joined ? going(crew) : [];
   return <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
     <View style={styles.backdrop}>
@@ -118,7 +92,7 @@ export function TourCrewSheet({ run, friends, ping, onPinged, onClose }: {
       <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
-          <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{qr ? t.tours.crewInvite : t.tours.crewPing}</Text>
+          <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{t.tours.crewInvite}</Text>
           <Pressable onPress={onClose} style={styles.close} accessibilityRole="button" accessibilityLabel={t.tours.close}>
             <XIcon size={20} color={Colors.foamMuted} />
           </Pressable>
@@ -133,11 +107,11 @@ export function TourCrewSheet({ run, friends, ping, onPinged, onClose }: {
           <Coins members={members} ground={Colors.stout} />
           <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={2} style={styles.names}>{members.map((member) => member.nickname).join(', ')}</Text>
         </View>}
-        {!!friends?.ids.length && <>
-          {qr && <View style={styles.divider}>
+        {pingView && <>
+          <View style={styles.divider}>
             <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.sub}>{t.tours.crewPingAway}</Text>
-          </View>}
-          <CrewPing run={run} friends={friends} crewIds={members.map((member) => member.id)} underQr={!!qr} ping={ping} onPinged={onPinged} />
+          </View>
+          <CrewPing view={pingView} onPing={onPing} />
         </>}
       </View>
     </View>

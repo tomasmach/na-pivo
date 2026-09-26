@@ -1,7 +1,6 @@
 import { generateUuidV4 } from '@/data/account';
-import { fetchFriendsDashboard, shareFriendPubActivity } from '@/data/friendsClient';
+import { shareFriendPubActivity } from '@/data/friendsClient';
 import { dropQueuedTourPings, enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
-import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { t } from '@/i18n';
 import { pubFromStop } from './counterLink';
 import type { TourRun, TourStop } from './model';
@@ -13,14 +12,6 @@ export function pingStop(run: Pick<TourRun, 'snapshot' | 'statuses'>): { stop: T
     if (run.statuses[stops[index].id] === 'visited') return { stop: stops[index], heading: false };
   const next = stops.find((stop) => !run.statuses[stop.id]);
   return next ? { stop: next, heading: true } : null;
-}
-
-export type PingFriends = { ghost: boolean; ids: string[] };
-
-/** The party as the phone last saw it; fetched once when Parta was never opened on this install. */
-export async function loadPingFriends(): Promise<PingFriends | null> {
-  const dashboard = (await loadFriendsDashboardSnapshot())?.dashboard ?? await fetchFriendsDashboard();
-  return dashboard ? { ghost: dashboard.settings?.ghostMode === true, ids: dashboard.friends.map((friend) => friend.id) } : null;
 }
 
 /** Friends walking the tour already sit at the table; everyone else hears about it. Undefined keeps the plain "whole party". */

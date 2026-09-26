@@ -3002,11 +3002,11 @@ def test_tour_ping_names_the_tour_and_old_payload_keeps_its_wording(client, monk
 
     heading = ping(_PUB_NAME, 0, tour_title="Pivní okruh Starým Městem", tour_heading=True)
     assert heading["title"] == "Kamarád jde tour de pub"
-    assert heading["body"] == "@janek jde tour „Pivní okruh Starým Městem“ a míří do hospody U Zlatého tygra. Přidáš se na jedno?"
+    assert heading["body"] == "@janek jde tour „Pivní okruh Starým Městem“ a teď míří sem: U Zlatého tygra. Přidáš se na jedno?"
     assert heading["data"]["kind"] == "friend_at_pub"
     # Moving on to the next stop pushes again, now sitting there.
     sitting = ping("U Medvídků", 1, tour_title="Pivní okruh Starým Městem")
-    assert sitting["body"] == "@janek jde tour „Pivní okruh Starým Městem“ a sedí v hospodě U Medvídků. Přidáš se na jedno?"
+    assert sitting["body"] == "@janek jde tour „Pivní okruh Starým Městem“ a teď sedí tady: U Medvídků. Přidáš se na jedno?"
     # The released app sends no tour fields and must get exactly what it got before.
     plain = ping("U Pinkasů", 2)
     assert (plain["title"], plain["body"]) == ("Kamarád je na pivu", "@janek sedí v U Pinkasů. Nechceš se přidat?")
