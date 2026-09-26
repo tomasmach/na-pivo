@@ -7,6 +7,7 @@ import { showAppDialog } from '@/components/shared/AppDialog';
 import { fetchSharedTour, type PublicTourInfo } from '@/data/toursClient';
 import { tourBoundary } from '@/data/toursBoundary';
 import { Avatar } from '@/profile/Avatar';
+import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { useToursStore } from '@/stores/toursStore';
 import { openPubInMaps } from '@/utils/maps';
@@ -50,6 +51,9 @@ function TourInvite({ token }: { token: string }) {
     return () => { alive = false; };
   }, [token, retry]);
   const own = publicInfo ? store.plans.find((p) => p.publication?.token === token) : undefined;
+  // The author's other phone may not have the tour yet; the author still never gets to report it.
+  const accountId = useAccountStore((s) => s.session?.accountId ?? null);
+  const authored = !!publicInfo && !!accountId && publicInfo.author.id === accountId;
   const existing = plan ? store.plans.find((p) => publicInfo ? p.publicSource?.publicId === publicInfo.id : p.source?.tourId === plan.id) : undefined;
   const update = !publicInfo && !!existing?.source && existing.source.revision < (plan?.revision ?? 0);
   const reported = !!publicInfo && (store.hiddenPublic ?? []).includes(publicInfo.id);
@@ -63,7 +67,7 @@ function TourInvite({ token }: { token: string }) {
     const info = publicInfo;
     showAppDialog({ title: plan?.title ?? t.tours.publicTour, buttons: [
       { text: t.tours.shareLink, onPress: () => { void Share.share({ message: `https://na-pivo.cz/t/${token}` }).catch(() => setError(t.tours.errors.unavailable)); } },
-      ...(own ? [] : [{ text: t.tours.report, style: 'destructive' as const, onPress: () => showAppDialog({ title: t.tours.reportTitle, message: t.tours.reportMessage, buttons: [
+      ...(own || authored ? [] : [{ text: t.tours.report, style: 'destructive' as const, onPress: () => showAppDialog({ title: t.tours.reportTitle, message: t.tours.reportMessage, buttons: [
         { text: t.tours.cancel, style: 'cancel' },
         { text: t.tours.report, style: 'destructive', onPress: () => { void store.reportPublic(info.id).then((r) => {
           useToastStore.getState().show(r.ok ? t.tours.reported : t.tours.reportFailed);
