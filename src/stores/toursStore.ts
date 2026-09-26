@@ -459,7 +459,8 @@ export const useToursStore = create<ToursState>(() => ({
     });
     if (result.ok) {
       if (unsent) await dropTourRunOps(unsent, ['complete']);
-      queued.forEach((op) => { void enqueueTourRunOp(op); });
+      // "Nezapočítávat mě" is confirmed only once taking the completion back is stored for delivery.
+      await Promise.all(queued.map((op) => enqueueTourRunOp(op)));
     }
     return result;
   },
