@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, BackHandler, Pressable, ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter, useIsFocused, type Href } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
@@ -14,6 +14,7 @@ import { useToursStore, tourContentSignature } from '@/stores/toursStore';
 import { openPubInMaps } from '@/utils/maps';
 import { beerCountLabel, t, intlLocale } from '@/i18n';
 import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
+import { selectIsSignedIn, selectNickname, useAccountStore } from '@/stores/accountStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { beersAtStop, pubFromStop } from './counterLink';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -21,6 +22,7 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { FontScaleCap } from '@/theme/fonts';
 import { TourButton, TourChallengeText, TourError, TourHeader, TourText, pubCount, tourDate, ui } from './TourChrome';
 import { TourMap } from './TourMap';
+import { TourCrewRow, TourCrewSheet } from './TourCrew';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
 import { TourHistoryRow, TourJourneyStop, TourLeg, TourMapPreview, type StopFactsLine } from './TourJourney';
 import { formatWalkDistance, hoursOnDay, planDay, useTourStopFacts, walkingDistance, walkingLeg } from './stopFacts';
@@ -43,6 +45,12 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<TourStop | null>(null); const [pubDetail, setPubDetail] = useState(false);
   const [largeMap, setLargeMap] = useState(false); const [shareMode, setShareMode] = useState(false);
+  const [crewSheet, setCrewSheet] = useState(false);
+  // Only a signed-in walker with a nickname can be seen by a party and counted.
+  const crewEligible = useAccountStore((s) => selectIsSignedIn(s) && !!selectNickname(s));
+  const profile = useAccountStore((s) => s.profile);
+  const crewSelf = useMemo(() => profile?.nickname ? { id: profile.id, nickname: profile.nickname, displayName: profile.displayName,
+    avatarUrl: profile.avatarUrl, left: false, completed: false } : null, [profile]);
   const overlayVisible = largeMap || !!detail;
   usePreventRemove(overlayVisible, () => { setLargeMap(false); setDetail(null); });
   useEffect(() => {
@@ -58,6 +66,10 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const [acting, setActing] = useState(false); const actionLock = useRef(false);
   const scroll = useRef<ScrollView>(null);
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
+  // Back on the run, see who joined or left meanwhile.
+  useEffect(() => { if (focused && useToursStore.getState().activeRun?.crew) void useToursStore.getState().refreshCrew(); }, [focused]);
+  const publicToken = plan?.publication?.status === 'active' ? plan.publication.token : null;
+  useEffect(() => { if (focused && publicToken) void useToursStore.getState().refreshPublicCount(id); }, [focused, publicToken, id]);
   const [openedAt] = useState(() => Date.now());
   async function action(operation: () => Promise<TourResult>, after?: (result: { ok: true; id?: string }) => void) {
     if (actionLock.current) return;
@@ -82,18 +94,20 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     else if (result.error === 'busy') showAppDialog({ title: t.tours.continueDraft, buttons: [{ text: t.tours.continueDraft, onPress: () => router.push('/tours/edit' as Href) }, { text: t.tours.cancel, style: 'cancel' }] });
   }
   function end() {
-    showAppDialog({ title: t.tours.endTitle, message: t.tours.endMessage, buttons: [
+    // Someone who walked their half is done, not walking out on the party.
+    const leaving = !!active?.crew && !active.crew.organizer && !active.crew.refused && !active.crew.completion;
+    showAppDialog({ title: leaving ? t.tours.crewLeaveTitle : t.tours.endTitle, message: leaving ? t.tours.crewLeaveMessage : t.tours.endMessage, buttons: [
       { text: t.tours.cancel, style: 'cancel' },
-      { text: t.tours.end, onPress: () => { void action(() => store.endRun(), () => { setHistoryId(useToursStore.getState().runs[0]?.id ?? null); setUndo(null); }); } },
+      { text: leaving ? t.tours.crewLeave : t.tours.end, onPress: () => { void action(() => store.endRun(), () => { setHistoryId(useToursStore.getState().runs[0]?.id ?? null); setUndo(null); }); } },
     ] });
   }
   function start() {
     if (store.activeRun) {
       showAppDialog({ title: t.tours.anotherRun, message: t.tours.anotherRunMessage, buttons: [
         { text: t.tours.cancel, style: 'cancel' },
-        { text: t.tours.endAndStart, onPress: () => { void action(async () => { const ended = await store.endRun(); return ended.ok ? store.startRun(id) : ended; }, () => { setHistoryId(null); setUndo(null); }); } },
+        { text: t.tours.endAndStart, onPress: () => { void action(async () => { const ended = await store.endRun(); return ended.ok ? store.startRun(id, { eligible: crewEligible }) : ended; }, () => { setHistoryId(null); setUndo(null); }); } },
       ] });
-    } else void action(() => store.startRun(id), () => { setHistoryId(null); setUndo(null); });
+    } else void action(() => store.startRun(id, { eligible: crewEligible }), () => { setHistoryId(null); setUndo(null); });
   }
   function more() {
     if (!plan) return;
@@ -109,7 +123,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
           { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.unpublish, style: 'destructive', onPress: () => { void action(() => store.unpublishPublic(id)); } },
         ] }) }] : []),
       ] : []),
-      ...(active ? [{ text: t.tours.end, onPress: end }] : [{ text: t.tours.delete, style: 'destructive' as const, onPress: () => showAppDialog({ title: t.tours.deleteTitle, message: t.tours.deleteMessage, buttons: [
+      ...(active ? [{ text: active.crew && !active.crew.organizer && !active.crew.refused && !active.crew.completion ? t.tours.crewLeave : t.tours.end, onPress: end }] : [{ text: t.tours.delete, style: 'destructive' as const, onPress: () => showAppDialog({ title: t.tours.deleteTitle, message: t.tours.deleteMessage, buttons: [
         { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.delete, style: 'destructive', onPress: () => { void action(() => store.deletePlan(id), () => router.replace('/tours' as Href)); } },
       ] }) }]),
       { text: t.tours.cancel, style: 'cancel' },
@@ -177,8 +191,10 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
           onPress={() => showAppDialog({ title: t.tours.publicHiddenState, message: t.tours.errors.publicHidden, buttons: [{ text: t.tours.close, style: 'cancel' }] })}>
           <GlobeIcon size={15} color={Colors.foam} />
           <TourText style={styles.publicText}>{plan.publication.status === 'hidden' ? t.tours.publicHiddenState
-            : store.published[id] !== tourContentSignature(plan) || plan.revision > plan.publication.planRevision ? t.tours.publicNewer : t.tours.publicState}</TourText>
+            : store.published[id] !== tourContentSignature(plan) || plan.revision > plan.publication.planRevision ? t.tours.publicNewer
+              : plan.publication.peopleCount > 0 ? t.tours.publicWithPeople(plan.publication.peopleCount) : t.tours.publicState}</TourText>
         </Pressable>}
+        {!shareMode && live && active?.crew && <TourCrewRow crew={active.crew} self={crewSelf} onInvite={() => setCrewSheet(true)} />}
         {editable && !current.scheduledDate && <Pressable onPress={() => { void edit(); }} style={styles.addMeetup} accessibilityRole="button" accessibilityLabel={t.tours.addMeetup}><TourText style={ui.linkText}>{t.tours.addMeetup}</TourText></Pressable>}
         {closedOnMeetup.length > 0 && <TourText style={styles.closed}>{t.tours.closedOnMeetup(closedOnMeetup.join(', '), closedOnMeetup.length)}</TourText>}</View>
       <TourJourneyIllustration stops={current.stops} statuses={!shareMode ? run?.statuses : undefined} nextStopId={!shareMode && active && !history ? next?.id : undefined} />
@@ -223,10 +239,16 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
         {store.runs.some((r) => r.planId === id) && <View>
           {store.runs.filter((r) => r.planId === id).map((r) => <TourHistoryRow key={r.id} run={r} selected={r.id === historyId} onPress={() => { setHistoryId(r.id); setSelected(null); scroll.current?.scrollTo({ y: 0, animated: true }); }} />)}
         </View>}
-        {run && <Pressable accessibilityRole="button" accessibilityLabel={t.tours.privateRun} style={styles.privacy}
+        {run && (run.crew ? <Pressable accessibilityRole="button" accessibilityLabel={t.tours.crewPrivacyTitle} style={styles.privacy}
+          onPress={() => showAppDialog({ title: t.tours.crewPrivacyTitle, message: run.crew?.optOut ? t.tours.crewPrivacyOptedOut : t.tours.crewPrivacyBody, buttons: [
+            ...(live || !run.crew?.optOut ? [{ text: run.crew?.optOut ? t.tours.crewOptIn : t.tours.crewOptOut, onPress: () => { void store.setCrewOptOut(!run.crew?.optOut, run.id); } }] : []),
+            { text: t.tours.close, style: 'cancel' as const },
+          ] })}>
+          <LockKeyholeIcon size={13} color={Colors.mutedText} /><TourText style={styles.privacyText}>{t.tours.crewPrivacyTitle}</TourText>
+        </Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={t.tours.privateRun} style={styles.privacy}
           onPress={() => showAppDialog({ title: t.tours.privateRun, message: t.tours.runPrivacy, buttons: [{ text: t.tours.close, style: 'cancel' }] })}>
           <LockKeyholeIcon size={13} color={Colors.mutedText} /><TourText style={styles.privacyText}>{t.tours.privateRun}</TourText>
-        </Pressable>}
+        </Pressable>)}
       </>}
     </ScrollView>
     <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
@@ -241,6 +263,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} quiet onPress={() => setShareMode(true)} />}</>}
     </View>
     </View>
+    {crewSheet && active?.crew && <TourCrewSheet crew={active.crew} onClose={() => setCrewSheet(false)} />}
     {overlayVisible && <View accessibilityViewIsModal style={[ui.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TourHeader title={detail?.name ?? t.tours.map} onBack={() => { setLargeMap(false); setDetail(null); }} />
         <ScrollView contentContainerStyle={[ui.content, { flexGrow: 1 }]}>

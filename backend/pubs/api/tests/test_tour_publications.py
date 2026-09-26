@@ -143,13 +143,13 @@ def test_new_route_starts_its_count_again():
     client = account_client()
     plan_id, revision = save_plan(client, plan_body())
     publish(client, plan_id, revision)
-    TourPublication.objects.update(people_count=7)
+    first_since = TourPublication.objects.get().count_since
     plan_id, revision = save_plan(client, plan_body(title="Jiný název", revision=revision), plan_id)
     publish(client, plan_id, revision)
-    assert TourPublication.objects.get().people_count == 7
+    assert TourPublication.objects.get().count_since == first_since
     plan_id, revision = save_plan(client, plan_body(pubs=(0, 2), revision=revision), plan_id)
     publish(client, plan_id, revision)
-    assert TourPublication.objects.get().people_count == 0
+    assert TourPublication.objects.get().count_since > first_since
 
 
 def test_unpublish_private_profile_deleted_plan_and_account_close_the_link():

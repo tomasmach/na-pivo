@@ -224,6 +224,7 @@ from pubs.models import (
     PushDevice,
     ReleaseNote,
     TourPlan,
+    TourRunMember,
     UserAddedPub,
     account_deletion_fingerprint,
     account_deletion_fingerprint_matches,
@@ -10576,6 +10577,7 @@ def _load_export_account(account: Account) -> Account:
         Account.objects.select_related("email_credential", "usage_stats")
         .annotate(
             has_tours=Exists(TourPlan.objects.filter(owner=OuterRef("pk"), deleted_at__isnull=True)),
+            has_tour_runs=Exists(TourRunMember.objects.filter(account=OuterRef("pk"))),
             has_amenity_vote_tombstones=Exists(
                 PubAmenityVoteTombstone.objects.filter(account=OuterRef("pk"))
             ),
@@ -10753,6 +10755,11 @@ def _load_export_account(account: Account) -> Account:
             "tours",
             "has_tours",
             Prefetch("tours", queryset=TourPlan.objects.filter(deleted_at__isnull=True).prefetch_related("stops").select_related("publication")),
+        ),
+        (
+            "tour_run_memberships",
+            "has_tour_runs",
+            Prefetch("tour_run_memberships", queryset=TourRunMember.objects.select_related("run__publication").order_by("joined_at")),
         ),
         (
             "amenity_vote_tombstones",
@@ -10945,6 +10952,12 @@ def _export_account_data(account: Account) -> dict:
     from pubs.tours import tour_export
     return {
         "tours": [tour_export(plan) for plan in account.tours.all() if plan.deleted_at is None],
+        "tour_runs": [
+            {"run_id": str(row.run_id), "tour": row.run.publication.title, "joined_at": row.joined_at.isoformat(),
+             "left_at": row.left_at.isoformat() if row.left_at else None,
+             "completed_at": row.completed_at.isoformat() if row.completed_at else None}
+            for row in account.tour_run_memberships.all()
+        ],
         "exported_at": dj_timezone.now().isoformat(),
         "account": {
             "id": str(account.public_id),

@@ -8,6 +8,8 @@ export type TourError = 'storage' | 'corrupt_storage' | 'account_changed' | 'bus
 export type TourResult = {
   ok: true;
   id?: string;
+  /** The public tour as the server has it now, when saving one. */
+  tour?: TourPlan;
 } | {
   ok: false;
   error: TourError;
@@ -61,11 +63,37 @@ export interface TourPublication {
   revision: number;
   planRevision: number;
   peopleCount: number;
+  /** The stops of the public copy, in order. Missing from servers before crews. */
+  stopIds?: string[];
 }
 export interface TourPublicSource {
   publicId: string;
   token: string;
   pubIds: string[];
+}
+export interface CrewMember {
+  id: string;
+  nickname: string;
+  displayName: string;
+  avatarUrl: string | null;
+  left: boolean;
+  completed: boolean;
+}
+/** A joint run of a public tour: who goes together. Progress itself never leaves the phone. */
+export interface TourCrew {
+  runId: string;
+  publicId: string;
+  token: string;
+  organizer: boolean;
+  optOut?: boolean;
+  /** 'pending' waits in the offline queue; 'sent' reached the server. */
+  completion?: 'pending' | 'sent';
+  counted?: boolean;
+  /** The organizer ended the run, so nobody else can join. */
+  closed?: boolean;
+  /** The server turned this walker's join down; the walk goes on without a party. */
+  refused?: boolean;
+  members?: CrewMember[];
 }
 export interface TourRun {
   id: string;
@@ -74,6 +102,7 @@ export interface TourRun {
   startedAt: string;
   endedAt: string | null;
   statuses: Record<string, 'visited' | 'skipped'>;
+  crew?: TourCrew;
 }
 export const uuidValid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 export const cloneTour = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -97,7 +126,8 @@ export function validPublication(v: unknown): v is TourPublication {
   const p = v as TourPublication;
   return uuidValid(p.id) && publicTokenValid(p.token) && typeof p.url === 'string' && /^https:\/\/na-pivo\.cz\/t\/[A-Za-z0-9_-]+$/.test(p.url) &&
     ['active', 'hidden', 'unpublished'].includes(p.status) && Number.isInteger(p.revision) && Number.isInteger(p.planRevision) &&
-    Number.isInteger(p.peopleCount) && p.peopleCount >= 0;
+    Number.isInteger(p.peopleCount) && p.peopleCount >= 0 &&
+    (p.stopIds === undefined || (Array.isArray(p.stopIds) && p.stopIds.length <= 8 && p.stopIds.every(uuidValid)));
 }
 /** The pub identities of a plan, to notice when a saved public tour stops being the same route. */
 export const pubIdsOf = (plan: Pick<TourPlan, 'stops'>) => plan.stops.map((stop) => stop.pubId);
@@ -172,6 +202,20 @@ export function validSchedule(plan: TourPlan, now = new Date()): boolean {
   }
   return false;
 }
+export function validCrew(v: unknown): v is TourCrew {
+  if (!v || typeof v !== 'object')
+    return false;
+  const c = v as TourCrew;
+  return uuidValid(c.runId) && uuidValid(c.publicId) && publicTokenValid(c.token) && typeof c.organizer === 'boolean' &&
+    (c.optOut === undefined || typeof c.optOut === 'boolean') && (c.completion === undefined || c.completion === 'pending' || c.completion === 'sent') &&
+    (c.counted === undefined || typeof c.counted === 'boolean') && (c.closed === undefined || typeof c.closed === 'boolean') &&
+    (c.refused === undefined || typeof c.refused === 'boolean') &&
+    (c.members === undefined || (Array.isArray(c.members) && c.members.length <= 20 && c.members.every((m) =>
+      !!m && typeof m.id === 'string' && typeof m.nickname === 'string' && typeof m.displayName === 'string' &&
+      (m.avatarUrl === null || typeof m.avatarUrl === 'string') && typeof m.left === 'boolean' && typeof m.completed === 'boolean')));
+}
+/** Half the pubs, never fewer than two, checked off on this phone. */
+export const crewThreshold = (stops: number) => Math.max(2, Math.ceil(stops / 2));
 export function validRun(value: unknown): value is TourRun {
   if (!value || typeof value !== 'object')
     return false;
@@ -180,7 +224,8 @@ export function validRun(value: unknown): value is TourRun {
     typeof v.startedAt === 'string' && Number.isFinite(Date.parse(v.startedAt)) &&
     (v.endedAt === null || (typeof v.endedAt === 'string' && Number.isFinite(Date.parse(v.endedAt)))) &&
     !!v.statuses && typeof v.statuses === 'object' && !Array.isArray(v.statuses) &&
-    Object.entries(v.statuses).every(([id, status]) => v.snapshot.stops.some((s) => s.id === id) && (status === 'visited' || status === 'skipped'));
+    Object.entries(v.statuses).every(([id, status]) => v.snapshot.stops.some((s) => s.id === id) && (status === 'visited' || status === 'skipped')) &&
+    (v.crew === undefined || validCrew(v.crew));
 }
 /** Where a group is in a run: the next unmarked stop and the last visited stop before it. */
 export function runPosition(run: Pick<TourRun, 'snapshot' | 'statuses'>): { next?: TourStop; nextIndex: number; here?: TourStop } {

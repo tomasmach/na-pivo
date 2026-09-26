@@ -1,13 +1,15 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { t } from '@/i18n';
-import { fetchSharedTour, type TourResponse } from '@/data/toursClient';
+import { fetchSharedTour, fetchTourRunPreview, type TourResponse } from '@/data/toursClient';
 import type { TourPlan } from '../model';
 import TourInviteScreen from '../TourInviteScreen';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const token = 'invite-token-for-component-regression';
+const mockParams: { token: string; r?: string } = { token };
+const mockAccount = { signedIn: true, nickname: 'pepa' as string | null };
 const mockReplace = jest.fn();
 const mockPush = jest.fn();
 const mockStore = {
@@ -18,11 +20,13 @@ const mockStore = {
   importShared: jest.fn(async () => ({ ok: true, id: 'saved-copy' })),
   savePublic: jest.fn(async () => ({ ok: true, id: 'public-copy' })),
   reportPublic: jest.fn(async () => ({ ok: true })),
+  joinCrew: jest.fn(async () => ({ ok: true, id: 'crew-copy' })),
+  activeRun: null,
   hiddenPublic: [] as string[],
 };
 
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => ({ token }),
+  useLocalSearchParams: () => mockParams,
   useRouter: () => ({ replace: mockReplace, push: mockPush, canGoBack: () => false, back: jest.fn() }),
 }));
 jest.mock('react-native-safe-area-context', () => ({
@@ -31,13 +35,18 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('@/stores/toursStore', () => ({
   useToursStore: Object.assign(() => mockStore, { getState: () => mockStore }),
 }));
-jest.mock('@/data/toursClient', () => ({ fetchSharedTour: jest.fn() }));
+jest.mock('@/data/toursClient', () => ({ fetchSharedTour: jest.fn(), fetchTourRunPreview: jest.fn(async () => null) }));
+jest.mock('@/stores/accountStore', () => ({
+  useAccountStore: (select: (s: typeof mockAccount) => unknown) => select(mockAccount),
+  selectIsSignedIn: (s: typeof mockAccount) => s.signedIn, selectNickname: (s: typeof mockAccount) => s.nickname,
+}));
 jest.mock('@/utils/maps', () => ({ openPubInMaps: jest.fn() }));
 jest.mock('../TourMap', () => ({ TourMap: () => null }));
 jest.mock('@/components/shared/IconGlyph', () => ({
   ChevronLeftIcon: () => null,
   ChevronRightIcon: () => null,
   EllipsisIcon: () => null,
+  UsersIcon: () => null,
   CheckIcon: () => null,
   MinusIcon: () => null,
   FootprintsIcon: () => null,
@@ -130,5 +139,39 @@ it('does not show a public tour this phone reported', async () => {
     expect(screen.queryByText(plan.title)).toBeNull();
   } finally {
     mockStore.hiddenPublic = [];
+  }
+});
+
+it('joins the party behind a scanned code, or sends a friend without an account or nickname to set it up first', async () => {
+  const runId = '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab';
+  mockParams.r = runId;
+  const publicInfo = { id: '33333333-3333-4333-8333-333333333333', peopleCount: 3, city: 'Praha', walkM: 1200,
+    author: { id: 'author-id', nickname: 'pivni_vlk', displayName: '', avatarUrl: null } };
+  jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan, public: publicInfo });
+  jest.mocked(fetchTourRunPreview).mockResolvedValue({ organizer: { id: 'o', nickname: 'vojta', displayName: '', avatarUrl: null }, going: 3, members: [] });
+  try {
+    const screen = render(<TourInviteScreen />);
+    expect(await screen.findByText(t.tours.crewAlreadyGoing('vojta', 2))).toBeTruthy();
+    // Who invites replaces how many walked it before.
+    expect(screen.queryByText(t.tours.peopleCount(3))).toBeNull();
+    await act(async () => { fireEvent.press(screen.getByTestId('tour-crew-join')); });
+    expect(mockStore.joinCrew).toHaveBeenCalledWith(token, runId);
+    expect(mockReplace).toHaveBeenCalledWith({ pathname: '/tours/[id]', params: { id: 'crew-copy' } });
+
+    mockAccount.nickname = null;
+    screen.rerender(<TourInviteScreen />);
+    expect(screen.getByText(t.tours.pickNickname)).toBeTruthy();
+    await act(async () => { fireEvent.press(screen.getByTestId('tour-crew-join')); });
+    expect(mockPush).toHaveBeenCalledWith('/profile/edit');
+
+    mockAccount.signedIn = false;
+    screen.rerender(<TourInviteScreen />);
+    expect(screen.getByText(t.tours.crewSignInJoin)).toBeTruthy();
+    await act(async () => { fireEvent.press(screen.getByTestId('tour-crew-join')); });
+    expect(mockPush).toHaveBeenCalledWith('/auth');
+  } finally {
+    delete mockParams.r;
+    mockAccount.signedIn = true;
+    mockAccount.nickname = 'pepa';
   }
 });
