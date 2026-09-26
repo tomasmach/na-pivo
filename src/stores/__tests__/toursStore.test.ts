@@ -292,4 +292,22 @@ describe('Tours durable lifecycle', () => {
     expect(store.getState().plans[0].title).toBe('Changed');
     expect(store.getState().activeRun!.snapshot.title).toBe('My tour');
   });
+  it('writes, keeps on pub replacement and clears a challenge without changing old publish signatures', async () => {
+    const id = await makePlan();
+    const before = tourContentSignature(store.getState().plans[0]);
+    const legacyWire = JSON.parse(before);
+    expect(legacyWire.stops[0]).not.toHaveProperty('challenge');
+    await store.getState().beginDraft(id);
+    const stopId = store.getState().draft!.stops[0].id;
+    expect(await store.getState().setChallenge(stopId, '  Najdi\nnejstarší pípu ')).toEqual({ ok: true });
+    expect(store.getState().draft!.stops[0].challenge).toBe('Najdi nejstarší pípu');
+    expect(await store.getState().setChallenge(stopId, 'x'.repeat(121))).toEqual({ ok: false, error: 'invalid' });
+    await store.getState().replaceStop(stopId, pub(3));
+    expect(store.getState().draft!.stops[0]).toMatchObject({ pubId: '3', challenge: 'Najdi nejstarší pípu' });
+    await store.getState().saveDraft();
+    expect(tourContentSignature(store.getState().plans[0])).not.toBe(before);
+    await store.getState().beginDraft(id);
+    await store.getState().setChallenge(store.getState().draft!.stops[0].id, '   ');
+    expect(store.getState().draft!.stops[0].challenge).toBe('');
+  });
 });

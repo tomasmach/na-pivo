@@ -5,7 +5,7 @@ import { readAccountMerge } from '@/data/accountMerge';
 import { beginTourAccountChange, endTourAccountChange, invalidateTours, tourBoundary } from '@/data/toursBoundary';
 import { deletePublishedTour, fetchPublishedTours, fetchSharedTour, publishTour, revokeTour, shareTour, toTourWire } from '@/data/toursClient';
 import type { Pub } from '@/data/pubs';
-import { cloneTour, newTour, samePub, stopFromPub, TOUR_LIMIT, validPlan, validRun, validSchedule, uuidValid, type TourPlan, type TourRun, type TourResult, type TourError } from '@/tours/model';
+import { CHALLENGE_MAX, cleanChallenge, cloneTour, newTour, samePub, stopFromPub, TOUR_LIMIT, validPlan, validRun, validSchedule, uuidValid, type TourPlan, type TourRun, type TourResult, type TourError } from '@/tours/model';
 export const TOURS_STORAGE_KEY = 'na-pivo-tours-v1';
 export const TOURS_QUARANTINE_KEY = 'na-pivo-tours-quarantine-v1';
 interface PendingPublication {
@@ -36,6 +36,7 @@ interface ToursState extends ToursData {
   replaceStop: (id: string, pub: Pub) => Promise<TourResult>;
   moveStop: (id: string, delta: number) => Promise<TourResult>;
   removeStop: (id: string) => Promise<TourResult>;
+  setChallenge: (id: string, text: string) => Promise<TourResult>;
   saveDraft: () => Promise<TourResult>;
   discardDraft: () => Promise<TourResult>;
   deletePlan: (id: string) => Promise<TourResult>;
@@ -52,7 +53,11 @@ interface ToursState extends ToursData {
   clearError: () => void;
 }
 const empty = (): ToursData => ({ version: 1, owner: null, plans: [], draft: null, activeRun: null, runs: [], published: {}, pending: {} });
-export const tourContentSignature = (p: TourPlan) => JSON.stringify(toTourWire(p));
+// Empty challenges stay out, so tours published before challenges keep their signature.
+export const tourContentSignature = (p: TourPlan) => {
+  const wire = toTourWire(p);
+  return JSON.stringify({ ...wire, stops: wire.stops.map(({ challenge, ...stop }) => challenge ? { ...stop, challenge } : stop) });
+};
 function validateData(v: unknown): v is ToursData {
   if (!v || typeof v !== 'object')
     return false;
@@ -253,7 +258,9 @@ export const useToursStore = create<ToursState>(() => ({
     const stop = stopFromPub(pub);
     if (d.draft.stops.some((s) => s.id !== id && samePub(s, stop)))
       return { ok: false, error: 'duplicate' };
-    d.draft.stops[index] = stop;
+    // A written challenge is the author's work; it moves to the replacement pub.
+    const challenge = d.draft.stops[index].challenge;
+    d.draft.stops[index] = challenge ? { ...stop, challenge } : stop;
   }),
   moveStop: (id, delta) => mutate((d) => {
     if (!d.draft)
@@ -269,6 +276,16 @@ export const useToursStore = create<ToursState>(() => ({
     if (!d.draft)
       return { ok: false, error: 'not_found' };
     d.draft.stops = d.draft.stops.filter((s) => s.id !== id);
+  }),
+  setChallenge: (id, text) => mutate((d) => {
+    const stop = d.draft?.stops.find((s) => s.id === id);
+    if (!stop)
+      return { ok: false, error: 'not_found' };
+    const challenge = cleanChallenge(text);
+    if (challenge.length > CHALLENGE_MAX)
+      return { ok: false, error: 'invalid' };
+    // Empty is a removal the server must hear; a missing challenge means this phone never knew it.
+    stop.challenge = challenge;
   }),
   saveDraft: () => mutate((d) => {
     if (!d.draft || !validPlan(d.draft) || !validSchedule(d.draft))

@@ -2,7 +2,7 @@ import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 import { tourBoundary } from './toursBoundary';
-import { type TourPlan, type TourError, validPlan } from '@/tours/model';
+import { CHALLENGE_MAX, type TourPlan, type TourError, validPlan } from '@/tours/model';
 export type TourResponse = {
   ok: true;
   tour: TourPlan;
@@ -28,11 +28,14 @@ export interface TourWire {
     address: string;
     lat: number;
     lon: number;
+    challenge?: string;
   }[];
 }
 export function toTourWire(plan: TourPlan) {
   return { title: plan.title, scheduled_date: plan.scheduledDate, scheduled_time: plan.scheduledTime, timezone: plan.timezone,
-    stops: plan.stops.map((s) => ({ id: s.id, pub_id: s.pubId, cache_key: s.cacheKey, name: s.name, address: s.address, lat: s.lat, lon: s.lon })) };
+    // An empty string clears a challenge; a missing key keeps the server's, for a phone that never knew it.
+    stops: plan.stops.map((s) => ({ id: s.id, pub_id: s.pubId, cache_key: s.cacheKey, name: s.name, address: s.address, lat: s.lat, lon: s.lon,
+      ...(s.challenge !== undefined ? { challenge: s.challenge } : {}) })) };
 }
 function parseEnvelope(raw: unknown): TourPlan | null {
   try {
@@ -44,7 +47,9 @@ function parseEnvelope(raw: unknown): TourPlan | null {
       } | null;
     };
     const plan: TourPlan = { id: w.id, title: w.title, scheduledDate: w.scheduled_date, scheduledTime: w.scheduled_time?.slice(0, 5) ?? null, timezone: w.timezone, revision: w.revision, updatedAt: w.updated_at,
-      stops: w.stops.map((s) => ({ id: s.id, pubId: s.pub_id, cacheKey: s.cache_key, name: s.name, address: s.address, lat: s.lat, lon: s.lon })),
+      stops: w.stops.map((s) => ({ id: s.id, pubId: s.pub_id, cacheKey: s.cache_key, name: s.name, address: s.address, lat: s.lat, lon: s.lon,
+        // A challenge this app could not have written is left unknown, not a reason to refuse the whole tour.
+        ...(typeof s.challenge === 'string' && s.challenge.length <= CHALLENGE_MAX ? { challenge: s.challenge } : {}) })),
       ...(share ? { share: { url: share.url, expiresAt: share.expires_at } } : {}) };
     return validPlan(plan) ? plan : null;
   }

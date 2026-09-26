@@ -2,6 +2,7 @@ import type { Pub } from '@/data/pubs';
 import { generateUuidV4 } from '@/data/account';
 import { geohash8 } from '@/data/geohash';
 export const TOUR_LIMIT = 100;
+export const CHALLENGE_MAX = 120;
 export type TourError = 'storage' | 'corrupt_storage' | 'account_changed' | 'busy' | 'limit' | 'invalid' | 'duplicate' | 'active_run' | 'not_found' | 'network' | 'conflict' | 'expired' | 'throttled' | 'auth';
 export type TourResult = {
   ok: true;
@@ -18,6 +19,8 @@ export interface TourStop {
   address: string;
   lat: number;
   lon: number;
+  /** One line the author wrote for this pub. Missing on stops saved by older versions. */
+  challenge?: string;
 }
 export interface TourPlan {
   id: string;
@@ -58,13 +61,18 @@ export function stopFromPub(pub: Pub): TourStop {
 export function samePub(a: TourStop, b: TourStop): boolean {
   return a.pubId === b.pubId || (!!a.cacheKey && a.cacheKey === b.cacheKey && a.name.trim().toLocaleLowerCase() === b.name.trim().toLocaleLowerCase());
 }
+/** Challenges are one short line; typed line breaks and runs of spaces collapse. */
+export function cleanChallenge(text: string): string {
+  return text.split(/\s+/).filter(Boolean).join(' ');
+}
 export function validStop(s: unknown): s is TourStop {
   if (!s || typeof s !== 'object')
     return false;
   const v = s as TourStop;
   return uuidValid(v.id) && typeof v.pubId === 'string' && !!v.pubId && v.pubId.length <= 256 &&
     (v.cacheKey === null || typeof v.cacheKey === 'string') && typeof v.name === 'string' && !!v.name.trim() && v.name.length <= 255 &&
-    typeof v.address === 'string' && v.address.length <= 500 && Number.isFinite(v.lat) && Math.abs(v.lat) <= 90 && Number.isFinite(v.lon) && Math.abs(v.lon) <= 180;
+    typeof v.address === 'string' && v.address.length <= 500 && Number.isFinite(v.lat) && Math.abs(v.lat) <= 90 && Number.isFinite(v.lon) && Math.abs(v.lon) <= 180 &&
+    (v.challenge === undefined || (typeof v.challenge === 'string' && v.challenge.length <= CHALLENGE_MAX));
 }
 export function validPlan(value: unknown, draft = false): value is TourPlan {
   if (!value || typeof value !== 'object')
