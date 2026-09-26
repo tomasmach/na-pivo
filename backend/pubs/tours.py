@@ -103,6 +103,8 @@ def counted_people(publication_ids, now=None):
     rows = (TourRunMember.objects.filter(
         trusted_account_q("account__", now=now), run__publication_id__in=publication_ids,
         completed_at__isnull=False, completed_at__gte=F("run__publication__count_since"),
+        # A run started on the old route does not count for the new one.
+        run__registered_at__gte=F("run__publication__count_since"),
         joined_at__lte=now - COUNT_MIN_WALK, account__ghost_mode=False, account__excluded_from_leaderboards=False,
     ).values("run__publication_id").annotate(people=Count("account_id", distinct=True)))
     return {row["run__publication_id"]: row["people"] for row in rows}
@@ -125,6 +127,8 @@ def publication_summary(publication):
         "plan_revision": publication.plan_revision, "people_count": fresh_people_count(publication),
         "title": publication.title, "city": publication.city, "stop_count": publication.stop_count,
         "walk_m": publication.walk_m, "has_challenges": publication.has_challenges,
+        # The author's app starts a crew only while its stops are still this route.
+        "stop_ids": [stop["id"] for stop in publication.snapshot["stops"]],
     }
 
 

@@ -232,7 +232,11 @@ type RunOp = Omit<TourRunQueueItem, 'createdAt'>;
 /** The public tour a plan walks: its own publication, or the one a saved copy came from. */
 function publicLink(p: TourPlan): { publicId: string; token: string } | null {
   if (p.publicSource) return { publicId: p.publicSource.publicId, token: p.publicSource.token };
-  return p.publication?.status === 'active' ? { publicId: p.publication.id, token: p.publication.token } : null;
+  const publication = p.publication;
+  if (publication?.status !== 'active') return null;
+  // Joiners load the public copy; stops changed since publishing would split the crew across two routes.
+  if (publication.stopIds && publication.stopIds.join() !== p.stops.map((stop) => stop.id).join()) return null;
+  return { publicId: publication.id, token: publication.token };
 }
 /** Marks the "walked half" flag once, when the walker has not opted out. */
 function crewCompletion(run: TourRun | null): RunOp | null {

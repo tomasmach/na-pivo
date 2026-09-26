@@ -62,11 +62,13 @@ interface PublicationWire {
   revision: number;
   plan_revision: number;
   people_count: number;
+  stop_ids?: unknown;
 }
 function parsePublication(w: PublicationWire | null | undefined): TourPublication | null {
   if (!w)
     return null;
-  const publication = { id: w.id, token: w.token, url: w.url, status: w.status, revision: w.revision, planRevision: w.plan_revision, peopleCount: w.people_count };
+  const publication = { id: w.id, token: w.token, url: w.url, status: w.status, revision: w.revision, planRevision: w.plan_revision, peopleCount: w.people_count,
+    ...(Array.isArray(w.stop_ids) ? { stopIds: w.stop_ids as string[] } : {}) };
   return validPublication(publication) ? publication : null;
 }
 function parsePublic(raw: unknown): PublicTourInfo | undefined {
@@ -290,7 +292,9 @@ async function runRequest(path: string, method: string, body?: unknown): Promise
   return { status: r.status, ...(r.stale ? { stale: true } : {}), run: r.ok ? parseCrewRun(r.data) : null, ...(refused ? { refused: true } : {}) };
 }
 export const putTourRun = (runId: string, publicId: string, ended: boolean) => runRequest(`/v1/tour-runs/${runId}`, 'PUT', { publication_id: publicId, ended });
-export const putTourRunMember = (runId: string, state: 'joined' | 'left' | 'completed' | 'uncounted') => runRequest(`/v1/tour-runs/${runId}/me`, 'PUT', { state });
+// The public tour tells the server which run the QR meant, so a mismatched link cannot join another tour's party.
+export const putTourRunMember = (runId: string, state: 'joined' | 'left' | 'completed' | 'uncounted', publicId: string) =>
+  runRequest(`/v1/tour-runs/${runId}/me`, 'PUT', { state, publication_id: publicId });
 export const fetchTourRun = (runId: string) => runRequest(`/v1/tour-runs/${runId}`, 'GET');
 export interface TourRunPreview { organizer: PublicTourAuthor; going: number; members: PublicTourAuthor[] }
 export async function fetchTourRunPreview(runId: string): Promise<TourRunPreview | null> {
