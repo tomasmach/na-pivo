@@ -1,4 +1,4 @@
-import { newTour, validPlan, validRun, validSchedule, samePub, type TourPlan } from '../model';
+import { cleanChallenge, newTour, validPlan, validRun, validSchedule, samePub, type TourPlan } from '../model';
 jest.mock('@/data/account', () => ({ generateUuidV4: () => '11111111-1111-4111-8111-111111111111' }));
 const stop = (n: number) => ({ id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, pubId: String(n), cacheKey: null, name: `Pub ${n}`, address: 'Prague', lat: 50, lon: 14 });
 const plan = (): TourPlan => ({ ...newTour(), title: 'Pub walk', stops: [stop(1), stop(2)] });
@@ -45,5 +45,11 @@ describe('Tour domain contracts', () => {
     const run = { id: stop(5).id, planId: p.id, snapshot: p, startedAt: new Date().toISOString(), endedAt: null, statuses: {} };
     expect(validRun(run)).toBe(true);
     expect(validRun({ ...run, statuses: { [stop(3).id]: 'visited' } })).toBe(false);
+  });
+  it('keeps stops saved before challenges valid and bounds a challenge to one short line', () => {
+    expect(validPlan({ ...plan(), stops: [{ ...stop(1), challenge: 'x'.repeat(120) }, stop(2)] })).toBe(true);
+    expect(validPlan({ ...plan(), stops: [{ ...stop(1), challenge: 'x'.repeat(121) }, stop(2)] })).toBe(false);
+    expect(validPlan({ ...plan(), stops: [{ ...stop(1), challenge: 7 as unknown as string }, stop(2)] })).toBe(false);
+    expect(cleanChallenge('  Zeptej se\n  výčepního  ')).toBe('Zeptej se výčepního');
   });
 });

@@ -132,7 +132,6 @@ def test_custom_beer_volume_can_be_corrected_without_losing_private_history(clie
 @pytest.mark.parametrize("overrides", [
     {"name": "n" * 256},
     {"beer": {"name": "b" * 161}},
-    {"beer": {"name": "Ležák", "volume_ml": 3001}},
 ])
 def test_drink_catalog_compatibility_keeps_payload_bounds(client, overrides):
     token = _register(client)
@@ -161,6 +160,51 @@ def test_drink_validation_diagnostics_exclude_submitted_values(client, caplog):
     for private_value in (token, payload["name"], payload["drink_type"], "private-beer-name", str(_LAT), str(_LNG), _CLIENT_ID):
         assert private_value not in caplog.text
     assert DrinkLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("drink_type", "volume_ml", "stored"), [
+    ("beer", 500, 500),
+    ("beer", 330.5, 330),
+    ("beer", "500", 500),
+    ("beer", "abc", None),
+    ("beer", 5, None),
+    ("beer", 99999, None),
+    ("beer", True, None),
+    ("beer", [500], None),
+    ("beer", {"ml": 500}, None),
+    ("shot", 40, 40),
+    ("shot", 250, None),
+])
+def test_released_client_drink_survives_any_volume(client, drink_type, volume_ml, stored):
+    """A queued drink is dropped forever on 400, so its size never rejects it."""
+    token = _register(client)
+    payload = _payload(drink_type=drink_type, beer={"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": volume_ml})
+    response = client.post("/v1/drinks", data=payload, format="json", **_auth(token))
+    assert response.status_code == status.HTTP_201_CREATED, response.json()
+    assert DrinkLog.objects.get(client_id=_CLIENT_ID).volume_ml == stored
+
+    listed = client.get("/v1/drinks", **_auth(token)).json()["drinks"]
+    assert [drink["beer"]["volume_ml"] for drink in listed] == [stored]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("update", "stored"), [
+    ({"volume_ml": 330.5}, 330),
+    ({"volume_ml": "abc"}, None),
+    ({"volume_ml": 99999}, None),
+    ({"drink_type": "shot", "volume_ml": 250}, None),
+    ({"drink_type": "shot"}, None),
+])
+def test_queued_drink_edit_survives_any_volume(client, update, stored):
+    token = _register(client)
+    created = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+    response = client.patch(f"/v1/drinks/{_CLIENT_ID}", data=update, format="json", **_auth(token))
+    assert response.status_code == status.HTTP_200_OK, response.json()
+    drink = DrinkLog.objects.get()
+    assert drink.volume_ml == stored
+    assert drink.drink_type == update.get("drink_type", "beer")
 
 
 @pytest.mark.django_db
@@ -329,12 +373,6 @@ def test_get_drinks_requires_account_token(client):
 def test_log_validation_errors(client):
     token = _register(client)
 
-    bad_volume = client.post(
-        "/v1/drinks",
-        data=_payload(beer={"name": "Pilsner", "price_czk": 50, "volume_ml": 5}),
-        format="json",
-        **_auth(token),
-    )
     price_zero = client.post(
         "/v1/drinks",
         data=_payload(beer={"name": "Pilsner", "price_czk": 0, "volume_ml": 500}),
@@ -364,7 +402,6 @@ def test_log_validation_errors(client):
     )
 
     for resp in (
-        bad_volume,
         price_zero,
         price_too_high,
         missing_client_id,
@@ -571,7 +608,7 @@ def test_log_wine_is_private_and_skips_beer_catalog(client):
 
 
 @pytest.mark.django_db
-def test_log_rejects_unknown_type_and_invalid_shot_volume(client):
+def test_log_rejects_unknown_type_but_keeps_oversized_shot(client):
     token = _register(client)
     unknown = client.post(
         "/v1/drinks",
@@ -594,9 +631,9 @@ def test_log_rejects_unknown_type_and_invalid_shot_volume(client):
 
     assert unknown.status_code == status.HTTP_400_BAD_REQUEST
     assert custom_small_beer.status_code == status.HTTP_201_CREATED
-    assert huge_shot.status_code == status.HTTP_400_BAD_REQUEST
-    assert DrinkLog.objects.count() == 1
-    assert DrinkLog.objects.get().volume_ml == 40
+    assert huge_shot.status_code == status.HTTP_201_CREATED
+    volumes = dict(DrinkLog.objects.values_list("beer_name", "volume_ml"))
+    assert volumes == {"Pivo": 40, "Rum": None}
     assert PubCommunityData.objects.count() == 0
 
 
@@ -1333,21 +1370,6 @@ def test_patch_can_clear_optional_price_and_volume(client):
     assert resp.status_code == status.HTTP_200_OK
     drink = DrinkLog.objects.get(client_id=_CLIENT_ID)
     assert (drink.price_czk, drink.volume_ml) == (None, None)
-
-
-@pytest.mark.django_db
-def test_patch_rejects_invalid_volume_for_resulting_type(client):
-    token = _register(client)
-    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
-
-    resp = client.patch(
-        f"/v1/drinks/{_CLIENT_ID}",
-        data={"drink_type": "shot", "volume_ml": 500},
-        format="json",
-        **_auth(token),
-    )
-
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db

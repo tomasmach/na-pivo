@@ -15,6 +15,7 @@ import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { TourButton, TourError, TourHeader, TourStopRow, TourText, ui } from './TourChrome';
 import { TourMap } from './TourMap';
 import { TourPubPicker } from './TourPubPicker';
+import { TourChallengeSheet } from './TourChallengeSheet';
 import type { TourStop } from './model';
 
 function dateDisplay(value: string | null) { return value ? value.split('-').reverse().join('. ') : ''; }
@@ -71,6 +72,7 @@ function TourEditor() {
   const [dateError, setDateError] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [picker, setPicker] = useState(false); const [replace, setReplace] = useState<TourStop | null>(null);
+  const [challengeStop, setChallengeStop] = useState<TourStop | null>(null);
   const [mapHeight, setMapHeight] = useState(300);
   const [largeMap, setLargeMap] = useState(false); const [region, setRegion] = useState<Region>();
   const [reorder, setReorder] = useState(false); const [undo, setUndo] = useState<TourStop[] | null>(null);
@@ -103,6 +105,7 @@ function TourEditor() {
     ] });
   };
   usePreventRemove(!!draft && !allowExit, ({ data }) => {
+    if (challengeStop) { setChallengeStop(null); return; }
     if (picker) { setPicker(false); return; }
     if (largeMap) { setLargeMap(false); return; }
     askExit(() => navigation.dispatch(data.action));
@@ -117,6 +120,7 @@ function TourEditor() {
   function stopActions(stop: TourStop) {
     setSelected(stop.id);
     showAppDialog({ title: stop.name, message: stop.address || t.tours.openingHoursUnknown, buttons: [
+      { text: stop.challenge ? t.tours.editChallenge : t.tours.addChallenge, onPress: () => { Keyboard.dismiss(); setChallengeStop(stop); } },
       { text: t.tours.replaceStop, onPress: () => { setReplace(stop); setPicker(true); } },
       { text: t.tours.removeStop, style: 'destructive', onPress: () => { const previous = draft!.stops; void store.removeStop(stop.id).then((r) => { if (r.ok) { setUndo(previous); setUndoLabel(t.tours.stopRemoved); setSelected(null); } }); } },
       { text: t.tours.cancel, style: 'cancel' },
@@ -124,7 +128,7 @@ function TourEditor() {
   }
   if (!draft) return <View style={[ui.screen, { paddingTop: insets.top }]}><TourHeader title={t.tours.editTour} onBack={() => router.back()} /><TourError code={store.error} /></View>;
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
-    <View style={ui.grow} accessibilityElementsHidden={picker} importantForAccessibility={picker ? 'no-hide-descendants' : 'auto'}>
+    <View style={ui.grow} accessibilityElementsHidden={picker || !!challengeStop} importantForAccessibility={picker || challengeStop ? 'no-hide-descendants' : 'auto'}>
     <TourHeader title={draft.revision || store.plans.some((p) => p.id === draft.id) ? t.tours.editTour : t.tours.newTour} onBack={() => router.canGoBack() ? router.back() : askExit(() => router.replace('/tours' as Href))} />
     <KeyboardAwareScrollView ref={scroll} scrollEnabled={!drag} contentContainerStyle={ui.content} keyboardShouldPersistTaps="handled">
       <View style={ui.field}><TourText style={ui.section}>{t.tours.name}</TourText>
@@ -172,6 +176,13 @@ function TourEditor() {
       const action = replace ? store.replaceStop(replace.id, pub) : store.addStop(pub);
       void action.then((r) => { if (r.ok) { setPicker(false); setRegion(undefined); setUndo(null); } });
     }} />
+    {challengeStop && <TourChallengeSheet key={challengeStop.id} stop={challengeStop} error={store.error} onClose={() => setChallengeStop(null)}
+      onSave={async (text) => {
+        const result = await store.setChallenge(challengeStop.id, text);
+        // Undo restores a whole stop list; it must not bring back a list without this challenge.
+        if (result.ok) setUndo(null);
+        return result.ok;
+      }} />}
     <Modal visible={largeMap} animationType="slide" onRequestClose={() => setLargeMap(false)}>
       <View style={[ui.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}><TourHeader title={t.tours.map} onBack={() => setLargeMap(false)} />
         <View style={ui.grow} onLayout={(event) => setMapHeight(event.nativeEvent.layout.height)}><TourMap key={draft.stops.map((s) => s.id).sort().join()} stops={draft.stops} selectedId={selected} onSelect={setSelected} height={mapHeight} region={region} onRegionChange={setRegion} /></View>
