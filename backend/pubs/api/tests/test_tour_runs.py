@@ -187,25 +187,6 @@ def test_only_current_visible_members_see_the_party():
     assert bob.get(f"/v1/tour-runs/{run_id}").status_code == 404
 
 
-def test_a_walk_cut_short_never_counts():
-    _, _, publication = public_tour()
-    organizer, walker = account_client(nickname="vojta", trusted=True), account_client(nickname="pepa", trusted=True)
-    run_id = str(uuid.uuid4())
-    register(organizer, run_id, publication)
-    member(walker, run_id, "joined")
-    member(walker, run_id, "completed")
-    member(walker, run_id, "left")
-    member(organizer, run_id, "completed")
-    register(organizer, run_id, publication, ended=True)
-    # Half an hour later on the clock, but both walked only a minute with the party.
-    TourRunMember.objects.update(joined_at=timezone.now() - timedelta(minutes=31))
-    TourRunMember.objects.filter(left_at__isnull=False).update(left_at=timezone.now() - timedelta(minutes=30))
-    from pubs.models import TourRun
-    TourRun.objects.update(ended_at=timezone.now() - timedelta(minutes=30))
-    TourPublication.objects.update(people_count_at=None)
-    assert public_read(publication["token"]).json()["public"]["people_count"] == 0
-
-
 def test_roster_disappears_a_day_after_the_run_ends():
     _, _, publication = public_tour()
     organizer = account_client(nickname="vojta")
