@@ -186,6 +186,20 @@ def test_only_a_trusted_quorum_hides_a_reported_tour_until_an_admin_restores_it(
     assert public_read(publication["token"]).status_code == 200
 
 
+def test_reports_count_only_against_the_version_that_is_public():
+    author = account_client()
+    plan_id, revision = save_plan(author, plan_body())
+    publication = publish(author, plan_id, revision).json()["publication"]
+    report = {"reason": "inappropriate_tour"}
+    for _ in range(2):
+        account_client(nickname=None, trusted=True).post(f"/v1/tour-publications/{publication['id']}/report", report, format="json")
+    # The author fixes the tour before the third report: that one alone does not hide the corrected copy.
+    plan_id, revision = save_plan(author, plan_body(title="Opravená tour", revision=revision), plan_id)
+    publish(author, plan_id, revision)
+    reply = account_client(nickname=None, trusted=True).post(f"/v1/tour-publications/{publication['id']}/report", report, format="json")
+    assert reply.json() == {"hidden": False}
+
+
 @override_settings(TOUR_PUBLICATION_LIMIT=1)
 def test_publication_limit_with_an_exempt_seeding_account():
     client = account_client()
