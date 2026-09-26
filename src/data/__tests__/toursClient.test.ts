@@ -1,4 +1,4 @@
-import { fetchPublishedTours, fetchSharedTour, publishPublicTour, publishTour, shareTour, revokeTour } from '../toursClient';
+import { fetchPublishedTours, fetchSharedTour, publishPublicTour, publishTour, searchPublicTours, shareTour, revokeTour } from '../toursClient';
 import { beginTourAccountChange, endTourAccountChange } from '../toursBoundary';
 import { newTour, type TourPlan } from '@/tours/model';
 import { ensureAccount } from '../account';
@@ -104,4 +104,22 @@ it('reads the publication of an owner tour, the author of a public link, and why
   jest.mocked(fetch).mockResolvedValueOnce(response(200, { ...envelope(), expires_at: null, public: { id: publication.id, author, people_count: 4, city: 'Praha', walk_m: 1200 } }));
   const opened = await fetchSharedTour('publicTokenForTests12');
   expect(opened.ok && opened.public).toEqual({ id: publication.id, peopleCount: 4, city: 'Praha', walkM: 1200, author: { id: 'author', nickname: 'pivni_vlk', displayName: 'Pavel', avatarUrl: null } });
+});
+
+it('searches public tours with the position in the body and keeps only well-formed rows', async () => {
+  const hit = { id: '33333333-3333-4333-8333-333333333333', token: 'publicTokenForTests12', title: 'Pátek u tygra', city: 'Praha', stop_count: 3,
+    walk_m: 1200, has_challenges: true, people_count: 4, distance_m: 350, author: { id: 'a', nickname: 'pivni_vlk', display_name: '', avatar_url: null } };
+  jest.mocked(fetch).mockResolvedValue(response(200, { results: [hit, { ...hit, id: 'nope' }, { ...hit, author: null }], next_page: 1, nearby: false }));
+  const result = await searchPublicTours({ q: 'tygr', lat: 50.08, lon: 14.42, stops: '2-3', challenges: true });
+  const [url, options] = jest.mocked(fetch).mock.calls[0];
+  expect(url).toBe('http://127.0.0.1:8012/v1/tour-publications/search');
+  expect(options!.method).toBe('POST');
+  expect(JSON.parse(options!.body as string)).toEqual({ q: 'tygr', lat: 50.08, lon: 14.42, stops: '2-3', challenges: true });
+  expect(result).toEqual({ ok: true, nextPage: 1, nearby: false, results: [{ id: hit.id, token: hit.token, title: hit.title, city: 'Praha', stopCount: 3, walkM: 1200,
+    hasChallenges: true, peopleCount: 4, distanceM: 350, author: { id: 'a', nickname: 'pivni_vlk', displayName: '', avatarUrl: null } }] });
+
+  jest.mocked(fetch).mockRejectedValue(new Error('offline'));
+  expect(await searchPublicTours({})).toEqual({ ok: false, offline: true });
+  jest.mocked(fetch).mockResolvedValue(response(500, null));
+  expect(await searchPublicTours({})).toEqual({ ok: false, offline: false });
 });

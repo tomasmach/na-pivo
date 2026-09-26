@@ -132,6 +132,13 @@ def publication_summary(publication):
     }
 
 
+def publication_search_text(snapshot):
+    from pubs.discovery import normalize_discovery_text
+
+    parts = [snapshot["title"], *(value for stop in snapshot["stops"] for value in (stop["name"], stop["address"]))]
+    return normalize_discovery_text(" ".join(part for part in parts if part))
+
+
 def readable_publications():
     """Active copies whose author still has an active, public profile with a nickname."""
     return (TourPublication.objects.select_related("plan__owner")

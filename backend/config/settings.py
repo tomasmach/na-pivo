@@ -682,6 +682,8 @@ REST_FRAMEWORK = {
         "tour_search": "60/min",
         "tour_publish": "20/hour",
         "tour_run": "240/hour",
+        # Typing in the search field fires one request per pause, so a busy minute stays well under this.
+        "tour_discover": "30/min",
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
         "account_export": ACCOUNT_EXPORT_THROTTLE_RATE,
         "feedback": FEEDBACK_THROTTLE_RATE,

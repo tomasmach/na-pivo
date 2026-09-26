@@ -17,7 +17,7 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@/stores/toursStore', () => ({ useToursStore: Object.assign(() => mockStore, { getState: () => mockStore }) }));
 jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
 jest.mock('../TourJourneyIllustration', () => ({ TourJourneyIllustration: () => null }));
-jest.mock('@/components/shared/IconGlyph', () => ({ ChevronLeftIcon: () => null, ChevronRightIcon: () => null, EllipsisIcon: () => null, HistoryIcon: () => null }));
+jest.mock('@/components/shared/IconGlyph', () => ({ ChevronLeftIcon: () => null, ChevronRightIcon: () => null, EllipsisIcon: () => null, HistoryIcon: () => null, SearchIcon: () => null }));
 
 const stop = (n: number) => ({ id: `s${n}`, pubId: `p${n}`, cacheKey: null, name: `Hospoda ${n}`, address: '', lat: 50 + n / 100, lon: 14 });
 const plan = (id: string, title: string): TourPlan => ({ id, title, scheduledDate: null, scheduledTime: null, timezone: 'Europe/Prague', stops: [stop(1), stop(2)], revision: 1, updatedAt: '2026-09-01T10:00:00Z' });
@@ -33,6 +33,8 @@ it('explains the feature with a plan action and account restore when there is no
   expect(screen.getByLabelText(t.tours.create)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.restore)).toBeTruthy();
   expect(screen.queryByLabelText(t.tours.more)).toBeNull();
+  // Search is there even before the first own tour.
+  expect(screen.getByLabelText(t.tours.discoverOpen)).toBeTruthy();
 });
 
 it('puts the running tour first and opens past runs in their history view', () => {
