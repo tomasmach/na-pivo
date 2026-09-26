@@ -817,6 +817,7 @@ export const cs = {
     addressConfirmed: 'Potvrzená adresa',
     fixLocation: 'Oprav polohu',
     locationNeedsFix: 'Polohu podle adresy se nepodařilo ověřit. Oprav adresu a potvrď polohu.',
+    locationNeedsFixOrPin: 'Tuhle adresu jsem na mapě nenašel. Zapíchni špendlík přímo do hospody, nebo adresu oprav.',
     addressLookupFailed: 'Adresu se nepodařilo ověřit. Zkontroluj připojení a zkus to znovu.',
     searchingPlaces: 'Hledám podniky…',
     noPlaceSuggestions: 'Nic jsem nenašel. Město a adresu vyplň ručně.',
@@ -859,6 +860,7 @@ export const cs = {
     savedToast: 'Mám ji, díky!',
     queuedToast: 'Hospoda čeká na připojení. Uložil jsem ji v telefonu.',
     failedToast: 'Hospodu se nepodařilo ověřit. Oprav údaje nebo to zkus znovu.',
+    stillNotFoundToast: 'Pořád ji nenacházím. Zapíchni radši špendlík.',
     editQueuedToast: 'Opravu mám v telefonu a pošlu ji, až budeš online.',
     editSavedToast: 'Oprava je uložená.',
     myPubsTitle: 'Moje přidané hospody',
@@ -1407,6 +1409,9 @@ export const cs = {
     // "signál" is reserved for connectivity; the broadcast is a "cinknutí".
     shareSuccess: 'Cinknuto!',
     shareError: 'Nepodařilo se dát vědět partě.',
+    // Quick ping sheet from the counter: the pub is known, only who hears it is picked.
+    pingSheetDetail: (pub: string) => `Dám vědět, kde sedíš: ${pub}.`,
+    pingSheetGhost: 'Máš zapnutý neviditelný režim, cinknutí by nikomu nepřišlo.',
     // Counter "already broadcasting" state once I'm live (drops the re-broadcast).
     counterAlreadyLive: 'Už svítíš partě',
     sharedCount: (n: number) =>
@@ -1708,12 +1713,9 @@ export const cs = {
       n === 0
         ? 'Vyber, koho chceš vytáhnout na jedno.'
         : n === 1
-          ? 'Vybraný 1 kámoš.'
-          : n >= 2 && n <= 4
-            ? `Vybraní ${n} kámoši.`
-            : `Vybráno ${n} kámošů.`,
+          ? 'Cinknutí poletí 1 kámošovi.'
+          : `Cinknutí poletí ${n} kámošům.`,
     recipientNoFriends: 'Nejdřív si přidej kámoše do party.',
-    recipientNoSelection: 'Vyber, komu to cinkne.',
     recipientGroupPlaceholder: 'Název partičky',
     recipientGroupSave: 'Uložit',
     recipientGroupSaved: 'Partička uložená.',
@@ -2051,6 +2053,9 @@ export const cs = {
         : count < 5
           ? `${count} zápisy čekají na odeslání`
           : `${count} zápisů čeká na odeslání`,
+    rejected: (count: number) =>
+      `${count} ${czechPlural(count, { one: 'zápis', few: 'zápisy', many: 'zápisů' })} k opravě`,
+    rejectedFix: 'Ukaž',
 
     // — The one button —
     cta: 'Dopiš večer',
@@ -2347,6 +2352,13 @@ export const cs = {
     // Server hard-rejected a drink over the daily anti-abuse cap ("drink_limited"):
     // the entry stays in the local diary only, so no data is lost — just not synced.
     drinkLimitedToast: 'Dneska už toho bylo na server moc, tenhle zápis zůstává jen v tvém deníčku.',
+    // Server refused a drink as invalid: it stays in the diary, flagged for fixing.
+    drinkRejectedToast: (count: number) =>
+      czechPlural(count, {
+        one: 'Jeden zápis se neuložil. Najdeš ho v Deníku.',
+        few: `${count} zápisy se neuložily. Najdeš je v Deníku.`,
+        many: `${count} zápisů se neuložilo. Najdeš je v Deníku.`,
+      }),
 
     // ── "Tácek" surface ──────────────────────────────────────────────────────
     // The counter is four blocks: place chip, coaster (čárky), one nudge slot,
@@ -2701,6 +2713,17 @@ export const cs = {
     deleteDrinkBody: 'Počet na řádku snížím o jeden.',
     deleteDrinkConfirm: 'Odebrat',
     deleteDrinkCancel: 'Zrušit',
+    // A drink the server refused: shown under its row until fixed or removed.
+    drinkRejected: 'Tohle se neuložilo, mám to jen v telefonu. Oprav to, nebo odeber.',
+    // The refused field is the place or time, which the drink form cannot change.
+    drinkRejectedRemoveOnly: 'Tohle se neuložilo a opravit to tady nejde. Odeber to.',
+    // One line in the fix sheet for the field that was refused.
+    fixDrinkHintVolume: 'Tuhle velikost jsem nevzal. Vyber jinou.',
+    fixDrinkHintPrice: 'Tuhle cenu jsem nevzal. Zkus 1 až 1000 Kč.',
+    fixDrinkHintName: 'Tenhle název jsem nevzal. Zkus ho zkrátit.',
+    fixDrinkTitle: 'Oprav zápis',
+    fixDrinkSubmit: 'Uložit znovu',
+    fixDrinkSaved: 'Beru. Zkusím to uložit znovu.',
     priceUnknown: 'Cena chybí',
     pricePartial: (price: string) => `Nejméně ${price}`,
     totalLabel: 'Celkem',
