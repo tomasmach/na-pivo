@@ -238,6 +238,8 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     // captured before the boundary, so it still lands on the right account.)
     if (signal.aborted) break;
     const key = dedupKey(item);
+    // A newer tour ping took this one out while the flush was on its way; sending it would move friends back.
+    if (item.op === 'activity' && item.payload.tour && !(await loadQueue()).some((queued) => dedupKey(queued) === key)) continue;
     attempted.set(key, signature(item));
     const result = await deliver(item);
     if (result !== 'retry') settled.add(key);
@@ -314,7 +316,12 @@ export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Pro
   });
 }
 
-const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
+const { flush: _flush, abortInFlight, idle } = createCoalescingFlush(flushUnlocked);
+
+/** Resolves once a flush already delivering has finished, so a direct send lands after anything it had on its way. */
+export function friendsQueueIdle(): Promise<void> {
+  return idle();
+}
 
 /** Drop all pending Parta ops without attempting delivery (account boundary). */
 export function clearFriendsQueue(): Promise<void> {

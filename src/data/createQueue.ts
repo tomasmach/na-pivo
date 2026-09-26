@@ -95,6 +95,8 @@ export interface CoalescingFlush {
    * fresh signal.
    */
   abortInFlight: () => void;
+  /** Resolves once the flush running now, if any, has finished. */
+  idle: () => Promise<void>;
 }
 
 /**
@@ -134,5 +136,6 @@ export function createCoalescingFlush(
   const abortInFlight = (): void => {
     controller?.abort();
   };
-  return { flush, abortInFlight };
+  const idle = (): Promise<void> => (flushPromise ?? Promise.resolve()).catch(() => undefined);
+  return { flush, abortInFlight, idle };
 }

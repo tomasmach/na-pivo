@@ -24,7 +24,7 @@ import { TourButton, TourChallengeText, TourError, TourHeader, TourText, pubCoun
 import { TourMap } from './TourMap';
 import { TourCrewRow, TourCrewSheet, going, type CrewPingState, type CrewPingView } from './TourCrew';
 import { pingRecipients, pingStop, sendPing } from './crewPing';
-import { loadPartyFriends, type FriendProfile } from '@/data/friendsClient';
+import { loadPartyFriends, type PartyFriends } from '@/data/friendsClient';
 import { friendActivityState } from '@/data/friendsQueue';
 import PingSheet from '@/friends/PingSheet';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
@@ -50,7 +50,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const [detail, setDetail] = useState<TourStop | null>(null); const [pubDetail, setPubDetail] = useState(false);
   const [largeMap, setLargeMap] = useState(false); const [shareMode, setShareMode] = useState(false);
   const [crewSheet, setCrewSheet] = useState(false);
-  const [friends, setFriends] = useState<{ friends: FriendProfile[]; ghost: boolean } | null>(null); const [ping, setPing] = useState<CrewPingState | null>(null);
+  const [friends, setFriends] = useState<PartyFriends | null>(null); const [ping, setPing] = useState<CrewPingState | null>(null);
   const [pingSheet, setPingSheet] = useState(false); const pingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Only a signed-in walker with a nickname can be seen by a party and counted.
   const crewEligible = useAccountStore((s) => selectIsSignedIn(s) && !!selectNickname(s));
@@ -74,12 +74,13 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   // Back on the run, see who joined or left meanwhile.
   useEffect(() => { if (focused && useToursStore.getState().activeRun?.crew) void useToursStore.getState().refreshCrew(); }, [focused]);
-  // Who could be pinged from the run, as the phone last saw the party.
+  // Who could be pinged from the run: the party the phone last saw, then the server's newer one.
   const walking = !!active && !history;
   useEffect(() => {
     if (!focused || !walking) return;
     let alive = true;
-    void loadPartyFriends().then((next) => { if (alive) setFriends(next); });
+    const show = (next: PartyFriends | null) => { if (alive) setFriends(next); };
+    void loadPartyFriends(undefined, show).then(show);
     return () => { alive = false; };
   }, [focused, walking]);
   // A ping that waited for signal may have gone out since, or been dropped; only a delivered one says so.

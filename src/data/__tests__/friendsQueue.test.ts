@@ -31,6 +31,7 @@ import {
   dropQueuedTourPings,
   flushFriendsQueue,
   friendActivityState,
+  friendsQueueIdle,
   isRetriableFriendError,
   type FriendQueueItem,
 } from '../friendsQueue';
@@ -251,4 +252,23 @@ it('drops only waiting tour pings when a newer one takes over', async () => {
   await dropQueuedTourPings();
   expect((await readQueue()).map((item) => (item as { clientId: string }).clientId)).toEqual(['counter']);
   expect(await friendActivityState('tour-old')).toBe('gone');
+});
+
+it('lets a flush on its way finish first and skips a tour ping taken out meanwhile', async () => {
+  let release: () => void = () => undefined;
+  // The first op hangs on the network, so the flush is still on its way when a newer tour ping takes over.
+  respondToActivity.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve({ ok: true }); }));
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+    { op: 'rsvp', activityId: 'a1', response: 'going' },
+    { op: 'activity', clientId: 'tour-old', payload: { pub: PUB, tour: { title: 'Okruh', heading: false } } },
+  ]));
+  const flushing = flushFriendsQueue();
+  await dropQueuedTourPings();
+  let idle = false;
+  const waiting = friendsQueueIdle().then(() => { idle = true; });
+  await Promise.resolve();
+  expect(idle).toBe(false);
+  release();
+  await Promise.all([flushing, waiting]);
+  expect(shareFriendPubActivity).not.toHaveBeenCalled();
 });

@@ -1,6 +1,6 @@
 import { generateUuidV4 } from '@/data/account';
 import { shareFriendPubActivity } from '@/data/friendsClient';
-import { dropQueuedTourPings, enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { dropQueuedTourPings, enqueueFriendOp, friendsQueueIdle, isRetriableFriendError } from '@/data/friendsQueue';
 import { t } from '@/i18n';
 import { pubFromStop } from './counterLink';
 import type { TourRun, TourStop } from './model';
@@ -35,6 +35,8 @@ export async function sendPing(title: string, target: { stop: TourStop; heading:
   const clientId = generateUuidV4();
   const startedAt = new Date().toISOString();
   await dropQueuedTourPings();
+  // An older ping already on its way must reach the server first, or it would win over this one.
+  await friendsQueueIdle();
   const result = await shareFriendPubActivity(pub, message, clientId, recipientIds, startedAt, tour);
   if (result.ok) return { status: 'sent', clientId };
   if (!isRetriableFriendError(result)) return { error: result.detail || t.friends.shareError };
