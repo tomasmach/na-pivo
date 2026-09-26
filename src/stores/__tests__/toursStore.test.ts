@@ -325,6 +325,15 @@ describe('Tours durable lifecycle', () => {
     expect(publishTour).toHaveBeenCalledTimes(1);
     expect(store.getState().plans[0].publication).toEqual(publication);
   });
+  it('retries an upload whose answer got lost as the same operation', async () => {
+    const id = await makePlan();
+    jest.mocked(publishTour).mockResolvedValue({ ok: false, error: 'network' });
+    await store.getState().publishPublic(id);
+    await store.getState().publishPublic(id);
+    const [first, second] = jest.mocked(publishTour).mock.calls.map(([, operationId]) => operationId);
+    expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(second).toBe(first);
+  });
   it('saves a public tour as an own editable copy once, and drops the link when its pubs change', async () => {
     const remote = { ...cloneTour(store.getState().plans[0] ?? { id: '44444444-4444-4444-8444-444444444444' }), id: '44444444-4444-4444-8444-444444444444', title: 'Veřejná', scheduledDate: null, scheduledTime: null, timezone: 'Europe/Prague', revision: 2, updatedAt: new Date().toISOString(),
       stops: [1, 2].map((n) => ({ id: `00000000-0000-4000-8000-00000000000${n}`, pubId: `directory:p${n}`, cacheKey: null, name: `Pub ${n}`, address: 'Praha', lat: 50 + n / 100, lon: 14 })) };

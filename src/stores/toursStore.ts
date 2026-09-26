@@ -218,6 +218,19 @@ function networkAction(fn: (generation: number) => Promise<TourResult>): Promise
     }
   });
 }
+/**
+ * One operation id per plan, revision and content: a retry of the same upload replays on the server
+ * instead of conflicting when the first answer got lost. FNV-1a over four seeds, shaped as a UUID v4.
+ */
+function uploadOperationId(plan: TourPlan): string {
+  const text = `${plan.id}|${plan.revision}|${tourContentSignature(plan)}`;
+  const hex = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x7f4a7c15].map((seed) => {
+    let hash = seed >>> 0;
+    for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193) >>> 0;
+    return hash.toString(16).padStart(8, '0');
+  }).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${((parseInt(hex[16], 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
 /** The server never knows which public tour a copy came from; keep that link on this phone. */
 function withLocalFields(server: TourPlan, local: TourPlan | undefined): TourPlan {
   return local?.publicSource ? { ...server, publicSource: local.publicSource } : server;
@@ -556,7 +569,7 @@ export const useToursStore = create<ToursState>(() => ({
     let revision = plan.revision;
     // The public copy is frozen from the server plan, so that has to match this phone first.
     if (!revision || d.published[id] !== tourContentSignature(plan)) {
-      const put = await publishTour(plan, generateUuidV4());
+      const put = await publishTour(plan, uploadOperationId(plan));
       if (!current(g))
         return { ok: false, error: 'account_changed' };
       if (!put.ok) {
