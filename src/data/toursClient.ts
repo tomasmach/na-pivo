@@ -28,6 +28,7 @@ export type TourResponse = {
   tour?: TourPlan;
   stop?: number;
   field?: 'title' | 'challenge';
+  limit?: number;
 };
 export interface TourWire {
   id: string;
@@ -161,10 +162,11 @@ async function tourRequest(path: string, method = 'GET', body?: unknown, publicR
   const r = await request(path, method, body, publicRead);
   const tour = parseEnvelope(r.data);
   if (!r.ok) {
-    const detail = (r.data && typeof r.data === 'object' ? r.data : {}) as { stop?: unknown; field?: unknown };
+    const detail = (r.data && typeof r.data === 'object' ? r.data : {}) as { stop?: unknown; field?: unknown; limit?: unknown };
     return { ok: false, error: errorFor(r, publicRead), ...(tour ? { tour } : {}),
       ...(Number.isInteger(detail.stop) ? { stop: detail.stop as number } : {}),
-      ...(detail.field === 'title' || detail.field === 'challenge' ? { field: detail.field } : {}) };
+      ...(detail.field === 'title' || detail.field === 'challenge' ? { field: detail.field } : {}),
+      ...(Number.isInteger(detail.limit) ? { limit: detail.limit as number } : {}) };
   }
   if (!tour)
     return { ok: false, error: 'invalid' };

@@ -14,6 +14,8 @@ export type TourResult = {
   /** Which stop or field the server refused when publishing publicly. */
   stop?: number;
   field?: 'title' | 'challenge';
+  /** How many public tours the server allows, when it refused one more. */
+  limit?: number;
 };
 export interface TourStop {
   id: string;

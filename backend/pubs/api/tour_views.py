@@ -19,6 +19,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from pubs.community_trust import trusted_account_q
+from pubs.enrichment.matcher import geohash8
 from pubs.identity import normalize_pub_name, resolve_pub_identity
 from pubs.models import (
     Account,
@@ -317,6 +318,14 @@ class _RejectedStopError(Exception):
         self.code, self.text, self.stop = code, text, stop
 
 
+def _merged_pub_id(cache_key, name):
+    """Search shows a merged pub under its canonical name and position, which no alias has to share."""
+    for pub in CanonicalPub.objects.filter(active=True, name_key=normalize_pub_name(name)).only("public_id", "lat", "lng"):
+        if geohash8(pub.lat, pub.lng) == cache_key:
+            return str(pub.public_id)
+    return None
+
+
 def _public_stops(stops):
     """Known, not globally hidden pubs under directory names; free text never goes public."""
     from .views import _globally_reported_pub_cache_keys
@@ -325,11 +334,12 @@ def _public_stops(stops):
     for index, stop in enumerate(stops):
         cache_key = stop.cache_key or ""
         identity = resolve_pub_identity(cache_key, stop.name, lat=stop.lat, lng=stop.lon) if cache_key else None
-        if identity and identity.canonical_id:
-            canonical = CanonicalPub.objects.filter(public_id=identity.canonical_id).first()
+        canonical_id = (identity.canonical_id if identity else None) or (_merged_pub_id(cache_key, stop.name) if cache_key else None)
+        if canonical_id:
+            canonical = CanonicalPub.objects.filter(public_id=canonical_id).first()
             if canonical is None:
                 raise _RejectedStopError("unknown_pub", _("Tuhle hospodu u veřejné tour neznám. Vyměň ji za hospodu z hledání."), index)
-            key, name, city, pub_id = f"canonical:{identity.canonical_id}", canonical.name, canonical.city, identity.canonical_id
+            key, name, city, pub_id = f"canonical:{canonical_id}", canonical.name, canonical.city, canonical_id
             cache_key, lat, lon = canonical.cache_key or cache_key, canonical.lat, canonical.lng
         else:
             row = (PubDirectory.objects.filter(active=True, cache_key=cache_key, name_key=normalize_pub_name(stop.name))
@@ -382,7 +392,8 @@ class TourPublicationView(OwnerTourView):
                 return _error("rules_required", _("Nejdřív odsouhlas pravidla pro veřejné tour."), 400)
             others = TourPublication.objects.filter(plan__owner=account, status=TourPublication.Status.ACTIVE).exclude(plan=plan)
             if others.count() >= settings.TOUR_PUBLICATION_LIMIT and str(account.public_id) not in settings.TOUR_PUBLICATION_LIMIT_EXEMPT:
-                return _error("publication_limit", _("Veřejných tour můžeš mít nejvýš %(count)s.") % {"count": settings.TOUR_PUBLICATION_LIMIT}, 400)
+                return _error("publication_limit", _("Veřejných tour můžeš mít nejvýš %(count)s.") % {"count": settings.TOUR_PUBLICATION_LIMIT}, 400,
+                              limit=settings.TOUR_PUBLICATION_LIMIT)
             rejected = _("Tohle nezveřejním. Veřejné tour nesmí být o tom, kdo víc nebo rychleji vypije, ani obsahovat odkazy nebo telefonní čísla.")
             if rejected_text(plan.title):
                 return _error("text_rejected", rejected, 400, field="title")
