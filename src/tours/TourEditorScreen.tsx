@@ -176,7 +176,7 @@ function TourEditor() {
       const action = replace ? store.replaceStop(replace.id, pub) : store.addStop(pub);
       void action.then((r) => { if (r.ok) { setPicker(false); setRegion(undefined); setUndo(null); } });
     }} />
-    {challengeStop && <TourChallengeSheet key={challengeStop.id} stop={challengeStop} onClose={() => setChallengeStop(null)}
+    {challengeStop && <TourChallengeSheet key={challengeStop.id} stop={challengeStop} error={store.error} onClose={() => setChallengeStop(null)}
       onSave={async (text) => {
         const result = await store.setChallenge(challengeStop.id, text);
         // Undo restores a whole stop list; it must not bring back a list without this challenge.
