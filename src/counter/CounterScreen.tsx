@@ -65,8 +65,9 @@ import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
-import { shareFriendPubActivity } from '@/data/friendsClient';
+import { loadPartyFriends, shareFriendPubActivity, type FriendProfile } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import PingSheet from '@/friends/PingSheet';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { ShareNightModal } from '@/vycep/ShareNightModal';
@@ -1323,27 +1324,40 @@ function Tacek({
 
   // ── Friends ─────────────────────────────────────────────────────────────────
 
-  const handleShareWithFriends = useCallback(async () => {
-    if (!pub || !cell || sharingWithFriends || broadcasted) return;
+  /** Sends to the chosen friends (undefined = the whole party); a hard failure comes back for the sheet to show. */
+  const handleShareWithFriends = useCallback(async (recipientIds?: string[]): Promise<string | null> => {
+    if (!pub || !cell || sharingWithFriends || broadcasted) return null;
     trackUiInteraction('counter_share_friends', 'share');
     setSharingWithFriends(true);
     const shareClientId = isThisSession && current?.clientId ? current.clientId : generateUuidV4();
     const startedAt = new Date().toISOString();
-    const result = await shareFriendPubActivity(pub, '', shareClientId, undefined, startedAt);
+    const result = await shareFriendPubActivity(pub, '', shareClientId, recipientIds, startedAt);
     setSharingWithFriends(false);
-    if (useTallyStore.getState().history.some((session) => session.clientId === shareClientId && session.closedAt)) return;
+    if (useTallyStore.getState().history.some((session) => session.clientId === shareClientId && session.closedAt)) return null;
     if (result.ok) {
       setBroadcastCell(cell);
       showToast(t.friends.shareSuccess);
       if (hapticEnabled) fireLightImpactHaptic();
     } else if (isRetriableFriendError(result)) {
-      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '', startedAt } });
+      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '', recipientIds, startedAt } });
       setBroadcastCell(cell);
       showToast(t.friends.composeQueued);
     } else {
-      showToast(result.detail || t.friends.shareError);
+      return result.detail || t.friends.shareError;
     }
+    return null;
   }, [broadcasted, cell, current, hapticEnabled, isThisSession, pub, sharingWithFriends, showToast]);
+
+  // Who can hear it; without any saved party (offline, Parta never opened) the ping goes to everyone as before.
+  const [pingFriends, setPingFriends] = useState<FriendProfile[] | null>(null);
+  async function openPingSheet() {
+    const party = await loadPartyFriends();
+    if (party) setPingFriends(party.friends);
+    else {
+      const failure = await handleShareWithFriends();
+      if (failure) showToast(failure);
+    }
+  }
 
   // ── The one button ──────────────────────────────────────────────────────────
 
@@ -1600,7 +1614,7 @@ function Tacek({
         onClose={closeMore}
         onDone={sessionDrinks.length > 0 ? () => runAfterSheetClose(handleDone) : undefined}
         onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
-        onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
+        onPingFriends={pub ? () => runAfterSheetClose(() => { void openPingSheet(); }) : undefined}
         broadcasted={broadcasted}
         onBackdate={() => runAfterSheetClose(handleBackdatePress)}
         onScanMenu={pub ? () => runAfterSheetClose(() => setScanSourceVisible(true)) : undefined}
@@ -1640,6 +1654,15 @@ function Tacek({
         onSelect={handleSelectScannedDrink}
       />
       <BeerPhotoCaptureFlow open={photoCaptureOpen} onClose={() => setPhotoCaptureOpen(false)} />
+      {pub && pingFriends ? (
+        <PingSheet
+          title={t.friends.shareHereShort}
+          detail={t.friends.pingSheetDetail(pub.name)}
+          friends={pingFriends}
+          onSend={handleShareWithFriends}
+          onClose={() => setPingFriends(null)}
+        />
+      ) : null}
       {liveNight ? (
         <ShareNightModal
           visible={stickerOpen}

@@ -1206,6 +1206,7 @@ export const en: Strings = {
     shareHereShort: 'Ping the crew',
     shareSuccess: 'Pinged!',
     shareError: "Couldn't tell the crew.",
+    pingSheetDetail: (pub: string) => `Your mates will see you’re sitting in ${pub}.`,
     counterAlreadyLive: "You're already live",
     sharedCount: (n: number) =>
     n === 0 ? 'No beers together yet' : `${beerCountLabel(n)} together`,

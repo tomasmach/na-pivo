@@ -1404,6 +1404,8 @@ export const cs = {
     // "signál" is reserved for connectivity; the broadcast is a "cinknutí".
     shareSuccess: 'Cinknuto!',
     shareError: 'Nepodařilo se dát vědět partě.',
+    // Quick ping sheet from the counter: the pub is known, only who hears it is picked.
+    pingSheetDetail: (pub: string) => `Kámoši uvidí, že sedíš v hospodě ${pub}.`,
     // Counter "already broadcasting" state once I'm live (drops the re-broadcast).
     counterAlreadyLive: 'Už svítíš partě',
     sharedCount: (n: number) =>

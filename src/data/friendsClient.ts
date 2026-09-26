@@ -9,7 +9,7 @@ import {
 import { parseBeerCheckIn, type BeerCheckIn } from './beerCheckinsClient';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
-import { saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
+import { loadFriendsDashboardSnapshot, saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
 import { trackApiFailure } from './telemetryClient';
 import type { Pub } from './pubs';
 
@@ -774,6 +774,12 @@ async function requestJson(
   } finally {
     abort.cleanup();
   }
+}
+
+/** The party as the phone last saw it, for picking who hears a cinknutí; fetched once when Parta was never opened here. Null offline with nothing saved. */
+export async function loadPartyFriends(): Promise<{ friends: FriendProfile[]; ghost: boolean } | null> {
+  const dashboard = (await loadFriendsDashboardSnapshot())?.dashboard ?? await fetchFriendsDashboard();
+  return dashboard ? { friends: dashboard.friends, ghost: dashboard.settings?.ghostMode === true } : null;
 }
 
 export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
