@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { t } from '@/i18n';
 import { TourChallengeSheet } from '../TourChallengeSheet';
 import type { TourStop } from '../model';
 
@@ -28,10 +29,13 @@ it('says why it cannot save yet, then saves the cleaned line and closes', async 
 it('turns clearing an existing challenge into an explicit removal and stays open when saving fails', async () => {
   const onSave = jest.fn(async () => false);
   const onClose = jest.fn();
-  const screen = render(<TourChallengeSheet stop={{ ...stop, challenge: 'Najdi pípu' }} onSave={onSave} onClose={onClose} />);
+  const screen = render(<TourChallengeSheet stop={{ ...stop, challenge: 'Najdi pípu' }} error="storage_failed" onSave={onSave} onClose={onClose} />);
   fireEvent.changeText(screen.getByTestId('tour-challenge'), '');
   expect(screen.getByText('Odebrat výzvu')).toBeTruthy();
+  // An error from before the sheet opened is not this save's.
+  expect(screen.queryByText(t.tours.errors.storage)).toBeNull();
   await act(async () => { fireEvent.press(screen.getByTestId('tour-challenge-save')); });
   expect(onSave).toHaveBeenCalledWith('');
   expect(onClose).not.toHaveBeenCalled();
+  expect(screen.getByText(t.tours.errors.storage)).toBeTruthy();
 });
