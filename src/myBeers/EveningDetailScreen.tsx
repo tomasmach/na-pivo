@@ -618,6 +618,8 @@ export default function EveningDetailScreen() {
         submitLabelOverride={t.myBeers.fixDrinkSubmit}
         notice={rejectedFieldHint(fixingGroup?.rejectedField)}
         requireChange
+        // The keyboard would hide the size and price the hint asks about.
+        autoFocusName={fixingGroup?.rejectedField === 'beer.name'}
         onCancel={() => setFixingGroup(null)}
         onSubmit={handleFixDrink}
       />

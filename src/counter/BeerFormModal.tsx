@@ -136,6 +136,8 @@ interface BeerFormModalProps {
   notice?: string;
   /** Keep submit disabled until something differs from the prefilled form. */
   requireChange?: boolean;
+  /** Open with the keyboard on the name field (default). */
+  autoFocusName?: boolean;
 }
 
 /**
@@ -161,6 +163,7 @@ export function BeerFormModal({
   canAddSmallVariant = false,
   notice,
   requireChange = false,
+  autoFocusName = true,
 }: BeerFormModalProps) {
   return (
     <Modal
@@ -189,6 +192,7 @@ export function BeerFormModal({
           canAddSmallVariant={canAddSmallVariant}
           notice={notice}
           requireChange={requireChange}
+          autoFocusName={autoFocusName}
         />
       ) : null}
     </Modal>
@@ -211,6 +215,7 @@ interface BeerFormBodyProps {
   canAddSmallVariant: boolean;
   notice?: string;
   requireChange: boolean;
+  autoFocusName: boolean;
 }
 
 function BeerFormBody({
@@ -229,6 +234,7 @@ function BeerFormBody({
   canAddSmallVariant,
   notice,
   requireChange,
+  autoFocusName,
 }: BeerFormBodyProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -258,7 +264,8 @@ function BeerFormBody({
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   // After picking a suggestion we keep the list dismissed until the user edits
   // the field again — otherwise the effect would instantly re-fetch the pick.
-  const pickedNameRef = useRef<string | null>(null);
+  // A sheet that opens without the keyboard keeps its prefilled name quiet too.
+  const pickedNameRef = useRef<string | null>(autoFocusName ? null : (beer?.name ?? null));
 
   const onChangeName = (text: string) => {
     pickedNameRef.current = null;
@@ -505,7 +512,7 @@ function BeerFormBody({
                 placeholder={t.counter.drinkNamePlaceholder(drinkType)}
                 placeholderTextColor={Colors.mutedText}
                 maxLength={80}
-                autoFocus
+                autoFocus={autoFocusName}
                 accessibilityLabel={t.counter.drinkNamePlaceholder(drinkType)}
               />
             )}
