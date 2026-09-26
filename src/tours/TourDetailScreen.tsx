@@ -263,7 +263,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} quiet onPress={() => setShareMode(true)} />}</>}
     </View>
     </View>
-    {crewSheet && active?.crew && <TourCrewSheet crew={active.crew} title={active.snapshot.title} onClose={() => setCrewSheet(false)} />}
+    {crewSheet && active?.crew && <TourCrewSheet crew={active.crew} onClose={() => setCrewSheet(false)} />}
     {overlayVisible && <View accessibilityViewIsModal style={[ui.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TourHeader title={detail?.name ?? t.tours.map} onBack={() => { setLargeMap(false); setDetail(null); }} />
         <ScrollView contentContainerStyle={[ui.content, { flexGrow: 1 }]}>

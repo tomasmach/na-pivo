@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { XIcon } from '@/components/shared/IconGlyph';
@@ -9,7 +9,6 @@ import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { TourButton } from './TourChrome';
 import type { CrewMember, TourCrew } from './model';
 
 const QR_SIZE = 184;
@@ -51,8 +50,9 @@ export function TourCrewRow({ crew, self, onInvite }: { crew: TourCrew; self: Cr
   </View>;
 }
 
-/** The QR carries the tour link plus this run's id; the phone made the id, so it works offline. */
-export function TourCrewSheet({ crew, title, onClose }: { crew: TourCrew; title: string; onClose: () => void }) {
+/** The QR carries the tour link plus this run's id; the phone made the id, so it works offline.
+ * There is deliberately no share button: a crew joins at the table, the walk is not an open event. */
+export function TourCrewSheet({ crew, onClose }: { crew: TourCrew; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   // The roster refreshes when the sheet opens, not every few seconds.
   useEffect(() => { void useToursStore.getState().refreshCrew(); }, []);
@@ -77,7 +77,6 @@ export function TourCrewSheet({ crew, title, onClose }: { crew: TourCrew; title:
           <Coins members={members} ground={Colors.stout} />
           <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={2} style={styles.names}>{members.map((member) => member.nickname).join(', ')}</Text>
         </View>}
-        <TourButton secondary label={t.tours.crewShareLink} onPress={() => { void Share.share({ message: t.tours.crewShareMessage(title, link) }).catch(() => undefined); }} />
       </View>
     </View>
   </Modal>;
