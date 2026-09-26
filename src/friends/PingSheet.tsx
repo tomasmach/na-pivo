@@ -1,7 +1,7 @@
 /**
- * PingSheet — a quick cinknutí for a pub the caller already knows (the counter,
- * a tour stop): only "KOMU" to choose, then one button. The rich compose with
- * place, time and message stays on Parta.
+ * PingSheet — a quick cinknutí for a pub the caller already knows: only who
+ * hears it to choose, then one button. The rich compose with place, time,
+ * message and saving groups stays on Parta.
  *
  * The host sends; the sheet only collects the audience and shows a hard error.
  */
@@ -15,26 +15,31 @@ import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
 import AudiencePicker, { EVERYONE, audienceIds, type Audience } from './AudiencePicker';
 
 export interface PingSheetProps {
   title: string;
   /** One line under the title, e.g. which pub the party hears about. */
   detail: string;
-  /** Who can hear it; the host leaves out anyone who should not (a tour crew at the table). */
+  /** Who can hear it; the host leaves out anyone who should not. */
   friends: FriendProfile[];
+  /** Invisible mode: the server would tell nobody, so the sheet says so instead of sending. */
+  ghost?: boolean;
   /** Undefined means everyone in `friends`. Resolves to an error to show, or null when it went out or waits for signal. */
   onSend: (recipientIds: string[] | undefined) => Promise<string | null>;
   onClose: () => void;
 }
 
-export default function PingSheet({ title, detail, friends, onSend, onClose }: PingSheetProps) {
+export default function PingSheet({ title, detail, friends, ghost = false, onSend, onClose }: PingSheetProps) {
   const insets = useSafeAreaInsets();
   const [audience, setAudience] = useState<Audience>(EVERYONE);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recipients = audienceIds(audience, friends);
-  const empty = recipients?.length === 0;
+  const blocked = ghost || friends.length === 0 || recipients?.length === 0;
+  // A send in flight still owes an answer; closing now would swallow a hard error.
+  const close = () => { if (!busy) onClose(); };
 
   async function send() {
     setBusy(true);
@@ -46,25 +51,25 @@ export default function PingSheet({ title, detail, friends, onSend, onClose }: P
   }
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
       <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
         <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
           <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
             <View style={styles.grabber} />
             <View style={styles.header}>
               <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{title}</Text>
-              <Pressable onPress={onClose} style={styles.close} accessibilityRole="button" accessibilityLabel={t.friends.settingsClose}>
+              <Pressable onPress={close} style={styles.close} accessibilityRole="button" accessibilityLabel={t.friends.settingsClose}>
                 <XIcon size={20} color={Colors.foamMuted} />
               </Pressable>
             </View>
-            <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.detail}>{detail}</Text>
+            <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.detail}>{ghost ? t.friends.pingSheetGhost : detail}</Text>
             <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <AudiencePicker friends={friends} value={audience} onChange={setAudience} />
+              {ghost ? null : <AudiencePicker friends={friends} value={audience} onChange={setAudience} header={false} canSaveGroup={false} />}
             </ScrollView>
             <View style={styles.actions}>
               {error ? <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.error} accessibilityLiveRegion="polite">{error}</Text> : null}
-              <GlowButton label={t.friends.composeSubmitNow} onPress={() => { void send(); }} variant="primary" glow="none" loading={busy} disabled={busy || empty} />
+              <GlowButton label={t.friends.composeSubmitNow} onPress={() => { void send(); }} variant="primary" glow="none" loading={busy} disabled={busy || blocked} />
             </View>
           </View>
         </View>
@@ -83,6 +88,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.cardLarge,
     paddingTop: Spacing.sm,
     paddingHorizontal: 20,
+    ...softDrop(),
   },
   grabber: { width: 44, height: 4, borderRadius: Radius.pill, backgroundColor: withAlpha(Colors.foam, 0.22), alignSelf: 'center', marginBottom: Spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

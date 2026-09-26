@@ -569,6 +569,26 @@ describe('CounterScreen pinging the party', () => {
     expect(mockShareFriendPubActivity).toHaveBeenCalledWith(expect.objectContaining({ name: PUB.name }), '', expect.any(String), ['eva'], expect.any(String));
   });
 
+  it('keeps the chosen friends through a wait for signal and hands a hard error back to the sheet', async () => {
+    const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
+    const enqueueFriendOp = jest.spyOn(jest.requireActual('@/data/friendsQueue'), 'enqueueFriendOp').mockResolvedValue(undefined);
+    useNearbyPub.mockReturnValue(nearbyState());
+    mockLoadPartyFriends.mockResolvedValueOnce({ friends: [{ id: 'eva' }], ghost: true });
+    const renderer = render();
+    await act(async () => {
+      renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
+      jest.advanceTimersByTime(1000);
+    });
+    const sheet = PingSheet.mock.calls.at(-1)[0];
+    expect(sheet.ghost).toBe(true);
+    mockShareFriendPubActivity.mockResolvedValueOnce({ ok: false, code: 'no_recipients', detail: 'Nikdo z party.' } as never);
+    await act(async () => { expect(await sheet.onSend(['eva'])).toBe('Nikdo z party.'); });
+    mockShareFriendPubActivity.mockResolvedValueOnce({ ok: false, code: 'offline', detail: '' } as never);
+    await act(async () => { expect(await PingSheet.mock.calls.at(-1)[0].onSend(['eva'])).toBeNull(); });
+    expect(enqueueFriendOp).toHaveBeenCalledWith(expect.objectContaining({ op: 'activity', payload: expect.objectContaining({ recipientIds: ['eva'] }) }));
+    enqueueFriendOp.mockRestore();
+  });
+
   it('without a saved party still pings everyone, as before', async () => {
     useNearbyPub.mockReturnValue(nearbyState());
     const renderer = render();

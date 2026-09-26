@@ -751,8 +751,8 @@ async function requestJson(
 }
 
 /** The party as the phone last saw it, for picking who hears a cinknutí; fetched once when Parta was never opened here. Null offline with nothing saved. */
-export async function loadPartyFriends(): Promise<{ friends: FriendProfile[]; ghost: boolean } | null> {
-  const dashboard = (await loadFriendsDashboardSnapshot())?.dashboard ?? await fetchFriendsDashboard();
+export async function loadPartyFriends(signal?: AbortSignal): Promise<{ friends: FriendProfile[]; ghost: boolean } | null> {
+  const dashboard = (await loadFriendsDashboardSnapshot())?.dashboard ?? await fetchFriendsDashboard(signal);
   return dashboard ? { friends: dashboard.friends, ghost: dashboard.settings?.ghostMode === true } : null;
 }
 

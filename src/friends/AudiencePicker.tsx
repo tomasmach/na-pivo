@@ -7,14 +7,14 @@
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { CheckIcon, PlusIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import type { FriendProfile } from '@/data/friendsClient';
 import { t } from '@/i18n';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { friendDisplayName } from './FriendMini';
 import SectionHeader from './SectionHeader';
 
@@ -78,7 +78,15 @@ function FriendRecipientRow({ friend, selected, onToggle }: { friend: FriendProf
   );
 }
 
-export default function AudiencePicker({ friends, value, onChange }: { friends: FriendProfile[]; value: Audience; onChange: (next: Audience) => void }) {
+export default function AudiencePicker({ friends, value, onChange, header = true, canSaveGroup = true }: {
+  friends: FriendProfile[];
+  value: Audience;
+  onChange: (next: Audience) => void;
+  /** The "Komu" heading; a sheet that already says what it sends can drop it. */
+  header?: boolean;
+  /** Naming a group needs the keyboard, so only a sheet built for it offers saving. */
+  canSaveGroup?: boolean;
+}) {
   const showToast = useToastStore((s) => s.show);
   const groups = usePartyGroupsStore((s) => s.groups);
   const upsertGroup = usePartyGroupsStore((s) => s.upsertGroup);
@@ -86,6 +94,7 @@ export default function AudiencePicker({ friends, value, onChange }: { friends: 
   const [groupName, setGroupName] = useState('');
   const picked = useMemo(() => audienceIds(value, friends) ?? [], [friends, value]);
   const count = value.mode === 'all' ? friends.length : picked.length;
+  const canSave = picked.length > 0 && groupName.trim().length > 0;
 
   useEffect(() => {
     pruneMemberIds(friends.map((friend) => friend.id));
@@ -120,7 +129,7 @@ export default function AudiencePicker({ friends, value, onChange }: { friends: 
 
   return (
     <>
-      <SectionHeader label={t.friends.composeAudienceLabel} />
+      {header ? <SectionHeader label={t.friends.composeAudienceLabel} /> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recipientChips}>
         <RecipientChip
           label={t.friends.recipientAll}
@@ -136,15 +145,10 @@ export default function AudiencePicker({ friends, value, onChange }: { friends: 
             onPress={() => selectGroup(group.id)}
           />
         ))}
-        <RecipientChip
-          label={t.friends.recipientCustom}
-          selected={value.mode === 'custom' && value.groupId == null}
-          onPress={startCustomSelection}
-          icon={<PlusIcon size={16} color={value.mode === 'custom' && value.groupId == null ? Colors.stout : Colors.amber} />}
-        />
+        <RecipientChip label={t.friends.recipientCustom} selected={value.mode === 'custom' && value.groupId == null} onPress={startCustomSelection} />
       </ScrollView>
       <Text style={styles.recipientSummary} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-        {value.mode === 'all' ? t.friends.recipientAllSummary(count) : t.friends.recipientCustomSummary(count)}
+        {friends.length === 0 ? t.friends.recipientNoFriends : value.mode === 'all' ? t.friends.recipientAllSummary(count) : t.friends.recipientCustomSummary(count)}
       </Text>
       {value.mode === 'custom' ? (
         <View style={styles.recipientPanel}>
@@ -157,7 +161,7 @@ export default function AudiencePicker({ friends, value, onChange }: { friends: 
               <FriendRecipientRow key={friend.id} friend={friend} selected={picked.includes(friend.id)} onToggle={() => toggleRecipient(friend.id)} />
             ))
           )}
-          <View style={styles.groupSaveRow}>
+          {canSaveGroup ? <View style={styles.groupSaveRow}>
             <TextInput
               value={groupName}
               onChangeText={setGroupName}
@@ -169,17 +173,17 @@ export default function AudiencePicker({ friends, value, onChange }: { friends: 
             />
             <Pressable
               onPress={saveCurrentGroup}
-              disabled={picked.length === 0}
-              style={({ pressed }) => [styles.groupSaveButton, picked.length === 0 && styles.groupSaveButtonDisabled, pressed && picked.length > 0 && styles.dim]}
+              disabled={!canSave}
+              style={({ pressed }) => [styles.groupSaveButton, !canSave && styles.groupSaveButtonDisabled, pressed && canSave && styles.dim]}
               accessibilityRole="button"
-              accessibilityState={{ disabled: picked.length === 0 }}
+              accessibilityState={{ disabled: !canSave }}
               accessibilityLabel={t.friends.recipientGroupSave}
             >
               <Text style={styles.groupSaveText} maxFontSizeMultiplier={FontScaleCap.body}>
                 {t.friends.recipientGroupSave}
               </Text>
             </Pressable>
-          </View>
+          </View> : null}
         </View>
       ) : null}
     </>
@@ -190,7 +194,7 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.6 },
   recipientChips: { gap: Spacing.sm, paddingTop: Spacing.sm, paddingRight: Spacing.lg },
   recipientChip: {
-    minHeight: 40,
+    minHeight: HitArea.min,
     maxWidth: 180,
     flexDirection: 'row',
     alignItems: 'center',
@@ -205,15 +209,15 @@ const styles = StyleSheet.create({
   recipientChipText: { flexShrink: 1, fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foamMuted },
   recipientChipTextActive: { color: Colors.stout },
   recipientSummary: { marginTop: Spacing.sm, fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.mutedText },
-  recipientPanel: { marginTop: Spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.border, 0.45) },
+  recipientPanel: { marginTop: Spacing.sm },
   recipientRow: {
-    minHeight: 46,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     paddingVertical: Spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(Colors.border, 0.36),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   recipientRowSelected: { backgroundColor: withAlpha(Colors.amber, 0.06) },
   recipientCheck: {
@@ -228,8 +232,8 @@ const styles = StyleSheet.create({
   },
   recipientCheckActive: { borderColor: Colors.amber, backgroundColor: Colors.amber },
   recipientNameWrap: { flex: 1, minWidth: 0 },
-  recipientName: { fontFamily: Fonts.ui.bold, fontSize: 15, color: Colors.foam },
-  recipientSub: { marginTop: 1, fontFamily: Fonts.ui.medium, fontSize: 12, color: Colors.mutedText },
+  recipientName: { fontFamily: Fonts.ui.semibold, fontSize: 16, color: Colors.foam },
+  recipientSub: { marginTop: 1, fontFamily: Fonts.ui.medium, fontSize: 14, color: Colors.mutedText },
   groupSaveRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingTop: Spacing.md },
   groupNameInput: {
     flex: 1,

@@ -1408,7 +1408,8 @@ export const cs = {
     shareSuccess: 'Cinknuto!',
     shareError: 'Nepodařilo se dát vědět partě.',
     // Quick ping sheet from the counter: the pub is known, only who hears it is picked.
-    pingSheetDetail: (pub: string) => `Kámoši uvidí, že sedíš v hospodě ${pub}.`,
+    pingSheetDetail: (pub: string) => `Dám vědět, kde sedíš: ${pub}.`,
+    pingSheetGhost: 'Máš zapnutý neviditelný režim, cinknutí by nikomu nepřišlo.',
     // Counter "already broadcasting" state once I'm live (drops the re-broadcast).
     counterAlreadyLive: 'Už svítíš partě',
     sharedCount: (n: number) =>
@@ -1710,12 +1711,9 @@ export const cs = {
       n === 0
         ? 'Vyber, koho chceš vytáhnout na jedno.'
         : n === 1
-          ? 'Vybraný 1 kámoš.'
-          : n >= 2 && n <= 4
-            ? `Vybraní ${n} kámoši.`
-            : `Vybráno ${n} kámošů.`,
+          ? 'Cinknutí poletí 1 kámošovi.'
+          : `Cinknutí poletí ${n} kámošům.`,
     recipientNoFriends: 'Nejdřív si přidej kámoše do party.',
-    recipientNoSelection: 'Vyber, komu to cinkne.',
     recipientGroupPlaceholder: 'Název partičky',
     recipientGroupSave: 'Uložit',
     recipientGroupSaved: 'Partička uložená.',

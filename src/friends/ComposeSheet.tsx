@@ -458,9 +458,10 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
 
           {/* Sticky CTA */}
           <View style={styles.footer}>
-            {!canSubmit && !submitting ? (
+            {/* An empty pick is already explained by the picker itself. */}
+            {!canSubmit && !submitting && hasRecipients ? (
               <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {!hasRecipients ? t.friends.recipientNoSelection : t.friends.composeNoPub}
+                {t.friends.composeNoPub}
               </Text>
             ) : null}
             <Pressable

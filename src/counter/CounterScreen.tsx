@@ -418,6 +418,9 @@ function Tacek({
   // — Friends broadcast —
   const [sharingWithFriends, setSharingWithFriends] = useState(false);
   const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
+  // The party a quick ping can go to, while its sheet is open.
+  const [pingParty, setPingParty] = useState<{ friends: FriendProfile[]; ghost: boolean } | null>(null);
+  const pingLoading = useRef(false);
   const broadcasted = cell !== null && broadcastCell === cell;
 
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -482,6 +485,8 @@ function Tacek({
     setCheckInVisitClientId(null);
     setCheckInSheetOpen(false);
     setPendingRapid(null);
+    // A ping sheet names one pub; a new place must not quietly retarget it.
+    setPingParty(null);
   }
 
   const moreControlled = moreOpenProp !== undefined;
@@ -1349,10 +1354,15 @@ function Tacek({
   }, [broadcasted, cell, current, hapticEnabled, isThisSession, pub, sharingWithFriends, showToast]);
 
   // Who can hear it; without any saved party (offline, Parta never opened) the ping goes to everyone as before.
-  const [pingFriends, setPingFriends] = useState<FriendProfile[] | null>(null);
   async function openPingSheet() {
-    const party = await loadPartyFriends();
-    if (party) setPingFriends(party.friends);
+    if (pingLoading.current) return;
+    pingLoading.current = true;
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(), 3000);
+    const party = await loadPartyFriends(timeout.signal);
+    clearTimeout(timer);
+    pingLoading.current = false;
+    if (party) setPingParty(party);
     else {
       const failure = await handleShareWithFriends();
       if (failure) showToast(failure);
@@ -1654,13 +1664,14 @@ function Tacek({
         onSelect={handleSelectScannedDrink}
       />
       <BeerPhotoCaptureFlow open={photoCaptureOpen} onClose={() => setPhotoCaptureOpen(false)} />
-      {pub && pingFriends ? (
+      {pub && pingParty ? (
         <PingSheet
           title={t.friends.shareHereShort}
           detail={t.friends.pingSheetDetail(pub.name)}
-          friends={pingFriends}
+          friends={pingParty.friends}
+          ghost={pingParty.ghost}
           onSend={handleShareWithFriends}
-          onClose={() => setPingFriends(null)}
+          onClose={() => setPingParty(null)}
         />
       ) : null}
       {liveNight ? (
