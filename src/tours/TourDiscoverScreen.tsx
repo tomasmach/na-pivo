@@ -91,6 +91,12 @@ function StopsSheet({ value, onPick, onClose }: { value: TourStopsFilter | null;
   </Modal>;
 }
 
+function TextLink({ label, onPress }: { label: string; onPress: () => void }) {
+  return <Pressable onPress={onPress} accessibilityRole="button" style={styles.link}>
+    <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.linkText}>{label}</Text>
+  </Pressable>;
+}
+
 export default function TourDiscoverScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -183,13 +189,15 @@ export default function TourDiscoverScreen() {
   const clearFilters = () => { setStops(null); setChallenges(false); };
   const hits = (results?.hits ?? []).filter((hit) => !(hidden ?? []).includes(hit.id));
   const settled = !loading && !failure && !!results;
+  // A double tap would stack two editors on top of each other.
+  const planning = useRef(false);
   const planOwn = async () => {
+    if (planning.current) return;
+    planning.current = true;
     const started = await useToursStore.getState().beginDraft();
+    planning.current = false;
     if (started.ok) router.push('/tours/edit' as Href);
   };
-  const link = (label: string, onPress: () => void) => <Pressable onPress={onPress} accessibilityRole="button" style={styles.link}>
-    <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.linkText}>{label}</Text>
-  </Pressable>;
 
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
     <TourHeader title={t.tours.discoverTitle} onBack={() => router.canGoBack() ? router.back() : router.replace('/tours' as Href)} />
@@ -220,19 +228,19 @@ export default function TourDiscoverScreen() {
         {loading && <View style={styles.status}><ActivityIndicator color={Colors.amber} />{!results && <TourText style={ui.notice}>{t.tours.loading}</TourText>}</View>}
         {failure && <View style={styles.message}>
           <TourText>{failure === 'offline' ? t.tours.discoverOffline : t.tours.discoverFailed}</TourText>
-          {link(t.tours.retry, () => setRetry((r) => r + 1))}
+          <TextLink label={t.tours.retry} onPress={() => setRetry((r) => r + 1)} />
         </View>}
         {settled && !results.nearby && hits.length > 0 && <View style={styles.message}>
           <TourText>{filtered ? t.tours.discoverNothingNearFiltered : t.tours.discoverNothingNear}</TourText>
-          {filtered && link(t.tours.discoverClearFilters, clearFilters)}
+          {filtered && <TextLink label={t.tours.discoverClearFilters} onPress={clearFilters} />}
         </View>}
         {settled && hits.length === 0 && <View style={styles.message}>
           <TourText>{term ? t.tours.discoverNothingFor(term) : filtered ? t.tours.discoverNothingFiltered : t.tours.discoverNothing}</TourText>
-          {filtered ? link(t.tours.discoverClearFilters, clearFilters) : !term && link(t.tours.discoverPlanOwn, () => { void planOwn(); })}
+          {filtered ? <TextLink label={t.tours.discoverClearFilters} onPress={clearFilters} /> : !term && <TextLink label={t.tours.discoverPlanOwn} onPress={() => { void planOwn(); }} />}
         </View>}
       </View>}
       ListFooterComponent={more ? <ActivityIndicator style={styles.more} color={Colors.amber} />
-        : settled && !results.nearby && hits.length > 0 ? link(t.tours.discoverPlanOwn, () => { void planOwn(); }) : null} />
+        : settled && !results.nearby && hits.length > 0 ? <TextLink label={t.tours.discoverPlanOwn} onPress={() => { void planOwn(); }} /> : null} />
     {stopsSheet && <StopsSheet value={stops} onClose={() => setStopsSheet(false)} onPick={(value) => { setStops(value); setStopsSheet(false); }} />}
   </View>;
 }
