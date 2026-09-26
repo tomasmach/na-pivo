@@ -429,10 +429,11 @@ export const useToursStore = create<ToursState>(() => ({
       if (!optOut && run !== d.activeRun)
         return { ok: false, error: 'invalid' };
       crew.optOut = optOut;
+      // A waiting completion may already have reached the server with its answer lost, so it is taken back too.
       if (optOut && crew.completion === 'pending')
         unsent = crew.runId;
-      // A completion the server already has is taken back, so the number drops again.
-      else if (optOut && crew.completion === 'sent')
+      // A completion the server has (or may have) is taken back, so the number drops again.
+      if (optOut && crew.completion)
         queued.push({ runId: crew.runId, publicId: crew.publicId, op: 'uncount' });
       if (optOut) {
         delete crew.completion;

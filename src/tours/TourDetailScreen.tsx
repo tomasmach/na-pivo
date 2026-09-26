@@ -153,7 +153,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
       ...(!plan.source && !plan.publicSource && plan.publication?.status !== 'hidden' ? [
         { text: plan.publication?.status === 'active' ? t.tours.updatePublic : t.tours.publishPublic, onPress: () => router.push({ pathname: '/tours/publish', params: { id } } as Href) },
         ...(plan.publication?.status === 'active' ? [{ text: t.tours.sharePublic, onPress: () => { void Share.share({ message: plan.publication!.url }).catch(() => setNotice(t.tours.errors.unavailable)); } }] : []),
-        ...(plan.publication?.status === 'active' ? [{ text: t.tours.unpublish, onPress: () => showAppDialog({ title: t.tours.unpublishTitle, message: t.tours.unpublishMessage, buttons: [
+        ...(plan.publication && plan.publication.status !== 'unpublished' ? [{ text: t.tours.unpublish, onPress: () => showAppDialog({ title: t.tours.unpublishTitle, message: t.tours.unpublishMessage, buttons: [
           { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.unpublish, style: 'destructive', onPress: () => { void action(() => store.unpublishPublic(id)); } },
         ] }) }] : []),
       ] : []),
