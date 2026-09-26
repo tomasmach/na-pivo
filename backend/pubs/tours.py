@@ -43,6 +43,7 @@ def tour_snapshot(plan):
         "stops": [{
             "id": str(stop.client_id), "pub_id": stop.pub_id, "cache_key": stop.cache_key,
             "name": stop.name, "address": stop.address, "lat": stop.lat, "lon": stop.lon,
+            "challenge": stop.challenge,
         } for stop in plan.stops.all()],
     }
 

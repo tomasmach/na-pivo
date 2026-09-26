@@ -1036,6 +1036,8 @@ Tohle je schválené rozšíření obecného pravidla „nejdřív mapa“ níž
 
 Pás má `viewBox="0 0 350 158"`, pro 5–8 zastávek `0 24 350 134`; výška vychází ze šířky. Seznam používá kruhy 30 pt,
 řádek minimálně 78 pt a systémové písmo: název 17/23, příští hospoda 21/27, popisek 12/18.
+Výzva autora leží pod popiskem ve `foamMuted` 12/18 na nejvýš dva řádky, u příští hospody celá 15/21;
+v úpravě tour má jeden řádek a celý text ukáže sheet výzvy.
 Titulek je 30/34, váha 800. Jediná plná jantarová akce je v patičce; označení zastávky je
 textové tlačítko s checkem. Historie má ploché řádky, vysvětlení soukromí otevírá „Jen tvůj
 průchod“. Vrácení posledního označení zůstává viditelné v patičce a nepřekrývá obsah.
