@@ -76,3 +76,18 @@ it('distinguishes missing owner tours from expired public links', async () => {
   expect(await revokeTour(plan.id)).toEqual({ ok: false, error: 'not_found' });
   expect(await fetchSharedTour('x'.repeat(43))).toEqual({ ok: false, error: 'expired' });
 });
+
+it('sends a removal as empty and leaves a challenge this phone never knew to the server', async () => {
+  const withChallenge = { ...plan, stops: [{ ...plan.stops[0], challenge: 'Najdi nejstarší pípu' }, { ...plan.stops[1], challenge: '' }] };
+  const remote = envelope();
+  remote.tour.stops = remote.tour.stops.map((stop, index) => ({ ...stop, challenge: index ? '' : 'Najdi nejstarší pípu' }));
+  jest.mocked(fetch).mockResolvedValue(response(200, remote));
+  const result = await publishTour(withChallenge, 'operation');
+  const sent = JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string).stops;
+  expect(sent.map((stop: { challenge: string }) => stop.challenge)).toEqual(['Najdi nejstarší pípu', '']);
+  expect(result.ok && result.tour.stops.map((stop) => stop.challenge)).toEqual(['Najdi nejstarší pípu', '']);
+  // Stored before challenges existed: nothing is sent, so the server keeps what another phone wrote.
+  jest.mocked(fetch).mockClear();
+  await publishTour(plan, 'operation-2');
+  expect(JSON.parse(jest.mocked(fetch).mock.calls[0][1]!.body as string).stops.some((stop: object) => 'challenge' in stop)).toBe(false);
+});
