@@ -440,7 +440,9 @@ export default function EveningDetailScreen() {
                   </Text>
                   {group.rejected ? (
                     <View style={styles.drinkRejected}>
-                      <InfoIcon size={12} color={Colors.amber} />
+                      <View style={styles.drinkRejectedIcon}>
+                        <InfoIcon size={12} color={Colors.amber} />
+                      </View>
                       <Text style={styles.drinkRejectedText} maxFontSizeMultiplier={FontScaleCap.body}>
                         {t.myBeers.drinkRejected}
                       </Text>
@@ -801,9 +803,10 @@ const styles = StyleSheet.create({
   drinkRejected: {
     marginTop: 4,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
   },
+  drinkRejectedIcon: { marginTop: 2 },
   drinkRejectedText: {
     flex: 1,
     fontFamily: Fonts.ui.medium,
