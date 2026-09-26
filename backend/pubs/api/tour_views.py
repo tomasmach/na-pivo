@@ -6,6 +6,7 @@ import math
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -14,18 +15,38 @@ from rest_framework import serializers
 from rest_framework.exceptions import NotAuthenticated
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from pubs.community_trust import trusted_account_q
+from pubs.enrichment.matcher import geohash8
 from pubs.identity import normalize_pub_name, resolve_pub_identity
-from pubs.models import Account, CanonicalPub, TourOperation, TourPlan, TourShare, TourStop
+from pubs.models import (
+    Account,
+    CanonicalPub,
+    ContentReport,
+    PubDirectory,
+    PubHours,
+    TourOperation,
+    TourPlan,
+    TourPublication,
+    TourShare,
+    TourStop,
+)
+from pubs.tour_moderation import rejected_text
 from pubs.tours import (
+    author_payload,
+    new_publication_token,
     owner_payload,
     protect_response,
+    public_payload,
     public_share,
+    readable_publications,
     share_expiry,
     share_token,
     token_hash,
     tour_snapshot,
+    walking_meters,
 )
 
 from .authentication import AccountTokenAuthentication
@@ -144,7 +165,7 @@ class TourListView(OwnerTourView):
         except ValueError:
             cursor = 0
         plans = list(TourPlan.objects.filter(owner=request.user, deleted_at__isnull=True)
-                     .select_related("share").prefetch_related("stops").order_by("id")[cursor:cursor + 51])
+                     .select_related("share", "publication").prefetch_related("stops").order_by("id")[cursor:cursor + 51])
         return Response({"tours": [owner_payload(p) for p in plans[:50]],
                          "next_cursor": str(cursor + 50) if len(plans) > 50 else None})
 
@@ -215,6 +236,8 @@ class TourDetailView(OwnerTourView):
                 plan.stops.all().delete()
                 plan.operations.all().delete()
                 TourShare.objects.filter(plan=plan).update(revoked_at=timezone.now())
+                TourPublication.objects.filter(plan=plan, status=TourPublication.Status.ACTIVE).update(
+                    status=TourPublication.Status.UNPUBLISHED)
         return Response(status=204)
 
 
@@ -278,9 +301,182 @@ class PublicTourView(APIView):
 
     def get(self, request, token):
         share = public_share(token)
-        if not share:
-            return Response(status=404)
-        return Response({"tour": tour_snapshot(share.plan), "expires_at": share.expires_at.isoformat()})
+        if share:
+            return Response({"tour": tour_snapshot(share.plan), "expires_at": share.expires_at.isoformat()})
+        publication = readable_publications().filter(token=token).first()
+        return Response(public_payload(publication, request)) if publication else Response(status=404)
+
+
+class PublicationSerializer(serializers.Serializer):
+    revision = serializers.IntegerField(min_value=1)
+    accept_rules = serializers.BooleanField(default=False)
+
+
+class _RejectedStopError(Exception):
+    def __init__(self, code, text, stop):
+        super().__init__(code)
+        self.code, self.text, self.stop = code, text, stop
+
+
+def _merged_pub_id(cache_key, name):
+    """Search shows a merged pub under its canonical name and position, which no alias has to share."""
+    for pub in CanonicalPub.objects.filter(active=True, name_key=normalize_pub_name(name)).only("public_id", "lat", "lng"):
+        if geohash8(pub.lat, pub.lng) == cache_key:
+            return str(pub.public_id)
+    return None
+
+
+def _public_stops(stops):
+    """Known, not globally hidden pubs under directory names; free text never goes public."""
+    from .views import _globally_reported_pub_cache_keys
+
+    resolved, keys = [], set()
+    for index, stop in enumerate(stops):
+        cache_key = stop.cache_key or ""
+        identity = resolve_pub_identity(cache_key, stop.name, lat=stop.lat, lng=stop.lon) if cache_key else None
+        canonical_id = (identity.canonical_id if identity else None) or (_merged_pub_id(cache_key, stop.name) if cache_key else None)
+        if canonical_id:
+            canonical = CanonicalPub.objects.filter(public_id=canonical_id).first()
+            if canonical is None:
+                raise _RejectedStopError("unknown_pub", _("Tuhle hospodu u veřejné tour neznám. Vyměň ji za hospodu z hledání."), index)
+            key, name, city, pub_id = f"canonical:{canonical_id}", canonical.name, canonical.city, canonical_id
+            cache_key, lat, lon = canonical.cache_key or cache_key, canonical.lat, canonical.lng
+        else:
+            row = (PubDirectory.objects.filter(active=True, cache_key=cache_key, name_key=normalize_pub_name(stop.name))
+                   .exclude(venue_kind=PubHours.VenueKind.NOT_PUB).first()) if cache_key else None
+            if row is None:
+                raise _RejectedStopError("unknown_pub", _("Tuhle hospodu u veřejné tour neznám. Vyměň ji za hospodu z hledání."), index)
+            key, name, city = f"directory:{row.cache_key}:{row.name_key}", row.name, row.city
+            pub_id, lat, lon = f"directory:{row.cache_key}:{row.name_key}", row.lat, row.lng
+        if key in keys:
+            raise _RejectedStopError("duplicate_pub", _("Každou hospodu přidej jen jednou."), index)
+        keys.add(key)
+        resolved.append({"key": key, "stop": {
+            "id": str(stop.client_id), "pub_id": pub_id, "cache_key": cache_key, "name": name,
+            # The pub's own position: an author must not pin a real pub on someone's house.
+            "address": city, "lat": lat, "lon": lon, "challenge": stop.challenge,
+        }})
+    hidden = _globally_reported_pub_cache_keys({item["stop"]["cache_key"] for item in resolved})
+    for index, item in enumerate(resolved):
+        if item["stop"]["cache_key"] in hidden:
+            raise _RejectedStopError("hidden_pub", _("Tuhle hospodu komunita skryla. Vyměň ji za jinou."), index)
+    return resolved
+
+
+class TourPublicationView(OwnerTourView):
+    def get_throttles(self):
+        self.throttle_scope = "tour_publish"
+        return [SharedScopedRateThrottle()]
+
+    def put(self, request, plan_id):
+        serializer = PublicationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        with transaction.atomic():
+            account = _locked_account(request)
+            if not account.is_claimed:
+                return _error("sign_in_required", _("Zveřejnit může jen přihlášený."), 403)
+            if not account.nickname:
+                return _error("nickname_required", _("Nejdřív si vyber přezdívku. Bude u tvých veřejných tour."), 400)
+            if not account.is_public:
+                return _error("profile_private", _("Veřejné tour jdou jen s veřejným profilem."), 400)
+            plan = TourPlan.objects.select_for_update().filter(pk=plan_id, owner=account, deleted_at__isnull=True).first()
+            if not plan:
+                return Response(status=404)
+            if plan.revision != data["revision"]:
+                return _conflict(plan)
+            publication = TourPublication.objects.select_for_update().filter(plan=plan).first()
+            if publication and publication.status == TourPublication.Status.HIDDEN:
+                return _error("publication_hidden", _("Tour je skrytá po nahlášení. Podívám se na ni."), 409)
+            if not data["accept_rules"]:
+                return _error("rules_required", _("Nejdřív odsouhlas pravidla pro veřejné tour."), 400)
+            others = TourPublication.objects.filter(plan__owner=account, status=TourPublication.Status.ACTIVE).exclude(plan=plan)
+            if others.count() >= settings.TOUR_PUBLICATION_LIMIT and str(account.public_id) not in settings.TOUR_PUBLICATION_LIMIT_EXEMPT:
+                return _error("publication_limit", _("Veřejných tour můžeš mít nejvýš %(count)s.") % {"count": settings.TOUR_PUBLICATION_LIMIT}, 400,
+                              limit=settings.TOUR_PUBLICATION_LIMIT)
+            rejected = _("Tohle nezveřejním. Veřejné tour nesmí být o tom, kdo víc nebo rychleji vypije, ani obsahovat odkazy nebo telefonní čísla.")
+            if rejected_text(plan.title):
+                return _error("text_rejected", rejected, 400, field="title")
+            stops = list(plan.stops.all())
+            for index, stop in enumerate(stops):
+                if stop.challenge and rejected_text(stop.challenge):
+                    return _error("text_rejected", rejected, 400, field="challenge", stop=index)
+            try:
+                resolved = _public_stops(stops)
+            except _RejectedStopError as reason:
+                return _error(reason.code, reason.text, 400, stop=reason.stop)
+            public_stops = [item["stop"] for item in resolved]
+            snapshot = {"title": plan.title, "timezone": plan.timezone, "stops": public_stops,
+                        "pub_keys": sorted(item["key"] for item in resolved)}
+            fields = {
+                "plan_revision": plan.revision, "snapshot": snapshot, "title": plan.title,
+                "city": public_stops[0]["address"], "start_lat": public_stops[0]["lat"], "start_lon": public_stops[0]["lon"],
+                "stop_count": len(public_stops), "walk_m": walking_meters(public_stops),
+                "has_challenges": any(stop["challenge"] for stop in public_stops),
+                "status": TourPublication.Status.ACTIVE, "hidden_reason": "", "rules_accepted_at": timezone.now(),
+            }
+            if publication is None:
+                publication = TourPublication(plan=plan, token=new_publication_token(), **fields)
+            else:
+                if publication.snapshot != snapshot:
+                    publication.revision += 1
+                # Another route under the same title must not inherit who walked the old one.
+                if publication.snapshot.get("pub_keys") != snapshot["pub_keys"]:
+                    publication.people_count = 0
+                for field, value in fields.items():
+                    setattr(publication, field, value)
+            publication.save()
+        return Response(owner_payload(TourPlan.objects.select_related("share", "publication").get(pk=plan.pk)))
+
+    def delete(self, request, plan_id):
+        with transaction.atomic():
+            account = _locked_account(request)
+            # A tour hidden after reports can be withdrawn too, so a later admin restore never brings it back.
+            TourPublication.objects.filter(plan_id=plan_id, plan__owner=account).exclude(status=TourPublication.Status.UNPUBLISHED).update(
+                status=TourPublication.Status.UNPUBLISHED)
+        return Response(status=204)
+
+
+class TourPublicationReportSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(choices=[ContentReport.Reason.INAPPROPRIATE_TOUR, ContentReport.Reason.SPAM, ContentReport.Reason.OTHER],
+                                     default=ContentReport.Reason.INAPPROPRIATE_TOUR)
+    comment = serializers.CharField(max_length=1000, allow_blank=True, default="")
+
+
+class TourPublicationReportView(APIView):
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "feedback"
+
+    def post(self, request, public_id):
+        serializer = TourPublicationReportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            publication = (TourPublication.objects.select_for_update(of=("self",)).select_related("plan__owner")
+                           .filter(public_id=public_id).exclude(status=TourPublication.Status.UNPUBLISHED).first())
+            if publication is None:
+                return Response(status=404)
+            owner = publication.plan.owner
+            if owner.pk == request.user.pk:
+                return _error("self_report", _("Vlastní tour nejde nahlásit."), 400)
+            ContentReport.objects.create(
+                reporter=request.user, target_account=owner, reason=serializer.validated_data["reason"],
+                comment=serializer.validated_data["comment"],
+                target_snapshot={"tour_publication_id": str(publication.public_id), "title": publication.title,
+                                 "stops": [{"name": stop["name"], "challenge": stop["challenge"]} for stop in publication.snapshot["stops"]],
+                                 "author": author_payload(owner)},
+            )
+            # Like hidden pubs: only a quorum of trusted accounts hides it for everyone.
+            threshold = max(2, int(getattr(settings, "PUB_REPORT_GLOBAL_HIDE_THRESHOLD", 3)))
+            reporters = (ContentReport.objects.filter(
+                trusted_account_q("reporter__"), target_snapshot__tour_publication_id=str(publication.public_id),
+                status__in=[ContentReport.Status.NEW, ContentReport.Status.TRIAGED],
+            ).values("reporter_id").distinct().count())
+            if reporters >= threshold and publication.status == TourPublication.Status.ACTIVE:
+                publication.status, publication.hidden_reason = TourPublication.Status.HIDDEN, "reports"
+                publication.save(update_fields=["status", "hidden_reason", "updated_at"])
+        return Response({"hidden": publication.status == TourPublication.Status.HIDDEN}, status=201)
 
 
 class TourPubSearchView(APIView):

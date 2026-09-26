@@ -278,6 +278,17 @@ export interface FriendProfileDetail {
   publicStats: PublicProfileStats | null;
   /** Null on older backends → hide the badge showcase. */
   achievements: AccountAchievements | null;
+  /** The person's public Tour de pub copies; empty on older backends. */
+  publicTours: ProfilePublicTour[];
+}
+
+export interface ProfilePublicTour {
+  id: string;
+  token: string;
+  title: string;
+  city: string;
+  stopCount: number;
+  peopleCount: number;
 }
 
 /** The failure half of {@link FriendActionResult}. */
@@ -433,6 +444,7 @@ interface RawFriendProfileDetail {
   incoming_request_id?: string | null;
   public_stats?: RawPublicProfileStats | null;
   achievements?: RawAchievementsBlock | null;
+  public_tours?: unknown[];
 }
 
 interface RawFriendInvite {
@@ -684,7 +696,21 @@ function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
     incomingRequestId: raw.incoming_request_id ?? null,
     publicStats: parsePublicStats(raw.public_stats),
     achievements: raw.achievements ? parseAchievementsBlock(raw.achievements) : null,
+    publicTours: parsePublicTours(raw.public_tours),
   };
+}
+
+function parsePublicTours(raw: unknown[] | undefined): ProfilePublicTour[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    const row = item as Record<string, unknown>;
+    if (typeof row?.id !== 'string' || typeof row.token !== 'string' || typeof row.title !== 'string') return [];
+    return [{
+      id: row.id, token: row.token, title: row.title, city: typeof row.city === 'string' ? row.city : '',
+      stopCount: Number.isInteger(row.stop_count) ? (row.stop_count as number) : 0,
+      peopleCount: Number.isInteger(row.people_count) ? (row.people_count as number) : 0,
+    }];
+  });
 }
 
 function extractError(data: unknown, status: number): FriendActionError {

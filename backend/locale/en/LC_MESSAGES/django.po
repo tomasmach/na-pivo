@@ -936,6 +936,44 @@ msgstr "Please try again shortly."
 msgid "Polohu podle adresy se nepodařilo ověřit. Zkus to znovu."
 msgstr "The address location could not be verified. Try again."
 
+msgid "Tuhle hospodu u veřejné tour neznám. Vyměň ji za hospodu z hledání."
+msgstr "I don't know this pub for a public tour. Swap it for a pub from search."
+
+msgid "Tuhle hospodu komunita skryla. Vyměň ji za jinou."
+msgstr "The community hid this pub. Swap it for another one."
+
+msgid "Zveřejnit může jen přihlášený."
+msgstr "Only signed-in users can publish."
+
+msgid "Nejdřív si vyber přezdívku. Bude u tvých veřejných tour."
+msgstr "Pick a nickname first. It appears on your public tours."
+
+msgid "Veřejné tour jdou jen s veřejným profilem."
+msgstr "Public tours need a public profile."
+
+msgid "Tour je skrytá po nahlášení. Podívám se na ni."
+msgstr "This tour is hidden after reports. I'll take a look."
+
+msgid "Nejdřív odsouhlas pravidla pro veřejné tour."
+msgstr "Accept the public tour rules first."
+
+#, python-format
+msgid "Veřejných tour můžeš mít nejvýš %(count)s."
+msgstr "You can have at most %(count)s public tours."
+
+msgid "Tohle nezveřejním. Veřejné tour nesmí být o tom, kdo víc nebo rychleji vypije, ani obsahovat odkazy nebo telefonní čísla."
+msgstr "I won't publish this. Public tours can't be about who drinks more or faster, and can't include links or phone numbers."
+
+msgid "Vlastní tour nejde nahlásit."
+msgstr "You can't report your own tour."
+
+#, python-format
+msgid "Veřejná tour od %(nickname)s"
+msgstr "Public tour by %(nickname)s"
+
+msgid "Navigovat na první hospodu"
+msgstr "Directions to the first pub"
+
 # Home page (pubs/templates/pubs/home.html, pubs/home_views.py)
 msgid "Na pivo: kompas na hospodu a pivní deníček"
 msgstr "Na pivo: a compass to the pub and a beer diary"

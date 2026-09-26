@@ -3147,8 +3147,10 @@ def schedule_deletion(account: Account) -> None:
             active=False,
             updated_at=timezone.now(),
         )
-        from pubs.models import TourShare
+        from pubs.models import TourPublication, TourShare
         TourShare.objects.filter(plan__owner=locked).update(revoked_at=timezone.now())
+        TourPublication.objects.filter(plan__owner=locked, status=TourPublication.Status.ACTIVE).update(
+            status=TourPublication.Status.UNPUBLISHED)
         _resolve_shared_lifecycles_on_soft_delete(locked)
 
         locked.status = Account.Status.PENDING_DELETION
