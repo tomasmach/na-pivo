@@ -2272,11 +2272,43 @@ class PubCommunityRequestSerializer(PubInputSerializer):
 # ---------------------------------------------------------------------------
 
 
+class PrivateVolumeField(serializers.Field):
+    """Private drink volume that never rejects the drink.
+
+    Offline queues drop a drink forever on 400, and a lost beer is worse than
+    an unknown size: numbers round to whole ml, anything outside 10 ml to 3 l
+    or not a number becomes null.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(required=False, allow_null=True, **kwargs)
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool):
+            return None
+        try:
+            value = round(float(data))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return value if 10 <= value <= 3000 else None
+
+    def to_representation(self, value):
+        return value
+
+
+def shot_volume(drink_type: str | None, volume_ml: int | None) -> int | None:
+    """A shot above 200 ml is a mistyped size; keep the drink, drop the size."""
+    if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
+        return None
+    return volume_ml
+
+
 class DrinkItemSerializer(serializers.Serializer):
     """The named item inside a drink-log request.
 
     The wire key remains ``beer`` so released clients stay compatible. Private
-    drinks accept real custom sizes from 10 ml to 3 l (shots stop at 200 ml).
+    drinks keep real custom sizes from 10 ml to 3 l (shots up to 200 ml);
+    any other size is stored as unknown instead of rejecting the drink.
     Beer sizes outside the public community-menu presets remain private.
     """
 
@@ -2284,12 +2316,7 @@ class DrinkItemSerializer(serializers.Serializer):
     # catalogue; private history must accept what that catalogue returns.
     name = serializers.CharField(max_length=160, trim_whitespace=True)
     price_czk = serializers.IntegerField(required=False, min_value=1, max_value=1000)
-    volume_ml = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        min_value=10,
-        max_value=3000,
-    )
+    volume_ml = PrivateVolumeField()
     serving_type = serializers.ChoiceField(
         choices=DrinkLog.ServingType.choices,
         default=DrinkLog.ServingType.UNKNOWN,
@@ -2374,20 +2401,11 @@ class DrinkRequestSerializer(PubInputSerializer):
             normalized["serving_type"] = item["serving_type"]
             attrs["beer"] = normalized
         else:
-            volume_ml = item.get("volume_ml")
-            if (
-                attrs["drink_type"] == DrinkLog.DrinkType.SHOT
-                and volume_ml is not None
-                and volume_ml > 200
-            ):
-                raise serializers.ValidationError(
-                    {"beer": {"volume_ml": "A shot volume must not exceed 200 ml."}}
-                )
             # Keep non-beer names human-entered and avoid beer catalogue aliases.
             attrs["beer"] = {
                 "name": item["name"],
                 "price_czk": item.get("price_czk"),
-                "volume_ml": item.get("volume_ml"),
+                "volume_ml": shot_volume(attrs["drink_type"], item.get("volume_ml")),
                 "serving_type": item["serving_type"],
             }
         return attrs
@@ -2404,7 +2422,7 @@ class DrinkUpdateSerializer(serializers.Serializer):
     beer_name = serializers.CharField(max_length=160, trim_whitespace=True, required=False)
     drink_type = serializers.ChoiceField(choices=DrinkLog.DrinkType.choices, required=False)
     price_czk = serializers.IntegerField(min_value=1, max_value=1000, required=False, allow_null=True)
-    volume_ml = serializers.IntegerField(min_value=10, max_value=3000, required=False, allow_null=True)
+    volume_ml = PrivateVolumeField()
     serving_type = serializers.ChoiceField(choices=DrinkLog.ServingType.choices, required=False)
 
     def validate_beer_name(self, value: str) -> str:
@@ -2415,10 +2433,6 @@ class DrinkUpdateSerializer(serializers.Serializer):
     def validate(self, attrs: dict) -> dict:
         if not attrs:
             raise serializers.ValidationError("At least one drink field must be provided.")
-        drink_type = attrs.get("drink_type")
-        volume_ml = attrs.get("volume_ml")
-        if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
-            raise serializers.ValidationError({"volume_ml": "A shot volume must not exceed 200 ml."})
         return attrs
 
 
