@@ -30,6 +30,7 @@ import {
   flushDrinksQueue,
 } from '@/data/drinksQueue';
 import { buildDrinkEntry } from '@/data/drinksClient';
+import { buildHistoricalDrinkEntry } from '@/data/drinksHistorySync';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
@@ -38,6 +39,7 @@ import {
   ChevronLeftIcon,
   HandPlatterIcon,
   HouseIcon,
+  InfoIcon,
   MapPinIcon,
   MinusIcon,
   PencilIcon,
@@ -68,6 +70,7 @@ import {
   sessionBreakdown,
   eveningPriceLabel,
   sessionDrinkActionGroups,
+  canFixRejectedField,
   sessionDrinkSummary,
   eveningDateLabel,
   type DrinkActionGroup,
@@ -82,6 +85,14 @@ import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { useToastStore } from '@/stores/toastStore';
+
+/** The fix-sheet line for a refused field the form can change. */
+function rejectedFieldHint(field: string | undefined): string | undefined {
+  if (field === 'beer.volume_ml') return t.myBeers.fixDrinkHintVolume;
+  if (field === 'beer.price_czk') return t.myBeers.fixDrinkHintPrice;
+  if (field === 'beer.name') return t.myBeers.fixDrinkHintName;
+  return undefined;
+}
 
 function latestDrinkAt(session: TallySession): string {
   let latest = session.startedAt;
@@ -110,11 +121,15 @@ export default function EveningDetailScreen() {
   const updateDrinkNameInSession = useTallyStore((s) => s.updateDrinkNameInSession);
   const addDrinkToSession = useTallyStore((s) => s.addDrinkToSession);
   const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
+  const markDrinkRejected = useTallyStore((s) => s.markDrinkRejected);
+  const fixDrinkInSession = useTallyStore((s) => s.fixDrinkInSession);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
   const [editingGroup, setEditingGroup] = useState<DrinkActionGroup | null>(null);
   const [addingDrink, setAddingDrink] = useState(false);
   const [addDrinkFormNonce, setAddDrinkFormNonce] = useState(0);
+  const [fixingGroup, setFixingGroup] = useState<DrinkActionGroup | null>(null);
+  const [fixFormNonce, setFixFormNonce] = useState(0);
   const [publishSheetVisible, setPublishSheetVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
 
@@ -217,6 +232,51 @@ export default function EveningDetailScreen() {
         },
       ],
     });
+  };
+
+  const openFixDrink = (group: DrinkActionGroup) => {
+    setFixFormNonce((value) => value + 1);
+    setFixingGroup(group);
+  };
+
+  /** Save the corrected details of drinks the server refused and send them
+   *  again under their own client_id. A new rejection flags them again. */
+  const handleFixDrink = (result: BeerFormResult) => {
+    const group = fixingGroup;
+    setFixingGroup(null);
+    if (!session || !group) return;
+
+    for (const drink of group.drinks) {
+      fixDrinkInSession(session.startedAt, drink.id, {
+        beerName: result.name,
+        drinkType: result.drinkType,
+        priceCzk: result.priceCzk,
+        volumeMl: result.volumeMl,
+        servingType: result.servingType,
+      });
+    }
+    const nextSession = findSessionByStart(
+      useTallyStore.getState().current,
+      useTallyStore.getState().history,
+      session.startedAt,
+    );
+    if (!nextSession) return;
+    syncVisit(nextSession, new Date().toISOString());
+
+    let queued = false;
+    for (const drink of group.drinks) {
+      const fixed = nextSession.drinks.find((candidate) => candidate.id === drink.id);
+      const entry = fixed ? buildHistoricalDrinkEntry(nextSession, fixed) : null;
+      if (!entry) {
+        markDrinkRejected(drink.id, group.rejectedField);
+        continue;
+      }
+      queued = true;
+      void enqueueDrink(entry).then((delivered) => {
+        if (delivered) markDrinkSynced(drink.id);
+      });
+    }
+    if (queued) showToast(t.myBeers.fixDrinkSaved);
   };
 
   const openAddDrink = () => {
@@ -365,7 +425,9 @@ export default function EveningDetailScreen() {
                 <Text style={styles.addDrinkButtonText}>{t.myBeers.addDrinkToEvening}</Text>
               </Pressable>
             </View>
-            {drinkActionGroups.map((group, index) => (
+            {drinkActionGroups.map((group, index) => {
+              const fixable = !group.rejected || canFixRejectedField(group.rejectedField);
+              return (
               <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
                 <View style={styles.drinkInfo}>
                   <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -389,17 +451,34 @@ export default function EveningDetailScreen() {
                       .filter(Boolean)
                       .join(' · ') || '-'}
                   </Text>
+                  {group.rejected ? (
+                    <Pressable
+                      onPress={fixable ? () => openFixDrink(group) : undefined}
+                      disabled={!fixable}
+                      style={({ pressed }) => [styles.drinkRejected, pressed && styles.iconButtonPressed]}
+                      accessibilityRole={fixable ? 'button' : 'text'}
+                    >
+                      <View style={styles.drinkRejectedIcon}>
+                        <InfoIcon size={12} color={Colors.amber} />
+                      </View>
+                      <Text style={styles.drinkRejectedText} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {fixable ? t.myBeers.drinkRejected : t.myBeers.drinkRejectedRemoveOnly}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
                 <View style={styles.drinkActions}>
-                  <Pressable
-                    onPress={() => setEditingGroup(group)}
-                    style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.myBeers.editDrink}
-                  >
-                    <PencilIcon size={17} color={Colors.amber} />
-                  </Pressable>
+                  {fixable ? (
+                    <Pressable
+                      onPress={() => (group.rejected ? openFixDrink(group) : setEditingGroup(group))}
+                      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.myBeers.editDrink}
+                    >
+                      <PencilIcon size={17} color={Colors.amber} />
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     onPress={() => handleDeleteDrink(group.drinks[group.drinks.length - 1])}
                     style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
@@ -411,7 +490,8 @@ export default function EveningDetailScreen() {
                   </Pressable>
                 </View>
               </View>
-            ))}
+              );
+            })}
           </View>
 
           {/* Výčep — hang the night on the feed and/or share it as a story.
@@ -515,6 +595,31 @@ export default function EveningDetailScreen() {
         submitLabelOverride={t.myBeers.addDrinkToEveningSubmit}
         onCancel={() => setAddingDrink(false)}
         onSubmit={handleAddDrink}
+      />
+      <BeerFormModal
+        visible={fixingGroup !== null}
+        mode="add"
+        beer={
+          fixingGroup
+            ? {
+                name: fixingGroup.name,
+                priceCzk: fixingGroup.drinks[0]?.priceCzk,
+                volumeMl: fixingGroup.volumeMl,
+              }
+            : null
+        }
+        initialDrinkType={fixingGroup?.drinkType}
+        placeContext={normalizePlaceContext(
+          session?.placeContext ?? contextFromPubKey(session?.pubKey ?? ''),
+        )}
+        initialServingType={fixingGroup?.servingType}
+        formKey={`fix-${fixFormNonce}`}
+        titleOverride={t.myBeers.fixDrinkTitle}
+        submitLabelOverride={t.myBeers.fixDrinkSubmit}
+        notice={rejectedFieldHint(fixingGroup?.rejectedField)}
+        requireChange
+        onCancel={() => setFixingGroup(null)}
+        onSubmit={handleFixDrink}
       />
     </SafeAreaView>
   );
@@ -715,6 +820,19 @@ const styles = StyleSheet.create({
   drinkMeta: {
     marginTop: 2,
     fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    color: Colors.amber,
+  },
+  drinkRejected: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  drinkRejectedIcon: { marginTop: 2 },
+  drinkRejectedText: {
+    flex: 1,
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.amber,
   },
