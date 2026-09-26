@@ -727,6 +727,7 @@ export const en: Strings = {
     addressConfirmed: 'Confirmed address',
     fixLocation: 'Fix location',
     locationNeedsFix: 'The address could not be located. Correct the address and confirm its location.',
+    locationNeedsFixOrPin: "I couldn't find this address on the map. Drop a pin right on the pub, or fix the address.",
     addressLookupFailed: 'The address could not be verified. Check your connection and try again.',
     searchingPlaces: 'Looking for places…',
     noPlaceSuggestions: 'I found nothing. Fill in the city and address by hand.',
@@ -767,6 +768,7 @@ export const en: Strings = {
     savedToast: 'Got it, thanks!',
     queuedToast: 'The pub is waiting for a connection. I saved it on your phone.',
     failedToast: "The pub couldn't be verified. Fix the details or try again.",
+    stillNotFoundToast: "Still can't find it. Drop a pin instead.",
     editQueuedToast: "I have the fix on your phone and I'll send it once you're online.",
     editSavedToast: 'The fix is saved.',
     myPubsTitle: 'Pubs I added',
@@ -1209,6 +1211,8 @@ export const en: Strings = {
     shareHereShort: 'Ping the crew',
     shareSuccess: 'Pinged!',
     shareError: "Couldn't tell the crew.",
+    pingSheetDetail: (pub: string) => `I’ll tell them where you’re sitting: ${pub}.`,
+    pingSheetGhost: 'Invisible mode is on, so the ping would reach nobody.',
     counterAlreadyLive: "You're already live",
     sharedCount: (n: number) =>
     n === 0 ? 'No beers together yet' : `${beerCountLabel(n)} together`,
@@ -1396,9 +1400,8 @@ export const en: Strings = {
     recipientCustomSummary: (n: number) =>
     n === 0
       ? 'Pick who you want to drag out for a beer.'
-      : `${n} ${englishPlural(n, { one: 'mate', other: 'mates' })} picked.`,
+      : `The ping goes to ${n} ${englishPlural(n, { one: 'mate', other: 'mates' })}.`,
     recipientNoFriends: 'Add some mates to the crew first.',
-    recipientNoSelection: 'Pick who gets the ping.',
     recipientGroupPlaceholder: 'Group name',
     recipientGroupSave: 'Save',
     recipientGroupSaved: 'Group saved.',
@@ -1667,6 +1670,12 @@ export const en: Strings = {
       one: '1 entry waiting to send',
       other: `${count} entries waiting to send`,
     }),
+    rejected: (count: number) =>
+    englishPlural(count, {
+      one: '1 entry to fix',
+      other: `${count} entries to fix`,
+    }),
+    rejectedFix: 'Show',
     cta: 'Write up a night',
     emptyTitle: 'No trail yet',
     emptyBody: 'Tap a beer in the Counter, or write up a night you remember.',
@@ -1878,6 +1887,11 @@ export const en: Strings = {
       return lines[index];
     },
     drinkLimitedToast: "That's more than the server takes in one day, so this one stays in your diary only.",
+    drinkRejectedToast: (count: number) =>
+      englishPlural(count, {
+        one: "1 entry didn't save. It's in your Diary.",
+        other: `${count} entries didn't save. They're in your Diary.`,
+      }),
     coasterEmpty: 'Clean coaster',
     ctaPick: 'What are you having?',
     ctaFirstBeer: 'Log your first beer',
@@ -2139,6 +2153,14 @@ export const en: Strings = {
     deleteDrinkBody: "I'll drop the count on that line by one.",
     deleteDrinkConfirm: 'Remove',
     deleteDrinkCancel: 'Cancel',
+    drinkRejected: "This didn't save, it's only on your phone. Fix it or remove it.",
+    drinkRejectedRemoveOnly: "This didn't save and can't be fixed here. Remove it.",
+    fixDrinkHintVolume: "I couldn't take this size. Pick another one.",
+    fixDrinkHintPrice: "I couldn't take this price. Try 1 to 1000 CZK.",
+    fixDrinkHintName: "I couldn't take this name. Try a shorter one.",
+    fixDrinkTitle: 'Fix the entry',
+    fixDrinkSubmit: 'Save again',
+    fixDrinkSaved: "Got it. I'll try saving it again.",
     priceUnknown: 'Price missing',
     pricePartial: (price: string) => `At least ${price}`,
     totalLabel: 'Total',
