@@ -747,7 +747,7 @@ export const useToursStore = create<ToursState>(() => ({
       return result;
     const d = data();
     const local = d.plans.find((p) => p.id === id);
-    if (local?.publication?.status === 'active')
+    if (local?.publication)
       local.publication.status = 'unpublished';
     return persist(d, g);
   }),
