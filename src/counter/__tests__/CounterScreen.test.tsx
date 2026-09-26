@@ -130,7 +130,9 @@ const mockTrackCounterTabOpened = jest.fn(async () => undefined);
 jest.mock('@/data/counterTelemetry', () => ({ trackCounterTabOpened: mockTrackCounterTabOpened }));
 
 const mockShareFriendPubActivity = jest.fn(async () => ({ ok: true }));
-jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: mockShareFriendPubActivity }));
+const mockLoadPartyFriends = jest.fn(async (): Promise<{ friends: { id: string }[]; ghost: boolean } | null> => null);
+jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: mockShareFriendPubActivity, loadPartyFriends: mockLoadPartyFriends }));
+jest.mock('@/friends/PingSheet', () => ({ __esModule: true, default: jest.fn(() => null) }));
 
 const fetchPubHours = jest.fn(async () => new Map());
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
@@ -548,6 +550,33 @@ describe('CounterScreen CTA state machine', () => {
       archivedReason: 'manual', closedAt: expect.any(String),
       drinks: [expect.objectContaining({ drinkType: 'soft_drink', beerName: 'Kofola' })],
     });
+  });
+});
+
+describe('CounterScreen pinging the party', () => {
+  it('lets the party ping go to chosen friends only', async () => {
+    const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
+    useNearbyPub.mockReturnValue(nearbyState());
+    mockLoadPartyFriends.mockResolvedValueOnce({ friends: [{ id: 'eva' }, { id: 'pepa' }], ghost: false });
+    const renderer = render();
+    await act(async () => {
+      renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
+      jest.advanceTimersByTime(1000);
+    });
+    const sheet = PingSheet.mock.calls.at(-1)[0];
+    expect(sheet.friends).toEqual([{ id: 'eva' }, { id: 'pepa' }]);
+    await act(async () => { expect(await sheet.onSend(['eva'])).toBeNull(); });
+    expect(mockShareFriendPubActivity).toHaveBeenCalledWith(expect.objectContaining({ name: PUB.name }), '', expect.any(String), ['eva'], expect.any(String));
+  });
+
+  it('without a saved party still pings everyone, as before', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await act(async () => {
+      renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
+      jest.advanceTimersByTime(1000);
+    });
+    expect(mockShareFriendPubActivity).toHaveBeenCalledWith(expect.objectContaining({ name: PUB.name }), '', expect.any(String), undefined, expect.any(String));
   });
 });
 
