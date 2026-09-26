@@ -448,18 +448,19 @@ export default function AddPubScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.iconRow}>
-          <View style={styles.iconWell}>
-            <MapPinIcon size={18} color={Colors.amber} />
-          </View>
-          {!(needsLocation && mapPinSelected) && (
+        {/* Once a pin fixes the unfound address, the warning has done its job. */}
+        {!(needsLocation && mapPinSelected) && (
+          <View style={styles.iconRow}>
+            <View style={styles.iconWell}>
+              <MapPinIcon size={18} color={Colors.amber} />
+            </View>
             <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
               {needsLocation
                 ? canPickOnMap ? t.addPub.locationNeedsFixOrPin : t.addPub.locationNeedsFix
                 : isEditing ? t.addPub.editIntro : t.addPub.intro}
             </Text>
-          )}
-        </View>
+          </View>
+        )}
 
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>{t.addPub.nameLabel}</Text>
