@@ -151,6 +151,10 @@ class TourRunMemberView(TourRunBase):
                 # The organizer's registration may still wait in their offline queue.
                 return Response(status=404)
             member = TourRunMember.objects.select_for_update().filter(run=run, account=account).first()
+            # Checked for members too: a mismatched link must not start another tour on this run.
+            expected = serializer.validated_data.get("publication_id")
+            if state == "joined" and expected and expected != run.publication.public_id:
+                return _error("wrong_tour", _("K tomuhle průchodu se připojit nejde."), 400)
             if state == "joined":
                 if member is None or member.left_at:
                     # Someone outside the party learns only that joining did not work, never who went.
@@ -158,9 +162,6 @@ class TourRunMemberView(TourRunBase):
                         return Response({"joined": False, "reason": "closed"})
                     if run.organizer is None or run.organizer_id in _hidden_from(account):
                         return _error("blocked", _("K tomuhle průchodu se připojit nejde."), 400)
-                    expected = serializer.validated_data.get("publication_id")
-                    if expected and expected != run.publication.public_id:
-                        return _error("wrong_tour", _("K tomuhle průchodu se připojit nejde."), 400)
                     if run.members.filter(left_at__isnull=True).count() >= MAX_MEMBERS:
                         return Response({"joined": False, "reason": "full"})
                     if member is None:
