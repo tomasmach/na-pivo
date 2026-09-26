@@ -105,7 +105,7 @@ jest.mock('@/data/account', () => ({
 
 jest.mock('@/data/addedPubsQueue', () => ({
   enqueueAddedPub: (entry: unknown) => mockEnqueueAddedPub(entry),
-  enqueueAddedPubEdit: (entry: unknown) => mockEnqueueAddedPubEdit(entry),
+  enqueueAddedPubEdit: (...args: unknown[]) => mockEnqueueAddedPubEdit(...args),
   loadAddedPubSubmissions: () => mockLoadAddedPubSubmissions(),
 }));
 
@@ -447,7 +447,7 @@ describe('AddPubScreen location confirmation', () => {
     await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
       client_id: 'existing-client-id', name: 'Nové jméno',
-    });
+    }, { locationSource: undefined });
     expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
     expect(mockUpsertLocalPub).toHaveBeenCalledWith(expect.objectContaining({
@@ -475,7 +475,52 @@ describe('AddPubScreen location confirmation', () => {
     await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
       client_id: 'unresolved-id', name: 'Hospoda U Testu', ...resolvedAddress,
-    });
+    }, { locationSource: undefined });
+  });
+
+  it('lets an unsent addition with an unknown address be saved with a map pin', async () => {
+    mockSearchParams = {
+      clientId: 'unresolved-id', name: 'Hospoda U Testu', city: 'Brno',
+      address: 'Neznámá 1', lat: '50.087', lng: '14.421', needsLocation: '1',
+    };
+    mockLoadAddedPubSubmissions.mockResolvedValue([{
+      client_id: 'unresolved-id', failureReason: 'location-not-found', pendingOperation: 'create',
+    }]);
+    await renderScreen();
+    expect(renderer!.root.findAllByProps({ children: t.addPub.locationNeedsFixOrPin }).length).toBeGreaterThan(0);
+    await press(t.a11y.addPubPickOnMapButton);
+    expect(mockPickerStarts.at(-1)).toEqual({ lat: 50.087, lng: 14.421 });
+    await press('mock-pin-confirm');
+    await submit();
+    expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith(
+      { client_id: 'unresolved-id', lat: 49.2, lng: 16.61, city: 'Brno', address: 'Neznámá 1' },
+      { locationSource: 'map_pin' },
+    );
+    expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
+  });
+
+  it('keeps the map pin away from edits of a published pub', async () => {
+    mockSearchParams = {
+      clientId: 'rejected-edit', name: 'Hospoda U Testu', city: 'Brno',
+      address: 'Neznámá 1', lat: '50.087', lng: '14.421', needsLocation: '1',
+    };
+    mockLoadAddedPubSubmissions.mockResolvedValue([{
+      client_id: 'rejected-edit', failureReason: 'location-not-found', pendingOperation: 'edit',
+    }]);
+    await renderScreen();
+    expect(button(t.a11y.addPubPickOnMapButton)).toBeUndefined();
+    expect(renderer!.root.findAllByProps({ children: t.addPub.locationNeedsFix }).length).toBeGreaterThan(0);
+  });
+
+  it('says the address was not found when the server cannot place it', async () => {
+    mockEnqueueAddedPub.mockResolvedValue('location-not-found');
+    await renderScreen();
+    fillAddress();
+    await press(t.addPub.findAddress);
+    await press(confirmLabel);
+    await submit();
+    await act(async () => { await Promise.resolve(); });
+    expect(mockShowToast).toHaveBeenLastCalledWith(t.addPub.addressNotFoundToast);
   });
 
   it('blocks an edit with changed name and address until the new location is confirmed', async () => {
@@ -494,7 +539,7 @@ describe('AddPubScreen location confirmation', () => {
     await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
       client_id: 'existing-client-id', name: 'Hospoda U Testu', ...resolvedAddress,
-    });
+    }, { locationSource: undefined });
   });
 
   it('queues only one pub when save is tapped twice before a render', async () => {

@@ -25,6 +25,8 @@ const STORAGE_KEY = 'na-pivo-added-pubs-queue';
 const MAX_SYNCED_SUBMISSIONS = 30;
 
 export type AddedPubSyncState = 'pending' | 'synced' | 'failed';
+/** A failed no-match is reported separately so the form can say what to fix. */
+export type AddedPubSyncOutcome = AddedPubSyncState | 'location-not-found';
 
 export interface AddedPubSubmission extends AddedPubEntry {
   syncState: AddedPubSyncState;
@@ -235,7 +237,12 @@ export function loadAddedPubSubmissions(): Promise<AddedPubSubmission[]> {
   return registryTask(loadRegistry);
 }
 
-export function enqueueAddedPub(entry: AddedPubEntry): Promise<AddedPubSyncState> {
+async function outcomeOf(clientId: string): Promise<AddedPubSyncOutcome> {
+  const saved = (await loadRegistry()).find((item) => item.client_id === clientId);
+  return saved?.failureReason ?? saved?.syncState ?? 'pending';
+}
+
+export function enqueueAddedPub(entry: AddedPubEntry): Promise<AddedPubSyncOutcome> {
   return registryTask(async () => {
     const registry = await loadRegistry();
     const submission: AddedPubSubmission = {
@@ -249,11 +256,18 @@ export function enqueueAddedPub(entry: AddedPubEntry): Promise<AddedPubSyncState
     await saveRegistry(next);
     upsertLocalPub(pubFromSubmission(submission));
     await flushLocked();
-    return (await loadRegistry()).find((item) => item.client_id === entry.client_id)?.syncState ?? 'pending';
+    return outcomeOf(entry.client_id);
   });
 }
 
-export function enqueueAddedPubEdit(entry: AddedPubEditEntry): Promise<AddedPubSyncState> {
+/**
+ * `locationSource` applies only to a create that has not reached the server:
+ * its retry is still a POST, where an aimed pin skips address verification.
+ */
+export function enqueueAddedPubEdit(
+  entry: AddedPubEditEntry,
+  options: { locationSource?: 'map_pin' } = {},
+): Promise<AddedPubSyncOutcome> {
   return registryTask(async () => {
     const registry = await loadRegistry();
     const previous = registry.find((item) => item.client_id === entry.client_id);
@@ -278,8 +292,13 @@ export function enqueueAddedPubEdit(entry: AddedPubEditEntry): Promise<AddedPubS
       ...(entry.name !== undefined ? { name: nextName } : {}),
       ...(locationEdit ?? {}),
     };
+    const { location_source: previousSource, ...previousEntry } = previous;
+    const locationSource = locationEdit && previous.pendingOperation === 'create'
+      ? options.locationSource
+      : previousSource;
     const submission: AddedPubSubmission = {
-      ...previous,
+      ...previousEntry,
+      ...(locationSource ? { location_source: locationSource } : {}),
       name: nextName,
       lat: locationEdit?.lat ?? previous.lat,
       lng: locationEdit?.lng ?? previous.lng,
@@ -308,7 +327,7 @@ export function enqueueAddedPubEdit(entry: AddedPubEditEntry): Promise<AddedPubS
     upsertLocalPub(pubFromSubmission(submission));
     await clearPubsSnapshot();
     await flushLocked();
-    return (await loadRegistry()).find((item) => item.client_id === entry.client_id)?.syncState ?? 'pending';
+    return outcomeOf(entry.client_id);
   });
 }
 
