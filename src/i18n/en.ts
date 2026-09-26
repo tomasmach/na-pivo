@@ -1209,6 +1209,8 @@ export const en: Strings = {
     shareHereShort: 'Ping the crew',
     shareSuccess: 'Pinged!',
     shareError: "Couldn't tell the crew.",
+    pingSheetDetail: (pub: string) => `I’ll tell them where you’re sitting: ${pub}.`,
+    pingSheetGhost: 'Invisible mode is on, so the ping would reach nobody.',
     counterAlreadyLive: "You're already live",
     sharedCount: (n: number) =>
     n === 0 ? 'No beers together yet' : `${beerCountLabel(n)} together`,
@@ -1396,9 +1398,8 @@ export const en: Strings = {
     recipientCustomSummary: (n: number) =>
     n === 0
       ? 'Pick who you want to drag out for a beer.'
-      : `${n} ${englishPlural(n, { one: 'mate', other: 'mates' })} picked.`,
+      : `The ping goes to ${n} ${englishPlural(n, { one: 'mate', other: 'mates' })}.`,
     recipientNoFriends: 'Add some mates to the crew first.',
-    recipientNoSelection: 'Pick who gets the ping.',
     recipientGroupPlaceholder: 'Group name',
     recipientGroupSave: 'Save',
     recipientGroupSaved: 'Group saved.',
@@ -2296,6 +2297,13 @@ export const en: Strings = {
     crewClosed: 'This walk is closed, nobody else can join.', crewRefused: 'You couldn’t join the crew anymore. You can still do the tour your own way.',
     crewSheetNote: 'Whoever scans it joins you. They will see your nickname and who else is going.',
     crewQrA11y: 'QR code to join the crew',
+    crewPing: 'Ping your mates', crewPingShort: 'Ping', crewPingThem: 'Ping them', crewPingFriends: 'Mates from Parta',
+    crewPingAway: 'Mates who aren’t here', crewPingHint: 'Pick which mates from Parta hear it',
+    crewPingNote: (pub: string, heading: boolean, together: boolean) =>
+      `I’ll tell them where ${together ? 'you’re all' : 'you’re'} ${heading ? 'heading' : 'sitting'}: ${pub}.`,
+    crewPingSent: 'Pinged. Your mates see it in Parta.', crewPingQueued: 'I’ll ping them once you get a signal.',
+    crewPingGhost: 'Invisible mode is on, so the ping would reach nobody.', crewPingAllHere: 'All your mates are already walking with you.',
+    crewPingMessage: (title: string) => `Pub crawl: ${title}`,
     crewPrivacyTitle: 'Who sees what',
     crewPrivacyBody: 'Your crew only sees who walks with you. Stops and beers stay on your phone. When you get through at least half the pubs, I’ll count you in this tour’s number.',
     crewPrivacyOptedOut: 'Your crew only sees who walks with you. Stops and beers stay on your phone. I won’t count you in this tour’s number.',

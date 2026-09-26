@@ -2978,3 +2978,36 @@ def test_notification_read_rejects_malformed_and_unbounded_ids(client):
 
     assert malformed.status_code == status.HTTP_400_BAD_REQUEST
     assert too_many.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_tour_ping_names_the_tour_and_old_payload_keeps_its_wording(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    _, friend = _register(client, "petr")
+    friend.quiet_hours_enabled = False
+    friend.save(update_fields=["quiet_hours_enabled"])
+    _make_friends(owner, friend)
+    _grant_push(friend, "ExponentPushToken[friend_petr]")
+    sent_payloads: list[list[dict]] = []
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder(sent_payloads))
+
+    def ping(name, step, **tour):
+        # Each stop sits somewhere else, otherwise the server sees the same pub and stays quiet.
+        response = client.post("/v1/friends/pub-activity", data={
+            "client_id": str(uuid.uuid4()), "name": name, "lat": _LAT + step / 100, "lng": _LNG, "message": "Tour de pub: Okruh",
+            **tour,
+        }, format="json", **_auth(token_owner))
+        assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED), response.content
+        return _flatten_push(sent_payloads)[-1]
+
+    heading = ping(_PUB_NAME, 0, tour_title="Pivní okruh Starým Městem", tour_heading=True)
+    assert heading["title"] == "Kamarád jde tour de pub"
+    assert heading["body"] == "@janek jde tour „Pivní okruh Starým Městem“ a teď míří sem: U Zlatého tygra. Přidáš se na jedno?"
+    assert heading["data"]["kind"] == "friend_at_pub"
+    # Moving on to the next stop pushes again, now sitting there.
+    sitting = ping("U Medvídků", 1, tour_title="Pivní okruh Starým Městem")
+    assert sitting["body"] == "@janek jde tour „Pivní okruh Starým Městem“ a teď sedí tady: U Medvídků. Přidáš se na jedno?"
+    # The released app sends no tour fields and must get exactly what it got before.
+    plain = ping("U Pinkasů", 2)
+    assert (plain["title"], plain["body"]) == ("Kamarád je na pivu", "@janek sedí v U Pinkasů. Nechceš se přidat?")
+    assert FriendPubActivity.objects.get(account=owner, active=True).message == "Tour de pub: Okruh"

@@ -25,6 +25,7 @@ const mockStore = {
   error: null,
   busy: false,
   hydrate: jest.fn(async () => ({ ok: true })),
+  refreshCrew: jest.fn(async () => undefined),
   copyPlan: jest.fn(async () => ({ ok: true as const, id: 'copied-plan' })),
   markStop: jest.fn(async (id: string, status: 'visited' | 'skipped' | null) => {
     if (!mockStore.activeRun) throw new Error('No active run');
@@ -70,7 +71,19 @@ const mockTally = { current: null as null | { pubKey: string; drinks: { drinkTyp
 jest.mock('@/stores/tallyStore', () => ({ useTallyStore: (select: (s: typeof mockTally) => unknown) => select(mockTally) }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn(async () => new Map()) }));
 jest.mock('../TourJourneyIllustration', () => ({ TourJourneyIllustration: jest.fn(() => null) }));
-jest.mock('../TourCrew', () => ({ TourCrewRow: () => null, TourCrewSheet: () => null }));
+jest.mock('../TourCrew', () => ({ TourCrewRow: ({ ping, onPing }: { ping: boolean; onPing: () => void }) => {
+  const { Text } = jest.requireActual('react-native');
+  return <Text onPress={onPing}>{`crew-row ping:${ping}`}</Text>;
+}, TourCrewSheet: () => null, going: (crew: { members?: { left: boolean }[] }) => (crew.members ?? []).filter((member) => !member.left),
+inviting: (crew?: { closed?: boolean; refused?: boolean }) => !!crew && !crew.closed && !crew.refused }));
+jest.mock('@/friends/PingSheet', () => ({ __esModule: true, default: jest.fn(() => null) }));
+jest.mock('@/data/friendsQueue', () => ({ friendActivityState: jest.fn(async () => 'queued'), flushFriendsQueue: jest.fn(async () => undefined) }));
+// Undefined keeps the party unknown for tests that do not care, so no late state update lands after them.
+const mockFriends = { current: undefined as { ghost: boolean; friends: { id: string }[] } | null | undefined };
+jest.mock('@/data/friendsClient', () => ({
+  loadPartyFriends: jest.fn(() => mockFriends.current === undefined ? new Promise(() => undefined) : Promise.resolve(mockFriends.current)),
+}));
+jest.mock('../crewPing', () => ({ ...jest.requireActual('../crewPing'), sendPing: jest.fn(async () => ({ status: 'sent', clientId: 'c1' })) }));
 jest.mock('@/stores/accountStore', () => ({ useAccountStore: () => false, selectIsSignedIn: () => false, selectNickname: () => null }));
 jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: () => null, CheckIcon: () => null, ChevronLeftIcon: () => null, ChevronRightIcon: () => null,
@@ -111,6 +124,7 @@ beforeEach(() => {
   };
   mockStore.runs = [];
   mockStore.published = {};
+  mockFriends.current = undefined;
 });
 
 it('marks the next stop, navigates to the following one, and restores the first with undo', async () => {
@@ -275,4 +289,44 @@ it('hands the next stop to the counter and shows beers counted at visited stops'
   expect(useCounterHandoffStore.getState().pub).toEqual({ id: second.pubId, name: second.name, lat: second.lat, lng: second.lon, address: 'Praha' });
   expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/beer');
   mockTally.current = null;
+});
+
+
+it('offers pinging friends on a run without a crew, but not in invisible mode or without friends', async () => {
+  mockFriends.current = null;
+  const screen = render(<TourDetailScreen />);
+  await act(async () => undefined);
+  expect(screen.queryByText(/crew-row/)).toBeNull();
+  mockFriends.current = { ghost: false, friends: [{ id: 'eva' }] };
+  const withFriends = render(<TourDetailScreen />);
+  expect(await withFriends.findByText('crew-row ping:true')).toBeTruthy();
+  // Tapping the row opens the sheet to pick who; sending there goes to Eva and the row learns it went out.
+  const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
+  fireEvent.press(withFriends.getByText('crew-row ping:true'));
+  const sheet = PingSheet.mock.calls.at(-1)[0];
+  expect(sheet.friends).toEqual([{ id: 'eva' }]);
+  const { sendPing } = jest.requireMock('../crewPing');
+  await act(async () => { expect(await sheet.onSend(['eva'])).toBeNull(); });
+  expect(sendPing).toHaveBeenCalledWith('Probíhající večer', expect.objectContaining({ heading: true }), ['eva']);
+  mockFriends.current = { ghost: true, friends: [{ id: 'eva' }] };
+  const ghost = render(<TourDetailScreen />);
+  await act(async () => undefined);
+  expect(ghost.queryByText(/crew-row/)).toBeNull();
+});
+
+
+it('pings everyone away from the table and then stops offering the same pub', async () => {
+  mockStore.activeRun = { ...mockStore.activeRun!, crew: { runId: 'r', publicId: 'p', token: 't', organizer: false, closed: true,
+    members: [{ id: 'me', nickname: 'vojta', displayName: '', avatarUrl: null, left: false, completed: false }, { id: 'pepa', nickname: 'pepa', displayName: '', avatarUrl: null, left: false, completed: false }] } };
+  mockFriends.current = { ghost: false, friends: [{ id: 'pepa' }, { id: 'eva' }] };
+  const screen = render(<TourDetailScreen />);
+  fireEvent.press(await screen.findByText('crew-row ping:true'));
+  const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
+  const sheet = PingSheet.mock.calls.at(-1)[0];
+  // Pepa walks along: not offered, and "Celá parta" means everyone but him.
+  expect(sheet.friends).toEqual([{ id: 'eva' }]);
+  const { sendPing } = jest.requireMock('../crewPing');
+  await act(async () => { await sheet.onSend(undefined); });
+  expect(sendPing).toHaveBeenLastCalledWith('Probíhající večer', expect.anything(), ['eva']);
+  expect(screen.getByText('crew-row ping:false')).toBeTruthy();
 });

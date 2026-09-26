@@ -28,7 +28,10 @@ jest.mock('../friendsClient', () => ({
 import {
   clearFriendsQueue,
   enqueueFriendOp,
+  dropQueuedTourPings,
   flushFriendsQueue,
+  friendActivityState,
+  friendsQueueIdle,
   isRetriableFriendError,
   type FriendQueueItem,
 } from '../friendsQueue';
@@ -116,7 +119,7 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
 
     shareFriendPubActivity.mockResolvedValue(retry());
     await enqueueFriendOp({ op: 'activity', clientId: 'live1', payload: { pub: PUB, recipientIds: ['friend-a'] } });
-    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1', ['friend-a'], expect.any(String));
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1', ['friend-a'], expect.any(String), undefined);
   });
 
   it('routes a request op through sendFriendRequest', async () => {
@@ -216,4 +219,56 @@ describe('isRetriableFriendError', () => {
       expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(false);
     }
   });
+});
+
+describe('tour pings', () => {
+  it('keeps the tour through an offline wait and drops only a mangled one', async () => {
+    shareFriendPubActivity.mockResolvedValue(retry());
+    const tour = { title: 'Pivní okruh', heading: true };
+    await enqueueFriendOp({ op: 'activity', clientId: 't1', payload: { pub: PUB, message: 'Tour de pub: Pivní okruh', startedAt: '2026-09-26T18:00:00.000Z', tour } });
+    const stored = await readQueue();
+    // A legacy op without a tour still loads; one with a broken tour does not.
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...stored,
+      { op: 'activity', clientId: 'old', payload: { pub: PUB } },
+      { op: 'activity', clientId: 'bad', payload: { pub: PUB, tour: { title: 7 } } }]));
+    shareFriendPubActivity.mockClear();
+    shareFriendPubActivity.mockResolvedValue({ ok: true });
+    await flushFriendsQueue();
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, 'Tour de pub: Pivní okruh', 't1', undefined, '2026-09-26T18:00:00.000Z', tour);
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'old', undefined, undefined, undefined);
+    expect(shareFriendPubActivity).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toEqual([]);
+    // Delivered is told apart from dropped, so a screen never claims a rejected ping went out.
+    expect(await friendActivityState('t1')).toBe('sent');
+    expect(await friendActivityState('bad')).toBe('gone');
+  });
+});
+
+
+it('drops only waiting tour pings when a newer one takes over', async () => {
+  shareFriendPubActivity.mockResolvedValue(retry());
+  await enqueueFriendOp({ op: 'activity', clientId: 'tour-old', payload: { pub: PUB, tour: { title: 'Okruh', heading: false } } });
+  await enqueueFriendOp({ op: 'activity', clientId: 'counter', payload: { pub: PUB } });
+  await dropQueuedTourPings();
+  expect((await readQueue()).map((item) => (item as { clientId: string }).clientId)).toEqual(['counter']);
+  expect(await friendActivityState('tour-old')).toBe('gone');
+});
+
+it('lets a flush on its way finish first and skips a tour ping taken out meanwhile', async () => {
+  let release: () => void = () => undefined;
+  // The first op hangs on the network, so the flush is still on its way when a newer tour ping takes over.
+  respondToActivity.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve({ ok: true }); }));
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+    { op: 'rsvp', activityId: 'a1', response: 'going' },
+    { op: 'activity', clientId: 'tour-old', payload: { pub: PUB, tour: { title: 'Okruh', heading: false } } },
+  ]));
+  const flushing = flushFriendsQueue();
+  await dropQueuedTourPings();
+  let idle = false;
+  const waiting = friendsQueueIdle().then(() => { idle = true; });
+  await Promise.resolve();
+  expect(idle).toBe(false);
+  release();
+  await Promise.all([flushing, waiting]);
+  expect(shareFriendPubActivity).not.toHaveBeenCalled();
 });

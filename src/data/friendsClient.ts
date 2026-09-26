@@ -9,7 +9,7 @@ import {
 import { parseBeerCheckIn, type BeerCheckIn } from './beerCheckinsClient';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
-import { saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
+import { loadFriendsDashboardSnapshot, saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
 import { trackApiFailure } from './telemetryClient';
 import type { Pub } from './pubs';
 
@@ -776,6 +776,34 @@ async function requestJson(
   }
 }
 
+export interface PartyFriends { friends: FriendProfile[]; ghost: boolean }
+
+function partyOf(dashboard: FriendsDashboard | null | undefined): PartyFriends | null {
+  return dashboard ? { friends: dashboard.friends, ghost: dashboard.settings?.ghostMode === true } : null;
+}
+
+/**
+ * The party for picking who hears a cinknutí. Answers at once from the party the
+ * phone last saw and still asks the server, since a friend may have accepted or
+ * invisible mode changed since Parta was open: `onFresh` gets the newer party.
+ * Without a saved party it waits for the server. Null offline with nothing saved.
+ */
+export async function loadPartyFriends(signal?: AbortSignal, onFresh?: (party: PartyFriends) => void): Promise<PartyFriends | null> {
+  // A sign-out or account switch meanwhile must not hand the previous account's friends to the next one.
+  const generation = snapshotGeneration();
+  const sameAccount = () => generation === snapshotGeneration();
+  const saved = partyOf((await loadFriendsDashboardSnapshot())?.dashboard);
+  if (!saved) {
+    const fetched = partyOf(await fetchFriendsDashboard(signal));
+    return sameAccount() ? fetched : null;
+  }
+  void fetchFriendsDashboard().then((dashboard) => {
+    const fresh = partyOf(dashboard);
+    if (fresh && sameAccount()) onFresh?.(fresh);
+  });
+  return sameAccount() ? saved : null;
+}
+
 export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
   // Capture the account-boundary generation BEFORE the request begins (and thus
   // before requestJson captures this account's bearer). If a logout/delete clears
@@ -1041,12 +1069,20 @@ export async function removeFriend(accountId: string): Promise<FriendActionResul
   return res.ok ? { ok: true } : res.result;
 }
 
+/** A cinknutí sent from a tour: its title and whether the crew is still walking to the pub. */
+export interface TourPing {
+  title: string;
+  heading: boolean;
+}
+
 export async function shareFriendPubActivity(
   pub: Pub,
   message?: string,
   clientId?: string,
   recipientIds?: string[],
   startedAt?: string,
+  /** From a Tour de pub run: only changes the push wording, the server stores nothing. */
+  tour?: TourPing,
 ): Promise<FriendActionResult> {
   const now = startedAt ? new Date(startedAt) : new Date();
   const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000);
@@ -1064,6 +1100,7 @@ export async function shareFriendPubActivity(
       started_at: now.toISOString(),
       expires_at: expires.toISOString(),
       ...(targetIds ? { recipient_ids: targetIds } : {}),
+      ...(tour ? { tour_title: tour.title, tour_heading: tour.heading } : {}),
     },
   });
   if (res.ok && res.data.applied === false) {

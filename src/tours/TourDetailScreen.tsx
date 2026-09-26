@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, BackHandler, Pressable, ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, AppState, BackHandler, Pressable, ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter, useIsFocused, type Href } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +22,11 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { FontScaleCap } from '@/theme/fonts';
 import { TourButton, TourChallengeText, TourError, TourHeader, TourText, pubCount, tourDate, ui } from './TourChrome';
 import { TourMap } from './TourMap';
-import { TourCrewRow, TourCrewSheet } from './TourCrew';
+import { TourCrewRow, TourCrewSheet, going, type CrewPingState, type CrewPingView } from './TourCrew';
+import { pingRecipients, pingStop, sendPing } from './crewPing';
+import { loadPartyFriends, type PartyFriends } from '@/data/friendsClient';
+import { flushFriendsQueue, friendActivityState } from '@/data/friendsQueue';
+import PingSheet from '@/friends/PingSheet';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
 import { TourHistoryRow, TourJourneyStop, TourLeg, TourMapPreview, type StopFactsLine } from './TourJourney';
 import { formatWalkDistance, hoursOnDay, planDay, useTourStopFacts, walkingDistance, walkingLeg } from './stopFacts';
@@ -46,6 +50,8 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const [detail, setDetail] = useState<TourStop | null>(null); const [pubDetail, setPubDetail] = useState(false);
   const [largeMap, setLargeMap] = useState(false); const [shareMode, setShareMode] = useState(false);
   const [crewSheet, setCrewSheet] = useState(false);
+  const [friends, setFriends] = useState<PartyFriends | null>(null); const [ping, setPing] = useState<CrewPingState | null>(null);
+  const [pingSheet, setPingSheet] = useState(false); const pingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Only a signed-in walker with a nickname can be seen by a party and counted.
   const crewEligible = useAccountStore((s) => selectIsSignedIn(s) && !!selectNickname(s));
   const profile = useAccountStore((s) => s.profile);
@@ -68,6 +74,34 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   // Back on the run, see who joined or left meanwhile.
   useEffect(() => { if (focused && useToursStore.getState().activeRun?.crew) void useToursStore.getState().refreshCrew(); }, [focused]);
+  // Who could be pinged from the run: the party the phone last saw, then the server's newer one.
+  const walking = !!active && !history;
+  useEffect(() => {
+    if (!focused || !walking) return;
+    let alive = true;
+    const show = (next: PartyFriends | null) => { if (alive) setFriends(next); };
+    void loadPartyFriends(undefined, show).then(show);
+    return () => { alive = false; };
+  }, [focused, walking]);
+  // A ping that waited for signal may have gone out since, or been dropped; only a delivered one says so.
+  const waiting = ping?.status === 'queued' ? ping : null;
+  useEffect(() => {
+    if (!waiting || !focused) return;
+    let alive = true;
+    const check = () => void friendActivityState(waiting.clientId).then((state) => {
+      // A newer ping may have replaced this one meanwhile; its state wins.
+      if (alive && state !== 'queued') setPing(state === 'sent' ? { ...waiting, status: 'sent' } : null);
+    });
+    check();
+    // The queue flushes when the app comes back to the front, which does not change focus; look once that flush is done.
+    const foreground = AppState.addEventListener('change', (next) => { if (next === 'active') void flushFriendsQueue().then(check); });
+    return () => { alive = false; foreground.remove(); };
+  }, [waiting, focused, crewSheet, pingSheet]);
+  // A ping sheet waiting for the crew sheet to leave must not open on another screen.
+  useEffect(() => { if (!focused && pingTimer.current) { clearTimeout(pingTimer.current); pingTimer.current = null; } }, [focused]);
+  useEffect(() => () => { if (pingTimer.current) clearTimeout(pingTimer.current); }, []);
+  // In invisible mode a ping would reach nobody, so the row does not offer one.
+  const canPing = !!friends?.friends.length && !friends.ghost;
   const publicToken = plan?.publication?.status === 'active' ? plan.publication.token : null;
   useEffect(() => { if (focused && publicToken) void useToursStore.getState().refreshPublicCount(id); }, [focused, publicToken, id]);
   const [openedAt] = useState(() => Date.now());
@@ -142,6 +176,34 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const shared = !!plan.share && new Date(plan.share.expiresAt).getTime() > openedAt;
   const runView = !shareMode && run ? run : null;
   const live = !!runView && !history;
+  // Pinging friends from the run: the pub they should head to, and who of the party is not at the table already.
+  const pingTarget = active && !history ? pingStop(active) : null;
+  const crewIds = active?.crew && !active.crew.refused ? going(active.crew).map((member) => member.id) : [];
+  const awayFriends = friends ? friends.friends.filter((friend) => !crewIds.includes(friend.id)) : [];
+  const pingDone = ping && active && pingTarget && ping.runId === active.id && ping.stopId === pingTarget.stop.id ? ping.status : null;
+  const pingNote = pingTarget ? t.tours.crewPingNote(pingTarget.stop.name, pingTarget.heading, crewIds.length > 1) : '';
+  const pingView: CrewPingView | null = pingTarget && friends?.friends.length
+    ? { note: pingNote, state: friends.ghost ? 'ghost' : awayFriends.length === 0 ? 'allHere' : pingDone } : null;
+  // The row offers a ping only while there is someone away to tell and this pub was not pinged yet.
+  const rowPing = canPing && !!pingTarget && awayFriends.length > 0 && !pingDone;
+  const rowPingStatus = pingDone === 'sent' ? t.tours.crewPingSent : pingDone === 'queued' ? t.tours.crewPingQueued
+    : canPing && pingTarget && awayFriends.length === 0 ? t.tours.crewPingAllHere : null;
+  // iOS will not present the ping sheet while the crew sheet is still leaving.
+  function openPing() {
+    if (!crewSheet) { setPingSheet(true); return; }
+    setCrewSheet(false);
+    if (pingTimer.current) clearTimeout(pingTimer.current);
+    pingTimer.current = setTimeout(() => { pingTimer.current = null; setPingSheet(true); }, 300);
+  }
+  async function sendTourPing(recipientIds?: string[]): Promise<string | null> {
+    if (!active || !pingTarget || !friends) return null;
+    // "Everyone" here means everyone who is not walking along already.
+    const ids = recipientIds ?? pingRecipients(friends.friends.map((friend) => friend.id), crewIds);
+    const result = await sendPing(active.snapshot.title, pingTarget, ids);
+    if ('error' in result) return result.error;
+    setPing({ runId: active.id, stopId: pingTarget.stop.id, ...result });
+    return null;
+  }
   const stops = current.stops;
   const legs = stops.slice(1).map((stop, index) => walkingLeg(stops[index], stop));
   const position = live && runView ? runPosition(runView) : undefined;
@@ -194,7 +256,8 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             : store.published[id] !== tourContentSignature(plan) || plan.revision > plan.publication.planRevision ? t.tours.publicNewer
               : plan.publication.peopleCount > 0 ? t.tours.publicWithPeople(plan.publication.peopleCount) : t.tours.publicState}</TourText>
         </Pressable>}
-        {!shareMode && live && active?.crew && <TourCrewRow crew={active.crew} self={crewSelf} onInvite={() => setCrewSheet(true)} />}
+        {!shareMode && live && active && (active.crew || canPing) && <TourCrewRow crew={active.crew} self={crewSelf} ping={rowPing} pingStatus={rowPingStatus}
+          onInvite={() => { if (pingTimer.current) { clearTimeout(pingTimer.current); pingTimer.current = null; } setCrewSheet(true); }} onPing={openPing} />}
         {editable && !current.scheduledDate && <Pressable onPress={() => { void edit(); }} style={styles.addMeetup} accessibilityRole="button" accessibilityLabel={t.tours.addMeetup}><TourText style={ui.linkText}>{t.tours.addMeetup}</TourText></Pressable>}
         {closedOnMeetup.length > 0 && <TourText style={styles.closed}>{t.tours.closedOnMeetup(closedOnMeetup.join(', '), closedOnMeetup.length)}</TourText>}</View>
       <TourJourneyIllustration stops={current.stops} statuses={!shareMode ? run?.statuses : undefined} nextStopId={!shareMode && active && !history ? next?.id : undefined} />
@@ -263,7 +326,9 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} quiet onPress={() => setShareMode(true)} />}</>}
     </View>
     </View>
-    {crewSheet && active?.crew && <TourCrewSheet crew={active.crew} onClose={() => setCrewSheet(false)} />}
+    {crewSheet && active && <TourCrewSheet run={active} pingView={pingView} onPing={openPing} onClose={() => setCrewSheet(false)} />}
+    {pingSheet && active && pingTarget && friends && <PingSheet title={t.tours.crewPing} detail={pingNote} friends={awayFriends} ghost={friends.ghost}
+      onSend={sendTourPing} onClose={() => setPingSheet(false)} />}
     {overlayVisible && <View accessibilityViewIsModal style={[ui.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TourHeader title={detail?.name ?? t.tours.map} onBack={() => { setLargeMap(false); setDetail(null); }} />
         <ScrollView contentContainerStyle={[ui.content, { flexGrow: 1 }]}>
