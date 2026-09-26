@@ -1,6 +1,7 @@
 """Joint runs of public tours: who walks together, never which stops, beers or where."""
 
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 from django.db import transaction
 from django.db.models import Q
@@ -184,7 +185,8 @@ class TourRunMemberView(TourRunBase):
                     member.completed_at = None
                     member.save(update_fields=["completed_at"])
             elif member.completed_at is None:
-                day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                # A day is a Czech day, not a UTC one.
+                day_start = timezone.localtime(now, ZoneInfo("Europe/Prague")).replace(hour=0, minute=0, second=0, microsecond=0)
                 done_today = TourRunMember.objects.filter(account=account, completed_at__gte=day_start).count()
                 if done_today < DAILY_COMPLETIONS:
                     member.completed_at = now
