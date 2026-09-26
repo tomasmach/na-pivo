@@ -23,6 +23,8 @@ const mockUpsertLocalPub: jest.Mock = jest.fn();
 const mockFireSuccessHaptic: jest.Mock = jest.fn(async () => undefined);
 const mockLookupAddedPubLocation: jest.Mock = jest.fn();
 const mockResetBeerMapLayerForAddedPub: jest.Mock = jest.fn();
+const mockSuggestPubsToAdd: jest.Mock = jest.fn(async () => []);
+const mockResolvePubSearchResult: jest.Mock = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
@@ -133,6 +135,11 @@ jest.mock('@/data/addedPubLocationClient', () => ({
   lookupAddedPubLocation: (...args: unknown[]) => mockLookupAddedPubLocation(...args),
 }));
 
+jest.mock('@/data/pubSearchClient', () => ({
+  suggestPubsToAdd: (...args: unknown[]) => mockSuggestPubsToAdd(...args),
+  resolvePubSearchResult: (...args: unknown[]) => mockResolvePubSearchResult(...args),
+}));
+
 jest.mock('@/data/uxTelemetry', () => ({ trackUiInteraction: jest.fn() }));
 
 const resolvedAddress = { lat: 49.1951, lng: 16.6068, city: 'Brno', address: 'Česká 12' };
@@ -156,6 +163,7 @@ describe('AddPubScreen location confirmation', () => {
     });
     mockLookupAddedPubLocation.mockResolvedValue(resolvedAddress);
     mockEnqueueAddedPub.mockResolvedValue('queued');
+    mockSuggestPubsToAdd.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -218,6 +226,37 @@ describe('AddPubScreen location confirmation', () => {
     }));
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
     expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('suggests places for a typed name and saves the picked place', async () => {
+    const place = { lat: 50.0884, lng: 14.4036, city: 'Praha', address: 'Nerudova 2' };
+    mockLookupAddedPubLocation.mockResolvedValue(place);
+    mockSuggestPubsToAdd.mockResolvedValue([
+      { id: 'google:abc', name: 'U Kocoura', location: 'Nerudova 2, Praha', providerPlaceId: 'abc' },
+    ]);
+    mockResolvePubSearchResult.mockResolvedValue({ id: 'google:abc', name: 'U Kocoura', ...place });
+    jest.useFakeTimers();
+    try {
+      await renderScreen();
+      change(t.a11y.addPubNameInput, 'U Koc');
+      await act(async () => { jest.advanceTimersByTime(400); });
+      expect(mockSuggestPubsToAdd).toHaveBeenCalledWith(
+        'U Koc', { lat: 50.087, lng: 14.421 }, expect.any(AbortSignal),
+      );
+      await press(t.a11y.addPubSuggestion('U Kocoura'));
+      await act(async () => { jest.advanceTimersByTime(400); });
+      expect(mockSuggestPubsToAdd).toHaveBeenCalledTimes(1);
+      expect(mockLookupAddedPubLocation).toHaveBeenCalledWith(
+        { address: 'Nerudova 2', city: 'Praha' }, expect.any(AbortSignal),
+      );
+      await submit();
+      expectNoWrite();
+      await press(`${t.addPub.confirmAddress}: Nerudova 2, Praha`);
+      await submit();
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({ name: 'U Kocoura', ...place }));
   });
 
   it('takes a fresh GPS fix and requires confirmation of its reverse-geocoded address', async () => {

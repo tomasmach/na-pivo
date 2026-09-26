@@ -818,6 +818,9 @@ export const cs = {
     fixLocation: 'Oprav polohu',
     locationNeedsFix: 'Polohu podle adresy se nepodařilo ověřit. Oprav adresu a potvrď polohu.',
     addressLookupFailed: 'Adresu se nepodařilo ověřit. Zkontroluj připojení a zkus to znovu.',
+    searchingPlaces: 'Hledám podniky…',
+    noPlaceSuggestions: 'Nic jsem nenašel. Město a adresu vyplň ručně.',
+    loadingPlace: 'Dohledávám podnik…',
 
     title: 'Přidat hospodu',
     editTitle: 'Opravit hospodu',
