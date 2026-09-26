@@ -763,13 +763,19 @@ function partyOf(dashboard: FriendsDashboard | null | undefined): PartyFriends |
  * Without a saved party it waits for the server. Null offline with nothing saved.
  */
 export async function loadPartyFriends(signal?: AbortSignal, onFresh?: (party: PartyFriends) => void): Promise<PartyFriends | null> {
+  // A sign-out or account switch meanwhile must not hand the previous account's friends to the next one.
+  const generation = snapshotGeneration();
+  const sameAccount = () => generation === snapshotGeneration();
   const saved = partyOf((await loadFriendsDashboardSnapshot())?.dashboard);
-  if (!saved) return partyOf(await fetchFriendsDashboard(signal));
+  if (!saved) {
+    const fetched = partyOf(await fetchFriendsDashboard(signal));
+    return sameAccount() ? fetched : null;
+  }
   void fetchFriendsDashboard().then((dashboard) => {
     const fresh = partyOf(dashboard);
-    if (fresh) onFresh?.(fresh);
+    if (fresh && sameAccount()) onFresh?.(fresh);
   });
-  return saved;
+  return sameAccount() ? saved : null;
 }
 
 export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
