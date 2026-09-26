@@ -46,7 +46,7 @@ import {
   type FriendActionResult,
   type FriendProfile,
 } from '@/data/friendsClient';
-import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { dropQueuedTourPings, enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
@@ -267,9 +267,10 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
       d.setHours(hour, 0, 0, 0);
       scheduledForISO = d.toISOString();
     }
+    // A tour ping still waiting for signal must not land after this newer broadcast.
     const call: Promise<FriendActionResult> = isPlan
       ? createFriendPlan(selectionPub, scheduledForISO as string, trimmed, clientId, targetRecipientIds)
-      : shareFriendPubActivity(selectionPub, trimmed, clientId, targetRecipientIds, startedAt);
+      : dropQueuedTourPings().then(() => shareFriendPubActivity(selectionPub, trimmed, clientId, targetRecipientIds, startedAt));
 
     void call.then((res) => {
       if (!mountedRef.current) return;

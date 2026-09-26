@@ -36,6 +36,7 @@ import {
   type FriendActionResult,
   type TourPing,
 } from './friendsClient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
 import type { Pub } from './pubs';
@@ -200,7 +201,7 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
         ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
         : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour);
       const verdict = classify(result);
-      if (verdict === 'ok') delivered.add(item.clientId);
+      if (verdict === 'ok') await markDelivered(item.clientId);
       return verdict;
     }
     case 'end':
@@ -295,13 +296,30 @@ export function dropQueuedTourPings(): Promise<void> {
   });
 }
 
-/** Broadcasts this session delivered from the queue, so a screen can tell sent from dropped. */
+/** Broadcasts delivered from the queue, kept past a restart, so a screen can tell sent from dropped. */
+const DELIVERED_KEY = 'na-pivo-friends-delivered';
 const delivered = new Set<string>();
 
-/** Whether a queued broadcast still waits, reached the server, or was dropped (rejected, Dopito, app restarted). */
+async function readDelivered(): Promise<string[]> {
+  try {
+    const ids = JSON.parse((await AsyncStorage.getItem(DELIVERED_KEY)) ?? '[]') as unknown;
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+// Stored before the queue entry goes, so a restart in between still knows it went out.
+async function markDelivered(clientId: string): Promise<void> {
+  delivered.add(clientId);
+  const ids = (await readDelivered()).filter((id) => id !== clientId);
+  await AsyncStorage.setItem(DELIVERED_KEY, JSON.stringify([...ids, clientId].slice(-20))).catch(() => undefined);
+}
+
+/** Whether a queued broadcast still waits, reached the server, or was dropped (rejected, Dopito). */
 export async function friendActivityState(clientId: string): Promise<'queued' | 'sent' | 'gone'> {
   if ((await loadQueue()).some((item) => item.op === 'activity' && item.clientId === clientId)) return 'queued';
-  return delivered.has(clientId) ? 'sent' : 'gone';
+  return delivered.has(clientId) || (await readDelivered()).includes(clientId) ? 'sent' : 'gone';
 }
 
 /** Dopito also cancels broadcasts that have not reached the server yet. */
@@ -324,8 +342,10 @@ export function clearFriendsQueue(): Promise<void> {
   // so without this it could keep sending the previous account's ops under the
   // session that replaces this one.
   abortInFlight();
+  delivered.clear();
   return runMutation(async () => {
     await saveQueue([]);
+    await AsyncStorage.removeItem(DELIVERED_KEY).catch(() => undefined);
   });
 }
 

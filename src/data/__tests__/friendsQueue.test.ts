@@ -239,6 +239,8 @@ describe('tour pings', () => {
     expect(await readQueue()).toEqual([]);
     // Delivered is told apart from dropped, so a screen never claims a rejected ping went out.
     expect(await friendActivityState('t1')).toBe('sent');
+    // Stored, so a restart before the tour screen looks still knows it went out.
+    expect(JSON.parse((await AsyncStorage.getItem('na-pivo-friends-delivered')) ?? '[]')).toContain('t1');
     expect(await friendActivityState('bad')).toBe('gone');
   });
 });
