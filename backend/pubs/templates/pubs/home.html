@@ -1,0 +1,631 @@
+<!doctype html>
+{% load i18n %}
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#231407">
+<title>{% translate "Na pivo: kompas na hospodu a pivní deníček" %}</title>
+<meta name="description" content="{% translate "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam." %}">
+<link rel="canonical" href="{{ canonical_url }}">
+<link rel="alternate" hreflang="cs" href="{{ cs_url }}">
+<link rel="alternate" hreflang="en" href="{{ en_url }}">
+<link rel="alternate" hreflang="x-default" href="{{ cs_url }}">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="{{ asset.baloo2_extrabold_woff2 }}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{{ asset.bricolage_grotesque_woff2 }}" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Na pivo">
+<meta property="og:locale" content="{{ og_locale }}">
+<meta property="og:title" content="{% translate "Na pivo: kompas na hospodu a pivní deníček" %}">
+<meta property="og:description" content="{% translate "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam." %}">
+<meta property="og:url" content="{{ canonical_url }}">
+<meta property="og:image" content="{{ og_image_url }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{% translate "Pivní tácek s čárkami na dubovém stole." %}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="apple-itunes-app" content="app-id=6773790025">
+<style>
+  @font-face {
+    font-family: "Baloo 2";
+    src: url("{{ asset.baloo2_extrabold_woff2 }}") format("woff2");
+    font-weight: 700 800;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Bricolage Grotesque";
+    src: url("{{ asset.bricolage_grotesque_woff2 }}") format("woff2");
+    font-weight: 400 700;
+    font-display: swap;
+  }
+
+  /* Values from DESIGN.md and src/theme/colors.ts. The ground is the brown the linocut prints are pulled on,
+     so every print bleeds into the page without an edge. */
+  :root {
+    color-scheme: dark;
+    --ground: #231407;
+    --stout: #1f1308;
+    --stout-3: #3a2515;
+    --ink: #1f1308;
+    --ink-deep: #0d0703;
+    --amber: #e8a317;
+    --amber-light: #f5b642;
+    --foam: #fbf3e0;
+    --foam-muted: #e8dcc0;
+    --muted: #a8896a;
+    --paper-muted: #6b5440;
+    --hair: rgb(251 243 224 / 0.1);
+    --display: "Baloo 2", ui-rounded, system-ui, sans-serif;
+    --text: "Bricolage Grotesque", system-ui, sans-serif;
+    --gutter: clamp(20px, 5vw, 72px);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--foam);
+    font: 400 18px/1.55 var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  img { display: block; max-width: 100%; }
+  p { margin: 0; text-wrap: pretty; }
+  h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: 800; text-wrap: balance; }
+  :focus-visible { outline: 3px solid var(--foam); outline-offset: 4px; }
+
+  .skip-link {
+    position: absolute;
+    top: -80px;
+    left: 16px;
+    z-index: 50;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: var(--foam);
+    color: var(--ink);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .skip-link:focus { top: 16px; }
+
+  .top {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px var(--gutter);
+  }
+  .wordmark {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 10px;
+    color: var(--foam);
+    font: 800 24px/1 var(--display);
+    text-decoration: none;
+  }
+  .wordmark img { width: 36px; height: 36px; border-radius: 50%; }
+  .site-nav { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: var(--ground); }
+  .site-nav a {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    padding: 0 12px;
+    border-radius: 10px;
+    color: var(--foam-muted);
+    font-size: 16px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .site-nav a:hover { color: var(--foam); background: var(--stout-3); }
+
+  /* Buttons are printed blocks: an ink outline and a hard ink offset like a stamp. Pressed, they sink into it.
+     Both stores get the same amber block; the visitor's platform goes first. */
+  .stores { display: flex; flex-wrap: wrap; gap: 16px; }
+  .store {
+    display: inline-flex;
+    min-height: 58px;
+    align-items: center;
+    gap: 10px;
+    padding: 0 24px;
+    border: 2.5px solid var(--ink-deep);
+    border-radius: 14px;
+    background: var(--amber);
+    color: var(--ink);
+    box-shadow: 4px 5px 0 var(--ink-deep);
+    font: 700 17px/1 var(--text);
+    text-decoration: none;
+    transition: transform 110ms ease-out, box-shadow 110ms ease-out, background-color 110ms ease-out;
+  }
+  .store svg { width: 20px; height: 20px; flex: none; }
+  .store:hover { transform: translate(-1px, -2px); box-shadow: 5px 7px 0 var(--ink-deep); }
+  .store:active { transform: translate(3px, 4px); box-shadow: 1px 1px 0 var(--ink-deep); }
+  .store:hover { background: var(--amber-light); }
+
+  /* Hero: the table is a linocut, the coaster on it takes tally marks. */
+  .hero { position: relative; min-height: max(660px, 100svh); overflow: hidden; }
+  /* Calms the woodgrain under the headline so the text reads; the coaster side stays untouched. */
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(90deg, rgb(35 20 7 / 0.9) 0%, rgb(35 20 7 / 0.72) 34%, rgb(35 20 7 / 0) 52%);
+    pointer-events: none;
+  }
+  .table { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .table .marks { fill: var(--ink); }
+  .table .coaster-name { font: 800 44px var(--display); fill: var(--ink); }
+  .marks .is-new { transform-box: fill-box; transform-origin: 0 50%; animation: carve 170ms ease-out; }
+  @keyframes carve { from { transform: scaleX(0); } }
+
+  /* Tells a first-time visitor the coaster is the thing to tap; goes away after the first mark. */
+  .coaster-hint { transition: opacity 300ms ease-out; }
+  .coaster-hint text { font: 800 46px var(--display); fill: var(--amber); stroke: var(--ink-deep); stroke-width: 9px; paint-order: stroke; stroke-linejoin: round; }
+  .coaster-hint path { fill: none; stroke: var(--ink-deep); stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round; }
+  .coaster-hint .bob { animation: bob 1.6s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translate(-6px, 6px); } }
+  .hero.is-tallied .coaster-hint { opacity: 0; }
+  /* A cut line runs round the coaster while it is under the pointer or focused. */
+  .coaster-ring { fill: none; stroke: var(--foam); stroke-width: 5px; stroke-dasharray: 22 16; opacity: 0; transform-box: fill-box; transform-origin: center; transition: opacity 150ms ease-out; }
+  .hero:has(.coaster-hit:hover) .coaster-ring,
+  .hero:has(.coaster-hit:focus-visible) .coaster-ring { opacity: 0.9; animation: spin 12s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hero-copy {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    align-content: center;
+    gap: 28px;
+    min-height: inherit;
+    max-width: calc(700px + var(--gutter));
+    padding: 120px var(--gutter) 96px;
+    pointer-events: none;
+  }
+  .hero-copy > * { pointer-events: auto; }
+  .hero h1 { font-size: clamp(60px, 7.2vw, 112px); line-height: 0.92; letter-spacing: -0.04em; }
+  .lede { max-width: 22em; color: var(--foam-muted); font-size: 21px; line-height: 1.5; }
+
+  .coaster-hit {
+    position: absolute;
+    z-index: 2;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    /* A pencil, tip at the bottom left, says what the coaster is for. */
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M4 32l3.5-10.5L25 4l7 7L14.5 28.5z' fill='%23e8a317' stroke='%230d0703' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='M4 32l3.5-10.5 7 7z' fill='%23fbf3e0' stroke='%230d0703' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='M4 32l1.8-5.2 3.4 3.4z' fill='%230d0703'/%3E%3C/svg%3E") 4 32, pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .coaster-hit[aria-disabled="true"] { cursor: default; }
+  .coaster-hit:focus-visible { outline: none; }
+
+  /* The count is a torn slip of paper, like the bill further down. */
+  .tally {
+    position: absolute;
+    right: calc(var(--gutter) + 8px);
+    bottom: 56px;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 16px;
+    width: 320px;
+    padding: 16px 16px 26px 22px;
+    background: var(--foam);
+    color: var(--ink);
+    transform: rotate(-2deg);
+    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 16px 100%;
+            mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 16px 100%;
+  }
+  .tally[hidden], .coaster-hit[hidden] { display: none; }
+  .tally output { font: 800 28px/1.24 var(--display); font-variant-numeric: tabular-nums; }
+  .tally [data-hint] { grid-column: 1 / -1; color: var(--paper-muted); font-size: 16px; }
+  .undo {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 2px solid var(--ink-deep);
+    border-radius: 10px;
+    background: var(--foam);
+    color: var(--ink);
+    box-shadow: 2px 3px 0 var(--ink-deep);
+    font: 700 15px/1 var(--text);
+    cursor: pointer;
+    transition: transform 110ms ease-out, box-shadow 110ms ease-out;
+  }
+  .undo:hover { transform: translate(-1px, -1px); box-shadow: 3px 4px 0 var(--ink-deep); }
+  .undo:active { transform: translate(2px, 3px); box-shadow: 0 0 0 var(--ink-deep); }
+  .undo:focus-visible { outline-color: var(--ink); }
+  .undo:disabled { border-color: rgb(31 19 8 / 0.25); color: rgb(31 19 8 / 0.4); box-shadow: none; transform: none; cursor: default; }
+
+  /* Prints: the illustration is the section, the text sits in its calm area. */
+  .print { position: relative; }
+  .print > img { width: 100%; height: auto; }
+  /* Prints fade into the ground at their top and bottom, so the page reads as one sheet. */
+  .print > img, .map-pan > img, .bill-table > img, .closing img {
+    -webkit-mask-image: linear-gradient(#0000, #000 9%, #000 91%, #0000);
+            mask-image: linear-gradient(#0000, #000 9%, #000 91%, #0000);
+  }
+  .print h2 { font-size: clamp(44px, 5.6vw, 88px); line-height: 0.96; letter-spacing: -0.035em; }
+  .print p { margin-top: 20px; color: var(--foam-muted); font-size: 20px; }
+  .print--map .print-copy { position: absolute; top: 47%; left: 31%; width: 38%; }
+  /* The "you are here" dot walks the printed route to the pub as the page scrolls. */
+  .map-frame { position: relative; }
+  .map-pan { position: relative; }
+  .map-pan > img { width: 100%; height: auto; }
+  .walk { position: absolute; top: 0; left: 0; width: 100%; height: auto; aspect-ratio: 1536 / 1024; pointer-events: none; }
+  /* home.js adds .is-live: the map holds still while scrolling walks the dot to the pub, then the page moves on. */
+  .print--map.is-live { height: calc(100svh + 120svh); }
+  .print--map.is-live .map-stage { position: sticky; top: 0; display: grid; place-items: center; height: 100svh; overflow: hidden; }
+  .print--map.is-live .map-frame { width: 100%; }
+  .walk .dot { transform-box: fill-box; transform-origin: center; transition: scale 200ms ease-out; }
+  .walk.is-there .dot { scale: 1.3; }
+  .print--pub .print-copy { position: absolute; top: 50%; left: var(--gutter); width: 36%; transform: translateY(-50%); }
+
+  /* Slips pinned on the bar wall of the print, between the taps and the darts board. */
+  .board { position: relative; }
+  .board-scene { position: relative; }
+  .board-scene > img {
+    width: 100%;
+    height: auto;
+    -webkit-mask-image: linear-gradient(#0000, #000 8%, #000 86%, #0000);
+            mask-image: linear-gradient(#0000, #000 8%, #000 86%, #0000);
+  }
+  .slips {
+    position: absolute;
+    top: 11%;
+    left: 21%;
+    right: 21%;
+    bottom: 32%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: center;
+    gap: 0;
+  }
+  /* Each slip is a printed paper scrap with its own pin (slip-1…5); the text is set over it.
+     Slips are larger than a third of the wall, so the rows overlap a little like notes pinned over each other. */
+  .slip {
+    position: relative;
+    box-sizing: border-box;
+    flex: none;
+    width: 34%;
+    --slip-w: 18vw;
+    margin: 0 -0.5% -1.5%;
+    /* At least the paper's own ratio; taller when the text needs it, the paper stretches with it. */
+    min-height: calc(var(--slip-w, 1px) * 0.75);
+    padding: 3.2vw 2.6vw 2.4vw;
+    background: center / 100% 100% no-repeat;
+    color: var(--ink);
+    /* A hard ink offset plus a soft cast shadow, so overlapping slips separate from each other and from the wall. */
+    filter: drop-shadow(4px 6px 0 rgb(13 7 3 / 0.7)) drop-shadow(0 10px 14px rgb(0 0 0 / 0.45));
+  }
+  .slip:nth-child(1) { background-image: url("{{ asset.slip_1_webp }}"); rotate: -4deg; z-index: 1; }
+  .slip:nth-child(2) { background-image: url("{{ asset.slip_2_webp }}"); rotate: 3deg; translate: 0 16px; z-index: 3; }
+  .slip:nth-child(3) { background-image: url("{{ asset.slip_3_webp }}"); rotate: -2deg; translate: 0 -4px; z-index: 2; }
+  .slip:nth-child(4) { background-image: url("{{ asset.slip_4_webp }}"); rotate: 3.5deg; translate: -8px 0; z-index: 4; }
+  .slip:nth-child(5) { background-image: url("{{ asset.slip_5_webp }}"); rotate: -3deg; translate: 10px 8px; z-index: 5; }
+  .slip h3 { font-size: clamp(19px, 1.85vw, 30px); line-height: 1.05; }
+  .slip p { margin-top: 0.4em; color: var(--paper-muted); font-size: clamp(14px, 1.2vw, 18px); line-height: 1.35; }
+  /* A rubber stamp for what is coming in the next update. */
+  .stamp {
+    position: absolute;
+    top: 14%;
+    right: 9%;
+    padding: 2px 10px;
+    border: 3px solid var(--amber);
+    border-radius: 8px;
+    color: #b87e0c;
+    font: 800 15px/1.4 var(--display);
+    rotate: 8deg;
+  }
+  .slip--soon h3 { padding-right: 64px; }
+
+  /* The bill lies on the table after the round. */
+  .bill-table {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: clamp(760px, 66vw, 1000px);
+    padding: 80px var(--gutter);
+  }
+  .bill-table > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .bill {
+    position: relative;
+    width: min(440px, 100%);
+    padding: 40px 36px 58px;
+    background: var(--foam);
+    color: var(--ink);
+    font-size: 17px;
+    transform: rotate(-2.5deg);
+    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
+            mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
+  }
+  /* Tossed onto the table once it scrolls into view; home.js marks the section, so without JS the bill just lies there. */
+  .bill-table[data-reveal].is-armed .bill {
+    opacity: 0;
+    transform: translateY(-48px) rotate(-9deg) scale(1.05);
+    transition: opacity 180ms ease-out, transform 420ms cubic-bezier(0.25, 1.4, 0.5, 1);
+  }
+  .bill-table.is-armed.is-in .bill { opacity: 1; transform: rotate(-2.5deg); }
+  .bill h2 { font-size: 44px; line-height: 1.1; letter-spacing: -0.02em; }
+  .bill .sub { margin-top: 4px; color: var(--paper-muted); font-size: 16px; }
+  .bill dl { margin: 28px 0 0; }
+  .bill .row { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; }
+  .bill dt { display: flex; flex: 1; gap: 8px; }
+  .bill dt::after { content: ""; flex: 1; transform: translateY(-4px); border-bottom: 2px dotted rgb(31 19 8 / 0.35); }
+  .bill dd { flex: none; margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .bill .total { margin-top: 14px; padding-top: 14px; border-top: 2px solid var(--ink); font-size: 20px; }
+  .bill .sign { margin-top: 28px; font: 800 24px/1.2 var(--display); }
+
+  .closing {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(32px, 6vw, 96px);
+    padding: clamp(80px, 9vw, 140px) var(--gutter) 120px;
+  }
+  .closing h2 { font-size: clamp(64px, 10vw, 168px); line-height: 0.9; letter-spacing: -0.045em; }
+  .closing .stores { margin-top: 36px; }
+  .closing img { width: 100%; height: auto; }
+
+  footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 24px;
+    padding: 20px var(--gutter) 32px;
+    border-top: 1px solid var(--hair);
+    color: var(--muted);
+    font-size: 15px;
+  }
+  footer nav { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0 -8px; }
+  footer p, footer a { display: inline-flex; min-height: 44px; align-items: center; }
+  footer a { padding: 0 8px; color: var(--foam-muted); text-decoration: none; }
+  footer a:hover { color: var(--foam); text-decoration: underline; }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 1000px) {
+    .print--map .print-copy { position: static; width: auto; max-width: 40rem; padding: 32px var(--gutter) 0; }
+    .print--map { padding-bottom: 56px; }
+    .print--map.is-live { padding-bottom: 0; }
+    .print--map.is-live .map-frame { width: 100%; overflow: hidden; }
+  }
+  /* On phones the map is shown at twice the width and pans to keep the dot in view. */
+  @media (max-width: 700px) {
+    .print--map.is-live .map-pan { width: 200%; will-change: transform; }
+  }
+
+  /* Below this the wall is too small for the slips, so they sit over the lower part of the print instead. */
+  @media (max-width: 900px) {
+    .slips { position: relative; inset: auto; margin-top: -30%; padding: 0 var(--gutter) 40px; gap: 14px; }
+    .slip { width: min(100%, 380px); min-height: 0; margin: 0; padding: 34px 30px 26px; }
+    .slip h3 { font-size: 22px; }
+    .slip p { font-size: 16px; }
+  }
+  @media (max-width: 600px) {
+    .slips { margin-top: -45%; }
+  }
+
+  /* home.js uses the same query; keep them in sync. */
+  @media (max-width: 1180px), (max-aspect-ratio: 23/20) {
+    .site-nav a:not([hreflang]) { display: none; }
+    .hero { display: flex; flex-direction: column; min-height: 0; padding-top: 84px; }
+    .hero::before { content: none; }
+    .table {
+      position: relative;
+      inset: auto;
+      height: clamp(300px, min(52svh, 80vw), 620px);
+      -webkit-mask-image: linear-gradient(#000 85%, #0000);
+              mask-image: linear-gradient(#000 85%, #0000);
+    }
+    .tally { order: 1; position: relative; right: auto; bottom: auto; align-self: flex-end; width: min(320px, calc(100% - 2 * var(--gutter))); margin: -48px var(--gutter) 0; }
+    .hero-copy { order: 2; min-height: 0; padding: 40px var(--gutter) 72px; }
+    .store { flex: 1 1 260px; max-width: 360px; justify-content: center; }
+  }
+
+  /* Landscape tablets and small laptops: the cropped coaster sits beside the copy. */
+  @media (min-width: 901px) and (max-width: 1180px) and (min-aspect-ratio: 23/20) {
+    .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; min-height: max(620px, 100svh); padding-top: 0; }
+    .hero-copy { grid-column: 1; grid-row: 1; order: 0; min-height: 0; padding: 110px 0 72px var(--gutter); }
+    .table { grid-column: 2; grid-row: 1; height: 100%; -webkit-mask-image: none; mask-image: none; }
+    .tally { position: absolute; right: var(--gutter); bottom: 40px; margin: 0; }
+    .hero h1 { font-size: clamp(52px, 6.4vw, 76px); }
+    .store { flex: 0 1 auto; }
+  }
+
+  @media (max-width: 900px) {
+    .print--pub .print-copy { position: static; width: auto; transform: none; padding: 32px var(--gutter) 0; }
+    .print--pub { padding-bottom: 56px; }
+    .closing { grid-template-columns: 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0ms !important; transition-delay: 0ms !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#obsah">{% translate "Přeskočit na obsah" %}</a>
+
+<header class="top">
+  <a class="wordmark" href="{% if LANGUAGE_CODE == 'en' %}/en{% else %}/{% endif %}"><img src="{{ asset.icon_144_png }}" alt="" width="36" height="36">Na pivo</a>
+  <nav class="site-nav" aria-label="{% translate "Hlavní navigace" %}">
+    <a href="#kompas">{% translate "Co umí" %}</a>
+    <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
+    {% if LANGUAGE_CODE == "en" %}
+      <a href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>
+    {% else %}
+      <a href="{{ switch_url }}" hreflang="en" lang="en">English</a>
+    {% endif %}
+  </nav>
+</header>
+
+<main id="obsah">
+  <section class="hero" aria-labelledby="hero-title">
+    <svg class="table" data-table viewBox="0 0 1536 1024" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+      <defs>
+        <!-- Roughens the printed edges so marks and the name look cut and inked, not drawn. -->
+        <filter id="ink" x="-5%" y="-5%" width="110%" height="110%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.12" numOctaves="2" seed="7"/>
+          <feDisplacementMap in="SourceGraphic" scale="4"/>
+        </filter>
+      </defs>
+      <image href="{{ asset.hero_table_1536_webp }}" width="1536" height="1024"/>
+      <g filter="url(#ink)">
+        <text class="coaster-name" x="991" y="330" text-anchor="middle">Na pivo</text>
+        <g class="marks" data-marks></g>
+      </g>
+      <circle class="coaster-ring" cx="991" cy="483" r="312"/>
+      <g class="coaster-hint">
+        <!-- Sits on the empty coaster, so it stays in view in every crop. -->
+        <g class="bob">
+          <text x="991" y="520" text-anchor="middle" transform="rotate(-5 991 520)">{% translate "Ťukni a čárkuj!" %}</text>
+          <path d="M930 548 C 950 590, 1030 596, 1052 560 M 1036 552 L 1053 559 L 1050 578"/>
+        </g>
+      </g>
+      <circle data-coaster cx="991" cy="483" r="290" fill="none"/>
+    </svg>
+
+    <div class="hero-copy">
+      <h1 id="hero-title">{% translate "Čárkuj piva jak na tácku." %}</h1>
+      <p class="lede">{% blocktranslate trimmed %}Každé pivo je jedno ťuknutí. Počítadlo hlídá počet i útratu, zapíše se i bez signálu a ráno z něj máš deník celého večera.{% endblocktranslate %}</p>
+      {% include "pubs/_store_buttons.html" %}
+    </div>
+
+    <button class="coaster-hit" type="button" data-hit aria-describedby="tally-state" hidden>
+      <span class="sr-only">{% translate "Přičárkovat pivo na tácek" %}</span>
+    </button>
+    <div class="tally" data-tally hidden>
+      <output id="tally-state" aria-live="polite">{% translate "Čistej tácek." %}</output>
+      <button class="undo" type="button" data-undo disabled>{% translate "Ubrat" %}</button>
+      <span data-hint>{% translate "Ťukni na tácek." %}</span>
+    </div>
+  </section>
+
+  <section class="print print--map" id="kompas" data-map-run aria-labelledby="map-title">
+    <div class="map-stage">
+      <div class="map-frame">
+        <div class="map-pan" data-map-pan>
+          <img src="{{ asset.old_town_map_1536_webp }}" srcset="{{ asset.old_town_map_768_webp }} 768w, {{ asset.old_town_map_1536_webp }} 1536w" sizes="100vw" width="1536" height="1024" alt="" loading="lazy">
+          <svg class="walk" data-walk viewBox="0 0 1536 1024" aria-hidden="true" focusable="false">
+            <path data-route fill="none" d="M300 485 L346 475 L381 467 L417 460 L452 448 L482 427 L508 399 L536 375 L569 360 L605 350 L640 346 L676 348 L710 355 L743 364 L776 372 L809 377 L843 379 L879 380 L915 379 L952 376 L989 365 L1022 337 L1046 305 L1074 279 L1105 261 L1135 244 L1164 224 L1200 192"/>
+            <g class="walker" data-walker transform="translate(300 485)">
+              <g class="dot">
+                <circle r="20" fill="#e8a317" stroke="#0d0703" stroke-width="6"/>
+                <circle r="7" fill="#0d0703"/>
+              </g>
+            </g>
+          </svg>
+        </div>
+        <div class="print-copy">
+          <h2 id="map-title">{% translate "Kompas tě dovede." %}</h2>
+          <p>{% blocktranslate trimmed %}Šipka ukáže nejbližší hospodu, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na „Dej mi jinou“.{% endblocktranslate %}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="print print--pub" aria-labelledby="pub-title">
+    <img src="{{ asset.pub_night_1536_webp }}" srcset="{{ asset.pub_night_768_webp }} 768w, {{ asset.pub_night_1536_webp }} 1536w" sizes="100vw" width="1536" height="1024" alt="" loading="lazy">
+    <div class="print-copy">
+      <h2 id="pub-title">{% translate "Cinkni partě, že sedíš." %}</h2>
+      <p>{% blocktranslate trimmed %}Jdeš na pivo? Cinkni a parta to hned ví. Kámoši kývnou, jestli dorazí.{% endblocktranslate %}</p>
+    </div>
+  </section>
+
+  <section class="board" aria-labelledby="board-title">
+    <div class="board-scene">
+      <img src="{{ asset.pub_bar_1536_webp }}" srcset="{{ asset.pub_bar_800_webp }} 800w, {{ asset.pub_bar_1536_webp }} 1536w" sizes="100vw" width="1536" height="1024" alt="" loading="lazy">
+      <h2 id="board-title" class="sr-only">{% translate "Co dalšího Na pivo umí" %}</h2>
+        <div class="slips">
+        <article class="slip">
+          <h3>{% translate "Ráno víš, kolik to stálo" %}</h3>
+          <p>{% translate "Piva, ceny i hospody zůstanou v deníku." %}</p>
+        </article>
+        <article class="slip">
+          <h3>{% translate "Zmapuj hospodu" %}</h3>
+          <p>{% translate "Šipky, kulečník nebo zahrádka. Co zapíšeš ty, uvidí další." %}</p>
+        </article>
+        <article class="slip">
+          <h3>{% translate "Staň se FotoPivařem" %}</h3>
+          <p>{% translate "Soutěž o nejlepší pivní fotku. Každých 14 dní nové kolo." %}</p>
+        </article>
+        <article class="slip">
+          <h3>{% translate "Stoupej po levelech" %}</h3>
+          <p>{% translate "Za piva sbíráš XP jako Pivař, za zmapované hospody jako Mapér." %}</p>
+        </article>
+        <article class="slip slip--soon">
+          <h3>Tour de pub</h3>
+          <p>{% translate "Naplánuj tah po hospodách a pošli partě odkaz." %}</p>
+          <span class="stamp">{% translate "Brzy" %}</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="bill-table" data-reveal aria-labelledby="bill-title">
+    <img src="{{ asset.table_bill_1024_webp }}" width="1024" height="1024" alt="" loading="lazy">
+    <div class="bill">
+      <h2 id="bill-title">{% translate "Účet" %}</h2>
+      <p class="sub">{% translate "Co tě Na pivo stojí" %}</p>
+      <dl>
+        <div class="row"><dt>{% translate "Appka" %}</dt><dd>{% translate "0 Kč" %}</dd></div>
+        <div class="row"><dt>{% translate "Reklamy" %}</dt><dd>{% translate "žádné" %}</dd></div>
+        <div class="row"><dt>{% translate "GPS trasa" %}</dt><dd>{% translate "neukládám" %}</dd></div>
+        <div class="row"><dt>{% translate "Bez signálu" %}</dt><dd>{% translate "zapíše se" %}</dd></div>
+        <div class="row"><dt>{% translate "Jazyk" %}</dt><dd>{% translate "česky, anglicky" %}</dd></div>
+        <div class="row total"><dt>{% translate "Celkem" %}</dt><dd>{% translate "0 Kč" %}</dd></div>
+      </dl>
+      <p class="sign">{% translate "Díky a přijď zas. Tomáš" %}</p>
+    </div>
+  </section>
+
+  <section class="closing" aria-labelledby="closing-title">
+    <div>
+      <h2 id="closing-title">{% translate "Na zdraví." %}</h2>
+      {% include "pubs/_store_buttons.html" %}
+    </div>
+    <img src="{{ asset.table_top_1024_webp }}" srcset="{{ asset.table_top_640_webp }} 640w, {{ asset.table_top_1024_webp }} 1024w" sizes="(max-width: 900px) 100vw, 50vw" width="1024" height="1024" alt="" loading="lazy">
+  </section>
+</main>
+
+
+<footer>
+  <p>{% translate "Na pivo dělá Tomáš Mach" %}</p>
+  <nav aria-label="{% translate "Dokumenty a kontakt" %}">
+    <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
+    <a href="{{ terms_url }}">{% translate "Podmínky" %}</a>
+    <a href="{{ delete_account_url }}">{% translate "Smazání účtu" %}</a>
+    <a href="https://www.instagram.com/jsem_mach/">Instagram</a>
+    <a href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a>
+  </nav>
+</footer>
+
+{{ tally_copy|json_script:"landing-copy" }}
+<script>
+  // The store matching the visitor's phone goes first; desktop defaults to iPhone.
+  (function () {
+    var android = /Android/i.test(navigator.userAgent);
+    document.querySelectorAll('.stores').forEach(function (group) {
+      var primary = group.querySelector(android ? '[data-store="android"]' : '[data-store="ios"]');
+      group.prepend(primary);
+    });
+  })();
+</script>
+<script src="{{ asset.home_js }}" defer></script>
+</body>
+</html>
