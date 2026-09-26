@@ -1,3 +1,4 @@
+import { waitFor } from '@testing-library/react-native';
 import { loadPartyFriends } from '../friendsClient';
 import { loadFriendsDashboardSnapshot } from '../friendsSnapshot';
 
@@ -11,11 +12,13 @@ afterEach(() => { global.fetch = originalFetch; });
 
 const friend = { id: 'eva', nickname: 'eva', display_name: '', avatar_url: null, is_public: true };
 
-it('reads the saved party first, fetches it once when there is none, and gives up offline', async () => {
-  global.fetch = jest.fn() as jest.Mock;
-  jest.mocked(loadFriendsDashboardSnapshot).mockResolvedValueOnce({ savedAt: 1, dashboard: { friends: [{ id: 'pepa' }], settings: { ghostMode: true } } as never });
-  expect(await loadPartyFriends()).toEqual({ friends: [{ id: 'pepa' }], ghost: true });
-  expect(global.fetch).not.toHaveBeenCalled();
+it('answers from the saved party and still hands over the fresh one, fetches when nothing is saved, and gives up offline', async () => {
+  global.fetch = jest.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ friends: [friend], settings: { ghost_mode: false } }) })) as jest.Mock;
+  jest.mocked(loadFriendsDashboardSnapshot).mockResolvedValueOnce({ savedAt: 1, dashboard: { friends: [], settings: { ghostMode: true } } as never });
+  const onFresh = jest.fn();
+  expect(await loadPartyFriends(undefined, onFresh)).toEqual({ friends: [], ghost: true });
+  // Eva accepted since Parta was last open here.
+  await waitFor(() => expect(onFresh).toHaveBeenCalledWith(expect.objectContaining({ friends: [expect.objectContaining({ id: 'eva' })] })));
 
   global.fetch = jest.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ friends: [friend] }) })) as jest.Mock;
   expect(await loadPartyFriends()).toMatchObject({ friends: [{ id: 'eva', nickname: 'eva' }], ghost: false });
