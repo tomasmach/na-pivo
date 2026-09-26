@@ -2294,6 +2294,7 @@ export const en: Strings = {
     crewGoing: (n: number) => `${n} in the crew`, crewLeftMember: (names: string[]) => names.length > 1 ? `${names.join(', ')} are no longer with you` : `${names[0]} is no longer with you`,
     crewCounted: 'I’ve added you to the people who did it.', crewPending: 'Once you have signal, I’ll add you to the people who did it.',
     crewClosed: 'This walk is closed, nobody else can join.', crewRefused: 'You couldn’t join the crew anymore. You can still do the tour your own way.',
+    crewRefusedOrganizer: 'You can’t bring a crew to this tour right now. You can still do it your own way.',
     crewSheetNote: 'Whoever scans it joins you. They will see your nickname and who else is going.',
     crewQrA11y: 'QR code to join the crew',
     crewPrivacyTitle: 'Who sees what',

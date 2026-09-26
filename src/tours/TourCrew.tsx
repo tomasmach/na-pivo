@@ -27,7 +27,8 @@ function Coins({ members, ground }: { members: CrewMember[]; ground: string }) {
 /** Who walks together, inside the title block so the stops stay above the fold. */
 export function TourCrewRow({ crew, self, onInvite }: { crew: TourCrew; self: CrewMember | null; onInvite: () => void }) {
   if (crew.refused)
-    return <View style={styles.rowWrap}><Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{t.tours.crewRefused}</Text></View>;
+    // An organizer is refused when the tour changed or went away since the phone saved it.
+    return <View style={styles.rowWrap}><Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.caption}>{crew.organizer ? t.tours.crewRefusedOrganizer : t.tours.crewRefused}</Text></View>;
   const members = going(crew);
   const left = (crew.members ?? []).filter((member) => member.left);
   // Before the server answers, the walker still sees their own face, so the row does not jump.

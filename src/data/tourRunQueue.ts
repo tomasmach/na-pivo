@@ -18,8 +18,10 @@ export interface TourRunQueueItem {
   publicId: string;
   op: TourRunOp;
   createdAt: string;
+  /** A registration names the stops the organizer walks, so the server can refuse an outdated route. */
+  stopIds?: string[];
 }
-/** `refused`: the server turned the join down (run over, full or blocked); nothing else will follow for it. */
+/** `refused`: the server turned the join or the registration down (run over, full, blocked, route changed); nothing else will follow for it. */
 export type TourRunDelivery = { run: TourCrewRun | null; refused: boolean };
 type DeliveryListener = (item: TourRunQueueItem, delivery: TourRunDelivery) => void;
 let listener: DeliveryListener | null = null;
@@ -33,7 +35,8 @@ const MEMBER_STATE = { join: 'joined', leave: 'left', complete: 'completed', unc
 function isItem(value: unknown): value is TourRunQueueItem {
   const item = value as TourRunQueueItem;
   return !!item && typeof item.runId === 'string' && typeof item.publicId === 'string' && OPS.includes(item.op) &&
-    typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt));
+    typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt)) &&
+    (item.stopIds === undefined || (Array.isArray(item.stopIds) && item.stopIds.every((id) => typeof id === 'string')));
 }
 const { load, save } = createQueueStorage<TourRunQueueItem>(STORAGE_KEY, isItem);
 const locked = createQueueLock();
@@ -42,7 +45,7 @@ async function deliver(item: TourRunQueueItem): Promise<'ok' | 'drop' | 'retry'>
   const age = Date.now() - Date.parse(item.createdAt);
   if (age > MAX_AGE_MS) return 'drop';
   const result = item.op === 'register' || item.op === 'end'
-    ? await putTourRun(item.runId, item.publicId, item.op === 'end')
+    ? await putTourRun(item.runId, item.publicId, item.op === 'end', item.op === 'register' ? item.stopIds : undefined)
     : await putTourRunMember(item.runId, MEMBER_STATE[item.op], item.publicId);
   if (result.stale) return 'retry';
   if (result.status >= 200 && result.status < 300) {
@@ -50,7 +53,7 @@ async function deliver(item: TourRunQueueItem): Promise<'ok' | 'drop' | 'retry'>
     return 'ok';
   }
   if (result.status === 400 || result.status === 422) {
-    listener?.(item, { run: null, refused: item.op === 'join' });
+    listener?.(item, { run: null, refused: item.op === 'join' || item.op === 'register' });
     return 'drop';
   }
   if (result.status === 404 && age > UNKNOWN_RUN_MAX_AGE_MS) return 'drop';
