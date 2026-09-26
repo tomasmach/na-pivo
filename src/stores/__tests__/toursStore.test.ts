@@ -308,6 +308,6 @@ describe('Tours durable lifecycle', () => {
     expect(tourContentSignature(store.getState().plans[0])).not.toBe(before);
     await store.getState().beginDraft(id);
     await store.getState().setChallenge(store.getState().draft!.stops[0].id, '   ');
-    expect(store.getState().draft!.stops[0]).not.toHaveProperty('challenge');
+    expect(store.getState().draft!.stops[0].challenge).toBe('');
   });
 });
