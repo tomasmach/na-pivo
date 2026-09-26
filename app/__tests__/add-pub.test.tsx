@@ -7,6 +7,7 @@ import AddPubScreen from '../add-pub';
 
 let mockSearchParams: Record<string, string> = {};
 const mockBack: jest.Mock = jest.fn();
+const mockPush: jest.Mock = jest.fn();
 const mockBumpCatalogRevision: jest.Mock = jest.fn();
 const mockShowToast: jest.Mock = jest.fn();
 const mockEnsureLocationPermission: jest.Mock = jest.fn(async () => 'granted');
@@ -29,6 +30,7 @@ const mockResolvePubSearchResult: jest.Mock = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
     back: mockBack,
+    push: mockPush,
   })),
   useLocalSearchParams: jest.fn(() => mockSearchParams),
 }));
@@ -488,9 +490,12 @@ describe('AddPubScreen location confirmation', () => {
     }]);
     await renderScreen();
     expect(renderer!.root.findAllByProps({ children: t.addPub.locationNeedsFixOrPin }).length).toBeGreaterThan(0);
+    expect(renderer!.root.findAllByProps({ children: t.addPub.locationBody })).toHaveLength(0);
+    expect(renderer!.root.findAllByProps({ children: t.addPub.useCurrentLocation }).length).toBeGreaterThan(0);
     await press(t.a11y.addPubPickOnMapButton);
     expect(mockPickerStarts.at(-1)).toEqual({ lat: 50.087, lng: 14.421 });
     await press('mock-pin-confirm');
+    expect(renderer!.root.findAllByProps({ children: t.addPub.locationNeedsFixOrPin })).toHaveLength(0);
     await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith(
       { client_id: 'unresolved-id', lat: 49.2, lng: 16.61, city: 'Brno', address: 'Neznámá 1' },
@@ -512,7 +517,7 @@ describe('AddPubScreen location confirmation', () => {
     expect(renderer!.root.findAllByProps({ children: t.addPub.locationNeedsFix }).length).toBeGreaterThan(0);
   });
 
-  it('says the address was not found when the server cannot place it', async () => {
+  it('opens the fix form for a new pub whose address the server cannot place', async () => {
     mockEnqueueAddedPub.mockResolvedValue('location-not-found');
     await renderScreen();
     fillAddress();
@@ -520,7 +525,48 @@ describe('AddPubScreen location confirmation', () => {
     await press(confirmLabel);
     await submit();
     await act(async () => { await Promise.resolve(); });
-    expect(mockShowToast).toHaveBeenLastCalledWith(t.addPub.addressNotFoundToast);
+    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/add-pub',
+      params: {
+        clientId: 'uuid-fixed', name: 'Hospoda U Testu', city: 'Brno', address: 'Česká 12',
+        lat: String(resolvedAddress.lat), lng: String(resolvedAddress.lng), needsLocation: '1',
+      },
+    });
+    expect(mockShowToast).not.toHaveBeenCalled();
+    expect(mockFireSuccessHaptic).not.toHaveBeenCalled();
+  });
+
+  it('suggests the pin when a corrected address of an unsent pub still cannot be found', async () => {
+    mockSearchParams = {
+      clientId: 'unresolved-id', name: 'Hospoda U Testu', city: 'Praha',
+      address: 'Neznámá 1', lat: '50.087', lng: '14.421', needsLocation: '1',
+    };
+    mockLoadAddedPubSubmissions.mockResolvedValue([{
+      client_id: 'unresolved-id', failureReason: 'location-not-found', pendingOperation: 'create',
+    }]);
+    mockEnqueueAddedPubEdit.mockResolvedValue('location-not-found');
+    await renderScreen();
+    fillAddress();
+    await press(t.addPub.findAddress);
+    await press(confirmLabel);
+    await submit();
+    await act(async () => { await Promise.resolve(); });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenLastCalledWith(t.addPub.stillNotFoundToast);
+  });
+
+  it('confirms only the real sync result', async () => {
+    mockEnqueueAddedPub.mockResolvedValue('pending');
+    await renderScreen();
+    fillAddress();
+    await press(t.addPub.findAddress);
+    await press(confirmLabel);
+    await submit();
+    await act(async () => { await Promise.resolve(); });
+    expect(mockShowToast).toHaveBeenCalledTimes(1);
+    expect(mockShowToast).toHaveBeenLastCalledWith(t.addPub.queuedToast);
+    expect(mockFireSuccessHaptic).not.toHaveBeenCalled();
   });
 
   it('blocks an edit with changed name and address until the new location is confirmed', async () => {
