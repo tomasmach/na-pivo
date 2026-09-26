@@ -207,6 +207,8 @@ export default function AddPubScreen() {
   const handlePickSuggestion = useCallback(async (suggestion: PubSearchResult) => {
     Keyboard.dismiss();
     clearLookup();
+    // A map pin may point elsewhere; the picked place needs its own confirmation.
+    setSelectedLocation(null);
     const request = new AbortController();
     lookupRequest.current = request;
     setLocating(true);
