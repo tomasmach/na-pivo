@@ -479,6 +479,17 @@ msgstr "A mate is out for a beer"
 msgid "%(name)s sedí v %(pub)s. Nechceš se přidat?"
 msgstr "%(name)s is sitting in %(pub)s. Fancy joining?"
 
+msgid "Kamarád jde tour de pub"
+msgstr "A mate is on a pub crawl"
+
+#, python-format
+msgid "%(name)s jde tour „%(tour)s“ a sedí v %(pub)s. Přidáš se?"
+msgstr "%(name)s is on the tour “%(tour)s” and sitting in %(pub)s. Fancy joining?"
+
+#, python-format
+msgid "%(name)s jde tour „%(tour)s“ a míří do %(pub)s. Přidáš se?"
+msgstr "%(name)s is on the tour “%(tour)s” and heading to %(pub)s. Fancy joining?"
+
 msgid "Tahle hláška už vyšuměla."
 msgstr "This ping has gone flat."
 

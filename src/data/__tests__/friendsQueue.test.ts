@@ -116,7 +116,7 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
 
     shareFriendPubActivity.mockResolvedValue(retry());
     await enqueueFriendOp({ op: 'activity', clientId: 'live1', payload: { pub: PUB, recipientIds: ['friend-a'] } });
-    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1', ['friend-a'], expect.any(String));
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1', ['friend-a'], expect.any(String), undefined);
   });
 
   it('routes a request op through sendFriendRequest', async () => {
@@ -215,5 +215,25 @@ describe('isRetriableFriendError', () => {
     for (const code of ['http_400', 'http_403', 'http_404', 'not_friends', 'blocked', 'self_reaction', 'invite_expired']) {
       expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(false);
     }
+  });
+});
+
+describe('tour pings', () => {
+  it('keeps the tour through an offline wait and drops only a mangled one', async () => {
+    shareFriendPubActivity.mockResolvedValue(retry());
+    const tour = { title: 'Pivní okruh', heading: true };
+    await enqueueFriendOp({ op: 'activity', clientId: 't1', payload: { pub: PUB, message: 'Tour de pub: Pivní okruh', startedAt: '2026-09-26T18:00:00.000Z', tour } });
+    const stored = await readQueue();
+    // A legacy op without a tour still loads; one with a broken tour does not.
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...stored,
+      { op: 'activity', clientId: 'old', payload: { pub: PUB } },
+      { op: 'activity', clientId: 'bad', payload: { pub: PUB, tour: { title: 7 } } }]));
+    shareFriendPubActivity.mockClear();
+    shareFriendPubActivity.mockResolvedValue({ ok: true });
+    await flushFriendsQueue();
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, 'Tour de pub: Pivní okruh', 't1', undefined, '2026-09-26T18:00:00.000Z', tour);
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'old', undefined, undefined, undefined);
+    expect(shareFriendPubActivity).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toEqual([]);
   });
 });

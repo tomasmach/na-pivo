@@ -1041,12 +1041,20 @@ export async function removeFriend(accountId: string): Promise<FriendActionResul
   return res.ok ? { ok: true } : res.result;
 }
 
+/** A cinknutí sent from a tour: its title and whether the crew is still walking to the pub. */
+export interface TourPing {
+  title: string;
+  heading: boolean;
+}
+
 export async function shareFriendPubActivity(
   pub: Pub,
   message?: string,
   clientId?: string,
   recipientIds?: string[],
   startedAt?: string,
+  /** From a Tour de pub run: only changes the push wording, the server stores nothing. */
+  tour?: TourPing,
 ): Promise<FriendActionResult> {
   const now = startedAt ? new Date(startedAt) : new Date();
   const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000);
@@ -1064,6 +1072,7 @@ export async function shareFriendPubActivity(
       started_at: now.toISOString(),
       expires_at: expires.toISOString(),
       ...(targetIds ? { recipient_ids: targetIds } : {}),
+      ...(tour ? { tour_title: tour.title, tour_heading: tour.heading } : {}),
     },
   });
   if (res.ok && res.data.applied === false) {

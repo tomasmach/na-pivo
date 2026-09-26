@@ -6675,6 +6675,17 @@ class FriendActivityView(APIView):
                 )
                 notif_kind = FriendNotification.Kind.FRIEND_PLAN
                 push_kind = "friend_plan"
+            elif data.get("tour_title"):
+                # Same kind as a plain broadcast, so older apps still open Parta on tap.
+                title = LocalizedText(gettext_lazy("Kamarád jde tour de pub"))
+                body = LocalizedText(
+                    gettext_lazy("%(name)s jde tour „%(tour)s“ a míří do %(pub)s. Přidáš se?")
+                    if data.get("tour_heading")
+                    else gettext_lazy("%(name)s jde tour „%(tour)s“ a sedí v %(pub)s. Přidáš se?"),
+                    {"name": actor, "tour": data["tour_title"], "pub": activity.name},
+                )
+                notif_kind = FriendNotification.Kind.FRIEND_AT_PUB
+                push_kind = "friend_at_pub"
             else:
                 title = LocalizedText(gettext_lazy("Kamarád je na pivu"))
                 body = LocalizedText(

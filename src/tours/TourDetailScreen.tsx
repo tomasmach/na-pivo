@@ -22,7 +22,8 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { FontScaleCap } from '@/theme/fonts';
 import { TourButton, TourChallengeText, TourError, TourHeader, TourText, pubCount, tourDate, ui } from './TourChrome';
 import { TourMap } from './TourMap';
-import { TourCrewRow, TourCrewSheet } from './TourCrew';
+import { TourCrewRow, TourCrewSheet, type CrewPingState } from './TourCrew';
+import { loadPingFriends, type PingFriends } from './crewPing';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
 import { TourHistoryRow, TourJourneyStop, TourLeg, TourMapPreview, type StopFactsLine } from './TourJourney';
 import { formatWalkDistance, hoursOnDay, planDay, useTourStopFacts, walkingDistance, walkingLeg } from './stopFacts';
@@ -46,6 +47,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const [detail, setDetail] = useState<TourStop | null>(null); const [pubDetail, setPubDetail] = useState(false);
   const [largeMap, setLargeMap] = useState(false); const [shareMode, setShareMode] = useState(false);
   const [crewSheet, setCrewSheet] = useState(false);
+  const [friends, setFriends] = useState<PingFriends | null>(null); const [ping, setPing] = useState<CrewPingState | null>(null);
   // Only a signed-in walker with a nickname can be seen by a party and counted.
   const crewEligible = useAccountStore((s) => selectIsSignedIn(s) && !!selectNickname(s));
   const profile = useAccountStore((s) => s.profile);
@@ -68,6 +70,14 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   // Back on the run, see who joined or left meanwhile.
   useEffect(() => { if (focused && useToursStore.getState().activeRun?.crew) void useToursStore.getState().refreshCrew(); }, [focused]);
+  // Who could be pinged from the run, as the phone last saw the party.
+  const walking = !!active && !history;
+  useEffect(() => {
+    if (!focused || !walking) return;
+    let alive = true;
+    void loadPingFriends().then((next) => { if (alive) setFriends(next); });
+    return () => { alive = false; };
+  }, [focused, walking]);
   const publicToken = plan?.publication?.status === 'active' ? plan.publication.token : null;
   useEffect(() => { if (focused && publicToken) void useToursStore.getState().refreshPublicCount(id); }, [focused, publicToken, id]);
   const [openedAt] = useState(() => Date.now());
@@ -194,7 +204,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             : store.published[id] !== tourContentSignature(plan) || plan.revision > plan.publication.planRevision ? t.tours.publicNewer
               : plan.publication.peopleCount > 0 ? t.tours.publicWithPeople(plan.publication.peopleCount) : t.tours.publicState}</TourText>
         </Pressable>}
-        {!shareMode && live && active?.crew && <TourCrewRow crew={active.crew} self={crewSelf} onInvite={() => setCrewSheet(true)} />}
+        {!shareMode && live && active && (active.crew || !!friends?.ids.length) && <TourCrewRow crew={active.crew} self={crewSelf} ping={!!friends?.ids.length} onOpen={() => setCrewSheet(true)} />}
         {editable && !current.scheduledDate && <Pressable onPress={() => { void edit(); }} style={styles.addMeetup} accessibilityRole="button" accessibilityLabel={t.tours.addMeetup}><TourText style={ui.linkText}>{t.tours.addMeetup}</TourText></Pressable>}
         {closedOnMeetup.length > 0 && <TourText style={styles.closed}>{t.tours.closedOnMeetup(closedOnMeetup.join(', '), closedOnMeetup.length)}</TourText>}</View>
       <TourJourneyIllustration stops={current.stops} statuses={!shareMode ? run?.statuses : undefined} nextStopId={!shareMode && active && !history ? next?.id : undefined} />
@@ -263,7 +273,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} quiet onPress={() => setShareMode(true)} />}</>}
     </View>
     </View>
-    {crewSheet && active?.crew && <TourCrewSheet crew={active.crew} onClose={() => setCrewSheet(false)} />}
+    {crewSheet && active && <TourCrewSheet run={active} friends={friends} ping={ping} onPinged={setPing} onClose={() => setCrewSheet(false)} />}
     {overlayVisible && <View accessibilityViewIsModal style={[ui.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TourHeader title={detail?.name ?? t.tours.map} onBack={() => { setLargeMap(false); setDetail(null); }} />
         <ScrollView contentContainerStyle={[ui.content, { flexGrow: 1 }]}>

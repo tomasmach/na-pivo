@@ -34,6 +34,7 @@ import {
   type ActivityResponseKind,
   type FriendActionError,
   type FriendActionResult,
+  type TourPing,
 } from './friendsClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
@@ -56,6 +57,8 @@ interface ActivityPayload {
   recipientIds?: string[];
   /** Original send time, preserved on offline retry. Missing on legacy ops. */
   startedAt?: string;
+  /** Set when the broadcast comes from a Tour de pub run. Missing on legacy ops. */
+  tour?: TourPing;
 }
 
 /** One pending Parta write, keyed (and deduped) by {@link dedupKey}. */
@@ -116,7 +119,9 @@ function isQueueItem(value: unknown): value is FriendQueueItem {
         (i.payload.startedAt === undefined ||
           (typeof i.payload.startedAt === 'string' && Number.isFinite(Date.parse(i.payload.startedAt)))) &&
         ((i as { payload?: ActivityPayload }).payload?.recipientIds === undefined ||
-          Array.isArray((i as { payload?: ActivityPayload }).payload?.recipientIds))
+          Array.isArray((i as { payload?: ActivityPayload }).payload?.recipientIds)) &&
+        (i.payload.tour === undefined ||
+          (typeof i.payload.tour?.title === 'string' && typeof i.payload.tour.heading === 'boolean'))
       );
     case 'end':
       return typeof i.clientId === 'string';
@@ -193,7 +198,7 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
       const { pub, message, scheduledFor } = item.payload;
       const result = scheduledFor
         ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
-        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt);
+        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour);
       return classify(result);
     }
     case 'end':
@@ -277,6 +282,11 @@ function isFinishedBroadcast(item: Extract<FriendQueueItem, { op: 'activity' }>)
     (!item.payload.scheduledFor && session.clientId === item.clientId) ||
     (session.pubKey === pubKey && (!activityAt || Date.parse(activityAt) <= Date.parse(session.closedAt)))
   ));
+}
+
+/** Whether a broadcast still waits for signal, e.g. to stop saying so once it went out. */
+export async function isFriendActivityQueued(clientId: string): Promise<boolean> {
+  return (await loadQueue()).some((item) => item.op === 'activity' && item.clientId === clientId);
 }
 
 /** Dopito also cancels broadcasts that have not reached the server yet. */
