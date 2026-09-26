@@ -1353,7 +1353,8 @@ function Tacek({
     return null;
   }, [broadcasted, cell, current, hapticEnabled, isThisSession, pub, sharingWithFriends, showToast]);
 
-  // Who can hear it; without any saved party (offline, Parta never opened) the ping goes to everyone as before.
+  // Who can hear it. Without a saved party (offline, Parta never opened) or with an empty one, which may be
+  // out of date, the ping goes to everyone as before and the server works out who that is.
   async function openPingSheet() {
     if (pingLoading.current) return;
     pingLoading.current = true;
@@ -1364,7 +1365,7 @@ function Tacek({
     const party = await loadPartyFriends(timeout.signal, (fresh) => setPingParty((open) => (open?.cell === from ? { ...fresh, cell: from } : open)));
     clearTimeout(timer);
     pingLoading.current = false;
-    if (party) setPingParty({ ...party, cell: from });
+    if (party?.friends.length) setPingParty({ ...party, cell: from });
     else {
       const failure = await handleShareWithFriends();
       if (failure) showToast(failure);
