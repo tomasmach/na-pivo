@@ -13,7 +13,7 @@ jest.mock('@/data/toursClient', () => ({
   toTourWire: jest.requireActual('@/data/toursClient').toTourWire, fetchSharedTour: jest.fn(), publishTour: jest.fn(), shareTour: jest.fn(), revokeTour: jest.fn(),
   deletePublishedTour: jest.fn(), fetchPublishedTours: jest.fn(), publishPublicTour: jest.fn(), unpublishPublicTour: jest.fn(), reportPublicTour: jest.fn(), fetchTourRun: jest.fn(),
 }));
-jest.mock('@/data/tourRunQueue', () => ({ enqueueTourRunOp: jest.fn(async () => undefined), dropTourRunOps: jest.fn(async () => undefined), setTourRunDeliveryListener: jest.fn() }));
+jest.mock('@/data/tourRunQueue', () => ({ enqueueTourRunOp: jest.fn(async () => true), dropTourRunOps: jest.fn(async () => undefined), setTourRunDeliveryListener: jest.fn() }));
 
 // Captured before clearAllMocks wipes the call record of the module-level registration.
 const deliver = jest.mocked(setTourRunDeliveryListener).mock.calls[0][0]!;
@@ -135,6 +135,12 @@ it('joins a party from an invite already on screen without asking the server aga
   expect(await store.getState().joinCrew(token, '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab', { tour: remote, public: info })).toMatchObject({ ok: true });
   expect(fetchSharedTour).not.toHaveBeenCalled();
   expect(ops()).toContain('join');
+});
+
+it('does not pass a crew start off as done when its registration could not be stored', async () => {
+  const id = await savedPublicPlan();
+  jest.mocked(enqueueTourRunOp).mockResolvedValueOnce(false);
+  expect(await store.getState().startRun(id, { eligible: true })).toEqual({ ok: false, error: 'storage' });
 });
 
 it('drops the party quietly when the server turns the join down', async () => {
