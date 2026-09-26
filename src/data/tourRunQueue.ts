@@ -49,7 +49,8 @@ async function deliver(item: TourRunQueueItem): Promise<'ok' | 'drop' | 'retry'>
     : await putTourRunMember(item.runId, MEMBER_STATE[item.op], item.publicId);
   if (result.stale) return 'retry';
   if (result.status >= 200 && result.status < 300) {
-    listener?.(item, { run: result.run, refused: result.refused === true });
+    // Only a join can be turned down; a successful leave also answers "not joined".
+    listener?.(item, { run: result.run, refused: item.op === 'join' && result.refused === true });
     return 'ok';
   }
   if (result.status === 400 || result.status === 422) {
@@ -88,7 +89,9 @@ export async function enqueueTourRunOp(item: Omit<TourRunQueueItem, 'createdAt'>
     const next = { ...item, createdAt: new Date().toISOString() };
     // A completion waiting from before needs the join first, or its 404 would hold the run's queue until the join window closes.
     const dependents = item.op === 'join' ? queue.filter((queued) => queued.runId === item.runId) : [];
-    stored = await save([...queue.filter((queued) => !dependents.includes(queued)), next, ...dependents].slice(-100));
+    const updated = [...queue.filter((queued) => !dependents.includes(queued)), next, ...dependents];
+    // A full queue refuses the new op rather than silently dropping an older one it still owes the server.
+    stored = updated.length <= 100 && await save(updated);
   });
   void flush();
   return stored;

@@ -122,7 +122,9 @@ class TourRunPreviewView(TourRunBase):
         run = TourRun.objects.select_related("publication", "organizer").filter(pk=run_id, ended_at__isnull=True).first()
         hidden = _hidden_from(request.user)
         expected = request.query_params.get("publication")
-        if (run is None or run.organizer is None or run.organizer.status != Account.Status.ACTIVE or run.registered_at <= timezone.now() - JOIN_WINDOW
+        # An organizer in invisible mode is not shown to someone who has not joined yet.
+        if (run is None or run.organizer is None or run.organizer.status != Account.Status.ACTIVE or run.organizer.ghost_mode
+                or run.registered_at <= timezone.now() - JOIN_WINDOW
                 or run.organizer_id in hidden or (expected and expected != str(run.publication.public_id))):
             return Response(status=404)
         members = [m.account for m in run.members.select_related("account")
