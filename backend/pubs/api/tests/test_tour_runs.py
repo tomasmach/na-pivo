@@ -185,6 +185,8 @@ def test_only_current_visible_members_see_the_party():
     assert alice.get(f"/v1/tour-runs/{run_id}").status_code == 404
     FriendBlock.objects.create(blocker=organizer.account, blocked=bob.account)
     assert bob.get(f"/v1/tour-runs/{run_id}").status_code == 404
+    Account.objects.filter(pk=organizer.account.pk).update(ghost_mode=True)
+    assert account_client(nickname="novy").get(f"/v1/tour-runs/{run_id}/preview").status_code == 404
 
 
 def test_roster_disappears_a_day_after_the_run_ends():

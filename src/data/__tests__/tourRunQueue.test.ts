@@ -84,5 +84,10 @@ it('tells the store when the server turns a join down', async () => {
   await flushTourRunQueue();
   expect(putTourRun).toHaveBeenLastCalledWith(run, publicId, false, ['a', 'b']);
   expect(delivered).toHaveBeenLastCalledWith(expect.objectContaining({ op: 'register' }), { run: null, refused: true });
+  // A leave answers "not joined" too, and that is no refusal.
+  jest.mocked(putTourRunMember).mockResolvedValue({ status: 200, run: null, refused: true });
+  await enqueueTourRunOp({ runId: run, publicId, op: 'leave' });
+  await flushTourRunQueue();
+  expect(delivered).toHaveBeenLastCalledWith(expect.objectContaining({ op: 'leave' }), { run: null, refused: false });
   setTourRunDeliveryListener(null);
 });
