@@ -75,5 +75,11 @@ it('tells the store when the server turns a join down', async () => {
   await enqueueTourRunOp({ runId: run, publicId, op: 'join' });
   await flushTourRunQueue();
   expect(delivered).toHaveBeenLastCalledWith(expect.objectContaining({ op: 'join' }), { run: null, refused: true });
+  // An organizer on an outdated route is turned down the same way, with the stops it named.
+  jest.mocked(putTourRun).mockResolvedValue({ status: 400, run: null });
+  await enqueueTourRunOp({ runId: run, publicId, op: 'register', stopIds: ['a', 'b'] });
+  await flushTourRunQueue();
+  expect(putTourRun).toHaveBeenLastCalledWith(run, publicId, false, ['a', 'b']);
+  expect(delivered).toHaveBeenLastCalledWith(expect.objectContaining({ op: 'register' }), { run: null, refused: true });
   setTourRunDeliveryListener(null);
 });

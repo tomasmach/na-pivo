@@ -68,6 +68,8 @@ class TourRunBase(APIView):
 class RegisterSerializer(serializers.Serializer):
     publication_id = serializers.UUIDField()
     ended = serializers.BooleanField(default=False)
+    # The stops the organizer walks; optional so a registration without them still works.
+    stop_ids = serializers.ListField(child=serializers.CharField(max_length=64), required=False, max_length=8)
 
 
 class TourRunView(TourRunBase):
@@ -87,6 +89,10 @@ class TourRunView(TourRunBase):
                 publication = readable_publications().filter(public_id=data["publication_id"]).first()
                 if publication is None:
                     return _error("unknown_tour", _("Tahle veřejná tour už není."), 400)
+                # An older saved copy would walk other pubs than the ones the party loads from the QR.
+                published = sorted(stop["id"] for stop in publication.snapshot["stops"])
+                if "stop_ids" in data and sorted(data["stop_ids"]) != published:
+                    return _error("route_changed", _("Tahle tour se mezitím změnila, parta jde podle nové verze."), 400)
                 run = TourRun.objects.create(id=run_id, publication=publication, organizer=account)
                 TourRunMember.objects.create(run=run, account=account)
             elif run.organizer_id != account.pk:

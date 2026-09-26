@@ -2893,6 +2893,7 @@ export const cs = {
     crewGoing: (n: number) => `${n} v partě`, crewLeftMember: (names: string[]) => names.length > 1 ? `${names.join(', ')} už s vámi nejdou` : `${names[0]} už s vámi nejde`,
     crewCounted: 'Přidal jsem tě k lidem, co ji prošli.', crewPending: 'Až chytíš signál, přidám tě k lidem, co ji prošli.',
     crewClosed: 'Průchod je uzavřený, nikdo další se nepřidá.', crewRefused: 'Do party se už přidat nešlo. Tour můžeš jít i po svém.',
+    crewRefusedOrganizer: 'Partu k týhle tour teď přizvat nejde. Tour můžeš jít i po svém.',
     crewSheetNote: 'Kdo to naskenuje, přidá se k vám. Uvidí tvoji přezdívku a kdo další jde.',
     crewQrA11y: 'QR kód pro připojení k partě',
     crewPrivacyTitle: 'Kdo co vidí',

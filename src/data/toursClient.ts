@@ -292,7 +292,8 @@ async function runRequest(path: string, method: string, body?: unknown): Promise
   const refused = r.ok && (r.data as { joined?: unknown } | null)?.joined === false;
   return { status: r.status, ...(r.stale ? { stale: true } : {}), run: r.ok ? parseCrewRun(r.data) : null, ...(refused ? { refused: true } : {}) };
 }
-export const putTourRun = (runId: string, publicId: string, ended: boolean) => runRequest(`/v1/tour-runs/${runId}`, 'PUT', { publication_id: publicId, ended });
+export const putTourRun = (runId: string, publicId: string, ended: boolean, stopIds?: string[]) =>
+  runRequest(`/v1/tour-runs/${runId}`, 'PUT', { publication_id: publicId, ended, ...(stopIds ? { stop_ids: stopIds } : {}) });
 // The public tour tells the server which run the QR meant, so a mismatched link cannot join another tour's party.
 export const putTourRunMember = (runId: string, state: 'joined' | 'left' | 'completed' | 'uncounted', publicId: string) =>
   runRequest(`/v1/tour-runs/${runId}/me`, 'PUT', { state, publication_id: publicId });

@@ -73,6 +73,17 @@ def test_blocked_people_cannot_join_each_others_run():
     assert other.get(f"/v1/tour-runs/{run_id}/preview").status_code == 404
 
 
+def test_an_organizer_on_an_outdated_route_brings_no_party():
+    _, _, publication = public_tour()
+    organizer = account_client(nickname="vojta")
+    published = [stop["id"] for stop in public_read(publication["token"]).json()["tour"]["stops"]]
+    stale = {"publication_id": publication["id"], "stop_ids": published[:1] + [str(uuid.uuid4())]}
+    assert organizer.put(f"/v1/tour-runs/{uuid.uuid4()}", stale, format="json").json()["error"] == "route_changed"
+    # The same pubs in another order are still the same tour.
+    fresh = {"publication_id": publication["id"], "stop_ids": list(reversed(published))}
+    assert organizer.put(f"/v1/tour-runs/{uuid.uuid4()}", fresh, format="json").status_code == 200
+
+
 def test_a_join_names_its_tour_so_a_mismatched_link_joins_nothing():
     _, _, publication = public_tour()
     _, _, other_tour = public_tour("jina_autorka")

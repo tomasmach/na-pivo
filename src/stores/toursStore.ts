@@ -383,7 +383,8 @@ export const useToursStore = create<ToursState>(() => ({
         // The phone makes the run id, so the party QR works without signal.
         const runId = crew.joinRunId ?? d.activeRun.id;
         d.activeRun.crew = { runId, publicId: link.publicId, token: link.token, organizer: !crew.joinRunId };
-        queued.push({ runId, publicId: link.publicId, op: crew.joinRunId ? 'join' : 'register' });
+        queued.push(crew.joinRunId ? { runId, publicId: link.publicId, op: 'join' }
+          : { runId, publicId: link.publicId, op: 'register', stopIds: snapshot.stops.map((stop) => stop.id) });
       }
     });
     if (result.ok)
