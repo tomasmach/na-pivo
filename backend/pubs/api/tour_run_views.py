@@ -41,8 +41,9 @@ def _hidden_from(viewer):
 def _run_payload(run, viewer, request):
     hidden = _hidden_from(viewer)
     # Someone deleting their account leaves the party at once, like every other social view.
+    # Invisible mode hides a walker from the others too; they still see themselves.
     members = [m for m in run.members.select_related("account").filter(account__status=Account.Status.ACTIVE).order_by("joined_at")
-               if m.account_id not in hidden]
+               if m.account_id not in hidden and (m.account_id == viewer.pk or not m.account.ghost_mode)]
     me = next((m for m in members if m.account_id == viewer.pk), None)
     return {
         "id": str(run.id), "publication_id": str(run.publication.public_id), "ended": run.ended_at is not None,
@@ -105,7 +106,9 @@ class TourRunView(TourRunBase):
     def get(self, request, run_id):
         run = TourRun.objects.select_related("publication", "organizer").filter(pk=run_id).first()
         now = timezone.now()
-        if (run is None or not run.members.filter(account=request.user).exists() or run.registered_at <= now - ROSTER_MAX_AGE
+        # Only someone still in the party sees it: leaving or being blocked by the organizer ends that.
+        if (run is None or not run.members.filter(account=request.user, left_at__isnull=True).exists()
+                or run.organizer_id in _hidden_from(request.user) or run.registered_at <= now - ROSTER_MAX_AGE
                 or (run.ended_at and run.ended_at <= now - ROSTER_VISIBLE_AFTER_END)):
             return Response(status=404)
         return Response(_run_payload(run, request.user, request))
@@ -121,8 +124,8 @@ class TourRunPreviewView(TourRunBase):
         if (run is None or run.organizer is None or run.organizer.status != Account.Status.ACTIVE or run.registered_at <= timezone.now() - JOIN_WINDOW
                 or run.organizer_id in hidden or (expected and expected != str(run.publication.public_id))):
             return Response(status=404)
-        members = [m.account for m in run.members.select_related("account").filter(left_at__isnull=True, account__status=Account.Status.ACTIVE)
-                   .order_by("joined_at")]
+        members = [m.account for m in run.members.select_related("account")
+                   .filter(left_at__isnull=True, account__status=Account.Status.ACTIVE, account__ghost_mode=False).order_by("joined_at")]
         visible = [account for account in members if account.pk not in hidden]
         # Blocked people stay out of the count too, or "3 going" next to two faces gives them away.
         return Response({"organizer": author_payload(run.organizer, request), "going": len(visible),

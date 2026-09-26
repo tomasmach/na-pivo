@@ -170,6 +170,42 @@ def test_a_new_route_counts_walkers_from_then_on():
     assert public_read(publication["token"]).json()["public"]["people_count"] == 0
 
 
+def test_only_current_visible_members_see_the_party():
+    _, _, publication = public_tour()
+    organizer, alice, bob, ghost = (account_client(nickname=name) for name in ("vojta", "alice", "bob", "duch"))
+    run_id = str(uuid.uuid4())
+    register(organizer, run_id, publication)
+    for walker in (alice, bob, ghost):
+        member(walker, run_id, "joined")
+    Account.objects.filter(pk=ghost.account.pk).update(ghost_mode=True)
+    # Invisible mode hides a walker from the others, not from themselves.
+    assert "duch" not in [m["nickname"] for m in alice.get(f"/v1/tour-runs/{run_id}").json()["members"]]
+    assert "duch" in [m["nickname"] for m in ghost.get(f"/v1/tour-runs/{run_id}").json()["members"]]
+    member(alice, run_id, "left")
+    assert alice.get(f"/v1/tour-runs/{run_id}").status_code == 404
+    FriendBlock.objects.create(blocker=organizer.account, blocked=bob.account)
+    assert bob.get(f"/v1/tour-runs/{run_id}").status_code == 404
+
+
+def test_a_walk_cut_short_never_counts():
+    _, _, publication = public_tour()
+    organizer, walker = account_client(nickname="vojta", trusted=True), account_client(nickname="pepa", trusted=True)
+    run_id = str(uuid.uuid4())
+    register(organizer, run_id, publication)
+    member(walker, run_id, "joined")
+    member(walker, run_id, "completed")
+    member(walker, run_id, "left")
+    member(organizer, run_id, "completed")
+    register(organizer, run_id, publication, ended=True)
+    # Half an hour later on the clock, but both walked only a minute with the party.
+    TourRunMember.objects.update(joined_at=timezone.now() - timedelta(minutes=31))
+    TourRunMember.objects.filter(left_at__isnull=False).update(left_at=timezone.now() - timedelta(minutes=30))
+    from pubs.models import TourRun
+    TourRun.objects.update(ended_at=timezone.now() - timedelta(minutes=30))
+    TourPublication.objects.update(people_count_at=None)
+    assert public_read(publication["token"]).json()["public"]["people_count"] == 0
+
+
 def test_roster_disappears_a_day_after_the_run_ends():
     _, _, publication = public_tour()
     organizer = account_client(nickname="vojta")

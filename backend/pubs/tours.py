@@ -95,7 +95,7 @@ def author_payload(account, request=None):
 
 def counted_people(publication_ids, now=None):
     """Distinct trusted walkers per public tour, each counted once however often they walk it."""
-    from django.db.models import Count, F
+    from django.db.models import Count, F, Q
 
     from pubs.community_trust import trusted_account_q
 
@@ -106,6 +106,10 @@ def counted_people(publication_ids, now=None):
         # A run started on the old route does not count for the new one.
         run__registered_at__gte=F("run__publication__count_since"),
         joined_at__lte=now - COUNT_MIN_WALK, account__ghost_mode=False, account__excluded_from_leaderboards=False,
+    ).filter(
+        # The walk lasted long enough with the party: leaving or ending early stops the clock.
+        Q(left_at__isnull=True) | Q(left_at__gte=F("joined_at") + COUNT_MIN_WALK),
+        Q(run__ended_at__isnull=True) | Q(run__ended_at__gte=F("joined_at") + COUNT_MIN_WALK),
     ).values("run__publication_id").annotate(people=Count("account_id", distinct=True)))
     return {row["run__publication_id"]: row["people"] for row in rows}
 
