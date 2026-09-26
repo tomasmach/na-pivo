@@ -20,11 +20,11 @@ import { TourMap } from './TourMap';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
 import { TourJourneyStop, TourLeg } from './TourJourney';
 import { formatWalkDistance, walkingLeg } from './stopFacts';
-import type { TourPlan } from './model';
+import { uuidValid, type TourPlan } from './model';
 
 export default function TourInviteScreen() {
   const { token, r } = useLocalSearchParams<{ token: string; r?: string }>();
-  const runId = typeof r === 'string' && /^[0-9a-f-]{36}$/i.test(r) ? r : undefined;
+  const runId = uuidValid(r) ? r : undefined;
   return <TourInvite key={`${token}:${runId ?? ''}`} token={token} runId={runId} />;
 }
 function TourInvite({ token, runId }: { token: string; runId?: string }) {
@@ -71,7 +71,7 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
     // The party knows each other by nickname, so a signed-in walker without one picks it first.
     if (!crewEligible) { router.push((signedIn ? '/profile/edit' : '/auth') as Href); return; }
     const go = async () => {
-      const result = await store.joinCrew(token, runId);
+      const result = await store.joinCrew(token, runId, plan && publicInfo ? { tour: plan, public: publicInfo } : undefined);
       if (result.ok && result.id) router.replace({ pathname: '/tours/[id]', params: { id: result.id } } as Href);
     };
     if (store.activeRun) showAppDialog({ title: t.tours.crewActiveRun, message: t.tours.crewActiveRunMessage, buttons: [

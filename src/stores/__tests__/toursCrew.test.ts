@@ -129,6 +129,14 @@ it('joins on the route the organizer published, not an older saved copy', async 
   expect(store.getState().activeRun!.snapshot.stops.map((stop) => stop.name)).toEqual(['Pub 1', 'Pub 9']);
 });
 
+it('joins a party from an invite already on screen without asking the server again', async () => {
+  jest.mocked(fetchSharedTour).mockClear();
+  // The signal dropped after the invite loaded.
+  expect(await store.getState().joinCrew(token, '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab', { tour: remote, public: info })).toMatchObject({ ok: true });
+  expect(fetchSharedTour).not.toHaveBeenCalled();
+  expect(ops()).toContain('join');
+});
+
 it('drops the party quietly when the server turns the join down', async () => {
   const runId = '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab';
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: remote, public: info });

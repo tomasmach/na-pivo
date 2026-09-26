@@ -155,7 +155,7 @@ it('joins the party behind a scanned code, or sends a friend without an account 
     // Who invites replaces how many walked it before.
     expect(screen.queryByText(t.tours.peopleCount(3))).toBeNull();
     await act(async () => { fireEvent.press(screen.getByTestId('tour-crew-join')); });
-    expect(mockStore.joinCrew).toHaveBeenCalledWith(token, runId);
+    expect(mockStore.joinCrew).toHaveBeenCalledWith(token, runId, expect.objectContaining({ tour: expect.anything(), public: expect.anything() }));
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/tours/[id]', params: { id: 'crew-copy' } });
 
     mockAccount.nickname = null;
