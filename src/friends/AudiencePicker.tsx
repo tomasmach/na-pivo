@@ -207,16 +207,17 @@ const styles = StyleSheet.create({
   recipientChipTextActive: { color: Colors.stout },
   recipientSummary: { marginTop: Spacing.sm, fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.mutedText },
   recipientPanel: { marginTop: Spacing.sm },
+  // Same shape as the pub rows in compose: the highlight keeps the check off its edge.
   recipientRow: {
     minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.md,
     paddingVertical: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.medium,
   },
-  recipientRowSelected: { backgroundColor: withAlpha(Colors.amber, 0.06) },
+  recipientRowSelected: { backgroundColor: withAlpha(Colors.amber, 0.08) },
   recipientCheck: {
     width: 24,
     height: 24,
