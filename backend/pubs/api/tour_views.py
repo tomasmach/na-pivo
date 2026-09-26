@@ -236,8 +236,8 @@ class TourDetailView(OwnerTourView):
                 plan.stops.all().delete()
                 plan.operations.all().delete()
                 TourShare.objects.filter(plan=plan).update(revoked_at=timezone.now())
-                TourPublication.objects.filter(plan=plan, status=TourPublication.Status.ACTIVE).update(
-                    status=TourPublication.Status.UNPUBLISHED)
+                # The frozen public copy goes with the tour; reports keep their own snapshot as evidence.
+                TourPublication.objects.filter(plan=plan).delete()
         return Response(status=204)
 
 
@@ -386,7 +386,8 @@ class TourPublicationView(OwnerTourView):
             if plan.revision != data["revision"]:
                 return _conflict(plan)
             publication = TourPublication.objects.select_for_update().filter(plan=plan).first()
-            if publication and publication.status == TourPublication.Status.HIDDEN:
+            # Withdrawing a hidden tour keeps the reason, so publishing it again waits for an admin too.
+            if publication and (publication.status == TourPublication.Status.HIDDEN or publication.hidden_reason):
                 return _error("publication_hidden", _("Tour je skrytá po nahlášení. Podívám se na ni."), 409)
             if not data["accept_rules"]:
                 return _error("rules_required", _("Nejdřív odsouhlas pravidla pro veřejné tour."), 400)

@@ -259,6 +259,11 @@ def test_owner_withdraws_a_hidden_tour_and_the_export_keeps_the_public_copy():
     author.delete(f"/v1/tours/{plan_id}/publication")
     TourPublicationAdmin.restore_publications(None, None, TourPublication.objects.all())
     assert TourPublication.objects.get().status == TourPublication.Status.UNPUBLISHED
+    # Withdrawing is no way around moderation: publishing it again still waits for an admin.
+    assert publish(author, plan_id, revision + 1).json()["error"] == "publication_hidden"
+    # Deleting the tour takes the frozen public copy with it.
+    assert author.delete(f"/v1/tours/{plan_id}").status_code == 204
+    assert not TourPublication.objects.exists()
 
 
 def test_admin_hide_leaves_a_withdrawn_tour_withdrawn():
