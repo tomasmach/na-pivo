@@ -86,6 +86,11 @@ def test_a_join_names_its_tour_so_a_mismatched_link_joins_nothing():
     # Only the walker learns their own completion.
     assert member(organizer, run_id, "completed").json()["me"]["completed"] is True
     assert [m["completed"] for m in friend.get(f"/v1/tour-runs/{run_id}").json()["members"]] == [False, False]
+    # Someone deleting their account leaves the party view at once.
+    Account.objects.filter(pk=friend.account.pk).update(status=Account.Status.PENDING_DELETION)
+    assert [m["nickname"] for m in organizer.get(f"/v1/tour-runs/{run_id}").json()["members"]] == ["vojta"]
+    Account.objects.filter(pk=organizer.account.pk).update(status=Account.Status.PENDING_DELETION)
+    assert account_client(nickname="honza").get(f"/v1/tour-runs/{run_id}/preview").status_code == 404
 
 
 def test_only_trusted_walkers_count_once_after_thirty_minutes():

@@ -93,7 +93,7 @@ it('takes a completion back after "Nezapočítávat mě", whether it is still wa
   await store.getState().markStop(first.id, 'visited');
   await store.getState().markStop(second.id, 'visited');
   await store.getState().setCrewOptOut(true);
-  // Still on the phone: it never leaves.
+  // Still waiting: it never leaves, and in case an earlier try landed unanswered it is taken back.
   expect(dropTourRunOps).toHaveBeenCalledWith(run.id, ['complete']);
   expect(store.getState().activeRun!.crew!.completion).toBeUndefined();
 
@@ -102,7 +102,7 @@ it('takes a completion back after "Nezapočítávat mě", whether it is still wa
   await settle();
   await store.getState().hydrate();
   await store.getState().setCrewOptOut(true);
-  expect(ops()).toEqual(['register', 'complete', 'complete', 'uncount']);
+  expect(ops()).toEqual(['register', 'complete', 'uncount', 'complete', 'uncount']);
   expect(store.getState().activeRun!.crew).not.toHaveProperty('counted');
 });
 
