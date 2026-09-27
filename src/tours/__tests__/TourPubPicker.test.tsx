@@ -49,6 +49,25 @@ it('falls back to a fresh fix, but never moves the map once you started searchin
   expect(mockMap?.region).toEqual(DEFAULT_TOUR_REGION);
 });
 
+it('keeps a panned map when a late fix arrives', async () => {
+  let resolveFix: (fix: Location.LocationObject) => void = () => {};
+  jest.mocked(Location.getLastKnownPositionAsync).mockResolvedValueOnce(null);
+  jest.mocked(Location.getCurrentPositionAsync).mockReturnValueOnce(new Promise((resolve) => { resolveFix = resolve; }));
+  await open([]);
+  const panned = { ...DEFAULT_TOUR_REGION, latitude: 49.19, longitude: 16.61 };
+  await act(async () => { mockMap?.onRegionChange?.(panned); });
+  await act(async () => { resolveFix({ coords: { latitude: 50.087, longitude: 14.42 } } as Location.LocationObject); });
+  expect(mockMap?.region).toEqual(panned);
+});
+
+it('uses an old fix when no fresh one comes', async () => {
+  jest.mocked(Location.getLastKnownPositionAsync).mockResolvedValueOnce(null).mockResolvedValueOnce({ coords: { latitude: 49.19, longitude: 16.61 } } as Location.LocationObject);
+  jest.mocked(Location.getCurrentPositionAsync).mockRejectedValueOnce(new Error('Location services are off'));
+  await open([]);
+  expect(Location.getLastKnownPositionAsync).toHaveBeenNthCalledWith(1, { maxAge: 600000 });
+  expect(mockMap?.region).toMatchObject({ latitude: 49.19, longitude: 16.61 });
+});
+
 it('keeps the country view without location permission and never asks for it', async () => {
   jest.mocked(checkLocationPermission).mockResolvedValueOnce('undetermined');
   await open([]);
