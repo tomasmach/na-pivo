@@ -1,6 +1,7 @@
-import { act, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import * as Location from 'expo-location';
 import { checkLocationPermission } from '@/compass/permissions';
+import { t } from '@/i18n';
 import type { TourStop } from '../model';
 import { DEFAULT_TOUR_REGION, type TourMapProps } from '../TourMap';
 import { TourPubPicker } from '../TourPubPicker';
@@ -26,8 +27,9 @@ jest.mock('@/components/shared/IconGlyph', () => ({ ChevronLeftIcon: () => null,
 
 const stop: TourStop = { id: 's1', pubId: 'p1', name: 'U Fleků', lat: 49.19, lon: 16.61 } as TourStop;
 const open = async (stops: TourStop[]) => {
-  render(<TourPubPicker visible stops={stops} onSelect={jest.fn()} onClose={jest.fn()} />);
+  const screen = render(<TourPubPicker visible stops={stops} onSelect={jest.fn()} onClose={jest.fn()} />);
   await act(async () => {});
+  return screen;
 };
 
 beforeEach(() => { jest.clearAllMocks(); mockMap = null; });
@@ -35,6 +37,16 @@ beforeEach(() => { jest.clearAllMocks(); mockMap = null; });
 it('opens a new tour around the last known position, not the whole country', async () => {
   await open([]);
   expect(mockMap?.region).toMatchObject({ latitude: 50.087, longitude: 14.42, latitudeDelta: 0.055 });
+});
+
+it('falls back to a fresh fix, but never moves the map once you started searching', async () => {
+  let resolveFix: (fix: Location.LocationObject) => void = () => {};
+  jest.mocked(Location.getLastKnownPositionAsync).mockResolvedValueOnce(null);
+  jest.mocked(Location.getCurrentPositionAsync).mockReturnValueOnce(new Promise((resolve) => { resolveFix = resolve; }));
+  const screen = await open([]);
+  fireEvent.changeText(screen.getByLabelText(t.tours.searchPlaceholder), 'x');
+  await act(async () => { resolveFix({ coords: { latitude: 50.087, longitude: 14.42 } } as Location.LocationObject); });
+  expect(mockMap?.region).toEqual(DEFAULT_TOUR_REGION);
 });
 
 it('keeps the country view without location permission and never asks for it', async () => {

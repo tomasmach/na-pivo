@@ -75,13 +75,14 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   useEffect(() => {
     if (currentStops.current.length) return;
     const start = viewport.current;
+    const startRequest = requestId.current;
     let active = true;
     void (async () => {
       try {
         if (await checkLocationPermission() !== 'granted') return;
         const fix = await Location.getLastKnownPositionAsync()
           ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: false });
-        if (!active || viewport.current !== start) return;
+        if (!active || viewport.current !== start || requestId.current !== startRequest) return; // you moved or searched first
         moveMap({ latitude: fix.coords.latitude, longitude: fix.coords.longitude, latitudeDelta: 0.055, longitudeDelta: 0.055 });
       } catch {
         // The country view stays.
