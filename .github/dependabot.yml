@@ -38,6 +38,8 @@ updates:
           - patch
     # Expo SDK releases pin a compatible native dependency set. Keep routine
     # updates to patches and handle larger upgrades with the Expo SDK workflow.
+    # React Native packages follow the SDK pins (`npx expo install --fix`), so
+    # Dependabot skips even their patches; CI fails on drift.
     # SemVer ignore rules affect version updates, not security updates.
     ignore:
       - dependency-name: expo
@@ -56,14 +58,17 @@ updates:
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
+          - version-update:semver-patch
       - dependency-name: react-native-*
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
+          - version-update:semver-patch
       - dependency-name: "@react-native/*"
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
+          - version-update:semver-patch
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
