@@ -9,7 +9,7 @@ import { EMPTY_PUB_SEARCH_FILTERS } from '@/data/pubSearchFilters';
 import BeerMapScreen, { resetBeerMapLayerForAddedPub } from '../BeerMapScreen';
 import { fetchPubHours } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
-import { fetchPubVisitorsLastWeek, readKnownPubVisitors } from '@/data/pubVisitorsClient';
+import { fetchPubVisitorsLastWeek } from '@/data/pubVisitorsClient';
 import { useBeerMap } from '../useBeerMap';
 
 const mockPubStoreState = {
@@ -115,7 +115,6 @@ jest.mock('@/stores/settingsStore', () => ({
 }));
 jest.mock('@/data/pubVisitorsClient', () => ({
   fetchPubVisitorsLastWeek: jest.fn(async () => null),
-  readKnownPubVisitors: jest.fn(async () => null),
 }));
 jest.mock('@/stores/accountStore', () => ({
   useAccountStore: (selector: (state: { session: null }) => unknown) => selector({ session: null }),
@@ -806,29 +805,6 @@ describe('BeerMapScreen last-week visitors', () => {
     const [signal] = (fetchPubVisitorsLastWeek as jest.Mock).mock.calls[0] as [AbortSignal];
     expect(signal.aborted).toBe(false);
     await act(async () => finish(new Map([[geohash8(busy.lat, busy.lng), 4]])));
-    expect(screen.getByLabelText(busyLabel)).toBeTruthy();
-  });
-
-  it('shows the counts the device already has while the request is still running', async () => {
-    (fetchPubVisitorsLastWeek as jest.Mock).mockImplementation(() => new Promise(() => undefined));
-    (readKnownPubVisitors as jest.Mock).mockResolvedValueOnce(
-      new Map([[geohash8(busy.lat, busy.lng), 4]]),
-    );
-
-    const screen = await renderMap();
-
-    expect(screen.getByLabelText(busyLabel)).toBeTruthy();
-  });
-
-  it('keeps the fresh counts when the device copy arrives later', async () => {
-    let known: (value: Map<string, number>) => void = () => undefined;
-    (readKnownPubVisitors as jest.Mock).mockImplementationOnce(
-      () => new Promise((resolve) => { known = resolve; }),
-    );
-
-    const screen = await renderMap();
-    await act(async () => known(new Map([[geohash8(busy.lat, busy.lng), 9]])));
-
     expect(screen.getByLabelText(busyLabel)).toBeTruthy();
   });
 

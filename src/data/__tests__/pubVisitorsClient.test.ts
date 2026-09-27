@@ -17,7 +17,6 @@ import {
   fetchPubVisitorsLastWeek,
   nextWeekStartsAt,
   parsePubVisitors,
-  readKnownPubVisitors,
   resetPubVisitorsCache,
 } from '../pubVisitorsClient';
 
@@ -75,44 +74,44 @@ describe('counts kept on the device', () => {
     jest.spyOn(Date, 'now').mockReturnValue(time);
   }
 
-  it('shows the week at once after a restart and skips a request while it is fresh', async () => {
-    await loadThenRestartAppAt(NOW + HOUR);
+  it('shows the counts right after a restart without a request', async () => {
+    await loadThenRestartAppAt(NOW + 2 * HOUR);
 
     expect([...((await fetchPubVisitorsLastWeek()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect([...((await readKnownPubVisitors()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
   });
 
-  it('refreshes a copy saved while the clock ran ahead within the usual three hours', async () => {
-    jest.spyOn(Date, 'now').mockReturnValue(NOW + 48 * HOUR);
-    await loadThenRestartAppAt(NOW);
-    await readKnownPubVisitors();
-    jest.spyOn(Date, 'now').mockReturnValue(NOW + 3 * HOUR);
+  it('loads them again once three hours have passed', async () => {
+    await loadThenRestartAppAt(NOW + 3 * HOUR);
 
     await fetchPubVisitorsLastWeek();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('still shows an older copy of the week while the request refreshes it', async () => {
-    await loadThenRestartAppAt(NOW + 4 * HOUR);
-
-    expect([...((await readKnownPubVisitors()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
-    await fetchPubVisitorsLastWeek();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('never shows a copy once the next week has started', async () => {
+  it('loads them again once the next week has started', async () => {
+    const lateSunday = Date.parse(ROLLOVER) - HOUR;
+    jest.spyOn(Date, 'now').mockReturnValue(lateSunday);
     await loadThenRestartAppAt(Date.parse(ROLLOVER));
 
-    await expect(readKnownPubVisitors()).resolves.toBeNull();
+    await fetchPubVisitorsLastWeek();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a copy saved while the clock ran ahead for three hours at most', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW + 48 * HOUR);
+    await loadThenRestartAppAt(NOW);
+    await fetchPubVisitorsLastWeek();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    jest.spyOn(Date, 'now').mockReturnValue(NOW + 3 * HOUR);
+    await fetchPubVisitorsLastWeek();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('ignores an unreadable copy', async () => {
     await AsyncStorage.setItem(PUB_VISITORS_STORAGE_KEY, '{"pubs":');
 
-    await expect(readKnownPubVisitors()).resolves.toBeNull();
-    await AsyncStorage.setItem(PUB_VISITORS_STORAGE_KEY, JSON.stringify({ pubs: { u2fkbn1z: 4 } }));
-    resetPubVisitorsCache();
-    await expect(readKnownPubVisitors()).resolves.toBeNull();
+    expect([...((await fetchPubVisitorsLastWeek()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
