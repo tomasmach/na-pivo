@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check Expo SDK dependency versions
+        run: npx expo install --check
+
       - name: Audit production dependencies
         run: npm run audit:ci
 
