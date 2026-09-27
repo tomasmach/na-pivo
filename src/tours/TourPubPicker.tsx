@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import { checkLocationPermission } from '@/compass/permissions';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
@@ -67,6 +69,25 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
     setPubs(result.pubs);
     setStatus(result.status);
     if (result.center) moveMap({ ...result.center, latitudeDelta: 0.055, longitudeDelta: 0.055 });
+  }, [moveMap]);
+
+  // A new tour starts where you are, not over the whole country. Never asks for permission here.
+  useEffect(() => {
+    if (currentStops.current.length) return;
+    const start = viewport.current;
+    let active = true;
+    void (async () => {
+      try {
+        if (await checkLocationPermission() !== 'granted') return;
+        const fix = await Location.getLastKnownPositionAsync()
+          ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: false });
+        if (!active || viewport.current !== start) return;
+        moveMap({ latitude: fix.coords.latitude, longitude: fix.coords.longitude, latitudeDelta: 0.055, longitudeDelta: 0.055 });
+      } catch {
+        // The country view stays.
+      }
+    })();
+    return () => { active = false; };
   }, [moveMap]);
 
   useEffect(() => {
