@@ -1,6 +1,6 @@
 {
   "name": "na-pivo",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "main": "expo-router/entry",
   "private": true,
   "expo": {
