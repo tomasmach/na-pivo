@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { chainAbortSignal } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
@@ -10,8 +12,42 @@ const ENDPOINT = '/v1/pubs/visitors-last-week';
 const REQUEST_TIMEOUT_MS = 8000;
 // Ghost mode changes reach the server within an hour; this bounds the rest.
 const CACHE_TTL_MS = 3 * 60 * 60 * 1000;
+// Public aggregate counts, the same for every account, so no boundary clears it.
+export const PUB_VISITORS_STORAGE_KEY = 'na-pivo-pub-visitors-last-week';
 
-let cached: { expiresAt: number; visitors: PubVisitorsByKey } | null = null;
+interface StoredVisitors {
+  freshUntil: number;
+  weekEndsAt: number;
+  pubs: Record<string, number>;
+}
+
+let cached: { freshUntil: number; weekEndsAt: number; visitors: PubVisitorsByKey } | null = null;
+let deviceCopy: Promise<void> | null = null;
+
+/** Seeds the memory cache from the copy kept on the device, once per app run. */
+function loadDeviceCopy(): Promise<void> {
+  deviceCopy ??= (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(PUB_VISITORS_STORAGE_KEY);
+      if (!raw) return;
+      const stored = JSON.parse(raw) as Partial<StoredVisitors> | null;
+      const visitors = parsePubVisitors(stored);
+      if (
+        !visitors ||
+        typeof stored?.freshUntil !== 'number' ||
+        typeof stored.weekEndsAt !== 'number'
+      ) {
+        return;
+      }
+      // A clock that ran ahead when it was saved must not keep it fresh for days.
+      const freshUntil = Math.min(stored.freshUntil, Date.now() + CACHE_TTL_MS);
+      cached ??= { freshUntil, weekEndsAt: stored.weekEndsAt, visitors };
+    } catch {
+      // A convenience copy; when it cannot be read the counts just come from the network.
+    }
+  })();
+  return deviceCopy;
+}
 
 /** When the server starts answering with the next week. */
 export function nextWeekStartsAt(data: unknown): number | null {
@@ -33,11 +69,21 @@ export function parsePubVisitors(data: unknown): PubVisitorsByKey | null {
   return visitors;
 }
 
+/**
+ * The last counts this device loaded for the current week, even when they are
+ * due for a refresh. They show at once while `fetchPubVisitorsLastWeek` runs.
+ */
+export async function readKnownPubVisitors(): Promise<PubVisitorsByKey | null> {
+  await loadDeviceCopy();
+  return cached && Date.now() < cached.weekEndsAt ? cached.visitors : null;
+}
+
 /** Last week's pub visitor counts, or null when they cannot be loaded. */
 export async function fetchPubVisitorsLastWeek(
   signal?: AbortSignal,
 ): Promise<PubVisitorsByKey | null> {
-  if (cached && Date.now() < cached.expiresAt) return cached.visitors;
+  await loadDeviceCopy();
+  if (cached && Date.now() < cached.freshUntil) return cached.visitors;
 
   const endpoint = getBackendEndpoint(ENDPOINT);
   if (!endpoint || signal?.aborted) return null;
@@ -66,10 +112,16 @@ export async function fetchPubVisitorsLastWeek(
     if (visitors) {
       const rollover = nextWeekStartsAt(data);
       const now = Date.now();
-      cached = {
-        expiresAt: Math.min(now + CACHE_TTL_MS, rollover ?? now + CACHE_TTL_MS),
-        visitors,
+      const freshUntil = Math.min(now + CACHE_TTL_MS, rollover ?? now + CACHE_TTL_MS);
+      cached = { freshUntil, weekEndsAt: rollover ?? freshUntil, visitors };
+      const stored: StoredVisitors = {
+        freshUntil,
+        weekEndsAt: cached.weekEndsAt,
+        pubs: Object.fromEntries(visitors),
       };
+      void AsyncStorage.setItem(PUB_VISITORS_STORAGE_KEY, JSON.stringify(stored)).catch(
+        () => undefined,
+      );
     }
     return visitors;
   } catch (err) {
@@ -90,4 +142,5 @@ export async function fetchPubVisitorsLastWeek(
 /** Test hook. */
 export function resetPubVisitorsCache(): void {
   cached = null;
+  deviceCopy = null;
 }

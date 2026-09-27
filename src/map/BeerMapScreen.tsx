@@ -51,7 +51,11 @@ import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
-import { fetchPubVisitorsLastWeek, type PubVisitorsByKey } from '@/data/pubVisitorsClient';
+import {
+  fetchPubVisitorsLastWeek,
+  readKnownPubVisitors,
+  type PubVisitorsByKey,
+} from '@/data/pubVisitorsClient';
 import {
   EMPTY_PUB_SEARCH_FILTERS,
   activePubSearchFilterCount,
@@ -661,11 +665,15 @@ export default function BeerMapScreen({
   // Retries ride on each catalogue load, so a failed first fetch (bad signal
   // in the pub) recovers without a restart; a loaded week is a cache hit. A
   // pan must not cancel a slow request, so only hiding or leaving aborts it.
+  // The week's counts this device already has show while the request runs.
   const visitorsRequest = useRef<AbortController | null>(null);
   useEffect(() => {
     if (!showPubVisitors || visitorsRequest.current) return;
     const controller = new AbortController();
     visitorsRequest.current = controller;
+    void readKnownPubVisitors().then((visitors) => {
+      if (!controller.signal.aborted && visitors) setPubVisitors((current) => current ?? visitors);
+    });
     void fetchPubVisitorsLastWeek(controller.signal).then((visitors) => {
       if (visitorsRequest.current === controller) visitorsRequest.current = null;
       if (!controller.signal.aborted && visitors) setPubVisitors(visitors);
