@@ -18,7 +18,13 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useNavigation,
+  useRouter,
+  type Href,
+} from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChevronDownIcon, ChevronLeftIcon, GlobeIcon, MapPinIcon } from '@/components/shared/IconGlyph';
@@ -227,7 +233,12 @@ export default function LeaderboardsScreen() {
     setMapPub(pub);
   }, []);
 
-  // Our map opens over the board; back returns to the board, not further.
+  // Our map opens over the board; back returns to the board, not further. An
+  // iOS edge swipe would pop the whole board, so it waits for the map to close.
+  const navigation = useNavigation();
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !mapPub });
+  }, [mapPub, navigation]);
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
