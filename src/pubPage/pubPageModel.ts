@@ -161,6 +161,29 @@ export function isSamePubRecord(
   return Boolean(record.name) && name(record.name as string) === name(pub.name);
 }
 
+/** Whether an event belongs to this pub. An older backend names no pub, so its events stay. */
+export function isEventOfPub(event: PubEvent, pub: { id: string; name: string }): boolean {
+  if (!event.pubName && !event.pubExternalId) return true;
+  return isSamePubRecord({ name: event.pubName, externalId: event.pubExternalId }, pub);
+}
+
+/**
+ * Whether another business shares this pub's map cell. The server counts
+ * beers per cell, so such a count would belong to both pubs.
+ */
+export function sharesCell(
+  pubs: readonly { id: string; name: string; lat: number; lng: number }[],
+  pubKey: string,
+  pub: { id: string; name: string },
+  cellOf: (lat: number, lng: number) => string,
+): boolean {
+  return pubs.some(
+    (other) =>
+      cellOf(other.lat, other.lng) === pubKey &&
+      !isSamePubRecord({ name: other.name, externalId: other.id }, pub),
+  );
+}
+
 /**
  * The same event with its times moved to Prague wall-clock, for display only:
  * a phone in another time zone still shows 19:00 for a 19:00 quiz in Prague.
