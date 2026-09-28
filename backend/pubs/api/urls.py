@@ -124,6 +124,7 @@ from .views import (
     PubAmenityReadView,
     PubAmenityVoteView,
     PubCommunityView,
+    PubFavoriteView,
     PubHoursView,
     PublishedNightCommentDeleteView,
     PublishedNightCommentView,
@@ -346,6 +347,16 @@ urlpatterns = [
         "pub-ratings/<str:cache_key>",
         PubRatingView.as_view(http_method_names=["delete", "options"]),
         name="pub-ratings-delete",
+    ),
+    path(
+        "pub-favorites",
+        PubFavoriteView.as_view(http_method_names=["get", "put", "options"]),
+        name="pub-favorites",
+    ),
+    path(
+        "pub-favorites/<str:cache_key>",
+        PubFavoriteView.as_view(http_method_names=["delete", "options"]),
+        name="pub-favorites-delete",
     ),
     path(
         "pub-visits",
