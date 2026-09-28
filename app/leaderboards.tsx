@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BackHandler,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -17,10 +18,11 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
+import { ChevronDownIcon, ChevronLeftIcon, GlobeIcon, MapPinIcon } from '@/components/shared/IconGlyph';
+import { MoreSheet } from '@/components/shared/MoreSheet';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
@@ -30,6 +32,9 @@ import {
   type LeaderboardCategory,
   type LeaderboardPeriod,
 } from '@/data/leaderboardsClient';
+import { fetchPubBoard, type PubBoard, type PubBoardEntry } from '@/data/pubBoardClient';
+import type { Pub } from '@/data/pubs';
+import { EMPTY_PUB_SEARCH_FILTERS, type PubSearchFilters } from '@/data/pubSearchFilters';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { t, intlLocale } from '@/i18n';
 import BoardSegmented from '@/leaderboards/BoardSegmented';
@@ -37,6 +42,9 @@ import { HeroFooterSkeleton, HeroSkeleton, RowsSkeleton } from '@/leaderboards/B
 import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
 import PeriodChips from '@/leaderboards/PeriodChips';
 import { PodiumMats } from '@/leaderboards/PodiumMats';
+import { PubBoardContent } from '@/leaderboards/PubBoardContent';
+import { PubBoardDetail, pubFromBoardEntry } from '@/leaderboards/PubBoardDetail';
+import BeerMapScreen from '@/map/BeerMapScreen';
 import { useAccountStore } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -49,12 +57,18 @@ type LoadState = 'loading' | 'loaded' | 'error';
 // visually different controls: a solid segmented track with a sliding thumb for
 // the metric, and a quiet underlined text row for the window. Two controls in
 // the same voice were the thing that blurred together.
-const CATEGORIES: readonly LeaderboardCategory[] = ['beers', 'pubs', 'mapper'];
+// Hospody ranks pubs by beers, not people, so it has its own data and body.
+type BoardKey = LeaderboardCategory | 'venues';
+const CATEGORIES: readonly BoardKey[] = ['beers', 'pubs', 'mapper', 'venues'];
 const CATEGORY_LABELS = CATEGORIES.map((key) => t.leaderboards.categoryTab(key));
 
 const PERIODS: readonly { key: LeaderboardPeriod; label: string }[] = (
   ['week', 'year', 'all'] as const
 ).map((key) => ({ key, label: t.leaderboards.periodTab(key) }));
+// The pub board's week is the finished one the map shows, so it says so.
+const VENUE_PERIODS: readonly { key: LeaderboardPeriod; label: string }[] = (
+  ['week', 'year', 'all'] as const
+).map((key) => ({ key, label: t.leaderboards.venuesPeriodTab(key) }));
 
 function unitFor(category: LeaderboardCategory, score: number): string {
   if (category === 'beers') return t.leaderboards.unitBeers(score);
@@ -82,14 +96,23 @@ export default function LeaderboardsScreen() {
   const router = useRouter();
   const reduceMotion = useReduceMotion();
   const profile = useAccountStore((s) => s.profile);
-  const { source } = useLocalSearchParams<{ source?: string }>();
+  const { source, board: boardParam } = useLocalSearchParams<{ source?: string; board?: string }>();
 
-  const [category, setCategory] = useState<LeaderboardCategory>('beers');
+  const [category, setCategory] = useState<BoardKey>(boardParam === 'venues' ? 'venues' : 'beers');
   const [period, setPeriod] = useState<LeaderboardPeriod>('week');
   const [state, setState] = useState<LoadState>('loading');
   const [board, setBoard] = useState<Leaderboard | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [heroBodyHeight, setHeroBodyHeight] = useState(0);
+  const [city, setCity] = useState<string | null>(null);
+  const [pubBoard, setPubBoard] = useState<PubBoard | null>(null);
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
+  const [openPub, setOpenPub] = useState<Pub | null>(null);
+  const [mapPub, setMapPub] = useState<Pub | null>(null);
+  const [mapFilters, setMapFilters] = useState<PubSearchFilters>(EMPTY_PUB_SEARCH_FILTERS);
+  const isVenues = category === 'venues';
+  // The person boards' copy and scores never see the pub board.
+  const personCategory: LeaderboardCategory = isVenues ? 'beers' : category;
 
   // Mapér XP has one window only. The picked window survives the detour, so
   // switching to Mapéři and back does not silently reset it to „Týden“.
@@ -117,12 +140,19 @@ export default function LeaderboardsScreen() {
   const load = useCallback(
     async (force = false) => {
       const requestId = ++requestRef.current;
+      if (category === 'venues') {
+        const result = await fetchPubBoard(effectivePeriod, city, { force });
+        if (!mountedRef.current || requestId !== requestRef.current) return;
+        setPubBoard(result);
+        setState(result ? 'loaded' : 'error');
+        return;
+      }
       const result = await fetchLeaderboard(category, effectivePeriod, { force });
       if (!mountedRef.current || requestId !== requestRef.current) return;
       setBoard(result);
       setState(result ? 'loaded' : 'error');
     },
-    [category, effectivePeriod],
+    [category, city, effectivePeriod],
   );
 
   useEffect(() => {
@@ -178,9 +208,69 @@ export default function LeaderboardsScreen() {
     [period],
   );
 
-  const tableTitle = t.leaderboards.tableTitle(category, effectivePeriod);
+  const chooseCity = useCallback(
+    (next: string | null) => {
+      setCityPickerOpen(false);
+      if (next === city) return;
+      setCity(next);
+      setState('loading');
+    },
+    [city],
+  );
+
+  const openBoardPub = useCallback((entry: PubBoardEntry) => {
+    setOpenPub(pubFromBoardEntry(entry));
+  }, []);
+
+  const showOnOurMap = useCallback((pub: Pub) => {
+    setMapFilters(EMPTY_PUB_SEARCH_FILTERS);
+    setMapPub(pub);
+  }, []);
+
+  // Our map opens over the board; back returns to the board, not further.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (!mapPub) return false;
+        setMapPub(null);
+        return true;
+      });
+      return () => sub.remove();
+    }, [mapPub]),
+  );
+
+  const cityRows = useMemo(() => {
+    const cities = pubBoard?.cities ?? [];
+    const listed =
+      city && !cities.some((item) => item.name === city) ? [{ name: city, beers: 0 }, ...cities] : cities;
+    return [
+      {
+        key: 'all',
+        label: t.leaderboards.venuesAllCities,
+        icon: GlobeIcon,
+        selected: city === null,
+        accessibilityRole: 'radio' as const,
+        onPress: () => chooseCity(null),
+      },
+      ...listed.map((item) => ({
+        key: item.name,
+        label: item.name,
+        value: item.beers
+          ? t.leaderboards.score('beers', item.beers.toLocaleString(intlLocale), item.beers)
+          : null,
+        icon: MapPinIcon,
+        selected: city === item.name,
+        accessibilityRole: 'radio' as const,
+        onPress: () => chooseCity(item.name),
+      })),
+    ];
+  }, [chooseCity, city, pubBoard]);
+
+  const tableTitle = t.leaderboards.tableTitle(personCategory, effectivePeriod);
   const visibleBoard =
-    state === 'loaded' && sameBoard(board, category, effectivePeriod) ? board : null;
+    state === 'loaded' && !isVenues && sameBoard(board, personCategory, effectivePeriod)
+      ? board
+      : null;
   const entries = useMemo(() => visibleBoard?.entries ?? [], [visibleBoard]);
   const me = visibleBoard?.me ?? null;
   const hasNickname = Boolean(profile?.nickname);
@@ -210,12 +300,12 @@ export default function LeaderboardsScreen() {
     if (chaseGap > 0) {
       return {
         kind: 'dopito',
-        label: t.leaderboards.chase(category, chaseGap),
+        label: t.leaderboards.chase(personCategory, chaseGap),
         onPress: () => undefined,
       };
     }
     return null;
-  }, [category, chaseGap, isGhost, openVisibility, state]);
+  }, [chaseGap, isGhost, openVisibility, personCategory, state]);
 
   const cta = useMemo(() => {
     if (state === 'error') {
@@ -227,7 +317,8 @@ export default function LeaderboardsScreen() {
         onPress: openVisibility,
       };
     }
-    if (category === 'beers') {
+    // Every pub on the board got there one logged beer at a time.
+    if (category === 'beers' || category === 'venues') {
       return {
         label: t.leaderboards.ctaBeers,
         onPress: () => router.replace('/(tabs)/beer' as Href),
@@ -257,7 +348,7 @@ export default function LeaderboardsScreen() {
     heroBodyHeight > 0 ? Math.max(64, Math.min(112, (heroBodyHeight - 16) * 0.66)) : 88;
   const scoreLabel =
     me && me.score > 0
-      ? t.leaderboards.score(category, me.score.toLocaleString(intlLocale), me.score)
+      ? t.leaderboards.score(personCategory, me.score.toLocaleString(intlLocale), me.score)
       : t.leaderboards.noScore;
   const totalRanked = visibleBoard?.totalRanked ?? null;
   const totalLabel = t.leaderboards.totalInBoard(totalRanked?.toLocaleString(intlLocale) ?? null);
@@ -276,8 +367,8 @@ export default function LeaderboardsScreen() {
     state === 'error'
       ? t.leaderboards.errorBody
       : boardEmpty
-        ? t.leaderboards.emptyBoardBody(category)
-        : t.leaderboards.notRankedBody(category);
+        ? t.leaderboards.emptyBoardBody(personCategory)
+        : t.leaderboards.notRankedBody(personCategory);
   // With no rows under it the card is the whole screen, so it takes the space
   // the list would have used instead of leaving a brown hole above the button.
   const showList = state === 'loading' || entries.length > 0;
@@ -296,209 +387,291 @@ export default function LeaderboardsScreen() {
   ).filter(Boolean) as (string | undefined)[];
 
   return (
-    <View
-      style={[
-        styles.root,
-        {
-          paddingTop: insets.top + 8,
-          paddingBottom: Math.max(insets.bottom, Spacing.sm),
-        },
-      ]}
-    >
-      <View style={styles.header}>
-        <Pressable
-          onPress={goBack}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel={t.leaderboards.back}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-        >
-          <ChevronLeftIcon size={26} color={Colors.foam} />
-        </Pressable>
-
-        <Text
-          style={styles.headerTitle}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
-          {t.leaderboards.screenTitle}
-        </Text>
-
-        {/* The back chevron's twin, so the title stays optically centred. */}
-        <View style={styles.headerSpacer} />
-      </View>
-
-      {/* One filter block, two questions asked in two different voices: the
-          metric is a solid track with one sliding thumb, the window is quiet
-          underlined text. They sit 8 pt apart and 16 pt above the card, so they
-          read as one control group, not two stray rows. */}
-      <View style={styles.filters}>
-        <BoardSegmented
-          options={CATEGORY_LABELS}
-          value={Math.max(0, CATEGORIES.indexOf(category))}
-          onChange={chooseCategory}
-          describeOption={t.leaderboards.selectCategory}
-          accessibilityLabel={t.a11y.leaderboardCategory}
-        />
-
-        {/* Fixed-height slot, so switching to Mapéři swaps the row for its note
-            without shifting the card under it (§14.8). */}
-        <View style={styles.periodSlot}>
-          {category === 'mapper' ? (
-            <Text style={styles.periodNote} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.leaderboards.mapperPeriodNote}
-            </Text>
-          ) : (
-            <PeriodChips
-              options={PERIODS}
-              value={period}
-              onChange={choosePeriod}
-              describeOption={t.leaderboards.selectPeriod}
-              accessibilityLabel={t.a11y.leaderboardPeriod}
-            />
-          )}
-        </View>
-      </View>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, !showList && styles.scrollContentCentered]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.amber} />
-        }
+    <View style={styles.screen}>
+      <View
+        style={[
+          styles.root,
+          {
+            paddingTop: insets.top + 8,
+            paddingBottom: Math.max(insets.bottom, Spacing.sm),
+          },
+          mapPub && styles.hidden,
+        ]}
       >
-        <View
-          accessibilityRole="text"
-          accessibilityLabel={
-            rank != null
-              ? t.leaderboards.heroA11y(tableTitle, rankLabel, scoreLabel, totalRanked)
-              : t.leaderboards.blankA11y(tableTitle, blankTitle, blankBody)
-          }
-          style={styles.heroCard}
-        >
-          <CardSheen />
+        <View style={styles.header}>
+          <Pressable
+            onPress={goBack}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={t.leaderboards.back}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          >
+            <ChevronLeftIcon size={26} color={Colors.foam} />
+          </Pressable>
 
-          <Text style={styles.eyebrow} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.leaderboards.subtitle(category, effectivePeriod)}
+          <Text
+            style={styles.headerTitle}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {t.leaderboards.screenTitle}
           </Text>
 
-          {state === 'loading' ? (
-            <HeroSkeleton reduceMotion={reduceMotion} />
-          ) : rank != null ? (
-            <View style={styles.heroBody} onLayout={handleHeroBodyLayout}>
-              <View style={styles.rankColumn}>
-                <Text
-                  style={[styles.rank, { fontSize: numeralSize, lineHeight: numeralSize * 1.24 }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.8}
-                  maxFontSizeMultiplier={FontScaleCap.display}
-                >
-                  {`${rankLabel}.`}
-                </Text>
-                <Text
-                  style={styles.rankNoun}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {t.leaderboards.rankNoun}
-                </Text>
-              </View>
+          {/* The back chevron's twin, so the title stays optically centred. */}
+          <View style={styles.headerSpacer} />
+        </View>
 
-              <PodiumMats rank={rank} width={podiumWidth} />
-            </View>
-          ) : (
-            <View style={[styles.blankBody, showList && styles.blankBodyCompact]}>
-              <View style={styles.blankLead}>
-                <Text style={styles.blankTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {blankTitle}
-                </Text>
-                <Text style={styles.blankText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {blankBody}
-                </Text>
-              </View>
+        {/* One filter block, two questions asked in two different voices: the
+            metric is a solid track with one sliding thumb, the window is quiet
+            underlined text. They sit 8 pt apart and 16 pt above the card, so they
+            read as one control group, not two stray rows. */}
+        <View style={styles.filters}>
+          <BoardSegmented
+            options={CATEGORY_LABELS}
+            value={Math.max(0, CATEGORIES.indexOf(category))}
+            onChange={chooseCategory}
+            describeOption={t.leaderboards.selectCategory}
+            accessibilityLabel={t.a11y.leaderboardCategory}
+          />
 
-              {showList || state === 'error' ? null : (
-                <View style={styles.rules}>
-                  <Text style={styles.rulesCaption} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.leaderboards.rulesCaption}
-                  </Text>
-                  {t.leaderboards.rules(category, effectivePeriod, hasNickname).map((rule) => (
-                    <Text
-                      key={rule}
-                      style={styles.ruleText}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {rule}
-                    </Text>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
+          {/* Fixed-height slot, so switching to Mapéři swaps the row for its note
+              without shifting the card under it (§14.8). */}
+          <View style={styles.periodSlot}>
+            {category === 'mapper' ? (
+              <Text style={styles.periodNote} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.leaderboards.mapperPeriodNote}
+              </Text>
+            ) : (
+              <PeriodChips
+                options={isVenues ? VENUE_PERIODS : PERIODS}
+                value={period}
+                onChange={choosePeriod}
+                describeOption={t.leaderboards.selectPeriod}
+                accessibilityLabel={t.a11y.leaderboardPeriod}
+              />
+            )}
+          </View>
 
-          {state === 'loading' ? <HeroFooterSkeleton reduceMotion={reduceMotion} /> : null}
-
-          {state !== 'loading' && footerLeft ? (
-            <View style={styles.heroFooter}>
+          {isVenues ? (
+            <Pressable
+              onPress={() => setCityPickerOpen(true)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t.leaderboards.venuesCityA11y(city ?? t.leaderboards.venuesAllCities)}
+              style={({ pressed }) => [styles.cityButton, pressed && styles.pressed]}
+            >
+              <MapPinIcon size={14} color={city ? Colors.amber : Colors.mutedText} />
               <Text
-                style={rank != null ? styles.scoreFact : styles.totalFact}
+                style={[styles.cityText, city ? styles.cityTextActive : null]}
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {footerLeft}
+                {city ?? t.leaderboards.venuesAllCities}
               </Text>
-              {footerRight ? (
-                <Text
-                  style={styles.totalFact}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {footerRight}
-                </Text>
-              ) : null}
-            </View>
+              <ChevronDownIcon size={14} color={city ? Colors.amber : Colors.mutedText} />
+            </Pressable>
           ) : null}
         </View>
 
-        {showList ? (
-          <>
-            <Text style={styles.listLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.leaderboards.listLabel}
-            </Text>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            !isVenues && !showList && styles.scrollContentCentered,
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.amber} />
+          }
+        >
+          {isVenues ? (
+            <PubBoardContent
+              state={state}
+              board={pubBoard}
+              period={effectivePeriod}
+              reduceMotion={reduceMotion}
+              onOpen={openBoardPub}
+            />
+          ) : (
+            <>
+              <View
+                accessibilityRole="text"
+                accessibilityLabel={
+                  rank != null
+                    ? t.leaderboards.heroA11y(tableTitle, rankLabel, scoreLabel, totalRanked)
+                    : t.leaderboards.blankA11y(tableTitle, blankTitle, blankBody)
+                }
+                style={styles.heroCard}
+              >
+                <CardSheen />
 
-            <View style={styles.rowsCard}>
-              {state === 'loading' ? (
-                <RowsSkeleton reduceMotion={reduceMotion} />
-              ) : (
-                entries.map((entry, index) => (
-                  <GlobalBoardRow
-                    key={entry.account.id}
-                    entry={entry}
-                    divided={index > 0}
-                    unit={unitFor(category, entry.score)}
-                    onPress={
-                      entry.isMe || !entry.account.id
-                        ? undefined
-                        : () => openProfile(entry.account.id)
-                    }
-                  />
-                ))
-              )}
-            </View>
-          </>
-        ) : null}
-      </ScrollView>
+                <Text style={styles.eyebrow} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.leaderboards.subtitle(category, effectivePeriod)}
+                </Text>
 
-      <NudgeSlot nudge={nudge} collapseWhenEmpty />
+                {state === 'loading' ? (
+                  <HeroSkeleton reduceMotion={reduceMotion} />
+                ) : rank != null ? (
+                  <View style={styles.heroBody} onLayout={handleHeroBodyLayout}>
+                    <View style={styles.rankColumn}>
+                      <Text
+                        style={[styles.rank, { fontSize: numeralSize, lineHeight: numeralSize * 1.24 }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
+                        maxFontSizeMultiplier={FontScaleCap.display}
+                      >
+                        {`${rankLabel}.`}
+                      </Text>
+                      <Text
+                        style={styles.rankNoun}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {t.leaderboards.rankNoun}
+                      </Text>
+                    </View>
 
-      <CounterCta label={cta.label} onPress={cta.onPress} accessibilityLabel={cta.label} />
+                    <PodiumMats rank={rank} width={podiumWidth} />
+                  </View>
+                ) : (
+                  <View style={[styles.blankBody, showList && styles.blankBodyCompact]}>
+                    <View style={styles.blankLead}>
+                      <Text style={styles.blankTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                        {blankTitle}
+                      </Text>
+                      <Text style={styles.blankText} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {blankBody}
+                      </Text>
+                    </View>
+
+                    {showList || state === 'error' ? null : (
+                      <View style={styles.rules}>
+                        <Text style={styles.rulesCaption} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {t.leaderboards.rulesCaption}
+                        </Text>
+                        {t.leaderboards.rules(category, effectivePeriod, hasNickname).map((rule) => (
+                          <Text
+                            key={rule}
+                            style={styles.ruleText}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                          >
+                            {rule}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {state === 'loading' ? <HeroFooterSkeleton reduceMotion={reduceMotion} /> : null}
+
+                {state !== 'loading' && footerLeft ? (
+                  <View style={styles.heroFooter}>
+                    <Text
+                      style={rank != null ? styles.scoreFact : styles.totalFact}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {footerLeft}
+                    </Text>
+                    {footerRight ? (
+                      <Text
+                        style={styles.totalFact}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {footerRight}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+
+              {showList ? (
+                <>
+                  <Text style={styles.listLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.leaderboards.listLabel}
+                  </Text>
+
+                  <View style={styles.rowsCard}>
+                    {state === 'loading' ? (
+                      <RowsSkeleton reduceMotion={reduceMotion} />
+                    ) : (
+                      entries.map((entry, index) => (
+                        <GlobalBoardRow
+                          key={entry.account.id}
+                          entry={entry}
+                          divided={index > 0}
+                          unit={unitFor(category, entry.score)}
+                          onPress={
+                            entry.isMe || !entry.account.id
+                              ? undefined
+                              : () => openProfile(entry.account.id)
+                          }
+                        />
+                      ))
+                    )}
+                  </View>
+                </>
+              ) : null}
+            </>
+          )}
+        </ScrollView>
+
+        <NudgeSlot nudge={nudge} collapseWhenEmpty />
+
+        <CounterCta label={cta.label} onPress={cta.onPress} accessibilityLabel={cta.label} />
+      </View>
+
+      {mapPub ? (
+        <BeerMapScreen
+          initialPub={mapPub}
+          focusInitialPub
+          filters={mapFilters}
+          onApplyFilters={setMapFilters}
+          onSearch={() => router.push('/pub-search' as Href)}
+          onShowCompass={() => router.dismissTo({ pathname: '/', params: { view: 'compass' } })}
+        />
+      ) : null}
+      <PubBoardDetail pub={openPub} onPubChange={setOpenPub} onShowOnOurMap={showOnOurMap} />
+      <MoreSheet
+        visible={cityPickerOpen}
+        title={t.leaderboards.venuesCityTitle}
+        rows={cityRows}
+        onClose={() => setCityPickerOpen(false)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: Colors.stout,
+  },
+  hidden: {
+    display: 'none',
+  },
+  // Which city the pub board counts. Same quiet voice as the window row.
+  cityButton: {
+    minHeight: 32,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.sm,
+  },
+  cityText: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  cityTextActive: {
+    color: Colors.amber,
+  },
   root: {
     flex: 1,
     backgroundColor: Colors.stout,

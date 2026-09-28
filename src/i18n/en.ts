@@ -90,6 +90,7 @@ export const en: Strings = {
     beersClusterLastWeek: (n: number) => `Last week's beers across these pubs, added up: ${n}`,
     moreBeers: 'Beer counts from last week',
     moreBeersOnly: 'Only pubs where people drank',
+    moreBoard: 'Pub leaderboard',
     beersOnlyNudge: 'Only where people drank',
     friendFallback: 'Friend',
     friendIsHere: (name: string) => `${name} is here right now`,
@@ -1493,11 +1494,51 @@ export const en: Strings = {
   leaderboards: {
     back: 'Back',
     screenTitle: 'Leaderboards',
-    categoryTab: (category: 'beers' | 'pubs' | 'mapper') =>
-    category === 'beers' ? 'Drinkers' : category === 'pubs' ? 'Explorers' : 'Mappers',
+    categoryTab: (category: 'beers' | 'pubs' | 'mapper' | 'venues') =>
+    category === 'beers'
+      ? 'Drinkers'
+      : category === 'pubs'
+        ? 'Explorers'
+        : category === 'mapper'
+          ? 'Mappers'
+          : 'Pubs',
     periodTab: (period: 'week' | 'year' | 'all') =>
     period === 'week' ? 'Week' : period === 'year' ? 'This year' : 'All time',
     mapperPeriodNote: 'Counted since day one',
+    venuesPeriodTab: (period: 'week' | 'year' | 'all') =>
+    period === 'week' ? 'Last week' : period === 'year' ? 'This year' : 'All time',
+    venuesSubtitle: (period: 'week' | 'year' | 'all') =>
+    period === 'week'
+      ? 'The most beers went down here last week.'
+      : period === 'year'
+        ? 'The most beers went down here this year.'
+        : 'The most beers went down here, ever.',
+    venuesAllCities: 'All cities',
+    venuesCityTitle: 'Pick a city',
+    venuesCityA11y: (city: string) => `City: ${city}. Tap to change`,
+    venuesListLabel: 'Next up',
+    venuesSince: (date: string) => `since ${date}`,
+    venuesAllTime: 'since day one',
+    venuesEmptyTitle: 'No beers here yet',
+    venuesEmptyBody: 'Once two different people log a beer in a pub, it shows up here.',
+    venuesRules: (period: 'week' | 'year' | 'all') => [
+      'I add up the beers logged in each pub.',
+      period === 'week'
+        ? 'It counts last week, Monday to Sunday.'
+        : period === 'year'
+          ? 'It counts everything since New Year.'
+          : 'It counts every beer ever logged.',
+      'A pub counts once at least two different people drank there.',
+      'No names anywhere, only beer counts.',
+    ],
+    venuesHeroA11y: (name: string, place: string, beers: string) =>
+    `The most beers went down at ${name}${place ? `, ${place}` : ''}. ${beers}. Tap for details.`,
+    venuesRowA11y: (rank: number, name: string, place: string, beers: string) =>
+    `Place ${rank}, ${name}${place ? `, ${place}` : ''}, ${beers}`,
+    showOnMapTitle: 'Show on map',
+    showOnOurMap: 'On the Na pivo map',
+    showOnGoogle: 'In Google Maps',
+    googleMapsFailed: 'Google Maps could not be opened.',
     selectCategory: (label: string, selected: boolean) =>
     selected ? `${label}, selected` : `Switch to ${label}`,
     selectPeriod: (label: string, selected: boolean) =>

@@ -102,6 +102,7 @@ export const cs = {
     beersClusterLastWeek: (n: number) => `Piva z těchto hospod za minulý týden dohromady: ${n}`,
     moreBeers: 'Počty piv za minulý týden',
     moreBeersOnly: 'Jen hospody, kde se pilo',
+    moreBoard: 'Žebříček hospod',
     beersOnlyNudge: 'Jen kde se pilo',
     friendFallback: 'Kamarád',
     friendIsHere: (name: string) => `${name} je tady teď`,
@@ -1842,13 +1843,54 @@ export const cs = {
     // the screen: a segmented track for the board and a quiet text row for the
     // window. Nothing here hides behind a „…“ sheet.
     screenTitle: 'Žebříčky',
-    categoryTab: (category: 'beers' | 'pubs' | 'mapper') =>
-      category === 'beers' ? 'Pivaři' : category === 'pubs' ? 'Objevitelé' : 'Mapéři',
+    categoryTab: (category: 'beers' | 'pubs' | 'mapper' | 'venues') =>
+      category === 'beers'
+        ? 'Pivaři'
+        : category === 'pubs'
+          ? 'Objevitelé'
+          : category === 'mapper'
+            ? 'Mapéři'
+            : 'Hospody',
     periodTab: (period: 'week' | 'year' | 'all') =>
       period === 'week' ? 'Týden' : period === 'year' ? 'Letos' : 'Celkem',
     // Mapér XP never resets, so the window row has nothing to switch — it says
     // so instead of showing three chips where two would do nothing.
     mapperPeriodNote: 'Sbírá se odjakživa',
+    // — Hospody: pubs ranked by beers, not people —
+    venuesPeriodTab: (period: 'week' | 'year' | 'all') =>
+      period === 'week' ? 'Minulý týden' : period === 'year' ? 'Letos' : 'Celkem',
+    venuesSubtitle: (period: 'week' | 'year' | 'all') =>
+      period === 'week'
+        ? 'Tady se minulý týden pilo nejvíc.'
+        : period === 'year'
+          ? 'Tady se letos pilo nejvíc.'
+          : 'Tady se pilo nejvíc ze všech.',
+    venuesAllCities: 'Všechna města',
+    venuesCityTitle: 'Vyber město',
+    venuesCityA11y: (city: string) => `Město: ${city}. Ťukni pro změnu`,
+    venuesListLabel: 'Další místa',
+    venuesSince: (date: string) => `od ${date}`,
+    venuesAllTime: 'odjakživa',
+    venuesEmptyTitle: 'Tady se ještě nic nevypilo',
+    venuesEmptyBody: 'Jakmile v hospodě zapíšou pivo aspoň dva různí lidi, objeví se tady.',
+    venuesRules: (period: 'week' | 'year' | 'all') => [
+      'Sčítám piva zapsaná v hospodě.',
+      period === 'week'
+        ? 'Počítá se minulý týden od pondělí do neděle.'
+        : period === 'year'
+          ? 'Počítá se všechno od Nového roku.'
+          : 'Počítá se všechno, co kdy padlo.',
+      'Hospoda se počítá, když v ní pili aspoň dva různí lidi.',
+      'Jména nikde neukazuju, jen počty piv.',
+    ],
+    venuesHeroA11y: (name: string, place: string, beers: string) =>
+      `Nejvíc se pilo v hospodě ${name}${place ? `, ${place}` : ''}. ${beers}. Ťukni pro detail.`,
+    venuesRowA11y: (rank: number, name: string, place: string, beers: string) =>
+      `${rank}. místo, ${name}${place ? `, ${place}` : ''}, ${beers}`,
+    showOnMapTitle: 'Ukázat na mapě',
+    showOnOurMap: 'Na mapě Na pivo',
+    showOnGoogle: 'V Google Maps',
+    googleMapsFailed: 'Google Maps se nepodařilo otevřít.',
     selectCategory: (label: string, selected: boolean) =>
       selected ? `${label}, vybráno` : `Přepnout na ${label}`,
     selectPeriod: (label: string, selected: boolean) =>

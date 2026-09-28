@@ -60,7 +60,7 @@ from .party_views import (
     PartyGameEventView,
     party_game_stream,
 )
-from .pub_beers_views import PubBeersLastWeekView
+from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
 from .tour_run_views import TourRunMemberView, TourRunPreviewView, TourRunView
 from .tour_search_views import TourSearchView
@@ -389,6 +389,7 @@ urlpatterns = [
         PubBeersLastWeekView.as_view(),
         name="pubs-beers-last-week",
     ),
+    path("pubs/beer-board", PubBeerBoardView.as_view(), name="pubs-beer-board"),
     path("pubs/suggest", PubLocationSuggestView.as_view(), name="pubs-suggest"),
     path("pubs/geocode", PubLocationGeocodeView.as_view(), name="pubs-geocode"),
     path(

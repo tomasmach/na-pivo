@@ -148,6 +148,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     RefreshCwIcon: MockIcon,
     StarIcon: MockIcon,
     SearchIcon: MockIcon,
+    TrophyIcon: MockIcon,
     UsersIcon: MockIcon,
     XIcon: MockIcon,
   };
@@ -517,6 +518,30 @@ describe('BeerMapScreen opening-hours loading', () => {
     });
   });
 
+  it('opens the pub leaderboard from the overflow sheet', () => {
+    jest.useFakeTimers();
+    try {
+      const screen = render(
+        <BeerMapScreen
+          filters={EMPTY_PUB_SEARCH_FILTERS}
+          onApplyFilters={jest.fn()}
+          onShowCompass={jest.fn()}
+        />,
+      );
+      mockPush.mockClear();
+      fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+      fireEvent.press(screen.getByLabelText(t.map.moreBoard));
+      act(() => { jest.runOnlyPendingTimers(); });
+
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/leaderboards',
+        params: { board: 'venues', source: 'map' },
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('opens the same add-pub form as the compass, seeded with the map center', () => {
     jest.useFakeTimers();
     try {
@@ -721,10 +746,9 @@ describe('BeerMapScreen last-week beers', () => {
       refreshPosition: jest.fn(async () => null),
     });
     mockedFetchPubHours.mockResolvedValue(new Map());
-    (fetchPubBeersLastWeek as jest.Mock).mockResolvedValue({
-      byKey: new Map([[geohash8(busy.lat, busy.lng), 4]]),
-      top: [],
-    });
+    (fetchPubBeersLastWeek as jest.Mock).mockResolvedValue(
+      new Map([[geohash8(busy.lat, busy.lng), 4]]),
+    );
   });
 
   afterEach(() => {
@@ -784,7 +808,7 @@ describe('BeerMapScreen last-week beers', () => {
   });
 
   it('keeps a slow counts request alive while the catalogue reloads', async () => {
-    let finish: (value: { byKey: Map<string, number>; top: [] }) => void = () => undefined;
+    let finish: (value: Map<string, number>) => void = () => undefined;
     (fetchPubBeersLastWeek as jest.Mock).mockImplementation(
       (signal: AbortSignal) =>
         new Promise((resolve) => {
@@ -805,7 +829,7 @@ describe('BeerMapScreen last-week beers', () => {
     expect(fetchPubBeersLastWeek).toHaveBeenCalledTimes(1);
     const [signal] = (fetchPubBeersLastWeek as jest.Mock).mock.calls[0] as [AbortSignal];
     expect(signal.aborted).toBe(false);
-    await act(async () => finish({ byKey: new Map([[geohash8(busy.lat, busy.lng), 4]]), top: [] }));
+    await act(async () => finish(new Map([[geohash8(busy.lat, busy.lng), 4]])));
     expect(screen.getByLabelText(busyLabel)).toBeTruthy();
   });
 

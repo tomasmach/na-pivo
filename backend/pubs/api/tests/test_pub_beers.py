@@ -11,13 +11,14 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.api.pub_beers_views import last_week_bounds
+from pubs.api.pub_beers_views import city_name, last_week_bounds
 from pubs.models import Account, DrinkLog, PubDirectory, PubHours
 
 PRAGUE = ZoneInfo("Europe/Prague")
 # Wednesday; "last week" is Monday 14. 9. – Sunday 20. 9. 2026.
 NOW = datetime(2026, 9, 23, 12, 0, tzinfo=PRAGUE)
 URL = "/v1/pubs/beers-last-week"
+BOARD_URL = "/v1/pubs/beer-board"
 
 
 @pytest.fixture
@@ -32,13 +33,13 @@ def _clear_cache():
     cache.clear()
 
 
-def _catalog(*cache_keys: str) -> None:
+def _catalog(*cache_keys: str, city: str = "Praha") -> None:
     for key in cache_keys:
         row = PubDirectory.objects.create(
             name=f"Hospoda {key}",
             lat=50.0876,
             lng=14.4214,
-            city="Praha",
+            city=city,
             country="cz",
             venue_kind=PubHours.VenueKind.PUB,
             discovery_kind=PubDirectory.DiscoveryKind.PUB,
@@ -70,9 +71,13 @@ def _beer(account: Account, drank_at: datetime, cache_key: str = "u2fkbn1z", **f
     )
 
 
-def _get(client: APIClient, token: str):
+def _get(client: APIClient, token: str, url: str = URL, **params):
     with mock.patch("pubs.api.pub_beers_views.timezone.now", return_value=NOW):
-        return client.get(URL, HTTP_AUTHORIZATION=f"Bearer {token}")
+        return client.get(url, params, HTTP_AUTHORIZATION=f"Bearer {token}")
+
+
+def _board(client: APIClient, token: str, **params) -> dict:
+    return _get(client, token, BOARD_URL, **params).json()
 
 
 def test_last_week_bounds_follow_prague_calendar_week():
@@ -116,7 +121,7 @@ def test_counts_beers_per_pub_last_week(client):
 
 
 @pytest.mark.django_db
-def test_top_lists_pubs_where_at_least_two_people_drank(client):
+def test_board_lists_pubs_where_at_least_two_people_drank(client):
     token, me = _register(client)
     _, friend = _register(client)
     _catalog("u2fkbn1z", "u2fkbq00", "u2fkbzzz")
@@ -130,11 +135,14 @@ def test_top_lists_pubs_where_at_least_two_people_drank(client):
     for _ in range(5):
         _beer(me, tuesday, cache_key="u2fkbzzz")
 
-    body = _get(client, token).json()
-
-    assert body["pubs"] == {"u2fkbn1z": 3, "u2fkbq00": 2, "u2fkbzzz": 5}
-    assert body["top"] == [
+    assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 3, "u2fkbq00": 2, "u2fkbzzz": 5}
+    board = _board(client, token)
+    assert board["period"] == "week"
+    assert (board["period_start"], board["period_end"]) == ("2026-09-14", "2026-09-20")
+    assert board["total_ranked"] == 2
+    assert board["entries"] == [
         {
+            "rank": 1,
             "cache_key": "u2fkbn1z",
             "beers": 3,
             "name": "Hospoda u2fkbn1z",
@@ -143,6 +151,7 @@ def test_top_lists_pubs_where_at_least_two_people_drank(client):
             "lng": 14.4214,
         },
         {
+            "rank": 2,
             "cache_key": "u2fkbq00",
             "beers": 2,
             "name": "Hospoda u2fkbq00",
@@ -151,6 +160,64 @@ def test_top_lists_pubs_where_at_least_two_people_drank(client):
             "lng": 14.4214,
         },
     ]
+
+
+@pytest.mark.django_db
+def test_board_windows_and_cities(client):
+    token, me = _register(client)
+    _, friend = _register(client)
+    _catalog("u2fkbn1z")
+    _catalog("u2cvp000", city="Brno-střed")
+    _catalog("u2cvp111", city="Brno")
+    for account in (me, friend):
+        # Last week in Prague, February in Brno, and last year in Brno.
+        _beer(account, datetime(2026, 9, 15, 20, 0, tzinfo=PRAGUE))
+        _beer(account, datetime(2026, 2, 3, 20, 0, tzinfo=PRAGUE), cache_key="u2cvp000")
+        _beer(account, datetime(2025, 6, 3, 20, 0, tzinfo=PRAGUE), cache_key="u2cvp111")
+        _beer(account, datetime(2025, 6, 4, 20, 0, tzinfo=PRAGUE), cache_key="u2cvp111")
+
+    def keys(board):
+        return [entry["cache_key"] for entry in board["entries"]]
+
+    assert keys(_board(client, token, period="week")) == ["u2fkbn1z"]
+    year = _board(client, token, period="year")
+    assert keys(year) == ["u2cvp000", "u2fkbn1z"]
+    assert (year["period_start"], year["period_end"]) == ("2026-01-01", "2026-09-23")
+    everything = _board(client, token, period="all")
+    assert keys(everything) == ["u2cvp111", "u2cvp000", "u2fkbn1z"]
+    assert everything["cities"] == [{"name": "Brno", "beers": 6}, {"name": "Praha", "beers": 2}]
+    in_brno = _board(client, token, period="all", city="Brno")
+    assert in_brno["city"] == "Brno"
+    assert keys(in_brno) == ["u2cvp111", "u2cvp000"]
+    assert [entry["rank"] for entry in in_brno["entries"]] == [1, 2]
+    # An unknown window falls back to last week instead of failing.
+    assert _board(client, token, period="decade")["period"] == "week"
+
+
+@pytest.mark.django_db
+def test_an_implausible_beer_day_does_not_count(client, settings):
+    settings.LEADERBOARD_BEER_RED_DAY = 5
+    token, me = _register(client)
+    _, friend = _register(client)
+    _catalog("u2fkbn1z")
+    tuesday = datetime(2026, 9, 15, 20, 0, tzinfo=PRAGUE)
+    _beer(friend, tuesday)
+    for minute in range(5):
+        _beer(me, tuesday.replace(minute=minute))
+    _beer(me, datetime(2026, 9, 17, 20, 0, tzinfo=PRAGUE))
+
+    assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 2}
+    assert [entry["beers"] for entry in _board(client, token)["entries"]] == [2]
+
+
+def test_city_name_merges_districts_only():
+    assert city_name("Praha 2") == "Praha"
+    assert city_name(" Brno-střed ") == "Brno"
+    assert city_name("Ostrava – Poruba") == "Ostrava"
+    assert city_name("Praha-východ") == "Praha-východ"
+    assert city_name("Brno-venkov") == "Brno-venkov"
+    assert city_name("Frýdek-Místek") == "Frýdek-Místek"
+    assert city_name("Plzeňská Lhota") == "Plzeňská Lhota"
 
 
 @pytest.mark.django_db
@@ -164,10 +231,10 @@ def test_accounts_pending_deletion_or_off_the_boards_are_not_counted(client):
     _beer(gone, datetime(2026, 9, 16, 20, 0, tzinfo=PRAGUE))
     _beer(cheat, datetime(2026, 9, 16, 20, 0, tzinfo=PRAGUE))
 
-    body = _get(client, token).json()
-    assert body["pubs"] == {}
-    assert body["top"] == []
+    assert _get(client, token).json()["pubs"] == {}
+    assert _board(client, token, period="all")["entries"] == []
 
 
 def test_requires_account_token(client):
     assert client.get(URL).status_code == status.HTTP_401_UNAUTHORIZED
+    assert client.get(BOARD_URL).status_code == status.HTTP_401_UNAUTHORIZED

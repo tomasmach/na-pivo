@@ -37,6 +37,7 @@ import {
   MapPinnedIcon,
   RefreshCwIcon,
   StarIcon,
+  TrophyIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
@@ -50,7 +51,7 @@ import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
-import { fetchPubBeersLastWeek, type PubBeersLastWeek } from '@/data/pubBeersClient';
+import { fetchPubBeersLastWeek, type PubBeersByKey } from '@/data/pubBeersClient';
 import {
   EMPTY_PUB_SEARCH_FILTERS,
   activePubSearchFilterCount,
@@ -627,7 +628,7 @@ export default function BeerMapScreen({
   const [detailOpen, setDetailOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
-  const [pubBeers, setPubBeers] = useState<PubBeersLastWeek | null>(null);
+  const [pubBeers, setPubBeers] = useState<PubBeersByKey | null>(null);
   const [beersOnlyChoice, setBeersOnlyChoice] = useState(rememberedBeersOnly);
   const [listOpen, setListOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -681,7 +682,7 @@ export default function BeerMapScreen({
   }, []);
 
   // Last week's counts only mean something while they are shown and loaded.
-  const visibleBeers = showPubBeers && layer !== 'friends' ? pubBeers?.byKey ?? null : null;
+  const visibleBeers = showPubBeers && layer !== 'friends' ? pubBeers : null;
   const beersOnly = beersOnlyChoice && visibleBeers != null;
   const setBeersOnly = useCallback((next: boolean) => {
     rememberedBeersOnly = next;
@@ -1300,6 +1301,15 @@ export default function BeerMapScreen({
           ]
         : []),
       {
+        key: 'board',
+        label: t.map.moreBoard,
+        icon: TrophyIcon,
+        onPress: () =>
+          runAfterMoreClose(() =>
+            router.push({ pathname: '/leaderboards' as never, params: { board: 'venues', source: 'map' } }),
+          ),
+      },
+      {
         key: 'refresh',
         label: t.map.refresh,
         icon: RefreshCwIcon,
@@ -1332,6 +1342,7 @@ export default function BeerMapScreen({
     activeFilterCount,
     openSelectedPubReport,
     refresh,
+    router,
     runAfterMoreClose,
     selectedPub,
     setShowPubBeers,

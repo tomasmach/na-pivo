@@ -20,15 +20,6 @@ import {
   resetPubBeersCache,
 } from '../pubBeersClient';
 
-const TOP_PUB = {
-  cache_key: 'u2fkbn1z',
-  name: 'U Zlatého tygra',
-  city: 'Praha',
-  lat: 50.0853,
-  lng: 14.4185,
-  beers: 4,
-};
-
 describe('parsePubBeers', () => {
   it('keeps positive whole counts and drops anything else', () => {
     const beers = parsePubBeers({
@@ -37,19 +28,7 @@ describe('parsePubBeers', () => {
       pubs: { u2fkbn1z: 4, u2fkbq00: 0, u2fkbzzz: 1.5, u2fkbyyy: '3' },
     });
 
-    expect(beers && [...beers.byKey]).toEqual([['u2fkbn1z', 4]]);
-    expect(beers?.top).toEqual([]);
-  });
-
-  it('reads the top pubs and skips broken entries', () => {
-    const beers = parsePubBeers({
-      pubs: { u2fkbn1z: 4 },
-      top: [TOP_PUB, { ...TOP_PUB, name: '' }, { ...TOP_PUB, beers: 0 }, null],
-    });
-
-    expect(beers?.top).toEqual([
-      { key: 'u2fkbn1z', name: 'U Zlatého tygra', city: 'Praha', lat: 50.0853, lng: 14.4185, beers: 4 },
-    ]);
+    expect(beers && [...beers]).toEqual([['u2fkbn1z', 4]]);
   });
 
   it('returns null for a malformed body', () => {
@@ -79,7 +58,7 @@ describe('counts kept on the device', () => {
     fetchMock.mockReset().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ next_week_starts_at: ROLLOVER, pubs: { u2fkbn1z: 4 }, top: [TOP_PUB] }),
+      json: async () => ({ next_week_starts_at: ROLLOVER, pubs: { u2fkbn1z: 4 } }),
     });
     global.fetch = fetchMock as unknown as typeof fetch;
     await AsyncStorage.clear();
@@ -98,9 +77,7 @@ describe('counts kept on the device', () => {
   it('shows the counts right after a restart without a request', async () => {
     await loadThenRestartAppAt(NOW + 2 * HOUR);
 
-    const beers = await fetchPubBeersLastWeek();
-    expect([...(beers?.byKey ?? [])]).toEqual([['u2fkbn1z', 4]]);
-    expect(beers?.top.map((pub) => pub.name)).toEqual(['U Zlatého tygra']);
+    expect([...((await fetchPubBeersLastWeek()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -134,7 +111,7 @@ describe('counts kept on the device', () => {
   it('ignores an unreadable copy', async () => {
     await AsyncStorage.setItem(PUB_BEERS_STORAGE_KEY, '{"pubs":');
 
-    expect([...((await fetchPubBeersLastWeek())?.byKey ?? [])]).toEqual([['u2fkbn1z', 4]]);
+    expect([...((await fetchPubBeersLastWeek()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

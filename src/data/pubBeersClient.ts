@@ -5,20 +5,8 @@ import { chainAbortSignal } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import { trackApiFailure } from './telemetryClient';
 
-export interface TopPub {
-  key: string;
-  name: string;
-  city: string;
-  lat: number;
-  lng: number;
-  beers: number;
-}
-
-/** Beers per pub cell (geohash-8) during last Monday–Sunday week, and the pubs on top. */
-export interface PubBeersLastWeek {
-  byKey: ReadonlyMap<string, number>;
-  top: readonly TopPub[];
-}
+/** Beers per pub cell (geohash-8) during last Monday–Sunday week. */
+export type PubBeersByKey = ReadonlyMap<string, number>;
 
 const ENDPOINT = '/v1/pubs/beers-last-week';
 const REQUEST_TIMEOUT_MS = 8000;
@@ -28,7 +16,7 @@ const CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 // are one aggregate shared by every account, so no account boundary clears it.
 export const PUB_BEERS_STORAGE_KEY = 'na-pivo-pub-beers-last-week';
 
-let cached: { expiresAt: number; beers: PubBeersLastWeek } | null = null;
+let cached: { expiresAt: number; beers: PubBeersByKey } | null = null;
 let deviceCopy: Promise<void> | null = null;
 
 /** Seeds the memory cache from the copy kept on the device, once per app run. */
@@ -55,36 +43,23 @@ export function nextWeekStartsAt(data: unknown): number | null {
   return Number.isFinite(at) ? at : null;
 }
 
-function isCount(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0;
-}
-
-function parseTopPub(raw: unknown): TopPub | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const { cache_key, name, city, lat, lng, beers } = raw as Record<string, unknown>;
-  if (typeof cache_key !== 'string' || typeof name !== 'string' || !name.trim()) return null;
-  if (typeof lat !== 'number' || typeof lng !== 'number' || !isCount(beers)) return null;
-  return { key: cache_key, name, city: typeof city === 'string' ? city : '', lat, lng, beers };
-}
-
-export function parsePubBeers(data: unknown): PubBeersLastWeek | null {
+export function parsePubBeers(data: unknown): PubBeersByKey | null {
   if (!data || typeof data !== 'object') return null;
-  const { pubs, top } = data as { pubs?: unknown; top?: unknown };
+  const pubs = (data as { pubs?: unknown }).pubs;
   if (!pubs || typeof pubs !== 'object' || Array.isArray(pubs)) return null;
-  const byKey = new Map<string, number>();
+  const beers = new Map<string, number>();
   for (const [key, count] of Object.entries(pubs)) {
-    if (isCount(count)) byKey.set(key, count);
+    if (typeof count === 'number' && Number.isInteger(count) && count > 0) {
+      beers.set(key, count);
+    }
   }
-  const topPubs = Array.isArray(top)
-    ? top.map(parseTopPub).filter((pub): pub is TopPub => pub !== null)
-    : [];
-  return { byKey, top: topPubs };
+  return beers;
 }
 
 /** Last week's beers per pub, or null when they cannot be loaded. */
 export async function fetchPubBeersLastWeek(
   signal?: AbortSignal,
-): Promise<PubBeersLastWeek | null> {
+): Promise<PubBeersByKey | null> {
   await loadDeviceCopy();
   if (cached && Date.now() < cached.expiresAt) return cached.beers;
 
@@ -119,11 +94,7 @@ export async function fetchPubBeersLastWeek(
         expiresAt: Math.min(now + CACHE_TTL_MS, rollover ?? now + CACHE_TTL_MS),
         beers,
       };
-      const stored = {
-        expiresAt: cached.expiresAt,
-        pubs: Object.fromEntries(beers.byKey),
-        top: (data as { top?: unknown }).top,
-      };
+      const stored = { expiresAt: cached.expiresAt, pubs: Object.fromEntries(beers) };
       void AsyncStorage.setItem(PUB_BEERS_STORAGE_KEY, JSON.stringify(stored)).catch(
         () => undefined,
       );
