@@ -131,15 +131,21 @@ function desiredReminders(now: number): TourReminder[] {
     .slice(0, Platform.OS === 'ios' ? MAX_PENDING : undefined);
 }
 
-/** A reminder already on screen must not outlive its plan on this phone, above all after sign-out or an account switch. */
-async function dismissOrphans(): Promise<void> {
+/** A reminder already on screen goes once it no longer tells the truth: plan gone or moved, walk started, reminders off, account switched. */
+async function dismissOutdated(): Promise<void> {
   if (!Notifications?.getPresentedNotificationsAsync) return;
   const tours = useToursStore.getState();
-  const kept = new Set(tours.hydrated ? tours.plans.map((plan) => `${ID_PREFIX}${plan.id}`) : []);
+  const plans = new Map(tours.hydrated ? tours.plans.map((plan) => [`${ID_PREFIX}${plan.id}`, plan]) : []);
+  const enabled = useSettingsStore.getState().tourRemindersEnabled;
   try {
     for (const shown of await Notifications.getPresentedNotificationsAsync()) {
       const id = shown.request.identifier;
-      if (id.startsWith(ID_PREFIX) && !kept.has(id)) await Notifications.dismissNotificationAsync(id).catch(() => undefined);
+      if (!id.startsWith(ID_PREFIX)) continue;
+      const plan = plans.get(id);
+      // Zero skips the "already passed" check: a delivered reminder has passed by definition.
+      const current = enabled && plan ? tourReminderFor(plan, tours, 0) : null;
+      if (current && current.fireAtMs === shown.request.content.data?.fireAtMs) continue;
+      await Notifications.dismissNotificationAsync(id).catch(() => undefined);
     }
   } catch {
     // The next reconcile tries again.
@@ -171,7 +177,7 @@ async function reconcileInternal(): Promise<void> {
       granted = false;
     }
   }
-  await dismissOrphans();
+  await dismissOutdated();
   const scheduled = (await Notifications.getAllScheduledNotificationsAsync())
     .filter((request) => request.identifier.startsWith(ID_PREFIX));
   const wanted = new Map((granted ? desiredReminders(Date.now()) : []).map((r) => [`${ID_PREFIX}${r.planId}`, r]));
