@@ -89,9 +89,9 @@ export const en: Strings = {
       }),
     beersClusterLastWeek: (n: number) => `Last week's beers across these pubs, added up: ${n}`,
     moreBeers: 'Beer counts from last week',
-    moreBeersOnly: 'Only pubs where people drank',
+    moreBeersOnly: 'Only where people drank last week',
     moreBoard: 'Pub leaderboard',
-    beersOnlyNudge: 'Only where people drank',
+    beersOnlyNudge: 'Only where people drank last week',
     friendFallback: 'Friend',
     friendIsHere: (name: string) => `${name} is here right now`,
     friendsAreHere: (name: string, others: number) => `${name} and ${others} others are here`,
@@ -1519,8 +1519,12 @@ export const en: Strings = {
     venuesListLabel: 'Next up',
     venuesSince: (date: string) => `since ${date}`,
     venuesAllTime: 'since day one',
-    venuesEmptyTitle: 'No beers here yet',
-    venuesEmptyBody: 'Once two different people log a beer in a pub, it shows up here.',
+    venuesEmptyTitle: (period: 'week' | 'year' | 'all') =>
+    period === 'week' ? 'No beers here last week' : 'No beers here yet',
+    venuesEmptyBody: (period: 'week' | 'year' | 'all') =>
+    period === 'week'
+      ? 'A new board comes on Monday.'
+      : 'Once two different people log a beer in a pub, it shows up here.',
     venuesRules: (period: 'week' | 'year' | 'all') => [
       'I add up the beers logged in each pub.',
       period === 'week'
@@ -1536,7 +1540,7 @@ export const en: Strings = {
     venuesRowA11y: (rank: number, name: string, place: string, beers: string) =>
     `Place ${rank}, ${name}${place ? `, ${place}` : ''}, ${beers}`,
     showOnMapTitle: 'Show on map',
-    showOnOurMap: 'On the Na pivo map',
+    showOnOurMap: 'Here in the app',
     showOnGoogle: 'In Google Maps',
     googleMapsFailed: 'Google Maps could not be opened.',
     selectCategory: (label: string, selected: boolean) =>

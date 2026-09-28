@@ -6,6 +6,7 @@ jest.mock('@/leaderboards/BoardSkeleton', () => ({
   RowsSkeleton: () => null,
 }));
 jest.mock('@/leaderboards/PodiumMats', () => ({ PodiumMats: () => null }));
+jest.mock('@/components/shared/IconGlyph', () => ({ ChevronRightIcon: () => null }));
 
 import type { PubBoard } from '@/data/pubBoardClient';
 import { t } from '@/i18n';
@@ -51,7 +52,7 @@ describe('PubBoardContent', () => {
       />,
     );
 
-    expect(screen.getByText(t.leaderboards.venuesEmptyTitle)).toBeTruthy();
+    expect(screen.getByText(t.leaderboards.venuesEmptyTitle('year'))).toBeTruthy();
     expect(screen.getByText(t.leaderboards.venuesRules('year')[1])).toBeTruthy();
   });
 });

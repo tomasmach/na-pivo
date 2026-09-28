@@ -132,6 +132,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
   return {
     BeerIcon: MockIcon,
     CheckIcon: MockIcon,
+    ChevronLeftIcon: MockIcon,
     ChevronRightIcon: MockIcon,
     CompassIcon: MockIcon,
     MenuIcon: MockIcon,
@@ -308,8 +309,9 @@ describe('BeerMapScreen opening-hours loading', () => {
   it('lets a cluster count render before freezing its complete marker', () => {
     const data = mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS);
     mockedUseBeerMap.mockReturnValue({ ...data, pubs: [
-      { id: 'cluster-a', name: 'A', lat: 50.0876, lng: 14.4214 },
-      { id: 'cluster-b', name: 'B', lat: 50.088, lng: 14.422 },
+      // Away from the pub the previous test selected: the selected pub keeps its own pin.
+      { id: 'cluster-a', name: 'A', lat: 50.0896, lng: 14.4234 },
+      { id: 'cluster-b', name: 'B', lat: 50.09, lng: 14.424 },
     ] });
     const screen = render(<BeerMapScreen
       filters={EMPTY_PUB_SEARCH_FILTERS}
@@ -840,5 +842,27 @@ describe('BeerMapScreen last-week beers', () => {
     expect(fetchPubBeersLastWeek).not.toHaveBeenCalled();
     expect(screen.getByLabelText(t.a11y.mapPub('U Plných', 0))).toBeTruthy();
     expect(screen.queryByText('4')).toBeNull();
+  });
+});
+
+describe('BeerMapScreen opened on one pub', () => {
+  it('keeps the selected pub out of a cluster', async () => {
+    const data = mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS);
+    const opened = { id: 'opened', name: 'Otevřená', lat: 50.0896, lng: 14.4234 };
+    mockedUseBeerMap.mockReturnValue({ ...data, pubs: [
+      opened,
+      { id: 'neighbour', name: 'Soused', lat: 50.09, lng: 14.424 },
+    ] });
+    const screen = render(<BeerMapScreen
+      initialPub={opened}
+      focusInitialPub
+      filters={EMPTY_PUB_SEARCH_FILTERS}
+      onApplyFilters={jest.fn()}
+      onShowCompass={jest.fn()}
+    />);
+    await act(async () => undefined);
+
+    expect(screen.getByLabelText(t.a11y.mapPub('Otevřená', 0))).toBeTruthy();
+    expect(screen.queryByLabelText(t.a11y.mapCluster(2))).toBeNull();
   });
 });

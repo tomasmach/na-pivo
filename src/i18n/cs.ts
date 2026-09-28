@@ -101,9 +101,9 @@ export const cs = {
       }),
     beersClusterLastWeek: (n: number) => `Piva z těchto hospod za minulý týden dohromady: ${n}`,
     moreBeers: 'Počty piv za minulý týden',
-    moreBeersOnly: 'Jen hospody, kde se pilo',
+    moreBeersOnly: 'Jen kde se minulý týden pilo',
     moreBoard: 'Žebříček hospod',
-    beersOnlyNudge: 'Jen kde se pilo',
+    beersOnlyNudge: 'Jen kde se minulý týden pilo',
     friendFallback: 'Kamarád',
     friendIsHere: (name: string) => `${name} je tady teď`,
     friendsAreHere: (name: string, others: number) =>
@@ -1871,8 +1871,12 @@ export const cs = {
     venuesListLabel: 'Další místa',
     venuesSince: (date: string) => `od ${date}`,
     venuesAllTime: 'odjakživa',
-    venuesEmptyTitle: 'Tady se ještě nic nevypilo',
-    venuesEmptyBody: 'Jakmile v hospodě zapíšou pivo aspoň dva různí lidi, objeví se tady.',
+    venuesEmptyTitle: (period: 'week' | 'year' | 'all') =>
+      period === 'week' ? 'Minulý týden se tu nic nevypilo' : 'Tady se ještě nic nevypilo',
+    venuesEmptyBody: (period: 'week' | 'year' | 'all') =>
+      period === 'week'
+        ? 'Nový žebříček bude v pondělí.'
+        : 'Jakmile v hospodě zapíšou pivo aspoň dva různí lidi, objeví se tady.',
     venuesRules: (period: 'week' | 'year' | 'all') => [
       'Sčítám piva zapsaná v hospodě.',
       period === 'week'
@@ -1888,8 +1892,8 @@ export const cs = {
     venuesRowA11y: (rank: number, name: string, place: string, beers: string) =>
       `${rank}. místo, ${name}${place ? `, ${place}` : ''}, ${beers}`,
     showOnMapTitle: 'Ukázat na mapě',
-    showOnOurMap: 'Na mapě Na pivo',
-    showOnGoogle: 'V Google Maps',
+    showOnOurMap: 'Tady v appce',
+    showOnGoogle: 'V Google Mapách',
     googleMapsFailed: 'Google Maps se nepodařilo otevřít.',
     selectCategory: (label: string, selected: boolean) =>
       selected ? `${label}, vybráno` : `Přepnout na ${label}`,

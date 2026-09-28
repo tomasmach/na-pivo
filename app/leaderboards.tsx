@@ -628,6 +628,7 @@ export default function LeaderboardsScreen() {
         <BeerMapScreen
           initialPub={mapPub}
           focusInitialPub
+          onBack={() => setMapPub(null)}
           filters={mapFilters}
           onApplyFilters={setMapFilters}
           onSearch={() => router.push('/pub-search' as Href)}

@@ -9,6 +9,7 @@ import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CardSurface } from '@/components/shared/CardSurface';
+import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import type { PubBoard, PubBoardEntry } from '@/data/pubBoardClient';
 import { intlLocale, t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -50,12 +51,14 @@ function windowLabel(board: PubBoard): string {
 
 function PubBoardContentBase({ state, board, period, reduceMotion, onOpen }: PubBoardContentProps) {
   const entries = state === 'loaded' ? board?.entries ?? [] : [];
+  // With one city picked, only a district under the name still says something.
+  const place = (entry: PubBoardEntry) => (entry.city === board?.city ? '' : entry.city);
   const winner = entries[0] ?? null;
   const rest = entries.slice(1);
 
   if (state === 'error' || (state === 'loaded' && !winner)) {
-    const title = state === 'error' ? t.leaderboards.errorTitle : t.leaderboards.venuesEmptyTitle;
-    const body = state === 'error' ? t.leaderboards.errorBody : t.leaderboards.venuesEmptyBody;
+    const title = state === 'error' ? t.leaderboards.errorTitle : t.leaderboards.venuesEmptyTitle(period);
+    const body = state === 'error' ? t.leaderboards.errorBody : t.leaderboards.venuesEmptyBody(period);
     return (
       <View style={styles.heroCard} accessible accessibilityRole="text" accessibilityLabel={`${title}. ${body}`}>
         <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -108,12 +111,15 @@ function PubBoardContentBase({ state, board, period, reduceMotion, onOpen }: Pub
               <Text style={styles.rank} maxFontSizeMultiplier={FontScaleCap.display}>
                 1.
               </Text>
-              <Text style={styles.winnerName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {winner.name}
-              </Text>
-              {winner.city ? (
+              <View style={styles.winnerNameRow}>
+                <Text style={styles.winnerName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {winner.name}
+                </Text>
+                <ChevronRightIcon size={18} color={Colors.foamMuted} />
+              </View>
+              {place(winner) ? (
                 <Text style={styles.winnerCity} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {winner.city}
+                  {place(winner)}
                 </Text>
               ) : null}
             </View>
@@ -174,9 +180,9 @@ function PubBoardContentBase({ state, board, period, reduceMotion, onOpen }: Pub
                     <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
                       {entry.name}
                     </Text>
-                    {entry.city ? (
+                    {place(entry) ? (
                       <Text style={styles.city} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {entry.city}
+                        {place(entry)}
                       </Text>
                     ) : null}
                   </View>
@@ -227,8 +233,14 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
-  winnerName: {
+  winnerNameRow: {
     marginTop: -8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  winnerName: {
+    flexShrink: 1,
     fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     lineHeight: 28,

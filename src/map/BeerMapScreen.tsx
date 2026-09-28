@@ -27,6 +27,7 @@ import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { haversineMeters } from '@/compass/distance';
 import {
   BeerIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   MenuIcon,
   ExternalLinkIcon,
@@ -124,6 +125,8 @@ export interface BeerMapScreenProps {
   initialPub?: Pub | null;
   focusInitialPub?: boolean;
   onSearch?: () => void;
+  /** Set when the map is opened over another screen, which it returns to. */
+  onBack?: () => void;
   filters: PubSearchFilters;
   onApplyFilters: (filters: PubSearchFilters) => void;
   onShowCompass: () => void;
@@ -564,6 +567,7 @@ export default function BeerMapScreen({
   initialPub,
   focusInitialPub = false,
   onSearch,
+  onBack,
   filters,
   onApplyFilters,
   onShowCompass,
@@ -862,9 +866,16 @@ export default function BeerMapScreen({
     if (showCities || layer === 'friends') return [];
     // Cluster only the viewport-filtered points — clustering the full
     // accumulated catalogue (up to 600) and discarding offscreen clusters
-    // afterwards wastes work on every pan.
-    return clusterCoordinates(visiblePoints, region);
-  }, [layer, region, showCities, visiblePoints]);
+    // afterwards wastes work on every pan. The selected pub always keeps its
+    // own pin: a pub opened from elsewhere must not hide inside a bubble.
+    const selectedKey = selectedPub?.key;
+    const selected = selectedKey ? visiblePoints.find((point) => point.key === selectedKey) : undefined;
+    if (!selected) return clusterCoordinates(visiblePoints, region);
+    return [
+      ...clusterCoordinates(visiblePoints.filter((point) => point !== selected), region),
+      { id: `selected:${selected.key}`, lat: selected.lat, lng: selected.lng, items: [selected] },
+    ];
+  }, [layer, region, selectedPub?.key, showCities, visiblePoints]);
 
   const handleRegionChange = useCallback(
     (next: Region) => {
@@ -1300,15 +1311,20 @@ export default function BeerMapScreen({
             },
           ]
         : []),
-      {
-        key: 'board',
-        label: t.map.moreBoard,
-        icon: TrophyIcon,
-        onPress: () =>
-          runAfterMoreClose(() =>
-            router.push({ pathname: '/leaderboards' as never, params: { board: 'venues', source: 'map' } }),
-          ),
-      },
+      // A map opened from the board goes back to it instead of stacking another.
+      ...(onBack
+        ? []
+        : [
+            {
+              key: 'board',
+              label: t.map.moreBoard,
+              icon: TrophyIcon,
+              onPress: () =>
+                runAfterMoreClose(() =>
+                  router.push({ pathname: '/leaderboards' as never, params: { board: 'venues', source: 'map' } }),
+                ),
+            },
+          ]),
       {
         key: 'refresh',
         label: t.map.refresh,
@@ -1341,6 +1357,7 @@ export default function BeerMapScreen({
   }, [
     activeFilterCount,
     openSelectedPubReport,
+    onBack,
     refresh,
     router,
     runAfterMoreClose,
@@ -1476,6 +1493,17 @@ export default function BeerMapScreen({
         pointerEvents="box-none"
       >
         <View style={styles.header}>
+          {onBack ? (
+            <Pressable
+              onPress={onBack}
+              style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t.leaderboards.back}
+            >
+              <ChevronLeftIcon size={22} color={Colors.foamMuted} />
+            </Pressable>
+          ) : null}
           <ExploreSwitch
             activeView="map"
             onSelectCompass={onShowCompass}
