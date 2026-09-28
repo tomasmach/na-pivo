@@ -3719,17 +3719,37 @@ class PubFavoriteView(APIView):
                         status=status.HTTP_409_CONFLICT,
                     )
 
-                favorite, _ = PubFavorite.objects.update_or_create(
-                    account=request.user,
-                    cache_key=cache_key,
-                    defaults={
-                        "name": data.get("name") or "",
-                        "lat": data["lat"],
-                        "lng": data["lng"],
-                        "external_id": data.get("external_id") or "",
-                        "client_updated_at": updated_at,
-                    },
-                )
+                fields = {
+                    "name": data.get("name") or "",
+                    "lat": data["lat"],
+                    "lng": data["lng"],
+                    "external_id": data.get("external_id") or "",
+                    "client_updated_at": updated_at,
+                }
+                favorite = existing
+                if favorite is None:
+                    try:
+                        with transaction.atomic():
+                            favorite = PubFavorite.objects.create(
+                                account=request.user, cache_key=cache_key, **fields
+                            )
+                    except IntegrityError:
+                        # Another device saved the same pub first; no row was
+                        # there to lock, so compare against its write now.
+                        favorite = PubFavorite.objects.select_for_update().get(
+                            account=request.user, cache_key=cache_key
+                        )
+                        if favorite.client_updated_at > updated_at:
+                            body = _favorite_item(favorite)
+                            body["applied"] = False
+                            return Response(body, status=status.HTTP_200_OK)
+                        for name, value in fields.items():
+                            setattr(favorite, name, value)
+                        favorite.save()
+                else:
+                    for name, value in fields.items():
+                        setattr(favorite, name, value)
+                    favorite.save()
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-favorites: unexpected error saving favorite (%s)",
