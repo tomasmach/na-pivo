@@ -5438,6 +5438,26 @@ def _friend_table_visits(now: datetime):
     )
 
 
+_COORDINATE_PUB_ID = re.compile(r"^mapy:-?\d+(\.\d+)?,-?\d+(\.\d+)?$")
+
+
+def _same_table_pub(a: PubVisit, b: PubVisit) -> bool:
+    """Whether two visits in one geohash cell are the same business.
+
+    Mirrors ``isSamePubRecord`` in the app: equal provider ids match, two
+    different stable ids are two neighbours, and otherwise the names decide.
+    """
+
+    if a.external_id and a.external_id == b.external_id:
+        return True
+    stable = [
+        bool(value) and not _COORDINATE_PUB_ID.match(value) for value in (a.external_id, b.external_id)
+    ]
+    if all(stable):
+        return False
+    return bool(a.name.strip()) and a.name.strip().casefold() == b.name.strip().casefold()
+
+
 class FriendTableView(APIView):
     """GET/POST/DELETE /v1/friends/table — add people sitting in the same pub.
 
@@ -5539,7 +5559,7 @@ class FriendTableView(APIView):
         people_accounts: list[Account] = []
         seen: set[int] = set()
         for row in visits:
-            if row.account_id in seen:
+            if row.account_id in seen or not _same_table_pub(visit, row):
                 continue
             seen.add(row.account_id)
             people_accounts.append(row.account)

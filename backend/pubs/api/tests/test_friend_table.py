@@ -462,6 +462,25 @@ def test_candidate_exclusions(client, table, exclude):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("mine", "theirs", "listed"),
+    [
+        pytest.param(("U Tygra", "mapy:111"), ("U Tygra", "mapy:111"), True, id="same_id"),
+        pytest.param(("U Tygra", "mapy:111"), ("Vinárna", "mapy:222"), False, id="neighbour_ids"),
+        pytest.param(("U Tygra", "mapy:111"), ("U tygra ", ""), True, id="same_name_no_id"),
+        pytest.param(("U Tygra", ""), ("Vinárna", ""), False, id="neighbour_names"),
+        pytest.param(("U Tygra", "mapy:50.08,14.42"), ("U Tygra", "mapy:111"), True, id="coordinate_id"),
+    ],
+)
+def test_neighbours_in_one_cell_are_not_one_table(client, table, mine, theirs, listed):
+    me_token, me, _bara_token, bara = table
+    PubVisit.objects.filter(account=me).update(name=mine[0], external_id=mine[1])
+    PubVisit.objects.filter(account=bara).update(name=theirs[0], external_id=theirs[1])
+
+    assert _names(client.post(_URL, **_auth(me_token))) == (["bara"] if listed else [])
+
+
+@pytest.mark.django_db
 def test_old_decline_no_longer_hides_them(client, table):
     me_token, me, _bara_token, bara = table
     Friendship.objects.create(
