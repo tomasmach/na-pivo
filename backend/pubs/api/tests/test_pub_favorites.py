@@ -473,6 +473,31 @@ def test_anonymous_merge_moves_favorites_and_keeps_target_duplicate():
     assert PubFavorite.objects.count() == 2
 
 
+@pytest.mark.django_db
+def test_account_merge_keeps_the_later_removal_time(client):
+    def register(device_id: str) -> str:
+        resp = client.post("/v1/account", data={"device_id": device_id}, format="json")
+        assert resp.status_code == status.HTTP_201_CREATED
+        return resp.json()["token"]
+
+    source_device, target_device = str(uuid.uuid4()), str(uuid.uuid4())
+    token_source = register(source_device)
+    token_target = register(target_device)
+    _put(client, token_target, favorite=False, updated_at="2026-06-10T10:00:00+02:00")
+    _put(client, token_source, favorite=False, updated_at="2026-06-12T10:00:00+02:00")
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(
+            Account.objects.get(device_id=source_device),
+            Account.objects.get(device_id=target_device),
+        )
+
+    # A save between the two removals must stay removed after the claim.
+    between = _put(client, token_target, updated_at="2026-06-11T10:00:00+02:00")
+    assert between.json()["applied"] is False
+    assert PubFavorite.objects.count() == 0
+
+
 @pytest.mark.django_db(transaction=True)
 def test_anonymous_merge_moves_removals_but_never_deletes_a_favorite():
     target = Account.objects.create(device_id="favorites-merge-target")

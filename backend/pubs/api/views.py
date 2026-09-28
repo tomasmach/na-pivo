@@ -3748,6 +3748,10 @@ class PubFavoriteView(APIView):
 
         try:
             with transaction.atomic():
+                # With no row yet there is nothing to lock, so a parallel save and
+                # removal could insert both a favourite and a tombstone. Serializing
+                # the account's favourite writes keeps exactly one of them.
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
                 existing = (
                     PubFavorite.objects.select_for_update()
                     .filter(account=request.user, cache_key=cache_key)
@@ -3847,6 +3851,7 @@ class PubFavoriteView(APIView):
         # client time the tombstone blocks only the removed copy and older ones.
         try:
             with transaction.atomic():
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
                 favorite = (
                     PubFavorite.objects.select_for_update()
                     .filter(account=request.user, cache_key=cache_key)
