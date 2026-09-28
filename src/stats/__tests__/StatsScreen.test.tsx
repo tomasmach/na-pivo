@@ -17,7 +17,10 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 // Keep the screen purely local — no backend overlay, no network.
-jest.mock('@/data/statsClient', () => ({ fetchMyStats: jest.fn(async () => null) }));
+jest.mock('@/data/statsClient', () => ({
+  fetchMyStats: jest.fn(async () => null),
+  MAX_EXCLUDED_DRINKS: 100,
+}));
 
 // fonts.ts require()s .ttf assets jest can't transform — stub the font tokens.
 jest.mock('@/theme/fonts', () => ({
@@ -182,10 +185,31 @@ describe('StatsScreen', () => {
     });
 
     expect(fetchMyStatsMock).toHaveBeenLastCalledWith(expect.any(AbortSignal), [
-      'removed-just-now',
       'queued-before-launch',
+      'removed-just-now',
     ]);
     await AsyncStorage.clear();
+    act(() => {
+      useAccountStore.setState({ removedDrinkIds: new Set() });
+    });
+  });
+
+  it('keeps the newest removals when a long session exceeds the exclusion cap', async () => {
+    act(() => {
+      useAccountStore.setState({
+        removedDrinkIds: new Set(Array.from({ length: 120 }, (_, index) => `removed-${index}`)),
+      });
+    });
+
+    await act(async () => {
+      TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const excluded = fetchMyStatsMock.mock.calls.at(-1)?.[1] ?? [];
+    expect(excluded).toHaveLength(100);
+    expect(excluded).toContain('removed-119');
+    expect(excluded).not.toContain('removed-19');
     act(() => {
       useAccountStore.setState({ removedDrinkIds: new Set() });
     });

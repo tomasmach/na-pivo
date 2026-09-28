@@ -958,7 +958,9 @@ function Tacek({
 
       const visitUpdatedAt = new Date().toISOString();
       const currentVisitClientId = current?.clientId;
-      const removedAt = current?.drinks.find((drink) => drink.id === targetId)?.at;
+      const removedDrink = current?.drinks.find((drink) => drink.id === targetId);
+      const removedBeerAt =
+        removedDrink && normalizeDrinkType(removedDrink.drinkType) === 'beer' ? removedDrink.at : undefined;
       removeDrink(targetId);
 
       // Undo the tour check-off only while it is still ours and no other drink keeps the group there.
@@ -988,7 +990,7 @@ function Tacek({
           context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
         });
         if (!pulledFromQueue) {
-          useAccountStore.getState().forgetDiaryDrink(targetId, removedAt);
+          useAccountStore.getState().forgetDiaryDrink(targetId, removedBeerAt);
           void flushDrinksQueue()
             .then(() => enqueueDelete(targetId))
             .catch(() => undefined);

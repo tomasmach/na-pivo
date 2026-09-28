@@ -21,7 +21,7 @@ import { chainAbortSignal } from './apiFetch';
 
 const REQUEST_TIMEOUT_MS = 8000;
 /** Matches the server's cap on excluded drinks per stats read. */
-const MAX_EXCLUDED_DRINKS = 100;
+export const MAX_EXCLUDED_DRINKS = 100;
 
 /** One pub's lifetime tally as returned by the backend. */
 export interface RemotePubTally {

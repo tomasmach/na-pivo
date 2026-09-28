@@ -25,6 +25,7 @@ import {
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
+import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { releaseToursToDevice } from '@/stores/toursStore';
 
@@ -140,8 +141,11 @@ interface AccountState {
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
   /** Resolves true when the server snapshot was fetched. */
   refreshDiarySnapshot: () => Promise<boolean>;
-  /** Drop a removed drink from the snapshot before its deletion reaches the server. */
-  forgetDiaryDrink: (clientId: string, drankAt?: string) => void;
+  /**
+   * Drop a removed drink from the snapshot before its deletion reaches the
+   * server. `beerAt` is the local timestamp when the removed drink was a beer.
+   */
+  forgetDiaryDrink: (clientId: string, beerAt?: string) => void;
   /**
    * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
    * snapshot so Profile climbs immediately after a vote, without a second GET.
@@ -195,9 +199,6 @@ interface AccountState {
   requestEmailVerification: () => Promise<AuthActionResult>;
   verifyEmail: (token: string) => Promise<AuthActionResult>;
 }
-
-/** Enough to cover reads racing recent removals, well under the stats cap. */
-const MAX_REMEMBERED_REMOVALS = 50;
 
 function withoutRemovedDrinks(data: DiarySnapshot, removed: ReadonlySet<string>): DiarySnapshot {
   if (!data.drinks.some((drink) => removed.has(drink.client_id))) return data;
@@ -350,23 +351,19 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     refreshDiarySnapshot,
 
-    forgetDiaryDrink: (clientId, drankAt) => {
+    forgetDiaryDrink: (clientId, beerAt) => {
       set((state) => {
         const removedDrinkIds = new Set(state.removedDrinkIds).add(clientId);
-        // Only recent removals can race a read. Older ones have landed or wait
-        // in the persisted delete queue, which every read checks as well.
-        if (removedDrinkIds.size > MAX_REMEMBERED_REMOVALS) {
-          removedDrinkIds.delete(removedDrinkIds.values().next().value as string);
-        }
         const snapshot = state.diarySnapshot;
-        const removedAt =
-          snapshot?.data.drinks.find((drink) => drink.client_id === clientId)?.drank_at ?? drankAt;
+        const row = snapshot?.data.drinks.find((drink) => drink.client_id === clientId);
+        let removedBeerAt = beerAt;
+        if (row) removedBeerAt = normalizeDrinkType(row.drink_type) === 'beer' ? row.drank_at : undefined;
         const stats = state.profile?.stats;
         // The cached profile may still date the first beer by the removed one.
         const datesFirstBeer =
-          removedAt != null &&
+          removedBeerAt != null &&
           stats?.firstBeerAt != null &&
-          Date.parse(removedAt) <= Date.parse(stats.firstBeerAt);
+          Date.parse(removedBeerAt) <= Date.parse(stats.firstBeerAt);
         return {
           removedDrinkIds,
           ...(datesFirstBeer && state.profile && stats

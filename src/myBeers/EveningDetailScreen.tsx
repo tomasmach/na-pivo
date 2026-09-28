@@ -224,7 +224,10 @@ export default function EveningDetailScreen() {
               // flush to settle before the DELETE so it can't race ahead of an
               // in-flight POST and recreate the drink after we deleted it.
               if (!pulledFromQueue) {
-                useAccountStore.getState().forgetDiaryDrink(removed.drinkId, drink.at);
+                useAccountStore.getState().forgetDiaryDrink(
+                  removed.drinkId,
+                  normalizeDrinkType(drink.drinkType) === 'beer' ? drink.at : undefined,
+                );
                 void flushDrinksQueue()
                   .then(() => enqueueDelete(removed.drinkId))
                   .catch(() => undefined);
