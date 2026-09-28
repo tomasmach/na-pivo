@@ -2520,7 +2520,7 @@ export const en: Strings = {
     backButton: 'Back',
     modeNearestButton: 'Mode: Nearest pub',
     modeSurpriseButton: 'Mode: Surprise me',
-    beerBrandFilterInput: 'Filter pubs by a beer brand from the entries',
+    beerBrandFilterInput: 'Search for a beer that nearby pubs pour',
     beerBrandFilterSuggestion: (name: string) => `Pick the beer ${name}`,
     clearBeerBrandFilter: 'Clear the beer brand filter',
     toggleOtherTapPlaces: 'Include other places with a tap',
