@@ -120,6 +120,7 @@ from pubs.models import (
     PubCommunityXpLedger,
     PubContributionLog,
     PubEvent,
+    PubFavorite,
     PublishedNight,
     PublishedNightComment,
     PubNameCorrection,
@@ -2322,6 +2323,9 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     )
     _delete_or_move_account_rows(
         PubRating, source=source, target=target, unique_fields=("cache_key",)
+    )
+    _delete_or_move_account_rows(
+        PubFavorite, source=source, target=target, unique_fields=("cache_key",)
     )
     # Visits are mutable. Preserve the newer revision before applying deletion
     # markers, otherwise an old target row can discard a resumed source visit.

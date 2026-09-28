@@ -1183,3 +1183,7 @@ msgstr "Beer name cannot be combined with beer brands."
 
 msgid "Pošli lat i lng zároveň."
 msgstr "Send lat and lng together."
+
+#, python-format
+msgid "Srdcovek můžeš mít nejvýš %(limit)s. Nějakou odeber a zkus to znovu."
+msgstr "You can have at most %(limit)s favourite pubs. Remove one and try again."
