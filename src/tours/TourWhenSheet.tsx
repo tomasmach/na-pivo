@@ -62,7 +62,16 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
     haptic();
     void write(next);
   }
-  const close = () => { void saving.current.then(onClose); };
+  const [closing, setClosing] = useState(false);
+  // Closing freezes the controls and waits until every pick is on disk, not just the ones before the tap.
+  async function close() {
+    if (closing) return;
+    setClosing(true);
+    let seen: Promise<unknown>;
+    do { seen = saving.current; await seen; } while (seen !== saving.current);
+    setClosing(false);
+    onClose();
+  }
   function pickDay(day: string) {
     const first = earliestMinutes(day, plan.timezone);
     // A time that is already over on the new day would be a meetup in the past.
@@ -98,18 +107,18 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   const otherLabel = custom ? t.tours.whenQuickTimes : time && !PRESETS.includes(time) ? `${t.tours.whenOtherTime} · ${time}` : t.tours.whenOtherTime;
   const timeOff = (value: string) => earliest === null || minutesOf(value) < earliest;
 
-  return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
+  return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => { void close(); }}>
     <View style={styles.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => { void close(); }} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
       <View accessibilityViewIsModal style={[styles.card, { maxHeight: height - insets.top - Spacing.lg, paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
           <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{t.tours.whenTitle}</Text>
-          <Pressable onPress={close} style={({ pressed }) => [styles.icon, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={t.tours.close}>
+          <Pressable onPress={() => { void close(); }} style={({ pressed }) => [styles.icon, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={t.tours.close}>
             <XIcon size={20} color={Colors.foamMuted} />
           </Pressable>
         </View>
-        <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+        <ScrollView bounces={false} showsVerticalScrollIndicator={false} pointerEvents={closing ? 'none' : 'auto'}>
           <View style={styles.monthRow}>
             <Text style={styles.month} maxFontSizeMultiplier={FontScaleCap.heading} accessibilityLiveRegion="polite">{monthLabel}</Text>
             <Pressable disabled={page === 0} onPress={() => setPage(Math.max(0, page - 1))} style={[styles.icon, page === 0 && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenEarlierWeeks} accessibilityState={{ disabled: page === 0 }}>
@@ -170,8 +179,8 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
           {dst && <TourText accessibilityRole="alert" style={styles.hint}>{t.tours.whenDst}</TourText>}
         </ScrollView>
         <View style={styles.footer}>
-          <TourButton testID="tour-when-done" label={t.tours.whenDone} onPress={close} />
-          {!!current.scheduledDate && <TourButton label={t.tours.whenClear} quiet onPress={() => { setCustom(false); void write({ scheduledDate: null, scheduledTime: null }).then(onClose); }} />}
+          <TourButton testID="tour-when-done" label={t.tours.whenDone} busy={closing} onPress={() => { void close(); }} />
+          {!!current.scheduledDate && <TourButton label={t.tours.whenClear} quiet disabled={closing} onPress={() => { setCustom(false); void write({ scheduledDate: null, scheduledTime: null }); void close(); }} />}
         </View>
       </View>
     </View>
