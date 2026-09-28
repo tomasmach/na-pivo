@@ -555,7 +555,7 @@ export default function PubPageScreen() {
         showToast(synced ? t.compass.renameSavedToast : t.compass.renameQueuedToast);
       })
       .finally(() => setRenameSubmitting(false));
-  }, [ref, info, key, pub, renameDraft, renameSubmitting, showToast]);
+  }, [info, pub, ref, renameDraft, renameSubmitting, showToast]);
 
   const reportReason = useCallback(
     (reason: PubReportReason) => {
