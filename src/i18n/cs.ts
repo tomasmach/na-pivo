@@ -1634,16 +1634,21 @@ export const cs = {
     // — "Kdo tu sedí s tebou": add strangers from the same pub, both sides opt in —
     tableTitle: 'Kdo tu sedí s tebou',
     tableEntry: 'Přidej lidi od stolu',
-    tableShowCta: 'Ukázat se u stolu',
     tableExplainer:
-      'Uvidí tě jen ti, kdo sedí ve stejné hospodě aspoň 15 minut a mají tohle otevřené taky. Za 10 minut zmizíš.',
+      'Uvidí tě jen ti, kdo sedí ve stejné hospodě aspoň 15 minut a klepli na tohle taky. Za 10 minut zmizíš.',
+    // "min" does not decline (same as relativeTime.minutesAgo), so no plural().
+    tableVisibleFor: (minutes: number) => `Vidí tě tu ještě ${minutes} min`,
+    tableHiddenAgain: 'Už tě nikdo nevidí. Klepni znovu.',
     tableWaiting: 'Zatím nikdo. Ať si to otevřou i ostatní u stolu.',
     tableNoVisit: 'Nejdřív si zapiš, ve které hospodě sedíš.',
     tableTooSoon: 'Nejdřív se usaď. Tohle se otevře po 15 minutách v hospodě.',
+    tableTooSoonIn: (minutes: number) => `Nejdřív se usaď. Otevře se za ${minutes} min.`,
     tableGhost: 'V neviditelném režimu tě u stolu nikdo neuvidí. Vypni ho v nastavení party.',
     tablePrivate: 'Se soukromým profilem tě u stolu nikdo nepřidá. Zapni si veřejný profil.',
-    tableOffline: 'Stůl se teď nenačetl. Kód níž funguje dál.',
+    tableOffline: 'Stůl se teď nenačetl. QR kód pod tím funguje dál.',
     tableSent: 'Posláno',
+    tableAddA11y: (name: string) => `Přidat ${name} do party`,
+    tableAcceptA11y: (name: string) => `Přijmout ${name} do party`,
 
     // — The automatic evening feed, no hanging-up required.
     //   Deliberately NOT called "Výčep": that name already belongs to the

@@ -28,7 +28,6 @@ import {
   searchFriends,
   sendFriendRequest,
   type FriendProfile,
-  type FriendTablePerson,
 } from '@/data/friendsClient';
 import {
   enqueueFriendOp,
@@ -68,10 +67,10 @@ interface AddFriendToolsProps {
   onChanged: () => void;
   /** Show the @nickname search row (default true). */
   showSearch?: boolean;
-  /** Start "Kdo tu sedí s tebou" right away (opened from its entry line). */
+  /** Show "Kdo tu sedí s tebou": only while I am sitting in a pub. */
+  showTable?: boolean;
+  /** Start it right away (opened from its entry line). */
   tableAutoStart?: boolean;
-  /** Open a profile; a sheet host closes itself first. Defaults to a push. */
-  onOpenProfile?: (accountId: string) => void;
 }
 
 export function AddFriendTools({
@@ -80,8 +79,8 @@ export function AddFriendTools({
   onOpenCode,
   onChanged,
   showSearch = true,
+  showTable = false,
   tableAutoStart = false,
-  onOpenProfile,
 }: AddFriendToolsProps) {
   const router = useRouter();
   const showToast = useToastStore((s) => s.show);
@@ -123,7 +122,7 @@ export function AddFriendTools({
   }, [query, showToast]);
 
   const requestFriend = useCallback(
-    async (profile?: FriendProfile, acceptsTheirs = false): Promise<boolean> => {
+    async (profile?: FriendProfile): Promise<boolean> => {
       const nickname = query.trim().replace(/^@/, '');
       if (!profile && nickname.length < 2) return false;
       const requestKey = profile?.id ?? `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`;
@@ -146,9 +145,10 @@ export function AddFriendTools({
           if (!mountedRef.current) return false;
         }
         // Asking someone who already asked me accepts their request on the server.
-        showToast(result.ok && acceptsTheirs ? t.friends.requestAccepted : t.friends.requestSent, {
+        const accepted = result.ok && result.accepted;
+        showToast(accepted ? t.friends.requestAccepted : t.friends.requestSent, {
           icon:
-            result.ok && acceptsTheirs ? (
+            accepted ? (
               <CheckIcon size={20} color={Colors.amber} />
             ) : (
               <UserPlusIcon size={20} color={Colors.amber} />
@@ -164,19 +164,6 @@ export function AddFriendTools({
       return false;
     },
     [onChanged, query, requestingKey, showToast],
-  );
-
-  const requestFromTable = useCallback(
-    (person: FriendTablePerson) => requestFriend(person, person.friendshipStatus === 'incoming'),
-    [requestFriend],
-  );
-
-  const openProfile = useCallback(
-    (accountId: string) => {
-      if (onOpenProfile) onOpenProfile(accountId);
-      else router.push(`/parta/${accountId}` as Href);
-    },
-    [onOpenProfile, router],
   );
 
   const openIdentity = useCallback(() => {
@@ -218,21 +205,30 @@ export function AddFriendTools({
 
   return (
     <>
-      <TableAdd
-        autoStart={tableAutoStart}
-        requestingKey={requestingKey}
-        onRequest={requestFromTable}
-        onOpenProfile={openProfile}
-      />
+      {showTable ? (
+        <TableAdd autoStart={tableAutoStart} requestingKey={requestingKey} onRequest={requestFriend} />
+      ) : null}
 
       <View style={styles.growthActions}>
-        <GlowButton
-          label={t.friends.myCodeCta}
-          onPress={onOpenCode}
-          variant="primary"
-          glow="soft"
-          icon={<QrCodeIcon size={20} color={Colors.stout} />}
-        />
+        {/* Opened to add people at the table: their + / ✓ are the main targets. */}
+        {showTable && tableAutoStart ? (
+          <GlowButton
+            label={t.friends.myCodeCta}
+            onPress={onOpenCode}
+            variant="secondary"
+            glow="none"
+            height={52}
+            icon={<QrCodeIcon size={18} color={Colors.foam} />}
+          />
+        ) : (
+          <GlowButton
+            label={t.friends.myCodeCta}
+            onPress={onOpenCode}
+            variant="primary"
+            glow="soft"
+            icon={<QrCodeIcon size={20} color={Colors.stout} />}
+          />
+        )}
         <GlowButton
           label={t.friends.inviteShareCta}
           onPress={() => void shareInvite()}

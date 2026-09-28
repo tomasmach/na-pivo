@@ -927,6 +927,8 @@ export interface FriendTable {
   reason: FriendTableReason | null;
   /** Null when I am not showing up at the table right now. */
   visibleUntil: string | null;
+  /** Only for `too_soon`: when the server lets me in. */
+  availableAt: string | null;
   people: FriendTablePerson[];
 }
 
@@ -936,10 +938,9 @@ export function parseFriendTable(raw: unknown): FriendTable | null {
   if (!raw || typeof raw !== 'object') return null;
   const data = raw as Record<string, unknown>;
   const reason = FRIEND_TABLE_REASONS.find((value) => value === data.reason) ?? null;
-  const visibleUntil =
-    typeof data.visible_until === 'string' && Number.isFinite(Date.parse(data.visible_until))
-      ? data.visible_until
-      : null;
+  const isoOrNull = (value: unknown) =>
+    typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+  const visibleUntil = isoOrNull(data.visible_until);
   const people = Array.isArray(data.people)
     ? (data.people as (RawFriendProfile & { friendship_status?: unknown })[])
         .map((person): FriendTablePerson => ({
@@ -951,7 +952,13 @@ export function parseFriendTable(raw: unknown): FriendTable | null {
         }))
         .filter((person) => person.id.length > 0)
     : [];
-  return { eligible: data.eligible === true && reason === null, reason, visibleUntil, people };
+  return {
+    eligible: data.eligible === true && reason === null,
+    reason,
+    visibleUntil,
+    availableAt: isoOrNull(data.available_at),
+    people,
+  };
 }
 
 export async function fetchFriendTable(signal?: AbortSignal): Promise<FriendTable | null> {
@@ -969,11 +976,14 @@ export async function closeFriendTable(): Promise<void> {
   await requestJson('/v1/friends/table', { method: 'DELETE' });
 }
 
+/** `accepted`: the target had already asked me, so the server made us friends. */
+export type FriendRequestResult = { ok: true; accepted: boolean } | FriendActionError;
+
 export async function sendFriendRequest(params: {
   accountId?: string;
   nickname?: string;
   inviteCode?: string;
-}): Promise<FriendActionResult> {
+}): Promise<FriendRequestResult> {
   // Exactly one path is sent; invite code wins, then account id, then nickname —
   // matching the backend's mutually-exclusive `validate` (contract §A3).
   const body = params.inviteCode
@@ -982,7 +992,7 @@ export async function sendFriendRequest(params: {
       ? { target_account_id: params.accountId }
       : { nickname: params.nickname ?? '' };
   const res = await requestJson('/v1/friends/requests', { method: 'POST', body });
-  return res.ok ? { ok: true } : res.result;
+  return res.ok ? { ok: true, accepted: res.data.status === 'accepted' } : res.result;
 }
 
 /** My reusable invite code + deep link, minting one if none is active (§A1). */

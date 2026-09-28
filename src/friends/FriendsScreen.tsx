@@ -288,18 +288,18 @@ function AddFriendSheet({
   visible,
   hasIdentity,
   needsNickname,
+  showTable,
   tableAutoStart,
   onOpenCode,
-  onOpenProfile,
   onChanged,
   onClose,
 }: {
   visible: boolean;
   hasIdentity: boolean;
   needsNickname: boolean;
+  showTable: boolean;
   tableAutoStart: boolean;
   onOpenCode: () => void;
-  onOpenProfile: (accountId: string) => void;
   onChanged: () => void;
   onClose: () => void;
 }) {
@@ -314,9 +314,9 @@ function AddFriendSheet({
         hasIdentity={hasIdentity}
         needsNickname={needsNickname}
         onOpenCode={onOpenCode}
-        onOpenProfile={onOpenProfile}
         onChanged={onChanged}
         showSearch
+        showTable={showTable}
         tableAutoStart={tableAutoStart}
       />
     </SheetScaffold>
@@ -832,18 +832,6 @@ export default function FriendsScreen() {
     setAddFriendVisible(false);
     setTableAutoStart(false);
   }, []);
-
-  const openProfileFromAdd = useCallback(
-    (accountId: string) => {
-      closeAddFriend();
-      if (sheetActionTimerRef.current) clearTimeout(sheetActionTimerRef.current);
-      sheetActionTimerRef.current = setTimeout(() => {
-        sheetActionTimerRef.current = null;
-        openFriendProfile(accountId);
-      }, SHEET_DISMISS_MS);
-    },
-    [closeAddFriend, openFriendProfile],
-  );
 
   const openCodeFromAdd = useCallback(() => {
     closeAddFriend();
@@ -1586,9 +1574,9 @@ export default function FriendsScreen() {
         visible={addFriendVisible}
         hasIdentity={hasIdentity}
         needsNickname={needsNickname}
+        showTable={d?.myPresence != null}
         tableAutoStart={tableAutoStart}
         onOpenCode={openCodeFromAdd}
-        onOpenProfile={openProfileFromAdd}
         onChanged={reload}
         onClose={closeAddFriend}
       />

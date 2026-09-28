@@ -2,7 +2,7 @@
  * "Kdo tu sedí s tebou": add people sitting in the same pub without a QR code.
  *
  * Location is otherwise for friends only, so this is an explicit, short opt-in:
- * tapping "Ukázat se u stolu" (or the entry line under my own presence row)
+ * tapping "Přidej lidi od stolu" (here or under my own presence row)
  * makes me visible for a few minutes to people who did the same in the same pub.
  * The server picks the pub and applies every rule; this only shows profiles.
  * Leaving the screen hides me again right away.
@@ -17,7 +17,6 @@ import {
   openFriendTable,
   type FriendTable,
   type FriendTablePerson,
-  type FriendTableReason,
 } from '@/data/friendsClient';
 import { CheckIcon, PlusIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
@@ -25,19 +24,27 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-import { FriendMini } from './FriendMini';
+import { FriendMini, friendDisplayName } from './FriendMini';
 import HairlineRow from './HairlineRow';
+import { useNowTick } from './useNowTick';
 
-export const TABLE_POLL_MS = 10_000;
+export const TABLE_POLL_MS = 5_000;
 
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
-function reasonLine(reason: FriendTableReason | null): string | null {
-  switch (reason) {
+/** Whole minutes left until `iso`, at least 1 while it is still ahead. */
+function minutesUntil(iso: string, now: number): number {
+  return Math.max(1, Math.ceil((Date.parse(iso) - now) / 60_000));
+}
+
+function reasonLine(table: FriendTable, now: number): string | null {
+  switch (table.reason) {
     case 'no_visit':
       return t.friends.tableNoVisit;
     case 'too_soon':
-      return t.friends.tableTooSoon;
+      return table.availableAt
+        ? t.friends.tableTooSoonIn(minutesUntil(table.availableAt, now))
+        : t.friends.tableTooSoon;
     case 'ghost':
       return t.friends.tableGhost;
     case 'private':
@@ -56,11 +63,12 @@ export interface TableAddProps {
   requestingKey: string | null;
   /** Sends the normal friend request; resolves true when it was sent or queued. */
   onRequest: (person: FriendTablePerson) => Promise<boolean>;
-  onOpenProfile: (accountId: string) => void;
 }
 
-export function TableAdd({ autoStart = false, requestingKey, onRequest, onOpenProfile }: TableAddProps) {
+export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableAddProps) {
+  const now = useNowTick();
   const [opening, setOpening] = useState(false);
+  /** The server's last answer; null until the first one arrives. */
   const [table, setTable] = useState<FriendTable | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [sentIds, setSentIds] = useState<ReadonlySet<string>>(new Set());
@@ -68,21 +76,21 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest, onOpenPr
   const mountedRef = useRef(true);
   const openingRef = useRef(false);
   const shownRef = useRef(false);
+  const activeRef = useRef(false);
 
-  const apply = useCallback((next: FriendTable | null, fromOpen: boolean) => {
+  const apply = useCallback((next: FriendTable | null, reportOffline: boolean) => {
     if (!mountedRef.current) return;
     if (next === null) {
       // A failed poll keeps the last list and the next tick tries again.
-      if (fromOpen) setNotice(t.friends.tableOffline);
+      if (reportOffline) setNotice(t.friends.tableOffline);
       return;
     }
-    if (!next.eligible || next.visibleUntil === null) {
-      setTable(null);
-      setNotice(reasonLine(next.reason));
-      return;
-    }
+    const active = next.eligible && next.visibleUntil !== null;
+    if (active) shownRef.current = true;
+    // The server ended my window: say so instead of silently resetting.
+    setNotice(activeRef.current && !active ? t.friends.tableHiddenAgain : null);
+    activeRef.current = active;
     setTable(next);
-    setNotice(null);
   }, []);
 
   const start = useCallback(async () => {
@@ -111,6 +119,9 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest, onOpenPr
       closeTimerRef.current = null;
     } else if (autoStart) {
       void start();
+    } else {
+      // Read-only probe so a refusal shows before the tap, not after it.
+      void fetchFriendTable().then((next) => apply(next, true));
     }
     return () => {
       mountedRef.current = false;
@@ -124,7 +135,7 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest, onOpenPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const active = table !== null;
+  const active = table !== null && table.eligible && table.visibleUntil !== null;
   useEffect(() => {
     if (!active) return;
     // The server says when my window is over (visible_until turns null), so a
@@ -146,7 +157,6 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest, onOpenPr
   );
 
   const renderAction = (person: FriendTablePerson) => {
-    const incoming = person.friendshipStatus === 'incoming';
     if (person.friendshipStatus === 'outgoing' || sentIds.has(person.id)) {
       return (
         <Text style={styles.sent} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -154,13 +164,15 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest, onOpenPr
         </Text>
       );
     }
+    const incoming = person.friendshipStatus === 'incoming';
+    const name = friendDisplayName(person);
     return (
       <Pressable
         onPress={() => void tap(person)}
         disabled={requestingKey != null}
         hitSlop={ROUND_HIT_SLOP}
         accessibilityRole="button"
-        accessibilityLabel={incoming ? t.friends.accept : t.friends.addByNickname}
+        accessibilityLabel={incoming ? t.friends.tableAcceptA11y(name) : t.friends.tableAddA11y(name)}
         style={({ pressed }) => [styles.addBtn, pressed && styles.dim]}
       >
         {requestingKey === person.id ? (
@@ -174,51 +186,72 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest, onOpenPr
     );
   };
 
-  return (
-    <View style={styles.section}>
-      <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading}>
-        {t.friends.tableTitle}
-      </Text>
-      {table ? (
-        table.people.length === 0 ? (
+  if (active && table?.visibleUntil) {
+    return (
+      <View style={styles.section}>
+        <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading}>
+          {t.friends.tableTitle}
+        </Text>
+        <Text style={styles.status} maxFontSizeMultiplier={FontScaleCap.body}>
+          {t.friends.tableVisibleFor(minutesUntil(table.visibleUntil, now))}
+        </Text>
+        {table.people.length === 0 ? (
           <Text style={styles.line} maxFontSizeMultiplier={FontScaleCap.body}>
             {t.friends.tableWaiting}
           </Text>
         ) : (
+          // Rows are not pressable: opening a profile would close the sheet and hide me.
           table.people.map((person, index) => (
-            <HairlineRow key={person.id} first={index === 0} onPress={() => onOpenProfile(person.id)}>
+            <HairlineRow key={person.id} first={index === 0}>
               <View style={styles.personRow}>
                 <FriendMini profile={person} />
                 {renderAction(person)}
               </View>
             </HairlineRow>
           ))
-        )
-      ) : (
-        <>
-          <Pressable
-            onPress={() => void start()}
-            disabled={opening}
-            accessibilityRole="button"
-            accessibilityLabel={t.friends.tableShowCta}
-            style={({ pressed }) => [styles.actionRow, pressed && styles.dim]}
-          >
-            <View style={styles.actionIcon}>
-              {opening ? (
-                <ActivityIndicator color={Colors.amber} size="small" />
-              ) : (
-                <UsersIcon size={18} color={Colors.amber} />
-              )}
-            </View>
-            <Text style={styles.actionLabel} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.friends.tableShowCta}
-            </Text>
-          </Pressable>
-          <Text style={styles.line} maxFontSizeMultiplier={FontScaleCap.body}>
-            {notice ?? t.friends.tableExplainer}
-          </Text>
-        </>
-      )}
+        )}
+      </View>
+    );
+  }
+
+  // Refused until the reason goes away; too_soon unlocks itself when its time comes.
+  const refusal = table !== null && !table.eligible ? table : null;
+  const blocked =
+    refusal !== null &&
+    !(refusal.reason === 'too_soon' && refusal.availableAt !== null && Date.parse(refusal.availableAt) <= now);
+  const line = notice ?? (blocked && refusal ? reasonLine(refusal, now) : null) ?? t.friends.tableExplainer;
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading}>
+        {t.friends.tableTitle}
+      </Text>
+      <Pressable
+        onPress={() => void start()}
+        disabled={opening || blocked}
+        accessibilityRole="button"
+        accessibilityLabel={t.friends.tableEntry}
+        accessibilityState={{ disabled: opening || blocked }}
+        style={({ pressed }) => [styles.actionRow, blocked && styles.disabled, pressed && styles.dim]}
+      >
+        <View style={styles.actionIcon}>
+          {opening ? (
+            <ActivityIndicator color={Colors.amber} size="small" />
+          ) : (
+            <UsersIcon size={18} color={blocked ? Colors.mutedText : Colors.amber} />
+          )}
+        </View>
+        <Text
+          style={[styles.actionLabel, blocked && styles.actionLabelDisabled]}
+          numberOfLines={2}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {t.friends.tableEntry}
+        </Text>
+      </Pressable>
+      <Text style={styles.line} maxFontSizeMultiplier={FontScaleCap.body}>
+        {line}
+      </Text>
     </View>
   );
 }
@@ -256,6 +289,20 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
+  },
+  status: {
+    marginTop: -Spacing.xs,
+    marginBottom: Spacing.sm,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
+  },
+  disabled: {
+    backgroundColor: Colors.stout2,
+  },
+  actionLabelDisabled: {
+    color: Colors.mutedText,
   },
   line: {
     marginTop: Spacing.sm,
