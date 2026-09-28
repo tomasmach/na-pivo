@@ -101,6 +101,9 @@ def test_counts_beers_per_pub_last_week(client):
     _beer(friend, tuesday)
     _beer(ghost, tuesday)
     _beer(friend, datetime(2026, 9, 20, 23, 30, tzinfo=PRAGUE), cache_key="u2fkbq00")
+    _beer(me, datetime(2026, 9, 20, 22, 0, tzinfo=PRAGUE), cache_key="u2fkbq00")
+    # One person drinking alone is never shown.
+    _beer(friend, tuesday, cache_key="u2fkbzzz")
     # Only beers count, and only the ones the public boards trust.
     _beer(friend, tuesday, drink_type=DrinkLog.DrinkType.SOFT_DRINK, beer_name="Kofola")
     _beer(friend, tuesday, is_suspect=True, suspect_reason="burst")
@@ -117,7 +120,7 @@ def test_counts_beers_per_pub_last_week(client):
     assert body["week_start"] == "2026-09-14"
     assert body["week_end"] == "2026-09-20"
     assert body["next_week_starts_at"] == "2026-09-28T00:00:00+02:00"
-    assert body["pubs"] == {"u2fkbn1z": 3, "u2fkbq00": 1}
+    assert body["pubs"] == {"u2fkbn1z": 3, "u2fkbq00": 2}
 
 
 @pytest.mark.django_db
@@ -131,11 +134,11 @@ def test_board_lists_pubs_where_at_least_two_people_drank(client):
     _beer(friend, tuesday)
     _beer(me, tuesday, cache_key="u2fkbq00")
     _beer(friend, tuesday, cache_key="u2fkbq00")
-    # Drinking alone in one place never puts it on the board.
+    # Drinking alone in one place never puts it on the board or the map.
     for _ in range(5):
         _beer(me, tuesday, cache_key="u2fkbzzz")
 
-    assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 3, "u2fkbq00": 2, "u2fkbzzz": 5}
+    assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 3, "u2fkbq00": 2}
     board = _board(client, token)
     assert board["period"] == "week"
     assert (board["period_start"], board["period_end"]) == ("2026-09-14", "2026-09-20")
