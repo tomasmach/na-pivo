@@ -180,7 +180,9 @@ jest.mock('@/stores/toursStore', () => ({
   useToursStore: Object.assign((select?: (s: unknown) => unknown) => (select ? select(mockTours) : mockTours), { getState: () => mockTours }),
 }));
 
+import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import type { WireDrink } from '@/data/drinksClient';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -806,6 +808,12 @@ describe('CounterScreen undo', () => {
 
     // The payload is no longer pullable → the removal has to be delivered.
     removeQueuedDrink.mockResolvedValueOnce(false);
+    useAccountStore.setState({
+      diarySnapshot: {
+        accountId: 'a',
+        data: { drinks: [{ client_id: 'uuid-1' } as WireDrink], visits: [] },
+      },
+    });
     await act(async () => {
       sheetButton(
         renderer,
@@ -819,6 +827,7 @@ describe('CounterScreen undo', () => {
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
     expect(enqueueDelete).toHaveBeenCalledWith('uuid-1');
+    expect(useAccountStore.getState().diarySnapshot?.data.drinks).toEqual([]);
     expect(mockTrackClientEvent).toHaveBeenCalledWith({
       event: 'drink_removed',
       context: { delivery_state: 'delivered' },

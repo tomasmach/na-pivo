@@ -81,6 +81,11 @@ export async function enqueueDelete(clientId: string): Promise<void> {
   await flushDeleteDrinksQueue();
 }
 
+/** Drinks the user removed whose deletion has not reached the backend yet. */
+export async function getQueuedDeleteIds(): Promise<Set<string>> {
+  return new Set(await runMutation(loadQueue));
+}
+
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
 
 /** Drop all pending private drink deletions without attempting delivery. */

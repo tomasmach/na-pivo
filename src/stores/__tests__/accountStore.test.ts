@@ -17,7 +17,7 @@ import * as auth from '@/data/auth';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
 import { ensureAccount, fetchAccountPreferences, setAnonymousSessionEvictionListener } from '@/data/account';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
-import { reconcileDiarySnapshot } from '@/data/diarySync';
+import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 
 jest.mock('@/data/auth');
 jest.mock('@/data/account', () => ({
@@ -267,6 +267,22 @@ describe('resumeSession', () => {
 // ---------------------------------------------------------------------------
 // register / login / signInGoogle — session-changing auth
 // ---------------------------------------------------------------------------
+describe('forgetDiaryDrink', () => {
+  it('drops a removed drink from the snapshot and keeps the rest', () => {
+    const drink = (clientId: string) => ({ client_id: clientId }) as DiarySnapshot['drinks'][number];
+    useAccountStore.setState({
+      diarySnapshot: { accountId: 'a', data: { drinks: [drink('kept'), drink('removed')], visits: [] } },
+    });
+
+    useAccountStore.getState().forgetDiaryDrink('removed');
+
+    expect(useAccountStore.getState().diarySnapshot).toEqual({
+      accountId: 'a',
+      data: { drinks: [drink('kept')], visits: [] },
+    });
+  });
+});
+
 describe('register', () => {
   it('sets the profile and re-syncs the session on success', async () => {
     const profile = signedInProfile();

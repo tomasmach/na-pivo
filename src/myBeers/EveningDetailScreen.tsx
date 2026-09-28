@@ -54,6 +54,7 @@ import {
   normalizeDrinkType,
   normalizePlaceContext,
 } from '@/drinks/drinkTypes';
+import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
@@ -223,6 +224,7 @@ export default function EveningDetailScreen() {
               // flush to settle before the DELETE so it can't race ahead of an
               // in-flight POST and recreate the drink after we deleted it.
               if (!pulledFromQueue) {
+                useAccountStore.getState().forgetDiaryDrink(removed.drinkId);
                 void flushDrinksQueue()
                   .then(() => enqueueDelete(removed.drinkId))
                   .catch(() => undefined);

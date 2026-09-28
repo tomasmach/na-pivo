@@ -80,6 +80,7 @@ import {
   isBeerMenuTypeOverrideCurrent,
   useCommunityStore,
 } from '@/stores/communityStore';
+import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { formatPrice, pricePlaceholder } from '@/utils/currency';
@@ -986,6 +987,7 @@ function Tacek({
           context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
         });
         if (!pulledFromQueue) {
+          useAccountStore.getState().forgetDiaryDrink(targetId);
           void flushDrinksQueue()
             .then(() => enqueueDelete(targetId))
             .catch(() => undefined);

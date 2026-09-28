@@ -135,6 +135,8 @@ interface AccountState {
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
   /** Resolves true when the server snapshot was fetched. */
   refreshDiarySnapshot: () => Promise<boolean>;
+  /** Drop a removed drink from the snapshot before its deletion reaches the server. */
+  forgetDiaryDrink: (clientId: string) => void;
   /**
    * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
    * snapshot so Profile climbs immediately after a vote, without a second GET.
@@ -333,6 +335,22 @@ export const useAccountStore = create<AccountState>((set, get) => {
     },
 
     refreshDiarySnapshot,
+
+    forgetDiaryDrink: (clientId) => {
+      set((state) => {
+        const snapshot = state.diarySnapshot;
+        if (!snapshot?.data.drinks.some((drink) => drink.client_id === clientId)) return state;
+        return {
+          diarySnapshot: {
+            ...snapshot,
+            data: {
+              ...snapshot.data,
+              drinks: snapshot.data.drinks.filter((drink) => drink.client_id !== clientId),
+            },
+          },
+        };
+      });
+    },
 
     applyMapperSnapshot: (snapshot) => {
       const current = get().profile;

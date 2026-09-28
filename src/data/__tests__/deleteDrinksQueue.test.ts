@@ -1,5 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { clearDeleteDrinksQueue, enqueueDelete, flushDeleteDrinksQueue } from '../deleteDrinksQueue';
+import {
+  clearDeleteDrinksQueue,
+  enqueueDelete,
+  flushDeleteDrinksQueue,
+  getQueuedDeleteIds,
+} from '../deleteDrinksQueue';
 import { deleteDrink } from '../drinksClient';
 import type { SubmitDrinkResult } from '../drinksClient';
 
@@ -57,6 +62,7 @@ describe('enqueueDelete', () => {
     (deleteDrink as jest.Mock).mockResolvedValue('retry');
     await enqueueDelete('a');
     expect(await readQueue()).toEqual(['a']);
+    expect(await getQueuedDeleteIds()).toEqual(new Set(['a']));
   });
 
   it('preserves and later delivers every deletion in an oversized upgrade backlog', async () => {
