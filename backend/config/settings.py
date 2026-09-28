@@ -415,6 +415,14 @@ BEER_BRANDS_THROTTLE_RATE: str = os.environ.get("BEER_BRANDS_THROTTLE_RATE", "12
 # it still blunts scripted mass writes. Format: DRF throttle rate string.
 PUB_RATINGS_THROTTLE_RATE: str = os.environ.get("PUB_RATINGS_THROTTLE_RATE", "120/min")
 
+# Per-IP rate limit for the authenticated pub-favourite sync endpoint
+# (PUT/GET/DELETE /v1/pub-favorites). Matches pub_ratings for the same
+# burst-on-sync reason. Format: DRF throttle rate string.
+PUB_FAVORITES_THROTTLE_RATE: str = os.environ.get("PUB_FAVORITES_THROTTLE_RATE", "120/min")
+# Most favourites one account may hold. Only saving a NEW favourite beyond it is
+# refused (409, which the app's offline queues retry instead of dropping).
+PUB_FAVORITES_PER_ACCOUNT_CAP: int = int(os.environ.get("PUB_FAVORITES_PER_ACCOUNT_CAP", "500"))
+
 # Per-IP rate limit for the authenticated pub-visit push endpoint
 # (POST/GET/DELETE /v1/pub-visits). Mirrors the rating rate for the same
 # burst-on-sync reason. Format: DRF throttle rate string.
@@ -692,6 +700,7 @@ REST_FRAMEWORK = {
         "drinks": DRINKS_THROTTLE_RATE,
         "beer_brands": BEER_BRANDS_THROTTLE_RATE,
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
+        "pub_favorites": PUB_FAVORITES_THROTTLE_RATE,
         "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,
         "pub_location_lookup": PUB_LOCATION_LOOKUP_THROTTLE_RATE,

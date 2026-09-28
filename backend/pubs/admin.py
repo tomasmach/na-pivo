@@ -23,6 +23,7 @@ from .models import (
     PubCommunityData,
     PubContributionLog,
     PubExternalBeerMenu,
+    PubFavorite,
     PubHours,
     PublishedNight,
     PublishedNightComment,
@@ -701,6 +702,26 @@ class PubRatingAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
         "verdict",
         "tag",
         "note",
+        "client_updated_at",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-client_updated_at",)
+
+
+@admin.register(PubFavorite)
+class PubFavoriteAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+    # Per-user private favourites — read-only audit view, like PubRatingAdmin.
+    list_display = ("client_updated_at", "name", "cache_key", "account", "updated_at")
+    list_select_related = ("account",)
+    search_fields = ("name", "cache_key")
+    readonly_fields = (
+        "account",
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "external_id",
         "client_updated_at",
         "created_at",
         "updated_at",
