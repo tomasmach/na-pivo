@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, PlusIcon, XIcon } from '@/components/shared/IconGlyph';
@@ -36,8 +36,12 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   const last = lastDay(plan.timezone);
   const firstMonday = addDays(today, -weekday(today));
   const lastPage = Math.floor(daysBetween(firstMonday, last) / (WEEKS * 7));
-  const date = plan.scheduledDate && plan.scheduledDate >= today && plan.scheduledDate <= last ? plan.scheduledDate : null;
-  const time = date ? plan.scheduledTime : null;
+  // A pick shows at once; the draft on disk catches up, and closing waits for it.
+  const [pending, setPending] = useState<Schedule | null>(null);
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const current = pending ?? plan;
+  const date = current.scheduledDate && current.scheduledDate >= today && current.scheduledDate <= last ? current.scheduledDate : null;
+  const time = date ? current.scheduledTime : null;
   const [page, setPage] = useState(() => date ? Math.min(lastPage, Math.floor(daysBetween(firstMonday, date) / (WEEKS * 7))) : 0);
   const [custom, setCustom] = useState(() => !!time && !PRESETS.includes(time));
   const [dst, setDst] = useState(false);
@@ -45,12 +49,20 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   const [cellWidth, setCellWidth] = useState(() => Math.floor((width - Spacing.lg * 2) / 7));
   const earliest = date ? earliestMinutes(date, plan.timezone) : null;
 
-  async function apply(next: Schedule) {
+  function write(next: Schedule) {
+    setPending(next);
+    const run = saving.current.then(() => onChange(next));
+    saving.current = run;
+    void run.then(() => { if (saving.current === run) setPending(null); });
+    return run;
+  }
+  function apply(next: Schedule) {
     if (next.scheduledTime && !validSchedule({ ...plan, ...next })) { setDst(true); return; }
     setDst(false);
     haptic();
-    await onChange(next);
+    void write(next);
   }
+  const close = () => { void saving.current.then(onClose); };
   function pickDay(day: string) {
     const first = earliestMinutes(day, plan.timezone);
     // A time that is already over on the new day would be a meetup in the past.
@@ -86,14 +98,14 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   const otherLabel = custom ? t.tours.whenQuickTimes : time && !PRESETS.includes(time) ? `${t.tours.whenOtherTime} · ${time}` : t.tours.whenOtherTime;
   const timeOff = (value: string) => earliest === null || minutesOf(value) < earliest;
 
-  return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+  return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
     <View style={styles.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
+      <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
       <View style={[styles.card, { maxHeight: height - insets.top - Spacing.lg, paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
           <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{t.tours.whenTitle}</Text>
-          <Pressable onPress={onClose} style={({ pressed }) => [styles.icon, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={t.tours.close}>
+          <Pressable onPress={close} style={({ pressed }) => [styles.icon, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={t.tours.close}>
             <XIcon size={20} color={Colors.foamMuted} />
           </Pressable>
         </View>
@@ -158,8 +170,8 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
           {dst && <TourText accessibilityRole="alert" style={styles.hint}>{t.tours.whenDst}</TourText>}
         </ScrollView>
         <View style={styles.footer}>
-          <TourButton testID="tour-when-done" label={t.tours.whenDone} onPress={onClose} />
-          {!!plan.scheduledDate && <TourButton label={t.tours.whenClear} quiet onPress={() => { setCustom(false); void onChange({ scheduledDate: null, scheduledTime: null }).then(onClose); }} />}
+          <TourButton testID="tour-when-done" label={t.tours.whenDone} onPress={close} />
+          {!!current.scheduledDate && <TourButton label={t.tours.whenClear} quiet onPress={() => { setCustom(false); void write({ scheduledDate: null, scheduledTime: null }).then(onClose); }} />}
         </View>
       </View>
     </View>
