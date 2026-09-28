@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
@@ -9,6 +9,7 @@ import { checkLocationPermission } from '@/compass/permissions';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import { openPubPage } from '@/pubPage/openPubPage';
+import { usePubPageStore } from '@/stores/pubPageStore';
 import { cachedTourPubs, filterTourPubs, searchTourPubs, type TourPubSearchResult } from '@/data/tourPubSearch';
 import { t } from '@/i18n';
 import { usePubStore } from '@/stores/pubStore';
@@ -43,7 +44,11 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const [loading, setLoading] = useState(false);
   const [region, setRegion] = useState<Region>(() => tourRegion(stops));
   const [previewCandidate, setPreview] = useState<Pub | null>(null);
-  const preview = previewCandidate && filterTourPubs([previewCandidate], { reportedPubIds, reportedCacheKeys }).length ? previewCandidate : null;
+  const visiblePreview = previewCandidate && filterTourPubs([previewCandidate], { reportedPubIds, reportedCacheKeys }).length ? previewCandidate : null;
+  // A rename made on the pub page must reach the stop that gets added.
+  const pagePub = usePubPageStore((state) => (visiblePreview ? state.pubs[geohash8(visiblePreview.lat, visiblePreview.lng)] : undefined));
+  const preview = useMemo(() => (visiblePreview && pagePub && pagePub.id === visiblePreview.id && pagePub.name !== visiblePreview.name
+    ? { ...visiblePreview, name: pagePub.name } : visiblePreview), [pagePub, visiblePreview]);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
   const request = useRef<AbortController | null>(null);

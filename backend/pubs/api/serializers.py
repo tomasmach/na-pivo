@@ -486,6 +486,7 @@ _CLIENT_EVENT_SCREEN_NAMES = {
     "community_events",
     "my_added_pubs",
     "profile_photos",
+    "pub_page",
 }
 # Mirror of UI_INTERACTION_TARGETS in src/data/uxTelemetry.ts. A target missing
 # here is silently dropped, which is how a week of 3.0 taps landed as an unknown

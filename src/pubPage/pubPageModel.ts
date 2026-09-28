@@ -4,7 +4,7 @@
  * renders. No React, no network, so the wording and grouping are unit-tested.
  */
 
-import { DAY_KEYS, type DayKey, type WeeklyHours } from '@/data/communityHours';
+import { DAY_KEYS, type CommunityBeer, type DayKey, type WeeklyHours } from '@/data/communityHours';
 import type { WireAmenityAggregate } from '@/data/pubAmenitiesClient';
 import type { PubEvent } from '@/data/pubEventsClient';
 
@@ -93,7 +93,9 @@ export function visibleEvents(events: readonly PubEvent[], now: Date): PubEvent[
  * Amenities the crowd confirmed as present, in the server's order. Disputed or
  * absent ones are left out: the page only states what people agree on.
  */
-export function confirmedAmenityKeys(aggregates: readonly WireAmenityAggregate[] | undefined): string[] {
+export function confirmedAmenityKeys(
+  aggregates: readonly WireAmenityAggregate[] | undefined,
+): string[] {
   if (!aggregates) return [];
   return aggregates.filter((a) => a.status === 'yes').map((a) => a.amenity_key);
 }
@@ -102,4 +104,18 @@ export function confirmedAmenityKeys(aggregates: readonly WireAmenityAggregate[]
 export function roundedDistance(meters: number): { unit: 'm' | 'km'; value: number } {
   if (meters < 1000) return { unit: 'm', value: Math.max(10, Math.round(meters / 10) * 10) };
   return { unit: 'km', value: Math.round(meters / 100) / 10 };
+}
+
+/**
+ * The tap list to show: a current local edit wins only when it actually
+ * carries a beer list. An edit that changed just the hours must not hide the
+ * server's taps (same rule as the compass and the counter).
+ */
+export function currentTaps(
+  override: { beers?: CommunityBeer[] } | undefined,
+  overrideIsCurrent: boolean,
+  serverBeers: CommunityBeer[] | undefined,
+): CommunityBeer[] {
+  if (overrideIsCurrent && override?.beers) return override.beers;
+  return serverBeers ?? [];
 }

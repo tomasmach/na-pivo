@@ -14,6 +14,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,16 +26,18 @@ import {
 } from 'react-native';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
-import { useLocalSearchParams, useNavigation, useRouter, type Href } from 'expo-router';
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useNavigation,
+  useRouter,
+  type Href,
+} from 'expo-router';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
-import {
-  contributeParamsFromPubInfo,
-  pubInfoFromPub,
-  usePubInfoFacts,
-} from '@/components/amenities/pubInfoContext';
+import { pubInfoFromPub, usePubInfoFacts } from '@/components/amenities/pubInfoContext';
 import { submitPubRename } from '@/components/amenities/pubRename';
 import { RenamePubModal } from '@/components/compass/RenamePubModal';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
@@ -106,6 +109,7 @@ import { pubHoursLine, type PubHoursTone } from '@/utils/pubHoursLine';
 import { openPubPage } from './openPubPage';
 import {
   confirmedAmenityKeys,
+  currentTaps,
   dayKeyOf,
   eventDay,
   eventStartTime,
@@ -122,6 +126,13 @@ const POSITION_MAX_AGE_MS = 5 * 60 * 1000;
 // One modal leaves before the next arrives (DESIGN.md §7.4).
 const SHEET_DISMISS_MS = 260;
 const TITLE_AFTER_SCROLL = 56;
+// Same quiet style as the tour previews: no landmarks or labels next to the
+// pin, so nobody reads a monument's name as the pub's.
+const PREVIEW_MAP_STYLE = [
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { elementType: 'labels', stylers: [{ visibility: 'off' }] },
+];
 
 function firstParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
@@ -242,10 +253,21 @@ export default function PubPageScreen() {
   const facts = usePubInfoFacts(info);
   const override = useCommunityStore((s) => (key ? s.overrides[key] : undefined));
 
-  // The map covers the page; an edge swipe must close it, not pop the page.
+  // The map covers the page; an edge swipe or Android back must close it, not
+  // pop the page.
   useEffect(() => {
     navigation.setOptions({ gestureEnabled: !mapOpen });
   }, [mapOpen, navigation]);
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (!mapOpen) return false;
+        setMapOpen(false);
+        return true;
+      });
+      return () => sub.remove();
+    }, [mapOpen]),
+  );
 
   // Fill in hours, taps and the rating when the opener did not have them.
   const pubId = pub?.id ?? '';
@@ -345,9 +367,11 @@ export default function PubPageScreen() {
 
   const taps = useMemo(() => {
     if (!pub) return [];
-    return isBeerListOverrideCurrent(override, pub.beersUpdatedAt)
-      ? (override?.beers ?? [])
-      : (pub.beers ?? []);
+    return currentTaps(
+      override,
+      isBeerListOverrideCurrent(override, pub.beersUpdatedAt),
+      pub.beers,
+    );
   }, [override, pub]);
   const rotates = pub
     ? ((isBeerMenuTypeOverrideCurrent(override, pub.beersUpdatedAt)
@@ -402,17 +426,6 @@ export default function PubPageScreen() {
       params: { view: 'compass' },
     } as unknown as Href);
   }, [key, pub, router]);
-
-  const openContribute = useCallback(
-    (focus: 'hours' | 'beers') => {
-      if (!info) return;
-      router.push({
-        pathname: '/contribute',
-        params: contributeParamsFromPubInfo(info, focus, facts?.beerMenuRotates),
-      } as unknown as Href);
-    },
-    [facts?.beerMenuRotates, info, router],
-  );
 
   const suggestEvent = useCallback(() => {
     if (!info) return;
@@ -581,7 +594,7 @@ export default function PubPageScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.nav}>
+      <View style={[styles.nav, showTitle && styles.navDivided]}>
         <RoundButton onPress={goBack} label={t.pubDetail.backA11y}>
           <ChevronLeftIcon size={24} color={Colors.foam} />
         </RoundButton>
@@ -645,6 +658,7 @@ export default function PubPageScreen() {
               toolbarEnabled={false}
               showsPointsOfInterests={false}
               showsCompass={false}
+              customMapStyle={PREVIEW_MAP_STYLE}
               userInterfaceStyle={colorScheme === 'dark' ? 'dark' : 'light'}
               loadingBackgroundColor={Colors.stout2}
               loadingIndicatorColor={Colors.amber}
@@ -697,55 +711,63 @@ export default function PubPageScreen() {
           </View>
         ) : null}
 
-        <Band />
-        <SectionTitle
-          title={t.pubDetail.tapsTitle}
-          aside={
-            rotates ? t.pubDetail.tapsRotating : tapsAge ? t.pubDetail.tapsVerified(tapsAge) : null
-          }
-        />
-        {shownTaps.map((beer, index) => (
-          <View key={`${beer.name}-${index}`} style={[styles.row, index === 0 && styles.rowFirst]}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                {beer.name}
-              </Text>
-              {typeof beer.volumeMl === 'number' ? (
-                <Text style={styles.rowSub} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {formatVolume(beer.volumeMl)}
-                </Text>
-              ) : null}
-            </View>
-            {typeof beer.priceCzk === 'number' ? (
-              <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
-                {formatPrice(beer.priceCzk, priceCurrency)}
-              </Text>
+        {taps.length > 0 || pub.price ? (
+          <>
+            <Band />
+            <SectionTitle
+              title={t.pubDetail.tapsTitle}
+              aside={
+                rotates
+                  ? t.pubDetail.tapsRotating
+                  : tapsAge
+                    ? t.pubDetail.tapsVerified(tapsAge)
+                    : null
+              }
+            />
+            {shownTaps.map((beer, index) => (
+              <View
+                key={`${beer.name}-${index}`}
+                style={[styles.row, index === 0 && styles.rowFirst]}
+              >
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {beer.name}
+                  </Text>
+                  {typeof beer.volumeMl === 'number' ? (
+                    <Text style={styles.rowSub} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {formatVolume(beer.volumeMl)}
+                    </Text>
+                  ) : null}
+                </View>
+                {typeof beer.priceCzk === 'number' ? (
+                  <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {formatPrice(beer.priceCzk, priceCurrency)}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+            {hiddenTaps > 0 ? (
+              <LinkRow
+                muted
+                label={t.pubDetail.tapsMore(hiddenTaps)}
+                onPress={() => setTapsExpanded(true)}
+                trailing={<ChevronRightIcon size={18} color={Colors.mutedText} />}
+              />
             ) : null}
-          </View>
-        ))}
-        {hiddenTaps > 0 ? (
-          <LinkRow
-            muted
-            label={t.pubDetail.tapsMore(hiddenTaps)}
-            onPress={() => setTapsExpanded(true)}
-            trailing={<ChevronRightIcon size={18} color={Colors.mutedText} />}
-          />
-        ) : null}
-        {taps.length === 0 && pub.price ? (
-          <View style={[styles.row, styles.rowFirst]}>
-            <Text
-              style={[styles.rowTitle, styles.rowText]}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {t.pubDetail.beerFrom}
-            </Text>
-            <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
-              {formatPrice(pub.price.czk, priceCurrency)}
-            </Text>
-          </View>
-        ) : null}
-        {taps.length === 0 && !pub.price ? (
-          <LinkRow first label={t.pubDetail.tapsAdd} onPress={() => openContribute('beers')} />
+            {taps.length === 0 && pub.price ? (
+              <View style={[styles.row, styles.rowFirst]}>
+                <Text
+                  style={[styles.rowTitle, styles.rowText]}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {t.pubDetail.beerFrom}
+                </Text>
+                <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {formatPrice(pub.price.czk, priceCurrency)}
+                </Text>
+              </View>
+            ) : null}
+          </>
         ) : null}
 
         <Band />
@@ -759,37 +781,41 @@ export default function PubPageScreen() {
           onPress={suggestEvent}
         />
 
-        <Band />
-        <SectionTitle title={t.pubDetail.openingTitle} />
-        {hoursRows.length > 0 ? (
-          hoursRows.map((row) => (
-            <View key={row.from} style={styles.hoursRow}>
-              <Text
-                style={[styles.hoursDay, row.today && styles.hoursToday]}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {row.from === row.to
-                  ? t.contribute.daysShort[row.from]
-                  : `${t.contribute.daysShort[row.from]}–${t.contribute.daysShort[row.to]}`}
-                {row.today ? (
-                  <Text style={styles.hoursTodayMark}>{` · ${t.pubDetail.hoursToday}`}</Text>
-                ) : null}
+        {hoursRows.length > 0 || pub.openingHours ? (
+          <>
+            <Band />
+            <SectionTitle title={t.pubDetail.openingTitle} />
+            {hoursRows.length > 0 ? (
+              hoursRows.map((row) => (
+                <View key={row.from} style={styles.hoursRow}>
+                  <Text
+                    style={[styles.hoursDay, row.today && styles.hoursToday]}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {row.from === row.to
+                      ? t.contribute.daysShort[row.from]
+                      : `${t.contribute.daysShort[row.from]}–${t.contribute.daysShort[row.to]}`}
+                    {row.today ? (
+                      <Text style={styles.hoursTodayMark}>{` · ${t.pubDetail.hoursToday}`}</Text>
+                    ) : null}
+                  </Text>
+                  <Text
+                    style={[styles.hoursValue, row.today && styles.hoursToday]}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {row.intervals.length > 0
+                      ? row.intervals.join(', ')
+                      : t.pubDetail.openingClosed}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.rawHours} maxFontSizeMultiplier={FontScaleCap.body}>
+                {pub.openingHours}
               </Text>
-              <Text
-                style={[styles.hoursValue, row.today && styles.hoursToday]}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {row.intervals.length > 0 ? row.intervals.join(', ') : t.pubDetail.openingClosed}
-              </Text>
-            </View>
-          ))
-        ) : pub.openingHours ? (
-          <Text style={styles.rawHours} maxFontSizeMultiplier={FontScaleCap.body}>
-            {pub.openingHours}
-          </Text>
-        ) : (
-          <LinkRow first label={t.pubDetail.openingAdd} onPress={() => openContribute('hours')} />
-        )}
+            )}
+          </>
+        ) : null}
 
         <Band />
         <SectionTitle title={t.pubDetail.aboutTitle} />
@@ -1110,17 +1136,19 @@ function MappedRing({ pct }: { pct: number }) {
         strokeWidth={stroke}
         fill="none"
       />
-      <Circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke={Colors.amber}
-        strokeWidth={stroke}
-        fill="none"
-        strokeLinecap="round"
-        strokeDasharray={`${(circumference * clamped) / 100} ${circumference}`}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
+      {clamped > 0 ? (
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={Colors.amber}
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${(circumference * clamped) / 100} ${circumference}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      ) : null}
     </Svg>
   );
 }
@@ -1136,6 +1164,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+  },
+  navDivided: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(Colors.foam, 0.1),
   },
   navTitle: {
     flex: 1,
@@ -1348,9 +1380,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dateTile: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 36,
+    height: 42,
+    borderRadius: 10,
     backgroundColor: Colors.stout2,
     alignItems: 'center',
     justifyContent: 'center',

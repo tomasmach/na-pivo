@@ -1,6 +1,7 @@
 import {
   calendarDaysBetween,
   confirmedAmenityKeys,
+  currentTaps,
   dayKeyOf,
   eventDay,
   eventStartTime,
@@ -112,5 +113,23 @@ describe('roundedDistance', () => {
     expect(roundedDistance(3)).toEqual({ unit: 'm', value: 10 });
     expect(roundedDistance(346)).toEqual({ unit: 'm', value: 350 });
     expect(roundedDistance(1387)).toEqual({ unit: 'km', value: 1.4 });
+  });
+});
+
+describe('currentTaps', () => {
+  const server = [{ name: 'Pilsner Urquell 12°', priceCzk: 59 }];
+
+  it('keeps the server taps when a current local edit changed only the hours', () => {
+    expect(currentTaps({}, true, server)).toEqual(server);
+  });
+
+  it('uses a current local tap list, even an emptied one', () => {
+    expect(currentTaps({ beers: [{ name: 'Kozel 11°' }] }, true, server)).toEqual([{ name: 'Kozel 11°' }]);
+    expect(currentTaps({ beers: [] }, true, server)).toEqual([]);
+  });
+
+  it('ignores a stale local tap list', () => {
+    expect(currentTaps({ beers: [{ name: 'Kozel 11°' }] }, false, server)).toEqual(server);
+    expect(currentTaps(undefined, false, undefined)).toEqual([]);
   });
 });
