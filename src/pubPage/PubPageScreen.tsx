@@ -485,7 +485,7 @@ export default function PubPageScreen() {
     setRenameSubmitting(true);
     const previousName = pub.name;
     setPub({ ...pub, name: trimmed });
-    usePubPageStore.getState().remember(key, { ...pub, name: trimmed });
+    usePubPageStore.getState().rename(key, pub, trimmed);
     submitPubRename(info, previousName, trimmed)
       .then((synced) => {
         setRenameOpen(false);
@@ -595,10 +595,11 @@ export default function PubPageScreen() {
     );
   }
 
-  // The server answers "open now" for most pubs; when it did not, the week
-  // shown further down is enough to say it here too.
+  // Work the header out from the same week the table below shows, including a
+  // fresh local edit, so the two never disagree and the header follows the
+  // clock. Only without a readable week does the server's answer stand.
   const hours = pubHoursLine(
-    pub.isOpenNow == null && weeklyHours ? { ...pub, ...computeOpenState(weeklyHours, now) } : pub,
+    weeklyHours ? { ...pub, ...computeOpenState(weeklyHours, now) } : pub,
   );
   const distance = position ? formatDistance(haversineMeters(position, pub)) : null;
   const firstEvent = shownEvents[0];
@@ -947,7 +948,7 @@ export default function PubPageScreen() {
         onClose={() => setMappingOpen(false)}
         onRenamed={(name) => {
           setPub((current) => (current ? { ...current, name } : current));
-          usePubPageStore.getState().remember(key, { ...pub, name });
+          usePubPageStore.getState().rename(key, pub, name);
         }}
         onReport={() => {
           setMappingOpen(false);

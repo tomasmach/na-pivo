@@ -15,15 +15,30 @@ const MAX_REMEMBERED = 12;
 
 interface PubPageState {
   pubs: Record<string, Pub>;
+  /** Names fixed on the page this session; openers still hold the old one. */
+  renames: Record<string, string>;
   remember: (key: string, pub: Pub) => void;
+  rename: (key: string, pub: Pub, name: string) => void;
+}
+
+function keepLatest(pubs: Record<string, Pub>, key: string, pub: Pub): Record<string, Pub> {
+  const rest = Object.entries(pubs).filter(([k]) => k !== key);
+  const kept = rest.slice(Math.max(0, rest.length - (MAX_REMEMBERED - 1)));
+  return { ...Object.fromEntries(kept), [key]: pub };
 }
 
 export const usePubPageStore = create<PubPageState>((set) => ({
   pubs: {},
+  renames: {},
+  // An opener's copy may predate a rename made on the page; keep the rename.
   remember: (key, pub) =>
     set((state) => {
-      const rest = Object.entries(state.pubs).filter(([k]) => k !== key);
-      const kept = rest.slice(Math.max(0, rest.length - (MAX_REMEMBERED - 1)));
-      return { pubs: { ...Object.fromEntries(kept), [key]: pub } };
+      const renamed = state.renames[key];
+      return { pubs: keepLatest(state.pubs, key, renamed ? { ...pub, name: renamed } : pub) };
     }),
+  rename: (key, pub, name) =>
+    set((state) => ({
+      renames: { ...state.renames, [key]: name },
+      pubs: keepLatest(state.pubs, key, { ...pub, name }),
+    })),
 }));
