@@ -9,7 +9,17 @@
 
 import { create } from 'zustand';
 
+import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
+
+/**
+ * The hand-off id for one pub. Two businesses can share a geohash-8 cell, so
+ * the cell alone would mix them up; the provider id, or the name when there is
+ * none, tells them apart.
+ */
+export function pubPageRef(pub: Pick<Pub, 'id' | 'name' | 'lat' | 'lng'>): string {
+  return `${geohash8(pub.lat, pub.lng)}|${pub.id || pub.name.trim().toLocaleLowerCase('cs')}`;
+}
 
 const MAX_REMEMBERED = 12;
 
