@@ -242,6 +242,15 @@ describe('scheduled reminders follow the plans', () => {
     expect(mockScheduled.size).toBe(1);
   });
 
+  it('turns the toggle off when notifications were refused elsewhere', async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ status: 'denied' });
+    await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
+    await reconcileTourReminders();
+    expect(useSettingsStore.getState().tourRemindersEnabled).toBe(false);
+    expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+    useSettingsStore.getState().setTourRemindersEnabled(true);
+  });
+
   it('schedules nothing without notification permission', async () => {
     mockGetPermissionsAsync.mockResolvedValue({ status: 'undetermined' });
     await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });

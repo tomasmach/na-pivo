@@ -176,7 +176,10 @@ async function reconcileInternal(): Promise<void> {
   let granted = false;
   if (useSettingsStore.getState().tourRemindersEnabled) {
     try {
-      granted = (await Notifications.getPermissionsAsync()).status === 'granted';
+      const status = (await Notifications.getPermissionsAsync()).status;
+      granted = status === 'granted';
+      // Notifications refused elsewhere (a pub reminder, the system Settings) make the toggle say off, as it really is.
+      if (status === 'denied') useSettingsStore.getState().setTourRemindersEnabled(false);
     } catch {
       granted = false;
     }
