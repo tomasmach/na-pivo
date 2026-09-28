@@ -37,7 +37,6 @@ import {
   MapPinnedIcon,
   RefreshCwIcon,
   StarIcon,
-  UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
@@ -51,7 +50,7 @@ import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
-import { fetchPubVisitorsLastWeek, type PubVisitorsByKey } from '@/data/pubVisitorsClient';
+import { fetchPubBeersLastWeek, type PubBeersLastWeek } from '@/data/pubBeersClient';
 import {
   EMPTY_PUB_SEARCH_FILTERS,
   activePubSearchFilterCount,
@@ -100,7 +99,7 @@ let rememberedRegion: Region | null = null;
 /** A fresher locate fix closer than this does not re-animate the map. */
 const LOCATE_FOLLOW_UP_M = 25;
 let rememberedLayer: Layer = 'all';
-let rememberedVisitorsOnly = false;
+let rememberedBeersOnly = false;
 let rememberedSelection: MapSelection | null = null;
 const layerListeners = new Set<() => void>();
 
@@ -202,8 +201,8 @@ interface PlaceCardProps {
   metaTone: MetaTone;
   /** The quiet tail of the same line (city, "navštíveno"), or null. */
   fact: string | null;
-  /** How many people were in the selected pub last week, on its own quiet line. */
-  people?: string | null;
+  /** How many beers the selected pub poured last week, on its own quiet line. */
+  beers?: string | null;
   /** Star rating, rendered with a ★ glyph ahead of the fact text. */
   rating?: { value: string; count: string | null } | null;
   titlePress?: {
@@ -224,7 +223,7 @@ function PlaceCard({
   meta,
   metaTone,
   fact,
-  people,
+  beers,
   rating,
   titlePress,
   door,
@@ -288,15 +287,15 @@ function PlaceCard({
         </View>
       ) : null}
 
-      {people ? (
+      {beers ? (
         <View style={styles.placeMetaRow}>
-          <UsersIcon size={13} color={Colors.mutedText} />
+          <BeerIcon size={13} color={Colors.mutedText} />
           <Text
             style={styles.placeFact}
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {people}
+            {beers}
           </Text>
         </View>
       ) : null}
@@ -434,41 +433,41 @@ function pubWithDetails(pub: Pub, details: PubHoursResult | undefined): Pub {
 function PubMarker({
   visited,
   selected,
-  visitors,
+  beers,
 }: {
   visited: boolean;
   selected: boolean;
-  visitors?: number;
+  beers?: number;
 }) {
   return (
-    <View style={[styles.pinHit, visitors ? styles.pinHitWide : null]}>
+    <View style={[styles.pinHit, beers ? styles.pinHitWide : null]}>
       {selected ? <View style={styles.pubPinRing} /> : null}
       <View style={[styles.pubPin, visited && styles.pubPinVisited, selected && styles.pubPinSelected]}>
         <BeerIcon size={selected ? 18 : 15} color={visited ? Colors.stout : Colors.foam} />
       </View>
       {visited ? <View style={styles.visitedNotch} /> : null}
-      {visitors ? (
-        <VisitorsBadge
-          visitors={visitors}
-          style={[styles.pinVisitorsBadge, selected && styles.pinVisitorsBadgeSelected]}
+      {beers ? (
+        <BeersBadge
+          beers={beers}
+          style={[styles.pinBeersBadge, selected && styles.pinBeersBadgeSelected]}
         />
       ) : null}
     </View>
   );
 }
 
-function VisitorsBadge({
-  visitors,
+function BeersBadge({
+  beers,
   style,
 }: {
-  visitors: number;
+  beers: number;
   style: StyleProp<ViewStyle>;
 }) {
   return (
-    <View style={[styles.visitorsBadge, style]}>
-      <UsersIcon size={10} color={Colors.stout} />
-      <Text style={styles.visitorsBadgeText} maxFontSizeMultiplier={FontScaleCap.display}>
-        {visitors > 99 ? '99+' : visitors}
+    <View style={[styles.beersBadge, style]}>
+      <BeerIcon size={10} color={Colors.stout} />
+      <Text style={styles.beersBadgeText} maxFontSizeMultiplier={FontScaleCap.display}>
+        {beers > 99 ? '99+' : beers}
       </Text>
     </View>
   );
@@ -483,15 +482,15 @@ function clusterTier(count: number): { size: number; fontSize: number } {
 function ClusterMarker({
   count,
   visited,
-  visitors,
+  beers,
 }: {
   count: number;
   visited: boolean;
-  visitors: number;
+  beers: number;
 }) {
   const { size, fontSize } = clusterTier(count);
   return (
-    <View style={[styles.clusterHit, visitors ? styles.clusterHitWithBadge : null]}>
+    <View style={[styles.clusterHit, beers ? styles.clusterHitWithBadge : null]}>
       <View
         style={[
           styles.clusterPin,
@@ -510,8 +509,8 @@ function ClusterMarker({
           {count}
         </Text>
       </View>
-      {visitors ? (
-        <VisitorsBadge visitors={visitors} style={styles.clusterVisitorsBadge} />
+      {beers ? (
+        <BeersBadge beers={beers} style={styles.clusterBeersBadge} />
       ) : null}
     </View>
   );
@@ -575,8 +574,8 @@ export default function BeerMapScreen({
   const mapRef = useRef<MapView>(null);
   const reduceMotion = useReduceMotion();
   const hapticEnabled = useSettingsStore((state) => state.hapticEnabled);
-  const showPubVisitors = useSettingsStore((state) => state.showPubVisitors);
-  const setShowPubVisitors = useSettingsStore((state) => state.setShowPubVisitors);
+  const showPubBeers = useSettingsStore((state) => state.showPubBeers);
+  const setShowPubBeers = useSettingsStore((state) => state.setShowPubBeers);
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const {
     pubs,
@@ -628,8 +627,8 @@ export default function BeerMapScreen({
   const [detailOpen, setDetailOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
-  const [pubVisitors, setPubVisitors] = useState<PubVisitorsByKey | null>(null);
-  const [visitorsOnlyChoice, setVisitorsOnlyChoice] = useState(rememberedVisitorsOnly);
+  const [pubBeers, setPubBeers] = useState<PubBeersLastWeek | null>(null);
+  const [beersOnlyChoice, setBeersOnlyChoice] = useState(rememberedBeersOnly);
   const [listOpen, setListOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [detailsByPubKey, setDetailsByPubKey] = useState<Record<string, PubHoursResult>>({});
@@ -661,32 +660,32 @@ export default function BeerMapScreen({
   // Retries ride on each catalogue load, so a failed first fetch (bad signal
   // in the pub) recovers without a restart; a loaded week is a cache hit. A
   // pan must not cancel a slow request, so only hiding or leaving aborts it.
-  const visitorsRequest = useRef<AbortController | null>(null);
+  const beersRequest = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (!showPubVisitors || visitorsRequest.current) return;
+    if (!showPubBeers || beersRequest.current) return;
     const controller = new AbortController();
-    visitorsRequest.current = controller;
-    void fetchPubVisitorsLastWeek(controller.signal).then((visitors) => {
-      if (visitorsRequest.current === controller) visitorsRequest.current = null;
-      if (!controller.signal.aborted && visitors) setPubVisitors(visitors);
+    beersRequest.current = controller;
+    void fetchPubBeersLastWeek(controller.signal).then((beers) => {
+      if (beersRequest.current === controller) beersRequest.current = null;
+      if (!controller.signal.aborted && beers) setPubBeers(beers);
     });
-  }, [pubs, showPubVisitors]);
+  }, [pubs, showPubBeers]);
   useEffect(() => {
-    if (showPubVisitors) return;
-    visitorsRequest.current?.abort();
-    visitorsRequest.current = null;
-  }, [showPubVisitors]);
+    if (showPubBeers) return;
+    beersRequest.current?.abort();
+    beersRequest.current = null;
+  }, [showPubBeers]);
   useEffect(() => {
-    const request = visitorsRequest;
+    const request = beersRequest;
     return () => request.current?.abort();
   }, []);
 
   // Last week's counts only mean something while they are shown and loaded.
-  const visibleVisitors = showPubVisitors && layer !== 'friends' ? pubVisitors : null;
-  const visitorsOnly = visitorsOnlyChoice && visibleVisitors != null;
-  const setVisitorsOnly = useCallback((next: boolean) => {
-    rememberedVisitorsOnly = next;
-    setVisitorsOnlyChoice(next);
+  const visibleBeers = showPubBeers && layer !== 'friends' ? pubBeers?.byKey ?? null : null;
+  const beersOnly = beersOnlyChoice && visibleBeers != null;
+  const setBeersOnly = useCallback((next: boolean) => {
+    rememberedBeersOnly = next;
+    setBeersOnlyChoice(next);
   }, []);
 
   useEffect(() => {
@@ -713,8 +712,8 @@ export default function BeerMapScreen({
         false,
         activeFilterCount === 0,
       ).points;
-      if (visitorsOnly && visibleVisitors) {
-        points = points.filter((point) => visibleVisitors.has(point.key));
+      if (beersOnly && visibleBeers) {
+        points = points.filter((point) => visibleBeers.has(point.key));
       }
       // Keep the searched place visible before its catalogue area is loaded.
       // Later filters, layers and reports still apply; updates of the same pub win.
@@ -742,9 +741,9 @@ export default function BeerMapScreen({
       pubs,
       reportedCacheKeys,
       reportedPubIds,
-      visibleVisitors,
+      visibleBeers,
       visitedPubs,
-      visitorsOnly,
+      beersOnly,
     ],
   );
 
@@ -1073,7 +1072,7 @@ export default function BeerMapScreen({
         ? t.map.viewportKnownNone
         : t.map.viewportKnown(visitedInView);
 
-  const selectedVisitors = selectedPub ? visibleVisitors?.get(selectedPub.key) ?? 0 : 0;
+  const selectedBeers = selectedPub ? visibleBeers?.get(selectedPub.key) ?? 0 : 0;
   const cardState = useMemo(() => {
     if (selectedPub) {
       const hours = openingMeta(selectedDetailPub ?? selectedPub.pub, selectedHoursStatus);
@@ -1095,7 +1094,7 @@ export default function BeerMapScreen({
           [selectedPub.pub.city, selectedPub.visit ? t.map.visited : null]
             .filter(Boolean)
             .join(' · ') || null,
-        people: selectedVisitors ? t.map.visitorsLastWeek(selectedVisitors) : null,
+        beers: selectedBeers ? t.map.beersLastWeek(selectedBeers) : null,
       };
     }
     if (selectedLive) {
@@ -1139,7 +1138,7 @@ export default function BeerMapScreen({
     selectedPub,
     selectedRating,
     selectedRatingCount,
-    selectedVisitors,
+    selectedBeers,
     viewportDetail,
     viewportHeadline,
   ]);
@@ -1153,12 +1152,12 @@ export default function BeerMapScreen({
         onUndo: refresh,
       };
     }
-    if (visitorsOnly) {
+    if (beersOnly) {
       return {
         kind: 'rapid',
-        text: t.map.visitorsOnlyNudge,
+        text: t.map.beersOnlyNudge,
         confirmLabel: t.compass.nudgeFiltersClear,
-        onConfirm: () => setVisitorsOnly(false),
+        onConfirm: () => setBeersOnly(false),
       };
     }
     if (activeFilterCount > 0) {
@@ -1198,9 +1197,9 @@ export default function BeerMapScreen({
     permissionState,
     refresh,
     region.latitudeDelta,
-    setVisitorsOnly,
+    setBeersOnly,
     stale,
-    visitorsOnly,
+    beersOnly,
   ]);
 
   const primaryAction = useMemo(() => {
@@ -1275,27 +1274,27 @@ export default function BeerMapScreen({
         onPress: () => runAfterMoreClose(() => setFilterSheetOpen(true)),
       },
       {
-        key: 'visitors',
-        label: t.map.moreVisitors,
-        icon: UsersIcon,
-        selected: showPubVisitors,
+        key: 'beers',
+        label: t.map.moreBeers,
+        icon: BeerIcon,
+        selected: showPubBeers,
         onPress: () => {
           setMoreOpen(false);
           // Hidden counts cannot narrow the map, so turning them back on starts unfiltered.
-          if (showPubVisitors) setVisitorsOnly(false);
-          setShowPubVisitors(!showPubVisitors);
+          if (showPubBeers) setBeersOnly(false);
+          setShowPubBeers(!showPubBeers);
         },
       },
-      ...(showPubVisitors
+      ...(showPubBeers
         ? [
             {
-              key: 'visitors-only',
-              label: t.map.moreVisitorsOnly,
-              icon: BeerIcon,
-              selected: visitorsOnly,
+              key: 'beers-only',
+              label: t.map.moreBeersOnly,
+              icon: MapPinnedIcon,
+              selected: beersOnly,
               onPress: () => {
                 setMoreOpen(false);
-                setVisitorsOnly(!visitorsOnly);
+                setBeersOnly(!beersOnly);
               },
             },
           ]
@@ -1335,11 +1334,11 @@ export default function BeerMapScreen({
     refresh,
     runAfterMoreClose,
     selectedPub,
-    setShowPubVisitors,
-    setVisitorsOnly,
-    showPubVisitors,
+    setShowPubBeers,
+    setBeersOnly,
+    showPubBeers,
     openAddPub,
-    visitorsOnly,
+    beersOnly,
   ]);
 
   return (
@@ -1403,45 +1402,45 @@ export default function BeerMapScreen({
           if (cluster.items.length === 1) {
             const point = cluster.items[0];
             const selected = selectedPub?.key === point.key;
-            const visitors = visibleVisitors?.get(point.key) ?? 0;
+            const beers = visibleBeers?.get(point.key) ?? 0;
             return (
               <StaticMapMarker
-                key={`${point.key}:${point.visit?.visitCount ?? 0}:${visitors}:${selected ? 'selected' : 'idle'}`}
+                key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${selected ? 'selected' : 'idle'}`}
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 onPress={() => selectPub(point)}
                 accessibilityLabel={[
                   t.a11y.mapPub(point.pub.name, point.visit?.visitCount ?? 0),
-                  visitors ? t.map.visitorsLastWeek(visitors) : null,
+                  beers ? t.map.beersLastWeek(beers) : null,
                 ].filter(Boolean).join(', ')}
               >
                 <PubMarker
                   visited={Boolean(point.visit)}
                   selected={selected}
-                  visitors={visitors}
+                  beers={beers}
                 />
               </StaticMapMarker>
             );
           }
-          // A sum over pubs: someone who went to two of them counts twice.
-          const clusterVisitors = visibleVisitors
-            ? cluster.items.reduce((sum, item) => sum + (visibleVisitors.get(item.key) ?? 0), 0)
+          // Beers add up across the pubs of a cluster.
+          const clusterBeers = visibleBeers
+            ? cluster.items.reduce((sum, item) => sum + (visibleBeers.get(item.key) ?? 0), 0)
             : 0;
           return (
             <StaticMapMarker
-              key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}:${clusterVisitors}`}
+              key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}:${clusterBeers}`}
               stopPropagation
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
               accessibilityLabel={[
                 t.a11y.mapCluster(cluster.items.length),
-                clusterVisitors ? t.map.visitorsClusterLastWeek(clusterVisitors) : null,
+                clusterBeers ? t.map.beersClusterLastWeek(clusterBeers) : null,
               ].filter(Boolean).join(', ')}
             >
               <ClusterMarker
                 count={cluster.items.length}
                 visited={cluster.items.some((item) => item.visit != null)}
-                visitors={clusterVisitors}
+                beers={clusterBeers}
               />
             </StaticMapMarker>
           );
@@ -1519,7 +1518,7 @@ export default function BeerMapScreen({
           meta={cardState.meta}
           metaTone={cardState.metaTone}
           fact={cardState.fact}
-          people={'people' in cardState ? cardState.people : null}
+          beers={'beers' in cardState ? cardState.beers : null}
           rating={'rating' in cardState ? cardState.rating : null}
           titlePress={
             cardState.kind === 'pub' && selectedPub
@@ -1866,11 +1865,11 @@ const styles = StyleSheet.create({
   pinHit: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
   // Symmetric so the pin stays on the coordinate; the badge needs the right half.
   pinHitWide: { width: 80 },
-  pinVisitorsBadge: { top: 5, left: 47 },
-  pinVisitorsBadgeSelected: { top: 2, left: 50 },
+  pinBeersBadge: { top: 5, left: 47 },
+  pinBeersBadgeSelected: { top: 2, left: 50 },
   clusterHitWithBadge: { paddingTop: 10, paddingHorizontal: 26 },
-  clusterVisitorsBadge: { top: 0, right: 0 },
-  visitorsBadge: {
+  clusterBeersBadge: { top: 0, right: 0 },
+  beersBadge: {
     position: 'absolute',
     height: 18,
     paddingHorizontal: 5,
@@ -1882,7 +1881,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.stout,
   },
-  visitorsBadgeText: {
+  beersBadgeText: {
     fontFamily: Fonts.ui.bold,
     fontSize: 10,
     color: Colors.stout,

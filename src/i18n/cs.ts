@@ -93,16 +93,16 @@ export const cs = {
     showMyPubs: 'Ukázat moje hospody',
     findMe: 'Najdi mě',
     liveNow: 'TEĎ NA PIVU',
-    visitorsLastWeek: (n: number) =>
+    beersLastWeek: (n: number) =>
       czechPlural(n, {
-        one: 'Minulý týden tu byl 1 člověk',
-        few: `Minulý týden tu byli ${n} lidé`,
-        many: `Minulý týden tu bylo ${n} lidí`,
+        one: 'Minulý týden tu padlo 1 pivo',
+        few: `Minulý týden tu padla ${n} piva`,
+        many: `Minulý týden tu padlo ${n} piv`,
       }),
-    visitorsClusterLastWeek: (n: number) => `Součet lidí z těchto hospod za minulý týden: ${n}`,
-    moreVisitors: 'Počty lidí za minulý týden',
-    moreVisitorsOnly: 'Jen hospody, kde někdo byl',
-    visitorsOnlyNudge: 'Jen kde někdo byl',
+    beersClusterLastWeek: (n: number) => `Piva z těchto hospod za minulý týden dohromady: ${n}`,
+    moreBeers: 'Počty piv za minulý týden',
+    moreBeersOnly: 'Jen hospody, kde se pilo',
+    beersOnlyNudge: 'Jen kde se pilo',
     friendFallback: 'Kamarád',
     friendIsHere: (name: string) => `${name} je tady teď`,
     friendsAreHere: (name: string, others: number) =>

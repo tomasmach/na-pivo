@@ -82,15 +82,15 @@ export const en: Strings = {
     showMyPubs: 'Show my pubs',
     findMe: 'Find me',
     liveNow: 'OUT RIGHT NOW',
-    visitorsLastWeek: (n: number) =>
+    beersLastWeek: (n: number) =>
       englishPlural(n, {
-        one: 'Last week 1 person was here',
-        other: `Last week ${n} people were here`,
+        one: 'Last week 1 beer went down here',
+        other: `Last week ${n} beers went down here`,
       }),
-    visitorsClusterLastWeek: (n: number) => `Last week's people across these pubs, added up: ${n}`,
-    moreVisitors: 'People counts from last week',
-    moreVisitorsOnly: 'Only pubs someone visited',
-    visitorsOnlyNudge: 'Only pubs someone visited',
+    beersClusterLastWeek: (n: number) => `Last week's beers across these pubs, added up: ${n}`,
+    moreBeers: 'Beer counts from last week',
+    moreBeersOnly: 'Only pubs where people drank',
+    beersOnlyNudge: 'Only where people drank',
     friendFallback: 'Friend',
     friendIsHere: (name: string) => `${name} is here right now`,
     friendsAreHere: (name: string, others: number) => `${name} and ${others} others are here`,
