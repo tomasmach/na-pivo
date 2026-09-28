@@ -239,6 +239,61 @@ def test_favorite_false_removes_under_lww(client):
     assert again.json() == {"deleted": False, "applied": True}
 
 
+def _race_first_save(monkeypatch, competitor_updated_at: str):
+    """Another device inserts the same pub right after this request looked it up."""
+    real_select_for_update = PubFavorite.objects.select_for_update
+
+    class _Lookup:
+        def __init__(self, queryset):
+            self._queryset = queryset
+            self._filters = {}
+
+        def filter(self, **filters):
+            self._filters = filters
+            return self
+
+        def first(self):
+            found = self._queryset.filter(**self._filters).first()
+            PubFavorite.objects.create(
+                account=self._filters["account"],
+                cache_key=self._filters["cache_key"],
+                name="Other device",
+                lat=_LAT,
+                lng=_LNG,
+                client_updated_at=competitor_updated_at,
+            )
+            return found
+
+    def racing_select_for_update(*args, **kwargs):
+        monkeypatch.setattr(PubFavorite.objects, "select_for_update", real_select_for_update)
+        return _Lookup(real_select_for_update(*args, **kwargs))
+
+    monkeypatch.setattr(PubFavorite.objects, "select_for_update", racing_select_for_update)
+
+
+@pytest.mark.django_db
+def test_concurrent_first_save_keeps_the_newer_write(client, monkeypatch):
+    token = _register(client)
+    _race_first_save(monkeypatch, "2026-06-13T08:00:00+02:00")
+
+    response = _put(client, token, updated_at="2026-06-12T19:45:00+02:00")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["applied"] is False
+    assert list(PubFavorite.objects.values_list("name", flat=True)) == ["Other device"]
+
+
+@pytest.mark.django_db
+def test_concurrent_first_save_applies_when_it_is_newer(client, monkeypatch):
+    token = _register(client)
+    _race_first_save(monkeypatch, "2026-06-10T08:00:00+02:00")
+
+    response = _put(client, token, updated_at="2026-06-12T19:45:00+02:00")
+
+    assert response.json()["applied"] is True
+    assert list(PubFavorite.objects.values_list("name", flat=True)) == [_NAME]
+
+
 @pytest.mark.django_db
 def test_older_save_from_another_phone_does_not_bring_back_a_removed_favorite(client):
     """Phone A removes the heart; phone B later pushes the save it still has."""
