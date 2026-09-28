@@ -6,6 +6,8 @@ import {
   eventDay,
   eventStartTime,
   groupWeeklyHours,
+  isSamePubRecord,
+  pubWallClock,
   roundedDistance,
   visibleEvents,
 } from '../pubPageModel';
@@ -131,5 +133,22 @@ describe('currentTaps', () => {
   it('ignores a stale local tap list', () => {
     expect(currentTaps({ beers: [{ name: 'Kozel 11°' }] }, false, server)).toEqual(server);
     expect(currentTaps(undefined, false, undefined)).toEqual([]);
+  });
+});
+
+describe('pubWallClock', () => {
+  it('reads Prague wall-clock time from an absolute instant', () => {
+    // 17:00 UTC on 28 September 2026 is 19:00 in Prague (summer time).
+    const wall = pubWallClock(new Date(Date.UTC(2026, 8, 28, 17, 0)));
+    expect([wall.getDate(), wall.getHours(), wall.getMinutes()]).toEqual([28, 19, 0]);
+  });
+});
+
+describe('isSamePubRecord', () => {
+  const pub = { id: 'mapy:1', name: 'U Zlatého tygra' };
+  it('matches by provider id or by name, not the neighbour in the cell', () => {
+    expect(isSamePubRecord({ externalId: 'mapy:1', name: 'Tygr' }, pub)).toBe(true);
+    expect(isSamePubRecord({ name: 'u zlatého tygra ' }, pub)).toBe(true);
+    expect(isSamePubRecord({ externalId: 'mapy:2', name: 'Vinárna vedle' }, pub)).toBe(false);
   });
 });

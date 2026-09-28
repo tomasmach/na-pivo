@@ -111,6 +111,7 @@ import { openPubPage } from './openPubPage';
 import {
   calendarDaysBetween,
   confirmedAmenityKeys,
+  pubWallClock,
   currentTaps,
   dayKeyOf,
   eventDay,
@@ -412,9 +413,10 @@ export default function PubPageScreen() {
       null
     );
   }, [override?.hours, pub]);
+  const pubNow = useMemo(() => pubWallClock(now), [now]);
   const hoursRows = useMemo(
-    () => (weeklyHours ? groupWeeklyHours(weeklyHours, dayKeyOf(now)) : []),
-    [weeklyHours, now],
+    () => (weeklyHours ? groupWeeklyHours(weeklyHours, dayKeyOf(pubNow)) : []),
+    [weeklyHours, pubNow],
   );
 
   const taps = useMemo(() => {
@@ -628,7 +630,9 @@ export default function PubPageScreen() {
   // Work the header out from the same week the table below shows, including a
   // fresh local edit, so the two never disagree and the header follows the
   // clock. Only without a readable week does the server's answer stand.
-  const hours = pubHoursLine(weeklyHours ? { ...pub, ...computeOpenState(weeklyHours, now) } : pub);
+  const hours = pubHoursLine(
+    weeklyHours ? { ...pub, ...computeOpenState(weeklyHours, pubNow) } : pub,
+  );
   const distance = position ? formatDistance(haversineMeters(position, pub)) : null;
   const firstEvent = shownEvents[0];
   const hasRating = typeof pub.rating === 'number' && pub.rating > 0;
