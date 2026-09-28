@@ -23,7 +23,8 @@ import { samePub, type TourStop } from './model';
 import { geohash8 } from '@/data/geohash';
 import { TourMap, tourRegion } from './TourMap';
 import { pubCount } from './TourChrome';
-import { planDay, pubHoursOnDay, walkingLeg } from './stopFacts';
+import { pubHoursOnDay, walkingLeg } from './stopFacts';
+import { todayIn, weekday } from './when';
 
 const MAX_STOPS = 8;
 /** What makes two places the same pub, without minting a stop id for every row. */
@@ -38,6 +39,7 @@ export interface TourPubPickerProps {
   stops: readonly TourStop[];
   /** The meetup day decides which opening hours the rows show. */
   scheduledDate?: string | null;
+  timezone?: string;
   /** Adds the pub, or takes it out when it is already a stop. Resolves whether the tour changed. */
   onToggle: (pub: Pub) => Promise<boolean>;
   /** Replacing one stop is a single pick that closes the picker. */
@@ -50,7 +52,7 @@ export function TourPubPicker(props: TourPubPickerProps) {
   return props.visible ? <TourPubPickerContent {...props} /> : null;
 }
 
-function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClose, replaceStop }: TourPubPickerProps) {
+function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague', onToggle, onReplace, onClose, replaceStop }: TourPubPickerProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // The map no longer scrolls away, so even expanded it leaves room for the list and the button.
@@ -170,9 +172,14 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
     return stops.findIndex((stop) => stop.id !== replaceStop?.id && samePub(stop, candidate));
   };
   const full = !replaceStop && stops.length >= MAX_STOPS;
-  const { day, today } = planDay({ scheduledDate: scheduledDate ?? null });
+  // Without a meetup the rows show today's hours where the tour happens, like the calendar.
+  const tourToday = todayIn(timezone);
+  const day = weekday(scheduledDate ?? tourToday);
+  const today = !scheduledDate || scheduledDate === tourToday;
   const dayLabel = today ? t.tours.today : t.tours.onDay[day];
-  const last = !replaceStop && query.trim().length < 2 && !areaSearch ? stops[stops.length - 1] : undefined;
+  // With an empty search the rows follow the newest stop, the first one included, so they reorder after each addition.
+  const nearby = !replaceStop && query.trim().length < 2 && !areaSearch;
+  const last = nearby ? stops[stops.length - 1] : undefined;
   // The same pub can come back from search and from the phone's cache under two ids.
   const seenIds = new Set<string>();
   const seenPlaces = new Set<string>();
@@ -210,10 +217,10 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
   async function toggle(pub: Pub, fromRow = false) {
     if (replaceStop) { onReplace(pub); return; }
     const index = inTour(pub);
-    if (fromRow && last && settling.current) return;
+    if (fromRow && nearby && settling.current) return;
     if (index < 0 && full) { flash(t.tours.pickerFull); return; }
     if (!(await onToggle(pub))) return;
-    if (last && index < 0) settling.current = setTimeout(() => { settling.current = null; }, 600);
+    if (nearby && index < 0) settling.current = setTimeout(() => { settling.current = null; }, 600);
     if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
     AccessibilityInfo.announceForAccessibility(index < 0 ? t.tours.pubAdded(stops.length + 1) : t.tours.pubRemoved);
   }

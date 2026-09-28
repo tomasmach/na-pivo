@@ -142,7 +142,7 @@ function TourEditor() {
   const whenText = isPastDate(draft) ? pastLabel(draft) : whenLabel(draft) ?? t.tours.optional;
   const missing = draft.stops.length === 0 ? t.tours.needTwo : draft.stops.length === 1 ? t.tours.needOne : null;
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
-    <View style={ui.grow} accessibilityElementsHidden={picker || !!challengeStop} importantForAccessibility={picker || challengeStop ? 'no-hide-descendants' : 'auto'}>
+    <View style={ui.grow} accessibilityElementsHidden={picker || whenOpen || !!challengeStop} importantForAccessibility={picker || whenOpen || challengeStop ? 'no-hide-descendants' : 'auto'}>
     <TourHeader title={existingPlan ? t.tours.editTour : t.tours.newTour} onBack={() => router.canGoBack() ? router.back() : askExit(() => router.replace('/tours' as Href))} />
     <KeyboardAwareScrollView ref={scroll} scrollEnabled={!drag} contentContainerStyle={ui.content} keyboardShouldPersistTaps="handled">
       <View style={ui.field}><TourText style={ui.section}>{t.tours.name}</TourText>
@@ -187,7 +187,7 @@ function TourEditor() {
     </KeyboardAwareScrollView>
     {!keyboardHeight && <View style={[ui.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}><TourButton testID="tour-save" label={existingPlan ? t.tours.saveChanges : t.tours.save} disabled={draft.stops.length < 2} onPress={() => { void save(); }} /></View>}
     </View>
-    <TourPubPicker visible={picker} stops={draft.stops} scheduledDate={draft.scheduledDate} replaceStop={replace} onClose={() => setPicker(false)} onToggle={toggleStop}
+    <TourPubPicker visible={picker} stops={draft.stops} scheduledDate={draft.scheduledDate} timezone={draft.timezone} replaceStop={replace} onClose={() => setPicker(false)} onToggle={toggleStop}
       onReplace={(pub) => { if (!replace) return; void store.replaceStop(replace.id, pub).then((r) => { if (r.ok) { setPicker(false); setRegion(undefined); setUndo(null); } }); }} />
     <TourWhenSheet plan={draft} visible={whenOpen} onClose={() => setWhenOpen(false)}
       onChange={async (patch) => (await store.updateDraft(patch)).ok} />

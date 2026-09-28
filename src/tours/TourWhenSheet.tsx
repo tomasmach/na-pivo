@@ -101,7 +101,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
     <View style={styles.backdrop}>
       <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
-      <View style={[styles.card, { maxHeight: height - insets.top - Spacing.lg, paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
+      <View accessibilityViewIsModal style={[styles.card, { maxHeight: height - insets.top - Spacing.lg, paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
           <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{t.tours.whenTitle}</Text>
