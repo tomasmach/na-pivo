@@ -3641,8 +3641,8 @@ class PubRatingView(APIView):
         # Idempotent delete: the account filter means a cache_key belonging to
         # another account (or never rated, or already deleted) matches nothing →
         # deleted: false, never a hard 404, so the client can retry safely.
-        # Apps before 1.1.4 remove ratings this way. The request has no client
-        # time, so the tombstone blocks only the removed copy and older ones.
+        # Released apps remove with an empty PUT instead. DELETE has no client
+        # time, so its tombstone blocks only the removed copy and older ones.
         try:
             with transaction.atomic():
                 rating = (

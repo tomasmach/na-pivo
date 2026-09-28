@@ -457,8 +457,8 @@ def test_removal_arriving_before_an_older_save_still_wins(client):
 
 
 @pytest.mark.django_db
-def test_legacy_delete_keeps_the_removed_copy_out(client):
-    """Apps before 1.1.4 remove with DELETE, which carries no client time."""
+def test_delete_keeps_the_removed_copy_out(client):
+    """DELETE carries no client time, so it blocks the removed copy and older."""
     token = _register(client)
     saved_at = "2026-06-12T19:45:00+02:00"
     client.put("/v1/pub-ratings", data=_payload(updated_at=saved_at), format="json", **_auth(token))
