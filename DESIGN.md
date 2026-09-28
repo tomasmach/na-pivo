@@ -1069,6 +1069,15 @@ textové tlačítko s checkem. Historie má ploché řádky, vysvětlení soukro
 průchod“. Vrácení posledního označení zůstává viditelné v patičce a nepřekrývá obsah.
 Barvy zůstávají podle aktuálních `src/theme/colors.ts`, bez nových gradientů a závislostí.
 
+**Úprava tour (29. 9. 2026).** Výběr hospod se po přidání nezavírá: klepnutí na řádek hospodu přidá
+(jantarové kolečko s pořadím), další klepnutí ji odebere a šipka vpravo otevře detail. Patička drží lištu
+vybraných hospod s křížkem a jedinou plnou akci „Hotovo · N hospod“. S prázdným hledáním nabízí hospody
+nejblíž poslední zastávce s minutami pěšky. Termín je jeden řádek „Kdy“, který otevře sheet
+`TourWhenSheet`: kalendář po týdnech (5 týdnů na stránku, dny 46 pt, vybraný den plné jantarové kolečko,
+dnešek jantarovým číslem) a čtyři čipy času podle `ComposeSheet` s krokovačem po 15 minutách pro jiný čas.
+Tohle je jediná výjimka z §18: systémový `DatePicker` neumí stav „den zatím nevybraný“, který nepovinný
+sraz potřebuje, a klepnutí na předvybraný dnešek u něj nic neudělá.
+
 ### Obecná pravidla
 
 **Kreslený prvek si musí zasloužit místo tím, že nese data.** Obrázek TOHO, co se počítá, data

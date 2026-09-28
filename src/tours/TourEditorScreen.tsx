@@ -1,32 +1,26 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Keyboard, Modal, PanResponder, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Keyboard, Modal, PanResponder, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useNavigation, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import type { Region } from 'react-native-maps';
-import { ArrowDownIcon, ArrowUpIcon, GripVerticalIcon } from '@/components/shared/IconGlyph';
+import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, GripVerticalIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog, AppDialogHost } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { useToursStore } from '@/stores/toursStore';
 import { t } from '@/i18n';
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
+import { Fonts } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { TourButton, TourError, TourHeader, TourStopRow, TourText, ui } from './TourChrome';
 import { TourMap } from './TourMap';
 import { TourPubPicker } from './TourPubPicker';
 import { TourChallengeSheet } from './TourChallengeSheet';
-import type { TourStop } from './model';
+import { TourWhenSheet } from './TourWhenSheet';
+import { samePub, stopFromPub, type TourStop } from './model';
+import { isPastDate, pastLabel, suggestedTitle, whenLabel } from './when';
 
-function dateDisplay(value: string | null) { return value ? value.split('-').reverse().join('. ') : ''; }
-function dateValue(value: string): string | null | false {
-  if (!value.trim()) return null;
-  const match = /^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/.exec(value.trim());
-  if (!match) return false;
-  const iso = `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`;
-  const parsed = new Date(`${iso}T12:00:00Z`);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === iso ? iso : false;
-}
 function DragHandle({ onDrop, onDrag }: { onDrop: (dy: number) => void; onDrag: (active: boolean, dy: number) => void }) {
   const callbacks = useRef({ onDrop, onDrag });
   useLayoutEffect(() => { callbacks.current = { onDrop, onDrag }; }, [onDrop, onDrag]);
@@ -67,11 +61,10 @@ function TourEditor() {
     if (value !== null) void useToursStore.getState().updateDraft({ title: value });
   }, []);
   useEffect(() => flushTitle, [flushTitle]);
-  const [date, setDate] = useState(() => dateDisplay(draft?.scheduledDate ?? null));
-  const [time, setTime] = useState(draft?.scheduledTime ?? '');
-  const [dateError, setDateError] = useState(false);
+  const [whenOpen, setWhenOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [picker, setPicker] = useState(false); const [replace, setReplace] = useState<TourStop | null>(null);
+  // A tour is its pubs, so a tour without any starts by picking them.
+  const [picker, setPicker] = useState(() => !draft?.stops.length); const [replace, setReplace] = useState<TourStop | null>(null);
   const [challengeStop, setChallengeStop] = useState<TourStop | null>(null);
   const [mapHeight, setMapHeight] = useState(300);
   const [largeMap, setLargeMap] = useState(false); const [region, setRegion] = useState<Region>();
@@ -81,21 +74,36 @@ function TourEditor() {
   const scroll = useRef<ScrollView>(null); const rowY = useRef<Record<string, { y: number; height: number }>>({});
   const listY = useRef(0); const sectionY = useRef(0); const saving = useRef(false); const [allowExit, setAllowExit] = useState(false);
 
-  async function persistDate() {
-    const parsed = dateValue(date); const normalizedTime = time.trim() || null;
-    if (parsed === false || (normalizedTime && (!parsed || !/^([01]\d|2[0-3]):[0-5]\d$/.test(normalizedTime)))) { setDateError(true); return false; }
-    const result = await store.updateDraft({ scheduledDate: parsed, scheduledTime: normalizedTime });
-    setDateError(!result.ok); return result.ok;
-  }
-  async function save() {
-    if (saving.current) return;
+  async function save(dropDate = false) {
+    const current = useToursStore.getState().draft;
+    if (saving.current || !current || current.stops.length < 2) return;
+    if (!dropDate && isPastDate(current)) {
+      showAppDialog({ title: t.tours.pastTitle, message: t.tours.pastMessage, buttons: [
+        { text: t.tours.pickNewDate, onPress: () => setWhenOpen(true) },
+        { text: t.tours.saveWithoutDate, onPress: () => { void save(true); } },
+        { text: t.tours.cancel, style: 'cancel' },
+      ] });
+      return;
+    }
     saving.current = true;
     pendingTitle.current = null;
     if (titleTimer.current) clearTimeout(titleTimer.current);
-    if (!(await store.updateDraft({ title })).ok) { saving.current = false; return; }
-    if (!(await persistDate())) { saving.current = false; return; }
+    const schedule = dropDate ? { scheduledDate: null, scheduledTime: null } : {};
+    // An untitled tour is named after its meetup day instead of refusing to save.
+    const name = title.trim() || suggestedTitle(dropDate ? { scheduledDate: null } : current);
+    if (!(await store.updateDraft({ title: name, ...schedule })).ok) { saving.current = false; return; }
+    setTitle(name);
     const result = await store.saveDraft(); saving.current = false;
     if (result.ok && result.id) { setAllowExit(true); requestAnimationFrame(() => router.replace({ pathname: '/tours/[id]', params: { id: result.id! } } as Href)); }
+  }
+  async function toggleStop(pub: Parameters<typeof stopFromPub>[0]) {
+    const current = useToursStore.getState().draft;
+    if (!current) return false;
+    const candidate = stopFromPub(pub);
+    const existing = current.stops.find((stop) => samePub(stop, candidate));
+    const result = existing ? await store.removeStop(existing.id) : await store.addStop(pub);
+    if (result.ok) { setUndo(null); setRegion(undefined); if (existing && selected === existing.id) setSelected(null); }
+    return result.ok;
   }
   const askExit = (leave: () => void) => {
     showAppDialog({ title: t.tours.unsavedTitle, buttons: [
@@ -105,6 +113,7 @@ function TourEditor() {
     ] });
   };
   usePreventRemove(!!draft && !allowExit, ({ data }) => {
+    if (whenOpen) { setWhenOpen(false); return; }
     if (challengeStop) { setChallengeStop(null); return; }
     if (picker) { setPicker(false); return; }
     if (largeMap) { setLargeMap(false); return; }
@@ -127,22 +136,25 @@ function TourEditor() {
     ] });
   }
   if (!draft) return <View style={[ui.screen, { paddingTop: insets.top }]}><TourHeader title={t.tours.editTour} onBack={() => router.back()} /><TourError code={store.error} /></View>;
+  const existingPlan = !!draft.revision || store.plans.some((p) => p.id === draft.id);
+  const whenText = isPastDate(draft) ? pastLabel(draft) : whenLabel(draft) ?? t.tours.optional;
+  const missing = draft.stops.length === 0 ? t.tours.needTwo : draft.stops.length === 1 ? t.tours.needOne : null;
   return <View style={[ui.screen, { paddingTop: insets.top }]}>
     <View style={ui.grow} accessibilityElementsHidden={picker || !!challengeStop} importantForAccessibility={picker || challengeStop ? 'no-hide-descendants' : 'auto'}>
-    <TourHeader title={draft.revision || store.plans.some((p) => p.id === draft.id) ? t.tours.editTour : t.tours.newTour} onBack={() => router.canGoBack() ? router.back() : askExit(() => router.replace('/tours' as Href))} />
+    <TourHeader title={existingPlan ? t.tours.editTour : t.tours.newTour} onBack={() => router.canGoBack() ? router.back() : askExit(() => router.replace('/tours' as Href))} />
     <KeyboardAwareScrollView ref={scroll} scrollEnabled={!drag} contentContainerStyle={ui.content} keyboardShouldPersistTaps="handled">
       <View style={ui.field}><TourText style={ui.section}>{t.tours.name}</TourText>
-        <TextInput returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} testID="tour-title" accessibilityLabel={t.tours.name} maxLength={60} value={title} onChangeText={(value) => { setTitle(value); pendingTitle.current = value; if (titleTimer.current) clearTimeout(titleTimer.current); titleTimer.current = setTimeout(flushTitle, 300); }} onBlur={flushTitle} placeholder={t.tours.namePlaceholder} placeholderTextColor={Colors.foamMuted} style={ui.input} maxFontSizeMultiplier={1.3} />
+        <TextInput returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} testID="tour-title" accessibilityLabel={t.tours.name} maxLength={60} value={title} onChangeText={(value) => { setTitle(value); pendingTitle.current = value; if (titleTimer.current) clearTimeout(titleTimer.current); titleTimer.current = setTimeout(flushTitle, 300); }} onBlur={flushTitle} placeholder={suggestedTitle(draft)} placeholderTextColor={Colors.foamMuted} style={ui.input} maxFontSizeMultiplier={1.3} />
       </View>
-      <View style={[ui.row, { alignItems: 'flex-start' }]}>
-        <View style={[ui.field, { flex: 3 }]}><TourText style={ui.section}>{t.tours.date}</TourText>
-          <TextInput returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} testID="tour-date" accessibilityLabel={t.tours.date} value={date} onChangeText={(value) => { setDate(value); setDateError(false); const parsed = dateValue(value); if (parsed !== false) void store.updateDraft({ scheduledDate: parsed, ...(!parsed ? { scheduledTime: null } : {}) }); }} onBlur={() => { void persistDate(); }} placeholder={t.tours.datePlaceholder} placeholderTextColor={Colors.foamMuted} style={ui.input} keyboardType="numbers-and-punctuation" maxLength={12} maxFontSizeMultiplier={1.2} />
+      <Pressable testID="tour-when" style={({ pressed }) => [styles.whenRow, pressed && styles.pressed]} onPress={() => { Keyboard.dismiss(); setWhenOpen(true); }}
+        accessibilityRole="button" accessibilityLabel={`${t.tours.when}: ${whenText}`}>
+        <TourText style={ui.section}>{t.tours.when}</TourText>
+        <View style={styles.whenValue}>
+          <TourText numberOfLines={1} style={[styles.whenText, !draft.scheduledDate && styles.whenEmpty]}>{whenText}</TourText>
+          <ChevronRightIcon size={18} color={Colors.foamMuted} />
         </View>
-        <View style={[ui.field, { flex: 2 }]}><TourText style={ui.section}>{t.tours.time}</TourText>
-          <TextInput returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} testID="tour-time" accessibilityLabel={t.tours.time} value={time} onChangeText={(value) => { setTime(value); if (!value || /^([01]\d|2[0-3]):[0-5]\d$/.test(value)) { void store.updateDraft({ scheduledTime: value || null }); } }} onBlur={() => { void persistDate(); }} placeholder={t.tours.timePlaceholder} placeholderTextColor={Colors.foamMuted} style={ui.input} keyboardType="numbers-and-punctuation" maxLength={5} maxFontSizeMultiplier={1.2} />
-        </View>
-      </View>
-      <TourError code={store.error} message={dateError ? t.tours.errors.date : null} />
+      </Pressable>
+      <TourError code={store.error} />
       {!keyboardHeight && draft.stops.length > 0 && <TourMap key={draft.stops.map((s) => s.id).sort().join()} stops={draft.stops} selectedId={selected} onSelect={select} height={116} region={region} onRegionChange={setRegion} onExpand={() => setLargeMap(true)} />}
       <View onLayout={(event) => { sectionY.current = event.nativeEvent.layout.y; }}>
         <View style={ui.row}><TourText style={ui.section}>{t.tours.stops} ({draft.stops.length}/8)</TourText>
@@ -167,15 +179,16 @@ function TourEditor() {
           </View>)}
         </View>
       </View>
+      {!!missing && <TourText style={ui.notice}>{missing}</TourText>}
       {undo && <View style={ui.row}><TourText style={ui.grow}>{undoLabel}</TourText><TourButton label={t.tours.undo} secondary onPress={() => { void store.updateDraft({ stops: undo }).then((r) => { if (r.ok) setUndo(null); }); }} /></View>}
-      <TourButton label={t.tours.addStop} secondary disabled={draft.stops.length >= 8} onPress={() => { Keyboard.dismiss(); setReplace(null); setPicker(true); }} />
+      <TourButton label={draft.stops.length >= 8 ? t.tours.errors.stopLimit : t.tours.addPubs} secondary disabled={draft.stops.length >= 8} onPress={() => { Keyboard.dismiss(); setReplace(null); setPicker(true); }} />
     </KeyboardAwareScrollView>
-    {!keyboardHeight && <View style={[ui.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}><TourButton testID="tour-save" label={t.tours.saveChanges} onPress={() => { void save(); }} /></View>}
+    {!keyboardHeight && <View style={[ui.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}><TourButton testID="tour-save" label={existingPlan ? t.tours.saveChanges : t.tours.save} disabled={draft.stops.length < 2} onPress={() => { void save(); }} /></View>}
     </View>
-    <TourPubPicker visible={picker} stops={draft.stops} replaceStop={replace} onClose={() => setPicker(false)} onSelect={(pub) => {
-      const action = replace ? store.replaceStop(replace.id, pub) : store.addStop(pub);
-      void action.then((r) => { if (r.ok) { setPicker(false); setRegion(undefined); setUndo(null); } });
-    }} />
+    <TourPubPicker visible={picker} stops={draft.stops} scheduledDate={draft.scheduledDate} replaceStop={replace} onClose={() => setPicker(false)} onToggle={toggleStop}
+      onReplace={(pub) => { if (!replace) return; void store.replaceStop(replace.id, pub).then((r) => { if (r.ok) { setPicker(false); setRegion(undefined); setUndo(null); } }); }} />
+    <TourWhenSheet plan={draft} visible={whenOpen} onClose={() => setWhenOpen(false)}
+      onChange={async (patch) => (await store.updateDraft(patch)).ok} />
     {challengeStop && <TourChallengeSheet key={challengeStop.id} stop={challengeStop} error={store.error} onClose={() => setChallengeStop(null)}
       onSave={async (text) => {
         const result = await store.setChallenge(challengeStop.id, text);
@@ -191,3 +204,11 @@ function TourEditor() {
     </Modal>
   </View>;
 }
+
+const styles = StyleSheet.create({
+  whenRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: withAlpha(Colors.foam, 0.14) },
+  whenValue: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  whenText: { flexShrink: 1, fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
+  whenEmpty: { fontFamily: Fonts.ui.regular, color: Colors.foamMuted },
+  pressed: { opacity: 0.6 },
+});
