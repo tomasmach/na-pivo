@@ -190,4 +190,40 @@ describe('StatsScreen', () => {
       useAccountStore.setState({ removedDrinkIds: new Set() });
     });
   });
+
+  it('stops showing server stats read before a removal when the refetch fails', async () => {
+    fetchMyStatsMock.mockResolvedValueOnce({
+      totalBeers: 5,
+      totalEvenings: 2,
+      distinctPubs: 1,
+      totalSpentCzk: 300,
+      firstDrinkAt: new Date().toISOString(),
+      topPubs: [],
+      records: {
+        mostBeersInEvening: 3,
+        mostBeersPubName: 'U Tygra',
+        mostBeersDate: null,
+        fastestBeerSeconds: null,
+        longestEveningSeconds: null,
+      },
+      periods: { timezone: 'Europe/Prague', months: [], years: [] },
+    });
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(flatTexts(renderer!)).not.toContain(t.stats.emptyTitle);
+
+    // Offline: the exclusion-aware refetch after the removal fails.
+    await act(async () => {
+      useAccountStore.setState({ removedDrinkIds: new Set(['removed-offline']) });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(flatTexts(renderer!)).toContain(t.stats.emptyTitle);
+    act(() => {
+      useAccountStore.setState({ removedDrinkIds: new Set() });
+    });
+  });
 });

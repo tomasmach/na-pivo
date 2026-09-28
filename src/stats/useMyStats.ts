@@ -18,6 +18,7 @@ export function useMyStats(): RemoteStats | null {
   const removedDrinkIds = useAccountStore((state) => state.removedDrinkIds);
   const [snapshot, setSnapshot] = useState<{
     accountId: string | null;
+    removedDrinkIds: ReadonlySet<string>;
     stats: RemoteStats;
   } | null>(null);
 
@@ -26,10 +27,9 @@ export function useMyStats(): RemoteStats | null {
     const controller = new AbortController();
     void (async () => {
       // The server still counts a removed drink until its queued DELETE lands.
-      // The newest removals go first so the request cap never drops them.
       const excluded = new Set([...removedDrinkIds, ...(await getQueuedDeleteIds())]);
       const result = await fetchMyStats(controller.signal, [...excluded]);
-      if (active && result) setSnapshot({ accountId, stats: result });
+      if (active && result) setSnapshot({ accountId, removedDrinkIds, stats: result });
     })();
     return () => {
       active = false;
@@ -37,5 +37,8 @@ export function useMyStats(): RemoteStats | null {
     };
   }, [accountId, removedDrinkIds]);
 
-  return snapshot?.accountId === accountId ? snapshot.stats : null;
+  // Stats read before the latest removal still count that drink.
+  return snapshot?.accountId === accountId && snapshot.removedDrinkIds === removedDrinkIds
+    ? snapshot.stats
+    : null;
 }

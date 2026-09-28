@@ -168,10 +168,12 @@ export async function fetchMyStats(
   const params: string[] = [];
   const timezone = deviceTimezone();
   if (timezone) params.push(`timezone=${encodeURIComponent(timezone)}`);
+  // Past the server's cap the aggregates would still count some removed
+  // drinks; the screen falls back to local numbers instead.
+  if (excludeClientIds.length > MAX_EXCLUDED_DRINKS) return null;
   if (excludeClientIds.length > 0) {
-    // The server reads at most this many; older servers ignore the parameter.
-    const ids = excludeClientIds.slice(0, MAX_EXCLUDED_DRINKS).map(encodeURIComponent);
-    params.push(`exclude_client_ids=${ids.join(',')}`);
+    // Older servers ignore the parameter.
+    params.push(`exclude_client_ids=${excludeClientIds.map(encodeURIComponent).join(',')}`);
   }
   const endpoint = params.length > 0
     ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}${params.join('&')}`
