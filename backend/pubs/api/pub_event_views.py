@@ -62,13 +62,19 @@ class PubEventView(APIView):
             )
 
         now = timezone.now()
-        events = PubEvent.objects.filter(
+        verified = PubEvent.objects.filter(
             cache_key=cache_key,
             status=PubEvent.Status.VERIFIED,
             verified_at__isnull=False,
-            starts_at__lte=now,
             ends_at__gt=now,
-        ).order_by("ends_at", "created_at")[:3]
+        )
+        # Released apps never send `window`; any other value keeps the running-now list.
+        if request.query_params.get("window") == "upcoming":
+            events = verified.filter(starts_at__lte=now + timedelta(days=14)).order_by(
+                "starts_at", "created_at"
+            )[:5]
+        else:
+            events = verified.filter(starts_at__lte=now).order_by("ends_at", "created_at")[:3]
         payload = [
             {
                 "id": str(event.id),
