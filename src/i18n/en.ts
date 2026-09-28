@@ -1519,12 +1519,11 @@ export const en: Strings = {
     venuesListLabel: 'Next up',
     venuesSince: (date: string) => `since ${date}`,
     venuesAllTime: 'since day one',
-    venuesEmptyTitle: (period: 'week' | 'year' | 'all') =>
-    period === 'week' ? 'No beers here last week' : 'No beers here yet',
+    venuesEmptyTitle: 'No pubs here yet',
     venuesEmptyBody: (period: 'week' | 'year' | 'all') =>
     period === 'week'
       ? 'A new board comes on Monday.'
-      : 'Once three different people log a beer in a pub, it shows up here.',
+      : 'A pub shows up here once three different people log a beer in it.',
     venuesRules: (period: 'week' | 'year' | 'all') => [
       'I add up the beers logged in each pub.',
       period === 'week'

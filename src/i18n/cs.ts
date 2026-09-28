@@ -1871,12 +1871,13 @@ export const cs = {
     venuesListLabel: 'Další místa',
     venuesSince: (date: string) => `od ${date}`,
     venuesAllTime: 'odjakživa',
-    venuesEmptyTitle: (period: 'week' | 'year' | 'all') =>
-      period === 'week' ? 'Minulý týden se tu nic nevypilo' : 'Tady se ještě nic nevypilo',
+    // Pubs with fewer than three drinkers stay hidden, so "nothing was drunk"
+    // would not be true.
+    venuesEmptyTitle: 'Zatím tu žádná hospoda není',
     venuesEmptyBody: (period: 'week' | 'year' | 'all') =>
       period === 'week'
         ? 'Nový žebříček bude v pondělí.'
-        : 'Jakmile v hospodě zapíšou pivo aspoň tři různí lidi, objeví se tady.',
+        : 'Hospoda se sem dostane, až v ní zapíšou pivo aspoň tři různí lidi.',
     venuesRules: (period: 'week' | 'year' | 'all') => [
       'Sčítám piva zapsaná v hospodě.',
       period === 'week'

@@ -57,7 +57,7 @@ function PubBoardContentBase({ state, board, period, reduceMotion, onOpen }: Pub
   const rest = entries.slice(1);
 
   if (state === 'error' || (state === 'loaded' && !winner)) {
-    const title = state === 'error' ? t.leaderboards.errorTitle : t.leaderboards.venuesEmptyTitle(period);
+    const title = state === 'error' ? t.leaderboards.errorTitle : t.leaderboards.venuesEmptyTitle;
     const body = state === 'error' ? t.leaderboards.errorBody : t.leaderboards.venuesEmptyBody(period);
     return (
       <View style={styles.heroCard} accessible accessibilityRole="text" accessibilityLabel={`${title}. ${body}`}>

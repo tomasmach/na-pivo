@@ -12,7 +12,16 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from pubs.api.pub_beers_views import city_name, last_week_bounds
-from pubs.models import Account, DrinkLog, PubDirectory, PubHours
+from pubs.enrichment.matcher import geohash8
+from pubs.models import (
+    Account,
+    CanonicalPub,
+    DrinkLog,
+    PubAlias,
+    PubDirectory,
+    PubHours,
+    PubNameCorrection,
+)
 
 PRAGUE = ZoneInfo("Europe/Prague")
 # Wednesday; "last week" is Monday 14. 9. – Sunday 20. 9. 2026.
@@ -222,6 +231,40 @@ def test_an_implausible_beer_day_does_not_count(client, settings):
 
     assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 3}
     assert [entry["beers"] for entry in _board(client, token)["entries"]] == [3]
+
+
+@pytest.mark.django_db
+def test_a_merged_duplicate_counts_toward_its_pub_under_the_corrected_name(client):
+    token, me = _register(client)
+    _, friend = _register(client)
+    _, pal = _register(client)
+    _catalog("u2fkbn1z", "u2fkbq00")
+    PubDirectory.objects.filter(cache_key="u2fkbq00").update(active=False)
+    canonical = CanonicalPub.objects.create(
+        cache_key="u2fkbn1z", name="Hospoda u2fkbn1z", name_key="hospoda u2fkbn1z",
+        lat=50.0876, lng=14.4214, city="Praha",
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key="u2fkbq00", name="Hospoda u2fkbq00",
+        name_key="hospoda u2fkbq00", lat=50.0876, lng=14.4214,
+    )
+    PubNameCorrection.objects.create(
+        client_id=uuid.uuid4(), cache_key=geohash8(50.0876, 14.4214),
+        original_name="Hospoda u2fkbn1z", suggested_name="U Tygra", lat=50.0876, lng=14.4214,
+    )
+    tuesday = datetime(2026, 9, 15, 20, 0, tzinfo=PRAGUE)
+    for account in (me, friend):
+        _beer(account, tuesday)
+        _beer(account, tuesday, cache_key="u2fkbq00")
+
+    # The same two people at both cells are still two people.
+    assert _get(client, token).json()["pubs"] == {}
+
+    cache.clear()
+    _beer(pal, tuesday, cache_key="u2fkbq00")
+    assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 5}
+    [entry] = _board(client, token)["entries"]
+    assert (entry["cache_key"], entry["name"], entry["beers"]) == ("u2fkbn1z", "U Tygra", 5)
 
 
 def test_city_name_merges_districts_only():

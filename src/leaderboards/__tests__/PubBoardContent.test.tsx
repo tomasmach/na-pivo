@@ -52,7 +52,7 @@ describe('PubBoardContent', () => {
       />,
     );
 
-    expect(screen.getByText(t.leaderboards.venuesEmptyTitle('year'))).toBeTruthy();
+    expect(screen.getByText(t.leaderboards.venuesEmptyTitle)).toBeTruthy();
     expect(screen.getByText(t.leaderboards.venuesRules('year')[1])).toBeTruthy();
   });
 });

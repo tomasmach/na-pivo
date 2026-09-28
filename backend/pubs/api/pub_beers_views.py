@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.core.cache import cache
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -18,8 +19,9 @@ from pubs.api.views import (
     _countable_beer_drinks,
     _leaderboard_drinking_day_key,
     _leaderboard_red_beer_days,
+    _with_pub_name_corrections,
 )
-from pubs.models import Account, PubDirectory, PubHours, UserAddedPub
+from pubs.models import Account, CanonicalPub, PubAlias, PubDirectory, PubHours, UserAddedPub
 
 PRAGUE_TZ = ZoneInfo("Europe/Prague")
 # Short enough that turning ghost mode on drops out within hours on every worker.
@@ -66,6 +68,12 @@ def _public_pub_directory():
     )
 
 
+def _merged_aliases():
+    return PubAlias.objects.filter(active=True, canonical_pub__active=True).exclude(
+        cache_key=F("canonical_pub__cache_key")
+    )
+
+
 def _pub_beer_rows(start: datetime | None, end: datetime | None) -> list[dict]:
     """Beers and distinct drinkers per public pub cell between start and end.
 
@@ -91,15 +99,42 @@ def _pub_beer_rows(start: datetime | None, end: datetime | None) -> list[dict]:
         qs = qs.filter(drank_at__gte=start)
     if end is not None:
         qs = qs.filter(drank_at__lt=end)
-    return list(
-        qs.filter(
-            Q(cache_key__in=_public_pub_directory().values("cache_key"))
-            | Q(cache_key__in=UserAddedPub.objects.filter(active=True).values("cache_key"))
-        )
-        .values("cache_key")
+    qs = qs.filter(
+        Q(cache_key__in=_public_pub_directory().values("cache_key"))
+        | Q(cache_key__in=UserAddedPub.objects.filter(active=True).values("cache_key"))
+        | Q(cache_key__in=_merged_aliases().values("cache_key"))
+    )
+    rows = list(
+        qs.values("cache_key")
         .annotate(beers=Count("id"), drinkers=Count("account", distinct=True))
         .order_by()
     )
+
+    # Beers logged at a duplicate that was merged away belong to the pub it was
+    # merged into, which is the one the map shows.
+    targets = dict(_merged_aliases().values_list("cache_key", "canonical_pub__cache_key"))
+    if not targets:
+        return rows
+    merged: dict[str, dict] = {}
+    sources: dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        key = targets.get(row["cache_key"], row["cache_key"])
+        sources[key].add(row["cache_key"])
+        total = merged.setdefault(key, {"cache_key": key, "beers": 0, "drinkers": 0})
+        total["beers"] += row["beers"]
+        total["drinkers"] += row["drinkers"]
+    # One person drinking at both cells is still one drinker.
+    split = {key for key, cells in sources.items() if len(cells) > 1}
+    if split:
+        people: dict[str, set[int]] = defaultdict(set)
+        cells = set().union(*(sources[key] for key in split))
+        for cache_key, account_id in (
+            qs.filter(cache_key__in=cells).values_list("cache_key", "account_id").distinct()
+        ):
+            people[targets.get(cache_key, cache_key)].add(account_id)
+        for key in split:
+            merged[key]["drinkers"] = len(people[key])
+    return list(merged.values())
 
 
 def _places(cache_keys: list[str]) -> dict[str, dict]:
@@ -109,6 +144,7 @@ def _places(cache_keys: list[str]) -> dict[str, dict]:
     for index in range(0, len(cache_keys), _PLACES_CHUNK):
         chunk = cache_keys[index:index + _PLACES_CHUNK]
         for model_rows in (
+            CanonicalPub.objects.filter(active=True, cache_key__in=chunk).order_by("id"),
             _public_pub_directory().filter(cache_key__in=chunk).order_by("id"),
             UserAddedPub.objects.filter(active=True, cache_key__in=chunk).order_by("id"),
         ):
@@ -117,6 +153,16 @@ def _places(cache_keys: list[str]) -> dict[str, dict]:
                     pub.cache_key,
                     {"name": pub.name, "city": pub.city, "lat": pub.lat, "lng": pub.lng},
                 )
+    # The same name corrections the map applies to nearby pubs.
+    keys = list(places)
+    corrected = _with_pub_name_corrections(
+        [
+            {"name": places[key]["name"], "position": {"lat": places[key]["lat"], "lon": places[key]["lng"]}}
+            for key in keys
+        ]
+    )
+    for key, item in zip(keys, corrected, strict=True):
+        places[key]["name"] = item["name"]
     return places
 
 
