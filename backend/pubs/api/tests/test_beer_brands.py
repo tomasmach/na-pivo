@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from importlib import import_module
+
 import pytest
+from django.apps import apps
 from django.conf import settings
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -16,7 +19,13 @@ from pubs.beer_catalog import (
     normalize_beer_payload,
 )
 from pubs.enrichment import geohash8
-from pubs.models import BeerBrand, BeerProduct, PubCommunityData, PubExternalBeerMenu
+from pubs.models import (
+    BeerBrand,
+    BeerProduct,
+    PubBeerBrand,
+    PubCommunityData,
+    PubExternalBeerMenu,
+)
 
 from .query_helpers import count_beer_catalog_selects
 
@@ -222,3 +231,35 @@ def test_suggest_keeps_catalog_names_found_only_on_imported_menus(client):
 
     menu = [item["name"] for item in resp.json()["suggestions"] if item["kind"] == "menu"]
     assert menu == ["Kozel 11"]
+
+
+@pytest.mark.django_db
+def test_suggest_offers_regional_brewery_from_partial_query(client):
+    resp = client.get("/v1/beer-brands/suggest", {"q": "unet"})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["suggestions"][0]["brand_slug"] == "uneticke"
+
+
+@pytest.mark.django_db
+def test_regional_brand_backfill_indexes_existing_menus_for_filter(client):
+    PubCommunityData.objects.create(
+        cache_key=geohash8(50.15, 14.35),
+        name="Hospoda Na Návsi",
+        lat=50.15,
+        lng=14.35,
+        beers=[
+            {"name": "Únětická 12°", "price_czk": 55, "volume_ml": 500},
+            {"name": "Kozel 11", "price_czk": 45, "volume_ml": 500},
+        ],
+    )
+    migration = import_module("pubs.migrations.0148_seed_regional_beer_brands")
+    migration.add_brands_and_backfill(apps, None)
+
+    assert list(PubBeerBrand.objects.values_list("brand_key", flat=True)) == ["uneticke"]
+    resp = client.get(
+        "/v1/pubs/near",
+        {"lat": 50.15, "lng": 14.35, "radius_km": 5, "beer_brand": "uneticke"},
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["Hospoda Na Návsi"]
