@@ -23,6 +23,8 @@ import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
 import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
+import { clearPubFavoritesQueue } from './pubFavoritesQueue';
+import { runWithoutPubFavoritesSync } from './pubFavoritesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
@@ -31,6 +33,7 @@ import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
+import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore } from '@/stores/tallyStore';
@@ -40,6 +43,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 const PRIVATE_STORAGE_KEYS = [
   'na-pivo-tally',
   'na-pivo-pub-ratings',
+  'na-pivo-pub-favorites',
   'na-pivo-pub-amenities',
   'na-pivo-visits-seeded',
   DRINKS_HISTORY_SEEDED_KEY,
@@ -131,6 +135,11 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });
   });
+  // Favourite pubs belong to the outgoing account; wipe them without syncing
+  // the wipe as removals.
+  runWithoutPubFavoritesSync(() => {
+    usePubFavoritesStore.setState({ favorites: {} });
+  });
   // Community amenity votes are location-adjacent private data — wipe them under
   // the suppress flag so the reset is not echoed out as server deletes.
   runWithoutPubAmenitiesSync(() => {
@@ -169,6 +178,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearNightsQueue(),
     clearTourRunQueue(),
     clearPubRatingsQueue(),
+    clearPubFavoritesQueue(),
     clearPubAmenitiesQueue(),
   ]);
   const keys = await AsyncStorage.getAllKeys();

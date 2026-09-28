@@ -32,6 +32,7 @@ export const en: Strings = {
     recent: 'Recent searches',
     nearby: 'Nearby',
     frequent: 'Your regulars',
+    favorites: 'Favourite pubs',
     distanceMeters: (value: string) => `${value} m`,
     distanceKm: (value: string) => `${value} km`,
     visitCount: (n: number) => englishPlural(n, {
@@ -110,6 +111,9 @@ export const en: Strings = {
     refresh: 'Reload',
     closeList: 'Close the pub list',
     emptyList: 'Nothing matches this filter yet.',
+    favoritesOnly: 'Favourites',
+    favoriteA11y: 'favourite pub',
+    emptyFavorites: 'You have no favourite pub here.',
   },
   mapPub: {
     triggerDefault: 'Map the pub',
@@ -2925,6 +2929,10 @@ export const en: Strings = {
     mappedLine: (pct: number) => `${pct} % mapped`,
     mappedHint: 'Add what you know. Others will see it.',
     aimA11y: (name: string) => `Point the compass at ${name}`,
+    favoriteAddA11y: 'Save to favourite pubs',
+    favoriteRemoveA11y: 'Remove from favourite pubs',
+    favoriteSaved: 'Added to your favourite pubs',
+    favoriteRemoved: 'Removed from your favourite pubs',
     stateLoading: 'Loading the pub…',
     stateFailed: "I couldn't load the pub.",
     eventToday: (range: string) => `Today ${range}`,

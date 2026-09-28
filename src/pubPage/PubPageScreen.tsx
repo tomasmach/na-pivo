@@ -49,6 +49,8 @@ import {
   ChevronRightIcon,
   CompassIcon,
   EllipsisIcon,
+  HeartFilledIcon,
+  HeartIcon,
   FlagIcon,
   FootprintsIcon,
   MapIcon,
@@ -92,6 +94,7 @@ import {
 } from '@/stores/communityStore';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
+import { selectIsFavorite, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubPageStore } from '@/stores/pubPageStore';
 import { selectPubRating, usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -242,6 +245,7 @@ export default function PubPageScreen() {
   );
 
   const showToast = useToastStore((s) => s.show);
+  const isFavorite = usePubFavoritesStore(selectIsFavorite(key));
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const isSignedIn = useAccountStore(selectIsSignedIn);
   const position = useRecentPosition();
@@ -472,6 +476,18 @@ export default function PubPageScreen() {
       .finally(() => setRenameSubmitting(false));
   }, [info, key, pub, renameDraft, renameSubmitting, showToast]);
 
+  const toggleFavorite = useCallback(() => {
+    if (!pub) return;
+    const saved = usePubFavoritesStore.getState().toggleFavorite(key, {
+      name: pub.name,
+      lat: pub.lat,
+      lng: pub.lng,
+      city: pub.city,
+      externalId: pub.id || undefined,
+    });
+    showToast(saved ? t.pubDetail.favoriteSaved : t.pubDetail.favoriteRemoved);
+  }, [key, pub, showToast]);
+
   const reportReason = useCallback(
     (reason: PubReportReason) => {
       if (!pub) return;
@@ -607,6 +623,17 @@ export default function PubPageScreen() {
         >
           {pub.name}
         </Text>
+        <RoundButton
+          onPress={toggleFavorite}
+          label={isFavorite ? t.pubDetail.favoriteRemoveA11y : t.pubDetail.favoriteAddA11y}
+          selected={isFavorite}
+        >
+          {isFavorite ? (
+            <HeartFilledIcon size={22} color={Colors.amber} />
+          ) : (
+            <HeartIcon size={22} color={Colors.foam} />
+          )}
+        </RoundButton>
         <RoundButton onPress={() => setMoreOpen(true)} label={t.pubDetail.moreA11y}>
           <EllipsisIcon size={22} color={Colors.foam} />
         </RoundButton>
@@ -967,10 +994,12 @@ export default function PubPageScreen() {
 function RoundButton({
   onPress,
   label,
+  selected,
   children,
 }: {
   onPress: () => void;
   label: string;
+  selected?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -980,6 +1009,7 @@ function RoundButton({
       style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={selected === undefined ? undefined : { selected }}
     >
       {children}
     </Pressable>

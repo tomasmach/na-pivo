@@ -5,12 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRightIcon, ClockIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { geohash8 } from '@/data/geohash';
+import type { Pub } from '@/data/pubs';
 import { localPubSearch, resolvePubSearchResult, searchPubNames, type PubSearchResult } from '@/data/pubSearchClient';
 import { openPubPage } from '@/pubPage/openPubPage';
 import { useAccountStore } from '@/stores/accountStore';
+import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubStore } from '@/stores/pubStore';
 import { numberFormat } from '@/utils/intlFormat';
-import { t } from '@/i18n';
+import { intlLocale, t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -42,7 +44,22 @@ function SearchContent() {
   const [retry, setRetry] = useState(0);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [openFailed, setOpenFailed] = useState(false);
-  const { nearby, frequent, pubs } = usePubSuggestions();
+  const suggestions = usePubSuggestions();
+  const { pubs } = suggestions;
+  const favoriteMap = usePubFavoritesStore((state) => state.favorites);
+  // Srdcovky come first; the same pub is not repeated under V okolí or stálice.
+  const favorites = useMemo(() => Object.entries(favoriteMap)
+    .map(([key, favorite]): Pub => ({
+      id: favorite.externalId || `favorite:${key}`,
+      name: favorite.name,
+      lat: favorite.lat,
+      lng: favorite.lng,
+      ...(favorite.city ? { city: favorite.city } : {}),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, intlLocale)), [favoriteMap]);
+  const notFavorite = useCallback(({ pub }: { pub: Pub }) => !favoriteMap[geohash8(pub.lat, pub.lng)], [favoriteMap]);
+  const nearby = useMemo(() => suggestions.nearby.filter(notFavorite), [suggestions.nearby, notFavorite]);
+  const frequent = useMemo(() => suggestions.frequent.filter(notFavorite), [suggestions.frequent, notFavorite]);
   const term = query.trim();
   const canSearch = term.length >= 2;
   const localResults = useMemo(() => {
@@ -152,6 +169,10 @@ function SearchContent() {
         </View>
         <KeyboardAwareScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + Spacing.xl }]}
           keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+          {!term && favorites.length > 0 ? <>
+            <Text style={styles.heading} accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading}>{t.pubSearch.favorites}</Text>
+            {favorites.map((pub) => renderResult({ ...pub, pub }))}
+          </> : null}
           {!term && nearby.length > 0 ? <>
             <Text style={styles.heading} accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading}>{t.pubSearch.nearby}</Text>
             {nearby.map(({ pub, distanceMeters }) => renderResult({ ...pub, pub }, suggestionDistance(distanceMeters!)))}

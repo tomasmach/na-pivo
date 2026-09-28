@@ -44,6 +44,11 @@ pevná lišta s jedinou jantarovou akcí „Doveď mě tam“ (48 bodů) a kulat
 tlačítkem 48 bodů na `Colors.stout3`, které namíří kompas. Přejmenování,
 nahlášení a úprava vlastní hospody jsou v „…“.
 
+Srdíčko v hlavičce stránky (vedle „…“) uloží hospodu do srdcovek; uložená
+má plné jantarové srdce. Srdcovky jsou soukromé, v hledání mají vlastní
+sekci nad „V okolí“, na mapě malé srdce vlevo nahoře u pinu a v seznamu ve
+výřezu filtrační chip „Srdcovky“.
+
 Následující tabulky palety a `MockType` popisují historickou 3.0 referenci,
 nikoli dnešní globální exporty. `src/mocks/mockTheme.ts` už v obnovené 2.1 není;
 `Fonts.display` a `Fonts.ui` stále načítají Baloo a Inter pro původní obrazovky.

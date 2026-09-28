@@ -32,6 +32,8 @@ import {
   ChevronRightIcon,
   MenuIcon,
   FlagIcon,
+  HeartFilledIcon,
+  HeartIcon,
   ListFilterIcon,
   LayoutListIcon,
   LocateFixedIcon,
@@ -50,6 +52,7 @@ import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import type { Pub } from '@/data/pubs';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
+import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
@@ -463,10 +466,12 @@ function PubMarker({
   visited,
   selected,
   beers,
+  favorite = false,
 }: {
   visited: boolean;
   selected: boolean;
   beers?: number;
+  favorite?: boolean;
 }) {
   return (
     <View style={[styles.pinHit, beers ? styles.pinHitWide : null]}>
@@ -475,6 +480,17 @@ function PubMarker({
         <BeerIcon size={selected ? 18 : 15} color={visited ? Colors.stout : Colors.foam} />
       </View>
       {visited ? <View style={styles.visitedNotch} /> : null}
+      {favorite ? (
+        <View
+          style={[
+            styles.pinHeartBadge,
+            beers ? styles.pinHeartBadgeWide : null,
+            selected && (beers ? styles.pinHeartBadgeSelectedWide : styles.pinHeartBadgeSelected),
+          ]}
+        >
+          <HeartFilledIcon size={10} color={Colors.amber} />
+        </View>
+      ) : null}
       {beers ? (
         <BeersBadge
           beers={beers}
@@ -854,6 +870,8 @@ export default function BeerMapScreen({
     typeof selectedDetailPub?.ratingCount === 'number' && selectedDetailPub.ratingCount > 0
       ? selectedDetailPub.ratingCount.toLocaleString(intlLocale)
       : null;
+  const favorites = usePubFavoritesStore((state) => state.favorites);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const visiblePoints = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
     const lngMargin = region.longitudeDelta * 0.65;
@@ -869,6 +887,11 @@ export default function BeerMapScreen({
       return aDistance - bDistance;
     });
   }, [points, region]);
+  const listedPoints = useMemo(
+    () => (favoritesOnly ? visiblePoints.filter((point) => favorites[point.key]) : visiblePoints),
+    [favorites, favoritesOnly, visiblePoints],
+  );
+  const hasFavorites = Object.keys(favorites).length > 0;
 
   const visibleLivePubs = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -1440,14 +1463,16 @@ export default function BeerMapScreen({
             const point = cluster.items[0];
             const selected = selectedPub?.key === point.key;
             const beers = visibleBeers?.get(point.key) ?? 0;
+            const favorite = Boolean(favorites[point.key]);
             return (
               <StaticMapMarker
-                key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${selected ? 'selected' : 'idle'}`}
+                key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${favorite ? 'fav' : ''}:${selected ? 'selected' : 'idle'}`}
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 onPress={() => selectPub(point)}
                 accessibilityLabel={[
                   t.a11y.mapPub(point.pub.name, point.visit?.visitCount ?? 0),
+                  favorite ? t.map.favoriteA11y : null,
                   beers ? t.map.beersLastWeek(beers) : null,
                 ].filter(Boolean).join(', ')}
               >
@@ -1455,6 +1480,7 @@ export default function BeerMapScreen({
                   visited={Boolean(point.visit)}
                   selected={selected}
                   beers={beers}
+                  favorite={favorite}
                 />
               </StaticMapMarker>
             );
@@ -1703,6 +1729,29 @@ export default function BeerMapScreen({
                   {viewportDetail}
                 </Text>
               ) : null}
+              {layer !== 'friends' && hasFavorites ? (
+                <View style={styles.listChips}>
+                  <Pressable
+                    onPress={() => setFavoritesOnly((current) => !current)}
+                    style={({ pressed }) => [
+                      styles.listChip,
+                      favoritesOnly && styles.listChipActive,
+                      pressed && styles.pressedSoft,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: favoritesOnly }}
+                    accessibilityLabel={t.map.favoritesOnly}
+                  >
+                    <HeartIcon size={15} color={favoritesOnly ? Colors.amber : Colors.mutedText} />
+                    <Text
+                      style={[styles.listChipText, favoritesOnly && styles.listChipTextActive]}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {t.map.favoritesOnly}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {layer === 'friends' ? (
                 <FlatList
                   style={styles.list}
@@ -1769,7 +1818,7 @@ export default function BeerMapScreen({
               ) : (
                 <FlatList
                   style={styles.list}
-                  data={visiblePoints}
+                  data={listedPoints}
                   keyExtractor={(item) => item.key}
                   contentContainerStyle={styles.listContent}
                   showsVerticalScrollIndicator={false}
@@ -1802,13 +1851,18 @@ export default function BeerMapScreen({
                       accessibilityRole="button"
                     >
                       <View style={styles.listRowCopy}>
-                        <Text
-                          style={styles.listRowTitle}
-                          numberOfLines={1}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                        >
-                          {item.pub.name}
-                        </Text>
+                        <View style={styles.listRowTitleLine}>
+                          <Text
+                            style={[styles.listRowTitle, styles.listRowTitleShrink]}
+                            numberOfLines={1}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                          >
+                            {item.pub.name}
+                          </Text>
+                          {favorites[item.key] ? (
+                            <HeartFilledIcon size={13} color={Colors.amber} />
+                          ) : null}
+                        </View>
                         <Text
                           style={styles.listRowMeta}
                           numberOfLines={1}
@@ -1826,7 +1880,7 @@ export default function BeerMapScreen({
                       style={styles.emptyList}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {t.map.emptyList}
+                      {favoritesOnly ? t.map.emptyFavorites : t.map.emptyList}
                     </Text>
                   }
                 />
@@ -1996,6 +2050,23 @@ const styles = StyleSheet.create({
   // Symmetric so the pin stays on the coordinate; the badge needs the right half.
   pinHitWide: { width: 80 },
   pinBeersBadge: { top: 5, left: 47 },
+  // Top left of the pin, mirroring the beer badge on the right.
+  pinHeartBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.foam,
+    borderWidth: 1.5,
+    borderColor: Colors.stout,
+  },
+  pinHeartBadgeWide: { left: 18 },
+  pinHeartBadgeSelected: { top: 2, left: 2 },
+  pinHeartBadgeSelectedWide: { top: 2, left: 14 },
   pinBeersBadgeSelected: { top: 2, left: 50 },
   clusterHitWithBadge: { paddingTop: 10, paddingHorizontal: 26 },
   clusterBeersBadge: { top: 0, right: 0 },
@@ -2404,6 +2475,41 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.border, 0.4),
   },
   listRowCopy: { flex: 1, minWidth: 0 },
+  listChips: {
+    flexDirection: 'row',
+    marginTop: Spacing.sm,
+  },
+  listChip: {
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    // The list card is stout2 already; the chip sits one step lighter.
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  listChipActive: {
+    borderColor: withAlpha(Colors.amber, 0.5),
+  },
+  listChipText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+  listChipTextActive: {
+    color: Colors.amber,
+  },
+  listRowTitleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  listRowTitleShrink: {
+    flexShrink: 1,
+  },
   listRowTitle: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
