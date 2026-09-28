@@ -281,6 +281,27 @@ describe('forgetDiaryDrink', () => {
       data: { drinks: [drink('kept')], visits: [] },
     });
   });
+
+  it('keeps the drink out when a refresh that started earlier still returns it', async () => {
+    const drink = (clientId: string) => ({ client_id: clientId }) as DiarySnapshot['drinks'][number];
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      diarySnapshot: { accountId: 'a', data: { drinks: [drink('kept'), drink('raced')], visits: [] } },
+    });
+    let resolveRefresh!: (data: DiarySnapshot) => void;
+    mockReconcileDiarySnapshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+    );
+
+    const refresh = useAccountStore.getState().refreshDiarySnapshot();
+    useAccountStore.getState().forgetDiaryDrink('raced');
+    resolveRefresh({ drinks: [drink('kept'), drink('raced')], visits: [] });
+    await refresh;
+
+    expect(useAccountStore.getState().diarySnapshot?.data.drinks).toEqual([drink('kept')]);
+  });
 });
 
 describe('register', () => {

@@ -191,6 +191,18 @@ interface AccountState {
   verifyEmail: (token: string) => Promise<AuthActionResult>;
 }
 
+/**
+ * Drinks removed on this phone since launch. A refresh already in flight can
+ * still return one after its DELETE has left the queue; the server tombstones
+ * the ID, so a later snapshot never legitimately brings it back.
+ */
+const forgottenDrinkIds = new Set<string>();
+
+function withoutForgottenDrinks(data: DiarySnapshot): DiarySnapshot {
+  if (!data.drinks.some((drink) => forgottenDrinkIds.has(drink.client_id))) return data;
+  return { ...data, drinks: data.drinks.filter((drink) => !forgottenDrinkIds.has(drink.client_id)) };
+}
+
 export const useAccountStore = create<AccountState>((set, get) => {
   const applyAccountSettings = (settings?: AccountSettings | null) => {
     if (!settings) return;
@@ -224,7 +236,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
     if (!accountId) return false;
     const data = await reconcileDiarySnapshot();
     if (data && get().session?.accountId === accountId) {
-      set({ diarySnapshot: { accountId, data } });
+      set({ diarySnapshot: { accountId, data: withoutForgottenDrinks(data) } });
     }
     return data != null;
   };
@@ -337,18 +349,12 @@ export const useAccountStore = create<AccountState>((set, get) => {
     refreshDiarySnapshot,
 
     forgetDiaryDrink: (clientId) => {
+      forgottenDrinkIds.add(clientId);
       set((state) => {
         const snapshot = state.diarySnapshot;
-        if (!snapshot?.data.drinks.some((drink) => drink.client_id === clientId)) return state;
-        return {
-          diarySnapshot: {
-            ...snapshot,
-            data: {
-              ...snapshot.data,
-              drinks: snapshot.data.drinks.filter((drink) => drink.client_id !== clientId),
-            },
-          },
-        };
+        if (!snapshot) return state;
+        const data = withoutForgottenDrinks(snapshot.data);
+        return data === snapshot.data ? state : { diarySnapshot: { ...snapshot, data } };
       });
     },
 
