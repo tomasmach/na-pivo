@@ -37,6 +37,8 @@ interface PubFavoritesState {
   toggleFavorite: (pubKey: string, pub: PubFavoriteInput) => boolean;
   /** Save a pub, replacing whatever heart its cell held. */
   saveFavorite: (pubKey: string, pub: PubFavoriteInput) => void;
+  /** Move the heart of a pub whose id changed with its pin (a pub added in the app). */
+  movePubFavorite: (fromId: string, pub: PubFavoriteInput) => void;
   /**
    * Merge server favourites (the PULL side of sync). Last write wins. `removed`
    * drops local hearts removed on another device unless the local one is newer.
@@ -124,6 +126,23 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
           updatedAt: new Date().toISOString(),
         };
         set({ favorites: { ...get().favorites, [pubKey]: favorite } });
+      },
+
+      movePubFavorite: (fromId, pub) => {
+        const current = get().favorites;
+        const from = Object.keys(current).find((key) => current[key].externalId === fromId);
+        if (!from) return;
+        const next = { ...current };
+        delete next[from];
+        next[geohash8(pub.lat, pub.lng)] = {
+          name: pub.name,
+          lat: pub.lat,
+          lng: pub.lng,
+          ...(pub.city ? { city: pub.city } : {}),
+          ...(pub.externalId ? { externalId: pub.externalId } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+        set({ favorites: next });
       },
 
       hydrateFavorites: (serverFavorites, removed = []) => {

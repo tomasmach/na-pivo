@@ -22,6 +22,7 @@ import {
   clearLocalPubFavorites,
   runWithoutPubFavoritesSync,
 } from '../pubFavoritesSync';
+import { geohash8 } from '../geohash';
 import {
   findFavoriteKey,
   isSameVenue,
@@ -237,6 +238,19 @@ describe('favourite identity', () => {
     // A pub added in the app gets a new coordinate id when its pin moves.
     const own = { ...saved, externalId: 'mapy:50.08700,14.42000' };
     expect(isSameVenue(own, { id: 'mapy:50.08701,14.42001', name: 'U Zlatého tygra' })).toBe(true);
+  });
+
+  it('moves the heart of an own pub whose pin moved', () => {
+    const own = { ...TYGR, externalId: 'mapy:50.08700,14.42000', updatedAt: '2026-09-28T12:00:00.000Z' };
+    usePubFavoritesStore.setState({ favorites: { [PUB]: own } });
+    const moved = { name: 'U Zlatého tygra', lat: 50.0875, lng: 14.4207, externalId: 'mapy:50.08750,14.42070' };
+    usePubFavoritesStore.getState().movePubFavorite('mapy:50.08700,14.42000', moved);
+    const favorites = usePubFavoritesStore.getState().favorites;
+    expect(Object.keys(favorites)).toEqual([geohash8(50.0875, 14.4207)]);
+    expect(Object.values(favorites)[0]).toMatchObject(moved);
+    // Nothing happens for a pub without a heart.
+    usePubFavoritesStore.getState().movePubFavorite('mapy:elsewhere', { ...moved, lat: 49 });
+    expect(usePubFavoritesStore.getState().favorites).toBe(favorites);
   });
 
   it('finds the heart in the cell, or by provider id after a pin moved', () => {
