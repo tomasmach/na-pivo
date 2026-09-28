@@ -106,8 +106,10 @@ function TourEditor() {
     return result.ok;
   }
   const askExit = (leave: () => void) => {
+    // A tour needs two pubs to be saved, so with fewer the dialog does not offer it.
+    const savable = (useToursStore.getState().draft?.stops.length ?? 0) >= 2;
     showAppDialog({ title: t.tours.unsavedTitle, buttons: [
-      { text: t.tours.saveChanges, onPress: () => { void save(); } },
+      ...(savable ? [{ text: t.tours.saveChanges, onPress: () => { void save(); } }] : []),
       { text: t.tours.discard, style: 'destructive', onPress: () => { void store.discardDraft().then((r) => { if (r.ok) { setAllowExit(true); requestAnimationFrame(leave); } }); } },
       { text: t.tours.stay, style: 'cancel' },
     ] });

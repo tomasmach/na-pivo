@@ -14,7 +14,7 @@ import { addDays, earliestMinutes, lastDay, minutesOf, timeOf, todayIn, weekday 
 
 type Schedule = Pick<TourPlan, 'scheduledDate' | 'scheduledTime'>;
 const WEEKS = 5;
-const PRESETS = ['17:00', '18:00', '19:00', '20:00'];
+const PRESETS = ['18:00', '19:00', '20:00', '21:00'];
 const LAST_MINUTE = 23 * 60 + 45;
 
 function haptic() {
@@ -66,11 +66,6 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
     setCustom(true);
     if (!time) pickTime(timeOf(Math.max(earliest, 21 * 60)));
   }
-  function closeCustom() {
-    setCustom(false);
-    // Only a quick time stays picked; the chips cannot show any other.
-    if (time && !PRESETS.includes(time)) pickTime(null);
-  }
   function step(delta: number) {
     if (!time || earliest === null) return;
     pickTime(timeOf(Math.min(LAST_MINUTE, Math.max(earliest, minutesOf(time) + delta))));
@@ -87,6 +82,8 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   const weekdays = days.slice(0, 7).map((day) => new Intl.DateTimeFormat(intlLocale, { weekday: 'short', timeZone: 'UTC' }).format(utc(day)));
   const shortMonth = new Intl.DateTimeFormat(intlLocale, { month: 'short', timeZone: 'UTC' });
   const longDay = new Intl.DateTimeFormat(intlLocale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  // A time off the chips stays picked when the chips come back; the link says which one.
+  const otherLabel = custom ? t.tours.whenQuickTimes : time && !PRESETS.includes(time) ? `${t.tours.whenOtherTime} · ${time}` : t.tours.whenOtherTime;
   const timeOff = (value: string) => earliest === null || minutesOf(value) < earliest;
 
   return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
@@ -115,7 +112,8 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
           </View>
           <View style={styles.grid}>
             {days.map((day) => {
-              const off = day < today || day > last;
+              // Late in the evening today has no meetup time left, so it is not offered either.
+              const off = day < today || day > last || (day === today && earliestMinutes(today, plan.timezone) === null);
               const selected = day === date;
               const isToday = day === today;
               const monthStart = day.endsWith('-01');
@@ -131,8 +129,8 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
           </View>
           <View style={styles.timeHead}>
             <TourText style={ui.section}>{t.tours.whenTime}</TourText>
-            {!!date && earliest !== null && <Pressable onPress={custom ? closeCustom : openCustom} style={ui.link} accessibilityRole="button" accessibilityLabel={custom ? t.tours.whenQuickTimes : t.tours.whenOtherTime}>
-              <TourText style={ui.linkText}>{custom ? t.tours.whenQuickTimes : t.tours.whenOtherTime}</TourText>
+            {!!date && earliest !== null && <Pressable onPress={custom ? () => setCustom(false) : openCustom} style={ui.link} accessibilityRole="button" accessibilityLabel={otherLabel}>
+              <TourText style={ui.linkText}>{otherLabel}</TourText>
             </Pressable>}
           </View>
           {!date && <TourText style={styles.hint}>{t.tours.whenPickDay}</TourText>}

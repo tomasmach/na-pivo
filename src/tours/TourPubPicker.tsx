@@ -90,9 +90,9 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const strip = useRef<ScrollView>(null);
-  const stopCount = useRef(0);
-  // The newest pub sits at the end of the bar; keep it in sight, also when the picker opens.
-  useEffect(() => { if (stops.length > stopCount.current) strip.current?.scrollToEnd({ animated: true }); stopCount.current = stops.length; }, [stops.length]);
+  // Nearby rows reorder around each new stop; a second tap landing on the new top row must not add it by accident.
+  const settling = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (settling.current) clearTimeout(settling.current); }, []);
   useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
   const [mapExpanded, setMapExpanded] = useState(false);
   const request = useRef<AbortController | null>(null);
@@ -192,17 +192,27 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
     .slice(0, 30)
     .map(({ pub, leg }) => ({ pub, minutes: leg.minutes as number | null }));
 
+  // Suggestions start at the newest stop, so the map goes there too; opening keeps the whole tour framed.
+  const followed = useRef(last?.id);
+  useEffect(() => {
+    if (!last || followed.current === last.id) return;
+    followed.current = last.id;
+    const delta = Math.min(viewport.current.latitudeDelta, 0.025);
+    moveMap({ latitude: last.lat, longitude: last.lon, latitudeDelta: delta, longitudeDelta: delta });
+  }, [last, moveMap]);
   function flash(text: string) {
     setNotice(text);
     AccessibilityInfo.announceForAccessibility(text);
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(null), 3000);
   }
-  async function toggle(pub: Pub) {
+  async function toggle(pub: Pub, fromRow = false) {
     if (replaceStop) { onReplace(pub); return; }
     const index = inTour(pub);
+    if (fromRow && last && settling.current) return;
     if (index < 0 && full) { flash(t.tours.pickerFull); return; }
     if (!(await onToggle(pub))) return;
+    if (last && index < 0) settling.current = setTimeout(() => { settling.current = null; }, 600);
     if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
     AccessibilityInfo.announceForAccessibility(index < 0 ? t.tours.pubAdded(stops.length + 1) : t.tours.pubRemoved);
   }
@@ -234,7 +244,7 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
   }
   const previewIndex = preview ? inTour(preview) : -1;
   const map = <View>
-    <TourMap caption={false} stops={stops} selectedId={previewIndex >= 0 ? stops[previewIndex].id : null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? expandedMapHeight : 215} region={region} onRegionChange={moveMap} candidates={listed.filter((pub) => inTour(pub) < 0).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />
+    <TourMap caption={false} stops={stops} selectedId={previewIndex >= 0 ? stops[previewIndex].id : null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? expandedMapHeight : 215} region={region} onRegionChange={moveMap} candidates={rows.map(({ pub }) => pub).filter((pub) => inTour(pub) < 0).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />
     {!preview && <Pressable accessibilityRole="button" style={({ pressed }) => [styles.areaButton, pressed && styles.pressed]} onPress={() => { setQuery(''); setAreaSearch(true); void search('', true); }}>
       <SearchIcon size={15} color={Colors.foam} /><Text maxFontSizeMultiplier={1.2} style={styles.areaText}>{t.tours.searchArea}</Text>
     </Pressable>}
@@ -263,7 +273,7 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
           {loading && <ActivityIndicator accessibilityLabel={t.tours.search} color={Colors.amber} style={styles.loading} />}
           {status === 'cached' && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchOffline}</Text>}
           {status === 'error' && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchError}</Text>}
-          {!!last && rows.length > 0 && <Text maxFontSizeMultiplier={1.3} style={styles.sectionLabel}>{t.tours.nearStop(last.name)}</Text>}
+          {!!last && rows.length > 0 && <Text maxFontSizeMultiplier={1.3} style={styles.sectionLabel}>{t.tours.nearStop(stops.length)}</Text>}
           {!loading && !rows.length && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchEmpty}</Text>}
           {rows.map(({ pub, minutes }) => {
             const index = inTour(pub);
@@ -273,7 +283,7 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
             return <View key={pub.id} style={[styles.pubRow, blocked && styles.blocked]}>
               <Pressable accessibilityRole="button" accessibilityState={{ selected: added, disabled: replaceStop ? index >= 0 : false }} disabled={!!replaceStop && index >= 0}
                 accessibilityLabel={replaceStop ? pub.name : added ? t.tours.removePubA11y(pub.name, index + 1) : t.tours.addPubA11y(pub.name)}
-                style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]} onPress={() => { void toggle(pub); }}>
+                style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]} onPress={() => { void toggle(pub, true); }}>
                 {!replaceStop && <View style={[styles.mark, added && styles.markAdded]}>
                   {added ? <Text allowFontScaling={false} style={styles.markNumber}>{index + 1}</Text> : <PlusIcon size={16} color={Colors.amber} />}
                 </View>}
@@ -286,7 +296,7 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
           })}
         </View>}
       </ScrollView>
-      <View style={styles.footer}>
+      {(!!preview || !replaceStop) && <View style={styles.footer}>
         {preview ? replaceStop
           ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: previewIndex >= 0 }} disabled={previewIndex >= 0} style={({ pressed }) => [styles.primary, (pressed || previewIndex >= 0) && styles.disabled]} onPress={() => onReplace(preview)}><Text maxFontSizeMultiplier={1.3} style={styles.primaryText}>{previewIndex >= 0 ? t.tours.inTour : t.tours.replaceWithPub}</Text></Pressable>
           : <Pressable accessibilityRole="button" accessibilityState={{ disabled: previewIndex < 0 && full }} disabled={previewIndex < 0 && full}
@@ -295,7 +305,8 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
             <Text maxFontSizeMultiplier={1.3} style={previewIndex >= 0 ? styles.secondaryText : styles.primaryText}>{previewIndex >= 0 ? t.tours.removeFromTour : full ? t.tours.pickerFull : t.tours.addAsStop(stops.length + 1)}</Text>
           </Pressable>
         : <>
-          {!replaceStop && !keyboardVisible && stops.length > 0 && <ScrollView ref={strip} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.strip}>
+          {!replaceStop && !keyboardVisible && stops.length > 0 && <ScrollView ref={strip} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.stripFrame} contentContainerStyle={styles.strip}
+            onContentSizeChange={() => strip.current?.scrollToEnd({ animated: true })}>
             {stops.map((stop, index) => <View key={stop.id} style={styles.chip}>
               <View style={styles.chipNumber}><Text allowFontScaling={false} style={styles.chipNumberText}>{index + 1}</Text></View>
               <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.chipText}>{stop.name}</Text>
@@ -306,12 +317,12 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
             </View>)}
           </ScrollView>}
           {!!hint && <Text maxFontSizeMultiplier={1.3} style={styles.hint} accessibilityLiveRegion="polite">{hint}</Text>}
-          {!replaceStop && <Pressable testID="tour-picker-done" accessibilityRole="button" style={({ pressed }) => [styles.primary, pressed && styles.disabled]} onPress={onClose}>
-            <Text maxFontSizeMultiplier={1.3} style={styles.primaryText}>{stops.length ? t.tours.pickerDone(pubCount(stops.length)) : t.tours.whenDone}</Text>
+          {!replaceStop && <Pressable testID="tour-picker-done" accessibilityRole="button" style={({ pressed }) => [stops.length ? styles.primary : styles.secondary, pressed && styles.disabled]} onPress={onClose}>
+            <Text maxFontSizeMultiplier={1.3} style={stops.length ? styles.primaryText : styles.secondaryText}>{stops.length ? t.tours.pickerDone(pubCount(stops.length)) : t.tours.whenDone}</Text>
           </Pressable>}
         </>}
         {preview && <Pressable accessibilityRole="button" style={styles.back} onPress={backToSearch}><Text maxFontSizeMultiplier={1.3} style={styles.backText}>{t.tours.backToSearch}</Text></Pressable>}
-      </View>
+      </View>}
   </View>;
 }
 
@@ -339,7 +350,8 @@ const styles = StyleSheet.create({
   sectionLabel: { fontFamily: Fonts.ui.semibold, fontSize: 13, lineHeight: 20, color: Colors.mutedText, paddingTop: Spacing.lg, paddingBottom: Spacing.xs },
   areaButton: { position: 'absolute', top: Spacing.md, left: Spacing.lg, minHeight: HitArea.min, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs + 2, paddingHorizontal: Spacing.md, borderRadius: Radius.pill, backgroundColor: Colors.stout },
   areaText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
-  strip: { gap: Spacing.sm, paddingBottom: Spacing.sm },
+  stripFrame: { marginHorizontal: -Spacing.lg },
+  strip: { gap: Spacing.sm, paddingBottom: Spacing.sm, paddingHorizontal: Spacing.lg },
   chip: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, height: 36, paddingLeft: 5, paddingRight: Spacing.xs, borderRadius: Radius.pill, backgroundColor: Colors.stout3 },
   chipNumber: { width: 26, height: 26, borderRadius: Radius.pill, backgroundColor: Colors.amber, alignItems: 'center', justifyContent: 'center' },
   chipNumberText: { fontWeight: '700', fontSize: 13, lineHeight: 16, color: Colors.stout, fontVariant: ['tabular-nums'], includeFontPadding: false },

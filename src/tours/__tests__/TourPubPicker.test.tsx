@@ -117,7 +117,7 @@ it('offers the nearest pubs from the last stop with walking minutes', async () =
     pub('far', 'Daleko', 50.2, 14.6), pub('mid', 'Kousek dál', 50.086, 14.44), pub('near', 'Hned vedle', 50.081, 14.44), pub('s1', 'Stop 1', 50.08, 14.44),
   ]);
   const screen = await open([stopAt(1)]);
-  expect(screen.getByText(t.tours.nearStop('Stop 1'))).toBeTruthy();
+  expect(screen.getByText(t.tours.nearStop(1))).toBeTruthy();
   const names = screen.getAllByText(/Hned vedle|Kousek dál|Daleko/).map((node) => node.props.children);
   expect(names).toEqual(['Hned vedle', 'Kousek dál']);
   expect(screen.getByText(new RegExp(t.tours.walkMinutes(2)))).toBeTruthy();
