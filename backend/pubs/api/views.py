@@ -4109,10 +4109,16 @@ class PubVisitView(APIView):
                         marker.client_updated_at = revision
                         marker.save(update_fields=["client_updated_at"])
                     visits = visits.filter(client_updated_at__lte=marker.client_updated_at)
+                newest_id = (
+                    PubVisit.objects.filter(account=account)
+                    .order_by("-created_at", "-id")
+                    .values_list("id", flat=True)
+                    .first()
+                )
                 # Legacy DELETE of a missing UUID carries no revision. Retain its
                 # successful no-op instead of permanently banning that visit.
                 deleted_count, _ = visits.delete()
-                if deleted_count:
+                if deleted_count and not PubVisit.objects.filter(pk=newest_id).exists():
                     # Removing the newest visit must not hand the table to an
                     # older one elsewhere with its old server clock.
                     PubVisit.objects.filter(account=account, closed_at__isnull=True).update(

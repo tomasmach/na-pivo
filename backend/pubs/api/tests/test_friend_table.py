@@ -333,6 +333,16 @@ def test_deleting_the_newest_visit_restarts_the_clock(client, planted):
 
 
 @pytest.mark.django_db
+def test_deleting_an_older_visit_keeps_the_clock_of_the_current_one(client, planted):
+    me_token, me, _newest = planted
+    older = PubVisit.objects.get(account=me, cache_key=_CACHE_KEY)
+    deleted = client.delete(f"/v1/pub-visits/{older.client_id}", **_auth(me_token))
+    assert deleted.json() == {"deleted": True}
+
+    assert client.post(_URL, **_auth(me_token)).json()["eligible"] is True
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "hide_newest",
     [
