@@ -17,6 +17,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { geohash8 } from '@/data/geohash';
+import { isSamePubRecord } from '@/pubPage/pubPageModel';
 
 export interface PubFavorite {
   name: string;
@@ -161,28 +162,17 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
   ),
 );
 
-/** A pub added in the app has an id made of its coordinates; it changes when the pin moves. */
-const COORDINATE_ID = /^mapy:-?\d+(\.\d+)?,-?\d+(\.\d+)?$/;
-
-function providerId(id: string | undefined): string {
-  return id && !id.startsWith('favorite:') && !COORDINATE_ID.test(id) ? id : '';
-}
-
 /**
  * Whether a saved heart belongs to this pub. The server keeps one favourite per
- * map cell, and a cell can hold two businesses, so the provider ids have to
- * agree when both are known, the names otherwise.
+ * map cell, and a cell can hold two businesses, so the pub page's identity rule
+ * applies: known provider ids decide, the name otherwise.
  */
 export function isSameVenue(
   favorite: Pick<PubFavorite, 'name' | 'externalId'>,
   pub: { id?: string; name: string },
 ): boolean {
-  if (favorite.externalId && pub.id && favorite.externalId === pub.id) return true;
-  const favoriteId = providerId(favorite.externalId);
-  const pubId = providerId(pub.id);
-  if (favoriteId && pubId) return false;
-  const name = (value: string) => value.trim().toLocaleLowerCase('cs');
-  return name(favorite.name) === name(pub.name);
+  const pubId = pub.id && !pub.id.startsWith('favorite:') ? pub.id : '';
+  return isSamePubRecord(favorite, { id: pubId, name: pub.name });
 }
 
 /**

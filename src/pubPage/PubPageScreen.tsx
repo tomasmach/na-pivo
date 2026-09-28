@@ -42,6 +42,7 @@ import { pubInfoFromPub, usePubInfoFacts } from '@/components/amenities/pubInfoC
 import { submitPubRename } from '@/components/amenities/pubRename';
 import { RenamePubModal } from '@/components/compass/RenamePubModal';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import {
   BeerIcon,
   ClockIcon,
@@ -597,7 +598,7 @@ export default function PubPageScreen() {
     showToast(t.pubDetail.favoriteSaved);
   }, [favoriteKey, key, pub, showToast]);
 
-  const reportReason = useCallback(
+  const submitReport = useCallback(
     (reason: PubReportReason) => {
       if (!pub) return;
       // A pub without a provider id is hidden by its cell alone; an empty id
@@ -609,10 +610,32 @@ export default function PubPageScreen() {
       void enqueuePubReport(pub, reason).then((synced) =>
         useToastStore.getState().show(synced ? t.pubDetail.reportSaved : t.pubDetail.reportQueued),
       );
-      setReportOpen(false);
       goBack();
     },
     [goBack, key, pub],
+  );
+
+  // A report can hide the pub for everyone, so it asks once more.
+  const reportReason = useCallback(
+    (reason: PubReportReason) => {
+      if (!pub) return;
+      setReportOpen(false);
+      afterSheet(() =>
+        showAppDialog({
+          title: t.pubDetail.reportConfirmTitle(pub.name),
+          message: t.pubDetail.reportConfirmBody,
+          buttons: [
+            { text: t.pubDetail.reportConfirmCancel, style: 'cancel' },
+            {
+              text: t.pubDetail.reportConfirmAction,
+              style: 'destructive',
+              onPress: () => submitReport(reason),
+            },
+          ],
+        }),
+      );
+    },
+    [afterSheet, pub, submitReport],
   );
 
   const addPubNear = useCallback(() => {
