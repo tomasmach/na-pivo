@@ -109,6 +109,24 @@ describe('TableAdd', () => {
     expect(closeFriendTable).toHaveBeenCalledTimes(1);
   });
 
+  it('hides me again when the opt-in lands after the sheet closed', async () => {
+    let land: (value: FriendTable) => void = () => {};
+    jest.mocked(openFriendTable).mockReturnValue(
+      new Promise<FriendTable>((resolve) => {
+        land = resolve;
+      }),
+    );
+    const { screen } = setup(true);
+    screen.unmount();
+    jest.runOnlyPendingTimers();
+    expect(closeFriendTable).toHaveBeenCalledTimes(1);
+
+    land(visible([]));
+    await flush();
+
+    expect(closeFriendTable).toHaveBeenCalledTimes(2);
+  });
+
   it('polls every 5 s only in the foreground and says so when the window ends', async () => {
     jest.mocked(openFriendTable).mockResolvedValue(visible([person('bara', 'none')]));
     jest.mocked(fetchFriendTable).mockResolvedValue(visible([person('bara', 'none')]));

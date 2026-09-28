@@ -107,7 +107,12 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableA
     setNotice(null);
     const next = await openFriendTable();
     openingRef.current = false;
-    if (!mountedRef.current) return;
+    if (!mountedRef.current) {
+      // The sheet closed while the opt-in was in flight. Its DELETE may have
+      // reached the server first, so hide me again once the opt-in has landed.
+      if (next?.visibleUntil) void closeFriendTable();
+      return;
+    }
     setOpening(false);
     apply(next, true);
   }, [apply]);
