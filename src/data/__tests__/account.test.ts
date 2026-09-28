@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import {
   clearCachedAccount,
@@ -516,6 +516,41 @@ describe('ensureAccount — already established (once-per-install)', () => {
       token: 'tok-1',
       authenticated: false,
     });
+  });
+
+  it('re-saves a pre-1.4.0 record once per launch so iOS can read it in the background', async () => {
+    const blob = { deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1', authenticated: true };
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount(blob);
+    jest.mocked(SecureStore.setItemAsync).mockClear();
+
+    await ensureAccount();
+    await ensureAccount();
+
+    expect(SecureStore.setItemAsync).toHaveBeenCalledTimes(1);
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(ACCOUNT_KEY, JSON.stringify(blob), {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+  });
+
+  it('keeps the session when the re-save fails and never re-saves on Android', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    jest.mocked(SecureStore.setItemAsync).mockClear();
+    jest.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error('Keychain locked'));
+
+    await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1', token: 'tok-1' });
+
+    await clearCachedAccount();
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    jest.mocked(SecureStore.setItemAsync).mockClear();
+    (Platform as { OS: string }).OS = 'android';
+    try {
+      await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1' });
+    } finally {
+      (Platform as { OS: string }).OS = 'ios';
+    }
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
   });
 });
 

@@ -30,7 +30,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { getBackendEndpoint } from './backendConfig';
 import { clearAccountMerge, hasPendingAccountMerge, prepareAccountMerge, readAccountMerge } from './accountMerge';
@@ -81,6 +81,7 @@ let anonymousSessionEvictionListener: ((evictedAccountId: string) => void | Prom
 const SESSION_READ_RETRY_MS = 2_000;
 const SESSION_READ_REPORT_MS = 15 * 60_000;
 let sessionReadRetryAfter = 0;
+let keychainAccessibilityChecked = false;
 let failedReadAppState: DiagnosticAppState = 'unknown';
 // The key space is bounded by the fixed category/state enums, never native text.
 const sessionReadReports = new Map<string, number>();
@@ -341,6 +342,7 @@ async function readCachedAccountUnlocked(): Promise<CachedAccountRead> {
         authenticated: parsed.authenticated === true,
       };
       lastKnownAccount = account;
+      await ensureBackgroundReadableUnlocked(raw);
       return { available: true, account };
     }
     lastKnownAccount = null;
@@ -350,6 +352,24 @@ async function readCachedAccountUnlocked(): Promise<CachedAccountRead> {
     lastKnownAccount = null;
     trackApiFailure('session_cache_read', { reason: 'session_cache_malformed' });
     return { available: true, account: null };
+  }
+}
+
+/**
+ * Records first saved before 1.4.0 kept the default "when unlocked" Keychain
+ * class, because rewriting an existing item changed only its value. Save the
+ * unchanged record once per launch so a build with the patched native update
+ * moves it to the class background syncs can read after the first unlock.
+ */
+async function ensureBackgroundReadableUnlocked(raw: string): Promise<void> {
+  if (Platform.OS !== 'ios' || keychainAccessibilityChecked) return;
+  keychainAccessibilityChecked = true;
+  try {
+    await SecureStore.setItemAsync(ACCOUNT_KEY, raw, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+  } catch {
+    // The record stays readable whenever the phone is unlocked; retry next launch.
   }
 }
 
@@ -364,6 +384,7 @@ async function writeCachedAccountUnlocked(account: CachedAccount): Promise<boole
     });
     lastKnownAccount = account;
     sessionReadRetryAfter = 0;
+    keychainAccessibilityChecked = true;
     resetBootstrapBackoff();
     return true;
   } catch {
@@ -381,6 +402,7 @@ async function deleteCachedAccountUnlocked(): Promise<boolean> {
     await SecureStore.deleteItemAsync(ACCOUNT_KEY);
     lastKnownAccount = null;
     sessionReadRetryAfter = 0;
+    keychainAccessibilityChecked = false;
     sessionReadReports.clear();
     return true;
   } catch {
