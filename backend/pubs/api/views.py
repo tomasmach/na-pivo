@@ -102,8 +102,11 @@ from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
 from pubs.beer_catalog import (
     ALLOWED_BEER_VOLUMES_ML,
     BeerCatalogMatchCache,
+    BeerSuggestion,
+    match_beer,
     match_beer_brand,
     match_beer_identity,
+    normalize_beer_text,
     suggest_beer_brands,
     sync_pub_beer_indexes_for_menu,
     upsert_pub_beer_brand,
@@ -2147,11 +2150,24 @@ class BeerBrandSuggestView(APIView):
         if not query.is_valid():
             return Response(query.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        data = query.validated_data
+        limit = data["limit"]
         brands = suggest_beer_brands(
-            query.validated_data.get("q") or "",
-            brewery=query.validated_data.get("brewery") or "",
-            limit=query.validated_data["limit"],
+            data.get("q") or "",
+            brewery=data.get("brewery") or "",
+            limit=limit,
         )
+        if "lat" in data and not data.get("brewery"):
+            menu_names = _nearby_menu_beer_suggestions(
+                data.get("q") or "",
+                lat=data["lat"],
+                lng=data["lng"],
+                radius_km=data["radius_km"],
+                limit=limit,
+            )
+            # Keep room for nearby menu names; the catalog still leads.
+            catalog_slots = limit - min(len(menu_names), limit // 2)
+            brands = [*brands[:catalog_slots], *menu_names][:limit]
         return Response(
             {"suggestions": BeerBrandSuggestionSerializer(brands, many=True).data},
             status=status.HTTP_200_OK,
@@ -9091,6 +9107,9 @@ _COMMUNITY_PUB_SCAN_LIMIT = 200
 _COMMUNITY_PUB_MAX_RESULTS = 50
 _BEER_BRAND_SCAN_LIMIT = 200
 _BEER_BRAND_MAX_RESULTS = 50
+# Free-text beer search reads menus in Python, so it scans a wider but still
+# bounded set of the nearest pubs with a menu.
+_BEER_NAME_SCAN_LIMIT = 1000
 _PRICE_INDEX_SCAN_LIMIT = 900
 _PRICE_INDEX_MAX_RESULTS = 300
 # Treat venues inside the same short walking-distance band as similarly close.
@@ -9417,6 +9436,93 @@ def _nearby_pub_beer_brand_items(
         [_pub_beer_brand_item(link) for link in unique_links.values()],
         set(unique_links),
     )
+
+
+def _nearby_menu_rows(*, lat: float, lng: float, radius_km: float) -> list[PubCommunityData]:
+    """Nearby pubs with a current community beer menu, minus reported pubs."""
+    rows = _nearest_rows(
+        PubCommunityData.objects.exclude(beers=[]),
+        lat,
+        lng,
+        radius_km,
+        tiebreak="-updated_at",
+        scan_limit=_BEER_NAME_SCAN_LIMIT,
+        max_results=_BEER_NAME_SCAN_LIMIT,
+    )
+    blocked_cache_keys = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
+    return [row for row in rows if row.cache_key not in blocked_cache_keys]
+
+
+def _menu_beer_names(row: PubCommunityData) -> dict[str, str]:
+    """Normalized name -> display name for each beer on a pub's current menu."""
+    names: dict[str, str] = {}
+    for beer in row.beers if isinstance(row.beers, list) else []:
+        display = str(beer.get("name") or "").strip() if isinstance(beer, dict) else ""
+        normalized = normalize_beer_text(display)
+        if normalized:
+            names.setdefault(normalized, display)
+    return names
+
+
+def _nearby_pub_beer_name_items(
+    *,
+    beer_name: str,
+    lat: float,
+    lng: float,
+    radius_km: float,
+) -> tuple[list[dict], set[str]]:
+    """Pubs whose current menu names contain ``beer_name`` as whole words."""
+    needle = f" {beer_name} "
+    rows = [
+        row
+        for row in _nearby_menu_rows(lat=lat, lng=lng, radius_km=radius_km)
+        if any(needle in f" {name} " for name in _menu_beer_names(row))
+    ][:_BEER_BRAND_MAX_RESULTS]
+    return [_pub_community_item(row) for row in rows], {row.cache_key for row in rows}
+
+
+def _nearby_menu_beer_suggestions(
+    query: str,
+    *,
+    lat: float,
+    lng: float,
+    radius_km: float,
+    limit: int,
+) -> list[BeerSuggestion]:
+    """Beer names from nearby menus that start a word with ``query``.
+
+    Only the searched area is used, so every suggestion finds at least one pub
+    and nobody can list free-text names from the whole country. Names the
+    catalog already knows exactly are left to the catalog suggestions.
+    """
+    normalized_query = normalize_beer_text(query)
+    if len(normalized_query) < 2:
+        return []
+    prefix = f" {normalized_query}"
+    pub_counts: dict[str, int] = {}
+    displays: dict[str, str] = {}
+    for row in _nearby_menu_rows(lat=lat, lng=lng, radius_km=radius_km):
+        for name, display in _menu_beer_names(row).items():
+            if prefix not in f" {name}":
+                continue
+            pub_counts[name] = pub_counts.get(name, 0) + 1
+            displays.setdefault(name, display)
+
+    ranked = sorted(
+        pub_counts,
+        key=lambda name: (not name.startswith(normalized_query), -pub_counts[name], name),
+    )
+    match_cache = BeerCatalogMatchCache()
+    suggestions: list[BeerSuggestion] = []
+    for name in ranked:
+        if match_beer(displays[name], fuzzy=False, match_cache=match_cache) is not None:
+            continue
+        suggestions.append(
+            BeerSuggestion(slug=name, name=displays[name], kind="menu", brand_slug="", brand_name="")
+        )
+        if len(suggestions) >= limit:
+            break
+    return suggestions
 
 
 def _nearby_pub_community_items(
@@ -9855,6 +9961,7 @@ class PubsNearView(APIView):
         beer_brand_key = data.get("beer_brand") or ""
         explicit_beer_brand_keys: list[str] = data.get("beer_brands") or []
         beer_brand_keys = explicit_beer_brand_keys or ([beer_brand_key] if beer_brand_key else [])
+        beer_name: str = data.get("beer_name") or ""
         amenity_keys: list[str] = data.get("amenities") or []
         include_other_places: bool = data["include_other_places"]
         max_beer_filters = max(
@@ -9999,7 +10106,7 @@ class PubsNearView(APIView):
                 "cached": cached,
                 "fetched_at": fetched_at,
             }
-            if beer_brand_keys or amenity_keys or include_other_places:
+            if beer_brand_keys or beer_name or amenity_keys or include_other_places:
                 applied_filters = {
                     "version": 3
                     if explicit_beer_brand_keys
@@ -10011,6 +10118,8 @@ class PubsNearView(APIView):
                 if explicit_beer_brand_keys:
                     applied_filters["beer_brands"] = beer_brand_keys
                     applied_filters["beer_match"] = "any"
+                if beer_name:
+                    applied_filters["beer_name"] = beer_name
                 if include_other_places:
                     applied_filters["include_other_places"] = True
                 body["applied_filters"] = applied_filters
@@ -10023,18 +10132,29 @@ class PubsNearView(APIView):
                 lng=data["lng"],
                 radius_km=radius_km,
             )
-            if not beer_brand_key and not amenity_keys
+            if not beer_brand_key and not beer_name and not amenity_keys
             else []
         )
         beer_brand_items: list[dict] = []
         beer_brand_cache_keys: set[str] = set()
-        if beer_brand_keys:
-            beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_brand_items(
-                brand_keys=beer_brand_keys,
-                lat=data["lat"],
-                lng=data["lng"],
-                radius_km=radius_km,
-            )
+        # A menu-name filter shares the brand-filter path: the same AND with
+        # amenities and the same empty result.
+        beer_filter = bool(beer_brand_keys or beer_name)
+        if beer_filter:
+            if beer_name:
+                beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_name_items(
+                    beer_name=beer_name,
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    radius_km=radius_km,
+                )
+            else:
+                beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_brand_items(
+                    brand_keys=beer_brand_keys,
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    radius_km=radius_km,
+                )
             user_added_items = _filter_items_by_cache_key(user_added_items, beer_brand_cache_keys)
             if not beer_brand_cache_keys:
                 return Response(
@@ -10056,11 +10176,11 @@ class PubsNearView(APIView):
                 radius_km=radius_km,
             )
             user_added_items = _filter_items_by_amenity_signals(user_added_items, amenity_items)
-            if beer_brand_keys:
+            if beer_filter:
                 beer_brand_items = _filter_items_by_amenity_signals(beer_brand_items, amenity_items)
                 beer_brand_cache_keys = {_item_cache_key(item) for item in beer_brand_items}
                 beer_brand_cache_keys.discard("")
-            if not amenity_cache_keys or (beer_brand_keys and not beer_brand_cache_keys):
+            if not amenity_cache_keys or (beer_filter and not beer_brand_cache_keys):
                 return Response(
                     response_body(
                         items=[],
@@ -10074,7 +10194,7 @@ class PubsNearView(APIView):
             filtered_items = items
             if amenity_keys:
                 filtered_items = _filter_items_by_amenity_signals(filtered_items, amenity_items)
-            if beer_brand_keys:
+            if beer_filter:
                 filtered_items = _filter_items_by_cache_key(filtered_items, beer_brand_cache_keys)
                 filtered_items = _with_pub_signal_items(beer_brand_items, filtered_items)
                 return _with_user_added_items(user_added_items, filtered_items)

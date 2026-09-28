@@ -335,7 +335,7 @@ export const cs = {
     beerFilterSheetSubtitle: 'Ukážu jen hospody, kde to podle záznamů točí.',
     beerFilterAll: 'Všechna piva',
     beerFilterPopular: 'Oblíbené',
-    beerFilterSearchPlaceholder: 'Hledat jinou značku…',
+    beerFilterSearchPlaceholder: 'Hledat jiné pivo…',
     beerFilterNoResults: 'Nic takového v záznamech není.',
     beerFilterSearching: 'Hledám…',
     beerFilterRotatingHint:

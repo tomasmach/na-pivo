@@ -15,7 +15,8 @@ from pubs.beer_catalog import (
     match_beer_identity,
     normalize_beer_payload,
 )
-from pubs.models import BeerBrand, BeerProduct
+from pubs.enrichment import geohash8
+from pubs.models import BeerBrand, BeerProduct, PubCommunityData
 
 from .query_helpers import count_beer_catalog_selects
 
@@ -166,3 +167,39 @@ def test_match_cache_reuses_product_snapshot():
 
 def test_beer_brand_throttle_scope_is_configured():
     assert settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["beer_brands"]
+
+
+def _menu_pub(name: str, lat: float, beers: list[str]) -> None:
+    PubCommunityData.objects.create(
+        cache_key=geohash8(lat, 14.42),
+        name=name,
+        lat=lat,
+        lng=14.42,
+        beers=[{"name": beer, "price_czk": 50, "volume_ml": 500} for beer in beers],
+    )
+
+
+@pytest.mark.django_db
+def test_suggest_adds_nearby_menu_names_only_with_search_area(client):
+    _menu_pub("U Kocoura", 50.08, ["Kocour Samuraj 12°", "Kozel 11"])
+    _menu_pub("Na Rohu", 50.081, ["kocour samuraj 12", "Pivo z Kocoura"])
+    _menu_pub("Daleko", 51.0, ["Kocour Vážka"])
+
+    released = client.get("/v1/beer-brands/suggest", {"q": "kocour"})
+    nearby = client.get(
+        "/v1/beer-brands/suggest",
+        {"q": "koc", "lat": 50.08, "lng": 14.42, "radius_km": 10},
+    )
+    catalog_duplicate = client.get(
+        "/v1/beer-brands/suggest",
+        {"q": "kozel 11", "lat": 50.08, "lng": 14.42},
+    )
+
+    assert released.status_code == status.HTTP_200_OK
+    assert all(item["kind"] != "menu" for item in released.json()["suggestions"])
+    menu = [item for item in nearby.json()["suggestions"] if item["kind"] == "menu"]
+    assert [(item["slug"], item["name"]) for item in menu] == [
+        ("kocour samuraj 12", "Kocour Samuraj 12°"),
+        ("pivo z kocoura", "Pivo z Kocoura"),
+    ]
+    assert all(item["kind"] != "menu" for item in catalog_duplicate.json()["suggestions"])

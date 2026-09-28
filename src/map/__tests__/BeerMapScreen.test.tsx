@@ -191,6 +191,7 @@ function mockLiveMap(avatarUrl: string | null) {
   mockedUseBeerMap.mockReturnValue({
     pubs: [],
     nearbyPrices: [],
+    searchArea: null,
     visitedPubs: [],
     visitedCities: [],
     livePubs: [{
@@ -228,6 +229,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     mockedUseBeerMap.mockReturnValue({
       pubs: [{ id: 'pub-1', name: 'U Testu', lat: 50.0876, lng: 14.4214 }],
       nearbyPrices: [],
+      searchArea: null,
       visitedPubs: [],
       visitedCities: [],
       livePubs: [],
@@ -327,6 +329,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     mockedUseBeerMap.mockReturnValue({
       pubs: [{ id: 'pub-1', name: 'U Testu', lat: 50.0876, lng: 14.4214 }],
       nearbyPrices: [],
+      searchArea: null,
       visitedPubs: [],
       visitedCities: [],
       livePubs: [],
@@ -662,7 +665,7 @@ describe('BeerMapScreen opening-hours loading', () => {
   it('keeps the searched pub name instead of a historical visit at the same location', () => {
     const found = { id: 'tygr-1', name: 'U Zlatého tygra', lat: 50.08759, lng: 14.42108 };
     mockedUseBeerMap.mockReturnValue({
-      pubs: [], nearbyPrices: [], visitedCities: [], livePubs: [], position: null,
+      pubs: [], nearbyPrices: [], searchArea: null, visitedCities: [], livePubs: [], position: null,
       permissionState: 'granted', loadingPubs: false, stale: false,
       requestPermission: jest.fn(), loadRegion: jest.fn(), refresh: jest.fn(), refreshPosition: jest.fn(async () => null),
       visitedPubs: [{ cacheKey: geohash8(found.lat, found.lng), name: 'Bar Dawu',
@@ -708,6 +711,7 @@ describe('BeerMapScreen last-week visitors', () => {
     mockedUseBeerMap.mockReturnValue({
       pubs: [busy, quiet],
       nearbyPrices: [],
+      searchArea: null,
       visitedPubs: [],
       visitedCities: [],
       livePubs: [],

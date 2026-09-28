@@ -49,7 +49,7 @@ import type { Mode } from '@/stores/settingsStore';
 
 /** Minimum distance (meters) to move before recomputing the target pub. */
 const RECOMPUTE_DISTANCE_M = 50;
-const UNLIMITED_SEARCH_RADIUS_KM = 100;
+export const UNLIMITED_SEARCH_RADIUS_KM = 100;
 const HOURS_LOADING_FALLBACK_MS = 5_000;
 const PENDING_HOURS_RETRY_DELAYS_MS = [10_000, 30_000, 90_000, 300_000] as const;
 

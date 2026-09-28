@@ -1755,3 +1755,53 @@ def test_indexed_pub_matching_equals_the_pairwise_identity_rule():
                     if not any(_items_refer_to_same_pub(signal, item) for item in right)
                 ],
             ]
+
+
+def _menu_pub(name: str, lat: float, lng: float, beers: list[str], **extra) -> PubCommunityData:
+    return PubCommunityData.objects.create(
+        cache_key=geohash8(lat, lng),
+        name=name,
+        lat=lat,
+        lng=lng,
+        beers=[{"name": beer, "price_czk": 50, "volume_ml": 500} for beer in beers],
+        **extra,
+    )
+
+
+@pytest.mark.django_db
+def test_beer_name_filter_matches_current_menus_by_whole_words(client):
+    _menu_pub("U Kocoura", _LAT, _LNG, ["KOCOUR Samuraj 12°", "Pilsner Urquell"])
+    _menu_pub("U Kocourka", _LAT + 0.001, _LNG, ["Kocourek 11"])
+    _menu_pub("Daleko", _LAT + 1.0, _LNG, ["Kocour Samuraj"])
+    _menu_pub(
+        "Dotočeno",
+        _LAT + 0.002,
+        _LNG,
+        ["Gambrinus"],
+        historical_beers=[{"name": "Kocour Samuraj", "price_czk": 50, "volume_ml": 500}],
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 25, "beer_name": "  Kocour Samuraj "},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["U Kocoura"]
+    assert resp.json()["applied_filters"]["beer_name"] == "kocour samuraj"
+    assert resp.json()["applied_filters"]["beer_brand"] is None
+
+
+@pytest.mark.django_db
+def test_beer_name_filter_rejects_short_text_and_brand_combination(client):
+    BeerBrand.objects.get_or_create(key="pilsner-urquell", defaults={"name": "Pilsner Urquell"})
+    base = {"lat": _LAT, "lng": _LNG, "radius_km": 25}
+
+    short = client.get("/v1/pubs/near", data={**base, "beer_name": "k"})
+    combined = client.get(
+        "/v1/pubs/near",
+        data={**base, "beer_name": "kocour", "beer_brand": "pilsner-urquell"},
+    )
+
+    assert short.status_code == status.HTTP_400_BAD_REQUEST
+    assert combined.status_code == status.HTTP_400_BAD_REQUEST

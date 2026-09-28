@@ -307,7 +307,7 @@ export const en: Strings = {
     beerFilterSheetSubtitle: "I'll only show pubs that pour it, going by the records.",
     beerFilterAll: 'All beers',
     beerFilterPopular: 'Popular',
-    beerFilterSearchPlaceholder: 'Search another brand…',
+    beerFilterSearchPlaceholder: 'Search another beer…',
     beerFilterNoResults: 'Nothing like that in the records.',
     beerFilterSearching: 'Searching…',
     beerFilterRotatingHint: 'The filter goes by the last confirmed lineup. Pubs with rotating taps can change.',

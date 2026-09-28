@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import type { Region } from 'react-native-maps';
 
 import type { DevicePosition } from '@/compass/useDevicePosition';
+import type { BeerSearchArea } from '@/data/beerSuggestionsClient';
 import { updateCurrencyFromCoordinates } from '@/location/locationCurrency';
 import {
   checkLocationPermission,
@@ -106,6 +107,8 @@ export interface BeerMapData {
   /** Known reference prices of the loaded pubs BEFORE the price cap — feeds
    *  the filter sheet's histogram, which must show the full distribution. */
   nearbyPrices: number[];
+  /** Area of the last pub search, for nearby beer suggestions in the filter. */
+  searchArea: BeerSearchArea | null;
   visitedPubs: VisitedPubSummary[];
   visitedCities: VisitedCitySummary[];
   livePubs: LivePubSummary[];
@@ -395,9 +398,22 @@ export function useBeerMap(
     [priceMaxCzk, priceMinCzk, visiblePubs],
   );
 
+  const searchArea = useMemo(
+    () =>
+      requestedRegion
+        ? {
+            lat: requestedRegion.latitude,
+            lng: requestedRegion.longitude,
+            radiusKm: viewportRadiusKm(requestedRegion),
+          }
+        : null,
+    [requestedRegion],
+  );
+
   return {
     pubs: pricedPubs,
     nearbyPrices,
+    searchArea,
     visitedPubs,
     visitedCities,
     livePubs,
