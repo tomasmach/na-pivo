@@ -146,3 +146,9 @@ it('replaces a stop with a single tap', async () => {
   expect(onReplace).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
   expect(onToggle).not.toHaveBeenCalled();
 });
+
+it('lists a pub once even when search and the cache know it under two ids', async () => {
+  jest.mocked(cachedTourPubs).mockResolvedValue([pub('directory:a', 'Radegast', 50.081, 14.44), pub('osm:9', 'Radegast', 50.081, 14.44)]);
+  const screen = await open([stopAt(1)]);
+  expect(screen.getAllByText('Radegast')).toHaveLength(1);
+});

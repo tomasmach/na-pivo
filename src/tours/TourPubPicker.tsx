@@ -18,12 +18,15 @@ import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { samePub, stopFromPub, type TourStop } from './model';
+import { samePub, type TourStop } from './model';
+import { geohash8 } from '@/data/geohash';
 import { TourMap, tourRegion } from './TourMap';
 import { pubCount } from './TourChrome';
 import { planDay, pubHoursOnDay, walkingLeg } from './stopFacts';
 
 const MAX_STOPS = 8;
+/** What makes two places the same pub, without minting a stop id for every row. */
+const pubIdentity = (pub: Pub) => ({ pubId: pub.id, cacheKey: geohash8(pub.lat, pub.lng), name: pub.name });
 /** Suggestions after the last stop stay within a walk; farther pubs still come up by search. */
 const NEAR_METERS = 3000;
 
@@ -68,6 +71,10 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
   const [areaSearch, setAreaSearch] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const strip = useRef<ScrollView>(null);
+  const stopCount = useRef(0);
+  // The newest pub sits at the end of the bar; keep it in sight, also when the picker opens.
+  useEffect(() => { if (stops.length > stopCount.current) strip.current?.scrollToEnd({ animated: true }); stopCount.current = stops.length; }, [stops.length]);
   useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
   const [mapExpanded, setMapExpanded] = useState(false);
   const request = useRef<AbortController | null>(null);
@@ -141,14 +148,25 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
 
 
   const inTour = (pub: Pub) => {
-    const candidate = stopFromPub(pub);
+    const candidate = pubIdentity(pub);
     return stops.findIndex((stop) => stop.id !== replaceStop?.id && samePub(stop, candidate));
   };
   const full = !replaceStop && stops.length >= MAX_STOPS;
   const { day, today } = planDay({ scheduledDate: scheduledDate ?? null });
   const dayLabel = today ? t.tours.today : t.tours.onDay[day];
   const last = !replaceStop && query.trim().length < 2 && !areaSearch ? stops[stops.length - 1] : undefined;
-  const rows = !last ? visiblePubs.map((pub) => ({ pub, minutes: null as number | null })) : visiblePubs
+  // The same pub can come back from search and from the phone's cache under two ids.
+  const seenIds = new Set<string>();
+  const seenPlaces = new Set<string>();
+  const listed = visiblePubs.filter((pub) => {
+    const { cacheKey, name } = pubIdentity(pub);
+    const place = `${cacheKey}|${name.trim().toLocaleLowerCase()}`;
+    if (seenIds.has(pub.id) || seenPlaces.has(place)) return false;
+    seenIds.add(pub.id);
+    seenPlaces.add(place);
+    return true;
+  });
+  const rows = !last ? listed.map((pub) => ({ pub, minutes: null as number | null })) : listed
     .filter((pub) => inTour(pub) < 0)
     .map((pub) => ({ pub, leg: walkingLeg(last, { lat: pub.lat, lon: pub.lng }) }))
     .filter(({ leg }) => leg.meters <= NEAR_METERS)
@@ -198,7 +216,7 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
   }
   const previewIndex = preview ? inTour(preview) : -1;
   const map = <View>
-    <TourMap stops={stops} selectedId={previewIndex >= 0 ? stops[previewIndex].id : null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? 420 : 215} region={region} onRegionChange={moveMap} candidates={visiblePubs.filter((pub) => inTour(pub) < 0).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />
+    <TourMap caption={false} stops={stops} selectedId={previewIndex >= 0 ? stops[previewIndex].id : null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? 420 : 215} region={region} onRegionChange={moveMap} candidates={listed.filter((pub) => inTour(pub) < 0).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />
     {!preview && <Pressable accessibilityRole="button" style={({ pressed }) => [styles.areaButton, pressed && styles.pressed]} onPress={() => { setQuery(''); setAreaSearch(true); void search('', true); }}>
       <SearchIcon size={15} color={Colors.foam} /><Text maxFontSizeMultiplier={1.2} style={styles.areaText}>{t.tours.searchArea}</Text>
     </Pressable>}
@@ -259,7 +277,7 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
             <Text maxFontSizeMultiplier={1.3} style={previewIndex >= 0 ? styles.secondaryText : styles.primaryText}>{previewIndex >= 0 ? t.tours.removeFromTour : full ? t.tours.pickerFull : t.tours.addAsStop(stops.length + 1)}</Text>
           </Pressable>
         : <>
-          {!replaceStop && !keyboardVisible && stops.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.strip}>
+          {!replaceStop && !keyboardVisible && stops.length > 0 && <ScrollView ref={strip} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.strip}>
             {stops.map((stop, index) => <View key={stop.id} style={styles.chip}>
               <View style={styles.chipNumber}><Text allowFontScaling={false} style={styles.chipNumberText}>{index + 1}</Text></View>
               <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.chipText}>{stop.name}</Text>

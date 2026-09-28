@@ -2331,7 +2331,7 @@ export const en: Strings = {
     ready: 'Ready', imported: 'Saved from a link', active: 'On your way', ended: 'Finished',
     name: 'Name', optional: 'No date set',
     when: 'When', whenTitle: 'When are you going?', whenToday: 'today', whenTomorrow: 'tomorrow',
-    whenPast: (day: string) => `${day} has passed`, whenTime: 'Time', whenOtherTime: 'Other time',
+    whenPast: (day: string) => `${day} has passed`, whenTime: 'Time', whenOtherTime: 'Other time', whenQuickTimes: 'Quick times',
     whenDone: 'Done', whenClear: 'No date', whenPickDay: 'Pick a day first.',
     whenDst: "This hour doesn't exist because the clocks change.",
     whenEarlierWeeks: 'Earlier weeks', whenLaterWeeks: 'Later weeks',

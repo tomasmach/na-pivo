@@ -2934,7 +2934,7 @@ export const cs = {
     ready: 'Připravená', imported: 'Uložená z odkazu', active: 'Právě jdete', ended: 'Ukončeno',
     name: 'Název', optional: 'Bez termínu',
     when: 'Kdy', whenTitle: 'Kdy jdete?', whenToday: 'dnes', whenTomorrow: 'zítra',
-    whenPast: (day: string) => `${day} už bylo`, whenTime: 'Čas', whenOtherTime: 'Jiný čas',
+    whenPast: (day: string) => `${day} už bylo`, whenTime: 'Čas', whenOtherTime: 'Jiný čas', whenQuickTimes: 'Rychlé časy',
     whenDone: 'Hotovo', whenClear: 'Bez termínu', whenPickDay: 'Nejdřív vyber den.',
     whenDst: 'Tahle hodina kvůli změně času neexistuje.',
     whenEarlierWeeks: 'Předchozí týdny', whenLaterWeeks: 'Další týdny',

@@ -31,7 +31,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   plan: TourPlan; visible: boolean; onChange: (patch: Schedule) => Promise<boolean>; onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const today = todayIn(plan.timezone);
   const last = lastDay(plan.timezone);
   const firstMonday = addDays(today, -weekday(today));
@@ -41,6 +41,8 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   const [page, setPage] = useState(() => date ? Math.min(lastPage, Math.floor(daysBetween(firstMonday, date) / (WEEKS * 7))) : 0);
   const [custom, setCustom] = useState(() => !!time && !PRESETS.includes(time));
   const [dst, setDst] = useState(false);
+  // Percent widths round up past a full row, so the seventh day would wrap; cells get whole points instead.
+  const [cellWidth, setCellWidth] = useState(() => Math.floor((width - Spacing.lg * 2) / 7));
   const earliest = date ? earliestMinutes(date, plan.timezone) : null;
 
   async function apply(next: Schedule) {
@@ -63,6 +65,11 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
     if (!date || earliest === null) return;
     setCustom(true);
     if (!time) pickTime(timeOf(Math.max(earliest, 21 * 60)));
+  }
+  function closeCustom() {
+    setCustom(false);
+    // Only a quick time stays picked; the chips cannot show any other.
+    if (time && !PRESETS.includes(time)) pickTime(null);
   }
   function step(delta: number) {
     if (!time || earliest === null) return;
@@ -103,8 +110,8 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
               <ChevronRightIcon size={22} color={Colors.amber} />
             </Pressable>
           </View>
-          <View style={styles.grid} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-            {weekdays.map((label) => <Text key={label} allowFontScaling={false} style={styles.weekday}>{label}</Text>)}
+          <View style={styles.grid} onLayout={(event) => setCellWidth(Math.floor(event.nativeEvent.layout.width / 7))} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+            {weekdays.map((label) => <Text key={label} allowFontScaling={false} style={[styles.weekday, { width: cellWidth }]}>{label}</Text>)}
           </View>
           <View style={styles.grid}>
             {days.map((day) => {
@@ -112,7 +119,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
               const selected = day === date;
               const isToday = day === today;
               const monthStart = day.endsWith('-01');
-              return <Pressable key={day} disabled={off} onPress={() => pickDay(day)} style={styles.cell}
+              return <Pressable key={day} disabled={off} onPress={() => pickDay(day)} style={[styles.cell, { width: cellWidth }]}
                 accessibilityRole="button" accessibilityState={{ selected, disabled: off }}
                 accessibilityLabel={[longDay.format(utc(day)), isToday ? t.tours.whenToday : null, off ? t.tours.whenUnavailable : null].filter(Boolean).join(', ')}>
                 <View style={[styles.day, selected && styles.daySelected]}>
@@ -124,8 +131,8 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
           </View>
           <View style={styles.timeHead}>
             <TourText style={ui.section}>{t.tours.whenTime}</TourText>
-            {!!date && earliest !== null && !custom && <Pressable onPress={openCustom} style={ui.link} accessibilityRole="button" accessibilityLabel={t.tours.whenOtherTime}>
-              <TourText style={ui.linkText}>{t.tours.whenOtherTime}</TourText>
+            {!!date && earliest !== null && <Pressable onPress={custom ? closeCustom : openCustom} style={ui.link} accessibilityRole="button" accessibilityLabel={custom ? t.tours.whenQuickTimes : t.tours.whenOtherTime}>
+              <TourText style={ui.linkText}>{custom ? t.tours.whenQuickTimes : t.tours.whenOtherTime}</TourText>
             </Pressable>}
           </View>
           {!date && <TourText style={styles.hint}>{t.tours.whenPickDay}</TourText>}
@@ -137,9 +144,6 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
               <Text allowFontScaling={false} style={styles.stepValue} accessibilityLiveRegion="polite">{time}</Text>
               <Pressable onPress={() => step(15)} disabled={minutesOf(time) >= LAST_MINUTE} style={({ pressed }) => [styles.stepButton, pressed && styles.pressed, minutesOf(time) >= LAST_MINUTE && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenTimeUp}>
                 <PlusIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-              <Pressable onPress={() => { setCustom(false); pickTime(null); }} style={styles.icon} accessibilityRole="button" accessibilityLabel={t.tours.close}>
-                <XIcon size={18} color={Colors.mutedText} />
               </Pressable>
             </View>
             : <View style={styles.chips}>
@@ -175,9 +179,9 @@ const styles = StyleSheet.create({
   off: { opacity: 0.35 },
   monthRow: { flexDirection: 'row', alignItems: 'center', marginRight: -Spacing.sm },
   month: { flex: 1, fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  weekday: { width: `${100 / 7}%`, textAlign: 'center', fontFamily: Fonts.ui.medium, fontSize: 12, lineHeight: 18, color: Colors.mutedText, paddingVertical: Spacing.xs },
-  cell: { width: `${100 / 7}%`, height: 46, alignItems: 'center', justifyContent: 'center' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
+  weekday: { textAlign: 'center', fontFamily: Fonts.ui.medium, fontSize: 12, lineHeight: 18, color: Colors.mutedText, paddingVertical: Spacing.xs },
+  cell: { height: 46, alignItems: 'center', justifyContent: 'center' },
   day: { width: 42, height: 42, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center' },
   daySelected: { backgroundColor: Colors.amber },
   dayText: { fontFamily: Fonts.ui.semibold, fontSize: 16, lineHeight: 20, color: Colors.foam, fontVariant: ['tabular-nums'] },
@@ -192,7 +196,7 @@ const styles = StyleSheet.create({
   chipActive: { borderColor: withAlpha(Colors.amber, 0.32), backgroundColor: withAlpha(Colors.amber, 0.12) },
   chipText: { fontFamily: Fonts.display.semibold, fontSize: 16, color: Colors.foamMuted, fontVariant: ['tabular-nums'] },
   chipTextActive: { color: Colors.amber },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginBottom: Spacing.sm },
+  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.lg, marginBottom: Spacing.sm },
   stepButton: { width: HitArea.min + 4, height: HitArea.min, borderRadius: Radius.pill, backgroundColor: withAlpha(Colors.foam, 0.06), borderWidth: 1, borderColor: withAlpha(Colors.border, 0.6), alignItems: 'center', justifyContent: 'center' },
   stepValue: { minWidth: 96, textAlign: 'center', fontFamily: Fonts.display.bold, fontSize: 30, lineHeight: 36, color: Colors.amber, fontVariant: ['tabular-nums'] },
   footer: { gap: Spacing.xs, paddingTop: Spacing.sm },
