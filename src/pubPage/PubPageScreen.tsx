@@ -611,6 +611,11 @@ export default function PubPageScreen() {
   );
 
   const barHeight = Spacing.md + BAR_BUTTON + Math.max(insets.bottom, Spacing.sm);
+  // The big map covers the page; screen readers must not reach what is under it.
+  const hiddenUnderMap = {
+    accessibilityElementsHidden: mapOpen,
+    importantForAccessibility: mapOpen ? ('no-hide-descendants' as const) : ('auto' as const),
+  };
 
   if (!pub) {
     return (
@@ -649,7 +654,7 @@ export default function PubPageScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={[styles.nav, showTitle && styles.navDivided]}>
+      <View style={[styles.nav, showTitle && styles.navDivided]} {...hiddenUnderMap}>
         <RoundButton onPress={goBack} label={t.pubDetail.backA11y}>
           <ChevronLeftIcon size={24} color={Colors.foam} />
         </RoundButton>
@@ -668,6 +673,7 @@ export default function PubPageScreen() {
       </View>
 
       <ScrollView
+        {...hiddenUnderMap}
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: barHeight + Spacing.xl }]}
         onScroll={handleScroll}
@@ -924,7 +930,10 @@ export default function PubPageScreen() {
         </Pressable>
       </ScrollView>
 
-      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
+      <View
+        style={[styles.bar, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}
+        {...hiddenUnderMap}
+      >
         <Pressable
           onPress={navigateToPub}
           style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
@@ -952,7 +961,7 @@ export default function PubPageScreen() {
       </View>
 
       {mapOpen ? (
-        <View style={styles.mapLayer}>
+        <View style={styles.mapLayer} accessibilityViewIsModal>
           <BeerMapScreen
             initialPub={pub}
             focusInitialPub
