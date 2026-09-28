@@ -155,6 +155,13 @@ describe('isSamePubRecord', () => {
     expect(isSamePubRecord({ name: 'u zlatého tygra ' }, pub)).toBe(true);
     expect(isSamePubRecord({ externalId: 'mapy:2', name: 'Vinárna vedle' }, pub)).toBe(false);
   });
+
+  it('keeps two businesses with one name apart when both ids are known', () => {
+    expect(isSamePubRecord({ externalId: 'mapy:2', name: 'U Zlatého tygra' }, pub)).toBe(false);
+    // A pub added in the app gets a new coordinate id when its pin moves.
+    const own = { id: 'mapy:50.08701,14.42001', name: 'U Zlatého tygra' };
+    expect(isSamePubRecord({ externalId: 'mapy:50.08700,14.42000', name: 'U Zlatého tygra' }, own)).toBe(true);
+  });
 });
 
 describe('inPubTime', () => {

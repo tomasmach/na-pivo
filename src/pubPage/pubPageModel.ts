@@ -151,12 +151,21 @@ export function pubWallClock(now: Date): Date {
   }
 }
 
+/** A pub added in the app has an id made of its coordinates; it changes when the pin moves. */
+const COORDINATE_ID = /^mapy:-?\d+(\.\d+)?,-?\d+(\.\d+)?$/;
+
+function isStableId(id: string | null | undefined): boolean {
+  return Boolean(id) && !COORDINATE_ID.test(id as string);
+}
+
 /** Whether a visit or evening record belongs to this pub, not a neighbour in the same cell. */
 export function isSamePubRecord(
   record: { name?: string | null; externalId?: string | null },
   pub: { id: string; name: string },
 ): boolean {
   if (record.externalId && pub.id && record.externalId === pub.id) return true;
+  // Two known ids that differ are two businesses, even under one name.
+  if (isStableId(record.externalId) && isStableId(pub.id)) return false;
   const name = (value: string) => value.trim().toLocaleLowerCase('cs');
   return Boolean(record.name) && name(record.name as string) === name(pub.name);
 }
