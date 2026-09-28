@@ -23,6 +23,7 @@ from pubs.models import (
     PubBeerBrand,
     PubCommunityData,
     PubDirectory,
+    PubExternalBeerMenu,
     PubHours,
     PubNameCorrection,
     PubPriceIndex,
@@ -1805,3 +1806,47 @@ def test_beer_name_filter_rejects_short_text_and_brand_combination(client):
 
     assert short.status_code == status.HTTP_400_BAD_REQUEST
     assert combined.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_beer_name_filter_keeps_only_the_named_pub_in_a_shared_cell(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    _directory_pub("U Kocoura")
+    _directory_pub("Kavárna Vedle", lat=_LAT + 0.00001)
+    _menu_pub("U Kocoura", _LAT, _LNG, ["Kocour Samuraj"])
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 5, "beer_name": "kocour samuraj"},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["U Kocoura"]
+
+
+def _external_menu(name: str, lat: float, beers: list[str]) -> PubExternalBeerMenu:
+    return PubExternalBeerMenu.objects.create(
+        cache_key=geohash8(lat, _LNG),
+        name=name,
+        lat=lat,
+        lng=_LNG,
+        source=PubExternalBeerMenu.Source.PIVAROVA_MAPA,
+        source_id=name,
+        source_url="https://pivarovamapa.cz/",
+        beers=[{"name": beer, "price_czk": 50, "volume_ml": 500} for beer in beers],
+    )
+
+
+@pytest.mark.django_db
+def test_beer_name_filter_uses_imported_menus_only_without_a_community_menu(client):
+    _external_menu("Imported Only", _LAT, ["Matuška Raptor"])
+    _external_menu("Community Wins", _LAT + 0.002, ["Matuška Raptor"])
+    _menu_pub("Community Wins", _LAT + 0.002, _LNG, ["Gambrinus"])
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 5, "beer_name": "matuska raptor"},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["Imported Only"]

@@ -44,6 +44,7 @@ from django.core.validators import EmailValidator
 from django.db import IntegrityError
 from django.db.models import Q
 from django.utils import timezone as dj_timezone
+from django.utils.translation import gettext
 from rest_framework import serializers
 
 from pubs import accounts
@@ -2623,11 +2624,11 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         if beer_name:
             if len(beer_name) < 2:
                 raise serializers.ValidationError(
-                    {"beer_name": ["Beer name must have at least 2 characters."]}
+                    {"beer_name": [gettext("Název piva musí mít aspoň 2 znaky.")]}
                 )
             if attrs.get("beer_brand") or attrs.get("beer_brands"):
                 raise serializers.ValidationError(
-                    {"beer_name": ["Beer name cannot be combined with beer brands."]}
+                    {"beer_name": [gettext("Název piva nejde kombinovat se značkami piva.")]}
                 )
             attrs["beer_name"] = beer_name
         raw_beer_brands = attrs.get("beer_brands", "")
