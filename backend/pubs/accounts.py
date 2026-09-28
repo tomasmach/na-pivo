@@ -126,6 +126,7 @@ from pubs.models import (
     PubNameCorrection,
     PubPriceIndex,
     PubRating,
+    PubRatingTombstone,
     PubReport,
     PubVisit,
     PushDevice,
@@ -2324,6 +2325,14 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     _delete_or_move_account_rows(
         PubRating, source=source, target=target, unique_fields=("cache_key",)
     )
+    _delete_or_move_account_rows(
+        PubRatingTombstone, source=source, target=target, unique_fields=("cache_key",)
+    )
+    # Merging never deletes a rating: a live row beats a removal marker.
+    PubRatingTombstone.objects.filter(
+        account=target,
+        cache_key__in=PubRating.objects.filter(account=target).values("cache_key"),
+    ).delete()
     _delete_or_move_account_rows(
         PubFavorite, source=source, target=target, unique_fields=("cache_key",)
     )
