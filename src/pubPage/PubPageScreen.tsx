@@ -290,7 +290,7 @@ export default function PubPageScreen() {
   // A catalogue fix can move a saved pub to the next cell; its provider id still
   // finds the heart, so it shows as saved and taps remove that same entry.
   const favoriteKey = usePubFavoritesStore((state) =>
-    pub ? findFavoriteKey(state.favorites, key, pub) : undefined,
+    pub ? findFavoriteKey(state.favorites, geohash8(pub.lat, pub.lng), pub) : undefined,
   );
   const isFavorite = Boolean(favoriteKey);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
@@ -588,7 +588,9 @@ export default function PubPageScreen() {
       return;
     }
     // One heart per cell on the server: saving here replaces a neighbour's.
-    store.saveFavorite(key, {
+    // The key is the cell of the saved point, which the catalogue may have
+    // moved away from the cell this page was opened for.
+    store.saveFavorite(geohash8(pub.lat, pub.lng), {
       name: pub.name,
       lat: pub.lat,
       lng: pub.lng,
@@ -596,7 +598,7 @@ export default function PubPageScreen() {
       externalId: pub.id || undefined,
     });
     showToast(t.pubDetail.favoriteSaved);
-  }, [favoriteKey, key, pub, showToast]);
+  }, [favoriteKey, pub, showToast]);
 
   const submitReport = useCallback(
     (reason: PubReportReason) => {
