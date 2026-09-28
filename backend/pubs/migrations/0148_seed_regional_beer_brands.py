@@ -1,6 +1,9 @@
 # Hand-written: add popular regional and craft Czech breweries to the beer
-# catalog, then index the menus and drinks that already mention them so the
-# brand filter finds those pubs right after deploy.
+# catalog, then index the public menus that already mention them so the brand
+# filter finds those pubs right after deploy. Aliases are brewery names only:
+# an exact alias match rewrites the typed beer name to the brand name.
+# Drink logs keep their brand fields: backfilling them would merge different
+# beers of one brewery and could take away an earned "taster" achievement.
 
 from importlib import import_module
 
@@ -17,14 +20,14 @@ BRANDS = [
     ("kocour", "Kocour", ["Pivovar Kocour"]),
     ("primator", "Primátor", ["Pivovar Náchod"]),
     ("chotebor", "Chotěboř", ["Pivovar Chotěboř"]),
-    ("rohozec", "Rohozec", ["Skalák", "Pivovar Rohozec"]),
+    ("rohozec", "Rohozec", ["Pivovar Rohozec"]),
     ("krakonos", "Krakonoš", ["Pivovar Krakonoš"]),
     ("ferdinand", "Ferdinand", ["Pivovar Ferdinand"]),
     ("konrad", "Konrad", ["Pivovar Vratislavice"]),
-    ("postrizinske", "Postřižinské pivo", ["Postřižinské", "Pivovar Nymburk", "Francinův ležák"]),
+    ("postrizinske", "Postřižinské pivo", ["Postřižinské", "Pivovar Nymburk"]),
     ("zatec", "Žatec", ["Žatecký pivovar"]),
     ("cerna-hora", "Černá Hora", ["Pivovar Černá Hora"]),
-    ("pernstejn", "Pernštejn", ["Pardubický Porter", "Pivovar Pernštejn"]),
+    ("pernstejn", "Pernštejn", ["Pivovar Pernštejn"]),
     ("rebel", "Rebel", ["Pivovar Rebel"]),
     ("platan", "Platan", ["Pivovar Protivín"]),
     ("hostan", "Hostan", ["Pivovar Hostan"]),
@@ -33,11 +36,11 @@ BRANDS = [
     ("chodovar", "Chodovar", ["Pivovar Chodovar"]),
     ("poutnik", "Poutník", ["Pivovar Poutník"]),
     ("opat", "Opat", ["Pivovar Broumov"]),
-    ("jezek", "Ježek", ["Jihlavský Ježek", "Pivovar Jihlava"]),
+    ("jezek", "Ježek", ["Pivovar Jihlava"]),
     ("dalesice", "Dalešice", ["Pivovar Dalešice"]),
     ("hubertus", "Hubertus", ["Pivovar Kácov"]),
-    ("u-fleku", "U Fleků", ["Flekovský ležák"]),
-    ("strahov", "Klášterní pivovar Strahov", ["Strahov", "Svatý Norbert", "Sv. Norbert"]),
+    ("u-fleku", "U Fleků", ["Pivovar U Fleků"]),
+    ("strahov", "Klášterní pivovar Strahov", ["Strahov"]),
     ("nachmelena-opice", "Nachmelená Opice", ["Nachmelena Opice"]),
     ("zichovec", "Zichovec", ["Pivovar Zichovec"]),
     ("sibeeria", "Sibeeria", ["Pivovar Sibeeria"]),
@@ -50,7 +53,6 @@ NEW_BRAND_KEYS = {key for key, _name, _aliases in BRANDS}
 
 def add_brands_and_backfill(apps, schema_editor):
     BeerBrand = apps.get_model("pubs", "BeerBrand")
-    DrinkLog = apps.get_model("pubs", "DrinkLog")
     PubBeerBrand = apps.get_model("pubs", "PubBeerBrand")
     PubBeerProduct = apps.get_model("pubs", "PubBeerProduct")
     PubCommunityData = apps.get_model("pubs", "PubCommunityData")
@@ -77,19 +79,6 @@ def add_brands_and_backfill(apps, schema_editor):
         if match is None or match[0].key not in NEW_BRAND_KEYS:
             return None
         return match
-
-    drinks = DrinkLog.objects.filter(beer_brand__isnull=True, drink_type="beer").exclude(
-        beer_name=""
-    )
-    for drink in drinks.iterator(chunk_size=500):
-        match = new_brand_match(drink.beer_name)
-        if match is None:
-            continue
-        brand, _product = match
-        drink.beer_brand = brand
-        drink.beer_brand_key = brand.key
-        drink.beer_brand_name = brand.name
-        drink.save(update_fields=["beer_brand", "beer_brand_key", "beer_brand_name"])
 
     for row in PubCommunityData.objects.all().iterator(chunk_size=200):
         beers = row.beers if isinstance(row.beers, list) else []

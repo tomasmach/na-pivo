@@ -9,7 +9,6 @@ from django.apps import apps
 from django.conf import settings
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -21,10 +20,8 @@ from pubs.beer_catalog import (
 )
 from pubs.enrichment.matcher import geohash8
 from pubs.models import (
-    Account,
     BeerBrand,
     BeerProduct,
-    DrinkLog,
     PubBeerBrand,
     PubCommunityData,
 )
@@ -200,25 +197,10 @@ def test_regional_brand_backfill_indexes_existing_menus_for_filter(client):
             {"name": "Kozel 11", "price_czk": 45, "volume_ml": 500},
         ],
     )
-    drink = DrinkLog.objects.create(
-        account=Account.objects.create(device_id="backfill-test-device"),
-        client_id="3f0c8a52-6f7e-4d5b-9c1a-2b3c4d5e6f70",
-        cache_key=geohash8(50.15, 14.35),
-        name="Hospoda Na Návsi",
-        lat=50.15,
-        lng=14.35,
-        beer_name="Únětické 10",
-        drank_at=timezone.now(),
-        price_czk=49,
-        volume_ml=500,
-    )
-
     migration = import_module("pubs.migrations.0148_seed_regional_beer_brands")
     migration.add_brands_and_backfill(apps, None)
 
     assert list(PubBeerBrand.objects.values_list("brand_key", flat=True)) == ["uneticke"]
-    drink.refresh_from_db()
-    assert drink.beer_brand_key == "uneticke"
     resp = client.get(
         "/v1/pubs/near",
         {"lat": 50.15, "lng": 14.35, "radius_km": 5, "beer_brand": "uneticke"},
