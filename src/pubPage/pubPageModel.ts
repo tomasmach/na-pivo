@@ -174,14 +174,24 @@ export function inPubTime(event: PubEvent): PubEvent {
   };
 }
 
+/** What the catalogue owns: identity and place. A hand-off may be older. */
+const CATALOG_OWNED = ['id', 'name', 'lat', 'lng', 'address', 'city', 'userAddedClientId'] as const;
+
 /**
- * Fill what a lossy opener left out (a tour stop has no owner id, a board row
- * no hours) from the loaded catalog copy of the same pub.
+ * Combine an opener's copy of a pub with the loaded catalog copy. The catalog
+ * wins on identity and location (a tour stop can predate a rename or a moved
+ * pin); the hand-off fills in what the catalog lacks, such as fresh hours.
  */
 export function withCatalogDetails<T extends object>(handedOff: T, catalog: T | undefined): T {
   if (!catalog) return handedOff;
   const defined = Object.fromEntries(
     Object.entries(handedOff).filter(([, value]) => value !== undefined && value !== ''),
   );
-  return { ...catalog, ...defined } as T;
+  const owned = Object.fromEntries(
+    Object.entries(catalog).filter(
+      ([field, value]) =>
+        (CATALOG_OWNED as readonly string[]).includes(field) && value !== undefined && value !== '',
+    ),
+  );
+  return { ...catalog, ...defined, ...owned } as T;
 }
