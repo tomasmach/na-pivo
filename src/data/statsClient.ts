@@ -20,6 +20,8 @@ import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 
 const REQUEST_TIMEOUT_MS = 8000;
+/** Matches the server's cap on excluded drinks per stats read. */
+const MAX_EXCLUDED_DRINKS = 100;
 
 /** One pub's lifetime tally as returned by the backend. */
 export interface RemotePubTally {
@@ -154,14 +156,27 @@ function deviceTimezone(): string | null {
 /**
  * GET the account's durable beer stats, or null on any failure. Never throws.
  */
-export async function fetchMyStats(signal?: AbortSignal): Promise<RemoteStats | null> {
+export async function fetchMyStats(
+  signal?: AbortSignal,
+  /** Drinks removed on this phone whose DELETE may not have landed yet. */
+  excludeClientIds: readonly string[] = [],
+): Promise<RemoteStats | null> {
   if (signal?.aborted) return null;
 
   const baseEndpoint = getBackendEndpoint('/v1/me/stats');
   if (!baseEndpoint) return null;
+  const params: string[] = [];
   const timezone = deviceTimezone();
-  const endpoint = timezone
-    ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}timezone=${encodeURIComponent(timezone)}`
+  if (timezone) params.push(`timezone=${encodeURIComponent(timezone)}`);
+  // Past the server's cap the aggregates would still count some removed
+  // drinks; the screen falls back to local numbers instead.
+  if (excludeClientIds.length > MAX_EXCLUDED_DRINKS) return null;
+  if (excludeClientIds.length > 0) {
+    // Older servers ignore the parameter.
+    params.push(`exclude_client_ids=${excludeClientIds.map(encodeURIComponent).join(',')}`);
+  }
+  const endpoint = params.length > 0
+    ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}${params.join('&')}`
     : baseEndpoint;
 
   const session = await ensureAccount(signal);
@@ -184,7 +199,10 @@ export async function fetchMyStats(signal?: AbortSignal): Promise<RemoteStats | 
     }
     if (!resp.ok) return null;
 
-    return parseStats(await resp.json());
+    const body = (await resp.json()) as { excluded_drink_count?: unknown } | null;
+    // A server without the parameter still counts the removed drinks.
+    if (excludeClientIds.length > 0 && typeof body?.excluded_drink_count !== 'number') return null;
+    return parseStats(body);
   } catch {
     return null;
   } finally {

@@ -1,6 +1,8 @@
 import React from 'react';
 import { t } from '@/i18n';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchMyStats } from '@/data/statsClient';
+import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import StatsScreenDefault from '../StatsScreen';
 
@@ -16,6 +18,11 @@ jest.mock('react-native-safe-area-context', () => ({
 
 // Keep the screen purely local — no backend overlay, no network.
 jest.mock('@/data/statsClient', () => ({ fetchMyStats: jest.fn(async () => null) }));
+const mockConfirmedDeletes = new Set<string>();
+jest.mock('@/data/deleteDrinksQueue', () => ({
+  ...jest.requireActual('@/data/deleteDrinksQueue'),
+  getConfirmedDeleteIds: () => mockConfirmedDeletes,
+}));
 
 // fonts.ts require()s .ttf assets jest can't transform — stub the font tokens.
 jest.mock('@/theme/fonts', () => ({
@@ -78,6 +85,21 @@ function flatTexts(renderer: { root: { findAllByType: (t: string) => { props: { 
   return out;
 }
 
+const mounted: { unmount: () => void }[] = [];
+
+function renderStats() {
+  const renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+  mounted.push(renderer);
+  return renderer;
+}
+
+// The screen schedules a clock tick; unmount so it never fires after the file.
+afterEach(() => {
+  act(() => {
+    mounted.splice(0).forEach((renderer) => renderer.unmount());
+  });
+});
+
 beforeEach(() => {
   idSeq = 0;
   fetchMyStatsMock.mockResolvedValue(null);
@@ -90,7 +112,7 @@ describe('StatsScreen', () => {
   it('shows the empty state with no drinks', () => {
     let renderer: ReturnType<typeof TestRenderer.create>;
     act(() => {
-      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = renderStats();
     });
     const texts = flatTexts(renderer!);
     expect(texts).toContain(t.stats.emptyTitle);
@@ -115,7 +137,7 @@ describe('StatsScreen', () => {
 
     let renderer: ReturnType<typeof TestRenderer.create>;
     act(() => {
-      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = renderStats();
     });
     const texts = flatTexts(renderer!);
 
@@ -159,12 +181,87 @@ describe('StatsScreen', () => {
 
     let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = renderStats();
       await Promise.resolve();
     });
     const texts = flatTexts(renderer!);
 
     expect(texts).not.toContain('1 s');
     expect(texts).toContain(t.stats.recordEmpty);
+  });
+
+  it('asks the server to leave out drinks removed on this phone', async () => {
+    await AsyncStorage.setItem('na-pivo-delete-drinks-queue', JSON.stringify(['queued-before-launch']));
+    act(() => {
+      useAccountStore.setState({ removedDrinkIds: new Set(['removed-just-now']) });
+    });
+
+    await act(async () => {
+      renderStats();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(fetchMyStatsMock).toHaveBeenLastCalledWith(expect.any(AbortSignal), [
+      'queued-before-launch',
+      'removed-just-now',
+    ]);
+    await AsyncStorage.clear();
+    act(() => {
+      useAccountStore.setState({ removedDrinkIds: new Set() });
+    });
+  });
+
+  it('no longer excludes removals the server already confirmed', async () => {
+    mockConfirmedDeletes.add('confirmed');
+    act(() => {
+      useAccountStore.setState({ removedDrinkIds: new Set(['confirmed', 'still-pending']) });
+    });
+
+    await act(async () => {
+      renderStats();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(fetchMyStatsMock).toHaveBeenLastCalledWith(expect.any(AbortSignal), ['still-pending']);
+    mockConfirmedDeletes.clear();
+    act(() => {
+      useAccountStore.setState({ removedDrinkIds: new Set() });
+    });
+  });
+
+  it('stops showing server stats read before a removal when the refetch fails', async () => {
+    fetchMyStatsMock.mockResolvedValueOnce({
+      totalBeers: 5,
+      totalEvenings: 2,
+      distinctPubs: 1,
+      totalSpentCzk: 300,
+      firstDrinkAt: new Date().toISOString(),
+      topPubs: [],
+      records: {
+        mostBeersInEvening: 3,
+        mostBeersPubName: 'U Tygra',
+        mostBeersDate: null,
+        fastestBeerSeconds: null,
+        longestEveningSeconds: null,
+      },
+      periods: { timezone: 'Europe/Prague', months: [], years: [] },
+    });
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    await act(async () => {
+      renderer = renderStats();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(flatTexts(renderer!)).not.toContain(t.stats.emptyTitle);
+
+    // Offline: the exclusion-aware refetch after the removal fails.
+    await act(async () => {
+      useAccountStore.setState({ removedDrinkIds: new Set(['removed-offline']) });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(flatTexts(renderer!)).toContain(t.stats.emptyTitle);
+    act(() => {
+      useAccountStore.setState({ removedDrinkIds: new Set() });
+    });
   });
 });

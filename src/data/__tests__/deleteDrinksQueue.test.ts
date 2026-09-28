@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { clearDeleteDrinksQueue, enqueueDelete, flushDeleteDrinksQueue } from '../deleteDrinksQueue';
+import {
+  clearDeleteDrinksQueue,
+  enqueueDelete,
+  flushDeleteDrinksQueue,
+  getConfirmedDeleteIds,
+  getQueuedDeleteIds,
+} from '../deleteDrinksQueue';
 import { deleteDrink } from '../drinksClient';
 import type { SubmitDrinkResult } from '../drinksClient';
 
@@ -57,6 +63,7 @@ describe('enqueueDelete', () => {
     (deleteDrink as jest.Mock).mockResolvedValue('retry');
     await enqueueDelete('a');
     expect(await readQueue()).toEqual(['a']);
+    expect(await getQueuedDeleteIds()).toEqual(new Set(['a']));
   });
 
   it('preserves and later delivers every deletion in an oversized upgrade backlog', async () => {
@@ -71,6 +78,18 @@ describe('enqueueDelete', () => {
     await flushDeleteDrinksQueue();
     expect(deleteDrink).toHaveBeenCalledTimes(251);
     expect(await readQueue()).toEqual([]);
+  });
+
+  it('remembers only deletions the backend confirmed, until an account clear', async () => {
+    (deleteDrink as jest.Mock).mockResolvedValueOnce('retry').mockResolvedValueOnce('ok');
+    await enqueueDelete('throttled');
+    expect(getConfirmedDeleteIds().has('throttled')).toBe(false);
+
+    await enqueueDelete('landed');
+    expect(getConfirmedDeleteIds().has('landed')).toBe(true);
+
+    await clearDeleteDrinksQueue();
+    expect(getConfirmedDeleteIds().size).toBe(0);
   });
 
   it('drops a permanently-rejected deletion from the queue', async () => {

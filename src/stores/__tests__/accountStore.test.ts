@@ -17,7 +17,7 @@ import * as auth from '@/data/auth';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
 import { ensureAccount, fetchAccountPreferences, setAnonymousSessionEvictionListener } from '@/data/account';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
-import { reconcileDiarySnapshot } from '@/data/diarySync';
+import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 
 jest.mock('@/data/auth');
 jest.mock('@/data/account', () => ({
@@ -108,7 +108,14 @@ function errResult(code = 'invalid_credentials', detail = 'nope'): AuthResult {
 beforeEach(() => {
   jest.clearAllMocks();
   // Reset the singleton store back to a clean slate between tests.
-  useAccountStore.setState({ session: null, status: 'idle', profile: null, diarySnapshot: null });
+  useAccountStore.setState({
+    session: null,
+    status: 'idle',
+    profile: null,
+    diarySnapshot: null,
+    removedDrinkIds: new Set(),
+    removedVisitIds: new Set(),
+  });
   mockEnsureAccount.mockResolvedValue({
     deviceId: 'd',
     accountId: 'a',
@@ -267,6 +274,81 @@ describe('resumeSession', () => {
 // ---------------------------------------------------------------------------
 // register / login / signInGoogle — session-changing auth
 // ---------------------------------------------------------------------------
+describe('forgetDiaryDrink', () => {
+  it('drops a removed drink from the snapshot and keeps the rest', () => {
+    const drink = (clientId: string) => ({ client_id: clientId }) as DiarySnapshot['drinks'][number];
+    useAccountStore.setState({
+      diarySnapshot: { accountId: 'a', data: { drinks: [drink('kept'), drink('removed')], visits: [] } },
+    });
+
+    useAccountStore.getState().forgetDiaryDrink('removed');
+
+    expect(useAccountStore.getState().diarySnapshot).toEqual({
+      accountId: 'a',
+      data: { drinks: [drink('kept')], visits: [] },
+    });
+  });
+
+  it('loads the filtered snapshot when a drink is removed before any snapshot arrived', async () => {
+    const drink = (clientId: string) => ({ client_id: clientId }) as DiarySnapshot['drinks'][number];
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      diarySnapshot: null,
+    });
+    mockReconcileDiarySnapshot.mockResolvedValueOnce({ drinks: [drink('kept'), drink('gone')], visits: [] });
+
+    useAccountStore.getState().forgetDiaryDrink('gone');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockReconcileDiarySnapshot).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState().diarySnapshot?.data.drinks).toEqual([drink('kept')]);
+  });
+
+  it('keeps a wiped evening out of the snapshot and of a refresh that raced it', async () => {
+    const visit = (clientId: string) => ({ client_id: clientId }) as DiarySnapshot['visits'][number];
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      diarySnapshot: { accountId: 'a', data: { drinks: [], visits: [visit('kept'), visit('wiped')] } },
+    });
+    let resolveRefresh!: (data: DiarySnapshot) => void;
+    mockReconcileDiarySnapshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+    );
+
+    const refresh = useAccountStore.getState().refreshDiarySnapshot();
+    useAccountStore.getState().forgetDiaryVisit('wiped');
+    expect(useAccountStore.getState().diarySnapshot?.data.visits).toEqual([visit('kept')]);
+    resolveRefresh({ drinks: [], visits: [visit('kept'), visit('wiped')] });
+    await refresh;
+
+    expect(useAccountStore.getState().diarySnapshot?.data.visits).toEqual([visit('kept')]);
+  });
+
+  it('keeps the drink out when a refresh that started earlier still returns it', async () => {
+    const drink = (clientId: string) => ({ client_id: clientId }) as DiarySnapshot['drinks'][number];
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      diarySnapshot: { accountId: 'a', data: { drinks: [drink('kept'), drink('raced')], visits: [] } },
+    });
+    let resolveRefresh!: (data: DiarySnapshot) => void;
+    mockReconcileDiarySnapshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+    );
+
+    const refresh = useAccountStore.getState().refreshDiarySnapshot();
+    useAccountStore.getState().forgetDiaryDrink('raced');
+    resolveRefresh({ drinks: [drink('kept'), drink('raced')], visits: [] });
+    await refresh;
+
+    expect(useAccountStore.getState().diarySnapshot?.data.drinks).toEqual([drink('kept')]);
+  });
+});
+
 describe('register', () => {
   it('sets the profile and re-syncs the session on success', async () => {
     const profile = signedInProfile();
@@ -404,7 +486,7 @@ describe('unlink', () => {
 // ---------------------------------------------------------------------------
 describe('logout', () => {
   it('clears the profile and re-syncs the anonymous session', async () => {
-    useAccountStore.setState({ profile: signedInProfile() });
+    useAccountStore.setState({ profile: signedInProfile(), removedDrinkIds: new Set(['old-drink']) });
     mockedAuth.logout.mockResolvedValue({ ok: true });
     // After logout, ensureAccount returns a fresh anonymous session.
     mockEnsureAccount.mockResolvedValue({
@@ -418,6 +500,7 @@ describe('logout', () => {
 
     expect(mockedAuth.logout).toHaveBeenCalledTimes(1);
     expect(useAccountStore.getState().profile).toBeNull();
+    expect(useAccountStore.getState().removedDrinkIds.size).toBe(0);
     // syncSession re-reads the new anonymous session.
     expect(useAccountStore.getState().session).toEqual({
       deviceId: 'd2',
