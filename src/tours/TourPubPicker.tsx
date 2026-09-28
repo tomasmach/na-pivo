@@ -65,13 +65,13 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
   const [region, setRegion] = useState<Region>(() => tourRegion(stops));
   // Without a typed name, the pubs nearest the middle of the map come first and follow it as you pan.
   const browsing = query.trim().length < 2;
+  const allowed = useMemo(() => filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys }), [pubs, reportedCacheKeys, reportedPubIds]);
   const visiblePubs = useMemo(() => {
-    const allowed = filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys });
     if (!browsing) return allowed;
     const center = { lat: region.latitude, lng: region.longitude };
     return allowed.map((pub) => ({ pub, meters: haversineMeters(center, pub) }))
       .sort((a, b) => a.meters - b.meters).slice(0, NEARBY_LIMIT).map(({ pub }) => pub);
-  }, [browsing, pubs, region.latitude, region.longitude, reportedCacheKeys, reportedPubIds]);
+  }, [allowed, browsing, region.latitude, region.longitude]);
   const list = useRef<ScrollView>(null);
   // A moved map reorders the list, so show its new nearest pubs from the top.
   useEffect(() => {
@@ -176,7 +176,8 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
   // The same pub can come back from search and from the phone's cache under two ids.
   const seenIds = new Set<string>();
   const seenPlaces = new Set<string>();
-  const listed = visiblePubs.filter((pub) => {
+  // Suggestions after the last stop rank the whole known catalogue, not just what sits near the map centre.
+  const listed = (last ? allowed : visiblePubs).filter((pub) => {
     const { cacheKey, name } = pubIdentity(pub);
     const place = `${cacheKey}|${name.trim().toLocaleLowerCase()}`;
     if (seenIds.has(pub.id) || seenPlaces.has(place)) return false;

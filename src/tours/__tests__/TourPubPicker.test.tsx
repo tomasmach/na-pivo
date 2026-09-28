@@ -165,3 +165,10 @@ it('lists the pubs nearest the middle of the map first and follows the map as yo
   await act(async () => { mockMap?.onRegionChange?.({ ...DEFAULT_TOUR_REGION, latitude: 49.9, longitude: 17.9 }); });
   expect(listed()).toEqual(['Radegastovna', 'Lokál Brno', 'U Zlatého tygra']);
 });
+
+it('finds pubs beside the last stop even when the map centre sits far away', async () => {
+  const midway = Array.from({ length: 60 }, (_, i) => pub(`mid${i}`, `Cestou ${i}`, 49.6 + i / 1000, 15.5));
+  jest.mocked(cachedTourPubs).mockResolvedValue([...midway, pub('brno', 'U Brňáka', 49.1955, 16.6085)]);
+  const screen = await open([stopAt(1, 50.08, 14.44), stopAt(2, 49.195, 16.608)]);
+  expect(screen.getByText('U Brňáka')).toBeTruthy();
+});
