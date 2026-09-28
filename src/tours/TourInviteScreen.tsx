@@ -42,7 +42,7 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
   const [invite, setInvite] = useState<MyTourInvite | null>(null);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [answering, setAnswering] = useState(false); const answerLock = useRef(false);
-  const hasAccount = useRef(false); hasAccount.current = useAccountStore((s) => !!s.session);
+  const hasAccount = useAccountStore((s) => !!s.session);
   const scroll = useRef<ScrollView>(null);
   const listY = useRef(0);
   const rowY = useRef<Record<string, number>>({});
@@ -61,13 +61,17 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
       // Who invites is a nicety; an unknown run may still wait in the organizer's offline queue.
       // The run has to belong to this tour, or the screen would show another tour's party.
       if (result.ok && result.public && runId) void fetchTourRunPreview(runId, result.public.id).then((next) => { if (alive) setPreview(next); });
-      // Only an existing account can have been invited; opening a link must not create one just to ask.
-      if (result.ok && !result.public && hasAccount.current) {
-        void fetchMyTourInvite(result.tour.id).then((mine) => { if (alive && mine.ok && generation === tourBoundary().generation) setInvite(mine.value); });
-      }
     });
     return () => { alive = false; };
   }, [token, runId, retry]);
+  // Only an existing account can have been invited; opening a link must not create one just to ask.
+  const privatePlanId = plan && !publicInfo ? plan.id : null;
+  useEffect(() => {
+    if (!privatePlanId || !hasAccount) return;
+    let alive = true; const generation = tourBoundary().generation;
+    void fetchMyTourInvite(privatePlanId).then((mine) => { if (alive && mine.ok && generation === tourBoundary().generation) setInvite(mine.value); });
+    return () => { alive = false; };
+  }, [privatePlanId, hasAccount]);
   const own = publicInfo ? store.plans.find((p) => p.publication?.token === token) : undefined;
   // The author's other phone may not have the tour yet; the author still never gets to report it.
   const accountId = useAccountStore((s) => s.session?.accountId ?? null);
@@ -191,7 +195,8 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
           <TourText>{tourDate(existing!)} → {tourDate(plan)}</TourText>
           <TourButton label={t.tours.keepVersion} secondary onPress={() => router.replace({ pathname: '/tours/[id]', params: { id: existing!.id } } as Href)} />
         </View>}
-        <TourText style={ui.notice}>{t.tours.runPrivacy}</TourText>
+        {/* Walking stays private, but an answer to an invite is meant for the one who asked. */}
+        <TourText style={ui.notice}>{invite ? t.tourInvites.answerVisible(friendDisplayName(invite.inviter)) : t.tours.runPrivacy}</TourText>
       </>}
     </ScrollView>
     {plan && <View style={[ui.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>

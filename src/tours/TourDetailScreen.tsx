@@ -126,7 +126,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   function invitesSent(sent: InviteSent) {
     setInviteSheet(false);
     if (sent.status === 'sent') setRoster(sent.roster);
-    useToastStore.getState().show(sent.status === 'sent' ? t.tourInvites.sent : t.tourInvites.queued);
+    useToastStore.getState().show(sent.status === 'sent' ? t.tourInvites.sent(sent.invited) : t.tourInvites.queued);
   }
   useEffect(() => { if (focused && publicToken) void useToursStore.getState().refreshPublicCount(id); }, [focused, publicToken, id]);
   const [openedAt] = useState(() => Date.now());
@@ -357,7 +357,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     {crewSheet && active && <TourCrewSheet run={active} pingView={pingView} onPing={openPing} onClose={() => setCrewSheet(false)} />}
     {pingSheet && active && pingTarget && friends && <PingSheet title={t.tours.crewPing} detail={pingNote} friends={awayFriends} ghost={friends.ghost}
       onSend={sendTourPing} onClose={() => setPingSheet(false)} />}
-    {inviteSheet && <TourInviteSheet plan={plan} invitedIds={(roster ?? []).map((row) => row.friend.id)} onClose={() => setInviteSheet(false)} onSent={invitesSent} />}
+    {inviteSheet && <TourInviteSheet plan={plan} roster={roster ?? []} onClose={() => setInviteSheet(false)} onSent={invitesSent} />}
     {rosterSheet && roster && <TourInviteRosterSheet roster={roster} onClose={() => setRosterSheet(false)} />}
     {overlayVisible && <View accessibilityViewIsModal style={[ui.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TourHeader title={detail?.name ?? t.tours.map} onBack={() => { setLargeMap(false); setDetail(null); }} />

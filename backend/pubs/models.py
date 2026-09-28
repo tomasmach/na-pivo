@@ -5206,6 +5206,8 @@ class TourInvite(models.Model):
     plan = models.ForeignKey(TourPlan, on_delete=models.CASCADE, related_name="invites")
     invitee = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="tour_invites")
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.INVITED)
+    # The share link generation the last push named. A rotated or recreated link leaves the invite re-sendable.
+    share_operation_id = models.UUIDField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(null=True, blank=True)
 

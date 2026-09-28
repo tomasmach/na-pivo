@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from pubs.accounts import _merge_anonymous_account, issue_token
-from pubs.api.tour_invite_views import MyTourInviteView, TourInvitesView
+from pubs.api.tour_invite_views import MyTourInviteListView, MyTourInviteView, TourInvitesView
 from pubs.models import (
     Account,
     FriendBlock,
@@ -90,13 +90,15 @@ def test_every_invite_endpoint_needs_a_signed_in_account():
     assert anonymous.get(f"/v1/tours/{plan_id}/invites").status_code == 401
     assert anonymous.post(f"/v1/tours/{plan_id}/invites", {"recipient_ids": [str(uuid.uuid4())]}, format="json").status_code == 401
     assert anonymous.get(f"/v1/tour-invites/{plan_id}").status_code == 401
+    assert anonymous.get("/v1/tour-invites").status_code == 401
     assert anonymous.put(f"/v1/tour-invites/{plan_id}", {"status": "going"}, format="json").status_code == 401
 
 
 def test_throttle_scopes_are_set_per_method(settings):
     rates = settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]
     for view, method, scope in ((TourInvitesView, "GET", "tour_invite_read"), (TourInvitesView, "POST", "tour_invite"),
-                                (MyTourInviteView, "GET", "tour_invite_read"), (MyTourInviteView, "PUT", "tour_rsvp")):
+                                (MyTourInviteView, "GET", "tour_invite_read"), (MyTourInviteView, "PUT", "tour_rsvp"),
+                                (MyTourInviteListView, "GET", "tour_invite_read")):
         instance = view()
         instance.request = type("Request", (), {"method": method})()
         instance.get_throttles()
@@ -275,3 +277,58 @@ def test_date_only_invite(pushes, django_capture_on_commit_callbacks):
     with django_capture_on_commit_callbacks(execute=True):
         invite(owner, plan_id, friend)
     assert pushes[0]["body"] == "@janek is inviting you on the tour “Vinohrady”, Sat 3 Oct. You in?"
+
+
+def test_an_invitee_lists_open_invites_without_the_push(django_capture_on_commit_callbacks):
+    owner, friend, other = person("janek"), person("petr"), person("jana")
+    befriend(owner, friend)
+    befriend(other, friend)
+    plan_id, token = tour(owner, scheduled_date=str(date(2026, 10, 2)), scheduled_time="19:00")
+    gone_id, _ = tour(other)
+    with django_capture_on_commit_callbacks(execute=True):
+        invite(owner, plan_id, friend)
+        invite(other, gone_id, friend)
+    # A tour whose link was revoked no longer opens, so it is not listed.
+    assert other.delete(f"/v1/tours/{gone_id}/share").status_code == 204
+
+    response = friend.get("/v1/tour-invites")
+    assert response.status_code == 200
+    assert response.json() == {"invites": [{
+        "plan_id": plan_id, "status": "invited", "token": token, "title": "Vinohrady",
+        "scheduled_date": "2026-10-02", "scheduled_time": "19:00", "timezone": "Europe/Prague", "first_pub": "Hospoda 0",
+        "inviter": response.json()["invites"][0]["inviter"], "invited_at": response.json()["invites"][0]["invited_at"], "responded_at": None,
+    }]}
+    assert response.json()["invites"][0]["inviter"]["nickname"] == "janek"
+    assert owner.get("/v1/tour-invites").json() == {"invites": []}
+
+    friend.put(f"/v1/tour-invites/{plan_id}", {"status": "going"}, format="json")
+    assert friend.get("/v1/tour-invites").json()["invites"][0]["status"] == "going"
+    FriendBlock.objects.create(blocker=owner.account, blocked=friend.account)
+    assert friend.get("/v1/tour-invites").json() == {"invites": []}
+
+
+def test_a_new_link_makes_an_invite_sendable_again(pushes, django_capture_on_commit_callbacks):
+    owner, friend = person("janek"), person("petr")
+    befriend(owner, friend)
+    plan_id, old_token = tour(owner)
+    with django_capture_on_commit_callbacks(execute=True):
+        invite(owner, plan_id, friend)
+    rotated = owner.post(f"/v1/tours/{plan_id}/share", {"operation_id": str(uuid.uuid4()), "rotate": True}, format="json")
+    new_token = rotated.json()["share"]["url"].rsplit("/", 1)[1]
+    assert new_token != old_token
+    roster = owner.get(f"/v1/tours/{plan_id}/invites").json()["invites"]
+    assert roster[0]["stale"] is True
+
+    pushes.clear()
+    with django_capture_on_commit_callbacks(execute=True):
+        again = invite(owner, plan_id, friend)
+    assert again.status_code == 201
+    assert again.json()["invited"] == 1
+    assert again.json()["invites"][0]["stale"] is False
+    assert [message["data"]["tour_token"] for message in pushes] == [new_token]
+    assert TourInvite.objects.filter(plan_id=plan_id).count() == 1
+    # The same link again is still a no-op.
+    pushes.clear()
+    with django_capture_on_commit_callbacks(execute=True):
+        assert invite(owner, plan_id, friend).json()["invited"] == 0
+    assert pushes == []

@@ -1,8 +1,9 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { t } from '@/i18n';
 import type { TourPlan, TourRun } from '../model';
 import ToursScreen from '../ToursScreen';
+import { fetchOpenTourInvites } from '@/data/tourInvitesClient';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -12,7 +13,9 @@ const mockStore = {
   hydrated: true, error: null, busy: false,
   hydrate: jest.fn(async () => ({ ok: true })), beginDraft: jest.fn(async () => ({ ok: true })), restorePublished: jest.fn(async () => ({ ok: true })),
 };
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn(), canGoBack: () => true }) }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn(), canGoBack: () => true }), useIsFocused: () => true }));
+jest.mock('@/data/tourInvitesClient', () => ({ fetchOpenTourInvites: jest.fn(async () => ({ ok: false, error: 'unsupported', status: 404, retry: false })) }));
+jest.mock('@/profile/Avatar', () => ({ Avatar: () => null }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 jest.mock('@/stores/toursStore', () => ({ useToursStore: Object.assign(() => mockStore, { getState: () => mockStore }) }));
 jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
@@ -51,4 +54,21 @@ it('puts the running tour first and opens past runs in their history view', () =
 
   fireEvent.press(screen.getByLabelText(new RegExp(`^Pátek\\. .*${t.tours.runOf(2, 2)}`)));
   expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/tours/[id]', params: { id: walked.id, run: 'old-run' } });
+});
+
+it('lists invites to friends\' tours on top and opens the invite, even when the push never came', async () => {
+  const inviter = { id: 'jirka', nickname: 'Jirka', displayName: 'Jirka', avatarUrl: null, isPublic: true };
+  jest.mocked(fetchOpenTourInvites).mockResolvedValueOnce({ ok: true, value: [
+    { planId: 'p-1', status: 'invited', inviter, token: 'invite-token-for-tours-list-test', title: 'Pátek po hospodách',
+      scheduledDate: '2026-10-02', scheduledTime: '19:00', firstPub: 'U Bulínů' },
+    // Going, and the tour is already saved: it shows among own tours, not twice.
+    { planId: 'saved', status: 'going', inviter, token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaa', title: 'Uložená', scheduledDate: null, scheduledTime: null, firstPub: '' },
+  ] });
+  mockStore.plans = [{ ...plan('copy', 'Uložená'), source: { tourId: 'saved', revision: 1, token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaa' } }];
+  const screen = render(<ToursScreen />);
+  await waitFor(() => expect(screen.getByText('Pátek po hospodách')).toBeTruthy());
+  expect(screen.getByText(t.tourInvites.inboxTitle)).toBeTruthy();
+  expect(screen.getAllByText('Uložená')).toHaveLength(1);
+  fireEvent.press(screen.getByText('Pátek po hospodách'));
+  expect(mockPush).toHaveBeenCalledWith('/t/invite-token-for-tours-list-test');
 });

@@ -1218,7 +1218,7 @@ msgid "Tour nemá platný odkaz. Vytvoř ho a pozvi je znovu."
 msgstr "The tour has no valid link. Create one and invite them again."
 
 msgid "Pozvat jde jen kámoše z party."
-msgstr "You can only invite mates from Parta."
+msgstr "You can only invite mates from your crew."
 
 #, python-format
 msgid "Na jednu tour pozveš nejvýš %(count)s kámošů."

@@ -18,12 +18,23 @@ export interface TourInviteRow {
   status: TourInviteStatus;
   invitedAt: string;
   respondedAt: string | null;
+  /** The link this friend got stopped working (a new or recreated link); inviting them again sends the current one. */
+  stale: boolean;
 }
 
 export interface MyTourInvite {
   planId: string;
   status: TourInviteStatus;
   inviter: FriendProfile;
+}
+
+/** An invite to someone else's tour that still opens, for the Tours list. */
+export interface OpenTourInvite extends MyTourInvite {
+  token: string;
+  title: string;
+  scheduledDate: string | null;
+  scheduledTime: string | null;
+  firstPub: string;
 }
 
 export type TourInviteError =
@@ -56,12 +67,12 @@ function parseStatus(raw: unknown): TourInviteStatus | null {
 export function parseRoster(raw: unknown): TourInviteRow[] | null {
   const invites = (raw as { invites?: unknown } | null)?.invites;
   if (!Array.isArray(invites)) return null;
-  return invites.flatMap((row: { account?: unknown; status?: unknown; invited_at?: unknown; responded_at?: unknown }) => {
+  return invites.flatMap((row: { account?: unknown; status?: unknown; invited_at?: unknown; responded_at?: unknown; stale?: unknown }) => {
     const friend = parseFriend(row?.account);
     const status = parseStatus(row?.status);
     if (!friend || !status) return [];
     return [{ friend, status, invitedAt: typeof row.invited_at === 'string' ? row.invited_at : '',
-      respondedAt: typeof row.responded_at === 'string' ? row.responded_at : null }];
+      respondedAt: typeof row.responded_at === 'string' ? row.responded_at : null, stale: row.stale === true }];
   });
 }
 
@@ -152,4 +163,23 @@ export async function answerTourInvite(planId: string, status: 'going' | 'declin
   if (r.status !== 200) return failure(r, 'tour_invite_answer', '/v1/tour-invites/{id}');
   const mine = parseMine(r.data);
   return mine ? { ok: true, value: mine } : { ok: false, error: 'invalid', status: r.status, retry: false };
+}
+
+function parseOpen(raw: unknown): OpenTourInvite | null {
+  const mine = parseMine(raw);
+  const r = raw as { token?: unknown; title?: unknown; scheduled_date?: unknown; scheduled_time?: unknown; first_pub?: unknown };
+  if (!mine || typeof r.token !== 'string' || !/^[A-Za-z0-9_-]{20,200}$/.test(r.token) || typeof r.title !== 'string') return null;
+  return { ...mine, token: r.token, title: r.title,
+    scheduledDate: typeof r.scheduled_date === 'string' ? r.scheduled_date : null,
+    scheduledTime: typeof r.scheduled_time === 'string' ? r.scheduled_time : null,
+    firstPub: typeof r.first_pub === 'string' ? r.first_pub : '' };
+}
+
+/** Friends' tours this account is invited to and that still open; the push is only a shortcut to them. */
+export async function fetchOpenTourInvites(): Promise<TourInviteResult<OpenTourInvite[]>> {
+  const r = await request('/v1/tour-invites', 'GET');
+  if (r.status !== 200) return failure(r, 'tour_invite_list', '/v1/tour-invites');
+  const invites = (r.data as { invites?: unknown } | null)?.invites;
+  if (!Array.isArray(invites)) return { ok: false, error: 'invalid', status: r.status, retry: false };
+  return { ok: true, value: invites.flatMap((row) => { const open = parseOpen(row); return open ? [open] : []; }) };
 }

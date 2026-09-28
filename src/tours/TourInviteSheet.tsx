@@ -49,9 +49,19 @@ function Sheet({ title, onClose, children, footer, closeDisabled }: {
   </Modal>;
 }
 
-function FriendRow({ friend, checked, invited, onToggle }: { friend: FriendProfile; checked: boolean; invited: boolean; onToggle: () => void }) {
+/** The real name under a nickname, unless it only repeats the nickname. */
+function secondName(friend: FriendProfile): string | null {
+  return friend.nickname && friend.displayName && friend.displayName.toLowerCase() !== friend.nickname.toLowerCase() ? friend.displayName : null;
+}
+
+/** Why a friend cannot be picked now, or what picking them again does. */
+type FriendState = 'invited' | 'queued' | 'stale' | null;
+
+function FriendRow({ friend, checked, state, onToggle }: { friend: FriendProfile; checked: boolean; state: FriendState; onToggle: () => void }) {
   const name = friendDisplayName(friend);
-  const sub = invited ? t.tourInvites.alreadyInvited : friend.nickname && friend.displayName ? friend.displayName : null;
+  const invited = state === 'invited' || state === 'queued';
+  const sub = state === 'invited' ? t.tourInvites.alreadyInvited : state === 'queued' ? t.tourInvites.waitingForSignal
+    : state === 'stale' ? t.tourInvites.linkChanged : secondName(friend);
   return <Pressable onPress={onToggle} disabled={invited} style={({ pressed }) => [styles.row, checked && styles.rowChecked, pressed && styles.pressed]}
     accessibilityRole="checkbox" accessibilityState={{ checked: checked || invited, disabled: invited }} accessibilityLabel={sub ? `${name}. ${sub}` : name}>
     <Avatar uri={friend.avatarUrl} nickname={friend.nickname} displayName={friend.displayName} size={36} border="quiet" />
@@ -65,11 +75,12 @@ function FriendRow({ friend, checked, invited, onToggle }: { friend: FriendProfi
   </Pressable>;
 }
 
-export type InviteSent = { status: 'sent'; roster: TourInviteRow[] } | { status: 'queued' };
+export type InviteSent = { status: 'sent'; roster: TourInviteRow[]; invited: number } | { status: 'queued' };
 
-/** Pick friends from Parta and invite them; the link goes elsewhere with one tap. The host only hears the outcome. */
-export function TourInviteSheet({ plan, invitedIds, onClose, onSent }: {
-  plan: TourPlan; invitedIds: string[]; onClose: () => void; onSent: (sent: InviteSent) => void;
+/** Pick friends from Parta and invite them; the link goes elsewhere with one tap. The host only hears the outcome.
+ * A friend whose link went dead with a new one can be picked again; the roster says who that is. */
+export function TourInviteSheet({ plan, roster, onClose, onSent }: {
+  plan: TourPlan; roster: TourInviteRow[]; onClose: () => void; onSent: (sent: InviteSent) => void;
 }) {
   // undefined while the party loads, null when there is no party to show (offline with nothing saved).
   const [party, setParty] = useState<PartyFriends | null | undefined>(undefined);
@@ -86,10 +97,18 @@ export function TourInviteSheet({ plan, invitedIds, onClose, onSent }: {
     void queuedTourInvitees(plan.id).then((ids) => { if (alive) setQueued(ids); });
     return () => { alive = false; };
   }, [plan.id]);
-  const invited = new Set([...invitedIds, ...queued]);
+  const stateOf = (id: string): FriendState => {
+    if (queued.includes(id)) return 'queued';
+    const row = roster.find((item) => item.friend.id === id);
+    return row ? row.stale ? 'stale' : 'invited' : null;
+  };
   const friends = party?.friends ?? [];
-  const chosen = picked.filter((id) => friends.some((friend) => friend.id === id) && !invited.has(id));
+  const pickable = (id: string) => { const state = stateOf(id); return state === null || state === 'stale'; };
+  const chosen = picked.filter((id) => friends.some((friend) => friend.id === id) && pickable(id));
   const ghost = !!party?.ghost;
+  // Nobody left to invite: the link is the only thing the sheet can still do, so it becomes the button.
+  const allInvited = friends.length > 0 && friends.every((friend) => !pickable(friend.id));
+  const linkOnly = ghost || allInvited || party === null || (!!party && !friends.length);
 
   async function run(kind: 'invite' | 'link', task: () => Promise<void>) {
     if (working.current) return;
@@ -106,16 +125,19 @@ export function TourInviteSheet({ plan, invitedIds, onClose, onSent }: {
   const note = ghost ? t.tourInvites.ghost : party === null ? t.tourInvites.friendsOffline : party && !friends.length ? t.tourInvites.noFriends : null;
   return <Sheet title={t.tourInvites.sheetTitle} onClose={onClose} closeDisabled={!!busy} footer={<View style={styles.actions}>
     {error && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
-    <TourButton label={t.tourInvites.send(chosen.length)} busy={busy === 'invite'} disabled={!chosen.length || ghost || !!busy} onPress={() => { void invite(); }} />
-    <Pressable onPress={() => { void share(); }} disabled={!!busy} style={({ pressed }) => [styles.link, (pressed || busy === 'link') && styles.pressed]}
-      accessibilityRole="button" accessibilityLabel={t.tourInvites.shareElsewhere} accessibilityState={{ disabled: !!busy, busy: busy === 'link' }}>
-      <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.linkText}>{t.tourInvites.shareElsewhere}</Text>
-    </Pressable>
+    {allInvited && !ghost && <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.reason}>{t.tourInvites.allInvited}</Text>}
+    {linkOnly ? <TourButton label={t.tourInvites.shareElsewhere} busy={busy === 'link'} disabled={!!busy} onPress={() => { void share(); }} /> : <>
+      <TourButton label={t.tourInvites.send(chosen.length)} busy={busy === 'invite'} disabled={!chosen.length || !!busy} onPress={() => { void invite(); }} />
+      <Pressable onPress={() => { void share(); }} disabled={!!busy} style={({ pressed }) => [styles.link, (pressed || busy === 'link') && styles.pressed]}
+        accessibilityRole="button" accessibilityLabel={t.tourInvites.shareElsewhere} accessibilityState={{ disabled: !!busy, busy: busy === 'link' }}>
+        <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.linkText}>{t.tourInvites.shareElsewhere}</Text>
+      </Pressable>
+    </>}
   </View>}>
     <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.detail}>{inviteDetail(plan)}</Text>
     {note ? <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.note}>{note}</Text>
       : <ScrollView style={[styles.list, styles.pickList]} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
-        {friends.map((friend) => <FriendRow key={friend.id} friend={friend} invited={invited.has(friend.id)} checked={chosen.includes(friend.id)}
+        {friends.map((friend) => <FriendRow key={friend.id} friend={friend} state={stateOf(friend.id)} checked={chosen.includes(friend.id)}
           onToggle={() => setPicked((current) => current.includes(friend.id) ? current.filter((id) => id !== friend.id) : [...current, friend.id])} />)}
       </ScrollView>}
   </Sheet>;
@@ -135,6 +157,7 @@ function Coins({ friends }: { friends: FriendProfile[] }) {
 export function TourInviteRosterRow({ roster, onPress }: { roster: TourInviteRow[]; onPress: () => void }) {
   const going = byStatus(roster, 'going').map((row) => row.friend);
   const label = t.tourInvites.rosterSummary(roster.length, going.length);
+  // The names are read out, not printed: the coins already show who goes.
   const names = going.map(friendDisplayName).join(', ');
   return <Pressable onPress={onPress} style={({ pressed }) => [styles.rosterRow, pressed && styles.pressed]} accessibilityRole="button"
     accessibilityLabel={[label, names].filter(Boolean).join('. ')} accessibilityHint={t.tourInvites.rosterHint}>
@@ -143,7 +166,6 @@ export function TourInviteRosterRow({ roster, onPress }: { roster: TourInviteRow
       <Text maxFontSizeMultiplier={FontScaleCap.heading} style={styles.rosterLabel}>{label}</Text>
       <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.linkText}>{t.tourInvites.rosterOpen}</Text>
     </View>
-    {!!names && <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={2} style={styles.rosterNames}>{names}</Text>}
   </Pressable>;
 }
 
@@ -159,7 +181,7 @@ export function TourInviteRosterSheet({ roster, onClose }: { roster: TourInviteR
           <Avatar uri={row.friend.avatarUrl} nickname={row.friend.nickname} displayName={row.friend.displayName} size={36} border="quiet" />
           <View style={styles.rowText}>
             <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={1} style={styles.rowName}>{friendDisplayName(row.friend)}</Text>
-            {!!row.friend.nickname && !!row.friend.displayName && <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={1} style={styles.rowMeta}>{row.friend.displayName}</Text>}
+            {!!secondName(row.friend) && <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={1} style={styles.rowMeta}>{secondName(row.friend)}</Text>}
           </View>
         </View>)}
       </View>)}
@@ -197,14 +219,14 @@ const styles = StyleSheet.create({
   actions: { gap: Spacing.xs, paddingTop: Spacing.md, marginTop: Spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, 0.1) },
   error: { fontSize: 13, lineHeight: 18, color: Colors.amberLight, marginBottom: Spacing.xs },
   link: { minHeight: HitArea.min, alignItems: 'center', justifyContent: 'center' },
-  linkText: { fontSize: 14, lineHeight: 20, fontWeight: '600', color: Colors.amber },
+  linkText: { fontSize: 14, lineHeight: 20, fontWeight: '800', color: Colors.amber },
+  reason: { fontSize: 13, lineHeight: 18, color: Colors.foamMuted, marginBottom: Spacing.xs },
   coins: { flexDirection: 'row' },
   coin: { borderWidth: 2, borderColor: Colors.stout, borderRadius: Radius.pill },
   coinOverlap: { marginLeft: -8 },
   rosterRow: { marginTop: Spacing.sm, minHeight: HitArea.min, justifyContent: 'center' },
   rosterLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, minHeight: HitArea.min },
   rosterLabel: { flex: 1, fontSize: 15, lineHeight: 20, fontWeight: '600', color: Colors.foam },
-  rosterNames: { fontSize: 12, lineHeight: 18, color: Colors.foamMuted },
   group: { marginTop: Spacing.lg },
   groupTitle: { fontSize: 15, lineHeight: 20, fontWeight: '600', color: Colors.foam, marginBottom: Spacing.xs },
   rosterItem: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.sm },

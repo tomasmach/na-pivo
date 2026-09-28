@@ -65,12 +65,16 @@ def _invite_text(owner, plan):
     return LocalizedText(gettext_lazy("Pozvánka na tour")), body
 
 
-def _active_share_token(plan):
-    share = TourShare.objects.filter(plan=plan, revoked_at__isnull=True, expires_at__gt=timezone.now()).first()
-    if not share:
-        return None
+def _working(share):
+    """The share and its token while the link opens the tour, else (None, None)."""
+    if not share or share.revoked_at or share.expires_at <= timezone.now():
+        return None, None
     token = share_token(share)
-    return token if token_hash(token) == share.token_hash else None
+    return (share, token) if token_hash(token) == share.token_hash else (None, None)
+
+
+def _active_share(plan):
+    return _working(TourShare.objects.filter(plan=plan).first())
 
 
 def _blocked_between(account, other_ids):
@@ -84,10 +88,13 @@ def _blocked_between(account, other_ids):
 def _roster(plan, request):
     invites = list(plan.invites.select_related("invitee").filter(invitee__status=Account.Status.ACTIVE).order_by("created_at", "pk"))
     blocked = _blocked_between(plan.owner, [invite.invitee_id for invite in invites]) if invites else set()
+    share, _token = _active_share(plan)
     context = {"request": request}
     return {"invites": [{
         "account": FriendProfileSerializer(invite.invitee, context=context).data,
         "status": invite.status,
+        # The link this friend got no longer opens the tour; inviting them again sends the current one.
+        "stale": share is None or invite.share_operation_id != share.operation_id,
         "invited_at": invite.created_at.isoformat(),
         "responded_at": invite.responded_at.isoformat() if invite.responded_at else None,
     } for invite in invites if invite.invitee_id not in blocked]}
@@ -109,7 +116,10 @@ class _InviteView(APIView):
 
 
 class TourInvitesView(_InviteView):
-    """GET the owner's roster; POST invites accepted friends (repeating an invite changes nothing)."""
+    """GET the owner's roster; POST invites accepted friends.
+
+    Repeating an invite changes nothing, unless the link has changed since: then the friend gets the current one.
+    """
 
     def get(self, request, plan_id):
         plan = TourPlan.objects.select_related("owner").filter(pk=plan_id, owner=request.user, deleted_at__isnull=True).first()
@@ -129,29 +139,33 @@ class TourInvitesView(_InviteView):
             # Invisible mode tells nobody anything, an invite included.
             if account.ghost_mode:
                 return _error("ghost_mode", _("Máš zapnutý neviditelný režim, pozvánka by nikomu nepřišla."), 409)
-            token = _active_share_token(plan)
-            if not token:
+            share, token = _active_share(plan)
+            if not share:
                 return _error("share_required", _("Tour nemá platný odkaz. Vytvoř ho a pozvi je znovu."), 409)
             friends = set(_accepted_friend_ids(account))
             targets = list(Account.objects.filter(id__in=friends, public_id__in=requested, status=Account.Status.ACTIVE)
                            .values_list("id", flat=True))
             if not targets:
                 return _error("not_friends", _("Pozvat jde jen kámoše z party."), 400)
-            invited = set(plan.invites.values_list("invitee_id", flat=True))
-            new = [target for target in targets if target not in invited]
-            if len(invited) + len(new) > INVITES_PER_TOUR:
+            existing = {invite.invitee_id: invite for invite in plan.invites.all()}
+            new = [target for target in targets if target not in existing]
+            if len(existing) + len(new) > INVITES_PER_TOUR:
                 return _error("invite_limit", _("Na jednu tour pozveš nejvýš %(count)s kámošů.") % {"count": INVITES_PER_TOUR}, 400,
                               limit=INVITES_PER_TOUR)
-            TourInvite.objects.bulk_create([TourInvite(plan=plan, invitee_id=target) for target in new])
-            if new:
+            # A rotated or recreated link left these friends with a dead one; their answer stays, the link is new.
+            resent = [target for target in targets if target in existing and existing[target].share_operation_id != share.operation_id]
+            TourInvite.objects.filter(plan=plan, invitee_id__in=resent).update(share_operation_id=share.operation_id)
+            TourInvite.objects.bulk_create([TourInvite(plan=plan, invitee_id=target, share_operation_id=share.operation_id) for target in new])
+            recipients = new + resent
+            if recipients:
                 title, body = _invite_text(account, plan)
-                _bulk_create_friend_notifications(recipient_ids=new, actor=account, kind=FriendNotification.Kind.FRIEND_TOUR_INVITE,
+                _bulk_create_friend_notifications(recipient_ids=recipients, actor=account, kind=FriendNotification.Kind.FRIEND_TOUR_INVITE,
                                                   title=title, body=body)
                 # Older apps know no such kind and only light the Parta dot; newer ones open the tour.
                 data = {"kind": "friend_tour_invite", "plan_id": str(plan.pk), "tour_token": token}
-                transaction.on_commit(lambda: _dispatch_friend_push(new, title, body, data))
+                transaction.on_commit(lambda: _dispatch_friend_push(recipients, title, body, data))
         plan = TourPlan.objects.select_related("owner").get(pk=plan.pk)
-        return Response({**_roster(plan, request), "invited": len(new)}, status=201 if new else 200)
+        return Response({**_roster(plan, request), "invited": len(recipients)}, status=201 if recipients else 200)
 
 
 def _my_invite(request, plan_id, lock=False):
@@ -195,3 +209,27 @@ class MyTourInviteView(_InviteView):
                 invite.responded_at = timezone.now()
                 invite.save(update_fields=["status", "responded_at"])
         return Response(_invite_payload(invite, request))
+
+
+class MyTourInviteListView(_InviteView):
+    """GET the signed-in friend's invites to tours that still open, so an invite never depends on its push arriving."""
+
+    def get(self, request):
+        invites = list(TourInvite.objects.select_related("plan__owner", "plan__share").prefetch_related("plan__stops").filter(
+            invitee=request.user, plan__deleted_at__isnull=True, plan__owner__status=Account.Status.ACTIVE,
+            plan__share__revoked_at__isnull=True, plan__share__expires_at__gt=timezone.now(),
+        ).order_by("-created_at", "-pk")[:INVITES_PER_TOUR])
+        blocked = _blocked_between(request.user, [invite.plan.owner_id for invite in invites]) if invites else set()
+        rows = []
+        for invite in invites:
+            share, token = _working(invite.plan.share)
+            if not share or invite.plan.owner_id in blocked:
+                continue
+            first = next(iter(invite.plan.stops.all()), None)
+            rows.append({
+                **_invite_payload(invite, request), "token": token, "title": invite.plan.title,
+                "scheduled_date": invite.plan.scheduled_date.isoformat() if invite.plan.scheduled_date else None,
+                "scheduled_time": invite.plan.scheduled_time.strftime("%H:%M") if invite.plan.scheduled_time else None,
+                "timezone": invite.plan.timezone, "first_pub": first.name if first else "",
+            })
+        return Response({"invites": rows})

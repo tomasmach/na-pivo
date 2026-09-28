@@ -62,7 +62,7 @@ from .party_views import (
 )
 from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
-from .tour_invite_views import MyTourInviteView, TourInvitesView
+from .tour_invite_views import MyTourInviteListView, MyTourInviteView, TourInvitesView
 from .tour_run_views import TourRunMemberView, TourRunPreviewView, TourRunView
 from .tour_search_views import TourSearchView
 from .tour_views import (
@@ -153,6 +153,7 @@ urlpatterns = [
     path("tours/<uuid:plan_id>/share", TourShareView.as_view()),
     path("tours/<uuid:plan_id>/publication", TourPublicationView.as_view()),
     path("tours/<uuid:plan_id>/invites", TourInvitesView.as_view()),
+    path("tour-invites", MyTourInviteListView.as_view()),
     path("tour-invites/<uuid:plan_id>", MyTourInviteView.as_view()),
     path("tour-publications/<uuid:public_id>/report", TourPublicationReportView.as_view()),
     path("tour-publications/search", TourSearchView.as_view()),

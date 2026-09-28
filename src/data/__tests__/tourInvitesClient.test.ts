@@ -1,4 +1,4 @@
-import { answerTourInvite, fetchMyTourInvite, fetchTourRoster, sendTourInvites } from '../tourInvitesClient';
+import { answerTourInvite, fetchMyTourInvite, fetchOpenTourInvites, fetchTourRoster, sendTourInvites } from '../tourInvitesClient';
 
 jest.mock('../backendConfig', () => ({ getBackendEndpoint: (path: string) => `https://api.example.test${path}` }));
 jest.mock('../account', () => ({
@@ -48,4 +48,21 @@ it('answers an invite and parses the inviter', async () => {
   expect(global.fetch).toHaveBeenLastCalledWith(`https://api.example.test/v1/tour-invites/${plan}`, expect.objectContaining({ method: 'PUT', body: '{"status":"going"}' }));
   reply(200, { plan_id: plan, status: 'maybe', inviter: petr });
   await expect(fetchMyTourInvite(plan)).resolves.toMatchObject({ ok: false, error: 'invalid' });
+});
+
+it('lists open invites with what the Tours list needs, and drops rows without a usable link', async () => {
+  const row = { plan_id: plan, status: 'invited', inviter: petr, token: 'invite-token-for-tours-list-test', title: 'Pátek po hospodách',
+    scheduled_date: '2026-10-02', scheduled_time: '19:00', first_pub: 'U Bulínů' };
+  reply(200, { invites: [row, { ...row, token: '../../x' }] });
+  await expect(fetchOpenTourInvites()).resolves.toEqual({ ok: true, value: [expect.objectContaining({
+    planId: plan, token: row.token, title: 'Pátek po hospodách', scheduledDate: '2026-10-02', scheduledTime: '19:00', firstPub: 'U Bulínů' })] });
+  expect(global.fetch).toHaveBeenLastCalledWith('https://api.example.test/v1/tour-invites', expect.objectContaining({ method: 'GET' }));
+  (global.fetch as jest.Mock).mockResolvedValue({ status: 404, json: async () => { throw new SyntaxError('html'); } });
+  await expect(fetchOpenTourInvites()).resolves.toMatchObject({ ok: false, error: 'unsupported' });
+});
+
+it('marks a roster row whose link went dead', async () => {
+  reply(200, { invites: [{ account: petr, status: 'invited', stale: true }, { account: { ...petr, id: 'p-2' }, status: 'going' }] });
+  const result = await fetchTourRoster(plan);
+  expect(result.ok && result.value.map((row) => row.stale)).toEqual([true, false]);
 });

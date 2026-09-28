@@ -50,7 +50,7 @@ function inviteError(error: TourInviteError): string {
   }
 }
 
-export type InviteOutcome = { status: 'sent'; roster: TourInviteRow[] } | { status: 'queued' } | { error: string };
+export type InviteOutcome = { status: 'sent'; roster: TourInviteRow[]; invited: number } | { status: 'queued' } | { error: string };
 
 /** Sends now when it can; without signal the invite waits in the queue and says so. */
 export async function inviteFriends(planId: string, recipientIds: string[]): Promise<InviteOutcome> {
@@ -61,7 +61,7 @@ export async function inviteFriends(planId: string, recipientIds: string[]): Pro
     if (result.ok) {
       // Something that waited for this tour before can go now too.
       void flushTourInvitesQueue();
-      return { status: 'sent', roster: result.value.roster };
+      return { status: 'sent', roster: result.value.roster, invited: result.value.invited };
     }
     if (!result.retry) return { error: inviteError(result.error) };
   }
