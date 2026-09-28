@@ -126,7 +126,8 @@ function SearchContent() {
       void saveRecentSearch(recent, term);
       setRecent((current) => mergeRecentSearches(current, term));
     }
-    openPubPage(router, pub);
+    // A favourite without a provider id is listed under a made-up key, not an id.
+    openPubPage(router, pub.id.startsWith('favorite:') ? { ...pub, id: '' } : pub);
   };
 
   const visibleResults = results.filter((result) => !reportedIds.includes(result.id) &&
