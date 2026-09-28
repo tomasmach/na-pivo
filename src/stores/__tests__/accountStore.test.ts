@@ -288,6 +288,49 @@ describe('forgetDiaryDrink', () => {
     });
   });
 
+  it('forgets the cached first-beer date when the first beer is removed', () => {
+    const firstBeerAt = '2026-01-10T18:00:00Z';
+    useAccountStore.setState({
+      profile: signedInProfile({
+        stats: {
+          totalBeers: 2,
+          firstBeerAt,
+          distinctPubs: 1,
+          ratingsCount: 0,
+          totalSpentCzk: 120,
+          maxVisitsToOnePub: 1,
+        },
+      }),
+      diarySnapshot: {
+        accountId: 'a',
+        data: {
+          drinks: [
+            { client_id: 'first', drank_at: firstBeerAt } as DiarySnapshot['drinks'][number],
+            { client_id: 'later', drank_at: '2026-02-01T18:00:00Z' } as DiarySnapshot['drinks'][number],
+          ],
+          visits: [],
+        },
+      },
+    });
+
+    useAccountStore.getState().forgetDiaryDrink('later');
+    expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBe(firstBeerAt);
+
+    useAccountStore.getState().forgetDiaryDrink('first');
+    expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBeNull();
+  });
+
+  it('remembers only recent removals so stats reads stay under the exclusion cap', () => {
+    for (let index = 0; index < 120; index += 1) {
+      useAccountStore.getState().forgetDiaryDrink(`removed-${index}`);
+    }
+
+    const removed = useAccountStore.getState().removedDrinkIds;
+    expect(removed.size).toBe(50);
+    expect(removed.has('removed-119')).toBe(true);
+    expect(removed.has('removed-69')).toBe(false);
+  });
+
   it('keeps the drink out when a refresh that started earlier still returns it', async () => {
     const drink = (clientId: string) => ({ client_id: clientId }) as DiarySnapshot['drinks'][number];
     useAccountStore.setState({

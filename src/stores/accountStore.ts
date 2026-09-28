@@ -196,6 +196,9 @@ interface AccountState {
   verifyEmail: (token: string) => Promise<AuthActionResult>;
 }
 
+/** Enough to cover reads racing recent removals, well under the stats cap. */
+const MAX_REMEMBERED_REMOVALS = 50;
+
 function withoutRemovedDrinks(data: DiarySnapshot, removed: ReadonlySet<string>): DiarySnapshot {
   if (!data.drinks.some((drink) => removed.has(drink.client_id))) return data;
   return { ...data, drinks: data.drinks.filter((drink) => !removed.has(drink.client_id)) };
@@ -350,9 +353,24 @@ export const useAccountStore = create<AccountState>((set, get) => {
     forgetDiaryDrink: (clientId) => {
       set((state) => {
         const removedDrinkIds = new Set(state.removedDrinkIds).add(clientId);
+        // Only recent removals can race a read. Older ones have landed or wait
+        // in the persisted delete queue, which every read checks as well.
+        if (removedDrinkIds.size > MAX_REMEMBERED_REMOVALS) {
+          removedDrinkIds.delete(removedDrinkIds.values().next().value as string);
+        }
         const snapshot = state.diarySnapshot;
+        const removed = snapshot?.data.drinks.find((drink) => drink.client_id === clientId);
+        const stats = state.profile?.stats;
+        // The cached profile may still date the first beer by the removed one.
+        const datesFirstBeer =
+          removed != null &&
+          stats?.firstBeerAt != null &&
+          Date.parse(removed.drank_at) <= Date.parse(stats.firstBeerAt);
         return {
           removedDrinkIds,
+          ...(datesFirstBeer && state.profile && stats
+            ? { profile: { ...state.profile, stats: { ...stats, firstBeerAt: null } } }
+            : {}),
           diarySnapshot: snapshot
             ? { ...snapshot, data: withoutRemovedDrinks(snapshot.data, removedDrinkIds) }
             : null,
