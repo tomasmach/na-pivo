@@ -114,6 +114,7 @@ import {
   confirmedAmenityKeys,
   inPubTime,
   isEventOfPub,
+  isSamePubRecord,
   sharesCell,
   withCatalogDetails,
   pubWallClock,
@@ -235,7 +236,12 @@ function useInitialPub(
     const loaded = getAllLoadedPubs().find(
       (pub) =>
         (remembered?.id && pub.id === remembered.id) ||
-        (geohash8(pub.lat, pub.lng) === key && pub.name === (remembered?.name ?? name)),
+        // Same cell and name, unless both carry different provider ids.
+        (geohash8(pub.lat, pub.lng) === key &&
+          isSamePubRecord(
+            { name: pub.name, externalId: pub.id },
+            { id: remembered?.id ?? '', name: remembered?.name ?? name },
+          )),
     );
     if (remembered) return withCatalogDetails(remembered, loaded);
     if (!key || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
