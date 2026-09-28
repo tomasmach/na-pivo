@@ -585,6 +585,7 @@ export default function BeerMapScreen({
   const {
     pubs,
     nearbyPrices,
+    searchArea,
     visitedPubs,
     visitedCities,
     livePubs,
@@ -1803,6 +1804,7 @@ export default function BeerMapScreen({
           visible
           value={filters}
           nearbyPrices={nearbyPrices}
+          searchArea={searchArea}
           onClose={() => setFilterSheetOpen(false)}
           onApply={onApplyFilters}
         />

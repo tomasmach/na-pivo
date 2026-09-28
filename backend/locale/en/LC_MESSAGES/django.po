@@ -1174,3 +1174,12 @@ msgstr "Plan a pub crawl and send the crew a link."
 
 msgid "Brzy"
 msgstr "Soon"
+
+msgid "Název piva musí mít aspoň 2 znaky."
+msgstr "Beer name must have at least 2 characters."
+
+msgid "Název piva nejde kombinovat se značkami piva."
+msgstr "Beer name cannot be combined with beer brands."
+
+msgid "Pošli lat i lng zároveň."
+msgstr "Send lat and lng together."
