@@ -135,6 +135,8 @@ const POSITION_MAX_AGE_MS = 5 * 60 * 1000;
 const SHEET_DISMISS_MS = 260;
 const TITLE_AFTER_SCROLL = 56;
 const NOW_TICK_MS = 60 * 1000;
+const HOURS_RETRY_MS = 4000;
+const HOURS_RETRY_LIMIT = 4;
 // Same quiet style as the tour previews: no landmarks or labels next to the
 // pin, so nobody reads a monument's name as the pub's.
 const PREVIEW_MAP_STYLE = [
@@ -221,8 +223,14 @@ function useNow(): Date {
 }
 
 /** Resolve the pub from the opener's hand-off, the loaded catalog, or the params. */
-function useInitialPub(key: string, name: string, lat: number, lng: number): Pub | null {
-  const remembered = usePubPageStore((s) => (key ? s.pubs[key] : undefined));
+function useInitialPub(
+  key: string,
+  ref: string,
+  name: string,
+  lat: number,
+  lng: number,
+): Pub | null {
+  const remembered = usePubPageStore((s) => (ref ? s.pubs[ref] : undefined));
   return useMemo(() => {
     const loaded = getAllLoadedPubs().find(
       (pub) =>
@@ -242,13 +250,16 @@ export default function PubPageScreen() {
   const colorScheme = useColorScheme();
   const params = useLocalSearchParams<{
     key?: string;
+    ref?: string;
     name?: string;
     lat?: string;
     lng?: string;
   }>();
   const key = firstParam(params.key);
+  const ref = firstParam(params.ref);
   const initialPub = useInitialPub(
     key,
+    ref,
     firstParam(params.name),
     Number(firstParam(params.lat)),
     Number(firstParam(params.lng)),
@@ -344,9 +355,20 @@ export default function PubPageScreen() {
     if (!pub || pub.hoursStatus === 'ok') return;
     const controller = new AbortController();
     const opened = pub;
-    void fetchPubHours([opened], controller.signal).then((response) => {
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    // A cache miss answers "pending" while the server fills the pub in, so ask
+    // again a few times instead of leaving hours and taps empty for good.
+    const load = () => {
+      attempts += 1;
+      void fetchPubHours([opened], controller.signal).then(apply);
+    };
+    const apply = (response: Awaited<ReturnType<typeof fetchPubHours>>) => {
       const details = response.get(opened.id);
       if (!details || controller.signal.aborted) return;
+      if (details.status === 'pending' && attempts < HOURS_RETRY_LIMIT) {
+        retryTimer = setTimeout(load, HOURS_RETRY_MS);
+      }
       setPub((current) =>
         current
           ? {
@@ -367,8 +389,12 @@ export default function PubPageScreen() {
             }
           : current,
       );
-    });
-    return () => controller.abort();
+    };
+    load();
+    return () => {
+      controller.abort();
+      if (retryTimer) clearTimeout(retryTimer);
+    };
     // Refresh once per opened pub, not after filling it in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pubId, key]);
@@ -534,14 +560,14 @@ export default function PubPageScreen() {
     setRenameSubmitting(true);
     const previousName = pub.name;
     setPub({ ...pub, name: trimmed });
-    usePubPageStore.getState().rename(key, pub, trimmed);
+    if (ref) usePubPageStore.getState().rename(ref, pub, trimmed);
     submitPubRename(info, previousName, trimmed)
       .then((synced) => {
         setRenameOpen(false);
         showToast(synced ? t.compass.renameSavedToast : t.compass.renameQueuedToast);
       })
       .finally(() => setRenameSubmitting(false));
-  }, [info, key, pub, renameDraft, renameSubmitting, showToast]);
+  }, [info, pub, ref, renameDraft, renameSubmitting, showToast]);
 
   const toggleFavorite = useCallback(() => {
     if (!pub) return;
@@ -558,7 +584,12 @@ export default function PubPageScreen() {
   const reportReason = useCallback(
     (reason: PubReportReason) => {
       if (!pub) return;
-      usePubStore.getState().addReportedPub(pub.id, key);
+      // A pub without a provider id is hidden by its cell alone; an empty id
+      // would match other id-less results.
+      if (pub.id) usePubStore.getState().addReportedPub(pub.id, key);
+      else if (!usePubStore.getState().reportedCacheKeys.includes(key)) {
+        usePubStore.setState((state) => ({ reportedCacheKeys: [...state.reportedCacheKeys, key] }));
+      }
       void enqueuePubReport(pub, reason).then((synced) =>
         useToastStore.getState().show(synced ? t.pubDetail.reportSaved : t.pubDetail.reportQueued),
       );
@@ -1033,7 +1064,7 @@ export default function PubPageScreen() {
         onClose={() => setMappingOpen(false)}
         onRenamed={(name) => {
           setPub((current) => (current ? { ...current, name } : current));
-          usePubPageStore.getState().rename(key, pub, name);
+          if (ref) usePubPageStore.getState().rename(ref, pub, name);
         }}
         onReport={() => {
           setMappingOpen(false);

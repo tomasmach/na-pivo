@@ -9,7 +9,7 @@ import { checkLocationPermission } from '@/compass/permissions';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import { openPubPage } from '@/pubPage/openPubPage';
-import { usePubPageStore } from '@/stores/pubPageStore';
+import { pubPageRef, usePubPageStore } from '@/stores/pubPageStore';
 import { cachedTourPubs, filterTourPubs, searchTourPubs, type TourPubSearchResult } from '@/data/tourPubSearch';
 import { t } from '@/i18n';
 import { usePubStore } from '@/stores/pubStore';
@@ -46,7 +46,7 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const [previewCandidate, setPreview] = useState<Pub | null>(null);
   const visiblePreview = previewCandidate && filterTourPubs([previewCandidate], { reportedPubIds, reportedCacheKeys }).length ? previewCandidate : null;
   // A rename made on the pub page must reach the stop that gets added.
-  const pagePub = usePubPageStore((state) => (visiblePreview ? state.pubs[geohash8(visiblePreview.lat, visiblePreview.lng)] : undefined));
+  const pagePub = usePubPageStore((state) => (visiblePreview ? state.pubs[pubPageRef(visiblePreview)] : undefined));
   const preview = useMemo(() => (visiblePreview && pagePub && pagePub.id === visiblePreview.id && pagePub.name !== visiblePreview.name
     ? { ...visiblePreview, name: pagePub.name } : visiblePreview), [pagePub, visiblePreview]);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
