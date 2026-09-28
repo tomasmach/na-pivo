@@ -164,11 +164,18 @@ describe('inPubTime', () => {
 });
 
 describe('withCatalogDetails', () => {
-  it('keeps what the opener knows and fills the rest from the catalog', () => {
+  it('lets the catalog own identity and place, the opener fill the rest', () => {
     const merged = withCatalogDetails(
-      { id: 'p1', name: 'Nový název', address: undefined as string | undefined, owner: undefined as string | undefined },
-      { id: 'p1', name: 'Starý název', address: 'Husova 1', owner: 'client-1' },
+      { id: 'p1', name: 'Starý název z trasy', lat: 50, lng: 14, openingHours: 'Mo-Su 10:00-22:00', userAddedClientId: undefined as string | undefined },
+      { id: 'p1', name: 'Opravený název', lat: 50.1, lng: 14.1, openingHours: undefined as string | undefined, userAddedClientId: 'client-1' },
     );
-    expect(merged).toEqual({ id: 'p1', name: 'Nový název', address: 'Husova 1', owner: 'client-1' });
+    expect(merged).toEqual({
+      id: 'p1',
+      name: 'Opravený název',
+      lat: 50.1,
+      lng: 14.1,
+      openingHours: 'Mo-Su 10:00-22:00',
+      userAddedClientId: 'client-1',
+    });
   });
 });
