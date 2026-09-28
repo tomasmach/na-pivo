@@ -82,15 +82,16 @@ export const en: Strings = {
     showMyPubs: 'Show my pubs',
     findMe: 'Find me',
     liveNow: 'OUT RIGHT NOW',
-    visitorsLastWeek: (n: number) =>
+    beersLastWeek: (n: number) =>
       englishPlural(n, {
-        one: 'Last week 1 person was here',
-        other: `Last week ${n} people were here`,
+        one: 'Last week 1 beer went down here',
+        other: `Last week ${n} beers went down here`,
       }),
-    visitorsClusterLastWeek: (n: number) => `Last week's people across these pubs, added up: ${n}`,
-    moreVisitors: 'People counts from last week',
-    moreVisitorsOnly: 'Only pubs someone visited',
-    visitorsOnlyNudge: 'Only pubs someone visited',
+    beersClusterLastWeek: (n: number) => `Last week's beers across these pubs, added up: ${n}`,
+    moreBeers: 'Beer counts from last week',
+    moreBeersOnly: 'Only where people drank last week',
+    moreBoard: 'Pub leaderboard',
+    beersOnlyNudge: 'Only where people drank last week',
     friendFallback: 'Friend',
     friendIsHere: (name: string) => `${name} is here right now`,
     friendsAreHere: (name: string, others: number) => `${name} and ${others} others are here`,
@@ -1264,7 +1265,7 @@ export const en: Strings = {
     settingsClose: 'Close settings',
     ghostTitle: 'Invisible mode',
     ghostSubtitle:
-      "The crew can't see where you're sitting or what you've drunk. Your pings stay with you, and while it's on I leave you out of the people counts on the map.",
+      "The crew can't see where you're sitting or what you've drunk. Your pings stay with you, and while it's on I leave your beers out of the pub counts on the map and the leaderboard.",
     shareDrinksTitle: 'Show the crew where I am',
     shareDrinksSubtitle: "Your mates see which pub you're in and what you've had tonight. Nobody else does.",
     ghostActive: 'Invisible mode is on',
@@ -1493,11 +1494,54 @@ export const en: Strings = {
   leaderboards: {
     back: 'Back',
     screenTitle: 'Leaderboards',
-    categoryTab: (category: 'beers' | 'pubs' | 'mapper') =>
-    category === 'beers' ? 'Drinkers' : category === 'pubs' ? 'Explorers' : 'Mappers',
+    categoryTab: (category: 'beers' | 'pubs' | 'mapper' | 'venues') =>
+    category === 'beers'
+      ? 'Drinkers'
+      : category === 'pubs'
+        ? 'Explorers'
+        : category === 'mapper'
+          ? 'Mappers'
+          : 'Pubs',
     periodTab: (period: 'week' | 'year' | 'all') =>
     period === 'week' ? 'Week' : period === 'year' ? 'This year' : 'All time',
     mapperPeriodNote: 'Counted since day one',
+    venuesPeriodTab: (period: 'week' | 'year' | 'all') =>
+    period === 'week' ? 'Last week' : period === 'year' ? 'This year' : 'All time',
+    venuesSubtitle: (period: 'week' | 'year' | 'all') =>
+    period === 'week'
+      ? 'The most beers went down here last week.'
+      : period === 'year'
+        ? 'The most beers went down here this year.'
+        : 'The most beers went down here, ever.',
+    venuesAllCities: 'All cities',
+    venuesCityTitle: 'Pick a city',
+    venuesCityA11y: (city: string) => `City: ${city}. Tap to change`,
+    venuesListLabel: 'Next up',
+    venuesSince: (date: string) => `since ${date}`,
+    venuesAllTime: 'since day one',
+    venuesEmptyTitle: 'No pubs here yet',
+    venuesEmptyBody: (period: 'week' | 'year' | 'all') =>
+    period === 'week'
+      ? 'A new board comes on Monday.'
+      : 'A pub shows up here once three different people log a beer in it.',
+    venuesRules: (period: 'week' | 'year' | 'all') => [
+      'I add up the beers logged in each pub.',
+      period === 'week'
+        ? 'It counts last week, Monday to Sunday.'
+        : period === 'year'
+          ? 'It counts everything since New Year.'
+          : 'It counts every beer ever logged.',
+      'A pub counts once at least three different people drank there.',
+      'No names anywhere, only beer counts.',
+    ],
+    venuesHeroA11y: (name: string, place: string, beers: string) =>
+    `The most beers went down at ${name}${place ? `, ${place}` : ''}. ${beers}. Tap for details.`,
+    venuesRowA11y: (rank: number, name: string, place: string, beers: string) =>
+    `Place ${rank}, ${name}${place ? `, ${place}` : ''}, ${beers}`,
+    showOnMapTitle: 'Show on map',
+    showOnOurMap: 'Here in the app',
+    showOnGoogle: 'In Google Maps',
+    googleMapsFailed: 'Google Maps could not be opened.',
     selectCategory: (label: string, selected: boolean) =>
     selected ? `${label}, selected` : `Switch to ${label}`,
     selectPeriod: (label: string, selected: boolean) =>
@@ -2453,7 +2497,7 @@ export const en: Strings = {
       "A profile can hold a nickname, a name and an avatar. With a public profile, other people can find you by your nickname and photo; your exact location, your diary and individual beers are not shown publicly.",
       "The counter, the history of your nights, pub visits and your private ratings are stored locally and sync only to your account. When you log out or delete the account, the app clears the local private diary, the ratings and the entries waiting to be sent from this device.",
       "Sharing a night with your crew is on by default: friends you have accepted can see that you are in a pub, how many beers you have and your last entry. You can turn it off in the crew settings, or switch on ghost mode. Nobody other than the friends you have accepted sees any of this.",
-      'On the map I show how many different people were in each pub last week. It is one number for the whole week, with no names, days or times. While ghost mode is on, I leave you out of it. Turning it on shows in the counts within a few hours.',
+      'On the map I show how many beers went down in each pub last week, and the pub leaderboard shows totals for last week, this year and all time. They are only totals, with no names, days or times, and a pub shows up only once at least three different people drank there. While ghost mode is on, I leave your beers out of them. Turning it on shows in the numbers within a few hours.',
       "I store beer photos on the server without metadata or GPS location. By default only your crew sees them; the only public ones are the photos you enter into the photo contest.",
       "When you photograph a beer menu with \"Snap the menu\", the photo goes through my server to an AI model for processing (via the OpenRouter service). I do not store the photo and, under my settings, the provider must not use it for training.",
       "If you allow notifications, I store the device push token and deliver Crew messages through Expo Push Service. Pub reminders show up on the phone itself and are not sent anywhere.",

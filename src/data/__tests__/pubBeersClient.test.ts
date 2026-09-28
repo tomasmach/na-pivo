@@ -13,27 +13,27 @@ jest.mock('../backendConfig', () => ({
 jest.mock('../telemetryClient', () => ({ trackApiFailure: jest.fn() }));
 
 import {
-  PUB_VISITORS_STORAGE_KEY,
-  fetchPubVisitorsLastWeek,
+  PUB_BEERS_STORAGE_KEY,
+  fetchPubBeersLastWeek,
   nextWeekStartsAt,
-  parsePubVisitors,
-  resetPubVisitorsCache,
-} from '../pubVisitorsClient';
+  parsePubBeers,
+  resetPubBeersCache,
+} from '../pubBeersClient';
 
-describe('parsePubVisitors', () => {
+describe('parsePubBeers', () => {
   it('keeps positive whole counts and drops anything else', () => {
-    const visitors = parsePubVisitors({
+    const beers = parsePubBeers({
       week_start: '2026-09-14',
       week_end: '2026-09-20',
       pubs: { u2fkbn1z: 4, u2fkbq00: 0, u2fkbzzz: 1.5, u2fkbyyy: '3' },
     });
 
-    expect(visitors && [...visitors]).toEqual([['u2fkbn1z', 4]]);
+    expect(beers && [...beers]).toEqual([['u2fkbn1z', 4]]);
   });
 
   it('returns null for a malformed body', () => {
-    expect(parsePubVisitors(null)).toBeNull();
-    expect(parsePubVisitors({ pubs: [] })).toBeNull();
+    expect(parsePubBeers(null)).toBeNull();
+    expect(parsePubBeers({ pubs: [] })).toBeNull();
   });
 });
 
@@ -62,14 +62,14 @@ describe('counts kept on the device', () => {
     });
     global.fetch = fetchMock as unknown as typeof fetch;
     await AsyncStorage.clear();
-    resetPubVisitorsCache();
+    resetPubBeersCache();
   });
 
   afterEach(() => jest.restoreAllMocks());
 
   async function loadThenRestartAppAt(time: number) {
-    await fetchPubVisitorsLastWeek();
-    resetPubVisitorsCache();
+    await fetchPubBeersLastWeek();
+    resetPubBeersCache();
     fetchMock.mockClear();
     jest.spyOn(Date, 'now').mockReturnValue(time);
   }
@@ -77,14 +77,14 @@ describe('counts kept on the device', () => {
   it('shows the counts right after a restart without a request', async () => {
     await loadThenRestartAppAt(NOW + 2 * HOUR);
 
-    expect([...((await fetchPubVisitorsLastWeek()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
+    expect([...((await fetchPubBeersLastWeek()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('loads them again once three hours have passed', async () => {
     await loadThenRestartAppAt(NOW + 3 * HOUR);
 
-    await fetchPubVisitorsLastWeek();
+    await fetchPubBeersLastWeek();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -93,25 +93,25 @@ describe('counts kept on the device', () => {
     jest.spyOn(Date, 'now').mockReturnValue(lateSunday);
     await loadThenRestartAppAt(Date.parse(ROLLOVER));
 
-    await fetchPubVisitorsLastWeek();
+    await fetchPubBeersLastWeek();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a copy saved while the clock ran ahead for three hours at most', async () => {
     jest.spyOn(Date, 'now').mockReturnValue(NOW + 48 * HOUR);
     await loadThenRestartAppAt(NOW);
-    await fetchPubVisitorsLastWeek();
+    await fetchPubBeersLastWeek();
     expect(fetchMock).not.toHaveBeenCalled();
 
     jest.spyOn(Date, 'now').mockReturnValue(NOW + 3 * HOUR);
-    await fetchPubVisitorsLastWeek();
+    await fetchPubBeersLastWeek();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('ignores an unreadable copy', async () => {
-    await AsyncStorage.setItem(PUB_VISITORS_STORAGE_KEY, '{"pubs":');
+    await AsyncStorage.setItem(PUB_BEERS_STORAGE_KEY, '{"pubs":');
 
-    expect([...((await fetchPubVisitorsLastWeek()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
+    expect([...((await fetchPubBeersLastWeek()) ?? [])]).toEqual([['u2fkbn1z', 4]]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

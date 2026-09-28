@@ -35,8 +35,8 @@ interface SettingsState {
   preferRatedPubs: boolean;
   preferGardenPubs: boolean;
   hidePubNames: boolean;
-  /** Map pins show how many people drank in each pub last week. */
-  showPubVisitors: boolean;
+  /** Map pins show how many beers were logged in each pub last week. */
+  showPubBeers: boolean;
   marketingEmailsEnabled: boolean;
   pubReminderEnabled: boolean;
   /** One-shot reminder refreshed by each beer of an active evening. */
@@ -69,7 +69,7 @@ interface SettingsState {
   setPreferRatedPubs: (v: boolean) => void;
   setPreferGardenPubs: (v: boolean) => void;
   setHidePubNames: (v: boolean) => void;
-  setShowPubVisitors: (v: boolean) => void;
+  setShowPubBeers: (v: boolean) => void;
   setMarketingEmailsEnabled: (v: boolean) => void;
   setPubReminderEnabled: (v: boolean) => void;
   setBeerCountReminderEnabled: (v: boolean) => void;
@@ -98,7 +98,7 @@ export const useSettingsStore = create<SettingsState>()(
       preferRatedPubs: false,
       preferGardenPubs: false,
       hidePubNames: false,
-      showPubVisitors: true,
+      showPubBeers: true,
       marketingEmailsEnabled: false,
       pubReminderEnabled: false,
       beerCountReminderEnabled: true,
@@ -128,7 +128,7 @@ export const useSettingsStore = create<SettingsState>()(
       setPreferRatedPubs: (v) => set({ preferRatedPubs: v }),
       setPreferGardenPubs: (v) => set({ preferGardenPubs: v }),
       setHidePubNames: (v) => set({ hidePubNames: v }),
-      setShowPubVisitors: (v) => set({ showPubVisitors: v }),
+      setShowPubBeers: (v) => set({ showPubBeers: v }),
       setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
       setPubReminderEnabled: (v) => set({ pubReminderEnabled: v }),
       setBeerCountReminderEnabled: (v) => set({ beerCountReminderEnabled: v }),
@@ -159,7 +159,7 @@ export const useSettingsStore = create<SettingsState>()(
         preferRatedPubs: state.preferRatedPubs,
         preferGardenPubs: state.preferGardenPubs,
         hidePubNames: state.hidePubNames,
-        showPubVisitors: state.showPubVisitors,
+        showPubBeers: state.showPubBeers,
         marketingEmailsEnabled: state.marketingEmailsEnabled,
         pubReminderEnabled: state.pubReminderEnabled,
         beerCountReminderEnabled: state.beerCountReminderEnabled,
@@ -176,17 +176,20 @@ export const useSettingsStore = create<SettingsState>()(
           setCurrencyRate(state.priceCurrency, state.priceCurrencyRate);
         }
       },
-      version: 1,
+      version: 2,
       migrate: (persistedState, version) => {
-        const state = persistedState as Partial<SettingsState>;
-        if (version < 1) {
-          return {
-            ...state,
-            // The old value was an implicit default, not recorded consent.
-            waterNudgeEnabled: false,
-          } as SettingsState;
-        }
-        return persistedState as SettingsState;
+        const { showPubVisitors, ...state } = persistedState as Partial<SettingsState> & {
+          showPubVisitors?: unknown;
+        };
+        return {
+          ...state,
+          // The old value was an implicit default, not recorded consent.
+          ...(version < 1 ? { waterNudgeEnabled: false } : null),
+          // The map counts people became counts of beers; an opt-out stays out.
+          ...(version < 2 && typeof showPubVisitors === 'boolean'
+            ? { showPubBeers: showPubVisitors }
+            : null),
+        } as SettingsState;
       },
     }
   )

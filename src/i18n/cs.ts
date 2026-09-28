@@ -93,16 +93,17 @@ export const cs = {
     showMyPubs: 'Ukázat moje hospody',
     findMe: 'Najdi mě',
     liveNow: 'TEĎ NA PIVU',
-    visitorsLastWeek: (n: number) =>
+    beersLastWeek: (n: number) =>
       czechPlural(n, {
-        one: 'Minulý týden tu byl 1 člověk',
-        few: `Minulý týden tu byli ${n} lidé`,
-        many: `Minulý týden tu bylo ${n} lidí`,
+        one: 'Minulý týden tu padlo 1 pivo',
+        few: `Minulý týden tu padla ${n} piva`,
+        many: `Minulý týden tu padlo ${n} piv`,
       }),
-    visitorsClusterLastWeek: (n: number) => `Součet lidí z těchto hospod za minulý týden: ${n}`,
-    moreVisitors: 'Počty lidí za minulý týden',
-    moreVisitorsOnly: 'Jen hospody, kde někdo byl',
-    visitorsOnlyNudge: 'Jen kde někdo byl',
+    beersClusterLastWeek: (n: number) => `Piva z těchto hospod za minulý týden dohromady: ${n}`,
+    moreBeers: 'Počty piv za minulý týden',
+    moreBeersOnly: 'Jen kde se minulý týden pilo',
+    moreBoard: 'Žebříček hospod',
+    beersOnlyNudge: 'Jen kde se minulý týden pilo',
     friendFallback: 'Kamarád',
     friendIsHere: (name: string) => `${name} je tady teď`,
     friendsAreHere: (name: string, others: number) =>
@@ -1495,7 +1496,7 @@ export const cs = {
     settingsClose: 'Zavřít nastavení',
     ghostTitle: 'Neviditelný režim',
     ghostSubtitle:
-      'Parta nevidí, kde sedíš, ani co máš vypito. Tvoje cinknutí zůstanou jen u tebe a dokud je zapnutý, nezapočítám tě ani do počtu lidí u hospod na mapě.',
+      'Parta nevidí, kde sedíš, ani co máš vypito. Tvoje cinknutí zůstanou jen u tebe a dokud je zapnutý, nezapočítám tvoje piva ani do počtů u hospod na mapě a v žebříčku.',
     shareDrinksTitle: 'Ukazovat partě, kde sedím',
     shareDrinksSubtitle:
       'Kámoši uvidí, ve které hospodě zrovna jsi a co ti večer teklo. Nikdo jiný ne.',
@@ -1842,13 +1843,59 @@ export const cs = {
     // the screen: a segmented track for the board and a quiet text row for the
     // window. Nothing here hides behind a „…“ sheet.
     screenTitle: 'Žebříčky',
-    categoryTab: (category: 'beers' | 'pubs' | 'mapper') =>
-      category === 'beers' ? 'Pivaři' : category === 'pubs' ? 'Objevitelé' : 'Mapéři',
+    categoryTab: (category: 'beers' | 'pubs' | 'mapper' | 'venues') =>
+      category === 'beers'
+        ? 'Pivaři'
+        : category === 'pubs'
+          ? 'Objevitelé'
+          : category === 'mapper'
+            ? 'Mapéři'
+            : 'Hospody',
     periodTab: (period: 'week' | 'year' | 'all') =>
       period === 'week' ? 'Týden' : period === 'year' ? 'Letos' : 'Celkem',
     // Mapér XP never resets, so the window row has nothing to switch — it says
     // so instead of showing three chips where two would do nothing.
     mapperPeriodNote: 'Sbírá se odjakživa',
+    // — Hospody: pubs ranked by beers, not people —
+    venuesPeriodTab: (period: 'week' | 'year' | 'all') =>
+      period === 'week' ? 'Minulý týden' : period === 'year' ? 'Letos' : 'Celkem',
+    venuesSubtitle: (period: 'week' | 'year' | 'all') =>
+      period === 'week'
+        ? 'Tady se minulý týden pilo nejvíc.'
+        : period === 'year'
+          ? 'Tady se letos pilo nejvíc.'
+          : 'Tady se pilo nejvíc ze všech.',
+    venuesAllCities: 'Všechna města',
+    venuesCityTitle: 'Vyber město',
+    venuesCityA11y: (city: string) => `Město: ${city}. Ťukni pro změnu`,
+    venuesListLabel: 'Další místa',
+    venuesSince: (date: string) => `od ${date}`,
+    venuesAllTime: 'odjakživa',
+    // Pubs with fewer than three drinkers stay hidden, so "nothing was drunk"
+    // would not be true.
+    venuesEmptyTitle: 'Zatím tu žádná hospoda není',
+    venuesEmptyBody: (period: 'week' | 'year' | 'all') =>
+      period === 'week'
+        ? 'Nový žebříček bude v pondělí.'
+        : 'Hospoda se sem dostane, až v ní zapíšou pivo aspoň tři různí lidi.',
+    venuesRules: (period: 'week' | 'year' | 'all') => [
+      'Sčítám piva zapsaná v hospodě.',
+      period === 'week'
+        ? 'Počítá se minulý týden od pondělí do neděle.'
+        : period === 'year'
+          ? 'Počítá se všechno od Nového roku.'
+          : 'Počítá se všechno, co kdy padlo.',
+      'Hospoda se počítá, když v ní pili aspoň tři různí lidi.',
+      'Jména nikde neukazuju, jen počty piv.',
+    ],
+    venuesHeroA11y: (name: string, place: string, beers: string) =>
+      `Nejvíc se pilo v hospodě ${name}${place ? `, ${place}` : ''}. ${beers}. Ťukni pro detail.`,
+    venuesRowA11y: (rank: number, name: string, place: string, beers: string) =>
+      `${rank}. místo, ${name}${place ? `, ${place}` : ''}, ${beers}`,
+    showOnMapTitle: 'Ukázat na mapě',
+    showOnOurMap: 'Tady v appce',
+    showOnGoogle: 'V Google Mapách',
+    googleMapsFailed: 'Google Maps se nepodařilo otevřít.',
     selectCategory: (label: string, selected: boolean) =>
       selected ? `${label}, vybráno` : `Přepnout na ${label}`,
     selectPeriod: (label: string, selected: boolean) =>
@@ -3057,7 +3104,7 @@ export const cs = {
       'Profil může obsahovat přezdívku, jméno a avatar. U veřejného profilu tě podle přezdívky a fotky můžou najít ostatní; přesná poloha, deníček a jednotlivá piva se veřejně nezobrazují.',
       'Počítadlo, historie večerů, návštěvy hospod a tvoje soukromá hodnocení se ukládají lokálně a synchronizují se jen k tvému účtu. Po odhlášení nebo smazání účtu appka lokální soukromý deníček, hodnocení a čekající private sync fronty z tohohle zařízení vyčistí.',
       'Sdílení večera s Partou je ve výchozím stavu zapnuté: přijatí kamarádi můžou vidět, že jsi v hospodě, kolik piv máš a tvůj poslední zápis. V nastavení Party to vypneš, nebo použij ghost mode. Nikdo jiný než přijatí kamarádi tyhle údaje nevidí.',
-      'Na mapě u hospody ukazuju, kolik různých lidí v ní minulý týden bylo. Je to jedno číslo za celý týden, bez jmen, dnů a časů. Dokud máš zapnutý ghost mode, nezapočítám tě do něj. Zapnutí se v počtech projeví do několika hodin.',
+      'Na mapě u hospody ukazuju, kolik piv se v ní minulý týden vypilo, a v žebříčku hospod součty za minulý týden, letos a celkem. Jsou to jen součty bez jmen, dnů a časů a hospodu ukážu, až když v ní pili aspoň tři různí lidi. Dokud máš zapnutý ghost mode, tvoje piva do nich nezapočítám. Zapnutí se v číslech projeví do několika hodin.',
       'Fotky piv ukládám na serveru bez metadat a GPS polohy. Ve výchozím stavu je vidí jen tvoje Parta; veřejné jsou jen fotky, které přihlásíš do fotosoutěže.',
       'Když vyfotíš pivní lístek přes „Vyfoť menu“, fotka se přes můj server pošle ke zpracování AI modelu (přes službu OpenRouter). Fotku neukládám a poskytovatel ji podle mého nastavení nesmí použít k trénování.',
       'Když povolíš notifikace, uložím si push token zařízení a zprávy z Party doručuju přes Expo Push Service. Hospodské připomínky se zobrazují přímo v telefonu a nikam se neposílají.',
