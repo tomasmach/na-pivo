@@ -1,6 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import * as Location from 'expo-location';
 import { checkLocationPermission } from '@/compass/permissions';
+import { cachedTourPubs } from '@/data/tourPubSearch';
 import { t } from '@/i18n';
 import type { TourStop } from '../model';
 import { DEFAULT_TOUR_REGION, type TourMapProps } from '../TourMap';
@@ -79,4 +80,17 @@ it('keeps an existing tour framed on its stops', async () => {
   await open([stop]);
   expect(mockMap?.region).toMatchObject({ latitude: 49.19, longitude: 16.61 });
   expect(Location.getLastKnownPositionAsync).not.toHaveBeenCalled();
+});
+
+it('lists the pubs nearest the middle of the map first and follows the map as you pan', async () => {
+  const brno = { id: 'brno', name: 'Lokál Brno', lat: 49.195, lng: 16.607 };
+  const opava = { id: 'opava', name: 'Radegastovna', lat: 49.938, lng: 17.902 };
+  const prague = { id: 'prague', name: 'U Zlatého tygra', lat: 50.086, lng: 14.419 };
+  jest.mocked(cachedTourPubs).mockResolvedValueOnce([brno, opava, prague]);
+  const screen = await open([]);
+  const listed = () => screen.getAllByText(/^(Lokál Brno|Radegastovna|U Zlatého tygra)$/).map((node) => node.props.children as string);
+  expect(listed()).toEqual(['U Zlatého tygra', 'Lokál Brno', 'Radegastovna']);
+  expect(mockMap?.candidates?.map((pub) => pub.id)).toEqual(['prague', 'brno', 'opava']);
+  await act(async () => { mockMap?.onRegionChange?.({ ...DEFAULT_TOUR_REGION, latitude: 49.9, longitude: 17.9 }); });
+  expect(listed()).toEqual(['Radegastovna', 'Lokál Brno', 'U Zlatého tygra']);
 });
