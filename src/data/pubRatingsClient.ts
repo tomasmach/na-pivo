@@ -19,8 +19,9 @@
  *   - 'permanent-error' → 400/422: this byte-stable payload will never succeed.
  *   - 'retry'           → network/timeout/5xx/429/401/dormant: keep + retry.
  *
- * fetchRatings() is the read side: it returns the parsed array or null (never
- * throws), mirroring submitPubCommunity's null-on-failure shape.
+ * fetchRatings() is the read side: it returns the parsed ratings plus the
+ * account's removals, or null (never throws), mirroring submitPubCommunity's
+ * null-on-failure shape.
  */
 
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
@@ -52,6 +53,13 @@ export interface WireRating {
   verdict: 'like' | 'dislike' | null;
   tag: string | null;
   note: string | null;
+  updated_at: string;
+}
+
+/** A rating the account removed, as listed in GET /v1/pub-ratings `removed`. */
+export interface WireRatingRemoval {
+  cache_key: string;
+  /** ISO-8601 client time of the removal. */
   updated_at: string;
 }
 
@@ -230,13 +238,21 @@ function isWireRating(value: unknown): value is WireRating {
   );
 }
 
+function isWireRatingRemoval(value: unknown): value is WireRatingRemoval {
+  const r = value as WireRatingRemoval;
+  return !!r && typeof r.cache_key === 'string' && typeof r.updated_at === 'string';
+}
+
 /**
- * GET the account's full set of ratings. Returns the parsed array, or null on
- * ANY failure (dormant backend, no account, network/timeout, non-2xx, malformed
- * body). Never throws. The caller (restorePubRatings) treats null as "nothing to
- * merge this time" and simply retries on the next flush.
+ * GET the account's full set of ratings and removals. Returns the parsed lists,
+ * or null on ANY failure (dormant backend, no account, network/timeout, non-2xx,
+ * malformed body). Never throws. The caller (restorePubRatings) treats null as
+ * "nothing to merge this time" and simply retries on the next flush. A server
+ * without `removed` yields an empty list.
  */
-export async function fetchRatings(signal?: AbortSignal): Promise<WireRating[] | null> {
+export async function fetchRatings(
+  signal?: AbortSignal,
+): Promise<{ ratings: WireRating[]; removed: WireRatingRemoval[] } | null> {
   if (signal?.aborted) return null;
 
   const endpoint = getBackendEndpoint('/v1/pub-ratings');
@@ -269,9 +285,13 @@ export async function fetchRatings(signal?: AbortSignal): Promise<WireRating[] |
       return null;
     }
 
-    const data = (await resp.json()) as { ratings?: unknown };
+    const data = (await resp.json()) as { ratings?: unknown; removed?: unknown };
     if (!data || !Array.isArray(data.ratings)) return null;
-    return data.ratings.filter(isWireRating);
+    const removed = Array.isArray(data.removed) ? data.removed : [];
+    return {
+      ratings: data.ratings.filter(isWireRating),
+      removed: removed.filter(isWireRatingRemoval),
+    };
   } catch {
     trackRatingSyncFailed('fetch_ratings', {
       reason: 'network_or_timeout',

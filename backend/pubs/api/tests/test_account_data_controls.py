@@ -2047,6 +2047,7 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
         ),
         "pub_visits": "visits[*]",
         "pub_ratings": "ratings[*]",
+        "pub_rating_tombstones": "removed_ratings[*].cache_key",
         "contribution_logs": "community_contributions[*].payload",
         "pub_reports": "pub_reports[*].reason",
         "feedback_reports": "feedback_reports[*].message",

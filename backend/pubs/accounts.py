@@ -125,6 +125,7 @@ from pubs.models import (
     PubNameCorrection,
     PubPriceIndex,
     PubRating,
+    PubRatingTombstone,
     PubReport,
     PubVisit,
     PushDevice,
@@ -2323,6 +2324,21 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     _delete_or_move_account_rows(
         PubRating, source=source, target=target, unique_fields=("cache_key",)
     )
+    # Keep the later removal time when both accounts removed the same pub.
+    for tombstone in PubRatingTombstone.objects.filter(account=source):
+        PubRatingTombstone.objects.filter(
+            account=target,
+            cache_key=tombstone.cache_key,
+            client_updated_at__lt=tombstone.client_updated_at,
+        ).update(client_updated_at=tombstone.client_updated_at)
+    _delete_or_move_account_rows(
+        PubRatingTombstone, source=source, target=target, unique_fields=("cache_key",)
+    )
+    # Merging never deletes a rating: a live row beats a removal marker.
+    PubRatingTombstone.objects.filter(
+        account=target,
+        cache_key__in=PubRating.objects.filter(account=target).values("cache_key"),
+    ).delete()
     # Visits are mutable. Preserve the newer revision before applying deletion
     # markers, otherwise an old target row can discard a resumed source visit.
     for visit in PubVisit.objects.filter(account=source):
