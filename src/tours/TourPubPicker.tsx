@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
+import { haversineMeters } from '@/compass/distance';
 import { checkLocationPermission } from '@/compass/permissions';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
@@ -18,6 +19,8 @@ import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import type { TourStop } from './model';
 import { TourMap, tourRegion } from './TourMap';
+
+const NEARBY_LIMIT = 50;
 
 export interface TourPubPickerProps {
   visible: boolean;
@@ -34,15 +37,30 @@ export function TourPubPicker(props: TourPubPickerProps) {
 function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPubPickerProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // The map no longer scrolls away, so even expanded it leaves room for the list and the button.
+  const expandedMapHeight = Math.min(420, Math.round(useWindowDimensions().height / 2));
   const focused = useIsFocused();
   const [query, setQuery] = useState('');
   const [pubs, setPubs] = useState<Pub[]>([]);
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
-  const visiblePubs = filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys });
   const [status, setStatus] = useState<TourPubSearchResult['status']>('ok');
   const [loading, setLoading] = useState(false);
   const [region, setRegion] = useState<Region>(() => tourRegion(stops));
+  // Without a typed name, the pubs nearest the middle of the map come first and follow it as you pan.
+  const browsing = query.trim().length < 2;
+  const visiblePubs = useMemo(() => {
+    const allowed = filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys });
+    if (!browsing) return allowed;
+    const center = { lat: region.latitude, lng: region.longitude };
+    return allowed.map((pub) => ({ pub, meters: haversineMeters(center, pub) }))
+      .sort((a, b) => a.meters - b.meters).slice(0, NEARBY_LIMIT).map(({ pub }) => pub);
+  }, [browsing, pubs, region.latitude, region.longitude, reportedCacheKeys, reportedPubIds]);
+  const list = useRef<ScrollView>(null);
+  // A moved map reorders the list, so show its new nearest pubs from the top.
+  useEffect(() => {
+    if (browsing) list.current?.scrollTo({ y: 0, animated: false });
+  }, [browsing, region.latitude, region.longitude]);
   const [previewCandidate, setPreview] = useState<Pub | null>(null);
   const visiblePreview = previewCandidate && filterTourPubs([previewCandidate], { reportedPubIds, reportedCacheKeys }).length ? previewCandidate : null;
   // A rename made on the pub page must reach the stop that gets added.
@@ -148,7 +166,7 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
     const stop = stops.find((item) => item.id === id);
     if (stop) choosePreview({ id: stop.pubId, name: stop.name, lat: stop.lat, lng: stop.lon, address: stop.address });
   };
-  const map = <TourMap stops={stops} selectedId={stops.find((stop) => stop.pubId === preview?.id)?.id ?? null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? 420 : 215} region={region} onRegionChange={moveMap} candidates={visiblePubs.filter((pub) => !alreadyAdded(pub)).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />;
+  const map = <TourMap stops={stops} selectedId={stops.find((stop) => stop.pubId === preview?.id)?.id ?? null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? expandedMapHeight : 215} region={region} onRegionChange={moveMap} candidates={visiblePubs.filter((pub) => !alreadyAdded(pub)).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />;
 
   return <View accessibilityViewIsModal style={[styles.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
@@ -161,8 +179,8 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
         <TextInput maxFontSizeMultiplier={1.3} style={styles.input} placeholder={t.tours.searchPlaceholder} placeholderTextColor={Colors.mutedText} value={query} onChangeText={changeQuery} autoCorrect={false} returnKeyType="search" onSubmitEditing={() => { Keyboard.dismiss(); if (query.trim().length >= 2) void search(query); }} accessibilityLabel={t.tours.searchPlaceholder} maxLength={120} />
         {!!query && <Pressable accessibilityRole="button" accessibilityLabel={t.tours.clearSearch} style={styles.clear} onPress={() => changeQuery('')}><XIcon size={18} color={Colors.foamMuted} /></Pressable>}
       </View>}
-      <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
-        {!keyboardVisible && map}
+      {!keyboardVisible && map}
+      <ScrollView ref={list} style={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
         {preview ? <View style={styles.preview}>
           <Text maxFontSizeMultiplier={1.3} style={styles.pubTitle}>{preview.name}</Text>
           {!!(preview.address || preview.city) && <Text maxFontSizeMultiplier={1.3} style={styles.address}>{[preview.address, preview.city].filter(Boolean).join(', ')}</Text>}
