@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
+import { haversineMeters } from '@/compass/distance';
 import { checkLocationPermission } from '@/compass/permissions';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
@@ -18,6 +19,8 @@ import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import type { TourStop } from './model';
 import { TourMap, tourRegion } from './TourMap';
+
+const NEARBY_LIMIT = 50;
 
 export interface TourPubPickerProps {
   visible: boolean;
@@ -39,10 +42,18 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const [pubs, setPubs] = useState<Pub[]>([]);
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
-  const visiblePubs = filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys });
   const [status, setStatus] = useState<TourPubSearchResult['status']>('ok');
   const [loading, setLoading] = useState(false);
   const [region, setRegion] = useState<Region>(() => tourRegion(stops));
+  // Without a typed name, the pubs nearest the middle of the map come first and follow it as you pan.
+  const browsing = query.trim().length < 2;
+  const visiblePubs = useMemo(() => {
+    const allowed = filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys });
+    if (!browsing) return allowed;
+    const center = { lat: region.latitude, lng: region.longitude };
+    return allowed.map((pub) => ({ pub, meters: haversineMeters(center, pub) }))
+      .sort((a, b) => a.meters - b.meters).slice(0, NEARBY_LIMIT).map(({ pub }) => pub);
+  }, [browsing, pubs, region.latitude, region.longitude, reportedCacheKeys, reportedPubIds]);
   const [previewCandidate, setPreview] = useState<Pub | null>(null);
   const visiblePreview = previewCandidate && filterTourPubs([previewCandidate], { reportedPubIds, reportedCacheKeys }).length ? previewCandidate : null;
   // A rename made on the pub page must reach the stop that gets added.
@@ -161,8 +172,8 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
         <TextInput maxFontSizeMultiplier={1.3} style={styles.input} placeholder={t.tours.searchPlaceholder} placeholderTextColor={Colors.mutedText} value={query} onChangeText={changeQuery} autoCorrect={false} returnKeyType="search" onSubmitEditing={() => { Keyboard.dismiss(); if (query.trim().length >= 2) void search(query); }} accessibilityLabel={t.tours.searchPlaceholder} maxLength={120} />
         {!!query && <Pressable accessibilityRole="button" accessibilityLabel={t.tours.clearSearch} style={styles.clear} onPress={() => changeQuery('')}><XIcon size={18} color={Colors.foamMuted} /></Pressable>}
       </View>}
+      {!keyboardVisible && map}
       <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
-        {!keyboardVisible && map}
         {preview ? <View style={styles.preview}>
           <Text maxFontSizeMultiplier={1.3} style={styles.pubTitle}>{preview.name}</Text>
           {!!(preview.address || preview.city) && <Text maxFontSizeMultiplier={1.3} style={styles.address}>{[preview.address, preview.city].filter(Boolean).join(', ')}</Text>}
