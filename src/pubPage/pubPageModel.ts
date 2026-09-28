@@ -160,3 +160,28 @@ export function isSamePubRecord(
   const name = (value: string) => value.trim().toLocaleLowerCase('cs');
   return Boolean(record.name) && name(record.name as string) === name(pub.name);
 }
+
+/**
+ * The same event with its times moved to Prague wall-clock, for display only:
+ * a phone in another time zone still shows 19:00 for a 19:00 quiz in Prague.
+ * Filtering stays on the real instants.
+ */
+export function inPubTime(event: PubEvent): PubEvent {
+  return {
+    ...event,
+    startsAt: pubWallClock(new Date(event.startsAt)).toISOString(),
+    endsAt: pubWallClock(new Date(event.endsAt)).toISOString(),
+  };
+}
+
+/**
+ * Fill what a lossy opener left out (a tour stop has no owner id, a board row
+ * no hours) from the loaded catalog copy of the same pub.
+ */
+export function withCatalogDetails<T extends object>(handedOff: T, catalog: T | undefined): T {
+  if (!catalog) return handedOff;
+  const defined = Object.fromEntries(
+    Object.entries(handedOff).filter(([, value]) => value !== undefined && value !== ''),
+  );
+  return { ...catalog, ...defined } as T;
+}

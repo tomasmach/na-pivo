@@ -111,6 +111,8 @@ import { openPubPage } from './openPubPage';
 import {
   calendarDaysBetween,
   confirmedAmenityKeys,
+  inPubTime,
+  withCatalogDetails,
   pubWallClock,
   currentTaps,
   dayKeyOf,
@@ -219,11 +221,13 @@ function useNow(): Date {
 function useInitialPub(key: string, name: string, lat: number, lng: number): Pub | null {
   const remembered = usePubPageStore((s) => (key ? s.pubs[key] : undefined));
   return useMemo(() => {
-    if (remembered) return remembered;
-    if (!key || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     const loaded = getAllLoadedPubs().find(
-      (pub) => geohash8(pub.lat, pub.lng) === key && pub.name === name,
+      (pub) =>
+        (remembered?.id && pub.id === remembered.id) ||
+        (geohash8(pub.lat, pub.lng) === key && pub.name === (remembered?.name ?? name)),
     );
+    if (remembered) return withCatalogDetails(remembered, loaded);
+    if (!key || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     return loaded ?? { id: '', name, lat, lng };
   }, [remembered, key, name, lat, lng]);
 }
@@ -402,7 +406,8 @@ export default function PubPageScreen() {
   }, [key, identityKey, pubName, mappingOpen]);
 
   const now = useNow();
-  const shownEvents = useMemo(() => visibleEvents(events, now), [events, now]);
+  // Filter on real instants, then show in Prague time.
+  const shownEvents = useMemo(() => visibleEvents(events, now).map(inPubTime), [events, now]);
 
   const weeklyHours = useMemo<WeeklyHours | null>(() => {
     if (!pub) return null;
@@ -644,7 +649,11 @@ export default function PubPageScreen() {
   const hasBeers = typeof beersLastWeek === 'number' && beersLastWeek > 0;
   const shownTaps = tapsExpanded ? taps : taps.slice(0, TAPS_COLLAPSED);
   const hiddenTaps = taps.length - shownTaps.length;
-  const tapsAge = pub.beersUpdatedAt ? priceAgeLabel(pub.beersUpdatedAt) : null;
+  // A local edit of the list is newer than the server's date; say nothing
+  // rather than pin the old menu's age on the new beers.
+  const localTaps =
+    Boolean(override?.beers) && isBeerListOverrideCurrent(override, pub.beersUpdatedAt);
+  const tapsAge = !localTaps && pub.beersUpdatedAt ? priceAgeLabel(pub.beersUpdatedAt) : null;
   const verdictLabel =
     rating?.verdict === 'like'
       ? t.myBeers.verdictLike
@@ -743,7 +752,7 @@ export default function PubPageScreen() {
                 first
                 amber
                 icon={<ClockIcon size={18} color={Colors.amber} />}
-                title={t.pubDetail.eventLine(eventWhenLabel(firstEvent, now), firstEvent.title)}
+                title={t.pubDetail.eventLine(eventWhenLabel(firstEvent, pubNow), firstEvent.title)}
                 subtitle={
                   shownEvents.length > 1
                     ? t.pubDetail.eventsMore(shownEvents.length - 1)
@@ -834,7 +843,7 @@ export default function PubPageScreen() {
         <Band />
         <SectionTitle title={t.pubDetail.eventsHeading} />
         {shownEvents.map((event, index) => (
-          <EventRow key={event.id} event={event} now={now} first={index === 0} />
+          <EventRow key={event.id} event={event} now={pubNow} first={index === 0} />
         ))}
         <LinkRow
           first={shownEvents.length === 0}
