@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   useColorScheme,
+  useWindowDimensions,
   View,
   type StyleProp,
   type ViewStyle,
@@ -29,10 +30,11 @@ import {
   BeerIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CompassIcon,
   MenuIcon,
-  ExternalLinkIcon,
   FlagIcon,
   ListFilterIcon,
+  ListIcon,
   LocateFixedIcon,
   MapPinPlusIcon,
   MapPinnedIcon,
@@ -44,13 +46,13 @@ import {
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { PubSearchButton } from '@/search/PubSearchButton';
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
-import { GlowButton } from '@/components/shared/GlowButton';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import type { Pub } from '@/data/pubs';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
+import { useToastStore } from '@/stores/toastStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
 import { fetchPubBeersLastWeek, type PubBeersByKey } from '@/data/pubBeersClient';
 import {
@@ -192,13 +194,11 @@ function showsStatusDot(tone: MetaTone): boolean {
   return tone !== 'neutral';
 }
 
+/** Above this text size the action gets its own row; beside it the hours would be a few words wide. */
+const STACKED_ACTION_FONT_SCALE = 1.1;
+
 interface PlaceCardProps {
-  /**
-   * The loud line: the pub's name when one is selected, otherwise what the
-   * viewport is showing. There is no separate section title — the layer switch
-   * in the footer already names the mode, and "Parta teď" printed directly above
-   * a highlighted "Parta teď" segment was the same word twice.
-   */
+  /** The selected pub, friend or city. The name owns the full card width. */
   title: string;
   /** Opening hours, with the status dot. Null when the card is not about a pub. */
   meta: string | null;
@@ -209,19 +209,25 @@ interface PlaceCardProps {
   beers?: string | null;
   /** Star rating, rendered with a ★ glyph ahead of the fact text. */
   rating?: { value: string; count: string | null } | null;
-  titlePress?: {
+  /** Opens the pub detail. Only a pub has one; a friend or a city leaves it out. */
+  open?: {
     onPress: () => void;
     accessibilityLabel: string;
   };
-  door?: {
+  action: {
     label: string;
     onPress: () => void;
     accessibilityLabel: string;
+    /** The compass glyph belongs to "Namířit kompas" only. */
+    compass: boolean;
   };
-  /** The layer switch, rendered as the card's own footer. */
-  layers: React.ReactNode;
 }
 
+/**
+ * The card of a selection. It replaces the layer switch at the bottom of the
+ * map instead of stacking on it, and it carries its own primary action, so a
+ * selection costs one short card rather than a card, a switch and a 62pt button.
+ */
 function PlaceCard({
   title,
   meta,
@@ -229,119 +235,112 @@ function PlaceCard({
   fact,
   beers,
   rating,
-  titlePress,
-  door,
-  layers,
+  open,
+  action,
 }: PlaceCardProps) {
+  const { fontScale } = useWindowDimensions();
+  const stacked = fontScale > STACKED_ACTION_FONT_SCALE;
   const ratingText = rating
     ? rating.count
       ? `${rating.value} (${rating.count})`
       : rating.value
     : null;
-  // Rating and city share the hours line. Two stacked half-empty lines next to a
-  // vertically centred door aligned with neither of them.
   const detailText = [ratingText, fact].filter(Boolean).join(' · ');
-  const titleContent = (
-    <>
-      {/* The name owns the full card width. The door used to sit beside it and
-          pushed two-word pub names onto a second line for no reason. */}
-      <Text
-        style={styles.placeTitle}
-        numberOfLines={2}
-        maxFontSizeMultiplier={FontScaleCap.heading}
-      >
-        {title}
-      </Text>
-      {titlePress ? <ExternalLinkIcon size={15} color={Colors.amber} /> : null}
-    </>
-  );
 
   return (
     <View style={styles.placeCard}>
       <CardSheen />
 
-      {titlePress ? (
-        <Pressable
-          onPress={titlePress.onPress}
-          hitSlop={12}
-          style={({ pressed }) => [styles.placeTitleRow, pressed && styles.pressedSoft]}
-          accessibilityRole="button"
-          accessibilityLabel={titlePress.accessibilityLabel}
+      <Pressable
+        onPress={open?.onPress}
+        disabled={!open}
+        accessible={Boolean(open)}
+        style={({ pressed }) => [styles.placeTitleRow, pressed && styles.pressedSoft]}
+        accessibilityRole={open ? 'button' : undefined}
+        accessibilityLabel={open ? `${title}, ${open.accessibilityLabel}` : undefined}
+      >
+        <Text
+          style={styles.placeTitle}
+          numberOfLines={2}
+          maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {titleContent}
-        </Pressable>
-      ) : (
-        <View style={styles.placeTitleRow}>{titleContent}</View>
-      )}
+          {title}
+        </Text>
+        {open ? <ChevronRightIcon size={18} color={Colors.mutedText} /> : null}
+      </Pressable>
 
-      {/* §5.4: the hours keep a line of their own, full width — they are what the
-          person on the street came for and they must never truncate first. */}
-      {meta ? (
-        <View style={styles.placeMetaRow}>
-          {showsStatusDot(metaTone) ? (
-            <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
+      <View style={stacked ? styles.placeBottomStacked : styles.placeBottomRow}>
+        {/* The same door as the title, for thumbs; VoiceOver reads the lines
+            as text and opens the detail from the title button. */}
+        <Pressable
+          onPress={open?.onPress}
+          disabled={!open}
+          accessible={false}
+          style={({ pressed }) => [
+            !stacked && styles.placeDetailsBeside,
+            pressed && styles.pressedSoft,
+          ]}
+        >
+          {/* §5.4: the hours are what the person on the street came for, so
+              they wrap instead of truncating first. */}
+          {meta ? (
+            <View style={styles.placeMetaRow}>
+              {showsStatusDot(metaTone) ? (
+                <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
+              ) : null}
+              <Text
+                style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
+                numberOfLines={2}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {meta}
+              </Text>
+            </View>
           ) : null}
-          <Text
-            style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {meta}
-          </Text>
-        </View>
-      ) : null}
 
-      {beers ? (
-        <View style={styles.placeMetaRow}>
-          <BeerIcon size={13} color={Colors.mutedText} />
-          <Text
-            style={styles.placeFact}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {beers}
-          </Text>
-        </View>
-      ) : null}
+          {beers ? (
+            <View style={styles.placeMetaRow}>
+              <BeerIcon size={13} color={Colors.mutedText} />
+              <Text
+                style={styles.placeFact}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {beers}
+              </Text>
+            </View>
+          ) : null}
 
-      {/* The door sits on the quiet line, not beside the name and not centred
-          against the whole block: it is the shortest line, so it has the room,
-          and sharing one row means the two halves share one baseline. */}
-      <View style={styles.placeInfoRow}>
-        <View style={styles.placeFactRow}>
-          {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
           {detailText ? (
-            <Text
-              style={styles.placeFact}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {detailText}
-            </Text>
+            <View style={styles.placeMetaRow}>
+              {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
+              <Text
+                style={styles.placeFact}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {detailText}
+              </Text>
+            </View>
           ) : null}
-        </View>
+        </Pressable>
 
-        {door ? (
-          <Pressable
-            onPress={door.onPress}
-            hitSlop={12}
-            style={({ pressed }) => [styles.placeDoor, pressed && styles.pressedSoft]}
-            accessibilityRole="button"
-            accessibilityLabel={door.accessibilityLabel}
+        <Pressable
+          onPress={action.onPress}
+          style={({ pressed }) => [styles.placeAction, pressed && styles.pressedSoft]}
+          accessibilityRole="button"
+          accessibilityLabel={action.accessibilityLabel}
+        >
+          {action.compass ? <CompassIcon size={18} color={Colors.stout} /> : null}
+          <Text
+            style={styles.placeActionLabel}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            <Text
-              style={styles.placeDoorLabel}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {door.label}
-            </Text>
-            <ChevronRightIcon size={15} color={Colors.amber} />
-          </Pressable>
-        ) : null}
+            {action.label}
+          </Text>
+        </Pressable>
       </View>
-
-      <View style={styles.placeLayers}>{layers}</View>
     </View>
   );
 }
@@ -353,6 +352,10 @@ function PlaceCard({
  * name of the active one — so the map's main mode switch was two taps deep and
  * looked like a label. Same segmented track as the Kompas/Mapa switch: neutral
  * foam, never a second amber surface.
+ *
+ * Segments are as wide as their labels plus an equal share of what is left, so
+ * the count after "Parta teď" takes room from "V okolí" instead of squeezing
+ * its own label.
  */
 function LayerSwitch({
   layer,
@@ -392,14 +395,15 @@ function LayerSwitch({
               numberOfLines={1}
               adjustsFontSizeToFit
               minimumFontScale={0.85}
-              maxFontSizeMultiplier={FontScaleCap.body}
+              maxFontSizeMultiplier={FontScaleCap.heading}
             >
               {segment.label}
             </Text>
             {segment.badge ? (
               <Text
                 style={[styles.layerBadge, active && styles.layerLabelActive]}
-                maxFontSizeMultiplier={FontScaleCap.body}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.display}
               >
                 {segment.badge > 9 ? '9+' : segment.badge}
               </Text>
@@ -1165,22 +1169,8 @@ export default function BeerMapScreen({
         onUndo: refresh,
       };
     }
-    if (beersOnly) {
-      return {
-        kind: 'rapid',
-        text: t.map.beersOnlyNudge,
-        confirmLabel: t.compass.nudgeFiltersClear,
-        onConfirm: () => setBeersOnly(false),
-      };
-    }
-    if (activeFilterCount > 0) {
-      return {
-        kind: 'rapid',
-        text: t.compass.nudgeFilters(activeFilterCount),
-        confirmLabel: t.compass.nudgeFiltersClear,
-        onConfirm: () => onApplyFilters(EMPTY_PUB_SEARCH_FILTERS),
-      };
-    }
+    // Active filters are the chip under the header, not a strip: they last the
+    // whole visit, and a full-width strip for that long was map taken away.
     if (loadingPubs) {
       return {
         kind: 'dopito',
@@ -1201,25 +1191,12 @@ export default function BeerMapScreen({
       return { kind: 'dopito', label: t.map.permissionHint, onPress: locate };
     }
     return null;
-  }, [
-    activeFilterCount,
-    layer,
-    loadingPubs,
-    locate,
-    onApplyFilters,
-    permissionState,
-    refresh,
-    region.latitudeDelta,
-    setBeersOnly,
-    stale,
-    beersOnly,
-  ]);
+  }, [layer, loadingPubs, locate, permissionState, refresh, region.latitudeDelta, stale]);
 
   const primaryAction = useMemo(() => {
     if (cardState.kind === 'pub' && selectedPub) {
       return {
         label: t.map.aimCompass,
-        subLabel: null as string | null,
         accessibilityLabel: t.map.aimCompass,
         onPress: () =>
           aimCompass({
@@ -1233,7 +1210,6 @@ export default function BeerMapScreen({
     if (cardState.kind === 'live' && selectedLive) {
       return {
         label: t.map.aimCompass,
-        subLabel: null as string | null,
         accessibilityLabel: t.map.aimCompass,
         onPress: () =>
           aimCompass({
@@ -1247,7 +1223,6 @@ export default function BeerMapScreen({
     if (cardState.kind === 'city' && selectedCity) {
       return {
         label: t.map.showMyPubs,
-        subLabel: null as string | null,
         accessibilityLabel: t.map.showMyPubs,
         onPress: () => focusCity(selectedCity),
       };
@@ -1259,7 +1234,6 @@ export default function BeerMapScreen({
     // Compiler rules treat its ref-capturing closures as a ref read in render.
     return {
       label: t.map.findMe,
-      subLabel: null as string | null,
       accessibilityLabel: t.a11y.mapLocate,
       onPress: locate,
     };
@@ -1369,6 +1343,18 @@ export default function BeerMapScreen({
     openAddPub,
     beersOnly,
   ]);
+
+  // "Jen kde se pilo" narrows the map like any filter, so the chip counts it too.
+  const filterCount = activeFilterCount + (beersOnly ? 1 : 0);
+  const openFilters = useCallback(() => {
+    // The beers toggle lives in the "…" sheet, next to the filters row.
+    if (activeFilterCount > 0) setFilterSheetOpen(true);
+    else setMoreOpen(true);
+  }, [activeFilterCount]);
+  const clearFilters = useCallback(() => {
+    if (activeFilterCount > 0) onApplyFilters(EMPTY_PUB_SEARCH_FILTERS);
+    setBeersOnly(false);
+  }, [activeFilterCount, onApplyFilters, setBeersOnly]);
 
   return (
     <View style={styles.root}>
@@ -1530,19 +1516,44 @@ export default function BeerMapScreen({
             <MenuIcon size={20} color={Colors.foamMuted} />
           </Pressable>
         </View>
-        <View style={styles.mapStatusRow} pointerEvents="box-none">
-          <View style={styles.nudgeWrap}>
-            <NudgeSlot nudge={nudge} />
+        {filterCount > 0 ? (
+          <View style={styles.filterChip}>
+            <Pressable
+              onPress={openFilters}
+              hitSlop={{ top: 4, bottom: 4, left: 8 }}
+              style={({ pressed }) => [styles.filterChipBody, pressed && styles.pressedSoft]}
+              accessibilityRole="button"
+              accessibilityLabel={`${t.compass.moreFilters}, ${t.compass.moreFiltersActive(filterCount)}`}
+            >
+              <ListFilterIcon size={15} color={Colors.amber} />
+              <Text
+                style={styles.filterChipLabel}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.heading}
+              >
+                {t.compass.moreFilters}
+              </Text>
+              <Text
+                style={styles.filterChipCount}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.display}
+              >
+                {filterCount}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={clearFilters}
+              hitSlop={{ top: 4, bottom: 4, right: 8 }}
+              style={({ pressed }) => [styles.filterChipClear, pressed && styles.pressedSoft]}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.mapFiltersClear}
+            >
+              <XIcon size={15} color={Colors.amber} />
+            </Pressable>
           </View>
-          <Pressable
-            onPress={locate}
-            style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={t.a11y.mapLocate}
-          >
-            <LocateFixedIcon size={19} color={Colors.amber} />
-          </Pressable>
+        ) : null}
+        <View style={styles.nudgeWrap} pointerEvents="box-none">
+          <NudgeSlot nudge={nudge} collapseWhenEmpty />
         </View>
       </View>
 
@@ -1553,65 +1564,63 @@ export default function BeerMapScreen({
         ]}
         pointerEvents="box-none"
       >
-        <PlaceCard
-          title={cardState.title}
-          meta={cardState.meta}
-          metaTone={cardState.metaTone}
-          fact={cardState.fact}
-          beers={'beers' in cardState ? cardState.beers : null}
-          rating={'rating' in cardState ? cardState.rating : null}
-          titlePress={
-            cardState.kind === 'pub' && selectedPub
-              ? {
-                  onPress: () =>
-                    void openPubInMaps(selectedDetailPub ?? selectedPub.pub),
-                  accessibilityLabel: t.a11y.pubPillRevealed(
-                    selectedPub.pub.name,
-                  ),
-                }
-              : undefined
-          }
-          door={
-            cardState.kind === 'pub'
-              ? {
-                  label: t.compass.mapPubLink,
-                  onPress: () => {
-                    trackUiInteraction('map_pub_detail_open');
-                    setDetailOpen(true);
-                  },
-                  accessibilityLabel: t.compass.mapPubLink,
-                }
-              : cardState.kind === 'idle'
-                ? {
-                    label: t.map.listLink,
-                    onPress: () => {
-                      trackUiInteraction('map_list_open');
-                      setListOpen(true);
-                    },
-                    accessibilityLabel: t.a11y.mapList,
-                  }
-                : undefined
-          }
-          layers={
+        <Pressable
+          onPress={locate}
+          style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t.a11y.mapLocate}
+        >
+          <LocateFixedIcon size={20} color={Colors.amber} />
+        </Pressable>
+        {/* One row at the bottom, never two: the layers when nothing is picked,
+            the selection once something is. Tapping the empty map goes back. */}
+        {cardState.kind === 'idle' ? (
+          <View style={styles.dock}>
             <LayerSwitch
               layer={layer}
               liveCount={visibleLivePubs.length}
               onSelect={selectLayer}
             />
-          }
-        />
-        {/* Only a selection earns a button. */}
-        {cardState.kind !== 'idle' ? (
-          <GlowButton
-            label={primaryAction.label}
-            subLabel={primaryAction.subLabel}
-            onPress={primaryAction.onPress}
-            variant="primary"
-            glow="soft"
-            height={62}
-            accessibilityLabel={primaryAction.accessibilityLabel}
+            <Pressable
+              onPress={() => {
+                trackUiInteraction('map_list_open');
+                setListOpen(true);
+              }}
+              style={({ pressed }) => [styles.dockListButton, pressed && styles.pressedSoft]}
+              accessibilityRole="button"
+              accessibilityLabel={`${t.a11y.mapList}, ${cardState.title}`}
+            >
+              <ListIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+        ) : (
+          <PlaceCard
+            title={cardState.title}
+            meta={cardState.meta}
+            metaTone={cardState.metaTone}
+            fact={cardState.fact}
+            beers={'beers' in cardState ? cardState.beers : null}
+            rating={'rating' in cardState ? cardState.rating : null}
+            open={
+              cardState.kind === 'pub'
+                ? {
+                    onPress: () => {
+                      trackUiInteraction('map_pub_detail_open');
+                      setDetailOpen(true);
+                    },
+                    accessibilityLabel: t.compass.mapPubLink,
+                  }
+                : undefined
+            }
+            action={{
+              label: primaryAction.label,
+              onPress: primaryAction.onPress,
+              accessibilityLabel: primaryAction.accessibilityLabel,
+              compass: cardState.kind !== 'city',
+            }}
           />
-        ) : null}
+        )}
       </View>
 
       <Modal
@@ -1646,7 +1655,7 @@ export default function BeerMapScreen({
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.heading}
                 >
-                  {layer === 'friends' ? t.map.layerFriends : t.map.listTitle}
+                  {layer === 'friends' ? t.map.layerFriends : viewportHeadline}
                 </Text>
                 <Pressable
                   onPress={() => setListOpen(false)}
@@ -1660,6 +1669,15 @@ export default function BeerMapScreen({
                   <XIcon size={20} color={Colors.foamMuted} />
                 </Pressable>
               </View>
+              {layer !== 'friends' && viewportDetail ? (
+                <Text
+                  style={styles.listSubtitle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {viewportDetail}
+                </Text>
+              ) : null}
               {layer === 'friends' ? (
                 <FlatList
                   style={styles.list}
@@ -1823,6 +1841,11 @@ export default function BeerMapScreen({
               : 'unknown'
           }
           onClose={() => setDetailOpen(false)}
+          onNavigate={() => {
+            void openPubInMaps(selectedDetailPub ?? selectedPub.pub).catch(() =>
+              useToastStore.getState().show(t.pubSearch.navigationFailed),
+            );
+          }}
           onReport={() => {
             setDetailOpen(false);
             setTimeout(() => setReportOpen(true), 250);
@@ -1864,12 +1887,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: Spacing.sm,
   },
-  mapStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: Spacing.sm,
-    paddingRight: 12,
-  },
   // The only place in the app where the overflow glyph needs a surface under
   // it: everywhere else it sits on stout, here it floats over a light map and
   // a bare muted glyph simply disappears into the streets. Same dark pill as
@@ -1877,15 +1894,15 @@ const styles = StyleSheet.create({
   // Round glyph target that has to stay legible over the map, so unlike the
   // header buttons on the tácek screens it carries its own surface.
   mapGlyphButton: {
-    width: 40,
-    height: 40,
+    alignSelf: 'flex-end',
+    width: HitArea.min,
+    height: HitArea.min,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.stout, 0.94),
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.16),
-    marginRight: Spacing.sm,
     ...softDrop(),
   },
   moreButton: {
@@ -1899,8 +1916,50 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.12),
   },
   nudgeWrap: {
-    flex: 1,
+    paddingTop: Spacing.sm,
     paddingHorizontal: 24,
+  },
+  // A filter lasts the whole visit, so it is a chip in the corner, not a strip
+  // across the map. The body opens the filters, the cross clears them.
+  filterChip: {
+    alignSelf: 'flex-start',
+    marginTop: Spacing.sm,
+    marginLeft: 12,
+    height: 36,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.5),
+    ...softDrop(),
+  },
+  filterChipBody: {
+    height: '100%',
+    paddingLeft: 12,
+    paddingRight: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterChipLabel: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 14,
+    color: Colors.amber,
+    includeFontPadding: false,
+  },
+  filterChipCount: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 14,
+    color: Colors.amber,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  filterChipClear: {
+    height: '100%',
+    paddingLeft: 4,
+    paddingRight: 10,
+    justifyContent: 'center',
   },
 
   pinHit: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
@@ -2059,38 +2118,52 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     gap: 12,
+  },
+  dock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  dockListButton: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.16),
+    ...softDrop(),
   },
   // Same surface as every hero card, only shorter and floating over the map.
   // `minHeight`, not `height`: with the biggest system font the rows grow instead
   // of getting shaved off, and the stack is anchored to the bottom anyway.
   placeCard: {
     ...CardSurface.card,
-    paddingTop: 16,
-    paddingBottom: 10,
+    paddingTop: 14,
+    paddingBottom: 14,
   },
-  placeInfoRow: {
+  placeBottomRow: {
     marginTop: 2,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
   },
-  placeFactRow: {
-    flexShrink: 1,
+  placeBottomStacked: {
+    marginTop: 2,
+    gap: 12,
+  },
+  placeDetailsBeside: {
+    flex: 1,
     minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
   },
   placeTitleRow: {
-    flexShrink: 1,
-    minWidth: 0,
     minHeight: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 2,
   },
   placeTitle: {
     flexShrink: 1,
@@ -2101,7 +2174,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   placeMetaRow: {
-    marginTop: 6,
+    marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -2128,48 +2201,54 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
-  placeLayers: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-  },
   // Shorter than HitArea.min so the quiet line stays a line — the 12 pt hitSlop
   // on the Pressable puts the real target back over the minimum.
-  placeDoor: {
-    minHeight: 34,
+  // Compact primary: the card's only amber surface, no glow (§6.1). Never
+  // shrinks, so the label stays whole and the details column gives way.
+  placeAction: {
+    flexShrink: 0,
+    minHeight: 48,
+    paddingHorizontal: 18,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    gap: 6,
   },
-  placeDoorLabel: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.amber,
+  placeActionLabel: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 16,
+    color: Colors.stout,
     includeFontPadding: false,
   },
 
   // — Layer switch (§2.2: neutral track, never a second amber surface) —
   layerTrack: {
-    height: 38,
-    padding: 3,
+    flex: 1,
+    minWidth: 0,
+    height: 48,
+    padding: 4,
     borderRadius: Radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(Colors.foam, 0.04),
+    backgroundColor: withAlpha(Colors.stout, 0.94),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.08),
+    borderColor: withAlpha(Colors.foam, 0.16),
+    ...softDrop(),
   },
   layerSegment: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
     minWidth: 0,
-    height: 30,
+    height: 40,
     borderRadius: Radius.pill,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: 4,
   },
   layerSegmentActive: {
     backgroundColor: withAlpha(Colors.foam, 0.1),
@@ -2177,7 +2256,7 @@ const styles = StyleSheet.create({
   layerLabel: {
     flexShrink: 1,
     fontFamily: Fonts.display.bold,
-    fontSize: 13,
+    fontSize: 14,
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
@@ -2185,6 +2264,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
   },
   layerBadge: {
+    flexShrink: 0,
     fontFamily: Fonts.display.extrabold,
     fontSize: 12,
     color: Colors.amber,
@@ -2233,6 +2313,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
+    includeFontPadding: false,
+  },
+  listSubtitle: {
+    marginTop: -Spacing.xs,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    color: Colors.mutedText,
     includeFontPadding: false,
   },
   closeButton: {
