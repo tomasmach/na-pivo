@@ -16,6 +16,7 @@ const mockCancelScheduledNotificationAsync = jest.fn(async (identifier: string) 
 const mockGetLastNotificationResponseAsync = jest.fn();
 const mockPresented: string[] = [];
 const mockPresentedAt = new Map<string, number>();
+const mockScheduledContent = new Map<string, { title: string; body: string }>();
 const mockDismissNotificationAsync = jest.fn(async (identifier: string) => {
   mockPresented.splice(mockPresented.indexOf(identifier), 1);
 });
@@ -36,7 +37,7 @@ jest.mock('expo-notifications', () => ({
   scheduleNotificationAsync: mockScheduleNotificationAsync,
   cancelScheduledNotificationAsync: mockCancelScheduledNotificationAsync,
   getLastNotificationResponseAsync: mockGetLastNotificationResponseAsync,
-  getPresentedNotificationsAsync: jest.fn(async () => mockPresented.map((identifier) => ({ request: { identifier, content: { data: { fireAtMs: mockPresentedAt.get(identifier) } } } }))),
+  getPresentedNotificationsAsync: jest.fn(async () => mockPresented.map((identifier) => ({ request: { identifier, content: { ...mockScheduledContent.get(identifier), data: { fireAtMs: mockPresentedAt.get(identifier) } } } }))),
   dismissNotificationAsync: mockDismissNotificationAsync,
   clearLastNotificationResponseAsync: jest.fn(async () => undefined),
   addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
@@ -200,10 +201,23 @@ describe('scheduled reminders follow the plans', () => {
     mockPresented.length = 0;
   });
 
+  it('takes a shown "today" reminder away the next day', async () => {
+    await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
+    const [key, request] = [...mockScheduled.entries()][0];
+    mockPresented.push(key); mockPresentedAt.set(key, request.trigger.date);
+    mockScheduledContent.set(key, { title: request.content.title, body: request.content.body });
+    jest.setSystemTime(Date.parse('2026-10-03T08:00:00Z'));
+    await reconcileTourReminders();
+    expect(mockPresented).toEqual([]);
+  });
+
   it('takes a shown reminder away once the meetup moves, and keeps it while it is still true', async () => {
     const id = await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
     const [key, request] = [...mockScheduled.entries()][0];
     mockPresented.push(key); mockPresentedAt.set(key, request.trigger.date);
+    mockScheduledContent.set(key, { title: request.content.title, body: request.content.body });
+    // Delivered at 17:00 on the meetup day.
+    jest.setSystemTime(request.trigger.date);
     await reconcileTourReminders();
     expect(mockPresented).toEqual([key]);
     await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '21:00' }, id);

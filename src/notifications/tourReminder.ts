@@ -144,7 +144,11 @@ async function dismissOutdated(): Promise<void> {
       const plan = plans.get(id);
       // Zero skips the "already passed" check: a delivered reminder has passed by definition.
       const current = enabled && plan ? tourReminderFor(plan, tours, 0) : null;
-      if (current && current.fireAtMs === shown.request.content.data?.fireAtMs) continue;
+      // It says "today" and names the tour and first pub, so it stays only on its day and while that text still holds.
+      const stillTrue = current && plan && current.fireAtMs === shown.request.content.data?.fireAtMs &&
+        current.title === shown.request.content.title && current.body === shown.request.content.body &&
+        zonedDate(Date.now(), plan.timezone) === plan.scheduledDate;
+      if (stillTrue) continue;
       await Notifications.dismissNotificationAsync(id).catch(() => undefined);
     }
   } catch {
