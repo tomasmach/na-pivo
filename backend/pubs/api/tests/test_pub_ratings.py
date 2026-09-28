@@ -457,8 +457,8 @@ def test_removal_arriving_before_an_older_save_still_wins(client):
 
 
 @pytest.mark.django_db
-def test_legacy_delete_keeps_the_removed_copy_out(client):
-    """Apps before 1.1.4 remove with DELETE, which carries no client time."""
+def test_delete_keeps_the_removed_copy_out(client):
+    """DELETE carries no client time, so it blocks the removed copy and older."""
     token = _register(client)
     saved_at = "2026-06-12T19:45:00+02:00"
     client.put("/v1/pub-ratings", data=_payload(updated_at=saved_at), format="json", **_auth(token))
@@ -546,6 +546,40 @@ def test_export_lists_own_removed_ratings(client):
     assert resp.json()["removed_ratings"] == [
         {"cache_key": _KEY, "updated_at": "2026-06-12T17:45:00+00:00"}
     ]
+
+
+@pytest.mark.django_db
+def test_account_merge_keeps_the_later_removal_time(client):
+    from pubs.accounts import _merge_anonymous_account
+
+    token_source = _register(client)
+    token_target = _register(client, device_id=_OTHER_DEVICE_ID)
+    removals = (
+        (token_target, "2026-06-10T10:00:00+02:00"),
+        (token_source, "2026-06-12T10:00:00+02:00"),
+    )
+    for token, at in removals:
+        client.put(
+            "/v1/pub-ratings",
+            data=_payload(verdict=None, tag=None, note=None, updated_at=at),
+            format="json",
+            **_auth(token),
+        )
+    source = Account.objects.get(device_id=_DEVICE_ID)
+    target = Account.objects.get(device_id=_OTHER_DEVICE_ID)
+
+    with transaction.atomic():
+        _merge_anonymous_account(source, target)
+
+    # A rating saved between the two removals must stay removed after the claim.
+    between = client.put(
+        "/v1/pub-ratings",
+        data=_payload(updated_at="2026-06-11T10:00:00+02:00"),
+        format="json",
+        **_auth(token_target),
+    )
+    assert between.json()["applied"] is False
+    assert PubRating.objects.count() == 0
 
 
 # ---------------------------------------------------------------------------

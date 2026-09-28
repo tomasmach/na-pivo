@@ -3572,6 +3572,10 @@ class PubRatingView(APIView):
 
         try:
             with transaction.atomic():
+                # With no row yet there is nothing to lock, so a parallel save and
+                # removal could insert both a rating and a tombstone. Serializing
+                # the account's rating writes keeps exactly one of them.
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
                 existing = (
                     PubRating.objects.select_for_update()
                     .filter(account=request.user, cache_key=cache_key)
@@ -3644,10 +3648,11 @@ class PubRatingView(APIView):
         # Idempotent delete: the account filter means a cache_key belonging to
         # another account (or never rated, or already deleted) matches nothing →
         # deleted: false, never a hard 404, so the client can retry safely.
-        # Apps before 1.1.4 remove ratings this way. The request has no client
-        # time, so the tombstone blocks only the removed copy and older ones.
+        # Released apps remove with an empty PUT instead. DELETE has no client
+        # time, so its tombstone blocks only the removed copy and older ones.
         try:
             with transaction.atomic():
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
                 rating = (
                     PubRating.objects.select_for_update()
                     .filter(account=request.user, cache_key=cache_key)
