@@ -224,9 +224,12 @@ export default function EveningDetailScreen() {
               // flush to settle before the DELETE so it can't race ahead of an
               // in-flight POST and recreate the drink after we deleted it.
               if (!pulledFromQueue) {
+                // A beer the server refused never reached the cached account stats.
                 useAccountStore.getState().forgetDiaryDrink(
                   removed.drinkId,
-                  normalizeDrinkType(drink.drinkType) === 'beer' ? drink.at : undefined,
+                  normalizeDrinkType(drink.drinkType) === 'beer' && drink.syncStatus !== 'rejected'
+                    ? drink.at
+                    : undefined,
                 );
                 void flushDrinksQueue()
                   .then(() => enqueueDelete(removed.drinkId))

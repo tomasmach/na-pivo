@@ -183,6 +183,7 @@ jest.mock('@/stores/toursStore', () => ({
 import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import type { WireDrink } from '@/data/drinksClient';
+import type { AccountProfile } from '@/data/auth';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -831,6 +832,49 @@ describe('CounterScreen undo', () => {
     expect(mockTrackClientEvent).toHaveBeenCalledWith({
       event: 'drink_removed',
       context: { delivery_state: 'delivered' },
+    });
+  });
+
+  it('a receipt minus of a beer the server refused leaves the cached profile total alone', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+    await act(async () => {
+      jest.advanceTimersByTime(UNDO_WINDOW_MS);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const stats = {
+      totalBeers: 5,
+      firstBeerAt: '2026-01-01T18:00:00Z',
+      distinctPubs: 1,
+      ratingsCount: 0,
+      totalSpentCzk: 300,
+      maxVisitsToOnePub: 1,
+    };
+    act(() => {
+      useTallyStore.getState().markDrinkRejected('uuid-1');
+      useAccountStore.setState({ diarySnapshot: null, profile: { stats } as AccountProfile });
+    });
+
+    act(() => surface(renderer, copy.a11y.counterReceiptChip).props.onPress());
+    removeQueuedDrink.mockResolvedValueOnce(false);
+    await act(async () => {
+      sheetButton(
+        renderer,
+        copy.counter.receiptTitle,
+        copy.a11y.counterRemoveIdentity('Plzeň'),
+      ).props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
+    expect(useAccountStore.getState().profile?.stats).toEqual(stats);
+    act(() => {
+      useAccountStore.setState({ profile: null });
     });
   });
 });
