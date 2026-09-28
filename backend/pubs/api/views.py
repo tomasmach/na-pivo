@@ -9526,7 +9526,8 @@ def _nearby_menu_beer_suggestions(
 
     Only the searched area is used, so every suggestion finds at least one pub
     and nobody can list free-text names from the whole country. Names the
-    catalog already knows exactly are left to the catalog suggestions.
+    catalog already knows exactly are left to the catalog suggestions unless an
+    imported menu lists them.
     """
     normalized_query = normalize_beer_text(query)
     if len(normalized_query) < 2:
@@ -9534,12 +9535,17 @@ def _nearby_menu_beer_suggestions(
     prefix = f" {normalized_query}"
     pub_counts: dict[str, int] = {}
     displays: dict[str, str] = {}
+    # Imported menus never reach the brand index, so a catalog suggestion
+    # would not find those pubs; keep their names as menu suggestions.
+    imported_names: set[str] = set()
     for row in _nearby_menu_rows(lat=lat, lng=lng, radius_km=radius_km):
         for name, display in _menu_beer_names(row).items():
             if prefix not in f" {name}":
                 continue
             pub_counts[name] = pub_counts.get(name, 0) + 1
             displays.setdefault(name, display)
+            if isinstance(row, PubExternalBeerMenu):
+                imported_names.add(name)
 
     ranked = sorted(
         pub_counts,
@@ -9548,7 +9554,10 @@ def _nearby_menu_beer_suggestions(
     match_cache = BeerCatalogMatchCache()
     suggestions: list[BeerSuggestion] = []
     for name in ranked:
-        if match_beer(displays[name], fuzzy=False, match_cache=match_cache) is not None:
+        if (
+            name not in imported_names
+            and match_beer(displays[name], fuzzy=False, match_cache=match_cache) is not None
+        ):
             continue
         suggestions.append(
             BeerSuggestion(slug=name, name=displays[name], kind="menu", brand_slug="", brand_name="")

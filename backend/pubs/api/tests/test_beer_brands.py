@@ -16,7 +16,7 @@ from pubs.beer_catalog import (
     normalize_beer_payload,
 )
 from pubs.enrichment import geohash8
-from pubs.models import BeerBrand, BeerProduct, PubCommunityData
+from pubs.models import BeerBrand, BeerProduct, PubCommunityData, PubExternalBeerMenu
 
 from .query_helpers import count_beer_catalog_selects
 
@@ -203,3 +203,22 @@ def test_suggest_adds_nearby_menu_names_only_with_search_area(client):
         ("pivo z kocoura", "Pivo z Kocoura"),
     ]
     assert all(item["kind"] != "menu" for item in catalog_duplicate.json()["suggestions"])
+
+
+@pytest.mark.django_db
+def test_suggest_keeps_catalog_names_found_only_on_imported_menus(client):
+    PubExternalBeerMenu.objects.create(
+        cache_key=geohash8(50.08, 14.42),
+        name="Importovaná",
+        lat=50.08,
+        lng=14.42,
+        source=PubExternalBeerMenu.Source.PIVAROVA_MAPA,
+        source_id="import-1",
+        source_url="https://pivarovamapa.cz/",
+        beers=[{"name": "Kozel 11", "price_czk": 45, "volume_ml": 500}],
+    )
+
+    resp = client.get("/v1/beer-brands/suggest", {"q": "kozel 11", "lat": 50.08, "lng": 14.42})
+
+    menu = [item["name"] for item in resp.json()["suggestions"] if item["kind"] == "menu"]
+    assert menu == ["Kozel 11"]

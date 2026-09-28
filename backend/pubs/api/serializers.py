@@ -2184,7 +2184,7 @@ class BeerBrandSuggestQuerySerializer(serializers.Serializer):
 
     def validate(self, attrs: dict) -> dict:
         if ("lat" in attrs) != ("lng" in attrs):
-            raise serializers.ValidationError("lat and lng must be sent together.")
+            raise serializers.ValidationError(gettext("Pošli lat i lng zároveň."))
         attrs["radius_km"] = min(attrs["radius_km"], PUBS_NEAR_MAX_RADIUS_KM)
         return attrs
 
