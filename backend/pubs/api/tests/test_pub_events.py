@@ -108,6 +108,8 @@ def test_public_read_returns_only_active_verified_events():
             "starts_at": active.starts_at.isoformat(),
             "ends_at": active.ends_at.isoformat(),
             "verified_at": active.verified_at.isoformat(),
+            "pub_name": "U Tří píp",
+            "pub_external_id": "",
         }
     ]
 
@@ -178,6 +180,8 @@ def test_upcoming_window_lists_verified_events_for_next_two_weeks_by_start():
         "starts_at": in_three_days.starts_at.isoformat(),
         "ends_at": in_three_days.ends_at.isoformat(),
         "verified_at": in_three_days.verified_at.isoformat(),
+        "pub_name": "U Tří píp",
+        "pub_external_id": "",
     }
 
 

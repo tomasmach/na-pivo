@@ -115,6 +115,8 @@ import {
   calendarDaysBetween,
   confirmedAmenityKeys,
   inPubTime,
+  isEventOfPub,
+  sharesCell,
   withCatalogDetails,
   pubWallClock,
   currentTaps,
@@ -442,7 +444,17 @@ export default function PubPageScreen() {
 
   const now = useNow();
   // Filter on real instants, then show in Prague time.
-  const shownEvents = useMemo(() => visibleEvents(events, now).map(inPubTime), [events, now]);
+  const shownEvents = useMemo(
+    () =>
+      visibleEvents(pub ? events.filter((event) => isEventOfPub(event, pub)) : events, now).map(
+        inPubTime,
+      ),
+    [events, now, pub],
+  );
+  const cellIsShared = useMemo(
+    () => Boolean(pub) && sharesCell(getAllLoadedPubs(), key, pub as Pub, geohash8),
+    [pub, key],
+  );
 
   const weeklyHours = useMemo<WeeklyHours | null>(() => {
     if (!pub) return null;
@@ -707,7 +719,7 @@ export default function PubPageScreen() {
   const distance = position ? formatDistance(haversineMeters(position, pub)) : null;
   const firstEvent = shownEvents[0];
   const hasRating = typeof pub.rating === 'number' && pub.rating > 0;
-  const hasBeers = typeof beersLastWeek === 'number' && beersLastWeek > 0;
+  const hasBeers = !cellIsShared && typeof beersLastWeek === 'number' && beersLastWeek > 0;
   const shownTaps = tapsExpanded ? taps : taps.slice(0, TAPS_COLLAPSED);
   const hiddenTaps = taps.length - shownTaps.length;
   // A local edit of the list is newer than the server's date; say nothing

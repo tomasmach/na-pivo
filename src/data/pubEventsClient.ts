@@ -9,6 +9,9 @@ export interface PubEvent {
   startsAt: string;
   endsAt: string;
   verifiedAt: string;
+  /** The pub the event was suggested for; older backends leave it out. */
+  pubName?: string;
+  pubExternalId?: string;
 }
 
 interface WirePubEvent {
@@ -18,6 +21,8 @@ interface WirePubEvent {
   starts_at?: unknown;
   ends_at?: unknown;
   verified_at?: unknown;
+  pub_name?: unknown;
+  pub_external_id?: unknown;
 }
 
 export interface PubEventSuggestion {
@@ -59,6 +64,10 @@ function parseEvent(value: WirePubEvent): PubEvent | null {
     startsAt: value.starts_at,
     endsAt: value.ends_at,
     verifiedAt: value.verified_at,
+    ...(typeof value.pub_name === 'string' && value.pub_name ? { pubName: value.pub_name } : {}),
+    ...(typeof value.pub_external_id === 'string' && value.pub_external_id
+      ? { pubExternalId: value.pub_external_id }
+      : {}),
   };
 }
 

@@ -72,7 +72,7 @@ describe('pubEventsClient', () => {
       ok: true,
       json: async () => ({
         events: [
-          wire('saturday', '2026-07-25T18:00:00Z', '2026-07-25T22:00:00Z'),
+          { ...wire('saturday', '2026-07-25T18:00:00Z', '2026-07-25T22:00:00Z'), pub_name: 'U Tří píp', pub_external_id: '' },
           wire('ended', '2026-07-19T12:00:00Z', '2026-07-19T14:00:00Z'),
           wire('running', '2026-07-19T17:00:00Z', '2026-07-19T20:00:00Z'),
         ],
@@ -82,6 +82,10 @@ describe('pubEventsClient', () => {
     const result = await fetchUpcomingPubEvents('u2fkbnhz');
 
     expect(result?.map((event) => event.id)).toEqual(['running', 'saturday']);
+    // The pub it is for comes along when the server names it; a blank id stays out.
+    expect(result?.[1]).toMatchObject({ pubName: 'U Tří píp' });
+    expect(result?.[1]).not.toHaveProperty('pubExternalId');
+    expect(result?.[0]).not.toHaveProperty('pubName');
     expect(global.fetch).toHaveBeenCalledWith(
       'https://api.example.test/v1/pub-events?cache_key=u2fkbnhz&window=upcoming',
       expect.objectContaining({ signal: expect.any(Object) }),

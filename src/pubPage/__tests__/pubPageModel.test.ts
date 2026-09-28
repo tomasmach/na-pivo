@@ -7,6 +7,8 @@ import {
   eventStartTime,
   groupWeeklyHours,
   inPubTime,
+  isEventOfPub,
+  sharesCell,
   withCatalogDetails,
   isSamePubRecord,
   pubWallClock,
@@ -177,5 +179,25 @@ describe('withCatalogDetails', () => {
       openingHours: 'Mo-Su 10:00-22:00',
       userAddedClientId: 'client-1',
     });
+  });
+});
+
+describe('one cell, two pubs', () => {
+  const pub = { id: 'mapy:1', name: 'U Zlatého tygra' };
+  const quiz = event('quiz', new Date(2026, 8, 28, 19, 0), new Date(2026, 8, 28, 22, 0));
+
+  it('shows an event only on the pub it was suggested for', () => {
+    expect(isEventOfPub({ ...quiz, pubExternalId: 'mapy:1', pubName: 'Tygr' }, pub)).toBe(true);
+    expect(isEventOfPub({ ...quiz, pubExternalId: 'mapy:2', pubName: 'Vinárna vedle' }, pub)).toBe(false);
+    // An older backend does not say which pub, so the event stays.
+    expect(isEventOfPub(quiz, pub)).toBe(true);
+  });
+
+  it('notices another business in the cell', () => {
+    const cellOf = (lat: number) => (lat < 51 ? 'cell-a' : 'cell-b');
+    const tygr = { ...pub, lat: 50, lng: 14 };
+    expect(sharesCell([tygr], 'cell-a', pub, cellOf)).toBe(false);
+    expect(sharesCell([tygr, { id: 'mapy:2', name: 'Vinárna vedle', lat: 50, lng: 14 }], 'cell-a', pub, cellOf)).toBe(true);
+    expect(sharesCell([tygr, { id: 'mapy:3', name: 'Jinde', lat: 52, lng: 14 }], 'cell-a', pub, cellOf)).toBe(false);
   });
 });
