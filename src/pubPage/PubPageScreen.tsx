@@ -93,7 +93,7 @@ import {
 } from '@/stores/communityStore';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
-import { usePubPageStore } from '@/stores/pubPageStore';
+import { pubPageRef, usePubPageStore } from '@/stores/pubPageStore';
 import { selectPubRating, usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -640,10 +640,12 @@ export default function PubPageScreen() {
 
   const handleMapPub = useCallback(
     (target: Pub) => {
-      if (geohash8(target.lat, target.lng) === key) setMapOpen(false);
+      // The same cell can hold a neighbour; only this very pub just closes the map.
+      const samePub = pubPageRef(target) === ref || (Boolean(pub?.id) && target.id === pub?.id);
+      if (samePub) setMapOpen(false);
       else openPubPage(router, target);
     },
-    [key, router],
+    [pub?.id, ref, router],
   );
 
   const barHeight = Spacing.md + BAR_BUTTON + Math.max(insets.bottom, Spacing.sm);
