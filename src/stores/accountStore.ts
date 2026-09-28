@@ -357,18 +357,30 @@ export const useAccountStore = create<AccountState>((set, get) => {
         const snapshot = state.diarySnapshot;
         const row = snapshot?.data.drinks.find((drink) => drink.client_id === clientId);
         let removedBeerAt = beerAt;
-        if (row) removedBeerAt = normalizeDrinkType(row.drink_type) === 'beer' ? row.drank_at : undefined;
+        if (row) {
+          removedBeerAt =
+            normalizeDrinkType(row.drink_type) === 'beer' && !row.is_suspect ? row.drank_at : undefined;
+        }
         const stats = state.profile?.stats;
-        // The cached profile may still date the first beer by the removed one.
-        const datesFirstBeer =
-          removedBeerAt != null &&
-          stats?.firstBeerAt != null &&
-          Date.parse(removedBeerAt) <= Date.parse(stats.firstBeerAt);
+        // The cached profile still counts the removed beer, and may date the
+        // first beer by it, until it is fetched again.
+        const profile =
+          state.profile && stats && removedBeerAt != null
+            ? {
+                ...state.profile,
+                stats: {
+                  ...stats,
+                  totalBeers: Math.max(0, stats.totalBeers - 1),
+                  ...(stats.firstBeerAt != null &&
+                  Date.parse(removedBeerAt) <= Date.parse(stats.firstBeerAt)
+                    ? { firstBeerAt: null }
+                    : {}),
+                },
+              }
+            : state.profile;
         return {
           removedDrinkIds,
-          ...(datesFirstBeer && state.profile && stats
-            ? { profile: { ...state.profile, stats: { ...stats, firstBeerAt: null } } }
-            : {}),
+          profile,
           diarySnapshot: snapshot
             ? { ...snapshot, data: withoutRemovedDrinks(snapshot.data, removedDrinkIds) }
             : null,

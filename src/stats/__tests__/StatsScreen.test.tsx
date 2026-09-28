@@ -179,8 +179,9 @@ describe('StatsScreen', () => {
       useAccountStore.setState({ removedDrinkIds: new Set(['removed-just-now']) });
     });
 
+    let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
-      TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
@@ -190,6 +191,7 @@ describe('StatsScreen', () => {
     ]);
     await AsyncStorage.clear();
     act(() => {
+      renderer!.unmount();
       useAccountStore.setState({ removedDrinkIds: new Set() });
     });
   });
@@ -201,8 +203,9 @@ describe('StatsScreen', () => {
       });
     });
 
+    let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
-      TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
@@ -211,6 +214,7 @@ describe('StatsScreen', () => {
     expect(excluded).toContain('removed-119');
     expect(excluded).not.toContain('removed-19');
     act(() => {
+      renderer!.unmount();
       useAccountStore.setState({ removedDrinkIds: new Set() });
     });
   });
@@ -247,6 +251,7 @@ describe('StatsScreen', () => {
 
     expect(flatTexts(renderer!)).toContain(t.stats.emptyTitle);
     act(() => {
+      renderer!.unmount();
       useAccountStore.setState({ removedDrinkIds: new Set() });
     });
   });

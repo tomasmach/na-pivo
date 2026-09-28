@@ -343,6 +343,8 @@ describe('forgetDiaryDrink', () => {
 
     useAccountStore.getState().forgetDiaryDrink('first-local', firstBeerAt);
     expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBeNull();
+    // Offline, the profile total is the fallback and must drop the beer too.
+    expect(useAccountStore.getState().profile?.stats?.totalBeers).toBe(0);
   });
 
   it('keeps the drink out when a refresh that started earlier still returns it', async () => {
