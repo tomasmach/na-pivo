@@ -109,6 +109,7 @@ import { pubHoursLine, type PubHoursTone } from '@/utils/pubHoursLine';
 
 import { openPubPage } from './openPubPage';
 import {
+  calendarDaysBetween,
   confirmedAmenityKeys,
   currentTaps,
   dayKeyOf,
@@ -274,6 +275,35 @@ export default function PubPageScreen() {
   const info = useMemo(() => (pub ? pubInfoFromPub(pub) : undefined), [pub]);
   const facts = usePubInfoFacts(info);
   const override = useCommunityStore((s) => (key ? s.overrides[key] : undefined));
+
+  // Editing an own pub writes the catalog and returns here: pick up the new
+  // name or position, and reopen under the new cell if the pin moved.
+  const ownClientId = pub?.userAddedClientId;
+  useEffect(() => {
+    if (!ownClientId) return;
+    return usePubStore.subscribe((state, previous) => {
+      if (state.catalogRevision === previous.catalogRevision) return;
+      const fresh = getAllLoadedPubs().find((item) => item.userAddedClientId === ownClientId);
+      if (!fresh) return;
+      if (geohash8(fresh.lat, fresh.lng) !== key) {
+        openPubPage(router, fresh, { replace: true });
+        return;
+      }
+      setPub((current) =>
+        current
+          ? {
+              ...current,
+              id: fresh.id,
+              name: fresh.name,
+              lat: fresh.lat,
+              lng: fresh.lng,
+              address: fresh.address,
+              city: fresh.city,
+            }
+          : current,
+      );
+    });
+  }, [key, ownClientId, router]);
 
   // The map covers the page; an edge swipe or Android back must close it, not
   // pop the page.
@@ -598,9 +628,7 @@ export default function PubPageScreen() {
   // Work the header out from the same week the table below shows, including a
   // fresh local edit, so the two never disagree and the header follows the
   // clock. Only without a readable week does the server's answer stand.
-  const hours = pubHoursLine(
-    weeklyHours ? { ...pub, ...computeOpenState(weeklyHours, now) } : pub,
-  );
+  const hours = pubHoursLine(weeklyHours ? { ...pub, ...computeOpenState(weeklyHours, now) } : pub);
   const distance = position ? formatDistance(haversineMeters(position, pub)) : null;
   const firstEvent = shownEvents[0];
   const hasRating = typeof pub.rating === 'number' && pub.rating > 0;
@@ -1111,11 +1139,21 @@ function EventRow({ event, now, first }: { event: PubEvent; now: Date; first: bo
   const start = new Date(event.startsAt);
   const end = new Date(event.endsAt);
   const day = eventDay(event, now);
+  // A running event belongs to today, even when it started days ago.
+  const tileDate = day.kind === 'running' ? now : start;
   const dayLabel =
     day.kind === 'running' || day.kind === 'today'
       ? t.pubDetail.eventTodayShort
       : t.contribute.daysShort[dayKeyOf(start)];
-  const time = `${eventStartTime(event)}–${eventStartTime({ ...event, startsAt: event.endsAt })}`;
+  const startTime = eventStartTime(event);
+  const endTime = eventStartTime({ ...event, startsAt: event.endsAt });
+  const sameDay = calendarDaysBetween(start, end) === 0;
+  const shortDate = (date: Date) =>
+    dateTimeFormat({ day: 'numeric', month: 'numeric' }).format(date);
+  // Multi-day events (the server allows up to 14 days) show both ends.
+  const time = sameDay
+    ? `${startTime}–${endTime}`
+    : `${shortDate(start)} ${startTime} – ${shortDate(end)} ${endTime}`;
   return (
     <View
       style={[styles.eventRow, !first && styles.rowDivided]}
@@ -1126,7 +1164,7 @@ function EventRow({ event, now, first }: { event: PubEvent; now: Date; first: bo
           {dayLabel}
         </Text>
         <Text style={styles.dateTileNum} maxFontSizeMultiplier={FontScaleCap.body}>
-          {start.getDate()}
+          {tileDate.getDate()}
         </Text>
       </View>
       <View style={styles.rowText}>
@@ -1134,9 +1172,7 @@ function EventRow({ event, now, first }: { event: PubEvent; now: Date; first: bo
           {event.title}
         </Text>
         <Text style={styles.rowSub} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-          {[end.getDate() === start.getDate() ? time : eventWhenLabel(event, now), event.details]
-            .filter(Boolean)
-            .join(' · ')}
+          {[time, event.details].filter(Boolean).join(' · ')}
         </Text>
       </View>
     </View>
