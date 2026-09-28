@@ -14,6 +14,10 @@ const mockCancelScheduledNotificationAsync = jest.fn(async (identifier: string) 
   mockScheduled.delete(identifier);
 });
 const mockGetLastNotificationResponseAsync = jest.fn();
+const mockPresented: string[] = [];
+const mockDismissNotificationAsync = jest.fn(async (identifier: string) => {
+  mockPresented.splice(mockPresented.indexOf(identifier), 1);
+});
 
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock') }));
 jest.mock('@/data/account', () => ({
@@ -31,6 +35,8 @@ jest.mock('expo-notifications', () => ({
   scheduleNotificationAsync: mockScheduleNotificationAsync,
   cancelScheduledNotificationAsync: mockCancelScheduledNotificationAsync,
   getLastNotificationResponseAsync: mockGetLastNotificationResponseAsync,
+  getPresentedNotificationsAsync: jest.fn(async () => mockPresented.map((identifier) => ({ request: { identifier } }))),
+  dismissNotificationAsync: mockDismissNotificationAsync,
   clearLastNotificationResponseAsync: jest.fn(async () => undefined),
   addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
 }));
@@ -183,9 +189,20 @@ describe('scheduled reminders follow the plans', () => {
 
   it('drops the previous account plans on sign-out or account switch', async () => {
     await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
+    mockPresented.push(...mockScheduled.keys(), 'pub-reminder-1');
     await clearToursPrivateData();
     await reconcileTourReminders();
     expect(mockScheduled.size).toBe(0);
+    // A reminder already on screen goes too; other notifications stay.
+    expect(mockPresented).toEqual(['pub-reminder-1']);
+    mockPresented.length = 0;
+  });
+
+  it('keeps only the nearest twenty reminders pending', async () => {
+    for (let day = 1; day <= 25; day++) await savePlan({ scheduledDate: `2026-10-${String(day).padStart(2, '0')}`, scheduledTime: '19:00' });
+    await reconcileTourReminders();
+    expect(mockScheduled.size).toBe(20);
+    expect(Math.max(...[...mockScheduled.values()].map((r) => r.trigger.date))).toBeLessThan(Date.parse('2026-10-21T00:00:00Z'));
   });
 
   it('cancels everything when switched off in settings and comes back when on', async () => {
