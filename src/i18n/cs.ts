@@ -103,7 +103,6 @@ export const cs = {
     moreBeers: 'Počty piv za minulý týden',
     moreBeersOnly: 'Jen kde se minulý týden pilo',
     moreBoard: 'Žebříček hospod',
-    beersOnlyNudge: 'Jen kde se minulý týden pilo',
     friendFallback: 'Kamarád',
     friendIsHere: (name: string) => `${name} je tady teď`,
     friendsAreHere: (name: string, others: number) =>
@@ -125,8 +124,6 @@ export const cs = {
     loading: 'Sháním podniky…',
     permissionHint: 'Povolit polohu',
     openWithoutLocation: 'Otevřít mapu bez polohy',
-    listTitle: 'Podniky na mapě',
-    listLink: 'Seznam',
     refresh: 'Načíst znovu',
     closeList: 'Zavřít seznam podniků',
     emptyList: 'V tomhle filtru zatím nic není.',
@@ -3205,6 +3202,8 @@ export const cs = {
     openBeerMap: 'Otevřít pivní mapu',
     mapLocate: 'Najít mě na mapě',
     mapList: 'Zobrazit podniky jako seznam',
+    mapFiltersClear: 'Zrušit filtry',
+    mapSelectionClear: 'Zrušit výběr',
     mapRefresh: 'Obnovit podniky a partu',
     mapPub: (name: string, visits: number) =>
       visits > 0 ? `${name}, navštíveno ${visits}krát` : `${name}, zatím nenavštíveno`,

@@ -91,7 +91,6 @@ export const en: Strings = {
     moreBeers: 'Beer counts from last week',
     moreBeersOnly: 'Only where people drank last week',
     moreBoard: 'Pub leaderboard',
-    beersOnlyNudge: 'Only where people drank last week',
     friendFallback: 'Friend',
     friendIsHere: (name: string) => `${name} is here right now`,
     friendsAreHere: (name: string, others: number) => `${name} and ${others} others are here`,
@@ -108,8 +107,6 @@ export const en: Strings = {
     loading: 'Looking for pubs…',
     permissionHint: 'Allow location',
     openWithoutLocation: 'Open the map without location',
-    listTitle: 'Pubs on the map',
-    listLink: 'List',
     refresh: 'Reload',
     closeList: 'Close the pub list',
     emptyList: 'Nothing matches this filter yet.',
@@ -2590,6 +2587,8 @@ export const en: Strings = {
     openBeerMap: 'Open the beer map',
     mapLocate: 'Find me on the map',
     mapList: 'Show places as a list',
+    mapFiltersClear: 'Clear filters',
+    mapSelectionClear: 'Clear selection',
     mapRefresh: 'Refresh places and the crew',
     mapPub: (name: string, visits: number) =>
     visits > 0
