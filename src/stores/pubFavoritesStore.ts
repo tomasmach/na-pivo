@@ -16,6 +16,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { geohash8 } from '@/data/geohash';
+
 export interface PubFavorite {
   name: string;
   lat: number;
@@ -50,9 +52,9 @@ function isFavorite(value: unknown): value is PubFavorite {
     !!f &&
     typeof f.name === 'string' &&
     typeof f.lat === 'number' &&
-    Number.isFinite(f.lat) &&
+    Math.abs(f.lat) <= 90 &&
     typeof f.lng === 'number' &&
-    Number.isFinite(f.lng) &&
+    Math.abs(f.lng) <= 180 &&
     typeof f.updatedAt === 'string' &&
     Number.isFinite(Date.parse(f.updatedAt)) &&
     (f.city === undefined || typeof f.city === 'string') &&
@@ -66,9 +68,24 @@ export function sanitizeFavorites(persisted: unknown): Record<string, PubFavorit
   if (!raw || typeof raw !== 'object') return {};
   const out: Record<string, PubFavorite> = {};
   for (const [pubKey, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (/^[0-9b-hjkmnp-z]{8}$/.test(pubKey) && isFavorite(value)) out[pubKey] = value;
+    // The key must be the cell of the stored point, or a removal would target
+    // another cell and the server copy would come back.
+    if (isFavorite(value) && geohash8(value.lat, value.lng) === pubKey) out[pubKey] = value;
   }
   return out;
+}
+
+/**
+ * Set once an account boundary wiped favourites. Storage is read asynchronously
+ * at launch; if that read lands after the wipe it holds the previous account's
+ * hearts and must be ignored rather than restored and uploaded.
+ */
+let discardPersisted = false;
+
+/** Wipe favourites at an account boundary, including a launch read still in flight. */
+export function wipeFavoritesForAccountBoundary(): void {
+  discardPersisted = true;
+  usePubFavoritesStore.setState({ favorites: {} });
 }
 
 export const usePubFavoritesStore = create<PubFavoritesState>()(
@@ -138,7 +155,8 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
       version: 0,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ favorites: state.favorites }),
-      merge: (persisted, current) => ({ ...current, favorites: sanitizeFavorites(persisted) }),
+      merge: (persisted, current) =>
+        discardPersisted ? current : { ...current, favorites: sanitizeFavorites(persisted) },
     },
   ),
 );
@@ -152,11 +170,8 @@ export function isSameVenue(
   favorite: Pick<PubFavorite, 'name' | 'externalId'>,
   pub: { id?: string; name: string },
 ): boolean {
-  if (favorite.externalId && pub.id && !pub.id.startsWith('favorite:')) {
-    if (favorite.externalId === pub.id) return true;
-  } else {
-    return true;
-  }
+  const pubId = pub.id && !pub.id.startsWith('favorite:') ? pub.id : '';
+  if (favorite.externalId && pubId && favorite.externalId === pubId) return true;
   const name = (value: string) => value.trim().toLocaleLowerCase('cs');
   return name(favorite.name) === name(pub.name);
 }

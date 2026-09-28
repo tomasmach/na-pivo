@@ -27,6 +27,7 @@ import {
   isSameVenue,
   sanitizeFavorites,
   usePubFavoritesStore,
+  wipeFavoritesForAccountBoundary,
 } from '@/stores/pubFavoritesStore';
 
 const PUB = 'u2fkbnjj';
@@ -65,6 +66,8 @@ describe('pubFavoritesStore', () => {
         favorites: {
           [PUB]: { ...TYGR, updatedAt: '2026-09-28T12:00:00.000Z' },
           [OTHER]: { name: 'Bez polohy', updatedAt: '2026-09-28T12:00:00.000Z' },
+          // Point of a different cell under this key.
+          u2fkbnhy: { ...TYGR, updatedAt: '2026-09-28T12:00:00.000Z' },
           'not-a-key': { ...TYGR, updatedAt: '2026-09-28T12:00:00.000Z' },
         },
       }),
@@ -225,12 +228,27 @@ describe('favourite identity', () => {
   it('tells a saved pub from a neighbour in the same cell', () => {
     expect(isSameVenue(saved, { id: 'mapy:1', name: 'U Zlatého tygra' })).toBe(true);
     expect(isSameVenue(saved, { id: 'mapy:2', name: 'Vinárna vedle' })).toBe(false);
-    expect(isSameVenue(saved, { id: '', name: 'Cokoli' })).toBe(true);
+    expect(isSameVenue(saved, { id: '', name: 'U Zlatého tygra' })).toBe(true);
+    expect(isSameVenue({ name: 'U Zlatého tygra' }, { id: 'mapy:2', name: 'Vinárna vedle' })).toBe(false);
   });
 
   it('finds the heart in the cell, or by provider id after a pin moved', () => {
     expect(findFavoriteKey({ [PUB]: saved }, PUB, { id: 'mapy:1', name: 'x' })).toBe(PUB);
     expect(findFavoriteKey({ [PUB]: saved }, PUB, { id: 'mapy:2', name: 'Vinárna vedle' })).toBeUndefined();
     expect(findFavoriteKey({ [PUB]: saved }, OTHER, { id: 'mapy:1', name: 'x' })).toBe(PUB);
+  });
+});
+
+// Keep last: the wipe flag is process-wide, like a real account boundary.
+describe('launch read after an account boundary', () => {
+  it('does not restore the previous account from storage', async () => {
+    const AsyncStorage = jest.requireMock('@react-native-async-storage/async-storage');
+    await AsyncStorage.setItem(
+      'na-pivo-pub-favorites',
+      JSON.stringify({ state: { favorites: { [PUB]: { ...TYGR, updatedAt: '2026-09-28T12:00:00.000Z' } } }, version: 0 }),
+    );
+    wipeFavoritesForAccountBoundary();
+    await usePubFavoritesStore.persist.rehydrate();
+    expect(usePubFavoritesStore.getState().favorites).toEqual({});
   });
 });

@@ -15,7 +15,11 @@ import {
   getQueuedFavoriteRemovalKeys,
 } from './pubFavoritesQueue';
 import { fetchFavorites, type WireFavoriteUpsert } from './pubFavoritesClient';
-import { usePubFavoritesStore, type PubFavorite } from '@/stores/pubFavoritesStore';
+import {
+  usePubFavoritesStore,
+  wipeFavoritesForAccountBoundary,
+  type PubFavorite,
+} from '@/stores/pubFavoritesStore';
 
 let suppressSync = false;
 /** Bumped by every account-boundary wipe; a pull that straddles one is dropped. */
@@ -31,9 +35,7 @@ let pullsInFlight = 0;
  */
 export function clearLocalPubFavorites(): void {
   boundaryGeneration += 1;
-  runWithoutPubFavoritesSync(() => {
-    usePubFavoritesStore.setState({ favorites: {} });
-  });
+  runWithoutPubFavoritesSync(wipeFavoritesForAccountBoundary);
 }
 
 /** Run local-only favourite changes without syncing them. */
