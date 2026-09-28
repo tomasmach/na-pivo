@@ -23,7 +23,7 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from pubs import accounts
 from pubs.enrichment import geohash8
-from pubs.models import Account, CanonicalPub, PubAlias, PubFavorite
+from pubs.models import Account, CanonicalPub, PubAlias, PubFavorite, PubFavoriteTombstone
 
 _NAME = "U Zlatého tygra"
 _LAT = 50.0876
@@ -123,7 +123,8 @@ def test_anonymous_device_account_saves_and_lists_favorite(client):
                 "external_id": "mapy:50.08755,14.42141",
                 "updated_at": "2026-06-12T17:45:00+00:00",
             }
-        ]
+        ],
+        "removed": [],
     }
 
 
@@ -146,7 +147,7 @@ def test_get_is_empty_without_favorites(client):
     token = _register(client)
     resp = client.get("/v1/pub-favorites", **_auth(token))
     assert resp.status_code == status.HTTP_200_OK
-    assert resp.json() == {"favorites": []}
+    assert resp.json() == {"favorites": [], "removed": []}
 
 
 @pytest.mark.django_db
@@ -239,6 +240,44 @@ def test_favorite_false_removes_under_lww(client):
 
 
 @pytest.mark.django_db
+def test_older_save_from_another_phone_does_not_bring_back_a_removed_favorite(client):
+    """Phone A removes the heart; phone B later pushes the save it still has."""
+    token = _register(client)
+    _put(client, token)
+    assert _put(client, token, favorite=False, updated_at="2026-06-13T10:00:00+02:00").json() == {
+        "deleted": True,
+        "applied": True,
+    }
+
+    stale = _put(client, token)
+
+    assert stale.status_code == status.HTTP_200_OK
+    assert stale.json() == {
+        "cache_key": _KEY,
+        "updated_at": "2026-06-13T08:00:00+00:00",
+        "applied": False,
+    }
+    assert PubFavorite.objects.count() == 0
+    assert client.get("/v1/pub-favorites", **_auth(token)).json() == {
+        "favorites": [],
+        "removed": [{"cache_key": _KEY, "updated_at": "2026-06-13T08:00:00+00:00"}],
+    }
+
+
+@pytest.mark.django_db
+def test_newer_save_after_removal_applies_and_clears_the_marker(client):
+    token = _register(client)
+    _put(client, token, favorite=False, updated_at="2026-06-13T10:00:00+02:00")
+    assert _put(client, token, updated_at="2026-06-13T10:00:00+02:00").json()["applied"] is False
+
+    again = _put(client, token, updated_at="2026-06-14T10:00:00+02:00")
+
+    assert again.json()["applied"] is True
+    assert PubFavoriteTombstone.objects.count() == 0
+    assert client.get("/v1/pub-favorites", **_auth(token)).json()["removed"] == []
+
+
+@pytest.mark.django_db
 def test_merged_pub_keeps_the_key_the_app_stores(client):
     """A heart saved before an admin merge must stay removable by the app."""
     token = _register(client)
@@ -281,7 +320,9 @@ def test_delete_is_idempotent(client):
     assert first.json() == {"deleted": True}
     assert second.status_code == status.HTTP_200_OK
     assert second.json() == {"deleted": False}
-    assert client.get("/v1/pub-favorites", **_auth(token)).json() == {"favorites": []}
+    # Without a client time DELETE blocks only the removed copy and older ones.
+    assert _put(client, token).json()["applied"] is False
+    assert _put(client, token, updated_at="2026-06-12T19:46:00+02:00").json()["applied"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +419,27 @@ def test_anonymous_merge_moves_favorites_and_keeps_target_duplicate():
 
 
 @pytest.mark.django_db(transaction=True)
+def test_anonymous_merge_moves_removals_but_never_deletes_a_favorite():
+    target = Account.objects.create(device_id="favorites-merge-target")
+    source = Account.objects.create(device_id="favorites-merge-source")
+    brno_key = geohash8(_BRNO_LAT, _BRNO_LNG)
+    now = timezone.now()
+    PubFavorite.objects.create(
+        account=target, cache_key=_KEY, name=_NAME, lat=_LAT, lng=_LNG, client_updated_at=now,
+    )
+    for key in (_KEY, brno_key):
+        PubFavoriteTombstone.objects.create(account=source, cache_key=key, client_updated_at=now)
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    assert PubFavorite.objects.get(account=target).cache_key == _KEY
+    assert list(
+        PubFavoriteTombstone.objects.filter(account=target).values_list("cache_key", flat=True)
+    ) == [brno_key]
+
+
+@pytest.mark.django_db(transaction=True)
 def test_hard_delete_removes_favorites_of_that_account_only():
     deleted = Account.objects.create(device_id="favorites-deleted")
     survivor = Account.objects.create(device_id="favorites-survivor")
@@ -387,9 +449,14 @@ def test_hard_delete_removes_favorites_of_that_account_only():
             client_updated_at=timezone.now(),
         )
 
+    PubFavoriteTombstone.objects.create(
+        account=deleted, cache_key=_KEY, client_updated_at=timezone.now()
+    )
+
     accounts.hard_delete(deleted)
 
     assert list(PubFavorite.objects.values_list("account_id", flat=True)) == [survivor.pk]
+    assert PubFavoriteTombstone.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -411,6 +478,20 @@ def test_export_includes_own_favorites_only(client):
             "external_id": "mapy:50.08755,14.42141",
             "updated_at": "2026-06-12T17:45:00+00:00",
         }
+    ]
+
+
+@pytest.mark.django_db
+def test_export_includes_own_removed_favorites_only(client):
+    token = _register(client)
+    other = _register(client)
+    _put(client, token, favorite=False)
+    _put(client, other, favorite=False, lat=_BRNO_LAT, lng=_BRNO_LNG)
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.json()["removed_favorites"] == [
+        {"cache_key": _KEY, "updated_at": "2026-06-12T17:45:00+00:00"}
     ]
 
 

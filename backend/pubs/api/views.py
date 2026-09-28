@@ -215,6 +215,7 @@ from pubs.models import (
     PubEvent,
     PubExternalBeerMenu,
     PubFavorite,
+    PubFavoriteTombstone,
     PubGooglePlace,
     PubHours,
     PublishedNight,
@@ -3690,7 +3691,8 @@ class PubFavoriteView(APIView):
     matches the one the app stores. Conflict resolution is LAST-WRITE-WINS on
     the client's ``updated_at``: a PUT older than the stored one is ignored
     (``applied: false``). ``favorite: false`` removes the row under the same LWW
-    guard, like an empty rating does.
+    guard and records a PubFavoriteTombstone, like an empty rating does. GET
+    lists those removals in ``removed``.
 
     Saving a NEW favourite beyond PUB_FAVORITES_PER_ACCOUNT_CAP returns 409
     ``favorites_limit``. The app's offline queues drop 400/422 forever but keep
@@ -3710,6 +3712,10 @@ class PubFavoriteView(APIView):
                 PubFavorite.objects.filter(account=request.user),
             )
             items = [_favorite_item(favorite) for favorite in favorites]
+            removed = [
+                _removal_item(tombstone)
+                for tombstone in PubFavoriteTombstone.objects.filter(account=request.user)
+            ]
         except ValueError:
             return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
@@ -3718,7 +3724,9 @@ class PubFavoriteView(APIView):
                 type(exc).__name__,
             )
             return _internal_error()
-        return Response({"favorites": items, **page}, status=status.HTTP_200_OK)
+        return Response(
+            {"favorites": items, "removed": removed, **page}, status=status.HTTP_200_OK
+        )
 
     def put(self, request: Request) -> Response:
         serializer = PubFavoriteRequestSerializer(data=request.data)
@@ -3744,10 +3752,25 @@ class PubFavoriteView(APIView):
                     body = _favorite_item(existing)
                     body["applied"] = False
                     return Response(body, status=status.HTTP_200_OK)
+                tombstone = (
+                    PubFavoriteTombstone.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                if tombstone is not None and tombstone.client_updated_at >= updated_at:
+                    return Response(
+                        {**_removal_item(tombstone), "applied": False},
+                        status=status.HTTP_200_OK,
+                    )
 
                 if not data["favorite"]:
                     if existing is not None:
                         existing.delete()
+                    PubFavoriteTombstone.objects.update_or_create(
+                        account=request.user,
+                        cache_key=cache_key,
+                        defaults={"client_updated_at": updated_at},
+                    )
                     return Response(
                         {"deleted": existing is not None, "applied": True},
                         status=status.HTTP_200_OK,
@@ -3769,6 +3792,8 @@ class PubFavoriteView(APIView):
                         status=status.HTTP_409_CONFLICT,
                     )
 
+                if tombstone is not None:
+                    tombstone.delete()
                 favorite, _ = PubFavorite.objects.update_or_create(
                     account=request.user,
                     cache_key=cache_key,
@@ -3793,13 +3818,28 @@ class PubFavoriteView(APIView):
 
     def delete(self, request: Request, cache_key: str) -> Response:
         # A foreign / unknown / already-deleted key matches nothing → deleted:
-        # false, never 404, so a queued delete can be retried safely.
-        return _idempotent_delete(
-            PubFavorite.objects.filter(account=request.user, cache_key=cache_key),
-            scope="pub-favorites",
-            key_label="favorite",
-            key_value=cache_key,
-        )
+        # false, never 404, so a queued delete can be retried safely. Without a
+        # client time the tombstone blocks only the removed copy and older ones.
+        try:
+            with transaction.atomic():
+                favorite = (
+                    PubFavorite.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                if favorite is not None:
+                    favorite.delete()
+                    PubFavoriteTombstone.objects.update_or_create(
+                        account=request.user,
+                        cache_key=cache_key,
+                        defaults={"client_updated_at": favorite.client_updated_at},
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-favorites: unexpected error deleting favorite (%s)", type(exc).__name__
+            )
+            return _internal_error()
+        return Response({"deleted": favorite is not None}, status=status.HTTP_200_OK)
 
 
 def _visit_item(visit: PubVisit) -> dict:
@@ -10963,6 +11003,9 @@ def _load_export_account(account: Account) -> Account:
             has_pub_rating_tombstones=Exists(
                 PubRatingTombstone.objects.filter(account=OuterRef("pk"))
             ),
+            has_pub_favorite_tombstones=Exists(
+                PubFavoriteTombstone.objects.filter(account=OuterRef("pk"))
+            ),
             has_amenity_xp_ledger=Exists(AmenityXpLedger.objects.filter(account=OuterRef("pk"))),
             has_mapped_pubs=Exists(AccountMappedPub.objects.filter(account=OuterRef("pk"))),
             has_pub_completions=Exists(AccountPubCompletion.objects.filter(account=OuterRef("pk"))),
@@ -11150,6 +11193,7 @@ def _load_export_account(account: Account) -> Account:
             None,
         ),
         ("pub_rating_tombstones", "has_pub_rating_tombstones", None),
+        ("pub_favorite_tombstones", "has_pub_favorite_tombstones", None),
         ("amenity_xp_ledger", "has_amenity_xp_ledger", None),
         ("mapped_pubs", "has_mapped_pubs", None),
         ("pub_completions", "has_pub_completions", None),
@@ -11822,6 +11866,9 @@ def _export_account_data(account: Account) -> dict:
             _removal_item(tombstone) for tombstone in account.pub_rating_tombstones.all()
         ],
         "favorites": [_favorite_item(favorite) for favorite in account.pub_favorites.all()],
+        "removed_favorites": [
+            _removal_item(tombstone) for tombstone in account.pub_favorite_tombstones.all()
+        ],
         "community_contributions": [
             {
                 "client_id": str(row.client_id),

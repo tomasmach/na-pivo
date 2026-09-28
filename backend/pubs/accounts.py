@@ -121,6 +121,7 @@ from pubs.models import (
     PubContributionLog,
     PubEvent,
     PubFavorite,
+    PubFavoriteTombstone,
     PublishedNight,
     PublishedNightComment,
     PubNameCorrection,
@@ -2336,6 +2337,13 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     _delete_or_move_account_rows(
         PubFavorite, source=source, target=target, unique_fields=("cache_key",)
     )
+    _delete_or_move_account_rows(
+        PubFavoriteTombstone, source=source, target=target, unique_fields=("cache_key",)
+    )
+    PubFavoriteTombstone.objects.filter(
+        account=target,
+        cache_key__in=PubFavorite.objects.filter(account=target).values("cache_key"),
+    ).delete()
     # Visits are mutable. Preserve the newer revision before applying deletion
     # markers, otherwise an old target row can discard a resumed source visit.
     for visit in PubVisit.objects.filter(account=source):
