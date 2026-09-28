@@ -554,6 +554,13 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="pub"
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
             name="beer-detail"
             options={{
               animation: 'slide_from_right',

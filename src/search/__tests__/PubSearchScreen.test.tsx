@@ -2,8 +2,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { TextInput } from 'react-native';
 import { searchPubNames, resolvePubSearchResult } from '@/data/pubSearchClient';
-import { MapPubSheet } from '@/components/amenities/MapPubSheet';
-import BeerMapScreen from '@/map/BeerMapScreen';
+import { openPubPage } from '@/pubPage/openPubPage';
 import { saveRecentSearch } from '../recentSearches';
 import type { PubSuggestion } from '../pubSuggestions';
 import PubSearchScreen from '../PubSearchScreen';
@@ -22,16 +21,11 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack, dismissTo:
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) }));
 jest.mock('@/components/shared/IconGlyph', () => ({ ChevronRightIcon: () => null, ClockIcon: () => null, SearchIcon: () => null, XIcon: () => null }));
 jest.mock('@/components/shared/KeyboardAwareScrollView', () => ({ KeyboardAwareScrollView: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
-jest.mock('@/components/amenities/MapPubSheet', () => ({ MapPubSheet: () => null }));
-jest.mock('@/components/amenities/pubInfoContext', () => ({ pubInfoFromPub: (pub: unknown) => pub }));
-jest.mock('@/map/BeerMapScreen', () => ({ __esModule: true, default: () => null }));
-jest.mock('@/data/hoursClient', () => ({ fetchPubHours: async () => new Map() }));
+jest.mock('@/pubPage/openPubPage', () => ({ openPubPage: jest.fn() }));
 jest.mock('@/data/pubs', () => ({ hydratePubsSnapshot: async () => true }));
 jest.mock('@/data/pubSearchClient', () => ({ localPubSearch: () => [], searchPubNames: jest.fn(), resolvePubSearchResult: jest.fn() }));
 jest.mock('@/stores/accountStore', () => ({ useAccountStore: (selector: (s: unknown) => unknown) => selector({ session: null }) }));
 jest.mock('@/stores/pubStore', () => ({ usePubStore: (selector: (s: unknown) => unknown) => selector({ reportedPubIds: [], reportedCacheKeys: [] }) }));
-jest.mock('@/stores/toastStore', () => ({ useToastStore: { getState: () => ({ show: jest.fn() }) } }));
-jest.mock('@/utils/maps', () => ({ openPubInMaps: jest.fn(async () => undefined) }));
 jest.mock('../recentSearches', () => ({ loadRecentSearches: async () => [], mergeRecentSearches: (_: unknown, term: string) => [term], saveRecentSearch: jest.fn(async () => undefined) }));
 
 let renderer: TestRenderer.ReactTestRenderer;
@@ -52,20 +46,12 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => renderer?.unmount()); jest.useRealTimers(); });
 
-it('opens details, preserves the query after closing, and hands the exact pub to the map', async () => {
+it('opens the pub page with the exact pub and keeps the query', async () => {
   await mount(); await type('jelen');
   await act(async () => { result().props.onPress(); });
-  expect(renderer.root.findByType(MapPubSheet).props.pubName).toBe('U Jelena');
-  act(() => renderer.root.findByType(MapPubSheet).props.onClose());
-  expect(renderer.root.findByType(TextInput).props.value).toBe('jelen');
-  await act(async () => { result().props.onPress(); });
-  act(() => renderer.root.findByType(MapPubSheet).props.onShowMap());
-  const map = renderer.root.findByType(BeerMapScreen);
-  expect(map.props.initialPub).toEqual(mockPub);
-  expect(map.props.focusInitialPub).toBe(true);
-  act(() => map.props.onShowCompass());
-  expect(mockDismissTo).toHaveBeenCalledWith({ pathname: "/", params: { view: "compass" } });
-  act(() => map.props.onSearch());
+  expect(openPubPage).toHaveBeenCalledTimes(1);
+  expect(jest.mocked(openPubPage).mock.calls[0][1]).toEqual(mockPub);
+  expect(saveRecentSearch).toHaveBeenCalled();
   expect(renderer.root.findByType(TextInput).props.value).toBe('jelen');
   expect(mockBack).not.toHaveBeenCalled();
 });
@@ -96,7 +82,7 @@ it('ignores a pending place resolution after the user clears the query', async (
   act(() => result().props.onPress());
   await type('');
   await act(async () => resolve(mockPub));
-  expect(renderer.root.findAllByType(MapPubSheet)).toHaveLength(0);
+  expect(openPubPage).not.toHaveBeenCalled();
 });
 
 it('opens a suggested pub without searching or saving an empty recent query', async () => {
@@ -108,9 +94,8 @@ it('opens a suggested pub without searching or saving an empty recent query', as
   expect(JSON.stringify(renderer.toJSON())).toContain('8 návštěv');
   expect(searchPubNames).not.toHaveBeenCalled();
   await act(async () => { renderer.root.findByProps({ accessibilityLabel: 'U Jelena, Brno, 180 m' }).props.onPress(); });
-  expect(renderer.root.findByType(MapPubSheet).props.pubName).toBe('U Jelena');
+  expect(jest.mocked(openPubPage).mock.calls[0][1]).toEqual(mockPub);
   expect(saveRecentSearch).not.toHaveBeenCalled();
-  act(() => renderer.root.findByType(MapPubSheet).props.onClose());
   expect(renderer.root.findByType(TextInput).props.value).toBe('');
   expect(JSON.stringify(renderer.toJSON())).toContain('Tvoje stálice');
 });

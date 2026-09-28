@@ -7,9 +7,7 @@ import type { Region } from 'react-native-maps';
 import * as Clipboard from 'expo-clipboard';
 import { BeerIcon, CompassIcon, EllipsisIcon, GlobeIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { MapPubSheet } from '@/components/amenities/MapPubSheet';
-import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
-import { geohash8 } from '@/data/geohash';
+import { openPubPage } from '@/pubPage/openPubPage';
 import { useToursStore, tourContentSignature } from '@/stores/toursStore';
 import { openPubInMaps } from '@/utils/maps';
 import { beerCountLabel, t, intlLocale } from '@/i18n';
@@ -47,7 +45,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const plan = store.plans.find((p) => p.id === id);
   const displayed = run?.snapshot ?? plan;
   const [selected, setSelected] = useState<string | null>(null);
-  const [detail, setDetail] = useState<TourStop | null>(null); const [pubDetail, setPubDetail] = useState(false);
+  const [detail, setDetail] = useState<TourStop | null>(null);
   const [largeMap, setLargeMap] = useState(false); const [shareMode, setShareMode] = useState(false);
   const [crewSheet, setCrewSheet] = useState(false);
   const [friends, setFriends] = useState<PartyFriends | null>(null); const [ping, setPing] = useState<CrewPingState | null>(null);
@@ -340,7 +338,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
         <ScrollView contentContainerStyle={[ui.content, { flexGrow: 1 }]}>
           <TourMap key={detail ? "stop-detail" : "overview"} stops={current.stops} selectedId={detail?.id ?? selected} onSelect={(stopId) => { setSelected(stopId); setDetail(current.stops.find((s) => s.id === stopId) ?? null); }} height={detail ? 160 : Math.max(240, dimensions.height - insets.top - insets.bottom - 150)} region={region} onRegionChange={setRegion} />
           {detail && <><TourText style={ui.heading}>{current.stops.findIndex((s) => s.id === detail.id) + 1}. {detail.name}</TourText><TourText>{detail.address}</TourText><TourText style={ui.notice}>{factsLine(detail, true)?.hours ?? t.tours.openingHoursUnknown}</TourText>{!!detail.challenge && <TourChallengeText text={detail.challenge} emphasized />}
-            <TourButton label={t.tours.fullPubDetail} secondary onPress={() => setPubDetail(true)} />
+            <TourButton label={t.tours.fullPubDetail} secondary onPress={() => openPubPage(router, pubFromStop(detail))} />
             {!shareMode && active && !history && <><TourText style={ui.notice}>{t.tours.runPrivacy}</TourText>
               <TourButton label={active.statuses[detail.id] ? t.tours.undoMark : t.tours.markVisited} disabled={acting} onPress={() => mark(detail, active.statuses[detail.id] ? null : 'visited')} />
               {!active.statuses[detail.id] && <TourButton label={t.tours.skip} secondary disabled={acting} onPress={() => mark(detail, 'skipped')} />}
@@ -348,8 +346,6 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             <TourButton label={t.tours.navigate} secondary onPress={() => navigate(detail)} />
           </>}
         </ScrollView>
-        {detail && <MapPubSheet visible={pubDetail} pubKey={detail.cacheKey ?? geohash8(detail.lat, detail.lon)} pubName={detail.name}
-          info={pubInfoFromPub({ id: detail.pubId, name: detail.name, address: detail.address, lat: detail.lat, lng: detail.lon })} onClose={() => setPubDetail(false)} />}
     </View>}
   </View>;
 }

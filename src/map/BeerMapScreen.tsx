@@ -81,6 +81,7 @@ import {
 } from './mapModel';
 import { useBeerMap } from './useBeerMap';
 import { StaticMapMarker, useMarkerSnapshotRefresh } from './StaticMapMarker';
+import { openPubPage } from '@/pubPage/openPubPage';
 
 const DEFAULT_REGION: Region = {
   latitude: 49.8175,
@@ -128,6 +129,8 @@ export interface BeerMapScreenProps {
   onSearch?: () => void;
   /** Set when the map is opened over another screen, which it returns to. */
   onBack?: () => void;
+  /** Overrides opening the pub page, e.g. when the map sits over that page. */
+  onOpenPub?: (pub: Pub) => void;
   filters: PubSearchFilters;
   onApplyFilters: (filters: PubSearchFilters) => void;
   onShowCompass: () => void;
@@ -590,6 +593,7 @@ export default function BeerMapScreen({
   focusInitialPub = false,
   onSearch,
   onBack,
+  onOpenPub,
   filters,
   onApplyFilters,
   onShowCompass,
@@ -1624,8 +1628,11 @@ export default function BeerMapScreen({
               cardState.kind === 'pub'
                 ? {
                     onPress: () => {
+                      if (!selectedPub) return;
                       trackUiInteraction('map_pub_detail_open');
-                      setDetailOpen(true);
+                      const target = selectedDetailPub ?? selectedPub.pub;
+                      if (onOpenPub) onOpenPub(target);
+                      else openPubPage(router, target);
                     },
                     accessibilityLabel: t.compass.mapPubLink,
                   }

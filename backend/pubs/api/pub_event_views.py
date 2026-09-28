@@ -83,6 +83,9 @@ class PubEventView(APIView):
                 "starts_at": event.starts_at.isoformat(),
                 "ends_at": event.ends_at.isoformat(),
                 "verified_at": event.verified_at.isoformat(),
+                # Which business in the cell the event is for; a cell can hold two.
+                "pub_name": event.name,
+                "pub_external_id": event.external_id,
             }
             for event in events
         ]
