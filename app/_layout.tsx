@@ -65,7 +65,12 @@ import { usePubStore } from '@/stores/pubStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
-import { ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush';
+import {
+  consumeInitialTourInviteTap,
+  ensureFriendPushRegisteredIfGranted,
+  subscribeTourInviteTap,
+} from '@/notifications/friendPush';
+import { flushTourInvitesQueue } from '@/tours/tourInvites';
 import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { ContestResultsModal } from '@/photos/ContestResultsModal';
@@ -239,15 +244,20 @@ export default function RootLayout() {
       usePartaSignalStore.getState().requestRefresh(payload ?? undefined);
       router.push('/friends' as Href);
     };
+    // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
+    const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
+      void consumeInitialTourInviteTap(openTourInvite);
     }
     const pubSubscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
     const beerCountSubscription = subscribeBeerCountReminderTap(navigateToCounter);
+    const tourInviteSubscription = subscribeTourInviteTap(openTourInvite);
     return () => {
       pubSubscription.remove();
       beerCountSubscription.remove();
+      tourInviteSubscription.remove();
     };
   }, [fontsLoaded, fontError, router]);
 
@@ -383,6 +393,7 @@ export default function RootLayout() {
     // Výčep: retry queued night publishes/unpublishes and round reactions.
     void flushNightsQueue();
     void flushTourRunQueue();
+    void flushTourInvitesQueue();
     void ensureFriendPushRegisteredIfGranted();
     // Live Activity initialization and every foreground/focus sweep reconcile
     // lock-screen additions before applying the tally's idle cutoff.
@@ -428,6 +439,7 @@ export default function RootLayout() {
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
         void flushTourRunQueue();
+        void flushTourInvitesQueue();
         if (pull('diary')) {
           void trackPull('diary', () => useAccountStore.getState().refreshDiarySnapshot());
         }

@@ -200,7 +200,7 @@ it('shows only plan content in share mode, including the illustration and stop d
   const screen = render(<TourDetailScreen />);
   fireEvent.press(screen.getByLabelText(t.tours.more));
   const dialog = jest.mocked(showAppDialog).mock.calls[0][0];
-  act(() => { dialog.buttons!.find((button) => button.text === t.tours.share)!.onPress!(); });
+  act(() => { dialog.buttons!.find((button) => button.text === t.tourInvites.linkMenu)!.onPress!(); });
 
   expect(screen.getByText(mockStore.plans[0].title)).toBeTruthy();
   expect(screen.queryByText(mockStore.activeRun!.snapshot.title)).toBeNull();

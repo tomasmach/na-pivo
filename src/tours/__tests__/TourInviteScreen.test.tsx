@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { t } from '@/i18n';
 import { fetchSharedTour, fetchTourRunPreview, type TourResponse } from '@/data/toursClient';
+import { answerTourInvite, fetchMyTourInvite } from '@/data/tourInvitesClient';
 import type { TourPlan } from '../model';
 import TourInviteScreen from '../TourInviteScreen';
 
@@ -9,7 +10,7 @@ import TourInviteScreen from '../TourInviteScreen';
 
 const token = 'invite-token-for-component-regression';
 const mockParams: { token: string; r?: string } = { token };
-const mockAccount = { signedIn: true, nickname: 'pepa' as string | null };
+const mockAccount = { signedIn: true, nickname: 'pepa' as string | null, session: null as { accountId: string } | null };
 const mockReplace = jest.fn();
 const mockPush = jest.fn();
 const mockStore = {
@@ -40,6 +41,7 @@ jest.mock('@/stores/accountStore', () => ({
   useAccountStore: (select: (s: typeof mockAccount) => unknown) => select(mockAccount),
   selectIsSignedIn: (s: typeof mockAccount) => s.signedIn, selectNickname: (s: typeof mockAccount) => s.nickname,
 }));
+jest.mock('@/data/tourInvitesClient', () => ({ fetchMyTourInvite: jest.fn(), answerTourInvite: jest.fn() }));
 jest.mock('@/utils/maps', () => ({ openPubInMaps: jest.fn() }));
 jest.mock('../TourMap', () => ({ TourMap: () => null }));
 jest.mock('@/components/shared/IconGlyph', () => ({
@@ -76,6 +78,36 @@ const ownPlan: TourPlan = { ...plan, id: '22222222-2222-4222-8222-222222222222',
 beforeEach(() => {
   jest.clearAllMocks();
   mockStore.plans = [ownPlan];
+  mockAccount.session = null;
+});
+
+it('lets an invited friend say Jdu, saving the tour first, and change their mind later', async () => {
+  const inviter = { id: 'janek', nickname: 'janek', displayName: 'Janek', avatarUrl: null, isPublic: true };
+  mockAccount.session = { accountId: 'me' };
+  jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
+  jest.mocked(fetchMyTourInvite).mockResolvedValue({ ok: true, value: { planId: plan.id, status: 'invited', inviter } });
+  jest.mocked(answerTourInvite).mockImplementation(async (_id, status) => ({ ok: true, value: { planId: plan.id, status, inviter } }));
+  const screen = render(<TourInviteScreen />);
+  await waitFor(() => expect(screen.getByText(t.tourInvites.invitedBy('@janek'))).toBeTruthy());
+  expect(fetchMyTourInvite).toHaveBeenCalledWith(plan.id);
+
+  fireEvent.press(screen.getByLabelText(t.tourInvites.going));
+  await waitFor(() => expect(screen.getByText(t.tourInvites.answeredGoing)).toBeTruthy());
+  expect(mockStore.importShared).toHaveBeenCalledWith(token, false);
+  expect(jest.mocked(mockStore.importShared).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(answerTourInvite).mock.invocationCallOrder[0]);
+  expect(answerTourInvite).toHaveBeenLastCalledWith(plan.id, 'going');
+
+  fireEvent.press(screen.getByLabelText(t.tourInvites.changeToNotGoing));
+  await waitFor(() => expect(screen.getByText(t.tourInvites.answeredDeclined)).toBeTruthy());
+  expect(answerTourInvite).toHaveBeenLastCalledWith(plan.id, 'declined');
+  expect(screen.getByLabelText(t.tourInvites.changeToGoing)).toBeTruthy();
+});
+
+it('does not ask about an invite without an account on the phone', async () => {
+  jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
+  const screen = render(<TourInviteScreen />);
+  await waitFor(() => expect(screen.getByLabelText(t.tours.import)).toBeTruthy());
+  expect(fetchMyTourInvite).not.toHaveBeenCalled();
 });
 
 it('renders a cold invite while a saved own tour has no source and the network is pending', async () => {
