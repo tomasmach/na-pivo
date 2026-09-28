@@ -3133,7 +3133,7 @@ export const cs = {
     modeNearestButton: 'Mód: Nejbližší hospoda',
     modeSurpriseButton: 'Mód: Překvap mě',
     beerBrandFilterInput: 'Filtrovat hospody podle značky piva ze záznamů',
-    beerBrandFilterSuggestion: (name: string) => `Vybrat značku ${name}`,
+    beerBrandFilterSuggestion: (name: string) => `Vybrat pivo ${name}`,
     clearBeerBrandFilter: 'Zrušit filtr značky piva',
     toggleOtherTapPlaces: 'Zahrnout další místa s výčepem',
     openBeerBrandFilter: 'Otevřít filtr značky piva',

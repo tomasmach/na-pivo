@@ -2521,7 +2521,7 @@ export const en: Strings = {
     modeNearestButton: 'Mode: Nearest pub',
     modeSurpriseButton: 'Mode: Surprise me',
     beerBrandFilterInput: 'Filter pubs by a beer brand from the entries',
-    beerBrandFilterSuggestion: (name: string) => `Pick the brand ${name}`,
+    beerBrandFilterSuggestion: (name: string) => `Pick the beer ${name}`,
     clearBeerBrandFilter: 'Clear the beer brand filter',
     toggleOtherTapPlaces: 'Include other places with a tap',
     openBeerBrandFilter: 'Open the beer brand filter',
