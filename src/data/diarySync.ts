@@ -11,7 +11,7 @@ import { flushDrinksQueue } from './drinksQueue';
 import { flushDeleteDrinksQueue, getQueuedDeleteIds } from './deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from './updateDrinksQueue';
 import { fetchVisits, type WireVisit } from './visitsClient';
-import { flushVisitsQueue } from './visitsQueue';
+import { flushVisitsQueue, getQueuedVisitDeleteIds } from './visitsQueue';
 import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import type { TallySession } from '@/stores/tallyStore';
 
@@ -38,12 +38,15 @@ export async function reconcileDiarySnapshot(): Promise<DiarySnapshot | null> {
 
   const [drinks, visits] = await Promise.all([fetchDrinks(), fetchVisits()]);
   if (!drinks || !visits) return null;
-  // A removed drink stays on the server until its queued deletion gets through
-  // (offline, throttled); it is already gone from the local diary.
-  const pendingDeletes = await getQueuedDeleteIds();
+  // A removed drink or wiped evening stays on the server until its queued
+  // deletion gets through (offline, throttled); it is already gone locally.
+  const [pendingDrinkDeletes, pendingVisitDeletes] = await Promise.all([
+    getQueuedDeleteIds(),
+    getQueuedVisitDeleteIds(),
+  ]);
   return {
-    drinks: drinks.filter((drink) => !pendingDeletes.has(drink.client_id)),
-    visits,
+    drinks: drinks.filter((drink) => !pendingDrinkDeletes.has(drink.client_id)),
+    visits: visits.filter((visit) => !pendingVisitDeletes.has(visit.client_id)),
   };
 }
 

@@ -128,6 +128,8 @@ interface AccountState {
    * still return one; the server tombstones the ID, so it never comes back.
    */
   removedDrinkIds: ReadonlySet<string>;
+  /** Evenings wiped on this phone since launch, for the same reason. */
+  removedVisitIds: ReadonlySet<string>;
 
   /**
    * Ensure an account (anonymous or the signed-in one) exists. Never throws. A
@@ -146,6 +148,8 @@ interface AccountState {
    * server. `beerAt` is the local timestamp when the removed drink was a beer.
    */
   forgetDiaryDrink: (clientId: string, beerAt?: string) => void;
+  /** Drop a wiped evening's visit from the snapshot before its deletion lands. */
+  forgetDiaryVisit: (clientId: string) => void;
   /**
    * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
    * snapshot so Profile climbs immediately after a vote, without a second GET.
@@ -200,9 +204,15 @@ interface AccountState {
   verifyEmail: (token: string) => Promise<AuthActionResult>;
 }
 
-function withoutRemovedDrinks(data: DiarySnapshot, removed: ReadonlySet<string>): DiarySnapshot {
-  if (!data.drinks.some((drink) => removed.has(drink.client_id))) return data;
-  return { ...data, drinks: data.drinks.filter((drink) => !removed.has(drink.client_id)) };
+function withoutRemoved(
+  data: DiarySnapshot,
+  drinkIds: ReadonlySet<string>,
+  visitIds: ReadonlySet<string>,
+): DiarySnapshot {
+  return {
+    drinks: data.drinks.filter((drink) => !drinkIds.has(drink.client_id)),
+    visits: data.visits.filter((visit) => !visitIds.has(visit.client_id)),
+  };
 }
 
 export const useAccountStore = create<AccountState>((set, get) => {
@@ -238,7 +248,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
     if (!accountId) return false;
     const data = await reconcileDiarySnapshot();
     if (data && get().session?.accountId === accountId) {
-      set({ diarySnapshot: { accountId, data: withoutRemovedDrinks(data, get().removedDrinkIds) } });
+      const { removedDrinkIds, removedVisitIds } = get();
+      set({ diarySnapshot: { accountId, data: withoutRemoved(data, removedDrinkIds, removedVisitIds) } });
     }
     return data != null;
   };
@@ -271,6 +282,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
     profile: null,
     diarySnapshot: null,
     removedDrinkIds: new Set(),
+    removedVisitIds: new Set(),
 
     initAccount: async () => {
       if (get().status === 'loading') return;
@@ -382,7 +394,20 @@ export const useAccountStore = create<AccountState>((set, get) => {
           removedDrinkIds,
           profile,
           diarySnapshot: snapshot
-            ? { ...snapshot, data: withoutRemovedDrinks(snapshot.data, removedDrinkIds) }
+            ? { ...snapshot, data: withoutRemoved(snapshot.data, removedDrinkIds, state.removedVisitIds) }
+            : null,
+        };
+      });
+    },
+
+    forgetDiaryVisit: (clientId) => {
+      set((state) => {
+        const removedVisitIds = new Set(state.removedVisitIds).add(clientId);
+        const snapshot = state.diarySnapshot;
+        return {
+          removedVisitIds,
+          diarySnapshot: snapshot
+            ? { ...snapshot, data: withoutRemoved(snapshot.data, state.removedDrinkIds, removedVisitIds) }
             : null,
         };
       });
@@ -432,14 +457,24 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     logout: async (options) => {
       await auth.logout(options);
-      set({ profile: null, diarySnapshot: null, removedDrinkIds: new Set() });
+      set({
+        profile: null,
+        diarySnapshot: null,
+        removedDrinkIds: new Set(),
+        removedVisitIds: new Set(),
+      });
       await syncSession();
       await get().refreshProfile();
     },
     deleteAccount: async () => {
       const result = await auth.deleteAccount();
       if (result.ok) {
-        set({ profile: null, diarySnapshot: null, removedDrinkIds: new Set() });
+        set({
+          profile: null,
+          diarySnapshot: null,
+          removedDrinkIds: new Set(),
+          removedVisitIds: new Set(),
+        });
         await syncSession();
         await get().refreshProfile();
       }

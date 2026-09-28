@@ -194,9 +194,8 @@ describe('StatsScreen', () => {
       useAccountStore.setState({ removedDrinkIds: new Set(['removed-just-now']) });
     });
 
-    let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
-      renderer = renderStats();
+      renderStats();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
@@ -217,9 +216,8 @@ describe('StatsScreen', () => {
       });
     });
 
-    let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
-      renderer = renderStats();
+      renderStats();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 

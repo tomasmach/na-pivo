@@ -114,6 +114,7 @@ beforeEach(() => {
     profile: null,
     diarySnapshot: null,
     removedDrinkIds: new Set(),
+    removedVisitIds: new Set(),
   });
   mockEnsureAccount.mockResolvedValue({
     deviceId: 'd',
@@ -345,6 +346,28 @@ describe('forgetDiaryDrink', () => {
     expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBeNull();
     // Offline, the profile total is the fallback and must drop the beer too.
     expect(useAccountStore.getState().profile?.stats?.totalBeers).toBe(0);
+  });
+
+  it('keeps a wiped evening out of the snapshot and of a refresh that raced it', async () => {
+    const visit = (clientId: string) => ({ client_id: clientId }) as DiarySnapshot['visits'][number];
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      diarySnapshot: { accountId: 'a', data: { drinks: [], visits: [visit('kept'), visit('wiped')] } },
+    });
+    let resolveRefresh!: (data: DiarySnapshot) => void;
+    mockReconcileDiarySnapshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+    );
+
+    const refresh = useAccountStore.getState().refreshDiarySnapshot();
+    useAccountStore.getState().forgetDiaryVisit('wiped');
+    expect(useAccountStore.getState().diarySnapshot?.data.visits).toEqual([visit('kept')]);
+    resolveRefresh({ drinks: [], visits: [visit('kept'), visit('wiped')] });
+    await refresh;
+
+    expect(useAccountStore.getState().diarySnapshot?.data.visits).toEqual([visit('kept')]);
   });
 
   it('keeps the drink out when a refresh that started earlier still returns it', async () => {

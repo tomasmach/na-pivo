@@ -21,6 +21,7 @@ import {
   clearVisitsQueue,
   enqueueVisitOp,
   flushVisitsQueue,
+  getQueuedVisitDeleteIds,
   type VisitQueueItem,
 } from '../visitsQueue';
 import type { SubmitVisitResult, VisitEntry } from '../visitsClient';
@@ -90,6 +91,15 @@ describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
     const queue = await readQueue();
     expect(queue).toHaveLength(1);
     expect(queue[0].op).toBe('delete');
+  });
+
+  it('reports only the evenings whose DELETE is still queued', async () => {
+    submitVisit.mockResolvedValue('retry');
+    deleteVisit.mockResolvedValue('retry');
+    await enqueueVisitOp(upsert('kept'));
+    await enqueueVisitOp({ op: 'delete', clientId: 'wiped' });
+
+    expect(await getQueuedVisitDeleteIds()).toEqual(new Set(['wiped']));
   });
 
   it('keeps distinct client_ids as separate items', async () => {
