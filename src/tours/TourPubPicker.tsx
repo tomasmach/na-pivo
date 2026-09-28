@@ -54,6 +54,11 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
     return allowed.map((pub) => ({ pub, meters: haversineMeters(center, pub) }))
       .sort((a, b) => a.meters - b.meters).slice(0, NEARBY_LIMIT).map(({ pub }) => pub);
   }, [browsing, pubs, region.latitude, region.longitude, reportedCacheKeys, reportedPubIds]);
+  const list = useRef<ScrollView>(null);
+  // A moved map reorders the list, so show its new nearest pubs from the top.
+  useEffect(() => {
+    if (browsing) list.current?.scrollTo({ y: 0, animated: false });
+  }, [browsing, region.latitude, region.longitude]);
   const [previewCandidate, setPreview] = useState<Pub | null>(null);
   const visiblePreview = previewCandidate && filterTourPubs([previewCandidate], { reportedPubIds, reportedCacheKeys }).length ? previewCandidate : null;
   // A rename made on the pub page must reach the stop that gets added.
@@ -173,7 +178,7 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
         {!!query && <Pressable accessibilityRole="button" accessibilityLabel={t.tours.clearSearch} style={styles.clear} onPress={() => changeQuery('')}><XIcon size={18} color={Colors.foamMuted} /></Pressable>}
       </View>}
       {!keyboardVisible && map}
-      <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
+      <ScrollView ref={list} style={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
         {preview ? <View style={styles.preview}>
           <Text maxFontSizeMultiplier={1.3} style={styles.pubTitle}>{preview.name}</Text>
           {!!(preview.address || preview.city) && <Text maxFontSizeMultiplier={1.3} style={styles.address}>{[preview.address, preview.city].filter(Boolean).join(', ')}</Text>}
