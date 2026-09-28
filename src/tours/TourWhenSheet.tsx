@@ -53,7 +53,10 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
     setPending(next);
     const run = saving.current.then(() => onChange(next));
     saving.current = run;
-    void run.then(() => { if (saving.current === run) setPending(null); });
+    void run.then((ok) => {
+      setFailed(!ok);
+      if (saving.current === run) setPending(null);
+    });
     return run;
   }
   function apply(next: Schedule) {
@@ -63,14 +66,17 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
     void write(next);
   }
   const [closing, setClosing] = useState(false);
+  // A pick the phone could not store keeps the sheet open, so nothing seems chosen that is not.
+  const [failed, setFailed] = useState(false);
   // Closing freezes the controls and waits until every pick is on disk, not just the ones before the tap.
   async function close() {
     if (closing) return;
     setClosing(true);
     let seen: Promise<unknown>;
-    do { seen = saving.current; await seen; } while (seen !== saving.current);
+    let ok: unknown = true;
+    do { seen = saving.current; ok = await seen; } while (seen !== saving.current);
     setClosing(false);
-    onClose();
+    if (ok !== false) onClose();
   }
   function pickDay(day: string) {
     const first = earliestMinutes(day, plan.timezone);
@@ -177,6 +183,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
               })}
             </View>}
           {dst && <TourText accessibilityRole="alert" style={styles.hint}>{t.tours.whenDst}</TourText>}
+          {failed && <TourText accessibilityRole="alert" style={styles.hint}>{t.tours.errors.storage}</TourText>}
         </ScrollView>
         <View style={styles.footer}>
           <TourButton testID="tour-when-done" label={t.tours.whenDone} busy={closing} onPress={() => { void close(); }} />
