@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
+import { haversineMeters } from '@/compass/distance';
 import { checkLocationPermission } from '@/compass/permissions';
 import type { Pub } from '@/data/pubs';
 import { openPubPage } from '@/pubPage/openPubPage';
@@ -30,6 +31,8 @@ const pubIdentity = (pub: Pub) => ({ pubId: pub.id, cacheKey: geohash8(pub.lat, 
 /** Suggestions after the last stop stay within a walk; farther pubs still come up by search. */
 const NEAR_METERS = 3000;
 
+const NEARBY_LIMIT = 50;
+
 export interface TourPubPickerProps {
   visible: boolean;
   stops: readonly TourStop[];
@@ -50,15 +53,30 @@ export function TourPubPicker(props: TourPubPickerProps) {
 function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClose, replaceStop }: TourPubPickerProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // The map no longer scrolls away, so even expanded it leaves room for the list and the button.
+  const expandedMapHeight = Math.min(420, Math.round(useWindowDimensions().height / 2));
   const focused = useIsFocused();
   const [query, setQuery] = useState('');
   const [pubs, setPubs] = useState<Pub[]>([]);
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
-  const visiblePubs = filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys });
   const [status, setStatus] = useState<TourPubSearchResult['status']>('ok');
   const [loading, setLoading] = useState(false);
   const [region, setRegion] = useState<Region>(() => tourRegion(stops));
+  // Without a typed name, the pubs nearest the middle of the map come first and follow it as you pan.
+  const browsing = query.trim().length < 2;
+  const visiblePubs = useMemo(() => {
+    const allowed = filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys });
+    if (!browsing) return allowed;
+    const center = { lat: region.latitude, lng: region.longitude };
+    return allowed.map((pub) => ({ pub, meters: haversineMeters(center, pub) }))
+      .sort((a, b) => a.meters - b.meters).slice(0, NEARBY_LIMIT).map(({ pub }) => pub);
+  }, [browsing, pubs, region.latitude, region.longitude, reportedCacheKeys, reportedPubIds]);
+  const list = useRef<ScrollView>(null);
+  // A moved map reorders the list, so show its new nearest pubs from the top.
+  useEffect(() => {
+    if (browsing) list.current?.scrollTo({ y: 0, animated: false });
+  }, [browsing, region.latitude, region.longitude]);
   const [previewCandidate, setPreview] = useState<Pub | null>(null);
   const visiblePreview = previewCandidate && filterTourPubs([previewCandidate], { reportedPubIds, reportedCacheKeys }).length ? previewCandidate : null;
   // A rename made on the pub page must reach the stop that gets added.
@@ -216,7 +234,7 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
   }
   const previewIndex = preview ? inTour(preview) : -1;
   const map = <View>
-    <TourMap caption={false} stops={stops} selectedId={previewIndex >= 0 ? stops[previewIndex].id : null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? 420 : 215} region={region} onRegionChange={moveMap} candidates={listed.filter((pub) => inTour(pub) < 0).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />
+    <TourMap caption={false} stops={stops} selectedId={previewIndex >= 0 ? stops[previewIndex].id : null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? expandedMapHeight : 215} region={region} onRegionChange={moveMap} candidates={listed.filter((pub) => inTour(pub) < 0).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />
     {!preview && <Pressable accessibilityRole="button" style={({ pressed }) => [styles.areaButton, pressed && styles.pressed]} onPress={() => { setQuery(''); setAreaSearch(true); void search('', true); }}>
       <SearchIcon size={15} color={Colors.foam} /><Text maxFontSizeMultiplier={1.2} style={styles.areaText}>{t.tours.searchArea}</Text>
     </Pressable>}
@@ -234,8 +252,8 @@ function TourPubPickerContent({ stops, scheduledDate, onToggle, onReplace, onClo
         <TextInput maxFontSizeMultiplier={1.3} style={styles.input} placeholder={t.tours.searchPlaceholder} placeholderTextColor={Colors.mutedText} value={query} onChangeText={changeQuery} autoCorrect={false} returnKeyType="search" onSubmitEditing={() => { Keyboard.dismiss(); if (query.trim().length >= 2) void search(query); }} accessibilityLabel={t.tours.searchPlaceholder} maxLength={120} />
         {!!query && <Pressable accessibilityRole="button" accessibilityLabel={t.tours.clearSearch} style={styles.clear} onPress={() => changeQuery('')}><XIcon size={18} color={Colors.foamMuted} /></Pressable>}
       </View>}
-      <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-        {!keyboardVisible && map}
+      {!keyboardVisible && map}
+      <ScrollView ref={list} style={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         {preview ? <View style={styles.preview}>
           <Text maxFontSizeMultiplier={1.3} style={styles.pubTitle}>{preview.name}</Text>
           {!!(preview.address || preview.city) && <Text maxFontSizeMultiplier={1.3} style={styles.address}>{[preview.address, preview.city].filter(Boolean).join(', ')}</Text>}
