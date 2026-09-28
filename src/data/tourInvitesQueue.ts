@@ -67,8 +67,11 @@ async function deliver(item: TourInviteQueueItem): Promise<'ok' | 'drop' | 'retr
 async function sendWhatFits(item: TourInviteQueueItem): Promise<boolean> {
   const roster = await fetchTourRoster(item.planId);
   if (!roster.ok) return !roster.retry;
-  const known = new Set(roster.value.map((row) => row.friend.id));
-  const fits = item.recipientIds.filter((id) => !known.has(id)).slice(0, Math.max(0, TOUR_INVITE_LIMIT - roster.value.length));
+  const known = new Map(roster.value.map((row) => [row.friend.id, row.stale]));
+  // A friend with a dead link takes no new slot and still needs the current one; new friends fill what is left.
+  const resend = item.recipientIds.filter((id) => known.get(id) === true);
+  const fresh = item.recipientIds.filter((id) => !known.has(id)).slice(0, Math.max(0, TOUR_INVITE_LIMIT - roster.value.length));
+  const fits = [...resend, ...fresh];
   if (!fits.length) return true;
   const retried = await sendTourInvites(item.planId, fits);
   return retried.ok || !retried.retry;
@@ -107,6 +110,11 @@ export async function enqueueTourInvite(planId: string, recipientIds: string[]):
     stored = await save([...rest, { planId, recipientIds: merged, createdAt: new Date().toISOString() }]);
   });
   return stored;
+}
+
+/** Revoking a link means nobody new should get into the tour: what still waits for signal goes. */
+export async function dropTourInvites(planId: string): Promise<void> {
+  await locked(async () => { await save((await load()).filter((item) => item.planId !== planId)); });
 }
 
 /** Friends still waiting for signal, so the sheet shows them as invited. */

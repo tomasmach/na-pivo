@@ -26,7 +26,7 @@ import { loadPartyFriends, type PartyFriends } from '@/data/friendsClient';
 import { flushFriendsQueue, friendActivityState } from '@/data/friendsQueue';
 import PingSheet from '@/friends/PingSheet';
 import { fetchTourRoster, type TourInviteRow } from '@/data/tourInvitesClient';
-import { subscribeTourInviteDelivery } from '@/data/tourInvitesQueue';
+import { dropTourInvites, subscribeTourInviteDelivery } from '@/data/tourInvitesQueue';
 import { useToastStore } from '@/stores/toastStore';
 import { TourInviteRosterRow, TourInviteRosterSheet, TourInviteSheet, type InviteSent } from './TourInviteSheet';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
@@ -112,7 +112,9 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   // In invisible mode a ping would reach nobody, so the row does not offer one.
   const canPing = !!friends?.friends.length && !friends.ghost;
   const publicToken = plan?.publication?.status === 'active' ? plan.publication.token : null;
-  // Only a plan the server knows can have invites; the answers are read again whenever the tour comes back into view.
+  // Only a plan the server knows can have invites; the answers are read again whenever the tour comes back into view,
+  // and after a new or revoked link, which changes who holds a working one.
+  const shareUrl = plan?.share?.url;
   const onServer = !!plan && !plan.source && plan.revision > 0;
   useEffect(() => {
     if (!focused || !onServer) return;
@@ -122,7 +124,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     const delivered = subscribeTourInviteDelivery((planId) => { if (planId === id) load(); });
     const foreground = AppState.addEventListener('change', (next) => { if (next === 'active') load(); });
     return () => { alive = false; delivered(); foreground.remove(); };
-  }, [focused, onServer, id]);
+  }, [focused, onServer, id, shareUrl]);
   function invitesSent(sent: InviteSent) {
     setInviteSheet(false);
     if (sent.status === 'sent') setRoster(sent.roster);
@@ -321,7 +323,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.rotate, onPress: () => { void action(() => store.publish(id, true)); } },
           ] })} />
           <TourButton label={t.tours.revoke} secondary onPress={() => showAppDialog({ title: t.tours.revokeTitle, message: t.tours.revokeMessage, buttons: [
-            { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.revoke, style: 'destructive', onPress: () => { void action(() => store.revoke(id), () => setNotice(t.tours.revoked)); } },
+            { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.revoke, style: 'destructive', onPress: () => { void action(async () => { await dropTourInvites(id); return store.revoke(id); }, () => setNotice(t.tours.revoked)); } },
           ] })} />
         </>}
       </> : <>

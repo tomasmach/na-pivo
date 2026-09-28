@@ -5,6 +5,7 @@ import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { fetchOpenTourInvites, type OpenTourInvite } from '@/data/tourInvitesClient';
 import { friendDisplayName } from '@/friends/FriendMini';
 import { Avatar } from '@/profile/Avatar';
+import { useAccountStore } from '@/stores/accountStore';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -17,13 +18,16 @@ import type { TourPlan } from './model';
 export function TourInviteInbox({ saved }: { saved: TourPlan[] }) {
   const router = useRouter();
   const focused = useIsFocused();
-  const [invites, setInvites] = useState<OpenTourInvite[]>([]);
+  // Kept with the account it was read for: after a logout or switch the previous account's invites never show.
+  const accountId = useAccountStore((s) => s.session?.accountId ?? null);
+  const [found, setFound] = useState<{ accountId: string; invites: OpenTourInvite[] } | null>(null);
   useEffect(() => {
-    if (!focused) return;
+    if (!focused || !accountId) return;
     let alive = true;
-    void fetchOpenTourInvites().then((result) => { if (alive && result.ok) setInvites(result.value); });
+    void fetchOpenTourInvites().then((result) => { if (alive) setFound({ accountId, invites: result.ok ? result.value : [] }); });
     return () => { alive = false; };
-  }, [focused]);
+  }, [focused, accountId]);
+  const invites = found && found.accountId === accountId ? found.invites : [];
   // Someone going who already saved the tour finds it among their own tours.
   const shown = invites.filter((invite) => !(invite.status === 'going' && saved.some((plan) => plan.source?.tourId === invite.planId)));
   if (!shown.length) return null;

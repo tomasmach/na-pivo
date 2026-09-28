@@ -16,6 +16,8 @@ const mockStore = {
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn(), canGoBack: () => true }), useIsFocused: () => true }));
 jest.mock('@/data/tourInvitesClient', () => ({ fetchOpenTourInvites: jest.fn(async () => ({ ok: false, error: 'unsupported', status: 404, retry: false })) }));
 jest.mock('@/profile/Avatar', () => ({ Avatar: () => null }));
+const mockAccount = { session: { accountId: 'me' } as { accountId: string } | null };
+jest.mock('@/stores/accountStore', () => ({ useAccountStore: (select: (s: typeof mockAccount) => unknown) => select(mockAccount) }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 jest.mock('@/stores/toursStore', () => ({ useToursStore: Object.assign(() => mockStore, { getState: () => mockStore }) }));
 jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
@@ -28,6 +30,7 @@ const plan = (id: string, title: string): TourPlan => ({ id, title, scheduledDat
 beforeEach(() => {
   jest.clearAllMocks();
   mockStore.plans = []; mockStore.draft = null; mockStore.activeRun = null; mockStore.runs = [];
+  mockAccount.session = { accountId: 'me' };
 });
 
 it('explains the feature with a plan action and account restore when there is nothing yet', () => {
@@ -71,4 +74,19 @@ it('lists invites to friends\' tours on top and opens the invite, even when the 
   expect(screen.getAllByText('Uložená')).toHaveLength(1);
   fireEvent.press(screen.getByText('Pátek po hospodách'));
   expect(mockPush).toHaveBeenCalledWith('/t/invite-token-for-tours-list-test');
+});
+
+it('forgets the previous account\'s invites when the account changes', async () => {
+  const inviter = { id: 'jirka', nickname: 'Jirka', displayName: 'Jirka', avatarUrl: null, isPublic: true };
+  jest.mocked(fetchOpenTourInvites)
+    .mockResolvedValueOnce({ ok: true, value: [{ planId: 'p-1', status: 'invited', inviter, token: 'invite-token-for-tours-list-test', title: 'Cizí pozvánka',
+      scheduledDate: null, scheduledTime: null, firstPub: '' }] })
+    .mockResolvedValueOnce({ ok: false, error: 'network', status: 0, retry: true });
+  const screen = render(<ToursScreen />);
+  await waitFor(() => expect(screen.getByText('Cizí pozvánka')).toBeTruthy());
+  mockAccount.session = { accountId: 'someone-else' };
+  screen.rerender(<ToursScreen />);
+  expect(screen.queryByText('Cizí pozvánka')).toBeNull();
+  await waitFor(() => expect(fetchOpenTourInvites).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText('Cizí pozvánka')).toBeNull();
 });

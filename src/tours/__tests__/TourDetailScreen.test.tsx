@@ -8,6 +8,7 @@ import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
 import type { TourPlan, TourRun } from '../model';
 import { TourJourneyIllustration } from '../TourJourneyIllustration';
 import TourDetailScreen from '../TourDetailScreen';
+import { dropTourInvites } from '@/data/tourInvitesQueue';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,6 +26,7 @@ const mockStore = {
   error: null,
   busy: false,
   hydrate: jest.fn(async () => ({ ok: true })),
+  revoke: jest.fn(async () => ({ ok: true as const })),
   refreshCrew: jest.fn(async () => undefined),
   copyPlan: jest.fn(async () => ({ ok: true as const, id: 'copied-plan' })),
   markStop: jest.fn(async (id: string, status: 'visited' | 'skipped' | null) => {
@@ -63,6 +65,7 @@ jest.mock('@/stores/toursStore', () => ({
   tourContentSignature: (plan: TourPlan) => JSON.stringify(plan.stops),
 }));
 jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
+jest.mock('@/data/tourInvitesQueue', () => ({ ...jest.requireActual('@/data/tourInvitesQueue'), dropTourInvites: jest.fn(async () => undefined) }));
 jest.mock('@/components/amenities/MapPubSheet', () => ({ MapPubSheet: () => null }));
 jest.mock('@/components/amenities/pubInfoContext', () => ({ pubInfoFromPub: jest.fn() }));
 jest.mock('@/utils/maps', () => ({ openPubInMaps: jest.fn(async () => undefined) }));
@@ -329,4 +332,17 @@ it('pings everyone away from the table and then stops offering the same pub', as
   await act(async () => { await sheet.onSend(undefined); });
   expect(sendPing).toHaveBeenLastCalledWith('Probíhající večer', expect.anything(), ['eva']);
   expect(screen.getByText('crew-row ping:false')).toBeTruthy();
+});
+
+it('drops invites still waiting for signal before it revokes the link, so a later flush cannot bring the link back', async () => {
+  mockStore.activeRun = null;
+  mockStore.plans[0].share = { url: 'https://na-pivo.cz/t/test-link', expiresAt: '2999-01-01T00:00:00Z' };
+  const screen = render(<TourDetailScreen />);
+  fireEvent.press(screen.getByLabelText(t.tours.more));
+  act(() => { jest.mocked(showAppDialog).mock.calls[0][0].buttons!.find((button) => button.text === t.tourInvites.linkMenu)!.onPress!(); });
+  fireEvent.press(screen.getByLabelText(t.tours.revoke));
+  const confirm = jest.mocked(showAppDialog).mock.calls[1][0].buttons!.find((button) => button.text === t.tours.revoke)!;
+  await act(async () => { confirm.onPress!(); });
+  expect(dropTourInvites).toHaveBeenCalledWith(tourId);
+  expect(jest.mocked(dropTourInvites).mock.invocationCallOrder[0]).toBeLessThan(mockStore.revoke.mock.invocationCallOrder[0]);
 });
