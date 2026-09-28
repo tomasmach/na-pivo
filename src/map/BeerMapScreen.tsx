@@ -887,11 +887,13 @@ export default function BeerMapScreen({
       return aDistance - bDistance;
     });
   }, [points, region]);
-  const listedPoints = useMemo(
-    () => (favoritesOnly ? visiblePoints.filter((point) => favorites[point.key]) : visiblePoints),
-    [favorites, favoritesOnly, visiblePoints],
-  );
   const hasFavorites = Object.keys(favorites).length > 0;
+  // With no favourites left the chip is gone, so the filter must not linger.
+  const favoritesFilter = favoritesOnly && hasFavorites;
+  const listedPoints = useMemo(
+    () => (favoritesFilter ? visiblePoints.filter((point) => favorites[point.key]) : visiblePoints),
+    [favorites, favoritesFilter, visiblePoints],
+  );
 
   const visibleLivePubs = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -1732,19 +1734,19 @@ export default function BeerMapScreen({
               {layer !== 'friends' && hasFavorites ? (
                 <View style={styles.listChips}>
                   <Pressable
-                    onPress={() => setFavoritesOnly((current) => !current)}
+                    onPress={() => setFavoritesOnly(!favoritesFilter)}
                     style={({ pressed }) => [
                       styles.listChip,
-                      favoritesOnly && styles.listChipActive,
+                      favoritesFilter && styles.listChipActive,
                       pressed && styles.pressedSoft,
                     ]}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: favoritesOnly }}
+                    accessibilityState={{ selected: favoritesFilter }}
                     accessibilityLabel={t.map.favoritesOnly}
                   >
-                    <HeartIcon size={15} color={favoritesOnly ? Colors.amber : Colors.mutedText} />
+                    <HeartIcon size={15} color={favoritesFilter ? Colors.amber : Colors.mutedText} />
                     <Text
-                      style={[styles.listChipText, favoritesOnly && styles.listChipTextActive]}
+                      style={[styles.listChipText, favoritesFilter && styles.listChipTextActive]}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
                       {t.map.favoritesOnly}
@@ -1880,7 +1882,7 @@ export default function BeerMapScreen({
                       style={styles.emptyList}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {favoritesOnly ? t.map.emptyFavorites : t.map.emptyList}
+                      {favoritesFilter ? t.map.emptyFavorites : t.map.emptyList}
                     </Text>
                   }
                 />
