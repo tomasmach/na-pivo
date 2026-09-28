@@ -4041,10 +4041,14 @@ class PubVisitView(APIView):
                         "party_evening_id": party_evening_id,
                     },
                 )
-                if existing is not None and existing.cache_key != cache_key:
-                    # Moving a visit to another pub starts its server-side
-                    # clock again: "Kdo tu sedí s tebou" trusts created_at as
-                    # the time the server first saw the account at this pub.
+                if existing is not None and (
+                    existing.cache_key != cache_key
+                    or (existing.closed_at is not None and visit.closed_at is None)
+                ):
+                    # Moving a visit to another pub or resuming a closed one
+                    # starts its server-side clock again: "Kdo tu sedí s tebou"
+                    # trusts created_at as the time the server has seen the
+                    # account sitting at this pub since.
                     PubVisit.objects.filter(pk=visit.pk).update(created_at=dj_timezone.now())
                 closed_at = data.get("closed_at")
                 if closed_at is not None:

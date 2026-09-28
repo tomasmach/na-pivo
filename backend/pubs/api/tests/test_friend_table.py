@@ -247,6 +247,38 @@ def test_moving_an_old_visit_to_another_pub_restarts_the_clock(client):
 
 
 @pytest.mark.django_db
+def test_resuming_a_closed_visit_restarts_the_clock(client):
+    me_token, me = _register(client, "me")
+    client_id = str(uuid.uuid4())
+    started = timezone.now() - timedelta(minutes=40)
+    body = _visit_body(client_id, lat=50.0853, lng=14.4187, at=started)
+    closed = client.post(
+        "/v1/pub-visits",
+        data={**body, "closed_at": timezone.now().isoformat()},
+        format="json",
+        **_auth(me_token),
+    )
+    assert closed.status_code == status.HTTP_201_CREATED
+    PubVisit.objects.filter(account=me).update(created_at=timezone.now() - timedelta(hours=3))
+
+    resumed = client.post(
+        "/v1/pub-visits",
+        data={
+            **body,
+            "ended_at": timezone.now().isoformat(),
+            "updated_at": timezone.now().isoformat(),
+            "closed_at": None,
+        },
+        format="json",
+        **_auth(me_token),
+    )
+
+    assert resumed.status_code == status.HTTP_200_OK
+    assert PubVisit.objects.get(account=me).closed_at is None
+    assert client.post(_URL, **_auth(me_token)).json()["reason"] == "too_soon"
+
+
+@pytest.mark.django_db
 def test_touching_an_older_planted_visit_does_not_move_me_to_its_pub(client, table):
     me_token, me, _bara_token, _bara = table
     # I planted a visit in another pub earlier; my newest visit on the server
