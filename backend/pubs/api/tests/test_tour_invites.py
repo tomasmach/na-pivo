@@ -369,3 +369,18 @@ def test_unusable_invites_do_not_crowd_out_usable_ones(django_capture_on_commit_
         assert [row["plan_id"] for row in friend.get("/v1/tour-invites").json()["invites"]] == [usable]
     finally:
         views.INVITES_PER_TOUR = original
+
+
+def test_the_roster_counts_every_stored_invite_toward_the_cap(django_capture_on_commit_callbacks):
+    owner, petr, jana = person("janek"), person("petr"), person("jana")
+    befriend(owner, petr)
+    befriend(owner, jana)
+    plan_id, _ = tour(owner)
+    with django_capture_on_commit_callbacks(execute=True):
+        created = invite(owner, plan_id, petr, jana)
+    assert created.json()["occupied"] == 2
+    # A blocked profile disappears from the list but still takes its place.
+    FriendBlock.objects.create(blocker=jana.account, blocked=owner.account)
+    roster = owner.get(f"/v1/tours/{plan_id}/invites").json()
+    assert [row["account"]["nickname"] for row in roster["invites"]] == ["petr"]
+    assert roster["occupied"] == 2

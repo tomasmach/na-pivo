@@ -47,6 +47,17 @@ export type TourInviteResult<T> = { ok: true; value: T } | { ok: false; error: T
 const TIMEOUT_MS = 12000;
 /** The server's cap on invites per tour (INVITES_PER_TOUR). */
 export const TOUR_INVITE_LIMIT = 50;
+
+// How many invite rows the server keeps per tour, hidden profiles included, as last read. The offline cap check needs it.
+const occupiedByPlan = new Map<string, number>();
+function rememberOccupied(planId: string, raw: unknown, fallback: number) {
+  const occupied = (raw as { occupied?: unknown } | null)?.occupied;
+  occupiedByPlan.set(planId, typeof occupied === 'number' && occupied >= 0 ? occupied : fallback);
+}
+/** Invite rows the server had for this tour when the phone last asked; null before the first answer. */
+export function knownOccupied(planId: string): number | null {
+  return occupiedByPlan.get(planId) ?? null;
+}
 const STATUSES: TourInviteStatus[] = ['invited', 'going', 'declined'];
 
 function parseFriend(raw: unknown): FriendProfile | null {
@@ -136,6 +147,7 @@ export async function sendTourInvites(planId: string, recipientIds: string[]): P
   const r = await request(path, 'POST', { recipient_ids: recipientIds });
   if (r.status < 200 || r.status >= 300) return failure(r, 'tour_invite_send', '/v1/tours/{id}/invites');
   const roster = parseRoster(r.data);
+  rememberOccupied(planId, r.data, roster?.length ?? 0);
   const invited = (r.data as { invited?: unknown } | null)?.invited;
   // The server took it; a body this app cannot read still means the invites went out.
   return { ok: true, value: { roster: roster ?? [], invited: typeof invited === 'number' ? invited : recipientIds.length } };
@@ -147,6 +159,7 @@ export async function fetchTourRoster(planId: string): Promise<TourInviteResult<
   const r = await request(path, 'GET');
   if (r.status !== 200) return failure(r, 'tour_invite_roster', '/v1/tours/{id}/invites');
   const roster = parseRoster(r.data);
+  if (roster) rememberOccupied(planId, r.data, roster.length);
   return roster ? { ok: true, value: roster } : { ok: false, error: 'invalid', status: r.status, retry: false };
 }
 

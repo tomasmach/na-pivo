@@ -1,5 +1,5 @@
 import { Share } from 'react-native';
-import { sendTourInvites, TOUR_INVITE_LIMIT, type TourInviteError, type TourInviteRow } from '@/data/tourInvitesClient';
+import { knownOccupied, sendTourInvites, TOUR_INVITE_LIMIT, type TourInviteError, type TourInviteRow } from '@/data/tourInvitesClient';
 import { enqueueTourInvite, flushTourInvitesQueue, queuedTourInvitees, setTourInvitePreparer } from '@/data/tourInvitesQueue';
 import { tourContentSignature, useToursStore } from '@/stores/toursStore';
 import { t } from '@/i18n';
@@ -28,11 +28,17 @@ async function prepare(planId: string): Promise<{ outcome: 'ok' | 'retry' | 'dro
   return { outcome: RETRIABLE.includes(result.error) ? 'retry' : 'drop', error: result.error };
 }
 
+/** The link the phone knows is still there; no call and no publishing. */
+function hasLink(planId: string): boolean {
+  const plan = useToursStore.getState().plans.find((p) => p.id === planId);
+  return !!plan && !plan.source && !!plan.share && Date.parse(plan.share.expiresAt) > Date.now();
+}
+
+// A queued invite goes out only with the link the tour has now, and the server checks that link again.
 setTourInvitePreparer(async (planId) => {
-  const { outcome, error } = await prepare(planId);
-  // A background retry that found no signal is not something to show on the tour screen.
-  if (outcome === 'retry' && useToursStore.getState().error === error) useToursStore.getState().clearError();
-  return outcome;
+  const hydrated = await useToursStore.getState().hydrate();
+  if (!hydrated.ok) return 'retry';
+  return hasLink(planId) ? 'ok' : 'drop';
 });
 
 export { flushTourInvitesQueue };
@@ -65,10 +71,12 @@ export async function inviteFriends(planId: string, recipientIds: string[], rost
     }
     if (!result.retry) return { error: inviteError(result.error) };
   }
+  // The queue will not make a link later, so without one there is nothing to wait for.
+  if (!hasLink(planId)) return { error: t.tourInvites.errors.network };
   // The server would refuse more than the cap later, when nobody is looking; say it now instead.
   const known = new Set(roster.map((row) => row.friend.id));
   const waiting = new Set([...(await queuedTourInvitees(planId)), ...recipientIds].filter((id) => !known.has(id)));
-  if (roster.length + waiting.size > TOUR_INVITE_LIMIT) return { error: t.tourInvites.errors.limit };
+  if ((knownOccupied(planId) ?? roster.length) + waiting.size > TOUR_INVITE_LIMIT) return { error: t.tourInvites.errors.limit };
   return (await enqueueTourInvite(planId, recipientIds)) ? { status: 'queued' } : { error: t.tourInvites.errors.network };
 }
 

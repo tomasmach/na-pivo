@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearTourInvitesQueue, dropTourInvites, enqueueTourInvite, flushTourInvitesQueue, queuedTourInvitees, setTourInvitePreparer, subscribeTourInviteDelivery } from '../tourInvitesQueue';
-import { fetchTourRoster, sendTourInvites } from '../tourInvitesClient';
+import { sendTourInvites } from '../tourInvitesClient';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock') }));
-jest.mock('../tourInvitesClient', () => ({ sendTourInvites: jest.fn(), fetchTourRoster: jest.fn(), TOUR_INVITE_LIMIT: 50 }));
+jest.mock('../tourInvitesClient', () => ({ sendTourInvites: jest.fn() }));
 
 const plan = '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab';
 const prepare = jest.fn(async () => 'ok' as const);
@@ -75,27 +75,6 @@ it('forgets everything at an account boundary', async () => {
   expect(await queuedTourInvitees(plan)).toEqual([]);
 });
 
-it('sends whoever still fits when another phone filled the tour meanwhile, instead of dropping everyone', async () => {
-  const full = { ok: false, error: 'limit', status: 400, retry: false } as const;
-  const row = (id: string) => ({ friend: { id, nickname: id, displayName: id, avatarUrl: null, isPublic: true }, status: 'invited' as const, invitedAt: '', respondedAt: null, stale: false });
-  jest.mocked(sendTourInvites).mockResolvedValueOnce(full).mockResolvedValueOnce({ ok: true, value: { roster: [], invited: 1 } });
-  jest.mocked(fetchTourRoster).mockResolvedValue({ ok: true, value: [...Array.from({ length: 49 }, (_, i) => row(`r${i}`))] });
-  await enqueueTourInvite(plan, ['a', 'b', 'r1']);
-  await flushTourInvitesQueue();
-  expect(sendTourInvites).toHaveBeenLastCalledWith(plan, ['a']);
-  expect(await queuedTourInvitees(plan)).toEqual([]);
-});
-
-it('keeps friends with a dead link in the partial retry, since they take no new slot', async () => {
-  const full = { ok: false, error: 'limit', status: 400, retry: false } as const;
-  const row = (id: string, stale = false) => ({ friend: { id, nickname: id, displayName: id, avatarUrl: null, isPublic: true }, status: 'invited' as const, invitedAt: '', respondedAt: null, stale });
-  jest.mocked(sendTourInvites).mockResolvedValueOnce(full).mockResolvedValueOnce({ ok: true, value: { roster: [], invited: 2 } });
-  jest.mocked(fetchTourRoster).mockResolvedValue({ ok: true, value: [row('old', true), row('fresh'), ...Array.from({ length: 47 }, (_, i) => row(`r${i}`))] });
-  await enqueueTourInvite(plan, ['old', 'fresh', 'a', 'b']);
-  await flushTourInvitesQueue();
-  expect(sendTourInvites).toHaveBeenLastCalledWith(plan, ['old', 'a']);
-});
-
 it('drops what waits for a tour whose link was revoked', async () => {
   jest.mocked(sendTourInvites).mockResolvedValue(offline);
   await enqueueTourInvite(plan, ['a']);
@@ -103,4 +82,16 @@ it('drops what waits for a tour whose link was revoked', async () => {
   await dropTourInvites(plan);
   expect(await queuedTourInvitees(plan)).toEqual([]);
   expect(await queuedTourInvitees('other-plan')).toEqual(['b']);
+});
+
+it('drops an invite whose link was revoked meanwhile or whose tour filled up, instead of trying for a week', async () => {
+  jest.mocked(sendTourInvites).mockResolvedValueOnce({ ok: false, error: 'share_required', status: 409, retry: true });
+  await enqueueTourInvite(plan, ['a']);
+  await flushTourInvitesQueue();
+  expect(await queuedTourInvitees(plan)).toEqual([]);
+  jest.mocked(sendTourInvites).mockResolvedValueOnce({ ok: false, error: 'limit', status: 400, retry: false });
+  await enqueueTourInvite(plan, ['b']);
+  await flushTourInvitesQueue();
+  expect(await queuedTourInvitees(plan)).toEqual([]);
+  expect(sendTourInvites).toHaveBeenCalledTimes(2);
 });

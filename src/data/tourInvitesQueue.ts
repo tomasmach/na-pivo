@@ -3,15 +3,15 @@
  * here and goes out on launch or foreground, one item per tour (a later invite
  * for the same tour adds its friends to the waiting one).
  *
- * The tour has to be on the server with a valid link first. This module cannot
- * publish it (that is the tours store's job), so the tours layer registers a
- * preparer that does. Keep/drop: sent or refused for good (400/422, invisible
- * mode, nobody left to invite) drops; offline, 5xx, a missing link or a server
- * without invites yet (404) retries until the item is a week old.
+ * An invite only ever uses the link the tour already has; the queue never makes
+ * or remakes one, so revoking a link cannot be undone by a late flush. The tours
+ * layer registers a check that the link is still there. Keep/drop: sent, refused
+ * for good (400/422, invisible mode, a link gone or revoked, the tour full) drops;
+ * offline, 5xx or a server without invites yet (404) retries until a week old.
  */
 
 import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
-import { fetchTourRoster, sendTourInvites, TOUR_INVITE_LIMIT } from './tourInvitesClient';
+import { sendTourInvites } from './tourInvitesClient';
 
 const STORAGE_KEY = 'na-pivo-tour-invites-queue';
 const MAX_AGE_MS = 7 * 86400000;
@@ -26,7 +26,7 @@ export interface TourInviteQueueItem {
 
 export type TourInvitePrepare = (planId: string) => Promise<'ok' | 'retry' | 'drop'>;
 let prepare: TourInvitePrepare | null = null;
-/** The tours layer publishes the plan and its link before an invite can name it. */
+/** The tours layer says whether the tour still has its link; it never makes one for the queue. */
 export function setTourInvitePreparer(next: TourInvitePrepare | null): void {
   prepare = next;
 }
@@ -58,23 +58,10 @@ async function deliver(item: TourInviteQueueItem): Promise<'ok' | 'drop' | 'retr
   if (result.ok) return 'ok';
   // A server from before invites answers 404 until the backend with invites is out.
   if (result.error === 'unsupported') return 'retry';
-  // Another phone filled the tour meanwhile: send whoever still fits, and let the roster show who did not.
-  if (result.error === 'limit') return (await sendWhatFits(item)) ? 'ok' : 'retry';
+  // A queued invite never makes a link: one revoked meanwhile, or a tour filled from another phone, ends it here.
+  // The roster then simply does not list those friends.
+  if (result.error === 'share_required' || result.error === 'limit') return 'drop';
   return result.retry ? 'retry' : 'drop';
-}
-
-/** True once the part that fits went out, or nothing fits any more; false to try again later. */
-async function sendWhatFits(item: TourInviteQueueItem): Promise<boolean> {
-  const roster = await fetchTourRoster(item.planId);
-  if (!roster.ok) return !roster.retry;
-  const known = new Map(roster.value.map((row) => [row.friend.id, row.stale]));
-  // A friend with a dead link takes no new slot and still needs the current one; new friends fill what is left.
-  const resend = item.recipientIds.filter((id) => known.get(id) === true);
-  const fresh = item.recipientIds.filter((id) => !known.has(id)).slice(0, Math.max(0, TOUR_INVITE_LIMIT - roster.value.length));
-  const fits = [...resend, ...fresh];
-  if (!fits.length) return true;
-  const retried = await sendTourInvites(item.planId, fits);
-  return retried.ok || !retried.retry;
 }
 
 const { flush, abortInFlight } = createCoalescingFlush(async (signal) => {
