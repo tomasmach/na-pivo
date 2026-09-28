@@ -2500,6 +2500,33 @@ class PubRatingRequestSerializer(PubInputSerializer):
     updated_at = serializers.DateTimeField()
 
 
+# ---------------------------------------------------------------------------
+# Pub favourites (PUT/GET /v1/pub-favorites, DELETE /v1/pub-favorites/<cache_key>)
+# ---------------------------------------------------------------------------
+
+
+class PubFavoriteRequestSerializer(PubInputSerializer):
+    """Request body for PUT /v1/pub-favorites (save or remove one favourite).
+
+    Same bounds as PubRatingRequestSerializer. ``favorite: false`` is the
+    favourite's equivalent of an empty rating: a removal guarded by the same
+    last-write-wins timestamp as a save.
+    """
+
+    name = serializers.CharField(
+        max_length=255, required=False, allow_null=True, allow_blank=True, default=""
+    )
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    favorite = serializers.BooleanField(required=False, default=True)
+    updated_at = serializers.DateTimeField()
+
+
 class PubVisitDeleteRequestSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(required=False)
 

@@ -3985,6 +3985,94 @@ class PubRatingTombstone(models.Model):
         return f"PubRatingTombstone({self.cache_key})"
 
 
+class PubFavorite(models.Model):
+    """
+    A pub the user saved as a favourite ("srdcovka"), keyed by its geohash-8 cell.
+
+    Mirrors PubRating: private per account, one row per (account, ``cache_key``),
+    synced two-way with LAST-WRITE-WINS on ``client_updated_at``. Removing a
+    favourite deletes the row and records a PubFavoriteTombstone. Never
+    aggregated and never shown to other users.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="pub_favorites",
+        help_text="The user who owns this private favourite.",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubRating.cache_key.",
+    )
+    # TextField (not bounded CharField): see PubRating rationale.
+    name = models.TextField(
+        blank=True,
+        default="",
+        help_text="Pub name as the client saw it.",
+    )
+    lat = models.FloatField()
+    lng = models.FloatField()
+    external_id = models.TextField(
+        blank=True,
+        default="",
+        help_text="Client-side provider id, e.g. Mapy.cz item id.",
+    )
+    client_updated_at = models.DateTimeField(
+        help_text="Client's local updatedAt; the last-write-wins conflict key.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Favorite"
+        verbose_name_plural = "Pub Favorites"
+        ordering = ["-client_updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key"],
+                name="unique_favorite_per_account_pub",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubFavorite({self.name or self.cache_key} [{self.cache_key}])"
+
+
+class PubFavoriteTombstone(models.Model):
+    """
+    Durable LWW marker for a removed favourite, like PubRatingTombstone.
+
+    Without it another device that still has the heart pushes an older save on
+    its next restore, finds no row and brings the favourite back.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="pub_favorite_tombstones",
+    )
+    cache_key = models.CharField(max_length=12)
+    client_updated_at = models.DateTimeField(
+        help_text="Client time of the latest removal; the last-write-wins conflict key.",
+    )
+
+    class Meta:
+        verbose_name = "Pub Favorite Tombstone"
+        verbose_name_plural = "Pub Favorite Tombstones"
+        ordering = ["-client_updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key"],
+                name="unique_favorite_tombstone_per_account_pub",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubFavoriteTombstone({self.cache_key})"
+
+
 class PubVisit(models.Model):
     """
     An explicit user visit to a pub — one "evening" out.
