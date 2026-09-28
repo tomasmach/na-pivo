@@ -112,7 +112,11 @@ import { pubHoursLine, type PubHoursTone } from '@/utils/pubHoursLine';
 
 import { openPubPage } from './openPubPage';
 import {
+  calendarDaysBetween,
   confirmedAmenityKeys,
+  inPubTime,
+  withCatalogDetails,
+  pubWallClock,
   currentTaps,
   dayKeyOf,
   eventDay,
@@ -220,11 +224,13 @@ function useNow(): Date {
 function useInitialPub(key: string, name: string, lat: number, lng: number): Pub | null {
   const remembered = usePubPageStore((s) => (key ? s.pubs[key] : undefined));
   return useMemo(() => {
-    if (remembered) return remembered;
-    if (!key || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     const loaded = getAllLoadedPubs().find(
-      (pub) => geohash8(pub.lat, pub.lng) === key && pub.name === name,
+      (pub) =>
+        (remembered?.id && pub.id === remembered.id) ||
+        (geohash8(pub.lat, pub.lng) === key && pub.name === (remembered?.name ?? name)),
     );
+    if (remembered) return withCatalogDetails(remembered, loaded);
+    if (!key || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     return loaded ?? { id: '', name, lat, lng };
   }, [remembered, key, name, lat, lng]);
 }
@@ -278,6 +284,35 @@ export default function PubPageScreen() {
   const info = useMemo(() => (pub ? pubInfoFromPub(pub) : undefined), [pub]);
   const facts = usePubInfoFacts(info);
   const override = useCommunityStore((s) => (key ? s.overrides[key] : undefined));
+
+  // Editing an own pub writes the catalog and returns here: pick up the new
+  // name or position, and reopen under the new cell if the pin moved.
+  const ownClientId = pub?.userAddedClientId;
+  useEffect(() => {
+    if (!ownClientId) return;
+    return usePubStore.subscribe((state, previous) => {
+      if (state.catalogRevision === previous.catalogRevision) return;
+      const fresh = getAllLoadedPubs().find((item) => item.userAddedClientId === ownClientId);
+      if (!fresh) return;
+      if (geohash8(fresh.lat, fresh.lng) !== key) {
+        openPubPage(router, fresh, { replace: true });
+        return;
+      }
+      setPub((current) =>
+        current
+          ? {
+              ...current,
+              id: fresh.id,
+              name: fresh.name,
+              lat: fresh.lat,
+              lng: fresh.lng,
+              address: fresh.address,
+              city: fresh.city,
+            }
+          : current,
+      );
+    });
+  }, [key, ownClientId, router]);
 
   // The map covers the page; an edge swipe or Android back must close it, not
   // pop the page.
@@ -375,7 +410,8 @@ export default function PubPageScreen() {
   }, [key, identityKey, pubName, mappingOpen]);
 
   const now = useNow();
-  const shownEvents = useMemo(() => visibleEvents(events, now), [events, now]);
+  // Filter on real instants, then show in Prague time.
+  const shownEvents = useMemo(() => visibleEvents(events, now).map(inPubTime), [events, now]);
 
   const weeklyHours = useMemo<WeeklyHours | null>(() => {
     if (!pub) return null;
@@ -386,9 +422,10 @@ export default function PubPageScreen() {
       null
     );
   }, [override?.hours, pub]);
+  const pubNow = useMemo(() => pubWallClock(now), [now]);
   const hoursRows = useMemo(
-    () => (weeklyHours ? groupWeeklyHours(weeklyHours, dayKeyOf(now)) : []),
-    [weeklyHours, now],
+    () => (weeklyHours ? groupWeeklyHours(weeklyHours, dayKeyOf(pubNow)) : []),
+    [weeklyHours, pubNow],
   );
 
   const taps = useMemo(() => {
@@ -489,7 +526,7 @@ export default function PubPageScreen() {
     setRenameSubmitting(true);
     const previousName = pub.name;
     setPub({ ...pub, name: trimmed });
-    usePubPageStore.getState().remember(key, { ...pub, name: trimmed });
+    usePubPageStore.getState().rename(key, pub, trimmed);
     submitPubRename(info, previousName, trimmed)
       .then((synced) => {
         setRenameOpen(false);
@@ -595,6 +632,11 @@ export default function PubPageScreen() {
   );
 
   const barHeight = Spacing.md + BAR_BUTTON + Math.max(insets.bottom, Spacing.sm);
+  // The big map covers the page; screen readers must not reach what is under it.
+  const hiddenUnderMap = {
+    accessibilityElementsHidden: mapOpen,
+    importantForAccessibility: mapOpen ? ('no-hide-descendants' as const) : ('auto' as const),
+  };
 
   if (!pub) {
     return (
@@ -611,10 +653,11 @@ export default function PubPageScreen() {
     );
   }
 
-  // The server answers "open now" for most pubs; when it did not, the week
-  // shown further down is enough to say it here too.
+  // Work the header out from the same week the table below shows, including a
+  // fresh local edit, so the two never disagree and the header follows the
+  // clock. Only without a readable week does the server's answer stand.
   const hours = pubHoursLine(
-    pub.isOpenNow == null && weeklyHours ? { ...pub, ...computeOpenState(weeklyHours, now) } : pub,
+    weeklyHours ? { ...pub, ...computeOpenState(weeklyHours, pubNow) } : pub,
   );
   const distance = position ? formatDistance(haversineMeters(position, pub)) : null;
   const firstEvent = shownEvents[0];
@@ -622,7 +665,11 @@ export default function PubPageScreen() {
   const hasBeers = typeof beersLastWeek === 'number' && beersLastWeek > 0;
   const shownTaps = tapsExpanded ? taps : taps.slice(0, TAPS_COLLAPSED);
   const hiddenTaps = taps.length - shownTaps.length;
-  const tapsAge = pub.beersUpdatedAt ? priceAgeLabel(pub.beersUpdatedAt) : null;
+  // A local edit of the list is newer than the server's date; say nothing
+  // rather than pin the old menu's age on the new beers.
+  const localTaps =
+    Boolean(override?.beers) && isBeerListOverrideCurrent(override, pub.beersUpdatedAt);
+  const tapsAge = !localTaps && pub.beersUpdatedAt ? priceAgeLabel(pub.beersUpdatedAt) : null;
   const verdictLabel =
     rating?.verdict === 'like'
       ? t.myBeers.verdictLike
@@ -632,7 +679,7 @@ export default function PubPageScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={[styles.nav, showTitle && styles.navDivided]}>
+      <View style={[styles.nav, showTitle && styles.navDivided]} {...hiddenUnderMap}>
         <RoundButton onPress={goBack} label={t.pubDetail.backA11y}>
           <ChevronLeftIcon size={24} color={Colors.foam} />
         </RoundButton>
@@ -662,6 +709,7 @@ export default function PubPageScreen() {
       </View>
 
       <ScrollView
+        {...hiddenUnderMap}
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: barHeight + Spacing.xl }]}
         onScroll={handleScroll}
@@ -731,7 +779,7 @@ export default function PubPageScreen() {
                 first
                 amber
                 icon={<ClockIcon size={18} color={Colors.amber} />}
-                title={t.pubDetail.eventLine(eventWhenLabel(firstEvent, now), firstEvent.title)}
+                title={t.pubDetail.eventLine(eventWhenLabel(firstEvent, pubNow), firstEvent.title)}
                 subtitle={
                   shownEvents.length > 1
                     ? t.pubDetail.eventsMore(shownEvents.length - 1)
@@ -822,7 +870,7 @@ export default function PubPageScreen() {
         <Band />
         <SectionTitle title={t.pubDetail.eventsHeading} />
         {shownEvents.map((event, index) => (
-          <EventRow key={event.id} event={event} now={now} first={index === 0} />
+          <EventRow key={event.id} event={event} now={pubNow} first={index === 0} />
         ))}
         <LinkRow
           first={shownEvents.length === 0}
@@ -918,7 +966,10 @@ export default function PubPageScreen() {
         </Pressable>
       </ScrollView>
 
-      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
+      <View
+        style={[styles.bar, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}
+        {...hiddenUnderMap}
+      >
         <Pressable
           onPress={navigateToPub}
           style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
@@ -946,7 +997,7 @@ export default function PubPageScreen() {
       </View>
 
       {mapOpen ? (
-        <View style={styles.mapLayer}>
+        <View style={styles.mapLayer} accessibilityViewIsModal>
           <BeerMapScreen
             initialPub={pub}
             focusInitialPub
@@ -974,7 +1025,7 @@ export default function PubPageScreen() {
         onClose={() => setMappingOpen(false)}
         onRenamed={(name) => {
           setPub((current) => (current ? { ...current, name } : current));
-          usePubPageStore.getState().remember(key, { ...pub, name });
+          usePubPageStore.getState().rename(key, pub, name);
         }}
         onReport={() => {
           setMappingOpen(false);
@@ -1140,11 +1191,21 @@ function EventRow({ event, now, first }: { event: PubEvent; now: Date; first: bo
   const start = new Date(event.startsAt);
   const end = new Date(event.endsAt);
   const day = eventDay(event, now);
+  // A running event belongs to today, even when it started days ago.
+  const tileDate = day.kind === 'running' ? now : start;
   const dayLabel =
     day.kind === 'running' || day.kind === 'today'
       ? t.pubDetail.eventTodayShort
       : t.contribute.daysShort[dayKeyOf(start)];
-  const time = `${eventStartTime(event)}–${eventStartTime({ ...event, startsAt: event.endsAt })}`;
+  const startTime = eventStartTime(event);
+  const endTime = eventStartTime({ ...event, startsAt: event.endsAt });
+  const sameDay = calendarDaysBetween(start, end) === 0;
+  const shortDate = (date: Date) =>
+    dateTimeFormat({ day: 'numeric', month: 'numeric' }).format(date);
+  // Multi-day events (the server allows up to 14 days) show both ends.
+  const time = sameDay
+    ? `${startTime}–${endTime}`
+    : `${shortDate(start)} ${startTime} – ${shortDate(end)} ${endTime}`;
   return (
     <View
       style={[styles.eventRow, !first && styles.rowDivided]}
@@ -1155,7 +1216,7 @@ function EventRow({ event, now, first }: { event: PubEvent; now: Date; first: bo
           {dayLabel}
         </Text>
         <Text style={styles.dateTileNum} maxFontSizeMultiplier={FontScaleCap.body}>
-          {start.getDate()}
+          {tileDate.getDate()}
         </Text>
       </View>
       <View style={styles.rowText}>
@@ -1163,9 +1224,7 @@ function EventRow({ event, now, first }: { event: PubEvent; now: Date; first: bo
           {event.title}
         </Text>
         <Text style={styles.rowSub} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-          {[end.getDate() === start.getDate() ? time : eventWhenLabel(event, now), event.details]
-            .filter(Boolean)
-            .join(' · ')}
+          {[time, event.details].filter(Boolean).join(' · ')}
         </Text>
       </View>
     </View>

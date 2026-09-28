@@ -112,6 +112,87 @@ def test_public_read_returns_only_active_verified_events():
     ]
 
 
+def _event(account, title, starts_at, ends_at, status=PubEvent.Status.VERIFIED, cache_key="u2fkbnhz"):
+    return PubEvent.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key=cache_key,
+        name="U Tří píp",
+        lat=50.078914,
+        lng=14.41699,
+        title=title,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        status=status,
+    )
+
+
+def _titles(response) -> list[str]:
+    return [event["title"] for event in response.json()["events"]]
+
+
+@pytest.mark.django_db
+def test_released_app_read_without_window_keeps_running_now_contract():
+    account, _ = _claimed_account()
+    now = timezone.now()
+    for hours in (4, 1, 3, 2):
+        _event(account, f"Končí za {hours} h", now - timedelta(hours=1), now + timedelta(hours=hours))
+    _event(account, "Za tři dny", now + timedelta(days=3), now + timedelta(days=3, hours=3))
+
+    # Exactly the request a released app sends: no auth, no `window`.
+    released = APIClient().get("/v1/pub-events?cache_key=u2fkbnhz")
+    unknown = APIClient().get("/v1/pub-events?cache_key=u2fkbnhz&window=later")
+
+    assert released.status_code == status.HTTP_200_OK
+    assert released["Cache-Control"] == "public, max-age=60"
+    assert set(released.json()) == {"events", "as_of"}
+    assert _titles(released) == ["Končí za 1 h", "Končí za 2 h", "Končí za 3 h"]
+    assert unknown.status_code == status.HTTP_200_OK
+    assert unknown.json()["events"] == released.json()["events"]
+
+
+@pytest.mark.django_db
+def test_upcoming_window_lists_verified_events_for_next_two_weeks_by_start():
+    account, _ = _claimed_account()
+    now = timezone.now()
+    in_three_days = _event(account, "Za tři dny", now + timedelta(days=3), now + timedelta(days=3, hours=3))
+    _event(account, "Právě běží", now - timedelta(hours=1), now + timedelta(hours=2))
+    _event(account, "Zítra", now + timedelta(days=1), now + timedelta(days=1, hours=3))
+    _event(account, "Za patnáct dní", now + timedelta(days=15), now + timedelta(days=15, hours=3))
+    _event(account, "Skončila", now - timedelta(hours=3), now - timedelta(hours=1))
+    _event(account, "Čeká", now + timedelta(days=2), now + timedelta(days=2, hours=3), PubEvent.Status.PENDING)
+    _event(account, "Zamítnutá", now + timedelta(days=2), now + timedelta(days=2, hours=3), PubEvent.Status.REJECTED)
+    _event(account, "Jiná hospoda", now + timedelta(days=2), now + timedelta(days=2, hours=3), cache_key="u2fkbnhy")
+    unstamped = _event(account, "Bez ověření", now + timedelta(days=2), now + timedelta(days=2, hours=3))
+    PubEvent.objects.filter(pk=unstamped.pk).update(verified_at=None)
+
+    response = APIClient().get("/v1/pub-events?cache_key=u2fkbnhz&window=upcoming")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response["Cache-Control"] == "public, max-age=60"
+    assert _titles(response) == ["Právě běží", "Zítra", "Za tři dny"]
+    assert response.json()["events"][2] == {
+        "id": str(in_three_days.id),
+        "title": "Za tři dny",
+        "details": "",
+        "starts_at": in_three_days.starts_at.isoformat(),
+        "ends_at": in_three_days.ends_at.isoformat(),
+        "verified_at": in_three_days.verified_at.isoformat(),
+    }
+
+
+@pytest.mark.django_db
+def test_upcoming_window_returns_at_most_five_earliest_events():
+    account, _ = _claimed_account()
+    now = timezone.now()
+    for day in (7, 2, 6, 1, 5, 3, 4):
+        _event(account, f"Den {day}", now + timedelta(days=day), now + timedelta(days=day, hours=3))
+
+    response = APIClient().get("/v1/pub-events?cache_key=u2fkbnhz&window=upcoming")
+
+    assert _titles(response) == ["Den 1", "Den 2", "Den 3", "Den 4", "Den 5"]
+
+
 @pytest.mark.django_db
 def test_signed_in_suggestion_is_pending_idempotent_and_not_public():
     account, token = _claimed_account()

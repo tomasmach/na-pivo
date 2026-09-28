@@ -6,6 +6,10 @@ import {
   eventDay,
   eventStartTime,
   groupWeeklyHours,
+  inPubTime,
+  withCatalogDetails,
+  isSamePubRecord,
+  pubWallClock,
   roundedDistance,
   visibleEvents,
 } from '../pubPageModel';
@@ -131,5 +135,40 @@ describe('currentTaps', () => {
   it('ignores a stale local tap list', () => {
     expect(currentTaps({ beers: [{ name: 'Kozel 11°' }] }, false, server)).toEqual(server);
     expect(currentTaps(undefined, false, undefined)).toEqual([]);
+  });
+});
+
+describe('pubWallClock', () => {
+  it('reads Prague wall-clock time from an absolute instant', () => {
+    // 17:00 UTC on 28 September 2026 is 19:00 in Prague (summer time).
+    const wall = pubWallClock(new Date(Date.UTC(2026, 8, 28, 17, 0)));
+    expect([wall.getDate(), wall.getHours(), wall.getMinutes()]).toEqual([28, 19, 0]);
+  });
+});
+
+describe('isSamePubRecord', () => {
+  const pub = { id: 'mapy:1', name: 'U Zlatého tygra' };
+  it('matches by provider id or by name, not the neighbour in the cell', () => {
+    expect(isSamePubRecord({ externalId: 'mapy:1', name: 'Tygr' }, pub)).toBe(true);
+    expect(isSamePubRecord({ name: 'u zlatého tygra ' }, pub)).toBe(true);
+    expect(isSamePubRecord({ externalId: 'mapy:2', name: 'Vinárna vedle' }, pub)).toBe(false);
+  });
+});
+
+describe('inPubTime', () => {
+  it('shows a Prague event at Prague wall-clock time', () => {
+    // 17:00 UTC is 19:00 in Prague on 28 September 2026.
+    const shown = inPubTime(event('quiz', new Date(Date.UTC(2026, 8, 28, 17, 0)), new Date(Date.UTC(2026, 8, 28, 20, 0))));
+    expect(eventStartTime(shown)).toBe('19:00');
+  });
+});
+
+describe('withCatalogDetails', () => {
+  it('keeps what the opener knows and fills the rest from the catalog', () => {
+    const merged = withCatalogDetails(
+      { id: 'p1', name: 'Nový název', address: undefined as string | undefined, owner: undefined as string | undefined },
+      { id: 'p1', name: 'Starý název', address: 'Husova 1', owner: 'client-1' },
+    );
+    expect(merged).toEqual({ id: 'p1', name: 'Nový název', address: 'Husova 1', owner: 'client-1' });
   });
 });

@@ -119,3 +119,69 @@ export function currentTaps(
   if (overrideIsCurrent && override?.beers) return override.beers;
   return serverBeers ?? [];
 }
+
+/**
+ * Czech and Slovak pubs keep Prague time. Returns "now" as a local Date that
+ * shows Prague's wall clock, so a weekly schedule reads right on a phone set
+ * to another time zone. Falls back to the device clock if Intl cannot help.
+ */
+export function pubWallClock(now: Date): Date {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Prague',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(now);
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((item) => item.type === type)?.value);
+    const wall = new Date(
+      part('year'),
+      part('month') - 1,
+      part('day'),
+      part('hour'),
+      part('minute'),
+    );
+    return Number.isFinite(wall.getTime()) ? wall : now;
+  } catch {
+    return now;
+  }
+}
+
+/** Whether a visit or evening record belongs to this pub, not a neighbour in the same cell. */
+export function isSamePubRecord(
+  record: { name?: string | null; externalId?: string | null },
+  pub: { id: string; name: string },
+): boolean {
+  if (record.externalId && pub.id && record.externalId === pub.id) return true;
+  const name = (value: string) => value.trim().toLocaleLowerCase('cs');
+  return Boolean(record.name) && name(record.name as string) === name(pub.name);
+}
+
+/**
+ * The same event with its times moved to Prague wall-clock, for display only:
+ * a phone in another time zone still shows 19:00 for a 19:00 quiz in Prague.
+ * Filtering stays on the real instants.
+ */
+export function inPubTime(event: PubEvent): PubEvent {
+  return {
+    ...event,
+    startsAt: pubWallClock(new Date(event.startsAt)).toISOString(),
+    endsAt: pubWallClock(new Date(event.endsAt)).toISOString(),
+  };
+}
+
+/**
+ * Fill what a lossy opener left out (a tour stop has no owner id, a board row
+ * no hours) from the loaded catalog copy of the same pub.
+ */
+export function withCatalogDetails<T extends object>(handedOff: T, catalog: T | undefined): T {
+  if (!catalog) return handedOff;
+  const defined = Object.fromEntries(
+    Object.entries(handedOff).filter(([, value]) => value !== undefined && value !== ''),
+  );
+  return { ...catalog, ...defined } as T;
+}

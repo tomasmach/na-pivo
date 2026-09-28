@@ -9,10 +9,16 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { Pub } from '@/data/pubs';
 import type { WireVisit } from '@/data/visitsClient';
-import { loadVisitsSnapshot, subscribeVisitsBoundary, visitsSnapshotGeneration } from '@/data/visitsSnapshot';
+import {
+  loadVisitsSnapshot,
+  subscribeVisitsBoundary,
+  visitsSnapshotGeneration,
+} from '@/data/visitsSnapshot';
 import { buildVisitedPubs, type VisitedPubSummary } from '@/map/mapModel';
 import { useAccountStore } from '@/stores/accountStore';
 import { allSessionsNewestFirst, useTallyStore } from '@/stores/tallyStore';
+
+import { isSamePubRecord } from './pubPageModel';
 
 export function usePubVisitSummary(pub: Pub | null, pubKey: string): VisitedPubSummary | null {
   const [cachedVisits, setCachedVisits] = useState<WireVisit[]>([]);
@@ -41,9 +47,14 @@ export function usePubVisitSummary(pub: Pub | null, pubKey: string): VisitedPubS
 
   return useMemo(() => {
     if (!pub || !privateDataAvailable) return null;
+    // One cell can hold two pubs: count only records of this one.
     const visits = buildVisitedPubs(
-      diary?.data.visits ?? cachedVisits,
-      allSessionsNewestFirst(current, history),
+      (diary?.data.visits ?? cachedVisits).filter((visit) =>
+        isSamePubRecord({ name: visit.name, externalId: visit.external_id }, pub),
+      ),
+      allSessionsNewestFirst(current, history).filter((session) =>
+        isSamePubRecord({ name: session.pubName, externalId: session.pubExternalId }, pub),
+      ),
       [pub],
     );
     return visits.find((visit) => visit.cacheKey === pubKey) ?? null;

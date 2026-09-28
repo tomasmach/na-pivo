@@ -7,11 +7,13 @@ import { usePubPageStore } from '@/stores/pubPageStore';
 type Router = ReturnType<typeof useRouter>;
 
 /** Open the pub page for a pub the caller already holds. */
-export function openPubPage(router: Router, pub: Pub): void {
+export function openPubPage(router: Router, pub: Pub, options: { replace?: boolean } = {}): void {
   const key = geohash8(pub.lat, pub.lng);
   usePubPageStore.getState().remember(key, pub);
-  router.push({
+  const href = {
     pathname: '/pub',
     params: { key, name: pub.name, lat: String(pub.lat), lng: String(pub.lng) },
-  } as unknown as Href);
+  } as unknown as Href;
+  if (options.replace) router.replace(href);
+  else router.push(href);
 }
