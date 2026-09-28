@@ -22,6 +22,8 @@ import { flushDrinksQueue } from '@/data/drinksQueue';
 import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
+import { installPubFavoritesSync, restorePubFavorites } from '@/data/pubFavoritesSync';
+import { flushPubFavoritesQueue } from '@/data/pubFavoritesQueue';
 import { installPubAmenitiesSync, restorePubAmenities } from '@/data/pubAmenitiesSync';
 import { flushPubRatingsQueue } from '@/data/pubRatingsQueue';
 import { flushPubAmenitiesQueue } from '@/data/pubAmenitiesQueue';
@@ -340,6 +342,12 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // Favourite pubs (srdcovky) push the same way as private ratings.
+    const unsubscribeFavorites = installPubFavoritesSync();
+    return unsubscribeFavorites;
+  }, []);
+
+  useEffect(() => {
     // Install the "Zmapuj hospodu" amenity-vote push subscriber once for the
     // process lifetime, mirroring the ratings subscriber: it diffs every store
     // change into a queued per-amenity upsert/delete tombstone.
@@ -362,6 +370,7 @@ export default function RootLayout() {
     // Personal ratings: pull + merge the server set (LWW), pushing local-newer
     // ratings, then flush. Visits: one-time seed of existing history, then flush.
     void trackPull('ratings', () => restorePubRatings());
+    void trackPull('favorites', () => restorePubFavorites());
     // Amenity votes: same pull + merge + push + flush as ratings (spec §4.7).
     void trackPull('amenities', () => restorePubAmenities());
     void seedVisitsFromHistory();
@@ -409,6 +418,8 @@ export default function RootLayout() {
         // restore* = flush + pull + merge; a throttled foreground still flushes.
         if (pull('ratings')) void trackPull('ratings', () => restorePubRatings());
         else void flushPubRatingsQueue();
+        if (pull('favorites')) void trackPull('favorites', () => restorePubFavorites());
+        else void flushPubFavoritesQueue();
         if (pull('amenities')) void trackPull('amenities', () => restorePubAmenities());
         else void flushPubAmenitiesQueue();
         void flushVisitsQueue();

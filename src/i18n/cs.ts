@@ -36,6 +36,7 @@ export const cs = {
     recent: 'Poslední hledání',
     nearby: 'V okolí',
     frequent: 'Tvoje stálice',
+    favorites: 'Srdcovky',
     distanceMeters: (value: string) => `${value} m`,
     distanceKm: (value: string) => `${value} km`,
     visitCount: (n: number) => czechPlural(n, {
@@ -127,6 +128,9 @@ export const cs = {
     refresh: 'Načíst znovu',
     closeList: 'Zavřít seznam podniků',
     emptyList: 'V tomhle filtru zatím nic není.',
+    favoritesOnly: 'Srdcovky',
+    favoriteA11y: 'srdcovka',
+    emptyFavorites: 'Tady žádnou srdcovku nemáš.',
   },
 
   // — "Zmapuj hospodu" (community pub amenities + Mapér) —
@@ -3572,6 +3576,10 @@ export const cs = {
     mappedLine: (pct: number) => `Zmapováno na ${pct} %`,
     mappedHint: 'Doplň, co víš. Uvidí to ostatní.',
     aimA11y: (name: string) => `Namířit kompas na ${name}`,
+    favoriteAddA11y: 'Uložit do srdcovek',
+    favoriteRemoveA11y: 'Odebrat ze srdcovek',
+    favoriteSaved: 'Přidáno do srdcovek',
+    favoriteRemoved: 'Odebráno ze srdcovek',
     stateLoading: 'Načítám hospodu…',
     stateFailed: 'Hospodu jsem nenačetl.',
     eventToday: (range: string) => `Dnes ${range}`,

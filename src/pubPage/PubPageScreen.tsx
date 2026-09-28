@@ -51,6 +51,8 @@ import {
   ChevronRightIcon,
   CompassIcon,
   EllipsisIcon,
+  HeartFilledIcon,
+  HeartIcon,
   FlagIcon,
   FootprintsIcon,
   MapIcon,
@@ -94,6 +96,7 @@ import {
 } from '@/stores/communityStore';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
+import { findFavoriteKey, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { pubPageRef, usePubPageStore } from '@/stores/pubPageStore';
 import { selectPubRating, usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -290,6 +293,12 @@ export default function PubPageScreen() {
   );
 
   const showToast = useToastStore((s) => s.show);
+  // A catalogue fix can move a saved pub to the next cell; its provider id still
+  // finds the heart, so it shows as saved and taps remove that same entry.
+  const favoriteKey = usePubFavoritesStore((state) =>
+    pub ? findFavoriteKey(state.favorites, geohash8(pub.lat, pub.lng), pub) : undefined,
+  );
+  const isFavorite = Boolean(favoriteKey);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const isSignedIn = useAccountStore(selectIsSignedIn);
   const position = useRecentPosition();
@@ -576,6 +585,27 @@ export default function PubPageScreen() {
       .finally(() => setRenameSubmitting(false));
   }, [info, pub, ref, renameDraft, renameSubmitting, showToast]);
 
+  const toggleFavorite = useCallback(() => {
+    if (!pub) return;
+    const store = usePubFavoritesStore.getState();
+    if (favoriteKey) {
+      store.toggleFavorite(favoriteKey, pub);
+      showToast(t.pubDetail.favoriteRemoved);
+      return;
+    }
+    // One heart per cell on the server: saving here replaces a neighbour's.
+    // The key is the cell of the saved point, which the catalogue may have
+    // moved away from the cell this page was opened for.
+    store.saveFavorite(geohash8(pub.lat, pub.lng), {
+      name: pub.name,
+      lat: pub.lat,
+      lng: pub.lng,
+      city: pub.city,
+      externalId: pub.id || undefined,
+    });
+    showToast(t.pubDetail.favoriteSaved);
+  }, [favoriteKey, pub, showToast]);
+
   const submitReport = useCallback(
     (reason: PubReportReason) => {
       if (!pub) return;
@@ -750,6 +780,17 @@ export default function PubPageScreen() {
         >
           {pub.name}
         </Text>
+        <RoundButton
+          onPress={toggleFavorite}
+          label={isFavorite ? t.pubDetail.favoriteRemoveA11y : t.pubDetail.favoriteAddA11y}
+          selected={isFavorite}
+        >
+          {isFavorite ? (
+            <HeartFilledIcon size={22} color={Colors.amber} />
+          ) : (
+            <HeartIcon size={22} color={Colors.foam} />
+          )}
+        </RoundButton>
         <RoundButton onPress={() => setMoreOpen(true)} label={t.pubDetail.moreA11y}>
           <EllipsisIcon size={22} color={Colors.foam} />
         </RoundButton>
@@ -1114,10 +1155,12 @@ export default function PubPageScreen() {
 function RoundButton({
   onPress,
   label,
+  selected,
   children,
 }: {
   onPress: () => void;
   label: string;
+  selected?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -1127,6 +1170,7 @@ function RoundButton({
       style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={selected === undefined ? undefined : { selected }}
     >
       {children}
     </Pressable>

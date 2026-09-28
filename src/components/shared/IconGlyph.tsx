@@ -130,6 +130,10 @@ export const ChevronLeftIcon = wrap(ChevronLeft, 'ChevronLeftIcon');
 export const ChevronRightIcon = wrap(ChevronRight, 'ChevronRightIcon');
 export const ChevronDownIcon = wrap(ChevronDown, 'ChevronDownIcon');
 export const HeartIcon = wrap(Heart, 'HeartIcon');
+/** The saved state of the heart: same glyph, filled with its colour. */
+export const HeartFilledIcon = memo(function HeartFilledIcon({ size = 20, color }: IconProps) {
+  return <Heart size={size} color={color} fill={color} strokeWidth={2} />;
+});
 export const FlagIcon = wrap(Flag, 'FlagIcon');
 export const MessageSquareIcon = wrap(MessageSquare, 'MessageSquareIcon');
 export const RadiusIcon = wrap(Radius, 'RadiusIcon');
