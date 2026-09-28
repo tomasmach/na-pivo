@@ -12,7 +12,8 @@
       },
       "ios": {
         "buildFromSource": [
-          "expo-location"
+          "expo-location",
+          "expo-secure-store"
         ]
       }
     }
