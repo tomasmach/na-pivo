@@ -172,3 +172,16 @@ it('finds pubs beside the last stop even when the map centre sits far away', asy
   const screen = await open([stopAt(1, 50.08, 14.44), stopAt(2, 49.195, 16.608)]);
   expect(screen.getByText('U Brňáka')).toBeTruthy();
 });
+
+it('keeps a picked nearby pub in its place with its number, so the next tap takes it back', async () => {
+  jest.mocked(cachedTourPubs).mockResolvedValue([pub('near', 'Hned vedle', 50.081, 14.44), pub('mid', 'Kousek dál', 50.086, 14.44)]);
+  const first = stopAt(1);
+  const screen = await open([first]);
+  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.addPubA11y('Hned vedle'))); });
+  const picked: TourStop = { id: '00000000-0000-4000-8000-000000000009', pubId: 'near', cacheKey: null, name: 'Hned vedle', address: 'Praha', lat: 50.081, lon: 14.44 };
+  screen.rerender(<TourPubPicker visible stops={[first, picked]} onToggle={onToggle} onReplace={onReplace} onClose={onClose} />);
+  await act(async () => {});
+  expect(screen.getByText(t.tours.nearStop(1))).toBeTruthy();
+  expect(screen.getByLabelText(t.tours.removePubA11y('Hned vedle', 2))).toBeTruthy();
+  expect(screen.getByLabelText(t.tours.addPubA11y('Kousek dál'))).toBeTruthy();
+});

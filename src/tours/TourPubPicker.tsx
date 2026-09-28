@@ -94,6 +94,7 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
   const strip = useRef<ScrollView>(null);
   // Nearby rows reorder around each new stop; a second tap landing on the new top row must not add it by accident.
   const settling = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [anchorPubId, setAnchorPubId] = useState<string | null>(() => stops[stops.length - 1]?.pubId ?? null);
   useEffect(() => () => { if (settling.current) clearTimeout(settling.current); }, []);
   useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
   const [mapExpanded, setMapExpanded] = useState(false);
@@ -161,6 +162,7 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
     setLoading(false);
     setQuery(text);
     setAreaSearch(false);
+    if (text.trim().length < 2) setAnchorPubId(currentStops.current[currentStops.current.length - 1]?.pubId ?? null);
     if (text.trim().length < 2) {
       void cachedTourPubs(text).then((items) => { if (id === requestId.current) setPubs(items); });
     }
@@ -179,7 +181,9 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
   const dayLabel = today ? t.tours.today : t.tours.onDay[day];
   // With an empty search the rows follow the newest stop, the first one included, so they reorder after each addition.
   const nearby = !replaceStop && query.trim().length < 2 && !areaSearch;
-  const last = nearby ? stops[stops.length - 1] : undefined;
+  // The rows stay around one stop while you pick, so a tapped pub keeps its place and number; clearing the search or reopening moves them to the newest stop.
+  const anchorStop = stops.find((stop) => stop.pubId === anchorPubId) ?? stops[stops.length - 1];
+  const last = nearby ? anchorStop : undefined;
   // The same pub can come back from search and from the phone's cache under two ids.
   const seenIds = new Set<string>();
   const seenPlaces = new Set<string>();
@@ -193,12 +197,12 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
     return true;
   });
   const rows = !last ? listed.map((pub) => ({ pub, minutes: null as number | null })) : listed
-    .filter((pub) => inTour(pub) < 0)
     .map((pub) => ({ pub, leg: walkingLeg(last, { lat: pub.lat, lon: pub.lng }) }))
     .filter(({ leg }) => leg.meters <= NEAR_METERS)
     .sort((a, b) => a.leg.meters - b.leg.meters)
     .slice(0, 30)
-    .map(({ pub, leg }) => ({ pub, minutes: leg.minutes as number | null }));
+    // Picked pubs stay in place with their number; minutes are only for the ones still to choose.
+    .map(({ pub, leg }) => ({ pub, minutes: inTour(pub) < 0 ? leg.minutes : null }));
 
   // Suggestions start at the newest stop, so the map goes there too; opening keeps the whole tour framed.
   const followed = useRef(last?.id);
@@ -220,7 +224,11 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
     if (fromRow && nearby && settling.current) return;
     if (index < 0 && full) { flash(t.tours.pickerFull); return; }
     if (!(await onToggle(pub))) return;
-    if (nearby && index < 0) settling.current = setTimeout(() => { settling.current = null; }, 600);
+    if (nearby && index < 0) {
+      // Only the very first pick reorders the rows; later ones keep the same anchor.
+      setAnchorPubId(anchorStop?.pubId ?? pub.id);
+      settling.current = setTimeout(() => { settling.current = null; }, 600);
+    }
     if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
     AccessibilityInfo.announceForAccessibility(index < 0 ? t.tours.pubAdded(stops.length + 1) : t.tours.pubRemoved);
   }
@@ -281,7 +289,7 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
           {loading && <ActivityIndicator accessibilityLabel={t.tours.search} color={Colors.amber} style={styles.loading} />}
           {status === 'cached' && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchOffline}</Text>}
           {status === 'error' && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchError}</Text>}
-          {!!last && rows.length > 0 && <Text maxFontSizeMultiplier={1.3} style={styles.sectionLabel}>{t.tours.nearStop(stops.length)}</Text>}
+          {!!last && rows.length > 0 && <Text maxFontSizeMultiplier={1.3} style={styles.sectionLabel}>{t.tours.nearStop(stops.indexOf(last) + 1)}</Text>}
           {!loading && !rows.length && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchEmpty}</Text>}
           {rows.map(({ pub, minutes }) => {
             const index = inTour(pub);
