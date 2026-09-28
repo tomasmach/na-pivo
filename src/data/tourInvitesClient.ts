@@ -45,6 +45,8 @@ export type TourInviteError =
 export type TourInviteResult<T> = { ok: true; value: T } | { ok: false; error: TourInviteError; status: number; retry: boolean };
 
 const TIMEOUT_MS = 12000;
+/** The server's cap on invites per tour (INVITES_PER_TOUR). */
+export const TOUR_INVITE_LIMIT = 50;
 const STATUSES: TourInviteStatus[] = ['invited', 'going', 'declined'];
 
 function parseFriend(raw: unknown): FriendProfile | null {

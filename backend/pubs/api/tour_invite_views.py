@@ -5,7 +5,7 @@ share link, so an invite needs an active share, and the push names the link.
 """
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import dateformat, timezone
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, pgettext
@@ -215,15 +215,19 @@ class MyTourInviteListView(_InviteView):
     """GET the signed-in friend's invites to tours that still open, so an invite never depends on its push arriving."""
 
     def get(self, request):
+        blocked = {other for pair in FriendBlock.objects.filter(Q(blocker=request.user) | Q(blocked=request.user))
+                   .values_list("blocker_id", "blocked_id") for other in pair if other != request.user.pk}
+        # Only an invite that carried the link working now may hand it out: a friend the owner did not invite
+        # again after a new link must not get into the tour through this list. Filter first, then keep the newest.
         invites = list(TourInvite.objects.select_related("plan__owner", "plan__share").prefetch_related("plan__stops").filter(
             invitee=request.user, plan__deleted_at__isnull=True, plan__owner__status=Account.Status.ACTIVE,
             plan__share__revoked_at__isnull=True, plan__share__expires_at__gt=timezone.now(),
-        ).order_by("-created_at", "-pk")[:INVITES_PER_TOUR])
-        blocked = _blocked_between(request.user, [invite.plan.owner_id for invite in invites]) if invites else set()
+            share_operation_id=F("plan__share__operation_id"),
+        ).exclude(plan__owner_id__in=blocked).order_by("-created_at", "-pk")[:INVITES_PER_TOUR])
         rows = []
         for invite in invites:
             share, token = _working(invite.plan.share)
-            if not share or invite.plan.owner_id in blocked:
+            if not share:
                 continue
             first = next(iter(invite.plan.stops.all()), None)
             rows.append({

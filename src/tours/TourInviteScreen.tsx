@@ -39,10 +39,12 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
   const [loading, setLoading] = useState(true); const [retry, setRetry] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   // A Parta friend's invite to this private tour, when this account got one.
-  const [invite, setInvite] = useState<MyTourInvite | null>(null);
+  // Kept with the plan and account it was read for, so it is never shown to anyone else.
+  const [found, setFound] = useState<{ key: string; invite: MyTourInvite | null } | null>(null);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [answering, setAnswering] = useState(false); const answerLock = useRef(false);
-  const hasAccount = useAccountStore((s) => !!s.session);
+  // Whose invite this is: another account on the same screen (logout, switch) must never see or answer it.
+  const inviteeId = useAccountStore((s) => s.session?.accountId ?? null);
   const scroll = useRef<ScrollView>(null);
   const listY = useRef(0);
   const rowY = useRef<Record<string, number>>({});
@@ -67,11 +69,16 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
   // Only an existing account can have been invited; opening a link must not create one just to ask.
   const privatePlanId = plan && !publicInfo ? plan.id : null;
   useEffect(() => {
-    if (!privatePlanId || !hasAccount) return;
+    if (!privatePlanId || !inviteeId) return;
     let alive = true; const generation = tourBoundary().generation;
-    void fetchMyTourInvite(privatePlanId).then((mine) => { if (alive && mine.ok && generation === tourBoundary().generation) setInvite(mine.value); });
+    const key = `${privatePlanId}:${inviteeId}`;
+    void fetchMyTourInvite(privatePlanId).then((mine) => {
+      if (alive) setFound({ key, invite: mine.ok && generation === tourBoundary().generation ? mine.value : null });
+    });
     return () => { alive = false; };
-  }, [privatePlanId, hasAccount]);
+  }, [privatePlanId, inviteeId]);
+  const inviteKey = privatePlanId && inviteeId ? `${privatePlanId}:${inviteeId}` : null;
+  const invite = found && found.key === inviteKey ? found.invite : null;
   const own = publicInfo ? store.plans.find((p) => p.publication?.token === token) : undefined;
   // The author's other phone may not have the tour yet; the author still never gets to report it.
   const accountId = useAccountStore((s) => s.session?.accountId ?? null);
@@ -110,8 +117,8 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
         if (!saved.ok) return;
       }
       const result = await answerTourInvite(plan.id, status);
-      if (result.ok) setInvite(result.value);
-      else setAnswerError(result.error === 'not_found' ? t.tourInvites.errors.gone : t.tourInvites.errors.answer);
+      if (!result.ok) setAnswerError(result.error === 'not_found' ? t.tourInvites.errors.gone : t.tourInvites.errors.answer);
+      else if (inviteKey) setFound({ key: inviteKey, invite: result.value });
     } finally { answerLock.current = false; setAnswering(false); }
   }
   function more() {

@@ -116,7 +116,7 @@ export function TourInviteSheet({ plan, roster, onClose, onSent }: {
     try { await task(); } finally { working.current = false; setBusy(null); }
   }
   const invite = () => run('invite', async () => {
-    const outcome = await inviteFriends(plan.id, chosen);
+    const outcome = await inviteFriends(plan.id, chosen, roster);
     if ('error' in outcome) setError(outcome.error);
     else onSent(outcome);
   });

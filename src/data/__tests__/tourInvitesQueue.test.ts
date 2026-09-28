@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearTourInvitesQueue, enqueueTourInvite, flushTourInvitesQueue, queuedTourInvitees, setTourInvitePreparer, subscribeTourInviteDelivery } from '../tourInvitesQueue';
-import { sendTourInvites } from '../tourInvitesClient';
+import { fetchTourRoster, sendTourInvites } from '../tourInvitesClient';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock') }));
-jest.mock('../tourInvitesClient', () => ({ sendTourInvites: jest.fn() }));
+jest.mock('../tourInvitesClient', () => ({ sendTourInvites: jest.fn(), fetchTourRoster: jest.fn(), TOUR_INVITE_LIMIT: 50 }));
 
 const plan = '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab';
 const prepare = jest.fn(async () => 'ok' as const);
@@ -72,5 +72,16 @@ it('forgets everything at an account boundary', async () => {
   jest.mocked(sendTourInvites).mockResolvedValue(offline);
   await enqueueTourInvite(plan, ['a']);
   await clearTourInvitesQueue();
+  expect(await queuedTourInvitees(plan)).toEqual([]);
+});
+
+it('sends whoever still fits when another phone filled the tour meanwhile, instead of dropping everyone', async () => {
+  const full = { ok: false, error: 'limit', status: 400, retry: false } as const;
+  const row = (id: string) => ({ friend: { id, nickname: id, displayName: id, avatarUrl: null, isPublic: true }, status: 'invited' as const, invitedAt: '', respondedAt: null, stale: false });
+  jest.mocked(sendTourInvites).mockResolvedValueOnce(full).mockResolvedValueOnce({ ok: true, value: { roster: [], invited: 1 } });
+  jest.mocked(fetchTourRoster).mockResolvedValue({ ok: true, value: [...Array.from({ length: 49 }, (_, i) => row(`r${i}`))] });
+  await enqueueTourInvite(plan, ['a', 'b', 'r1']);
+  await flushTourInvitesQueue();
+  expect(sendTourInvites).toHaveBeenLastCalledWith(plan, ['a']);
   expect(await queuedTourInvitees(plan)).toEqual([]);
 });

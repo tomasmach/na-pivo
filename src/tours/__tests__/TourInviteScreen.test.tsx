@@ -103,6 +103,22 @@ it('lets an invited friend say Jdu, saving the tour first, and change their mind
   expect(screen.getByLabelText(t.tourInvites.changeToGoing)).toBeTruthy();
 });
 
+it('drops the previous account\'s invite and its answer buttons when the account changes', async () => {
+  const inviter = { id: 'janek', nickname: 'janek', displayName: 'Janek', avatarUrl: null, isPublic: true };
+  mockAccount.session = { accountId: 'me' };
+  jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
+  jest.mocked(fetchMyTourInvite).mockResolvedValueOnce({ ok: true, value: { planId: plan.id, status: 'invited', inviter } })
+    .mockResolvedValueOnce({ ok: false, error: 'not_found', status: 404, retry: false });
+  const screen = render(<TourInviteScreen />);
+  await waitFor(() => expect(screen.getByLabelText(t.tourInvites.going)).toBeTruthy());
+  mockAccount.session = { accountId: 'someone-else' };
+  screen.rerender(<TourInviteScreen />);
+  expect(screen.queryByLabelText(t.tourInvites.going)).toBeNull();
+  await waitFor(() => expect(fetchMyTourInvite).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText(t.tourInvites.invitedBy('@janek'))).toBeNull();
+  expect(screen.getByLabelText(t.tours.import)).toBeTruthy();
+});
+
 it('does not ask about an invite without an account on the phone', async () => {
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
   const screen = render(<TourInviteScreen />);

@@ -332,3 +332,40 @@ def test_a_new_link_makes_an_invite_sendable_again(pushes, django_capture_on_com
     with django_capture_on_commit_callbacks(execute=True):
         assert invite(owner, plan_id, friend).json()["invited"] == 0
     assert pushes == []
+
+
+def test_the_list_never_hands_a_new_link_to_someone_not_invited_again(django_capture_on_commit_callbacks):
+    owner, petr, jana = person("janek"), person("petr"), person("jana")
+    befriend(owner, petr)
+    befriend(owner, jana)
+    plan_id, _ = tour(owner)
+    with django_capture_on_commit_callbacks(execute=True):
+        invite(owner, plan_id, petr, jana)
+    owner.post(f"/v1/tours/{plan_id}/share", {"operation_id": str(uuid.uuid4()), "rotate": True}, format="json")
+    with django_capture_on_commit_callbacks(execute=True):
+        invite(owner, plan_id, petr)
+    new_token = owner.get(f"/v1/tours/{plan_id}").json()["share"]["url"].rsplit("/", 1)[1]
+    assert [row["token"] for row in petr.get("/v1/tour-invites").json()["invites"]] == [new_token]
+    assert jana.get("/v1/tour-invites").json() == {"invites": []}
+
+
+def test_unusable_invites_do_not_crowd_out_usable_ones(django_capture_on_commit_callbacks):
+    friend = person("petr")
+    owners = [person(f"autor{i}") for i in range(3)]
+    usable = None
+    for index, owner in enumerate(owners):
+        befriend(owner, friend)
+        plan_id, _ = tour(owner)
+        with django_capture_on_commit_callbacks(execute=True):
+            invite(owner, plan_id, friend)
+        if index == 0:
+            usable = plan_id
+    # Newer invites whose link went away or whose owner is blocked take no room from the older, working one.
+    owners[1].delete(f"/v1/tours/{TourInvite.objects.filter(plan__owner=owners[1].account).get().plan_id}/share")
+    FriendBlock.objects.create(blocker=friend.account, blocked=owners[2].account)
+    import pubs.api.tour_invite_views as views
+    original, views.INVITES_PER_TOUR = views.INVITES_PER_TOUR, 1
+    try:
+        assert [row["plan_id"] for row in friend.get("/v1/tour-invites").json()["invites"]] == [usable]
+    finally:
+        views.INVITES_PER_TOUR = original

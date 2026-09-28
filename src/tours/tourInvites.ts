@@ -1,6 +1,6 @@
 import { Share } from 'react-native';
-import { sendTourInvites, type TourInviteError, type TourInviteRow } from '@/data/tourInvitesClient';
-import { enqueueTourInvite, flushTourInvitesQueue, setTourInvitePreparer } from '@/data/tourInvitesQueue';
+import { sendTourInvites, TOUR_INVITE_LIMIT, type TourInviteError, type TourInviteRow } from '@/data/tourInvitesClient';
+import { enqueueTourInvite, flushTourInvitesQueue, queuedTourInvitees, setTourInvitePreparer } from '@/data/tourInvitesQueue';
 import { tourContentSignature, useToursStore } from '@/stores/toursStore';
 import { t } from '@/i18n';
 import { tourError } from './TourChrome';
@@ -53,7 +53,7 @@ function inviteError(error: TourInviteError): string {
 export type InviteOutcome = { status: 'sent'; roster: TourInviteRow[]; invited: number } | { status: 'queued' } | { error: string };
 
 /** Sends now when it can; without signal the invite waits in the queue and says so. */
-export async function inviteFriends(planId: string, recipientIds: string[]): Promise<InviteOutcome> {
+export async function inviteFriends(planId: string, recipientIds: string[], roster: TourInviteRow[] = []): Promise<InviteOutcome> {
   const ready = await prepare(planId);
   if (ready.outcome === 'drop') return { error: ready.error === 'not_found' ? t.tourInvites.errors.gone : tourError(ready.error) ?? t.tourInvites.errors.network };
   if (ready.outcome === 'ok') {
@@ -65,6 +65,10 @@ export async function inviteFriends(planId: string, recipientIds: string[]): Pro
     }
     if (!result.retry) return { error: inviteError(result.error) };
   }
+  // The server would refuse more than the cap later, when nobody is looking; say it now instead.
+  const known = new Set(roster.map((row) => row.friend.id));
+  const waiting = new Set([...(await queuedTourInvitees(planId)), ...recipientIds].filter((id) => !known.has(id)));
+  if (roster.length + waiting.size > TOUR_INVITE_LIMIT) return { error: t.tourInvites.errors.limit };
   return (await enqueueTourInvite(planId, recipientIds)) ? { status: 'queued' } : { error: t.tourInvites.errors.network };
 }
 

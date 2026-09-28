@@ -11,7 +11,7 @@
  */
 
 import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
-import { sendTourInvites } from './tourInvitesClient';
+import { fetchTourRoster, sendTourInvites, TOUR_INVITE_LIMIT } from './tourInvitesClient';
 
 const STORAGE_KEY = 'na-pivo-tour-invites-queue';
 const MAX_AGE_MS = 7 * 86400000;
@@ -58,7 +58,20 @@ async function deliver(item: TourInviteQueueItem): Promise<'ok' | 'drop' | 'retr
   if (result.ok) return 'ok';
   // A server from before invites answers 404 until the backend with invites is out.
   if (result.error === 'unsupported') return 'retry';
+  // Another phone filled the tour meanwhile: send whoever still fits, and let the roster show who did not.
+  if (result.error === 'limit') return (await sendWhatFits(item)) ? 'ok' : 'retry';
   return result.retry ? 'retry' : 'drop';
+}
+
+/** True once the part that fits went out, or nothing fits any more; false to try again later. */
+async function sendWhatFits(item: TourInviteQueueItem): Promise<boolean> {
+  const roster = await fetchTourRoster(item.planId);
+  if (!roster.ok) return !roster.retry;
+  const known = new Set(roster.value.map((row) => row.friend.id));
+  const fits = item.recipientIds.filter((id) => !known.has(id)).slice(0, Math.max(0, TOUR_INVITE_LIMIT - roster.value.length));
+  if (!fits.length) return true;
+  const retried = await sendTourInvites(item.planId, fits);
+  return retried.ok || !retried.retry;
 }
 
 const { flush, abortInFlight } = createCoalescingFlush(async (signal) => {
