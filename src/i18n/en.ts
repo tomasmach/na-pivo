@@ -2349,7 +2349,7 @@ export const en: Strings = {
     addPubA11y: (name: string) => `${name}, add to tour`, removePubA11y: (name: string, n: number) => `${name}, stop ${n}, remove`,
     removeChipA11y: (name: string) => `Remove ${name}`, pubDetailA11y: (name: string) => `Details for ${name}`,
     save: 'Save tour', saveChanges: 'Save changes', saved: 'Saved on this phone',
-    unsavedTitle: 'Save changes to your tour?', discard: 'Discard changes', stay: 'Stay',
+    unsavedTitle: 'Save changes to your tour?', discardDraftTitle: 'Discard this unfinished tour?', discard: 'Discard changes', stay: 'Stay',
     addStop: 'Add a stop', replaceStop: 'Replace pub', removeStop: 'Remove stop',
     publishPublic: 'Publish for everyone', updatePublic: 'Update the public version', unpublish: 'Remove from public',
     sharePublic: 'Share the public link', unpublishTitle: 'Remove from public?', unpublishMessage: 'Anyone who saved it keeps their copy.',

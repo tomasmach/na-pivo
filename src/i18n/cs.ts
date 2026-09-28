@@ -2952,7 +2952,7 @@ export const cs = {
     addPubA11y: (name: string) => `${name}, přidat do tour`, removePubA11y: (name: string, n: number) => `${name}, ${n}. zastávka, odebrat`,
     removeChipA11y: (name: string) => `Odebrat ${name}`, pubDetailA11y: (name: string) => `Detail hospody ${name}`,
     save: 'Uložit tour', saveChanges: 'Uložit změny', saved: 'Uloženo v telefonu',
-    unsavedTitle: 'Uložit změny v tour?', discard: 'Zahodit změny', stay: 'Zůstat',
+    unsavedTitle: 'Uložit změny v tour?', discardDraftTitle: 'Zahodit rozepsanou tour?', discard: 'Zahodit změny', stay: 'Zůstat',
     addStop: 'Přidat zastávku', replaceStop: 'Vyměnit zastávku', removeStop: 'Odebrat zastávku',
     publishPublic: 'Zveřejnit pro všechny', updatePublic: 'Aktualizovat veřejnou verzi', unpublish: 'Stáhnout z veřejných',
     sharePublic: 'Sdílet veřejný odkaz', unpublishTitle: 'Stáhnout z veřejných?', unpublishMessage: 'Kdo si ji uložil, tomu zůstane.',
