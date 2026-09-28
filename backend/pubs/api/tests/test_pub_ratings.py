@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import pytest
 from django.core.cache import cache
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.enrichment import geohash8
-from pubs.models import Account, PubRating
+from pubs.models import Account, PubRating, PubRatingTombstone
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _OTHER_DEVICE_ID = "11112222-3333-4444-5555-666677778888"
@@ -356,6 +357,232 @@ def test_lww_older_empty_rating_does_not_delete_newer(client):
 
 
 # ---------------------------------------------------------------------------
+# Removals stay removed across devices
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_older_copy_from_another_device_does_not_bring_back_a_removed_rating(client):
+    """Phone A removes the rating; phone B later pushes the copy it still has."""
+    token = _register(client)
+    saved_at = "2026-06-12T19:45:00+02:00"
+    client.put("/v1/pub-ratings", data=_payload(updated_at=saved_at), format="json", **_auth(token))
+    removal = client.put(
+        "/v1/pub-ratings",
+        data=_payload(verdict=None, tag=None, note=None, updated_at="2026-06-13T10:00:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+    assert removal.json() == {"deleted": True, "applied": True}
+
+    # The exact payload a released app sends from its restore / offline queue.
+    stale = client.put(
+        "/v1/pub-ratings", data=_payload(updated_at=saved_at), format="json", **_auth(token)
+    )
+
+    assert stale.status_code == status.HTTP_200_OK
+    assert stale.json() == {
+        "cache_key": _KEY,
+        "updated_at": "2026-06-13T08:00:00+00:00",
+        "applied": False,
+    }
+    assert PubRating.objects.count() == 0
+    listed = client.get("/v1/pub-ratings", **_auth(token)).json()
+    assert listed == {
+        "ratings": [],
+        "removed": [{"cache_key": _KEY, "updated_at": "2026-06-13T08:00:00+00:00"}],
+    }
+
+
+@pytest.mark.django_db
+def test_removal_wins_a_tie_with_a_save(client):
+    token = _register(client)
+    at = "2026-06-13T10:00:00+02:00"
+    client.put(
+        "/v1/pub-ratings",
+        data=_payload(verdict=None, tag=None, note=None, updated_at=at),
+        format="json",
+        **_auth(token),
+    )
+
+    resp = client.put("/v1/pub-ratings", data=_payload(updated_at=at), format="json", **_auth(token))
+
+    assert resp.json()["applied"] is False
+    assert PubRating.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_newer_rating_after_removal_applies_and_clears_the_marker(client):
+    token = _register(client)
+    client.put(
+        "/v1/pub-ratings",
+        data=_payload(verdict=None, tag=None, note=None, updated_at="2026-06-13T10:00:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+
+    resp = client.put(
+        "/v1/pub-ratings",
+        data=_payload(updated_at="2026-06-14T10:00:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.json()["applied"] is True
+    assert PubRating.objects.get().verdict == "like"
+    assert PubRatingTombstone.objects.count() == 0
+    assert client.get("/v1/pub-ratings", **_auth(token)).json()["removed"] == []
+
+
+@pytest.mark.django_db
+def test_removal_arriving_before_an_older_save_still_wins(client):
+    token = _register(client)
+    client.put(
+        "/v1/pub-ratings",
+        data=_payload(verdict=None, tag=None, note=None, updated_at="2026-06-13T10:00:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+    assert PubRatingTombstone.objects.count() == 1
+
+    resp = client.put(
+        "/v1/pub-ratings",
+        data=_payload(updated_at="2026-06-12T10:00:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.json()["applied"] is False
+    assert PubRating.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_delete_keeps_the_removed_copy_out(client):
+    """DELETE carries no client time, so it blocks the removed copy and older."""
+    token = _register(client)
+    saved_at = "2026-06-12T19:45:00+02:00"
+    client.put("/v1/pub-ratings", data=_payload(updated_at=saved_at), format="json", **_auth(token))
+    assert client.delete(f"/v1/pub-ratings/{_KEY}", **_auth(token)).json() == {"deleted": True}
+
+    same_copy = client.put(
+        "/v1/pub-ratings", data=_payload(updated_at=saved_at), format="json", **_auth(token)
+    )
+    assert same_copy.json()["applied"] is False
+    assert PubRating.objects.count() == 0
+
+    newer = client.put(
+        "/v1/pub-ratings",
+        data=_payload(updated_at="2026-06-12T19:46:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+    assert newer.json()["applied"] is True
+    assert PubRating.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_removal_markers_are_private_to_the_account(client):
+    token_a = _register(client)
+    client.put(
+        "/v1/pub-ratings",
+        data=_payload(verdict=None, tag=None, note=None),
+        format="json",
+        **_auth(token_a),
+    )
+
+    token_b = _register(client, device_id=_OTHER_DEVICE_ID)
+    assert client.get("/v1/pub-ratings", **_auth(token_b)).json()["removed"] == []
+    resp = client.put("/v1/pub-ratings", data=_payload(), format="json", **_auth(token_b))
+    assert resp.json()["applied"] is True
+
+
+@pytest.mark.django_db
+def test_account_merge_moves_markers_but_never_deletes_a_rating(client):
+    from pubs.accounts import _merge_anonymous_account
+
+    removed_key = geohash8(49.1951, 16.6068)
+    token_source = _register(client)
+    for lat, lng in ((_LAT, _LNG), (49.1951, 16.6068)):
+        client.put(
+            "/v1/pub-ratings",
+            data=_payload(lat=lat, lng=lng, verdict=None, tag=None, note=None),
+            format="json",
+            **_auth(token_source),
+        )
+    source = Account.objects.get(device_id=_DEVICE_ID)
+    token_target = _register(client, device_id=_OTHER_DEVICE_ID)
+    client.put(
+        "/v1/pub-ratings",
+        data=_payload(updated_at="2026-06-01T10:00:00+02:00"),
+        format="json",
+        **_auth(token_target),
+    )
+    target = Account.objects.get(device_id=_OTHER_DEVICE_ID)
+
+    with transaction.atomic():
+        _merge_anonymous_account(source, target)
+
+    assert PubRating.objects.get(account=target).cache_key == _KEY
+    assert list(
+        PubRatingTombstone.objects.filter(account=target).values_list("cache_key", flat=True)
+    ) == [removed_key]
+
+
+@pytest.mark.django_db
+def test_export_lists_own_removed_ratings(client):
+    token = _register(client)
+    other = _register(client, device_id=_OTHER_DEVICE_ID)
+    for owner in (token, other):
+        client.put(
+            "/v1/pub-ratings",
+            data=_payload(verdict=None, tag=None, note=None),
+            format="json",
+            **_auth(owner),
+        )
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["removed_ratings"] == [
+        {"cache_key": _KEY, "updated_at": "2026-06-12T17:45:00+00:00"}
+    ]
+
+
+@pytest.mark.django_db
+def test_account_merge_keeps_the_later_removal_time(client):
+    from pubs.accounts import _merge_anonymous_account
+
+    token_source = _register(client)
+    token_target = _register(client, device_id=_OTHER_DEVICE_ID)
+    removals = (
+        (token_target, "2026-06-10T10:00:00+02:00"),
+        (token_source, "2026-06-12T10:00:00+02:00"),
+    )
+    for token, at in removals:
+        client.put(
+            "/v1/pub-ratings",
+            data=_payload(verdict=None, tag=None, note=None, updated_at=at),
+            format="json",
+            **_auth(token),
+        )
+    source = Account.objects.get(device_id=_DEVICE_ID)
+    target = Account.objects.get(device_id=_OTHER_DEVICE_ID)
+
+    with transaction.atomic():
+        _merge_anonymous_account(source, target)
+
+    # A rating saved between the two removals must stay removed after the claim.
+    between = client.put(
+        "/v1/pub-ratings",
+        data=_payload(updated_at="2026-06-11T10:00:00+02:00"),
+        format="json",
+        **_auth(token_target),
+    )
+    assert between.json()["applied"] is False
+    assert PubRating.objects.count() == 0
+
+
+# ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 
@@ -447,7 +674,7 @@ def test_get_empty_when_no_ratings(client):
     token = _register(client)
     resp = client.get("/v1/pub-ratings", **_auth(token))
     assert resp.status_code == status.HTTP_200_OK
-    assert resp.json() == {"ratings": []}
+    assert resp.json() == {"ratings": [], "removed": []}
 
 
 # ---------------------------------------------------------------------------
@@ -498,7 +725,7 @@ def test_account_isolation_get(client):
 
     token_b = _register(client, device_id=_OTHER_DEVICE_ID)
     resp = client.get("/v1/pub-ratings", **_auth(token_b))
-    assert resp.json() == {"ratings": []}
+    assert resp.json() == {"ratings": [], "removed": []}
 
 
 @pytest.mark.django_db

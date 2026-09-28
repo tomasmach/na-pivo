@@ -146,7 +146,8 @@ export function installPubRatingsSync(): () => void {
  *
  * Merge correctness:
  *   - The server omits empty ratings (they get deleted), so a missing key just
- *     means "server has nothing here" — we push our local copy.
+ *     means "server has nothing here" — we push our local copy, unless the
+ *     server lists it in `removed` with a time at or after our copy.
  *   - Server verdict null maps to an ABSENT verdict in the local PubRating shape.
  *   - hydrateRatings does the actual last-write-wins; we run it under
  *     suppressSync so the merged-in entries are not echoed back as upserts.
@@ -156,15 +157,15 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<boolean> 
   // pending, skip that server row below so a cleared rating does not reappear.
   await flushPubRatingsQueue();
   const pendingDeleteKeys = await getQueuedRatingDeletePubKeys();
-  const serverRatings = await fetchRatings(signal);
-  if (serverRatings === null) {
+  const server = await fetchRatings(signal);
+  if (server === null) {
     return false;
   }
 
   // Map wire → local PubRating, keyed by pubKey (= cache_key).
   const serverByKey = new Map<string, PubRating>();
   const merged: { pubKey: string; rating: PubRating }[] = [];
-  for (const wire of serverRatings) {
+  for (const wire of server.ratings) {
     if (pendingDeleteKeys.has(wire.cache_key)) continue;
     const rating: PubRating = { updatedAt: wire.updated_at };
     if (wire.verdict === 'like' || wire.verdict === 'dislike') rating.verdict = wire.verdict;
@@ -174,9 +175,15 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<boolean> 
     merged.push({ pubKey: wire.cache_key, rating });
   }
 
-  // Merge server → local (LWW), suppressing the push echo for the write.
+  const removed = server.removed
+    .filter((wire) => !pendingDeleteKeys.has(wire.cache_key))
+    .map((wire) => ({ pubKey: wire.cache_key, updatedAt: wire.updated_at }));
+
+  // Merge server → local (LWW), suppressing the push echo for the write. A
+  // rating removed on another device leaves this one too, so it is not pushed
+  // back below.
   runWithoutPubRatingsSync(() => {
-    usePubRatingsStore.getState().hydrateRatings(merged);
+    usePubRatingsStore.getState().hydrateRatings(merged, removed);
   });
 
   // Push local ratings the server is missing, or where the local copy is newer.
