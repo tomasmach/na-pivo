@@ -26,7 +26,8 @@ export function useMyStats(): RemoteStats | null {
     const controller = new AbortController();
     void (async () => {
       // The server still counts a removed drink until its queued DELETE lands.
-      const excluded = new Set([...(await getQueuedDeleteIds()), ...removedDrinkIds]);
+      // The newest removals go first so the request cap never drops them.
+      const excluded = new Set([...removedDrinkIds, ...(await getQueuedDeleteIds())]);
       const result = await fetchMyStats(controller.signal, [...excluded]);
       if (active && result) setSnapshot({ accountId, stats: result });
     })();

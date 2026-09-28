@@ -182,8 +182,8 @@ describe('StatsScreen', () => {
     });
 
     expect(fetchMyStatsMock).toHaveBeenLastCalledWith(expect.any(AbortSignal), [
-      'queued-before-launch',
       'removed-just-now',
+      'queued-before-launch',
     ]);
     await AsyncStorage.clear();
     act(() => {

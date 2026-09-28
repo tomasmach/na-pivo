@@ -404,14 +404,14 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     logout: async (options) => {
       await auth.logout(options);
-      set({ profile: null, diarySnapshot: null });
+      set({ profile: null, diarySnapshot: null, removedDrinkIds: new Set() });
       await syncSession();
       await get().refreshProfile();
     },
     deleteAccount: async () => {
       const result = await auth.deleteAccount();
       if (result.ok) {
-        set({ profile: null, diarySnapshot: null });
+        set({ profile: null, diarySnapshot: null, removedDrinkIds: new Set() });
         await syncSession();
         await get().refreshProfile();
       }

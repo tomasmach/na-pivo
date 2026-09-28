@@ -447,7 +447,7 @@ describe('unlink', () => {
 // ---------------------------------------------------------------------------
 describe('logout', () => {
   it('clears the profile and re-syncs the anonymous session', async () => {
-    useAccountStore.setState({ profile: signedInProfile() });
+    useAccountStore.setState({ profile: signedInProfile(), removedDrinkIds: new Set(['old-drink']) });
     mockedAuth.logout.mockResolvedValue({ ok: true });
     // After logout, ensureAccount returns a fresh anonymous session.
     mockEnsureAccount.mockResolvedValue({
@@ -461,6 +461,7 @@ describe('logout', () => {
 
     expect(mockedAuth.logout).toHaveBeenCalledTimes(1);
     expect(useAccountStore.getState().profile).toBeNull();
+    expect(useAccountStore.getState().removedDrinkIds.size).toBe(0);
     // syncSession re-reads the new anonymous session.
     expect(useAccountStore.getState().session).toEqual({
       deviceId: 'd2',
