@@ -127,8 +127,3 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
     },
   ),
 );
-
-/** Whether a pub is saved. Stable selector for `useStore`. */
-export function selectIsFavorite(pubKey: string) {
-  return (state: PubFavoritesState): boolean => Boolean(state.favorites[pubKey]);
-}

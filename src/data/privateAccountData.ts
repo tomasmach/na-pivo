@@ -24,7 +24,7 @@ import { clearPubReportQueue } from './pubReportQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
 import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
 import { clearPubFavoritesQueue } from './pubFavoritesQueue';
-import { runWithoutPubFavoritesSync } from './pubFavoritesSync';
+import { clearLocalPubFavorites } from './pubFavoritesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
@@ -33,7 +33,6 @@ import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
-import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore } from '@/stores/tallyStore';
@@ -136,10 +135,8 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     usePubRatingsStore.setState({ ratings: {} });
   });
   // Favourite pubs belong to the outgoing account; wipe them without syncing
-  // the wipe as removals.
-  runWithoutPubFavoritesSync(() => {
-    usePubFavoritesStore.setState({ favorites: {} });
-  });
+  // the wipe as removals and void a pull already under way.
+  clearLocalPubFavorites();
   // Community amenity votes are location-adjacent private data — wipe them under
   // the suppress flag so the reset is not echoed out as server deletes.
   runWithoutPubAmenitiesSync(() => {

@@ -95,7 +95,7 @@ import {
 } from '@/stores/communityStore';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
-import { selectIsFavorite, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
+import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubPageStore } from '@/stores/pubPageStore';
 import { selectPubRating, usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -273,7 +273,15 @@ export default function PubPageScreen() {
   );
 
   const showToast = useToastStore((s) => s.show);
-  const isFavorite = usePubFavoritesStore(selectIsFavorite(key));
+  // A catalogue fix can move a saved pub to the next cell; its provider id still
+  // finds the heart, so it shows as saved and taps remove that same entry.
+  const favoriteKey = usePubFavoritesStore((state) => {
+    if (state.favorites[key]) return key;
+    const pubId = pub?.id;
+    if (!pubId) return undefined;
+    return Object.keys(state.favorites).find((k) => state.favorites[k].externalId === pubId);
+  });
+  const isFavorite = Boolean(favoriteKey);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const isSignedIn = useAccountStore(selectIsSignedIn);
   const position = useRecentPosition();
@@ -537,7 +545,7 @@ export default function PubPageScreen() {
 
   const toggleFavorite = useCallback(() => {
     if (!pub) return;
-    const saved = usePubFavoritesStore.getState().toggleFavorite(key, {
+    const saved = usePubFavoritesStore.getState().toggleFavorite(favoriteKey ?? key, {
       name: pub.name,
       lat: pub.lat,
       lng: pub.lng,
@@ -545,7 +553,7 @@ export default function PubPageScreen() {
       externalId: pub.id || undefined,
     });
     showToast(saved ? t.pubDetail.favoriteSaved : t.pubDetail.favoriteRemoved);
-  }, [key, pub, showToast]);
+  }, [favoriteKey, key, pub, showToast]);
 
   const reportReason = useCallback(
     (reason: PubReportReason) => {

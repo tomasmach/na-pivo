@@ -18,8 +18,25 @@ import { fetchFavorites, type WireFavoriteUpsert } from './pubFavoritesClient';
 import { usePubFavoritesStore, type PubFavorite } from '@/stores/pubFavoritesStore';
 
 let suppressSync = false;
+/** Bumped by every account-boundary wipe; a pull that straddles one is dropped. */
+let boundaryGeneration = 0;
+/** Hearts removed on this phone while a pull is in flight. */
+const removedDuringPull = new Set<string>();
+let pullsInFlight = 0;
 
-/** Run local-only favourite changes (account-boundary wipes) without syncing. */
+/**
+ * Wipe this device's favourites at an account boundary (logout, deletion,
+ * reset sign-in) without syncing the wipe, and void any pull already under way
+ * so the outgoing account's hearts never land under the next one.
+ */
+export function clearLocalPubFavorites(): void {
+  boundaryGeneration += 1;
+  runWithoutPubFavoritesSync(() => {
+    usePubFavoritesStore.setState({ favorites: {} });
+  });
+}
+
+/** Run local-only favourite changes without syncing them. */
 export function runWithoutPubFavoritesSync(task: () => void): void {
   const previous = suppressSync;
   suppressSync = true;
@@ -68,17 +85,35 @@ export function installPubFavoritesSync(): () => void {
       if (before[pubKey] !== favorite) enqueueSave(pubKey, favorite);
     }
     for (const [pubKey, favorite] of Object.entries(before)) {
-      if (!(pubKey in next)) enqueueRemoval(pubKey, favorite);
+      if (pubKey in next) continue;
+      if (pullsInFlight > 0) removedDuringPull.add(pubKey);
+      enqueueRemoval(pubKey, favorite);
     }
   });
 }
 
 /** Pull + merge the server favourites, push what the server lacks, flush. */
 export async function restorePubFavorites(signal?: AbortSignal): Promise<boolean> {
+  pullsInFlight += 1;
+  try {
+    return await restoreOnce(signal);
+  } finally {
+    pullsInFlight -= 1;
+    if (pullsInFlight === 0) removedDuringPull.clear();
+  }
+}
+
+async function restoreOnce(signal?: AbortSignal): Promise<boolean> {
+  const generation = boundaryGeneration;
   await flushPubFavoritesQueue();
-  const pendingRemovals = await getQueuedFavoriteRemovalKeys();
   const server = await fetchFavorites(signal);
   if (server === null) return false;
+  // The account changed while we waited: this answer belongs to someone else.
+  if (generation !== boundaryGeneration) return false;
+  // Read removals after the pull too, so a heart taken off meanwhile stays off.
+  const pendingRemovals = await getQueuedFavoriteRemovalKeys();
+  for (const pubKey of removedDuringPull) pendingRemovals.add(pubKey);
+  if (generation !== boundaryGeneration) return false;
 
   const serverByKey = new Map<string, PubFavorite>();
   const merged: { pubKey: string; favorite: PubFavorite }[] = [];

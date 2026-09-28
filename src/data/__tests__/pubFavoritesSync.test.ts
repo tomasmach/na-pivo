@@ -19,6 +19,7 @@ jest.mock('../pubFavoritesQueue', () => ({
 import {
   installPubFavoritesSync,
   restorePubFavorites,
+  clearLocalPubFavorites,
   runWithoutPubFavoritesSync,
 } from '../pubFavoritesSync';
 import { sanitizeFavorites, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
@@ -174,5 +175,41 @@ describe('restorePubFavorites', () => {
     fetchFavorites.mockResolvedValue(null);
     await expect(restorePubFavorites()).resolves.toBe(false);
     expect(usePubFavoritesStore.getState().favorites[PUB]).toBeDefined();
+  });
+});
+
+describe('restorePubFavorites across an account boundary', () => {
+  it('drops a pull that was in flight when the account changed', async () => {
+    let answer!: (value: unknown) => void;
+    fetchFavorites.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    const pull = restorePubFavorites();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    clearLocalPubFavorites();
+    answer({ favorites: [wire()], removed: [] });
+
+    await expect(pull).resolves.toBe(false);
+    expect(usePubFavoritesStore.getState().favorites).toEqual({});
+    expect(enqueueFavoriteOp).not.toHaveBeenCalled();
+  });
+
+  it('keeps a heart off that was removed while the pull was in flight', async () => {
+    usePubFavoritesStore.setState({
+      favorites: { [PUB]: { ...TYGR, updatedAt: '2026-09-28T12:00:00.000Z' } },
+    });
+    const unsubscribe = installPubFavoritesSync();
+    let answer!: (value: unknown) => void;
+    fetchFavorites.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    const pull = restorePubFavorites();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    usePubFavoritesStore.getState().toggleFavorite(PUB, TYGR);
+    answer({ favorites: [wire()], removed: [] });
+
+    await expect(pull).resolves.toBe(true);
+    expect(usePubFavoritesStore.getState().favorites[PUB]).toBeUndefined();
+    unsubscribe();
   });
 });
