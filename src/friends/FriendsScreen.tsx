@@ -288,14 +288,18 @@ function AddFriendSheet({
   visible,
   hasIdentity,
   needsNickname,
+  tableAutoStart,
   onOpenCode,
+  onOpenProfile,
   onChanged,
   onClose,
 }: {
   visible: boolean;
   hasIdentity: boolean;
   needsNickname: boolean;
+  tableAutoStart: boolean;
   onOpenCode: () => void;
+  onOpenProfile: (accountId: string) => void;
   onChanged: () => void;
   onClose: () => void;
 }) {
@@ -310,8 +314,10 @@ function AddFriendSheet({
         hasIdentity={hasIdentity}
         needsNickname={needsNickname}
         onOpenCode={onOpenCode}
+        onOpenProfile={onOpenProfile}
         onChanged={onChanged}
         showSearch
+        tableAutoStart={tableAutoStart}
       />
     </SheetScaffold>
   );
@@ -404,6 +410,7 @@ export default function FriendsScreen() {
   const [codeVisible, setCodeVisible] = useState(false);
   const [composeVisible, setComposeVisible] = useState(false);
   const [addFriendVisible, setAddFriendVisible] = useState(false);
+  const [tableAutoStart, setTableAutoStart] = useState(false);
   const [rosterVisible, setRosterVisible] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -816,14 +823,36 @@ export default function FriendsScreen() {
     }, SHEET_DISMISS_MS);
   }, []);
 
-  const openCodeFromAdd = useCallback(() => {
+  // The table section auto-starts only when "Přidej lidi od stolu" opened the sheet.
+  const openAddFromTable = useCallback(() => {
+    setTableAutoStart(true);
+    setAddFriendVisible(true);
+  }, []);
+  const closeAddFriend = useCallback(() => {
     setAddFriendVisible(false);
+    setTableAutoStart(false);
+  }, []);
+
+  const openProfileFromAdd = useCallback(
+    (accountId: string) => {
+      closeAddFriend();
+      if (sheetActionTimerRef.current) clearTimeout(sheetActionTimerRef.current);
+      sheetActionTimerRef.current = setTimeout(() => {
+        sheetActionTimerRef.current = null;
+        openFriendProfile(accountId);
+      }, SHEET_DISMISS_MS);
+    },
+    [closeAddFriend, openFriendProfile],
+  );
+
+  const openCodeFromAdd = useCallback(() => {
+    closeAddFriend();
     if (sheetActionTimerRef.current) clearTimeout(sheetActionTimerRef.current);
     sheetActionTimerRef.current = setTimeout(() => {
       sheetActionTimerRef.current = null;
       setCodeVisible(true);
     }, SHEET_DISMISS_MS);
-  }, []);
+  }, [closeAddFriend]);
 
   const moreRows = useMemo<MoreRow[]>(
     () => [
@@ -1356,6 +1385,7 @@ export default function FriendsScreen() {
                 sharedCacheKey={sharedTable?.cacheKey ?? null}
                 onOpenProfile={openFriendProfile}
                 onChanged={reload}
+                onAddFromTable={hasIdentity ? openAddFromTable : undefined}
               />
             </View>
           ) : loading && !d ? null : (
@@ -1556,9 +1586,11 @@ export default function FriendsScreen() {
         visible={addFriendVisible}
         hasIdentity={hasIdentity}
         needsNickname={needsNickname}
+        tableAutoStart={tableAutoStart}
         onOpenCode={openCodeFromAdd}
+        onOpenProfile={openProfileFromAdd}
         onChanged={reload}
-        onClose={() => setAddFriendVisible(false)}
+        onClose={closeAddFriend}
       />
 
       <RosterSheet

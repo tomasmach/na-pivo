@@ -1347,6 +1347,18 @@ export const en: Strings = {
       return `${name} and ${others} others are at the table with you.`;
     },
     presenceSameTable: 'at your table',
+    tableTitle: "Who's here with you",
+    tableEntry: 'Add people at your table',
+    tableShowCta: 'Show up at the table',
+    tableExplainer:
+      "Only people who've been in the same pub for 15+ minutes and have this open too will see you. You disappear after 10 minutes.",
+    tableWaiting: 'Nobody yet. Get the others at the table to open this too.',
+    tableNoVisit: "First log which pub you're sitting in.",
+    tableTooSoon: 'Settle in first. This opens after 15 minutes in the pub.',
+    tableGhost: "Nobody at the table can see you in invisible mode. Turn it off in crew settings.",
+    tablePrivate: "Nobody can add you here with a private profile. Turn on your public profile.",
+    tableOffline: "Couldn't load the table. The code below still works.",
+    tableSent: 'Sent',
     sittingsHeader: 'What people drank',
     sittingsEmpty: "Nobody has drunk anything yet. When that changes, you'll find out here.",
     sittingsMore: 'Load older',

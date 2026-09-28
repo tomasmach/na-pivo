@@ -508,6 +508,13 @@ FRIENDS_DASHBOARD_THROTTLE_RATE: str = os.environ.get(
 FRIEND_PRESENCE_WINDOW_MINUTES: int = int(
     os.environ.get("FRIEND_PRESENCE_WINDOW_MINUTES", "180")
 )
+# "Kdo tu sedí s tebou": both sides must have an open visit at the same pub that
+# the server first saw at least this long ago before they can see each other.
+FRIEND_TABLE_MIN_MINUTES: int = int(os.environ.get("FRIEND_TABLE_MIN_MINUTES", "15"))
+# How long one explicit "show me at the table" opt-in stays visible to non-friends.
+FRIEND_TABLE_VISIBLE_MINUTES: int = int(
+    os.environ.get("FRIEND_TABLE_VISIBLE_MINUTES", "10")
+)
 # How long a minted invite code stays valid (reused until it expires).
 FRIEND_INVITE_TTL_DAYS: int = int(os.environ.get("FRIEND_INVITE_TTL_DAYS", "14"))
 # After a declined request, block a silent re-open (anti-harassment) for this long.

@@ -761,6 +761,12 @@ class Account(models.Model):
         default=True,
         help_text="Whether accepted friends can see my live pub presence and automatic drink feed.",
     )
+    table_visible_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Short explicit opt-in: until then, people sitting in the same pub "
+        "may see this profile in 'Kdo tu sedí s tebou'. Null = hidden.",
+    )
     # Off by default, unlike the drink feed: what a beer cost is a different
     # order of disclosure from how many you had, and nobody opted into it when
     # they joined a parta. Only the Souboj reads it, and only when BOTH sides

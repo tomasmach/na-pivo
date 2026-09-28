@@ -28,6 +28,7 @@ import {
   searchFriends,
   sendFriendRequest,
   type FriendProfile,
+  type FriendTablePerson,
 } from '@/data/friendsClient';
 import {
   enqueueFriendOp,
@@ -37,6 +38,7 @@ import {
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
+  CheckIcon,
   LinkIcon,
   PlusIcon,
   QrCodeIcon,
@@ -53,6 +55,7 @@ import { useToastStore } from '@/stores/toastStore';
 
 import { FriendMini } from './FriendMini';
 import HairlineRow from './HairlineRow';
+import { TableAdd } from './TableAdd';
 
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
@@ -65,6 +68,10 @@ interface AddFriendToolsProps {
   onChanged: () => void;
   /** Show the @nickname search row (default true). */
   showSearch?: boolean;
+  /** Start "Kdo tu sedí s tebou" right away (opened from its entry line). */
+  tableAutoStart?: boolean;
+  /** Open a profile; a sheet host closes itself first. Defaults to a push. */
+  onOpenProfile?: (accountId: string) => void;
 }
 
 export function AddFriendTools({
@@ -73,6 +80,8 @@ export function AddFriendTools({
   onOpenCode,
   onChanged,
   showSearch = true,
+  tableAutoStart = false,
+  onOpenProfile,
 }: AddFriendToolsProps) {
   const router = useRouter();
   const showToast = useToastStore((s) => s.show);
@@ -114,11 +123,11 @@ export function AddFriendTools({
   }, [query, showToast]);
 
   const requestFriend = useCallback(
-    async (profile?: FriendProfile) => {
+    async (profile?: FriendProfile, acceptsTheirs = false): Promise<boolean> => {
       const nickname = query.trim().replace(/^@/, '');
-      if (!profile && nickname.length < 2) return;
+      if (!profile && nickname.length < 2) return false;
       const requestKey = profile?.id ?? `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`;
-      if (requestingKey) return;
+      if (requestingKey) return false;
       trackUiInteraction('friend_request_send', 'submit');
       setRequestingKey(requestKey);
       const queuedRequest: FriendQueueItem =
@@ -128,26 +137,46 @@ export function AddFriendTools({
       const result = profile
         ? await sendFriendRequest({ accountId: profile.id })
         : await sendFriendRequest({ nickname });
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return false;
       setRequestingKey(null);
       if (result.ok || isRetriableFriendError(result)) {
         trackUiInteraction('friend_request_send', 'success');
         if (!result.ok) {
           await enqueueFriendOp(queuedRequest);
-          if (!mountedRef.current) return;
+          if (!mountedRef.current) return false;
         }
-        showToast(t.friends.requestSent, {
-          icon: <UserPlusIcon size={20} color={Colors.amber} />,
+        // Asking someone who already asked me accepts their request on the server.
+        showToast(result.ok && acceptsTheirs ? t.friends.requestAccepted : t.friends.requestSent, {
+          icon:
+            result.ok && acceptsTheirs ? (
+              <CheckIcon size={20} color={Colors.amber} />
+            ) : (
+              <UserPlusIcon size={20} color={Colors.amber} />
+            ),
         });
         setQuery('');
         setResults([]);
         onChanged();
-      } else {
-        trackUiInteraction('friend_request_send', 'failure');
-        showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
+        return true;
       }
+      trackUiInteraction('friend_request_send', 'failure');
+      showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
+      return false;
     },
     [onChanged, query, requestingKey, showToast],
+  );
+
+  const requestFromTable = useCallback(
+    (person: FriendTablePerson) => requestFriend(person, person.friendshipStatus === 'incoming'),
+    [requestFriend],
+  );
+
+  const openProfile = useCallback(
+    (accountId: string) => {
+      if (onOpenProfile) onOpenProfile(accountId);
+      else router.push(`/parta/${accountId}` as Href);
+    },
+    [onOpenProfile, router],
   );
 
   const openIdentity = useCallback(() => {
@@ -189,6 +218,13 @@ export function AddFriendTools({
 
   return (
     <>
+      <TableAdd
+        autoStart={tableAutoStart}
+        requestingKey={requestingKey}
+        onRequest={requestFromTable}
+        onOpenProfile={openProfile}
+      />
+
       <View style={styles.growthActions}>
         <GlowButton
           label={t.friends.myCodeCta}

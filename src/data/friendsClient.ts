@@ -914,6 +914,61 @@ export async function searchFriends(query: string, signal?: AbortSignal): Promis
     : [];
 }
 
+export type FriendTableReason = 'no_visit' | 'too_soon' | 'ghost' | 'private' | 'no_nickname';
+export type FriendTableStatus = 'none' | 'outgoing' | 'incoming';
+
+export interface FriendTablePerson extends FriendProfile {
+  friendshipStatus: FriendTableStatus;
+}
+
+/** "Kdo tu sedí s tebou": who else opened it in the same pub. Profiles only, no place. */
+export interface FriendTable {
+  eligible: boolean;
+  reason: FriendTableReason | null;
+  /** Null when I am not showing up at the table right now. */
+  visibleUntil: string | null;
+  people: FriendTablePerson[];
+}
+
+const FRIEND_TABLE_REASONS: readonly FriendTableReason[] = ['no_visit', 'too_soon', 'ghost', 'private', 'no_nickname'];
+
+export function parseFriendTable(raw: unknown): FriendTable | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Record<string, unknown>;
+  const reason = FRIEND_TABLE_REASONS.find((value) => value === data.reason) ?? null;
+  const visibleUntil =
+    typeof data.visible_until === 'string' && Number.isFinite(Date.parse(data.visible_until))
+      ? data.visible_until
+      : null;
+  const people = Array.isArray(data.people)
+    ? (data.people as (RawFriendProfile & { friendship_status?: unknown })[])
+        .map((person): FriendTablePerson => ({
+          ...parseProfile(person),
+          friendshipStatus:
+            person?.friendship_status === 'outgoing' || person?.friendship_status === 'incoming'
+              ? person.friendship_status
+              : 'none',
+        }))
+        .filter((person) => person.id.length > 0)
+    : [];
+  return { eligible: data.eligible === true && reason === null, reason, visibleUntil, people };
+}
+
+export async function fetchFriendTable(signal?: AbortSignal): Promise<FriendTable | null> {
+  const res = await requestJson('/v1/friends/table', { signal });
+  return res.ok ? parseFriendTable(res.data) : null;
+}
+
+/** Show me to people in the same pub for a few minutes; the server decides if I qualify. */
+export async function openFriendTable(signal?: AbortSignal): Promise<FriendTable | null> {
+  const res = await requestJson('/v1/friends/table', { method: 'POST', signal });
+  return res.ok ? parseFriendTable(res.data) : null;
+}
+
+export async function closeFriendTable(): Promise<void> {
+  await requestJson('/v1/friends/table', { method: 'DELETE' });
+}
+
 export async function sendFriendRequest(params: {
   accountId?: string;
   nickname?: string;
