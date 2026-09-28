@@ -21,7 +21,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   PlusIcon: () => null,
   UsersIcon: () => null,
 }));
-jest.mock('../useNowTick', () => ({ useNowTick: () => Date.parse('2026-09-28T21:00:00Z') }));
+jest.mock('../useNowTick', () => ({ useNowTick: () => 0 }));
 
 const person = (id: string, friendshipStatus: FriendTablePerson['friendshipStatus']): FriendTablePerson => ({
   id,
@@ -65,7 +65,7 @@ function setup(autoStart = false, onRequest = jest.fn().mockResolvedValue(true))
 
 describe('TableAdd', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ now: NOW });
     jest.clearAllMocks();
     (AppState as { currentState: string }).currentState = 'active';
     jest.mocked(fetchFriendTable).mockResolvedValue(hidden);

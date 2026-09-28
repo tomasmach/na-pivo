@@ -66,7 +66,12 @@ export interface TableAddProps {
 }
 
 export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableAddProps) {
-  const now = useNowTick();
+  // The shared tick moves once a minute and can be up to a minute old, which
+  // would show "11 min" of a 10-minute window. Every server answer (a poll each
+  // 5 s while visible) also stamps the clock, and the later of the two wins.
+  const tick = useNowTick();
+  const [answeredAt, setAnsweredAt] = useState(() => Date.now());
+  const now = Math.max(tick, answeredAt);
   const [opening, setOpening] = useState(false);
   /** The server's last answer; null until the first one arrives. */
   const [table, setTable] = useState<FriendTable | null>(null);
@@ -85,6 +90,7 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableA
       if (reportOffline) setNotice(t.friends.tableOffline);
       return;
     }
+    setAnsweredAt(Date.now());
     const active = next.eligible && next.visibleUntil !== null;
     if (active) shownRef.current = true;
     // The server ended my window: say so instead of silently resetting.
