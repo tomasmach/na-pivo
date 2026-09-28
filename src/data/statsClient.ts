@@ -21,7 +21,7 @@ import { chainAbortSignal } from './apiFetch';
 
 const REQUEST_TIMEOUT_MS = 8000;
 /** Matches the server's cap on excluded drinks per stats read. */
-export const MAX_EXCLUDED_DRINKS = 100;
+const MAX_EXCLUDED_DRINKS = 100;
 
 /** One pub's lifetime tally as returned by the backend. */
 export interface RemotePubTally {
@@ -199,7 +199,10 @@ export async function fetchMyStats(
     }
     if (!resp.ok) return null;
 
-    return parseStats(await resp.json());
+    const body = (await resp.json()) as { excluded_drink_count?: unknown } | null;
+    // A server without the parameter still counts the removed drinks.
+    if (excludeClientIds.length > 0 && typeof body?.excluded_drink_count !== 'number') return null;
+    return parseStats(body);
   } catch {
     return null;
   } finally {

@@ -3,6 +3,7 @@ import {
   clearDeleteDrinksQueue,
   enqueueDelete,
   flushDeleteDrinksQueue,
+  getConfirmedDeleteIds,
   getQueuedDeleteIds,
 } from '../deleteDrinksQueue';
 import { deleteDrink } from '../drinksClient';
@@ -77,6 +78,18 @@ describe('enqueueDelete', () => {
     await flushDeleteDrinksQueue();
     expect(deleteDrink).toHaveBeenCalledTimes(251);
     expect(await readQueue()).toEqual([]);
+  });
+
+  it('remembers only deletions the backend confirmed, until an account clear', async () => {
+    (deleteDrink as jest.Mock).mockResolvedValueOnce('retry').mockResolvedValueOnce('ok');
+    await enqueueDelete('throttled');
+    expect(getConfirmedDeleteIds().has('throttled')).toBe(false);
+
+    await enqueueDelete('landed');
+    expect(getConfirmedDeleteIds().has('landed')).toBe(true);
+
+    await clearDeleteDrinksQueue();
+    expect(getConfirmedDeleteIds().size).toBe(0);
   });
 
   it('drops a permanently-rejected deletion from the queue', async () => {

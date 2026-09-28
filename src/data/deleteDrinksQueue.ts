@@ -38,6 +38,9 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<string>(
  *  being persisted immediately. */
 const runMutation = createQueueLock();
 
+/** Deletions the backend confirmed during this launch. */
+const confirmedIds = new Set<string>();
+
 async function flushUnlocked(signal: AbortSignal): Promise<void> {
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
@@ -53,6 +56,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     if (signal.aborted) break;
     const result = await deleteDrink(clientId);
     if (result !== 'retry') settled.add(clientId);
+    if (result === 'ok') confirmedIds.add(clientId);
   }
 
   await runMutation(async () => {
@@ -86,6 +90,11 @@ export async function getQueuedDeleteIds(): Promise<Set<string>> {
   return new Set(await runMutation(loadQueue));
 }
 
+/** Drinks whose deletion the backend confirmed since launch. */
+export function getConfirmedDeleteIds(): ReadonlySet<string> {
+  return confirmedIds;
+}
+
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
 
 /** Drop all pending private drink deletions without attempting delivery. */
@@ -94,6 +103,7 @@ export function clearDeleteDrinksQueue(): Promise<void> {
   // so without this it could keep sending the previous account's drink deletions
   // under the session that replaces this one.
   abortInFlight();
+  confirmedIds.clear();
   return runMutation(async () => {
     await saveQueue([]);
   });

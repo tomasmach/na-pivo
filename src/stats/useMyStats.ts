@@ -9,8 +9,8 @@
 
 import { useEffect, useState } from 'react';
 
-import { getQueuedDeleteIds } from '@/data/deleteDrinksQueue';
-import { fetchMyStats, MAX_EXCLUDED_DRINKS, type RemoteStats } from '@/data/statsClient';
+import { getConfirmedDeleteIds, getQueuedDeleteIds } from '@/data/deleteDrinksQueue';
+import { fetchMyStats, type RemoteStats } from '@/data/statsClient';
 import { useAccountStore } from '@/stores/accountStore';
 
 export function useMyStats(): RemoteStats | null {
@@ -26,13 +26,13 @@ export function useMyStats(): RemoteStats | null {
     let active = true;
     const controller = new AbortController();
     void (async () => {
-      // The server still counts a removed drink until its queued DELETE lands.
-      // Every queued ID must go; the newest removals fill the rest, as older
-      // ones already sit in the queue or are gone from the server.
-      const queued = await getQueuedDeleteIds();
-      const recent = [...removedDrinkIds].reverse().filter((id) => !queued.has(id));
-      const excluded = [...queued, ...recent.slice(0, Math.max(0, MAX_EXCLUDED_DRINKS - queued.size))];
-      const result = await fetchMyStats(controller.signal, excluded);
+      // The server still counts a removed drink until its DELETE lands.
+      const confirmed = getConfirmedDeleteIds();
+      const pending = new Set(await getQueuedDeleteIds());
+      removedDrinkIds.forEach((id) => {
+        if (!confirmed.has(id)) pending.add(id);
+      });
+      const result = await fetchMyStats(controller.signal, [...pending]);
       if (active && result) setSnapshot({ accountId, removedDrinkIds, stats: result });
     })();
     return () => {

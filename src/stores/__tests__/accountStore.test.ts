@@ -289,63 +289,20 @@ describe('forgetDiaryDrink', () => {
     });
   });
 
-  it('forgets the cached first-beer date when the first beer is removed', () => {
-    const firstBeerAt = '2026-01-10T18:00:00Z';
+  it('loads the filtered snapshot when a drink is removed before any snapshot arrived', async () => {
+    const drink = (clientId: string) => ({ client_id: clientId }) as DiarySnapshot['drinks'][number];
     useAccountStore.setState({
-      profile: signedInProfile({
-        stats: {
-          totalBeers: 2,
-          firstBeerAt,
-          distinctPubs: 1,
-          ratingsCount: 0,
-          totalSpentCzk: 120,
-          maxVisitsToOnePub: 1,
-        },
-      }),
-      diarySnapshot: {
-        accountId: 'a',
-        data: {
-          drinks: [
-            { client_id: 'shot', drink_type: 'shot', drank_at: '2026-01-01T18:00:00Z' },
-            { client_id: 'first', drink_type: 'beer', drank_at: firstBeerAt },
-            { client_id: 'later', drink_type: 'beer', drank_at: '2026-02-01T18:00:00Z' },
-          ] as DiarySnapshot['drinks'],
-          visits: [],
-        },
-      },
-    });
-
-    useAccountStore.getState().forgetDiaryDrink('later');
-    useAccountStore.getState().forgetDiaryDrink('shot');
-    expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBe(firstBeerAt);
-
-    useAccountStore.getState().forgetDiaryDrink('first');
-    expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBeNull();
-  });
-
-  it('uses the local timestamp when no server snapshot is loaded', () => {
-    const firstBeerAt = '2026-01-10T18:00:00Z';
-    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
       diarySnapshot: null,
-      profile: signedInProfile({
-        stats: {
-          totalBeers: 1,
-          firstBeerAt,
-          distinctPubs: 1,
-          ratingsCount: 0,
-          totalSpentCzk: 60,
-          maxVisitsToOnePub: 1,
-        },
-      }),
     });
+    mockReconcileDiarySnapshot.mockResolvedValueOnce({ drinks: [drink('kept'), drink('gone')], visits: [] });
 
-    useAccountStore.getState().forgetDiaryDrink('shot-local');
-    expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBe(firstBeerAt);
+    useAccountStore.getState().forgetDiaryDrink('gone');
+    await Promise.resolve();
+    await Promise.resolve();
 
-    useAccountStore.getState().forgetDiaryDrink('first-local', firstBeerAt);
-    expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBeNull();
-    // Offline, the profile total is the fallback and must drop the beer too.
-    expect(useAccountStore.getState().profile?.stats?.totalBeers).toBe(0);
+    expect(mockReconcileDiarySnapshot).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState().diarySnapshot?.data.drinks).toEqual([drink('kept')]);
   });
 
   it('keeps a wiped evening out of the snapshot and of a refresh that raced it', async () => {

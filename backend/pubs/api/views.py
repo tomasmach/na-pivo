@@ -3871,7 +3871,8 @@ class MyStatsView(APIView):
     New clients may pass an IANA ``timezone`` query parameter; invalid or absent
     values use Europe/Prague for backwards compatibility. They may also pass
     ``exclude_client_ids`` (comma-separated drink UUIDs) for drinks removed on
-    the device whose DELETE has not landed yet; malformed IDs are ignored.
+    the device whose DELETE has not landed yet; malformed IDs are ignored. The
+    additive ``excluded_drink_count`` tells such clients the server applied it.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -3906,6 +3907,7 @@ class MyStatsView(APIView):
         except Exception as exc:  # noqa: BLE001
             logger.error("me-stats: unexpected error computing stats: %s", exc, exc_info=True)
             return _internal_error()
+        payload["excluded_drink_count"] = len(exclude_client_ids)
         return Response(payload, status=status.HTTP_200_OK)
 
 

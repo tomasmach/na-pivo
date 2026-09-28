@@ -25,7 +25,6 @@ import {
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
-import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { releaseToursToDevice } from '@/stores/toursStore';
 
@@ -143,11 +142,8 @@ interface AccountState {
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
   /** Resolves true when the server snapshot was fetched. */
   refreshDiarySnapshot: () => Promise<boolean>;
-  /**
-   * Drop a removed drink from the snapshot before its deletion reaches the
-   * server. `beerAt` is the local timestamp when the removed drink was a beer.
-   */
-  forgetDiaryDrink: (clientId: string, beerAt?: string) => void;
+  /** Drop a removed drink from the snapshot before its deletion reaches the server. */
+  forgetDiaryDrink: (clientId: string) => void;
   /** Drop a wiped evening's visit from the snapshot before its deletion lands. */
   forgetDiaryVisit: (clientId: string) => void;
   /**
@@ -363,41 +359,20 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     refreshDiarySnapshot,
 
-    forgetDiaryDrink: (clientId, beerAt) => {
+    forgetDiaryDrink: (clientId) => {
       set((state) => {
         const removedDrinkIds = new Set(state.removedDrinkIds).add(clientId);
         const snapshot = state.diarySnapshot;
-        const row = snapshot?.data.drinks.find((drink) => drink.client_id === clientId);
-        let removedBeerAt = beerAt;
-        if (row) {
-          removedBeerAt =
-            normalizeDrinkType(row.drink_type) === 'beer' && !row.is_suspect ? row.drank_at : undefined;
-        }
-        const stats = state.profile?.stats;
-        // The cached profile still counts the removed beer, and may date the
-        // first beer by it, until it is fetched again.
-        const profile =
-          state.profile && stats && removedBeerAt != null
-            ? {
-                ...state.profile,
-                stats: {
-                  ...stats,
-                  totalBeers: Math.max(0, stats.totalBeers - 1),
-                  ...(stats.firstBeerAt != null &&
-                  Date.parse(removedBeerAt) <= Date.parse(stats.firstBeerAt)
-                    ? { firstBeerAt: null }
-                    : {}),
-                },
-              }
-            : state.profile;
         return {
           removedDrinkIds,
-          profile,
           diarySnapshot: snapshot
             ? { ...snapshot, data: withoutRemoved(snapshot.data, removedDrinkIds, state.removedVisitIds) }
             : null,
         };
       });
+      // Without a snapshot the profile falls back to its cached server total,
+      // which still counts the removed beer; load the filtered snapshot instead.
+      if (!get().diarySnapshot) void refreshDiarySnapshot();
     },
 
     forgetDiaryVisit: (clientId) => {

@@ -101,6 +101,7 @@ def test_empty_stats_returns_zeroes_not_404(client):
         for key, value in body.items()
         if key not in {"timeline", "night_timeline"}
     } == {
+        "excluded_drink_count": 0,
         "total_beers": 0,
         "total_evenings": 0,
         "total_nights": 0,
@@ -635,6 +636,7 @@ def test_stats_leave_out_drinks_whose_deletion_is_still_queued(client):
 
     assert resp.status_code == status.HTTP_200_OK, resp.content
     body = resp.json()
+    assert body["excluded_drink_count"] == 2
     assert body["total_beers"] == 1
     assert body["total_spent_czk"] == 60
     assert [pub["cache_key"] for pub in body["top_pubs"]] == [_KEY_TYGR]
@@ -643,6 +645,7 @@ def test_stats_leave_out_drinks_whose_deletion_is_still_queued(client):
 
     # A released client sends no exclusions and keeps the full history.
     full = client.get("/v1/me/stats", **_auth(token)).json()
+    assert full["excluded_drink_count"] == 0
     assert full["total_beers"] == 3
     assert full["records"]["most_beers_pub_name"] == "Lokál"
 

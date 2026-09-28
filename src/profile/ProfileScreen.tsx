@@ -157,7 +157,9 @@ export default function ProfileScreen() {
   const firstBeerAt = useMemo(
     () =>
       earliestTimestamp([
-        isSignedIn ? profile?.stats?.firstBeerAt : null,
+        // The filtered drink snapshot already drops beers removed on this
+        // phone; the cached profile date would still count them.
+        isSignedIn && !diarySnapshot ? profile?.stats?.firstBeerAt : null,
         remoteFirstBeerAt,
         ...sessions.flatMap((session) =>
           session.drinks
@@ -165,7 +167,7 @@ export default function ProfileScreen() {
             .map((drink) => drink.at),
         ),
       ]),
-    [isSignedIn, profile?.stats?.firstBeerAt, remoteFirstBeerAt, sessions],
+    [diarySnapshot, isSignedIn, profile?.stats?.firstBeerAt, remoteFirstBeerAt, sessions],
   );
   const averageBeersPerDay = formatDailyBeerAverage(
     dailyBeerAverage(beers, firstBeerAt, now),

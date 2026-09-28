@@ -39,6 +39,19 @@ it('asks the server to leave out removed drinks', async () => {
   expect(url).toContain('exclude_client_ids=a1,b2');
 });
 
+it('ignores stats from a server that cannot leave out removed drinks', async () => {
+  const body = { total_beers: 3, periods: { timezone: 'Europe/Prague', months: [], years: [] } };
+  global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => body })) as unknown as typeof fetch;
+  await expect(fetchMyStats(undefined, ['removed'])).resolves.toBeNull();
+
+  global.fetch = jest.fn(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ ...body, excluded_drink_count: 1 }),
+  })) as unknown as typeof fetch;
+  await expect(fetchMyStats(undefined, ['removed'])).resolves.toMatchObject({ totalBeers: 3 });
+});
+
 it('skips server stats it knows would still count some removed drinks', async () => {
   const ids = Array.from({ length: 101 }, (_, index) => `removed-${index}`);
 

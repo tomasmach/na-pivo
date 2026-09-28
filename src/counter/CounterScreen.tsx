@@ -958,14 +958,6 @@ function Tacek({
 
       const visitUpdatedAt = new Date().toISOString();
       const currentVisitClientId = current?.clientId;
-      const removedDrink = current?.drinks.find((drink) => drink.id === targetId);
-      // A beer the server refused never reached the cached account stats.
-      const removedBeerAt =
-        removedDrink &&
-        normalizeDrinkType(removedDrink.drinkType) === 'beer' &&
-        removedDrink.syncStatus !== 'rejected'
-          ? removedDrink.at
-          : undefined;
       removeDrink(targetId);
 
       // Undo the tour check-off only while it is still ours and no other drink keeps the group there.
@@ -995,7 +987,7 @@ function Tacek({
           context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
         });
         if (!pulledFromQueue) {
-          useAccountStore.getState().forgetDiaryDrink(targetId, removedBeerAt);
+          useAccountStore.getState().forgetDiaryDrink(targetId);
           void flushDrinksQueue()
             .then(() => enqueueDelete(targetId))
             .catch(() => undefined);
