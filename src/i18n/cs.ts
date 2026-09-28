@@ -1496,7 +1496,7 @@ export const cs = {
     settingsClose: 'Zavřít nastavení',
     ghostTitle: 'Neviditelný režim',
     ghostSubtitle:
-      'Parta nevidí, kde sedíš, ani co máš vypito. Tvoje cinknutí zůstanou jen u tebe a dokud je zapnutý, nezapočítám tě ani do počtu lidí u hospod na mapě.',
+      'Parta nevidí, kde sedíš, ani co máš vypito. Tvoje cinknutí zůstanou jen u tebe a dokud je zapnutý, nezapočítám tvoje piva ani do počtů u hospod na mapě a v žebříčku.',
     shareDrinksTitle: 'Ukazovat partě, kde sedím',
     shareDrinksSubtitle:
       'Kámoši uvidí, ve které hospodě zrovna jsi a co ti večer teklo. Nikdo jiný ne.',
@@ -1876,7 +1876,7 @@ export const cs = {
     venuesEmptyBody: (period: 'week' | 'year' | 'all') =>
       period === 'week'
         ? 'Nový žebříček bude v pondělí.'
-        : 'Jakmile v hospodě zapíšou pivo aspoň dva různí lidi, objeví se tady.',
+        : 'Jakmile v hospodě zapíšou pivo aspoň tři různí lidi, objeví se tady.',
     venuesRules: (period: 'week' | 'year' | 'all') => [
       'Sčítám piva zapsaná v hospodě.',
       period === 'week'
@@ -1884,7 +1884,7 @@ export const cs = {
         : period === 'year'
           ? 'Počítá se všechno od Nového roku.'
           : 'Počítá se všechno, co kdy padlo.',
-      'Hospoda se počítá, když v ní pili aspoň dva různí lidi.',
+      'Hospoda se počítá, když v ní pili aspoň tři různí lidi.',
       'Jména nikde neukazuju, jen počty piv.',
     ],
     venuesHeroA11y: (name: string, place: string, beers: string) =>
@@ -3103,7 +3103,7 @@ export const cs = {
       'Profil může obsahovat přezdívku, jméno a avatar. U veřejného profilu tě podle přezdívky a fotky můžou najít ostatní; přesná poloha, deníček a jednotlivá piva se veřejně nezobrazují.',
       'Počítadlo, historie večerů, návštěvy hospod a tvoje soukromá hodnocení se ukládají lokálně a synchronizují se jen k tvému účtu. Po odhlášení nebo smazání účtu appka lokální soukromý deníček, hodnocení a čekající private sync fronty z tohohle zařízení vyčistí.',
       'Sdílení večera s Partou je ve výchozím stavu zapnuté: přijatí kamarádi můžou vidět, že jsi v hospodě, kolik piv máš a tvůj poslední zápis. V nastavení Party to vypneš, nebo použij ghost mode. Nikdo jiný než přijatí kamarádi tyhle údaje nevidí.',
-      'Na mapě u hospody ukazuju, kolik různých lidí v ní minulý týden bylo. Je to jedno číslo za celý týden, bez jmen, dnů a časů. Dokud máš zapnutý ghost mode, nezapočítám tě do něj. Zapnutí se v počtech projeví do několika hodin.',
+      'Na mapě u hospody ukazuju, kolik piv se v ní minulý týden vypilo, a v žebříčku hospod součty za minulý týden, letos a celkem. Jsou to jen součty bez jmen, dnů a časů a hospodu ukážu, až když v ní pili aspoň tři různí lidi. Dokud máš zapnutý ghost mode, tvoje piva do nich nezapočítám. Zapnutí se v číslech projeví do několika hodin.',
       'Fotky piv ukládám na serveru bez metadat a GPS polohy. Ve výchozím stavu je vidí jen tvoje Parta; veřejné jsou jen fotky, které přihlásíš do fotosoutěže.',
       'Když vyfotíš pivní lístek přes „Vyfoť menu“, fotka se přes můj server pošle ke zpracování AI modelu (přes službu OpenRouter). Fotku neukládám a poskytovatel ji podle mého nastavení nesmí použít k trénování.',
       'Když povolíš notifikace, uložím si push token zařízení a zprávy z Party doručuju přes Expo Push Service. Hospodské připomínky se zobrazují přímo v telefonu a nikam se neposílají.',

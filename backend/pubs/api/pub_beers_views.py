@@ -26,9 +26,9 @@ PRAGUE_TZ = ZoneInfo("Europe/Prague")
 PUB_BEERS_CACHE_TTL = 60 * 60
 TOP_PUBS = 20
 TOP_CITIES = 30
-# A count never shows one person's drinking, and nobody puts their own place on
-# the board by drinking alone there.
-MIN_DRINKERS = 2
+# A count never shows one person's drinking: with two, either could subtract
+# their own beers. Nobody puts their own place on the board alone either.
+MIN_DRINKERS = 3
 PERIODS = ("week", "year", "all")
 # Cities split into numbered or named districts in the pub catalogue.
 CITIES_WITH_DISTRICTS = ("Praha", "Brno", "Ostrava", "Plzeň")
@@ -134,7 +134,7 @@ def weekly_pub_beers(now: datetime | None = None) -> dict:
         "week_end": (monday + timedelta(days=6)).isoformat(),
         # When this answer is replaced by the next week, so clients need no zone math.
         "next_week_starts_at": (end + timedelta(days=7)).isoformat(),
-        # A pub where one person drank alone would show that person's week.
+        # A pub where one or two people drank would show someone's week.
         "pubs": {
             row["cache_key"]: row["beers"]
             for row in _pub_beer_rows(start, end)

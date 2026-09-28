@@ -1265,7 +1265,7 @@ export const en: Strings = {
     settingsClose: 'Close settings',
     ghostTitle: 'Invisible mode',
     ghostSubtitle:
-      "The crew can't see where you're sitting or what you've drunk. Your pings stay with you, and while it's on I leave you out of the people counts on the map.",
+      "The crew can't see where you're sitting or what you've drunk. Your pings stay with you, and while it's on I leave your beers out of the pub counts on the map and the leaderboard.",
     shareDrinksTitle: 'Show the crew where I am',
     shareDrinksSubtitle: "Your mates see which pub you're in and what you've had tonight. Nobody else does.",
     ghostActive: 'Invisible mode is on',
@@ -1524,7 +1524,7 @@ export const en: Strings = {
     venuesEmptyBody: (period: 'week' | 'year' | 'all') =>
     period === 'week'
       ? 'A new board comes on Monday.'
-      : 'Once two different people log a beer in a pub, it shows up here.',
+      : 'Once three different people log a beer in a pub, it shows up here.',
     venuesRules: (period: 'week' | 'year' | 'all') => [
       'I add up the beers logged in each pub.',
       period === 'week'
@@ -1532,7 +1532,7 @@ export const en: Strings = {
         : period === 'year'
           ? 'It counts everything since New Year.'
           : 'It counts every beer ever logged.',
-      'A pub counts once at least two different people drank there.',
+      'A pub counts once at least three different people drank there.',
       'No names anywhere, only beer counts.',
     ],
     venuesHeroA11y: (name: string, place: string, beers: string) =>
@@ -2498,7 +2498,7 @@ export const en: Strings = {
       "A profile can hold a nickname, a name and an avatar. With a public profile, other people can find you by your nickname and photo; your exact location, your diary and individual beers are not shown publicly.",
       "The counter, the history of your nights, pub visits and your private ratings are stored locally and sync only to your account. When you log out or delete the account, the app clears the local private diary, the ratings and the entries waiting to be sent from this device.",
       "Sharing a night with your crew is on by default: friends you have accepted can see that you are in a pub, how many beers you have and your last entry. You can turn it off in the crew settings, or switch on ghost mode. Nobody other than the friends you have accepted sees any of this.",
-      'On the map I show how many different people were in each pub last week. It is one number for the whole week, with no names, days or times. While ghost mode is on, I leave you out of it. Turning it on shows in the counts within a few hours.',
+      'On the map I show how many beers went down in each pub last week, and the pub leaderboard shows totals for last week, this year and all time. They are only totals, with no names, days or times, and a pub shows up only once at least three different people drank there. While ghost mode is on, I leave your beers out of them. Turning it on shows in the numbers within a few hours.',
       "I store beer photos on the server without metadata or GPS location. By default only your crew sees them; the only public ones are the photos you enter into the photo contest.",
       "When you photograph a beer menu with \"Snap the menu\", the photo goes through my server to an AI model for processing (via the OpenRouter service). I do not store the photo and, under my settings, the provider must not use it for training.",
       "If you allow notifications, I store the device push token and deliver Crew messages through Expo Push Service. Pub reminders show up on the phone itself and are not sent anywhere.",

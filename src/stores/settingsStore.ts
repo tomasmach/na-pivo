@@ -176,17 +176,20 @@ export const useSettingsStore = create<SettingsState>()(
           setCurrencyRate(state.priceCurrency, state.priceCurrencyRate);
         }
       },
-      version: 1,
+      version: 2,
       migrate: (persistedState, version) => {
-        const state = persistedState as Partial<SettingsState>;
-        if (version < 1) {
-          return {
-            ...state,
-            // The old value was an implicit default, not recorded consent.
-            waterNudgeEnabled: false,
-          } as SettingsState;
-        }
-        return persistedState as SettingsState;
+        const { showPubVisitors, ...state } = persistedState as Partial<SettingsState> & {
+          showPubVisitors?: unknown;
+        };
+        return {
+          ...state,
+          // The old value was an implicit default, not recorded consent.
+          ...(version < 1 ? { waterNudgeEnabled: false } : null),
+          // The map counts people became counts of beers; an opt-out stays out.
+          ...(version < 2 && typeof showPubVisitors === 'boolean'
+            ? { showPubBeers: showPubVisitors }
+            : null),
+        } as SettingsState;
       },
     }
   )

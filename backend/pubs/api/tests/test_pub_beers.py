@@ -91,6 +91,7 @@ def test_last_week_bounds_follow_prague_calendar_week():
 def test_counts_beers_per_pub_last_week(client):
     token, me = _register(client)
     _, friend = _register(client)
+    _, pal = _register(client)
     _, ghost = _register(client)
     Account.objects.filter(pk=ghost.pk).update(ghost_mode=True)
     _catalog("u2fkbn1z", "u2fkbq00", "u2fkbzzz")
@@ -99,11 +100,15 @@ def test_counts_beers_per_pub_last_week(client):
     _beer(me, tuesday)
     _beer(me, datetime(2026, 9, 18, 21, 0, tzinfo=PRAGUE))
     _beer(friend, tuesday)
-    _beer(ghost, tuesday)
+    _beer(pal, tuesday)
     _beer(friend, datetime(2026, 9, 20, 23, 30, tzinfo=PRAGUE), cache_key="u2fkbq00")
     _beer(me, datetime(2026, 9, 20, 22, 0, tzinfo=PRAGUE), cache_key="u2fkbq00")
-    # One person drinking alone is never shown.
+    _beer(pal, datetime(2026, 9, 20, 22, 0, tzinfo=PRAGUE), cache_key="u2fkbq00")
+    # Two people are too few: either could subtract their own beers.
+    _beer(me, tuesday, cache_key="u2fkbzzz")
     _beer(friend, tuesday, cache_key="u2fkbzzz")
+    # A ghost is not counted, so it does not make a third person either.
+    _beer(ghost, tuesday, cache_key="u2fkbzzz")
     # Only beers count, and only the ones the public boards trust.
     _beer(friend, tuesday, drink_type=DrinkLog.DrinkType.SOFT_DRINK, beer_name="Kofola")
     _beer(friend, tuesday, is_suspect=True, suspect_reason="burst")
@@ -120,25 +125,28 @@ def test_counts_beers_per_pub_last_week(client):
     assert body["week_start"] == "2026-09-14"
     assert body["week_end"] == "2026-09-20"
     assert body["next_week_starts_at"] == "2026-09-28T00:00:00+02:00"
-    assert body["pubs"] == {"u2fkbn1z": 3, "u2fkbq00": 2}
+    assert body["pubs"] == {"u2fkbn1z": 4, "u2fkbq00": 3}
 
 
 @pytest.mark.django_db
-def test_board_lists_pubs_where_at_least_two_people_drank(client):
+def test_board_lists_pubs_where_at_least_three_people_drank(client):
     token, me = _register(client)
     _, friend = _register(client)
+    _, pal = _register(client)
     _catalog("u2fkbn1z", "u2fkbq00", "u2fkbzzz")
     tuesday = datetime(2026, 9, 15, 20, 0, tzinfo=PRAGUE)
-    for _ in range(2):
-        _beer(me, tuesday)
+    _beer(me, tuesday)
     _beer(friend, tuesday)
+    _beer(pal, tuesday)
+    for account in (me, friend):
+        _beer(account, tuesday, cache_key="u2fkbq00")
+    _beer(pal, tuesday, cache_key="u2fkbq00")
     _beer(me, tuesday, cache_key="u2fkbq00")
-    _beer(friend, tuesday, cache_key="u2fkbq00")
     # Drinking alone in one place never puts it on the board or the map.
     for _ in range(5):
         _beer(me, tuesday, cache_key="u2fkbzzz")
 
-    assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 3, "u2fkbq00": 2}
+    assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 3, "u2fkbq00": 4}
     board = _board(client, token)
     assert board["period"] == "week"
     assert (board["period_start"], board["period_end"]) == ("2026-09-14", "2026-09-20")
@@ -146,18 +154,18 @@ def test_board_lists_pubs_where_at_least_two_people_drank(client):
     assert board["entries"] == [
         {
             "rank": 1,
-            "cache_key": "u2fkbn1z",
-            "beers": 3,
-            "name": "Hospoda u2fkbn1z",
+            "cache_key": "u2fkbq00",
+            "beers": 4,
+            "name": "Hospoda u2fkbq00",
             "city": "Praha",
             "lat": 50.0876,
             "lng": 14.4214,
         },
         {
             "rank": 2,
-            "cache_key": "u2fkbq00",
-            "beers": 2,
-            "name": "Hospoda u2fkbq00",
+            "cache_key": "u2fkbn1z",
+            "beers": 3,
+            "name": "Hospoda u2fkbn1z",
             "city": "Praha",
             "lat": 50.0876,
             "lng": 14.4214,
@@ -169,10 +177,11 @@ def test_board_lists_pubs_where_at_least_two_people_drank(client):
 def test_board_windows_and_cities(client):
     token, me = _register(client)
     _, friend = _register(client)
+    _, pal = _register(client)
     _catalog("u2fkbn1z")
     _catalog("u2cvp000", city="Brno-střed")
     _catalog("u2cvp111", city="Brno")
-    for account in (me, friend):
+    for account in (me, friend, pal):
         # Last week in Prague, February in Brno, and last year in Brno.
         _beer(account, datetime(2026, 9, 15, 20, 0, tzinfo=PRAGUE))
         _beer(account, datetime(2026, 2, 3, 20, 0, tzinfo=PRAGUE), cache_key="u2cvp000")
@@ -188,7 +197,7 @@ def test_board_windows_and_cities(client):
     assert (year["period_start"], year["period_end"]) == ("2026-01-01", "2026-09-23")
     everything = _board(client, token, period="all")
     assert keys(everything) == ["u2cvp111", "u2cvp000", "u2fkbn1z"]
-    assert everything["cities"] == [{"name": "Brno", "beers": 6}, {"name": "Praha", "beers": 2}]
+    assert everything["cities"] == [{"name": "Brno", "beers": 9}, {"name": "Praha", "beers": 3}]
     in_brno = _board(client, token, period="all", city="Brno")
     assert in_brno["city"] == "Brno"
     assert keys(in_brno) == ["u2cvp111", "u2cvp000"]
@@ -202,15 +211,17 @@ def test_an_implausible_beer_day_does_not_count(client, settings):
     settings.LEADERBOARD_BEER_RED_DAY = 5
     token, me = _register(client)
     _, friend = _register(client)
+    _, pal = _register(client)
     _catalog("u2fkbn1z")
     tuesday = datetime(2026, 9, 15, 20, 0, tzinfo=PRAGUE)
     _beer(friend, tuesday)
+    _beer(pal, tuesday)
     for minute in range(5):
         _beer(me, tuesday.replace(minute=minute))
     _beer(me, datetime(2026, 9, 17, 20, 0, tzinfo=PRAGUE))
 
-    assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 2}
-    assert [entry["beers"] for entry in _board(client, token)["entries"]] == [2]
+    assert _get(client, token).json()["pubs"] == {"u2fkbn1z": 3}
+    assert [entry["beers"] for entry in _board(client, token)["entries"]] == [3]
 
 
 def test_city_name_merges_districts_only():
