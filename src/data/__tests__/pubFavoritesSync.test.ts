@@ -22,7 +22,12 @@ import {
   clearLocalPubFavorites,
   runWithoutPubFavoritesSync,
 } from '../pubFavoritesSync';
-import { sanitizeFavorites, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
+import {
+  findFavoriteKey,
+  isSameVenue,
+  sanitizeFavorites,
+  usePubFavoritesStore,
+} from '@/stores/pubFavoritesStore';
 
 const PUB = 'u2fkbnjj';
 const OTHER = 'u2fkbnhz';
@@ -211,5 +216,21 @@ describe('restorePubFavorites across an account boundary', () => {
     await expect(pull).resolves.toBe(true);
     expect(usePubFavoritesStore.getState().favorites[PUB]).toBeUndefined();
     unsubscribe();
+  });
+});
+
+describe('favourite identity', () => {
+  const saved = { ...TYGR, externalId: 'mapy:1', updatedAt: '2026-09-28T12:00:00.000Z' };
+
+  it('tells a saved pub from a neighbour in the same cell', () => {
+    expect(isSameVenue(saved, { id: 'mapy:1', name: 'U Zlatého tygra' })).toBe(true);
+    expect(isSameVenue(saved, { id: 'mapy:2', name: 'Vinárna vedle' })).toBe(false);
+    expect(isSameVenue(saved, { id: '', name: 'Cokoli' })).toBe(true);
+  });
+
+  it('finds the heart in the cell, or by provider id after a pin moved', () => {
+    expect(findFavoriteKey({ [PUB]: saved }, PUB, { id: 'mapy:1', name: 'x' })).toBe(PUB);
+    expect(findFavoriteKey({ [PUB]: saved }, PUB, { id: 'mapy:2', name: 'Vinárna vedle' })).toBeUndefined();
+    expect(findFavoriteKey({ [PUB]: saved }, OTHER, { id: 'mapy:1', name: 'x' })).toBe(PUB);
   });
 });

@@ -32,6 +32,8 @@ interface PubFavoritesState {
   favorites: Record<string, PubFavorite>;
   /** Save or remove a pub; returns true when the pub is saved afterwards. */
   toggleFavorite: (pubKey: string, pub: PubFavoriteInput) => boolean;
+  /** Save a pub, replacing whatever heart its cell held. */
+  saveFavorite: (pubKey: string, pub: PubFavoriteInput) => void;
   /**
    * Merge server favourites (the PULL side of sync). Last write wins. `removed`
    * drops local hearts removed on another device unless the local one is newer.
@@ -94,6 +96,18 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
         return true;
       },
 
+      saveFavorite: (pubKey, pub) => {
+        const favorite: PubFavorite = {
+          name: pub.name,
+          lat: pub.lat,
+          lng: pub.lng,
+          ...(pub.city ? { city: pub.city } : {}),
+          ...(pub.externalId ? { externalId: pub.externalId } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+        set({ favorites: { ...get().favorites, [pubKey]: favorite } });
+      },
+
       hydrateFavorites: (serverFavorites, removed = []) => {
         let changed = false;
         const next = { ...get().favorites };
@@ -128,3 +142,37 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
     },
   ),
 );
+
+/**
+ * Whether a saved heart belongs to this pub. The server keeps one favourite per
+ * map cell, and a cell can hold two businesses, so a known provider id or the
+ * name has to agree as well.
+ */
+export function isSameVenue(
+  favorite: Pick<PubFavorite, 'name' | 'externalId'>,
+  pub: { id?: string; name: string },
+): boolean {
+  if (favorite.externalId && pub.id && !pub.id.startsWith('favorite:')) {
+    if (favorite.externalId === pub.id) return true;
+  } else {
+    return true;
+  }
+  const name = (value: string) => value.trim().toLocaleLowerCase('cs');
+  return name(favorite.name) === name(pub.name);
+}
+
+/**
+ * The key of the heart this pub has: its own cell when that heart is this pub,
+ * or another cell whose heart carries the same provider id (a catalogue fix
+ * moved the pin).
+ */
+export function findFavoriteKey(
+  favorites: Record<string, PubFavorite>,
+  pubKey: string,
+  pub: { id?: string; name: string },
+): string | undefined {
+  const inCell = favorites[pubKey];
+  if (inCell && isSameVenue(inCell, pub)) return pubKey;
+  if (!pub.id) return undefined;
+  return Object.keys(favorites).find((key) => favorites[key].externalId === pub.id);
+}

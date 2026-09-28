@@ -9,7 +9,7 @@ import type { Pub } from '@/data/pubs';
 import { localPubSearch, resolvePubSearchResult, searchPubNames, type PubSearchResult } from '@/data/pubSearchClient';
 import { openPubPage } from '@/pubPage/openPubPage';
 import { useAccountStore } from '@/stores/accountStore';
-import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
+import { isSameVenue, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubStore } from '@/stores/pubStore';
 import { numberFormat } from '@/utils/intlFormat';
 import { intlLocale, t } from '@/i18n';
@@ -52,19 +52,22 @@ function SearchContent() {
   const favorites = useMemo(() => Object.entries(favoriteMap)
     .filter(([key, favorite]) => !reportedKeys.includes(key)
       && !(favorite.externalId && reportedIds.includes(favorite.externalId)))
-    .map(([key, favorite]): Pub => ({
+    // Prefer the current catalogue copy, so a corrected name or pin opens.
+    .map(([key, favorite]): Pub => (favorite.externalId && pubs.find((pub) => pub.id === favorite.externalId)) || {
       id: favorite.externalId || `favorite:${key}`,
       name: favorite.name,
       lat: favorite.lat,
       lng: favorite.lng,
       ...(favorite.city ? { city: favorite.city } : {}),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name, intlLocale)), [favoriteMap, reportedIds, reportedKeys]);
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, intlLocale)), [favoriteMap, pubs, reportedIds, reportedKeys]);
   // Same pub by cell or by provider id, so a pin moved to the next cell still counts.
   const favoriteIds = useMemo(() => new Set(Object.values(favoriteMap)
     .map((favorite) => favorite.externalId).filter(Boolean)), [favoriteMap]);
-  const notFavorite = useCallback(({ pub }: { pub: Pub }) => !favoriteMap[geohash8(pub.lat, pub.lng)]
-    && !favoriteIds.has(pub.id), [favoriteIds, favoriteMap]);
+  const notFavorite = useCallback(({ pub }: { pub: Pub }) => {
+    const inCell = favoriteMap[geohash8(pub.lat, pub.lng)];
+    return !(inCell && isSameVenue(inCell, pub)) && !favoriteIds.has(pub.id);
+  }, [favoriteIds, favoriteMap]);
   const nearby = useMemo(() => suggestions.nearby.filter(notFavorite), [suggestions.nearby, notFavorite]);
   const frequent = useMemo(() => suggestions.frequent.filter(notFavorite), [suggestions.frequent, notFavorite]);
   const term = query.trim();

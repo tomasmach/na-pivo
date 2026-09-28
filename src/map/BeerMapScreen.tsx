@@ -52,7 +52,7 @@ import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import type { Pub } from '@/data/pubs';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
-import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
+import { isSameVenue, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
@@ -882,8 +882,10 @@ export default function BeerMapScreen({
     [favorites],
   );
   const isFavoritePoint = useCallback(
-    (point: { key: string; pub: { id: string } }) =>
-      Boolean(favorites[point.key]) || favoriteIds.has(point.pub.id),
+    (point: { key: string; pub: { id: string; name: string } }) => {
+      const inCell = favorites[point.key];
+      return (Boolean(inCell) && isSameVenue(inCell, point.pub)) || favoriteIds.has(point.pub.id);
+    },
     [favoriteIds, favorites],
   );
   const [favoritesOnly, setFavoritesOnly] = useState(false);

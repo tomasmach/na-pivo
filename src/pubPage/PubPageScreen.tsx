@@ -95,7 +95,7 @@ import {
 } from '@/stores/communityStore';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
-import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
+import { findFavoriteKey, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { pubPageRef, usePubPageStore } from '@/stores/pubPageStore';
 import { selectPubRating, usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -286,12 +286,9 @@ export default function PubPageScreen() {
   const showToast = useToastStore((s) => s.show);
   // A catalogue fix can move a saved pub to the next cell; its provider id still
   // finds the heart, so it shows as saved and taps remove that same entry.
-  const favoriteKey = usePubFavoritesStore((state) => {
-    if (state.favorites[key]) return key;
-    const pubId = pub?.id;
-    if (!pubId) return undefined;
-    return Object.keys(state.favorites).find((k) => state.favorites[k].externalId === pubId);
-  });
+  const favoriteKey = usePubFavoritesStore((state) =>
+    pub ? findFavoriteKey(state.favorites, key, pub) : undefined,
+  );
   const isFavorite = Boolean(favoriteKey);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const isSignedIn = useAccountStore(selectIsSignedIn);
@@ -571,14 +568,21 @@ export default function PubPageScreen() {
 
   const toggleFavorite = useCallback(() => {
     if (!pub) return;
-    const saved = usePubFavoritesStore.getState().toggleFavorite(favoriteKey ?? key, {
+    const store = usePubFavoritesStore.getState();
+    if (favoriteKey) {
+      store.toggleFavorite(favoriteKey, pub);
+      showToast(t.pubDetail.favoriteRemoved);
+      return;
+    }
+    // One heart per cell on the server: saving here replaces a neighbour's.
+    store.saveFavorite(key, {
       name: pub.name,
       lat: pub.lat,
       lng: pub.lng,
       city: pub.city,
       externalId: pub.id || undefined,
     });
-    showToast(saved ? t.pubDetail.favoriteSaved : t.pubDetail.favoriteRemoved);
+    showToast(t.pubDetail.favoriteSaved);
   }, [favoriteKey, key, pub, showToast]);
 
   const reportReason = useCallback(
