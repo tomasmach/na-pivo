@@ -871,6 +871,21 @@ export default function BeerMapScreen({
       ? selectedDetailPub.ratingCount.toLocaleString(intlLocale)
       : null;
   const favorites = usePubFavoritesStore((state) => state.favorites);
+  // A catalogue fix can move a saved pub to the next cell; its id still counts.
+  const favoriteIds = useMemo(
+    () =>
+      new Set(
+        Object.values(favorites)
+          .map((favorite) => favorite.externalId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [favorites],
+  );
+  const isFavoritePoint = useCallback(
+    (point: { key: string; pub: { id: string } }) =>
+      Boolean(favorites[point.key]) || favoriteIds.has(point.pub.id),
+    [favoriteIds, favorites],
+  );
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const visiblePoints = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -891,8 +906,8 @@ export default function BeerMapScreen({
   // With no favourites left the chip is gone, so the filter must not linger.
   const favoritesFilter = favoritesOnly && hasFavorites;
   const listedPoints = useMemo(
-    () => (favoritesFilter ? visiblePoints.filter((point) => favorites[point.key]) : visiblePoints),
-    [favorites, favoritesFilter, visiblePoints],
+    () => (favoritesFilter ? visiblePoints.filter(isFavoritePoint) : visiblePoints),
+    [favoritesFilter, isFavoritePoint, visiblePoints],
   );
 
   const visibleLivePubs = useMemo(() => {
@@ -1465,7 +1480,7 @@ export default function BeerMapScreen({
             const point = cluster.items[0];
             const selected = selectedPub?.key === point.key;
             const beers = visibleBeers?.get(point.key) ?? 0;
-            const favorite = Boolean(favorites[point.key]);
+            const favorite = isFavoritePoint(point);
             return (
               <StaticMapMarker
                 key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${favorite ? 'fav' : ''}:${selected ? 'selected' : 'idle'}`}
@@ -1861,7 +1876,7 @@ export default function BeerMapScreen({
                           >
                             {item.pub.name}
                           </Text>
-                          {favorites[item.key] ? (
+                          {isFavoritePoint(item) ? (
                             <HeartFilledIcon size={13} color={Colors.amber} />
                           ) : null}
                         </View>

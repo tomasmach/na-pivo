@@ -10,7 +10,7 @@
  * save over the account cap answers 409 and is retried, never lost.
  */
 
-import { createQueueLock, createQueueStorage } from './createQueue';
+import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
 import { submitFavorite, type WireFavoriteUpsert } from './pubFavoritesClient';
 
 const STORAGE_KEY = 'na-pivo-pub-favorites-queue';
@@ -40,61 +40,71 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<FavoriteQueueIte
   STORAGE_KEY,
   isQueueItem,
 );
-const runLocked = createQueueLock();
+const runMutation = createQueueLock();
 
 function signature(item: FavoriteQueueItem): string {
   return JSON.stringify(item);
 }
 
-async function flushLocked(): Promise<void> {
-  const queue = await loadQueue();
+/**
+ * Deliver outside the storage lock, like the visits queue: a slow request must
+ * not keep the next heart tap from being saved. An account-boundary clear
+ * aborts the loop, so the previous account's hearts are never sent under the
+ * next session.
+ */
+async function flushUnlocked(signal: AbortSignal): Promise<void> {
+  const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
   for (const item of queue) {
+    if (signal.aborted) break;
     attempted.set(item.pubKey, signature(item));
-    if ((await submitFavorite(item.payload)) !== 'retry') settled.add(item.pubKey);
+    if ((await submitFavorite(item.payload, signal)) !== 'retry') settled.add(item.pubKey);
   }
 
   // Re-read: a newer change for a pubKey that landed mid-flush must survive.
-  const current = await loadQueue();
-  await saveQueue(
-    current.filter((item) => {
-      const sig = attempted.get(item.pubKey);
-      if (sig === undefined || sig !== signature(item)) return true;
-      return !settled.has(item.pubKey);
-    }),
-  );
-}
-
-/** Pending removals, so a restore does not bring a removed heart back. */
-export function getQueuedFavoriteRemovalKeys(): Promise<Set<string>> {
-  return runLocked(async () => {
-    const queue = await loadQueue();
-    return new Set(queue.filter((item) => !item.payload.favorite).map((item) => item.pubKey));
+  await runMutation(async () => {
+    const current = await loadQueue();
+    await saveQueue(
+      current.filter((item) => {
+        const sig = attempted.get(item.pubKey);
+        if (sig === undefined || sig !== signature(item)) return true;
+        return !settled.has(item.pubKey);
+      }),
+    );
   });
 }
 
-/** Enqueue one operation (replacing any pending one for the pub), then flush. */
-export function enqueueFavoriteOp(item: FavoriteQueueItem): Promise<void> {
-  return runLocked(async () => {
+const { flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
+
+/** Pending removals, so a restore does not bring a removed heart back. */
+export async function getQueuedFavoriteRemovalKeys(): Promise<Set<string>> {
+  const queue = await runMutation(loadQueue);
+  return new Set(queue.filter((item) => !item.payload.favorite).map((item) => item.pubKey));
+}
+
+/** Save one operation (replacing any pending one for the pub), then flush. */
+export async function enqueueFavoriteOp(item: FavoriteQueueItem): Promise<void> {
+  await runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => existing.pubKey !== item.pubKey);
     deduped.push(item);
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
-    await flushLocked();
   });
+  await flush();
 }
 
 /** Drop pending operations without sending them (account boundary). */
 export function clearPubFavoritesQueue(): Promise<void> {
-  return runLocked(async () => {
+  abortInFlight();
+  return runMutation(async () => {
     await saveQueue([]);
   });
 }
 
 /** Retry pending operations. Called on launch and foreground. Never throws. */
 export function flushPubFavoritesQueue(): Promise<void> {
-  return runLocked(flushLocked);
+  return flush();
 }

@@ -52,6 +52,7 @@ function isFavorite(value: unknown): value is PubFavorite {
     typeof f.lng === 'number' &&
     Number.isFinite(f.lng) &&
     typeof f.updatedAt === 'string' &&
+    Number.isFinite(Date.parse(f.updatedAt)) &&
     (f.city === undefined || typeof f.city === 'string') &&
     (f.externalId === undefined || typeof f.externalId === 'string')
   );
