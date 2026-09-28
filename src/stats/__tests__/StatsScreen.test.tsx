@@ -83,6 +83,21 @@ function flatTexts(renderer: { root: { findAllByType: (t: string) => { props: { 
   return out;
 }
 
+const mounted: { unmount: () => void }[] = [];
+
+function renderStats() {
+  const renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+  mounted.push(renderer);
+  return renderer;
+}
+
+// The screen schedules a clock tick; unmount so it never fires after the file.
+afterEach(() => {
+  act(() => {
+    mounted.splice(0).forEach((renderer) => renderer.unmount());
+  });
+});
+
 beforeEach(() => {
   idSeq = 0;
   fetchMyStatsMock.mockResolvedValue(null);
@@ -95,7 +110,7 @@ describe('StatsScreen', () => {
   it('shows the empty state with no drinks', () => {
     let renderer: ReturnType<typeof TestRenderer.create>;
     act(() => {
-      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = renderStats();
     });
     const texts = flatTexts(renderer!);
     expect(texts).toContain(t.stats.emptyTitle);
@@ -120,7 +135,7 @@ describe('StatsScreen', () => {
 
     let renderer: ReturnType<typeof TestRenderer.create>;
     act(() => {
-      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = renderStats();
     });
     const texts = flatTexts(renderer!);
 
@@ -164,7 +179,7 @@ describe('StatsScreen', () => {
 
     let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = renderStats();
       await Promise.resolve();
     });
     const texts = flatTexts(renderer!);
@@ -181,7 +196,7 @@ describe('StatsScreen', () => {
 
     let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = renderStats();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
@@ -191,7 +206,6 @@ describe('StatsScreen', () => {
     ]);
     await AsyncStorage.clear();
     act(() => {
-      renderer!.unmount();
       useAccountStore.setState({ removedDrinkIds: new Set() });
     });
   });
@@ -205,7 +219,7 @@ describe('StatsScreen', () => {
 
     let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = renderStats();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
@@ -214,7 +228,6 @@ describe('StatsScreen', () => {
     expect(excluded).toContain('removed-119');
     expect(excluded).not.toContain('removed-19');
     act(() => {
-      renderer!.unmount();
       useAccountStore.setState({ removedDrinkIds: new Set() });
     });
   });
@@ -238,7 +251,7 @@ describe('StatsScreen', () => {
     });
     let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      renderer = renderStats();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(flatTexts(renderer!)).not.toContain(t.stats.emptyTitle);
@@ -251,7 +264,6 @@ describe('StatsScreen', () => {
 
     expect(flatTexts(renderer!)).toContain(t.stats.emptyTitle);
     act(() => {
-      renderer!.unmount();
       useAccountStore.setState({ removedDrinkIds: new Set() });
     });
   });
