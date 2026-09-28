@@ -9,7 +9,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BackHandler,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,9 +18,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import {
-  useFocusEffect,
   useLocalSearchParams,
-  useNavigation,
   useRouter,
   type Href,
 } from 'expo-router';
@@ -39,8 +36,6 @@ import {
   type LeaderboardPeriod,
 } from '@/data/leaderboardsClient';
 import { fetchPubBoard, type PubBoard, type PubBoardEntry } from '@/data/pubBoardClient';
-import type { Pub } from '@/data/pubs';
-import { EMPTY_PUB_SEARCH_FILTERS, type PubSearchFilters } from '@/data/pubSearchFilters';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { t, intlLocale } from '@/i18n';
 import BoardSegmented from '@/leaderboards/BoardSegmented';
@@ -49,8 +44,8 @@ import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
 import PeriodChips from '@/leaderboards/PeriodChips';
 import { PodiumMats } from '@/leaderboards/PodiumMats';
 import { PubBoardContent } from '@/leaderboards/PubBoardContent';
-import { PubBoardDetail, pubFromBoardEntry } from '@/leaderboards/PubBoardDetail';
-import BeerMapScreen from '@/map/BeerMapScreen';
+import { pubFromBoardEntry } from '@/leaderboards/pubFromBoardEntry';
+import { openPubPage } from '@/pubPage/openPubPage';
 import { useAccountStore } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -113,9 +108,6 @@ export default function LeaderboardsScreen() {
   const [city, setCity] = useState<string | null>(null);
   const [pubBoard, setPubBoard] = useState<PubBoard | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
-  const [openPub, setOpenPub] = useState<Pub | null>(null);
-  const [mapPub, setMapPub] = useState<Pub | null>(null);
-  const [mapFilters, setMapFilters] = useState<PubSearchFilters>(EMPTY_PUB_SEARCH_FILTERS);
   const isVenues = category === 'venues';
   // The person boards' copy and scores never see the pub board.
   const personCategory: LeaderboardCategory = isVenues ? 'beers' : category;
@@ -224,30 +216,9 @@ export default function LeaderboardsScreen() {
     [city],
   );
 
-  const openBoardPub = useCallback((entry: PubBoardEntry) => {
-    setOpenPub(pubFromBoardEntry(entry));
-  }, []);
-
-  const showOnOurMap = useCallback((pub: Pub) => {
-    setMapFilters(EMPTY_PUB_SEARCH_FILTERS);
-    setMapPub(pub);
-  }, []);
-
-  // Our map opens over the board; back returns to the board, not further. An
-  // iOS edge swipe would pop the whole board, so it waits for the map to close.
-  const navigation = useNavigation();
-  useEffect(() => {
-    navigation.setOptions({ gestureEnabled: !mapPub });
-  }, [mapPub, navigation]);
-  useFocusEffect(
-    useCallback(() => {
-      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        if (!mapPub) return false;
-        setMapPub(null);
-        return true;
-      });
-      return () => sub.remove();
-    }, [mapPub]),
+  const openBoardPub = useCallback(
+    (entry: PubBoardEntry) => openPubPage(router, pubFromBoardEntry(entry)),
+    [router],
   );
 
   const cityRows = useMemo(() => {
@@ -406,7 +377,6 @@ export default function LeaderboardsScreen() {
             paddingTop: insets.top + 8,
             paddingBottom: Math.max(insets.bottom, Spacing.sm),
           },
-          mapPub && styles.hidden,
         ]}
       >
         <View style={styles.header}>
@@ -635,18 +605,6 @@ export default function LeaderboardsScreen() {
         <CounterCta label={cta.label} onPress={cta.onPress} accessibilityLabel={cta.label} />
       </View>
 
-      {mapPub ? (
-        <BeerMapScreen
-          initialPub={mapPub}
-          focusInitialPub
-          onBack={() => setMapPub(null)}
-          filters={mapFilters}
-          onApplyFilters={setMapFilters}
-          onSearch={() => router.push('/pub-search' as Href)}
-          onShowCompass={() => router.dismissTo({ pathname: '/', params: { view: 'compass' } })}
-        />
-      ) : null}
-      <PubBoardDetail pub={openPub} onPubChange={setOpenPub} onShowOnOurMap={showOnOurMap} />
       <MoreSheet
         visible={cityPickerOpen}
         title={t.leaderboards.venuesCityTitle}
@@ -661,9 +619,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: Colors.stout,
-  },
-  hidden: {
-    display: 'none',
   },
   // Which city the pub board counts. Same quiet voice as the window row.
   cityButton: {

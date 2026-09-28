@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useIsFocused } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
-import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { checkLocationPermission } from '@/compass/permissions';
-import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
+import { openPubPage } from '@/pubPage/openPubPage';
 import { cachedTourPubs, filterTourPubs, searchTourPubs, type TourPubSearchResult } from '@/data/tourPubSearch';
 import { t } from '@/i18n';
 import { usePubStore } from '@/stores/pubStore';
@@ -32,6 +31,7 @@ export function TourPubPicker(props: TourPubPickerProps) {
 }
 
 function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPubPickerProps) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
   const [query, setQuery] = useState('');
@@ -44,7 +44,6 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const [region, setRegion] = useState<Region>(() => tourRegion(stops));
   const [previewCandidate, setPreview] = useState<Pub | null>(null);
   const preview = previewCandidate && filterTourPubs([previewCandidate], { reportedPubIds, reportedCacheKeys }).length ? previewCandidate : null;
-  const [detailVisible, setDetailVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
   const request = useRef<AbortController | null>(null);
@@ -124,7 +123,6 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const alreadyAdded = (pub: Pub) => stops.some((stop) => stop.id !== replaceStop?.id && (stop.pubId === pub.id || (stop.cacheKey === geohash8(pub.lat, pub.lng) && stop.name.trim().toLocaleLowerCase() === pub.name.trim().toLocaleLowerCase())));
   const choosePreview = (pub: Pub) => {
     Keyboard.dismiss();
-    setDetailVisible(false);
     if (!preview) beforePreview.current = viewport.current;
     moveMap({ latitude: pub.lat, longitude: pub.lng, latitudeDelta: Math.min(viewport.current.latitudeDelta, 0.035), longitudeDelta: Math.min(viewport.current.longitudeDelta, 0.035) });
     setPreview(pub);
@@ -164,7 +162,7 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
           <Text maxFontSizeMultiplier={1.3} style={styles.pubTitle}>{preview.name}</Text>
           {!!(preview.address || preview.city) && <Text maxFontSizeMultiplier={1.3} style={styles.address}>{[preview.address, preview.city].filter(Boolean).join(', ')}</Text>}
           <View style={styles.hours}><Text maxFontSizeMultiplier={1.3} style={styles.meta}>{preview.openingHours || t.tours.openingHoursUnknown}</Text></View>
-          <Pressable accessibilityRole="button" style={styles.detailRow} onPress={() => setDetailVisible(true)}><Text maxFontSizeMultiplier={1.3} style={styles.actionText}>{t.tours.fullPubDetail}</Text><ChevronRightIcon size={18} color={Colors.amber} /></Pressable>
+          <Pressable accessibilityRole="button" style={styles.detailRow} onPress={() => openPubPage(router, preview)}><Text maxFontSizeMultiplier={1.3} style={styles.actionText}>{t.tours.fullPubDetail}</Text><ChevronRightIcon size={18} color={Colors.amber} /></Pressable>
         </View> : <View style={styles.list}>
           {loading && <ActivityIndicator accessibilityLabel={t.tours.search} color={Colors.amber} style={styles.loading} />}
           {status === 'cached' && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchOffline}</Text>}
@@ -182,7 +180,6 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
           <Pressable accessibilityRole="button" style={styles.back} onPress={backToSearch}><Text maxFontSizeMultiplier={1.3} style={styles.backText}>{t.tours.backToSearch}</Text></Pressable>
         </> : <Pressable accessibilityRole="button" style={styles.secondary} onPress={() => { setQuery(''); void search('', true); }}><Text maxFontSizeMultiplier={1.3} style={styles.secondaryText}>{t.tours.searchArea}</Text></Pressable>}
       </View>}
-      {preview && <MapPubSheet visible={detailVisible} pubKey={geohash8(preview.lat, preview.lng)} pubName={preview.name} info={pubInfoFromPub(preview)} onClose={() => setDetailVisible(false)} onRenamed={(name) => setPreview({ ...preview, name })} />}
   </View>;
 }
 

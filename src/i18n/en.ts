@@ -1535,10 +1535,6 @@ export const en: Strings = {
     `The most beers went down at ${name}${place ? `, ${place}` : ''}. ${beers}. Tap for details.`,
     venuesRowA11y: (rank: number, name: string, place: string, beers: string) =>
     `Place ${rank}, ${name}${place ? `, ${place}` : ''}, ${beers}`,
-    showOnMapTitle: 'Show on map',
-    showOnOurMap: 'Here in the app',
-    showOnGoogle: 'In Google Maps',
-    googleMapsFailed: 'Google Maps could not be opened.',
     selectCategory: (label: string, selected: boolean) =>
     selected ? `${label}, selected` : `Switch to ${label}`,
     selectPeriod: (label: string, selected: boolean) =>
@@ -2903,6 +2899,32 @@ export const en: Strings = {
     activityLoadMore: 'Load more',
     activityLoadMoreRetry: 'Try loading more again',
     activityLoadMoreA11y: 'Load more pub activity',
+    // — Pub page —
+    backA11y: 'Back',
+    mapA11y: (name: string) => `Show ${name} on the map`,
+    ratingLine: (value: string, count: number | null) =>
+      count ? `${value} · ${englishPlural(count, { one: '1 rating', other: `${count} ratings` })}` : value,
+    beersLastWeek: (n: number) => `${beerCountLabel(n)} drunk here last week`,
+    eventRunning: 'On now',
+    eventTodayShort: 'Today',
+    eventTomorrow: 'Tomorrow',
+    eventLine: (when: string, title: string) => `${when} · ${title}`,
+    eventsMore: (n: number) =>
+      `${englishPlural(n, { one: '1 more event', other: `${n} more events` })} in the next two weeks`,
+    eventsHeading: 'Events',
+    tapsVerified: (age: string) => `checked ${age}`,
+    tapsRotating: 'Rotating taps',
+    tapsMore: (n: number) => `and ${englishPlural(n, { one: '1 more beer', other: `${n} more beers` })}`,
+    hoursToday: 'today',
+    aboutTitle: 'About the pub',
+    amenitiesConfirmed: 'Confirmed by other drinkers',
+    amenitiesMore: (n: number) =>
+      `and ${englishPlural(n, { one: '1 more thing', other: `${n} more things` })} · confirmed by other drinkers`,
+    privateOnly: 'Only you see this',
+    privateVerdict: (verdict: string) => `Only you see this · your verdict: ${verdict}`,
+    mappedLine: (pct: number) => `${pct} % mapped`,
+    mappedHint: 'Add what you know. Others will see it.',
+    aimA11y: (name: string) => `Point the compass at ${name}`,
     stateLoading: 'Loading the pub…',
     stateFailed: "I couldn't load the pub.",
     eventToday: (range: string) => `Today ${range}`,

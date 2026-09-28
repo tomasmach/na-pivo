@@ -85,9 +85,7 @@ import {
   type WeeklyHours,
 } from '@/data/communityHours';
 import { geohash8 } from '@/data/geohash';
-import { renameLocalPub, clearPubsSnapshot, type Pub } from '@/data/pubs';
-import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
-import { enqueuePubNameCorrection } from '@/data/pubNameCorrectionsQueue';
+import { submitPubRename } from '@/components/amenities/pubRename';
 import {
   usePubAmenitiesStore,
   selectPubVotes,
@@ -106,7 +104,6 @@ import {
 import { fetchPubAmenities } from '@/data/pubAmenitiesClient';
 import { getBackendEndpoint } from '@/data/backendConfig';
 import { useToastStore } from '@/stores/toastStore';
-import { usePubStore } from '@/stores/pubStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -151,6 +148,8 @@ interface MapPubSheetProps {
   beerLine?: string | null;
   onShowMap?: () => void;
   onNavigate?: () => void;
+  /** The pub page lists events itself; its mapping sheet leaves them out. */
+  showEvents?: boolean;
 }
 
 /** Same tones as the compass card. Never red — a closed pub is not an error. */
@@ -177,6 +176,7 @@ export function MapPubSheet({
   beerLine,
   onShowMap,
   onNavigate,
+  showEvents = true,
 }: MapPubSheetProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
@@ -561,28 +561,9 @@ export function MapPubSheet({
     if (!trimmed || trimmed === displayName.trim()) return;
 
     setRenameSubmitting(true);
-    // A pub with a known external id renames locally too (in-memory index +
-    // snapshot clear, so the new name survives a reload); otherwise only the
-    // public correction queues. The catalog bump makes index readers (compass
-    // selection, beer map) re-read the renamed entry — the same propagation the
-    // compass rename flow uses.
-    if (info.externalId) {
-      renameLocalPub(info.externalId, trimmed);
-      usePubStore.getState().bumpCatalogRevision();
-    }
-    void clearPubsSnapshot();
     setRenamedName(trimmed);
     onRenamed?.(trimmed);
-
-    const pubForCorrection: Pub = {
-      id: info.externalId ?? '',
-      name: displayName,
-      lat: info.lat,
-      lng: info.lng,
-      ...(info.city ? { city: info.city } : {}),
-    };
-    const entry = buildPubNameCorrectionEntry(pubForCorrection, trimmed);
-    enqueuePubNameCorrection(entry)
+    submitPubRename(info, displayName, trimmed)
       .then((synced) => {
         setRenameOpen(false);
         showToast(synced ? t.compass.renameSavedToast : t.compass.renameQueuedToast);
@@ -737,12 +718,14 @@ export function MapPubSheet({
                 </View>
               )}
 
-              <PubEventsSection
-                visible={showSheet}
-                pubKey={pubKey}
-                pubName={displayName}
-                info={info}
-              />
+              {showEvents ? (
+                <PubEventsSection
+                  visible={showSheet}
+                  pubKey={pubKey}
+                  pubName={displayName}
+                  info={info}
+                />
+              ) : null}
 
               {/* Amenities: one flat list under a single header. The four-line
                   mapping intro collapsed into the ring (progress) + one public

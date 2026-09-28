@@ -1,5 +1,6 @@
 import {
   fetchActivePubEvents,
+  fetchUpcomingPubEvents,
   isPubEventActive,
   submitPubEventSuggestion,
 } from '../pubEventsClient';
@@ -55,6 +56,42 @@ describe('pubEventsClient', () => {
       expect.objectContaining({ signal: expect.any(Object) }),
     );
     jest.restoreAllMocks();
+  });
+
+  it('asks for the next two weeks and keeps upcoming events in start order', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-19T18:00:00Z'));
+    const wire = (id: string, startsAt: string, endsAt: string) => ({
+      id,
+      title: id,
+      details: '',
+      starts_at: startsAt,
+      ends_at: endsAt,
+      verified_at: '2026-07-18T10:00:00Z',
+    });
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        events: [
+          wire('saturday', '2026-07-25T18:00:00Z', '2026-07-25T22:00:00Z'),
+          wire('ended', '2026-07-19T12:00:00Z', '2026-07-19T14:00:00Z'),
+          wire('running', '2026-07-19T17:00:00Z', '2026-07-19T20:00:00Z'),
+        ],
+      }),
+    });
+
+    const result = await fetchUpcomingPubEvents('u2fkbnhz');
+
+    expect(result?.map((event) => event.id)).toEqual(['running', 'saturday']);
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.example.test/v1/pub-events?cache_key=u2fkbnhz&window=upcoming',
+      expect.objectContaining({ signal: expect.any(Object) }),
+    );
+    jest.restoreAllMocks();
+  });
+
+  it('returns null when upcoming events fail to load', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({ ok: false, json: async () => ({}) });
+    await expect(fetchUpcomingPubEvents('u2fkbnhz')).resolves.toBeNull();
   });
 
   it('does not submit with an anonymous device session', async () => {

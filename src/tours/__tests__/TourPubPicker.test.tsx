@@ -12,7 +12,7 @@ jest.mock('../TourMap', () => ({
   ...jest.requireActual('../TourMap'),
   TourMap: (props: TourMapProps) => { mockMap = props; return null; },
 }));
-jest.mock('expo-router', () => ({ useIsFocused: () => false }));
+jest.mock('expo-router', () => ({ useIsFocused: () => false, useRouter: () => ({ push: jest.fn() }) }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },

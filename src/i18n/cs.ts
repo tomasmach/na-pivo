@@ -1889,10 +1889,6 @@ export const cs = {
       `Nejvíc se pilo v hospodě ${name}${place ? `, ${place}` : ''}. ${beers}. Ťukni pro detail.`,
     venuesRowA11y: (rank: number, name: string, place: string, beers: string) =>
       `${rank}. místo, ${name}${place ? `, ${place}` : ''}, ${beers}`,
-    showOnMapTitle: 'Ukázat na mapě',
-    showOnOurMap: 'Tady v appce',
-    showOnGoogle: 'V Google Mapách',
-    googleMapsFailed: 'Google Maps se nepodařilo otevřít.',
     selectCategory: (label: string, selected: boolean) =>
       selected ? `${label}, vybráno` : `Přepnout na ${label}`,
     selectPeriod: (label: string, selected: boolean) =>
@@ -3548,6 +3544,34 @@ export const cs = {
     activityLoadMore: 'Načíst další',
     activityLoadMoreRetry: 'Zkusit další znovu',
     activityLoadMoreA11y: 'Načíst další aktivitu hospody',
+    // — Pub page (stránka hospody) —
+    backA11y: 'Zpět',
+    mapA11y: (name: string) => `Ukázat ${name} na mapě`,
+    ratingLine: (value: string, count: number | null) =>
+      count ? `${value} · ${count} hodnocení` : value,
+    beersLastWeek: (n: number) =>
+      `Minulý týden tu ${czechPlural(n, { one: 'padlo', few: 'padla', many: 'padlo' })} ${beerCountLabel(n)}`,
+    eventRunning: 'Právě běží',
+    eventTodayShort: 'Dnes',
+    eventTomorrow: 'Zítra',
+    eventLine: (when: string, title: string) => `${when} · ${title}`,
+    eventsMore: (n: number) =>
+      `Do dvou týdnů ještě ${n} ${czechPlural(n, { one: 'akce', few: 'akce', many: 'akcí' })}`,
+    eventsHeading: 'Akce',
+    tapsVerified: (age: string) => `ověřeno ${age}`,
+    tapsRotating: 'Rotující nabídka',
+    tapsMore: (n: number) =>
+      `a ${n} ${czechPlural(n, { one: 'další pivo', few: 'další piva', many: 'dalších piv' })}`,
+    hoursToday: 'dnes',
+    aboutTitle: 'O hospodě',
+    amenitiesConfirmed: 'Potvrdili to pivaři',
+    amenitiesMore: (n: number) =>
+      `a ${n} ${czechPlural(n, { one: 'další věc', few: 'další věci', many: 'dalších věcí' })} · potvrdili pivaři`,
+    privateOnly: 'Jen pro tebe',
+    privateVerdict: (verdict: string) => `Jen pro tebe · tvůj palec: ${verdict}`,
+    mappedLine: (pct: number) => `Zmapováno na ${pct} %`,
+    mappedHint: 'Doplň, co víš. Uvidí to ostatní.',
+    aimA11y: (name: string) => `Namířit kompas na ${name}`,
     stateLoading: 'Načítám hospodu…',
     stateFailed: 'Hospodu jsem nenačetl.',
     eventToday: (range: string) => `Dnes ${range}`,
