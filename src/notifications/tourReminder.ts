@@ -70,8 +70,10 @@ export function tourReminderAt(plan: PlanTime): number | null {
   if (meetup === null) return null;
   const early = meetup - 2 * HOUR_MS;
   const floor = zonedInstant(plan.scheduledDate, '08:00', plan.timezone);
-  // A meetup at eight or earlier keeps its two hours; the floor would land on the meetup itself.
-  return floor === null || floor >= meetup ? early : Math.max(early, floor);
+  if (floor !== null && floor < meetup) return Math.max(early, floor);
+  // A meetup at eight or earlier keeps its two hours, but still on its own day.
+  const midnight = zonedInstant(plan.scheduledDate, '00:00', plan.timezone);
+  return midnight === null ? early : Math.max(early, midnight);
 }
 
 export interface TourReminder {

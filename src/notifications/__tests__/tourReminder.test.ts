@@ -73,6 +73,8 @@ describe('when the reminder fires', () => {
   });
   it('keeps two hours for a meetup at eight or earlier', () => {
     expect(iso(tourReminderAt(plan({ scheduledTime: '07:00' })))).toBe('2026-10-02T03:00:00.000Z');
+    // A meetup after midnight is reminded at midnight, not the evening before.
+    expect(iso(tourReminderAt(plan({ scheduledTime: '01:00' })))).toBe('2026-10-01T22:00:00.000Z');
   });
   it('reminds a day without a time at noon', () => {
     expect(iso(tourReminderAt(plan({ scheduledTime: null })))).toBe('2026-10-02T10:00:00.000Z');
