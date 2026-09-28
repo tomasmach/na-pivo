@@ -47,6 +47,7 @@ import {
 import {
   MAX_AMENITY_FILTERS,
   PRICE_FILTER_STEPS,
+  BEER_NAME_FILTER_PREFIX,
   normalizePubSearchFilters,
   type BeerBrandFilterValue,
   type PubSearchFilters,
@@ -57,6 +58,7 @@ import {
   POPULAR_BEER_BRANDS,
   suggestBeerBrands,
   type BeerBrandSuggestion,
+  type BeerSearchArea,
 } from '@/data/beerSuggestionsClient';
 import { t } from '@/i18n';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -65,6 +67,8 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 type Glyph = ComponentType<{ size?: number; color: string }>;
+
+const SUGGESTION_DEBOUNCE_MS = 250;
 
 const AMENITY_ICONS: Record<AmenityKey, Glyph> = {
   payment_card: CreditCardIcon,
@@ -95,6 +99,8 @@ interface PubFilterSheetProps {
   /** Known reference prices (CZK) of the currently loaded pubs, price-cap NOT
    *  applied — drives the histogram and the live match count. */
   nearbyPrices?: number[];
+  /** Area being searched; nearby menus then add beers outside the catalog. */
+  searchArea?: BeerSearchArea | null;
   onClose: () => void;
   onApply: (value: PubSearchFilters) => void;
 }
@@ -103,12 +109,15 @@ export function PubFilterSheet({
   visible,
   value,
   nearbyPrices = [],
+  searchArea = null,
   onClose,
   onApply,
 }: PubFilterSheetProps) {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState<PubSearchFilters>(() => normalizePubSearchFilters(value));
   const [query, setQuery] = useState('');
+  // Snapshot on open so GPS jitter does not refetch suggestions while typing.
+  const [suggestionArea] = useState(searchArea);
   const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const [suggestionsQuery, setSuggestionsQuery] = useState('');
   const [limitReached, setLimitReached] = useState(false);
@@ -136,21 +145,28 @@ export function PubFilterSheet({
     if (!searching) return;
     const controller = new AbortController();
     const requestedQuery = normalizedQuery;
-    suggestBeerBrands(query, controller.signal, 8)
-      .then((items) => {
-        if (!controller.signal.aborted) {
-          setSuggestions(items);
-          setSuggestionsQuery(requestedQuery);
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setSuggestions([]);
-          setSuggestionsQuery(requestedQuery);
-        }
-      });
-    return () => controller.abort();
-  }, [normalizedQuery, query, searching]);
+    // Nearby menu suggestions scan pub menus on the server; wait for a pause
+    // in typing instead of querying on every keystroke.
+    const timer = setTimeout(() => {
+      suggestBeerBrands(query, controller.signal, 8, '', suggestionArea)
+        .then((items) => {
+          if (!controller.signal.aborted) {
+            setSuggestions(items);
+            setSuggestionsQuery(requestedQuery);
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setSuggestions([]);
+            setSuggestionsQuery(requestedQuery);
+          }
+        });
+    }, SUGGESTION_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [normalizedQuery, query, searching, suggestionArea]);
 
   const groupedAmenities = useMemo(
     () =>
@@ -172,10 +188,14 @@ export function PubFilterSheet({
 
   const chooseSuggestion = useCallback(
     (suggestion: BeerBrandSuggestion) => {
-      chooseBrand({
-        key: suggestion.brandSlug ?? suggestion.slug,
-        label: suggestion.brandName ?? suggestion.name,
-      });
+      chooseBrand(
+        suggestion.kind === 'menu'
+          ? { key: `${BEER_NAME_FILTER_PREFIX}${suggestion.slug}`, label: suggestion.name }
+          : {
+              key: suggestion.brandSlug ?? suggestion.slug,
+              label: suggestion.brandName ?? suggestion.name,
+            },
+      );
     },
     [chooseBrand],
   );

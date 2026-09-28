@@ -28,7 +28,7 @@ import {
   withSpring,
 } from 'react-native-reanimated';
 
-import { useCompass } from '@/hooks/useCompass';
+import { UNLIMITED_SEARCH_RADIUS_KM, useCompass } from '@/hooks/useCompass';
 import { getAllLoadedPubs, type Pub, type PubPrice } from '@/data/pubs';
 import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
 import type { CommunityBeer } from '@/data/communityClient';
@@ -720,6 +720,14 @@ export default function CompassScreen() {
     () => (filterSheetOpen ? freshPriceCzks(getAllLoadedPubs()) : []),
     [filterSheetOpen],
   );
+  const maxDistanceKm = useSettingsStore((s) => s.maxDistanceKm);
+  const filterSearchArea = currentPosition
+    ? {
+        lat: currentPosition.lat,
+        lng: currentPosition.lng,
+        radiusKm: maxDistanceKm ?? UNLIMITED_SEARCH_RADIUS_KM,
+      }
+    : null;
   const handleShowMap = useCallback(() => {
     trackUiInteraction('compass_map_open');
     if (permissionState !== 'granted') setMapWithoutLocation(true);
@@ -999,6 +1007,7 @@ export default function CompassScreen() {
             visible
             value={pubFilters}
             nearbyPrices={nearbyPrices}
+            searchArea={filterSearchArea}
             onClose={handleCloseFilter}
             onApply={handleApplyFilter}
           />
@@ -1122,6 +1131,7 @@ export default function CompassScreen() {
           visible
           value={pubFilters}
           nearbyPrices={nearbyPrices}
+          searchArea={filterSearchArea}
           onClose={handleCloseFilter}
           onApply={handleApplyFilter}
         />

@@ -11,6 +11,7 @@ import type { HoursStatus, Pub, VenueKind } from './pubs';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 import { trackApiFailure } from './telemetryClient';
+import { beerNameFromFilterKey } from './pubSearchFilters';
 import { isPriceFresh } from '@/utils/priceAge';
 
 // Mapy.cz returns mixed categories under our text queries. Keep only the ones
@@ -189,6 +190,7 @@ interface BackendPubsNearResponse {
     match?: string;
     amenities?: string[];
     beer_brand?: string | null;
+    beer_name?: string;
     include_other_places?: boolean;
   };
 }
@@ -223,7 +225,10 @@ async function backendSuggest(
   url.searchParams.set('lat', String(lat));
   url.searchParams.set('lng', String(lng));
   url.searchParams.set('radius_km', String(kmRadius));
-  if (beerBrandKey) url.searchParams.set('beer_brand', beerBrandKey);
+  const beerName = beerNameFromFilterKey(beerBrandKey);
+  const brandKey = beerName ? null : beerBrandKey || null;
+  if (beerName) url.searchParams.set('beer_name', beerName);
+  if (brandKey) url.searchParams.set('beer_brand', brandKey);
   if (amenityKeys.length > 0) url.searchParams.set('amenities', amenityKeys.join(','));
   if (includeOtherPlaces) url.searchParams.set('include_other_places', 'true');
 
@@ -242,6 +247,16 @@ async function backendSuggest(
       return null;
     }
     const data = (await resp.json()) as BackendPubsNearResponse;
+    if (beerName && data.applied_filters?.beer_name !== beerName) {
+      // An older backend ignores beer_name. Fail closed: unfiltered pubs must
+      // never masquerade as pubs pouring the searched beer.
+      console.warn('[pubs] backend did not acknowledge beer name filter');
+      trackApiFailure('pubs_near_backend', {
+        endpoint: '/v1/pubs/near',
+        reason: 'filter_contract_mismatch',
+      });
+      return null;
+    }
     if (amenityKeys.length > 0) {
       const applied = data.applied_filters;
       const acknowledgedAmenities = Array.isArray(applied?.amenities)
@@ -253,7 +268,7 @@ async function backendSuggest(
         applied.match === 'all' &&
         acknowledgedAmenities.length === requestedAmenities.length &&
         acknowledgedAmenities.every((key, index) => key === requestedAmenities[index]) &&
-        (applied.beer_brand ?? null) === (beerBrandKey || null) &&
+        (applied.beer_brand ?? null) === brandKey &&
         (applied.include_other_places ?? false) === includeOtherPlaces;
       if (!acknowledged) {
         // A rolling deploy can briefly put a new app against an older backend
