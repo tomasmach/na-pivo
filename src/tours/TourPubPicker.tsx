@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,6 +37,8 @@ export function TourPubPicker(props: TourPubPickerProps) {
 function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPubPickerProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // The map no longer scrolls away, so even expanded it leaves room for the list and the button.
+  const expandedMapHeight = Math.min(420, Math.round(useWindowDimensions().height / 2));
   const focused = useIsFocused();
   const [query, setQuery] = useState('');
   const [pubs, setPubs] = useState<Pub[]>([]);
@@ -164,7 +166,7 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
     const stop = stops.find((item) => item.id === id);
     if (stop) choosePreview({ id: stop.pubId, name: stop.name, lat: stop.lat, lng: stop.lon, address: stop.address });
   };
-  const map = <TourMap stops={stops} selectedId={stops.find((stop) => stop.pubId === preview?.id)?.id ?? null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? 420 : 215} region={region} onRegionChange={moveMap} candidates={visiblePubs.filter((pub) => !alreadyAdded(pub)).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />;
+  const map = <TourMap stops={stops} selectedId={stops.find((stop) => stop.pubId === preview?.id)?.id ?? null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? expandedMapHeight : 215} region={region} onRegionChange={moveMap} candidates={visiblePubs.filter((pub) => !alreadyAdded(pub)).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />;
 
   return <View accessibilityViewIsModal style={[styles.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
