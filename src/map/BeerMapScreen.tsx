@@ -33,7 +33,7 @@ import {
   MenuIcon,
   FlagIcon,
   ListFilterIcon,
-  ListIcon,
+  LayoutListIcon,
   LocateFixedIcon,
   MapPinPlusIcon,
   MapPinnedIcon,
@@ -218,6 +218,8 @@ interface PlaceCardProps {
     onPress: () => void;
     accessibilityLabel: string;
   };
+  /** Clears the selection and brings the layer switch back. */
+  onClose: () => void;
 }
 
 /**
@@ -234,6 +236,7 @@ function PlaceCard({
   rating,
   open,
   action,
+  onClose,
 }: PlaceCardProps) {
   const { fontScale } = useWindowDimensions();
   const stacked = fontScale > STACKED_ACTION_FONT_SCALE;
@@ -248,23 +251,36 @@ function PlaceCard({
     <View style={styles.placeCard}>
       <CardSheen />
 
-      <Pressable
-        onPress={open?.onPress}
-        disabled={!open}
-        accessible={Boolean(open)}
-        style={({ pressed }) => [styles.placeTitleRow, pressed && styles.pressedSoft]}
-        accessibilityRole={open ? 'button' : undefined}
-        accessibilityLabel={open ? `${title}, ${open.accessibilityLabel}` : undefined}
-      >
-        <Text
-          style={styles.placeTitle}
-          numberOfLines={2}
-          maxFontSizeMultiplier={FontScaleCap.heading}
+      <View style={styles.placeTitleRow}>
+        <Pressable
+          onPress={open?.onPress}
+          disabled={!open}
+          accessible={Boolean(open)}
+          style={({ pressed }) => [styles.placeTitlePress, pressed && styles.pressedSoft]}
+          accessibilityRole={open ? 'button' : undefined}
+          accessibilityLabel={open ? `${title}, ${open.accessibilityLabel}` : undefined}
         >
-          {title}
-        </Text>
-        {open ? <ChevronRightIcon size={18} color={Colors.mutedText} /> : null}
-      </Pressable>
+          <Text
+            style={styles.placeTitle}
+            numberOfLines={2}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {title}
+          </Text>
+          {open ? <ChevronRightIcon size={18} color={Colors.mutedText} /> : null}
+        </Pressable>
+        {/* Tapping the empty map does the same, but a screen reader lands on
+            the centred pin instead, and nobody else knows the gesture. */}
+        <Pressable
+          onPress={onClose}
+          hitSlop={6}
+          style={({ pressed }) => [styles.placeClose, pressed && styles.pressedSoft]}
+          accessibilityRole="button"
+          accessibilityLabel={t.a11y.mapSelectionClear}
+        >
+          <XIcon size={16} color={Colors.foamMuted} />
+        </Pressable>
+      </View>
 
       <View style={stacked ? styles.placeBottomStacked : styles.placeBottomRow}>
         {/* The same door as the title, for thumbs; VoiceOver reads the lines
@@ -282,9 +298,11 @@ function PlaceCard({
               they wrap instead of truncating first. */}
           {meta ? (
             <View style={styles.placeMetaRow}>
-              {showsStatusDot(metaTone) ? (
-                <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
-              ) : null}
+              <View style={styles.placeLead}>
+                {showsStatusDot(metaTone) ? (
+                  <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
+                ) : null}
+              </View>
               <Text
                 style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
                 numberOfLines={2}
@@ -297,10 +315,12 @@ function PlaceCard({
 
           {beers ? (
             <View style={styles.placeMetaRow}>
-              <BeerIcon size={13} color={Colors.mutedText} />
+              <View style={styles.placeLead}>
+                <BeerIcon size={13} color={Colors.mutedText} />
+              </View>
               <Text
                 style={styles.placeFact}
-                numberOfLines={1}
+                numberOfLines={2}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
                 {beers}
@@ -310,10 +330,12 @@ function PlaceCard({
 
           {detailText ? (
             <View style={styles.placeMetaRow}>
-              {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
+              <View style={styles.placeLead}>
+                {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
+              </View>
               <Text
                 style={styles.placeFact}
-                numberOfLines={1}
+                numberOfLines={2}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
                 {detailText}
@@ -1587,7 +1609,7 @@ export default function BeerMapScreen({
               accessibilityRole="button"
               accessibilityLabel={`${t.a11y.mapList}, ${cardState.title}`}
             >
-              <ListIcon size={20} color={Colors.foamMuted} />
+              <LayoutListIcon size={20} color={Colors.foamMuted} />
             </Pressable>
           </View>
         ) : (
@@ -1614,6 +1636,7 @@ export default function BeerMapScreen({
               onPress: primaryAction.onPress,
               accessibilityLabel: primaryAction.accessibilityLabel,
             }}
+            onClose={clearSelection}
           />
         )}
       </View>
@@ -1890,8 +1913,8 @@ const styles = StyleSheet.create({
   // header buttons on the tácek screens it carries its own surface.
   mapGlyphButton: {
     alignSelf: 'flex-end',
-    width: HitArea.min,
-    height: HitArea.min,
+    width: 48,
+    height: 48,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1906,9 +1929,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.stout, 0.86),
+    backgroundColor: withAlpha(Colors.stout, 0.94),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.12),
+    borderColor: withAlpha(Colors.foam, 0.16),
+    ...softDrop(),
   },
   nudgeWrap: {
     paddingTop: Spacing.sm,
@@ -1932,7 +1956,7 @@ const styles = StyleSheet.create({
   filterChipBody: {
     height: '100%',
     paddingLeft: 12,
-    paddingRight: 6,
+    paddingRight: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1950,11 +1974,15 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
+  // 36 wide plus the slop is a full 44pt target, split from the body by a hairline.
   filterChipClear: {
     height: '100%',
-    paddingLeft: 4,
-    paddingRight: 10,
+    minWidth: 36,
+    paddingLeft: 10,
+    paddingRight: 12,
     justifyContent: 'center',
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: withAlpha(Colors.foam, 0.16),
   },
 
   pinHit: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
@@ -2113,7 +2141,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     gap: 12,
   },
   dock: {
@@ -2156,23 +2184,47 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   placeTitleRow: {
-    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  placeTitlePress: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
+  },
+  placeClose: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.foam, 0.08),
+  },
+  // Every detail line starts at the same x, whatever glyph (or none) leads it.
+  placeLead: {
+    width: 13,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   placeTitle: {
     flexShrink: 1,
     minWidth: 0,
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
+    lineHeight: 23,
     color: Colors.foam,
     includeFontPadding: false,
   },
+  // Top-aligned so a wrapped second line does not pull the glyph off the first.
   placeMetaRow: {
     marginTop: 4,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
   },
   // The one dot allowed to be decoration-shaped, because it carries real state.

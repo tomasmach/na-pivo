@@ -3203,6 +3203,7 @@ export const cs = {
     mapLocate: 'Najít mě na mapě',
     mapList: 'Zobrazit podniky jako seznam',
     mapFiltersClear: 'Zrušit filtry',
+    mapSelectionClear: 'Zrušit výběr',
     mapRefresh: 'Obnovit podniky a partu',
     mapPub: (name: string, visits: number) =>
       visits > 0 ? `${name}, navštíveno ${visits}krát` : `${name}, zatím nenavštíveno`,

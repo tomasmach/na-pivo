@@ -145,6 +145,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     PencilIcon: MockIcon,
     Trash2Icon: MockIcon,
     ListIcon: MockIcon,
+    LayoutListIcon: MockIcon,
     LocateFixedIcon: MockIcon,
     ListFilterIcon: MockIcon,
     MapIcon: MockIcon,
@@ -522,9 +523,13 @@ describe('BeerMapScreen opening-hours loading', () => {
         onShowCompass={jest.fn()}
       />,
     );
-    // A selection takes the dock's place; the empty map gives it back.
+    // A selection takes the dock's place; the card's cross gives it back, and
+    // so does the empty map.
     fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
     expect(screen.queryByLabelText(t.map.layerAll)).toBeNull();
+    fireEvent.press(screen.getByLabelText(t.a11y.mapSelectionClear));
+    expect(screen.getByLabelText(t.map.layerAll)).toBeTruthy();
+    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
     fireEvent.press(screen.getByLabelText(t.a11y.beerMap));
 
     // The switch is on the surface, all three slices at once.

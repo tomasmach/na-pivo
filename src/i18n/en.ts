@@ -2588,6 +2588,7 @@ export const en: Strings = {
     mapLocate: 'Find me on the map',
     mapList: 'Show places as a list',
     mapFiltersClear: 'Clear filters',
+    mapSelectionClear: 'Clear selection',
     mapRefresh: 'Refresh places and the crew',
     mapPub: (name: string, visits: number) =>
     visits > 0
