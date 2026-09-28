@@ -39,6 +39,13 @@ export interface WireFavorite {
   updated_at: string;
 }
 
+/** A favourite the account removed, as listed in GET /v1/pub-favorites `removed`. */
+export interface WireFavoriteRemoval {
+  cache_key: string;
+  /** ISO-8601 client time of the removal. */
+  updated_at: string;
+}
+
 export type SubmitFavoriteResult = 'ok' | 'permanent-error' | 'retry';
 
 const ENDPOINT = '/v1/pub-favorites';
@@ -90,8 +97,18 @@ function isWireFavorite(value: unknown): value is WireFavorite {
   );
 }
 
-/** GET the account's favourites, or null on any failure. Never throws. */
-export async function fetchFavorites(signal?: AbortSignal): Promise<WireFavorite[] | null> {
+function isWireFavoriteRemoval(value: unknown): value is WireFavoriteRemoval {
+  const r = value as WireFavoriteRemoval;
+  return !!r && typeof r.cache_key === 'string' && typeof r.updated_at === 'string';
+}
+
+/**
+ * GET the account's favourites and removals, or null on any failure. Never
+ * throws. A server without `removed` yields an empty list.
+ */
+export async function fetchFavorites(
+  signal?: AbortSignal,
+): Promise<{ favorites: WireFavorite[]; removed: WireFavoriteRemoval[] } | null> {
   if (signal?.aborted) return null;
   const endpoint = getBackendEndpoint(ENDPOINT);
   if (!endpoint) return null;
@@ -113,9 +130,13 @@ export async function fetchFavorites(signal?: AbortSignal): Promise<WireFavorite
       return null;
     }
     if (!resp.ok) return null;
-    const data = (await resp.json()) as { favorites?: unknown };
+    const data = (await resp.json()) as { favorites?: unknown; removed?: unknown };
     if (!data || !Array.isArray(data.favorites)) return null;
-    return data.favorites.filter(isWireFavorite);
+    const removed = Array.isArray(data.removed) ? data.removed : [];
+    return {
+      favorites: data.favorites.filter(isWireFavorite),
+      removed: removed.filter(isWireFavoriteRemoval),
+    };
   } catch {
     return null;
   } finally {

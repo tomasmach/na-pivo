@@ -36,6 +36,24 @@ describe('pubFavoritesClient', () => {
         ],
       }),
     });
-    await expect(fetchFavorites()).resolves.toHaveLength(1);
+    await expect(fetchFavorites()).resolves.toEqual({
+      favorites: [expect.objectContaining({ cache_key: 'u2fkbnjj' })],
+      removed: [],
+    });
+  });
+
+  it('parses removals and ignores malformed ones', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        favorites: [],
+        removed: [{ cache_key: 'u2fkbnjj', updated_at: '2026-09-28T12:00:00Z' }, { cache_key: 1 }],
+      }),
+    });
+    await expect(fetchFavorites()).resolves.toEqual({
+      favorites: [],
+      removed: [{ cache_key: 'u2fkbnjj', updated_at: '2026-09-28T12:00:00Z' }],
+    });
   });
 });

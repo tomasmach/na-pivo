@@ -8,7 +8,8 @@
  *   - PUSH: pubFavoritesSync subscribes to `favorites` and queues a save or a
  *     removal for every change.
  *   - PULL: restorePubFavorites() merges the server set on launch through
- *     `hydrateFavorites` (last write wins by `updatedAt`).
+ *     `hydrateFavorites` (last write wins by `updatedAt`), including hearts
+ *     removed on another device.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -31,8 +32,14 @@ interface PubFavoritesState {
   favorites: Record<string, PubFavorite>;
   /** Save or remove a pub; returns true when the pub is saved afterwards. */
   toggleFavorite: (pubKey: string, pub: PubFavoriteInput) => boolean;
-  /** Merge server favourites (the PULL side of sync). Last write wins. */
-  hydrateFavorites: (serverFavorites: { pubKey: string; favorite: PubFavorite }[]) => void;
+  /**
+   * Merge server favourites (the PULL side of sync). Last write wins. `removed`
+   * drops local hearts removed on another device unless the local one is newer.
+   */
+  hydrateFavorites: (
+    serverFavorites: { pubKey: string; favorite: PubFavorite }[],
+    removed?: { pubKey: string; updatedAt: string }[],
+  ) => void;
 }
 
 function isFavorite(value: unknown): value is PubFavorite {
@@ -86,7 +93,7 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
         return true;
       },
 
-      hydrateFavorites: (serverFavorites) => {
+      hydrateFavorites: (serverFavorites, removed = []) => {
         let changed = false;
         const next = { ...get().favorites };
         for (const { pubKey, favorite } of serverFavorites) {
@@ -97,6 +104,15 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
             if (!(Number.isFinite(serverMs) && serverMs > localMs)) continue;
           }
           next[pubKey] = favorite;
+          changed = true;
+        }
+        // A removal wins a tie, the same as on the server.
+        for (const { pubKey, updatedAt } of removed) {
+          const local = next[pubKey];
+          const removedMs = Date.parse(updatedAt);
+          if (!local || !Number.isFinite(removedMs)) continue;
+          if (Date.parse(local.updatedAt) > removedMs) continue;
+          delete next[pubKey];
           changed = true;
         }
         if (changed) set({ favorites: next });

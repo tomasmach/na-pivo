@@ -95,7 +95,7 @@ describe('installPubFavoritesSync', () => {
 
 describe('restorePubFavorites', () => {
   it('merges server favourites without echoing them back', async () => {
-    fetchFavorites.mockResolvedValue([wire()]);
+    fetchFavorites.mockResolvedValue({ favorites: [wire()], removed: [] });
     const unsubscribe = installPubFavoritesSync();
     await expect(restorePubFavorites()).resolves.toBe(true);
     expect(usePubFavoritesStore.getState().favorites[PUB]).toMatchObject({
@@ -110,7 +110,7 @@ describe('restorePubFavorites', () => {
     usePubFavoritesStore.setState({
       favorites: { [OTHER]: { ...TYGR, updatedAt: '2026-09-28T10:00:00.000Z' } },
     });
-    fetchFavorites.mockResolvedValue([wire()]);
+    fetchFavorites.mockResolvedValue({ favorites: [wire()], removed: [] });
     await restorePubFavorites();
     expect(enqueueFavoriteOp).toHaveBeenCalledWith({
       pubKey: OTHER,
@@ -120,7 +120,7 @@ describe('restorePubFavorites', () => {
 
   it('does not bring back a heart whose removal is still queued', async () => {
     getQueuedFavoriteRemovalKeys.mockResolvedValue(new Set([PUB]));
-    fetchFavorites.mockResolvedValue([wire()]);
+    fetchFavorites.mockResolvedValue({ favorites: [wire()], removed: [] });
     await restorePubFavorites();
     expect(usePubFavoritesStore.getState().favorites[PUB]).toBeUndefined();
   });
@@ -129,9 +129,44 @@ describe('restorePubFavorites', () => {
     usePubFavoritesStore.setState({
       favorites: { [PUB]: { ...TYGR, name: 'Tygr', updatedAt: '2026-09-28T13:00:00.000Z' } },
     });
-    fetchFavorites.mockResolvedValue([wire()]);
+    fetchFavorites.mockResolvedValue({ favorites: [wire()], removed: [] });
     await restorePubFavorites();
     expect(usePubFavoritesStore.getState().favorites[PUB]?.name).toBe('Tygr');
+  });
+
+  it('drops a heart removed on another phone and does not push it back', async () => {
+    usePubFavoritesStore.setState({
+      favorites: { [PUB]: { ...TYGR, updatedAt: '2026-09-28T12:00:00.000Z' } },
+    });
+    fetchFavorites.mockResolvedValue({
+      favorites: [],
+      removed: [{ cache_key: PUB, updated_at: '2026-09-28T12:00:00.000Z' }],
+    });
+    const unsubscribe = installPubFavoritesSync();
+
+    await restorePubFavorites();
+
+    expect(usePubFavoritesStore.getState().favorites[PUB]).toBeUndefined();
+    expect(enqueueFavoriteOp).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it('keeps and pushes a heart saved after the removal', async () => {
+    usePubFavoritesStore.setState({
+      favorites: { [PUB]: { ...TYGR, updatedAt: '2026-09-28T13:00:00.000Z' } },
+    });
+    fetchFavorites.mockResolvedValue({
+      favorites: [],
+      removed: [{ cache_key: PUB, updated_at: '2026-09-28T12:00:00.000Z' }],
+    });
+
+    await restorePubFavorites();
+
+    expect(usePubFavoritesStore.getState().favorites[PUB]).toBeDefined();
+    expect(enqueueFavoriteOp).toHaveBeenCalledWith({
+      pubKey: PUB,
+      payload: expect.objectContaining({ favorite: true }),
+    });
   });
 
   it('reports a failed pull without touching local state', async () => {

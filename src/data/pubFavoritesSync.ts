@@ -4,12 +4,9 @@
  * PUSH: `installPubFavoritesSync` diffs every store change into a queued save
  * or removal, so the heart button only touches the store.
  * PULL: `restorePubFavorites` merges the server set on launch (last write wins),
- * pushes local favourites the server lacks or has older, and flushes.
+ * drops hearts removed on another device, pushes local favourites the server
+ * lacks or has older, and flushes.
  * Hydration runs under `suppressSync` so pulled data is not echoed back.
- *
- * Known limit, same as ratings: the server keeps no record of removals, so a
- * heart removed on one phone comes back if another phone that still has it
- * pushes a newer save.
  */
 
 import {
@@ -85,7 +82,7 @@ export async function restorePubFavorites(signal?: AbortSignal): Promise<boolean
 
   const serverByKey = new Map<string, PubFavorite>();
   const merged: { pubKey: string; favorite: PubFavorite }[] = [];
-  for (const wire of server) {
+  for (const wire of server.favorites) {
     if (pendingRemovals.has(wire.cache_key)) continue;
     const favorite: PubFavorite = {
       name: wire.name,
@@ -98,8 +95,14 @@ export async function restorePubFavorites(signal?: AbortSignal): Promise<boolean
     merged.push({ pubKey: wire.cache_key, favorite });
   }
 
+  const removed = server.removed
+    .filter((wire) => !pendingRemovals.has(wire.cache_key))
+    .map((wire) => ({ pubKey: wire.cache_key, updatedAt: wire.updated_at }));
+
+  // A heart removed on another device leaves this one too, so it is not
+  // pushed back below.
   runWithoutPubFavoritesSync(() => {
-    usePubFavoritesStore.getState().hydrateFavorites(merged);
+    usePubFavoritesStore.getState().hydrateFavorites(merged, removed);
   });
 
   for (const [pubKey, local] of Object.entries(usePubFavoritesStore.getState().favorites)) {
