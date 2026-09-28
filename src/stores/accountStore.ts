@@ -141,7 +141,7 @@ interface AccountState {
   /** Resolves true when the server snapshot was fetched. */
   refreshDiarySnapshot: () => Promise<boolean>;
   /** Drop a removed drink from the snapshot before its deletion reaches the server. */
-  forgetDiaryDrink: (clientId: string) => void;
+  forgetDiaryDrink: (clientId: string, drankAt?: string) => void;
   /**
    * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
    * snapshot so Profile climbs immediately after a vote, without a second GET.
@@ -350,7 +350,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     refreshDiarySnapshot,
 
-    forgetDiaryDrink: (clientId) => {
+    forgetDiaryDrink: (clientId, drankAt) => {
       set((state) => {
         const removedDrinkIds = new Set(state.removedDrinkIds).add(clientId);
         // Only recent removals can race a read. Older ones have landed or wait
@@ -359,13 +359,14 @@ export const useAccountStore = create<AccountState>((set, get) => {
           removedDrinkIds.delete(removedDrinkIds.values().next().value as string);
         }
         const snapshot = state.diarySnapshot;
-        const removed = snapshot?.data.drinks.find((drink) => drink.client_id === clientId);
+        const removedAt =
+          snapshot?.data.drinks.find((drink) => drink.client_id === clientId)?.drank_at ?? drankAt;
         const stats = state.profile?.stats;
         // The cached profile may still date the first beer by the removed one.
         const datesFirstBeer =
-          removed != null &&
+          removedAt != null &&
           stats?.firstBeerAt != null &&
-          Date.parse(removed.drank_at) <= Date.parse(stats.firstBeerAt);
+          Date.parse(removedAt) <= Date.parse(stats.firstBeerAt);
         return {
           removedDrinkIds,
           ...(datesFirstBeer && state.profile && stats

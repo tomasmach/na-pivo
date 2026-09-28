@@ -320,6 +320,27 @@ describe('forgetDiaryDrink', () => {
     expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBeNull();
   });
 
+  it('uses the local timestamp when no server snapshot is loaded', () => {
+    const firstBeerAt = '2026-01-10T18:00:00Z';
+    useAccountStore.setState({
+      diarySnapshot: null,
+      profile: signedInProfile({
+        stats: {
+          totalBeers: 1,
+          firstBeerAt,
+          distinctPubs: 1,
+          ratingsCount: 0,
+          totalSpentCzk: 60,
+          maxVisitsToOnePub: 1,
+        },
+      }),
+    });
+
+    useAccountStore.getState().forgetDiaryDrink('first-local', firstBeerAt);
+
+    expect(useAccountStore.getState().profile?.stats?.firstBeerAt).toBeNull();
+  });
+
   it('remembers only recent removals so stats reads stay under the exclusion cap', () => {
     for (let index = 0; index < 120; index += 1) {
       useAccountStore.getState().forgetDiaryDrink(`removed-${index}`);
