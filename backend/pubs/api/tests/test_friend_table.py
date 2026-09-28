@@ -261,6 +261,75 @@ def test_touching_an_older_planted_visit_does_not_move_me_to_its_pub(client, tab
     assert _names(client.post(_URL, **_auth(me_token))) == ["bara"]
 
 
+@pytest.fixture
+def planted(client):
+    """Me with an old visit at Bára's pub and a newer one elsewhere, both old enough."""
+
+    me_token, me = _register(client, "me")
+    _sit(me, minutes_ago=60)
+    newest = _sit(me, cache_key=_OTHER_CACHE_KEY, minutes_ago=30)
+    _token, bara = _register(client, "bara")
+    _sit(bara)
+    _show(bara)
+    return me_token, me, newest
+
+
+@pytest.mark.django_db
+def test_closing_the_newest_visit_does_not_fall_back_to_an_older_pub(client, planted):
+    me_token, _me, newest = planted
+    PubVisit.objects.filter(pk=newest.pk).update(closed_at=timezone.now())
+
+    assert client.post(_URL, **_auth(me_token)).json()["reason"] == "no_visit"
+
+
+@pytest.mark.django_db
+def test_backdating_the_newest_visit_does_not_fall_back_to_an_older_pub(client, planted):
+    me_token, _me, newest = planted
+    PubVisit.objects.filter(pk=newest.pk).update(started_at=timezone.now() - timedelta(hours=5))
+
+    assert client.post(_URL, **_auth(me_token)).json()["reason"] == "no_visit"
+
+
+@pytest.mark.django_db
+def test_deleting_the_newest_visit_restarts_the_clock(client, planted):
+    me_token, _me, newest = planted
+    deleted = client.delete(f"/v1/pub-visits/{newest.client_id}", **_auth(me_token))
+    assert deleted.status_code == status.HTTP_200_OK
+    assert deleted.json() == {"deleted": True}
+
+    assert client.post(_URL, **_auth(me_token)).json()["reason"] == "too_soon"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "hide_newest",
+    [
+        pytest.param({"closed_at": timezone.now()}, id="closed"),
+        pytest.param({"started_at": timezone.now() - timedelta(hours=5)}, id="out_of_window"),
+    ],
+)
+def test_candidate_is_pinned_to_their_newest_visit(client, table, hide_newest):
+    me_token, _me, _bara_token, bara = table
+    elsewhere = _sit(bara, cache_key=_OTHER_CACHE_KEY, minutes_ago=20)
+    PubVisit.objects.filter(pk=elsewhere.pk).update(**hide_newest)
+
+    assert client.post(_URL, **_auth(me_token)).json()["people"] == []
+
+
+@pytest.mark.django_db
+def test_merging_accounts_restarts_the_clock_of_open_visits(client):
+    from pubs import accounts
+
+    me_token, me = _register(client, "me")
+    _sit(me, minutes_ago=60)
+    _token, anonymous = _register(client, None)
+    _sit(anonymous, cache_key=_OTHER_CACHE_KEY, minutes_ago=30)
+
+    accounts._merge_anonymous_account(anonymous, me)
+
+    assert client.post(_URL, **_auth(me_token)).json()["reason"] == "too_soon"
+
+
 @pytest.mark.django_db
 def test_no_visit_when_the_caller_has_none(client):
     me_token, _me = _register(client, "me")

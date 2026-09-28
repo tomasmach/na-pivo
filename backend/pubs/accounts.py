@@ -2405,6 +2405,11 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
             client_id=marker.client_id,
             client_updated_at__lte=marker.client_updated_at,
         ).delete()
+    # Merged or removed visits can change which visit is the newest one, so the
+    # "Kdo tu sedí s tebou" clock (server created_at) starts again for open ones.
+    PubVisit.objects.filter(account=target, closed_at__isnull=True).update(
+        created_at=timezone.now()
+    )
     _merge_published_nights(source, target)
     _replace_published_night_reference(
         "participant_ids",

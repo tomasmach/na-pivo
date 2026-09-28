@@ -4108,6 +4108,12 @@ class PubVisitView(APIView):
                 # Legacy DELETE of a missing UUID carries no revision. Retain its
                 # successful no-op instead of permanently banning that visit.
                 deleted_count, _ = visits.delete()
+                if deleted_count:
+                    # Removing the newest visit must not hand the table to an
+                    # older one elsewhere with its old server clock.
+                    PubVisit.objects.filter(account=account, closed_at__isnull=True).update(
+                        created_at=dj_timezone.now()
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-visits: unexpected error deleting visit (%s)", type(exc).__name__)
             return _internal_error()
@@ -5395,21 +5401,29 @@ _FRIEND_TABLE_PEOPLE_LIMIT = 20
 _FRIEND_TABLE_VISIT_SCAN_LIMIT = 50
 
 
-def _friend_table_open_visits(now: datetime):
-    """Open visits inside the live presence window, newest on the server first.
+def _friend_table_visits(now: datetime):
+    """Each account's table visit: its newest visit on the server, if still open.
 
-    Same window as ``_friend_presence_slice``, but an account's pub here is its
-    most recently *created* open visit, not the one with the latest client
-    timestamps: those are client-controlled, so ordering by them would let one
-    account plant visits in many pubs, wait once, and hop between them.
+    The pick happens before any closed/recency filter. Filtering first would let
+    one account plant visits in many pubs, wait once, then close or backdate the
+    newest and fall back to an older one somewhere else. Client timestamps only
+    decide whether the pinned visit still counts (same window as
+    ``_friend_presence_slice``), never which visit is pinned.
     """
 
     cutoff = now - timedelta(minutes=settings.FRIEND_PRESENCE_WINDOW_MINUTES)
+    newest_id = (
+        PubVisit.objects.filter(account_id=OuterRef("account_id"))
+        .order_by("-created_at", "-id")
+        .values("id")[:1]
+    )
     return (
         PubVisit.objects.filter(closed_at__isnull=True)
         .filter(Q(ended_at__gte=cutoff) | Q(started_at__gte=cutoff))
         .annotate(last_seen_at=Coalesce("ended_at", "started_at"))
         .filter(last_seen_at__gte=cutoff)
+        .annotate(newest_id=Subquery(newest_id))
+        .filter(id=F("newest_id"))
         .order_by("-created_at", "-id")
     )
 
@@ -5453,7 +5467,7 @@ class FriendTableView(APIView):
             return None, "private"
         if account.ghost_mode:
             return None, "ghost"
-        visit = _friend_table_open_visits(now).filter(account=account).first()
+        visit = _friend_table_visits(now).filter(account=account).first()
         if visit is None:
             return None, "no_visit"
         if visit.created_at > now - timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES):
@@ -5473,7 +5487,7 @@ class FriendTableView(APIView):
                 "people": [],
             }
             if reason == "too_soon":
-                gate_start = _friend_table_open_visits(now).filter(account=account).first()
+                gate_start = _friend_table_visits(now).filter(account=account).first()
                 payload["available_at"] = (
                     gate_start.created_at + timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES)
                 ).isoformat()
@@ -5497,11 +5511,8 @@ class FriendTableView(APIView):
             elif row_status == Friendship.Status.PENDING:
                 statuses[other_id] = "outgoing" if outgoing else "incoming"
 
-        latest_visit_id = (
-            _friend_table_open_visits(now).filter(account_id=OuterRef("account_id")).values("id")[:1]
-        )
         visits = list(
-            _friend_table_open_visits(now)
+            _friend_table_visits(now)
             .filter(
                 cache_key=visit.cache_key,
                 created_at__lte=now - timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES),
@@ -5513,8 +5524,6 @@ class FriendTableView(APIView):
             )
             .exclude(account__nickname="")
             .exclude(account_id__in=excluded_ids)
-            .annotate(latest_visit_id=Subquery(latest_visit_id))
-            .filter(id=F("latest_visit_id"))
             .select_related("account")[:_FRIEND_TABLE_VISIT_SCAN_LIMIT]
         )
         people_accounts: list[Account] = []
