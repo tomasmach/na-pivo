@@ -30,7 +30,6 @@ import {
   BeerIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  CompassIcon,
   MenuIcon,
   FlagIcon,
   ListFilterIcon,
@@ -218,8 +217,6 @@ interface PlaceCardProps {
     label: string;
     onPress: () => void;
     accessibilityLabel: string;
-    /** The compass glyph belongs to "Namířit kompas" only. */
-    compass: boolean;
   };
 }
 
@@ -331,7 +328,6 @@ function PlaceCard({
           accessibilityRole="button"
           accessibilityLabel={action.accessibilityLabel}
         >
-          {action.compass ? <CompassIcon size={18} color={Colors.stout} /> : null}
           <Text
             style={styles.placeActionLabel}
             numberOfLines={1}
@@ -1617,7 +1613,6 @@ export default function BeerMapScreen({
               label: primaryAction.label,
               onPress: primaryAction.onPress,
               accessibilityLabel: primaryAction.accessibilityLabel,
-              compass: cardState.kind !== 'city',
             }}
           />
         )}
@@ -2142,6 +2137,7 @@ const styles = StyleSheet.create({
   // of getting shaved off, and the stack is anchored to the bottom anyway.
   placeCard: {
     ...CardSurface.card,
+    paddingHorizontal: 18,
     paddingTop: 14,
     paddingBottom: 14,
   },
@@ -2208,13 +2204,11 @@ const styles = StyleSheet.create({
   placeAction: {
     flexShrink: 0,
     minHeight: 48,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
   },
   placeActionLabel: {
     fontFamily: Fonts.display.extrabold,
