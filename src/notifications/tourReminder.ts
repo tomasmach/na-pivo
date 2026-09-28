@@ -107,7 +107,7 @@ export function tourReminderFor(
   };
 }
 
-/** „Připomenout ti sraz v pátek v 17:00?“ in the plan's own wall clock. */
+/** „Mám ti v pátek v 17:00 připomenout sraz?“ in the plan's own wall clock; the time is when the reminder comes, not the meetup. */
 export function tourReminderAskText(plan: TourPlan, fireAtMs: number, now = Date.now()): string {
   const date = zonedDate(fireAtMs, plan.timezone);
   const p = zonedParts(fireAtMs, plan.timezone);

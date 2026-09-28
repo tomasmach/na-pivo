@@ -110,11 +110,11 @@ describe('copy', () => {
   });
   it('asks with the weekday and the reminder time', () => {
     const p = plan({});
-    expect(tourReminderAskText(p, tourReminderAt(p)!, NOW)).toBe('Připomenout ti sraz v pátek v 17:00?');
+    expect(tourReminderAskText(p, tourReminderAt(p)!, NOW)).toBe('Mám ti v pátek v 17:00 připomenout sraz?');
     const noon = plan({ scheduledDate: '2026-09-28', scheduledTime: null });
-    expect(tourReminderAskText(noon, tourReminderAt(noon)!, NOW)).toBe('Připomenout ti sraz dneska ve 12:00?');
+    expect(tourReminderAskText(noon, tourReminderAt(noon)!, NOW)).toBe('Mám ti dneska ve 12:00 připomenout sraz?');
     const later = plan({ scheduledDate: '2026-10-16' });
-    expect(tourReminderAskText(later, tourReminderAt(later)!, NOW)).toBe('Připomenout ti sraz v pátek 16. 10. v 17:00?');
+    expect(tourReminderAskText(later, tourReminderAt(later)!, NOW)).toBe('Mám ti v pátek 16. 10. v 17:00 připomenout sraz?');
   });
 });
 

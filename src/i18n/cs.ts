@@ -3682,7 +3682,7 @@ export const cs = {
     bodyToday: (pub: string) => `Sraz dneska · ${pub}`,
     today: 'dneska',
     onDay: ['v pondělí', 'v úterý', 've středu', 've čtvrtek', 'v pátek', 'v sobotu', 'v neděli'],
-    ask: (when: string, at: string) => `Připomenout ti sraz ${when} ${at}?`,
+    ask: (when: string, at: string) => `Mám ti ${when} ${at} připomenout sraz?`,
     askAccept: 'Připomenout',
     askDismiss: 'Teď ne',
     settingsTitle: 'Připomínky tour',
