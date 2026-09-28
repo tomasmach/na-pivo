@@ -14,6 +14,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AppState,
   BackHandler,
   Pressable,
   ScrollView,
@@ -126,6 +127,7 @@ const POSITION_MAX_AGE_MS = 5 * 60 * 1000;
 // One modal leaves before the next arrives (DESIGN.md §7.4).
 const SHEET_DISMISS_MS = 260;
 const TITLE_AFTER_SCROLL = 56;
+const NOW_TICK_MS = 60 * 1000;
 // Same quiet style as the tour previews: no landmarks or labels next to the
 // pin, so nobody reads a monument's name as the pub's.
 const PREVIEW_MAP_STYLE = [
@@ -189,6 +191,26 @@ function useRecentPosition(): { lat: number; lng: number } | null {
     };
   }, []);
   return position;
+}
+
+/**
+ * The page's clock. It ticks every minute and on return to the app, so an
+ * event that ends, starts or crosses midnight while the page stays open moves
+ * to its new state instead of keeping the time the page was opened.
+ */
+function useNow(): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), NOW_TICK_MS);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setNow(new Date());
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, []);
+  return now;
 }
 
 /** Resolve the pub from the opener's hand-off, the loaded catalog, or the params. */
@@ -348,7 +370,7 @@ export default function PubPageScreen() {
     // The mapping sheet refreshes the aggregate itself; reload on reopen only.
   }, [key, identityKey, pubName, mappingOpen]);
 
-  const now = useMemo(() => new Date(), []);
+  const now = useNow();
   const shownEvents = useMemo(() => visibleEvents(events, now), [events, now]);
 
   const weeklyHours = useMemo<WeeklyHours | null>(() => {
