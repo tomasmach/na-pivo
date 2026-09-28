@@ -16,7 +16,9 @@ import {
 } from './pubFavoritesQueue';
 import { fetchFavorites, type WireFavoriteUpsert } from './pubFavoritesClient';
 import {
+  isFavoritesStorageSettled,
   usePubFavoritesStore,
+  waitForFavoritesStorage,
   wipeFavoritesForAccountBoundary,
   type PubFavorite,
 } from '@/stores/pubFavoritesStore';
@@ -77,7 +79,8 @@ export function installPubFavoritesSync(): () => void {
   return usePubFavoritesStore.subscribe((state) => {
     const next = state.favorites;
     if (next === prev) return;
-    if (suppressSync) {
+    // Hearts loaded from the phone's storage are not a change to push.
+    if (suppressSync || !isFavoritesStorageSettled()) {
       prev = next;
       return;
     }
@@ -107,6 +110,9 @@ export async function restorePubFavorites(signal?: AbortSignal): Promise<boolean
 
 async function restoreOnce(signal?: AbortSignal): Promise<boolean> {
   const generation = boundaryGeneration;
+  // Merge into the stored hearts: a storage read landing after the pull would
+  // replace the server's rows and push them back as removals.
+  await waitForFavoritesStorage();
   await flushPubFavoritesQueue();
   const server = await fetchFavorites(signal);
   if (server === null) return false;

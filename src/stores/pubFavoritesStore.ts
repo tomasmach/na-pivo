@@ -85,6 +85,13 @@ export function sanitizeFavorites(persisted: unknown): Record<string, PubFavorit
  */
 let discardPersisted = false;
 
+/**
+ * Whether the launch read of stored hearts has finished, even with an error.
+ * zustand's own flag stays false after a failed read, which would stall sync.
+ */
+let storageSettled = false;
+const settledListeners = new Set<() => void>();
+
 /** Wipe favourites at an account boundary, including a launch read still in flight. */
 export function wipeFavoritesForAccountBoundary(): void {
   discardPersisted = true;
@@ -177,9 +184,28 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
       partialize: (state) => ({ favorites: state.favorites }),
       merge: (persisted, current) =>
         discardPersisted ? current : { ...current, favorites: sanitizeFavorites(persisted) },
+      onRehydrateStorage: () => {
+        storageSettled = false;
+        return () => {
+          storageSettled = true;
+          for (const listener of settledListeners) listener();
+          settledListeners.clear();
+        };
+      },
     },
   ),
 );
+
+/** Whether the hearts stored on the phone are loaded (or failed to load). */
+export function isFavoritesStorageSettled(): boolean {
+  return storageSettled;
+}
+
+/** Resolve once the hearts stored on the phone are loaded (or failed to load). */
+export function waitForFavoritesStorage(): Promise<void> {
+  if (storageSettled) return Promise.resolve();
+  return new Promise((resolve) => settledListeners.add(resolve));
+}
 
 /**
  * Whether a saved heart belongs to this pub. The server keeps one favourite per

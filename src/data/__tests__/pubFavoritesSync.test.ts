@@ -261,6 +261,35 @@ describe('favourite identity', () => {
 });
 
 // Keep last: the wipe flag is process-wide, like a real account boundary.
+describe('launch read racing the first pull', () => {
+  it('waits for the stored hearts, so server rows are not pushed back as removals', async () => {
+    const AsyncStorage = jest.requireMock('@react-native-async-storage/async-storage');
+    let finishRead!: (value: string | null) => void;
+    const getItem = jest
+      .spyOn(AsyncStorage, 'getItem')
+      .mockImplementationOnce(() => new Promise((resolve) => { finishRead = resolve; }));
+    fetchFavorites.mockResolvedValue({ favorites: [wire()], removed: [] });
+    const unsubscribe = installPubFavoritesSync();
+
+    const hydration = usePubFavoritesStore.persist.rehydrate();
+    const restore = restorePubFavorites();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchFavorites).not.toHaveBeenCalled();
+
+    finishRead(JSON.stringify({ state: { favorites: {} }, version: 0 }));
+    await hydration;
+    await restore;
+
+    expect(usePubFavoritesStore.getState().favorites[PUB]).toMatchObject({ name: 'U Zlatého tygra' });
+    const removals = enqueueFavoriteOp.mock.calls.filter(
+      ([item]) => (item as { payload: { favorite: boolean } }).payload.favorite === false,
+    );
+    expect(removals).toEqual([]);
+    unsubscribe();
+    getItem.mockRestore();
+  });
+});
+
 describe('launch read after an account boundary', () => {
   it('does not restore the previous account from storage', async () => {
     const AsyncStorage = jest.requireMock('@react-native-async-storage/async-storage');
