@@ -48,7 +48,10 @@ function SearchContent() {
   const { pubs } = suggestions;
   const favoriteMap = usePubFavoritesStore((state) => state.favorites);
   // Srdcovky come first; the same pub is not repeated under V okolí or stálice.
+  // A reported pub disappears here too, like everywhere else in search.
   const favorites = useMemo(() => Object.entries(favoriteMap)
+    .filter(([key, favorite]) => !reportedKeys.includes(key)
+      && !(favorite.externalId && reportedIds.includes(favorite.externalId)))
     .map(([key, favorite]): Pub => ({
       id: favorite.externalId || `favorite:${key}`,
       name: favorite.name,
@@ -56,8 +59,12 @@ function SearchContent() {
       lng: favorite.lng,
       ...(favorite.city ? { city: favorite.city } : {}),
     }))
-    .sort((a, b) => a.name.localeCompare(b.name, intlLocale)), [favoriteMap]);
-  const notFavorite = useCallback(({ pub }: { pub: Pub }) => !favoriteMap[geohash8(pub.lat, pub.lng)], [favoriteMap]);
+    .sort((a, b) => a.name.localeCompare(b.name, intlLocale)), [favoriteMap, reportedIds, reportedKeys]);
+  // Same pub by cell or by provider id, so a pin moved to the next cell still counts.
+  const favoriteIds = useMemo(() => new Set(Object.values(favoriteMap)
+    .map((favorite) => favorite.externalId).filter(Boolean)), [favoriteMap]);
+  const notFavorite = useCallback(({ pub }: { pub: Pub }) => !favoriteMap[geohash8(pub.lat, pub.lng)]
+    && !favoriteIds.has(pub.id), [favoriteIds, favoriteMap]);
   const nearby = useMemo(() => suggestions.nearby.filter(notFavorite), [suggestions.nearby, notFavorite]);
   const frequent = useMemo(() => suggestions.frequent.filter(notFavorite), [suggestions.frequent, notFavorite]);
   const term = query.trim();
