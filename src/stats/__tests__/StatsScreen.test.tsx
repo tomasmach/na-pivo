@@ -1,6 +1,8 @@
 import React from 'react';
 import { t } from '@/i18n';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchMyStats } from '@/data/statsClient';
+import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import StatsScreenDefault from '../StatsScreen';
 
@@ -166,5 +168,26 @@ describe('StatsScreen', () => {
 
     expect(texts).not.toContain('1 s');
     expect(texts).toContain(t.stats.recordEmpty);
+  });
+
+  it('asks the server to leave out drinks removed on this phone', async () => {
+    await AsyncStorage.setItem('na-pivo-delete-drinks-queue', JSON.stringify(['queued-before-launch']));
+    act(() => {
+      useAccountStore.setState({ removedDrinkIds: new Set(['removed-just-now']) });
+    });
+
+    await act(async () => {
+      TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(fetchMyStatsMock).toHaveBeenLastCalledWith(expect.any(AbortSignal), [
+      'queued-before-launch',
+      'removed-just-now',
+    ]);
+    await AsyncStorage.clear();
+    act(() => {
+      useAccountStore.setState({ removedDrinkIds: new Set() });
+    });
   });
 });

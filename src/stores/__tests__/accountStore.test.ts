@@ -108,7 +108,13 @@ function errResult(code = 'invalid_credentials', detail = 'nope'): AuthResult {
 beforeEach(() => {
   jest.clearAllMocks();
   // Reset the singleton store back to a clean slate between tests.
-  useAccountStore.setState({ session: null, status: 'idle', profile: null, diarySnapshot: null });
+  useAccountStore.setState({
+    session: null,
+    status: 'idle',
+    profile: null,
+    diarySnapshot: null,
+    removedDrinkIds: new Set(),
+  });
   mockEnsureAccount.mockResolvedValue({
     deviceId: 'd',
     accountId: 'a',

@@ -20,6 +20,8 @@ import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 
 const REQUEST_TIMEOUT_MS = 8000;
+/** Matches the server's cap on excluded drinks per stats read. */
+const MAX_EXCLUDED_DRINKS = 100;
 
 /** One pub's lifetime tally as returned by the backend. */
 export interface RemotePubTally {
@@ -154,14 +156,25 @@ function deviceTimezone(): string | null {
 /**
  * GET the account's durable beer stats, or null on any failure. Never throws.
  */
-export async function fetchMyStats(signal?: AbortSignal): Promise<RemoteStats | null> {
+export async function fetchMyStats(
+  signal?: AbortSignal,
+  /** Drinks removed on this phone whose DELETE may not have landed yet. */
+  excludeClientIds: readonly string[] = [],
+): Promise<RemoteStats | null> {
   if (signal?.aborted) return null;
 
   const baseEndpoint = getBackendEndpoint('/v1/me/stats');
   if (!baseEndpoint) return null;
+  const params: string[] = [];
   const timezone = deviceTimezone();
-  const endpoint = timezone
-    ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}timezone=${encodeURIComponent(timezone)}`
+  if (timezone) params.push(`timezone=${encodeURIComponent(timezone)}`);
+  if (excludeClientIds.length > 0) {
+    // The server reads at most this many; older servers ignore the parameter.
+    const ids = excludeClientIds.slice(0, MAX_EXCLUDED_DRINKS).map(encodeURIComponent);
+    params.push(`exclude_client_ids=${ids.join(',')}`);
+  }
+  const endpoint = params.length > 0
+    ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}${params.join('&')}`
     : baseEndpoint;
 
   const session = await ensureAccount(signal);

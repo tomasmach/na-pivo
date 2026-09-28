@@ -3852,6 +3852,10 @@ class PubVisitView(APIView):
         return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
 
 
+# Bounds the query a client can make the stats read exclude per request.
+_MY_STATS_MAX_EXCLUDED_DRINKS = 100
+
+
 class MyStatsView(APIView):
     """
     GET /v1/me/stats
@@ -3865,7 +3869,9 @@ class MyStatsView(APIView):
     without a valid token); repeated aggregate rebuilds have their own read
     throttle budget.
     New clients may pass an IANA ``timezone`` query parameter; invalid or absent
-    values use Europe/Prague for backwards compatibility.
+    values use Europe/Prague for backwards compatibility. They may also pass
+    ``exclude_client_ids`` (comma-separated drink UUIDs) for drinks removed on
+    the device whose DELETE has not landed yet; malformed IDs are ignored.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -3883,11 +3889,19 @@ class MyStatsView(APIView):
                 # Additive hint for 3.0 recap clients. Older or malformed
                 # callers still receive the released lifetime payload.
                 exclude_drinking_day = None
+        exclude_client_ids = set()
+        raw_exclude_ids = request.query_params.get("exclude_client_ids", "")
+        for raw_id in raw_exclude_ids.split(",")[:_MY_STATS_MAX_EXCLUDED_DRINKS]:
+            try:
+                exclude_client_ids.add(uuid.UUID(raw_id.strip()))
+            except ValueError:
+                continue
         try:
             payload = compute_my_stats(
                 request.user,
                 timezone_name=request.query_params.get("timezone"),
                 exclude_drinking_day=exclude_drinking_day,
+                exclude_client_ids=exclude_client_ids,
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("me-stats: unexpected error computing stats: %s", exc, exc_info=True)
