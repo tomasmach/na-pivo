@@ -222,6 +222,7 @@ from pubs.models import (
     PubNameCorrection,
     PubPriceIndex,
     PubRating,
+    PubRatingTombstone,
     PubReport,
     PubSearchCache,
     PubVisit,
@@ -3504,6 +3505,14 @@ def _rating_item(rating: PubRating) -> dict:
     }
 
 
+def _removal_item(tombstone) -> dict:
+    """Serialize one removal marker: the key and the client time of removal."""
+    return {
+        "cache_key": tombstone.cache_key,
+        "updated_at": tombstone.client_updated_at.isoformat(),
+    }
+
+
 class PubRatingView(APIView):
     """
     PUT    /v1/pub-ratings            → upsert one private rating
@@ -3515,8 +3524,10 @@ class PubRatingView(APIView):
     server-side from lat/lng. Conflict resolution is LAST-WRITE-WINS on the
     client's ``updated_at``: a PUT older than the stored client_updated_at is
     ignored (``applied: false``). An empty rating (no verdict, tag, or note)
-    deletes any existing row. GET returns every rating so a fresh install can
-    restore. Throttled per-IP (scope "pub_ratings").
+    deletes any existing row and records a PubRatingTombstone, so an older copy
+    pushed later by another device cannot bring the rating back. GET returns
+    every rating so a fresh install can restore, plus ``removed`` so other
+    devices can drop their stale copies. Throttled per-IP (scope "pub_ratings").
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -3531,12 +3542,16 @@ class PubRatingView(APIView):
                 PubRating.objects.filter(account=request.user),
             )
             items = [_rating_item(rating) for rating in ratings]
+            removed = [
+                _removal_item(tombstone)
+                for tombstone in PubRatingTombstone.objects.filter(account=request.user)
+            ]
         except ValueError:
             return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-ratings: unexpected error listing ratings: %s", exc, exc_info=True)
             return _internal_error()
-        return Response({"ratings": items, **page}, status=status.HTTP_200_OK)
+        return Response({"ratings": items, "removed": removed, **page}, status=status.HTTP_200_OK)
 
     def put(self, request: Request) -> Response:
         serializer = PubRatingRequestSerializer(data=request.data)
@@ -3565,17 +3580,36 @@ class PubRatingView(APIView):
                     body = _rating_item(existing)
                     body["applied"] = False
                     return Response(body, status=status.HTTP_200_OK)
+                # A removal at the same time or later wins even though the row is
+                # gone, so an older copy from another device stays removed.
+                tombstone = (
+                    PubRatingTombstone.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                if tombstone is not None and tombstone.client_updated_at >= updated_at:
+                    return Response(
+                        {**_removal_item(tombstone), "applied": False},
+                        status=status.HTTP_200_OK,
+                    )
 
                 # No signal at all → this is a clear/delete, guarded by the same
                 # last-write-wins timestamp as normal upserts.
                 if not verdict and not tag and not note:
                     if existing is not None:
                         existing.delete()
+                    PubRatingTombstone.objects.update_or_create(
+                        account=request.user,
+                        cache_key=cache_key,
+                        defaults={"client_updated_at": updated_at},
+                    )
                     return Response(
                         {"deleted": existing is not None, "applied": True},
                         status=status.HTTP_200_OK,
                     )
 
+                if tombstone is not None:
+                    tombstone.delete()
                 rating, _ = PubRating.objects.update_or_create(
                     account=request.user,
                     cache_key=cache_key,
@@ -3607,12 +3641,28 @@ class PubRatingView(APIView):
         # Idempotent delete: the account filter means a cache_key belonging to
         # another account (or never rated, or already deleted) matches nothing →
         # deleted: false, never a hard 404, so the client can retry safely.
-        return _idempotent_delete(
-            PubRating.objects.filter(account=request.user, cache_key=cache_key),
-            scope="pub-ratings",
-            key_label="rating",
-            key_value=cache_key,
-        )
+        # Apps before 1.1.4 remove ratings this way. The request has no client
+        # time, so the tombstone blocks only the removed copy and older ones.
+        try:
+            with transaction.atomic():
+                rating = (
+                    PubRating.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                if rating is not None:
+                    rating.delete()
+                    PubRatingTombstone.objects.update_or_create(
+                        account=request.user,
+                        cache_key=cache_key,
+                        defaults={"client_updated_at": rating.client_updated_at},
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-ratings: unexpected error deleting rating (%s)", type(exc).__name__
+            )
+            return _internal_error()
+        return Response({"deleted": rating is not None}, status=status.HTTP_200_OK)
 
 
 def _visit_item(visit: PubVisit) -> dict:
@@ -10773,6 +10823,9 @@ def _load_export_account(account: Account) -> Account:
             has_amenity_vote_tombstones=Exists(
                 PubAmenityVoteTombstone.objects.filter(account=OuterRef("pk"))
             ),
+            has_pub_rating_tombstones=Exists(
+                PubRatingTombstone.objects.filter(account=OuterRef("pk"))
+            ),
             has_amenity_xp_ledger=Exists(AmenityXpLedger.objects.filter(account=OuterRef("pk"))),
             has_mapped_pubs=Exists(AccountMappedPub.objects.filter(account=OuterRef("pk"))),
             has_pub_completions=Exists(AccountPubCompletion.objects.filter(account=OuterRef("pk"))),
@@ -10958,6 +11011,7 @@ def _load_export_account(account: Account) -> Account:
             "has_amenity_vote_tombstones",
             None,
         ),
+        ("pub_rating_tombstones", "has_pub_rating_tombstones", None),
         ("amenity_xp_ledger", "has_amenity_xp_ledger", None),
         ("mapped_pubs", "has_mapped_pubs", None),
         ("pub_completions", "has_pub_completions", None),
@@ -11626,6 +11680,9 @@ def _export_account_data(account: Account) -> dict:
         },
         "visits": [_export_visit_item(visit) for visit in account.pub_visits.all()],
         "ratings": [_rating_item(rating) for rating in account.pub_ratings.all()],
+        "removed_ratings": [
+            _removal_item(tombstone) for tombstone in account.pub_rating_tombstones.all()
+        ],
         "community_contributions": [
             {
                 "client_id": str(row.client_id),

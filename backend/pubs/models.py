@@ -3951,6 +3951,40 @@ class PubRating(models.Model):
         return f"PubRating({self.name or self.cache_key} [{self.cache_key}] — {self.verdict or 'note'})"
 
 
+class PubRatingTombstone(models.Model):
+    """
+    Durable LWW marker for a removed private rating.
+
+    The PubRating row is hard-deleted on removal, but the removal time must
+    survive. Otherwise another device that still has the rating pushes an older
+    copy on its next restore, finds no row and brings the rating back.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="pub_rating_tombstones",
+    )
+    cache_key = models.CharField(max_length=12)
+    client_updated_at = models.DateTimeField(
+        help_text="Client time of the latest removal; the last-write-wins conflict key.",
+    )
+
+    class Meta:
+        verbose_name = "Pub Rating Tombstone"
+        verbose_name_plural = "Pub Rating Tombstones"
+        ordering = ["-client_updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key"],
+                name="unique_rating_tombstone_per_account_pub",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubRatingTombstone({self.cache_key})"
+
+
 class PubVisit(models.Model):
     """
     An explicit user visit to a pub — one "evening" out.
