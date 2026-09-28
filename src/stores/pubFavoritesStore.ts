@@ -161,17 +161,26 @@ export const usePubFavoritesStore = create<PubFavoritesState>()(
   ),
 );
 
+/** A pub added in the app has an id made of its coordinates; it changes when the pin moves. */
+const COORDINATE_ID = /^mapy:-?\d+(\.\d+)?,-?\d+(\.\d+)?$/;
+
+function providerId(id: string | undefined): string {
+  return id && !id.startsWith('favorite:') && !COORDINATE_ID.test(id) ? id : '';
+}
+
 /**
  * Whether a saved heart belongs to this pub. The server keeps one favourite per
- * map cell, and a cell can hold two businesses, so a known provider id or the
- * name has to agree as well.
+ * map cell, and a cell can hold two businesses, so the provider ids have to
+ * agree when both are known, the names otherwise.
  */
 export function isSameVenue(
   favorite: Pick<PubFavorite, 'name' | 'externalId'>,
   pub: { id?: string; name: string },
 ): boolean {
-  const pubId = pub.id && !pub.id.startsWith('favorite:') ? pub.id : '';
-  if (favorite.externalId && pubId && favorite.externalId === pubId) return true;
+  if (favorite.externalId && pub.id && favorite.externalId === pub.id) return true;
+  const favoriteId = providerId(favorite.externalId);
+  const pubId = providerId(pub.id);
+  if (favoriteId && pubId) return false;
   const name = (value: string) => value.trim().toLocaleLowerCase('cs');
   return name(favorite.name) === name(pub.name);
 }

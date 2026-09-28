@@ -232,6 +232,13 @@ describe('favourite identity', () => {
     expect(isSameVenue({ name: 'U Zlatého tygra' }, { id: 'mapy:2', name: 'Vinárna vedle' })).toBe(false);
   });
 
+  it('keeps two businesses with one name apart when both ids are known', () => {
+    expect(isSameVenue(saved, { id: 'mapy:2', name: 'U Zlatého tygra' })).toBe(false);
+    // A pub added in the app gets a new coordinate id when its pin moves.
+    const own = { ...saved, externalId: 'mapy:50.08700,14.42000' };
+    expect(isSameVenue(own, { id: 'mapy:50.08701,14.42001', name: 'U Zlatého tygra' })).toBe(true);
+  });
+
   it('finds the heart in the cell, or by provider id after a pin moved', () => {
     expect(findFavoriteKey({ [PUB]: saved }, PUB, { id: 'mapy:1', name: 'x' })).toBe(PUB);
     expect(findFavoriteKey({ [PUB]: saved }, PUB, { id: 'mapy:2', name: 'Vinárna vedle' })).toBeUndefined();

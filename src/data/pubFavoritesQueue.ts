@@ -11,10 +11,11 @@
  */
 
 import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
+import { geohash8 } from './geohash';
 import { submitFavorite, type WireFavoriteUpsert } from './pubFavoritesClient';
 
 const STORAGE_KEY = 'na-pivo-pub-favorites-queue';
-/** One item per pub; only bites with hundreds of changes while offline. */
+/** One item per pub; only bites with hundreds of saves while offline. */
 const MAX_QUEUE_LENGTH = 500;
 
 export interface FavoriteQueueItem {
@@ -30,10 +31,28 @@ function isQueueItem(value: unknown): value is FavoriteQueueItem {
     typeof item.pubKey === 'string' &&
     !!p &&
     typeof p.lat === 'number' &&
+    Math.abs(p.lat) <= 90 &&
     typeof p.lng === 'number' &&
+    Math.abs(p.lng) <= 180 &&
     typeof p.favorite === 'boolean' &&
-    typeof p.updated_at === 'string'
+    typeof p.updated_at === 'string' &&
+    Number.isFinite(Date.parse(p.updated_at)) &&
+    // The server deletes the cell of the point, so it must be the cell named here.
+    geohash8(p.lat, p.lng) === item.pubKey
   );
+}
+
+/**
+ * Cap the queue by dropping the oldest saves only. A lost removal would let
+ * the next pull bring the heart back, so removals always stay.
+ */
+function capped(queue: FavoriteQueueItem[]): FavoriteQueueItem[] {
+  let excess = queue.length - MAX_QUEUE_LENGTH;
+  return queue.filter((item) => {
+    if (excess <= 0 || !item.payload.favorite) return true;
+    excess -= 1;
+    return false;
+  });
 }
 
 const { load: loadQueue, save: saveQueue } = createQueueStorage<FavoriteQueueItem>(
@@ -91,7 +110,7 @@ export async function enqueueFavoriteOp(item: FavoriteQueueItem): Promise<void> 
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => existing.pubKey !== item.pubKey);
     deduped.push(item);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    await saveQueue(capped(deduped));
   });
   await flush();
 }
