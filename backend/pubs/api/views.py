@@ -4020,7 +4020,7 @@ class PubVisitView(APIView):
                     else (existing.party_evening_id if existing is not None else None)
                 )
 
-                _, created = PubVisit.objects.update_or_create(
+                visit, created = PubVisit.objects.update_or_create(
                     account=account,
                     client_id=data["client_id"],
                     defaults={
@@ -4041,6 +4041,11 @@ class PubVisitView(APIView):
                         "party_evening_id": party_evening_id,
                     },
                 )
+                if existing is not None and existing.cache_key != cache_key:
+                    # Moving a visit to another pub starts its server-side
+                    # clock again: "Kdo tu sedí s tebou" trusts created_at as
+                    # the time the server first saw the account at this pub.
+                    PubVisit.objects.filter(pk=visit.pk).update(created_at=dj_timezone.now())
                 closed_at = data.get("closed_at")
                 if closed_at is not None:
                     # A delayed departure must not end a later return to the
@@ -5391,10 +5396,12 @@ _FRIEND_TABLE_VISIT_SCAN_LIMIT = 50
 
 
 def _friend_table_open_visits(now: datetime):
-    """Open visits inside the live presence window, newest activity first.
+    """Open visits inside the live presence window, newest on the server first.
 
-    Same selection as ``_friend_presence_slice``: an account's first row here is
-    the pub it is sitting in right now.
+    Same window as ``_friend_presence_slice``, but an account's pub here is its
+    most recently *created* open visit, not the one with the latest client
+    timestamps: those are client-controlled, so ordering by them would let one
+    account plant visits in many pubs, wait once, and hop between them.
     """
 
     cutoff = now - timedelta(minutes=settings.FRIEND_PRESENCE_WINDOW_MINUTES)
@@ -5403,7 +5410,7 @@ def _friend_table_open_visits(now: datetime):
         .filter(Q(ended_at__gte=cutoff) | Q(started_at__gte=cutoff))
         .annotate(last_seen_at=Coalesce("ended_at", "started_at"))
         .filter(last_seen_at__gte=cutoff)
-        .order_by("-last_seen_at", "-started_at", "-id")
+        .order_by("-created_at", "-id")
     )
 
 
@@ -5459,12 +5466,18 @@ class FriendTableView(APIView):
         visible_until = account.table_visible_until
         if reason is not None or visible_until is None or visible_until <= now:
             # Seeing the table requires being visible to it: nobody lurks.
-            return {
+            payload = {
                 "eligible": reason is None,
                 "reason": reason,
                 "visible_until": None,
                 "people": [],
             }
+            if reason == "too_soon":
+                gate_start = _friend_table_open_visits(now).filter(account=account).first()
+                payload["available_at"] = (
+                    gate_start.created_at + timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES)
+                ).isoformat()
+            return payload
 
         excluded_ids = {account.pk, *_blocked_account_ids(account)}
         statuses: dict[int, str] = {}

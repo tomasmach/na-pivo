@@ -170,7 +170,9 @@ def test_ineligible_caller_is_not_made_visible(client, table, setup, reason):
     response = client.post(_URL, **_auth(me_token))
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {
+    body = response.json()
+    assert body.pop("available_at", None) is not None if reason == "too_soon" else True
+    assert body == {
         "eligible": False,
         "reason": reason,
         "visible_until": None,
@@ -186,6 +188,77 @@ def test_too_soon_uses_server_created_at_not_backdated_started_at(client):
     _sit(me, minutes_ago=2, started_minutes_ago=90)
 
     assert client.post(_URL, **_auth(me_token)).json()["reason"] == "too_soon"
+
+
+@pytest.mark.django_db
+def test_too_soon_says_when_the_table_opens(client):
+    me_token, me = _register(client, "me")
+    visit = _sit(me, minutes_ago=4)
+
+    body = client.post(_URL, **_auth(me_token)).json()
+
+    visit.refresh_from_db()
+    expected = visit.created_at + timedelta(minutes=15)
+    assert body["reason"] == "too_soon"
+    assert abs(timezone.datetime.fromisoformat(body["available_at"]) - expected) < timedelta(seconds=1)
+
+
+def _visit_body(client_id: str, *, lat: float, lng: float, at) -> dict:
+    return {
+        "client_id": client_id,
+        "name": "Hospoda",
+        "lat": lat,
+        "lng": lng,
+        "city": "Praha",
+        "external_id": "",
+        "started_at": at.isoformat(),
+        "ended_at": None,
+        "updated_at": at.isoformat(),
+    }
+
+
+@pytest.mark.django_db
+def test_moving_an_old_visit_to_another_pub_restarts_the_clock(client):
+    me_token, me = _register(client, "me")
+    client_id = str(uuid.uuid4())
+    started = timezone.now() - timedelta(minutes=40)
+    created = client.post(
+        "/v1/pub-visits",
+        data=_visit_body(client_id, lat=50.0853, lng=14.4187, at=started),
+        format="json",
+        **_auth(me_token),
+    )
+    assert created.status_code == status.HTTP_201_CREATED
+    PubVisit.objects.filter(account=me).update(created_at=timezone.now() - timedelta(minutes=30))
+    assert client.post(_URL, **_auth(me_token)).json()["eligible"] is True
+
+    moved = client.post(
+        "/v1/pub-visits",
+        data={
+            **_visit_body(client_id, lat=49.1951, lng=16.6068, at=started),
+            "updated_at": timezone.now().isoformat(),
+        },
+        format="json",
+        **_auth(me_token),
+    )
+
+    assert moved.status_code == status.HTTP_200_OK
+    assert client.post(_URL, **_auth(me_token)).json()["reason"] == "too_soon"
+
+
+@pytest.mark.django_db
+def test_touching_an_older_planted_visit_does_not_move_me_to_its_pub(client, table):
+    me_token, me, _bara_token, _bara = table
+    # I planted a visit in another pub earlier; my newest visit on the server
+    # is at Bára's pub. Bumping the planted one's client timestamps must not
+    # move me there.
+    planted = _sit(me, cache_key=_OTHER_CACHE_KEY, minutes_ago=60)
+    PubVisit.objects.filter(pk=planted.pk).update(ended_at=timezone.now())
+    _token, stranger = _register(client, "stranger")
+    _sit(stranger, cache_key=_OTHER_CACHE_KEY)
+    _show(stranger)
+
+    assert _names(client.post(_URL, **_auth(me_token))) == ["bara"]
 
 
 @pytest.mark.django_db
