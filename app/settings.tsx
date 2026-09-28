@@ -56,6 +56,7 @@ import {
   disablePubReminderNotifications,
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
+import { askTourReminderPermission } from '@/notifications/tourReminder';
 import {
   selectIsSignedIn,
   selectNickname,
@@ -435,6 +436,7 @@ export default function SettingsScreen() {
   const hidePubNames = useSettingsStore((state) => state.hidePubNames);
   const marketingEmailsEnabled = useSettingsStore((state) => state.marketingEmailsEnabled);
   const pubReminderEnabled = useSettingsStore((state) => state.pubReminderEnabled);
+  const tourRemindersEnabled = useSettingsStore((state) => state.tourRemindersEnabled);
   const beerCountReminderEnabled = useSettingsStore((state) => state.beerCountReminderEnabled);
   const beerCountReminderIntervalMinutes = useSettingsStore(
     (state) => state.beerCountReminderIntervalMinutes,
@@ -572,6 +574,20 @@ export default function SettingsScreen() {
       setBeerCountReminderBusy(false);
     }
   }, [beerCountReminderBusy, beerCountReminderEnabled]);
+
+  // Off cancels every tour reminder at once; on asks for notifications like the other reminders.
+  const toggleTourReminders = useCallback(async () => {
+    const settings = useSettingsStore.getState();
+    if (settings.tourRemindersEnabled) {
+      settings.setTourRemindersEnabled(false);
+      return;
+    }
+    settings.setTourRemindersEnabled(true);
+    if (!(await askTourReminderPermission())) {
+      useSettingsStore.getState().setTourRemindersEnabled(false);
+      showPubReminderEnableFailure('notifications-denied');
+    }
+  }, []);
 
   const changeBeerCountReminderInterval = useCallback(
     (minutes: BeerCountReminderIntervalMinutes) => {
@@ -782,6 +798,14 @@ export default function SettingsScreen() {
             intervalMinutes={beerCountReminderIntervalMinutes}
             onToggle={() => void toggleBeerCountReminder()}
             onIntervalChange={changeBeerCountReminderInterval}
+          />
+          <PreferenceRow
+            title={t.tourReminders.settingsTitle}
+            subtitle={t.tourReminders.settingsSubtitle}
+            value={tourRemindersEnabled}
+            onToggle={() => void toggleTourReminders()}
+            toggleLabel={`${t.tourReminders.settingsTitle}: ${tourRemindersEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
+            divider
           />
           <PreferenceRow
             title={t.settings.haptics.title}
