@@ -3635,8 +3635,9 @@ class PubFavoriteView(APIView):
     GET    /v1/pub-favorites             → list all favourites of the account
     DELETE /v1/pub-favorites/<cache_key> → idempotent delete by geohash-8 key
 
-    Same sync semantics as PubRatingView. ``cache_key`` is resolved server-side
-    from lat/lng exactly like ratings. Conflict resolution is LAST-WRITE-WINS on
+    Same sync semantics as PubRatingView, except ``cache_key`` is the plain
+    geohash-8 of the submitted lat/lng: no alias resolution, so the key always
+    matches the one the app stores. Conflict resolution is LAST-WRITE-WINS on
     the client's ``updated_at``: a PUT older than the stored one is ignored
     (``applied: false``). ``favorite: false`` removes the row under the same LWW
     guard, like an empty rating does.
@@ -3675,7 +3676,10 @@ class PubFavoriteView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        cache_key = _resolve_pub_input(data).cache_key
+        # Keyed by the submitted cell, never by a merged canonical pub: the app
+        # stores geohash8(lat, lng) and removes by it, so an alias rewrite would
+        # leave a heart it can never take back. Favourites feed no aggregate.
+        cache_key = geohash8(data["lat"], data["lng"])
         updated_at = bounded_client_time(data["updated_at"])
         cap = settings.PUB_FAVORITES_PER_ACCOUNT_CAP
 

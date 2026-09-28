@@ -23,7 +23,7 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from pubs import accounts
 from pubs.enrichment import geohash8
-from pubs.models import Account, PubFavorite
+from pubs.models import Account, CanonicalPub, PubAlias, PubFavorite
 
 _NAME = "U Zlatého tygra"
 _LAT = 50.0876
@@ -236,6 +236,32 @@ def test_favorite_false_removes_under_lww(client):
 
     again = _put(client, token, favorite=False, updated_at="2026-06-13T09:00:00+02:00")
     assert again.json() == {"deleted": False, "applied": True}
+
+
+@pytest.mark.django_db
+def test_merged_pub_keeps_the_key_the_app_stores(client):
+    """A heart saved before an admin merge must stay removable by the app."""
+    token = _register(client)
+    assert _put(client, token).json()["cache_key"] == _KEY
+
+    canonical = CanonicalPub.objects.create(
+        cache_key=geohash8(50.09, 14.43), name=_NAME, lat=50.09, lng=14.43, city="Praha",
+    )
+    PubAlias.objects.create(canonical_pub=canonical, cache_key=_KEY, name=_NAME, lat=_LAT, lng=_LNG)
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=canonical.cache_key, name=_NAME,
+        lat=canonical.lat, lng=canonical.lng, is_primary=True,
+    )
+
+    # A save after the merge lands on the same row, not on the canonical key.
+    again = _put(client, token, updated_at="2026-06-13T08:00:00+02:00")
+    assert again.json()["cache_key"] == _KEY
+    assert list(PubFavorite.objects.values_list("cache_key", flat=True)) == [_KEY]
+
+    removed = _put(client, token, favorite=False, updated_at="2026-06-14T08:00:00+02:00")
+    assert removed.json() == {"deleted": True, "applied": True}
+    listed = client.get("/v1/pub-favorites", **_auth(token)).json()["favorites"]
+    assert listed == []
 
 
 # ---------------------------------------------------------------------------
