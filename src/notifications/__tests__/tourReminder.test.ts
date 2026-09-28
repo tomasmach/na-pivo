@@ -198,7 +198,7 @@ describe('scheduled reminders follow the plans', () => {
     mockPresented.length = 0;
   });
 
-  it('keeps only the nearest twenty reminders pending', async () => {
+  it('keeps only the nearest twenty reminders pending on iOS', async () => {
     for (let day = 1; day <= 25; day++) await savePlan({ scheduledDate: `2026-10-${String(day).padStart(2, '0')}`, scheduledTime: '19:00' });
     await reconcileTourReminders();
     expect(mockScheduled.size).toBe(20);

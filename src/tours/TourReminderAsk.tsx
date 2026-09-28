@@ -29,7 +29,12 @@ export function TourReminderAsk({ plan }: { plan: TourPlan }) {
   }, [enabled, dismissed]);
   const reminder = enabled && !dismissed && undetermined ? tourReminderFor(plan, { activeRun, runs }) : null;
   if (!reminder) return null;
-  const dismiss = () => useSettingsStore.getState().setTourReminderAskDismissed(true);
+  // Not now or a no from the system leaves reminders off, so Settings shows what will really happen.
+  const dismiss = () => {
+    const settings = useSettingsStore.getState();
+    settings.setTourReminderAskDismissed(true);
+    settings.setTourRemindersEnabled(false);
+  };
   async function accept() {
     setAsking(true);
     const granted = await askTourReminderPermission();

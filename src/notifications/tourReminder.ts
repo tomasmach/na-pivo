@@ -10,7 +10,7 @@ import type { TourPlan, TourRun } from '@/tours/model';
 export const TOUR_REMINDER_KIND = 'tour_reminder';
 const TOUR_REMINDER_CHANNEL_ID = 'tour-meetups';
 const ID_PREFIX = 'tour-reminder-';
-/** Leaves most of iOS's 64 pending notifications to the pub and beer reminders. */
+/** On iOS, leaves most of the 64 pending notifications to the pub and beer reminders. */
 const MAX_PENDING = 20;
 const HOUR_MS = 3600000;
 
@@ -125,10 +125,10 @@ function desiredReminders(now: number): TourReminder[] {
   const tours = useToursStore.getState();
   // Not hydrated means no plans this phone may show: at start or right after an account change.
   if (!tours.hydrated) return [];
-  // iOS keeps 64 pending local notifications for the whole app; the nearest meetups get the slots and later ones follow on the next pass.
+  // iOS keeps 64 pending local notifications for the whole app; there the nearest meetups get the slots and later ones follow on the next pass.
   return tours.plans.flatMap((plan) => tourReminderFor(plan, tours, now) ?? [])
     .sort((a, b) => a.fireAtMs - b.fireAtMs)
-    .slice(0, MAX_PENDING);
+    .slice(0, Platform.OS === 'ios' ? MAX_PENDING : undefined);
 }
 
 /** A reminder already on screen must not outlive its plan on this phone, above all after sign-out or an account switch. */
