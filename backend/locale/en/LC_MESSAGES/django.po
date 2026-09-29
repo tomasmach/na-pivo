@@ -1187,3 +1187,42 @@ msgstr "Send lat and lng together."
 #, python-format
 msgid "Srdcovek můžeš mít nejvýš %(limit)s. Nějakou odeber a zkus to znovu."
 msgstr "You can have at most %(limit)s favourite pubs. Remove one and try again."
+
+msgid "Pozvánka na tour"
+msgstr "Tour invite"
+
+#, python-format
+msgid "%(name)s tě zve na tour „%(tour)s“, %(date)s v %(time)s. Jdeš?"
+msgstr "%(name)s is inviting you on the tour “%(tour)s”, %(date)s at %(time)s. You in?"
+
+#, python-format
+msgid "%(name)s tě zve na tour „%(tour)s“, %(date)s. Jdeš?"
+msgstr "%(name)s is inviting you on the tour “%(tour)s”, %(date)s. You in?"
+
+#, python-format
+msgid "%(name)s tě zve na tour „%(tour)s“. Jdeš?"
+msgstr "%(name)s is inviting you on the tour “%(tour)s”. You in?"
+
+#. Translators: Django date format for the day in a tour invite push, e.g. "pá 2. 10."
+msgctxt "tour invite date"
+msgid "D j. n."
+msgstr "D j M"
+
+msgid "Tuhle tour nenacházím."
+msgstr "I can't find this tour."
+
+msgid "Máš zapnutý neviditelný režim, pozvánka by nikomu nepřišla."
+msgstr "Invisible mode is on, so the invite would reach nobody."
+
+msgid "Tour nemá platný odkaz. Vytvoř ho a pozvi je znovu."
+msgstr "The tour has no valid link. Create one and invite them again."
+
+msgid "Pozvat jde jen kámoše z party."
+msgstr "You can only invite mates from your crew."
+
+#, python-format
+msgid "Na jednu tour pozveš nejvýš %(count)s kámošů."
+msgstr "You can invite at most %(count)s mates to one tour."
+
+msgid "Na tuhle tour pozvánku nemáš."
+msgstr "You don't have an invite to this tour."

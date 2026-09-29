@@ -1393,6 +1393,8 @@ class FriendNotification(models.Model):
         FRIEND_CHEERS = "friend_cheers", "Friend cheers"
         # A friend planned a pub tonight (RSVP-forward plan).
         FRIEND_PLAN = "friend_plan", "Friend plan"
+        # A friend invited me to their tour de pub.
+        FRIEND_TOUR_INVITE = "friend_tour_invite", "Friend tour invite"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     recipient = models.ForeignKey(
@@ -5187,3 +5189,27 @@ class TourRunMember(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["run", "account"], name="tour_run_member_identity")]
         indexes = [models.Index(fields=["account", "completed_at"], name="tour_run_member_done")]
+
+
+class TourInvite(models.Model):
+    """A Parta friend invited to someone's dated tour, with their answer.
+
+    The invitee opens the tour through the plan's share link; the invite only
+    records who was asked and whether they go. The owner is the plan's owner.
+    """
+
+    class Status(models.TextChoices):
+        INVITED = "invited", "Invited"
+        GOING = "going", "Going"
+        DECLINED = "declined", "Declined"
+
+    plan = models.ForeignKey(TourPlan, on_delete=models.CASCADE, related_name="invites")
+    invitee = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="tour_invites")
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.INVITED)
+    # The share link generation the last push named. A rotated or recreated link leaves the invite re-sendable.
+    share_operation_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["plan", "invitee"], name="tour_invite_identity")]

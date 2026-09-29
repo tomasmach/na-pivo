@@ -2184,6 +2184,17 @@ def _merge_photo_contest_entries(source: Account, target: Account) -> None:
         target_by_contest[entry.contest_id] = entry
 
 
+def _merge_tour_invites(source: Account, target: Account) -> None:
+    """Keep the claimed account's answer per tour; an invite to one's own tour goes away."""
+    from pubs.models import TourInvite
+
+    TourInvite.objects.filter(invitee=source, plan__owner=target).delete()
+    TourInvite.objects.filter(invitee=target, plan__owner=target).delete()
+    answered = TourInvite.objects.filter(invitee=target).values_list("plan_id", flat=True)
+    TourInvite.objects.filter(invitee=source, plan_id__in=list(answered)).delete()
+    TourInvite.objects.filter(invitee=source).update(invitee=target)
+
+
 def _assert_no_cascade_rows_for_source(source: Account) -> None:
     """Fail closed when a new Account-owned model is omitted from merge logic."""
     remaining: list[str] = []
@@ -2305,6 +2316,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     # every child with an independent identity is moved or deduplicated first.
     from pubs.models import TourPlan
     TourPlan.objects.filter(owner=source).update(owner=target)
+    _merge_tour_invites(source, target)
     _merge_friendships(source, target)
     _merge_follows(source, target)
     _merge_friend_blocks(source, target)

@@ -237,6 +237,8 @@ class TourDetailView(OwnerTourView):
                 plan.stops.all().delete()
                 plan.operations.all().delete()
                 TourShare.objects.filter(plan=plan).update(revoked_at=timezone.now())
+                # Nobody is invited to a tour that is gone.
+                plan.invites.all().delete()
                 # The frozen public copy goes with the tour; reports keep their own snapshot as evidence.
                 TourPublication.objects.filter(plan=plan).delete()
         return Response(status=204)
