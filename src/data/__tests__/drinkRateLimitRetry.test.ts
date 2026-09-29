@@ -49,6 +49,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  jest.restoreAllMocks();
   jest.clearAllTimers();
   jest.useRealTimers();
   global.fetch = originalFetch;
@@ -134,5 +135,78 @@ it('accepts an HTTP-date Retry-After deadline', async () => {
   await jest.advanceTimersByTimeAsync(4_999);
   expect(await shouldPauseDrinkSync()).toBe(true);
   await jest.advanceTimersByTimeAsync(1);
+  expect(await shouldPauseDrinkSync()).toBe(false);
+});
+
+it('lets the replacement account GET drinks immediately after private data is cleared', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const { getDrinkRateLimitGeneration, noteDrinkThrottled } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+  const { clearLocalPrivateAccountData } = require('../privateAccountData') as typeof import('../privateAccountData');
+  const { fetchDrinks } = require('../drinksClient') as typeof import('../drinksClient');
+  await noteDrinkThrottled(reply(429, '60'));
+  global.fetch = jest.fn(async () => ({ ...reply(200), json: async () => ({ drinks: [] }) }));
+
+  expect(await fetchDrinks()).toBeNull();
+  expect(global.fetch).not.toHaveBeenCalled();
+  const previousGeneration = getDrinkRateLimitGeneration();
+  await clearLocalPrivateAccountData();
+  // A response from a request sent by the old account may arrive afterward.
+  await noteDrinkThrottled(reply(429, '60'), previousGeneration);
+  expect(await storage.getItem('na-pivo-drinks-retry-after')).toBeNull();
+  expect(await fetchDrinks()).toEqual([]);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+});
+
+it('ignores an old storage read that finishes after the account boundary', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const key = 'na-pivo-drinks-retry-after';
+  const oldDeadline = String(Date.now() + 60_000);
+  await storage.setItem(key, oldDeadline);
+  const originalGet = (storage.getItem as jest.Mock).getMockImplementation() as typeof storage.getItem;
+  let finishRead!: (value: string) => void;
+  jest.spyOn(storage, 'getItem').mockImplementation((requestedKey) =>
+    requestedKey === key
+      ? new Promise<string>((resolve) => { finishRead = resolve; })
+      : originalGet(requestedKey),
+  );
+  const { shouldPauseDrinkSync } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+  const { clearLocalPrivateAccountData } = require('../privateAccountData') as typeof import('../privateAccountData');
+  const reading = shouldPauseDrinkSync();
+  await clearLocalPrivateAccountData();
+  finishRead(oldDeadline);
+  expect(await reading).toBe(false);
+  expect(await shouldPauseDrinkSync()).toBe(false);
+});
+
+it('removes an old cooldown write that was pending at the account boundary', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const key = 'na-pivo-drinks-retry-after';
+  const originalSet = (storage.setItem as jest.Mock).getMockImplementation() as typeof storage.setItem;
+  let finishWrite!: () => void;
+  jest.spyOn(storage, 'setItem').mockImplementation((requestedKey, value) =>
+    requestedKey === key
+      ? new Promise<void>((resolve) => {
+          finishWrite = () => { void originalSet(requestedKey, value).then(resolve); };
+        })
+      : originalSet(requestedKey, value),
+  );
+  const { noteDrinkThrottled, shouldPauseDrinkSync } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+  const { clearLocalPrivateAccountData } = require('../privateAccountData') as typeof import('../privateAccountData');
+  const writing = noteDrinkThrottled(reply(429, '60'));
+  for (let i = 0; !finishWrite && i < 20; i++) await Promise.resolve();
+  expect(finishWrite).toBeDefined();
+  const clearing = clearLocalPrivateAccountData();
+  finishWrite();
+  await Promise.all([writing, clearing]);
+  expect(await storage.getItem(key)).toBeNull();
   expect(await shouldPauseDrinkSync()).toBe(false);
 });

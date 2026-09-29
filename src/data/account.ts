@@ -33,6 +33,7 @@ import * as SecureStore from 'expo-secure-store';
 import { AppState, Platform } from 'react-native';
 
 import { getBackendEndpoint } from './backendConfig';
+import { clearDrinkRateLimit } from './drinksRateLimit';
 import { clearAccountMerge, hasPendingAccountMerge, prepareAccountMerge, readAccountMerge } from './accountMerge';
 import { setTelemetrySession, trackApiFailure, type DiagnosticAppState } from './telemetryClient';
 
@@ -832,10 +833,12 @@ export async function setSession(session: {
     token: session.token,
     authenticated: session.authenticated,
   };
+  const outgoingAccountId = (await readCachedAccount()).account?.accountId;
   const persisted = await writeCachedAccount(nextSession);
   if (!persisted) {
     throw new Error('Secure session persistence failed.');
   }
+  if (outgoingAccountId !== nextSession.accountId) await clearDrinkRateLimit();
   setTelemetrySession(nextSession);
 }
 
@@ -849,6 +852,8 @@ export async function revertToAnonymous(signal?: AbortSignal): Promise<AccountSe
   await clearCachedAccount();
   await replaceDeviceId();
   const session = await ensureAccount(signal);
+  // Close the gap between the private-data wipe and the new anonymous bearer.
+  await clearDrinkRateLimit();
   setTelemetrySession(session);
   return session;
 }

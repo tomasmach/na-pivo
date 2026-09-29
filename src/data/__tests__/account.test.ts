@@ -14,6 +14,7 @@ import {
   updateAccountPreferences,
 } from '../account';
 import { setTelemetrySession, trackApiFailure } from '../telemetryClient';
+import { noteDrinkThrottled, shouldPauseDrinkSync } from '../drinksRateLimit';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -701,6 +702,22 @@ describe('clearCachedAccount', () => {
       reason: 'session_cache_delete_failed',
     });
   });
+});
+
+it('keeps a drink cooldown for the same account but clears it when an anonymous account is claimed', async () => {
+  await seedAccount({ deviceId: 'dev-1', accountId: 'anon-1', token: 'anon-token', authenticated: false });
+  const throttled = {
+    headers: { get: (name: string) => name === 'Retry-After' ? '60' : null },
+  } as Response;
+  await noteDrinkThrottled(throttled);
+  expect(await shouldPauseDrinkSync()).toBe(true);
+
+  await setSession({ deviceId: 'dev-1', accountId: 'anon-1', token: 'renewed-token', authenticated: false });
+  expect(await shouldPauseDrinkSync()).toBe(true);
+
+  await setSession({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true });
+  expect(await AsyncStorage.getItem('na-pivo-drinks-retry-after')).toBeNull();
+  expect(await shouldPauseDrinkSync()).toBe(false);
 });
 
 describe('clearCachedAnonymousAccount', () => {
