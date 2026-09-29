@@ -4129,8 +4129,16 @@ class PubVisitView(APIView):
                 deleted_count, _ = visits.delete()
                 if deleted_count and not PubVisit.objects.filter(pk=newest_id).exists():
                     # Removing the newest visit must not hand the table to an
-                    # older one elsewhere with its old server clock.
-                    PubVisit.objects.filter(account=account, closed_at__isnull=True).update(
+                    # older one elsewhere with its old server clock. Only the
+                    # visit that becomes the newest restarts, so the rest keep
+                    # their order.
+                    fallback_id = (
+                        PubVisit.objects.filter(account=account)
+                        .order_by("-created_at", "-id")
+                        .values_list("id", flat=True)
+                        .first()
+                    )
+                    PubVisit.objects.filter(pk=fallback_id, closed_at__isnull=True).update(
                         created_at=dj_timezone.now()
                     )
         except Exception as exc:  # noqa: BLE001

@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import pytest
 from django.core.cache import cache
+from django.db.models import F
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -369,6 +370,23 @@ def test_deleting_the_newest_visit_restarts_the_clock(client, planted):
     assert deleted.json() == {"deleted": True}
 
     assert client.post(_URL, **_auth(me_token)).json()["reason"] == "too_soon"
+
+
+@pytest.mark.django_db
+def test_deleting_the_newest_visit_falls_back_to_the_next_newest_only(client):
+    me_token, me = _register(client, "me")
+    _token, bara = _register(client, "bara")
+    _sit(bara, minutes_ago=120)
+    _show(bara)
+    # Created first but resumed later: the next newest after the planted one.
+    _sit(me, minutes_ago=60)
+    _sit(me, cache_key=_OTHER_CACHE_KEY, minutes_ago=90)
+    accidental = _sit(me, cache_key="u2fkbn1y", minutes_ago=30)
+
+    client.delete(f"/v1/pub-visits/{accidental.client_id}", **_auth(me_token))
+    PubVisit.objects.filter(account=me).update(created_at=F("created_at") - timedelta(minutes=20))
+
+    assert _names(client.post(_URL, **_auth(me_token))) == ["bara"]
 
 
 @pytest.mark.django_db
