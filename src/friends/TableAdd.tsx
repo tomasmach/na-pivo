@@ -131,8 +131,11 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableA
     } else if (autoStart) {
       void start();
     } else {
-      // Read-only probe so a refusal shows before the tap, not after it.
-      void fetchFriendTable().then((next) => apply(next, true));
+      // Read-only probe so a refusal shows before the tap, not after it. A tap
+      // that lands first wins: this older answer would hide the open table.
+      void fetchFriendTable().then((next) => {
+        if (!shownRef.current) apply(next, true);
+      });
     }
     return () => {
       mountedRef.current = false;

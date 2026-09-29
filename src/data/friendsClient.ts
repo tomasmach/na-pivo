@@ -1,6 +1,12 @@
 import { t } from '@/i18n';
 
-import { clearCachedAnonymousAccount, ensureAccount, generateUuidV4, type AccountSession } from './account';
+import {
+  clearCachedAnonymousAccount,
+  ensureAccount,
+  generateUuidV4,
+  getSessionToken,
+  type AccountSession,
+} from './account';
 import {
   parseAchievementsBlock,
   type AccountAchievements,
@@ -980,9 +986,12 @@ export async function openFriendTable(signal?: AbortSignal): Promise<FriendTable
 /** Hide me again. A lost request is repeated; the server ends the window after 10 min anyway. */
 export async function closeFriendTable(): Promise<void> {
   const opening = friendTableOpenings;
+  const token = await getSessionToken();
+  if (!token) return;
   for (const delay of [0, ...CLOSE_TABLE_RETRY_MS]) {
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-    if (opening !== friendTableOpenings) return;
+    // A newer opt-in, or another account signed in meanwhile: not mine to hide.
+    if (opening !== friendTableOpenings || (await getSessionToken()) !== token) return;
     const res = await requestJson('/v1/friends/table', { method: 'DELETE' });
     if (res.ok || !/^(network|http_429|http_5\d\d)$/.test(res.result.code)) return;
   }

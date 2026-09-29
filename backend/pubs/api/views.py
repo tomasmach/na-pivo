@@ -4043,9 +4043,11 @@ class PubVisitView(APIView):
                 )
                 if existing is not None and (
                     existing.cache_key != cache_key
+                    or not _same_table_pub(existing, visit)
                     or (existing.closed_at is not None and visit.closed_at is None)
                 ):
-                    # Moving a visit to another pub or resuming a closed one
+                    # Moving a visit to another pub (even next door, in the
+                    # same map cell) or resuming a closed one
                     # starts its server-side clock again: "Kdo tu sedí s tebou"
                     # trusts created_at as the time the server has seen the
                     # account sitting at this pub since.
@@ -5415,7 +5417,7 @@ class FriendSearchView(APIView):
 
 
 _FRIEND_TABLE_PEOPLE_LIMIT = 20
-_FRIEND_TABLE_VISIT_SCAN_LIMIT = 50
+_FRIEND_TABLE_VISIT_SCAN_LIMIT = 200
 
 
 def _friend_table_visits(now: datetime):

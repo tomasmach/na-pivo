@@ -1,10 +1,11 @@
 import { closeFriendTable, openFriendTable } from '../friendsClient';
-import { ensureAccount } from '../account';
+import { ensureAccount, getSessionToken } from '../account';
 
 jest.mock('../account', () => ({
   ensureAccount: jest.fn(),
   clearCachedAnonymousAccount: jest.fn(async () => true),
   generateUuidV4: jest.fn(() => 'uuid'),
+  getSessionToken: jest.fn(),
 }));
 
 jest.mock('../telemetryClient', () => ({
@@ -22,6 +23,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   process.env.EXPO_PUBLIC_BACKEND_URL = 'http://127.0.0.1:8012';
   jest.mocked(ensureAccount).mockResolvedValue({ token: 't' } as never);
+  jest.mocked(getSessionToken).mockResolvedValue('t');
 });
 
 afterEach(() => {
@@ -60,5 +62,18 @@ describe('closeFriendTable', () => {
     await done;
 
     expect(methods(fetchMock)).toEqual(['DELETE', 'POST']);
+  });
+
+  it('does not hide an account that signed in after the first attempt', async () => {
+    const fetchMock = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    global.fetch = fetchMock;
+
+    const done = closeFriendTable();
+    await jest.advanceTimersByTimeAsync(0);
+    jest.mocked(getSessionToken).mockResolvedValue('other');
+    await jest.advanceTimersByTimeAsync(60_000);
+    await done;
+
+    expect(methods(fetchMock)).toEqual(['DELETE']);
   });
 });

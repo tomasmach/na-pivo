@@ -279,6 +279,26 @@ def test_resuming_a_closed_visit_restarts_the_clock(client):
 
 
 @pytest.mark.django_db
+def test_moving_next_door_in_the_same_cell_restarts_the_clock(client):
+    me_token, me = _register(client, "me")
+    client_id = str(uuid.uuid4())
+    started = timezone.now() - timedelta(minutes=40)
+    body = _visit_body(client_id, lat=50.0853, lng=14.4187, at=started)
+    assert client.post("/v1/pub-visits", data=body, format="json", **_auth(me_token)).status_code == 201
+    PubVisit.objects.filter(account=me).update(created_at=timezone.now() - timedelta(hours=1))
+
+    moved = client.post(
+        "/v1/pub-visits",
+        data={**body, "name": "Vedle", "updated_at": timezone.now().isoformat()},
+        format="json",
+        **_auth(me_token),
+    )
+
+    assert moved.status_code == status.HTTP_200_OK
+    assert client.post(_URL, **_auth(me_token)).json()["reason"] == "too_soon"
+
+
+@pytest.mark.django_db
 def test_a_late_past_visit_does_not_hide_the_table(client, table):
     me_token, _me, _bara_token, _bara = table
     started = timezone.now() - timedelta(days=2)

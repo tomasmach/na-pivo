@@ -89,6 +89,24 @@ describe('TableAdd', () => {
     expect(screen.getByText(t.friends.tableWaiting)).toBeTruthy();
   });
 
+  it('keeps the open table when the mount probe answers after the tap', async () => {
+    let answer: (value: FriendTable) => void = () => {};
+    jest.mocked(fetchFriendTable).mockReturnValueOnce(
+      new Promise<FriendTable>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    jest.mocked(openFriendTable).mockResolvedValue(visible([]));
+    const { screen } = setup(false);
+    fireEvent.press(screen.getByLabelText(t.friends.tableEntry));
+    await flush();
+    expect(screen.getByText(t.friends.tableWaiting)).toBeTruthy();
+
+    answer(hidden);
+    await flush();
+    expect(screen.getByText(t.friends.tableWaiting)).toBeTruthy();
+  });
+
   it('auto-starts, labels each action with the name and hides me again on unmount', async () => {
     jest
       .mocked(openFriendTable)
