@@ -974,6 +974,8 @@ export async function fetchFriendTable(signal?: AbortSignal): Promise<FriendTabl
 
 /** Bumped by every opt-in so a pending hide retry never undoes a newer one. */
 let friendTableOpenings = 0;
+/** Token of the account behind the latest opt-in. */
+let friendTableOpenedBy: string | null = null;
 const CLOSE_TABLE_RETRY_MS = [2_000, 10_000, 30_000];
 
 /**
@@ -984,24 +986,30 @@ const CLOSE_TABLE_RETRY_MS = [2_000, 10_000, 30_000];
  */
 export async function openFriendTable(closed?: AbortSignal): Promise<FriendTable | null> {
   const opening = ++friendTableOpenings;
-  const res = await requestJson('/v1/friends/table', { method: 'POST' });
+  // One session for the opt-in and its hide, even if the account changes meanwhile.
+  const session = await ensureAccount();
+  if (!session) return null;
+  friendTableOpenedBy = session.token;
+  const res = await requestJson('/v1/friends/table', { method: 'POST', session });
   if (closed?.aborted) {
-    void closeFriendTable(opening);
+    void closeFriendTable(opening, session);
     return null;
   }
   return res.ok ? parseFriendTable(res.data) : null;
 }
 
 /** Hide me again. A lost request is repeated; the server ends the window after 10 min anyway. */
-export async function closeFriendTable(opening = friendTableOpenings): Promise<void> {
-  const token = await getSessionToken();
-  if (!token) return;
-  const session = await ensureAccount();
-  if (session?.token !== token) return;
+export async function closeFriendTable(
+  opening = friendTableOpenings,
+  posted?: AccountSession,
+): Promise<void> {
+  // Without an account there is nothing to hide; do not create one for this.
+  const session = posted ?? ((await getSessionToken()) ? await ensureAccount() : null);
+  if (!session) return;
   for (const delay of [0, ...CLOSE_TABLE_RETRY_MS]) {
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-    // A newer opt-in, or another account signed in meanwhile: not mine to hide.
-    if (opening !== friendTableOpenings || (await getSessionToken()) !== token) return;
+    // The same account opted in again meanwhile: that newer window stays.
+    if (opening !== friendTableOpenings && friendTableOpenedBy === session.token) return;
     // Sent with the captured session, so it can only ever hide that account.
     const res = await requestJson('/v1/friends/table', { method: 'DELETE', session });
     if (res.ok || !/^(network|http_429|http_5\d\d)$/.test(res.result.code)) return;

@@ -64,19 +64,6 @@ describe('closeFriendTable', () => {
     expect(methods(fetchMock)).toEqual(['DELETE', 'POST']);
   });
 
-  it('does not hide an account that signed in after the first attempt', async () => {
-    const fetchMock = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
-    global.fetch = fetchMock;
-
-    const done = closeFriendTable();
-    await jest.advanceTimersByTimeAsync(0);
-    jest.mocked(getSessionToken).mockResolvedValue('other');
-    await jest.advanceTimersByTimeAsync(60_000);
-    await done;
-
-    expect(methods(fetchMock)).toEqual(['DELETE']);
-  });
-
   it('sends every retry with the session it started with', async () => {
     const fetchMock = jest
       .fn()
@@ -86,7 +73,9 @@ describe('closeFriendTable', () => {
 
     const done = closeFriendTable();
     await jest.advanceTimersByTimeAsync(0);
+    // Another account signs in: the retry still hides the original one, never this one.
     jest.mocked(ensureAccount).mockResolvedValue({ token: 'other' } as never);
+    jest.mocked(getSessionToken).mockResolvedValue('other');
     await jest.advanceTimersByTimeAsync(2_000);
     await done;
 
@@ -119,5 +108,30 @@ describe('closeFriendTable', () => {
     await jest.advanceTimersByTimeAsync(0);
 
     expect(methods(fetchMock)).toEqual(['POST', 'DELETE']);
+  });
+
+  it('hides a closed opt-in with the session that posted it', async () => {
+    let answer: (value: unknown) => void = () => {};
+    const fetchMock = jest
+      .fn()
+      .mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+      .mockResolvedValue({ ok: true, status: 200, text: async () => '{}' });
+    global.fetch = fetchMock;
+    const closed = new AbortController();
+
+    const opened = openFriendTable(closed.signal);
+    await jest.advanceTimersByTimeAsync(0);
+    jest.mocked(ensureAccount).mockResolvedValue({ token: 'other' } as never);
+    jest.mocked(getSessionToken).mockResolvedValue('other');
+    closed.abort();
+    answer({ ok: true, status: 200, text: async () => '{}' });
+    await opened;
+    await jest.advanceTimersByTimeAsync(0);
+
+    const auth = fetchMock.mock.calls.map(
+      ([, init]) => ((init as RequestInit).headers as Record<string, string>).Authorization,
+    );
+    expect(methods(fetchMock)).toEqual(['POST', 'DELETE']);
+    expect(auth).toEqual(['Bearer t', 'Bearer t']);
   });
 });
