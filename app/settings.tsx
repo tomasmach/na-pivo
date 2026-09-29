@@ -593,12 +593,11 @@ export default function SettingsScreen() {
       return;
     }
     settings.setTourRemindersEnabled(true);
-    const granted = await askTourReminderPermission();
-    setTourPermissionGranted(granted);
-    if (!granted) {
-      useSettingsStore.getState().setTourRemindersEnabled(false);
-      showPubReminderEnableFailure('notifications-denied');
-    }
+    const answer = await askTourReminderPermission();
+    setTourPermissionGranted(answer === 'granted');
+    if (answer !== 'granted') useSettingsStore.getState().setTourRemindersEnabled(false);
+    // Only a real no sends people to the system settings; without an answer the toggle can simply be tried again.
+    if (answer === 'denied') showPubReminderEnableFailure('notifications-denied');
   }, [tourRemindersEnabled]);
 
   const changeBeerCountReminderInterval = useCallback(

@@ -37,11 +37,11 @@ export function TourReminderAsk({ plan }: { plan: TourPlan }) {
   };
   async function accept() {
     setAsking(true);
-    const granted = await askTourReminderPermission();
+    const answer = await askTourReminderPermission();
     setAsking(false);
-    // A no from the system is final here too; the row never comes back.
-    if (granted) setUndetermined(false);
-    else dismiss();
+    // A no from the system is final here too; the row never comes back. Without an answer it stays for another try.
+    if (answer === 'granted') setUndetermined(false);
+    else if (answer === 'denied') dismiss();
   }
   return <View style={styles.row}>
     <BellRingIcon size={17} color={Colors.amber} />

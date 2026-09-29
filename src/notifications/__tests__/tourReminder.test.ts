@@ -44,6 +44,7 @@ jest.mock('expo-notifications', () => ({
 }));
 
 import {
+  askTourReminderPermission,
   consumeInitialTourReminderTap,
   reconcileTourReminders,
   syncTourReminders,
@@ -315,5 +316,13 @@ describe('scheduled reminders follow the plans', () => {
       store.setState({ hydrate });
     }
     expect(onTap).toHaveBeenLastCalledWith(id);
+  });
+
+  it('tells a failed permission check apart from a no', async () => {
+    mockGetPermissionsAsync.mockResolvedValueOnce({ status: 'denied' });
+    await expect(askTourReminderPermission()).resolves.toBe('denied');
+    mockGetPermissionsAsync.mockRejectedValueOnce(new Error('module not ready'));
+    await expect(askTourReminderPermission()).resolves.toBe('unavailable');
+    await expect(askTourReminderPermission()).resolves.toBe('granted');
   });
 });

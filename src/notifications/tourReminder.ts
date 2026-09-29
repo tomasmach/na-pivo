@@ -273,11 +273,11 @@ export async function notificationPermissionStatus(): Promise<'granted' | 'denie
   }
 }
 
-/** The one place a tour asks the OS for notifications; a yes schedules the reminders at once. */
-export async function askTourReminderPermission(): Promise<boolean> {
+/** The one place a tour asks the OS for notifications; a yes schedules the reminders at once. 'unavailable' is no answer, not a no. */
+export async function askTourReminderPermission(): Promise<'granted' | 'denied' | 'unavailable'> {
   const result = await ensureNotificationPermissionForBeerFeatures();
   if (result.ok) await reconcileTourReminders();
-  return result.ok;
+  return result.ok ? 'granted' : result.reason === 'notifications-denied' ? 'denied' : 'unavailable';
 }
 
 export function isTourReminderResponse(
