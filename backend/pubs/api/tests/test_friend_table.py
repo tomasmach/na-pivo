@@ -430,6 +430,45 @@ def test_merging_accounts_restarts_the_clock_of_open_visits(client):
 
 
 @pytest.mark.django_db
+def test_merging_accounts_keeps_the_order_of_the_other_visits(client):
+    from pubs import accounts
+
+    me_token, me = _register(client, "me")
+    _token, bara = _register(client, "bara")
+    _sit(bara, minutes_ago=120)
+    _show(bara)
+    # Created first but resumed later: my newest visit before the merge.
+    _sit(me, minutes_ago=60)
+    _sit(me, cache_key=_OTHER_CACHE_KEY, minutes_ago=90)
+    _token, anonymous = _register(client, None)
+
+    accounts._merge_anonymous_account(anonymous, me)
+    PubVisit.objects.filter(account=me).update(created_at=F("created_at") - timedelta(minutes=20))
+
+    assert _names(client.post(_URL, **_auth(me_token))) == ["bara"]
+
+
+@pytest.mark.django_db
+def test_a_late_open_visit_from_another_pub_does_not_show_me_there(client, table):
+    me_token, me, _bara_token, _bara = table
+    # A released app flushes an old visit without closed_at long after it ended.
+    started = timezone.now() - timedelta(minutes=90)
+    late = client.post(
+        "/v1/pub-visits",
+        data={
+            **_visit_body(str(uuid.uuid4()), lat=50.0853, lng=14.4187, at=started),
+            "ended_at": (timezone.now() - timedelta(minutes=40)).isoformat(),
+        },
+        format="json",
+        **_auth(me_token),
+    )
+    assert late.status_code == status.HTTP_201_CREATED
+    PubVisit.objects.filter(account=me).update(created_at=F("created_at") - timedelta(minutes=20))
+
+    assert client.post(_URL, **_auth(me_token)).json()["reason"] == "no_visit"
+
+
+@pytest.mark.django_db
 def test_no_visit_when_the_caller_has_none(client):
     me_token, _me = _register(client, "me")
 

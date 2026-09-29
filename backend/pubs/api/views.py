@@ -5426,6 +5426,8 @@ class FriendSearchView(APIView):
 
 _FRIEND_TABLE_PEOPLE_LIMIT = 20
 _FRIEND_TABLE_VISIT_SCAN_LIMIT = 200
+# Phone clock skew and a short offline delay still count as the current visit.
+_FRIEND_TABLE_LATE_VISIT_GRACE = timedelta(minutes=5)
 
 
 def _friend_table_visits(now: datetime):
@@ -5435,7 +5437,9 @@ def _friend_table_visits(now: datetime):
     one account plant visits in many pubs, wait once, then close or backdate the
     newest and fall back to an older one somewhere else. Client timestamps only
     decide whether the pinned visit still counts (same window as
-    ``_friend_presence_slice``), never which visit is pinned.
+    ``_friend_presence_slice``), never which visit is pinned. A visit whose last
+    beer is older than the server's first sight of it arrived late from an
+    offline queue: it is history, not where the account sits now.
     """
 
     cutoff = now - timedelta(minutes=settings.FRIEND_PRESENCE_WINDOW_MINUTES)
@@ -5449,6 +5453,10 @@ def _friend_table_visits(now: datetime):
         .filter(Q(ended_at__gte=cutoff) | Q(started_at__gte=cutoff))
         .annotate(last_seen_at=Coalesce("ended_at", "started_at"))
         .filter(last_seen_at__gte=cutoff)
+        .filter(
+            Q(ended_at__isnull=True)
+            | Q(ended_at__gte=F("created_at") - _FRIEND_TABLE_LATE_VISIT_GRACE)
+        )
         .annotate(newest_id=Subquery(newest_id))
         .filter(id=F("newest_id"))
         .order_by("-created_at", "-id")
