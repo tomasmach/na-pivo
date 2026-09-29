@@ -320,7 +320,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
           <TourButton label={t.tours.copyLink} secondary onPress={() => { void Clipboard.setStringAsync(plan.share!.url).then(() => setNotice(t.tours.copied)).catch(() => setNotice(t.tours.errors.unavailable)); }} />
           <TourButton label={t.tours.shareLink} secondary onPress={() => { void Share.share({ message: plan.share!.url }).catch(() => setNotice(t.tours.errors.unavailable)); }} />
           <TourButton label={t.tours.rotate} secondary onPress={() => showAppDialog({ title: t.tours.rotate, message: t.tours.rotateMessage, buttons: [
-            { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.rotate, onPress: () => { void action(() => store.publish(id, true)); } },
+            { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.rotate, onPress: () => { void action(async () => { await dropTourInvites(id); return store.publish(id, true); }); } },
           ] })} />
           <TourButton label={t.tours.revoke} secondary onPress={() => showAppDialog({ title: t.tours.revokeTitle, message: t.tours.revokeMessage, buttons: [
             { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.revoke, style: 'destructive', onPress: () => { void action(async () => { await dropTourInvites(id); return store.revoke(id); }, () => setNotice(t.tours.revoked)); } },

@@ -35,10 +35,12 @@ function hasLink(planId: string): boolean {
 }
 
 // A queued invite goes out only with the link the tour has now, and the server checks that link again.
+// A publication the owner started and the phone has not finished yet goes first, so friends open what they were invited to.
 setTourInvitePreparer(async (planId) => {
   const hydrated = await useToursStore.getState().hydrate();
   if (!hydrated.ok) return 'retry';
-  return hasLink(planId) ? 'ok' : 'drop';
+  if (!hasLink(planId)) return 'drop';
+  return useToursStore.getState().pending[planId] ? 'retry' : 'ok';
 });
 
 export { flushTourInvitesQueue };

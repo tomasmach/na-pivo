@@ -24,6 +24,10 @@ it('never publishes or makes a link for a queued invite', async () => {
   // Content changed on the phone since: the online path would publish, the queue only checks the link.
   mockStore.published = { 'plan-1': 'older' };
   await expect(preparer('plan-1')).resolves.toBe('ok');
+  // A publication the owner started offline goes first, so friends do not open the older stops.
+  mockStore.pending = { 'plan-1': {} };
+  await expect(preparer('plan-1')).resolves.toBe('retry');
+  mockStore.pending = {};
   plan.share = undefined;
   await expect(preparer('plan-1')).resolves.toBe('drop');
   expect(mockStore.publish).not.toHaveBeenCalled();
