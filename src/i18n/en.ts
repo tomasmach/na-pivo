@@ -3084,4 +3084,18 @@ export const en: Strings = {
       answer: "Your answer didn't go through. Try again once you have a signal.",
     },
   },
+  tourReminders: {
+    channel: 'Tour meetups',
+    title: (tour: string) => `Today: ${tour}`,
+    at: (time: string) => `at ${time}`,
+    bodyAt: (at: string, pub: string) => `Meet ${at} · ${pub}`,
+    bodyToday: (pub: string) => `Meeting today · ${pub}`,
+    today: 'today',
+    onDay: ['on Monday', 'on Tuesday', 'on Wednesday', 'on Thursday', 'on Friday', 'on Saturday', 'on Sunday'],
+    ask: (when: string, at: string) => `Want a reminder ${when} ${at}?`,
+    askAccept: 'Remind me',
+    askDismiss: 'Not now',
+    settingsTitle: 'Tour reminders',
+    settingsSubtitle: "On tour day, I'll remind you when and where to meet.",
+  },
 };

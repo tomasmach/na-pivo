@@ -94,6 +94,11 @@ import {
   subscribeBeerCountReminderTap,
 } from '@/notifications/beerCountReminder';
 import {
+  consumeInitialTourReminderTap,
+  subscribeTourReminderTap,
+  syncTourReminders,
+} from '@/notifications/tourReminder';
+import {
   initializeLiveBeerActivity,
   reconcileLiveBeerActivityAndAutoArchive,
 } from '@/liveActivity/liveBeerActivity';
@@ -230,6 +235,7 @@ export default function RootLayout() {
     installClientTelemetry();
     void initializePubReminderNotifications();
     void initializeBeerCountReminderNotifications();
+    void syncTourReminders();
     void initializeLiveBeerActivity();
     void refreshCurrencyFromLastKnownLocation();
   }, []);
@@ -243,19 +249,25 @@ export default function RootLayout() {
       usePartaSignalStore.getState().requestRefresh(payload ?? undefined);
       router.push('/friends' as Href);
     };
+    // A tour reminder opens its plan; a plan deleted since falls back to the list.
+    const navigateToTour = (planId: string | null) =>
+      router.push((planId ? { pathname: '/tours/[id]', params: { id: planId } } : '/tours') as Href);
     // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
     const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
+      void consumeInitialTourReminderTap(navigateToTour);
       void consumeInitialTourInviteTap(openTourInvite);
     }
     const pubSubscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
     const beerCountSubscription = subscribeBeerCountReminderTap(navigateToCounter);
+    const tourSubscription = subscribeTourReminderTap(navigateToTour);
     const tourInviteSubscription = subscribeTourInviteTap(openTourInvite);
     return () => {
       pubSubscription.remove();
       beerCountSubscription.remove();
+      tourSubscription.remove();
       tourInviteSubscription.remove();
     };
   }, [fontsLoaded, fontError, router]);
@@ -446,6 +458,7 @@ export default function RootLayout() {
           void cancelPendingPubReminder();
         }
         void refreshPubReminderGeofences();
+        void syncTourReminders();
       } else {
         flushWalkingDistance();
       }

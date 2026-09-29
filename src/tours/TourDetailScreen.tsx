@@ -29,6 +29,7 @@ import { fetchTourRoster, type TourInviteRow } from '@/data/tourInvitesClient';
 import { useToastStore } from '@/stores/toastStore';
 import { TourInviteRosterRow, TourInviteRosterSheet, TourInviteSheet, type InviteSent } from './TourInviteSheet';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
+import { TourReminderAsk } from './TourReminderAsk';
 import { TourHistoryRow, TourJourneyStop, TourLeg, TourMapPreview, type StopFactsLine } from './TourJourney';
 import { formatWalkDistance, hoursOnDay, planDay, useTourStopFacts, walkingDistance, walkingLeg } from './stopFacts';
 import { runPosition, type TourResult, type TourStop } from './model';
@@ -294,6 +295,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
       <TourButton label={t.tours.useServer} secondary onPress={() => { void action(() => store.chooseServerVersion(plan.id)); }} />
       <TourButton label={t.tours.keepBoth} secondary onPress={() => { void action(() => store.copyLocalConflict(plan.id), (r) => { if (r.id) router.replace({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); }} />
     </View>)}
+      {!shareMode && !run && <TourReminderAsk plan={plan} />}
 
       <View>
         <View style={[ui.row, styles.listHeading]}><TourText style={styles.section}>{t.tours.stops}</TourText>
