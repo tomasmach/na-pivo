@@ -13,6 +13,7 @@ jest.mock('../telemetryClient', () => ({
 }));
 
 const ORIGINAL_FETCH = global.fetch;
+const OPEN_WINDOW = { eligible: true, reason: null, visible_until: '2099-01-01T00:00:00+00:00', people: [] };
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 function methods(fetchMock: jest.Mock): string[] {
@@ -52,7 +53,7 @@ describe('closeFriendTable', () => {
     const fetchMock = jest
       .fn()
       .mockRejectedValueOnce(new TypeError('Network request failed'))
-      .mockResolvedValue({ ok: true, status: 200, text: async () => '{}' });
+      .mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify(OPEN_WINDOW) });
     global.fetch = fetchMock;
 
     const done = closeFriendTable();
@@ -155,6 +156,17 @@ describe('closeFriendTable', () => {
     expect(await openFriendTable(new AbortController().signal)).toBeNull();
     await jest.advanceTimersByTimeAsync(0);
 
+    expect(methods(fetchMock)).toEqual(['POST', 'DELETE']);
+  });
+
+  it('hides an opt-in whose successful answer is not an open window', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '' });
+    global.fetch = fetchMock;
+
+    const table = await openFriendTable(new AbortController().signal);
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(table?.visibleUntil).toBeNull();
     expect(methods(fetchMock)).toEqual(['POST', 'DELETE']);
   });
 });

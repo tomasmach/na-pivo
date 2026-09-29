@@ -5473,7 +5473,11 @@ def _same_table_pub(a: PubVisit, b: PubVisit) -> bool:
     different stable ids are two neighbours, and otherwise the names decide.
     """
 
-    if a.external_id and a.external_id == b.external_id:
+    if (
+        a.external_id
+        and a.external_id == b.external_id
+        and not _COORDINATE_PUB_ID.match(a.external_id)
+    ):
         return True
     stable = [
         bool(value) and not _COORDINATE_PUB_ID.match(value) for value in (a.external_id, b.external_id)

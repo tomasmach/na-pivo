@@ -566,6 +566,9 @@ def test_candidate_exclusions(client, table, exclude):
         pytest.param(("U Tygra", "mapy:111"), ("U tygra ", ""), True, id="same_name_no_id"),
         pytest.param(("U Tygra", ""), ("Vinárna", ""), False, id="neighbour_names"),
         pytest.param(("U Tygra", "mapy:50.08,14.42"), ("U Tygra", "mapy:111"), True, id="coordinate_id"),
+        pytest.param(
+            ("U Tygra", "mapy:50.08,14.42"), ("Vinárna", "mapy:50.08,14.42"), False, id="same_coordinates"
+        ),
     ],
 )
 def test_neighbours_in_one_cell_are_not_one_table(client, table, mine, theirs, listed):

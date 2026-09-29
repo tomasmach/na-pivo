@@ -992,11 +992,13 @@ export async function openFriendTable(closed?: AbortSignal): Promise<FriendTable
   if (!session) return null;
   friendTableOpenedBy = session.token;
   const res = await requestJson('/v1/friends/table', { method: 'POST', session });
-  if (closed?.aborted || !res.ok) {
+  const table = res.ok ? parseFriendTable(res.data) : null;
+  // Anything but an open window (closed screen, lost or odd answer) is hidden again.
+  if (closed?.aborted || !table?.visibleUntil) {
     void closeFriendTable(opening, session);
-    return null;
+    return closed?.aborted ? null : table;
   }
-  return res.ok ? parseFriendTable(res.data) : null;
+  return table;
 }
 
 /** Hide me again. A lost request is repeated; the server ends the window after 10 min anyway. */
