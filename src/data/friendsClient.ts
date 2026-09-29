@@ -966,14 +966,26 @@ export async function fetchFriendTable(signal?: AbortSignal): Promise<FriendTabl
   return res.ok ? parseFriendTable(res.data) : null;
 }
 
+/** Bumped by every opt-in so a pending hide retry never undoes a newer one. */
+let friendTableOpenings = 0;
+const CLOSE_TABLE_RETRY_MS = [2_000, 10_000, 30_000];
+
 /** Show me to people in the same pub for a few minutes; the server decides if I qualify. */
 export async function openFriendTable(signal?: AbortSignal): Promise<FriendTable | null> {
+  friendTableOpenings += 1;
   const res = await requestJson('/v1/friends/table', { method: 'POST', signal });
   return res.ok ? parseFriendTable(res.data) : null;
 }
 
+/** Hide me again. A lost request is repeated; the server ends the window after 10 min anyway. */
 export async function closeFriendTable(): Promise<void> {
-  await requestJson('/v1/friends/table', { method: 'DELETE' });
+  const opening = friendTableOpenings;
+  for (const delay of [0, ...CLOSE_TABLE_RETRY_MS]) {
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    if (opening !== friendTableOpenings) return;
+    const res = await requestJson('/v1/friends/table', { method: 'DELETE' });
+    if (res.ok || !/^(network|http_429|http_5\d\d)$/.test(res.result.code)) return;
+  }
 }
 
 /** `accepted`: the target had already asked me, so the server made us friends. */

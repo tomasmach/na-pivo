@@ -279,6 +279,25 @@ def test_resuming_a_closed_visit_restarts_the_clock(client):
 
 
 @pytest.mark.django_db
+def test_a_late_past_visit_does_not_hide_the_table(client, table):
+    me_token, _me, _bara_token, _bara = table
+    started = timezone.now() - timedelta(days=2)
+    late = client.post(
+        "/v1/pub-visits",
+        data={
+            **_visit_body(str(uuid.uuid4()), lat=49.1951, lng=16.6068, at=started),
+            "ended_at": (started + timedelta(hours=2)).isoformat(),
+            "closed_at": (started + timedelta(hours=2)).isoformat(),
+        },
+        format="json",
+        **_auth(me_token),
+    )
+
+    assert late.status_code == status.HTTP_201_CREATED
+    assert client.post(_URL, **_auth(me_token)).json()["eligible"] is True
+
+
+@pytest.mark.django_db
 def test_touching_an_older_planted_visit_does_not_move_me_to_its_pub(client, table):
     me_token, me, _bara_token, _bara = table
     # I planted a visit in another pub earlier; my newest visit on the server

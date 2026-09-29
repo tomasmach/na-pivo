@@ -4050,6 +4050,13 @@ class PubVisitView(APIView):
                     # trusts created_at as the time the server has seen the
                     # account sitting at this pub since.
                     PubVisit.objects.filter(pk=visit.pk).update(created_at=dj_timezone.now())
+                elif created and visit.closed_at is not None:
+                    # A past visit delivered late (offline queue, history seed)
+                    # must not become the account's newest one and hide the
+                    # table; it counts from when it began. Resuming it resets.
+                    PubVisit.objects.filter(pk=visit.pk).update(
+                        created_at=min(visit.started_at, dj_timezone.now())
+                    )
                 closed_at = data.get("closed_at")
                 if closed_at is not None:
                     # A delayed departure must not end a later return to the
