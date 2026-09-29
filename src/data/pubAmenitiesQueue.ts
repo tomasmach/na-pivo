@@ -38,6 +38,7 @@ import {
   type WireAmenityVote,
 } from './pubAmenitiesClient';
 import { createQueueStorage, createQueueLock } from './createQueue';
+import { AppState } from 'react-native';
 
 const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
 /** Hard cap — one item per (pub, amenity). A realistic offline crawl (~10 pubs ×
@@ -45,6 +46,10 @@ const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
 const MAX_QUEUE_LENGTH = 500;
 /** Debounce window for the post-enqueue flush. */
 const FLUSH_DEBOUNCE_MS = 250;
+// SecureStore reads are suppressed for 2 s after an access error. Retry only
+// while the app is active, with a small cap so a locked/unavailable session does
+// not keep waking the app or generate a failure event for every queued vote.
+const SESSION_RETRY_DELAYS_MS = [2_100, 5_000, 15_000];
 
 /** One pending sync operation, keyed (and deduped) by (pubKey, amenityKey). */
 export type AmenityQueueItem =
@@ -85,10 +90,13 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<AmenityQueueItem
  *  read-modify-write the same AsyncStorage snapshot and lose items. */
 const runLocked = createQueueLock();
 
-async function deliver(item: AmenityQueueItem): Promise<SubmitAmenityResult> {
+async function deliver(
+  item: AmenityQueueItem,
+  onAccountUnavailable: () => void,
+): Promise<SubmitAmenityResult> {
   // Both ops are PUTs of the snapshot payload (a delete carries a value:null
   // tombstone) so the backend can apply the same last-write-wins rule.
-  return submitAmenityVotes([item.payload]);
+  return submitAmenityVotes([item.payload], undefined, onAccountUnavailable);
 }
 
 /** Pending tombstones that restore must not hydrate back into local state. Keyed
@@ -109,7 +117,10 @@ function signature(item: AmenityQueueItem): string {
 
 async function flushLocked(): Promise<void> {
   const queue = await loadQueue();
-  if (queue.length === 0) return;
+  if (queue.length === 0) {
+    resetSessionRetry();
+    return;
+  }
 
   // Snapshot the exact op (by content) we attempt per (pubKey, amenityKey), plus
   // its result. We re-load after delivery so an edit that landed mid-flush
@@ -117,11 +128,15 @@ async function flushLocked(): Promise<void> {
   // content changed under us is kept regardless of the stale result.
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
+  let sessionUnavailable = false;
   for (const item of queue) {
     const key = dedupKey(item);
     attempted.set(key, signature(item));
-    const result = await deliver(item);
+    const result = await deliver(item, () => { sessionUnavailable = true; });
     if (result !== 'retry') settled.add(key);
+    // Every queued vote needs the same session. One failed read is enough;
+    // retain the untouched siblings for the next attempt.
+    if (sessionUnavailable) break;
   }
 
   const current = await loadQueue();
@@ -133,10 +148,31 @@ async function flushLocked(): Promise<void> {
     return !settled.has(key);
   });
   await saveQueue(remaining);
+  if (sessionUnavailable) scheduleSessionRetry();
+  else resetSessionRetry();
 }
 
 /** Pending debounced-flush timer, so rapid enqueues coalesce into one flush. */
 let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+let _sessionRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let _sessionRetryAttempt = 0;
+
+function resetSessionRetry(): void {
+  if (_sessionRetryTimer) clearTimeout(_sessionRetryTimer);
+  _sessionRetryTimer = null;
+  _sessionRetryAttempt = 0;
+}
+
+function scheduleSessionRetry(): void {
+  if (_sessionRetryTimer || AppState.currentState !== 'active') return;
+  const delay = SESSION_RETRY_DELAYS_MS[_sessionRetryAttempt];
+  if (delay == null) return;
+  _sessionRetryAttempt += 1;
+  _sessionRetryTimer = setTimeout(() => {
+    _sessionRetryTimer = null;
+    if (AppState.currentState === 'active') void runLocked(flushLocked);
+  }, delay);
+}
 
 /** Schedule a single debounced flush. Multiple enqueues within the window share it. */
 function scheduleFlush(): void {
@@ -166,6 +202,7 @@ export function enqueueAmenityOp(item: AmenityQueueItem): Promise<void> {
 
 /** Drop all pending amenity sync operations without attempting delivery. */
 export function clearPubAmenitiesQueue(): Promise<void> {
+  resetSessionRetry();
   return runLocked(async () => {
     await saveQueue([]);
   });
@@ -177,6 +214,7 @@ export function clearPubAmenitiesQueue(): Promise<void> {
  * flushes immediately. Never throws.
  */
 export function flushPubAmenitiesQueue(): Promise<void> {
+  resetSessionRetry();
   if (_flushTimer) {
     clearTimeout(_flushTimer);
     _flushTimer = null;
