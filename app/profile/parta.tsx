@@ -244,6 +244,7 @@ export default function ManagePartaScreen() {
               onOpenCode={() => setCodeVisible(true)}
               onChanged={reload}
               showSearch
+              showTable={dashboard?.myPresence != null}
             />
           </View>
 
