@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pubs', '0150_pubfavorite'),
+        ('pubs', '0151_tourinvite'),
     ]
 
     operations = [
