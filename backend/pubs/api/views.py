@@ -4021,7 +4021,7 @@ class PubVisitView(APIView):
                     else (existing.party_evening_id if existing is not None else None)
                 )
 
-                _, created = PubVisit.objects.update_or_create(
+                visit, created = PubVisit.objects.update_or_create(
                     account=account,
                     client_id=data["client_id"],
                     defaults={
@@ -4042,6 +4042,24 @@ class PubVisitView(APIView):
                         "party_evening_id": party_evening_id,
                     },
                 )
+                if existing is not None and (
+                    existing.cache_key != cache_key
+                    or not _same_table_pub(existing, visit)
+                    or (existing.closed_at is not None and visit.closed_at is None)
+                ):
+                    # Moving a visit to another pub (even next door, in the
+                    # same map cell) or resuming a closed one
+                    # starts its server-side clock again: "Kdo tu sedí s tebou"
+                    # trusts created_at as the time the server has seen the
+                    # account sitting at this pub since.
+                    PubVisit.objects.filter(pk=visit.pk).update(created_at=dj_timezone.now())
+                elif created and visit.closed_at is not None:
+                    # A past visit delivered late (offline queue, history seed)
+                    # must not become the account's newest one and hide the
+                    # table; it counts from when it began. Resuming it resets.
+                    PubVisit.objects.filter(pk=visit.pk).update(
+                        created_at=min(visit.started_at, dj_timezone.now())
+                    )
                 closed_at = data.get("closed_at")
                 if closed_at is not None:
                     # A delayed departure must not end a later return to the
@@ -4101,9 +4119,29 @@ class PubVisitView(APIView):
                         marker.client_updated_at = revision
                         marker.save(update_fields=["client_updated_at"])
                     visits = visits.filter(client_updated_at__lte=marker.client_updated_at)
+                newest_id = (
+                    PubVisit.objects.filter(account=account)
+                    .order_by("-created_at", "-id")
+                    .values_list("id", flat=True)
+                    .first()
+                )
                 # Legacy DELETE of a missing UUID carries no revision. Retain its
                 # successful no-op instead of permanently banning that visit.
                 deleted_count, _ = visits.delete()
+                if deleted_count and not PubVisit.objects.filter(pk=newest_id).exists():
+                    # Removing the newest visit must not hand the table to an
+                    # older one elsewhere with its old server clock. Only the
+                    # visit that becomes the newest restarts, so the rest keep
+                    # their order.
+                    fallback_id = (
+                        PubVisit.objects.filter(account=account)
+                        .order_by("-created_at", "-id")
+                        .values_list("id", flat=True)
+                        .first()
+                    )
+                    PubVisit.objects.filter(pk=fallback_id, closed_at__isnull=True).update(
+                        created_at=dj_timezone.now()
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-visits: unexpected error deleting visit (%s)", type(exc).__name__)
             return _internal_error()
@@ -5303,6 +5341,8 @@ def _friend_suggestion_payloads(
             "count": mutual_count,
         }
         # Never derive non-friend discovery from private visit or drink rows.
+        # The one narrow exception is FriendTableView: both sides opt in for a
+        # few minutes, and it returns profiles only, never the pub or the visit.
         rank = (mutual_count, -index)
         ranked.append((rank, payload))
 
@@ -5383,6 +5423,192 @@ class FriendSearchView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+_FRIEND_TABLE_PEOPLE_LIMIT = 20
+_FRIEND_TABLE_VISIT_SCAN_LIMIT = 200
+# Phone clock skew and a short offline delay still count as the current visit.
+_FRIEND_TABLE_LATE_VISIT_GRACE = timedelta(minutes=5)
+
+
+def _friend_table_visits(now: datetime):
+    """Each account's table visit: its newest visit on the server, if still open.
+
+    The pick happens before any closed/recency filter. Filtering first would let
+    one account plant visits in many pubs, wait once, then close or backdate the
+    newest and fall back to an older one somewhere else. Client timestamps only
+    decide whether the pinned visit still counts (same window as
+    ``_friend_presence_slice``), never which visit is pinned. A visit whose last
+    beer is older than the server's first sight of it arrived late from an
+    offline queue: it is history, not where the account sits now.
+    """
+
+    cutoff = now - timedelta(minutes=settings.FRIEND_PRESENCE_WINDOW_MINUTES)
+    newest_id = (
+        PubVisit.objects.filter(account_id=OuterRef("account_id"))
+        .order_by("-created_at", "-id")
+        .values("id")[:1]
+    )
+    return (
+        PubVisit.objects.filter(closed_at__isnull=True)
+        .filter(Q(ended_at__gte=cutoff) | Q(started_at__gte=cutoff))
+        .annotate(last_seen_at=Coalesce("ended_at", "started_at"))
+        .filter(last_seen_at__gte=cutoff)
+        .filter(
+            Q(ended_at__isnull=True)
+            | Q(ended_at__gte=F("created_at") - _FRIEND_TABLE_LATE_VISIT_GRACE)
+        )
+        .annotate(newest_id=Subquery(newest_id))
+        .filter(id=F("newest_id"))
+        .order_by("-created_at", "-id")
+    )
+
+
+_COORDINATE_PUB_ID = re.compile(r"^mapy:-?\d+(\.\d+)?,-?\d+(\.\d+)?$")
+
+
+def _same_table_pub(a: PubVisit, b: PubVisit) -> bool:
+    """Whether two visits in one geohash cell are the same business.
+
+    Mirrors ``isSamePubRecord`` in the app: equal provider ids match, two
+    different stable ids are two neighbours, and otherwise the names decide.
+    """
+
+    if (
+        a.external_id
+        and a.external_id == b.external_id
+        and not _COORDINATE_PUB_ID.match(a.external_id)
+    ):
+        return True
+    stable = [
+        bool(value) and not _COORDINATE_PUB_ID.match(value) for value in (a.external_id, b.external_id)
+    ]
+    if all(stable):
+        return False
+    return bool(a.name.strip()) and a.name.strip().casefold() == b.name.strip().casefold()
+
+
+class FriendTableView(APIView):
+    """GET/POST/DELETE /v1/friends/table — add people sitting in the same pub.
+
+    The one place where non-friends learn anything derived from a visit row, so
+    it is narrow on purpose: both sides must have tapped "show me at the table"
+    in the last few minutes, be public, not ghosts, and have had an open visit
+    at the same pub for a while (server ``created_at``, never the client clock).
+    The payload is profiles only: no pub, place, coordinates, times or counts.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def get(self, request: Request) -> Response:
+        return Response(self._payload(request, dj_timezone.now()), status=status.HTTP_200_OK)
+
+    def post(self, request: Request) -> Response:
+        now = dj_timezone.now()
+        _visit, reason = self._caller_visit(request.user, now)
+        if reason is None:
+            visible_until = now + timedelta(minutes=settings.FRIEND_TABLE_VISIBLE_MINUTES)
+            Account.objects.filter(pk=request.user.pk).update(table_visible_until=visible_until)
+            request.user.table_visible_until = visible_until
+        return Response(self._payload(request, now), status=status.HTTP_200_OK)
+
+    def delete(self, request: Request) -> Response:
+        Account.objects.filter(pk=request.user.pk).update(table_visible_until=None)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @staticmethod
+    def _caller_visit(account: Account, now: datetime) -> tuple[PubVisit | None, str | None]:
+        if not account.nickname:
+            return None, "no_nickname"
+        if not account.is_public:
+            return None, "private"
+        if account.ghost_mode:
+            return None, "ghost"
+        visit = _friend_table_visits(now).filter(account=account).first()
+        if visit is None:
+            return None, "no_visit"
+        if visit.created_at > now - timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES):
+            return None, "too_soon"
+        return visit, None
+
+    def _payload(self, request: Request, now: datetime) -> dict:
+        account = request.user
+        visit, reason = self._caller_visit(account, now)
+        visible_until = account.table_visible_until
+        if reason is not None or visible_until is None or visible_until <= now:
+            # Seeing the table requires being visible to it: nobody lurks.
+            payload = {
+                "eligible": reason is None,
+                "reason": reason,
+                "visible_until": None,
+                "people": [],
+            }
+            if reason == "too_soon":
+                gate_start = _friend_table_visits(now).filter(account=account).first()
+                payload["available_at"] = (
+                    gate_start.created_at + timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES)
+                ).isoformat()
+            return payload
+
+        excluded_ids = {account.pk, *_blocked_account_ids(account)}
+        statuses: dict[int, str] = {}
+        cooldown_start = now - timedelta(days=settings.FRIEND_DECLINE_COOLDOWN_DAYS)
+        rows = Friendship.objects.filter(Q(requester=account) | Q(recipient=account)).values_list(
+            "requester_id", "recipient_id", "status", "responded_at"
+        )
+        for requester_id, recipient_id, row_status, responded_at in rows:
+            outgoing = requester_id == account.pk
+            other_id = recipient_id if outgoing else requester_id
+            if row_status == Friendship.Status.ACCEPTED:
+                excluded_ids.add(other_id)
+            elif row_status == Friendship.Status.DECLINED:
+                # They said no to me recently: do not put me in front of them again.
+                if outgoing and (responded_at is None or responded_at > cooldown_start):
+                    excluded_ids.add(other_id)
+            elif row_status == Friendship.Status.PENDING:
+                statuses[other_id] = "outgoing" if outgoing else "incoming"
+
+        visits = list(
+            _friend_table_visits(now)
+            .filter(
+                cache_key=visit.cache_key,
+                created_at__lte=now - timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES),
+                account__status=Account.Status.ACTIVE,
+                account__is_public=True,
+                account__ghost_mode=False,
+                account__nickname__isnull=False,
+                account__table_visible_until__gt=now,
+            )
+            .exclude(account__nickname="")
+            .exclude(account_id__in=excluded_ids)
+            .select_related("account")[:_FRIEND_TABLE_VISIT_SCAN_LIMIT]
+        )
+        people_accounts: list[Account] = []
+        seen: set[int] = set()
+        for row in visits:
+            if row.account_id in seen or not _same_table_pub(visit, row):
+                continue
+            seen.add(row.account_id)
+            people_accounts.append(row.account)
+            if len(people_accounts) >= _FRIEND_TABLE_PEOPLE_LIMIT:
+                break
+
+        profiles = FriendProfileSerializer(
+            people_accounts, many=True, context=_friend_profile_context(request)
+        ).data
+        people = [
+            {**profile, "friendship_status": statuses.get(person.pk, "none")}
+            for person, profile in zip(people_accounts, profiles, strict=True)
+        ]
+        return {
+            "eligible": True,
+            "reason": None,
+            "visible_until": visible_until.isoformat(),
+            "people": people,
+        }
 
 
 def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, datetime | None]:
@@ -11468,6 +11694,7 @@ def _export_account_data(account: Account) -> dict:
             "marketing_emails_enabled": account.marketing_emails_enabled,
             "ghost_mode": account.ghost_mode,
             "share_drinks_with_parta": account.share_drinks_with_parta,
+            "table_visible_until": _iso(account.table_visible_until),
             "quiet_hours_enabled": account.quiet_hours_enabled,
             "quiet_hours_start": account.quiet_hours_start,
             "quiet_hours_end": account.quiet_hours_end,

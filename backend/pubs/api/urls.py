@@ -113,6 +113,7 @@ from .views import (
     FriendSettingsView,
     FriendsLiveView,
     FriendsView,
+    FriendTableView,
     HealthView,
     LeaderboardsView,
     MenuScanView,
@@ -426,6 +427,7 @@ urlpatterns = [
     path("friends/live", FriendsLiveView.as_view(), name="friends-live"),
     path("friends/drink-feed", FriendDrinkFeedView.as_view(), name="friends-drink-feed"),
     path("friends/search", FriendSearchView.as_view(), name="friends-search"),
+    path("friends/table", FriendTableView.as_view(), name="friends-table"),
     path("friends/requests", FriendRequestView.as_view(), name="friends-requests"),
     path(
         "friends/requests/<uuid:request_id>/<str:action>",
