@@ -160,6 +160,25 @@ it('lets the replacement account GET drinks immediately after private data is cl
   expect(global.fetch).toHaveBeenCalledTimes(1);
 });
 
+it('finishes private-data cleanup when removing the old cooldown fails', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const { noteDrinkThrottled, shouldPauseDrinkSync } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+  const { clearLocalPrivateAccountData } = require('../privateAccountData') as typeof import('../privateAccountData');
+  await noteDrinkThrottled(reply(429, '60'));
+  const originalRemove = (storage.removeItem as jest.Mock).getMockImplementation() as typeof storage.removeItem;
+  jest.spyOn(storage, 'removeItem').mockImplementation((key) =>
+    key === 'na-pivo-drinks-retry-after'
+      ? Promise.reject(new Error('storage unavailable'))
+      : originalRemove(key),
+  );
+
+  await expect(clearLocalPrivateAccountData()).resolves.toBeUndefined();
+  expect(await shouldPauseDrinkSync()).toBe(false);
+});
+
 it('ignores an old storage read that finishes after the account boundary', async () => {
   jest.resetModules();
   jest.useFakeTimers();

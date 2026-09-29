@@ -9,6 +9,7 @@ import {
   fetchAccountPreferences,
   getCachedAuthenticationState,
   getOrCreateDeviceId,
+  revertToAnonymous,
   setSession,
   setAnonymousSessionEvictionListener,
   updateAccountPreferences,
@@ -718,6 +719,44 @@ it('keeps a drink cooldown for the same account but clears it when an anonymous 
   await setSession({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true });
   expect(await AsyncStorage.getItem('na-pivo-drinks-retry-after')).toBeNull();
   expect(await shouldPauseDrinkSync()).toBe(false);
+});
+
+it('finishes an account claim when removing the previous drink cooldown fails', async () => {
+  await seedAccount({ deviceId: 'dev-1', accountId: 'anon-1', token: 'anon-token', authenticated: false });
+  await noteDrinkThrottled({ headers: { get: () => '60' } } as unknown as Response);
+  const originalRemove = (AsyncStorage.removeItem as jest.Mock).getMockImplementation() as typeof AsyncStorage.removeItem;
+  const removeSpy = jest.spyOn(AsyncStorage, 'removeItem').mockImplementation((key) =>
+    key === 'na-pivo-drinks-retry-after'
+      ? Promise.reject(new Error('storage unavailable'))
+      : originalRemove(key),
+  );
+  try {
+    await expect(setSession({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true })).resolves.toBeUndefined();
+    expect((await ensureAccount())?.accountId).toBe('signed-1');
+    expect(await shouldPauseDrinkSync()).toBe(false);
+  } finally {
+    removeSpy.mockRestore();
+  }
+});
+
+it('finishes reverting to an anonymous account when removing the old drink cooldown fails', async () => {
+  await seedAccount({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true });
+  await noteDrinkThrottled({ headers: { get: () => '60' } } as unknown as Response);
+  setBackend('https://api.example.com');
+  global.fetch = mockFetchOk({ id: 'anon-2', token: 'anon-token-2' });
+  const originalRemove = (AsyncStorage.removeItem as jest.Mock).getMockImplementation() as typeof AsyncStorage.removeItem;
+  const removeSpy = jest.spyOn(AsyncStorage, 'removeItem').mockImplementation((key) =>
+    key === 'na-pivo-drinks-retry-after'
+      ? Promise.reject(new Error('storage unavailable'))
+      : originalRemove(key),
+  );
+  try {
+    await expect(revertToAnonymous()).resolves.toMatchObject({ accountId: 'anon-2', authenticated: false });
+    expect((await ensureAccount())?.accountId).toBe('anon-2');
+    expect(await shouldPauseDrinkSync()).toBe(false);
+  } finally {
+    removeSpy.mockRestore();
+  }
 });
 
 describe('clearCachedAnonymousAccount', () => {

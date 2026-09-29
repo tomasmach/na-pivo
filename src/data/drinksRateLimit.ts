@@ -113,5 +113,6 @@ export async function clearDrinkRateLimit(): Promise<void> {
   retryTimer = null;
   const remove = storageWrite.then(() => AsyncStorage.removeItem(STORAGE_KEY));
   storageWrite = remove.catch(() => undefined);
-  await remove;
+  // Storage cleanup is best effort; a failed removal must not abort an account change.
+  await storageWrite;
 }
