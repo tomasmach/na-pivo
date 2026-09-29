@@ -14,6 +14,8 @@ it('says today and tomorrow in words and other days with the weekday', () => {
 
 it('names the zone only when the phone is somewhere else', () => {
   expect(whenLabel(plan('2026-10-02', '19:00'), now, 'Europe/London')).toBe('pá 2. 10. · 19:00 SELČ');
+  // Before the clocks go forward that night, winter time still applies.
+  expect(whenLabel(plan('2027-03-28', '01:30'), now, 'Europe/London')).toBe('ne 28. 3. 2027 · 01:30 SEČ');
 });
 
 it('offers today only times at least a quarter of an hour away', () => {

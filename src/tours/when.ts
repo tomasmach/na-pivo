@@ -58,13 +58,24 @@ function dayText(date: string, tz: string, now: Date, withWeekday = true): strin
   });
 }
 
+/** The instant of a wall-clock time in a zone, so the zone name is the one in force at the meetup, also on a daylight saving night. */
+function meetupInstant(date: string, time: string, tz: string): Date {
+  const wall = Date.parse(`${date}T${time}:00Z`);
+  let instant = wall;
+  for (let i = 0; i < 2; i++) {
+    const p = parts(tz, new Date(instant));
+    instant += wall - Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`);
+  }
+  return new Date(instant);
+}
+
 /** "pá 2. 10. · 19:00"; the zone only shows when this phone lives in another one. */
 export function whenLabel(plan: Pick<TourPlan, 'scheduledDate' | 'scheduledTime' | 'timezone'>, now = new Date(), deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone): string | null {
   if (!plan.scheduledDate) return null;
   const day = dayText(plan.scheduledDate, plan.timezone, now);
   if (!plan.scheduledTime) return day;
   const zone = deviceZone !== plan.timezone
-    ? new Intl.DateTimeFormat(intlLocale, { timeZone: plan.timezone, timeZoneName: 'short' }).formatToParts(new Date(`${plan.scheduledDate}T12:00:00Z`)).find((part) => part.type === 'timeZoneName')?.value
+    ? new Intl.DateTimeFormat(intlLocale, { timeZone: plan.timezone, timeZoneName: 'short' }).formatToParts(meetupInstant(plan.scheduledDate, plan.scheduledTime, plan.timezone)).find((part) => part.type === 'timeZoneName')?.value
     : null;
   return `${day} · ${plan.scheduledTime}${zone ? ` ${zone}` : ''}`;
 }

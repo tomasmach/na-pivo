@@ -170,3 +170,19 @@ it('asks for a new date instead of failing to save a tour whose day has passed',
     expect(mockStore.saveDraft).toHaveBeenCalled();
   });
 });
+
+it('shows a failed meetup save once, then still lets the sheet close', async () => {
+  await withDraft({ stops: twoStops }, async () => {
+    const screen = render(<TourEditorScreen />);
+    fireEvent.press(screen.getByTestId('tour-when'));
+    mockStore.updateDraft.mockResolvedValueOnce({ ok: false } as never);
+    await act(async () => { fireEvent.press(screen.getByLabelText('pátek 2. října')); });
+    await act(async () => { fireEvent.press(screen.getByTestId('tour-when-done')); });
+    expect(screen.getByText('Změny se nepodařilo uložit do telefonu. Zkus to znovu.')).toBeTruthy();
+    // The test Modal renders inline, so read its visibility instead of its children.
+    const sheet = () => screen.UNSAFE_root.findAll((node) => (node.type as unknown) === 'Modal' && node.findAll((child) => child.props.testID === 'tour-when-done').length > 0)[0];
+    expect(sheet().props.visible).toBe(true);
+    await act(async () => { fireEvent.press(screen.getByTestId('tour-when-done')); });
+    expect(sheet().props.visible).toBe(false);
+  });
+});

@@ -218,19 +218,19 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(null), 3000);
   }
-  async function toggle(pub: Pub, fromRow = false) {
-    if (replaceStop) { onReplace(pub); return; }
+  async function toggle(pub: Pub, fromRow = false): Promise<boolean> {
+    if (replaceStop) { onReplace(pub); return true; }
     const index = inTour(pub);
-    if (fromRow && nearby && settling.current) return;
-    if (index < 0 && full) { flash(t.tours.pickerFull); return; }
-    if (!(await onToggle(pub))) return;
-    if (nearby && index < 0) {
-      // Only the very first pick reorders the rows; later ones keep the same anchor.
-      setAnchorPubId(anchorStop?.pubId ?? pub.id);
-      settling.current = setTimeout(() => { settling.current = null; }, 600);
-    }
+    if (fromRow && nearby && settling.current) return false;
+    if (index < 0 && full) { flash(t.tours.pickerFull); return false; }
+    if (!(await onToggle(pub))) return false;
+    // Only the first pick, or taking out the anchor itself, reorders the rows; guard the next tap then.
+    const reorders = nearby && (index < 0 ? !anchorStop : stops[index]?.id === anchorStop?.id);
+    if (nearby && index < 0) setAnchorPubId(anchorStop?.pubId ?? pub.id);
+    if (reorders) settling.current = setTimeout(() => { settling.current = null; }, 600);
     if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
     AccessibilityInfo.announceForAccessibility(index < 0 ? t.tours.pubAdded(stops.length + 1) : t.tours.pubRemoved);
+    return true;
   }
   const choosePreview = (pub: Pub) => {
     Keyboard.dismiss();
@@ -317,7 +317,7 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
           ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: previewIndex >= 0 }} disabled={previewIndex >= 0} style={({ pressed }) => [styles.primary, (pressed || previewIndex >= 0) && styles.disabled]} onPress={() => onReplace(preview)}><Text maxFontSizeMultiplier={1.3} style={styles.primaryText}>{previewIndex >= 0 ? t.tours.inTour : t.tours.replaceWithPub}</Text></Pressable>
           : <Pressable accessibilityRole="button" accessibilityState={{ disabled: previewIndex < 0 && full }} disabled={previewIndex < 0 && full}
             style={({ pressed }) => [previewIndex >= 0 ? styles.secondary : styles.primary, (pressed || (previewIndex < 0 && full)) && styles.disabled]}
-            onPress={() => { void toggle(preview).then(backToSearch); }}>
+            onPress={() => { void toggle(preview).then((ok) => { if (ok) backToSearch(); }); }}>
             <Text maxFontSizeMultiplier={1.3} style={previewIndex >= 0 ? styles.secondaryText : styles.primaryText}>{previewIndex >= 0 ? t.tours.removeFromTour : full ? t.tours.pickerFull : t.tours.addAsStop(stops.length + 1)}</Text>
           </Pressable>
         : <>

@@ -69,15 +69,18 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   // A pick the phone could not store keeps the sheet open, so nothing seems chosen that is not.
   const [failed, setFailed] = useState(false);
   // Closing freezes the controls and waits until every pick is on disk, not just the ones before the tap.
-  async function close() {
+  /** Done stays open once after a failed pick so the error can be read; the cross, a tap outside and back always close. */
+  async function close(keepOnFailure = false) {
     if (closing) return;
     setClosing(true);
     let seen: Promise<unknown>;
     let ok: unknown = true;
     do { seen = saving.current; ok = await seen; } while (seen !== saving.current);
     setClosing(false);
-    if (ok !== false) onClose();
+    if (ok === false) saving.current = Promise.resolve(true);
+    if (ok !== false || !keepOnFailure) onClose();
   }
+
   function pickDay(day: string) {
     const first = earliestMinutes(day, plan.timezone);
     // A time that is already over on the new day would be a meetup in the past.
@@ -186,7 +189,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
           {failed && <TourText accessibilityRole="alert" style={styles.hint}>{t.tours.errors.storage}</TourText>}
         </ScrollView>
         <View style={styles.footer}>
-          <TourButton testID="tour-when-done" label={t.tours.whenDone} busy={closing} onPress={() => { void close(); }} />
+          <TourButton testID="tour-when-done" label={t.tours.whenDone} busy={closing} onPress={() => { void close(true); }} />
           {!!current.scheduledDate && <TourButton label={t.tours.whenClear} quiet disabled={closing} onPress={() => { setCustom(false); void write({ scheduledDate: null, scheduledTime: null }); void close(); }} />}
         </View>
       </View>
