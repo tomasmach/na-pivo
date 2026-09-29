@@ -253,11 +253,14 @@ export async function syncTourReminders(): Promise<void> {
       if (state.tourRemindersEnabled !== previous.tourRemindersEnabled) void reconcileTourReminders();
     });
   }
+  let loaded = false;
   try {
-    await useToursStore.getState().hydrate();
+    loaded = (await useToursStore.getState().hydrate()).ok;
   } catch {
-    // A failed load leaves the store unhydrated, which cancels every reminder below.
+    // Handled below like any other failed load.
   }
+  // A failed load says nothing about the tours: keep what is scheduled and try again on the next foreground.
+  if (!loaded) return;
   await reconcileTourReminders();
 }
 

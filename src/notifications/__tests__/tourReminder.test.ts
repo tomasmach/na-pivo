@@ -165,6 +165,23 @@ describe('scheduled reminders follow the plans', () => {
     expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(calls);
   });
 
+  it('keeps scheduled reminders when the tours cannot be read at start', async () => {
+    const id = await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
+    const reminder = mockScheduled.get(`tour-reminder-${id}`)!;
+    // A cold start: the store is not loaded yet and the phone still holds the reminder.
+    store.setState({ hydrated: false });
+    await reconcileTourReminders();
+    mockScheduled.set(reminder.identifier, reminder);
+    const hydrate = store.getState().hydrate;
+    store.setState({ hydrate: async () => ({ ok: false, error: 'storage' }) });
+    try {
+      await syncTourReminders();
+    } finally {
+      store.setState({ hydrate });
+    }
+    expect([...mockScheduled.keys()]).toEqual([`tour-reminder-${id}`]);
+  });
+
   it('moves the reminder with a new time and drops it with the date', async () => {
     const id = await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
     await savePlan({ scheduledDate: '2026-10-03', scheduledTime: '15:00' }, id);
