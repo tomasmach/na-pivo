@@ -42,12 +42,14 @@ export interface TourMapProps {
   selectedCandidateId?: string | null;
   onCandidate?: (pub: Pub) => void;
   preview?: boolean;
+  /** The order caption under the map; the picker has its own numbered bar. */
+  caption?: boolean;
 }
 
 /** The line is the itinerary's order, never a walking route. GPS is not needed. */
-export function TourMap({ stops, selectedId, onSelect, height, region, onRegionChange, onExpand, candidates = [], selectedCandidateId, onCandidate, preview = false }: TourMapProps) {
+export function TourMap({ stops, selectedId, onSelect, height, region, onRegionChange, onExpand, candidates = [], selectedCandidateId, onCandidate, preview = false, caption = true }: TourMapProps) {
   const { fontScale } = useWindowDimensions();
-  const captionHeight = !preview && stops.length > 1 ? Spacing.xs + Math.ceil(16 * Math.min(fontScale, 1.3)) : 0;
+  const captionHeight = caption && !preview && stops.length > 1 ? Spacing.xs + Math.ceil(16 * Math.min(fontScale, 1.3)) : 0;
   const mapHeight = Math.max(0, height - captionHeight);
   const [initialRegion] = useState(() => region ?? (stops.length ? tourRegion(stops, mapHeight) : DEFAULT_TOUR_REGION)); // preserve the viewport while editing / selecting
   const [viewport, setViewport] = useState(initialRegion);
@@ -121,7 +123,7 @@ export function TourMap({ stops, selectedId, onSelect, height, region, onRegionC
       <MoreSheet visible={overlaps.length > 1} title={t.tours.overlappingStops} onClose={() => setOverlapIds([])}
         rows={overlaps.map((stop) => ({ key: stop.id, icon: MapPinIcon, label: `${stops.findIndex((item) => item.id === stop.id) + 1}. ${stop.name}`, onPress: () => { setOverlapIds([]); onSelect(stop.id); } }))} />
     </View>
-      {!preview && stops.length > 1 && <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.captionText, { height: captionHeight }]}>{t.tours.routeOrder}</Text>}
+      {caption && !preview && stops.length > 1 && <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.captionText, { height: captionHeight }]}>{t.tours.routeOrder}</Text>}
     </View>
   );
 }

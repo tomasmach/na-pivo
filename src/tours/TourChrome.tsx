@@ -1,11 +1,12 @@
 import React, { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type TextProps } from 'react-native';
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/shared/IconGlyph';
-import { t, intlLocale, plural } from '@/i18n';
+import { t, plural } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import type { TourPlan, TourStop } from './model';
+import { whenLabel } from './when';
 
 export function TourText(props: TextProps) {
   return <Text maxFontSizeMultiplier={FontScaleCap.body} {...props} style={[ui.text, props.style]} />;
@@ -40,11 +41,9 @@ export function TourHeader({ title, onBack, right }: { title: string; onBack: ()
     <View style={ui.headerRight} onLayout={(event) => setSide(Math.max(HitArea.min, event.nativeEvent.layout.width))}>{right}</View>
   </View>;
 }
+/** The meetup as one line everywhere: "pá 2. 10. · 19:00", or "Bez termínu". */
 export function tourDate(plan: Pick<TourPlan, 'scheduledDate' | 'scheduledTime' | 'timezone'>) {
-  if (!plan.scheduledDate) return t.tours.optional;
-  const day = new Date(`${plan.scheduledDate}T12:00:00Z`).toLocaleDateString(intlLocale, { weekday: 'short', day: 'numeric', month: 'numeric', year: 'numeric', timeZone: 'UTC' });
-  const zone = new Intl.DateTimeFormat(intlLocale, { timeZone: plan.timezone, timeZoneName: 'short' }).formatToParts(new Date(`${plan.scheduledDate}T12:00:00Z`)).find((part) => part.type === 'timeZoneName')?.value;
-  return [day, plan.scheduledTime ? `${plan.scheduledTime.slice(0, 5)} ${zone ?? plan.timezone}` : null].filter(Boolean).join('  ');
+  return whenLabel(plan) ?? t.tours.optional;
 }
 export function stopCount(n: number) {
   return `${n} ${plural(n, { cs: { one: 'zastávka', few: 'zastávky', many: 'zastávek' }, en: { one: 'stop', other: 'stops' } })}`;
