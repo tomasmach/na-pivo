@@ -139,6 +139,13 @@ it('removes a picked pub from the bar even when search no longer lists it', asyn
   expect(onClose).toHaveBeenCalled();
 });
 
+it('removes one pub when the cross of a chip is tapped twice', async () => {
+  const screen = await open([stopAt(1), stopAt(2, 50.09), stopAt(3, 50.1)]);
+  const cross = screen.getByLabelText(t.tours.removeChipA11y('Stop 3'));
+  await act(async () => { fireEvent.press(cross); fireEvent.press(screen.getByLabelText(t.tours.removeChipA11y('Stop 2'))); });
+  expect(onToggle).toHaveBeenCalledTimes(1);
+});
+
 it('replaces a stop with a single tap', async () => {
   jest.mocked(cachedTourPubs).mockResolvedValueOnce([pub('a', 'Kaštan', 50.08, 14.45)]);
   const screen = await open([stopAt(1)], stopAt(1));

@@ -94,6 +94,7 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
   const strip = useRef<ScrollView>(null);
   // Nearby rows reorder around each new stop; a second tap landing on the new top row must not add it by accident.
   const settling = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chipLock = useRef(false);
   const [anchorPubId, setAnchorPubId] = useState<string | null>(() => stops[stops.length - 1]?.pubId ?? null);
   useEffect(() => () => { if (settling.current) clearTimeout(settling.current); }, []);
   useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
@@ -327,7 +328,12 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
               <View style={styles.chipNumber}><Text allowFontScaling={false} style={styles.chipNumberText}>{index + 1}</Text></View>
               <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.chipText}>{stop.name}</Text>
               <Pressable accessibilityRole="button" accessibilityLabel={t.tours.removeChipA11y(stop.name)} hitSlop={8} style={styles.chipRemove}
-                onPress={() => { void toggle({ id: stop.pubId, name: stop.name, lat: stop.lat, lng: stop.lon, address: stop.address }); }}>
+                onPress={() => {
+                  // The strip reflows after a removal, so a second tap would land on the next chip's cross.
+                  if (chipLock.current) return;
+                  chipLock.current = true;
+                  void toggle({ id: stop.pubId, name: stop.name, lat: stop.lat, lng: stop.lon, address: stop.address }).finally(() => setTimeout(() => { chipLock.current = false; }, 400));
+                }}>
                 <XIcon size={14} color={Colors.foamMuted} />
               </Pressable>
             </View>)}

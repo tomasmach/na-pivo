@@ -8,8 +8,8 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
-import { TourButton, TourText, ui } from './TourChrome';
-import { validSchedule, type TourPlan } from './model';
+import { TourButton, TourText, tourError, ui } from './TourChrome';
+import { validSchedule, type TourError, type TourPlan, type TourResult } from './model';
 import { addDays, earliestMinutes, lastDay, minutesOf, timeOf, todayIn, weekday } from './when';
 
 type Schedule = Pick<TourPlan, 'scheduledDate' | 'scheduledTime'>;
@@ -28,7 +28,7 @@ const daysBetween = (from: string, to: string) => Math.round((utc(to).getTime() 
  * The system date picker cannot show "no day chosen yet", which an optional meetup needs (DESIGN §9).
  */
 export function TourWhenSheet({ plan, visible, onChange, onClose }: {
-  plan: TourPlan; visible: boolean; onChange: (patch: Schedule) => Promise<boolean>; onClose: () => void;
+  plan: TourPlan; visible: boolean; onChange: (patch: Schedule) => Promise<TourResult>; onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { height, width } = useWindowDimensions();
@@ -51,12 +51,12 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
 
   function write(next: Schedule) {
     setPending(next);
-    const run = saving.current.then(() => onChange(next));
-    saving.current = run;
-    void run.then((ok) => {
-      setFailed(!ok);
-      if (saving.current === run) setPending(null);
+    const run = saving.current.then(() => onChange(next)).then((result) => {
+      setFailed(result.ok ? null : result.error);
+      return result.ok;
     });
+    saving.current = run;
+    void run.then(() => { if (saving.current === run) setPending(null); });
     return run;
   }
   function apply(next: Schedule) {
@@ -67,7 +67,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   }
   const [closing, setClosing] = useState(false);
   // A pick the phone could not store keeps the sheet open, so nothing seems chosen that is not.
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<TourError | null>(null);
   // Closing freezes the controls and waits until every pick is on disk, not just the ones before the tap.
   /** Done stays open once after a failed pick so the error can be read; the cross, a tap outside and back always close. */
   async function close(keepOnFailure = false) {
@@ -186,7 +186,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
               })}
             </View>}
           {dst && <TourText accessibilityRole="alert" style={styles.hint}>{t.tours.whenDst}</TourText>}
-          {failed && <TourText accessibilityRole="alert" style={styles.hint}>{t.tours.errors.storage}</TourText>}
+          {!!failed && <TourText accessibilityRole="alert" style={styles.hint}>{tourError(failed)}</TourText>}
         </ScrollView>
         <View style={styles.footer}>
           <TourButton testID="tour-when-done" label={t.tours.whenDone} busy={closing} onPress={() => { void close(true); }} />

@@ -190,7 +190,7 @@ function TourEditor() {
     <TourPubPicker visible={picker} stops={draft.stops} scheduledDate={draft.scheduledDate} timezone={draft.timezone} replaceStop={replace} onClose={() => setPicker(false)} onToggle={toggleStop}
       onReplace={(pub) => { if (!replace) return; void store.replaceStop(replace.id, pub).then((r) => { if (r.ok) { setPicker(false); setRegion(undefined); setUndo(null); } }); }} />
     <TourWhenSheet plan={draft} visible={whenOpen} onClose={() => setWhenOpen(false)}
-      onChange={async (patch) => (await store.updateDraft(patch)).ok} />
+      onChange={(patch) => store.updateDraft(patch)} />
     {challengeStop && <TourChallengeSheet key={challengeStop.id} stop={challengeStop} error={store.error} onClose={() => setChallengeStop(null)}
       onSave={async (text) => {
         const result = await store.setChallenge(challengeStop.id, text);
