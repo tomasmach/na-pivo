@@ -28,13 +28,13 @@ export function TourInviteInbox({ saved }: { saved: TourPlan[] }) {
     return () => { alive = false; };
   }, [focused, accountId]);
   const invites = found && found.accountId === accountId ? found.invites : [];
-  // Someone going who already saved the tour finds it among their own tours.
-  const shown = invites.filter((invite) => !(invite.status === 'going' && saved.some((plan) => plan.source?.tourId === invite.planId)));
+  // Someone going who already saved the tour finds it among their own tours, unless the link changed since and the copy can no longer update.
+  const shown = invites.filter((invite) => !(invite.status === 'going' && saved.some((plan) => plan.source?.tourId === invite.planId && plan.source.token === invite.token)));
   if (!shown.length) return null;
   return <View>
     <TourText style={styles.section}>{t.tourInvites.inboxTitle}</TourText>
     {shown.map((invite, index) => {
-      const meta = [t.tourInvites.invitedBy(friendDisplayName(invite.inviter)), inviteDetail({ ...invite, stops: [] }) || null,
+      const meta = [t.tourInvites.invitedBy(friendDisplayName(invite.inviter)), inviteDetail({ ...invite, stops: [] }) || null, invite.firstPub || null,
         invite.status === 'going' ? t.tourInvites.inboxGoing : invite.status === 'declined' ? t.tourInvites.inboxDeclined : null].filter(Boolean).join(' · ');
       return <Pressable key={invite.planId} onPress={() => router.push(`/t/${invite.token}` as Href)} accessibilityRole="button" accessibilityLabel={`${invite.title}. ${meta}`}
         style={({ pressed }) => [styles.row, index === 0 && styles.first, pressed && styles.pressed]}>

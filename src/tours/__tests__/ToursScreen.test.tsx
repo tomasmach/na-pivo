@@ -66,12 +66,17 @@ it('lists invites to friends\' tours on top and opens the invite, even when the 
       scheduledDate: '2026-10-02', scheduledTime: '19:00', firstPub: 'U Bulínů' },
     // Going, and the tour is already saved: it shows among own tours, not twice.
     { planId: 'saved', status: 'going', inviter, token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaa', title: 'Uložená', scheduledDate: null, scheduledTime: null, firstPub: '' },
+    // Saved before the link changed: the copy cannot update, so the new link stays reachable here.
+    { planId: 'moved', status: 'going', inviter, token: 'cccccccccccccccccccccccccccc', title: 'Nový odkaz', scheduledDate: null, scheduledTime: null, firstPub: '' },
   ] });
-  mockStore.plans = [{ ...plan('copy', 'Uložená'), source: { tourId: 'saved', revision: 1, token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaa' } }];
+  mockStore.plans = [{ ...plan('copy', 'Uložená'), source: { tourId: 'saved', revision: 1, token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaa' } },
+    { ...plan('old', 'Starý odkaz'), source: { tourId: 'moved', revision: 1, token: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbb' } }];
   const screen = render(<ToursScreen />);
   await waitFor(() => expect(screen.getByText('Pátek po hospodách')).toBeTruthy());
   expect(screen.getByText(t.tourInvites.inboxTitle)).toBeTruthy();
   expect(screen.getAllByText('Uložená')).toHaveLength(1);
+  expect(screen.getByText('Nový odkaz')).toBeTruthy();
+  expect(screen.getByText(/pá 2\. 10\. · 19:00 · U Bulínů/)).toBeTruthy();
   fireEvent.press(screen.getByText('Pátek po hospodách'));
   expect(mockPush).toHaveBeenCalledWith('/t/invite-token-for-tours-list-test');
 });
