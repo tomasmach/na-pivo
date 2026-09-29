@@ -112,7 +112,8 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
     if (!plan || answerLock.current) return;
     answerLock.current = true; setAnswering(true); setAnswerError(null);
     try {
-      if (status === 'going' && !(existing && !update)) {
+      // A copy saved from an older link gets this one, so its update check keeps working.
+      if (status === 'going' && !(existing && !update && existing.source?.token === token)) {
         const saved = await store.importShared(token, update);
         if (!saved.ok) return;
       }

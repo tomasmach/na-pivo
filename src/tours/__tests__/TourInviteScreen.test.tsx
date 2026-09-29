@@ -160,6 +160,19 @@ it.each([
   await waitFor(() => expect(mockStore.importShared).toHaveBeenCalledWith(token, update));
 });
 
+it('gives a copy saved from an older link the new one when the friend says Jdu after all', async () => {
+  const inviter = { id: 'janek', nickname: 'janek', displayName: 'Janek', avatarUrl: null, isPublic: true };
+  mockAccount.session = { accountId: 'me' };
+  mockStore.plans = [ownPlan, { ...plan, id: 'saved-copy', source: { tourId: plan.id, revision: plan.revision, token: 'revoked-link-token-from-before' } }];
+  jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
+  jest.mocked(fetchMyTourInvite).mockResolvedValue({ ok: true, value: { planId: plan.id, status: 'declined', inviter } });
+  jest.mocked(answerTourInvite).mockImplementation(async (_id, status) => ({ ok: true, value: { planId: plan.id, status, inviter } }));
+  const screen = render(<TourInviteScreen />);
+  fireEvent.press(await screen.findByLabelText(t.tourInvites.changeToGoing));
+  await waitFor(() => expect(answerTourInvite).toHaveBeenLastCalledWith(plan.id, 'going'));
+  expect(mockStore.importShared).toHaveBeenCalledWith(token, false);
+});
+
 it('shows a public tour with its author and saves it as an own plan', async () => {
   const publicInfo = { id: '33333333-3333-4333-8333-333333333333', peopleCount: 0, city: 'Praha', walkM: 1200,
     author: { id: 'author-id', nickname: 'pivni_vlk', displayName: 'Pavel V.', avatarUrl: null } };
