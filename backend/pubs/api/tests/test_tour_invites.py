@@ -1,10 +1,11 @@
 """Parta invites to a tour: who may invite whom, what the invitee sees, and the push."""
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from django.core.cache import cache
+from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -18,6 +19,7 @@ from pubs.models import (
     PushDevice,
     TourInvite,
     TourPlan,
+    TourShare,
 )
 
 pytestmark = pytest.mark.django_db
@@ -396,3 +398,19 @@ def test_an_owner_in_invisible_mode_shows_no_invites(django_capture_on_commit_ca
     assert friend.put(f"/v1/tour-invites/{plan_id}", {"status": "going"}, format="json").status_code == 404
     Account.objects.filter(pk=owner.account.pk).update(ghost_mode=False)
     assert friend.get(f"/v1/tour-invites/{plan_id}").status_code == 200
+
+
+def test_invites_go_two_weeks_after_their_link_stopped_working(django_capture_on_commit_callbacks):
+    owner, petr, jana = person("janek"), person("petr"), person("jana")
+    befriend(owner, petr)
+    befriend(owner, jana)
+    dead, _ = tour(owner)
+    fresh, _ = tour(owner)
+    with django_capture_on_commit_callbacks(execute=True):
+        invite(owner, dead, petr)
+        invite(owner, fresh, jana)
+    TourShare.objects.filter(plan_id=dead).update(revoked_at=timezone.now() - timedelta(days=15))
+    # Revoked only yesterday: a new link may still come and keep who goes.
+    TourShare.objects.filter(plan_id=fresh).update(revoked_at=timezone.now() - timedelta(days=1))
+    call_command("prune_friend_data")
+    assert list(TourInvite.objects.values_list("plan_id", flat=True)) == [uuid.UUID(fresh)]
