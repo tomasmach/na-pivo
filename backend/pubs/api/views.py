@@ -230,6 +230,7 @@ from pubs.models import (
     PubVisit,
     PushDevice,
     ReleaseNote,
+    TourInvite,
     TourPlan,
     TourRunMember,
     UserAddedPub,
@@ -11253,6 +11254,7 @@ def _load_export_account(account: Account) -> Account:
         .annotate(
             has_tours=Exists(TourPlan.objects.filter(owner=OuterRef("pk"), deleted_at__isnull=True)),
             has_tour_runs=Exists(TourRunMember.objects.filter(account=OuterRef("pk"))),
+            has_tour_invites=Exists(TourInvite.objects.filter(invitee=OuterRef("pk"))),
             has_amenity_vote_tombstones=Exists(
                 PubAmenityVoteTombstone.objects.filter(account=OuterRef("pk"))
             ),
@@ -11442,6 +11444,11 @@ def _load_export_account(account: Account) -> Account:
             "tour_run_memberships",
             "has_tour_runs",
             Prefetch("tour_run_memberships", queryset=TourRunMember.objects.select_related("run__publication").order_by("joined_at")),
+        ),
+        (
+            "tour_invites",
+            "has_tour_invites",
+            Prefetch("tour_invites", queryset=TourInvite.objects.select_related("plan").order_by("created_at", "pk")),
         ),
         (
             "amenity_vote_tombstones",
@@ -11641,6 +11648,13 @@ def _export_account_data(account: Account) -> dict:
              "left_at": row.left_at.isoformat() if row.left_at else None,
              "completed_at": row.completed_at.isoformat() if row.completed_at else None}
             for row in account.tour_run_memberships.all()
+        ],
+        # Invites to friends' tours and my answers; the tour itself stays its owner's data.
+        "tour_invites": [
+            {"tour_id": str(row.plan_id), "tour": row.plan.title, "status": row.status,
+             "invited_at": row.created_at.isoformat(),
+             "responded_at": row.responded_at.isoformat() if row.responded_at else None}
+            for row in account.tour_invites.all()
         ],
         "exported_at": dj_timezone.now().isoformat(),
         "account": {

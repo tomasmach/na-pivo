@@ -697,6 +697,10 @@ REST_FRAMEWORK = {
         "tour_search": "60/min",
         "tour_publish": "20/hour",
         "tour_run": "240/hour",
+        # Inviting friends pushes to their phones, so it has a tighter budget than reading who answered.
+        "tour_invite": "30/hour",
+        "tour_invite_read": "120/min",
+        "tour_rsvp": "60/hour",
         # Typing in the search field fires one request per pause, so a busy minute stays well under this.
         "tour_discover": "30/min",
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,

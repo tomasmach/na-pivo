@@ -65,7 +65,11 @@ import { usePubStore } from '@/stores/pubStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
-import { ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush';
+import {
+  consumeInitialTourInviteTap,
+  ensureFriendPushRegisteredIfGranted,
+  subscribeTourInviteTap,
+} from '@/notifications/friendPush';
 import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { ContestResultsModal } from '@/photos/ContestResultsModal';
@@ -248,18 +252,23 @@ export default function RootLayout() {
     // A tour reminder opens its plan; a plan deleted since falls back to the list.
     const navigateToTour = (planId: string | null) =>
       router.push((planId ? { pathname: '/tours/[id]', params: { id: planId } } : '/tours') as Href);
+    // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
+    const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
       void consumeInitialTourReminderTap(navigateToTour);
+      void consumeInitialTourInviteTap(openTourInvite);
     }
     const pubSubscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
     const beerCountSubscription = subscribeBeerCountReminderTap(navigateToCounter);
     const tourSubscription = subscribeTourReminderTap(navigateToTour);
+    const tourInviteSubscription = subscribeTourInviteTap(openTourInvite);
     return () => {
       pubSubscription.remove();
       beerCountSubscription.remove();
       tourSubscription.remove();
+      tourInviteSubscription.remove();
     };
   }, [fontsLoaded, fontError, router]);
 

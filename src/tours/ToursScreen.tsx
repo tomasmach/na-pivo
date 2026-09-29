@@ -11,6 +11,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { FontScaleCap } from '@/theme/fonts';
 import { TourButton, TourError, TourHeader, TourText, pubCount, tourDate, ui } from './TourChrome';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
+import { TourInviteInbox } from './TourInviteInbox';
 import { describeRun, sortPlans, upcomingPlan } from './glance';
 import { formatWalkDistance, walkingDistance } from './stopFacts';
 import type { TourPlan, TourRun } from './model';
@@ -86,6 +87,7 @@ export default function ToursScreen() {
     <ScrollView contentContainerStyle={styles.content}>
       <TourText style={ui.heading}>{t.tours.mine}</TourText>
       <TourError code={store.error} />
+      <TourInviteInbox saved={store.plans} />
       {empty ? <View style={styles.empty}>
         <View style={styles.muted}><TourJourneyIllustration stops={SAMPLE_STOPS} /></View>
         <TourText maxFontSizeMultiplier={FontScaleCap.heading} style={styles.heroTitle}>{t.tours.emptyTitle}</TourText>
