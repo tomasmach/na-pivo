@@ -384,3 +384,18 @@ def test_the_roster_counts_every_stored_invite_toward_the_cap(django_capture_on_
     roster = owner.get(f"/v1/tours/{plan_id}/invites").json()
     assert [row["account"]["nickname"] for row in roster["invites"]] == ["petr"]
     assert roster["occupied"] == 2
+
+
+def test_an_owner_in_invisible_mode_shows_no_invites(django_capture_on_commit_callbacks):
+    owner, friend = person("janek"), person("petr")
+    befriend(owner, friend)
+    plan_id, _ = tour(owner)
+    with django_capture_on_commit_callbacks(execute=True):
+        invite(owner, plan_id, friend)
+    assert len(friend.get("/v1/tour-invites").json()["invites"]) == 1
+    Account.objects.filter(pk=owner.account.pk).update(ghost_mode=True)
+    assert friend.get("/v1/tour-invites").json() == {"invites": []}
+    assert friend.get(f"/v1/tour-invites/{plan_id}").status_code == 404
+    assert friend.put(f"/v1/tour-invites/{plan_id}", {"status": "going"}, format="json").status_code == 404
+    Account.objects.filter(pk=owner.account.pk).update(ghost_mode=False)
+    assert friend.get(f"/v1/tour-invites/{plan_id}").status_code == 200

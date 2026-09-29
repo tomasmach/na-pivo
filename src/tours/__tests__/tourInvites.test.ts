@@ -8,7 +8,7 @@ const mockStore = { plans: [plan], published: { 'plan-1': 'sig' }, pending: {}, 
   publish: jest.fn(), clearError: jest.fn() } as { plans: typeof plan[]; published: Record<string, string>; pending: object; error: null;
   hydrate: jest.Mock; publish: jest.Mock; clearError: jest.Mock };
 jest.mock('@/stores/toursStore', () => ({ useToursStore: { getState: () => mockStore }, tourContentSignature: () => 'sig' }));
-jest.mock('@/data/tourInvitesClient', () => ({ sendTourInvites: jest.fn(), knownOccupied: jest.fn(() => null), TOUR_INVITE_LIMIT: 50 }));
+jest.mock('@/data/tourInvitesClient', () => ({ sendTourInvites: jest.fn(), knownOccupied: jest.fn(() => 0), TOUR_INVITE_LIMIT: 50 }));
 jest.mock('@/data/tourInvitesQueue', () => ({ enqueueTourInvite: jest.fn(async () => true), flushTourInvitesQueue: jest.fn(), queuedTourInvitees: jest.fn(async () => []),
   setTourInvitePreparer: jest.fn() }));
 jest.mock('../TourChrome', () => ({ tourError: (code: string) => code }));
@@ -46,6 +46,7 @@ it('refuses to queue past the cap offline, with the same message the server woul
   jest.mocked(sendTourInvites).mockResolvedValue(offline);
   jest.mocked(queuedTourInvitees).mockResolvedValueOnce(['q1']);
   const roster = Array.from({ length: 48 }, (_, i) => row(`r${i}`));
+  jest.mocked(knownOccupied).mockReturnValueOnce(48);
   await expect(inviteFriends('plan-1', ['a', 'b'], roster)).resolves.toEqual({ error: t.tourInvites.errors.limit });
   expect(enqueueTourInvite).not.toHaveBeenCalled();
 });
@@ -53,6 +54,16 @@ it('refuses to queue past the cap offline, with the same message the server woul
 it('queues what fits, counting re-invites of people already on the roster as no new room', async () => {
   jest.mocked(sendTourInvites).mockResolvedValue(offline);
   const roster = Array.from({ length: 49 }, (_, i) => row(`r${i}`));
+  jest.mocked(knownOccupied).mockReturnValueOnce(49);
   await expect(inviteFriends('plan-1', ['a', 'r3'], roster)).resolves.toEqual({ status: 'queued' });
   expect(enqueueTourInvite).toHaveBeenCalledWith('plan-1', ['a', 'r3']);
+});
+
+it('does not queue when the server says the link is gone, or when this session never learned the invite count', async () => {
+  jest.mocked(sendTourInvites).mockResolvedValueOnce({ ok: false, error: 'share_required', status: 409, retry: true });
+  await expect(inviteFriends('plan-1', ['a'])).resolves.toEqual({ error: t.tourInvites.errors.network });
+  jest.mocked(sendTourInvites).mockResolvedValueOnce({ ok: false, error: 'network', status: 0, retry: true });
+  jest.mocked(knownOccupied).mockReturnValueOnce(null);
+  await expect(inviteFriends('plan-1', ['a'])).resolves.toEqual({ error: t.tourInvites.errors.network });
+  expect(enqueueTourInvite).not.toHaveBeenCalled();
 });

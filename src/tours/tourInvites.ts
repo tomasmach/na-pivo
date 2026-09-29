@@ -69,14 +69,18 @@ export async function inviteFriends(planId: string, recipientIds: string[], rost
       void flushTourInvitesQueue();
       return { status: 'sent', roster: result.value.roster, invited: result.value.invited };
     }
-    if (!result.retry) return { error: inviteError(result.error) };
+    // A link the server no longer takes will not come back by waiting; the next tap makes a new one.
+    if (!result.retry || result.error === 'share_required') return { error: inviteError(result.error) };
   }
   // The queue will not make a link later, so without one there is nothing to wait for.
   if (!hasLink(planId)) return { error: t.tourInvites.errors.network };
   // The server would refuse more than the cap later, when nobody is looking; say it now instead.
   const known = new Set(roster.map((row) => row.friend.id));
   const waiting = new Set([...(await queuedTourInvitees(planId)), ...recipientIds].filter((id) => !known.has(id)));
-  if ((knownOccupied(planId) ?? roster.length) + waiting.size > TOUR_INVITE_LIMIT) return { error: t.tourInvites.errors.limit };
+  // Without the server's count from this session the cap cannot be checked, so nothing is queued on a guess.
+  const occupied = knownOccupied(planId);
+  if (occupied === null) return { error: t.tourInvites.errors.network };
+  if (occupied + waiting.size > TOUR_INVITE_LIMIT) return { error: t.tourInvites.errors.limit };
   return (await enqueueTourInvite(planId, recipientIds)) ? { status: 'queued' } : { error: t.tourInvites.errors.network };
 }
 

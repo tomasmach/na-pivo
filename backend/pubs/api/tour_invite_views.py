@@ -172,7 +172,9 @@ class TourInvitesView(_InviteView):
 
 def _my_invite(request, plan_id, lock=False):
     rows = TourInvite.objects.select_related("plan__owner").filter(
-        plan_id=plan_id, invitee=request.user, plan__deleted_at__isnull=True, plan__owner__status=Account.Status.ACTIVE)
+        # An owner in invisible mode shows nothing to the party, their invites included.
+        plan_id=plan_id, invitee=request.user, plan__deleted_at__isnull=True, plan__owner__status=Account.Status.ACTIVE,
+        plan__owner__ghost_mode=False)
     invite = (rows.select_for_update(of=("self",)) if lock else rows).first()
     if invite and _blocked_between(request.user, [invite.plan.owner_id]):
         return None
@@ -223,7 +225,7 @@ class MyTourInviteListView(_InviteView):
         # again after a new link must not get into the tour through this list. Filter first, then keep the newest.
         invites = list(TourInvite.objects.select_related("plan__owner", "plan__share").prefetch_related("plan__stops").filter(
             invitee=request.user, plan__deleted_at__isnull=True, plan__owner__status=Account.Status.ACTIVE,
-            plan__share__revoked_at__isnull=True, plan__share__expires_at__gt=timezone.now(),
+            plan__owner__ghost_mode=False, plan__share__revoked_at__isnull=True, plan__share__expires_at__gt=timezone.now(),
             share_operation_id=F("plan__share__operation_id"),
         ).exclude(plan__owner_id__in=blocked).order_by("-created_at", "-pk")[:INVITES_PER_TOUR])
         rows = []
