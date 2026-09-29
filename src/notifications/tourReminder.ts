@@ -181,7 +181,8 @@ async function reconcileInternal(): Promise<void> {
       // Notifications refused elsewhere (a pub reminder, the system Settings) make the toggle say off, as it really is.
       if (status === 'denied') useSettingsStore.getState().setTourRemindersEnabled(false);
     } catch {
-      granted = false;
+      // An unknown answer is not a no: keep what is already scheduled and try again on the next pass.
+      return;
     }
   }
   await dismissOutdated();

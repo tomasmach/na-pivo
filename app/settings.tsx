@@ -9,6 +9,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -56,7 +57,7 @@ import {
   disablePubReminderNotifications,
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
-import { askTourReminderPermission } from '@/notifications/tourReminder';
+import { askTourReminderPermission, notificationPermissionStatus } from '@/notifications/tourReminder';
 import {
   selectIsSignedIn,
   selectNickname,
@@ -436,7 +437,16 @@ export default function SettingsScreen() {
   const hidePubNames = useSettingsStore((state) => state.hidePubNames);
   const marketingEmailsEnabled = useSettingsStore((state) => state.marketingEmailsEnabled);
   const pubReminderEnabled = useSettingsStore((state) => state.pubReminderEnabled);
-  const tourRemindersEnabled = useSettingsStore((state) => state.tourRemindersEnabled);
+  const tourRemindersPreferred = useSettingsStore((state) => state.tourRemindersEnabled);
+  // On only when reminders can really come: a fresh install that was never asked shows off, and a tap asks.
+  const [tourPermissionGranted, setTourPermissionGranted] = useState(false);
+  useEffect(() => {
+    const check = () => void notificationPermissionStatus().then((status) => setTourPermissionGranted(status === 'granted'));
+    check();
+    const subscription = AppState.addEventListener('change', (next) => { if (next === 'active') check(); });
+    return () => subscription.remove();
+  }, []);
+  const tourRemindersEnabled = tourRemindersPreferred && tourPermissionGranted;
   const beerCountReminderEnabled = useSettingsStore((state) => state.beerCountReminderEnabled);
   const beerCountReminderIntervalMinutes = useSettingsStore(
     (state) => state.beerCountReminderIntervalMinutes,
@@ -578,16 +588,18 @@ export default function SettingsScreen() {
   // Off cancels every tour reminder at once; on asks for notifications like the other reminders.
   const toggleTourReminders = useCallback(async () => {
     const settings = useSettingsStore.getState();
-    if (settings.tourRemindersEnabled) {
+    if (tourRemindersEnabled) {
       settings.setTourRemindersEnabled(false);
       return;
     }
     settings.setTourRemindersEnabled(true);
-    if (!(await askTourReminderPermission())) {
+    const granted = await askTourReminderPermission();
+    setTourPermissionGranted(granted);
+    if (!granted) {
       useSettingsStore.getState().setTourRemindersEnabled(false);
       showPubReminderEnableFailure('notifications-denied');
     }
-  }, []);
+  }, [tourRemindersEnabled]);
 
   const changeBeerCountReminderInterval = useCallback(
     (minutes: BeerCountReminderIntervalMinutes) => {

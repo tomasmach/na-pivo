@@ -251,6 +251,14 @@ describe('scheduled reminders follow the plans', () => {
     useSettingsStore.getState().setTourRemindersEnabled(true);
   });
 
+  it('keeps scheduled reminders when the permission check itself fails', async () => {
+    await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
+    expect(mockScheduled.size).toBe(1);
+    mockGetPermissionsAsync.mockRejectedValueOnce(new Error('busy'));
+    await reconcileTourReminders();
+    expect(mockScheduled.size).toBe(1);
+  });
+
   it('schedules nothing without notification permission', async () => {
     mockGetPermissionsAsync.mockResolvedValue({ status: 'undetermined' });
     await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
