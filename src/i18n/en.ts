@@ -3048,7 +3048,6 @@ export const en: Strings = {
     sheetTitle: 'Invite to the tour',
     send: (n: number) => n > 0 ? `Invite ${n} ${englishPlural(n, { one: 'mate', other: 'mates' })}` : 'Invite',
     alreadyInvited: 'Already invited',
-    waitingForSignal: 'Goes out once you get a signal',
     linkChanged: 'The link changed, invite again',
     allInvited: 'Everyone in your crew already has an invite.',
     shareElsewhere: 'Send the link elsewhere',
@@ -3058,7 +3057,6 @@ export const en: Strings = {
     sent: (n: number) => n > 0
       ? `Invited ${n} ${englishPlural(n, { one: 'mate', other: 'mates' })}. Anyone with notifications on knows right away.`
       : 'Everyone you picked already has an invite.',
-    queued: "I'll invite them once you get a signal.",
     rosterSummary: (invited: number, going: number) => going > 0 ? `${invited} invited · ${going} going` : `${invited} invited`,
     rosterOpen: "Who's coming",
     rosterHint: "Shows who's coming and who hasn't answered yet",

@@ -26,7 +26,6 @@ import { loadPartyFriends, type PartyFriends } from '@/data/friendsClient';
 import { flushFriendsQueue, friendActivityState } from '@/data/friendsQueue';
 import PingSheet from '@/friends/PingSheet';
 import { fetchTourRoster, type TourInviteRow } from '@/data/tourInvitesClient';
-import { dropTourInvites, subscribeTourInviteDelivery } from '@/data/tourInvitesQueue';
 import { useToastStore } from '@/stores/toastStore';
 import { TourInviteRosterRow, TourInviteRosterSheet, TourInviteSheet, type InviteSent } from './TourInviteSheet';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
@@ -121,14 +120,13 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     let alive = true;
     const load = () => void fetchTourRoster(id).then((result) => { if (alive && result.ok) setRoster(result.value); });
     load();
-    const delivered = subscribeTourInviteDelivery((planId) => { if (planId === id) load(); });
     const foreground = AppState.addEventListener('change', (next) => { if (next === 'active') load(); });
-    return () => { alive = false; delivered(); foreground.remove(); };
+    return () => { alive = false; foreground.remove(); };
   }, [focused, onServer, id, shareUrl]);
   function invitesSent(sent: InviteSent) {
     setInviteSheet(false);
-    if (sent.status === 'sent') setRoster(sent.roster);
-    useToastStore.getState().show(sent.status === 'sent' ? t.tourInvites.sent(sent.invited) : t.tourInvites.queued);
+    setRoster(sent.roster);
+    useToastStore.getState().show(t.tourInvites.sent(sent.invited));
   }
   useEffect(() => { if (focused && publicToken) void useToursStore.getState().refreshPublicCount(id); }, [focused, publicToken, id]);
   const [openedAt] = useState(() => Date.now());
@@ -320,10 +318,10 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
           <TourButton label={t.tours.copyLink} secondary onPress={() => { void Clipboard.setStringAsync(plan.share!.url).then(() => setNotice(t.tours.copied)).catch(() => setNotice(t.tours.errors.unavailable)); }} />
           <TourButton label={t.tours.shareLink} secondary onPress={() => { void Share.share({ message: plan.share!.url }).catch(() => setNotice(t.tours.errors.unavailable)); }} />
           <TourButton label={t.tours.rotate} secondary onPress={() => showAppDialog({ title: t.tours.rotate, message: t.tours.rotateMessage, buttons: [
-            { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.rotate, onPress: () => { void action(async () => { await dropTourInvites(id); return store.publish(id, true); }); } },
+            { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.rotate, onPress: () => { void action(() => store.publish(id, true)); } },
           ] })} />
           <TourButton label={t.tours.revoke} secondary onPress={() => showAppDialog({ title: t.tours.revokeTitle, message: t.tours.revokeMessage, buttons: [
-            { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.revoke, style: 'destructive', onPress: () => { void action(async () => { await dropTourInvites(id); return store.revoke(id); }, () => setNotice(t.tours.revoked)); } },
+            { text: t.tours.cancel, style: 'cancel' }, { text: t.tours.revoke, style: 'destructive', onPress: () => { void action(() => store.revoke(id), () => setNotice(t.tours.revoked)); } },
           ] })} />
         </>}
       </> : <>

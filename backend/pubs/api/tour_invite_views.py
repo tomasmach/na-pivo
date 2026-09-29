@@ -97,9 +97,7 @@ def _roster(plan, request):
         "stale": share is None or invite.share_operation_id != share.operation_id,
         "invited_at": invite.created_at.isoformat(),
         "responded_at": invite.responded_at.isoformat() if invite.responded_at else None,
-    } for invite in invites if invite.invitee_id not in blocked],
-        # Every stored invite counts toward the cap, hidden profiles too, so the app can check it offline.
-        "occupied": plan.invites.count()}
+    } for invite in invites if invite.invitee_id not in blocked]}
 
 
 class _InviteView(APIView):

@@ -3695,7 +3695,6 @@ export const cs = {
     sheetTitle: 'Pozvat na tour',
     send: (n: number) => n > 0 ? `Pozvat ${n} ${czechPlural(n, { one: 'kámoše', few: 'kámoše', many: 'kámošů' })}` : 'Pozvat',
     alreadyInvited: 'Už má pozvánku',
-    waitingForSignal: 'Pozvu, až chytíš signál',
     linkChanged: 'Odkaz se změnil, pozvi znovu',
     allInvited: 'Všichni z party už pozvánku mají.',
     shareElsewhere: 'Poslat odkaz jinam',
@@ -3705,7 +3704,6 @@ export const cs = {
     sent: (n: number) => n > 0
       ? `Pozval jsem ${n} ${czechPlural(n, { one: 'kámoše', few: 'kámoše', many: 'kámošů' })}. Kdo má zapnuté notifikace, ví to hned.`
       : 'Všichni vybraní už pozvánku mají.',
-    queued: 'Pozvu je, až chytíš signál.',
     rosterSummary: (invited: number, going: number) => going > 0
       ? `Pozváno ${invited} · ${czechPlural(going, { one: 'jde', few: 'jdou', many: 'jde' })} ${going}` : `Pozváno ${invited}`,
     rosterOpen: 'Kdo jde',

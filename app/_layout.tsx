@@ -70,7 +70,6 @@ import {
   ensureFriendPushRegisteredIfGranted,
   subscribeTourInviteTap,
 } from '@/notifications/friendPush';
-import { flushTourInvitesQueue } from '@/tours/tourInvites';
 import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { ContestResultsModal } from '@/photos/ContestResultsModal';
@@ -393,7 +392,6 @@ export default function RootLayout() {
     // Výčep: retry queued night publishes/unpublishes and round reactions.
     void flushNightsQueue();
     void flushTourRunQueue();
-    void flushTourInvitesQueue();
     void ensureFriendPushRegisteredIfGranted();
     // Live Activity initialization and every foreground/focus sweep reconcile
     // lock-screen additions before applying the tally's idle cutoff.
@@ -439,7 +437,6 @@ export default function RootLayout() {
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
         void flushTourRunQueue();
-        void flushTourInvitesQueue();
         if (pull('diary')) {
           void trackPull('diary', () => useAccountStore.getState().refreshDiarySnapshot());
         }

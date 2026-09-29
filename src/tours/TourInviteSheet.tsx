@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
 import { loadPartyFriends, type FriendProfile, type PartyFriends } from '@/data/friendsClient';
 import type { TourInviteRow } from '@/data/tourInvitesClient';
-import { queuedTourInvitees } from '@/data/tourInvitesQueue';
 import { friendDisplayName } from '@/friends/FriendMini';
 import { Avatar } from '@/profile/Avatar';
 import { intlLocale, t } from '@/i18n';
@@ -55,13 +54,12 @@ function secondName(friend: FriendProfile): string | null {
 }
 
 /** Why a friend cannot be picked now, or what picking them again does. */
-type FriendState = 'invited' | 'queued' | 'stale' | null;
+type FriendState = 'invited' | 'stale' | null;
 
 function FriendRow({ friend, checked, state, onToggle }: { friend: FriendProfile; checked: boolean; state: FriendState; onToggle: () => void }) {
   const name = friendDisplayName(friend);
-  const invited = state === 'invited' || state === 'queued';
-  const sub = state === 'invited' ? t.tourInvites.alreadyInvited : state === 'queued' ? t.tourInvites.waitingForSignal
-    : state === 'stale' ? t.tourInvites.linkChanged : secondName(friend);
+  const invited = state === 'invited';
+  const sub = state === 'invited' ? t.tourInvites.alreadyInvited : state === 'stale' ? t.tourInvites.linkChanged : secondName(friend);
   return <Pressable onPress={onToggle} disabled={invited} style={({ pressed }) => [styles.row, checked && styles.rowChecked, pressed && styles.pressed]}
     accessibilityRole="checkbox" accessibilityState={{ checked: checked || invited, disabled: invited }} accessibilityLabel={sub ? `${name}. ${sub}` : name}>
     <Avatar uri={friend.avatarUrl} nickname={friend.nickname} displayName={friend.displayName} size={36} border="quiet" />
@@ -75,7 +73,7 @@ function FriendRow({ friend, checked, state, onToggle }: { friend: FriendProfile
   </Pressable>;
 }
 
-export type InviteSent = { status: 'sent'; roster: TourInviteRow[]; invited: number } | { status: 'queued' };
+export type InviteSent = { status: 'sent'; roster: TourInviteRow[]; invited: number };
 
 /** Pick friends from Parta and invite them; the link goes elsewhere with one tap. The host only hears the outcome.
  * A friend whose link went dead with a new one can be picked again; the roster says who that is. */
@@ -84,7 +82,6 @@ export function TourInviteSheet({ plan, roster, onClose, onSent }: {
 }) {
   // undefined while the party loads, null when there is no party to show (offline with nothing saved).
   const [party, setParty] = useState<PartyFriends | null | undefined>(undefined);
-  const [queued, setQueued] = useState<string[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState<'invite' | 'link' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,11 +91,9 @@ export function TourInviteSheet({ plan, roster, onClose, onSent }: {
     let alive = true;
     const show = (next: PartyFriends | null) => { if (alive) setParty(next); };
     void loadPartyFriends(undefined, show).then(show);
-    void queuedTourInvitees(plan.id).then((ids) => { if (alive) setQueued(ids); });
     return () => { alive = false; };
   }, [plan.id]);
   const stateOf = (id: string): FriendState => {
-    if (queued.includes(id)) return 'queued';
     const row = roster.find((item) => item.friend.id === id);
     return row ? row.stale ? 'stale' : 'invited' : null;
   };
@@ -116,7 +111,7 @@ export function TourInviteSheet({ plan, roster, onClose, onSent }: {
     try { await task(); } finally { working.current = false; setBusy(null); }
   }
   const invite = () => run('invite', async () => {
-    const outcome = await inviteFriends(plan.id, chosen, roster);
+    const outcome = await inviteFriends(plan.id, chosen);
     if ('error' in outcome) setError(outcome.error);
     else onSent(outcome);
   });
