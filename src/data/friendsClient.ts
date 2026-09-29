@@ -982,7 +982,8 @@ const CLOSE_TABLE_RETRY_MS = [2_000, 10_000, 30_000];
  * Show me to people in the same pub for a few minutes; the server decides if I qualify.
  * `closed` fires when the screen closes. The POST is not cancelled, because the
  * server could still apply it after the screen's hide; instead this opt-in is
- * hidden again once its request has finished, whatever the answer was.
+ * hidden again once its request has finished, whatever the answer was. A failed
+ * or lost answer hides it too: the screen then says it is not open.
  */
 export async function openFriendTable(closed?: AbortSignal): Promise<FriendTable | null> {
   const opening = ++friendTableOpenings;
@@ -991,7 +992,7 @@ export async function openFriendTable(closed?: AbortSignal): Promise<FriendTable
   if (!session) return null;
   friendTableOpenedBy = session.token;
   const res = await requestJson('/v1/friends/table', { method: 'POST', session });
-  if (closed?.aborted) {
+  if (closed?.aborted || !res.ok) {
     void closeFriendTable(opening, session);
     return null;
   }

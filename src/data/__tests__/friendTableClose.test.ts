@@ -144,4 +144,17 @@ describe('closeFriendTable', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('hides an opt-in whose answer was lost while the sheet stays open', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValue({ ok: true, status: 200, text: async () => '{}' });
+    global.fetch = fetchMock;
+
+    expect(await openFriendTable(new AbortController().signal)).toBeNull();
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(methods(fetchMock)).toEqual(['POST', 'DELETE']);
+  });
 });
