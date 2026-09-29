@@ -1003,9 +1003,15 @@ export async function closeFriendTable(
   opening = friendTableOpenings,
   posted?: AccountSession,
 ): Promise<void> {
-  // Without an account there is nothing to hide; do not create one for this.
-  const session = posted ?? ((await getSessionToken()) ? await ensureAccount() : null);
-  if (!session) return;
+  let session = posted ?? null;
+  if (!session) {
+    // Without an account there is nothing to hide; do not create one for this.
+    const token = await getSessionToken();
+    if (!token) return;
+    session = await ensureAccount();
+    // The account changed between the two reads: not mine to hide.
+    if (session?.token !== token) return;
+  }
   for (const delay of [0, ...CLOSE_TABLE_RETRY_MS]) {
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
     // The same account opted in again meanwhile: that newer window stays.

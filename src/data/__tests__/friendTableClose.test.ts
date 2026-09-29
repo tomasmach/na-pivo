@@ -134,4 +134,14 @@ describe('closeFriendTable', () => {
     expect(methods(fetchMock)).toEqual(['POST', 'DELETE']);
     expect(auth).toEqual(['Bearer t', 'Bearer t']);
   });
+
+  it('sends nothing when the account changes before the hide starts', async () => {
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock;
+    jest.mocked(ensureAccount).mockResolvedValue({ token: 'other' } as never);
+
+    await closeFriendTable();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

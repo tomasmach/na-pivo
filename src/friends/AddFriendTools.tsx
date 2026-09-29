@@ -21,7 +21,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useIsFocused, useRouter, type Href } from 'expo-router';
 
 import {
   fetchFriendInviteCode,
@@ -84,6 +84,9 @@ export function AddFriendTools({
 }: AddFriendToolsProps) {
   const router = useRouter();
   const showToast = useToastStore((s) => s.show);
+  // Unmounting the table hides me, so it lives only while this screen is on top.
+  const focused = useIsFocused();
+  const tableShown = showTable && focused;
 
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -205,13 +208,13 @@ export function AddFriendTools({
 
   return (
     <>
-      {showTable ? (
+      {tableShown ? (
         <TableAdd autoStart={tableAutoStart} requestingKey={requestingKey} onRequest={requestFriend} />
       ) : null}
 
       <View style={styles.growthActions}>
         {/* Opened to add people at the table: their + / ✓ are the main targets. */}
-        {showTable && tableAutoStart ? (
+        {tableShown && tableAutoStart ? (
           <GlowButton
             label={t.friends.myCodeCta}
             onPress={onOpenCode}

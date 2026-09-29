@@ -316,7 +316,8 @@ function AddFriendSheet({
         onOpenCode={onOpenCode}
         onChanged={onChanged}
         showSearch
-        showTable={showTable}
+        // A closed Modal can keep its content mounted; the table must go at once.
+        showTable={showTable && visible}
         tableAutoStart={tableAutoStart}
       />
     </SheetScaffold>
