@@ -140,6 +140,38 @@ it.each([
   expect(readPersistedQueue()).toEqual([]);
 });
 
+it('keeps a retraction across restart even when its previous vote was still sending', async () => {
+  mockKeychainAvailable = true;
+  let requestStarted!: () => void;
+  const started = new Promise<void>((resolve) => { requestStarted = resolve; });
+  global.fetch = jest.fn(() => {
+    requestStarted();
+    return new Promise(() => undefined);
+  }) as unknown as typeof fetch;
+
+  const firstQueue = require('../pubAmenitiesQueue') as typeof import('../pubAmenitiesQueue');
+  await firstQueue.enqueueAmenityOp(item());
+  void firstQueue.flushPubAmenitiesQueue();
+  await started;
+  const retraction = item('delete');
+  await firstQueue.enqueueAmenityOp(retraction);
+  expect(readPersistedQueue()).toEqual([retraction]);
+
+  jest.clearAllTimers(); // terminate the old JS process with its request still pending
+  jest.resetModules();
+  global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
+  const relaunchedQueue = require('../pubAmenitiesQueue') as typeof import('../pubAmenitiesQueue');
+  await relaunchedQueue.flushPubAmenitiesQueue();
+
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://127.0.0.1:8123/v1/pub-amenities/votes',
+    expect.objectContaining({
+      method: 'PUT', body: JSON.stringify({ votes: [retraction.payload] }),
+    }),
+  );
+  expect(readPersistedQueue()).toEqual([]);
+});
+
 it('does not retry while backgrounded; a later foreground flush delivers the retained vote', async () => {
   const queue = require('../pubAmenitiesQueue') as typeof import('../pubAmenitiesQueue');
   const { AppState } = require('react-native') as typeof import('react-native');
