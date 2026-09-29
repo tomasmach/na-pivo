@@ -86,6 +86,7 @@ export const AppState = {
 export const AccessibilityInfo = {
   isReduceMotionEnabled: jest.fn().mockResolvedValue(false),
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+  announceForAccessibility: jest.fn(),
 };
 
 export const KeyboardAvoidingView = createComponent('KeyboardAvoidingView');
