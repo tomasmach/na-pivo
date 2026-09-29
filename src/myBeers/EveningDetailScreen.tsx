@@ -31,7 +31,7 @@ import {
 } from '@/data/drinksQueue';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { buildHistoricalDrinkEntry } from '@/data/drinksHistorySync';
-import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { enqueueDelete, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import {
@@ -220,13 +220,13 @@ export default function EveningDetailScreen() {
             }
             void removeQueuedDrinkUpdate(removed.drinkId);
             void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
-              // Already delivered (or its POST is in flight): wait for the active
-              // flush to settle before the DELETE so it can't race ahead of an
-              // in-flight POST and recreate the drink after we deleted it.
+              // Persist a DELETE before waiting for an in-flight POST. The
+              // server's removal tombstone also protects a restart in between.
               if (!pulledFromQueue) {
                 useAccountStore.getState().forgetDiaryDrink(removed.drinkId);
-                void flushDrinksQueue()
-                  .then(() => enqueueDelete(removed.drinkId))
+                void enqueueDelete(removed.drinkId, { deliver: false })
+                  .then(() => flushDrinksQueue())
+                  .then(() => flushDeleteDrinksQueue())
                   .catch(() => undefined);
               }
             });

@@ -63,7 +63,7 @@ import { buildDrinkEntry } from '@/data/drinksClient';
 import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
-import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { enqueueDelete, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { loadPartyFriends, shareFriendPubActivity, type PartyFriends } from '@/data/friendsClient';
 import { dropQueuedTourPings, enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
@@ -988,8 +988,11 @@ function Tacek({
         });
         if (!pulledFromQueue) {
           useAccountStore.getState().forgetDiaryDrink(targetId);
-          void flushDrinksQueue()
-            .then(() => enqueueDelete(targetId))
+          // Persist the removal before waiting for any older POST to finish.
+          // A restart during that wait must still have a queued DELETE to send.
+          void enqueueDelete(targetId, { deliver: false })
+            .then(() => flushDrinksQueue())
+            .then(() => flushDeleteDrinksQueue())
             .catch(() => undefined);
         }
       });

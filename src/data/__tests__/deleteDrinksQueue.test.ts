@@ -53,9 +53,19 @@ beforeEach(async () => {
 });
 
 describe('enqueueDelete', () => {
+  it('can persist a deletion before an older drink POST finishes', async () => {
+    await enqueueDelete('a', { deliver: false });
+    expect(await readQueue()).toEqual(['a']);
+    expect(deleteDrink).not.toHaveBeenCalled();
+
+    await flushDeleteDrinksQueue();
+    expect(deleteDrink).toHaveBeenCalledWith('a', expect.any(AbortSignal));
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('sends the deletion and drops it from the queue on success', async () => {
     await enqueueDelete('a');
-    expect(deleteDrink).toHaveBeenCalledWith('a');
+    expect(deleteDrink).toHaveBeenCalledWith('a', expect.any(AbortSignal));
     expect(await readQueue()).toEqual([]);
   });
 
