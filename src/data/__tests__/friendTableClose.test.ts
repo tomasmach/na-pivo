@@ -76,4 +76,25 @@ describe('closeFriendTable', () => {
 
     expect(methods(fetchMock)).toEqual(['DELETE']);
   });
+
+  it('hides an aborted opt-in again after its POST settles, even without an answer', async () => {
+    const ok = { ok: true, status: 200, text: async () => '{}' };
+    let lose: (error: Error) => void = () => {};
+    const fetchMock = jest
+      .fn()
+      .mockReturnValueOnce(new Promise((_resolve, reject) => (lose = reject)))
+      .mockResolvedValue(ok);
+    global.fetch = fetchMock;
+    const controller = new AbortController();
+
+    const opened = openFriendTable(controller.signal);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(methods(fetchMock)).toEqual(['POST']);
+    controller.abort();
+    lose(new TypeError('Network request failed'));
+    expect(await opened).toBeNull();
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(methods(fetchMock)).toEqual(['POST', 'DELETE']);
+  });
 });

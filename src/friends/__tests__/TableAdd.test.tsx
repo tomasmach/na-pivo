@@ -127,22 +127,16 @@ describe('TableAdd', () => {
     expect(closeFriendTable).toHaveBeenCalledTimes(1);
   });
 
-  it('hides me again when the opt-in lands after the sheet closed', async () => {
-    let land: (value: FriendTable) => void = () => {};
-    jest.mocked(openFriendTable).mockReturnValue(
-      new Promise<FriendTable>((resolve) => {
-        land = resolve;
-      }),
-    );
+  it('aborts an opt-in still in flight when the sheet closes', async () => {
+    jest.mocked(openFriendTable).mockReturnValue(new Promise<FriendTable>(() => {}));
     const { screen } = setup(true);
+    const signal = jest.mocked(openFriendTable).mock.calls[0][0] as AbortSignal;
     screen.unmount();
+    expect(signal.aborted).toBe(false);
     jest.runOnlyPendingTimers();
+
+    expect(signal.aborted).toBe(true);
     expect(closeFriendTable).toHaveBeenCalledTimes(1);
-
-    land(visible([]));
-    await flush();
-
-    expect(closeFriendTable).toHaveBeenCalledTimes(2);
   });
 
   it('polls every 5 s only in the foreground and says so when the window ends', async () => {

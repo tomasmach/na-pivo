@@ -976,16 +976,23 @@ export async function fetchFriendTable(signal?: AbortSignal): Promise<FriendTabl
 let friendTableOpenings = 0;
 const CLOSE_TABLE_RETRY_MS = [2_000, 10_000, 30_000];
 
-/** Show me to people in the same pub for a few minutes; the server decides if I qualify. */
+/**
+ * Show me to people in the same pub for a few minutes; the server decides if I qualify.
+ * Aborting means the screen closed: the POST may still land after its hide, so
+ * this opt-in is hidden again once it settles, whatever the answer was.
+ */
 export async function openFriendTable(signal?: AbortSignal): Promise<FriendTable | null> {
-  friendTableOpenings += 1;
+  const opening = ++friendTableOpenings;
   const res = await requestJson('/v1/friends/table', { method: 'POST', signal });
+  if (signal?.aborted) {
+    void closeFriendTable(opening);
+    return null;
+  }
   return res.ok ? parseFriendTable(res.data) : null;
 }
 
 /** Hide me again. A lost request is repeated; the server ends the window after 10 min anyway. */
-export async function closeFriendTable(): Promise<void> {
-  const opening = friendTableOpenings;
+export async function closeFriendTable(opening = friendTableOpenings): Promise<void> {
   const token = await getSessionToken();
   if (!token) return;
   for (const delay of [0, ...CLOSE_TABLE_RETRY_MS]) {

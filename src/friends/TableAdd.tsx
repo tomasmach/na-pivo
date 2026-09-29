@@ -81,6 +81,7 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableA
   const mountedRef = useRef(true);
   const openingRef = useRef(false);
   const shownRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const activeRef = useRef(false);
 
   const apply = useCallback((next: FriendTable | null, reportOffline: boolean) => {
@@ -105,14 +106,12 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableA
     shownRef.current = true;
     setOpening(true);
     setNotice(null);
-    const next = await openFriendTable();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    // Closing the sheet aborts this; the client then hides the opt-in again.
+    const next = await openFriendTable(controller.signal);
     openingRef.current = false;
-    if (!mountedRef.current) {
-      // The sheet closed while the opt-in was in flight. Its DELETE may have
-      // reached the server first, so hide me again once the opt-in has landed.
-      if (next?.visibleUntil) void closeFriendTable();
-      return;
-    }
+    if (!mountedRef.current) return;
     setOpening(false);
     apply(next, true);
   }, [apply]);
@@ -142,6 +141,7 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableA
       // Closing the sheet hides me at once instead of after the full window.
       closeTimerRef.current = setTimeout(() => {
         closeTimerRef.current = null;
+        abortRef.current?.abort();
         if (shownRef.current) void closeFriendTable();
       }, 0);
     };
