@@ -83,15 +83,25 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableA
   const shownRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const activeRef = useRef(false);
+  /** End of my window from the server's last answer. */
+  const untilRef = useRef<string | null>(null);
 
   const apply = useCallback((next: FriendTable | null, reportOffline: boolean) => {
     if (!mountedRef.current) return;
     if (next === null) {
-      // A failed poll keeps the last list and the next tick tries again.
-      if (reportOffline) setNotice(t.friends.tableOffline);
+      // A failed poll keeps the last list and the next tick tries again, but
+      // only while my window lasts; after that the list would claim too much.
+      const expired = untilRef.current !== null && Date.parse(untilRef.current) <= Date.now();
+      if (expired) {
+        activeRef.current = false;
+        untilRef.current = null;
+        setTable((current) => current && { ...current, visibleUntil: null, people: [] });
+      }
+      if (reportOffline || expired) setNotice(t.friends.tableOffline);
       return;
     }
     setAnsweredAt(Date.now());
+    untilRef.current = next.visibleUntil;
     const active = next.eligible && next.visibleUntil !== null;
     if (active) shownRef.current = true;
     // The server ended my window: say so instead of silently resetting.

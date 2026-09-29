@@ -139,6 +139,27 @@ describe('TableAdd', () => {
     expect(closeFriendTable).toHaveBeenCalledTimes(1);
   });
 
+  it('stops showing the list once my window has passed without a connection', async () => {
+    jest.mocked(openFriendTable).mockResolvedValue(visible([person('bara', 'none')]));
+    jest.mocked(fetchFriendTable).mockResolvedValue(null);
+    const { screen } = setup(true);
+    await flush();
+
+    act(() => {
+      jest.advanceTimersByTime(TABLE_POLL_MS);
+    });
+    await flush();
+    expect(screen.getByLabelText(t.friends.tableAddA11y('@bara'))).toBeTruthy();
+
+    act(() => {
+      jest.advanceTimersByTime(8 * 60_000);
+    });
+    await flush();
+    expect(screen.queryByLabelText(t.friends.tableAddA11y('@bara'))).toBeNull();
+    expect(screen.getByText(t.friends.tableOffline)).toBeTruthy();
+    expect(screen.getByLabelText(t.friends.tableEntry)).toBeTruthy();
+  });
+
   it('polls every 5 s only in the foreground and says so when the window ends', async () => {
     jest.mocked(openFriendTable).mockResolvedValue(visible([person('bara', 'none')]));
     jest.mocked(fetchFriendTable).mockResolvedValue(visible([person('bara', 'none')]));
