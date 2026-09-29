@@ -1,31 +1,49 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
-import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
 import { haversineMeters } from '@/compass/distance';
 import { checkLocationPermission } from '@/compass/permissions';
-import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import { openPubPage } from '@/pubPage/openPubPage';
 import { pubPageRef, usePubPageStore } from '@/stores/pubPageStore';
 import { cachedTourPubs, filterTourPubs, searchTourPubs, type TourPubSearchResult } from '@/data/tourPubSearch';
 import { t } from '@/i18n';
 import { usePubStore } from '@/stores/pubStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { fireLightImpactHaptic } from '@/utils/haptics';
+import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
-import type { TourStop } from './model';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { samePub, type TourStop } from './model';
+import { geohash8 } from '@/data/geohash';
 import { TourMap, tourRegion } from './TourMap';
+import { pubCount } from './TourChrome';
+import { pubHoursOnDay, walkingLeg } from './stopFacts';
+import { todayIn, weekday } from './when';
+
+const MAX_STOPS = 8;
+/** What makes two places the same pub, without minting a stop id for every row. */
+const pubIdentity = (pub: Pub) => ({ pubId: pub.id, cacheKey: geohash8(pub.lat, pub.lng), name: pub.name });
+/** Suggestions after the last stop stay within a walk; farther pubs still come up by search. */
+const NEAR_METERS = 3000;
 
 const NEARBY_LIMIT = 50;
 
 export interface TourPubPickerProps {
   visible: boolean;
   stops: readonly TourStop[];
-  onSelect: (pub: Pub) => void;
+  /** The meetup day decides which opening hours the rows show. */
+  scheduledDate?: string | null;
+  timezone?: string;
+  /** Adds the pub, or takes it out when it is already a stop. Resolves whether the tour changed. */
+  onToggle: (pub: Pub) => Promise<boolean>;
+  /** Replacing one stop is a single pick that closes the picker. */
+  onReplace: (pub: Pub) => void;
   onClose: () => void;
   replaceStop?: TourStop | null;
 }
@@ -34,7 +52,7 @@ export function TourPubPicker(props: TourPubPickerProps) {
   return props.visible ? <TourPubPickerContent {...props} /> : null;
 }
 
-function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPubPickerProps) {
+function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague', onToggle, onReplace, onClose, replaceStop }: TourPubPickerProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // The map no longer scrolls away, so even expanded it leaves room for the list and the button.
@@ -49,13 +67,13 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const [region, setRegion] = useState<Region>(() => tourRegion(stops));
   // Without a typed name, the pubs nearest the middle of the map come first and follow it as you pan.
   const browsing = query.trim().length < 2;
+  const allowed = useMemo(() => filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys }), [pubs, reportedCacheKeys, reportedPubIds]);
   const visiblePubs = useMemo(() => {
-    const allowed = filterTourPubs(pubs, { reportedPubIds, reportedCacheKeys });
     if (!browsing) return allowed;
     const center = { lat: region.latitude, lng: region.longitude };
     return allowed.map((pub) => ({ pub, meters: haversineMeters(center, pub) }))
       .sort((a, b) => a.meters - b.meters).slice(0, NEARBY_LIMIT).map(({ pub }) => pub);
-  }, [browsing, pubs, region.latitude, region.longitude, reportedCacheKeys, reportedPubIds]);
+  }, [allowed, browsing, region.latitude, region.longitude]);
   const list = useRef<ScrollView>(null);
   // A moved map reorders the list, so show its new nearest pubs from the top.
   useEffect(() => {
@@ -67,7 +85,19 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
   const pagePub = usePubPageStore((state) => (visiblePreview ? state.pubs[pubPageRef(visiblePreview)] : undefined));
   const preview = useMemo(() => (visiblePreview && pagePub && pagePub.id === visiblePreview.id && pagePub.name !== visiblePreview.name
     ? { ...visiblePreview, name: pagePub.name } : visiblePreview), [pagePub, visiblePreview]);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardVisible = keyboardHeight > 0;
+  // An area search is about that area, not about the walk from the last stop.
+  const [areaSearch, setAreaSearch] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const strip = useRef<ScrollView>(null);
+  // Nearby rows reorder around each new stop; a second tap landing on the new top row must not add it by accident.
+  const settling = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chipLock = useRef(false);
+  const [anchorPubId, setAnchorPubId] = useState<string | null>(() => stops[stops.length - 1]?.pubId ?? null);
+  useEffect(() => () => { if (settling.current) clearTimeout(settling.current); }, []);
+  useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
   const [mapExpanded, setMapExpanded] = useState(false);
   const request = useRef<AbortController | null>(null);
   const requestId = useRef(0);
@@ -132,18 +162,77 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
     const id = ++requestId.current;
     setLoading(false);
     setQuery(text);
+    setAreaSearch(false);
+    if (text.trim().length < 2) setAnchorPubId(currentStops.current[currentStops.current.length - 1]?.pubId ?? null);
     if (text.trim().length < 2) {
       void cachedTourPubs(text).then((items) => { if (id === requestId.current) setPubs(items); });
     }
   }
 
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
-    return () => { show.remove(); hide.remove(); };
-  }, []);
 
-  const alreadyAdded = (pub: Pub) => stops.some((stop) => stop.id !== replaceStop?.id && (stop.pubId === pub.id || (stop.cacheKey === geohash8(pub.lat, pub.lng) && stop.name.trim().toLocaleLowerCase() === pub.name.trim().toLocaleLowerCase())));
+  const inTour = (pub: Pub) => {
+    const candidate = pubIdentity(pub);
+    return stops.findIndex((stop) => stop.id !== replaceStop?.id && samePub(stop, candidate));
+  };
+  const full = !replaceStop && stops.length >= MAX_STOPS;
+  // Without a meetup the rows show today's hours where the tour happens, like the calendar.
+  const tourToday = todayIn(timezone);
+  const day = weekday(scheduledDate ?? tourToday);
+  const today = !scheduledDate || scheduledDate === tourToday;
+  const dayLabel = today ? t.tours.today : t.tours.onDay[day];
+  // With an empty search the rows follow the newest stop, the first one included, so they reorder after each addition.
+  const nearby = !replaceStop && query.trim().length < 2 && !areaSearch;
+  // The rows stay around one stop while you pick, so a tapped pub keeps its place and number; clearing the search or reopening moves them to the newest stop.
+  const anchorStop = stops.find((stop) => stop.pubId === anchorPubId) ?? stops[stops.length - 1];
+  const last = nearby ? anchorStop : undefined;
+  // The same pub can come back from search and from the phone's cache under two ids.
+  const seenIds = new Set<string>();
+  const seenPlaces = new Set<string>();
+  // Suggestions after the last stop rank the whole known catalogue, not just what sits near the map centre.
+  const listed = (last ? allowed : visiblePubs).filter((pub) => {
+    const { cacheKey, name } = pubIdentity(pub);
+    const place = `${cacheKey}|${name.trim().toLocaleLowerCase()}`;
+    if (seenIds.has(pub.id) || seenPlaces.has(place)) return false;
+    seenIds.add(pub.id);
+    seenPlaces.add(place);
+    return true;
+  });
+  const rows = !last ? listed.map((pub) => ({ pub, minutes: null as number | null })) : listed
+    .map((pub) => ({ pub, leg: walkingLeg(last, { lat: pub.lat, lon: pub.lng }) }))
+    .filter(({ leg }) => leg.meters <= NEAR_METERS)
+    .sort((a, b) => a.leg.meters - b.leg.meters)
+    .slice(0, 30)
+    // Picked pubs stay in place with their number; minutes are only for the ones still to choose.
+    .map(({ pub, leg }) => ({ pub, minutes: inTour(pub) < 0 ? leg.minutes : null }));
+
+  // Suggestions start at the newest stop, so the map goes there too; opening keeps the whole tour framed.
+  const followed = useRef(last?.id);
+  useEffect(() => {
+    if (!last || followed.current === last.id) return;
+    followed.current = last.id;
+    const delta = Math.min(viewport.current.latitudeDelta, 0.025);
+    moveMap({ latitude: last.lat, longitude: last.lon, latitudeDelta: delta, longitudeDelta: delta });
+  }, [last, moveMap]);
+  function flash(text: string) {
+    setNotice(text);
+    AccessibilityInfo.announceForAccessibility(text);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 3000);
+  }
+  async function toggle(pub: Pub, fromRow = false): Promise<boolean> {
+    if (replaceStop) { onReplace(pub); return true; }
+    const index = inTour(pub);
+    if (fromRow && nearby && settling.current) return false;
+    if (index < 0 && full) { flash(t.tours.pickerFull); return false; }
+    if (!(await onToggle(pub))) return false;
+    // Only the first pick, or taking out the anchor itself, reorders the rows; guard the next tap then.
+    const reorders = nearby && (index < 0 ? !anchorStop : stops[index]?.id === anchorStop?.id);
+    if (nearby && index < 0) setAnchorPubId(anchorStop?.pubId ?? pub.id);
+    if (reorders) settling.current = setTimeout(() => { settling.current = null; }, 600);
+    if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
+    AccessibilityInfo.announceForAccessibility(index < 0 ? t.tours.pubAdded(stops.length + 1) : t.tours.pubRemoved);
+    return true;
+  }
   const choosePreview = (pub: Pub) => {
     Keyboard.dismiss();
     if (!preview) beforePreview.current = viewport.current;
@@ -166,12 +255,23 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
     const stop = stops.find((item) => item.id === id);
     if (stop) choosePreview({ id: stop.pubId, name: stop.name, lat: stop.lat, lng: stop.lon, address: stop.address });
   };
-  const map = <TourMap stops={stops} selectedId={stops.find((stop) => stop.pubId === preview?.id)?.id ?? null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? expandedMapHeight : 215} region={region} onRegionChange={moveMap} candidates={visiblePubs.filter((pub) => !alreadyAdded(pub)).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />;
+  function hoursText(pub: Pub) {
+    const intervals = pubHoursOnDay(pub, day);
+    return intervals ? intervals.length ? `${dayLabel} ${intervals.join(', ')}` : t.tours.closedOn(dayLabel) : null;
+  }
+  const previewIndex = preview ? inTour(preview) : -1;
+  const map = <View>
+    <TourMap caption={false} stops={stops} selectedId={previewIndex >= 0 ? stops[previewIndex].id : null} selectedCandidateId={preview?.id} onSelect={stopPreview} height={mapExpanded ? expandedMapHeight : 215} region={region} onRegionChange={moveMap} candidates={rows.map(({ pub }) => pub).filter((pub) => inTour(pub) < 0).slice(0, 40)} onCandidate={choosePreview} onExpand={() => setMapExpanded((value) => !value)} />
+    {!preview && <Pressable accessibilityRole="button" style={({ pressed }) => [styles.areaButton, pressed && styles.pressed]} onPress={() => { setQuery(''); setAreaSearch(true); void search('', true); }}>
+      <SearchIcon size={15} color={Colors.foam} /><Text maxFontSizeMultiplier={1.2} style={styles.areaText}>{t.tours.searchArea}</Text>
+    </Pressable>}
+  </View>;
+  const hint = notice ?? (replaceStop ? null : stops.length === 0 ? t.tours.needTwo : stops.length === 1 ? t.tours.needOne : null);
 
-  return <View accessibilityViewIsModal style={[styles.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+  return <View accessibilityViewIsModal style={[styles.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: keyboardVisible ? keyboardHeight : insets.bottom }]}>
       <View style={styles.header}>
         <Pressable accessibilityRole="button" accessibilityLabel={preview ? t.tours.backToSearch : t.tours.close} style={styles.iconButton} onPress={() => preview ? backToSearch() : onClose()}><ChevronLeftIcon size={24} color={Colors.foam} /></Pressable>
-        <Text maxFontSizeMultiplier={1.3} style={styles.headerTitle}>{replaceStop ? t.tours.replaceStop : t.tours.addStop}</Text>
+        <Text maxFontSizeMultiplier={1.3} style={styles.headerTitle}>{replaceStop ? t.tours.replaceStop : t.tours.addPubs}</Text>
         <View style={styles.iconButton} />
       </View>
       {!preview && <View style={styles.searchField}>
@@ -180,28 +280,70 @@ function TourPubPickerContent({ stops, onSelect, onClose, replaceStop }: TourPub
         {!!query && <Pressable accessibilityRole="button" accessibilityLabel={t.tours.clearSearch} style={styles.clear} onPress={() => changeQuery('')}><XIcon size={18} color={Colors.foamMuted} /></Pressable>}
       </View>}
       {!keyboardVisible && map}
-      <ScrollView ref={list} style={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
+      <ScrollView ref={list} style={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         {preview ? <View style={styles.preview}>
           <Text maxFontSizeMultiplier={1.3} style={styles.pubTitle}>{preview.name}</Text>
           {!!(preview.address || preview.city) && <Text maxFontSizeMultiplier={1.3} style={styles.address}>{[preview.address, preview.city].filter(Boolean).join(', ')}</Text>}
-          <View style={styles.hours}><Text maxFontSizeMultiplier={1.3} style={styles.meta}>{preview.openingHours || t.tours.openingHoursUnknown}</Text></View>
+          <View style={styles.hours}><Text maxFontSizeMultiplier={1.3} style={styles.meta}>{hoursText(preview) ?? t.tours.openingHoursUnknown}</Text></View>
           <Pressable accessibilityRole="button" style={styles.detailRow} onPress={() => openPubPage(router, preview)}><Text maxFontSizeMultiplier={1.3} style={styles.actionText}>{t.tours.fullPubDetail}</Text><ChevronRightIcon size={18} color={Colors.amber} /></Pressable>
         </View> : <View style={styles.list}>
           {loading && <ActivityIndicator accessibilityLabel={t.tours.search} color={Colors.amber} style={styles.loading} />}
           {status === 'cached' && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchOffline}</Text>}
           {status === 'error' && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchError}</Text>}
-          {!loading && !visiblePubs.length && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchEmpty}</Text>}
-          {visiblePubs.map((pub) => <Pressable key={pub.id} accessibilityRole="button" accessibilityLabel={pub.name} style={styles.pubRow} onPress={() => choosePreview(pub)}>
-            <View style={styles.rowBody}><Text maxFontSizeMultiplier={1.3} style={styles.pubName}>{pub.name}</Text><Text maxFontSizeMultiplier={1.3} style={styles.meta}>{alreadyAdded(pub) ? t.tours.inTour : [pub.address, pub.city].filter(Boolean).join(', ')}</Text></View>
-            <ChevronRightIcon size={19} color={Colors.foamMuted} />
-          </Pressable>)}
+          {!!last && rows.length > 0 && <Text maxFontSizeMultiplier={1.3} style={styles.sectionLabel}>{t.tours.nearStop(stops.indexOf(last) + 1)}</Text>}
+          {!loading && !rows.length && <Text maxFontSizeMultiplier={1.3} style={styles.notice}>{t.tours.searchEmpty}</Text>}
+          {rows.map(({ pub, minutes }) => {
+            const index = inTour(pub);
+            const added = index >= 0 && !replaceStop;
+            const blocked = !added && full;
+            const meta = [minutes ? t.tours.walkMinutes(minutes) : null, hoursText(pub), minutes ? null : replaceStop && index >= 0 ? t.tours.inTour : [pub.address, pub.city].filter(Boolean).join(', ')].filter(Boolean).join(' · ');
+            return <View key={pub.id} style={[styles.pubRow, blocked && styles.blocked]}>
+              <Pressable accessibilityRole="button" accessibilityState={{ selected: added, disabled: replaceStop ? index >= 0 : false }} disabled={!!replaceStop && index >= 0}
+                accessibilityLabel={replaceStop ? pub.name : added ? t.tours.removePubA11y(pub.name, index + 1) : t.tours.addPubA11y(pub.name)}
+                style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]} onPress={() => { void toggle(pub, true); }}>
+                {!replaceStop && <View style={[styles.mark, added && styles.markAdded]}>
+                  {added ? <Text allowFontScaling={false} style={styles.markNumber}>{index + 1}</Text> : <PlusIcon size={16} color={Colors.amber} />}
+                </View>}
+                <View style={styles.rowBody}><Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={styles.pubName}>{pub.name}</Text>{!!meta && <Text maxFontSizeMultiplier={1.3} numberOfLines={2} style={styles.meta}>{meta}</Text>}</View>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={t.tours.pubDetailA11y(pub.name)} style={({ pressed }) => [styles.more, pressed && styles.pressed]} onPress={() => choosePreview(pub)}>
+                <ChevronRightIcon size={19} color={Colors.foamMuted} />
+              </Pressable>
+            </View>;
+          })}
         </View>}
       </ScrollView>
-      {!keyboardVisible && <View style={styles.footer}>
-        {preview ? <>
-          <Pressable accessibilityRole="button" accessibilityState={{ disabled: alreadyAdded(preview) }} disabled={alreadyAdded(preview)} style={[styles.primary, alreadyAdded(preview) && styles.disabled]} onPress={() => onSelect(preview)}><Text maxFontSizeMultiplier={1.3} style={styles.primaryText}>{alreadyAdded(preview) ? t.tours.inTour : replaceStop ? t.tours.replaceWithPub : t.tours.addThisPub}</Text></Pressable>
-          <Pressable accessibilityRole="button" style={styles.back} onPress={backToSearch}><Text maxFontSizeMultiplier={1.3} style={styles.backText}>{t.tours.backToSearch}</Text></Pressable>
-        </> : <Pressable accessibilityRole="button" style={styles.secondary} onPress={() => { setQuery(''); void search('', true); }}><Text maxFontSizeMultiplier={1.3} style={styles.secondaryText}>{t.tours.searchArea}</Text></Pressable>}
+      {(!!preview || !replaceStop) && <View style={styles.footer}>
+        {preview ? replaceStop
+          ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: previewIndex >= 0 }} disabled={previewIndex >= 0} style={({ pressed }) => [styles.primary, (pressed || previewIndex >= 0) && styles.disabled]} onPress={() => onReplace(preview)}><Text maxFontSizeMultiplier={1.3} style={styles.primaryText}>{previewIndex >= 0 ? t.tours.inTour : t.tours.replaceWithPub}</Text></Pressable>
+          : <Pressable accessibilityRole="button" accessibilityState={{ disabled: previewIndex < 0 && full }} disabled={previewIndex < 0 && full}
+            style={({ pressed }) => [previewIndex >= 0 ? styles.secondary : styles.primary, (pressed || (previewIndex < 0 && full)) && styles.disabled]}
+            onPress={() => { void toggle(preview).then((ok) => { if (ok) backToSearch(); }); }}>
+            <Text maxFontSizeMultiplier={1.3} style={previewIndex >= 0 ? styles.secondaryText : styles.primaryText}>{previewIndex >= 0 ? t.tours.removeFromTour : full ? t.tours.pickerFull : t.tours.addAsStop(stops.length + 1)}</Text>
+          </Pressable>
+        : <>
+          {!replaceStop && !keyboardVisible && stops.length > 0 && <ScrollView ref={strip} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.stripFrame} contentContainerStyle={styles.strip}
+            onContentSizeChange={() => strip.current?.scrollToEnd({ animated: true })}>
+            {stops.map((stop, index) => <View key={stop.id} style={styles.chip}>
+              <View style={styles.chipNumber}><Text allowFontScaling={false} style={styles.chipNumberText}>{index + 1}</Text></View>
+              <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.chipText}>{stop.name}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={t.tours.removeChipA11y(stop.name)} hitSlop={8} style={styles.chipRemove}
+                onPress={() => {
+                  // The strip reflows after a removal, so a second tap would land on the next chip's cross.
+                  if (chipLock.current) return;
+                  chipLock.current = true;
+                  void toggle({ id: stop.pubId, name: stop.name, lat: stop.lat, lng: stop.lon, address: stop.address }).finally(() => setTimeout(() => { chipLock.current = false; }, 400));
+                }}>
+                <XIcon size={14} color={Colors.foamMuted} />
+              </Pressable>
+            </View>)}
+          </ScrollView>}
+          {!!hint && <Text maxFontSizeMultiplier={1.3} style={styles.hint} accessibilityLiveRegion="polite">{hint}</Text>}
+          {!replaceStop && <Pressable testID="tour-picker-done" accessibilityRole="button" style={({ pressed }) => [stops.length ? styles.primary : styles.secondary, pressed && styles.disabled]} onPress={onClose}>
+            <Text maxFontSizeMultiplier={1.3} style={stops.length ? styles.primaryText : styles.secondaryText}>{stops.length ? t.tours.pickerDone(pubCount(stops.length)) : t.tours.whenDone}</Text>
+          </Pressable>}
+        </>}
+        {preview && <Pressable accessibilityRole="button" style={styles.back} onPress={backToSearch}><Text maxFontSizeMultiplier={1.3} style={styles.backText}>{t.tours.backToSearch}</Text></Pressable>}
       </View>}
   </View>;
 }
@@ -218,9 +360,27 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg },
   loading: { marginVertical: Spacing.md },
   notice: { fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 21, color: Colors.foamMuted, paddingVertical: Spacing.lg },
-  pubRow: { flexDirection: 'row', alignItems: 'center', minHeight: 78, paddingVertical: Spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: withAlpha(Colors.foam, 0.14) },
-  rowBody: { flex: 1, paddingRight: Spacing.sm },
-  pubName: { fontFamily: Fonts.ui.semibold, fontSize: 16, color: Colors.foam, marginBottom: 5 },
+  pubRow: { flexDirection: 'row', alignItems: 'center', minHeight: 72, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: withAlpha(Colors.foam, 0.14) },
+  blocked: { opacity: 0.45 },
+  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.md, minHeight: 72 },
+  rowBody: { flex: 1, minWidth: 0 },
+  mark: { width: 30, height: 30, borderRadius: Radius.pill, borderWidth: 1.5, borderColor: withAlpha(Colors.amber, 0.6), alignItems: 'center', justifyContent: 'center' },
+  markAdded: { backgroundColor: Colors.amber, borderColor: Colors.amber },
+  markNumber: { fontWeight: '700', fontSize: 15, lineHeight: 20, color: Colors.stout, fontVariant: ['tabular-nums'], includeFontPadding: false },
+  more: { width: HitArea.min, alignSelf: 'stretch', alignItems: 'flex-end', justifyContent: 'center' },
+  pressed: { opacity: 0.6 },
+  sectionLabel: { fontFamily: Fonts.ui.semibold, fontSize: 13, lineHeight: 20, color: Colors.mutedText, paddingTop: Spacing.lg, paddingBottom: Spacing.xs },
+  areaButton: { position: 'absolute', top: Spacing.md, left: Spacing.lg, minHeight: HitArea.min, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs + 2, paddingHorizontal: Spacing.md, borderRadius: Radius.pill, backgroundColor: Colors.stout },
+  areaText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
+  stripFrame: { marginHorizontal: -Spacing.lg },
+  strip: { gap: Spacing.sm, paddingBottom: Spacing.sm, paddingHorizontal: Spacing.lg },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, height: 36, paddingLeft: 5, paddingRight: Spacing.xs, borderRadius: Radius.pill, backgroundColor: Colors.stout3 },
+  chipNumber: { width: 26, height: 26, borderRadius: Radius.pill, backgroundColor: Colors.amber, alignItems: 'center', justifyContent: 'center' },
+  chipNumberText: { fontWeight: '700', fontSize: 13, lineHeight: 16, color: Colors.stout, fontVariant: ['tabular-nums'], includeFontPadding: false },
+  chipText: { maxWidth: 150, fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
+  chipRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  hint: { fontFamily: Fonts.ui.medium, fontSize: 13, lineHeight: 19, color: Colors.foamMuted, textAlign: 'center', paddingBottom: Spacing.sm },
+  pubName: { fontFamily: Fonts.ui.semibold, fontSize: 16, color: Colors.foam, marginBottom: 3 },
   meta: { fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 20, color: Colors.foamMuted },
   preview: { padding: Spacing.lg },
   pubTitle: { fontFamily: Fonts.display.extrabold, fontSize: 28, lineHeight: 34, color: Colors.foam },
