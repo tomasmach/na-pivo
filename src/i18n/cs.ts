@@ -3690,6 +3690,21 @@ export const cs = {
     socialFailed: 'Přihlášení přes poskytovatele se nezdařilo. Zkus to prosím znovu.',
     signInFailed: 'Přihlášení se nezdařilo.',
   },
+  tourReminders: {
+    channel: 'Srazy tour',
+    title: (tour: string) => `Dneska ${tour}`,
+    /** Czech says „ve“ before hours that start with a consonant cluster: ve dvě, ve čtrnáct, ve dvacet. */
+    at: (time: string) => `${[2, 3, 4, 12, 13, 14, 20, 21, 22, 23].includes(Number(time.slice(0, 2))) ? 've' : 'v'} ${time}`,
+    bodyAt: (at: string, pub: string) => `Sraz ${at} · ${pub}`,
+    bodyToday: (pub: string) => `Sraz dneska · ${pub}`,
+    today: 'dneska',
+    onDay: ['v pondělí', 'v úterý', 've středu', 've čtvrtek', 'v pátek', 'v sobotu', 'v neděli'],
+    ask: (when: string, at: string) => `Mám ti ${when} ${at} připomenout sraz?`,
+    askAccept: 'Připomenout',
+    askDismiss: 'Teď ne',
+    settingsTitle: 'Připomínky tour',
+    settingsSubtitle: 'V den tour ti připomenu, kdy a kde je sraz.',
+  },
 } as const;
 
 /**
