@@ -735,14 +735,14 @@ function extractError(data: unknown, status: number): FriendActionError {
 
 async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: { method?: string; body?: unknown; signal?: AbortSignal; session?: AccountSession } = {},
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: FriendActionError }> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'offline', detail: t.clientErrors.offline } };
   }
 
-  const session = await ensureAccount(options.signal);
+  const session = options.session ?? (await ensureAccount(options.signal));
   if (!session || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'account', detail: t.clientErrors.account } };
   }
@@ -978,13 +978,14 @@ const CLOSE_TABLE_RETRY_MS = [2_000, 10_000, 30_000];
 
 /**
  * Show me to people in the same pub for a few minutes; the server decides if I qualify.
- * Aborting means the screen closed: the POST may still land after its hide, so
- * this opt-in is hidden again once it settles, whatever the answer was.
+ * `closed` fires when the screen closes. The POST is not cancelled, because the
+ * server could still apply it after the screen's hide; instead this opt-in is
+ * hidden again once its request has finished, whatever the answer was.
  */
-export async function openFriendTable(signal?: AbortSignal): Promise<FriendTable | null> {
+export async function openFriendTable(closed?: AbortSignal): Promise<FriendTable | null> {
   const opening = ++friendTableOpenings;
-  const res = await requestJson('/v1/friends/table', { method: 'POST', signal });
-  if (signal?.aborted) {
+  const res = await requestJson('/v1/friends/table', { method: 'POST' });
+  if (closed?.aborted) {
     void closeFriendTable(opening);
     return null;
   }
@@ -995,11 +996,14 @@ export async function openFriendTable(signal?: AbortSignal): Promise<FriendTable
 export async function closeFriendTable(opening = friendTableOpenings): Promise<void> {
   const token = await getSessionToken();
   if (!token) return;
+  const session = await ensureAccount();
+  if (session?.token !== token) return;
   for (const delay of [0, ...CLOSE_TABLE_RETRY_MS]) {
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
     // A newer opt-in, or another account signed in meanwhile: not mine to hide.
     if (opening !== friendTableOpenings || (await getSessionToken()) !== token) return;
-    const res = await requestJson('/v1/friends/table', { method: 'DELETE' });
+    // Sent with the captured session, so it can only ever hide that account.
+    const res = await requestJson('/v1/friends/table', { method: 'DELETE', session });
     if (res.ok || !/^(network|http_429|http_5\d\d)$/.test(res.result.code)) return;
   }
 }

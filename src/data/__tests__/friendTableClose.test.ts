@@ -77,21 +77,44 @@ describe('closeFriendTable', () => {
     expect(methods(fetchMock)).toEqual(['DELETE']);
   });
 
-  it('hides an aborted opt-in again after its POST settles, even without an answer', async () => {
-    const ok = { ok: true, status: 200, text: async () => '{}' };
-    let lose: (error: Error) => void = () => {};
+  it('sends every retry with the session it started with', async () => {
     const fetchMock = jest
       .fn()
-      .mockReturnValueOnce(new Promise((_resolve, reject) => (lose = reject)))
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValue({ ok: true, status: 200, text: async () => '{}' });
+    global.fetch = fetchMock;
+
+    const done = closeFriendTable();
+    await jest.advanceTimersByTimeAsync(0);
+    jest.mocked(ensureAccount).mockResolvedValue({ token: 'other' } as never);
+    await jest.advanceTimersByTimeAsync(2_000);
+    await done;
+
+    const auth = fetchMock.mock.calls.map(
+      ([, init]) => ((init as RequestInit).headers as Record<string, string>).Authorization,
+    );
+    expect(auth).toEqual(['Bearer t', 'Bearer t']);
+  });
+
+  it('hides a closed opt-in again only after its POST has finished', async () => {
+    const ok = { ok: true, status: 200, text: async () => '{}' };
+    let answer: (value: unknown) => void = () => {};
+    const fetchMock = jest
+      .fn()
+      .mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
       .mockResolvedValue(ok);
     global.fetch = fetchMock;
-    const controller = new AbortController();
+    const closed = new AbortController();
 
-    const opened = openFriendTable(controller.signal);
+    const opened = openFriendTable(closed.signal);
     await jest.advanceTimersByTimeAsync(0);
+    closed.abort();
+    await jest.advanceTimersByTimeAsync(0);
+    // The POST keeps running: a hide sent now could reach the server before it.
     expect(methods(fetchMock)).toEqual(['POST']);
-    controller.abort();
-    lose(new TypeError('Network request failed'));
+    expect((fetchMock.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(false);
+
+    answer({ ok: false, status: 502, text: async () => '' });
     expect(await opened).toBeNull();
     await jest.advanceTimersByTimeAsync(0);
 

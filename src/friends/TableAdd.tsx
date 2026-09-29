@@ -108,7 +108,7 @@ export function TableAdd({ autoStart = false, requestingKey, onRequest }: TableA
     setNotice(null);
     const controller = new AbortController();
     abortRef.current = controller;
-    // Closing the sheet aborts this; the client then hides the opt-in again.
+    // Closing the sheet fires this; the client then hides the opt-in again.
     const next = await openFriendTable(controller.signal);
     openingRef.current = false;
     if (!mountedRef.current) return;
