@@ -165,6 +165,17 @@ describe('scheduled reminders follow the plans', () => {
     expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(calls);
   });
 
+  it('keeps the old reminder when its replacement cannot be scheduled', async () => {
+    const id = await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
+    const schedule = mockScheduleNotificationAsync.getMockImplementation()!;
+    mockScheduleNotificationAsync.mockRejectedValue(new Error('busy'));
+    await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '20:00' }, id);
+    expect(fireDates()).toEqual(['2026-10-02T15:00:00.000Z']);
+    mockScheduleNotificationAsync.mockImplementation(schedule);
+    await reconcileTourReminders();
+    expect(fireDates()).toEqual(['2026-10-02T16:00:00.000Z']);
+  });
+
   it('keeps scheduled reminders when the tours cannot be read at start', async () => {
     const id = await savePlan({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
     const reminder = mockScheduled.get(`tour-reminder-${id}`)!;
@@ -294,5 +305,15 @@ describe('scheduled reminders follow the plans', () => {
     mockGetLastNotificationResponseAsync.mockResolvedValue(tap(2));
     await consumeInitialTourReminderTap(onTap);
     expect(onTap).toHaveBeenLastCalledWith(null);
+    // Tours the phone cannot read right now still open the tapped one, which loads again there.
+    const hydrate = store.getState().hydrate;
+    store.setState({ hydrate: async () => ({ ok: false, error: 'storage' }) });
+    try {
+      mockGetLastNotificationResponseAsync.mockResolvedValue(tap(3));
+      await consumeInitialTourReminderTap(onTap);
+    } finally {
+      store.setState({ hydrate });
+    }
+    expect(onTap).toHaveBeenLastCalledWith(id);
   });
 });

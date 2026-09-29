@@ -194,10 +194,9 @@ async function reconcileInternal(): Promise<void> {
     const reminder = wanted.get(request.identifier);
     const same = reminder && request.content.data?.fireAtMs === reminder.fireAtMs &&
       request.content.title === reminder.title && request.content.body === reminder.body;
-    if (same) {
-      wanted.delete(request.identifier);
-      continue;
-    }
+    if (same) wanted.delete(request.identifier);
+    // A changed reminder is scheduled again under the same identifier, which replaces it; cancelling first would lose it if that fails.
+    if (reminder) continue;
     await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined);
   }
   if (wanted.size) await setAndroidChannel();
@@ -299,12 +298,16 @@ function claimTap(response: ExpoNotifications.NotificationResponse): boolean {
 /** The tapped plan, or null when it is gone from this phone. */
 async function tappedPlan(response: ExpoNotifications.NotificationResponse): Promise<string | null> {
   const planId = response.notification.request.content.data?.planId;
+  if (typeof planId !== 'string') return null;
+  let loaded = false;
   try {
-    await useToursStore.getState().hydrate();
+    loaded = (await useToursStore.getState().hydrate()).ok;
   } catch {
-    return null;
+    // Handled below like any other failed load.
   }
-  return typeof planId === 'string' && useToursStore.getState().plans.some((plan) => plan.id === planId) ? planId : null;
+  // Tours the phone cannot read right now are not deleted: open the tour, whose screen loads it again and says what failed.
+  if (!loaded) return planId;
+  return useToursStore.getState().plans.some((plan) => plan.id === planId) ? planId : null;
 }
 
 export function subscribeTourReminderTap(
