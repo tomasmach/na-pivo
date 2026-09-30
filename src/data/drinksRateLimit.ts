@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const STORAGE_KEY = 'na-pivo-drinks-retry-after';
 const FALLBACK_DELAY_MS = 60_000;
 const MAX_DELAY_MS = 24 * 60 * 60_000;
+const SESSION_RETRY_DELAYS_MS = [2_100, 5_000, 15_000];
 
 let restored = false;
 let restorePromise: Promise<void> | null = null;
@@ -79,13 +80,27 @@ function schedule(): void {
   }
   const scheduledGeneration = generation;
   const scheduledOwner = ownerAccountId;
-  retryTimer = setTimeout(() => {
-    retryTimer = null;
-    if (scheduledGeneration !== generation) return;
+  const flushWhenAvailable = (attempt: number): void => {
     // These operations share one server throttle. Run them in sequence so a
     // new 429 can pause the remaining queues before they make another request.
     void (async () => {
-      if (await currentAccountId() !== scheduledOwner) return;
+      const accountId = await currentAccountId();
+      if (scheduledGeneration !== generation || scheduledOwner !== ownerAccountId) return;
+      if (accountId === undefined) {
+        if (retryAt > Date.now()) {
+          schedule();
+          return;
+        }
+        const nextDelay = SESSION_RETRY_DELAYS_MS[attempt];
+        if (nextDelay !== undefined) {
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            flushWhenAvailable(attempt + 1);
+          }, nextDelay);
+        }
+        return;
+      }
+      if (accountId !== scheduledOwner) return;
       for (const flush of flushes) {
         if (scheduledGeneration !== generation) break;
         if (await shouldPauseDrinkSync()) break;
@@ -93,6 +108,10 @@ function schedule(): void {
         await flush();
       }
     })();
+  };
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    flushWhenAvailable(0);
   }, delay);
 }
 

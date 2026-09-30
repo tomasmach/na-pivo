@@ -116,6 +116,68 @@ it('holds every drink operation after 429, restores its cooldown after restart, 
   expect(await restartedStorage.getItem(patchKey)).toBeNull();
 });
 
+it('retries the pending drink after a temporary secure-store failure at the deadline', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const secureStore = require('expo-secure-store') as typeof import('expo-secure-store');
+  const { flushDrinksQueue: flush } = require('../drinksQueue') as typeof import('../drinksQueue');
+  await storage.setItem('na-pivo-drinks-queue', JSON.stringify([drink]));
+  global.fetch = jest.fn().mockResolvedValueOnce(reply(429, '5')).mockResolvedValueOnce(reply(200));
+  await flush();
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+
+  jest.mocked(secureStore.getItemAsync).mockRejectedValueOnce(new Error('temporarily locked'));
+  await jest.advanceTimersByTimeAsync(5_000);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(await storage.getItem('na-pivo-drinks-queue')).not.toBeNull();
+  await jest.advanceTimersByTimeAsync(2_100);
+  expect(global.fetch).toHaveBeenCalledTimes(2);
+  expect(await storage.getItem('na-pivo-drinks-queue')).toBeNull();
+});
+
+it('stops automatic session retries after three spaced attempts while keeping the drink queued', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const secureStore = require('expo-secure-store') as typeof import('expo-secure-store');
+  const { flushDrinksQueue: flush } = require('../drinksQueue') as typeof import('../drinksQueue');
+  await storage.setItem('na-pivo-drinks-queue', JSON.stringify([drink]));
+  global.fetch = jest.fn(async () => reply(429, '5'));
+  await flush();
+  jest.mocked(secureStore.getItemAsync).mockRejectedValue(new Error('still locked'));
+
+  await jest.advanceTimersByTimeAsync(5_000 + 2_100 + 5_000 + 15_000);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(await storage.getItem('na-pivo-drinks-queue')).not.toBeNull();
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+it.each([undefined, 'b'])(
+  'cancels a transient session retry when the account boundary changes to %s',
+  async (nextAccountId) => {
+    jest.resetModules();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+    const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+    const secureStore = require('expo-secure-store') as typeof import('expo-secure-store');
+    const { flushDrinksQueue: flush } = require('../drinksQueue') as typeof import('../drinksQueue');
+    const { clearDrinkRateLimit } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+    await storage.setItem('na-pivo-drinks-queue', JSON.stringify([drink]));
+    global.fetch = jest.fn(async () => reply(429, '5'));
+    await flush();
+    jest.mocked(secureStore.getItemAsync).mockRejectedValueOnce(new Error('temporarily locked'));
+    await jest.advanceTimersByTimeAsync(5_000);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await clearDrinkRateLimit(nextAccountId);
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  },
+);
+
 it.each([
   'broken',
   '99999999999999999999',
