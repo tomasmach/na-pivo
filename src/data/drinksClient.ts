@@ -171,7 +171,7 @@ export async function fetchDrinks(signal?: AbortSignal): Promise<WireDrink[] | n
       });
       return null;
     }
-    if (resp.status === 429) await noteDrinkThrottled(resp, rateLimitGeneration);
+    if (resp.status === 429) await noteDrinkThrottled(resp, rateLimitGeneration, session.accountId);
     if (!resp.ok) return null;
 
     const data = (await resp.json()) as { drinks?: unknown };
@@ -340,7 +340,7 @@ export async function submitDrink(
       }
       return 'ok';
     }
-    if (resp.status === 429) await noteDrinkThrottled(resp, rateLimitGeneration);
+    if (resp.status === 429) await noteDrinkThrottled(resp, rateLimitGeneration, session.accountId);
     const rejection =
       resp.status === 400 || resp.status === 422 ? await readRejection(resp) : null;
     if (resp.status === 422 && rejection?.limited) {
@@ -430,7 +430,7 @@ export async function deleteDrink(
     });
 
     if (resp.ok) return 'ok';
-    if (resp.status === 429) await noteDrinkThrottled(resp, rateLimitGeneration);
+    if (resp.status === 429) await noteDrinkThrottled(resp, rateLimitGeneration, session.accountId);
     const result = await classifyQueueHttpFailure(resp.status, session, {
       source: 'drink_delete',
       endpoint: '/v1/drinks/:client_id',
@@ -510,7 +510,7 @@ export async function updateDrink(
       trackDrinkSynced('update_drink');
       return 'ok';
     }
-    if (resp.status === 429) await noteDrinkThrottled(resp, rateLimitGeneration);
+    if (resp.status === 429) await noteDrinkThrottled(resp, rateLimitGeneration, session.accountId);
     const result = await classifyQueueHttpFailure(resp.status, session, {
       source: 'drink_update',
       endpoint: '/v1/drinks/:client_id',

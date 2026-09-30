@@ -11,25 +11,63 @@ let retryAt = 0;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let generation = 0;
 let storageWrite: Promise<void> = Promise.resolve();
+let ownerAccountId: string | null = null;
+let readAccountId: (() => Promise<string | null | undefined>) | null = null;
 const flushes = new Set<() => Promise<void>>();
 
-async function restore(): Promise<void> {
+/** Reads the secure cache only; undefined means it is temporarily unavailable. */
+export function registerDrinkRateLimitAccountReader(reader: () => Promise<string | null | undefined>): void {
+  readAccountId = reader;
+}
+
+async function currentAccountId(): Promise<string | null | undefined> {
+  try {
+    return await readAccountId?.();
+  } catch {
+    return undefined;
+  }
+}
+
+async function restore(accountId: string): Promise<void> {
   if (restored) return;
   if (!restorePromise) {
     const expectedGeneration = generation;
     restorePromise = AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
-        if (expectedGeneration !== generation) return;
-        const saved = Number(raw);
+        if (expectedGeneration !== generation || ownerAccountId !== accountId || !raw) return;
+        let saved: unknown;
+        try { saved = JSON.parse(raw); } catch { return; }
+        if (!saved || typeof saved !== 'object') return;
+        const { accountId: savedAccountId, retryAt: savedRetryAt } = saved as Record<string, unknown>;
         const now = Date.now();
-        if (raw && Number.isFinite(saved) && saved > now && saved <= now + MAX_DELAY_MS) {
-          retryAt = Math.max(retryAt, saved);
+        if (savedAccountId === accountId && typeof savedRetryAt === 'number' &&
+          Number.isFinite(savedRetryAt) && savedRetryAt > now && savedRetryAt <= now + MAX_DELAY_MS) {
+          retryAt = Math.max(retryAt, savedRetryAt);
         }
       })
       .catch(() => undefined)
-      .then(() => { if (expectedGeneration === generation) restored = true; });
+      .then(() => { if (expectedGeneration === generation && ownerAccountId === accountId) restored = true; });
   }
   await restorePromise;
+}
+
+async function syncOwner(): Promise<string | null> {
+  const expectedGeneration = generation;
+  const accountId = await currentAccountId();
+  if (expectedGeneration !== generation) return null;
+  if (accountId === undefined) return ownerAccountId;
+  if (!accountId) return null;
+  if (ownerAccountId !== accountId) {
+    if (ownerAccountId !== null) generation += 1;
+    ownerAccountId = accountId;
+    retryAt = 0;
+    restored = false;
+    restorePromise = null;
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  await restore(accountId);
+  return accountId;
 }
 
 function schedule(): void {
@@ -40,12 +78,14 @@ function schedule(): void {
     return;
   }
   const scheduledGeneration = generation;
+  const scheduledOwner = ownerAccountId;
   retryTimer = setTimeout(() => {
     retryTimer = null;
     if (scheduledGeneration !== generation) return;
     // These operations share one server throttle. Run them in sequence so a
     // new 429 can pause the remaining queues before they make another request.
     void (async () => {
+      if (await currentAccountId() !== scheduledOwner) return;
       for (const flush of flushes) {
         if (scheduledGeneration !== generation) break;
         if (await shouldPauseDrinkSync()) break;
@@ -79,20 +119,26 @@ export function getDrinkRateLimitGeneration(): number {
 
 /** True while a 429 from any drink request bars the shared drinks endpoint. */
 export async function shouldPauseDrinkSync(): Promise<boolean> {
-  await restore();
+  if (!await syncOwner()) return false;
   if (retryAt <= Date.now()) return false;
   schedule();
   return true;
 }
 
-export async function noteDrinkThrottled(response: Response, expectedGeneration = generation): Promise<void> {
+export async function noteDrinkThrottled(
+  response: Response,
+  expectedGeneration = generation,
+  requestAccountId?: string,
+): Promise<void> {
   if (expectedGeneration !== generation) return;
-  await restore();
-  if (expectedGeneration !== generation) return;
+  const accountId = await syncOwner();
+  if (!accountId || (requestAccountId && requestAccountId !== accountId) || expectedGeneration !== generation) return;
   retryAt = Math.max(retryAt, Date.now() + retryDelay(response));
   const deadline = retryAt;
   const write = storageWrite.then(async () => {
-    if (expectedGeneration === generation) await AsyncStorage.setItem(STORAGE_KEY, String(deadline));
+    if (expectedGeneration === generation && ownerAccountId === accountId) {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ accountId, retryAt: deadline }));
+    }
   });
   storageWrite = write.catch(() => undefined);
   try {
@@ -104,8 +150,9 @@ export async function noteDrinkThrottled(response: Response, expectedGeneration 
 }
 
 /** A new account must not inherit the previous account's retry deadline. */
-export async function clearDrinkRateLimit(): Promise<void> {
+export async function clearDrinkRateLimit(nextAccountId?: string | null): Promise<void> {
   generation += 1;
+  if (nextAccountId !== undefined) ownerAccountId = nextAccountId;
   retryAt = 0;
   restored = true;
   restorePromise = null;

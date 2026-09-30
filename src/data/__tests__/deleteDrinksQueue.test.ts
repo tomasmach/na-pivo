@@ -25,6 +25,12 @@ jest.mock('../drinksClient', () => ({
   deleteDrink: jest.fn(async () => 'ok'),
 }));
 
+// Account-bound cooldown behavior is exercised by drinkRateLimitRetry.test.ts.
+jest.mock('../drinksRateLimit', () => ({
+  ...jest.requireActual('../drinksRateLimit'),
+  shouldPauseDrinkSync: jest.fn(async () => false),
+}));
+
 const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
 
 async function readQueue(): Promise<string[]> {

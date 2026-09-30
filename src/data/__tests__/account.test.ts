@@ -15,7 +15,8 @@ import {
   updateAccountPreferences,
 } from '../account';
 import { setTelemetrySession, trackApiFailure } from '../telemetryClient';
-import { noteDrinkThrottled, shouldPauseDrinkSync } from '../drinksRateLimit';
+import { getDrinkRateLimitGeneration, noteDrinkThrottled, shouldPauseDrinkSync } from '../drinksRateLimit';
+import { fetchDrinks } from '../drinksClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -718,6 +719,10 @@ it('keeps a drink cooldown for the same account but clears it when an anonymous 
 
   await setSession({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true });
   expect(await AsyncStorage.getItem('na-pivo-drinks-retry-after')).toBeNull();
+  setBackend('https://api.example.com');
+  global.fetch = mockFetchOk({ drinks: [] });
+  await expect(fetchDrinks()).resolves.toEqual([]);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
   expect(await shouldPauseDrinkSync()).toBe(false);
 });
 
@@ -730,13 +735,30 @@ it('finishes an account claim when removing the previous drink cooldown fails', 
       ? Promise.reject(new Error('storage unavailable'))
       : originalRemove(key),
   );
+  let saved: string | null = null;
   try {
     await expect(setSession({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true })).resolves.toBeUndefined();
     expect((await ensureAccount())?.accountId).toBe('signed-1');
     expect(await shouldPauseDrinkSync()).toBe(false);
+    saved = await AsyncStorage.getItem('na-pivo-drinks-retry-after');
+    expect(saved).not.toBeNull();
   } finally {
     removeSpy.mockRestore();
   }
+
+  // The secure session was already saved when cooldown removal failed.
+  jest.resetModules();
+  const restartedStorage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const restartedSecureStore = require('expo-secure-store') as typeof SecureStore & typeof secureStoreMock;
+  restartedSecureStore.__setStore({
+    [ACCOUNT_KEY]: JSON.stringify({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true }),
+  });
+  await restartedStorage.setItem('na-pivo-drinks-retry-after', saved!);
+  setBackend('https://api.example.com');
+  global.fetch = mockFetchOk({ drinks: [] });
+  const { fetchDrinks: restartedFetchDrinks } = require('../drinksClient') as typeof import('../drinksClient');
+  await expect(restartedFetchDrinks()).resolves.toEqual([]);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
 });
 
 it('finishes reverting to an anonymous account when removing the old drink cooldown fails', async () => {
@@ -764,6 +786,26 @@ describe('clearCachedAnonymousAccount', () => {
     source: 'account_preferences_fetch',
     endpoint: '/v1/account/me',
   };
+
+  it('releases the old cooldown after an automatic 401 replacement and ignores the late 429', async () => {
+    await seedAccount({ deviceId: 'dev-1', accountId: 'anon-1', token: 'old-token', authenticated: false });
+    const oldSession = await ensureAccount();
+    await shouldPauseDrinkSync();
+    const generation = getDrinkRateLimitGeneration();
+    const throttled = { headers: { get: () => '60' } } as unknown as Response;
+    await noteDrinkThrottled(throttled, generation);
+    expect(await shouldPauseDrinkSync()).toBe(true);
+
+    await expect(clearCachedAnonymousAccount(oldSession, requestContext)).resolves.toBe(true);
+    setBackend('https://api.example.com');
+    global.fetch = mockFetchOk({ id: 'anon-2', token: 'new-token' });
+    expect((await ensureAccount())?.accountId).toBe('anon-2');
+    global.fetch = mockFetchOk({ drinks: [] });
+    await expect(fetchDrinks()).resolves.toEqual([]);
+    expect(await shouldPauseDrinkSync()).toBe(false);
+    await noteDrinkThrottled(throttled, generation);
+    expect(await shouldPauseDrinkSync()).toBe(false);
+  });
 
   it('ignores an old anonymous 401 after an authenticated session was saved', async () => {
     await seedAccount({

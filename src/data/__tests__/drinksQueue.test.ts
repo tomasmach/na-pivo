@@ -34,6 +34,7 @@ jest.mock('../drinksClient', () => ({
 // Queue lifecycle tests use a fixed network result; cooldown is covered separately.
 jest.mock('../drinksRateLimit', () => ({
   registerDrinkRetryFlush: jest.fn(),
+  registerDrinkRateLimitAccountReader: jest.fn(),
   shouldPauseDrinkSync: jest.fn(() => false),
 }));
 

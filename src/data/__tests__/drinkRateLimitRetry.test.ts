@@ -7,7 +7,9 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 jest.mock('expo-secure-store', () => ({
-  getItemAsync: jest.fn(async () => null),
+  getItemAsync: jest.fn(async (key: string) => key === 'na-pivo-account'
+    ? JSON.stringify({ deviceId: 'd', accountId: 'a', token: 'tok', authenticated: false })
+    : null),
   setItemAsync: jest.fn(async () => undefined),
   deleteItemAsync: jest.fn(async () => undefined),
 }));
@@ -84,7 +86,9 @@ it('holds every drink operation after 429, restores its cooldown after restart, 
   await restartedStorage.clear();
   await restartedStorage.multiSet(saved.filter((pair): pair is [string, string] => pair[1] !== null));
   expect(await restartedStorage.getItem(postKey)).not.toBeNull();
-  expect(await restartedStorage.getItem('na-pivo-drinks-retry-after')).toBe(String(Date.now() + 5_000));
+  expect(JSON.parse((await restartedStorage.getItem('na-pivo-drinks-retry-after'))!)).toEqual({
+    accountId: 'a', retryAt: Date.now() + 5_000,
+  });
   const restartedPost = require('../drinksQueue') as typeof import('../drinksQueue');
   const restartedDelete = require('../deleteDrinksQueue') as typeof import('../deleteDrinksQueue');
   const restartedPatch = require('../updateDrinksQueue') as typeof import('../updateDrinksQueue');
@@ -112,24 +116,77 @@ it('holds every drink operation after 429, restores its cooldown after restart, 
   expect(await restartedStorage.getItem(patchKey)).toBeNull();
 });
 
-it.each(['broken', '99999999999999999999'])(
+it.each([
+  'broken',
+  '99999999999999999999',
+  String(Date.parse('2026-09-29T16:00:30Z')),
+  JSON.stringify({ accountId: 'a', retryAt: Date.parse('2026-09-30T16:00:00Z') + 1 }),
+  JSON.stringify({ accountId: 'a', retryAt: '2026-09-29T16:00:30Z' }),
+])(
   'ignores invalid persisted cooldown %s',
   async (raw) => {
-    await AsyncStorage.setItem('na-pivo-drinks-retry-after', raw);
     jest.resetModules();
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+    const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+    await storage.setItem('na-pivo-drinks-retry-after', raw);
+    expect(await storage.getItem('na-pivo-drinks-retry-after')).toBe(raw);
     const { shouldPauseDrinkSync } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+    require('../account');
     expect(await shouldPauseDrinkSync()).toBe(false);
     expect(jest.getTimerCount()).toBe(0);
   },
 );
+
+it('does not restore another account’s cooldown after a restart, even if removal failed', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const firstStorage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const { noteDrinkThrottled } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+  require('../account');
+  await noteDrinkThrottled(reply(429, '60'));
+  const saved = await firstStorage.getItem('na-pivo-drinks-retry-after');
+  expect(saved).not.toBeNull();
+
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const restartedStorage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const secureStore = require('expo-secure-store') as typeof import('expo-secure-store');
+  await restartedStorage.setItem('na-pivo-drinks-retry-after', saved!);
+  jest.mocked(secureStore.getItemAsync).mockResolvedValue(JSON.stringify({
+    deviceId: 'd2', accountId: 'b', token: 'new-token', authenticated: true,
+  }));
+  const { shouldPauseDrinkSync } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+  require('../account');
+  expect(await shouldPauseDrinkSync()).toBe(false);
+  expect(await restartedStorage.getItem('na-pivo-drinks-retry-after')).toBe(saved);
+});
+
+it('retains a same-account cooldown while secure storage is temporarily unavailable', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const secureStore = require('expo-secure-store') as typeof import('expo-secure-store');
+  const { noteDrinkThrottled, shouldPauseDrinkSync } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+  require('../account');
+  await noteDrinkThrottled(reply(429, '60'));
+  const saved = await storage.getItem('na-pivo-drinks-retry-after');
+  jest.mocked(secureStore.getItemAsync).mockRejectedValueOnce(new Error('locked'));
+  expect(await shouldPauseDrinkSync()).toBe(true);
+  expect(await storage.getItem('na-pivo-drinks-retry-after')).toBe(saved);
+  await jest.advanceTimersByTimeAsync(2_000);
+  expect(await shouldPauseDrinkSync()).toBe(true);
+});
 
 it('accepts an HTTP-date Retry-After deadline', async () => {
   jest.resetModules();
   jest.useFakeTimers();
   jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
   const { noteDrinkThrottled, shouldPauseDrinkSync } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+  require('../account');
   await noteDrinkThrottled(reply(429, new Date(Date.now() + 5_000).toUTCString()));
   expect(await shouldPauseDrinkSync()).toBe(true);
   await jest.advanceTimersByTimeAsync(4_999);
@@ -185,18 +242,22 @@ it('ignores an old storage read that finishes after the account boundary', async
   jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
   const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
   const key = 'na-pivo-drinks-retry-after';
-  const oldDeadline = String(Date.now() + 60_000);
+  const oldDeadline = JSON.stringify({ accountId: 'a', retryAt: Date.now() + 60_000 });
   await storage.setItem(key, oldDeadline);
   const originalGet = (storage.getItem as jest.Mock).getMockImplementation() as typeof storage.getItem;
   let finishRead!: (value: string) => void;
+  let startRead!: () => void;
+  const readStarted = new Promise<void>((resolve) => { startRead = resolve; });
   jest.spyOn(storage, 'getItem').mockImplementation((requestedKey) =>
     requestedKey === key
-      ? new Promise<string>((resolve) => { finishRead = resolve; })
+      ? new Promise<string>((resolve) => { finishRead = resolve; startRead(); })
       : originalGet(requestedKey),
   );
   const { shouldPauseDrinkSync } = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
   const { clearLocalPrivateAccountData } = require('../privateAccountData') as typeof import('../privateAccountData');
+  require('../account');
   const reading = shouldPauseDrinkSync();
+  await readStarted;
   await clearLocalPrivateAccountData();
   finishRead(oldDeadline);
   expect(await reading).toBe(false);
