@@ -223,6 +223,7 @@ function trackAmenitySyncFailed(
 export async function submitAmenityVotes(
   votes: WireAmenityVote[],
   signal?: AbortSignal,
+  onAccountUnavailable?: () => void,
 ): Promise<SubmitAmenityResult> {
   if (signal?.aborted) return 'retry';
 
@@ -238,6 +239,7 @@ export async function submitAmenityVotes(
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) {
+    if (!session && !signal?.aborted) onAccountUnavailable?.();
     trackAmenitySyncFailed('submit_votes', {
       reason: signal?.aborted ? 'aborted' : 'account_unavailable',
       result: 'retry',
