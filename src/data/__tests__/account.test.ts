@@ -48,6 +48,7 @@ jest.mock('expo-secure-store', () => {
 jest.mock('../telemetryClient', () => ({
   setTelemetrySession: jest.fn(),
   trackApiFailure: jest.fn(),
+  trackClientEvent: jest.fn(async () => undefined),
 }));
 
 const secureStoreMock = SecureStore as unknown as {
@@ -724,6 +725,46 @@ it('keeps a drink cooldown for the same account but clears it when an anonymous 
   await expect(fetchDrinks()).resolves.toEqual([]);
   expect(global.fetch).toHaveBeenCalledTimes(1);
   expect(await shouldPauseDrinkSync()).toBe(false);
+});
+
+it('retries the same queued drink after a first 429 sent with the last-known account', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const secureStore = require('expo-secure-store') as typeof SecureStore & typeof secureStoreMock;
+  secureStore.__setStore({
+    [ACCOUNT_KEY]: JSON.stringify({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true }),
+  });
+  const { ensureAccount: ensure } = require('../account') as typeof import('../account');
+  const { enqueueDrink } = require('../drinksQueue') as typeof import('../drinksQueue');
+  const entry = {
+    client_id: '00000000-0000-4000-8000-000000000041',
+    name: 'U Testu', lat: 50.08, lng: 14.42,
+    beer: { name: 'Plzeň', volume_ml: 500 },
+    drank_at: '2026-09-29T16:00:00Z',
+  };
+  expect((await ensure())?.accountId).toBe('signed-1');
+  setBackend('https://api.example.com');
+  global.fetch = jest.fn().mockResolvedValueOnce({
+    ok: false,
+    status: 429,
+    headers: { get: (name: string) => name === 'Retry-After' ? '5' : null },
+  }).mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
+  jest.mocked(secureStore.getItemAsync).mockRejectedValueOnce(new Error('temporarily locked'));
+
+  await expect(enqueueDrink(entry)).resolves.toBe(false);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(JSON.parse((await storage.getItem('na-pivo-drinks-queue'))!)).toEqual([entry]);
+  expect(JSON.parse((await storage.getItem('na-pivo-drinks-retry-after'))!)).toEqual({
+    accountId: 'signed-1', retryAt: Date.now() + 5_000,
+  });
+  await jest.advanceTimersByTimeAsync(4_999);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  await jest.advanceTimersByTimeAsync(1);
+  expect(global.fetch).toHaveBeenCalledTimes(2);
+  expect(JSON.parse((global.fetch as jest.Mock).mock.calls[1][1].body).client_id).toBe(entry.client_id);
+  expect(await storage.getItem('na-pivo-drinks-queue')).toBeNull();
 });
 
 it('finishes an account claim when removing the previous drink cooldown fails', async () => {

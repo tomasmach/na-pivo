@@ -243,6 +243,27 @@ it('retains a same-account cooldown while secure storage is temporarily unavaila
   expect(await shouldPauseDrinkSync()).toBe(true);
 });
 
+it('uses a sent request owner only when the secure reader is unknown and retains a longer saved deadline', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const key = 'na-pivo-drinks-retry-after';
+  await storage.setItem(key, JSON.stringify({ accountId: 'a', retryAt: Date.now() + 60_000 }));
+  const limiter = require('../drinksRateLimit') as typeof import('../drinksRateLimit');
+  limiter.registerDrinkRateLimitAccountReader(async () => undefined);
+  await limiter.noteDrinkThrottled(reply(429, '5'), limiter.getDrinkRateLimitGeneration(), 'a');
+  expect(JSON.parse((await storage.getItem(key))!)).toEqual({ accountId: 'a', retryAt: Date.now() + 60_000 });
+  expect(await limiter.shouldPauseDrinkSync()).toBe(true);
+
+  limiter.registerDrinkRateLimitAccountReader(async () => null);
+  await limiter.noteDrinkThrottled(reply(429, '120'), limiter.getDrinkRateLimitGeneration(), 'a');
+  expect(JSON.parse((await storage.getItem(key))!)).toEqual({ accountId: 'a', retryAt: Date.now() + 60_000 });
+  limiter.registerDrinkRateLimitAccountReader(async () => 'b');
+  await limiter.noteDrinkThrottled(reply(429, '120'), limiter.getDrinkRateLimitGeneration(), 'a');
+  expect(JSON.parse((await storage.getItem(key))!)).toEqual({ accountId: 'a', retryAt: Date.now() + 60_000 });
+});
+
 it('accepts an HTTP-date Retry-After deadline', async () => {
   jest.resetModules();
   jest.useFakeTimers();

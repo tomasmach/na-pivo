@@ -52,23 +52,24 @@ async function restore(accountId: string): Promise<void> {
   await restorePromise;
 }
 
-async function syncOwner(): Promise<string | null> {
+async function syncOwner(requestAccountId?: string): Promise<string | null> {
   const expectedGeneration = generation;
   const accountId = await currentAccountId();
   if (expectedGeneration !== generation) return null;
-  if (accountId === undefined) return ownerAccountId;
-  if (!accountId) return null;
-  if (ownerAccountId !== accountId) {
+  // A sent request has a captured bearer/account even if a later secure read fails.
+  const effectiveAccountId = accountId === undefined ? ownerAccountId ?? requestAccountId : accountId;
+  if (!effectiveAccountId) return null;
+  if (ownerAccountId !== effectiveAccountId) {
     if (ownerAccountId !== null) generation += 1;
-    ownerAccountId = accountId;
+    ownerAccountId = effectiveAccountId;
     retryAt = 0;
     restored = false;
     restorePromise = null;
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = null;
   }
-  await restore(accountId);
-  return accountId;
+  await restore(effectiveAccountId);
+  return effectiveAccountId;
 }
 
 function schedule(): void {
@@ -150,7 +151,7 @@ export async function noteDrinkThrottled(
   requestAccountId?: string,
 ): Promise<void> {
   if (expectedGeneration !== generation) return;
-  const accountId = await syncOwner();
+  const accountId = await syncOwner(requestAccountId);
   if (!accountId || (requestAccountId && requestAccountId !== accountId) || expectedGeneration !== generation) return;
   retryAt = Math.max(retryAt, Date.now() + retryDelay(response));
   const deadline = retryAt;
