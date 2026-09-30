@@ -6,6 +6,7 @@ import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueu
 import { clearCommunityQueue } from './communityQueue';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
+import { clearDrinkRateLimit } from './drinksRateLimit';
 import {
   cancelDrinksHistorySeed,
   DRINKS_HISTORY_PROGRESS_KEY,
@@ -126,6 +127,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // Invalidate a captured pre-logout history snapshot before any async queue
   // clear can yield, so it cannot be enqueued under the replacement account.
   cancelDrinksHistorySeed();
+  const drinksCooldownCleanup = clearDrinkRateLimit();
   const toursCleanup = clearToursPrivateData();
   // The wiped ratings, votes and own pubs must come back on the next foreground
   // even when the same account signs in again within the pull interval.
@@ -157,6 +159,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   });
 
   await Promise.all([
+    drinksCooldownCleanup,
     toursCleanup,
     clearAddedPubsQueue(),
     clearCommunityQueue(),

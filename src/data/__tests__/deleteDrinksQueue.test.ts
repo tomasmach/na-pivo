@@ -25,6 +25,12 @@ jest.mock('../drinksClient', () => ({
   deleteDrink: jest.fn(async () => 'ok'),
 }));
 
+// Account-bound cooldown behavior is exercised by drinkRateLimitRetry.test.ts.
+jest.mock('../drinksRateLimit', () => ({
+  ...jest.requireActual('../drinksRateLimit'),
+  shouldPauseDrinkSync: jest.fn(async () => false),
+}));
+
 const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
 
 async function readQueue(): Promise<string[]> {
@@ -53,9 +59,19 @@ beforeEach(async () => {
 });
 
 describe('enqueueDelete', () => {
+  it('can persist a deletion before an older drink POST finishes', async () => {
+    await enqueueDelete('a', { deliver: false });
+    expect(await readQueue()).toEqual(['a']);
+    expect(deleteDrink).not.toHaveBeenCalled();
+
+    await flushDeleteDrinksQueue();
+    expect(deleteDrink).toHaveBeenCalledWith('a', expect.any(AbortSignal));
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('sends the deletion and drops it from the queue on success', async () => {
     await enqueueDelete('a');
-    expect(deleteDrink).toHaveBeenCalledWith('a');
+    expect(deleteDrink).toHaveBeenCalledWith('a', expect.any(AbortSignal));
     expect(await readQueue()).toEqual([]);
   });
 

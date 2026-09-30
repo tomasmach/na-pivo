@@ -802,6 +802,7 @@ describe('CounterScreen undo', () => {
       await Promise.resolve();
     });
     flushDrinksQueue.mockClear();
+    flushDeleteDrinksQueue.mockClear();
 
     act(() => surface(renderer, copy.a11y.counterReceiptChip).props.onPress());
     expect(sheet(renderer, copy.counter.receiptTitle).props.visible).toBe(true);
@@ -826,7 +827,9 @@ describe('CounterScreen undo', () => {
     });
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
-    expect(enqueueDelete).toHaveBeenCalledWith('uuid-1');
+    expect(enqueueDelete).toHaveBeenCalledWith('uuid-1', { deliver: false });
+    expect(enqueueDelete.mock.invocationCallOrder[0]).toBeLessThan(flushDrinksQueue.mock.invocationCallOrder[0]);
+    expect(flushDeleteDrinksQueue).toHaveBeenCalledTimes(1);
     expect(useAccountStore.getState().diarySnapshot?.data.drinks).toEqual([]);
     expect(mockTrackClientEvent).toHaveBeenCalledWith({
       event: 'drink_removed',

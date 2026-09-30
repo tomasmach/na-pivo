@@ -33,6 +33,7 @@ import * as SecureStore from 'expo-secure-store';
 import { AppState, Platform } from 'react-native';
 
 import { getBackendEndpoint } from './backendConfig';
+import { clearDrinkRateLimit, registerDrinkRateLimitAccountReader } from './drinksRateLimit';
 import { clearAccountMerge, hasPendingAccountMerge, prepareAccountMerge, readAccountMerge } from './accountMerge';
 import { setTelemetrySession, trackApiFailure, type DiagnosticAppState } from './telemetryClient';
 
@@ -400,6 +401,7 @@ async function writeCachedAccount(account: CachedAccount): Promise<boolean> {
 async function deleteCachedAccountUnlocked(): Promise<boolean> {
   try {
     await SecureStore.deleteItemAsync(ACCOUNT_KEY);
+    await clearDrinkRateLimit(null);
     lastKnownAccount = null;
     sessionReadRetryAfter = 0;
     keychainAccessibilityChecked = false;
@@ -410,6 +412,11 @@ async function deleteCachedAccountUnlocked(): Promise<boolean> {
     return false;
   }
 }
+
+registerDrinkRateLimitAccountReader(async () => {
+  const cached = await readCachedAccount();
+  return cached.available ? cached.account?.accountId ?? null : undefined;
+});
 
 /** Drop the cached account. If the old deviceId is already claimed server-side,
  *  the next ensureAccount() will mint a fresh anonymous device account. */
@@ -832,10 +839,12 @@ export async function setSession(session: {
     token: session.token,
     authenticated: session.authenticated,
   };
+  const outgoingAccountId = (await readCachedAccount()).account?.accountId;
   const persisted = await writeCachedAccount(nextSession);
   if (!persisted) {
     throw new Error('Secure session persistence failed.');
   }
+  if (outgoingAccountId !== nextSession.accountId) await clearDrinkRateLimit(nextSession.accountId);
   setTelemetrySession(nextSession);
 }
 
@@ -849,6 +858,8 @@ export async function revertToAnonymous(signal?: AbortSignal): Promise<AccountSe
   await clearCachedAccount();
   await replaceDeviceId();
   const session = await ensureAccount(signal);
+  // Close the gap between the private-data wipe and the new anonymous bearer.
+  await clearDrinkRateLimit(session?.accountId ?? null);
   setTelemetrySession(session);
   return session;
 }

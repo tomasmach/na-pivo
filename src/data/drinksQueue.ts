@@ -29,6 +29,7 @@ import { submitDrink, type DrinkEntry } from './drinksClient';
 import { InfoIcon } from '@/components/shared/IconGlyph';
 import { Colors } from '@/theme/colors';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { registerDrinkRetryFlush, shouldPauseDrinkSync } from './drinksRateLimit';
 import { isDrinkType, isOutsidePlaceContext, isServingType } from '@/drinks/drinkTypes';
 import { t } from '@/i18n';
 import { useTallyStore, whenTallyHydrated } from '@/stores/tallyStore';
@@ -101,6 +102,7 @@ function noteRejectedDrinks(rejected: { clientId: string; field?: string }[]): v
 /** Attempts to send every queued drink, keeping only the ones that should
  *  retry ('ok', 'permanent-error' and 'limited' are removed). */
 async function flushUnlocked(signal: AbortSignal): Promise<void> {
+  if (await shouldPauseDrinkSync()) return;
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
@@ -120,6 +122,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
         rejected.push({ clientId: entry.client_id, ...(field ? { field } : {}) });
       });
       if (result !== 'retry') deliveredOrDropped.add(entry.client_id);
+      if (result === 'retry' && await shouldPauseDrinkSync()) break;
     } finally {
       deliveringIds.delete(entry.client_id);
     }
@@ -360,3 +363,5 @@ export function clearDrinksQueue(): Promise<void> {
 export function flushDrinksQueue(): Promise<void> {
   return _flush();
 }
+
+registerDrinkRetryFlush(flushDrinksQueue);
