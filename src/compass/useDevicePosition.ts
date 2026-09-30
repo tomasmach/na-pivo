@@ -17,14 +17,31 @@ export interface UseDevicePositionResult {
   position: DevicePosition | null;
 }
 
+/**
+ * Watcher power profiles. `compass` keeps the needle and arrival detection
+ * responsive while walking; `counter` only has to tell which pub you sit in,
+ * so it accepts fewer, coarser updates. On iOS `timeInterval` is ignored and
+ * `distanceInterval` is what throttles delivery.
+ */
+export type DevicePositionProfile = 'compass' | 'counter';
+
+function watchOptions(profile: DevicePositionProfile): Location.LocationOptions {
+  return profile === 'counter'
+    ? { accuracy: Location.Accuracy.High, distanceInterval: 15, timeInterval: 5000 }
+    : { accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 };
+}
+
 /** A recent OS-cached fix is accurate enough to choose an initial nearby pub.
- * The live BestForNavigation watcher keeps running and replaces it as soon as a
+ * The live watcher keeps running and replaces it as soon as a
  * fresh sample arrives. A tight age cap prevents a fix from a previous journey
  * from briefly pointing the compass at the wrong city. */
 const LAST_KNOWN_POSITION_MAX_AGE_MS = 5 * 60 * 1000;
 const LAST_KNOWN_POSITION_REQUIRED_ACCURACY_M = 100;
 
-export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
+export function useDevicePosition(
+  enabled: boolean,
+  profile: DevicePositionProfile = 'compass',
+): UseDevicePositionResult {
   const [position, setPosition] = useState<DevicePosition | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const startingRef = useRef(false);
@@ -32,6 +49,8 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
   const hasPositionRef = useRef(false);
   const isMountedRef = useRef(true);
   const enabledRef = useRef(enabled);
+  // The profile is fixed per call site; a ref keeps startWatching stable.
+  const profileRef = useRef(profile);
 
   const publishPosition = useCallback(
     (location: Location.LocationObject, source: 'cached' | 'live'): void => {
@@ -88,12 +107,10 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       void seedFromLastKnownPosition();
       const sub = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.BestForNavigation,
+          ...watchOptions(profileRef.current),
           // A passive watcher must not reopen Android's accuracy dialog on
           // every resume after the user declines it. GPS can still emit fixes.
           mayShowUserSettingsDialog: false,
-          distanceInterval: 0,
-          timeInterval: 1000,
         },
         (location) => {
           if (!isMountedRef.current || !enabledRef.current) return;

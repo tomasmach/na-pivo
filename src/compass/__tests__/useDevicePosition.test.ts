@@ -7,6 +7,7 @@ import { useDevicePosition } from '../useDevicePosition';
 
 jest.mock('expo-location', () => ({
   Accuracy: {
+    High: 4,
     BestForNavigation: 6,
   },
   getLastKnownPositionAsync: jest.fn(),
@@ -22,13 +23,14 @@ const { act } = TestRenderer;
 
 type DevicePositionHookProps = {
   enabled: boolean;
+  profile?: 'compass' | 'counter';
 };
 
 function renderDevicePositionHook(initialProps: DevicePositionHookProps) {
   let latestResult: ReturnType<typeof useDevicePosition> | undefined;
 
   function Harness(props: DevicePositionHookProps) {
-    latestResult = useDevicePosition(props.enabled);
+    latestResult = useDevicePosition(props.enabled, props.profile);
     return null;
   }
 
@@ -103,9 +105,9 @@ describe('useDevicePosition', () => {
     });
     expect(Location.watchPositionAsync).toHaveBeenCalledWith(
       {
-        accuracy: Location.Accuracy.BestForNavigation,
+        accuracy: Location.Accuracy.High,
         mayShowUserSettingsDialog: false,
-        distanceInterval: 0,
+        distanceInterval: 3,
         timeInterval: 1000,
       },
       expect.any(Function),
@@ -368,6 +370,27 @@ describe('useDevicePosition', () => {
     expect(Location.watchPositionAsync).toHaveBeenCalledTimes(4);
     expect(showSettingsDialog).not.toHaveBeenCalled();
     expect(hook.result.position).toEqual({ lat: 50.087, lng: 14.421, accuracyMeters: 12 });
+    hook.unmount();
+  });
+
+  it('uses the low-power counter profile', async () => {
+    (Location.watchPositionAsync as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+
+    const hook = renderDevicePositionHook({ enabled: true, profile: 'counter' });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(Location.watchPositionAsync).toHaveBeenCalledWith(
+      {
+        accuracy: Location.Accuracy.High,
+        mayShowUserSettingsDialog: false,
+        distanceInterval: 15,
+        timeInterval: 5000,
+      },
+      expect.any(Function),
+    );
     hook.unmount();
   });
 });
