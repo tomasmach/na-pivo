@@ -24,7 +24,7 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 | Domovský bod | Zrušit ruční pin, uložit současnou polohu, restart a odstranit | Neodsouhlasený bod se uloží, restart jej ztratí nebo unikne na server | P0 | `places-social/home-persistence.yaml`: jednou zelený; nová kontrola uloženého bodu čeká na runtime |
 | Fotosoutěž | Výslovný souhlas se zveřejněním, hlasování a stažení | Zveřejnění bez souhlasu nebo změna původní visibility fotky | P0 | `places-social/contest-privacy.yaml`: jednou zelený, stabilita čeká |
 | Tours | Offline plán se dvěma zastávkami, restart a dokončení | Ztráta uloženého plánu nebo běhu | P0 | `diary/private-tour.yaml`: celý průchod jednou zelený, stabilita čeká |
-| Tours sdílení | Soukromý/public odkaz, přijetí a zrušení | Odvolaný odkaz dál odhaluje plán či soukromý čas srazu | P0 | `diary/shared-tour.yaml`: import a veřejná publikace prošly; celý průchod čeká, omezení nativního Copy níže |
+| Tours sdílení | Soukromý/public odkaz, přijetí a zrušení | Odvolaný odkaz dál odhaluje plán nebo import vytvoří duplicitní kopii | P0 | `diary/shared-tour.yaml`: import a veřejná publikace prošly; celý průchod čeká, omezení nativního Copy níže |
 | Onboarding | Dokončení/přeskočení a restart; restart v průběhu | Onboarding se opakuje nebo označí nedokončený flow za dokončený | P1 | `identity/onboarding-complete.yaml` a `onboarding-interrupt.yaml`: oba jednou zelené, stabilita čeká |
 | Kompas | Nejbližší seeded hospoda, odhalení, detail, jiná hospoda | Špatný cíl nebo rozpojená identita detailu | P1 | `places-social/catalogue-offline.yaml`: skutečné seeded cíle, runtime čeká |
 | Kompas bez polohy | Odepřít oprávnění, otevřít ruční mapu a hledání | Nekonečné hledání nebo zablokovaný vstup do mapy | P1 | `places-social/permissions-denied.yaml`: opraveno iOS oprávnění `never`, runtime čeká |
@@ -62,7 +62,7 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 - Naměřený studený běh: zatím neproběhl.
 - Cache celé sady: Maestro replay cache nemá. Při integraci se změří první a opakovaný celý příkaz; původní TesterArmy replay spike je doložen níže.
 - Souběh dvou běhů: ověřený zeleným spike ve slotech 1 a 2, vlastní simulátory, API/Metro porty a odlišné účty v oddělených DB. V každé DB právě jedno pivo. Po skončení všechny čtyři porty volné.
-- Android: dostupnost zatím nezjištěna, spustit až po zelené iOS sadě.
+- Android: read-only inventura potvrdila SDK, adb, emulator a existující Google Pixel 10 / API 36.1. Android nebyl spuštěn, protože iOS sada ještě není zelená. Android příprava a runner zůstávají součástí navazující práce.
 - Po úspěšném důkazu souběhu nyní širší dávky běží jednotlivě: dva simulátory později vyčerpaly dostupné místo na disku. Selhání přípravy z nedostatku místa se nepočítá jako produktový bug.
 
 ### Spike, 3. 10. 2026
@@ -158,3 +158,8 @@ První stabilitní dávku ostatních 11 identity testů `ff585be9` po 246,804 s 
 Nezávislé review opravilo slabou kontrolu soukromého feedu na přesná ID a kontrolu starého hesla na konkrétní serverové odmítnutí. Úklid procesů má tři lokální regresní kontroly: neznámý/ukončený PID nedostane signál, vlastní potomek se ukončí i po zániku leadera před nebo během úklidu. Všechny tři prošly za 10,2 s. Nativní ověření celé nové revize úklidu ještě čeká; nejde o další mobilní testy v tabulce.
 
 Dev dependency a backend dependency audity v dosavadním CI selhaly také na srovnávacím základu, neoznačujeme je za zelené CI. Existující CI nebylo měněno. Devět malých produktových oprav má samostatné PR; NP-E2E-005 a NP-E2E-009 zůstávají nejasnostmi textu k produktovému rozhodnutí, viz BUGS.md.
+
+
+Čerstvý nezávislý reviewer po integraci prošel všech 33 scénářů, assertion JS, seed data, helpery a produkční pojistky. Jediný další nález byl příliš široký slib kontroly termínu veřejné tour: UI termín nevyplňovalo a test četl jen DB snapshot. Tato slabá kontrola i tvrzení byly odstraněné. Scénář dál ověřuje přesné zastávky, identity, jednorázový import a skutečné odvolání obou odkazů. Ochranu vyplněného termínu při serializaci veřejné tour pokrývá existující backendový `test_tour_publications.py`; E2E si tento důkaz nepřisvojuje. Cílená syntaxe JS a Ruff po opravě prošly. Žádný nový nativní běh tím nebyl nahrazen.
+
+Společná integrační větev je `test/e2e-integration`, nikoli samostatný PR. Oblastní PR proti `dev` obsahují pouze svoje scénáře a seed data a vyžadují infra PR #208. Dokončení zůstává blokované na nativním ověření; žádný PR nebyl mergnut a nic nebylo nasazené.

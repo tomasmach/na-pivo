@@ -19,7 +19,7 @@
 - Skutečnost: databáze obsahuje `status=cancelled`, ale karta dál zobrazuje „18+“, „poslední místo“ a „Máš místo“. Jen zmizí akce pro zrušení.
 - Dopad: uživatel z karty nepozná, že se setkání nekoná. Kontrola skutečného API současně potvrdila, že schválenému hostovi se po zrušení přestane vracet přesná adresa; tento průchod neprokázal únik adresy.
 - [Screenshot zrušené akce](https://files.tmach.dev/social-event-cancelled-312c4184569a4c1a9733.png). Viditelná adresa je syntetická fixture a obrazovka patří pořadateli.
-- Reprodukce: `tests/places-social/social.e2e.ts`, průchod `host approval reveals the event address only to the approved guest`. Vizuální kontrola zrušeného stavu selhala; samostatné kontroly autorizace adresy a DB prošly.
+- Reprodukce: `tests/places-social/community-privacy.yaml` (původně TesterArmy průchod `host approval reveals the event address only to the approved guest`). Vizuální kontrola zrušeného stavu selhala; samostatné kontroly autorizace adresy a DB prošly.
 - Stav: oprava v samostatném [PR #209](https://github.com/tomasmach/na-pivo/pull/209). Celý průchod jednou prošel za 44,17 s včetně kontroly DB, oprávnění adresy a [výsledného screenshotu](https://files.tmach.dev/social-event-cancelled-3b85cf888c7a496f80e5.png). Tři stabilitní běhy oblasti ještě nejsou dokončené.
 
 ## NP-E2E-003: nabídka počítadla a vnitřní zkratky nejsou přístupné

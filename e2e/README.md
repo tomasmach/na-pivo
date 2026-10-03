@@ -34,7 +34,7 @@ Sloty 1–3 mají API `18121–18123`, Metro `18221–18223`, místní kontroler
 
 Runner eviduje PID a čas spuštění, po skončení zastaví vlastní procesy a vlastní simulátor. `Ctrl-C` vyvolá stejný úklid. Po násilném ukončení nejdřív ověř `owner.json`, `processes.json` a odpovídající slot lock; nikdy nepoužívej `killall`. Databáze, metriky a bezpečné screenshoty zůstávají v gitignorované `.e2e/`. Maestro raw debug reporty obsahují pouze povolené jednorázové testovací údaje a runner je po běhu smaže. ChatGPT přihlášení ani skutečné bearer tokeny do nich nevstupují. `E2E_MAESTRO_PATH=/absolute/maestro/bin/maestro` dovoluje mezi worktrees sdílet lokálně ověřenou CLI verzi.
 
-První příprava nativního enginu je mezi worktrees krátce serializovaná přes `boot.lock`. Samotné testy běží souběžně. Důvodem je sdílený agent-device daemon: souběžné studené starty tří iPhonů opakovaně vyčerpaly jeho 90s timeout a zasáhly ostatní sessions. Runner nejdřív dokončí nativní boot přes simctl a teprve potom pustí framework; zámek uvolní při začátku lokálních služeb.
+První příprava nativního enginu je mezi worktrees krátce serializovaná přes `boot.lock`. Samotné testy mohou běžet souběžně. Na stroji použitém při vývoji se po doložení dvou izolovaných spike běhů pokračuje pouze jedním simulátorem kvůli nedostatku disku a růstu systémového swapu. Důvodem je sdílený agent-device daemon: souběžné studené starty tří iPhonů opakovaně vyčerpaly jeho 90s timeout a zasáhly ostatní sessions. Runner nejdřív dokončí nativní boot přes simctl a teprve potom pustí framework; zámek uvolní při začátku lokálních služeb.
 
 Backend se spouští zvláštním settings modulem mimo produkční Docker context. Vyžaduje `DEBUG=True`, explicitní flag a vlastněný adresář běhu. Zachytává skutečně vykreslené e-maily v paměti, blokuje externí Python sockety a nepoužívá testovací přihlášení. Mobilní fake registrace push tokenu vyžaduje zároveň development build, explicitní flag a loopback API.
 
@@ -58,3 +58,19 @@ Oprávnění jsou výslovně `all: deny`, poloha `inuse` a fotky povolené, kame
 Aktuální důkazy a omezení jsou v [COVERAGE.md](COVERAGE.md), produktové chyby v [BUGS.md](BUGS.md). Sada není připojená do GitHub Actions.
 
 `attempt-*/metrics.json` měří jednotlivá spuštění Maestra. `command-metrics.json` navíc obsahuje čas celého příkazu včetně přípravy a úklidu prostředí a jeho návratový kód.
+
+
+## Pokračování před sloučením PR
+
+Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Před dalším nativním během uvolni dostatečnou rezervu stroje, poslední dávku i s jediným simulátorem ukončil disk guard.
+
+```sh
+npm run e2e:full -- e2e/tests/identity/ --stability
+npm run e2e:full -- e2e/tests/diary/ --stability
+npm run e2e:full -- e2e/tests/places-social/ --stability
+npm run e2e:full
+npm run e2e:full
+npm run e2e:blocked
+```
+
+Oblasti spouštěj postupně. Pro závěrečný první čistý simulátor archivuj vlastní `.e2e/simulator-1.json` pod jiným názvem; runner vytvoří nový jednoznačně pojmenovaný iPhone 17. Starý simulátor nemaž ani nepřebírej cizí. Oba poslední běhy celé sady mají zaznamenat `command-metrics.json`; druhý je opakovaný běh Maestra, ne AI replay cache. Registrovaný Android Pixel 10 je dostupný, ale Android runner a ověření čekají na zelené iOS.
