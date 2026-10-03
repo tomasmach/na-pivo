@@ -1,3 +1,4 @@
+# Known visual ambiguity NP-E2E-005: ../../BUGS.md. Automatic sharing and explicit cink have separate documented API contracts; a green flow does not resolve the toggle wording.
 appId: com.tomasmach.na-pivo
 name: Sharing ghost mode and blocking revoke real friend API access
 tags: [critical, full]

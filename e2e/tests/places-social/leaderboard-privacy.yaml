@@ -1,3 +1,4 @@
+# Known visual ambiguity NP-E2E-009: ../../BUGS.md. Hero and row use their separate API ranks; a green flow does not resolve how that difference is explained.
 appId: com.tomasmach.na-pivo
 name: Leaderboard scores exclude private and blocked accounts
 tags: [critical, full]

@@ -216,6 +216,29 @@ def observe():
         ),
         "eventId": CommunityEvent.objects.values_list("id", flat=True).first(),
         "events": rows(CommunityEvent, ["title", "status"]),
+        "createdEvents": [
+            {
+                "id": str(event.id),
+                "host": event.host.nickname,
+                "clientId": str(event.client_id),
+                "title": event.title,
+                "description": event.description,
+                "city": event.city,
+                "area": event.area_label,
+                "matchesSyntheticAddress": event.exact_address == "E2E Ulice 34",
+                "matchesFixtureLocation": abs(event.lat - base.LOCATION[0]) < 0.00001
+                and abs(event.lng - base.LOCATION[1]) < 0.00001,
+                "capacity": event.capacity,
+                "adultsOnly": event.adults_only,
+                "status": event.status,
+                "startsAt": event.starts_at.isoformat(),
+                "endsAt": event.ends_at.isoformat(),
+                "startsTomorrow": timezone.localtime(event.starts_at).date()
+                == timezone.localdate() + timedelta(days=1),
+                "durationSeconds": (event.ends_at - event.starts_at).total_seconds(),
+            }
+            for event in CommunityEvent.objects.select_related("host").order_by("pk")
+        ],
         "requestId": CommunityEventMembership.objects.values_list(
             "id", flat=True
         ).first(),

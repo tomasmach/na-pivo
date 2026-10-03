@@ -1,3 +1,4 @@
+# Regression NP-E2E-008: ../../BUGS.md. An authenticated offline profile must not be prompted to add its existing nickname.
 appId: com.tomasmach.na-pivo
 name: Claimed invitation creates one friendship and persists offline
 tags: [full]

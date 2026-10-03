@@ -28,6 +28,38 @@ output.ps = {
     this.equal(response.body.entries.map(function(r) { return [r.account.nickname,r.score]; }), expected, 'Leaderboard contains exactly the public, unblocked fixture accounts and their scores.');
     return response.body;
   },
+  communityCreation: function(phase) {
+    const full = output.local.state();
+    const host = full.accounts.find(function(a) { return a.nickname === 'E2ECizi'; });
+    output.local.check(host && host.activeTokens > 0, 'The fixture host remains signed in under its own account.');
+    const rows = full.scenario.createdEvents.filter(function(e) { return e.host === 'E2ECizi'; });
+    const response = output.local.observe('outsider', '/v1/community-events');
+    output.local.check(response.status === 200, 'The host reads its real community dashboard.');
+    this.equal(response.body.joined, [], 'The host has no unrelated joined events.');
+    if (phase === 'empty') {
+      this.equal(rows, [], 'The empty dashboard and failed offline submission have no created event in the database.');
+      output.local.check(full.scenario.createdEvents.length === 1, 'The original fixture event is retained and no extra event was written.');
+      this.equal(response.body.hosted, [], 'The real API confirms no hosted event.');
+    } else {
+      output.local.check(rows.length === 1 && full.scenario.createdEvents.length === 2 && response.body.hosted.length === 1, 'Retry creates exactly one hosted event in both the database and API.');
+      const event = rows[0];
+      output.local.check(event.title === 'E2E Nový stůl' && event.description === 'E2E Deskovky a limonáda.' && event.city === 'Praha' && event.area === 'Testovací čtvrť' && event.matchesSyntheticAddress === true && event.matchesFixtureLocation === true && event.capacity === 6 && event.adultsOnly === true && event.status === 'active' && event.durationSeconds === 14400 && !!event.clientId, 'The stored event retains every submitted field, exact synthetic address and location, six seats and four-hour duration.');
+      const hosted = response.body.hosted[0];
+      output.local.check(hosted.id === event.id && hosted.title === event.title && hosted.is_host === true && hosted.exactAddressPresent === true, 'The authenticated host reads the same event and its address.');
+      // Record immutable values so a process restart cannot reset the event ID,
+      // client ID or time. The observation-relative tomorrow flag is excluded.
+      const stable = Object.assign({}, event);
+      delete stable.startsTomorrow;
+      if (phase === 'created') {
+        output.local.check(event.startsTomorrow === true, 'The selected tomorrow start is stored on the next local calendar day.');
+        output.ps.createdCommunity = stable;
+      } else if (phase === 'persisted') {
+        output.local.check(!!this.createdCommunity, 'The published event was observed before restart.');
+        this.equal(stable, this.createdCommunity, 'Restart keeps exactly the same durable event and submitted data without duplication.');
+      } else { throw new Error('Unknown community creation phase.'); }
+    }
+    return true;
+  },
   check: function(phase) {
     const full = output.local.state();
     const s = full.scenario;

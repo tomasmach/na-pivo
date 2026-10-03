@@ -13,7 +13,7 @@ tags: [critical, full]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /
-- assertVisible: 'E2E U Testera.*'
+- assertVisible: '.*E2E U Testera.*'
 - runFlow:
     file: ../../maestro/route.yaml
     env:
@@ -37,9 +37,16 @@ tags: [critical, full]
 - eraseText
 - inputText: Praha
 - scrollUntilVisible:
-    element: {id: add-pub-save}
+    element: {text: Adresa hospody}
     direction: DOWN
-- tapOn: {id: add-pub-save}
+- tapOn: Adresa hospody
+- eraseText
+- inputText: E2E Ulice 12
+- scrollUntilVisible:
+    element: {id: add-pub-save, enabled: true}
+    direction: DOWN
+- assertVisible: {id: add-pub-save, enabled: true}
+- tapOn: {id: add-pub-save, enabled: true}
 - runFlow:
     file: ../../maestro/route.yaml
     env:
@@ -64,9 +71,10 @@ tags: [critical, full]
 - eraseText
 - inputText: E2E Přejmenovaná hospoda
 - scrollUntilVisible:
-    element: {id: add-pub-save}
+    element: {id: add-pub-save, enabled: true}
     direction: DOWN
-- tapOn: {id: add-pub-save}
+- assertVisible: {id: add-pub-save, enabled: true}
+- tapOn: {id: add-pub-save, enabled: true}
 - evalScript: ${output.local.poll(function () { output.ps.check('pub-renamed'); }, 15000)}
 - runFlow:
     file: ../../maestro/route.yaml
