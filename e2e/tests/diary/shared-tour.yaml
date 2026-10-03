@@ -33,7 +33,9 @@ tags: [critical, full, diary]
 - tapOn: Sdílet veřejný odkaz
 - tapOn: Copy
 - evalScript: ${output.local.request('/capability/store', { name:'public-tour' })}
-- evalScript: ${output.local.check(output.local.request('/capability/status', { name:'public-tour' }).status === 200, 'Published link must open.')}
+- runScript:
+    file: shared-tour.js
+    env: { STAGE: links }
 - runFlow: flows/logout.flow
 - runFlow:
     file: ../../maestro/login.yaml

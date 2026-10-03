@@ -19,6 +19,9 @@ tags: [full, diary]
     element: Jen pro mě
     direction: DOWN
 - tapOn: Jen pro mě
+- scrollUntilVisible:
+    element: Uložit pivo
+    direction: DOWN
 - tapOn: Uložit pivo
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
@@ -27,6 +30,7 @@ tags: [full, diary]
 - assertVisible: '1 pivo, utraceno 41\sKč\. Otevře tvůj účet\.'
 - evalScript: ${output.local.online()}
 - runFlow: ../../maestro/foreground.yaml
+- assertVisible: '1 pivo, utraceno 41\sKč\. Otevře tvůj účet\.'
 - runScript:
     file: checkin.js
     env: { STAGE: synced }
@@ -35,6 +39,8 @@ tags: [full, diary]
     env: { ROUTE: '/beer-detail?beer=E2E%20Le%C5%BE%C3%A1k' }
 - assertVisible:
     id: beer-detail-count
+    text: '1'
+- assertVisible: '4\.0'
 - assertVisible: Má říz
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
@@ -42,6 +48,8 @@ tags: [full, diary]
     env: { ROUTE: '/beer-detail?beer=E2E%20Le%C5%BE%C3%A1k' }
 - assertVisible:
     id: beer-detail-count
+    text: '1'
+- assertVisible: '4\.0'
 - assertVisible: Má říz
 - evalScript: ${output.local.screenshot('diary-rated-beer-detail')}
 - runScript:

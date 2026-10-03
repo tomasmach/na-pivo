@@ -1,3 +1,4 @@
+# Depends on BeerForm blocker NP-E2E-006 (../../BUGS.md); native Maestro flow still unverified.
 appId: com.tomasmach.na-pivo
 name: Private offline tour retains its completed journey and counted beer
 tags: [critical, full, diary]
@@ -42,6 +43,7 @@ tags: [critical, full, diary]
 - assertNotVisible: Zapsat pivo na jedničce
 - evalScript: ${output.local.online()}
 - runFlow: ../../maestro/foreground.yaml
+- assertVisible: Vytvořit kopii
 - runScript: private-tour.js
 - evalScript: ${output.local.screenshot('diary-private-tour-history')}
 - runScript: private-tour.js

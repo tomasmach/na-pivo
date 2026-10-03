@@ -1,3 +1,4 @@
+# Known failing flow: NP-E2E-006, tracked in ../../BUGS.md.
 appId: com.tomasmach.na-pivo
 name: Offline evening edits reconcile without losing the new drink
 tags: [critical, full, diary]
@@ -20,9 +21,9 @@ tags: [critical, full, diary]
 - runFlow: flows/finish-evening.flow
 - runFlow: ../../maestro/restart.yaml
 - runFlow: flows/latest-evening.flow
-- assertVisible: E2E Ležák
-- assertVisible: E2E Odebrat
-- assertVisible: E2E Offline
+- assertVisible: '.*E2E Ležák.*'
+- assertVisible: '.*E2E Odebrat.*'
+- assertVisible: '.*E2E Offline.*'
 - tapOn:
     id: ${'evening-edit-' + output.diary.original.client_id}
 - tapOn:
@@ -36,11 +37,12 @@ tags: [critical, full, diary]
 - tapOn: Odebrat
 - runFlow: ../../maestro/restart.yaml
 - runFlow: flows/latest-evening.flow
-- assertVisible: E2E Opravený
-- assertVisible: E2E Offline
-- assertNotVisible: E2E Odebrat
+- assertVisible: '.*E2E Opravený.*'
+- assertVisible: '.*E2E Offline.*'
+- assertNotVisible: '.*E2E Odebrat.*'
 - evalScript: ${output.local.online()}
 - runFlow: ../../maestro/foreground.yaml
+- assertVisible: '.*E2E Opravený.*'
 - runScript:
     file: evening.js
     env: { STAGE: synced }
