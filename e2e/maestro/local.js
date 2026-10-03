@@ -26,5 +26,6 @@ output.local = {
     }
   },
   screenshot: function (name) { return this.request('/screenshot', { name: name }); },
+  debugScreenshot: function (name) { return this.request('/screenshot', { name: name, debug: true }); },
   check: function (condition, description) { if (!condition) throw new Error(description); return true; }
 };
