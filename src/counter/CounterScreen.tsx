@@ -1609,6 +1609,7 @@ function Tacek({
       <NudgeSlot nudge={nudge} />
 
       <CounterCta
+        testID="counter-primary"
         label={cta.label}
         subLabel={cta.subLabel}
         onPress={cta.onPress}

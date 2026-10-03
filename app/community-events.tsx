@@ -179,7 +179,7 @@ function EventCard({
       {event.exactAddress ? (
         <View style={styles.addressStrip}>
           <Text style={styles.addressLabel}>{t.communityEvents.addressApproved}</Text>
-          <Text style={styles.addressText}>{event.exactAddress}</Text>
+          <Text testID={`community-event-${event.id}-address`} style={styles.addressText}>{event.exactAddress}</Text>
         </View>
       ) : (
         <Text style={styles.hiddenAddress}>{t.communityEvents.addressHidden}</Text>
@@ -219,7 +219,7 @@ function EventCard({
                   <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'reject'), t.communityEvents.reject, 'community_request_decline', 'decline')} style={styles.iconButton}>
                     <XIcon size={18} color={Colors.mutedText} />
                   </Pressable>
-                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), t.communityEvents.approve, 'community_request_accept', 'accept')} style={[styles.iconButton, styles.approveButton]}>
+                  <Pressable testID={`community-request-${request.id}-approve`} accessibilityRole="button" accessibilityLabel={t.communityEvents.approve} onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), t.communityEvents.approve, 'community_request_accept', 'accept')} style={[styles.iconButton, styles.approveButton]}>
                     <CheckIcon size={18} color={Colors.stout} />
                   </Pressable>
                 </View>
