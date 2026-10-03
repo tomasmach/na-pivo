@@ -1,0 +1,103 @@
+appId: com.tomasmach.na-pivo
+name: Confirmed map pin queues one pub and rename preserves its identity
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /
+- assertVisible: '.*E2E U Testera.*'
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /add-pub
+- evalScript: ${output.local.offline()}
+- tapOn: Název hospody
+- inputText: E2E Nová hospoda
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {text: Zapíchnout špendlík hospody do mapy}
+    direction: DOWN
+    centerElement: true
+- tapOn: Zapíchnout špendlík hospody do mapy
+- evalScript: ${output.local.screenshot('places-new-pub-map-pin')}
+- extendedWaitUntil:
+    visible: {id: map-pin-confirm}
+    timeout: 15000
+- tapOn: {id: map-pin-confirm}
+- scrollUntilVisible:
+    element: {text: Město hospody}
+    direction: DOWN
+    centerElement: true
+- tapOn: Město hospody
+- eraseText
+- inputText: Praha
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {text: Adresa hospody}
+    direction: DOWN
+    centerElement: true
+- tapOn: Adresa hospody
+- eraseText
+- inputText: E2E Ulice 12
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {id: add-pub-save, enabled: true}
+    direction: DOWN
+    centerElement: true
+- assertVisible: {id: add-pub-save, enabled: true}
+- tapOn: {id: add-pub-save, enabled: true}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /my-added-pubs
+- assertVisible: '.*E2E Nová hospoda.*Čeká na odeslání.*'
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /my-added-pubs
+- assertVisible: '.*E2E Nová hospoda.*Čeká na odeslání.*'
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- evalScript: ${output.local.poll(function () { output.ps.check('pub-created'); }, 15000)}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /my-added-pubs
+- tapOn: 'Otevřít akce hospody E2E Nová hospoda.*'
+- tapOn: Opravit hospodu
+- tapOn: Název hospody
+- eraseText
+- inputText: E2E Přejmenovaná hospoda
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {id: add-pub-save, enabled: true}
+    direction: DOWN
+    centerElement: true
+- assertVisible: {id: add-pub-save, enabled: true}
+- tapOn: {id: add-pub-save, enabled: true}
+- evalScript: ${output.local.poll(function () { output.ps.check('pub-renamed'); }, 15000)}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /my-added-pubs
+- assertVisible: '.*E2E Přejmenovaná hospoda.*V kompasu.*'
+- assertNotVisible: '.*E2E Nová hospoda.*'
+- evalScript: ${output.local.screenshot('places-published-owner-edit')}
+- evalScript: ${output.ps.check('pub-renamed')}

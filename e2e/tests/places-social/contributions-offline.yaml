@@ -1,0 +1,82 @@
+appId: com.tomasmach.na-pivo
+name: Offline hours and beer edits persist once with exact public values
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá hospoda
+- tapOn: 'E2E Druhá hospoda,.*'
+- assertVisible: E2E Druhá hospoda
+- evalScript: ${output.local.offline()}
+- scrollUntilVisible:
+    element: {text: 'Zmapováno na .* %\. Doplň, co víš\. Uvidí to ostatní\.'}
+    direction: DOWN
+- tapOn: 'Zmapováno na .* %\. Doplň, co víš\. Uvidí to ostatní\.'
+- tapOn: 'Otevíračka,.*\. Uprav\.'
+- tapOn: 'Pondělí: odebrat čas'
+- tapOn: Uložit doplněné údaje
+- tapOn:
+    text: Zavřít mapování hospody
+    index: 1
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá hospoda
+- tapOn: 'E2E Druhá hospoda,.*'
+- assertVisible: E2E Druhá hospoda
+- scrollUntilVisible:
+    element: {text: 'Zmapováno na .* %\. Doplň, co víš\. Uvidí to ostatní\.'}
+    direction: DOWN
+- tapOn: 'Zmapováno na .* %\. Doplň, co víš\. Uvidí to ostatní\.'
+- tapOn: 'Piva,.*\. Uprav\.'
+- tapOn: Přidat pivo
+- tapOn: {id: beer-form-name}
+- inputText: E2E Nový ležák
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn: {id: beer-form-price}
+- inputText: '52'
+- assertVisible: {id: beer-form-price, text: '52'}
+# iOS number-pad has no Return key; center submit above the keyboard.
+- scrollUntilVisible:
+    element: {id: beer-form-submit}
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- tapOn: {id: beer-form-submit}
+- tapOn: Uložit doplněné údaje
+- tapOn:
+    text: Zavřít mapování hospody
+    index: 1
+- runFlow: ../../maestro/restart.yaml
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- evalScript: ${output.local.poll(function () { output.ps.check('contributions'); }, 15000)}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá hospoda
+- tapOn: 'E2E Druhá hospoda,.*'
+- assertVisible: E2E Druhá hospoda
+- scrollUntilVisible:
+    element: {text: '.*E2E Nový ležák.*'}
+    direction: DOWN
+- assertVisible: '.*52\sKč.*'
+- evalScript: ${output.local.screenshot('places-public-contribution')}
+- evalScript: ${output.ps.check('contributions')}

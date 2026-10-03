@@ -1,0 +1,50 @@
+appId: com.tomasmach.na-pivo
+name: Home point changes only after confirmation and survives restart
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /home-point
+- tapOn: {id: home-map}
+- assertVisible: {id: home-save, enabled: true}
+- tapOn: Zpět
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /home-point
+- assertVisible: {id: home-save, enabled: false}
+- evalScript: ${output.ps.home(false)}
+- tapOn: Použít moji polohu
+- assertVisible: {id: home-save, enabled: true}
+- tapOn: {id: home-save}
+- assertNotVisible: {id: home-save}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /home-point
+- evalScript: ${output.local.poll(function () { output.ps.home(true); }, 15000)}
+# Swipe outside the native map, which otherwise consumes the gesture as pan.
+- swipe:
+    start: 2%, 80%
+    end: 2%, 35%
+- assertVisible: {id: home-clear}
+- tapOn: {id: home-clear}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /home-point
+- assertVisible: {id: home-save, enabled: false}
+- assertNotVisible: {id: home-clear}
+- evalScript: ${output.ps.home(false)}
+- evalScript: ${output.local.screenshot('places-home-cleared')}
+- evalScript: ${output.ps.check('unchanged')}

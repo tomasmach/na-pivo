@@ -1,0 +1,143 @@
+appId: com.tomasmach.na-pivo
+name: Empty community dashboard and failed creation preserve one retried event
+tags: [full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow:
+    file: ../../maestro/login.yaml
+    env:
+      ACCOUNT: outsider
+- runScript: oracle.js
+- evalScript: ${output.ps.communityCreation('empty')}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /community-events
+- tapOn: Moje
+- assertVisible: 'Zatím žádné vlastní ani domluvené setkání\.'
+- evalScript: ${output.local.screenshot('social-community-empty')}
+- tapOn: Založit setkání
+- tapOn: Pivo, deskovky a klid
+- inputText: E2E Nový stůl
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {text: 'Krátce popiš večer\. Přesnou adresu sem nepiš\.'}
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Krátce popiš večer\. Přesnou adresu sem nepiš\.'
+- inputText: E2E Deskovky a limonáda.
+# The description is multiline; a static label dismisses without editing it.
+- scrollUntilVisible:
+    element: {text: Co se bude dít}
+    direction: UP
+    centerElement: true
+    timeout: 15000
+- tapOn: Co se bude dít
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {text: Praha}
+    direction: DOWN
+    centerElement: true
+- tapOn: Praha
+- inputText: Praha
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {text: Vinohrady}
+    direction: DOWN
+    centerElement: true
+- tapOn: Vinohrady
+- inputText: Testovací čtvrť
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {text: 'Ulice, číslo a případně zvonek'}
+    direction: DOWN
+    centerElement: true
+- tapOn: Ulice, číslo a případně zvonek
+- inputText: E2E Ulice 34
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {text: Použít polohu tohoto místa}
+    direction: DOWN
+    centerElement: true
+- tapOn: Použít polohu tohoto místa
+- assertVisible: Poloha uložená jen k tomuto setkání
+- scrollUntilVisible:
+    element: {text: Zítra}
+    direction: DOWN
+- tapOn: Zítra
+- tapOn: 4 h
+- scrollUntilVisible:
+    element: {text: 'Je mi 18\+ a setkání je jen pro dospělé\.'}
+    direction: DOWN
+- tapOn: 'Je mi 18\+ a setkání je jen pro dospělé\.'
+- evalScript: ${output.local.offline()}
+- scrollUntilVisible:
+    element: {text: Otevřít stůl}
+    direction: DOWN
+    centerElement: true
+- tapOn: Otevřít stůl
+- extendedWaitUntil:
+    visible: 'Síť neodpovídá\. Zkus to za chvíli\.'
+    timeout: 15000
+- scrollUntilVisible:
+    element: {text: E2E Nový stůl}
+    direction: UP
+- assertVisible: E2E Nový stůl
+- scrollUntilVisible:
+    element: {text: 'E2E Deskovky a limonáda\.'}
+    direction: DOWN
+- assertVisible: 'E2E Deskovky a limonáda\.'
+- scrollUntilVisible:
+    element: {text: Praha}
+    direction: DOWN
+    centerElement: true
+- assertVisible: Praha
+- scrollUntilVisible:
+    element: {text: Testovací čtvrť}
+    direction: DOWN
+- assertVisible: Testovací čtvrť
+- scrollUntilVisible:
+    element: {text: E2E Ulice 34}
+    direction: DOWN
+- assertVisible: E2E Ulice 34
+- assertVisible: Poloha uložená jen k tomuto setkání
+- evalScript: ${output.local.screenshot('social-community-offline-draft')}
+- evalScript: ${output.local.online()}
+- evalScript: ${output.ps.communityCreation('empty')}
+- scrollUntilVisible:
+    element: {text: Otevřít stůl}
+    direction: DOWN
+    centerElement: true
+- tapOn: Otevřít stůl
+- evalScript: ${output.local.poll(function () { output.ps.communityCreation('created'); }, 15000)}
+- scrollUntilVisible:
+    element: {text: E2E Nový stůl}
+    direction: UP
+- assertNotVisible: 'Zatím žádné vlastní ani domluvené setkání\.'
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /community-events
+- tapOn: Moje
+- scrollUntilVisible:
+    element: {text: E2E Nový stůl}
+    direction: DOWN
+- assertVisible: 'E2E Deskovky a limonáda\.'
+- assertVisible: '5 volných míst · Pořádá @E2ECizi'
+- assertVisible: E2E Ulice 34
+- evalScript: ${output.local.screenshot('social-community-created')}
+- evalScript: ${output.ps.communityCreation('persisted')}

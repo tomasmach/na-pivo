@@ -1,0 +1,44 @@
+# Regression NP-E2E-008: ../../BUGS.md. An authenticated offline profile must not be prompted to add its existing nickname.
+appId: com.tomasmach.na-pivo
+name: Claimed invitation creates one friendship and persists offline
+tags: [full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- evalScript: ${output.local.request('/invite/open', {})}
+- runFlow:
+    when: {visible: Open}
+    commands:
+      - tapOn: Open
+- tapOn: Přidat do party
+- evalScript: ${output.local.poll(function () { output.ps.check('invited'); }, 15000)}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /friends
+- assertVisible: '.*E2EKamos.*'
+- assertVisible: '.*E2ECizi.*'
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: Upravit profil
+- assertVisible: E2EPivar
+- evalScript: ${output.ps.check('invited')}
+- evalScript: ${output.local.offline()}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /friends
+- assertVisible: '.*E2EKamos.*'
+- assertVisible: '.*E2ECizi.*'
+- assertNotVisible: Doplnit přezdívku
+- evalScript: ${output.local.screenshot('social-offline-party')}
+- evalScript: ${output.local.online()}
+- evalScript: ${output.ps.check('invited')}

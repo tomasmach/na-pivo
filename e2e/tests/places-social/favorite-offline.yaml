@@ -1,0 +1,44 @@
+appId: com.tomasmach.na-pivo
+name: Private favorite persists offline and retracts from the same account
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá hospoda
+- tapOn: 'E2E Druhá hospoda,.*'
+- assertVisible: E2E Druhá hospoda
+- evalScript: ${output.local.offline()}
+- tapOn: Uložit do srdcovek
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- assertVisible: Srdcovky
+- assertVisible: '.*E2E Druhá hospoda.*'
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- evalScript: ${output.local.poll(function () { output.ps.check('favorite'); }, 15000)}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá hospoda
+- tapOn: 'E2E Druhá hospoda,.*'
+- assertVisible: E2E Druhá hospoda
+- tapOn: Odebrat ze srdcovek
+- evalScript: ${output.local.poll(function () { output.ps.check('favorite-none'); }, 15000)}
+- assertVisible: Uložit do srdcovek
+- evalScript: ${output.local.screenshot('places-favorite-retracted')}
+- evalScript: ${output.ps.check('favorite-none')}
