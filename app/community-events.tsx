@@ -156,14 +156,16 @@ function EventCard({
     ]);
   };
   const disabled = busy || acting;
+  const cancelled = event.status === 'cancelled';
   return (
     <View style={styles.eventCard}>
       <View style={styles.eventTop}>
         <View style={styles.eventCopy}>
           <Text style={styles.eventTitle}>{event.title}</Text>
           <Text style={styles.eventMeta}>{formatTime(event)}</Text>
+          {cancelled ? <Text style={styles.status}>{t.communityEvents.cancelled}</Text> : null}
         </View>
-        <Text style={styles.status}>{event.status === 'live' ? t.communityEvents.statusLive : '18+'}</Text>
+        {!cancelled ? <Text style={styles.status}>{event.status === 'live' ? t.communityEvents.statusLive : '18+'}</Text> : null}
       </View>
       {event.description ? <Text style={styles.eventDescription}>{event.description}</Text> : null}
       <View style={styles.metaRow}>
@@ -174,7 +176,7 @@ function EventCard({
       </View>
       <View style={styles.metaRow}>
         <UsersIcon size={15} color={Colors.mutedText} />
-        <Text style={styles.metaText}>{t.communityEvents.spots(event.availableSpots)} · {t.communityEvents.host(hostName(event))}</Text>
+        <Text style={styles.metaText}>{!cancelled ? `${t.communityEvents.spots(event.availableSpots)} · ` : ''}{t.communityEvents.host(hostName(event))}</Text>
       </View>
       {event.exactAddress ? (
         <View style={styles.addressStrip}>
@@ -205,7 +207,7 @@ function EventCard({
         )
       ) : null}
 
-      {event.isHost && event.joinRequests.length > 0 ? (
+      {event.isHost && !cancelled && event.joinRequests.length > 0 ? (
         <View style={styles.requests}>
           <Text style={styles.sectionLabel}>{t.communityEvents.requests}</Text>
           {event.joinRequests.map((request) => (
