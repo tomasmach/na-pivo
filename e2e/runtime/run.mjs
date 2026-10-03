@@ -95,7 +95,16 @@ async function cleanup(code) {
       for (let attempt = 0; attempt < 20 && ownedProcesses.some(stillOwned); attempt++) await delay(100);
     } catch { /* No service was started. */ }
   }
-  if (device) { try { simctl('shutdown', device); } catch { /* Already down. */ } }
+  if (device) {
+    try { simctl('shutdown', device); } catch { /* Already down. */ }
+    // simctl can return while CoreSimulator still reports "Shutting Down".
+    // Finish that transition before releasing the slot for a subsequent run.
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const inventory = Object.values(JSON.parse(simctl('list', 'devices', '--json')).devices).flat();
+      if (inventory.find(candidate => candidate.udid === device)?.state === 'Shutdown') break;
+      await delay(500);
+    }
+  }
   releaseBoot();
   fs.rmSync(lock, { force: true });
   process.exit(code);
