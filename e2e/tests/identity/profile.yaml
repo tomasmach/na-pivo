@@ -16,7 +16,9 @@ tags: [critical, full, identity]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /profile/edit
+      ROUTE: /profile
+- tapOn: "Upravit profil"
+- assertVisible: "E2EPivar"
 - tapOn: { id: profile-nickname }
 - eraseText
 - inputText: "E2EKamarad"
@@ -27,6 +29,8 @@ tags: [critical, full, identity]
 - tapOn: { id: profile-nickname }
 - eraseText
 - inputText: "E2EUpdated"
+- pressKey: Enter
+- assertVisible: { id: profile-nickname, text: "E2EUpdated" }
 - extendedWaitUntil:
     visible: "Volné"
     timeout: 15000
@@ -37,6 +41,8 @@ tags: [critical, full, identity]
 - tapOn: { id: profile-display-name }
 - eraseText
 - inputText: "E2E Upravený"
+- pressKey: Enter
+- assertVisible: { id: profile-display-name, text: "E2E Upravený" }
 - scrollUntilVisible:
     element: { id: profile-public }
     direction: DOWN

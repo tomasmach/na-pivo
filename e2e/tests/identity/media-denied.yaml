@@ -24,7 +24,9 @@ tags: [full, identity]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /profile/edit
+      ROUTE: /profile
+- tapOn: "Upravit profil"
+- assertVisible: "E2EPivar"
 - tapOn: { id: profile-avatar-pick }
 - assertVisible: "Otevřít Nastavení"
 - scrollUntilVisible:
@@ -34,6 +36,8 @@ tags: [full, identity]
 - tapOn: { id: profile-display-name }
 - eraseText
 - inputText: "E2E Bez fotky"
+- pressKey: Enter
+- assertVisible: { id: profile-display-name, text: "E2E Bez fotky" }
 - tapOn: { id: profile-save }
 - extendedWaitUntil:
     notVisible: { id: profile-save }

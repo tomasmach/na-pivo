@@ -55,6 +55,7 @@ tags: [full, identity]
 - scrollUntilVisible:
     element: { id: settings-language-en }
     direction: DOWN
+    centerElement: true
     timeout: 15000
 - tapOn: { id: settings-language-en }
 - runFlow:
@@ -76,8 +77,18 @@ tags: [full, identity]
 - scrollUntilVisible:
     element: { id: settings-language-cs }
     direction: DOWN
+    centerElement: true
     timeout: 15000
+- evalScript: ${output.local.screenshot('identity-settings-before-czech')}
 - tapOn: { id: settings-language-cs }
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /settings
+- extendedWaitUntil:
+    visible: "Zpět"
+    timeout: 20000
+- runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:

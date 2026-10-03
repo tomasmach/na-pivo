@@ -7,6 +7,7 @@ tags: [critical, full, identity]
     env:
       SCENARIO: identity
 - runFlow: ../../maestro/skip-onboarding.yaml
+- evalScript: ${output.local.check(output.local.observe('primary', '/v1/account/me').status === 200, 'Establish the cached observer before the app login so its deletion epoch stays current.')}
 - runFlow: ../../maestro/login.yaml
 - runFlow:
     file: ../../maestro/route.yaml

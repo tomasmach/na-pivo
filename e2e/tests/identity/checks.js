@@ -9,7 +9,7 @@ const names = function (account) { return account.drinks.map(function (drink) { 
 const observe = function (role, route, status, password) { const response = output.local.observe(role, route, password); check(response.status === status, 'Expected ' + status + ' from real ' + role + ' GET ' + route); return response.body; };
 if (CASE === 'logout') {
   equal(names(primary), ['E2E Archiv A', 'E2E Ležák'], 'Account A must retain exactly its archive and online beer.');
-  equal(state.accounts.find(function (a) { return a.publicId === primary.publicId; }).drinks, [{beer_name: 'E2E Archiv A', price_czk: 30, volume_ml: 500, place_context: 'private', drink_type: 'beer'}, {beer_name: 'E2E Ležák', price_czk: 41, volume_ml: 500, place_context: 'pub', drink_type: 'beer'}], 'Online beer must persist exact amount, volume, context and owner.');
+  equal(state.accounts.find(function (a) { return a.publicId === primary.publicId; }).drinks.slice().sort(function (a, b) { return a.beer_name.localeCompare(b.beer_name); }), [{beer_name: 'E2E Archiv A', price_czk: 30, volume_ml: 500, place_context: 'private', drink_type: 'beer'}, {beer_name: 'E2E Ležák', price_czk: 41, volume_ml: 500, place_context: 'pub', drink_type: 'beer'}], 'Online beer must persist exact amount, volume, context and owner.');
   if (PHASE === 'final') {
     equal(names(accounts.find(function (a) { return a.nickname === 'E2EKamarad'; })), ['E2E Archiv B'], 'Account B must never receive account A offline queue.');
     equal(accounts.filter(function (a) { return !a.nickname; }).flatMap(function (a) { return a.drinks; }), [], 'Logout must discard private queued writes before anonymous startup.');
