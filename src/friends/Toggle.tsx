@@ -27,6 +27,7 @@ const THUMB_OFF = 2;
 const THUMB_ON = 24;
 
 interface ToggleProps {
+  testID?: string;
   value: boolean;
   onToggle: () => void;
   accessibilityLabel: string;
@@ -37,7 +38,7 @@ interface ToggleProps {
   disabled?: boolean;
 }
 
-function Toggle({ value, onToggle, accessibilityLabel, disabled = false }: ToggleProps) {
+function Toggle({ testID, value, onToggle, accessibilityLabel, disabled = false }: ToggleProps) {
   const reduceMotion = useReduceMotion();
   const offset = useSharedValue(value ? THUMB_ON : THUMB_OFF);
 
@@ -61,6 +62,7 @@ function Toggle({ value, onToggle, accessibilityLabel, disabled = false }: Toggl
 
   return (
     <Pressable
+      testID={testID}
       onPress={handlePress}
       disabled={disabled}
       style={[

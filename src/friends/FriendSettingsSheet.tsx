@@ -347,6 +347,7 @@ function FriendSettingsSheet({
                   </Text>
                 </View>
                 <Toggle
+                  testID="friend-settings-ghost"
                   value={draft.ghostMode}
                   onToggle={handleGhostToggle}
                   accessibilityLabel={t.friends.ghostTitle}
@@ -374,6 +375,7 @@ function FriendSettingsSheet({
                   </Text>
                 </View>
                 <Toggle
+                  testID="friend-settings-sharing"
                   value={draft.shareDrinksWithParta && !draft.ghostMode}
                   onToggle={handleShareDrinksToggle}
                   disabled={draft.ghostMode}
