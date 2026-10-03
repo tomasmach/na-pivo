@@ -156,15 +156,22 @@ export function CoasterCard({
 
   return (
     <Pressable
+      testID="counter-count"
       onPress={interactive ? onOpenReceipt : undefined}
       disabled={!interactive}
-      accessibilityRole={interactive ? 'button' : 'text'}
-      accessibilityLabel={accessibilityLabel}
+      accessible={false}
       style={({ pressed }) => [styles.card, interactive && pressed && styles.pressed]}
     >
       <CardSheen />
 
-      <View style={styles.body} onLayout={handleBodyLayout}>
+      <Pressable
+        style={styles.body}
+        onLayout={handleBodyLayout}
+        onPress={interactive ? onOpenReceipt : undefined}
+        disabled={!interactive}
+        accessibilityRole={interactive ? 'button' : 'text'}
+        accessibilityLabel={accessibilityLabel}
+      >
         {/* Sits behind the numeral and is invisible at rest, so it costs the
             layout nothing and the reader never meets it. */}
         <Animated.View
@@ -195,7 +202,7 @@ export function CoasterCard({
         <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {(count > 0 ? nounLabel : t.counter.coasterEmpty).toUpperCase()}
         </Text>
-      </View>
+      </Pressable>
 
       {children}
 

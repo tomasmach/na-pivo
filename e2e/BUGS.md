@@ -1,0 +1,117 @@
+# Nálezy ze skutečných E2E průchodů
+
+## NP-E2E-001: volby piva jsou sloučené do jediného přístupného prvku
+
+- Základ: `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5, Expo development build.
+- Kroky: přihlásit lokální fixture, otevřít počítadlo a „Co si dáš?“, vybrat pivo z nabídky hospody.
+- Očekávání: tlačítko „Připsat E2E Ležák za 0,5 l · 41 Kč“ je samostatně dostupné pro nativní automatizaci a asistivní ovládání.
+- Skutečnost: v nativním stromu se celá karta s hlavičkou i volbami sloučí do jednoho prvku. TesterArmy vrací `AUTOMATION_UNSUPPORTED`; backend neobsahuje žádné pivo.
+- Příčina: vnější `Pressable` v `DrinkPickSheet` nemá `accessible={false}`. Minimální oprava ponechá přístupné jednotlivé potomky. Vizuální layout se nemění.
+- Regrese: `tests/spike/persist-drink.e2e.ts` před opravou nedokáže zapsat, po opravě třikrát projde včetně přesného DB oracle a restartu.
+- [Screenshot ověřeného výsledku po opravě](https://files.tmach.dev/spike-persisted-drink-e8ee0ea9ec4b4277ada3.png). Před opravou framework po secret fill uchoval pouze redigovaný accessibility dump, screenshot záměrně nevytvořil.
+- Stav: opraveno v samostatném [PR #207](https://github.com/tomasmach/na-pivo/pull/207). Test aktuálně prochází s opravou; na původním dev jde o známé selhání.
+
+## NP-E2E-002: zrušená komunitní akce vypadá jako aktivní
+
+- Priorita: P2. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5.
+- Kroky: otevřít Moje akce jako pořadatel, u E2E Večer u hosta schválit E2EKamos a poté akci zrušit.
+- Očekávání: karta jasně ukazuje zrušení a neslibuje hostovi místo.
+- Skutečnost: databáze obsahuje `status=cancelled`, ale karta dál zobrazuje „18+“, „poslední místo“ a „Máš místo“. Jen zmizí akce pro zrušení.
+- Dopad: uživatel z karty nepozná, že se setkání nekoná. Kontrola skutečného API současně potvrdila, že schválenému hostovi se po zrušení přestane vracet přesná adresa; tento průchod neprokázal únik adresy.
+- [Screenshot zrušené akce](https://files.tmach.dev/social-event-cancelled-312c4184569a4c1a9733.png). Viditelná adresa je syntetická fixture a obrazovka patří pořadateli.
+- Reprodukce: `tests/places-social/social.e2e.ts`, průchod `host approval reveals the event address only to the approved guest`. Vizuální kontrola zrušeného stavu selhala; samostatné kontroly autorizace adresy a DB prošly.
+- Stav: oprava v samostatném [PR #209](https://github.com/tomasmach/na-pivo/pull/209). Celý průchod jednou prošel za 44,17 s včetně kontroly DB, oprávnění adresy a [výsledného screenshotu](https://files.tmach.dev/social-event-cancelled-3b85cf888c7a496f80e5.png). Tři stabilitní běhy oblasti ještě nejsou dokončené.
+
+## NP-E2E-003: nabídka počítadla a vnitřní zkratky nejsou přístupné
+
+- Priorita: P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5.
+- Kroky: přihlásit fixture, zapsat E2E Ležák za 41 Kč, zkusit „Jiné pivo“ a otevřít „Co ještě?“ pro ukončení večera.
+- Očekávání: nativní ovládání najde jednotlivé volby, včetně „Vybrat jiné pivo nebo drink“ a „Dopito, zavřít tenhle večer“.
+- Skutečnost: vnitřní zkratky tácku pohltí rodičovské tlačítko. Po otevření další nabídky má strom jen tři prvky a neobsahuje její řádky, přestože jsou vizuálně přítomné. Přesný locator pro Dopito skončí timeoutem; předtím backend potvrdil právě jedno pivo.
+- Příčina: `CoasterCard` slučuje interaktivní potomky a `CounterMoreSheet` skrývá celý podstrom přes `accessibilityElementsHidden`.
+- Screenshoty: [tácek s nedostupnými zkratkami](https://files.tmach.dev/diary-counter-surface-ed73ae5140ef4e629077.png), [nabídka s nedostupným Dopito](https://files.tmach.dev/diary-counter-overflow-cc5b9181418c446ab413.png).
+- Reprodukce: `tests/diary/counter-menu.repro.e2e.ts`, rozpracovaný širší průchod `tests/diary/evening.e2e.ts`.
+- Stav: opraveno v samostatném [PR #211](https://github.com/tomasmach/na-pivo/pull/211). Maestro v běhu `a62c5714` otevřelo nabídku, zvolilo Dopito a potvrdilo ukončení. DB oracle potvrdil právě jedno pivo a jednu návštěvu s `closed_at`. [Nabídka po opravě](https://files.tmach.dev/diary-counter-dopito-menu-b00c716d604a4581b591.png), [uzavřený večer](https://files.tmach.dev/diary-closed-evening-before-publication-8f8331e3b4cb46fcb502.png). Typecheck, 45 stávajících Jest testů a nezávislé review prošly. Širší deníková sada ještě není dokončená.
+
+## NP-E2E-004: karta party pohltí nastavení soukromí
+
+- Priorita: P0 pro blokovaný průchod soukromí, samotná chyba přístupnosti P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5.
+- Kroky: přihlásit fixture s jedním kamarádem, otevřít Partu a zkusit otevřít nastavení přes její horní ovládání.
+- Očekávání: počet kamarádů a nabídka mají vlastní dostupné ovládací prvky.
+- Skutečnost: kompletní nativní strom s 29 prvky obsahuje pouze přístupné tlačítko celé karty; viditelné horní ovládání není samostatně dostupné. Test proto nedokáže vypnout sdílení a ověřit druhý účet.
+- Příčina: `PartyCard` vkládá `topRow` s vlastními tlačítky do přístupného rodičovského `Pressable`, zatímco spodní zkratky již má mimo něj.
+- [Screenshot nedostupného horního ovládání](https://files.tmach.dev/social-party-settings-before-9885d34c116d4428a91d.png).
+- Reprodukce: `tests/places-social/social.e2e.ts`, průchod soukromí/ghost/blokování.
+- Stav: opraveno v samostatném [PR #210](https://github.com/tomasmach/na-pivo/pull/210). Maestro v běhu `2d7eb19c` otevřelo nabídku i nastavení a změnilo přepínač; skutečná DB potvrdila vypnuté sdílení. [Karta po opravě](https://files.tmach.dev/social-party-settings-after-d161bffa9c59435ca8c0.png). Typecheck a nezávislé review prošly. Celý privacy průchod zatím nemá tři zelená opakování.
+
+## NP-E2E-005: text přepínače nerozlišuje automatické sdílení a ruční cinknutí
+
+- Typ: doložená nejasnost nastavení soukromí, nikoli potvrzená chyba autorizace. Priorita P1 pro vysvětlení výsledku uživateli.
+- Kroky: fixture má aktivní ruční cinknutí; vypnout „Ukazovat partě, kde sedím“ v Nastavení party a načíst `/v1/friends/live` druhým účtem.
+- Skutečnost: DB má `share_drinks_with_parta=false`, ale dřívější ruční aktivita zůstává v `active_friends`. Samostatná automatická presence a drink-feed používají tento přepínač; ghost režim skrývá i ruční aktivitu.
+- Očekávání: text nastavení srozumitelně odliší, co se po vypnutí přestane sdílet. Dokument `docs/decisions/one-write-two-readers.md` a existující kontraktové testy rozlišují automatický feed a vědomé sdílení přítomnosti; E2E proto nesmí bez produktového rozhodnutí změnit význam API.
+- Důkaz: skutečný běh `2d7eb19c` uložil přepínač a následný API oracle našel ruční aktivitu. Následný běh `0292bfec` ověřil uložený stav a zachytil [vypnuté sdílení v nastavení](https://files.tmach.dev/social-sharing-off-settings-bc576d996a4c4f588361.png).
+- Stav: bez produktové změny. `tests/places-social/party-privacy.yaml` nyní rozlišuje automatickou presence, drink-feed a explicitní aktivitu; finální runtime tohoto upřesnění ještě čeká.
+
+## NP-E2E-006: formulář vlastního piva slučuje jednotlivé vstupy
+
+- Priorita P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: přihlásit fixture, zapsat pivo z nabídky, otevřít „Vybrat jiné pivo nebo drink“ a „Přidat nové pivo“.
+- Očekávání: samostatně dostupné pole názvu a ceny umožní vyplnit a uložit další nápoj.
+- Skutečnost: formulář je viditelný a pole má focus, ale přesný nativní identifikátor `beer-form-name` není dostupný. Průchod skončí před druhým zápisem; první pivo zůstává skutečně uložené.
+- Příčina: obalový `Pressable` uvnitř `BeerFormModal` slučuje své interaktivní potomky do jednoho přístupného prvku.
+- [Screenshot formuláře před neúspěšným vstupem](https://files.tmach.dev/diary-beer-form-before-input-d94c0a902fc844c8ab18.png). Reprodukce `fc97c485` trvala 73,793 s a skončila selháním `tests/diary/evening.yaml`.
+- Stav: oprava v samostatném [PR #213](https://github.com/tomasmach/na-pivo/pull/213), nezávislé review bez nálezů. Běh `76ba5706` samostatně vyplnil název i cenu, uložil offline pivo a po restartu doručil přesný DB výsledek: dvě zbývající piva za 41 a 43 Kč, jedna uzavřená návštěva. [Vyplněný formulář](https://files.tmach.dev/diary-beer-form-filled-c236a3bdde1b44f38d4a.png), [výsledné statistiky](https://files.tmach.dev/diary-stats-opened-aa0aed84c1684d4395cf.png). Následný celý test `bf0e5e7d` prošel za 2 min 47 s včetně přesného UI statistik a posledního DB oracle po restartu. Tři stabilitní opakování ještě čekají.
+
+## NP-E2E-007: offline publikace večera se po návratu neodešle
+
+- Priorita P0 pro nedoručený offline zápis. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: zapsat pivo, uzavřít večer, zastavit vlastní backend, publikovat večer pro partu, restartovat appku offline, spustit backend a vrátit appku z plochy do popředí.
+- Očekávání: uložená publikace se odešle právě jednou bez dalšího restartu či nového zápisu.
+- Skutečnost: UI ukazuje „Visí ve Výčepu · Jen parta“, ale po 15 s zůstává v DB 0 publikovaných nocí, 1 pivo a 1 uzavřená návštěva. Stejný PID před Home, na ploše i po návratu a kontrola aktivního detailu vylučují nechtěný restart nebo test na pozadí.
+- Příčina: `flushNightsQueue()` se spouští při mountu a enqueue, ale chybí v obsluze `AppState` pro návrat do popředí. Ostatní fronty v ní mají opakované doručení.
+- Reprodukce: `tests/diary/vycep.yaml`, běh `c099c714`, 118,561 s, 0/1 úspěšných testů. [Screenshot aktivního detailu bez doručené publikace](https://files.tmach.dev/diary-vycep-foreground-not-synced-9fddd7abd89e4850bb1e.png).
+- Stav: oprava v samostatném [PR #212](https://github.com/tomasmach/na-pivo/pull/212). Stejný celý průchod po opravě prošel v běhu `051e9968` za 2 min 16 s: skutečná DB obsahovala právě jednu publikovanou noc, jedno pivo a uzavřenou návštěvu; po dalším restartu se noc zobrazila i ve Výčepu. [Výsledný screenshot](https://files.tmach.dev/diary-vycep-published-e1e795908295499da217.png). Kontrola typů, 16 souvisejících Jest testů a nezávislé review prošly. Tři stabilitní opakování ještě čekají.
+
+## NP-E2E-008: offline Parta žádá již vyplněnou přezdívku
+
+- Priorita P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5.
+- Kroky: přihlásit účet E2EPivar se dvěma kamarády, načíst Partu, zastavit backend a restartovat appku.
+- Očekávání: uložená Parta zachová dostupné akce a nenačtený profil nevydává za nevyplněnou přezdívku.
+- Skutečnost: karta ukazuje dva kamarády a uloženou vlastní aktivitu, ale nabídne „Doplnit přezdívku“. Skutečný účet již přezdívku má.
+- Příčina: CTA používá `nickname == null`, přičemž `selectNickname` vrací `null` i pro nenačtený profil. Existující `selectNeedsNickname` správně rozlišuje nenačtený profil a potvrzenou chybějící přezdívku.
+- Reprodukce: `tests/places-social/invite-offline.yaml`, běh `0292bfec`; [screenshot offline Party](https://files.tmach.dev/social-offline-party-1b89f217326a4d1fa103.png). Původní kontrola snapshotu a API prošla, vizuální kontrola odhalila tento rozpor. Regresní kontrola výzvy se doplňuje.
+- Stav: minimální oprava `d684e303` ve větvi `fix/preserve-offline-party-actions`, nezávislé review bez nálezů. Nativní ověření opravy a PR čekají.
+
+## NP-E2E-009: žebříček po blokování ukazuje dvě různá pořadí
+
+- Typ: rozpor ve vysvětlení pořadí, nikoli potvrzený únik soukromého účtu. Priorita P2.
+- Kroky: otevřít Mapéry jako E2EPivar s 10 XP, zahřát žebříček s E2EKamos na prvním místě, kamaráda zablokovat a žebříček obnovit.
+- Očekávání: uživatel pozná, proč se liší jeho osobní a globální pořadí.
+- Skutečnost: hero uvádí „1. místo“ a „z 2 v tabulce“, jediný viditelný řádek Ty má pořadí 2. Soukromý ani blokovaný účet není v seznamu ani v odpovídajícím API payloadu.
+- [Screenshot rozdílného pořadí](https://files.tmach.dev/social-private-blocked-board-47d8b88bd9a640ba99a5.png), `tests/places-social/leaderboard-privacy.yaml`, běh `0292bfec`.
+- Existující kontraktové testy záměrně zachovávají globální pořadí `entries` po blokování a současně přepočítávají osobní `me.rank`. Nejde proto napravit rozpor změnou backendu bez rozhodnutí o významu zobrazeného pořadí. Navazující zpřesnění E2E porovná oba údaje s jejich skutečnými API hodnotami; nebude vynucovat změnu kontraktu.
+- Stav: ponecháno k produktovému rozhodnutí o vysvětlení pořadí. Kontrola soukromí prošla; to neznamená, že je popis pořadí srozumitelný.
+
+## NP-E2E-010: výběr zdroje fotky slučuje své akce
+
+- Priorita P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: přihlásit fixture, otevřít fotky a nabídku „Cvakni pivo“, zkusit vybrat fotku z galerie.
+- Očekávání: galerie, fotoaparát a zavření mají samostatně dostupné ovládací prvky.
+- Skutečnost: nativní strom obsahuje jediný sloučený prvek s nadpisem, popisem a všemi třemi akcemi. Přesný locator galerie selže, přestože je tlačítko vidět.
+- Příčina: vnější a vnitřní `Pressable` v `BeerPhotoSourceSheet` slučují přístupné potomky. Minimální oprava nastavuje oběma obalům `accessible={false}`; samostatná tlačítka si ponechávají role, popisy a callbacky.
+- Reprodukce: `tests/identity/photos.yaml`, běh `e7987064`; [screenshot nabídky před opravou](https://files.tmach.dev/identity-photo-source-accessibility-488cefaeca6c47c4a8c3.png).
+- Stav: oprava v samostatném [PR #214](https://github.com/tomasmach/na-pivo/pull/214), nezávislé review bez nálezů. Celý `identity/media-denied.yaml` v běhu `9cc075a2` prošel za 1 min 58 s: dostupná zamítnutá kamera, skutečný picker galerie, Cancel, restart a skutečná DB bez nechtěné fotky či avataru. [Zkontrolovaný konečný stav](https://files.tmach.dev/identity-media-denied-recovered-575a4d3c98014b76b644.png). Samostatný upload a změna visibility v photos flow ještě čekají; tři stabilitní opakování oblasti nejsou dokončená.
+
+## NP-E2E-011: po offline restartu není dostupné odhlášení
+
+- Priorita P1; blokuje P0 průchod oddělení účtů. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: přihlásit účet, zapsat jedno pivo online, zastavit lokální backend, zapsat druhé pivo a restartovat appku offline. Počítadlo drží dvě piva za 82 Kč. Otevřít Účet.
+- Očekávání: přihlášený uživatel se může místně odhlásit i bez dostupného profilu ze serveru.
+- Skutečnost: obrazovka ukazuje pouze Účet a Zpět. Akce Odhlásit se chybí i v nativním stromu. [Zkontrolovaný screenshot](https://files.tmach.dev/identity-account-offline-empty-before-5643c3a985bb4592bfcc.png).
+- Příčina: přihlášená session se správně obnoví ze SecureStore; vzdálený profil zůstane při výpadku `null`. `AccountScreen` v této větvi předčasně vrací samotnou hlavičku, přestože existující `auth.logout` podporuje místní odhlášení při síťové chybě.
+- Reprodukce: `tests/identity/logout.yaml`, běh `9cc075a2`. Dvě offline piva a jejich přetrvání po restartu byly ověřené před selháním.
+- Stav: malá oprava `634a8ba6` ve větvi `fix/keep-offline-logout` zachovává stávající tlačítko podle přihlášené session. Kontrola typů, lint, 99 souvisejících Jest testů a nezávislé review prošly. Nativní ověření stejného průchodu a samostatný PR čekají.
+- Hranice kontraktu: úmyslné offline odhlášení místně vymaže soukromá data včetně nedoručené fronty; neslibuje doručení ani vzdálené odvolání tokenu. E2E následně ověřuje, že fronta účtu A nepřejde pod účet B.
+
+Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
