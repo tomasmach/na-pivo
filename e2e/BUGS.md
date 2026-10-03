@@ -20,7 +20,7 @@
 - Dopad: uživatel z karty nepozná, že se setkání nekoná. Kontrola skutečného API současně potvrdila, že schválenému hostovi se po zrušení přestane vracet přesná adresa; tento průchod neprokázal únik adresy.
 - [Screenshot zrušené akce](https://files.tmach.dev/social-event-cancelled-312c4184569a4c1a9733.png). Viditelná adresa je syntetická fixture a obrazovka patří pořadateli.
 - Reprodukce: `tests/places-social/social.e2e.ts`, průchod `host approval reveals the event address only to the approved guest`. Vizuální kontrola zrušeného stavu selhala; samostatné kontroly autorizace adresy a DB prošly.
-- Stav: potvrzené známé selhání zobrazení. Produktová oprava zatím neprovedena.
+- Stav: oprava v samostatném [PR #209](https://github.com/tomasmach/na-pivo/pull/209). Celý průchod jednou prošel za 44,17 s včetně kontroly DB, oprávnění adresy a [výsledného screenshotu](https://files.tmach.dev/social-event-cancelled-3b85cf888c7a496f80e5.png). Tři stabilitní běhy oblasti ještě nejsou dokončené.
 
 ## NP-E2E-003: nabídka počítadla a vnitřní zkratky nejsou přístupné
 
@@ -32,5 +32,16 @@
 - Screenshoty: [tácek s nedostupnými zkratkami](https://files.tmach.dev/diary-counter-surface-ed73ae5140ef4e629077.png), [nabídka s nedostupným Dopito](https://files.tmach.dev/diary-counter-overflow-cc5b9181418c446ab413.png).
 - Reprodukce: `tests/diary/counter-menu.repro.e2e.ts`, rozpracovaný širší průchod `tests/diary/evening.e2e.ts`.
 - Stav: malá oprava přístupnosti připravena pro [PR #207](https://github.com/tomasmach/na-pivo/pull/207). Typecheck a 45 stávajících Jest testů prošly; čeká na nativní ověření opravy.
+
+## NP-E2E-004: karta party pohltí nastavení soukromí
+
+- Priorita: P0 pro blokovaný průchod soukromí, samotná chyba přístupnosti P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5.
+- Kroky: přihlásit fixture s jedním kamarádem, otevřít Partu a zkusit otevřít nastavení přes její horní ovládání.
+- Očekávání: počet kamarádů a nabídka mají vlastní dostupné ovládací prvky.
+- Skutečnost: kompletní nativní strom s 29 prvky obsahuje pouze přístupné tlačítko celé karty; viditelné horní ovládání není samostatně dostupné. Test proto nedokáže vypnout sdílení a ověřit druhý účet.
+- Příčina: `PartyCard` vkládá `topRow` s vlastními tlačítky do přístupného rodičovského `Pressable`, zatímco spodní zkratky již má mimo něj.
+- [Screenshot nedostupného horního ovládání](https://files.tmach.dev/social-party-settings-before-9885d34c116d4428a91d.png).
+- Reprodukce: `tests/places-social/social.e2e.ts`, průchod soukromí/ghost/blokování.
+- Stav: minimální oprava přesune horní ovládání vedle přístupného těla karty při zachování layoutu. Větev `fix/accessible-party-controls`, commit `a9adef6d`; typecheck prošel, čeká na nativní ověření a samostatný PR.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.

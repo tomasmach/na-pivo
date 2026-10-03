@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { ready, start, stop } from './processes.mjs';
+import { controlServer } from './control.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const runDir = process.env.NA_PIVO_E2E_RUN_DIR;
@@ -34,6 +35,7 @@ let metro;
 let migration;
 let closing = false;
 let control;
+let httpControl;
 function record() {
   const owned = [{ pid: process.pid }, migration, backend, metro].filter(child => child?.pid).flatMap(child => {
     try { return [{ pid: child.pid, started: execFileSync('ps', ['-o', 'lstart=', '-p', String(child.pid)], { encoding: 'utf8' }).trim() }]; }
@@ -51,6 +53,7 @@ async function cleanup(code = 0) {
   if (closing) return;
   closing = true;
   control?.close();
+  httpControl?.close();
   await Promise.all([stop(migration), stop(backend), stop(metro)]);
   try { fs.unlinkSync(process.env.NA_PIVO_E2E_CONTROL_SOCKET); } catch { /* Not created. */ }
   process.exit(code);
@@ -67,6 +70,10 @@ try {
   migration = undefined;
   if (migrationCode !== 0) throw new Error('Local E2E migration failed.');
   await online();
+  if (process.env.NA_PIVO_E2E_CONTROL_PORT) {
+    httpControl = controlServer({ online, offline: async () => { await stop(backend); backend = undefined; record(); } });
+    httpControl.on('error', () => cleanup(1));
+  }
   // A private Unix socket controls only this run's backend for offline tests.
   control = net.createServer(socket => {
     socket.once('data', async data => {
