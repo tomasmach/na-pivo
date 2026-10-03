@@ -31,7 +31,7 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 | Prázdný/chybový katalog | Prázdný výsledek versus výpadek, retry a zrušit filtr | Chyba se vydává za prázdné okolí, není cesta dál | P1 | Plán |
 | Mapa a hledání | Vybrat konkrétní výsledek, detail, zamířit kompas | Jiné místo v detailu, nefunkční návrat a zacílení | P1 | Plán |
 | Večer | Dopito, archiv, úprava a smazání piva offline, restart a sync | Úprava jiného večera, návrat smazaného piva, znovuotevřená návštěva | P1 | Plán |
-| Výčep | Publikovat offline, obnovit pouze foreground, potom restart | Publikace zůstane ve frontě nebo se doručí dvakrát | P1 | Plán; hypotéza chybějícího foreground flush, zatím nereprodukováno |
+| Výčep | Publikovat offline, obnovit pouze foreground, potom restart | Publikace zůstane ve frontě nebo se doručí dvakrát | P0 | `diary/vycep.yaml`: NP-E2E-007 potvrzen; s opravou PR #212 celý průchod jednou zelený, stabilita čeká |
 | Detail piva | Otevřít seedované check-iny přes profil kamaráda | Route nebo agregace patří jinému pivu | P1 | Plán; detail čte BeerCheckIn, ne DrinkLog |
 | Statistiky | Po zápisu/úpravě/smazání porovnat přesný baseline UI a serveru | Dvojí započítání remote/local nebo nezohledněné smazání | P1 | Plán; součást deníkových testů |
 | Moje přidané hospody | Čekající/potvrzená hospoda, oprava názvu/pinu, retry | Editace vytvoří další hospodu nebo uloží starý pin | P1 | Plán |
