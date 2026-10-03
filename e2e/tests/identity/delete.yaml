@@ -1,0 +1,63 @@
+appId: com.tomasmach.na-pivo
+name: Account deletion confirms and revokes sessions
+tags: [critical, full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: identity
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn: { id: counter-primary }
+- tapOn: "Připsat E2E Ležák za 0,5 l · 41 Kč"
+- assertVisible: "1 pivo, utraceno 41\\sKč\\. Otevře tvůj účet\\."
+- runScript:
+    file: checks.js
+    env:
+      CASE: delete
+      PHASE: before
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- tapOn: "Otevřít další možnosti účtu"
+- tapOn: "Smazat účet"
+- assertVisible: { id: app-dialog-primary }
+- tapOn: { id: app-dialog-secondary-0 }
+- runScript:
+    file: checks.js
+    env:
+      CASE: delete
+      PHASE: cancel
+- tapOn: "Otevřít další možnosti účtu"
+- tapOn: "Smazat účet"
+- assertVisible: { id: app-dialog-primary }
+- evalScript: ${output.local.debugScreenshot('identity-delete-dialog')}
+- tapOn: { id: app-dialog-primary }
+- evalScript: ${output.local.debugScreenshot('identity-delete-confirmed')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: delete
+      PHASE: deleted
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- assertVisible: "Vytvořit účet"
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- assertVisible: "Čistej tácek, zatím nic nepadlo"
+- evalScript: ${output.local.screenshot('identity-account-deleted')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: delete
+      PHASE: final

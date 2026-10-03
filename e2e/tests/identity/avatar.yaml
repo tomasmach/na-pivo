@@ -1,0 +1,84 @@
+appId: com.tomasmach.na-pivo
+name: Native avatar upload and removal survive restart
+tags: [full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: identity
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- evalScript: ${output.local.request('/media', {})}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/edit
+- tapOn: { id: profile-avatar-pick }
+- extendedWaitUntil:
+    visible: "Cancel|Zrušit"
+    timeout: 15000
+- tapOn:
+    point: "16%,28%"
+- runFlow:
+    when:
+      visible: "Choose|Vybrat"
+    commands:
+      - tapOn: "Choose|Vybrat"
+- runScript:
+    file: checks.js
+    env:
+      CASE: avatar
+      PHASE: uploaded
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/edit
+- assertVisible: { id: profile-avatar-remove }
+- evalScript: ${output.local.screenshot('identity-avatar-uploaded')}
+- tapOn: { id: profile-avatar-pick }
+- extendedWaitUntil:
+    visible: "Cancel|Zrušit"
+    timeout: 15000
+- tapOn:
+    point: "49%,28%"
+- runFlow:
+    when:
+      visible: "Choose|Vybrat"
+    commands:
+      - tapOn: "Choose|Vybrat"
+- runScript:
+    file: checks.js
+    env:
+      CASE: avatar
+      PHASE: replaced
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/edit
+- assertVisible: { id: profile-avatar-remove }
+- evalScript: ${output.local.screenshot('identity-avatar-replaced')}
+- tapOn: { id: profile-avatar-remove }
+- runScript:
+    file: checks.js
+    env:
+      CASE: avatar
+      PHASE: removed
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/edit
+- assertNotVisible: { id: profile-avatar-remove }
+- tapOn: "Zavřít"
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- evalScript: ${output.local.screenshot('identity-avatar-removed')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: avatar
+      PHASE: final

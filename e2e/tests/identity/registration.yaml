@@ -1,0 +1,116 @@
+appId: com.tomasmach.na-pivo
+name: Registration claims history and verified email unlocks export
+tags: [critical, full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: registration
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn: { id: counter-primary }
+- tapOn: "Připsat E2E Ležák za 0,5 l · 41 Kč"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: anonymous
+- evalScript: ${output.local.offline()}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn: { id: counter-primary }
+- tapOn: "Připsat E2E Ležák za 0,5 l · 41 Kč"
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
+- evalScript: ${output.local.online()}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /auth
+- tapOn: { id: auth-register-mode }
+- tapOn: { id: profile-nickname }
+- eraseText
+- inputText: "E2ERegister"
+- extendedWaitUntil:
+    visible: "Volné"
+    timeout: 15000
+- scrollUntilVisible:
+    element: { id: auth-email }
+    direction: DOWN
+    timeout: 15000
+- tapOn: { id: auth-email }
+- eraseText
+- inputText: "${MAESTRO_EMAIL}"
+- scrollUntilVisible:
+    element: { id: auth-password }
+    direction: DOWN
+    timeout: 15000
+- tapOn: { id: auth-password }
+- eraseText
+- inputText: "${MAESTRO_PASSWORD}"
+- scrollUntilVisible:
+    element: { id: auth-submit }
+    direction: DOWN
+    timeout: 15000
+- tapOn: { id: auth-submit }
+- tapOn: "Jen pro partu. Veřejně tě nikdo nenajde. Profil uvidí jen tvoji kamarádi."
+- tapOn: "Potvrdit a jít na pivo"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: claimed
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- assertVisible: "Upravit profil"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: private
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- tapOn: "Otevřít další možnosti účtu"
+- tapOn: "Stáhnout moje data"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: unverified
+- evalScript: ${output.local.request('/mail/verify', {})}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- tapOn: "Otevřít další možnosti účtu"
+- tapOn: "Stáhnout moje data"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: export
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- evalScript: ${output.local.screenshot('identity-registered-private-verified')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: final

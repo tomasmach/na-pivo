@@ -1,8 +1,8 @@
 """Reserve the primary credential for registration through the native UI."""
 
-from e2e.seeds import base, identity
-
 from pubs.models import Account
+
+from e2e.seeds import base, identity
 
 
 def seed():

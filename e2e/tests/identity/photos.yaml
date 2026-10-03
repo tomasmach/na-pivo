@@ -1,0 +1,96 @@
+appId: com.tomasmach.na-pivo
+name: Offline private photos persist and remain isolated
+tags: [critical, full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: identity
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- evalScript: ${output.local.request('/media', {})}
+- runScript:
+    file: checks.js
+    env:
+      CASE: photos
+      PHASE: before
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/photos
+- tapOn: "Přidat fotku piva"
+- tapOn: "Vybrat z galerie"
+- extendedWaitUntil:
+    visible: "Cancel|Zrušit"
+    timeout: 15000
+- tapOn:
+    point: "16%,28%"
+- assertVisible: { id: photo-caption }
+- tapOn: { id: photo-caption }
+- eraseText
+- inputText: "E2E soukromá"
+- scrollUntilVisible:
+    element: { text: "Viditelnost fotky: Jen pro mě" }
+    direction: DOWN
+    timeout: 15000
+- tapOn: "Viditelnost fotky: Jen pro mě"
+- evalScript: ${output.local.offline()}
+- tapOn: "Uložit do deníčku"
+- assertVisible: "Fotka piva, E2E soukromá. Ťukni pro detail."
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/photos
+- assertVisible: "Fotka piva, E2E soukromá. Ťukni pro detail."
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- runScript:
+    file: checks.js
+    env:
+      CASE: photos
+      PHASE: private
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/photos
+- tapOn: "Přidat fotku piva"
+- tapOn: "Vybrat z galerie"
+- extendedWaitUntil:
+    visible: "Cancel|Zrušit"
+    timeout: 15000
+- tapOn:
+    point: "16%,28%"
+- assertVisible: { id: photo-caption }
+- tapOn: { id: photo-caption }
+- eraseText
+- inputText: "E2E pro partu"
+- tapOn: "Uložit do deníčku"
+- runScript:
+    file: checks.js
+    env:
+      CASE: photos
+      PHASE: shared
+- tapOn: "Fotka piva, E2E soukromá. Ťukni pro detail."
+- tapOn: "Smazat fotku"
+- tapOn: { id: app-dialog-secondary-0 }
+- runScript:
+    file: checks.js
+    env:
+      CASE: photos
+      PHASE: cancel
+- tapOn: "Smazat fotku"
+- tapOn: { id: app-dialog-primary }
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/photos
+- assertNotVisible: "Fotka piva, E2E soukromá. Ťukni pro detail."
+- assertVisible: "Fotka piva, E2E pro partu. Ťukni pro detail."
+- evalScript: ${output.local.screenshot('identity-photo-private-isolated')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: photos
+      PHASE: final

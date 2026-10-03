@@ -1,5 +1,6 @@
 """Small synthetic accounts and whitelisted observations for native identity flows."""
 
+import hashlib
 import json
 import os
 import uuid
@@ -8,8 +9,6 @@ from datetime import timedelta
 from django.contrib.auth.hashers import check_password, make_password
 from django.core import mail
 from django.utils import timezone
-from e2e.seeds import base
-
 from pubs.models import (
     Account,
     AccountUsageStats,
@@ -22,6 +21,8 @@ from pubs.models import (
     ReleaseNote,
     ReleaseNoteItem,
 )
+
+from e2e.seeds import base
 
 
 def seed_observers(primary=None):
@@ -71,6 +72,16 @@ def seed():
     )
 
 
+def avatar_digest(account):
+    if not account.avatar or not account.avatar.storage.exists(account.avatar.name):
+        return None
+    digest = hashlib.sha256()
+    with account.avatar.storage.open(account.avatar.name, "rb") as image:
+        for chunk in iter(lambda: image.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def observe():
     rows = []
     for account in Account.objects.order_by("pk"):
@@ -92,6 +103,7 @@ def observe():
                     and check_password(os.environ["NA_PIVO_E2E_NEW_PASSWORD"], credential.password)
                 ),
                 "hasAvatar": bool(account.avatar),
+                "avatarDigest": avatar_digest(account),
                 "avatarFileExists": bool(
                     account.avatar and account.avatar.storage.exists(account.avatar.name)
                 ),

@@ -1,0 +1,26 @@
+appId: com.tomasmach.na-pivo
+name: Interrupted onboarding returns until skip persists
+tags: [full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: identity
+- tapOn: { id: onboarding-next }
+- assertVisible: "Čárkuj si večer"
+- runFlow: ../../maestro/restart.yaml
+- assertVisible: { id: onboarding-skip }
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- assertVisible: "Vytvořit účet"
+- assertNotVisible: { id: onboarding-skip }
+- evalScript: ${output.local.screenshot('identity-onboarding-skipped')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: onboarding
+      PHASE: final
