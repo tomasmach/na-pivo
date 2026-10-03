@@ -17,6 +17,9 @@ appId: com.tomasmach.na-pivo
     id: beer-form-submit
 - runFlow:
     when:
-      visible: Ještě jedno
+      visible: Jo, připsat další pivo
     commands:
-      - tapOn: Ještě jedno
+      - tapOn: Jo, připsat další pivo
+- assertNotVisible:
+    id: beer-form-submit
+- evalScript: ${output.local.screenshot('diary-beer-counted-after-form')}
