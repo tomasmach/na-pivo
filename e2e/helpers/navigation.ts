@@ -34,8 +34,14 @@ export async function openRoute({ device, screen }: Pick<MobileUI, 'device' | 's
 
 export async function skipOnboarding({ app, screen }: Pick<MobileUI, 'app' | 'screen'>) {
   await app.open();
-  await expect(screen.getByTestId('onboarding-skip')).toBeVisible({ timeout: 60_000 });
-  await screen.getByTestId('onboarding-skip').tap();
+  const skip = screen.getByTestId('onboarding-skip');
+  await expect(skip).toBeVisible({ timeout: 60_000 });
+  // The native tree can arrive before the first React navigation transition.
+  // Skip is idempotent; don't open a deep link until its route has gone away.
+  await expect.poll(async () => {
+    if (await skip.isVisible()) await skip.tap();
+    return !(await skip.isVisible());
+  }).toBe(true);
 }
 
 export async function signInExisting(ui: MobileUI, emailSecret = 'email', passwordSecret = 'password') {
