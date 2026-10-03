@@ -1,0 +1,42 @@
+appId: com.tomasmach.na-pivo
+name: Leaderboard scores exclude private and blocked accounts
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- evalScript: ${output.ps.check('board-beers')}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /leaderboards
+- assertVisible: '1\. @E2EKamos, 2 piva'
+- assertVisible: '2\. Ty, 1 pivo'
+- assertNotVisible: '.*E2ECizi.*'
+- tapOn: Přepnout na Mapéři
+- assertVisible: '1\. @E2EKamos, 20 XP'
+- assertVisible: '2\. Ty, 10 XP'
+- evalScript: ${output.ps.check('board-mapper')}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: ${'/parta/' + output.local.state().scenario.fixtureAccounts.E2EKamos}
+- tapOn: Další možnosti
+- tapOn: Zablokovat
+- tapOn: Zablokovat
+- evalScript: ${output.local.poll(function () { output.ps.check('board-blocked'); }, 15000)}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /leaderboards
+- swipe:
+    start: 50%, 30%
+    end: 50%, 75%
+- assertNotVisible: '.*E2EKamos.*'
+- assertNotVisible: '.*E2ECizi.*'
+- evalScript: ${output.local.screenshot('social-private-blocked-board')}
+- evalScript: ${output.ps.check('board-blocked')}

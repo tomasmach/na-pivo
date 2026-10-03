@@ -31,6 +31,7 @@ from pubs.models import (
     PubFavorite,
     PubRating,
     PubReport,
+    PubVisit,
     UserAddedPub,
 )
 from pubs.photo_contest import current_photo_contest
@@ -93,6 +94,19 @@ def seed():
         city="Praha",
         started_at=now - timedelta(minutes=5),
         expires_at=now + timedelta(hours=4),
+    )
+    # Automatic presence and an explicit cink coexist, so privacy tests can
+    # enforce their separate documented contracts instead of conflating them.
+    PubVisit.objects.create(
+        account=primary,
+        client_id=uuid.uuid4(),
+        cache_key=key,
+        name="E2E U Testera",
+        lat=lat,
+        lng=lng,
+        city="Praha",
+        started_at=now - timedelta(minutes=5),
+        client_updated_at=now,
     )
     for account, count in ((primary, 1), (second, 2), (outsider, 3)):
         AccountUsageStats.objects.create(account=account, mapper_xp=count * 10)
@@ -195,6 +209,8 @@ def observe():
             UserAddedPub,
             ["account__nickname", "client_id", "name", "location_source", "active"],
         ),
+        "presenceVisits": rows(PubVisit, ["account__nickname", "client_id", "name"]),
+        "manualActivities": rows(FriendPubActivity, ["account__nickname", "active"]),
         "favorites": rows(PubFavorite, ["account__nickname", "cache_key"]),
         "ratings": rows(PubRating, ["account__nickname", "cache_key", "verdict"]),
         "reports": rows(PubReport, ["account__nickname", "cache_key", "reason"]),
@@ -211,6 +227,8 @@ def observe():
                 "category": row.category,
                 "clientId": str(row.client_id),
                 "attachmentPresent": bool(row.attachment),
+                "fileExists": bool(row.attachment)
+                and row.attachment.storage.exists(row.attachment.name),
             }
             for row in FeedbackReport.objects.all()
         ],

@@ -1,0 +1,64 @@
+appId: com.tomasmach.na-pivo
+name: Denied location and camera preserve manual search and text feedback
+tags: [full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- launchApp:
+    arguments:
+      '--initialUrl': ${MAESTRO_METRO}
+      '-EXDevMenuShowsAtLaunch': 'NO'
+      '-EXDevMenuIsOnboardingFinished': 'YES'
+      '-EXDevMenuShowFloatingActionButton': 'NO'
+    permissions:
+      all: deny
+      location: deny
+      photos: allow
+      camera: deny
+      notifications: deny
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /
+- assertVisible: Potřebuju tvoji polohu
+- tapOn: Otevřít mapu bez polohy
+- assertVisible: Pivní mapa hospod, navštívených míst a kamarádů
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E NenalezitelnyPodnik
+- hideKeyboard
+- assertVisible: Nic jsem nenašel
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /report
+- tapOn: Přidat přílohu
+- tapOn: Vyfotit
+- assertVisible: Bez povolení to nepůjde
+- runFlow:
+    when: {visible: Zrušit}
+    commands:
+      - tapOn: Zrušit
+- runFlow:
+    when: {visible: OK}
+    commands:
+      - tapOn: OK
+- tapOn: 'Popiš, co se stalo nebo co ti chybí…'
+- inputText: E2E Kamera odmítnuta
+- hideKeyboard
+- scrollUntilVisible:
+    element: {text: Odeslat zpětnou vazbu}
+    direction: DOWN
+- tapOn: Odeslat zpětnou vazbu
+- assertVisible: Díky!
+- evalScript: ${output.local.poll(function () { output.ps.check('denied-feedback'); }, 15000)}
+- evalScript: ${output.local.screenshot('places-denied-camera-feedback')}
+- evalScript: ${output.ps.check('denied-feedback')}

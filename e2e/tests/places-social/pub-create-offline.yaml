@@ -1,0 +1,72 @@
+appId: com.tomasmach.na-pivo
+name: Confirmed map pin queues one pub and rename preserves its identity
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /add-pub
+- evalScript: ${output.local.offline()}
+- tapOn: Název hospody
+- inputText: E2E Nová hospoda
+- hideKeyboard
+- scrollUntilVisible:
+    element: {text: Zapíchnout špendlík hospody do mapy}
+    direction: DOWN
+- tapOn: Zapíchnout špendlík hospody do mapy
+- tapOn: {id: map-pin-confirm}
+- scrollUntilVisible:
+    element: {text: Město hospody}
+    direction: DOWN
+- tapOn: Město hospody
+- eraseText
+- inputText: Praha
+- hideKeyboard
+- scrollUntilVisible:
+    element: {text: Přidat hospodu}
+    direction: DOWN
+- tapOn: Přidat hospodu
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /my-added-pubs
+- assertVisible: '.*E2E Nová hospoda.*Čeká na odeslání.*'
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /my-added-pubs
+- assertVisible: '.*E2E Nová hospoda.*Čeká na odeslání.*'
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- evalScript: ${output.local.poll(function () { output.ps.check('pub-created'); }, 15000)}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /my-added-pubs
+- tapOn: 'Otevřít akce hospody E2E Nová hospoda.*'
+- tapOn: Opravit hospodu
+- tapOn: Název hospody
+- eraseText
+- inputText: E2E Přejmenovaná hospoda
+- hideKeyboard
+- scrollUntilVisible:
+    element: {text: Přidat hospodu}
+    direction: DOWN
+- tapOn: Přidat hospodu
+- evalScript: ${output.local.poll(function () { output.ps.check('pub-renamed'); }, 15000)}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /my-added-pubs
+- assertVisible: '.*E2E Přejmenovaná hospoda.*V kompasu.*'
+- assertNotVisible: '.*E2E Nová hospoda.*'
+- evalScript: ${output.local.screenshot('places-published-owner-edit')}
+- evalScript: ${output.ps.check('pub-renamed')}

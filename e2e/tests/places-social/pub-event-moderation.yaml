@@ -1,0 +1,41 @@
+appId: com.tomasmach.na-pivo
+name: Retry submits one moderated event without exposing pending suggestions
+tags: [full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E U Testera
+- hideKeyboard
+- tapOn: 'E2E U Testera,.*'
+- assertVisible: E2E U Testera
+- scrollUntilVisible:
+    element: {text: 'E2E Ověřený kvíz.*'}
+    direction: DOWN
+- assertNotVisible: '.*E2E Skončený kvíz.*'
+- tapOn: Navrhnout akci
+- tapOn: Třeba hospodský kvíz
+- inputText: E2E Nový kvíz
+- hideKeyboard
+- evalScript: ${output.local.offline()}
+- scrollUntilVisible:
+    element: {text: Poslat návrh ke kontrole}
+    direction: DOWN
+- tapOn: Poslat návrh ke kontrole
+- assertVisible: 'Teď se k serveru nedostanu\. Návrh zůstal ve formuláři, zkus to za chvíli\.'
+- assertVisible: E2E Nový kvíz
+- evalScript: ${output.local.online()}
+- tapOn: Poslat návrh ke kontrole
+- evalScript: ${output.local.poll(function () { output.ps.check('event-pending'); }, 15000)}
+- assertNotVisible: E2E Nový kvíz
+- evalScript: ${output.local.screenshot('places-event-pending')}
+- evalScript: ${output.ps.check('event-pending')}
