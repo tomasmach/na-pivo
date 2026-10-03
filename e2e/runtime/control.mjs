@@ -37,6 +37,12 @@ export function controlServer({ online, offline }) {
         simctl('uninstall', device, 'com.tomasmach.na-pivo');
         simctl('install', device, process.env.NA_PIVO_E2E_APP_PATH);
       } else if (request.method === 'GET' && url.pathname === '/state') result = privateProjection(await readState());
+      else if (request.method === 'GET' && url.pathname === '/app/process') {
+        const matches = simctl('spawn', device, 'launchctl', 'list').split('\n').map(line => line.trim().split(/\s+/)).filter(fields =>
+          fields.length === 3 && /^[1-9]\d*$/.test(fields[0]) && /^UIKitApplication:com\.tomasmach\.na-pivo(?:\[|$)/.test(fields[2]));
+        if (matches.length !== 1) throw new Error('Expected the owned application process.');
+        result = { pid: Number(matches[0][0]) };
+      }
       else if (request.method === 'POST' && url.pathname === '/observe') {
         const account = body.account || 'primary';
         if (!['primary', 'second', 'outsider'].includes(account) || !/^\/v1\//.test(body.route)) throw new Error('Invalid observer.');
