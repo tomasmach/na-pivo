@@ -31,7 +31,7 @@
 - Příčina: `CoasterCard` slučuje interaktivní potomky a `CounterMoreSheet` skrývá celý podstrom přes `accessibilityElementsHidden`.
 - Screenshoty: [tácek s nedostupnými zkratkami](https://files.tmach.dev/diary-counter-surface-ed73ae5140ef4e629077.png), [nabídka s nedostupným Dopito](https://files.tmach.dev/diary-counter-overflow-cc5b9181418c446ab413.png).
 - Reprodukce: `tests/diary/counter-menu.repro.e2e.ts`, rozpracovaný širší průchod `tests/diary/evening.e2e.ts`.
-- Stav: malá oprava přístupnosti připravena pro [PR #207](https://github.com/tomasmach/na-pivo/pull/207). Typecheck a 45 stávajících Jest testů prošly; čeká na nativní ověření opravy.
+- Stav: opraveno v samostatném [PR #211](https://github.com/tomasmach/na-pivo/pull/211). Maestro v běhu `a62c5714` otevřelo nabídku, zvolilo Dopito a potvrdilo ukončení. DB oracle potvrdil právě jedno pivo a jednu návštěvu s `closed_at`. [Nabídka po opravě](https://files.tmach.dev/diary-counter-dopito-menu-b00c716d604a4581b591.png), [uzavřený večer](https://files.tmach.dev/diary-closed-evening-before-publication-8f8331e3b4cb46fcb502.png). Typecheck, 45 stávajících Jest testů a nezávislé review prošly. Širší deníková sada ještě není dokončená.
 
 ## NP-E2E-004: karta party pohltí nastavení soukromí
 
@@ -42,6 +42,25 @@
 - Příčina: `PartyCard` vkládá `topRow` s vlastními tlačítky do přístupného rodičovského `Pressable`, zatímco spodní zkratky již má mimo něj.
 - [Screenshot nedostupného horního ovládání](https://files.tmach.dev/social-party-settings-before-9885d34c116d4428a91d.png).
 - Reprodukce: `tests/places-social/social.e2e.ts`, průchod soukromí/ghost/blokování.
-- Stav: minimální oprava přesune horní ovládání vedle přístupného těla karty při zachování layoutu. Větev `fix/accessible-party-controls`, commit `a9adef6d`; typecheck prošel, čeká na nativní ověření a samostatný PR.
+- Stav: opraveno v samostatném [PR #210](https://github.com/tomasmach/na-pivo/pull/210). Maestro v běhu `2d7eb19c` otevřelo nabídku i nastavení a změnilo přepínač; skutečná DB potvrdila vypnuté sdílení. [Karta po opravě](https://files.tmach.dev/social-party-settings-after-d161bffa9c59435ca8c0.png). Typecheck a nezávislé review prošly. Celý privacy průchod zatím nemá tři zelená opakování.
+
+## NP-E2E-005: text přepínače nerozlišuje automatické sdílení a ruční cinknutí
+
+- Typ: doložená nejasnost nastavení soukromí, nikoli potvrzená chyba autorizace. Priorita P1 pro vysvětlení výsledku uživateli.
+- Kroky: fixture má aktivní ruční cinknutí; vypnout „Ukazovat partě, kde sedím“ v Nastavení party a načíst `/v1/friends/live` druhým účtem.
+- Skutečnost: DB má `share_drinks_with_parta=false`, ale dřívější ruční aktivita zůstává v `active_friends`. Samostatná automatická presence a drink-feed používají tento přepínač; ghost režim skrývá i ruční aktivitu.
+- Očekávání: text nastavení srozumitelně odliší, co se po vypnutí přestane sdílet. Dokument `docs/decisions/one-write-two-readers.md` a existující kontraktové testy rozlišují automatický feed a vědomé sdílení přítomnosti; E2E proto nesmí bez produktového rozhodnutí změnit význam API.
+- Důkaz: skutečný běh `2d7eb19c` uložil přepínač a následný API oracle našel ruční aktivitu. Screenshot otevřeného přepínače se doplní při příštím plánovaném průchodu; existující snímek karty tento stav sám nedokazuje.
+- Stav: bez produktové změny. `tests/places-social/party-privacy.yaml` nyní rozlišuje automatickou presence, drink-feed a explicitní aktivitu; finální runtime tohoto upřesnění ještě čeká.
+
+## NP-E2E-006: formulář vlastního piva slučuje jednotlivé vstupy
+
+- Priorita P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: přihlásit fixture, zapsat pivo z nabídky, otevřít „Vybrat jiné pivo nebo drink“ a „Přidat nové pivo“.
+- Očekávání: samostatně dostupné pole názvu a ceny umožní vyplnit a uložit další nápoj.
+- Skutečnost: formulář je viditelný a pole má focus, ale přesný nativní identifikátor `beer-form-name` není dostupný. Průchod skončí před druhým zápisem; první pivo zůstává skutečně uložené.
+- Příčina: obalový `Pressable` uvnitř `BeerFormModal` slučuje své interaktivní potomky do jednoho přístupného prvku.
+- [Screenshot formuláře před neúspěšným vstupem](https://files.tmach.dev/diary-beer-form-before-input-d94c0a902fc844c8ab18.png). Reprodukce `fc97c485` trvala 73,793 s a skončila selháním `tests/diary/evening.yaml`.
+- Stav: jednořádková oprava ve větvi `fix/accessible-beer-form`, commit `a1a1851a`, nezávislé review bez nálezů. Nativní ověření opravy a samostatný PR ještě čekají.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
