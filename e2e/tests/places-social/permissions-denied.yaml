@@ -34,7 +34,6 @@ tags: [full]
       ROUTE: /pub-search
 - tapOn: Hledat hospodu
 - inputText: E2E NenalezitelnyPodnik
-- hideKeyboard
 - assertVisible: Nic jsem nenašel
 - runFlow:
     file: ../../maestro/route.yaml
@@ -53,7 +52,6 @@ tags: [full]
       - tapOn: OK
 - tapOn: 'Popiš, co se stalo nebo co ti chybí…'
 - inputText: E2E Kamera odmítnuta
-- hideKeyboard
 - scrollUntilVisible:
     element: {text: Odeslat zpětnou vazbu}
     direction: DOWN

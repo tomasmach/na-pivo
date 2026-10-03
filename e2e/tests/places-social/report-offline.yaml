@@ -15,7 +15,6 @@ tags: [critical, full]
       ROUTE: /pub-search
 - tapOn: Hledat hospodu
 - inputText: E2E Druhá hospoda
-- hideKeyboard
 - tapOn: 'E2E Druhá hospoda,.*'
 - assertVisible: E2E Druhá hospoda
 - tapOn: Další možnosti hospody
@@ -35,7 +34,6 @@ tags: [critical, full]
       ROUTE: /pub-search
 - tapOn: Hledat hospodu
 - inputText: E2E Druhá
-- hideKeyboard
 - assertNotVisible: '.*E2E Druhá hospoda.*'
 - evalScript: ${output.local.screenshot('places-reported-hidden-offline')}
 - evalScript: ${output.local.online()}

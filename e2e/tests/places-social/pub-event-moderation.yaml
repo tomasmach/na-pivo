@@ -15,7 +15,6 @@ tags: [full]
       ROUTE: /pub-search
 - tapOn: Hledat hospodu
 - inputText: E2E U Testera
-- hideKeyboard
 - tapOn: 'E2E U Testera,.*'
 - assertVisible: E2E U Testera
 - scrollUntilVisible:
@@ -25,7 +24,6 @@ tags: [full]
 - tapOn: Navrhnout akci
 - tapOn: Třeba hospodský kvíz
 - inputText: E2E Nový kvíz
-- hideKeyboard
 - evalScript: ${output.local.offline()}
 - scrollUntilVisible:
     element: {text: Poslat návrh ke kontrole}

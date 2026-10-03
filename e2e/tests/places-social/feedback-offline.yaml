@@ -17,14 +17,16 @@ tags: [critical, full]
 - evalScript: ${output.local.offline()}
 - tapOn: Přidat přílohu
 - tapOn: Vybrat z galerie
+- extendedWaitUntil:
+    visible: 'Cancel|Zrušit'
+    timeout: 15000
 - evalScript: ${output.local.screenshot('places-feedback-gallery')}
+# First thumbnail in the owned gallery contains only two synthetic fixtures.
 - tapOn:
-    text: 'Photo.*'
-    index: 0
+    point: '16%,28%'
 - assertVisible: Příloha je připravená
 - tapOn: 'Popiš, co se stalo nebo co ti chybí…'
 - inputText: E2E Test zprávy bez signálu.
-- hideKeyboard
 - scrollUntilVisible:
     element: {text: Odeslat zpětnou vazbu}
     direction: DOWN

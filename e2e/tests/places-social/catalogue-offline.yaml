@@ -30,7 +30,6 @@ tags: [critical, full]
       ROUTE: /pub-search
 - tapOn: Hledat hospodu
 - inputText: E2E Druhá hospoda
-- hideKeyboard
 - tapOn: 'E2E Druhá hospoda,.*'
 - assertVisible: E2E Druhá hospoda
 - assertVisible: E2E Druhá hospoda

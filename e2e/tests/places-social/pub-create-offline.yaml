@@ -16,7 +16,6 @@ tags: [critical, full]
 - evalScript: ${output.local.offline()}
 - tapOn: Název hospody
 - inputText: E2E Nová hospoda
-- hideKeyboard
 - scrollUntilVisible:
     element: {text: Zapíchnout špendlík hospody do mapy}
     direction: DOWN
@@ -28,11 +27,10 @@ tags: [critical, full]
 - tapOn: Město hospody
 - eraseText
 - inputText: Praha
-- hideKeyboard
 - scrollUntilVisible:
-    element: {text: Přidat hospodu}
+    element: {id: add-pub-save}
     direction: DOWN
-- tapOn: Přidat hospodu
+- tapOn: {id: add-pub-save}
 - runFlow:
     file: ../../maestro/route.yaml
     env:
@@ -56,11 +54,10 @@ tags: [critical, full]
 - tapOn: Název hospody
 - eraseText
 - inputText: E2E Přejmenovaná hospoda
-- hideKeyboard
 - scrollUntilVisible:
-    element: {text: Přidat hospodu}
+    element: {id: add-pub-save}
     direction: DOWN
-- tapOn: Přidat hospodu
+- tapOn: {id: add-pub-save}
 - evalScript: ${output.local.poll(function () { output.ps.check('pub-renamed'); }, 15000)}
 - runFlow:
     file: ../../maestro/route.yaml
