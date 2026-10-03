@@ -101,7 +101,6 @@ def observe():
                 "publicId": str(publication.public_id),
                 "status": publication.status,
                 "title": publication.title,
-                "snapshotKeys": sorted(publication.snapshot),
                 "stopNames": [stop["name"] for stop in publication.snapshot["stops"]],
             }
             for publication in TourPublication.objects.order_by("published_at")

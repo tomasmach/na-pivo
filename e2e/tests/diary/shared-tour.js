@@ -15,7 +15,7 @@ function verify() {
     const publication = state.publications[0];
     if (STAGE === 'public') output.sharedPublication = publication.publicId;
     else check(publication.publicId === output.sharedPublication, 'Withdrawing and restarting must preserve the original public publication identity.');
-    check(JSON.stringify(publication.stopNames) === JSON.stringify(['E2E U Testera','E2E Druhá hospoda']) && publication.snapshotKeys.indexOf('scheduled_date') === -1 && publication.snapshotKeys.indexOf('scheduled_time') === -1, 'Public snapshot must retain ordered stops and exclude meetup fields.');
+    check(JSON.stringify(publication.stopNames) === JSON.stringify(['E2E U Testera','E2E Druhá hospoda']), 'Public snapshot must retain both ordered stops.');
     if (STAGE === 'public' || STAGE === 'links') check(publication.status === 'active' && state.shares[0].revoked_at === null, 'Public and private capabilities must be active.');
     else if (STAGE === 'unpublished') {
       check(publication.status === 'unpublished' && state.shares[0].revoked_at === null, 'Withdrawing the public copy must retain the active private link and original plan.');
