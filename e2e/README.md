@@ -4,6 +4,8 @@ Testy řídí skutečný iPhone 17 v iOS simulátoru a skutečný Django backend
 
 ## První spuštění na macOS
 
+Použij Node.js 24 a Javu 17 nebo novější. Lokální kontroler načítá TypeScript přímo přes podporu Node.js.
+
 ```sh
 npm ci
 (cd backend && uv sync --locked --extra prod)
@@ -37,7 +39,7 @@ Backend se spouští zvláštním settings modulem mimo produkční Docker conte
 
 - Oblast vlastní `e2e/tests/<oblast>/*.yaml`, případné vlastní assertion `.js` a svůj `e2e/seeds/<scenario>.py`. `seed()` připraví data; `observe()` vrací potřebná syntetická DB pole, nikdy tokeny, e-maily nebo GPS.
 - Flow začne `../../maestro/reset.yaml`, případný `SCENARIO` předá v `env`. Následuje `skip-onboarding.yaml` a `login.yaml`. Reset vyčistí skutečnou DB, Keychain a data appky, konfigurace launchApp určuje oprávnění. Runner nastaví pevnou syntetickou polohu a dark mode.
-- `output.local.offline()` skutečně zastaví backend; `online()` ho obnoví. Potom `pressKey: Home` a `launchApp: {stopApp: false}` ověří foreground flush. Restart uprostřed výpadku používá `../../maestro/restart.yaml`.
+- `output.local.offline()` skutečně zastaví backend; `online()` ho obnoví. Potom `../../maestro/foreground.yaml` ověří foreground flush bez ukončení appky a zachová výslovně nastavená oprávnění. Restart uprostřed výpadku používá `../../maestro/restart.yaml`.
 - `output.local.state()` čte skutečnou DB přes místní kontroler. `output.local.observe(account, route)` čte skutečný `/v1/` endpoint pod fixture účtem a vrací sanitizované `{status, body}`. Observer používá normální přihlášení a token drží v paměti. Před smazáním účtu jej vytvoř předem, aby pozdější login neaktivoval účet v ochranné lhůtě.
 - `output.local.request('/mail/verify', {})` otevře skutečný odkaz zachyceného e-mailu. `/mail/reset` otevře lokální app deep link, token nevstupuje do Maestro. `/mail/export` vrací pouze status a počet příloh.
 - `output.local.screenshot('safe-name')` volej na zkontrolovaném konečném stavu bez přihlašovacích údajů či souřadnic. Poslední kontrola testu musí porovnat skutečná data po restartu nebo přes API/DB. Nevydávej samotný úspěšný tap za ověření.
