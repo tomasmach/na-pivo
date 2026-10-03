@@ -204,6 +204,7 @@ export function AppDialogHost() {
           {secondaryButtons.map((button, index) => (
             <Pressable
               key={`${button.text}-${index}`}
+              testID={`app-dialog-secondary-${index}`}
               onPress={() => close(button)}
               accessibilityRole="button"
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
@@ -215,6 +216,7 @@ export function AppDialogHost() {
           ))}
           {primaryButton ? (
             <Pressable
+              testID="app-dialog-primary"
               onPress={() => close(primaryButton)}
               accessibilityRole="button"
               style={({ pressed }) => [
