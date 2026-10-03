@@ -26,8 +26,11 @@ tags: [critical, full, identity]
       ROUTE: /account
 - tapOn: "Otevřít další možnosti účtu"
 - tapOn: "Smazat účet"
+- assertVisible: 'Smazat účet\?'
 - assertVisible: { id: app-dialog-primary }
 - tapOn: { id: app-dialog-secondary-0 }
+- assertNotVisible: 'Smazat účet\?'
+- assertNotVisible: { id: app-dialog-primary }
 - runScript:
     file: checks.js
     env:
@@ -35,9 +38,12 @@ tags: [critical, full, identity]
       PHASE: cancel
 - tapOn: "Otevřít další možnosti účtu"
 - tapOn: "Smazat účet"
+- assertVisible: 'Smazat účet\?'
 - assertVisible: { id: app-dialog-primary }
 - evalScript: ${output.local.debugScreenshot('identity-delete-dialog')}
 - tapOn: { id: app-dialog-primary }
+- assertNotVisible: 'Smazat účet\?'
+- assertNotVisible: { id: app-dialog-primary }
 - evalScript: ${output.local.debugScreenshot('identity-delete-confirmed')}
 - runScript:
     file: checks.js

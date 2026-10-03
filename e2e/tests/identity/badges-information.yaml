@@ -48,6 +48,13 @@ tags: [full, identity]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /privacy
+- assertVisible: "Soukromí"
+- scrollUntilVisible:
+    element:
+      text: "Průběžnou GPS historii, trasu pohybu ani jednotlivé GPS body neukládám\\."
+    direction: DOWN
+    timeout: 15000
+- assertVisible: "Průběžnou GPS historii, trasu pohybu ani jednotlivé GPS body neukládám\\."
 - assertVisible: "Zpět"
 - tapOn: "Zpět"
 - runFlow:

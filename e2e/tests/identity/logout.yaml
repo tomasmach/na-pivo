@@ -26,6 +26,13 @@ tags: [critical, full, identity]
       ROUTE: /beer
 - tapOn: { id: counter-primary }
 - tapOn: "Připsat E2E Ležák za 0,5 l · 41 Kč"
+- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
 - runFlow:
     file: ../../maestro/route.yaml
     env:
