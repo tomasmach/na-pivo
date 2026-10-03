@@ -23,8 +23,8 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 | Offline katalog | Načíst, zastavit backend, restart a hledat známou hospodu | Snapshot zmizí, skryté místo se vrátí | P0 | `places-social/catalogue-offline.yaml`: oprava výběru řádku čeká na runtime |
 | Domovský bod | Zrušit ruční pin, uložit současnou polohu, restart a odstranit | Neodsouhlasený bod se uloží, restart jej ztratí nebo unikne na server | P0 | `places-social/home-persistence.yaml`: jednou zelený; nová kontrola uloženého bodu čeká na runtime |
 | Fotosoutěž | Výslovný souhlas se zveřejněním, hlasování a stažení | Zveřejnění bez souhlasu nebo změna původní visibility fotky | P0 | `places-social/contest-privacy.yaml`: jednou zelený, stabilita čeká |
-| Tours | Offline plán se dvěma zastávkami, restart a dokončení | Ztráta uloženého plánu nebo běhu | P0 | `diary/private-tour.yaml`: připraveno, nativní dávka probíhá |
-| Tours sdílení | Soukromý/public odkaz, přijetí a zrušení | Odvolaný odkaz dál odhaluje plán či soukromý čas srazu | P0 | `diary/shared-tour.yaml`: připraveno, nativní dávka probíhá |
+| Tours | Offline plán se dvěma zastávkami, restart a dokončení | Ztráta uloženého plánu nebo běhu | P0 | `diary/private-tour.yaml`: celý průchod jednou zelený, stabilita čeká |
+| Tours sdílení | Soukromý/public odkaz, přijetí a zrušení | Odvolaný odkaz dál odhaluje plán či soukromý čas srazu | P0 | `diary/shared-tour.yaml`: import a veřejná publikace prošly; celý průchod čeká, omezení nativního Copy níže |
 | Onboarding | Dokončení/přeskočení a restart; restart v průběhu | Onboarding se opakuje nebo označí nedokončený flow za dokončený | P1 | `identity/onboarding-complete.yaml` a `onboarding-interrupt.yaml`: oba jednou zelené, stabilita čeká |
 | Kompas | Nejbližší seeded hospoda, odhalení, detail, jiná hospoda | Špatný cíl nebo rozpojená identita detailu | P1 | `places-social/catalogue-offline.yaml`: skutečné seeded cíle, runtime čeká |
 | Kompas bez polohy | Odepřít oprávnění, otevřít ruční mapu a hledání | Nekonečné hledání nebo zablokovaný vstup do mapy | P1 | `places-social/permissions-denied.yaml`: opraveno iOS oprávnění `never`, runtime čeká |
@@ -116,8 +116,16 @@ Tyto výsledky dokazují průzkum a reprodukce, nikoli dokončenou zelenou sadu.
 | Places/social `0292bfec` | 6/14 prošlo, 8 selhalo | 855,317 s | ještě nebyl měřen | 0 volání / 0 tokenů |
 | Diary `76ba5706` | 2/5 prošly, 3 selhaly | 555,164 s | 581,775 s | 0 volání / 0 tokenů |
 
-Replay, handed off a missed jsou pro Maestro nepoužitelné. Soukromé raw reporty byly po obou dávkách automaticky odstraněné.
+Replay, handed off a missed jsou pro Maestro nepoužitelné. Soukromé raw reporty byly po uvedených dávkách automaticky odstraněné.
 
 Dávka identity `bf533099` byla po 217,116 s přerušená s kódem 130 kvůli nedostatku místa, přestože startovala s více než 5 GiB. Mazání účtu před přerušením dokončilo celý průchod; pro zbytek dávky chybí engine souhrn a nelze odvodit výsledky. Souběžný diary běh `bf0e5e7d` dokončil večer, ale zaznamenal ENOSPC během dalších scénářů. Obě tour se proto opakují samostatně. Další nativní souběh na tomto stroji se neprovádí.
 
 Aktuálně je připraveno 33 Maestro průchodů: 1 spike, 12 identity, 5 diary a 15 places/social. Tento počet není počet třikrát ověřených testů.
+
+Infrastrukturní fault check `4db92e24` simuloval pokles volného místa během skutečné přípravy simulátoru a samostatně chybu ENOSPC při zápisu závěrečných metrik. Skutečný disk se neplnil. Runner skončil očekávaným kódem 75; všechny tři vlastní porty byly volné, zaznamenané procesy skončily, simulátor byl Shutdown a slot/boot locky i raw debug byly odstraněné. Jde o ověření úklidu, nikoli o aplikační průchod.
+
+### Omezení nativního veřejného sdílení tour
+
+Běh `1ee2a0ca` doložil, že Maestro na iOS 26.5 najde nativní `Copy`, klepnutí zavře share sheet a appka znovu ukáže detail veřejné tour. `simctl pbpaste` přesto dalších 15 s vracel předchozí soukromý odkaz. Veřejná publikace v DB existovala. Stejný krok předtím jednou uspěl, takže další čekání není stabilní kontrola. Není prokázáno, zda je příčina v nativním kopírování nebo ve čtení schránky simulátoru; nejde o potvrzený produktový bug.
+
+Běžný test dál kopíruje a přijímá soukromý odkaz přes UI. Veřejnou tour vytvoří přes UI, najde ji skutečným anonymním katalogovým API a zkontroluje identitu, dvě zastávky, odlišný veřejný odkaz a následné 404 po odvolání. Nativní veřejné Copy zůstává neověřené. Tato změna neprokazuje jeho opravu.
