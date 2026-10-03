@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
+import { setTimeout as delay } from 'node:timers/promises';
 import { apiUrl, observer, readState, resetBackend } from '../helpers/backend.ts';
 
 export function controlServer({ online, offline }) {
@@ -22,7 +23,8 @@ export function controlServer({ online, offline }) {
       }
       const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
       let result = { ok: true };
-      if (request.method === 'POST' && url.pathname === '/online') await online();
+      if (request.method === 'POST' && url.pathname === '/wait') await delay(Math.min(Math.max(Number(body.milliseconds) || 0, 0), 1000));
+      else if (request.method === 'POST' && url.pathname === '/online') await online();
       else if (request.method === 'POST' && url.pathname === '/offline') await offline();
       else if (request.method === 'POST' && url.pathname === '/reset') {
         await online();
