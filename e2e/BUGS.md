@@ -71,6 +71,6 @@
 - Skutečnost: UI ukazuje „Visí ve Výčepu · Jen parta“, ale po 15 s zůstává v DB 0 publikovaných nocí, 1 pivo a 1 uzavřená návštěva. Stejný PID před Home, na ploše i po návratu a kontrola aktivního detailu vylučují nechtěný restart nebo test na pozadí.
 - Příčina: `flushNightsQueue()` se spouští při mountu a enqueue, ale chybí v obsluze `AppState` pro návrat do popředí. Ostatní fronty v ní mají opakované doručení.
 - Reprodukce: `tests/diary/vycep.yaml`, běh `c099c714`, 118,561 s, 0/1 úspěšných testů. [Screenshot aktivního detailu bez doručené publikace](https://files.tmach.dev/diary-vycep-foreground-not-synced-9fddd7abd89e4850bb1e.png).
-- Stav: jednořádková oprava ve větvi `fix/sync-nights-on-foreground`, commit `89b4cc93`. Nativní ověření stejného průchodu po opravě a samostatný PR ještě čekají.
+- Stav: oprava v samostatném [PR #212](https://github.com/tomasmach/na-pivo/pull/212). Stejný celý průchod po opravě prošel v běhu `051e9968` za 2 min 16 s: skutečná DB obsahovala právě jednu publikovanou noc, jedno pivo a uzavřenou návštěvu; po dalším restartu se noc zobrazila i ve Výčepu. [Výsledný screenshot](https://files.tmach.dev/diary-vycep-published-e1e795908295499da217.png). Kontrola typů, 16 souvisejících Jest testů a nezávislé review prošly. Tři stabilitní opakování ještě čekají.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
