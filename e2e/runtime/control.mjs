@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { setTimeout as delay } from 'node:timers/promises';
 import { apiUrl, observer, readState, resetBackend } from '../helpers/backend.ts';
+import { readHomePoint } from './home-point.mjs';
 
 export function controlServer({ online, offline }) {
   const observers = new Map();
@@ -37,6 +38,7 @@ export function controlServer({ online, offline }) {
         simctl('uninstall', device, 'com.tomasmach.na-pivo');
         simctl('install', device, process.env.NA_PIVO_E2E_APP_PATH);
       } else if (request.method === 'GET' && url.pathname === '/state') result = privateProjection(await readState());
+      else if (request.method === 'GET' && url.pathname === '/home-point') result = readHomePoint(device);
       else if (request.method === 'GET' && url.pathname === '/app/process') {
         const matches = simctl('spawn', device, 'launchctl', 'list').split('\n').map(line => line.trim().split(/\s+/)).filter(fields =>
           fields.length === 3 && /^[1-9]\d*$/.test(fields[0]) && /^UIKitApplication:com\.tomasmach\.na-pivo(?:\[|$)/.test(fields[2]));
