@@ -224,6 +224,7 @@ export default function OnboardingScreen() {
 
       <View style={styles.secondaryCtaSlot} testID="onboarding-secondary-cta-slot">
         <Pressable
+          testID="onboarding-skip"
           onPress={() => {
             trackUiInteraction('onboarding_skip');
             finish(isLast ? 'onboarding_completed' : 'onboarding_skipped');
