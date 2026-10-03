@@ -211,6 +211,7 @@ function PublishNightSheetBase({
 
           <Pressable
             onPress={handlePublish}
+            testID="night-publish-submit"
             disabled={busy}
             accessibilityRole="button"
             accessibilityLabel={t.a11y.publishNightButton}

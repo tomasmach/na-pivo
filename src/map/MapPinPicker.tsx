@@ -144,6 +144,7 @@ export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPick
 
         <View style={[styles.bottom, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
           <GlowButton
+            testID="map-pin-confirm"
             label={t.map.pinConfirm}
             onPress={() => void confirm()}
             variant="primary"
