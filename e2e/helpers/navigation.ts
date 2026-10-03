@@ -1,5 +1,6 @@
 import type { Device } from '@e2e-dev/mobile';
 import { expect, secrets, type TestFixtures } from 'e2e';
+import { setTimeout as delay } from 'node:timers/promises';
 
 type MobileUI = Pick<TestFixtures, 'app' | 'screen'> & { device: Device };
 
@@ -21,7 +22,16 @@ export async function signInExisting(ui: MobileUI, emailSecret = 'email', passwo
   await ui.screen.getByTestId('auth-password').fill(secrets.get(passwordSecret));
   await ui.screen.getByTestId('auth-submit').tap();
   await expect(ui.screen.getByTestId('auth-submit')).not.toBeVisible();
-  if (await ui.screen.getByRole('button', 'Not Now').isVisible()) await ui.screen.getByRole('button', 'Not Now').tap();
+  // iOS presents its password-saving dialog after the route has already changed.
+  // Wait for that native transition, rather than racing a single isVisible().
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    if (await ui.screen.getByRole('button', 'Not Now').isVisible()) {
+      await ui.screen.getByRole('button', 'Not Now').tap();
+      break;
+    }
+    await delay(200);
+  }
 }
 
 export async function signIn(ui: MobileUI) {
