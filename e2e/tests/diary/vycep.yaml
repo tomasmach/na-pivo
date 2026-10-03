@@ -1,7 +1,7 @@
 # Regression NP-E2E-007 (../../BUGS.md): same process, active UI and actual delivered publication.
 appId: com.tomasmach.na-pivo
 name: Offline night publication flushes on foreground and stays published
-tags: [full, diary]
+tags: [critical, full, diary]
 ---
 - runFlow: flows/start.flow
 - runFlow: flows/menu-beer.flow

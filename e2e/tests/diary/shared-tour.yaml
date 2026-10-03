@@ -24,8 +24,10 @@ tags: [critical, full, diary]
     env: { TOUR_TITLE: E2E Sdílená tour }
 - tapOn: Možnosti tour
 - tapOn: Zveřejnit pro všechny
+- evalScript: ${output.local.screenshot('diary-tour-public-preview')}
 - tapOn:
     id: tour-publish
+- evalScript: ${output.local.screenshot('diary-tour-after-public-submit')}
 - runScript:
     file: shared-tour.js
     env: { STAGE: public }

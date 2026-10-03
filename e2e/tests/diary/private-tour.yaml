@@ -17,7 +17,7 @@ tags: [critical, full, diary]
 - tapOn: Zapsat pivo na jedničce
 - runFlow:
     file: flows/other-beer.flow
-    env: { BEER_NAME: E2E Tour, BEER_PRICE: '41' }
+    env: { BEER_NAME: E2E Tour, BEER_PRICE: '41', FIRST_BEER: 'true' }
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: flows/open-tour.flow
@@ -35,7 +35,14 @@ tags: [critical, full, diary]
 - scrollUntilVisible:
     element: 'Předchozí průchod\..*'
     direction: DOWN
+    centerElement: true
+- waitForAnimationToEnd:
+    timeout: 5000
+- evalScript: ${output.local.screenshot('diary-private-history-row')}
 - tapOn: 'Předchozí průchod\..*'
+- extendedWaitUntil:
+    visible: Vytvořit kopii
+    timeout: 10000
 - assertVisible: '1\. E2E U Testera\. Navštíveno · 1 pivo'
 - assertVisible: '2\. E2E Druhá hospoda\. Přeskočeno'
 - assertVisible: Vytvořit kopii

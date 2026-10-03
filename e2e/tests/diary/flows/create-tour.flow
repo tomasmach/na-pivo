@@ -12,4 +12,8 @@ appId: com.tomasmach.na-pivo
     id: tour-title
 - eraseText
 - inputText: ${TOUR_TITLE}
-- hideKeyboard
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      id: tour-save
+    timeout: 10000

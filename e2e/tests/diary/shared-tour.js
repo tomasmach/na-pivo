@@ -10,7 +10,8 @@ function verify() {
     output.sharedPlan = plan.id;
     check(output.local.request('/capability/status', { name:'private-tour' }).status === 200, 'Private copied link must open the real plan.');
   } else {
-    check(plan.id === output.sharedPlan && state.publications.length === 1, 'Publishing and withdrawing must preserve the original server plan identity.');
+    check(plan.id === output.sharedPlan, 'Publishing and withdrawing must preserve the original server plan identity.');
+    check(state.publications.length === 1, 'Expected one real public publication after submit; observed ' + state.publications.length + '.');
     const publication = state.publications[0];
     check(JSON.stringify(publication.stopNames) === JSON.stringify(['E2E U Testera','E2E Druhá hospoda']) && publication.snapshotKeys.indexOf('scheduled_date') === -1 && publication.snapshotKeys.indexOf('scheduled_time') === -1, 'Public snapshot must retain ordered stops and exclude meetup fields.');
     if (STAGE === 'public' || STAGE === 'links') check(publication.status === 'active' && state.shares[0].revoked_at === null, 'Public and private capabilities must be active.');
