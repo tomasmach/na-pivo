@@ -84,6 +84,21 @@ export function controlServer({ online, offline }) {
           const link = new URL(simctl('pbpaste', device).trim());
           if (link.origin !== 'https://na-pivo.cz' || !/^\/t\/[a-zA-Z0-9_-]+$/.test(link.pathname)) throw new Error('Expected a copied tour link.');
           capabilities.set(body.name, link.pathname);
+        } else if (url.pathname === '/capability/discover') {
+          if (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 60) throw new Error('Expected a fixture tour title.');
+          // Read the real anonymous catalogue. Keep its capability token in this
+          // process; Maestro receives only the publication identity and content.
+          const discovered = await fetch(`${apiUrl}/v1/tour-publications/search`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ q: body.title }), redirect: 'manual', signal: AbortSignal.timeout(15000),
+          });
+          if (discovered.status !== 200) throw new Error('Public tour search failed.');
+          const catalogue = await discovered.json();
+          const matches = catalogue.results?.filter(tour => tour.title === body.title);
+          if (matches?.length !== 1 || typeof matches[0].token !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(matches[0].token)) throw new Error('Expected one published fixture tour.');
+          const tour = matches[0];
+          capabilities.set(body.name, `/t/${tour.token}`);
+          result = { status: discovered.status, id: tour.id, title: tour.title, stopCount: tour.stop_count };
         } else {
           const pathname = capabilities.get(body.name);
           if (!pathname) throw new Error('Capability was not copied in this test.');
