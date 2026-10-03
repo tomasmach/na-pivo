@@ -75,6 +75,7 @@ export function NightCard({
 
   return (
     <Pressable
+      testID="diary-latest-evening"
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
