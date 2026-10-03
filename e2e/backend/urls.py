@@ -13,8 +13,9 @@ from django.http import JsonResponse
 from django.urls import include, path
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
-
 from pubs.models import Account, AuthToken, DrinkLog, EmailCredential, PubVisit
+
+from .account_requests import requests as account_requests
 
 
 @csrf_exempt
@@ -26,6 +27,7 @@ def reset(request):
     module = importlib.import_module(f"e2e.seeds.{scenario}")
     call_command("flush", interactive=False, verbosity=0)
     cache.clear()
+    account_requests.clear()
     if hasattr(mail, "outbox"):
         mail.outbox.clear()
     module.seed()
@@ -68,6 +70,7 @@ def state(request):
         {
             "accounts": accounts,
             "mailCount": len(getattr(mail, "outbox", [])),
+            "accountWrites": list(account_requests),
             "scenario": observation,
         }
     )
