@@ -18,12 +18,15 @@ Build je lokální `expo run:ios` s lokálním backend mode, vypnutými widgety 
 
 ```sh
 npm run e2e:full
+npm run e2e:blocked
 npm run e2e:critical -- e2e/tests/spike/ --stability
 npm run e2e:full -- --no-cache
 E2E_SLOT=2 npm run e2e:critical -- e2e/tests/spike/
 ```
 
 `--stability` požaduje tři zelené průchody. Maestro nepoužívá model ani replay cache, proto `--no-cache` nic nemění a replay metriky jsou `null`. Pro oblast používej adresářový filtr. Původní TesterArmy spike lze diagnosticky spustit přes `E2E_ENGINE=testerarmy npm run e2e:critical -- e2e/tests/spike/persist-drink.e2e.ts --stability`; vyžaduje `E2E_TELEMETRY_DISABLED=1 npx e2e login openai` a druhý/třetí průchod v něm nadále vynucují úplný replay.
+
+`critical` a `full` vynechávají výslovně označené `blocked` scénáře. Ty se spouštějí samostatně přes `e2e:blocked` a nejsou započítané mezi ověřené průchody. Každý musí mít konkrétní důvod v COVERAGE.md. Aktuálně jde o registraci: Maestro vyplní nativní formulář, ale aplikace při odeslání hlásí příliš krátké heslo; příčina není prokázaná. Tento blokátor současně brání navazujícímu ověření e-mailu, claimu anonymních dat a exportu v daném průchodu.
 
 ## Izolace a úklid
 
