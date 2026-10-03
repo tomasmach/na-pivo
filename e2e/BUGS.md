@@ -101,7 +101,7 @@
 - Skutečnost: nativní strom obsahuje jediný sloučený prvek s nadpisem, popisem a všemi třemi akcemi. Přesný locator galerie selže, přestože je tlačítko vidět.
 - Příčina: vnější a vnitřní `Pressable` v `BeerPhotoSourceSheet` slučují přístupné potomky. Minimální oprava nastavuje oběma obalům `accessible={false}`; samostatná tlačítka si ponechávají role, popisy a callbacky.
 - Reprodukce: `tests/identity/photos.yaml`, běh `e7987064`; [screenshot nabídky před opravou](https://files.tmach.dev/identity-photo-source-accessibility-488cefaeca6c47c4a8c3.png).
-- Stav: oprava `a2109823` ve větvi `fix/accessible-photo-source`, nezávislé review bez nálezů. Nativní ověření opravy a samostatný PR ještě čekají.
+- Stav: oprava v samostatném [PR #214](https://github.com/tomasmach/na-pivo/pull/214), nezávislé review bez nálezů. Celý `identity/media-denied.yaml` v běhu `9cc075a2` prošel za 1 min 58 s: dostupná zamítnutá kamera, skutečný picker galerie, Cancel, restart a skutečná DB bez nechtěné fotky či avataru. [Zkontrolovaný konečný stav](https://files.tmach.dev/identity-media-denied-recovered-575a4d3c98014b76b644.png). Samostatný upload a změna visibility v photos flow ještě čekají; tři stabilitní opakování oblasti nejsou dokončená.
 
 ## NP-E2E-011: po offline restartu není dostupné odhlášení
 
