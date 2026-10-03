@@ -3,8 +3,6 @@
 import os
 
 from django.contrib.auth.hashers import make_password
-from e2e.seeds.base import seed as seed_base
-
 from pubs.api.stats import compute_my_stats
 from pubs.models import (
     Account,
@@ -17,6 +15,8 @@ from pubs.models import (
     TourPublication,
     TourShare,
 )
+
+from e2e.seeds.base import seed as seed_base
 
 
 def seed():
