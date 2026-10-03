@@ -27,7 +27,10 @@ EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 EMAIL_ENABLED = False
 RESEND_API_KEY = ""
 MEDIA_ROOT = RUN_DIR / "media"
-PUBLIC_WEB_ORIGIN = f"http://127.0.0.1:{os.environ['NA_PIVO_E2E_BACKEND_PORT']}"
+# URL formatting only: the shipped mobile parser requires this canonical host.
+# Tests extract synthetic capabilities in memory and open napivo:// links;
+# every API request still goes to the isolated loopback backend.
+PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": True,
