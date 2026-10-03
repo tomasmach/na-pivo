@@ -111,8 +111,6 @@ export function PartyCard({
 
   const content = (
     <>
-      {topRow !== undefined ? <View style={styles.topRow}>{topRow}</View> : null}
-
       <View style={styles.body} onLayout={(event) => setBodyHeight(event.nativeEvent.layout.height)}>
         <View style={styles.countColumn}>
           <Text
@@ -183,17 +181,18 @@ export function PartyCard({
     return (
       <View style={styles.card} accessibilityRole="text" accessibilityLabel={accessibilityLabel}>
         <CardSheen />
+        {topRow !== undefined ? <View style={styles.topRow}>{topRow}</View> : null}
         {content}
         {rail ?? null}
       </View>
     );
   }
 
-  // The rail sits beside the pressable body, not inside it: an accessible
-  // Pressable hides its descendants from VoiceOver, doors included.
+  // Header controls and the rail must stay beside the accessible card button.
   return (
     <View style={styles.card}>
       <CardSheen />
+      {topRow !== undefined ? <View style={styles.topRow}>{topRow}</View> : null}
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
