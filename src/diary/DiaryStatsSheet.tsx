@@ -152,6 +152,7 @@ export function DiaryStatsSheet({
                   sheet reads as the same family rather than a second system. */}
               <View
                 style={styles.total}
+                testID="diary-stats-total-beers"
                 accessible
                 accessibilityRole="text"
                 accessibilityLabel={t.diary.nightMeta([totalBeers, t.diary.statsTotalCaption])}
