@@ -50,7 +50,7 @@
 - Kroky: fixture má aktivní ruční cinknutí; vypnout „Ukazovat partě, kde sedím“ v Nastavení party a načíst `/v1/friends/live` druhým účtem.
 - Skutečnost: DB má `share_drinks_with_parta=false`, ale dřívější ruční aktivita zůstává v `active_friends`. Samostatná automatická presence a drink-feed používají tento přepínač; ghost režim skrývá i ruční aktivitu.
 - Očekávání: text nastavení srozumitelně odliší, co se po vypnutí přestane sdílet. Dokument `docs/decisions/one-write-two-readers.md` a existující kontraktové testy rozlišují automatický feed a vědomé sdílení přítomnosti; E2E proto nesmí bez produktového rozhodnutí změnit význam API.
-- Důkaz: skutečný běh `2d7eb19c` uložil přepínač a následný API oracle našel ruční aktivitu. Screenshot otevřeného přepínače se doplní při příštím plánovaném průchodu; existující snímek karty tento stav sám nedokazuje.
+- Důkaz: skutečný běh `2d7eb19c` uložil přepínač a následný API oracle našel ruční aktivitu. Následný běh `0292bfec` ověřil uložený stav a zachytil [vypnuté sdílení v nastavení](https://files.tmach.dev/social-sharing-off-settings-bc576d996a4c4f588361.png).
 - Stav: bez produktové změny. `tests/places-social/party-privacy.yaml` nyní rozlišuje automatickou presence, drink-feed a explicitní aktivitu; finální runtime tohoto upřesnění ještě čeká.
 
 ## NP-E2E-006: formulář vlastního piva slučuje jednotlivé vstupy
@@ -61,7 +61,7 @@
 - Skutečnost: formulář je viditelný a pole má focus, ale přesný nativní identifikátor `beer-form-name` není dostupný. Průchod skončí před druhým zápisem; první pivo zůstává skutečně uložené.
 - Příčina: obalový `Pressable` uvnitř `BeerFormModal` slučuje své interaktivní potomky do jednoho přístupného prvku.
 - [Screenshot formuláře před neúspěšným vstupem](https://files.tmach.dev/diary-beer-form-before-input-d94c0a902fc844c8ab18.png). Reprodukce `fc97c485` trvala 73,793 s a skončila selháním `tests/diary/evening.yaml`.
-- Stav: jednořádková oprava ve větvi `fix/accessible-beer-form`, commit `a1a1851a`, nezávislé review bez nálezů. Nativní ověření opravy a samostatný PR ještě čekají.
+- Stav: oprava v samostatném [PR #213](https://github.com/tomasmach/na-pivo/pull/213), nezávislé review bez nálezů. Běh `76ba5706` samostatně vyplnil název i cenu, uložil offline pivo a po restartu doručil přesný DB výsledek: dvě zbývající piva za 41 a 43 Kč, jedna uzavřená návštěva. [Vyplněný formulář](https://files.tmach.dev/diary-beer-form-filled-c236a3bdde1b44f38d4a.png), [výsledné statistiky](https://files.tmach.dev/diary-stats-opened-aa0aed84c1684d4395cf.png). Následný celý test `bf0e5e7d` prošel za 2 min 47 s včetně přesného UI statistik a posledního DB oracle po restartu. Tři stabilitní opakování ještě čekají.
 
 ## NP-E2E-007: offline publikace večera se po návratu neodešle
 
@@ -92,5 +92,15 @@
 - [Screenshot rozdílného pořadí](https://files.tmach.dev/social-private-blocked-board-47d8b88bd9a640ba99a5.png), `tests/places-social/leaderboard-privacy.yaml`, běh `0292bfec`.
 - Existující kontraktové testy záměrně zachovávají globální pořadí `entries` po blokování a současně přepočítávají osobní `me.rank`. Nejde proto napravit rozpor změnou backendu bez rozhodnutí o významu zobrazeného pořadí. Navazující zpřesnění E2E porovná oba údaje s jejich skutečnými API hodnotami; nebude vynucovat změnu kontraktu.
 - Stav: ponecháno k produktovému rozhodnutí o vysvětlení pořadí. Kontrola soukromí prošla; to neznamená, že je popis pořadí srozumitelný.
+
+## NP-E2E-010: výběr zdroje fotky slučuje své akce
+
+- Priorita P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: přihlásit fixture, otevřít fotky a nabídku „Cvakni pivo“, zkusit vybrat fotku z galerie.
+- Očekávání: galerie, fotoaparát a zavření mají samostatně dostupné ovládací prvky.
+- Skutečnost: nativní strom obsahuje jediný sloučený prvek s nadpisem, popisem a všemi třemi akcemi. Přesný locator galerie selže, přestože je tlačítko vidět.
+- Příčina: vnější a vnitřní `Pressable` v `BeerPhotoSourceSheet` slučují přístupné potomky. Minimální oprava nastavuje oběma obalům `accessible={false}`; samostatná tlačítka si ponechávají role, popisy a callbacky.
+- Reprodukce: `tests/identity/photos.yaml`, běh `e7987064`; [screenshot nabídky před opravou](https://files.tmach.dev/identity-photo-source-accessibility-488cefaeca6c47c4a8c3.png).
+- Stav: oprava `a2109823` ve větvi `fix/accessible-photo-source`, nezávislé review bez nálezů. Nativní ověření opravy a samostatný PR ještě čekají.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
