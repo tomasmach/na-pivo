@@ -28,11 +28,21 @@ tags: [full]
 - scrollUntilVisible:
     element: {text: Poslat návrh ke kontrole}
     direction: DOWN
-- tapOn: Poslat návrh ke kontrole
-- assertVisible: 'Teď se k serveru nedostanu\. Návrh zůstal ve formuláři, zkus to za chvíli\.'
+- tapOn: {text: Poslat návrh ke kontrole, enabled: true}
+- scrollUntilVisible:
+    element: {text: 'Teď se k serveru nedostanu\. Návrh zůstal ve formuláři, zkus to za chvíli\.'}
+    direction: DOWN
+    timeout: 20000
+- scrollUntilVisible:
+    element: {text: E2E Nový kvíz}
+    direction: UP
 - assertVisible: E2E Nový kvíz
+- evalScript: ${output.local.screenshot('places-event-offline-draft')}
 - evalScript: ${output.local.online()}
-- tapOn: Poslat návrh ke kontrole
+- scrollUntilVisible:
+    element: {text: Poslat návrh ke kontrole, enabled: true}
+    direction: DOWN
+- tapOn: {text: Poslat návrh ke kontrole, enabled: true}
 - evalScript: ${output.local.poll(function () { output.ps.check('event-pending'); }, 15000)}
 - assertNotVisible: E2E Nový kvíz
 - evalScript: ${output.local.screenshot('places-event-pending')}

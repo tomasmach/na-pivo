@@ -17,7 +17,7 @@ tags: [full]
       '-EXDevMenuShowFloatingActionButton': 'NO'
     permissions:
       all: deny
-      location: deny
+      location: never
       photos: allow
       camera: deny
       notifications: deny
@@ -50,6 +50,9 @@ tags: [full]
     when: {visible: OK}
     commands:
       - tapOn: OK
+- scrollUntilVisible:
+    element: {text: 'Popiš, co se stalo nebo co ti chybí…'}
+    direction: UP
 - tapOn: 'Popiš, co se stalo nebo co ti chybí…'
 - inputText: E2E Kamera odmítnuta
 - scrollUntilVisible:

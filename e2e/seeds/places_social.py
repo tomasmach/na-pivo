@@ -192,6 +192,21 @@ def observe():
     def rows(model, fields):
         return list(model.objects.order_by("pk").values(*fields))
 
+    added_pubs = []
+    for pub in UserAddedPub.objects.select_related("account").order_by("pk"):
+        added_pubs.append(
+            {
+                "account__nickname": pub.account.nickname,
+                "client_id": pub.client_id,
+                "name": pub.name,
+                "location_source": pub.location_source,
+                "active": pub.active,
+                "nearExpectedSyntheticPin": abs(float(pub.lat) - base.LOCATION[0])
+                < 0.00001
+                and abs(float(pub.lng) - base.LOCATION[1]) < 0.00001,
+            }
+        )
+
     return {
         "pubKeys": dict(PubCommunityData.objects.values_list("name", "cache_key")),
         "fixtureAccounts": dict(
@@ -205,10 +220,7 @@ def observe():
             "id", flat=True
         ).first(),
         "inviteCode": "E2EInviteCizi",
-        "addedPubs": rows(
-            UserAddedPub,
-            ["account__nickname", "client_id", "name", "location_source", "active"],
-        ),
+        "addedPubs": added_pubs,
         "presenceVisits": rows(PubVisit, ["account__nickname", "client_id", "name"]),
         "manualActivities": rows(FriendPubActivity, ["account__nickname", "active"]),
         "favorites": rows(PubFavorite, ["account__nickname", "cache_key"]),

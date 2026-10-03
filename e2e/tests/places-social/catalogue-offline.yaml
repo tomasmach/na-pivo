@@ -15,7 +15,11 @@ tags: [critical, full]
       ROUTE: /
 - assertVisible: '.*E2E U Testera.*'
 - tapOn: Přepnout na mapu
+- tapOn: Najít mě na mapě
 - tapOn: 'Zobrazit podniky jako seznam.*'
+- scrollUntilVisible:
+    element: {text: 'E2E Druhá hospoda, zatím nenavštíveno'}
+    direction: DOWN
 - tapOn: 'E2E Druhá hospoda, zatím nenavštíveno'
 - tapOn: O hospodě
 - assertVisible: E2E Druhá hospoda
@@ -31,7 +35,6 @@ tags: [critical, full]
 - tapOn: Hledat hospodu
 - inputText: E2E Druhá hospoda
 - tapOn: 'E2E Druhá hospoda,.*'
-- assertVisible: E2E Druhá hospoda
 - assertVisible: E2E Druhá hospoda
 - evalScript: ${output.local.screenshot('places-offline-catalogue')}
 - evalScript: ${output.local.online()}

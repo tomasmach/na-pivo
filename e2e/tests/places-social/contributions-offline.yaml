@@ -19,11 +19,15 @@ tags: [critical, full]
 - assertVisible: E2E Druhá hospoda
 - evalScript: ${output.local.offline()}
 - scrollUntilVisible:
-    element: {text: Upravit otevíračku}
+    element: {text: 'Zmapováno na .* %\. Doplň, co víš\. Uvidí to ostatní\.'}
     direction: DOWN
-- tapOn: Upravit otevíračku
+- tapOn: 'Zmapováno na .* %\. Doplň, co víš\. Uvidí to ostatní\.'
+- tapOn: 'Otevíračka,.*\. Uprav\.'
 - tapOn: 'Pondělí: odebrat čas'
 - tapOn: Uložit doplněné údaje
+- tapOn:
+    text: Zavřít mapování hospody
+    index: 1
 - runFlow:
     file: ../../maestro/route.yaml
     env:
@@ -33,9 +37,10 @@ tags: [critical, full]
 - tapOn: 'E2E Druhá hospoda,.*'
 - assertVisible: E2E Druhá hospoda
 - scrollUntilVisible:
-    element: {text: Upravit piva a ceny}
+    element: {text: 'Zmapováno na .* %\. Doplň, co víš\. Uvidí to ostatní\.'}
     direction: DOWN
-- tapOn: Upravit piva a ceny
+- tapOn: 'Zmapováno na .* %\. Doplň, co víš\. Uvidí to ostatní\.'
+- tapOn: 'Piva,.*\. Uprav\.'
 - tapOn: Přidat pivo
 - tapOn: {id: beer-form-name}
 - inputText: E2E Nový ležák
@@ -44,6 +49,9 @@ tags: [critical, full]
 # iOS number-pad has no Return key; submit is tappable while it is open.
 - tapOn: {id: beer-form-submit}
 - tapOn: Uložit doplněné údaje
+- tapOn:
+    text: Zavřít mapování hospody
+    index: 1
 - runFlow: ../../maestro/restart.yaml
 - evalScript: ${output.local.online()}
 - runFlow: ../../maestro/foreground.yaml

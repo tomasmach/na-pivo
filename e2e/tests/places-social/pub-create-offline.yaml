@@ -12,6 +12,11 @@ tags: [critical, full]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
+      ROUTE: /
+- assertVisible: 'E2E U Testera.*'
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
       ROUTE: /add-pub
 - evalScript: ${output.local.offline()}
 - tapOn: Název hospody
@@ -20,6 +25,10 @@ tags: [critical, full]
     element: {text: Zapíchnout špendlík hospody do mapy}
     direction: DOWN
 - tapOn: Zapíchnout špendlík hospody do mapy
+- evalScript: ${output.local.screenshot('places-new-pub-map-pin')}
+- extendedWaitUntil:
+    visible: {id: map-pin-confirm}
+    timeout: 15000
 - tapOn: {id: map-pin-confirm}
 - scrollUntilVisible:
     element: {text: Město hospody}

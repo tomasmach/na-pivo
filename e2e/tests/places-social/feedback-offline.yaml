@@ -21,10 +21,13 @@ tags: [critical, full]
     visible: 'Cancel|Zrušit'
     timeout: 15000
 - evalScript: ${output.local.screenshot('places-feedback-gallery')}
-# First thumbnail in the owned gallery contains only two synthetic fixtures.
+# The first thumbnail is a seeded synthetic image; other simulator stock photos may follow.
 - tapOn:
     point: '16%,28%'
 - assertVisible: Příloha je připravená
+- scrollUntilVisible:
+    element: {text: 'Popiš, co se stalo nebo co ti chybí…'}
+    direction: UP
 - tapOn: 'Popiš, co se stalo nebo co ti chybí…'
 - inputText: E2E Test zprávy bez signálu.
 - scrollUntilVisible:

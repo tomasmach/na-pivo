@@ -22,6 +22,13 @@ tags: [full]
       ROUTE: /friends
 - assertVisible: '.*E2EKamos.*'
 - assertVisible: '.*E2ECizi.*'
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: Upravit profil
+- assertVisible: E2EPivar
+- evalScript: ${output.ps.check('invited')}
 - evalScript: ${output.local.offline()}
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
@@ -30,6 +37,7 @@ tags: [full]
       ROUTE: /friends
 - assertVisible: '.*E2EKamos.*'
 - assertVisible: '.*E2ECizi.*'
+- assertNotVisible: Doplnit přezdívku
 - evalScript: ${output.local.screenshot('social-offline-party')}
 - evalScript: ${output.local.online()}
 - evalScript: ${output.ps.check('invited')}

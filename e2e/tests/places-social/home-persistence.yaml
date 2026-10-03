@@ -21,6 +21,7 @@ tags: [critical, full]
     env:
       ROUTE: /home-point
 - assertVisible: {id: home-save, enabled: false}
+- evalScript: ${output.ps.home(false)}
 - tapOn: Použít moji polohu
 - assertVisible: {id: home-save, enabled: true}
 - tapOn: {id: home-save}
@@ -30,6 +31,7 @@ tags: [critical, full]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /home-point
+- evalScript: ${output.local.poll(function () { output.ps.home(true); }, 15000)}
 # Swipe outside the native map, which otherwise consumes the gesture as pan.
 - swipe:
     start: 2%, 80%
@@ -43,5 +45,6 @@ tags: [critical, full]
       ROUTE: /home-point
 - assertVisible: {id: home-save, enabled: false}
 - assertNotVisible: {id: home-clear}
+- evalScript: ${output.ps.home(false)}
 - evalScript: ${output.local.screenshot('places-home-cleared')}
 - evalScript: ${output.ps.check('unchanged')}

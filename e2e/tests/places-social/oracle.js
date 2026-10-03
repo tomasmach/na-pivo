@@ -1,5 +1,12 @@
 /* global output */
 output.ps = {
+  literal: function(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  },
+  home: function(present) {
+    const point = output.local.request('/home-point');
+    output.local.check(point.present === present && point.matchesFixture === present, 'The persisted home point is absent or exactly matches the synthetic simulator location after restart.');
+  },
   equal: function(actual, expected, message) {
     output.local.check(JSON.stringify(actual) === JSON.stringify(expected), message);
   },
@@ -19,6 +26,7 @@ output.ps = {
     const response = output.local.observe('primary', '/v1/leaderboards?category=' + category + '&period=' + requestedPeriod);
     output.local.check(response.status === 200 && response.body.period === effectivePeriod, 'Leaderboard returns the expected effective period.');
     this.equal(response.body.entries.map(function(r) { return [r.account.nickname,r.score]; }), expected, 'Leaderboard contains exactly the public, unblocked fixture accounts and their scores.');
+    return response.body;
   },
   check: function(phase) {
     const full = output.local.state();
@@ -70,7 +78,12 @@ output.ps = {
       this.board('mapper', 'week', [['E2EKamos',20],['E2EPivar',10]], 'all');
     } else if (phase === 'board-blocked') {
       this.equal(s.blocks, [{blocker__nickname:'E2EPivar',blocked__nickname:'E2EKamos'}], 'Leaderboard block is persisted.');
-      this.board('mapper', 'all', [['E2EPivar',10]], 'all');
+      const board = this.board('mapper', 'all', [['E2EPivar',10]], 'all');
+      const self = board.entries[0];
+      output.local.check(self.is_me === true && board.me.score === 10 && Number.isInteger(self.rank) && Number.isInteger(board.me.rank) && Number.isInteger(board.total_ranked), 'The API supplies the self row, hero rank and unchanged ten-XP score.');
+      // The API intentionally ranks the filtered row and hero independently.
+      output.ps.boardSelf = this.literal(self.rank + '. Ty, 10 XP');
+      output.ps.boardHero = this.literal('Mapéři · odjakživa. Pořadí podle skóre ' + board.me.rank + '. 10 XP. V tabulce je ' + board.total_ranked + '.');
     } else if (phase === 'contest-entered' || phase === 'contest-withdrawn') {
       const entries = s.entries.filter(function(r) { return r.account__nickname === 'E2EPivar'; });
       const photo = s.photos.find(function(r) { return r.account__nickname === 'E2EPivar'; });
@@ -103,7 +116,7 @@ output.ps = {
     } else if (phase === 'pub-created') {
       output.local.check(s.addedPubs.length === 1, 'Exactly one offline pub was delivered.');
       const pub = s.addedPubs[0];
-      output.local.check(pub.account__nickname === 'E2EPivar' && pub.name === 'E2E Nová hospoda' && pub.location_source === 'user_pin' && pub.active === true && !!pub.client_id, 'The created pub belongs to the primary account and confirmed map pin.');
+      output.local.check(pub.account__nickname === 'E2EPivar' && pub.name === 'E2E Nová hospoda' && pub.location_source === 'user_pin' && pub.nearExpectedSyntheticPin === true && pub.active === true && !!pub.client_id, 'The created pub belongs to the primary account and confirmed map pin.');
       output.ps.created = pub;
     } else if (phase === 'pub-renamed') {
       output.local.check(!!this.created, 'The original published identity was observed before editing.');

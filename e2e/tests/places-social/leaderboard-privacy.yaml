@@ -38,5 +38,8 @@ tags: [critical, full]
     end: 50%, 75%
 - assertNotVisible: '.*E2EKamos.*'
 - assertNotVisible: '.*E2ECizi.*'
+- evalScript: ${output.ps.check('board-blocked')}
+- assertVisible: ${output.ps.boardSelf}
+- assertVisible: ${output.ps.boardHero}
 - evalScript: ${output.local.screenshot('social-private-blocked-board')}
 - evalScript: ${output.ps.check('board-blocked')}

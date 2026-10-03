@@ -19,13 +19,13 @@ tags: [critical, full]
 - assertVisible: E2E Druhá hospoda
 - tapOn: Další možnosti hospody
 - tapOn: Nahlásit hospodu
-- tapOn: Hospoda zavřela
+- tapOn: Hospoda už nefunguje
 - tapOn: Zpátky
 - evalScript: ${output.ps.check('report-none')}
 - evalScript: ${output.local.offline()}
 - tapOn: Další možnosti hospody
 - tapOn: Nahlásit hospodu
-- tapOn: Hospoda zavřela
+- tapOn: Hospoda už nefunguje
 - tapOn: Nahlásit
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
