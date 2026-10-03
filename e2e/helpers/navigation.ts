@@ -4,10 +4,32 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 type MobileUI = Pick<TestFixtures, 'app' | 'screen'> & { device: Device };
 
+/** The once-per-version reminder appears after the first process restart. */
+export async function dismissPubReminder({ screen }: Pick<MobileUI, 'screen'>, timeout = 8000) {
+  const deadline = Date.now() + timeout;
+  do {
+    for (const label of ['Teď ne, nech mě pít v klidu', 'Not now, let me drink in peace']) {
+      const skip = screen.getByRole('button', label);
+      if (await skip.isVisible()) {
+        await skip.tap();
+        await expect(skip).not.toBeVisible();
+        return true;
+      }
+    }
+    if (Date.now() >= deadline) return false;
+    await delay(200);
+  } while (Date.now() < deadline);
+  return false;
+}
+
 export async function openRoute({ device, screen }: Pick<MobileUI, 'device' | 'screen'>, route: string) {
   if (!/^\/[a-z0-9/?=&._-]*$/i.test(route)) throw new Error('Only static local app routes belong in navigation helpers.');
   await device.openLink(`napivo:/${route}`);
   if (await screen.getByRole('button', 'Open').isVisible()) await screen.getByRole('button', 'Open').tap();
+  if (await dismissPubReminder({ screen }, 0)) {
+    await device.openLink(`napivo:/${route}`);
+    if (await screen.getByRole('button', 'Open').isVisible()) await screen.getByRole('button', 'Open').tap();
+  }
 }
 
 export async function skipOnboarding({ app, screen }: Pick<MobileUI, 'app' | 'screen'>) {

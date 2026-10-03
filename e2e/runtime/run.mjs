@@ -70,7 +70,8 @@ async function cleanup(code) {
     const records = JSON.parse(fs.readFileSync(path.join(runDir, 'processes.json'), 'utf8')).owned;
     const processes = execFileSync('ps', ['-axo', 'pid=,pgid=,lstart='], { encoding: 'utf8' }).trim().split('\n').map(line => {
       const [, pid, pgid, started] = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/) || [];
-      return { pid: Number(pid), pgid: Number(pgid), started };
+      // macOS pads every lstart column; record() trims the single-PID form.
+      return { pid: Number(pid), pgid: Number(pgid), started: started?.trim() };
     });
     const groups = new Set(records.filter(record => processes.some(p => p.pid === record.pid && p.started === record.started)).map(record => record.pid));
     ownedProcesses = processes.filter(p => groups.has(p.pgid));
