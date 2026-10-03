@@ -99,10 +99,15 @@ async function cleanup(code) {
     try { simctl('shutdown', device); } catch { /* Already down. */ }
     // simctl can return while CoreSimulator still reports "Shutting Down".
     // Finish that transition before releasing the slot for a subsequent run.
-    for (let attempt = 0; attempt < 30; attempt++) {
-      const inventory = Object.values(JSON.parse(simctl('list', 'devices', '--json')).devices).flat();
-      if (inventory.find(candidate => candidate.udid === device)?.state === 'Shutdown') break;
-      await delay(500);
+    try {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const inventory = Object.values(JSON.parse(simctl('list', 'devices', '--json')).devices).flat();
+        if (inventory.find(candidate => candidate.udid === device)?.state === 'Shutdown') break;
+        await delay(500);
+      }
+    } catch {
+      console.error('Could not confirm shutdown of the owned simulator.');
+      code ||= 1;
     }
   }
   releaseBoot();
