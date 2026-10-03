@@ -103,4 +103,15 @@
 - Reprodukce: `tests/identity/photos.yaml`, běh `e7987064`; [screenshot nabídky před opravou](https://files.tmach.dev/identity-photo-source-accessibility-488cefaeca6c47c4a8c3.png).
 - Stav: oprava `a2109823` ve větvi `fix/accessible-photo-source`, nezávislé review bez nálezů. Nativní ověření opravy a samostatný PR ještě čekají.
 
+## NP-E2E-011: po offline restartu není dostupné odhlášení
+
+- Priorita P1; blokuje P0 průchod oddělení účtů. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: přihlásit účet, zapsat jedno pivo online, zastavit lokální backend, zapsat druhé pivo a restartovat appku offline. Počítadlo drží dvě piva za 82 Kč. Otevřít Účet.
+- Očekávání: přihlášený uživatel se může místně odhlásit i bez dostupného profilu ze serveru.
+- Skutečnost: obrazovka ukazuje pouze Účet a Zpět. Akce Odhlásit se chybí i v nativním stromu. [Zkontrolovaný screenshot](https://files.tmach.dev/identity-account-offline-empty-before-5643c3a985bb4592bfcc.png).
+- Příčina: přihlášená session se správně obnoví ze SecureStore; vzdálený profil zůstane při výpadku `null`. `AccountScreen` v této větvi předčasně vrací samotnou hlavičku, přestože existující `auth.logout` podporuje místní odhlášení při síťové chybě.
+- Reprodukce: `tests/identity/logout.yaml`, běh `9cc075a2`. Dvě offline piva a jejich přetrvání po restartu byly ověřené před selháním.
+- Stav: malá oprava `634a8ba6` ve větvi `fix/keep-offline-logout` zachovává stávající tlačítko podle přihlášené session. Kontrola typů, lint, 99 souvisejících Jest testů a nezávislé review prošly. Nativní ověření stejného průchodu a samostatný PR čekají.
+- Hranice kontraktu: úmyslné offline odhlášení místně vymaže soukromá data včetně nedoručené fronty; neslibuje doručení ani vzdálené odvolání tokenu. E2E následně ověřuje, že fronta účtu A nepřejde pod účet B.
+
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
