@@ -2,7 +2,6 @@ import os
 
 from django.contrib.auth.hashers import make_password
 from django.utils import timezone
-
 from pubs.enrichment import geohash8
 from pubs.models import Account, EmailCredential, PubCommunityData, PubDirectory, PubHours
 
