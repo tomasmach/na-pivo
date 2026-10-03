@@ -24,6 +24,7 @@ const env = {
   // Presence-only OAuth controls. These IDs cannot authenticate a real client.
   EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 'e2e-invalid.apps.googleusercontent.com',
   EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 'e2e-invalid-ios.apps.googleusercontent.com',
+  EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: 'com.googleusercontent.apps.e2e-invalid',
   NA_PIVO_SKIP_IOS_WIDGETS: '1', CI: '1',
   NODE_OPTIONS: '--dns-result-order=ipv4first',
 };
