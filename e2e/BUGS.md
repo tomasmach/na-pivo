@@ -9,6 +9,6 @@
 - Příčina: vnější `Pressable` v `DrinkPickSheet` nemá `accessible={false}`. Minimální oprava ponechá přístupné jednotlivé potomky. Vizuální layout se nemění.
 - Regrese: `tests/spike/persist-drink.e2e.ts` před opravou nedokáže zapsat, po opravě třikrát projde včetně přesného DB oracle a restartu.
 - [Screenshot ověřeného výsledku po opravě](https://files.tmach.dev/spike-persisted-drink-e8ee0ea9ec4b4277ada3.png). Před opravou framework po secret fill uchoval pouze redigovaný accessibility dump, screenshot záměrně nevytvořil.
-- Stav: malá oprava připravená pro samostatný `fix/` PR. Test aktuálně prochází s opravou; na původním dev jde o známé selhání.
+- Stav: opraveno v samostatném [PR #207](https://github.com/tomasmach/na-pivo/pull/207). Test aktuálně prochází s opravou; na původním dev jde o známé selhání.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
