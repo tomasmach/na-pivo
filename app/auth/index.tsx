@@ -54,6 +54,7 @@ function isValidEmail(value: string): boolean {
 // ---------------------------------------------------------------------------
 
 interface FieldProps {
+  testID?: string;
   label: string;
   value: string;
   onChangeText: (value: string) => void;
@@ -66,6 +67,7 @@ interface FieldProps {
 }
 
 function Field({
+  testID,
   label,
   value,
   onChangeText,
@@ -80,6 +82,7 @@ function Field({
     <View style={styles.fieldGroup}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        testID={testID}
         style={styles.input}
         value={value}
         onChangeText={onChangeText}
@@ -390,6 +393,7 @@ export default function AuthScreen() {
             </View>
           )}
           <Field
+            testID="auth-email"
             label={t.account.emailLabel}
             value={email}
             onChangeText={(value) => {
@@ -403,6 +407,7 @@ export default function AuthScreen() {
             textContentType="emailAddress"
           />
           <Field
+            testID="auth-password"
             label={t.account.passwordLabel}
             value={password}
             onChangeText={(value) => {
@@ -425,6 +430,7 @@ export default function AuthScreen() {
           {/* ── Primary CTA ── */}
           <View style={styles.primaryButton}>
             <GlowButton
+              testID="auth-submit"
               label={submitLabel}
               onPress={handleSubmit}
               glow={busy || sessionRecoveryRequired ? 'none' : 'soft'}

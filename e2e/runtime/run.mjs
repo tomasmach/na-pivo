@@ -1,0 +1,138 @@
+import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import net from 'node:net';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
+import { start, stop } from './processes.mjs';
+import { summarize } from './report.mjs';
+
+const root = fileURLToPath(new URL('../../', import.meta.url));
+process.chdir(root);
+process.env.E2E_TELEMETRY_DISABLED = '1';
+const args = process.argv.slice(2);
+const repeat = args.includes('--stability') ? 3 : 1;
+const switches = new Set(['--stability', '--no-cache', '--strict-cache']);
+const filters = new Set(['--tag', '--exclude-tag', '--grep', '--grep-invert', '--tag-mode']);
+for (let index = 0; index < args.length; index++) {
+  if (switches.has(args[index])) continue;
+  if (filters.has(args[index]) && args[index + 1] && !args[index + 1].startsWith('--')) { index++; continue; }
+  if (/^e2e\/tests\/[a-z0-9_/*.-]+$/i.test(args[index]) && !args[index].includes('..')) continue;
+  throw new Error(`Unsupported E2E option: ${args[index]}. Only test filters and cache switches are allowed.`);
+}
+if (repeat > 1 && args.includes('--no-cache')) throw new Error('--stability requires the replay cache.');
+const slot = Number(process.env.E2E_SLOT || '1');
+if (process.platform !== 'darwin') throw new Error('This runner requires macOS and an iPhone 17 simulator.');
+if (![1, 2, 3].includes(slot)) throw new Error('E2E_SLOT must be 1, 2, or 3.');
+const gitDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
+const lockRoot = path.join(gitDir, 'napivo-e2e');
+fs.mkdirSync(lockRoot, { recursive: true });
+const lock = path.join(lockRoot, `slot-${slot}.lock`);
+try { fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, root }), { flag: 'wx', mode: 0o600 }); }
+catch { throw new Error(`E2E slot ${slot} is owned by another run. Choose another E2E_SLOT; no process was stopped.`); }
+let runner;
+let device;
+let closing = false;
+let runDir;
+const simctl = (...argv) => execFileSync('xcrun', ['simctl', ...argv], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+async function cleanup(code) {
+  if (closing) return;
+  closing = true;
+  // Capture members before terminating leaders; a child can outlive its parent.
+  let ownedProcesses = [];
+  try {
+    const records = JSON.parse(fs.readFileSync(path.join(runDir, 'processes.json'), 'utf8')).owned;
+    const processes = execFileSync('ps', ['-axo', 'pid=,pgid=,lstart='], { encoding: 'utf8' }).trim().split('\n').map(line => {
+      const [, pid, pgid, started] = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/) || [];
+      return { pid: Number(pid), pgid: Number(pgid), started };
+    });
+    const groups = new Set(records.filter(record => processes.some(p => p.pid === record.pid && p.started === record.started)).map(record => record.pid));
+    ownedProcesses = processes.filter(p => groups.has(p.pgid));
+  } catch { /* No services started. */ }
+  await stop(runner);
+  if (runDir) {
+    try {
+      const stillOwned = owned => {
+        try {
+          const started = execFileSync('ps', ['-o', 'lstart=', '-p', String(owned.pid)], { encoding: 'utf8' }).trim();
+          return started === owned.started;
+        } catch { return false; }
+      };
+      for (const owned of ownedProcesses) {
+        if (stillOwned(owned)) { try { process.kill(owned.pid, 'SIGTERM'); } catch { /* Already stopped. */ } }
+      }
+      if (ownedProcesses.some(stillOwned)) await delay(4000);
+      for (const owned of ownedProcesses) {
+        if (stillOwned(owned)) { try { process.kill(owned.pid, 'SIGKILL'); } catch { /* Already stopped. */ } }
+      }
+      for (let attempt = 0; attempt < 20 && ownedProcesses.some(stillOwned); attempt++) await delay(100);
+    } catch { /* No service was started. */ }
+  }
+  if (device) { try { simctl('shutdown', device); } catch { /* Already down. */ } }
+  fs.rmSync(lock, { force: true });
+  process.exit(code);
+}
+process.on('SIGINT', () => cleanup(130));
+process.on('SIGTERM', () => cleanup(143));
+async function freePort(port) {
+  const server = net.createServer();
+  server.listen(port, '127.0.0.1');
+  await once(server, 'listening');
+  await new Promise(resolve => server.close(resolve));
+}
+try {
+  const backendPort = 18120 + slot;
+  const metroPort = 18220 + slot;
+  await Promise.all([freePort(backendPort), freePort(metroPort)]);
+  const appPath = process.env.E2E_APP_PATH || path.join(root, '.e2e/build/Napivo.app');
+  if (!fs.existsSync(appPath)) throw new Error('Build the local client first: npm run e2e:build');
+  const runtimes = JSON.parse(simctl('list', 'runtimes', '--json')).runtimes;
+  const runtime = runtimes.filter(r => r.isAvailable && r.identifier.includes('.iOS-')).at(-1);
+  if (!runtime) throw new Error('Install an iOS simulator runtime in Xcode.');
+  const id = crypto.randomUUID();
+  runDir = path.join(root, '.e2e/runs', id);
+  fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
+  const deviceFile = path.join(root, `.e2e/simulator-${slot}.json`);
+  try {
+    const prior = JSON.parse(fs.readFileSync(deviceFile, 'utf8'));
+    const inventory = Object.values(JSON.parse(simctl('list', 'devices', 'available', '--json')).devices).flat();
+    const match = inventory.find(d => d.udid === prior.udid && d.name === prior.name && d.state === 'Shutdown' && d.deviceTypeIdentifier === 'com.apple.CoreSimulator.SimDeviceType.iPhone-17');
+    if (match) device = match.udid;
+  } catch { /* First run in this worktree. */ }
+  if (!device) {
+    const name = `Na Pivo E2E ${slot} ${id.slice(0, 8)}`;
+    device = simctl('create', name, 'com.apple.CoreSimulator.SimDeviceType.iPhone-17', runtime.identifier);
+    fs.writeFileSync(deviceFile, JSON.stringify({ name, udid: device }), { mode: 0o600 });
+  }
+  fs.writeFileSync(path.join(runDir, 'owner.json'), JSON.stringify({ pid: process.pid, root, device, slot, backendPort, metroPort }), { mode: 0o600 });
+  const env = {
+    PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
+    LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8', E2E_TELEMETRY_DISABLED: '1',
+    NA_PIVO_E2E_RUN_DIR: runDir, NA_PIVO_E2E_DEVICE: device,
+    NA_PIVO_E2E_CONTROL_SOCKET: `/tmp/napivo-e2e-${id}.sock`,
+    NA_PIVO_E2E_BACKEND_PORT: String(backendPort), NA_PIVO_E2E_METRO_PORT: String(metroPort),
+    NA_PIVO_E2E_APP_PATH: appPath,
+    NA_PIVO_E2E_EMAIL: `e2e-${id}@example.test`,
+    NA_PIVO_E2E_PASSWORD: crypto.randomBytes(24).toString('base64url'),
+    NA_PIVO_E2E_NEW_PASSWORD: crypto.randomBytes(24).toString('base64url'),
+    ...(process.env.XDG_CONFIG_HOME ? { XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME } : {}),
+  };
+  console.log(`E2E slot ${slot}; iPhone 17 ${device}; API ${backendPort}; Metro ${metroPort}`);
+  for (let index = 1; index <= repeat; index++) {
+    const output = path.join(runDir, `attempt-${index}`);
+    const runArgs = args.filter(arg => arg !== '--stability');
+    if (index > 1) runArgs.push('--strict-cache');
+    runner = start(process.execPath, [path.join(root, 'node_modules/e2e/dist/cli/bin.js'), 'run', ...runArgs, '--output', output], { cwd: root, env });
+    const watchdog = setTimeout(() => cleanup(124), 2 * 60 * 60 * 1000);
+    const [code] = await once(runner, 'exit');
+    clearTimeout(watchdog);
+    if (code !== 0) { await cleanup(code || 1); break; }
+    const metrics = summarize(path.join(output, 'report.json'));
+    fs.writeFileSync(path.join(output, 'metrics.json'), JSON.stringify(metrics, null, 2));
+    console.log(`Verified run ${index}: ${JSON.stringify(metrics)}`);
+    if (index > 1 && (metrics.handedOff > 0 || metrics.missed > 0)) throw new Error('Stability run required complete replay, but an agent.act missed or handed off.');
+  }
+  await cleanup(0);
+} catch (error) { console.error(error.message); await cleanup(1); }
