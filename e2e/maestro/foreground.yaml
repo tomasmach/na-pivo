@@ -1,0 +1,11 @@
+appId: com.tomasmach.na-pivo
+---
+- pressKey: Home
+- launchApp:
+    stopApp: false
+    permissions:
+      all: deny
+      location: inuse
+      photos: allow
+      camera: deny
+      notifications: deny
