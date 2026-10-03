@@ -223,6 +223,7 @@ export default function ProfileEditScreen() {
                 signals it opens the photo picker. */}
             <Pressable
               onPress={handlePickAvatar}
+              testID="profile-avatar-pick"
               disabled={avatarBusy}
               style={({ pressed }) => [styles.avatarTap, pressed && styles.pressed]}
               accessibilityRole="button"
@@ -255,6 +256,7 @@ export default function ProfileEditScreen() {
               {!!avatarUrl && (
                 <Pressable
                   onPress={handleRemoveAvatar}
+                  testID="profile-avatar-remove"
                   style={({ pressed }) => [styles.avatarBtn, pressed && styles.pressed]}
                   accessibilityRole="button"
                   accessibilityLabel={t.a11y.profileRemovePhoto}
@@ -318,6 +320,7 @@ export default function ProfileEditScreen() {
           <Text style={styles.sectionHeader}>{t.profile.edit.visibilityHeader}</Text>
           <View style={styles.consentCard}>
             <VisibilityToggle
+              testID="profile-public"
               value={isPublic}
               onToggle={setIsPublic}
               label={t.profile.edit.visibilityToggleLabel}
@@ -346,6 +349,7 @@ export default function ProfileEditScreen() {
             below the fold of a long form. ── */}
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <GlowButton
+            testID="profile-save"
             label={saving ? t.profile.edit.saving : t.profile.edit.save}
             onPress={handleSave}
             glow={saving ? 'none' : 'soft'}
