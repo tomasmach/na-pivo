@@ -111,12 +111,13 @@ function numeralFontSize(value: string): number {
 }
 
 interface ToggleProps {
+  testID?: string;
   value: boolean;
   onToggle: () => void;
   accessibilityLabel: string;
 }
 
-function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
+function Toggle({ value, onToggle, accessibilityLabel, testID }: ToggleProps) {
   const offset = useSharedValue(value ? 24 : 2);
 
   useEffect(() => {
@@ -133,6 +134,7 @@ function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
 
   return (
     <Pressable
+      testID={testID}
       onPress={onToggle}
       style={[styles.toggle, value ? styles.toggleOn : styles.toggleOff]}
       accessibilityRole="switch"
@@ -262,6 +264,7 @@ function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderPro
 }
 
 interface PreferenceRowProps {
+  testID?: string;
   title: string;
   subtitle: string;
   value: boolean;
@@ -272,6 +275,7 @@ interface PreferenceRowProps {
 }
 
 function PreferenceRow({
+  testID,
   title,
   subtitle,
   value,
@@ -304,7 +308,7 @@ function PreferenceRow({
           {subtitle}
         </Text>
       </View>
-      <Toggle value={value} onToggle={onToggle} accessibilityLabel={toggleLabel} />
+      <Toggle testID={testID} value={value} onToggle={onToggle} accessibilityLabel={toggleLabel} />
     </View>
   );
 }
@@ -395,6 +399,7 @@ function LanguageRow() {
             accessibilityRole="radio"
             accessibilityState={{ selected }}
             accessibilityLabel={t.settings.language.option(t.settings.language[code])}
+            testID={`settings-language-${code}`}
           >
             <Text
               style={[styles.languageOptionText, selected && styles.languageOptionTextSelected]}
@@ -786,6 +791,7 @@ export default function SettingsScreen() {
             />
             <PreferenceRow
               title={t.settings.hidePubNames.title}
+              testID="settings-hide-names"
               subtitle={t.settings.hidePubNames.subtitle}
               value={hidePubNames}
               onToggle={toggleHidePubNames}
@@ -820,6 +826,7 @@ export default function SettingsScreen() {
           />
           <PreferenceRow
             title={t.settings.haptics.title}
+            testID="settings-haptics"
             subtitle={t.settings.haptics.subtitle}
             value={hapticEnabled}
             onToggle={toggleHaptic}
@@ -836,6 +843,7 @@ export default function SettingsScreen() {
           />
           <PreferenceRow
             title={t.settings.waterNudge.title}
+            testID="settings-water"
             subtitle={t.settings.waterNudge.subtitle}
             value={waterNudgeEnabled}
             onToggle={toggleWaterNudge}
