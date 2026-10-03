@@ -3,7 +3,9 @@
 import importlib
 import json
 import re
+from pathlib import Path
 
+from django.conf import settings
 from django.core import mail
 from django.core.cache import cache
 from django.core.management import call_command
@@ -14,13 +16,10 @@ from django.views.decorators.http import require_GET, require_POST
 
 from pubs.models import Account, AuthToken, DrinkLog, EmailCredential, PubVisit
 
-active_scenario = None
-
 
 @csrf_exempt
 @require_POST
 def reset(request):
-    global active_scenario
     scenario = json.loads(request.body or b"{}").get("scenario", "base")
     if not re.fullmatch(r"[a-z][a-z0-9_]*", scenario):
         return JsonResponse({"error": "invalid scenario"}, status=400)
@@ -30,7 +29,7 @@ def reset(request):
     if hasattr(mail, "outbox"):
         mail.outbox.clear()
     module.seed()
-    active_scenario = module
+    (Path(settings.RUN_DIR) / "scenario.txt").write_text(scenario)
     return JsonResponse({"ready": True, "scenario": scenario})
 
 
@@ -61,6 +60,9 @@ def state(request):
         )
     # Area-owned seed modules may project their own fixture rows. No app response
     # is mocked; these are read-only DB observations after the native UI writes.
+    scenario_file = Path(settings.RUN_DIR) / "scenario.txt"
+    scenario_name = scenario_file.read_text() if scenario_file.exists() else "base"
+    active_scenario = importlib.import_module(f"e2e.seeds.{scenario_name}")
     observation = getattr(active_scenario, "observe", lambda: {})()
     return JsonResponse(
         {
