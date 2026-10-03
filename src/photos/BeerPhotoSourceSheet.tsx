@@ -96,9 +96,9 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button">
+      <Pressable accessible={false} style={styles.backdrop} onPress={onClose}>
         {/* Stop backdrop dismissal when tapping inside the card */}
-        <Pressable onPress={() => undefined}>
+        <Pressable accessible={false} onPress={() => undefined}>
           <Animated.View
             style={[
               styles.card,
