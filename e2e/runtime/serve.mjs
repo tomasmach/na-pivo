@@ -9,6 +9,8 @@ import { ready, start, stop } from './processes.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const runDir = process.env.NA_PIVO_E2E_RUN_DIR;
 if (!runDir || !fs.existsSync(path.join(runDir, 'owner.json'))) throw new Error('Start with npm run e2e:critical or e2e:full.');
+// e2e starts app.command only after preparing its native engine.
+fs.writeFileSync(path.join(runDir, 'engine-ready'), 'ready\n');
 const backendPort = process.env.NA_PIVO_E2E_BACKEND_PORT;
 const metroPort = process.env.NA_PIVO_E2E_METRO_PORT;
 const api = `http://127.0.0.1:${backendPort}`;
@@ -19,6 +21,9 @@ const env = {
   EXPO_PUBLIC_BACKEND_MODE: 'local', EXPO_PUBLIC_BACKEND_URL: 'local',
   EXPO_PUBLIC_BACKEND_HOST: '127.0.0.1', EXPO_PUBLIC_BACKEND_PORT: backendPort,
   EXPO_PUBLIC_E2E: '1',
+  // Presence-only OAuth controls. These IDs cannot authenticate a real client.
+  EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 'e2e-invalid.apps.googleusercontent.com',
+  EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 'e2e-invalid-ios.apps.googleusercontent.com',
   NA_PIVO_SKIP_IOS_WIDGETS: '1', CI: '1',
   NODE_OPTIONS: '--dns-result-order=ipv4first',
 };
