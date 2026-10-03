@@ -1,18 +1,18 @@
 # Lokální mobilní E2E
 
-Testy řídí skutečný iPhone 17 v iOS simulátoru a skutečný Django backend. Používají pouze vlastní SQLite, syntetická data a ChatGPT předplatné. Běžný `dev-local` runner se nepoužívá, protože vybírá `backend/db.sqlite3`.
+Testy řídí skutečný iPhone 17 v iOS simulátoru a skutečný Django backend. Používají pouze vlastní SQLite a syntetická data. Výchozí runner je Maestro 2.11.0; důvod přechodu z TesterArmy a původní měření ChatGPT replay jsou v COVERAGE.md. Běžný `dev-local` runner se nepoužívá, protože vybírá `backend/db.sqlite3`.
 
 ## První spuštění na macOS
 
 ```sh
 npm ci
 (cd backend && uv sync --locked --extra prod)
-E2E_TELEMETRY_DISABLED=1 npx e2e login openai
+npm run e2e:maestro:install
 npm run e2e:build
 npm run e2e:critical
 ```
 
-Build je lokální `expo run:ios` s lokálním backend mode, vypnutými widgety a neplatným mapovým klíčem. Nevolá EAS. Runtime nenačítá `.env`. Přihlášení frameworku zůstává v jeho uživatelském úložišti mimo repo. Při změně nativních závislostí build zopakuj.
+Build je lokální `expo run:ios` s lokálním backend mode, vypnutými widgety a neplatným mapovým klíčem. Nevolá EAS. Runtime nenačítá `.env`. Maestro běží lokálně bez modelu a bez přihlášení do cloudu. Analytika je vypnutá a interní API pro kontrolu verze či hlášení chyb míří přes `MAESTRO_API_URL` na loopback. Případné přihlášení TesterArmy k ChatGPT zůstává v uživatelském úložišti mimo repo. Při změně nativních závislostí build zopakuj.
 
 ```sh
 npm run e2e:full
@@ -21,13 +21,13 @@ npm run e2e:full -- --no-cache
 E2E_SLOT=2 npm run e2e:critical -- e2e/tests/spike/
 ```
 
-`--stability` požaduje tři zelené průchody. Druhý a třetí používají strict cache a runner navíc odmítne jakýkoliv missed nebo handed off krok. `agent.assert` vždy volá model, i při úplném replay `agent.act`. `--no-cache` a `--stability` se nekombinují. Pro oblast používej adresářový filtr; více `--tag` se ve frameworku standardně spojuje jako OR.
+`--stability` požaduje tři zelené průchody. Maestro nepoužívá model ani replay cache, proto `--no-cache` nic nemění a replay metriky jsou `null`. Pro oblast používej adresářový filtr. Původní TesterArmy spike lze diagnosticky spustit přes `E2E_ENGINE=testerarmy npm run e2e:critical -- e2e/tests/spike/persist-drink.e2e.ts --stability`; vyžaduje `E2E_TELEMETRY_DISABLED=1 npx e2e login openai` a druhý/třetí průchod v něm nadále vynucují úplný replay.
 
 ## Izolace a úklid
 
-Sloty 1–3 mají API `18121–18123`, Metro `18221–18223`, vlastní iPhone 17 a DB v `.e2e/runs/<id>/test.sqlite3`. Zámky jsou ve společném git adresáři, proto platí i mezi worktrees. Obsazený port znamená konec, nikoliv ukončení cizího procesu. Nevyužitý vlastní simulátor lze znovu použít; běžící simulátor se nikdy nepřebírá. `E2E_APP_PATH=/absolute/Napivo.app` dovoluje sdílet ověřenou binárku mezi worktrees, každý však má svoje Metro.
+Sloty 1–3 mají API `18121–18123`, Metro `18221–18223`, místní kontroler `18321–18323`, vlastní iPhone 17 a DB v `.e2e/runs/<id>/test.sqlite3`. Zámky jsou ve společném git adresáři, proto platí i mezi worktrees. Obsazený port znamená konec, nikoliv ukončení cizího procesu. Nevyužitý vlastní simulátor lze znovu použít; běžící simulátor se nikdy nepřebírá. `E2E_APP_PATH=/absolute/Napivo.app` dovoluje sdílet ověřenou binárku mezi worktrees, každý však má svoje Metro.
 
-Runner eviduje PID a čas spuštění, po skončení zastaví vlastní procesy a vlastní simulátor. `Ctrl-C` vyvolá stejný úklid. Po násilném ukončení nejdřív ověř `owner.json`, `processes.json` a odpovídající slot lock; nikdy nepoužívej `killall`. Databáze, reporty, cache i bezpečné screenshoty zůstávají v gitignorované `.e2e/`.
+Runner eviduje PID a čas spuštění, po skončení zastaví vlastní procesy a vlastní simulátor. `Ctrl-C` vyvolá stejný úklid. Po násilném ukončení nejdřív ověř `owner.json`, `processes.json` a odpovídající slot lock; nikdy nepoužívej `killall`. Databáze, metriky a bezpečné screenshoty zůstávají v gitignorované `.e2e/`. Maestro raw debug reporty obsahují pouze povolené jednorázové testovací údaje a runner je po běhu smaže. ChatGPT přihlášení ani skutečné bearer tokeny do nich nevstupují. `E2E_MAESTRO_PATH=/absolute/maestro/bin/maestro` dovoluje mezi worktrees sdílet lokálně ověřenou CLI verzi.
 
 První příprava nativního enginu je mezi worktrees krátce serializovaná přes `boot.lock`. Samotné testy běží souběžně. Důvodem je sdílený agent-device daemon: souběžné studené starty tří iPhonů opakovaně vyčerpaly jeho 90s timeout a zasáhly ostatní sessions. Runner nejdřív dokončí nativní boot přes simctl a teprve potom pustí framework; zámek uvolní při začátku lokálních služeb.
 
@@ -35,13 +35,14 @@ Backend se spouští zvláštním settings modulem mimo produkční Docker conte
 
 ## Přidávání testů
 
-- Importuj `test` z `e2e/helpers/test`. Fixture zavře appku, vyčistí Keychain i aplikační data, resetuje DB a nastaví syntetickou polohu a tmavý režim.
-- Oblast vlastní `e2e/tests/<oblast>/` a svůj `e2e/seeds/<scenario>.py`. `seed()` připraví data; volitelný `observe()` vrací jen potřebná syntetická DB pole pod `local.state<T>().scenario`. Nikdy nevrací tokeny, e-maily ani GPS.
-- Sdílené helpery, config, adaptéry a produkční `testID` mění hlavní agent. Každá změna scope má vlastní skutečný oracle, nikoliv jen úspěšný tap.
-- `local.offline()` skutečně zastaví tento backend. Po restartu appky ověř lokální práci; `local.online()` a `device.home()` → `app.open()` ověří foreground sync.
-- `observer()` přihlásí fixture přes běžný password endpoint a vrací pouze čtení API. Bearer drží v paměti. U negativních kontrol vrací skutečný HTTP status. V testu smazání jej vytvoř před akcí: nové přihlášení během ochranné lhůty účet znovu aktivuje. Žádný testovací auth endpoint se nepřidává.
-- Finální `local.screenshot('safe-name')` volej až na zkontrolované obrazovce bez přihlašovacích údajů a souřadnic. Nezveřejňuj celé modelové reporty. Naměřené souhrny jsou v `attempt-N/metrics.json`.
+- Oblast vlastní `e2e/tests/<oblast>/*.yaml`, případné vlastní assertion `.js` a svůj `e2e/seeds/<scenario>.py`. `seed()` připraví data; `observe()` vrací potřebná syntetická DB pole, nikdy tokeny, e-maily nebo GPS.
+- Flow začne `../../maestro/reset.yaml`, případný `SCENARIO` předá v `env`. Následuje `skip-onboarding.yaml` a `login.yaml`. Reset vyčistí skutečnou DB, Keychain a data appky, konfigurace launchApp určuje oprávnění. Runner nastaví pevnou syntetickou polohu a dark mode.
+- `output.local.offline()` skutečně zastaví backend; `online()` ho obnoví. Potom `pressKey: Home` a `launchApp: {stopApp: false}` ověří foreground flush. Restart uprostřed výpadku používá `../../maestro/restart.yaml`.
+- `output.local.state()` čte skutečnou DB přes místní kontroler. `output.local.observe(account, route)` čte skutečný `/v1/` endpoint pod fixture účtem a vrací sanitizované `{status, body}`. Observer používá normální přihlášení a token drží v paměti. Před smazáním účtu jej vytvoř předem, aby pozdější login neaktivoval účet v ochranné lhůtě.
+- `output.local.request('/mail/verify', {})` otevře skutečný odkaz zachyceného e-mailu. `/mail/reset` otevře lokální app deep link, token nevstupuje do Maestro. `/mail/export` vrací pouze status a počet příloh.
+- `output.local.screenshot('safe-name')` volej na zkontrolovaném konečném stavu bez přihlašovacích údajů či souřadnic. Poslední kontrola testu musí porovnat skutečná data po restartu nebo přes API/DB. Nevydávej samotný úspěšný tap za ověření.
+- Sdílené helpery, config, adaptéry a produkční `testID` mění hlavní agent. Každý test musí chytat pojmenovanou regresi z COVERAGE.md a projít třikrát.
 
-Na iOS 26.5 neumí `simctl privacy` nastavit notifications. Config proto určuje polohu, kameru a fotky; test systémový notification dialog odmítne, pokud se objeví. První nový simulátor tím může jednorázově předat replay modelu. Další stabilitní průchody už předání nepovolují. `mobile 0.9.1` váže clear-state na otevřenou session: fixture nejdřív explicitně otevře správný telefon a proces appky zastaví přes jeho UDID, aniž by ztratila vazbu session.
+Oprávnění jsou výslovně `all: deny`, poloha `inuse` a fotky povolené, kamera a notifikace zakázané. Pro scénář zamítnutí použij konkrétní override v `launchApp`; při návratu nastav celý očekávaný stav. Případné nativní potvrzení odmítni. Lokální fake navíc brání registraci skutečného push tokenu.
 
 Aktuální důkazy a omezení jsou v [COVERAGE.md](COVERAGE.md), produktové chyby v [BUGS.md](BUGS.md). Sada není připojená do GitHub Actions.

@@ -35,7 +35,8 @@
     "lint": "expo lint",
     "e2e:build": "E2E_TELEMETRY_DISABLED=1 EXPO_NO_TELEMETRY=1 EXPO_NO_DOTENV=1 EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_URL=local EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY=e2e-invalid-local-only NA_PIVO_SKIP_IOS_WIDGETS=1 expo run:ios --device generic --no-bundler --output .e2e/build",
     "e2e:critical": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag critical",
-    "e2e:full": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag full"
+    "e2e:full": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag full",
+    "e2e:maestro:install": "E2E_TELEMETRY_DISABLED=1 MAESTRO_CLI_NO_ANALYTICS=1 bash e2e/runtime/install-maestro.sh"
   },
   "dependencies": {
     "@expo/ui": "~56.0.26",

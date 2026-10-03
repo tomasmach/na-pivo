@@ -1,0 +1,19 @@
+appId: com.tomasmach.na-pivo
+---
+- launchApp:
+    arguments:
+      '--initialUrl': ${MAESTRO_METRO}
+      '-EXDevMenuShowsAtLaunch': 'NO'
+      '-EXDevMenuIsOnboardingFinished': 'YES'
+      '-EXDevMenuShowFloatingActionButton': 'NO'
+    permissions:
+      all: deny
+      location: inuse
+      photos: allow
+      camera: deny
+      notifications: deny
+- runFlow:
+    when:
+      visible: 'Teď ne, nech mě pít v klidu'
+    commands:
+      - tapOn: 'Teď ne, nech mě pít v klidu'
