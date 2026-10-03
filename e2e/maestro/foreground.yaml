@@ -1,6 +1,10 @@
 appId: com.tomasmach.na-pivo
 ---
+- evalScript: ${output.foregroundPid = output.local.request('/app/process').pid}
 - pressKey: Home
+- waitForAnimationToEnd:
+    timeout: 5000
+- evalScript: ${output.local.check(output.local.request('/app/process').pid === output.foregroundPid, 'Backgrounding must preserve the app process.')}
 - launchApp:
     stopApp: false
     permissions:
@@ -9,3 +13,6 @@ appId: com.tomasmach.na-pivo
       photos: allow
       camera: deny
       notifications: deny
+- waitForAnimationToEnd:
+    timeout: 5000
+- evalScript: ${output.local.check(output.local.request('/app/process').pid === output.foregroundPid, 'Foreground sync must not use a cold app restart.')}
