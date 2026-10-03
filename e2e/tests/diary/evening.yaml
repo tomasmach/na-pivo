@@ -1,4 +1,3 @@
-# Known failing flow: NP-E2E-006, tracked in ../../BUGS.md.
 appId: com.tomasmach.na-pivo
 name: Offline evening edits reconcile without losing the new drink
 tags: [critical, full, diary]

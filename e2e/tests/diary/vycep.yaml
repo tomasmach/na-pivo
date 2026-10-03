@@ -1,3 +1,4 @@
+# Confirmed product failure NP-E2E-007 (../../BUGS.md): same process and active UI, no foreground queue flush.
 appId: com.tomasmach.na-pivo
 name: Offline night publication flushes on foreground and stays published
 tags: [full, diary]

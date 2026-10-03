@@ -9,7 +9,10 @@ appId: com.tomasmach.na-pivo
 - tapOn:
     id: beer-form-price
 - inputText: ${BEER_PRICE}
-- hideKeyboard
+# Numeric iOS keyboards have no standard dismiss action; the real submit stays above it.
+- assertVisible:
+    id: beer-form-submit
+- evalScript: ${output.local.screenshot('diary-beer-form-filled')}
 - tapOn:
     id: beer-form-submit
 - runFlow:

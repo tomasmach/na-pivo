@@ -1,4 +1,3 @@
-# Depends on BeerForm blocker NP-E2E-006 (../../BUGS.md); native Maestro flow still unverified.
 appId: com.tomasmach.na-pivo
 name: Private offline tour retains its completed journey and counted beer
 tags: [critical, full, diary]
