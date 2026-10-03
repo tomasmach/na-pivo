@@ -1,0 +1,160 @@
+appId: com.tomasmach.na-pivo
+name: Registration claims history and verified email unlocks export
+# Blocked: native input reaches the client's minimum-password error; cause unresolved.
+# Keep the complete UI registration, claim, verification and export as a reproduction.
+tags: [critical, full, identity, blocked]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: registration
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn: { id: counter-primary }
+- tapOn: "Připsat E2E Ležák za 0,5 l · 41 Kč"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: anonymous
+- evalScript: ${output.local.offline()}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn: "Připsat další E2E Ležák"
+- tapOn: "Jo, připsat další pivo"
+- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
+- evalScript: ${output.local.online()}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /auth
+- tapOn: { id: auth-register-mode }
+- tapOn: { id: profile-nickname }
+- eraseText
+- inputText: "E2ERegister"
+- pressKey: Enter
+- assertVisible: { id: profile-nickname, text: "E2ERegister" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Volné"
+    timeout: 15000
+- scrollUntilVisible:
+    element: { id: auth-email }
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- tapOn: { id: auth-email }
+- waitForAnimationToEnd
+- inputText:
+    text: ${MAESTRO_EMAIL}
+    label: Enter disposable fixture email
+- copyTextFrom: { id: auth-email }
+- runScript:
+    file: registration-input.js
+    env: { PHASE: email }
+- pressKey: Enter
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: { id: auth-password }
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- tapOn: { id: auth-password }
+- waitForAnimationToEnd
+- inputText:
+    text: ${MAESTRO_PASSWORD}
+    label: Enter disposable fixture password
+- copyTextFrom: { id: auth-password }
+- runScript:
+    file: registration-input.js
+    env: { PHASE: before }
+- tapOn: "HESLO"
+- waitForAnimationToEnd
+- copyTextFrom: { id: auth-email }
+- runScript:
+    file: registration-input.js
+    env: { PHASE: email }
+- assertVisible: { id: profile-nickname, text: "E2ERegister" }
+- scrollUntilVisible:
+    element: { id: auth-submit }
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- tapOn: { id: auth-submit }
+- evalScript: ${output.registrationError = 'none'}
+- runFlow:
+    when:
+      visible: { id: auth-error }
+    commands:
+      - copyTextFrom: { id: auth-error }
+      - runScript:
+          file: registration-input.js
+          env: { PHASE: validation }
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: submitted
+- tapOn: "Jen pro partu. Veřejně tě nikdo nenajde. Profil uvidí jen tvoji kamarádi."
+- tapOn: "Potvrdit a jít na pivo"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: claimed
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- assertVisible: "Upravit profil"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: private
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- tapOn: "Otevřít další možnosti účtu"
+- tapOn: "Stáhnout moje data"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: unverified
+- evalScript: ${output.local.request('/mail/verify', {})}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- tapOn: "Otevřít další možnosti účtu"
+- tapOn: "Stáhnout moje data"
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: export
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- evalScript: ${output.local.screenshot('identity-registered-private-verified')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: final

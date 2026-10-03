@@ -1,0 +1,109 @@
+appId: com.tomasmach.na-pivo
+name: Settings persist across restart and language reload
+tags: [full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: identity
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /settings
+- scrollUntilVisible:
+    element: { id: settings-hide-names }
+    direction: DOWN
+    timeout: 15000
+- tapOn: { id: settings-hide-names }
+- scrollUntilVisible:
+    element: { id: settings-haptics }
+    direction: DOWN
+    timeout: 15000
+- tapOn: { id: settings-haptics }
+- scrollUntilVisible:
+    element: { id: settings-water }
+    direction: DOWN
+    timeout: 15000
+- tapOn: { id: settings-water }
+- runScript:
+    file: checks.js
+    env:
+      CASE: settings
+      PHASE: server
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /settings
+- scrollUntilVisible:
+    element: { text: "Schovávat názvy hospod: zapnuto" }
+    direction: DOWN
+    timeout: 15000
+- assertVisible: "Schovávat názvy hospod: zapnuto"
+- scrollUntilVisible:
+    element: { text: "Vibrace u cíle: vypnuto" }
+    direction: DOWN
+    timeout: 15000
+- assertVisible: "Vibrace u cíle: vypnuto"
+- scrollUntilVisible:
+    element: { text: "Připomenout vodu: zapnuto" }
+    direction: DOWN
+    timeout: 15000
+- assertVisible: "Připomenout vodu: zapnuto"
+- scrollUntilVisible:
+    element: { id: settings-language-en }
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- tapOn: { id: settings-language-en }
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /settings
+- assertVisible: "Back"
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /settings
+- assertVisible: "Back"
+- scrollUntilVisible:
+    element: { id: settings-water }
+    direction: DOWN
+    timeout: 15000
+- assertVisible: "Remind me about water: on"
+- scrollUntilVisible:
+    element: { id: settings-language-cs }
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- evalScript: ${output.local.screenshot('identity-settings-before-czech')}
+- tapOn: { id: settings-language-cs }
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /settings
+- extendedWaitUntil:
+    visible: "Zpět"
+    timeout: 20000
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /settings
+- assertVisible: "Zpět"
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: "Upravit profil"
+- assertVisible: "E2E Pivař"
+- tapOn: "Zavřít"
+- evalScript: ${output.local.screenshot('identity-settings-persisted')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: settings
+      PHASE: final

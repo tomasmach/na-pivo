@@ -1,0 +1,99 @@
+appId: com.tomasmach.na-pivo
+name: Denied media and picker cancel keep profile usable
+tags: [full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: identity
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- evalScript: ${output.local.request('/media', {})}
+- launchApp:
+    arguments:
+      "--initialUrl": ${MAESTRO_METRO}
+      "-EXDevMenuShowsAtLaunch": "NO"
+      "-EXDevMenuIsOnboardingFinished": "YES"
+      "-EXDevMenuShowFloatingActionButton": "NO"
+    permissions:
+      all: deny
+      location: inuse
+      photos: deny
+      camera: deny
+      notifications: deny
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: "Upravit profil"
+- assertVisible: "E2EPivar"
+- tapOn: { id: profile-avatar-pick }
+- assertVisible: "Otevřít Nastavení"
+- scrollUntilVisible:
+    element: { id: profile-display-name }
+    direction: DOWN
+    timeout: 15000
+- tapOn: { id: profile-display-name }
+- eraseText
+- inputText: "E2E Bez fotky"
+- pressKey: Enter
+- assertVisible: { id: profile-display-name, text: "E2E Bez fotky" }
+- tapOn: { id: profile-save }
+- extendedWaitUntil:
+    notVisible: { id: profile-save }
+    timeout: 20000
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/photos
+- tapOn: "Přidat fotku piva"
+- tapOn: { id: photo-source-camera }
+- runFlow:
+    when:
+      visible: Zrušit
+    commands:
+      - tapOn: Zrušit
+- runFlow:
+    when:
+      visible: { id: photo-source-close }
+    commands:
+      - tapOn: { id: photo-source-close }
+- launchApp:
+    arguments:
+      "--initialUrl": ${MAESTRO_METRO}
+      "-EXDevMenuShowsAtLaunch": "NO"
+      "-EXDevMenuIsOnboardingFinished": "YES"
+      "-EXDevMenuShowFloatingActionButton": "NO"
+    permissions:
+      all: deny
+      location: inuse
+      photos: allow
+      camera: deny
+      notifications: deny
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/photos
+- tapOn: "Přidat fotku piva"
+- tapOn: { id: photo-source-library }
+- assertVisible: "Cancel|Zrušit"
+- tapOn: "Cancel|Zrušit"
+- runFlow:
+    when:
+      visible: { id: photo-source-close }
+    commands:
+      - tapOn: { id: photo-source-close }
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: "Upravit profil"
+- assertVisible: "E2E Bez fotky"
+- tapOn: "Zavřít"
+- evalScript: ${output.local.screenshot('identity-media-denied-recovered')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: media
+      PHASE: final

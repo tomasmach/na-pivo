@@ -1,0 +1,70 @@
+appId: com.tomasmach.na-pivo
+name: Profile edits persist and hide the private profile
+tags: [critical, full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: identity
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript:
+    file: checks.js
+    env:
+      CASE: profile
+      PHASE: before
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: "Upravit profil"
+- assertVisible: "E2EPivar"
+- tapOn: { id: profile-nickname }
+- eraseText
+- inputText: "E2EKamarad"
+- evalScript: ${output.local.screenshot('identity-nickname-validation')}
+- extendedWaitUntil:
+    visible: "Tahle přezdívka je zabraná"
+    timeout: 15000
+- tapOn: { id: profile-nickname }
+- eraseText
+- inputText: "E2EUpdated"
+- pressKey: Enter
+- assertVisible: { id: profile-nickname, text: "E2EUpdated" }
+- extendedWaitUntil:
+    visible: "Volné"
+    timeout: 15000
+- scrollUntilVisible:
+    element: { id: profile-display-name }
+    direction: DOWN
+    timeout: 15000
+- tapOn: { id: profile-display-name }
+- eraseText
+- inputText: "E2E Upravený"
+- pressKey: Enter
+- assertVisible: { id: profile-display-name, text: "E2E Upravený" }
+- scrollUntilVisible:
+    element: { id: profile-public }
+    direction: DOWN
+    timeout: 15000
+- tapOn: { id: profile-public }
+- evalScript: ${output.local.screenshot('identity-profile-before-save')}
+- tapOn: { id: profile-save }
+- evalScript: ${output.local.screenshot('identity-profile-after-save')}
+- extendedWaitUntil:
+    notVisible: { id: profile-save }
+    timeout: 20000
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: "Upravit profil"
+- assertVisible: "E2E Upravený"
+- tapOn: "Zavřít"
+- evalScript: ${output.local.screenshot('identity-profile-private')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: profile
+      PHASE: final

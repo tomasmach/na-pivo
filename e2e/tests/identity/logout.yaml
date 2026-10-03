@@ -1,0 +1,73 @@
+appId: com.tomasmach.na-pivo
+name: Offline logout isolates the next account
+tags: [critical, full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: identity
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn: { id: counter-primary }
+- tapOn: "Připsat E2E Ležák za 0,5 l · 41 Kč"
+- runScript:
+    file: checks.js
+    env:
+      CASE: logout
+      PHASE: online
+- evalScript: ${output.local.offline()}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn: "Připsat další E2E Ležák"
+- tapOn: "Jo, připsat další pivo"
+- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- assertVisible: "Odhlásit se"
+- evalScript: ${output.local.screenshot('identity-account-offline-logout-after')}
+- tapOn: "Odhlásit se"
+- assertNotVisible: "Odhlásit se"
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- assertVisible: "Vytvořit účet"
+- evalScript: ${output.local.online()}
+- runFlow:
+    file: ../../maestro/login.yaml
+    env:
+      ACCOUNT: second
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: "Upravit profil"
+- assertVisible: "E2E second"
+- tapOn: "Zavřít"
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- assertVisible: "Čistej tácek, zatím nic nepadlo"
+- evalScript: ${output.local.screenshot('identity-next-account-isolated')}
+- runScript:
+    file: checks.js
+    env:
+      CASE: logout
+      PHASE: final
