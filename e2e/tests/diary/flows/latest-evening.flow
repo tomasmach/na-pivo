@@ -1,0 +1,10 @@
+appId: com.tomasmach.na-pivo
+---
+- runFlow:
+    file: ../../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn:
+    id: diary-segment
+- tapOn:
+    id: diary-latest-evening

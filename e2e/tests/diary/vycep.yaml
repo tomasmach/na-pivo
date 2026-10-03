@@ -1,0 +1,46 @@
+appId: com.tomasmach.na-pivo
+name: Offline night publication flushes on foreground and stays published
+tags: [full, diary]
+---
+- runFlow: flows/start.flow
+- runFlow: flows/menu-beer.flow
+- runFlow: flows/finish-evening.flow
+- runFlow: flows/latest-evening.flow
+- evalScript: ${output.local.check(output.local.state().scenario.nights.length === 0, 'No published night before the outage.')}
+- evalScript: ${output.local.offline()}
+- scrollUntilVisible:
+    element:
+      id: night-publish-open
+    direction: DOWN
+- tapOn:
+    id: night-publish-open
+- tapOn: Parta
+- tapOn:
+    id: night-publish-submit
+- assertVisible: Visí ve Výčepu · Jen parta
+- runFlow: ../../maestro/restart.yaml
+- runFlow: flows/latest-evening.flow
+- scrollUntilVisible:
+    element: Visí ve Výčepu · Jen parta
+    direction: DOWN
+- assertVisible: Visí ve Výčepu · Jen parta
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- evalScript: ${output.local.screenshot('diary-vycep-before-foreground-oracle')}
+- runScript:
+    file: vycep.js
+    env: { STAGE: synced }
+- runFlow: ../../maestro/restart.yaml
+- runFlow: flows/latest-evening.flow
+- scrollUntilVisible:
+    element: Visí ve Výčepu · Jen parta
+    direction: DOWN
+- assertVisible: Visí ve Výčepu · Jen parta
+- runFlow:
+    file: ../../maestro/route.yaml
+    env: { ROUTE: /vycep }
+- assertVisible: E2E U Testera
+- evalScript: ${output.local.screenshot('diary-vycep-published')}
+- runScript:
+    file: vycep.js
+    env: { STAGE: persisted }

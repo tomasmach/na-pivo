@@ -1,0 +1,10 @@
+appId: com.tomasmach.na-pivo
+---
+- runFlow:
+    file: ../../../maestro/route.yaml
+    env: { ROUTE: /account }
+- scrollUntilVisible:
+    element: Odhlásit se
+    direction: DOWN
+- tapOn: Odhlásit se
+- tapOn: Odhlásit se

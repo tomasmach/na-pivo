@@ -1,0 +1,8 @@
+appId: com.tomasmach.na-pivo
+---
+- runFlow:
+    file: ../../../maestro/route.yaml
+    env: { ROUTE: /tours }
+- tapOn: ${'.*' + TOUR_TITLE + '.*'}
+- assertVisible: '1\. E2E U Testera.*'
+- assertVisible: '2\. E2E Druhá hospoda.*'

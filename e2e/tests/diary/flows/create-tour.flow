@@ -1,0 +1,15 @@
+appId: com.tomasmach.na-pivo
+---
+- runFlow:
+    file: ../../../maestro/route.yaml
+    env: { ROUTE: /tours }
+- tapOn: Naplánovat tour
+- tapOn: E2E U Testera, přidat do tour
+- tapOn: E2E Druhá hospoda, přidat do tour
+- tapOn:
+    id: tour-picker-done
+- tapOn:
+    id: tour-title
+- eraseText
+- inputText: ${TOUR_TITLE}
+- hideKeyboard

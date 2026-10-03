@@ -1,0 +1,96 @@
+appId: com.tomasmach.na-pivo
+name: Tour imports once and withdrawing both links preserves the original plan
+tags: [critical, full, diary]
+---
+- runFlow: flows/start.flow
+- runFlow:
+    file: flows/create-tour.flow
+    env: { TOUR_TITLE: E2E Sdílená tour }
+- tapOn:
+    id: tour-save
+- tapOn: Možnosti tour
+- tapOn: Odkaz na tour
+- tapOn: Vytvořit odkaz
+- scrollUntilVisible:
+    element: Kopírovat odkaz
+    direction: DOWN
+- tapOn: Kopírovat odkaz
+- evalScript: ${output.local.request('/capability/store', { name:'private-tour' })}
+- runScript:
+    file: shared-tour.js
+    env: { STAGE: private }
+- runFlow:
+    file: flows/open-tour.flow
+    env: { TOUR_TITLE: E2E Sdílená tour }
+- tapOn: Možnosti tour
+- tapOn: Zveřejnit pro všechny
+- tapOn:
+    id: tour-publish
+- runScript:
+    file: shared-tour.js
+    env: { STAGE: public }
+- tapOn: Možnosti tour
+- tapOn: Sdílet veřejný odkaz
+- tapOn: Copy
+- evalScript: ${output.local.request('/capability/store', { name:'public-tour' })}
+- evalScript: ${output.local.check(output.local.request('/capability/status', { name:'public-tour' }).status === 200, 'Published link must open.')}
+- runFlow: flows/logout.flow
+- runFlow:
+    file: ../../maestro/login.yaml
+    env: { ACCOUNT: second }
+- evalScript: ${output.local.request('/capability/open', { name:'private-tour' })}
+- tapOn: Uložit tour
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: flows/open-tour.flow
+    env: { TOUR_TITLE: E2E Sdílená tour }
+- evalScript: ${output.local.request('/capability/open', { name:'private-tour' })}
+- tapOn: Otevřít uloženou tour
+- runFlow:
+    file: ../../maestro/route.yaml
+    env: { ROUTE: /tours }
+- assertVisible:
+    text: '.*E2E Sdílená tour.*'
+    index: 0
+- assertNotVisible:
+    text: '.*E2E Sdílená tour.*'
+    index: 1
+- evalScript: ${output.local.screenshot('diary-imported-tour-once')}
+- runFlow: flows/logout.flow
+- runFlow: ../../maestro/login.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env: { ROUTE: /tours }
+- tapOn: Obnovit plány z účtu
+- tapOn: Zavřít
+- runFlow:
+    file: flows/open-tour.flow
+    env: { TOUR_TITLE: E2E Sdílená tour }
+- tapOn: Možnosti tour
+- tapOn: Stáhnout z veřejných
+- tapOn: Stáhnout z veřejných
+- tapOn: Možnosti tour
+- tapOn: Odkaz na tour
+- scrollUntilVisible:
+    element: Zrušit odkaz
+    direction: DOWN
+- tapOn: Zrušit odkaz
+- tapOn: Zrušit odkaz
+- runScript:
+    file: shared-tour.js
+    env: { STAGE: revoked }
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: flows/open-tour.flow
+    env: { TOUR_TITLE: E2E Sdílená tour }
+- tapOn: Možnosti tour
+- assertVisible: Zveřejnit pro všechny
+- assertNotVisible: Sdílet veřejný odkaz
+- assertNotVisible: Stáhnout z veřejných
+- tapOn: Odkaz na tour
+- assertVisible: Vytvořit odkaz
+- assertNotVisible: Zrušit odkaz
+- evalScript: ${output.local.screenshot('diary-tour-links-withdrawn')}
+- runScript:
+    file: shared-tour.js
+    env: { STAGE: revoked }

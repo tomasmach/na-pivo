@@ -1,0 +1,19 @@
+appId: com.tomasmach.na-pivo
+---
+- tapOn: Vybrat jiné pivo nebo drink
+- tapOn: Přidat nové pivo
+- evalScript: ${output.local.screenshot('diary-beer-form-before-input')}
+- tapOn:
+    id: beer-form-name
+- inputText: ${BEER_NAME}
+- tapOn:
+    id: beer-form-price
+- inputText: ${BEER_PRICE}
+- hideKeyboard
+- tapOn:
+    id: beer-form-submit
+- runFlow:
+    when:
+      visible: Ještě jedno
+    commands:
+      - tapOn: Ještě jedno
