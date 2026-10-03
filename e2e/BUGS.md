@@ -50,7 +50,7 @@
 - Kroky: fixture má aktivní ruční cinknutí; vypnout „Ukazovat partě, kde sedím“ v Nastavení party a načíst `/v1/friends/live` druhým účtem.
 - Skutečnost: DB má `share_drinks_with_parta=false`, ale dřívější ruční aktivita zůstává v `active_friends`. Samostatná automatická presence a drink-feed používají tento přepínač; ghost režim skrývá i ruční aktivitu.
 - Očekávání: text nastavení srozumitelně odliší, co se po vypnutí přestane sdílet. Dokument `docs/decisions/one-write-two-readers.md` a existující kontraktové testy rozlišují automatický feed a vědomé sdílení přítomnosti; E2E proto nesmí bez produktového rozhodnutí změnit význam API.
-- Důkaz: skutečný běh `2d7eb19c` uložil přepínač a následný API oracle našel ruční aktivitu. Screenshot otevřeného přepínače se doplní při příštím plánovaném průchodu; existující snímek karty tento stav sám nedokazuje.
+- Důkaz: skutečný běh `2d7eb19c` uložil přepínač a následný API oracle našel ruční aktivitu. Následný běh `0292bfec` ověřil uložený stav a zachytil [vypnuté sdílení v nastavení](https://files.tmach.dev/social-sharing-off-settings-bc576d996a4c4f588361.png).
 - Stav: bez produktové změny. `tests/places-social/party-privacy.yaml` nyní rozlišuje automatickou presence, drink-feed a explicitní aktivitu; finální runtime tohoto upřesnění ještě čeká.
 
 ## NP-E2E-006: formulář vlastního piva slučuje jednotlivé vstupy
@@ -92,5 +92,15 @@
 - [Screenshot rozdílného pořadí](https://files.tmach.dev/social-private-blocked-board-47d8b88bd9a640ba99a5.png), `tests/places-social/leaderboard-privacy.yaml`, běh `0292bfec`.
 - Existující kontraktové testy záměrně zachovávají globální pořadí `entries` po blokování a současně přepočítávají osobní `me.rank`. Nejde proto napravit rozpor změnou backendu bez rozhodnutí o významu zobrazeného pořadí. Navazující zpřesnění E2E porovná oba údaje s jejich skutečnými API hodnotami; nebude vynucovat změnu kontraktu.
 - Stav: ponecháno k produktovému rozhodnutí o vysvětlení pořadí. Kontrola soukromí prošla; to neznamená, že je popis pořadí srozumitelný.
+
+## NP-E2E-010: výběr zdroje fotky slučuje své akce
+
+- Priorita P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: přihlásit fixture, otevřít fotky a nabídku „Cvakni pivo“, zkusit vybrat fotku z galerie.
+- Očekávání: galerie, fotoaparát a zavření mají samostatně dostupné ovládací prvky.
+- Skutečnost: nativní strom obsahuje jediný sloučený prvek s nadpisem, popisem a všemi třemi akcemi. Přesný locator galerie selže, přestože je tlačítko vidět.
+- Příčina: vnější a vnitřní `Pressable` v `BeerPhotoSourceSheet` slučují přístupné potomky. Minimální oprava nastavuje oběma obalům `accessible={false}`; samostatná tlačítka si ponechávají role, popisy a callbacky.
+- Reprodukce: `tests/identity/photos.yaml`, běh `e7987064`; [screenshot nabídky před opravou](https://files.tmach.dev/identity-photo-source-accessibility-488cefaeca6c47c4a8c3.png).
+- Stav: oprava `a2109823` ve větvi `fix/accessible-photo-source`, nezávislé review bez nálezů. Nativní ověření opravy a samostatný PR ještě čekají.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
