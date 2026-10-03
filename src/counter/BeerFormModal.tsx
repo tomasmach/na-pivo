@@ -431,6 +431,7 @@ function BeerFormBody({
         <Pressable
           style={[styles.card, { paddingBottom: bottomPad }]}
           onPress={() => undefined}
+          accessible={false}
         >
           <View style={styles.grabber} />
           <View style={styles.header}>
