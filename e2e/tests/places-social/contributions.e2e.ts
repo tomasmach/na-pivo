@@ -1,0 +1,125 @@
+import { expect } from 'e2e';
+import { test } from '../../helpers/test';
+import { observer } from '../../helpers/backend';
+import { dismissPubReminder, openRoute, signIn } from '../../helpers/navigation';
+
+type Row = Record<string, string | boolean>;
+type ContributionState = {
+  pubKeys: Record<string, string>;
+  favorites: Row[]; ratings: Row[]; pubEvents: Row[];
+  contributions: Row[]; communityXp: Row[];
+  community: { name: string; hours_json: Record<string, unknown>; beers: { name: string; price_czk: number }[] }[];
+};
+
+test('home point changes only after confirmation and survives restart', { tags: ['critical', 'full'] }, async ({ app, screen, device, local }) => {
+  await local.reset('places_social');
+  await signIn({ app, screen, device });
+  await openRoute({ device, screen }, '/home-point');
+  await screen.getByTestId('home-map').tap();
+  await expect(screen.getByTestId('home-save')).toBeEnabled();
+  await screen.getByRole('button', 'Zpět').tap();
+  await openRoute({ device, screen }, '/home-point');
+  await expect(screen.getByRole('button', 'Uložit domov')).toBeDisabled();
+  await screen.getByRole('button', 'Použít moji polohu').tap();
+  await expect(screen.getByTestId('home-save')).toBeEnabled();
+  await screen.getByTestId('home-save').tap();
+  await expect(screen.getByTestId('home-save')).not.toBeVisible();
+  await app.restart();
+  await dismissPubReminder({ screen });
+  await openRoute({ device, screen }, '/home-point');
+  const map = await screen.getByTestId('home-map').boundingBox();
+  if (!map) throw new Error('Home map has no visible bounds.');
+  // A central swipe pans the native map; use the surrounding form margin.
+  await screen.swipe({ from: { x: map.x - 8, y: map.y + map.height - 20 }, to: { x: map.x - 8, y: map.y + 20 } });
+  await expect(screen.getByTestId('home-clear')).toBeVisible();
+  await screen.getByTestId('home-clear').tap();
+  await app.restart();
+  await dismissPubReminder({ screen });
+  await openRoute({ device, screen }, '/home-point');
+  await expect(screen.getByRole('button', 'Uložit domov')).toBeDisabled();
+  local.screenshot('places-home-cleared');
+});
+
+test('private pub favorite persists offline and retracts from the same account', { tags: ['critical', 'full'] }, async ({ app, screen, agent, device, local }) => {
+  await local.reset('places_social');
+  await signIn({ app, screen, device });
+  await openRoute({ device, screen }, '/pub-search');
+  await agent.act('Vyhledej E2E Druhá hospoda a otevři její stránku. Pokud se objeví Save Password, zvol Not Now.');
+  await local.offline();
+  await screen.getByRole('button', 'Uložit do srdcovek').tap();
+  await app.restart();
+  await dismissPubReminder({ screen });
+  await openRoute({ device, screen }, '/pub-search');
+  await agent.assert('Srdcovky obsahují E2E Druhá hospoda i po restartu bez serveru.');
+  await local.online();
+  await device.home();
+  await device.openApp('com.tomasmach.na-pivo');
+  await dismissPubReminder({ screen });
+  await expect.poll(async () => (await local.state<ContributionState>()).scenario.favorites.length).toBe(1);
+  const favorite = (await local.state<ContributionState>()).scenario;
+  expect(favorite.favorites[0]).toEqual({ account__nickname: 'E2EPivar', cache_key: favorite.pubKeys['E2E Druhá hospoda'] });
+  const other = await observer('second');
+  const privateFavorites = await other.get('/v1/pub-favorites');
+  expect(privateFavorites.status).toBe(200);
+  expect(JSON.stringify(privateFavorites.body)).not.toContain('E2E Druhá hospoda');
+  await openRoute({ device, screen }, '/pub-search');
+  await agent.act('Otevři srdcovku E2E Druhá hospoda.');
+  await screen.getByRole('button', 'Odebrat ze srdcovek').tap();
+  await expect.poll(async () => (await local.state<ContributionState>()).scenario.favorites).toEqual([]);
+  await agent.assert('Hospoda už není označená jako srdcovka.');
+  local.screenshot('places-favorite-retracted');
+});
+
+test('offline hours and beer edits merge into one durable public contribution', { tags: ['critical', 'full'] }, async ({ app, screen, agent, device, local }) => {
+  await local.reset('places_social');
+  await signIn({ app, screen, device });
+  await openRoute({ device, screen }, '/pub-search');
+  await agent.act('Vyhledej E2E Druhá hospoda a otevři její stránku. Pokud se objeví Save Password, zvol Not Now.');
+  await local.offline();
+  await agent.act('U hospody E2E Druhá hospoda uprav otevíračku. Nastav pondělí jako Zavřeno a ulož doplněné údaje.');
+  await agent.act('U stejné hospody uprav piva a ceny. Přidej pivo E2E Nový ležák s cenou 52 Kč a objemem 0,5 l. Ulož doplněné údaje.');
+  await app.restart();
+  await dismissPubReminder({ screen });
+  await local.online();
+  await device.home();
+  await device.openApp('com.tomasmach.na-pivo');
+  await dismissPubReminder({ screen });
+  await expect.poll(async () => (await local.state<ContributionState>()).scenario.contributions.filter(row => row.account__nickname === 'E2EPivar').length).toBe(2);
+  const state = (await local.state<ContributionState>()).scenario;
+  const pub = state.community.find(row => row.name === 'E2E Druhá hospoda');
+  expect(pub?.hours_json.mo).toEqual([]);
+  expect(pub?.beers).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'E2E Nový ležák', price_czk: 52 })]));
+  expect(state.communityXp).toEqual(expect.arrayContaining([{ account__nickname: 'E2EPivar', kind: 'hours' }, { account__nickname: 'E2EPivar', kind: 'beers' }]));
+  await app.restart();
+  await dismissPubReminder({ screen });
+  expect((await local.state<ContributionState>()).scenario.contributions).toHaveLength(2);
+  expect((await local.state<ContributionState>()).scenario.communityXp).toHaveLength(2);
+  await openRoute({ device, screen }, '/pub-search');
+  await agent.act('Vyhledej E2E Druhá hospoda a otevři její stránku.');
+  await agent.assert('Na čepu je E2E Nový ležák za 52 Kč.');
+  local.screenshot('places-public-contribution');
+});
+
+test('retry submits one moderated event and never makes pending suggestions public', { tags: ['full'] }, async ({ app, screen, agent, device, local }) => {
+  await local.reset('places_social');
+  await signIn({ app, screen, device });
+  await openRoute({ device, screen }, '/pub-search');
+  await agent.act('Vyhledej E2E U Testera a otevři její stránku. Pokud se objeví Save Password, zvol Not Now.');
+  await agent.assert('Detail ukazuje akci E2E Ověřený kvíz. Skončený kvíz není v nadcházejících akcích.');
+  await agent.act('Otevři Navrhnout akci. Vyplň název E2E Nový kvíz. Ponech předvyplněné platné časy.');
+  await local.offline();
+  await screen.getByRole('button', 'Poslat návrh ke kontrole').tap();
+  await agent.assert('Návrh E2E Nový kvíz zůstal ve formuláři a je vidět zpráva, že server není dostupný.');
+  await local.online();
+  await screen.getByRole('button', 'Poslat návrh ke kontrole').tap();
+  await expect.poll(async () => (await local.state<ContributionState>()).scenario.pubEvents.filter(row => row.title === 'E2E Nový kvíz').length).toBe(1);
+  expect((await local.state<ContributionState>()).scenario.pubEvents.find(row => row.title === 'E2E Nový kvíz')?.status).toBe('pending');
+  const key = (await local.state<ContributionState>()).scenario.pubKeys['E2E U Testera'];
+  const publicEvents = await (await observer()).get(`/v1/pub-events?cache_key=${key}&window=upcoming`);
+  expect(publicEvents.status).toBe(200);
+  expect(JSON.stringify(publicEvents.body)).toContain('E2E Ověřený kvíz');
+  expect(JSON.stringify(publicEvents.body)).not.toContain('E2E Nový kvíz');
+  expect(JSON.stringify(publicEvents.body)).not.toContain('E2E Skončený kvíz');
+  await agent.assert('Na stránce hospody není nově navržený E2E Nový kvíz mezi veřejnými akcemi.');
+  local.screenshot('places-event-pending');
+});
