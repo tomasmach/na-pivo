@@ -43,6 +43,8 @@ if (CASE === 'logout') {
     const anonymous = state.accounts.filter(function (a) { return !a.registered; });
     check(anonymous.length === 1 && anonymous[0].drinks.length === 1, 'Online anonymous beer must persist before offline registration.');
     output.anonymousId = anonymous[0].publicId;
+  } else if (PHASE === 'submitted') {
+    check(registered && registered.publicId === output.anonymousId, 'UI submit must register the original anonymous DB account before choosing visibility. Registered: ' + Boolean(registered));
   } else {
     check(registered && registered.publicId === output.anonymousId && !registered.isPublic, 'Registration must claim the same anonymous identity with private visibility.');
     equal(names(registered), ['E2E Ležák', 'E2E Ležák'], 'Claim must preserve exactly both online and offline beers.');

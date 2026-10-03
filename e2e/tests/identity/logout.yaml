@@ -37,6 +37,8 @@ tags: [critical, full, identity]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /account
+- assertVisible: "Odhlásit se"
+- evalScript: ${output.local.screenshot('identity-account-offline-logout-after')}
 - tapOn: "Odhlásit se"
 - assertNotVisible: "Odhlásit se"
 - runFlow: ../../maestro/restart.yaml

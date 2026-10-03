@@ -41,6 +41,8 @@ tags: [critical, full, identity]
 - tapOn: { id: profile-nickname }
 - eraseText
 - inputText: "E2ERegister"
+- pressKey: Enter
+- assertVisible: { id: profile-nickname, text: "E2ERegister" }
 - extendedWaitUntil:
     visible: "Volné"
     timeout: 15000
@@ -51,6 +53,7 @@ tags: [critical, full, identity]
 - tapOn: { id: auth-email }
 - eraseText
 - inputText: "${MAESTRO_EMAIL}"
+- pressKey: Enter
 - scrollUntilVisible:
     element: { id: auth-password }
     direction: DOWN
@@ -58,11 +61,18 @@ tags: [critical, full, identity]
 - tapOn: { id: auth-password }
 - eraseText
 - inputText: "${MAESTRO_PASSWORD}"
+- pressKey: Enter
 - scrollUntilVisible:
     element: { id: auth-submit }
     direction: DOWN
+    centerElement: true
     timeout: 15000
 - tapOn: { id: auth-submit }
+- runScript:
+    file: checks.js
+    env:
+      CASE: register
+      PHASE: submitted
 - tapOn: "Jen pro partu. Veřejně tě nikdo nenajde. Profil uvidí jen tvoji kamarádi."
 - tapOn: "Potvrdit a jít na pivo"
 - runScript:

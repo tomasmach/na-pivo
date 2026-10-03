@@ -29,12 +29,20 @@ tags: [critical, full, identity]
 - tapOn: { id: photo-caption }
 - eraseText
 - inputText: "E2E soukromá"
+- assertVisible: { id: photo-caption, text: "E2E soukromá" }
+- tapOn: "POPISEK"
 - scrollUntilVisible:
     element: { text: "Viditelnost fotky: Jen pro mě" }
     direction: DOWN
+    centerElement: true
     timeout: 15000
 - tapOn: "Viditelnost fotky: Jen pro mě"
 - evalScript: ${output.local.offline()}
+- scrollUntilVisible:
+    element: { text: "Uložit do deníčku" }
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
 - tapOn: "Uložit do deníčku"
 - assertVisible: "Fotka piva, E2E soukromá. Ťukni pro detail."
 - runFlow: ../../maestro/restart.yaml
@@ -65,6 +73,13 @@ tags: [critical, full, identity]
 - tapOn: { id: photo-caption }
 - eraseText
 - inputText: "E2E pro partu"
+- assertVisible: { id: photo-caption, text: "E2E pro partu" }
+- tapOn: "POPISEK"
+- scrollUntilVisible:
+    element: { text: "Uložit do deníčku" }
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
 - tapOn: "Uložit do deníčku"
 - runScript:
     file: checks.js
