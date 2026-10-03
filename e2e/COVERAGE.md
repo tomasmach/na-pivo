@@ -11,7 +11,7 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 | Ověření e-mailu | Odkaz z lokální schránky, návrat do appky, obnovit účet | Skutečný e-mailový odkaz a stav profilu se rozcházejí | P0 | `identity/registration.yaml`: skutečný lokální odkaz a export; celý průchod zatím neprošel |
 | Reset hesla | Žádost v UI, lokální e-mail, nové heslo, staré odmítnuté, nové přihlásí | Reset neodvolá staré přihlášení nebo neuloží nové heslo | P0 | `identity/password-reset.yaml`: opraveno ovládání formuláře; runtime čeká |
 | Odhlášení a změna účtu | A s offline zápisem, odhlášení, restart, login B | Soukromá historie nebo čekající zápis A se objeví u B | P0 | `identity/logout.yaml`: přesné offline UI/DB kontroly; runtime opravy čeká |
-| Smazání účtu | Zrušit potvrzení, potom smazat, restart; ověřit DB a lokální vyčištění | Smazání jen v UI, neodvolaná session, mazání po zrušení | P0 | `identity/delete.yaml`: opraveno pořadí observer loginu; runtime čeká |
+| Smazání účtu | Zrušit potvrzení, potom smazat, restart; ověřit DB a lokální vyčištění | Smazání jen v UI, neodvolaná session, mazání po zrušení | P0 | `identity/delete.yaml`: jednou zelený celý průchod, DELETE 204, odvolané session a GET 401 po restartu; stabilita čeká |
 | Offline počítadlo | Zastavit vlastní backend, zapsat další pivo, restart offline, obnovit a foreground | Fronta nepřežije restart, výpadek odhlásí, sync duplikuje | P0 | `diary/evening.yaml`, `identity/registration.yaml`: připraveno; stabilita čeká |
 | Soukromí profilu | Nastavit soukromí v UI, ověřit pohled cizího účtu | Přepínač se neuloží nebo cizí účet dostane soukromý profil | P0 | `identity/profile.yaml`: skutečný pohled druhého účtu; runtime formuláře čeká |
 | Soukromí party | Vypnout sdílení, ghost, blokování; obnovit druhý účet | Aktivita zůstane ve feedu, mapě nebo detailu cizího účtu | P0 | `places-social/party-privacy.yaml`: rozlišuje automatické a ruční sdílení; NP-E2E-005 vysvětluje omezení textu |
@@ -30,13 +30,13 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 | Kompas bez polohy | Odepřít oprávnění, otevřít ruční mapu a hledání | Nekonečné hledání nebo zablokovaný vstup do mapy | P1 | `places-social/permissions-denied.yaml`: opraveno iOS oprávnění `never`, runtime čeká |
 | Prázdný/chybový katalog | Prázdný výsledek versus výpadek, retry a zrušit filtr | Chyba se vydává za prázdné okolí, není cesta dál | P1 | `places-social/permissions-denied.yaml` ověřuje prázdné hledání; `catalogue-offline.yaml` dostupnost uloženého katalogu při výpadku; runtime čeká |
 | Mapa a hledání | Vybrat konkrétní výsledek, detail, zamířit kompas | Jiné místo v detailu, nefunkční návrat a zacílení | P1 | `places-social/catalogue-offline.yaml`: připraveno, runtime čeká |
-| Večer | Dopito, archiv, úprava a smazání piva offline, restart a sync | Úprava jiného večera, návrat smazaného piva, znovuotevřená návštěva | P1 | `diary/evening.yaml`: nativní dávka probíhá; oprava NP-E2E-006 čeká na celý průchod |
+| Večer | Dopito, archiv, úprava a smazání piva offline, restart a sync | Úprava jiného večera, návrat smazaného piva, znovuotevřená návštěva | P1 | `diary/evening.yaml`: celý průchod jednou zelený včetně NP-E2E-006 s opravou PR #213; stabilita čeká |
 | Výčep | Publikovat offline, obnovit pouze foreground, potom restart | Publikace zůstane ve frontě nebo se doručí dvakrát | P0 | `diary/vycep.yaml`: NP-E2E-007 potvrzen; s opravou PR #212 celý průchod jednou zelený, stabilita čeká |
-| Detail piva | Ohodnotit pivo offline a po syncu otevřít jeho detail | Route nebo agregace patří jinému pivu | P1 | `diary/checkin.yaml`: skutečný offline BeerCheckIn a agregace po restartu; nativní dávka probíhá |
-| Statistiky | Po zápisu/úpravě/smazání porovnat přesný baseline UI a serveru | Dvojí započítání remote/local nebo nezohledněné smazání | P1 | `diary/evening.yaml`: přesné pivo/večer/hospoda/cena po úpravě a smazání; nativní dávka probíhá |
+| Detail piva | Ohodnotit pivo offline a po syncu otevřít jeho detail | Route nebo agregace patří jinému pivu | P1 | `diary/checkin.yaml`: celý průchod jednou zelený, skutečný offline BeerCheckIn a agregace po restartu; stabilita čeká |
+| Statistiky | Po zápisu/úpravě/smazání porovnat přesný baseline UI a serveru | Dvojí započítání remote/local nebo nezohledněné smazání | P1 | `diary/evening.yaml`: jednou zelené přesné 2 piva / 1 večer / 1 hospoda / 84 Kč po úpravě a smazání; stabilita čeká |
 | Moje přidané hospody | Čekající/potvrzená hospoda, oprava názvu, zachování potvrzeného pinu | Editace vytvoří další hospodu nebo uloží starý pin | P1 | `places-social/pub-create-offline.yaml`: pending stav a přejmenování při zachování identity; runtime čeká |
 | Návrh akce | Navrhnout akci v hospodě, ověřit pending stav | Návrh je veřejný bez ověření nebo se retry duplikuje | P1 | `places-social/pub-event-moderation.yaml`: chyba při výpadku a pending stav po retry; runtime čeká |
-| Komunitní empty/error | Nepřihlášený, žádné akce, denied, chyba vytvoření a retry | Nekonečný spinner, duplikace vytvoření | P1 | Připravuje se doplňující průchod vytvořením; restart draftu produkt neslibuje, nemá persistovaný draft ani offline frontu |
+| Komunitní empty/error | Nepřihlášený, žádné akce, denied, chyba vytvoření a retry | Nekonečný spinner, duplikace vytvoření | P1 | `places-social/community-create-retry.yaml`: připraveno a nezávisle zkontrolováno, runtime čeká; restart draftu produkt neslibuje |
 | Parta pozvánka/detail | Pozvánkový odkaz, vědomé přijetí, detail a blokování | Ztracená pozvánka, automatické přijetí, špatný profil | P1 | `places-social/invite-offline.yaml` a `party-privacy.yaml`: přijetí odkazu a detail; první průchod pozvánkou zelený, zpřesnění NP-E2E-008 čeká |
 | Přátelé offline | Dashboard snapshot a queued soukromá srdcovka, restart a sync | Prázdná Parta nebo duplicita doručené akce | P1 | `places-social/invite-offline.yaml`: uložený dashboard; `favorite-offline.yaml`: skutečný queued zápis a odebrání; stabilita čeká |
 | Profil úprava | Obsazená a volná přezdívka, jméno, uložit, restart | Formulář zavře neúspěšný PATCH nebo profil neodpovídá DB | P1 | `identity/profile.yaml`: opraven fokus vstupů, runtime čeká |
@@ -114,5 +114,10 @@ Tyto výsledky dokazují průzkum a reprodukce, nikoli dokončenou zelenou sadu.
 |---|---|---:|---:|---|
 | Identity `e7987064` | 4/12 prošly, 8 selhalo | 863,715 s | 909,090 s | 0 volání / 0 tokenů |
 | Places/social `0292bfec` | 6/14 prošlo, 8 selhalo | 855,317 s | ještě nebyl měřen | 0 volání / 0 tokenů |
+| Diary `76ba5706` | 2/5 prošly, 3 selhaly | 555,164 s | 581,775 s | 0 volání / 0 tokenů |
 
 Replay, handed off a missed jsou pro Maestro nepoužitelné. Soukromé raw reporty byly po obou dávkách automaticky odstraněné.
+
+Dávka identity `bf533099` byla po 217,116 s přerušená s kódem 130 kvůli nedostatku místa, přestože startovala s více než 5 GiB. Mazání účtu před přerušením dokončilo celý průchod; pro zbytek dávky chybí engine souhrn a nelze odvodit výsledky. Souběžný diary běh `bf0e5e7d` dokončil večer, ale zaznamenal ENOSPC během dalších scénářů. Obě tour se proto opakují samostatně. Další nativní souběh na tomto stroji se neprovádí.
+
+Aktuálně je připraveno 33 Maestro průchodů: 1 spike, 12 identity, 5 diary a 15 places/social. Tento počet není počet třikrát ověřených testů.
