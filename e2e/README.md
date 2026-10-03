@@ -4,7 +4,7 @@ Testy řídí skutečný iPhone 17 v iOS simulátoru a skutečný Django backend
 
 ## První spuštění na macOS
 
-Použij Node.js 24 a Javu 17 nebo novější. Lokální kontroler načítá TypeScript přímo přes podporu Node.js.
+Použij Node.js 24 a Javu 17 nebo novější. Runner před startem vyžaduje alespoň 2 GiB volného místa a při poklesu pod 1 GiB zastaví pouze vlastní běh s kódem 75. Pro více simulátorů je nutná větší rezerva; dva běhy zde později vyčerpaly i 5 GiB kvůli souběžné spotřebě systému. Takové přerušení není selháním produktu. Lokální kontroler načítá TypeScript přímo přes podporu Node.js.
 
 ```sh
 npm ci
@@ -40,11 +40,12 @@ Backend se spouští zvláštním settings modulem mimo produkční Docker conte
 - Oblast vlastní `e2e/tests/<oblast>/*.yaml`, případné vlastní assertion `.js` a svůj `e2e/seeds/<scenario>.py`. `seed()` připraví data; `observe()` vrací potřebná syntetická DB pole, nikdy tokeny, e-maily nebo GPS.
 - Flow začne `../../maestro/reset.yaml`, případný `SCENARIO` předá v `env`. Následuje `skip-onboarding.yaml` a `login.yaml`. Reset vyčistí skutečnou DB, Keychain a data appky, konfigurace launchApp určuje oprávnění. Runner nastaví pevnou syntetickou polohu a dark mode.
 - `output.local.offline()` skutečně zastaví backend; `online()` ho obnoví. Potom `../../maestro/foreground.yaml` ověří foreground flush bez ukončení appky a zachová výslovně nastavená oprávnění. Helper porovnává skutečný PID před návratem, na pozadí i po návratu; v testu potom ověř konkrétní viditelný obsah appky. Restart uprostřed výpadku používá `../../maestro/restart.yaml`.
-- `output.local.state()` čte skutečnou DB přes místní kontroler. `output.local.observe(account, route)` čte skutečný `/v1/` endpoint pod fixture účtem a vrací sanitizované `{status, body}`. Observer používá normální přihlášení a token drží v paměti. Při testu smazání vytvoř observer ještě před přihlášením v UI. Každý normální login mění deletion epoch; observer přihlášený až po appce by zneplatnil její oprávnění ke smazání. Po smazání používej již přihlášený observer, aby nový login neaktivoval účet v ochranné lhůtě.
+- `output.local.state()` čte skutečnou DB přes místní kontroler. `output.local.observe(account, route)` čte skutečný `/v1/` endpoint pod fixture účtem a vrací sanitizované `{status, body}`. Observer používá normální přihlášení a token drží v paměti. Při testu smazání nebo jiných citlivých zápisů stejného účtu vytvoř observer ještě před přihlášením v UI. Každý normální login mění deletion epoch; observer přihlášený až po appce by zneplatnil její oprávnění k citlivému zápisu. Po smazání používej již přihlášený observer, aby nový login neaktivoval účet v ochranné lhůtě.
 - Asynchronní doručení ověřuj přes `output.local.poll(function () { /* načíst stav a přesně jej porovnat */ })`. Opakuje jen čtecí kontroly po 500 ms, nejvýš 15 s (volitelný druhý argument, nejvýš 30 s). UI zápisy do něj nepatří. Samotné Maestro `retry` nemá potřebný časový odstup.
 - `output.local.request('/mail/verify', {})` otevře skutečný odkaz zachyceného e-mailu. `/mail/reset` otevře lokální app deep link, token nevstupuje do Maestro. `/mail/export` vrací pouze status a počet příloh.
 - `output.local.screenshot('safe-name')` volej na zkontrolovaném konečném stavu bez přihlašovacích údajů či souřadnic. Poslední kontrola testu musí porovnat skutečná data po restartu nebo přes API/DB. Nevydávej samotný úspěšný tap za ověření.
 - `output.local.debugScreenshot('safe-name')` ukládá diagnostický obrázek do neveřejného `private-debug`, který se po běhu smaže. Platí stejná výjimka jen pro jednorázové fixture účty. Obrázek s kontaktem nepublikuj ani nevypisuj do trvalých logů.
+- `/capability/status` čte skutečný veřejný endpoint odkazu bez přihlášení. Vrací jen status a případně porovnání aliasů; nevytváří observer session a nevrací token odkazu.
 - `output.local.request('/home-point')` čte pouze domovský bod z uložených nastavení vlastní appky. Vrací `present` a `matchesFixture`, nikoli souřadnice; druhý příznak porovná bod s pevnou simulovanou polohou. Ověř jej po uložení a restartu, po zrušení rozpracované změny i po smazání.
 - Sdílené helpery, config, adaptéry a produkční `testID` mění hlavní agent. Každý test musí chytat pojmenovanou regresi z COVERAGE.md a projít třikrát.
 

@@ -61,7 +61,7 @@
 - Skutečnost: formulář je viditelný a pole má focus, ale přesný nativní identifikátor `beer-form-name` není dostupný. Průchod skončí před druhým zápisem; první pivo zůstává skutečně uložené.
 - Příčina: obalový `Pressable` uvnitř `BeerFormModal` slučuje své interaktivní potomky do jednoho přístupného prvku.
 - [Screenshot formuláře před neúspěšným vstupem](https://files.tmach.dev/diary-beer-form-before-input-d94c0a902fc844c8ab18.png). Reprodukce `fc97c485` trvala 73,793 s a skončila selháním `tests/diary/evening.yaml`.
-- Stav: jednořádková oprava ve větvi `fix/accessible-beer-form`, commit `a1a1851a`, nezávislé review bez nálezů. Nativní ověření opravy a samostatný PR ještě čekají.
+- Stav: oprava v samostatném [PR #213](https://github.com/tomasmach/na-pivo/pull/213), nezávislé review bez nálezů. Běh `76ba5706` samostatně vyplnil název i cenu, uložil offline pivo a po restartu doručil přesný DB výsledek: dvě zbývající piva za 41 a 43 Kč, jedna uzavřená návštěva. [Vyplněný formulář](https://files.tmach.dev/diary-beer-form-filled-c236a3bdde1b44f38d4a.png), [výsledné statistiky](https://files.tmach.dev/diary-stats-opened-aa0aed84c1684d4395cf.png). Následný celý test `bf0e5e7d` prošel za 2 min 47 s včetně přesného UI statistik a posledního DB oracle po restartu. Tři stabilitní opakování ještě čekají.
 
 ## NP-E2E-007: offline publikace večera se po návratu neodešle
 

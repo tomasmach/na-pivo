@@ -12,7 +12,6 @@ class LocalFixtures(AppConfig):
     def ready(self):
         from django.conf import settings
         from django.core.mail import EmailMultiAlternatives
-
         from pubs import emailer
 
         if not settings.DEBUG:

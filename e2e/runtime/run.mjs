@@ -11,6 +11,8 @@ import { summarize } from './report.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const commandStarted = Date.now();
+const freeBytes = () => { const disk = fs.statfsSync(root); return disk.bavail * disk.bsize; };
+if (freeBytes() < 2 * 1024 ** 3) throw new Error('Local E2E needs at least 2 GiB of free disk space before starting.');
 process.chdir(root);
 process.env.E2E_TELEMETRY_DISABLED = '1';
 const args = process.argv.slice(2);
@@ -40,6 +42,7 @@ let closing = false;
 let runDir;
 let preparation;
 let bootOwned = false;
+let diskWatch;
 const bootLock = path.join(lockRoot, 'boot.lock');
 function releaseBoot() {
   if (!bootOwned) return;
@@ -51,7 +54,7 @@ function releaseBoot() {
 }
 async function acquireBoot() {
   const deadline = Date.now() + 300_000;
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && !closing) {
     try {
       fs.writeFileSync(bootLock, JSON.stringify({ pid: process.pid, runDir }), { flag: 'wx', mode: 0o600 });
       bootOwned = true;
@@ -59,12 +62,14 @@ async function acquireBoot() {
     } catch (error) { if (error.code !== 'EEXIST') throw error; }
     await delay(500);
   }
+  if (closing) return;
   throw new Error('Another run still owns simulator startup. Inspect the shared boot.lock; no process was stopped.');
 }
 const simctl = (...argv) => execFileSync('xcrun', ['simctl', ...argv], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 async function cleanup(code) {
   if (closing) return;
   closing = true;
+  clearInterval(diskWatch);
   await stop(preparation);
   // Capture members before terminating leaders; a child can outlive its parent.
   let ownedProcesses = [];
@@ -117,17 +122,24 @@ async function cleanup(code) {
   // Maestro records evaluated fixture credentials even with report format NOOP.
   // Only disposable @example.test accounts are authorized, and their raw debug
   // output must not survive a successful, failed, or interrupted invocation.
-  if (runDir) {
-    for (const entry of fs.readdirSync(runDir)) {
-      if (entry.startsWith('attempt-')) fs.rmSync(path.join(runDir, entry, 'private-debug'), { recursive: true, force: true });
+  try {
+    if (runDir) {
+      for (const entry of fs.readdirSync(runDir)) {
+        if (entry.startsWith('attempt-')) fs.rmSync(path.join(runDir, entry, 'private-debug'), { recursive: true, force: true });
+      }
+      fs.writeFileSync(path.join(runDir, 'command-metrics.json'), JSON.stringify({
+        engine, durationSeconds: (Date.now() - commandStarted) / 1000, exitCode: code,
+      }, null, 2), { mode: 0o600 });
     }
-    fs.writeFileSync(path.join(runDir, 'command-metrics.json'), JSON.stringify({
-      engine, durationSeconds: (Date.now() - commandStarted) / 1000, exitCode: code,
-    }, null, 2), { mode: 0o600 });
+  } catch {
+    console.error('Could not finish local E2E artifact cleanup or metrics. Inspect the owned run directory.');
+    code ||= 1;
+  } finally {
+    releaseBoot();
+    try { fs.rmSync(lock, { force: true }); }
+    catch { console.error('Could not release the owned E2E slot lock.'); code ||= 1; }
+    process.exit(code);
   }
-  releaseBoot();
-  fs.rmSync(lock, { force: true });
-  process.exit(code);
 }
 process.on('SIGINT', () => cleanup(130));
 process.on('SIGTERM', () => cleanup(143));
@@ -177,17 +189,25 @@ try {
     ...(process.env.XDG_CONFIG_HOME ? { XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME } : {}),
     ...(process.env.E2E_MAESTRO_PATH ? { E2E_MAESTRO_PATH: process.env.E2E_MAESTRO_PATH } : {}),
   };
+  diskWatch = setInterval(() => {
+    if (freeBytes() < 1024 ** 3) {
+      console.error('Free disk space fell below 1 GiB. Stopping only this run before reports or app writes fail.');
+      void cleanup(75);
+    }
+  }, 1000);
   console.log(`E2E slot ${slot}; iPhone 17 ${device}; API ${backendPort}; Metro ${metroPort}`);
   for (let index = 1; index <= repeat; index++) {
     // agent-device shares a daemon: a cold-boot timeout can reset other sessions.
     // Serialize only preparation, then let isolated tests run concurrently.
     await acquireBoot();
+    if (closing) break;
     fs.rmSync(path.join(runDir, 'engine-ready'), { force: true });
     preparation = start('xcrun', ['simctl', 'bootstatus', device, '-b'], { cwd: root, env });
     const bootDeadline = setTimeout(() => cleanup(124), 180_000);
     const [bootCode] = await once(preparation, 'exit');
     clearTimeout(bootDeadline);
     preparation = undefined;
+    if (closing) break;
     if (bootCode !== 0) throw new Error('Owned iPhone failed to boot.');
     const output = path.join(runDir, `attempt-${index}`);
     const runArgs = args.filter(arg => arg !== '--stability');
@@ -203,6 +223,7 @@ try {
     const [code] = await once(runner, 'exit');
     clearTimeout(watchdog);
     clearInterval(preparationWatch);
+    if (closing) break;
     releaseBoot();
     if (code !== 0) { await cleanup(code || 1); break; }
     const metrics = engine === 'testerarmy' ? summarize(path.join(output, 'report.json')) : JSON.parse(fs.readFileSync(path.join(output, 'metrics.json'), 'utf8'));
