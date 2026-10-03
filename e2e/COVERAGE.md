@@ -12,7 +12,7 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 | Reset hesla | Žádost v UI, lokální e-mail, nové heslo, staré odmítnuté, nové přihlásí | Reset neodvolá staré přihlášení nebo neuloží nové heslo | P0 | `identity/password-reset.yaml`: celý průchod jednou zelený včetně odvolané relace a změněného hesla; stabilita čeká |
 | Odhlášení a změna účtu | A s offline zápisem, odhlášení, restart, login B | Soukromá historie nebo čekající zápis A se objeví u B | P0 | `identity/logout.yaml`: celý průchod jednou zelený s opravou NP-E2E-011 v PR #215; historie a fronta A nepřešly pod B, stabilita čeká |
 | Smazání účtu | Zrušit potvrzení, potom smazat, restart; ověřit DB a lokální vyčištění | Smazání jen v UI, neodvolaná session, mazání po zrušení | P0 | `identity/delete.yaml`: jednou zelený celý průchod, DELETE 204, odvolané session a GET 401 po restartu; stabilita čeká |
-| Offline počítadlo | Zastavit vlastní backend, zapsat další pivo, restart offline, obnovit a foreground | Fronta nepřežije restart, výpadek odhlásí, sync duplikuje | P0 | `diary/evening.yaml`, `identity/registration.yaml`: připraveno; stabilita čeká |
+| Offline počítadlo | Zastavit vlastní backend, zapsat další pivo, restart offline, obnovit a foreground | Fronta nepřežije restart, výpadek odhlásí, sync duplikuje | P0 | `diary/evening.yaml`: celý průchod jednou zelený; stabilita čeká na disk. Claim v `identity/registration.yaml` je samostatně blokovaný |
 | Soukromí profilu | Nastavit soukromí v UI, ověřit pohled cizího účtu | Přepínač se neuloží nebo cizí účet dostane soukromý profil | P0 | `identity/profile.yaml`: celý průchod jednou zelený včetně skutečného pohledu druhého účtu; stabilita čeká |
 | Soukromí party | Vypnout sdílení, ghost, blokování; obnovit druhý účet | Aktivita zůstane ve feedu, mapě nebo detailu cizího účtu | P0 | `places-social/party-privacy.yaml`: rozlišuje automatické a ruční sdílení; NP-E2E-005 vysvětluje omezení textu |
 | Soukromí fotek | Soukromá versus friends fotka, pohled druhého účtu | Galerie či feed vrátí fotku nepovolenému publiku | P0 | `identity/photos.yaml`: celý průchod jednou zelený s opravou NP-E2E-010 v PR #214; skutečné soubory, privacy, smazání a restart; stabilita čeká |
@@ -142,3 +142,19 @@ Registrace `7d706376` vyplnila přesnou fixture adresu a volnou přezdívku, ale
 Jde o konkrétní blokátor automatizace, nikoli o prokázaný produktový bug. Kompletní průchod zůstává s tagem `blocked` pro `npm run e2e:blocked`; běžné `critical` a `full` jej vynechávají. Claim anonymní historie, registrace, ověření e-mailu a export tím nejsou prohlášeny za pokryté. Nejmenší další diagnostický krok je porovnat pouze délku v `onChangeText` a délku React stavu při submitu v lokálním debug buildu, bez logování hodnoty. Další slepé varianty zadávání nebyly přidány.
 
 První stabilitní dávku ostatních 11 identity testů `ff585be9` po 246,804 s ukončil disk guard kódem 75. Startovala s 4,37 GiB, ale i při jediném simulátoru kleslo místo pod 1 GiB; následná kontrola systému ukázala 14 GiB použitého swapu. Avatar před přerušením prošel, zbytek dávky nemá úplný engine report. Vlastní procesy skončily, tři porty se uvolnily, simulátor byl Shutdown a soukromé debug reporty byly odstraněné. Žádný nový test tím nezískal tři po sobě jdoucí průchody. Další nativní ověření čeká na uvolnění prostředků stroje; cizí session nebyly ukončeny.
+
+
+### Předání oblastí a zbývající důkaz
+
+| Oblast | Připravené scénáře | Celý průchod alespoň jednou v dosavadních revizích | Tři po sobě | PR |
+|---|---:|---:|---:|---|
+| Spike / infrastruktura | 1 | 1 | 1 | [#208](https://github.com/tomasmach/na-pivo/pull/208) |
+| Účet, profil, média | 12, z toho 1 `blocked` | 11 | 0 | [#216](https://github.com/tomasmach/na-pivo/pull/216) |
+| Deník a tour | 5 | 4 | 0 | [#217](https://github.com/tomasmach/na-pivo/pull/217) |
+| Hospody a Parta | 15 | 6 | 0 | [#218](https://github.com/tomasmach/na-pivo/pull/218) |
+
+Čísla celých průchodů nejsou důkazem finální integrované revize. Poslední zpřesnění fotkového feedu a odmítnutí hesla, veřejného katalogu tour a formulářů hospod čekají na nativní opakování. Všechny zbývající P0/P1 položky označené jako čekající mají společný konkrétní blokátor: na tomto stroji disk guard přerušil už jediný simulátor. Opakování po uvolnění prostředků musí dokončit oblasti, čistou celou sadu a měření obou celých příkazů. Studený ani opakovaný běh celé integrované sady nebyl naměřen; čísla se neodhadují. Android zatím nebyl spuštěn, protože podmínka zelené iOS sady není splněná.
+
+Nezávislé review opravilo slabou kontrolu soukromého feedu na přesná ID a kontrolu starého hesla na konkrétní serverové odmítnutí. Úklid procesů má tři lokální regresní kontroly: neznámý/ukončený PID nedostane signál, vlastní potomek se ukončí i po zániku leadera před nebo během úklidu. Všechny tři prošly za 10,2 s. Nativní ověření celé nové revize úklidu ještě čeká; nejde o další mobilní testy v tabulce.
+
+Dev dependency a backend dependency audity v dosavadním CI selhaly také na srovnávacím základu, neoznačujeme je za zelené CI. Existující CI nebylo měněno. Devět malých produktových oprav má samostatné PR; NP-E2E-005 a NP-E2E-009 zůstávají nejasnostmi textu k produktovému rozhodnutí, viz BUGS.md.

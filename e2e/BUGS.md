@@ -30,7 +30,7 @@
 - Skutečnost: vnitřní zkratky tácku pohltí rodičovské tlačítko. Po otevření další nabídky má strom jen tři prvky a neobsahuje její řádky, přestože jsou vizuálně přítomné. Přesný locator pro Dopito skončí timeoutem; předtím backend potvrdil právě jedno pivo.
 - Příčina: `CoasterCard` slučuje interaktivní potomky a `CounterMoreSheet` skrývá celý podstrom přes `accessibilityElementsHidden`.
 - Screenshoty: [tácek s nedostupnými zkratkami](https://files.tmach.dev/diary-counter-surface-ed73ae5140ef4e629077.png), [nabídka s nedostupným Dopito](https://files.tmach.dev/diary-counter-overflow-cc5b9181418c446ab413.png).
-- Reprodukce: `tests/diary/counter-menu.repro.e2e.ts`, rozpracovaný širší průchod `tests/diary/evening.e2e.ts`.
+- Reprodukce: `tests/diary/evening.yaml` (původní TesterArmy reprodukce byla nahrazena Maestro průchodem).
 - Stav: opraveno v samostatném [PR #211](https://github.com/tomasmach/na-pivo/pull/211). Maestro v běhu `a62c5714` otevřelo nabídku, zvolilo Dopito a potvrdilo ukončení. DB oracle potvrdil právě jedno pivo a jednu návštěvu s `closed_at`. [Nabídka po opravě](https://files.tmach.dev/diary-counter-dopito-menu-b00c716d604a4581b591.png), [uzavřený večer](https://files.tmach.dev/diary-closed-evening-before-publication-8f8331e3b4cb46fcb502.png). Typecheck, 45 stávajících Jest testů a nezávislé review prošly. Širší deníková sada ještě není dokončená.
 
 ## NP-E2E-004: karta party pohltí nastavení soukromí
@@ -41,7 +41,7 @@
 - Skutečnost: kompletní nativní strom s 29 prvky obsahuje pouze přístupné tlačítko celé karty; viditelné horní ovládání není samostatně dostupné. Test proto nedokáže vypnout sdílení a ověřit druhý účet.
 - Příčina: `PartyCard` vkládá `topRow` s vlastními tlačítky do přístupného rodičovského `Pressable`, zatímco spodní zkratky již má mimo něj.
 - [Screenshot nedostupného horního ovládání](https://files.tmach.dev/social-party-settings-before-9885d34c116d4428a91d.png).
-- Reprodukce: `tests/places-social/social.e2e.ts`, průchod soukromí/ghost/blokování.
+- Reprodukce: `tests/places-social/party-privacy.yaml`, průchod soukromí/ghost/blokování.
 - Stav: opraveno v samostatném [PR #210](https://github.com/tomasmach/na-pivo/pull/210). Maestro v běhu `2d7eb19c` otevřelo nabídku i nastavení a změnilo přepínač; skutečná DB potvrdila vypnuté sdílení. [Karta po opravě](https://files.tmach.dev/social-party-settings-after-d161bffa9c59435ca8c0.png). Typecheck a nezávislé review prošly. Celý privacy průchod zatím nemá tři zelená opakování.
 
 ## NP-E2E-005: text přepínače nerozlišuje automatické sdílení a ruční cinknutí
@@ -80,8 +80,8 @@
 - Očekávání: uložená Parta zachová dostupné akce a nenačtený profil nevydává za nevyplněnou přezdívku.
 - Skutečnost: karta ukazuje dva kamarády a uloženou vlastní aktivitu, ale nabídne „Doplnit přezdívku“. Skutečný účet již přezdívku má.
 - Příčina: CTA používá `nickname == null`, přičemž `selectNickname` vrací `null` i pro nenačtený profil. Existující `selectNeedsNickname` správně rozlišuje nenačtený profil a potvrzenou chybějící přezdívku.
-- Reprodukce: `tests/places-social/invite-offline.yaml`, běh `0292bfec`; [screenshot offline Party](https://files.tmach.dev/social-offline-party-1b89f217326a4d1fa103.png). Původní kontrola snapshotu a API prošla, vizuální kontrola odhalila tento rozpor. Regresní kontrola výzvy se doplňuje.
-- Stav: minimální oprava `d684e303` ve větvi `fix/preserve-offline-party-actions`, nezávislé review bez nálezů. Nativní ověření opravy a PR čekají.
+- Reprodukce: `tests/places-social/invite-offline.yaml`, běh `0292bfec`; [screenshot offline Party](https://files.tmach.dev/social-offline-party-1b89f217326a4d1fa103.png). Původní kontrola snapshotu a API prošla, vizuální kontrola odhalila tento rozpor. Regresní kontrola výzvy je součástí PR #218; její průchod po opravě čeká.
+- Stav: minimální oprava v samostatném [PR #219](https://github.com/tomasmach/na-pivo/pull/219), nezávislé review bez nálezů. Nativní ověření opravy čeká na uvolnění disku.
 
 ## NP-E2E-009: žebříček po blokování ukazuje dvě různá pořadí
 
