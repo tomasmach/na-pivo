@@ -13,6 +13,18 @@ output.local = {
   offline: function () { return this.request('/offline', {}); },
   online: function () { return this.request('/online', {}); },
   observe: function (account, route, password) { return this.request('/observe', { account: account, route: route, password: password || 'original' }); },
+  // Retry read-only assertions while an asynchronous app write reaches Django.
+  // A failed assertion remains a failure after the bounded deadline.
+  poll: function (assertion, timeoutMs) {
+    const deadline = Date.now() + Math.min(Math.max(timeoutMs || 15000, 1000), 30000);
+    while (true) {
+      try { assertion(); return true; }
+      catch (error) {
+        if (Date.now() >= deadline) throw error;
+        this.request('/wait', { milliseconds: 500 });
+      }
+    }
+  },
   screenshot: function (name) { return this.request('/screenshot', { name: name }); },
   check: function (condition, description) { if (!condition) throw new Error(description); return true; }
 };

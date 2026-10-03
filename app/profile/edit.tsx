@@ -304,6 +304,7 @@ export default function ProfileEditScreen() {
           {/* ── Display name ── */}
           <Text style={styles.sectionHeader}>{t.profile.edit.displayNameHeader}</Text>
           <TextInput
+            testID="profile-display-name"
             style={styles.input}
             value={displayName}
             onChangeText={setDisplayName}
