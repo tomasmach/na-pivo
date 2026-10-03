@@ -1,0 +1,21 @@
+appId: com.tomasmach.na-pivo
+---
+- runFlow:
+    file: ../../../maestro/route.yaml
+    env: { ROUTE: /account }
+- scrollUntilVisible:
+    element: Odhlásit se
+    direction: DOWN
+- tapOn: Odhlásit se
+# Logout completes asynchronously and then router.back() leaves the account screen.
+- extendedWaitUntil:
+    notVisible: Účet
+    timeout: 20000
+- runFlow:
+    file: ../../../maestro/route.yaml
+    env: { ROUTE: /profile }
+- extendedWaitUntil:
+    visible: Zatím bez účtu
+    timeout: 20000
+- assertVisible: Piva ti počítám i tak.
+- assertNotVisible: Upravit profil

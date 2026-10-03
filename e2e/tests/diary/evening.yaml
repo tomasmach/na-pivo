@@ -1,0 +1,63 @@
+appId: com.tomasmach.na-pivo
+name: Offline evening edits reconcile without losing the new drink
+tags: [critical, full, diary]
+---
+- runFlow: flows/start.flow
+- runFlow: flows/menu-beer.flow
+- runScript:
+    file: evening.js
+    env: { STAGE: original }
+- runFlow:
+    file: flows/other-beer.flow
+    env: { BEER_NAME: E2E Odebrat, BEER_PRICE: '47' }
+- runScript:
+    file: evening.js
+    env: { STAGE: removable }
+- evalScript: ${output.local.offline()}
+- runFlow:
+    file: flows/other-beer.flow
+    env: { BEER_NAME: E2E Offline, BEER_PRICE: '43' }
+- runFlow: flows/finish-evening.flow
+- runFlow: ../../maestro/restart.yaml
+- runFlow: flows/latest-evening.flow
+- assertVisible: '.*E2E Ležák.*'
+- assertVisible: '.*E2E Odebrat.*'
+- assertVisible: '.*E2E Offline.*'
+- tapOn:
+    id: ${'evening-edit-' + output.diary.original.client_id}
+- tapOn:
+    id: evening-edit-name-input
+- eraseText
+- inputText: E2E Opravený
+- tapOn:
+    id: evening-edit-save
+- tapOn:
+    id: ${'evening-delete-' + output.diary.removable.client_id}
+- tapOn:
+    id: app-dialog-primary
+- runFlow: ../../maestro/restart.yaml
+- runFlow: flows/latest-evening.flow
+- assertVisible: '.*E2E Opravený.*'
+- assertVisible: '.*E2E Offline.*'
+- assertNotVisible: '.*E2E Odebrat.*'
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- assertVisible: '.*E2E Opravený.*'
+- runScript:
+    file: evening.js
+    env: { STAGE: synced }
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env: { ROUTE: /beer }
+- tapOn:
+    id: diary-segment
+- tapOn:
+    id: diary-stats-open
+- evalScript: ${output.local.screenshot('diary-stats-opened')}
+# iOS exposes the sheet as one accessibility description. Verify each exact value.
+- assertVisible: '.*2 · PIV CELKEM, Večerů · 1, Hospod · 1, Utraceno · 84\sKč,.*'
+- evalScript: ${output.local.screenshot('diary-offline-reconciled-stats')}
+- runScript:
+    file: evening.js
+    env: { STAGE: persisted }

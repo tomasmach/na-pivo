@@ -1,0 +1,44 @@
+appId: com.tomasmach.na-pivo
+---
+# The first tour beer uses the main CTA; the repeat shortcut exists only after a beer.
+- runFlow:
+    when:
+      true: ${typeof FIRST_BEER !== 'undefined' && FIRST_BEER === 'true'}
+    commands:
+      - tapOn:
+          id: counter-primary
+- runFlow:
+    when:
+      true: ${typeof FIRST_BEER === 'undefined' || FIRST_BEER !== 'true'}
+    commands:
+      - tapOn: Vybrat jiné pivo nebo drink
+- runFlow:
+    when:
+      visible: Přidat nové pivo
+    commands:
+      - tapOn: Přidat nové pivo
+- extendedWaitUntil:
+    visible:
+      id: beer-form-name
+    timeout: 10000
+- evalScript: ${output.local.screenshot('diary-beer-form-before-input')}
+- tapOn:
+    id: beer-form-name
+- inputText: ${BEER_NAME}
+- tapOn:
+    id: beer-form-price
+- inputText: ${BEER_PRICE}
+# Numeric iOS keyboards have no standard dismiss action; the real submit stays above it.
+- assertVisible:
+    id: beer-form-submit
+- evalScript: ${output.local.screenshot('diary-beer-form-filled')}
+- tapOn:
+    id: beer-form-submit
+- runFlow:
+    when:
+      visible: Jo, připsat další pivo
+    commands:
+      - tapOn: Jo, připsat další pivo
+- assertNotVisible:
+    id: beer-form-submit
+- evalScript: ${output.local.screenshot('diary-beer-counted-after-form')}

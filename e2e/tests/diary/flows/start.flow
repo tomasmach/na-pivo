@@ -1,0 +1,8 @@
+appId: com.tomasmach.na-pivo
+---
+- runFlow:
+    file: ../../../maestro/reset.yaml
+    env:
+      SCENARIO: diary
+- runFlow: ../../../maestro/skip-onboarding.yaml
+- runFlow: ../../../maestro/login.yaml

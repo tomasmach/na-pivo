@@ -1,0 +1,8 @@
+appId: com.tomasmach.na-pivo
+---
+- tapOn:
+    id: counter-more
+- assertVisible: Dopito, zavřít tenhle večer
+- evalScript: ${output.local.screenshot('diary-counter-dopito-menu')}
+- tapOn: Dopito, zavřít tenhle večer
+- tapOn: Dopito

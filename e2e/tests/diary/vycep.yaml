@@ -1,0 +1,50 @@
+# Regression NP-E2E-007 (../../BUGS.md): same process, active UI and actual delivered publication.
+appId: com.tomasmach.na-pivo
+name: Offline night publication flushes on foreground and stays published
+tags: [critical, full, diary]
+---
+- runFlow: flows/start.flow
+- runFlow: flows/menu-beer.flow
+- runFlow: flows/finish-evening.flow
+- runFlow: flows/latest-evening.flow
+- evalScript: ${output.local.poll(function () { const s = output.local.state().scenario; output.local.check(s.nights.length === 0 && s.drinks.length === 1 && s.visits.length === 1 && s.visits[0].closed_at !== null, 'Dopito must persist one closed visit and its single beer before publication.'); }, 15000)}
+- evalScript: ${output.local.screenshot('diary-closed-evening-before-publication')}
+- evalScript: ${output.local.offline()}
+- scrollUntilVisible:
+    element:
+      id: night-publish-open
+    direction: DOWN
+- tapOn:
+    id: night-publish-open
+- tapOn: Parta
+- tapOn:
+    id: night-publish-submit
+- assertVisible: Visí ve Výčepu · Jen parta
+- runFlow: ../../maestro/restart.yaml
+- runFlow: flows/latest-evening.flow
+- scrollUntilVisible:
+    element: Visí ve Výčepu · Jen parta
+    direction: DOWN
+- assertVisible: Visí ve Výčepu · Jen parta
+- evalScript: ${output.local.screenshot('diary-vycep-offline-restored')}
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- assertVisible: Visí ve Výčepu · Jen parta
+- evalScript: ${output.local.screenshot('diary-vycep-before-foreground-oracle')}
+- runScript:
+    file: vycep.js
+    env: { STAGE: synced }
+- runFlow: ../../maestro/restart.yaml
+- runFlow: flows/latest-evening.flow
+- scrollUntilVisible:
+    element: Visí ve Výčepu · Jen parta
+    direction: DOWN
+- assertVisible: Visí ve Výčepu · Jen parta
+- runFlow:
+    file: ../../maestro/route.yaml
+    env: { ROUTE: /vycep }
+- assertVisible: E2E U Testera
+- evalScript: ${output.local.screenshot('diary-vycep-published')}
+- runScript:
+    file: vycep.js
+    env: { STAGE: persisted }
