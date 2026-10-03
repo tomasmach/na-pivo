@@ -45,8 +45,11 @@ Backend se spouští zvláštním settings modulem mimo produkční Docker conte
 - `output.local.request('/mail/verify', {})` otevře skutečný odkaz zachyceného e-mailu. `/mail/reset` otevře lokální app deep link, token nevstupuje do Maestro. `/mail/export` vrací pouze status a počet příloh.
 - `output.local.screenshot('safe-name')` volej na zkontrolovaném konečném stavu bez přihlašovacích údajů či souřadnic. Poslední kontrola testu musí porovnat skutečná data po restartu nebo přes API/DB. Nevydávej samotný úspěšný tap za ověření.
 - `output.local.debugScreenshot('safe-name')` ukládá diagnostický obrázek do neveřejného `private-debug`, který se po běhu smaže. Platí stejná výjimka jen pro jednorázové fixture účty. Obrázek s kontaktem nepublikuj ani nevypisuj do trvalých logů.
+- `output.local.request('/home-point')` čte pouze domovský bod z uložených nastavení vlastní appky. Vrací `present` a `matchesFixture`, nikoli souřadnice; druhý příznak porovná bod s pevnou simulovanou polohou. Ověř jej po uložení a restartu, po zrušení rozpracované změny i po smazání.
 - Sdílené helpery, config, adaptéry a produkční `testID` mění hlavní agent. Každý test musí chytat pojmenovanou regresi z COVERAGE.md a projít třikrát.
 
 Oprávnění jsou výslovně `all: deny`, poloha `inuse` a fotky povolené, kamera a notifikace zakázané. Pro scénář zamítnutí použij konkrétní override v `launchApp`; při návratu nastav celý očekávaný stav. Případné nativní potvrzení odmítni. Lokální fake navíc brání registraci skutečného push tokenu.
 
 Aktuální důkazy a omezení jsou v [COVERAGE.md](COVERAGE.md), produktové chyby v [BUGS.md](BUGS.md). Sada není připojená do GitHub Actions.
+
+`attempt-*/metrics.json` měří jednotlivá spuštění Maestra. `command-metrics.json` navíc obsahuje čas celého příkazu včetně přípravy a úklidu prostředí a jeho návratový kód.

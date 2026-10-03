@@ -73,4 +73,24 @@
 - Reprodukce: `tests/diary/vycep.yaml`, běh `c099c714`, 118,561 s, 0/1 úspěšných testů. [Screenshot aktivního detailu bez doručené publikace](https://files.tmach.dev/diary-vycep-foreground-not-synced-9fddd7abd89e4850bb1e.png).
 - Stav: oprava v samostatném [PR #212](https://github.com/tomasmach/na-pivo/pull/212). Stejný celý průchod po opravě prošel v běhu `051e9968` za 2 min 16 s: skutečná DB obsahovala právě jednu publikovanou noc, jedno pivo a uzavřenou návštěvu; po dalším restartu se noc zobrazila i ve Výčepu. [Výsledný screenshot](https://files.tmach.dev/diary-vycep-published-e1e795908295499da217.png). Kontrola typů, 16 souvisejících Jest testů a nezávislé review prošly. Tři stabilitní opakování ještě čekají.
 
+## NP-E2E-008: offline Parta žádá již vyplněnou přezdívku
+
+- Priorita P1. Základ `origin/dev` `e72d145c`, iPhone 17 / iOS 26.5.
+- Kroky: přihlásit účet E2EPivar se dvěma kamarády, načíst Partu, zastavit backend a restartovat appku.
+- Očekávání: uložená Parta zachová dostupné akce a nenačtený profil nevydává za nevyplněnou přezdívku.
+- Skutečnost: karta ukazuje dva kamarády a uloženou vlastní aktivitu, ale nabídne „Doplnit přezdívku“. Skutečný účet již přezdívku má.
+- Příčina: CTA používá `nickname == null`, přičemž `selectNickname` vrací `null` i pro nenačtený profil. Existující `selectNeedsNickname` správně rozlišuje nenačtený profil a potvrzenou chybějící přezdívku.
+- Reprodukce: `tests/places-social/invite-offline.yaml`, běh `0292bfec`; [screenshot offline Party](https://files.tmach.dev/social-offline-party-1b89f217326a4d1fa103.png). Původní kontrola snapshotu a API prošla, vizuální kontrola odhalila tento rozpor. Regresní kontrola výzvy se doplňuje.
+- Stav: minimální oprava `d684e303` ve větvi `fix/preserve-offline-party-actions`, nezávislé review bez nálezů. Nativní ověření opravy a PR čekají.
+
+## NP-E2E-009: žebříček po blokování ukazuje dvě různá pořadí
+
+- Typ: rozpor ve vysvětlení pořadí, nikoli potvrzený únik soukromého účtu. Priorita P2.
+- Kroky: otevřít Mapéry jako E2EPivar s 10 XP, zahřát žebříček s E2EKamos na prvním místě, kamaráda zablokovat a žebříček obnovit.
+- Očekávání: uživatel pozná, proč se liší jeho osobní a globální pořadí.
+- Skutečnost: hero uvádí „1. místo“ a „z 2 v tabulce“, jediný viditelný řádek Ty má pořadí 2. Soukromý ani blokovaný účet není v seznamu ani v odpovídajícím API payloadu.
+- [Screenshot rozdílného pořadí](https://files.tmach.dev/social-private-blocked-board-47d8b88bd9a640ba99a5.png), `tests/places-social/leaderboard-privacy.yaml`, běh `0292bfec`.
+- Existující kontraktové testy záměrně zachovávají globální pořadí `entries` po blokování a současně přepočítávají osobní `me.rank`. Nejde proto napravit rozpor změnou backendu bez rozhodnutí o významu zobrazeného pořadí. Navazující zpřesnění E2E porovná oba údaje s jejich skutečnými API hodnotami; nebude vynucovat změnu kontraktu.
+- Stav: ponecháno k produktovému rozhodnutí o vysvětlení pořadí. Kontrola soukromí prošla; to neznamená, že je popis pořadí srozumitelný.
+
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
