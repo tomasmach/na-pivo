@@ -1,0 +1,28 @@
+appId: com.tomasmach.na-pivo
+---
+- runFlow:
+    file: route.yaml
+    env:
+      ROUTE: /auth
+- tapOn:
+    id: auth-email
+- inputText:
+    text: >-
+      ${typeof ACCOUNT === 'undefined' || ACCOUNT === 'primary' ? MAESTRO_EMAIL : ACCOUNT + '-' + MAESTRO_EMAIL}
+    label: Enter disposable fixture email
+- tapOn:
+    id: auth-password
+- inputText:
+    text: ${MAESTRO_PASSWORD}
+    label: Enter disposable fixture password
+- tapOn:
+    id: auth-submit
+- extendedWaitUntil:
+    notVisible:
+      id: auth-submit
+    timeout: 20000
+- runFlow:
+    when:
+      visible: Not Now
+    commands:
+      - tapOn: Not Now

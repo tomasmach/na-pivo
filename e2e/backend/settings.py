@@ -25,6 +25,8 @@ INSTALLED_APPS = [*INSTALLED_APPS, "e2e.backend.apps.LocalFixtures"]  # noqa: F4
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 EMAIL_ENABLED = False
+# Exercise the real export serializer and mail delivery without a job worker.
+ACCOUNT_EXPORT_ASYNC = False
 RESEND_API_KEY = ""
 MEDIA_ROOT = RUN_DIR / "media"
 # URL formatting only: the shipped mobile parser requires this canonical host.
