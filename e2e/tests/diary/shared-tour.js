@@ -15,14 +15,19 @@ function verify() {
     const publication = state.publications[0];
     check(JSON.stringify(publication.stopNames) === JSON.stringify(['E2E U Testera','E2E Druhá hospoda']) && publication.snapshotKeys.indexOf('scheduled_date') === -1 && publication.snapshotKeys.indexOf('scheduled_time') === -1, 'Public snapshot must retain ordered stops and exclude meetup fields.');
     if (STAGE === 'public' || STAGE === 'links') check(publication.status === 'active' && state.shares[0].revoked_at === null, 'Public and private capabilities must be active.');
-    else {
+    else if (STAGE === 'unpublished') {
+      check(publication.status === 'unpublished' && state.shares[0].revoked_at === null, 'Withdrawing the public copy must retain the active private link and original plan.');
+      check(output.local.request('/capability/status', { name: 'public-tour' }).status === 404 && output.local.request('/capability/status', { name: 'private-tour' }).status === 200, 'Only the public link must be unavailable before private revocation.');
+    } else {
       check(publication.status === 'unpublished' && state.shares[0].revoked_at !== null, 'Both capabilities must be withdrawn without deleting the plan.');
       ['private-tour','public-tour'].forEach(function(name) { check(output.local.request('/capability/status', { name:name }).status === 404, 'Withdrawn capability must return 404.'); });
     }
   }
   if (STAGE === 'links') {
+    // The native share sheet writes the clipboard asynchronously after Copy.
+    output.local.request('/capability/store', { name: 'public-tour' });
     const capability = output.local.request('/capability/status', { name: 'public-tour', distinctFrom: 'private-tour' });
-    check(capability.status === 200 && capability.distinct === true, 'The copied public capability must open and differ from the private capability.');
+    check(capability.status === 200 && capability.distinct === true, 'The copied public capability must open and differ from the private capability; status=' + capability.status + ', distinct=' + capability.distinct + '.');
   }
 }
 output.local.poll(verify, 15000);

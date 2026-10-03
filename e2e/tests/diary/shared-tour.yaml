@@ -34,7 +34,6 @@ tags: [critical, full, diary]
 - tapOn: Možnosti tour
 - tapOn: Sdílet veřejný odkaz
 - tapOn: Copy
-- evalScript: ${output.local.request('/capability/store', { name:'public-tour' })}
 - runScript:
     file: shared-tour.js
     env: { STAGE: links }
@@ -72,14 +71,30 @@ tags: [critical, full, diary]
     env: { TOUR_TITLE: E2E Sdílená tour }
 - tapOn: Možnosti tour
 - tapOn: Stáhnout z veřejných
-- tapOn: Stáhnout z veřejných
+- tapOn:
+    id: app-dialog-primary
+- extendedWaitUntil:
+    notVisible:
+      id: app-dialog-primary
+    timeout: 10000
+- runScript:
+    file: shared-tour.js
+    env: { STAGE: unpublished }
+- waitForAnimationToEnd:
+    timeout: 5000
 - tapOn: Možnosti tour
+- evalScript: ${output.local.screenshot('diary-tour-options-after-unpublish')}
 - tapOn: Odkaz na tour
 - scrollUntilVisible:
     element: Zrušit odkaz
     direction: DOWN
 - tapOn: Zrušit odkaz
-- tapOn: Zrušit odkaz
+- tapOn:
+    id: app-dialog-primary
+- extendedWaitUntil:
+    notVisible:
+      id: app-dialog-primary
+    timeout: 10000
 - runScript:
     file: shared-tour.js
     env: { STAGE: revoked }
