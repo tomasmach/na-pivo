@@ -19,7 +19,7 @@ tags: [critical, full, identity]
     env:
       ROUTE: /profile/photos
 - tapOn: "Přidat fotku piva"
-- tapOn: "Vybrat z galerie"
+- tapOn: { id: photo-source-library }
 - extendedWaitUntil:
     visible: "Cancel|Zrušit"
     timeout: 15000
@@ -55,7 +55,7 @@ tags: [critical, full, identity]
     env:
       ROUTE: /profile/photos
 - tapOn: "Přidat fotku piva"
-- tapOn: "Vybrat z galerie"
+- tapOn: { id: photo-source-library }
 - extendedWaitUntil:
     visible: "Cancel|Zrušit"
     timeout: 15000

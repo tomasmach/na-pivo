@@ -47,7 +47,7 @@ tags: [full, identity]
     env:
       ROUTE: /profile/photos
 - tapOn: "Přidat fotku piva"
-- tapOn: "Vyfotit pivo"
+- tapOn: { id: photo-source-camera }
 - runFlow:
     when:
       visible: Zrušit
@@ -55,9 +55,9 @@ tags: [full, identity]
       - tapOn: Zrušit
 - runFlow:
     when:
-      visible: Zavřít fotku
+      visible: { id: photo-source-close }
     commands:
-      - tapOn: Zavřít fotku
+      - tapOn: { id: photo-source-close }
 - launchApp:
     arguments:
       "--initialUrl": ${MAESTRO_METRO}
@@ -75,14 +75,14 @@ tags: [full, identity]
     env:
       ROUTE: /profile/photos
 - tapOn: "Přidat fotku piva"
-- tapOn: "Vybrat z galerie"
+- tapOn: { id: photo-source-library }
 - assertVisible: "Cancel|Zrušit"
 - tapOn: "Cancel|Zrušit"
 - runFlow:
     when:
-      visible: Zavřít fotku
+      visible: { id: photo-source-close }
     commands:
-      - tapOn: Zavřít fotku
+      - tapOn: { id: photo-source-close }
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
