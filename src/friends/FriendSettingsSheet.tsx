@@ -315,6 +315,7 @@ function FriendSettingsSheet({
           </View>
 
           <Pressable
+            testID="friend-settings-close"
             onPress={onClose}
             hitSlop={12}
             style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedDim]}
