@@ -151,6 +151,7 @@ export function DrinkPickSheet({
           <Pressable
             style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
             onPress={() => undefined}
+            accessible={false}
           >
             <View style={styles.grabber} />
             <View style={styles.header}>
