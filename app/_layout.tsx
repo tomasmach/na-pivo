@@ -448,6 +448,7 @@ export default function RootLayout() {
         void ensureFriendPushRegisteredIfGranted();
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
+        void flushNightsQueue();
         void flushTourRunQueue();
         if (pull('diary')) {
           void trackPull('diary', () => useAccountStore.getState().refreshDiarySnapshot());
