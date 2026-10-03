@@ -36,10 +36,34 @@ let runner;
 let device;
 let closing = false;
 let runDir;
+let preparation;
+let bootOwned = false;
+const bootLock = path.join(lockRoot, 'boot.lock');
+function releaseBoot() {
+  if (!bootOwned) return;
+  try {
+    const owner = JSON.parse(fs.readFileSync(bootLock, 'utf8'));
+    if (owner.pid === process.pid && owner.runDir === runDir) fs.rmSync(bootLock);
+  } catch { /* Already released. */ }
+  bootOwned = false;
+}
+async function acquireBoot() {
+  const deadline = Date.now() + 300_000;
+  while (Date.now() < deadline) {
+    try {
+      fs.writeFileSync(bootLock, JSON.stringify({ pid: process.pid, runDir }), { flag: 'wx', mode: 0o600 });
+      bootOwned = true;
+      return;
+    } catch (error) { if (error.code !== 'EEXIST') throw error; }
+    await delay(500);
+  }
+  throw new Error('Another run still owns simulator startup. Inspect the shared boot.lock; no process was stopped.');
+}
 const simctl = (...argv) => execFileSync('xcrun', ['simctl', ...argv], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 async function cleanup(code) {
   if (closing) return;
   closing = true;
+  await stop(preparation);
   // Capture members before terminating leaders; a child can outlive its parent.
   let ownedProcesses = [];
   try {
@@ -71,6 +95,7 @@ async function cleanup(code) {
     } catch { /* No service was started. */ }
   }
   if (device) { try { simctl('shutdown', device); } catch { /* Already down. */ } }
+  releaseBoot();
   fs.rmSync(lock, { force: true });
   process.exit(code);
 }
@@ -121,13 +146,28 @@ try {
   };
   console.log(`E2E slot ${slot}; iPhone 17 ${device}; API ${backendPort}; Metro ${metroPort}`);
   for (let index = 1; index <= repeat; index++) {
+    // agent-device shares a daemon: a cold-boot timeout can reset other sessions.
+    // Serialize only preparation, then let isolated tests run concurrently.
+    await acquireBoot();
+    fs.rmSync(path.join(runDir, 'engine-ready'), { force: true });
+    preparation = start('xcrun', ['simctl', 'bootstatus', device, '-b'], { cwd: root, env });
+    const bootDeadline = setTimeout(() => cleanup(124), 180_000);
+    const [bootCode] = await once(preparation, 'exit');
+    clearTimeout(bootDeadline);
+    preparation = undefined;
+    if (bootCode !== 0) throw new Error('Owned iPhone failed to boot.');
     const output = path.join(runDir, `attempt-${index}`);
     const runArgs = args.filter(arg => arg !== '--stability');
     if (index > 1) runArgs.push('--strict-cache');
     runner = start(process.execPath, [path.join(root, 'node_modules/e2e/dist/cli/bin.js'), 'run', ...runArgs, '--output', output], { cwd: root, env });
+    const preparationWatch = setInterval(() => {
+      if (fs.existsSync(path.join(runDir, 'engine-ready'))) { releaseBoot(); clearInterval(preparationWatch); }
+    }, 250);
     const watchdog = setTimeout(() => cleanup(124), 2 * 60 * 60 * 1000);
     const [code] = await once(runner, 'exit');
     clearTimeout(watchdog);
+    clearInterval(preparationWatch);
+    releaseBoot();
     if (code !== 0) { await cleanup(code || 1); break; }
     const metrics = summarize(path.join(output, 'report.json'));
     fs.writeFileSync(path.join(output, 'metrics.json'), JSON.stringify(metrics, null, 2));
