@@ -1,0 +1,22 @@
+appId: com.tomasmach.na-pivo
+---
+- runScript: local.js
+- evalScript: >-
+    ${output.local.reset(typeof SCENARIO === 'undefined' ? 'base' : SCENARIO)}
+- launchApp:
+    clearKeychain: true
+    arguments:
+      '--initialUrl': ${MAESTRO_METRO}
+      '-EXDevMenuShowsAtLaunch': 'NO'
+      '-EXDevMenuIsOnboardingFinished': 'YES'
+      '-EXDevMenuShowFloatingActionButton': 'NO'
+    permissions:
+      all: deny
+      location: inuse
+      photos: allow
+      camera: deny
+      notifications: deny
+- extendedWaitUntil:
+    visible:
+      id: onboarding-skip
+    timeout: 60000

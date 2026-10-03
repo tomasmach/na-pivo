@@ -13,6 +13,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 process.chdir(root);
 process.env.E2E_TELEMETRY_DISABLED = '1';
 const args = process.argv.slice(2);
+const engine = process.env.E2E_ENGINE === 'testerarmy' ? 'testerarmy' : 'maestro';
 const repeat = args.includes('--stability') ? 3 : 1;
 const switches = new Set(['--stability', '--no-cache', '--strict-cache']);
 const filters = new Set(['--tag', '--exclude-tag', '--grep', '--grep-invert', '--tag-mode']);
@@ -22,7 +23,7 @@ for (let index = 0; index < args.length; index++) {
   if (/^e2e\/tests\/[a-z0-9_/*.-]+$/i.test(args[index]) && !args[index].includes('..')) continue;
   throw new Error(`Unsupported E2E option: ${args[index]}. Only test filters and cache switches are allowed.`);
 }
-if (repeat > 1 && args.includes('--no-cache')) throw new Error('--stability requires the replay cache.');
+if (engine === 'testerarmy' && repeat > 1 && args.includes('--no-cache')) throw new Error('--stability requires the replay cache.');
 const slot = Number(process.env.E2E_SLOT || '1');
 if (process.platform !== 'darwin') throw new Error('This runner requires macOS and an iPhone 17 simulator.');
 if (![1, 2, 3].includes(slot)) throw new Error('E2E_SLOT must be 1, 2, or 3.');
@@ -68,6 +69,8 @@ async function cleanup(code) {
   let ownedProcesses = [];
   try {
     const records = JSON.parse(fs.readFileSync(path.join(runDir, 'processes.json'), 'utf8')).owned;
+    const cliRecord = path.join(runDir, 'maestro-process.json');
+    if (fs.existsSync(cliRecord)) records.push(JSON.parse(fs.readFileSync(cliRecord, 'utf8')));
     const processes = execFileSync('ps', ['-axo', 'pid=,pgid=,lstart='], { encoding: 'utf8' }).trim().split('\n').map(line => {
       const [, pid, pgid, started] = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/) || [];
       // macOS pads every lstart column; record() trims the single-PID form.
@@ -110,6 +113,14 @@ async function cleanup(code) {
       code ||= 1;
     }
   }
+  // Maestro records evaluated fixture credentials even with report format NOOP.
+  // Only disposable @example.test accounts are authorized, and their raw debug
+  // output must not survive a successful, failed, or interrupted invocation.
+  if (runDir) {
+    for (const entry of fs.readdirSync(runDir)) {
+      if (entry.startsWith('attempt-')) fs.rmSync(path.join(runDir, entry, 'private-debug'), { recursive: true, force: true });
+    }
+  }
   releaseBoot();
   fs.rmSync(lock, { force: true });
   process.exit(code);
@@ -125,7 +136,8 @@ async function freePort(port) {
 try {
   const backendPort = 18120 + slot;
   const metroPort = 18220 + slot;
-  await Promise.all([freePort(backendPort), freePort(metroPort)]);
+  const controlPort = 18320 + slot;
+  await Promise.all([freePort(backendPort), freePort(metroPort), freePort(controlPort)]);
   const appPath = process.env.E2E_APP_PATH || path.join(root, '.e2e/build/Napivo.app');
   if (!fs.existsSync(appPath)) throw new Error('Build the local client first: npm run e2e:build');
   const runtimes = JSON.parse(simctl('list', 'runtimes', '--json')).runtimes;
@@ -146,18 +158,20 @@ try {
     device = simctl('create', name, 'com.apple.CoreSimulator.SimDeviceType.iPhone-17', runtime.identifier);
     fs.writeFileSync(deviceFile, JSON.stringify({ name, udid: device }), { mode: 0o600 });
   }
-  fs.writeFileSync(path.join(runDir, 'owner.json'), JSON.stringify({ pid: process.pid, root, device, slot, backendPort, metroPort }), { mode: 0o600 });
+  fs.writeFileSync(path.join(runDir, 'owner.json'), JSON.stringify({ pid: process.pid, root, device, slot, backendPort, metroPort, controlPort }), { mode: 0o600 });
   const env = {
     PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
     LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8', E2E_TELEMETRY_DISABLED: '1',
     NA_PIVO_E2E_RUN_DIR: runDir, NA_PIVO_E2E_DEVICE: device,
     NA_PIVO_E2E_CONTROL_SOCKET: `/tmp/napivo-e2e-${id}.sock`,
     NA_PIVO_E2E_BACKEND_PORT: String(backendPort), NA_PIVO_E2E_METRO_PORT: String(metroPort),
+    NA_PIVO_E2E_CONTROL_PORT: String(controlPort),
     NA_PIVO_E2E_APP_PATH: appPath,
     NA_PIVO_E2E_EMAIL: `e2e-${id}@example.test`,
     NA_PIVO_E2E_PASSWORD: crypto.randomBytes(24).toString('base64url'),
     NA_PIVO_E2E_NEW_PASSWORD: crypto.randomBytes(24).toString('base64url'),
     ...(process.env.XDG_CONFIG_HOME ? { XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME } : {}),
+    ...(process.env.E2E_MAESTRO_PATH ? { E2E_MAESTRO_PATH: process.env.E2E_MAESTRO_PATH } : {}),
   };
   console.log(`E2E slot ${slot}; iPhone 17 ${device}; API ${backendPort}; Metro ${metroPort}`);
   for (let index = 1; index <= repeat; index++) {
@@ -173,8 +187,11 @@ try {
     if (bootCode !== 0) throw new Error('Owned iPhone failed to boot.');
     const output = path.join(runDir, `attempt-${index}`);
     const runArgs = args.filter(arg => arg !== '--stability');
-    if (index > 1) runArgs.push('--strict-cache');
-    runner = start(process.execPath, [path.join(root, 'node_modules/e2e/dist/cli/bin.js'), 'run', ...runArgs, '--output', output], { cwd: root, env });
+    if (engine === 'testerarmy' && index > 1) runArgs.push('--strict-cache');
+    const command = engine === 'testerarmy'
+      ? [path.join(root, 'node_modules/e2e/dist/cli/bin.js'), 'run', ...runArgs, '--output', output]
+      : [path.join(root, 'e2e/runtime/maestro.mjs'), ...runArgs];
+    runner = start(process.execPath, command, { cwd: root, env: { ...env, NA_PIVO_E2E_OUTPUT: output } });
     const preparationWatch = setInterval(() => {
       if (fs.existsSync(path.join(runDir, 'engine-ready'))) { releaseBoot(); clearInterval(preparationWatch); }
     }, 250);
@@ -184,10 +201,10 @@ try {
     clearInterval(preparationWatch);
     releaseBoot();
     if (code !== 0) { await cleanup(code || 1); break; }
-    const metrics = summarize(path.join(output, 'report.json'));
+    const metrics = engine === 'testerarmy' ? summarize(path.join(output, 'report.json')) : JSON.parse(fs.readFileSync(path.join(output, 'metrics.json'), 'utf8'));
     fs.writeFileSync(path.join(output, 'metrics.json'), JSON.stringify(metrics, null, 2));
     console.log(`Verified run ${index}: ${JSON.stringify(metrics)}`);
-    if (index > 1 && (metrics.handedOff > 0 || metrics.missed > 0)) throw new Error('Stability run required complete replay, but an agent.act missed or handed off.');
+    if (engine === 'testerarmy' && index > 1 && (metrics.handedOff > 0 || metrics.missed > 0)) throw new Error('Stability run required complete replay, but an agent.act missed or handed off.');
   }
   await cleanup(0);
 } catch (error) { console.error(error.message); await cleanup(1); }
