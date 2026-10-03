@@ -31,6 +31,6 @@
 - Příčina: `CoasterCard` slučuje interaktivní potomky a `CounterMoreSheet` skrývá celý podstrom přes `accessibilityElementsHidden`.
 - Screenshoty: [tácek s nedostupnými zkratkami](https://files.tmach.dev/diary-counter-surface-ed73ae5140ef4e629077.png), [nabídka s nedostupným Dopito](https://files.tmach.dev/diary-counter-overflow-cc5b9181418c446ab413.png).
 - Reprodukce: `tests/diary/counter-menu.repro.e2e.ts`, rozpracovaný širší průchod `tests/diary/evening.e2e.ts`.
-- Stav: malá oprava přístupnosti připravena pro [PR #207](https://github.com/tomasmach/na-pivo/pull/207). Typecheck a 45 stávajících Jest testů prošly; nativní ověření opravy právě běží.
+- Stav: malá oprava přístupnosti připravena pro [PR #207](https://github.com/tomasmach/na-pivo/pull/207). Typecheck a 45 stávajících Jest testů prošly; čeká na nativní ověření opravy.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
