@@ -10,6 +10,7 @@ import { start, stop } from './processes.mjs';
 import { summarize } from './report.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
+const commandStarted = Date.now();
 process.chdir(root);
 process.env.E2E_TELEMETRY_DISABLED = '1';
 const args = process.argv.slice(2);
@@ -120,6 +121,9 @@ async function cleanup(code) {
     for (const entry of fs.readdirSync(runDir)) {
       if (entry.startsWith('attempt-')) fs.rmSync(path.join(runDir, entry, 'private-debug'), { recursive: true, force: true });
     }
+    fs.writeFileSync(path.join(runDir, 'command-metrics.json'), JSON.stringify({
+      engine, durationSeconds: (Date.now() - commandStarted) / 1000, exitCode: code,
+    }, null, 2), { mode: 0o600 });
   }
   releaseBoot();
   fs.rmSync(lock, { force: true });
