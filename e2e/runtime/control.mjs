@@ -95,8 +95,8 @@ export function controlServer({ online, offline }) {
         addGalleryFixtures();
       } else if (request.method === 'POST' && url.pathname === '/screenshot') {
         if (!/^[a-z0-9-]+$/.test(body.name)) throw new Error('Use a safe screenshot name.');
-        const directory = path.join(process.env.NA_PIVO_E2E_OUTPUT, 'screenshots');
-        fs.mkdirSync(directory, { recursive: true });
+        const directory = path.join(process.env.NA_PIVO_E2E_OUTPUT, body.debug === true ? 'private-debug' : 'screenshots');
+        fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
         simctl('io', device, 'screenshot', path.join(directory, `${body.name}.png`));
       } else {
         response.writeHead(404).end();
