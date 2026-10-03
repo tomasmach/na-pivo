@@ -22,6 +22,7 @@ from config.settings import *  # noqa: E402,F403
 
 ROOT_URLCONF = "e2e.backend.urls"
 INSTALLED_APPS = [*INSTALLED_APPS, "e2e.backend.apps.LocalFixtures"]  # noqa: F405
+MIDDLEWARE = ["e2e.backend.account_requests.AccountWriteObserver", *MIDDLEWARE]  # noqa: F405
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 EMAIL_ENABLED = False
