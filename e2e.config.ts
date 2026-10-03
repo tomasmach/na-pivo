@@ -39,7 +39,12 @@ export default {
   },
   targets: [{
     name: 'iphone-17',
-    engine: mobile({ platform: 'ios', device: process.env.NA_PIVO_E2E_DEVICE ?? 'Na Pivo E2E unconfigured', session: `napivo-${process.env.NA_PIVO_E2E_DEVICE ?? 'unconfigured'}` }),
+    engine: mobile({
+      platform: 'ios', device: process.env.NA_PIVO_E2E_DEVICE ?? 'Na Pivo E2E unconfigured',
+      session: `napivo-${process.env.NA_PIVO_E2E_DEVICE ?? 'unconfigured'}`,
+      // Expo keyboard/modal transitions can outlive the engine's 500 ms default.
+      settle: 350, transition: 1000,
+    }),
     app: {
       identity: 'na-pivo-expo-local-v1',
       bundleId: 'com.tomasmach.na-pivo',
