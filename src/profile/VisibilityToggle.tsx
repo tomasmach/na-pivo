@@ -19,6 +19,7 @@ import { softDrop } from '@/theme/shadows';
 import { EyeIcon, EyeOffIcon } from '@/components/shared/IconGlyph';
 
 interface VisibilityToggleProps {
+  testID?: string;
   value: boolean;
   onToggle: (next: boolean) => void;
   label: string;
@@ -26,6 +27,7 @@ interface VisibilityToggleProps {
 }
 
 export const VisibilityToggle = memo(function VisibilityToggle({
+  testID,
   value,
   onToggle,
   label,
@@ -45,6 +47,7 @@ export const VisibilityToggle = memo(function VisibilityToggle({
 
   return (
     <Pressable
+      testID={testID}
       onPress={handlePress}
       style={styles.row}
       accessibilityRole="switch"
