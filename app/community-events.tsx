@@ -163,7 +163,7 @@ function EventCard({
         <View style={styles.eventCopy}>
           <Text style={styles.eventTitle}>{event.title}</Text>
           <Text style={styles.eventMeta}>{formatTime(event)}</Text>
-          {cancelled ? <Text style={styles.status}>{t.communityEvents.cancelled}</Text> : null}
+          {cancelled ? <Text testID={`community-event-${event.id}-status`} style={styles.status}>{t.communityEvents.cancelled}</Text> : null}
         </View>
         {!cancelled ? <Text style={styles.status}>{event.status === 'live' ? t.communityEvents.statusLive : '18+'}</Text> : null}
       </View>
