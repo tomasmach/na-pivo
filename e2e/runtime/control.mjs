@@ -89,8 +89,12 @@ export function controlServer({ online, offline }) {
           if (!pathname) throw new Error('Capability was not copied in this test.');
           if (url.pathname === '/capability/open') simctl('openurl', device, `napivo:/${pathname}`);
           else if (url.pathname === '/capability/status') {
-            if (!observers.has('primary:original')) observers.set('primary:original', await observer());
-            const observed = await observers.get('primary:original').get(`/v1/tour-shares/${pathname.split('/').at(-1)}`);
+            // A capability is public to its holder. Logging in here would rotate
+            // deletion_epoch and invalidate later sensitive writes from the app.
+            const observed = await fetch(`${apiUrl}/v1/tour-shares/${pathname.split('/').at(-1)}`, {
+              redirect: 'manual', signal: AbortSignal.timeout(15000),
+            });
+            await observed.body?.cancel();
             result = { status: observed.status };
             if (body.distinctFrom !== undefined) {
               if (!capabilities.has(body.distinctFrom)) throw new Error('Unknown comparison capability.');
