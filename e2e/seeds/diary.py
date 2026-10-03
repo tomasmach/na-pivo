@@ -98,6 +98,7 @@ def observe():
         "publications": [
             {
                 "planId": str(publication.plan_id),
+                "publicId": str(publication.public_id),
                 "status": publication.status,
                 "title": publication.title,
                 "snapshotKeys": sorted(publication.snapshot),

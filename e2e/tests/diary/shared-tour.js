@@ -13,6 +13,8 @@ function verify() {
     check(plan.id === output.sharedPlan, 'Publishing and withdrawing must preserve the original server plan identity.');
     check(state.publications.length === 1, 'Expected one real public publication after submit; observed ' + state.publications.length + '.');
     const publication = state.publications[0];
+    if (STAGE === 'public') output.sharedPublication = publication.publicId;
+    else check(publication.publicId === output.sharedPublication, 'Withdrawing and restarting must preserve the original public publication identity.');
     check(JSON.stringify(publication.stopNames) === JSON.stringify(['E2E U Testera','E2E Druhá hospoda']) && publication.snapshotKeys.indexOf('scheduled_date') === -1 && publication.snapshotKeys.indexOf('scheduled_time') === -1, 'Public snapshot must retain ordered stops and exclude meetup fields.');
     if (STAGE === 'public' || STAGE === 'links') check(publication.status === 'active' && state.shares[0].revoked_at === null, 'Public and private capabilities must be active.');
     else if (STAGE === 'unpublished') {
@@ -24,10 +26,10 @@ function verify() {
     }
   }
   if (STAGE === 'links') {
-    // The native share sheet writes the clipboard asynchronously after Copy.
-    output.local.request('/capability/store', { name: 'public-tour' });
+    const discovered = output.local.request('/capability/discover', { name: 'public-tour', title: 'E2E Sdílená tour' });
+    check(discovered.status === 200 && discovered.id === state.publications[0].publicId && discovered.title === state.publications[0].title && discovered.stopCount === 2, 'The real anonymous catalog must return this exact DB publication with two stops.');
     const capability = output.local.request('/capability/status', { name: 'public-tour', distinctFrom: 'private-tour' });
-    check(capability.status === 200 && capability.distinct === true, 'The copied public capability must open and differ from the private capability; status=' + capability.status + ', distinct=' + capability.distinct + '.');
+    check(capability.status === 200 && capability.distinct === true, 'The discovered public capability must open and differ from the private copied capability; status=' + capability.status + ', distinct=' + capability.distinct + '.');
   }
 }
 output.local.poll(verify, 15000);

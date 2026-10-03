@@ -31,9 +31,8 @@ tags: [critical, full, diary]
 - runScript:
     file: shared-tour.js
     env: { STAGE: public }
-- tapOn: Možnosti tour
-- tapOn: Sdílet veřejný odkaz
-- tapOn: Copy
+# Native public Copy remains unverified (../../COVERAGE.md).
+# Discover the actual public capability through the anonymous catalog API.
 - runScript:
     file: shared-tour.js
     env: { STAGE: links }
