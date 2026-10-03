@@ -13,6 +13,10 @@ export const test = mobileTest.extend<{ local: {
     await device.installApp();
     // Bind the daemon session to the explicitly configured device before
     // session-scoped commands; two booted iPhones otherwise make close ambiguous.
+    // A previous attempt can close the daemon session while the mobile surface
+    // still remembers sessionApp. This explicit foreground open always rebinds
+    // the configured UDID before app.open() presets permissions.
+    await device.openApp('com.tomasmach.na-pivo');
     await app.open();
     await device.clearKeychain();
     await device.setAppearance('dark');

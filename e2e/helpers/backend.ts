@@ -34,7 +34,12 @@ export async function observer(account: 'primary' | 'second' | 'outsider' = 'pri
     async get(route: string) {
       if (!/^\/v1\//.test(route)) throw new Error('Observers only read local app endpoints.');
       const result = await fetch(`${apiUrl}${route}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });
-      return { status: result.status, body: sanitize(await result.json()) };
+      const text = await result.text();
+      let body: unknown = null;
+      if (text.trim()) {
+        try { body = JSON.parse(text); } catch { body = null; }
+      }
+      return { status: result.status, body: sanitize(body) };
     },
   };
 }
