@@ -84,6 +84,10 @@ export function controlServer({ online, offline }) {
             if (!observers.has('primary:original')) observers.set('primary:original', await observer());
             const observed = await observers.get('primary:original').get(`/v1/tour-shares/${pathname.split('/').at(-1)}`);
             result = { status: observed.status };
+            if (body.distinctFrom !== undefined) {
+              if (!capabilities.has(body.distinctFrom)) throw new Error('Unknown comparison capability.');
+              result.distinct = pathname !== capabilities.get(body.distinctFrom);
+            }
           } else throw new Error('Unknown capability action.');
         }
       } else if (request.method === 'POST' && url.pathname === '/media') {
