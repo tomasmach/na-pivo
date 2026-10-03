@@ -354,6 +354,7 @@ export default function AuthScreen() {
               return (
                 <Pressable
                   key={value}
+                  testID={`auth-${value}-mode`}
                   onPress={() => switchMode(value)}
                   style={[styles.segment, selected && styles.segmentSelected]}
                   accessibilityRole="button"
@@ -422,7 +423,7 @@ export default function AuthScreen() {
           />
 
           {!!visibleError && (
-            <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
+            <Text testID="auth-error" style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
               {visibleError}
             </Text>
           )}
@@ -446,6 +447,7 @@ export default function AuthScreen() {
           {/* ── Forgot password ── */}
           {mode === 'login' && !resetOpen && (
             <Pressable
+              testID="auth-reset-open"
               onPress={() => {
                 trackUiInteraction('auth_reset_open');
                 setResetOpen(true);
@@ -471,6 +473,7 @@ export default function AuthScreen() {
               <TextInput
                 style={styles.input}
                 value={resetEmail}
+                testID="auth-reset-email"
                 onChangeText={setResetEmail}
                 placeholder={t.account.emailPlaceholder}
                 placeholderTextColor={Colors.mutedText}
@@ -484,6 +487,7 @@ export default function AuthScreen() {
               />
               <GlowButton
                 label={t.account.resetSend}
+                testID="auth-reset-request"
                 onPress={handleSendReset}
                 variant="secondary"
                 glow="none"

@@ -216,6 +216,7 @@ export default function OnboardingScreen() {
 
       <View style={styles.ctaWrap}>
         <CounterCta
+          testID={isLast ? 'onboarding-auth' : 'onboarding-next'}
           label={isLast ? t.onboarding.slide3Cta : t.onboarding.next}
           onPress={isLast ? handleOpenAuth : handleNext}
           accessibilityLabel={isLast ? t.onboarding.slide3Cta : t.onboarding.next}
