@@ -146,6 +146,8 @@ Jde o konkrétní blokátor automatizace, nikoli o prokázaný produktový bug. 
 První stabilitní dávku ostatních 11 identity testů `ff585be9` po 246,804 s ukončil disk guard kódem 75. Startovala s 4,37 GiB, ale i při jediném simulátoru kleslo místo pod 1 GiB; následná kontrola systému ukázala 14 GiB použitého swapu. Avatar před přerušením prošel, zbytek dávky nemá úplný engine report. Vlastní procesy skončily, tři porty se uvolnily, simulátor byl Shutdown a soukromé debug reporty byly odstraněné. Žádný nový test tím nezískal tři po sobě jdoucí průchody. Tento tehdejší běh čekal na uvolnění prostředků; cizí session nebyly ukončeny. Dne 4. 10. práce pokračovala s více než 90 GiB volnými a jediným simulátorem.
 
 
+Android registrační pokus `0562a52f` na Pixel 10 došel přes vyplnění formuláře k submit a následná DB kontrola nenašla registrovanou původní identitu. Nezachytil konkrétní validační zprávu; po dokončení zůstával počet účtů s očekávanou registrační přezdívkou nulový. Engine 138,215 s, celý příkaz 173,791 s, exit 1. Tento výsledek nepotvrzuje stejnou příčinu jako iOS. Registrace a claim zůstávají blokované i pro Android; privátní report byl odstraněný.
+
 ### Předání oblastí a zbývající důkaz na iOS
 
 | Oblast | Připravené scénáře | Celý průchod alespoň jednou v dosavadních revizích | Tři po sobě | PR |
@@ -283,3 +285,9 @@ Dávka `ba03417e` na commitu `e258ae45` dokončila **6 PASS / 3 FAIL**: engine 1
 Nové rozlišení chybového hledání, skutečný retry, nepřihlášená prázdná komunita a zachovaný draft bez povolené polohy mají první Android důkaz. [Chyba hledání](https://files.tmach.dev/places-search-unavailable-f2c005156e8542a38a86.png) a [zachovaný nepublikovaný formulář](https://files.tmach.dev/places-denied-community-draft-9b5636732815404c95b6.png) byly prohlédnuté. Přesný obsah původních komunitních akcí zůstal stejný; závěrečná kontrola prokázala jedinou textovou zprávu bez fotky.
 
 Domovský a komunitní průchod zastavila koncová mezera v nativním textu Google Location Accuracy. Opravený locator ověřuje přesné systémové ID i text s povolenými koncovými bílými znaky. Reset hesla změnil skutečné heslo a odmítl staré přihlášení; při posledním UI přihlášení však mazání odprostřed pole ponechalo část předchozího vstupu. Test nově vybere celý text a smaže výběr podle dokumentace Maestra. Následné nativní ověření těchto tří testů ještě není součástí uvedeného výsledku.
+
+### Android, čekání na deep link a dodání polohy
+
+Dávka `ddbf93a2` měla 1 PASS / 2 FAIL za 368,804 s v enginu, celý příkaz 404,261 s. Komunitní vytvoření včetně chyby a retry prošlo. Domovský bod se po potvrzení Google dialogu nedočkal polohy; reset hesla kontroloval absenci ručního kódu ještě před načtením tokenu z odkazu. Test nyní čeká na stejnou přesnou podmínku nejvýš 20 sekund.
+
+Dávka `adedd257` měla 0 PASS / 3 FAIL za 423,882 s v enginu, celý příkaz 458,330 s. Průběžné `geo fix` nepomohlo: síťový provider neměl údaj a GPS/fused údaj byl při kontrole přes minutu starý. Home i komunitní formulář zobrazily dostupnou chybu polohy a zachovaly formulář. Reset došel k odmítnutí starého hesla, ale Android secure input nenabídl očekávané „Select all“. Následující verze testu používá nový přihlašovací formulář po restartu. Tyto výsledky nejsou tři nové produktové chyby. Všech osm bezpečných snímků první dávky i oba chybové snímky druhé prošly nezávislou vizuální kontrolou; citlivé debug reporty byly odstraněné.
