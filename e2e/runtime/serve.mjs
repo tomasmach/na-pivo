@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { ready, start, stop } from './processes.mjs';
 import { controlServer } from './control.mjs';
-import { platform, setFixtureLocation } from './device.mjs';
+import { clearFixtureLocation, platform, setFixtureLocation } from './device.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const runDir = process.env.NA_PIVO_E2E_RUN_DIR;
@@ -55,6 +55,7 @@ async function cleanup(code = 0) {
   if (closing) return;
   closing = true;
   clearInterval(locationTimer);
+  try { clearFixtureLocation(); } catch { /* Owned emulator may already be stopped. */ }
   control?.close();
   httpControl?.close();
   await Promise.all([stop(migration), stop(backend), stop(metro)]);
