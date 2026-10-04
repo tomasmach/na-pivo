@@ -34,6 +34,7 @@ import { AppState, Platform } from 'react-native';
 
 import { getBackendEndpoint } from './backendConfig';
 import { clearDrinkRateLimit, registerDrinkRateLimitAccountReader } from './drinksRateLimit';
+import { clearAmenityVotesRateLimit } from './pubAmenitiesRateLimit';
 import { clearAccountMerge, hasPendingAccountMerge, prepareAccountMerge, readAccountMerge } from './accountMerge';
 import { setTelemetrySession, trackApiFailure, type DiagnosticAppState } from './telemetryClient';
 
@@ -402,6 +403,7 @@ async function deleteCachedAccountUnlocked(): Promise<boolean> {
   try {
     await SecureStore.deleteItemAsync(ACCOUNT_KEY);
     await clearDrinkRateLimit(null);
+    await clearAmenityVotesRateLimit();
     lastKnownAccount = null;
     sessionReadRetryAfter = 0;
     keychainAccessibilityChecked = false;
@@ -844,7 +846,10 @@ export async function setSession(session: {
   if (!persisted) {
     throw new Error('Secure session persistence failed.');
   }
-  if (outgoingAccountId !== nextSession.accountId) await clearDrinkRateLimit(nextSession.accountId);
+  if (outgoingAccountId !== nextSession.accountId) {
+    await clearDrinkRateLimit(nextSession.accountId);
+    await clearAmenityVotesRateLimit();
+  }
   setTelemetrySession(nextSession);
 }
 
