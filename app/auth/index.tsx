@@ -41,6 +41,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { isAppleSignInSupported, isGoogleSignInConfigured } from '@/data/socialAuth';
 import { trackUiInteraction } from '@/data/uxTelemetry';
+import { isLocalE2E } from '@/data/localE2E';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
@@ -55,6 +56,7 @@ function isValidEmail(value: string): boolean {
 
 interface FieldProps {
   testID?: string;
+  statusTestID?: string;
   label: string;
   value: string;
   onChangeText: (value: string) => void;
@@ -68,6 +70,7 @@ interface FieldProps {
 
 function Field({
   testID,
+  statusTestID,
   label,
   value,
   onChangeText,
@@ -80,7 +83,7 @@ function Field({
 }: FieldProps) {
   return (
     <View style={styles.fieldGroup}>
-      <Text style={styles.label}>{label}</Text>
+      <Text testID={statusTestID} style={styles.label}>{label}</Text>
       <TextInput
         testID={testID}
         style={styles.input}
@@ -409,6 +412,9 @@ export default function AuthScreen() {
           />
           <Field
             testID="auth-password"
+            statusTestID={isLocalE2E()
+              ? `auth-password-state-${password.length === 0 ? 'empty' : password.length === 1 ? 'one' : password.length < MIN_PASSWORD ? 'short' : 'valid'}`
+              : undefined}
             label={t.account.passwordLabel}
             value={password}
             onChangeText={(value) => {

@@ -114,4 +114,13 @@
 - Stav: malá oprava v samostatném [PR #215](https://github.com/tomasmach/na-pivo/pull/215) zachovává stávající tlačítko podle přihlášené session. Kontrola typů, lint, 99 souvisejících Jest testů a nezávislé review prošly. Stejný celý průchod `39ad9a48` prošel za 2 min 24 s: odhlášení offline, anonymní restart, login B a další restart, přesná kontrola oddělené historie a fronty v UI i DB. [Odhlášení dostupné offline](https://files.tmach.dev/identity-account-offline-logout-after-7d53be37cdeb482a98ab.png). Tři stabilitní opakování ještě čekají.
 - Hranice kontraktu: úmyslné offline odhlášení místně vymaže soukromá data včetně nedoručené fronty; neslibuje doručení ani vzdálené odvolání tokenu. E2E následně ověřuje, že fronta účtu A nepřejde pod účet B.
 
+## NP-E2E-012: anglické nastavení vody ořízne vysvětlení
+
+- Priorita P2, vizuální chyba. Základ `origin/dev` `e72d145c`, testovaná větev `6e4ab7bd`, iPhone 17 / iOS 26.5.
+- Kroky: přihlásit fixture, v Nastavení zapnout připomínku vody, přepnout na angličtinu a po restartu otevřít dolní část Nastavení.
+- Očekávání: vysvětlení připomínky je celé čitelné včetně věty o odhadu střízlivosti.
+- Skutečnost: popis končí „It doesn't estimate how sober yo...“. `SwitchRow` omezuje popis na dva řádky; nejde o chybějící překlad.
+- Důkaz: `tests/identity/settings.yaml`, běh `6c95df96`, první pokus. [Zkontrolovaný screenshot](https://files.tmach.dev/identity-settings-truncated-water-help-ec7deb9d5c18465fb488.png).
+- Stav: neopraveno. Průchod ověřil uložení nastavení a změnu jazyka, nikoli úplnou čitelnost popisu. Jeho funkční úspěch tento vizuální nález neuzavírá.
+
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
