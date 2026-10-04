@@ -53,7 +53,12 @@ export function openLink(link) {
 export function openDevelopmentBundle() {
   if (platform !== 'android') return;
   const metro = `http://127.0.0.1:${process.env.NA_PIVO_E2E_METRO_PORT}?disableOnboarding=1`;
-  openLink(`napivo://expo-development-client/?url=${encodeURIComponent(metro)}`);
+  // The Expo launcher can consume a warm onNewIntent without opening the app.
+  // Use the cold onCreate path only for an explicit app start/restart. Normal
+  // deep links and foreground transitions must keep their existing process.
+  adb('shell', 'am', 'start', '-W', '-S', '-n', `${appId}/.MainActivity`,
+    '-a', 'android.intent.action.VIEW', '-d',
+    `napivo://expo-development-client/?url=${encodeURIComponent(metro)}`);
 }
 
 export function appProcess() {
