@@ -42,7 +42,7 @@
 - Příčina: `PartyCard` vkládá `topRow` s vlastními tlačítky do přístupného rodičovského `Pressable`, zatímco spodní zkratky již má mimo něj.
 - [Screenshot nedostupného horního ovládání](https://files.tmach.dev/social-party-settings-before-9885d34c116d4428a91d.png).
 - Reprodukce: `tests/places-social/party-privacy.yaml`, průchod soukromí/ghost/blokování.
-- Stav: opraveno v samostatném [PR #210](https://github.com/tomasmach/na-pivo/pull/210). Maestro v běhu `2d7eb19c` otevřelo nabídku i nastavení a změnilo přepínač; skutečná DB potvrdila vypnuté sdílení. [Karta po opravě](https://files.tmach.dev/social-party-settings-after-d161bffa9c59435ca8c0.png). Typecheck a nezávislé review prošly. Celý zpřesněný privacy průchod následně jednou prošel v `3bd48f79`; další dvě stabilitní opakování čekají.
+- Stav: opraveno v samostatném [PR #210](https://github.com/tomasmach/na-pivo/pull/210). Maestro v běhu `2d7eb19c` otevřelo nabídku i nastavení a změnilo přepínač; skutečná DB potvrdila vypnuté sdílení. [Karta po opravě](https://files.tmach.dev/social-party-settings-after-d161bffa9c59435ca8c0.png). Typecheck a nezávislé review prošly. Celý zpřesněný privacy průchod prošel třikrát po sobě v `3bd48f79`, `a8970dc4` a `72159c27`; následná celá iOS i Android sada jej také dokončila.
 
 ## NP-E2E-005: text přepínače nerozlišuje automatické sdílení a ruční cinknutí
 
