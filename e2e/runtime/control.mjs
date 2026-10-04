@@ -5,6 +5,7 @@ import { Buffer } from 'node:buffer';
 import { setTimeout as delay } from 'node:timers/promises';
 import { apiUrl, observer, readState, resetBackend } from '../helpers/backend.ts';
 import { readHomePoint } from './home-point.mjs';
+import { localMailAction } from './mail.mjs';
 import { appProcess, clipboard, openDevelopmentBundle, openLink, resetApp, screenshot } from './device.mjs';
 
 export function controlServer({ online, offline }) {
@@ -48,9 +49,8 @@ export function controlServer({ online, offline }) {
       } else if (request.method === 'POST' && ['/mail/verify', '/mail/reset'].includes(url.pathname)) {
         const purpose = url.pathname.split('/').at(-1);
         const message = await (await fetch(`${apiUrl}/__e2e__/mail?purpose=${purpose}`)).json();
-        const links = (message.text || '').match(/https?:\/\/[^\s<>]+/g) || [];
-        const action = links.map(link => new URL(link)).find(link => link.origin === apiUrl && link.pathname === `/v1/auth/${purpose === 'verify' ? 'verify-email' : 'reset'}`);
-        if (!action?.searchParams.has('token')) throw new Error('Expected local email action is not available.');
+        const action = localMailAction(message.text || '', purpose, apiUrl,
+          process.env.NA_PIVO_E2E_PLATFORM || 'ios');
         if (purpose === 'verify') {
           const verified = await fetch(action, { redirect: 'manual', signal: AbortSignal.timeout(15000) });
           if (verified.status !== 200) throw new Error('Local verification failed.');
