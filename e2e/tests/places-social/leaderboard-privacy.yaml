@@ -39,6 +39,11 @@ tags: [critical, full]
 - swipe:
     start: 50%, 30%
     end: 50%, 75%
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - evalScript: ${output.local.screenshot('social-android-board-after-block-refresh')}
 - assertNotVisible: '.*E2EKamos.*'
 - assertNotVisible: '.*E2ECizi.*'
 - evalScript: ${output.ps.check('board-blocked')}

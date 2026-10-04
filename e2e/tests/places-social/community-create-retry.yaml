@@ -75,6 +75,14 @@ tags: [full]
     direction: DOWN
     centerElement: true
 - tapOn: Použít polohu tohoto místa
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - evalScript: ${output.local.screenshot('social-android-community-location-requested')}
+      - extendedWaitUntil:
+          visible: Poloha uložená jen k tomuto setkání
+          timeout: 30000
 - assertVisible: Poloha uložená jen k tomuto setkání
 - scrollUntilVisible:
     element: {text: Zítra}

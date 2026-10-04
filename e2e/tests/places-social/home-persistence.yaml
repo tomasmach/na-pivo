@@ -13,7 +13,17 @@ tags: [critical, full]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /home-point
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - evalScript: ${output.local.screenshot('places-android-home-before-map-tap')}
 - tapOn: {id: home-map}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - evalScript: ${output.local.screenshot('places-android-home-after-map-tap')}
 - assertVisible: {id: home-save, enabled: true}
 - tapOn: Zpět
 - runFlow:
@@ -23,6 +33,11 @@ tags: [critical, full]
 - assertVisible: {id: home-save, enabled: false}
 - evalScript: ${output.ps.home(false)}
 - tapOn: Použít moji polohu
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - evalScript: ${output.local.screenshot('places-android-home-location-requested')}
 - assertVisible: {id: home-save, enabled: true}
 - tapOn: {id: home-save}
 - assertNotVisible: {id: home-save}

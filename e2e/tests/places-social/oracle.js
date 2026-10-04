@@ -157,7 +157,12 @@ output.ps = {
     } else if (phase === 'pub-created') {
       output.local.check(s.addedPubs.length === 1, 'Exactly one offline pub was delivered.');
       const pub = s.addedPubs[0];
-      output.local.check(pub.account__nickname === 'E2EPivar' && pub.name === 'E2E Nová hospoda' && pub.location_source === 'user_pin' && pub.nearExpectedSyntheticPin === true && pub.active === true && !!pub.client_id, 'The created pub belongs to the primary account and confirmed map pin.');
+      output.local.check(pub.account__nickname === 'E2EPivar', 'The created pub belongs to the original primary account.');
+      output.local.check(pub.name === 'E2E Nová hospoda', 'The created pub retains the exact submitted name.');
+      output.local.check(pub.location_source === 'user_pin', 'The created pub retains the explicitly confirmed map-pin source.');
+      output.local.check(pub.nearExpectedSyntheticPin === true, 'The confirmed map pin exactly matches the synthetic fixture location.');
+      output.local.check(pub.active === true, 'The created pub remains active.');
+      output.local.check(!!pub.client_id, 'The created pub retains its durable client identity.');
       output.ps.created = pub;
     } else if (phase === 'pub-renamed') {
       output.local.check(!!this.created, 'The original published identity was observed before editing.');
