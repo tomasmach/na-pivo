@@ -13,10 +13,7 @@ tags: [critical, full, spike]
     id: counter-primary
 - tapOn: 'Připsat E2E Ležák za 0,5 l · 41 Kč'
 - assertVisible: '1 pivo, utraceno 41\sKč\. Otevře tvůj účet\.'
-- retry:
-    maxRetries: 8
-    commands:
-      - runScript: persist-drink.js
+- runScript: persist-drink.js
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
