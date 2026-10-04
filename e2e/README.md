@@ -4,7 +4,7 @@ Testy řídí skutečný iPhone 17 v iOS simulátoru a skutečný Django backend
 
 ## První spuštění na macOS
 
-Použij Node.js 24 a Javu 17 nebo novější. Runner před startem vyžaduje alespoň 2 GiB volného místa a při poklesu pod 1 GiB zastaví pouze vlastní běh s kódem 75. Pro více simulátorů je nutná větší rezerva; dva běhy zde později vyčerpaly i 5 GiB kvůli souběžné spotřebě systému. Takové přerušení není selháním produktu. Lokální kontroler načítá TypeScript přímo přes podporu Node.js.
+Použij Node.js 24 a Javu 17 nebo novější. Runner před startem vyžaduje alespoň 30 GiB volného místa a při poklesu pod 20 GiB zastaví pouze vlastní běh s kódem 75. Rezerva chrání i ostatní práci na stroji; neplánuj souběžné mobilní buildy. Pro více simulátorů je nutná větší rezerva; dva běhy zde později vyčerpaly i 5 GiB kvůli souběžné spotřebě systému. Takové přerušení není selháním produktu. Lokální kontroler načítá TypeScript přímo přes podporu Node.js.
 
 ```sh
 npm ci

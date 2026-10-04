@@ -12,7 +12,7 @@ import { summarize } from './report.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const commandStarted = Date.now();
 const freeBytes = () => { const disk = fs.statfsSync(root); return disk.bavail * disk.bsize; };
-if (freeBytes() < 2 * 1024 ** 3) throw new Error('Local E2E needs at least 2 GiB of free disk space before starting.');
+if (freeBytes() < 30 * 1024 ** 3) throw new Error('Local E2E needs at least 30 GiB of free disk space before starting.');
 process.chdir(root);
 process.env.E2E_TELEMETRY_DISABLED = '1';
 const args = process.argv.slice(2);
@@ -190,8 +190,8 @@ try {
     ...(process.env.E2E_MAESTRO_PATH ? { E2E_MAESTRO_PATH: process.env.E2E_MAESTRO_PATH } : {}),
   };
   diskWatch = setInterval(() => {
-    if (freeBytes() < 1024 ** 3) {
-      console.error('Free disk space fell below 1 GiB. Stopping only this run before reports or app writes fail.');
+    if (freeBytes() < 20 * 1024 ** 3) {
+      console.error('Free disk space fell below the 20 GiB safety reserve. Stopping only this run.');
       void cleanup(75);
     }
   }, 1000);
