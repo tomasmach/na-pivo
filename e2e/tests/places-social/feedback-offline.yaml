@@ -17,13 +17,27 @@ tags: [critical, full]
 - evalScript: ${output.local.offline()}
 - tapOn: Přidat přílohu
 - tapOn: Vybrat z galerie
-- extendedWaitUntil:
-    visible: {id: PXGGridLayout-Info, index: 0}
-    timeout: 15000
-- waitForAnimationToEnd
-- evalScript: ${output.local.screenshot('places-feedback-gallery')}
-# The first thumbnail is a seeded synthetic image; other simulator stock photos may follow.
-- tapOn: {id: PXGGridLayout-Info, index: 0}
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: {id: PXGGridLayout-Info, index: 0}
+          timeout: 15000
+      - waitForAnimationToEnd
+      - evalScript: ${output.local.screenshot('places-feedback-gallery')}
+      # The first thumbnail is a seeded synthetic image; other simulator stock photos may follow.
+      - tapOn: {id: PXGGridLayout-Info, index: 0}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: {text: 'Photo taken on .*', index: 0}
+          timeout: 15000
+      - waitForAnimationToEnd
+      - evalScript: ${output.local.screenshot('places-feedback-gallery')}
+      - tapOn: {text: 'Photo taken on .*', index: 0}
 - assertVisible: Příloha je připravená
 - scrollUntilVisible:
     element: {id: feedback-message}
