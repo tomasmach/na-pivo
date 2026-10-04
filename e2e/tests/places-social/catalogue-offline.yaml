@@ -24,7 +24,12 @@ tags: [critical, full]
 - tapOn: 'E2E Druhá hospoda, zatím nenavštíveno'
 - tapOn: 'E2E Druhá hospoda, O hospodě'
 - assertVisible: E2E Druhá hospoda
+- scrollUntilVisible:
+    element: {text: E2E Jantar druhé hospody}
+    direction: DOWN
+    centerElement: true
 - assertVisible: '.*67\sKč.*'
+- evalScript: ${output.local.screenshot('places-online-catalogue')}
 - tapOn: Namířit kompas na E2E Druhá hospoda
 - assertVisible: '.*E2E Druhá hospoda.*'
 - evalScript: ${output.local.offline()}
@@ -37,6 +42,11 @@ tags: [critical, full]
 - inputText: E2E Druhá hospoda
 - tapOn: 'E2E Druhá hospoda,.*'
 - assertVisible: E2E Druhá hospoda
+- evalScript: ${output.local.screenshot('places-offline-catalogue-top')}
+- scrollUntilVisible:
+    element: {text: E2E Jantar druhé hospody}
+    direction: DOWN
+    centerElement: true
 - assertVisible: E2E Jantar druhé hospody
 - assertVisible: '0,3 l'
 - assertVisible: '.*67\sKč.*'
