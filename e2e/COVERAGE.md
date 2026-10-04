@@ -258,3 +258,10 @@ Integrovaný commit `f262237b`, Pixel 10 / API 36.1, běh `645f3dd9`: všech 33 
 Nezávislé review prohlédlo všech 52 bezpečných snímků. Potvrdilo známé NP-E2E-005, 014, 015 a Android omezení NP-E2E-016; poslední jmenované není důkaz produkčního pádu. Zkrácená výzva na prázdném profilu po onboardingu je drobná vizuální poznámka, akce zůstává čitelná. Obrázky během prolínání nebo spinneru se nepoužívají jako důkaz dokončené publikace.
 
 Třináct selhání není zelená Android sada. Dvě byla ve změně jazyka a velikosti písmene testovacího jména, jedno v čekání na hlavní tab před dokončením onboardingu. Ověření e-mailu a reset hesla odmítl lokální helper kvůli Android aliasu hostu; screenshot profilu ukázal hlášku překrytou klávesnicí. Tyto úpravy testů a infrastruktury se ověřují cíleně. Katalog selhal přesně na známém NP-E2E-014 a profil po smazání na NP-E2E-016. U komunitní polohy, domovského bodu, obnovení žebříčku a atributů přidané hospody je potřeba další důkaz; jednorázový neúspěch přeskočení onboardingu v testu večera nemá prokázanou příčinu. Výsledek tohoto běhu se nepřepisuje podle pozdějších oprav.
+
+
+### Android, cílená stabilita nastavení a obnovy
+
+Běh `02844663` na integračním commitu `ef9638ad` třikrát dokončil všechny tři scénáře nastavení, zamítnutých médií a přerušeného onboardingu. Každé kolo skončilo **3 PASS / 0 FAIL**, engine 398,846 / 389,831 / 384,696 s; celý příkaz 1 215,581 s, exit 0. Modelová volání a tokeny 0, replay metriky nepoužitelné. Změna jazyka čeká na nový hlavní tab před dalším deep linkem, Android test respektuje automatická velká písmena jména a restart rozlišuje hlavní obrazovku od dosud nedokončeného onboardingu.
+
+Všech 12 bezpečných snímků prohlédl nezávislý reviewer. Nový P0/P1/P2 nález nevznikl; známé zkrácení anglického vysvětlení vody NP-E2E-012 přetrvává. Některé snímky nastavení zachycují formulář nebo přechod, proto uložené preference prokazují až dokončené assertions po restartu. Soukromé debug reporty byly odstraněné.
