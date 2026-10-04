@@ -1,6 +1,6 @@
 # Pokrytí skutečného mobilního E2E
 
-Průzkum vychází z čerstvého `origin/dev` na `e72d145c` (3. 10. 2026). Tři nezávislé read-only průzkumy prošly routy, klienty, backend a Jest. Tabulka popisuje ověřované uživatelské výsledky, nikoli počet jednotlivých kliknutí. `Plán` není důkaz proběhlého testu.
+Průzkum začal na čerstvém `origin/dev` `e72d145c` (3. 10. 2026); infrastruktura a integrační větev byly 4. 10. aktualizované na `2e7a120e`. Tři nezávislé read-only průzkumy prošly routy, klienty, backend a Jest. Tabulka popisuje ověřované uživatelské výsledky, nikoli počet jednotlivých kliknutí. `Plán` není důkaz proběhlého testu.
 
 Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/drop klasifikaci, poškozenou storage a mockované závody. E2E přidává skutečný routing, nativní vstupy, SecureStore, AsyncStorage, restart procesu a lokální HTTP. Backendové oracles čtou skutečnou testovací DB přes místní kontrolní endpoint; nevyměňují odpovědi aplikačního API.
 
@@ -12,7 +12,7 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 | Reset hesla | Žádost v UI, lokální e-mail, nové heslo, staré odmítnuté, nové přihlásí | Reset neodvolá staré přihlášení nebo neuloží nové heslo | P0 | `identity/password-reset.yaml`: 3× po sobě zelené; skutečný lokální reset, odvolaná relace, staré heslo odmítnuté a nové přijato |
 | Odhlášení a změna účtu | A s offline zápisem, odhlášení, restart, login B | Soukromá historie nebo čekající zápis A se objeví u B | P0 | `identity/logout.yaml`: 3× po sobě zelené s opravou NP-E2E-011 v PR #215; historie a offline fronta A nepřešly pod B |
 | Smazání účtu | Zrušit potvrzení, potom smazat, restart; ověřit DB a lokální vyčištění | Smazání jen v UI, neodvolaná session, mazání po zrušení | P0 | `identity/delete.yaml`: 3× po sobě zelené; zrušení potvrzení nic nesmazalo, potvrzené DELETE 204, odvolané session a GET 401 po restartu |
-| Offline počítadlo | Zastavit vlastní backend, zapsat další pivo, restart offline, obnovit a foreground | Fronta nepřežije restart, výpadek odhlásí, sync duplikuje | P0 | `diary/evening.yaml`: celý průchod jednou zelený; stabilita čeká na nativní běh. Claim v `identity/registration.yaml` je samostatně blokovaný |
+| Offline počítadlo | Zastavit vlastní backend, zapsat další pivo, restart offline, obnovit a foreground | Fronta nepřežije restart, výpadek odhlásí, sync duplikuje | P0 | `diary/evening.yaml`: třikrát po sobě zelený, včetně skutečného výpadku, restartu a následného syncu. Claim v `identity/registration.yaml` je samostatně blokovaný |
 | Soukromí profilu | Nastavit soukromí v UI, ověřit pohled cizího účtu | Přepínač se neuloží nebo cizí účet dostane soukromý profil | P0 | `identity/profile.yaml`: 3× po sobě zelené včetně skutečného pohledu druhého účtu |
 | Soukromí party | Vypnout sdílení, ghost, blokování; obnovit druhý účet | Aktivita zůstane ve feedu, mapě nebo detailu cizího účtu | P0 | `places-social/party-privacy.yaml`: rozlišuje automatické a ruční sdílení; NP-E2E-005 vysvětluje omezení textu |
 | Soukromí fotek | Soukromá versus friends fotka, pohled druhého účtu | Galerie či feed vrátí fotku nepovolenému publiku | P0 | `identity/photos.yaml`: 3× po sobě zelené s opravou NP-E2E-010 v PR #214; skutečné soubory, přesná ID povoleného feedu, odmítnutý cizí účet, smazání a restart |
@@ -23,17 +23,17 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 | Offline katalog | Načíst, zastavit backend, restart a hledat známou hospodu | Snapshot zmizí, skryté místo se vrátí | P0 | `places-social/catalogue-offline.yaml`: oprava výběru řádku čeká na runtime |
 | Domovský bod | Zrušit ruční pin, uložit současnou polohu, restart a odstranit | Neodsouhlasený bod se uloží, restart jej ztratí nebo unikne na server | P0 | `places-social/home-persistence.yaml`: jednou zelený; nová kontrola uloženého bodu čeká na runtime |
 | Fotosoutěž | Výslovný souhlas se zveřejněním, hlasování a stažení | Zveřejnění bez souhlasu nebo změna původní visibility fotky | P0 | `places-social/contest-privacy.yaml`: jednou zelený, stabilita čeká |
-| Tours | Offline plán se dvěma zastávkami, restart a dokončení | Ztráta uloženého plánu nebo běhu | P0 | `diary/private-tour.yaml`: celý průchod jednou zelený, stabilita čeká |
+| Tours | Offline plán se dvěma zastávkami, restart a dokončení | Ztráta uloženého plánu nebo běhu | P0 | `diary/private-tour.yaml`: třikrát po sobě zelený, uložený offline plán po restartu a dokončený běh |
 | Tours sdílení | Soukromý/public odkaz, přijetí a zrušení | Odvolaný odkaz dál odhaluje plán nebo import vytvoří duplicitní kopii | P0 | `diary/shared-tour.yaml`: import a veřejná publikace prošly; celý průchod čeká, omezení nativního Copy níže |
 | Onboarding | Dokončení/přeskočení a restart; restart v průběhu | Onboarding se opakuje nebo označí nedokončený flow za dokončený | P1 | `identity/onboarding-complete.yaml` a `onboarding-interrupt.yaml`: oba 3× po sobě zelené, dokončení i přerušení ověřené po restartu |
 | Kompas | Nejbližší seeded hospoda, odhalení, detail, jiná hospoda | Špatný cíl nebo rozpojená identita detailu | P1 | `places-social/catalogue-offline.yaml`: skutečné seeded cíle, runtime čeká |
 | Kompas bez polohy | Odepřít oprávnění, otevřít ruční mapu a hledání | Nekonečné hledání nebo zablokovaný vstup do mapy | P1 | `places-social/permissions-denied.yaml`: opraveno iOS oprávnění `never`, runtime čeká |
 | Prázdný/chybový katalog | Prázdný výsledek versus výpadek, retry a zrušit filtr | Chyba se vydává za prázdné okolí, není cesta dál | P1 | `places-social/permissions-denied.yaml` ověřuje prázdné hledání; `catalogue-offline.yaml` dostupnost uloženého katalogu při výpadku; runtime čeká |
 | Mapa a hledání | Vybrat konkrétní výsledek, detail, zamířit kompas | Jiné místo v detailu, nefunkční návrat a zacílení | P1 | `places-social/catalogue-offline.yaml`: připraveno, runtime čeká |
-| Večer | Dopito, archiv, úprava a smazání piva offline, restart a sync | Úprava jiného večera, návrat smazaného piva, znovuotevřená návštěva | P1 | `diary/evening.yaml`: celý průchod jednou zelený včetně NP-E2E-006 s opravou PR #213; stabilita čeká |
-| Výčep | Publikovat offline, obnovit pouze foreground, potom restart | Publikace zůstane ve frontě nebo se doručí dvakrát | P0 | `diary/vycep.yaml`: NP-E2E-007 potvrzen; s opravou PR #212 celý průchod jednou zelený, stabilita čeká |
-| Detail piva | Ohodnotit pivo offline a po syncu otevřít jeho detail | Route nebo agregace patří jinému pivu | P1 | `diary/checkin.yaml`: celý průchod jednou zelený, skutečný offline BeerCheckIn a agregace po restartu; stabilita čeká |
-| Statistiky | Po zápisu/úpravě/smazání porovnat přesný baseline UI a serveru | Dvojí započítání remote/local nebo nezohledněné smazání | P1 | `diary/evening.yaml`: jednou zelené přesné 2 piva / 1 večer / 1 hospoda / 84 Kč po úpravě a smazání; stabilita čeká |
+| Večer | Dopito, archiv, úprava a smazání piva offline, restart a sync | Úprava jiného večera, návrat smazaného piva, znovuotevřená návštěva | P1 | `diary/evening.yaml`: třikrát po sobě zelený včetně NP-E2E-006 s opravou PR #213 |
+| Výčep | Publikovat offline, obnovit pouze foreground, potom restart | Publikace zůstane ve frontě nebo se doručí dvakrát | P0 | `diary/vycep.yaml`: třikrát po sobě zelený s opravou NP-E2E-007 v PR #212; skutečný foreground sync a kontrola po restartu |
+| Detail piva | Ohodnotit pivo offline a po syncu otevřít jeho detail | Route nebo agregace patří jinému pivu | P1 | `diary/checkin.yaml`: třikrát po sobě zelený, skutečný offline BeerCheckIn a agregace po restartu |
+| Statistiky | Po zápisu/úpravě/smazání porovnat přesný baseline UI a serveru | Dvojí započítání remote/local nebo nezohledněné smazání | P1 | `diary/evening.yaml`: třikrát po sobě přesné 2 piva / 1 večer / 1 hospoda / 84 Kč po úpravě a smazání |
 | Moje přidané hospody | Čekající/potvrzená hospoda, oprava názvu, zachování potvrzeného pinu | Editace vytvoří další hospodu nebo uloží starý pin | P1 | `places-social/pub-create-offline.yaml`: pending stav a přejmenování při zachování identity; runtime čeká |
 | Návrh akce | Navrhnout akci v hospodě, ověřit pending stav | Návrh je veřejný bez ověření nebo se retry duplikuje | P1 | `places-social/pub-event-moderation.yaml`: chyba při výpadku a pending stav po retry; runtime čeká |
 | Komunitní empty/error | Nepřihlášený, žádné akce, denied, chyba vytvoření a retry | Nekonečný spinner, duplikace vytvoření | P1 | `places-social/community-create-retry.yaml`: připraveno a nezávisle zkontrolováno, runtime čeká; restart draftu produkt neslibuje |
@@ -150,14 +150,14 @@ První stabilitní dávku ostatních 11 identity testů `ff585be9` po 246,804 s 
 |---|---:|---:|---:|---|
 | Spike / infrastruktura | 1 | 1 | 1 | [#208](https://github.com/tomasmach/na-pivo/pull/208) |
 | Účet, profil, média | 12, z toho 1 `blocked` | 11 | 11 | [#216](https://github.com/tomasmach/na-pivo/pull/216) |
-| Deník a tour | 5 | 4 | 0 | [#217](https://github.com/tomasmach/na-pivo/pull/217) |
+| Deník a tour | 5 | 4 | 4 | [#217](https://github.com/tomasmach/na-pivo/pull/217) |
 | Hospody a Parta | 15 | 6 | 0 | [#218](https://github.com/tomasmach/na-pivo/pull/218) |
 
 Čísla celých průchodů nejsou důkazem finální integrované revize. Zpřesněné odmítnutí hesla prošlo v dávce `6c95df96`. Fotkový feed už má tři úspěšné průchody; veřejný katalog tour a formuláře hospod ještě čekají na dokončení aktuálního průchodu. Dřívější diskový blokátor se po uvolnění prostředků neopakoval; ověřování oblastí pokračuje jednotlivě. Zbývající P0/P1 položky čekají na dokončení skutečných průchodů a jejich opakování. Následuje čistá celá sada a měření obou celých příkazů. Studený ani opakovaný běh celé integrované sady nebyl naměřen; čísla se neodhadují. Android zatím nebyl spuštěn, protože podmínka zelené iOS sady není splněná.
 
 Nezávislé review opravilo slabou kontrolu soukromého feedu na přesná ID a kontrolu starého hesla na konkrétní serverové odmítnutí. Úklid procesů má tři lokální regresní kontroly: neznámý/ukončený PID nedostane signál, vlastní potomek se ukončí i po zániku leadera před nebo během úklidu. Všechny tři prošly za 10,2 s. Krátký nativní průchod `15eb6f6d` ověřil konec runneru, volné porty, Shutdown vlastního simulátoru a smazání soukromých reportů; dlouhá dávka `4b32cc73` následně dokončila úklid za 3,696 s, měřeno od vytvoření engine metrik do dokončení celého příkazu. Nejde o další mobilní testy v tabulce.
 
-Dev dependency a backend dependency audity v dosavadním CI selhaly také na srovnávacím základu, neoznačujeme je za zelené CI. Existující CI nebylo měněno. Devět malých produktových oprav má samostatné PR; NP-E2E-005 a NP-E2E-009 zůstávají nejasnostmi textu k produktovému rozhodnutí, viz BUGS.md.
+Dřívější auditní blokátory opravil samostatný upstream PR #221. Po aktualizaci na `2e7a120e` prošel backend, dependency review i GitGuardian v infra CI; mobilní job odhalil rozdíl TypeScript prostředí čistého checkoutu a lokálně vygenerovaných Expo typů. Verzovaná reference Expo typů nyní určuje stejné prostředí i bez startu Expa; lokální kontrola přes stejný TypeScript compiler měla bez generovaných Expo souborů před opravou 12 chyb a po ní 0. Běžný lokální typecheck také prošel; nový CI běh ještě čeká na výsledek. Existující CI tento E2E úkol nemění. Devět malých produktových oprav má samostatné PR; NP-E2E-005 a NP-E2E-009 zůstávají nejasnostmi textu k produktovému rozhodnutí, viz BUGS.md.
 
 
 Čerstvý nezávislý reviewer po integraci prošel všech 33 scénářů, assertion JS, seed data, helpery a produkční pojistky. Jediný další nález byl příliš široký slib kontroly termínu veřejné tour: UI termín nevyplňovalo a test četl jen DB snapshot. Tato slabá kontrola i tvrzení byly odstraněné. Scénář dál ověřuje přesné zastávky, identity, jednorázový import a skutečné odvolání obou odkazů. Ochranu vyplněného termínu při serializaci veřejné tour pokrývá existující backendový `test_tour_publications.py`; E2E si tento důkaz nepřisvojuje. Cílená syntaxe JS a Ruff po opravě prošly. Žádný nový nativní běh tím nebyl nahrazen.
@@ -187,3 +187,17 @@ Všech 11 dostupných identity scénářů prošlo třikrát po sobě. Deset nez
 Replayed, handed off a missed jsou u Maestra nepoužitelné. Každý úspěšný průchod dokončil svůj skutečný DB/API oracle. [Smazaný účet](https://files.tmach.dev/identity-account-deleted-6da562502be14425a317.png), [izolovaný další účet](https://files.tmach.dev/identity-next-account-isolated-89533f4b2e2646faaacf.png) a [jediná zbývající fotka pro přátele](https://files.tmach.dev/identity-photo-private-isolated-c20d5c7c127d470699a8.png) jsou zkontrolované konečné screenshoty druhého kola. Poslední obrázek ukazuje stav po smazání soukromé fotky; oracle zároveň odmítá přístup cizímu účtu. Funkční úspěch nastavení neruší známý vizuální nález NP-E2E-012.
 
 Úklid po dlouhé dávce `4b32cc73` trval 3,696 s. Měření začíná původním vytvořením `metrics.json`, protože úspěšný runner soubor po části úklidu přepisuje. Vlastní služby skončily, porty se uvolnily a soukromé debug reporty byly odstraněné. Celá integrovaná sada a Android stále čekají na dokončení ostatních oblastí.
+
+
+### Stabilita deníku, 4. 10. 2026
+
+Čtyři z pěti diary scénářů mají tři úspěšné průchody po sobě. `checkin`, `evening` a `private-tour` navázaly na své předchozí jednotlivé úspěchy dávkami `1e640a8e` a `1e43ee2e`. `vycep` završil předchozí dva úspěchy dávkou `1e640a8e`. Každý dokončil skutečný DB/API oracle a bezpečný screenshot. Sdílená tour se ověřuje samostatně.
+
+| Běh | Výsledek | Maestro | Celý příkaz | Modelová volání / tokeny |
+|---|---:|---:|---:|---:|
+| `1e640a8e` | 4/4 | 513,569 s | 550,690 s | 0 / 0 |
+| `1e43ee2e` | 3/3 | 401,895 s | 437,260 s | 0 / 0 |
+
+Večerní statistiky obsahují přesně dvě piva, jeden večer, jednu hospodu a 84 Kč. Detail skutečného piva má hodnocení 4,0 a „Má říz“. Soukromá tour zachová dvě zastávky, první dokončenou a druhou přeskočenou, a jediné zapsané pivo; nevytvoří veřejný ani soukromý odkaz.
+
+Při odvolávání sdílené tour se po zrušení veřejné publikace opakovaně ztratila dostupnost další nabídky pro nativní automatizaci, přestože screenshot ukazoval správnou nabídku a viditelný odkaz. Locator textu i testID selhaly ve stejném místě. Upravený průchod po skutečném veřejném 404 restartuje appku, znovu otevře zachovaný plán a teprve potom odvolá soukromý odkaz. Tím navíc ověřuje zachování plánu při restartu; nedokazuje opravu dostupnosti nabídky ve stejném procesu. Není doložený produktový bug.
