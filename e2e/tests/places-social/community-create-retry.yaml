@@ -80,6 +80,11 @@ tags: [full]
       platform: Android
     commands:
       - evalScript: ${output.local.screenshot('social-android-community-location-requested')}
+      - runFlow:
+          when:
+            visible: 'For a better experience, your device will need to use Location Accuracy'
+          commands:
+            - tapOn: Turn on
       - extendedWaitUntil:
           visible: Poloha uložená jen k tomuto setkání
           timeout: 30000
