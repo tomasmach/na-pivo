@@ -38,6 +38,10 @@ tags: [critical, full]
       - waitForAnimationToEnd
       - evalScript: ${output.local.screenshot('places-feedback-gallery')}
       - tapOn: {text: 'Photo taken on .*', index: 0}
+      - runFlow:
+          when: {visible: Done}
+          commands:
+            - tapOn: Done
 - assertVisible: Příloha je připravená
 - scrollUntilVisible:
     element: {id: feedback-message}
