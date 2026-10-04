@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Offline logout isolates the next account
 tags: [critical, full, identity]
 ---

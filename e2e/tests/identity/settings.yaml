@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Settings persist across restart and language reload
 tags: [full, identity]
 ---

@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Registration claims history and verified email unlocks export
 # Blocked: local React password category stays "one", also with character-by-character input.
 # Keep the full reproduction; registration limits are documented in ../../COVERAGE.md.

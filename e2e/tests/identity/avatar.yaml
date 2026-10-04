@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Native avatar upload and removal survive restart
 tags: [full, identity]
 ---

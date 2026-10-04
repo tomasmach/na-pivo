@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Account deletion confirms and revokes sessions
 tags: [critical, full, identity]
 ---

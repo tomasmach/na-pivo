@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Completed onboarding persists and offers native providers
 tags: [full, identity]
 ---

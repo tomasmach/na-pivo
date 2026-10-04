@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Offline private photos persist and remain isolated
 tags: [critical, full, identity]
 ---
