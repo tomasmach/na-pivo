@@ -32,6 +32,10 @@ export function resetApp() {
 export function prepareAppDevice() {
   installApp();
   if (platform === 'android') {
+    // Expo --localhost advertises a loopback bundle URL in its manifest.
+    // Forward only this owned emulator's Metro port to the host.
+    const port = process.env.NA_PIVO_E2E_METRO_PORT;
+    adb('reverse', `tcp:${port}`, `tcp:${port}`);
     adb('shell', 'cmd', 'uimode', 'night', 'yes');
     // Android's console accepts longitude first. Never forward this output.
     adb('emu', 'geo', 'fix', '14.42108', '50.08759');
@@ -48,7 +52,7 @@ export function openLink(link) {
 
 export function openDevelopmentBundle() {
   if (platform !== 'android') return;
-  const metro = `http://10.0.2.2:${process.env.NA_PIVO_E2E_METRO_PORT}?disableOnboarding=1`;
+  const metro = `http://127.0.0.1:${process.env.NA_PIVO_E2E_METRO_PORT}?disableOnboarding=1`;
   openLink(`napivo://expo-development-client/?url=${encodeURIComponent(metro)}`);
 }
 
