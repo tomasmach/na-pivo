@@ -59,6 +59,13 @@ tags: [full, identity]
     timeout: 15000
 - tapOn: { id: settings-language-en }
 - runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: { id: tab-index, text: "Compass tab" }
+          timeout: 60000
+- runFlow:
     file: ../../maestro/route.yaml
     env:
       ROUTE: /settings
@@ -82,6 +89,13 @@ tags: [full, identity]
 # Functional persistence does not close the visual text truncation in [NP-E2E-012](../../BUGS.md).
 - evalScript: ${output.local.screenshot('identity-settings-before-czech')}
 - tapOn: { id: settings-language-cs }
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: { id: tab-index, text: "Záložka Kompas" }
+          timeout: 60000
 - runFlow:
     file: ../../maestro/route.yaml
     env:
