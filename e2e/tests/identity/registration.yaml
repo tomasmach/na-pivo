@@ -1,7 +1,7 @@
 appId: com.tomasmach.na-pivo
 name: Registration claims history and verified email unlocks export
-# Blocked: native input reaches the client's minimum-password error; cause unresolved.
-# Keep the complete UI registration, claim, verification and export as a reproduction.
+# Blocked: local React password category stays "one", also with character-by-character input.
+# Keep the full reproduction; registration limits are documented in ../../COVERAGE.md.
 tags: [critical, full, identity, blocked]
 ---
 - runFlow:
@@ -75,10 +75,6 @@ tags: [critical, full, identity, blocked]
 - inputText:
     text: ${MAESTRO_PASSWORD}
     label: Enter disposable fixture password
-- copyTextFrom: { id: auth-password }
-- runScript:
-    file: registration-input.js
-    env: { PHASE: before }
 - tapOn: "HESLO"
 - waitForAnimationToEnd
 - copyTextFrom: { id: auth-email }
