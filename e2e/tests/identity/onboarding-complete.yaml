@@ -12,7 +12,16 @@ tags: [full, identity]
 - assertVisible: { id: onboarding-auth }
 - tapOn: "Založit účet"
 - assertVisible: { id: auth-email }
-- assertVisible: "Pokračovat přes Apple"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible: "Pokračovat přes Apple"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - assertNotVisible: "Pokračovat přes Apple"
 - assertVisible: "Pokračovat přes Google"
 - tapOn: "Zpět"
 - runFlow: ../../maestro/restart.yaml
