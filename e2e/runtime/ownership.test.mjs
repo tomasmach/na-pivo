@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { acquireLock } from './locks.mjs';
 import { isAlive, processIdentity, recordedProcesses, start, stop } from './processes.mjs';
 
@@ -76,4 +77,45 @@ test('a child remains recorded and stoppable after its group leader exits', asyn
     await stop(leader);
     assert.equal(isAlive(survivors[0]), false);
   } finally { await stop(leader); }
+});
+
+
+test('failed process inspection cannot reclaim an abandoned build lock', t => {
+  const f = fixture(t);
+  const owner = { ...dead, ...f };
+  fs.writeFileSync(f.lock, JSON.stringify(owner));
+  const bin = path.join(f.root, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'ps'), '#!/bin/sh\nexit 1\n', { mode: 0o700 });
+  const code = `import { acquireLock } from ${JSON.stringify(new URL('./locks.mjs', import.meta.url).href)}; acquireLock(${JSON.stringify(f.lock)}, ${JSON.stringify(owner)});`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', code], {
+    env: { ...process.env, PATH: bin }, stdio: 'pipe',
+  });
+  assert.equal(result.status, 1);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.lock)), owner);
+  assert.equal(fs.existsSync(`${f.lock}.recovering`), false);
+});
+
+test('recovery refuses a descendant without a verifiable birth time', t => {
+  const f = fixture(t);
+  fs.writeFileSync(f.lock, JSON.stringify({ ...dead, ...f }));
+  fs.writeFileSync(path.join(f.runDir, `process-${process.pid}.json`), JSON.stringify([{ pid: process.pid }]));
+  assert.throws(() => acquireLock(f.lock, { ...processIdentity(process.pid), ...f }), /Unverifiable/);
+  assert.equal(JSON.parse(fs.readFileSync(f.lock)).pid, dead.pid);
+});
+
+
+test('an interrupted child start keeps its build lock for inspection', t => {
+  const f = fixture(t);
+  fs.writeFileSync(f.lock, JSON.stringify({ ...dead, ...f }));
+  fs.writeFileSync(path.join(f.runDir, 'build-command-starting'), '');
+  assert.throws(() => acquireLock(f.lock, { ...processIdentity(process.pid), ...f }), /incomplete process ownership/);
+  assert.equal(JSON.parse(fs.readFileSync(f.lock)).pid, dead.pid);
+});
+
+test('legacy build locks without descendant evidence remain reserved', t => {
+  const f = fixture(t);
+  fs.writeFileSync(f.lock, JSON.stringify({ ...dead, root: f.root }));
+  assert.throws(() => acquireLock(f.lock, { ...processIdentity(process.pid), ...f }), /Legacy E2E lock/);
+  assert.equal(JSON.parse(fs.readFileSync(f.lock)).pid, dead.pid);
 });

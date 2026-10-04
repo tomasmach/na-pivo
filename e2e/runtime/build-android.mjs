@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
+import { acquireLock } from './locks.mjs';
 import { start, stop } from './processes.mjs';
 import { sdkPath } from './device.mjs';
 
@@ -14,10 +16,13 @@ if (fs.existsSync(path.join(root, 'android')) && !fs.existsSync(marker)) {
   throw new Error('Existing native Android files have unknown ownership; inspect them before preparing E2E.');
 }
 fs.mkdirSync(path.dirname(marker), { recursive: true });
+const runDir = path.join(root, '.e2e/runs', randomUUID());
+fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
 const env = {
   PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
   JAVA_HOME: process.env.JAVA_HOME || execFileSync('/usr/libexec/java_home', ['-v', '17'], { encoding: 'utf8' }).trim(),
   ANDROID_HOME: sdkPath(), NODE_ENV: 'development', CI: '1',
+  NA_PIVO_E2E_RUN_DIR: runDir,
   E2E_TELEMETRY_DISABLED: '1', EXPO_NO_TELEMETRY: '1', EXPO_NO_DOTENV: '1',
   EXPO_PUBLIC_BACKEND_MODE: 'local', EXPO_PUBLIC_BACKEND_URL: 'local',
   EXPO_PUBLIC_BACKEND_HOST: '127.0.0.1', EXPO_PUBLIC_BACKEND_PORT: '18121',
@@ -26,8 +31,10 @@ const env = {
 };
 const lock = path.join(root, '.e2e/android-build.lock');
 const birth = pid => execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8' }).trim();
-fs.writeFileSync(lock, JSON.stringify({ root, pid: process.pid, started: birth(process.pid) }), { flag: 'wx', mode: 0o600 });
-fs.writeFileSync(marker, JSON.stringify({ root, pid: process.pid, started: birth(process.pid) }), { mode: 0o600 });
+const owner = { root, runDir, pid: process.pid, started: birth(process.pid), platform: 'android' };
+if (!acquireLock(lock, owner)) throw new Error('Android E2E build remains reserved; inspect its owner and recovery guard.');
+fs.writeFileSync(path.join(runDir, 'owner.json'), JSON.stringify(owner), { mode: 0o600 });
+fs.writeFileSync(marker, JSON.stringify(owner), { mode: 0o600 });
 let child;
 let closing = false;
 async function cleanup(code) {
@@ -47,10 +54,13 @@ const watch = setInterval(() => {
   }
 }, 1000);
 async function command(executable, args, cwd) {
+  const pending = path.join(runDir, 'build-command-starting');
+  fs.writeFileSync(pending, '', { mode: 0o600 });
   child = start(executable, args, { cwd, env });
   fs.writeFileSync(path.join(root, '.e2e/android-build-process.json'), JSON.stringify({
     root, pid: child.pid, started: birth(child.pid),
   }), { mode: 0o600 });
+  fs.unlinkSync(pending);
   const [code] = await once(child, 'exit');
   if (closing) return;
   if (code !== 0) throw new Error('Owned local Android build command failed.');
