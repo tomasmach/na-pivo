@@ -72,6 +72,7 @@
 - Příčina: `flushNightsQueue()` se spouští při mountu a enqueue, ale chybí v obsluze `AppState` pro návrat do popředí. Ostatní fronty v ní mají opakované doručení.
 - Reprodukce: `tests/diary/vycep.yaml`, běh `c099c714`, 118,561 s, 0/1 úspěšných testů. [Screenshot aktivního detailu bez doručené publikace](https://files.tmach.dev/diary-vycep-foreground-not-synced-9fddd7abd89e4850bb1e.png).
 - Stav: oprava v samostatném [PR #212](https://github.com/tomasmach/na-pivo/pull/212). Stejný celý průchod po opravě prošel v běhu `051e9968` za 2 min 16 s: skutečná DB obsahovala právě jednu publikovanou noc, jedno pivo a uzavřenou návštěvu; po dalším restartu se noc zobrazila i ve Výčepu. [Výsledný screenshot](https://files.tmach.dev/diary-vycep-published-e1e795908295499da217.png). Kontrola typů, 16 souvisejících Jest testů a nezávislé review prošly. Dotčený deníkový test následně dokončil tři úspěšné průchody; přesná měření uvádí COVERAGE.md.
+- Android 4. 10.: Pixel 10 / API 36.1, běh `18499f44` potvrdil stejný nedoručený zápis po otevření a zavření lišty oznámení. Proces se nezměnil, detail byl aktivní, po 15 s bylo v DB 0 publikovaných večerů při zachovaném jednom pivu a návštěvě. [Android před opravou](https://files.tmach.dev/android-night-not-synced-f768531e81194472b2b1.png). Tato cesta emituje `focus`, nikoli `AppState` změnu; PR #212 nyní doplňuje stejný flush i sem. Regresní průchod používá skutečnou lištu a porovnává PID i následný stav DB. Jeho ověření po této úpravě probíhá.
 
 ## NP-E2E-008: offline Parta žádá již vyplněnou přezdívku
 
