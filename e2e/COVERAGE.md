@@ -144,7 +144,7 @@ Jde o konkrétní blokátor automatizace, nikoli o prokázaný produktový bug. 
 První stabilitní dávku ostatních 11 identity testů `ff585be9` po 246,804 s ukončil disk guard kódem 75. Startovala s 4,37 GiB, ale i při jediném simulátoru kleslo místo pod 1 GiB; následná kontrola systému ukázala 14 GiB použitého swapu. Avatar před přerušením prošel, zbytek dávky nemá úplný engine report. Vlastní procesy skončily, tři porty se uvolnily, simulátor byl Shutdown a soukromé debug reporty byly odstraněné. Žádný nový test tím nezískal tři po sobě jdoucí průchody. Tento tehdejší běh čekal na uvolnění prostředků; cizí session nebyly ukončeny. Dne 4. 10. práce pokračovala s více než 90 GiB volnými a jediným simulátorem.
 
 
-### Předání oblastí a zbývající důkaz
+### Předání oblastí a zbývající důkaz na iOS
 
 | Oblast | Připravené scénáře | Celý průchod alespoň jednou v dosavadních revizích | Tři po sobě | PR |
 |---|---:|---:|---:|---|

@@ -156,3 +156,12 @@
 - Stav: neopraveno. Funkční test ověřuje skutečné hodnocení a agregaci, jeho úspěch nepotvrzuje správnou lokalizaci zobrazení. Stejný formát používá také formulář hodnocení a detail kamaráda; sjednocení patří do samostatné úpravy.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
+
+## NP-E2E-016: chybové okno Android vývojového klienta překryje profil po restartu
+
+- Prostředí: Pixel 10 / API 36.1, lokální Expo dev build, Expo Router 56.2.21. Priorita P1 pro spolehlivost vývojového ověřování; produkční dopad není prokázaný.
+- Kroky: v `identity/delete.yaml` přihlásit lokální fixture, zapsat pivo, nejprve zrušit a potom potvrdit smazání účtu, restartovat appku a otevřít profil.
+- Očekávání: anonymní profil nabídne vytvoření účtu a počítadlo je prázdné. API dál odmítá relace smazaného účtu.
+- Skutečnost: běh `645f3dd9` prošel přesným backendovým oracle fáze `deleted`, tedy smazáním a odvoláním relací. Po restartu očekávané UI překryl LogBox s hlášením o aktualizaci React stavu před připojením komponenty a stackem `ContextNavigator / ExpoRoot.js:135`. Celý test neprošel. [Zkontrolovaný snímek](https://files.tmach.dev/android-deleted-profile-diagnostic-bec365aa28474a8b89bb.png).
+- Diagnóza: instalovaný Router získává Android počáteční URL asynchronně; callback v `fork/useLinking.native.js:123–127` volá setter z navigačního kontejneru. Stejný symptom popisuje [Expo #47659](https://github.com/expo/expo/issues/47659), uzavřené hlášení bez platné minimální reprodukce. Shoda podporuje hypotézu závodu při startu, nepotvrzuje příčinu tohoto běhu ani produkční pád.
+- Stav: známé selhání Android dev runtime. LogBox se nevypíná ani automaticky nezavírá; knihovny se kvůli testu nepatchují. iOS smazání má samostatně doložené tři úspěšné průchody. Oprava frameworku není malá prokázaná produktová oprava v rozsahu této sady.
