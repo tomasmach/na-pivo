@@ -471,6 +471,7 @@ export default function RootLayout() {
       Platform.OS === 'android'
         ? AppState.addEventListener('focus', () => {
             void reconcileLiveBeerActivityAndAutoArchive();
+            void flushNightsQueue();
           })
         : null;
     return () => {
