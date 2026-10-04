@@ -62,7 +62,7 @@ Aktuální důkazy a omezení jsou v [COVERAGE.md](COVERAGE.md), produktové chy
 
 ## Pokračování před sloučením PR
 
-Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Před dalším nativním během uvolni dostatečnou rezervu stroje, poslední dávku i s jediným simulátorem ukončil disk guard.
+Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Oblasti ověřuj postupně a zachovej diskovou rezervu runneru. Účet a média už mají tři úspěšné průchody; stav zbývajících oblastí a celé sady uvádí COVERAGE.md.
 
 ```sh
 npm run e2e:full -- e2e/tests/identity/ --stability
