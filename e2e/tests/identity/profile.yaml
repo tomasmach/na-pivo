@@ -34,7 +34,16 @@ tags: [critical, full, identity]
 - tapOn: { id: profile-nickname }
 - eraseText
 - inputText: "E2EUpdated"
-- pressKey: Enter
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - pressKey: Enter
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - assertVisible: { id: profile-nickname, text: "E2EUpdated" }
 - extendedWaitUntil:
     visible: "Volné"
