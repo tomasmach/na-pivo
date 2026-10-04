@@ -20,11 +20,24 @@ tags: [critical, full, identity]
       ROUTE: /profile/photos
 - tapOn: "Přidat fotku piva"
 - tapOn: { id: photo-source-library }
-- extendedWaitUntil:
-    visible: { id: PXGGridLayout-Info, index: 0 }
-    timeout: 15000
-- waitForAnimationToEnd
-- tapOn: { id: PXGGridLayout-Info, index: 0 }
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: { id: PXGGridLayout-Info, index: 0 }
+          timeout: 15000
+      - waitForAnimationToEnd
+      - tapOn: { id: PXGGridLayout-Info, index: 0 }
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: { text: "Photo taken on .*", index: 0 }
+          timeout: 15000
+      - waitForAnimationToEnd
+      - tapOn: { text: "Photo taken on .*", index: 0 }
 - assertVisible: { id: photo-caption }
 - tapOn: { id: photo-caption }
 - eraseText
@@ -64,11 +77,24 @@ tags: [critical, full, identity]
       ROUTE: /profile/photos
 - tapOn: "Přidat fotku piva"
 - tapOn: { id: photo-source-library }
-- extendedWaitUntil:
-    visible: { id: PXGGridLayout-Info, index: 0 }
-    timeout: 15000
-- waitForAnimationToEnd
-- tapOn: { id: PXGGridLayout-Info, index: 0 }
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: { id: PXGGridLayout-Info, index: 0 }
+          timeout: 15000
+      - waitForAnimationToEnd
+      - tapOn: { id: PXGGridLayout-Info, index: 0 }
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: { text: "Photo taken on .*", index: 0 }
+          timeout: 15000
+      - waitForAnimationToEnd
+      - tapOn: { text: "Photo taken on .*", index: 0 }
 - assertVisible: { id: photo-caption }
 - tapOn: { id: photo-caption }
 - eraseText

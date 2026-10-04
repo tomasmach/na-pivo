@@ -9,18 +9,27 @@ tags: [full, identity]
 - runFlow: ../../maestro/skip-onboarding.yaml
 - runFlow: ../../maestro/login.yaml
 - evalScript: ${output.local.request('/media', {})}
-- launchApp:
-    arguments:
-      "--initialUrl": ${MAESTRO_METRO}
-      "-EXDevMenuShowsAtLaunch": "NO"
-      "-EXDevMenuIsOnboardingFinished": "YES"
-      "-EXDevMenuShowFloatingActionButton": "NO"
-    permissions:
-      all: deny
-      location: inuse
-      photos: deny
-      camera: deny
-      notifications: deny
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          arguments:
+            "--initialUrl": ${MAESTRO_METRO}
+            "-EXDevMenuShowsAtLaunch": "NO"
+            "-EXDevMenuIsOnboardingFinished": "YES"
+            "-EXDevMenuShowFloatingActionButton": "NO"
+          permissions:
+            all: deny
+            location: inuse
+            photos: deny
+            camera: deny
+            notifications: deny
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:
@@ -28,7 +37,20 @@ tags: [full, identity]
 - tapOn: "Upravit profil"
 - assertVisible: "E2EPivar"
 - tapOn: { id: profile-avatar-pick }
-- assertVisible: "Otevřít Nastavení"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible: "Otevřít Nastavení"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      # Android's system picker does not require broad photo-library access.
+      - extendedWaitUntil:
+          visible: { text: "Photo taken on .*", index: 0 }
+          timeout: 15000
+      - pressKey: Back
 - scrollUntilVisible:
     element: { id: profile-display-name }
     direction: DOWN
@@ -50,6 +72,11 @@ tags: [full, identity]
 - tapOn: { id: photo-source-camera }
 - runFlow:
     when:
+      platform: Android
+    commands:
+      - tapOn: "Don’t allow"
+- runFlow:
+    when:
       visible: Zrušit
     commands:
       - tapOn: Zrušit
@@ -58,26 +85,47 @@ tags: [full, identity]
       visible: { id: photo-source-close }
     commands:
       - tapOn: { id: photo-source-close }
-- launchApp:
-    arguments:
-      "--initialUrl": ${MAESTRO_METRO}
-      "-EXDevMenuShowsAtLaunch": "NO"
-      "-EXDevMenuIsOnboardingFinished": "YES"
-      "-EXDevMenuShowFloatingActionButton": "NO"
-    permissions:
-      all: deny
-      location: inuse
-      photos: allow
-      camera: deny
-      notifications: deny
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          arguments:
+            "--initialUrl": ${MAESTRO_METRO}
+            "-EXDevMenuShowsAtLaunch": "NO"
+            "-EXDevMenuIsOnboardingFinished": "YES"
+            "-EXDevMenuShowFloatingActionButton": "NO"
+          permissions:
+            all: deny
+            location: inuse
+            photos: allow
+            camera: deny
+            notifications: deny
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:
       ROUTE: /profile/photos
 - tapOn: "Přidat fotku piva"
 - tapOn: { id: photo-source-library }
-- assertVisible: "Cancel|Zrušit"
-- tapOn: "Cancel|Zrušit"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible: "Cancel|Zrušit"
+      - tapOn: "Cancel|Zrušit"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: { text: "Photo taken on .*", index: 0 }
+          timeout: 15000
+      - pressKey: Back
 - runFlow:
     when:
       visible: { id: photo-source-close }
