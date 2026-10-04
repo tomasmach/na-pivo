@@ -9,18 +9,36 @@ tags: [full]
 - runFlow: ../../maestro/skip-onboarding.yaml
 - runFlow: ../../maestro/login.yaml
 - runScript: oracle.js
-- launchApp:
-    arguments:
-      '--initialUrl': ${MAESTRO_METRO}
-      '-EXDevMenuShowsAtLaunch': 'NO'
-      '-EXDevMenuIsOnboardingFinished': 'YES'
-      '-EXDevMenuShowFloatingActionButton': 'NO'
-    permissions:
-      all: deny
-      location: never
-      photos: allow
-      camera: deny
-      notifications: deny
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          arguments:
+            '--initialUrl': ${MAESTRO_METRO}
+            '-EXDevMenuShowsAtLaunch': 'NO'
+            '-EXDevMenuIsOnboardingFinished': 'YES'
+            '-EXDevMenuShowFloatingActionButton': 'NO'
+          permissions:
+            all: deny
+            location: never
+            photos: allow
+            camera: deny
+            notifications: deny
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - launchApp:
+          permissions:
+            all: deny
+            location: deny
+            camera: deny
+            notifications: deny
+      - evalScript: ${output.local.request('/app/open', {})}
+      - extendedWaitUntil:
+          visible: {id: tab-index}
+          timeout: 60000
 - runFlow:
     file: ../../maestro/route.yaml
     env:
