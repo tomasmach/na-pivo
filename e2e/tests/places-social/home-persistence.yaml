@@ -38,6 +38,11 @@ tags: [critical, full]
       platform: Android
     commands:
       - evalScript: ${output.local.screenshot('places-android-home-location-requested')}
+      - extendedWaitUntil:
+          visible:
+            text: 'For a better experience, your device will need to use Location Accuracy|Uložit domov'
+            enabled: true
+          timeout: 30000
       - runFlow:
           when:
             visible: 'For a better experience, your device will need to use Location Accuracy'
