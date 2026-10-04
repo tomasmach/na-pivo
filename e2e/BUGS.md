@@ -133,6 +133,15 @@
 - Skutečnost: screenshot ukazuje všechny tři správné hospody, ale nativní strom vrací celou kartu včetně nadpisu, zavření a řádků jako jediný prvek. Přesný existující accessibilityLabel řádku proto nelze použít.
 - Příčina: obalový `Pressable` v `BeerMapScreen` má prázdný `onPress` a automaticky slučuje přístupné potomky.
 - Reprodukce: `tests/places-social/catalogue-offline.yaml`, běhy `3bd48f79` a `0b7023a7`. [Prohlédnutý screenshot před opravou](https://files.tmach.dev/places-map-catalogue-list-b009ac0db45f4f9f8f45.png). Prázdný mapový podklad odpovídá záměrně neplatnému místnímu mapovému klíči; tento nález se týká dostupnosti konkrétních řádků.
-- Stav: známé selhání katalogového testu na původním dev. Minimální oprava `51c46221` nastavuje pouze `accessible={false}` na obalu; jednotlivá tlačítka a jejich handlery zůstávají stejné. Nezávislé review bez nálezů, ESLint a 28 stávajících mapových Jest testů prošly (2,779 s). Stejný nativní průchod po opravě zatím čeká; samostatný PR se dokončuje.
+- Stav: známé selhání katalogového testu na původním dev. Minimální oprava `51c46221` nastavuje pouze `accessible={false}` na obalu; jednotlivá tlačítka a jejich handlery zůstávají stejné. Nezávislé review bez nálezů, ESLint a 28 stávajících mapových Jest testů prošly (2,779 s). Oprava je v [PR #223](https://github.com/tomasmach/na-pivo/pull/223). Stejný nativní průchod už vybral druhý řádek a otevřel jeho správnou nabídku. Navazující offline kontrola odhalila samostatný NP-E2E-014; celý katalogový test zatím není zelený.
+
+## NP-E2E-014: nabídka otevřené hospody zmizí po offline restartu
+
+- Priorita P1. Integrační základ s mapovým fixem `51c46221`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: otevřít z mapy E2E Druhá hospoda s vlastní nabídkou, ověřit E2E Jantar druhé hospody / 0,3 l / 67 Kč, namířit kompas, zastavit vlastní backend, restartovat appku a stejnou hospodu otevřít přes hledání.
+- Očekávání: dříve načtená nabídka zůstane dostupná spolu se zbytkem uloženého katalogu.
+- Skutečnost: hospoda i otevírací doba zůstávají, ale celá sekce Na čepu chybí. Zmapovanost klesne z 15 % na 8 %. Cílený scroll k přesné položce ji nenajde; nejde jen o položku mimo viewport. Serverová data nebyla smazaná.
+- Reprodukce: `tests/places-social/catalogue-offline.yaml`, vlastní odlišný seed `places_catalogue`, běh `ff4cf78f`, engine 95,396 s. [Online nabídka](https://files.tmach.dev/places-online-catalogue-c08c60be9d724cd68757.png), [stejný detail po offline restartu](https://files.tmach.dev/places-offline-catalogue-top-d3bc75f9b58249399650.png). Oba snímky byly prohlédnuté.
+- Stav: známé selhání. Příčina a rozsah nejmenší opravy se ověřují; katalog nemá tři úspěšné průchody.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
