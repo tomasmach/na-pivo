@@ -145,4 +145,13 @@
 - Příčina: nearby API záměrně vrací malé katalogové preview bez nabídky (`backend/pubs/api/views.py`). `PubPageScreen` doplní výsledek `/pub-hours` pouze do stavu obrazovky; `hoursClient` ani kompas jej neukládají na disk. Hledání po restartu správně předá celý uložený záznam, který nabídku nikdy neobsahoval.
 - Stav: potvrzené známé selhání, bez opravy v tomto úkolu. Bezpečná oprava potřebuje novou operaci obohacení existujícího snapshotu podle totožnosti hospody a řešení souběhu zápisů. `upsertLocalPub` nepersistuje a slučuje podle společné geohash buňky, takže není bezpečnou zkratkou. Změna přesahuje povolenou malou opravu; samostatné produktové řešení musí ověřit katalog bez nabídky, online detail, restart a offline hledání. Katalogový test zůstává přísný a nepočítá se mezi úspěšné průchody.
 
+## NP-E2E-015: český detail piva používá desetinnou tečku
+
+- Priorita P2, lokalizace čísel. Integrační revize `d1e31603`, iPhone 17 / iOS 26.5.
+- Kroky: v české appce zapsat hodnocení 4,0, doručit offline zápis a po restartu otevřít detail stejného piva.
+- Očekávání: český detail ukáže „4,0“ a „4,0 / 5“.
+- Skutečnost: průměr, poslední zápis i historie ukazují „4.0“. Uložená číselná hodnota i přiřazení piva jsou správné.
+- Důkaz: `tests/diary/checkin.yaml`, celý integrační běh `bbf6501c`. [Prohlédnutý detail](https://files.tmach.dev/diary-rated-beer-detail-267aae0e5ee144ad97d1.png). `app/beer-detail.tsx` formátuje hodnocení přímo přes `toFixed(1)` bez jazyka.
+- Stav: neopraveno. Funkční test ověřuje skutečné hodnocení a agregaci, jeho úspěch nepotvrzuje správnou lokalizaci zobrazení. Stejný formát používá také formulář hodnocení a detail kamaráda; sjednocení patří do samostatné úpravy.
+
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
