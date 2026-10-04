@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Tour imports once and withdrawing both links preserves the original plan
 tags: [critical, full, diary]
 ---
@@ -9,7 +9,8 @@ tags: [critical, full, diary]
 - tapOn:
     id: tour-save
 - tapOn: Možnosti tour
-- tapOn: Odkaz na tour
+- tapOn:
+    id: tour-private-link-open
 - tapOn: Vytvořit odkaz
 - scrollUntilVisible:
     element: Kopírovat odkaz
@@ -79,11 +80,16 @@ tags: [critical, full, diary]
 - runScript:
     file: shared-tour.js
     env: { STAGE: unpublished }
-- waitForAnimationToEnd:
-    timeout: 5000
+# Reopen after restart to prove persistence between public and private revocation.
+# Repeated action-menu accessibility in the same process remains unverified.
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: flows/open-tour.flow
+    env: { TOUR_TITLE: E2E Sdílená tour }
 - tapOn: Možnosti tour
 - evalScript: ${output.local.screenshot('diary-tour-options-after-unpublish')}
-- tapOn: Odkaz na tour
+- tapOn:
+    id: tour-private-link-open
 - scrollUntilVisible:
     element: Zrušit odkaz
     direction: DOWN
@@ -105,7 +111,8 @@ tags: [critical, full, diary]
 - assertVisible: Zveřejnit pro všechny
 - assertNotVisible: Sdílet veřejný odkaz
 - assertNotVisible: Stáhnout z veřejných
-- tapOn: Odkaz na tour
+- tapOn:
+    id: tour-private-link-open
 - assertVisible: Vytvořit odkaz
 - assertNotVisible: Zrušit odkaz
 - evalScript: ${output.local.screenshot('diary-tour-links-withdrawn')}

@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Offline evening edits reconcile without losing the new drink
 tags: [critical, full, diary]
 ---

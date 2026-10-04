@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 ---
 # The first tour beer uses the main CTA; the repeat shortcut exists only after a beer.
 - runFlow:

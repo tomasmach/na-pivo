@@ -1,5 +1,5 @@
 # Regression NP-E2E-007 (../../BUGS.md): same process, active UI and actual delivered publication.
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Offline night publication flushes on foreground and stays published
 tags: [critical, full, diary]
 ---

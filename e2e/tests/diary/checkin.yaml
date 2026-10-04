@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Offline rating survives restart and populates the beer detail
 tags: [full, diary]
 ---
