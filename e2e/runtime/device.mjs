@@ -45,35 +45,12 @@ export function prepareAppDevice() {
     const port = process.env.NA_PIVO_E2E_METRO_PORT;
     adb('reverse', `tcp:${port}`, `tcp:${port}`);
     adb('shell', 'cmd', 'uimode', 'night', 'yes');
-    setFixtureLocation();
+    // Android's console accepts longitude first. Never forward this output.
+    adb('emu', 'geo', 'fix', '14.42108', '50.08759');
   } else {
     simctl('ui', device(), 'appearance', 'dark');
     simctl('location', device(), 'set', '50.08759,14.42108');
   }
-}
-
-export function prepareFixtureLocation() {
-  if (platform !== 'android') return;
-  // Balanced requests use the network provider, unavailable on this AVD.
-  // Feed Android's documented test provider the same synthetic fixture point.
-  adb('shell', 'appops', 'set', 'com.android.shell', 'android:mock_location', 'allow');
-  adb('shell', 'cmd', 'location', 'providers', 'add-test-provider', 'network');
-  adb('shell', 'cmd', 'location', 'providers', 'set-test-provider-enabled', 'network', 'true');
-  setFixtureLocation();
-}
-
-/** Keep the owned emulator's synthetic fix fresh for current-position requests. */
-export function setFixtureLocation() {
-  if (platform !== 'android') return;
-  // Android's console accepts longitude first. Never forward this output.
-  adb('emu', 'geo', 'fix', '14.42108', '50.08759');
-  adb('shell', 'cmd', 'location', 'providers', 'set-test-provider-location', 'network', '--location', '50.08759,14.42108', '--accuracy', '5');
-}
-
-export function clearFixtureLocation() {
-  if (platform !== 'android') return;
-  try { adb('shell', 'cmd', 'location', 'providers', 'remove-test-provider', 'network'); }
-  finally { adb('shell', 'appops', 'set', 'com.android.shell', 'android:mock_location', 'default'); }
 }
 
 export function openLink(link) {
