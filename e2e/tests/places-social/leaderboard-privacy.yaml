@@ -33,9 +33,18 @@ tags: [critical, full]
 - tapOn: Zablokovat
 - evalScript: ${output.local.poll(function () { output.ps.check('board-blocked'); }, 15000)}
 - runFlow:
+    when:
+      platform: Android
+    commands:
+      # The DB write can finish before the profile's asynchronous goBack.
+      - extendedWaitUntil:
+          visible: Žebříčky
+          timeout: 15000
+- runFlow:
     file: ../../maestro/route.yaml
     env:
       ROUTE: /leaderboards
+- assertVisible: Žebříčky
 - swipe:
     start: 50%, 30%
     end: 50%, 75%
