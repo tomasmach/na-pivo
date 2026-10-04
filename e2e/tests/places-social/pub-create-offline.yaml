@@ -97,7 +97,7 @@ tags: [critical, full]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /my-added-pubs
-- assertVisible: '.*E2E Přejmenovaná hospoda.*V kompasu.*'
+- assertVisible: 'Otevřít akce hospody E2E Přejmenovaná hospoda\. E2E Ulice 12, Praha'
 - assertNotVisible: '.*E2E Nová hospoda.*'
 - evalScript: ${output.local.screenshot('places-published-owner-edit')}
 - evalScript: ${output.ps.check('pub-renamed')}

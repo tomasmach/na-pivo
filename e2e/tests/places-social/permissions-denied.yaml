@@ -51,9 +51,9 @@ tags: [full]
     commands:
       - tapOn: OK
 - scrollUntilVisible:
-    element: {text: 'Popiš, co se stalo nebo co ti chybí…'}
+    element: {id: feedback-message}
     direction: UP
-- tapOn: 'Popiš, co se stalo nebo co ti chybí…'
+- tapOn: {id: feedback-message}
 - inputText: E2E Kamera odmítnuta
 - scrollUntilVisible:
     element: {text: Odeslat zpětnou vazbu}

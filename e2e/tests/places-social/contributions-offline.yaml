@@ -44,12 +44,20 @@ tags: [critical, full]
 - tapOn: Přidat pivo
 - tapOn: {id: beer-form-name}
 - inputText: E2E Nový ležák
+- assertVisible: {id: beer-form-name, text: E2E Nový ležák}
 - pressKey: Enter
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: {id: beer-form-price}
 - inputText: '52'
 - assertVisible: {id: beer-form-price, text: '52'}
+# Menu contributions have no default volume. Choose the submitted value explicitly.
+- scrollUntilVisible:
+    element: {text: '0,5 l'}
+    direction: DOWN
+    centerElement: true
+- tapOn: '0,5 l'
+- assertVisible: {text: '0,5 l', selected: true}
 # iOS number-pad has no Return key; center submit above the keyboard.
 - scrollUntilVisible:
     element: {id: beer-form-submit}

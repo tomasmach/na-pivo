@@ -17,6 +17,7 @@ tags: [critical, full]
 - tapOn: Přepnout na mapu
 - tapOn: Najít mě na mapě
 - tapOn: 'Zobrazit podniky jako seznam.*'
+- evalScript: ${output.local.screenshot('places-map-catalogue-list')}
 - scrollUntilVisible:
     element: {text: 'E2E Druhá hospoda, zatím nenavštíveno'}
     direction: DOWN
