@@ -111,7 +111,7 @@
 - Skutečnost: obrazovka ukazuje pouze Účet a Zpět. Akce Odhlásit se chybí i v nativním stromu. [Zkontrolovaný screenshot](https://files.tmach.dev/identity-account-offline-empty-before-5643c3a985bb4592bfcc.png).
 - Příčina: přihlášená session se správně obnoví ze SecureStore; vzdálený profil zůstane při výpadku `null`. `AccountScreen` v této větvi předčasně vrací samotnou hlavičku, přestože existující `auth.logout` podporuje místní odhlášení při síťové chybě.
 - Reprodukce: `tests/identity/logout.yaml`, běh `9cc075a2`. Dvě offline piva a jejich přetrvání po restartu byly ověřené před selháním.
-- Stav: malá oprava v samostatném [PR #215](https://github.com/tomasmach/na-pivo/pull/215) zachovává stávající tlačítko podle přihlášené session. Kontrola typů, lint, 99 souvisejících Jest testů a nezávislé review prošly. Stejný celý průchod `39ad9a48` prošel za 2 min 24 s: odhlášení offline, anonymní restart, login B a další restart, přesná kontrola oddělené historie a fronty v UI i DB. [Odhlášení dostupné offline](https://files.tmach.dev/identity-account-offline-logout-after-7d53be37cdeb482a98ab.png). Dotčený deníkový test následně dokončil tři úspěšné průchody; přesná měření uvádí COVERAGE.md.
+- Stav: malá oprava v samostatném [PR #215](https://github.com/tomasmach/na-pivo/pull/215) zachovává stávající tlačítko podle přihlášené session. Kontrola typů, lint, 99 souvisejících Jest testů a nezávislé review prošly. Stejný celý průchod `39ad9a48` prošel za 2 min 24 s: odhlášení offline, anonymní restart, login B a další restart, přesná kontrola oddělené historie a fronty v UI i DB. [Odhlášení dostupné offline](https://files.tmach.dev/identity-account-offline-logout-after-7d53be37cdeb482a98ab.png). Test odhlášení následně dokončil tři úspěšné průchody; přesná měření uvádí COVERAGE.md.
 - Hranice kontraktu: úmyslné offline odhlášení místně vymaže soukromá data včetně nedoručené fronty; neslibuje doručení ani vzdálené odvolání tokenu. E2E následně ověřuje, že fronta účtu A nepřejde pod účet B.
 
 ## NP-E2E-012: anglické nastavení vody ořízne vysvětlení
@@ -123,7 +123,6 @@
 - Důkaz: `tests/identity/settings.yaml`, běh `6c95df96`, první pokus. [Zkontrolovaný screenshot](https://files.tmach.dev/identity-settings-truncated-water-help-ec7deb9d5c18465fb488.png).
 - Stav: neopraveno. Průchod ověřil uložení nastavení a změnu jazyka, nikoli úplnou čitelnost popisu. Jeho funkční úspěch tento vizuální nález neuzavírá.
 
-Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
 
 
 ## NP-E2E-013: seznam hospod v mapě slučuje jednotlivé řádky
@@ -135,3 +134,5 @@ Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, oče
 - Příčina: obalový `Pressable` v `BeerMapScreen` má prázdný `onPress` a automaticky slučuje přístupné potomky.
 - Reprodukce: `tests/places-social/catalogue-offline.yaml`, běhy `3bd48f79` a `0b7023a7`. [Prohlédnutý screenshot před opravou](https://files.tmach.dev/places-map-catalogue-list-b009ac0db45f4f9f8f45.png). Prázdný mapový podklad odpovídá záměrně neplatnému místnímu mapovému klíči; tento nález se týká dostupnosti konkrétních řádků.
 - Stav: známé selhání katalogového testu na původním dev. Minimální oprava `51c46221` nastavuje pouze `accessible={false}` na obalu; jednotlivá tlačítka a jejich handlery zůstávají stejné. Nezávislé review bez nálezů, ESLint a 28 stávajících mapových Jest testů prošly (2,779 s). Stejný nativní průchod po opravě zatím čeká; samostatný PR se dokončuje.
+
+Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
