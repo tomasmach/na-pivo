@@ -86,6 +86,12 @@ output.ps = {
     } else if (phase === 'unchanged') {
       this.equal(s.addedPubs, [], 'Catalogue and local home operations must not create a pub.');
       this.equal(s.reports, [], 'Read-only catalogue operations must not report a pub.');
+    } else if (phase === 'catalogue') {
+      const pub = s.community.find(function(r) { return r.name === 'E2E Druhá hospoda'; });
+      output.local.check(!!pub, 'The cached pub shown after offline restart still has its real catalogue record.');
+      this.equal(pub.beers, [{name:'E2E Ležák',price_czk:41,volume_ml:500}], 'The offline screen shows the exact durable catalogue beer, price and volume.');
+      this.equal(s.addedPubs, [], 'Browsing the offline catalogue does not create a duplicate pub.');
+      this.equal(s.reports, [], 'Browsing the offline catalogue does not hide its pub.');
     } else if (phase === 'privacy-baseline') {
       this.friendActivity(true, true);
       output.local.check(output.local.observe('outsider', '/v1/friends/' + s.fixtureAccounts.E2EKamos).status === 200, 'Public friend profile is readable.');

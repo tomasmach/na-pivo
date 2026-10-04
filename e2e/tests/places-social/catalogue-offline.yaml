@@ -37,6 +37,9 @@ tags: [critical, full]
 - inputText: E2E Druhá hospoda
 - tapOn: 'E2E Druhá hospoda,.*'
 - assertVisible: E2E Druhá hospoda
+- assertVisible: E2E Ležák
+- assertVisible: '0,5 l'
+- assertVisible: '.*41\sKč.*'
 - evalScript: ${output.local.screenshot('places-offline-catalogue')}
 - evalScript: ${output.local.online()}
-- evalScript: ${output.ps.check('unchanged')}
+- evalScript: ${output.ps.check('catalogue')}

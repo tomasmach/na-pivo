@@ -55,9 +55,19 @@ tags: [full]
     direction: UP
 - tapOn: {id: feedback-message}
 - inputText: E2E Kamera odmítnuta
+# The multiline keyboard can cover submit; dismiss it through the static label.
+- scrollUntilVisible:
+    element: {text: 'Fotka nebo screenshot \(nepovinné\)'}
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- tapOn: 'Fotka nebo screenshot \(nepovinné\)'
+- waitForAnimationToEnd:
+    timeout: 5000
 - scrollUntilVisible:
     element: {text: Odeslat zpětnou vazbu}
     direction: DOWN
+    centerElement: true
 - tapOn: Odeslat zpětnou vazbu
 - assertVisible: Díky!
 - evalScript: ${output.local.poll(function () { output.ps.check('denied-feedback'); }, 15000)}
