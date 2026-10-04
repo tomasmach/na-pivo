@@ -28,6 +28,8 @@ E2E_SLOT=2 npm run e2e:critical -- e2e/tests/spike/
 
 `critical` a `full` vynechávají výslovně označené `blocked` scénáře. Ty se spouštějí samostatně přes `e2e:blocked` a nejsou započítané mezi ověřené průchody. Každý musí mít konkrétní důvod v COVERAGE.md. Aktuálně jde o registraci: Maestro vyplní nativní formulář, ale aplikace při odeslání hlásí příliš krátké heslo; příčina není prokázaná. Tento blokátor současně brání navazujícímu ověření e-mailu, claimu anonymních dat a exportu v daném průchodu.
 
+Katalogový průchod má navíc potvrzené známé selhání [NP-E2E-014](BUGS.md#np-e2e-014-nabídka-otevřené-hospody-zmizí-po-offline-restartu): nabídka dříve otevřené hospody se neuloží pro offline restart. Tento test zůstává v `critical` i `full`, takže do opravy vrací celý příkaz nenulový kód. Známou chybu je nutné ve výsledku odlišit od nových selhání; kontrola nabídky nebyla oslabená.
+
 ## Izolace a úklid
 
 Sloty 1–3 mají API `18121–18123`, Metro `18221–18223`, místní kontroler `18321–18323`, vlastní iPhone 17 a DB v `.e2e/runs/<id>/test.sqlite3`. Zámky jsou ve společném git adresáři, proto platí i mezi worktrees. Obsazený port znamená konec, nikoliv ukončení cizího procesu. Nevyužitý vlastní simulátor lze znovu použít; běžící simulátor se nikdy nepřebírá. `E2E_APP_PATH=/absolute/Napivo.app` dovoluje sdílet ověřenou binárku mezi worktrees, každý však má svoje Metro.
@@ -62,18 +64,17 @@ Aktuální důkazy a omezení jsou v [COVERAGE.md](COVERAGE.md), produktové chy
 
 ## Pokračování před sloučením PR
 
-Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Oblasti ověřuj postupně a zachovej diskovou rezervu runneru. Účet a média už mají tři úspěšné průchody; stav zbývajících oblastí a celé sady uvádí COVERAGE.md.
+Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Oblasti ověřuj postupně a zachovej diskovou rezervu runneru. Účet, média a deník už mají tři úspěšné průchody; stav zbývajících oblastí a celé sady uvádí COVERAGE.md.
 
 ```sh
 npm run e2e:full -- e2e/tests/identity/ --stability
 npm run e2e:full -- e2e/tests/diary/ --stability
 npm run e2e:full -- e2e/tests/places-social/ --stability
 npm run e2e:full
-npm run e2e:full
 npm run e2e:blocked
 ```
 
-Oblasti spouštěj postupně. Pro závěrečný první čistý simulátor archivuj vlastní `.e2e/simulator-1.json` pod jiným názvem; runner vytvoří nový jednoznačně pojmenovaný iPhone 17. Starý simulátor nemaž ani nepřebírej cizí. Oba poslední běhy celé sady mají zaznamenat `command-metrics.json`; druhý je opakovaný běh Maestra, ne AI replay cache. Registrovaný Android Pixel 10 je dostupný, ale Android runner a ověření čekají na zelené iOS.
+Oblasti spouštěj postupně. Pro závěrečný první čistý simulátor archivuj vlastní `.e2e/simulator-1.json` pod jiným názvem; runner vytvoří nový jednoznačně pojmenovaný iPhone 17. Starý simulátor nemaž ani nepřebírej cizí. Závěrečný celý běh zaznamená `command-metrics.json`. Maestro modelovou replay cache nemá, její metriky jsou nepoužitelné; skutečné replay měření původního TesterArmy spike je v COVERAGE.md. Další celý Maestro běh by tento důkaz neposkytl. Registrovaný Android Pixel 10 je dostupný, ale Android runner a ověření čekají na zelené iOS.
 
 ## Android, připraveno k nativnímu ověření
 
