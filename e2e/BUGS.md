@@ -20,7 +20,7 @@
 - Dopad: uživatel z karty nepozná, že se setkání nekoná. Kontrola skutečného API současně potvrdila, že schválenému hostovi se po zrušení přestane vracet přesná adresa; tento průchod neprokázal únik adresy.
 - [Screenshot zrušené akce](https://files.tmach.dev/social-event-cancelled-312c4184569a4c1a9733.png). Viditelná adresa je syntetická fixture a obrazovka patří pořadateli.
 - Reprodukce: `tests/places-social/community-privacy.yaml` (původně TesterArmy průchod `host approval reveals the event address only to the approved guest`). Vizuální kontrola zrušeného stavu selhala; samostatné kontroly autorizace adresy a DB prošly.
-- Stav: oprava v samostatném [PR #209](https://github.com/tomasmach/na-pivo/pull/209). Celý průchod jednou prošel za 44,17 s včetně kontroly DB, oprávnění adresy a [výsledného screenshotu](https://files.tmach.dev/social-event-cancelled-3b85cf888c7a496f80e5.png). Tři stabilitní běhy oblasti ještě nejsou dokončené.
+- Stav: oprava v samostatném [PR #209](https://github.com/tomasmach/na-pivo/pull/209). Celý průchod jednou prošel za 44,17 s včetně kontroly DB, oprávnění adresy a [výsledného screenshotu](https://files.tmach.dev/social-event-cancelled-3b85cf888c7a496f80e5.png). Stejný community privacy test má nyní tři po sobě jdoucí úspěchy; poslední z nich v běhu `3bd48f79` dne 4. 10. 2026.
 
 ## NP-E2E-003: nabídka počítadla a vnitřní zkratky nejsou přístupné
 
@@ -31,7 +31,7 @@
 - Příčina: `CoasterCard` slučuje interaktivní potomky a `CounterMoreSheet` skrývá celý podstrom přes `accessibilityElementsHidden`.
 - Screenshoty: [tácek s nedostupnými zkratkami](https://files.tmach.dev/diary-counter-surface-ed73ae5140ef4e629077.png), [nabídka s nedostupným Dopito](https://files.tmach.dev/diary-counter-overflow-cc5b9181418c446ab413.png).
 - Reprodukce: `tests/diary/evening.yaml` (původní TesterArmy reprodukce byla nahrazena Maestro průchodem).
-- Stav: opraveno v samostatném [PR #211](https://github.com/tomasmach/na-pivo/pull/211). Maestro v běhu `a62c5714` otevřelo nabídku, zvolilo Dopito a potvrdilo ukončení. DB oracle potvrdil právě jedno pivo a jednu návštěvu s `closed_at`. [Nabídka po opravě](https://files.tmach.dev/diary-counter-dopito-menu-b00c716d604a4581b591.png), [uzavřený večer](https://files.tmach.dev/diary-closed-evening-before-publication-8f8331e3b4cb46fcb502.png). Typecheck, 45 stávajících Jest testů a nezávislé review prošly. Širší deníková sada ještě není dokončená.
+- Stav: opraveno v samostatném [PR #211](https://github.com/tomasmach/na-pivo/pull/211). Maestro v běhu `a62c5714` otevřelo nabídku, zvolilo Dopito a potvrdilo ukončení. DB oracle potvrdil právě jedno pivo a jednu návštěvu s `closed_at`. [Nabídka po opravě](https://files.tmach.dev/diary-counter-dopito-menu-b00c716d604a4581b591.png), [uzavřený večer](https://files.tmach.dev/diary-closed-evening-before-publication-8f8331e3b4cb46fcb502.png). Typecheck, 45 stávajících Jest testů a nezávislé review prošly. Všech pět deníkových testů následně dokončilo tři úspěšné průchody; přesné běhy uvádí COVERAGE.md.
 
 ## NP-E2E-004: karta party pohltí nastavení soukromí
 
@@ -42,7 +42,7 @@
 - Příčina: `PartyCard` vkládá `topRow` s vlastními tlačítky do přístupného rodičovského `Pressable`, zatímco spodní zkratky již má mimo něj.
 - [Screenshot nedostupného horního ovládání](https://files.tmach.dev/social-party-settings-before-9885d34c116d4428a91d.png).
 - Reprodukce: `tests/places-social/party-privacy.yaml`, průchod soukromí/ghost/blokování.
-- Stav: opraveno v samostatném [PR #210](https://github.com/tomasmach/na-pivo/pull/210). Maestro v běhu `2d7eb19c` otevřelo nabídku i nastavení a změnilo přepínač; skutečná DB potvrdila vypnuté sdílení. [Karta po opravě](https://files.tmach.dev/social-party-settings-after-d161bffa9c59435ca8c0.png). Typecheck a nezávislé review prošly. Celý privacy průchod zatím nemá tři zelená opakování.
+- Stav: opraveno v samostatném [PR #210](https://github.com/tomasmach/na-pivo/pull/210). Maestro v běhu `2d7eb19c` otevřelo nabídku i nastavení a změnilo přepínač; skutečná DB potvrdila vypnuté sdílení. [Karta po opravě](https://files.tmach.dev/social-party-settings-after-d161bffa9c59435ca8c0.png). Typecheck a nezávislé review prošly. Celý zpřesněný privacy průchod následně jednou prošel v `3bd48f79`; další dvě stabilitní opakování čekají.
 
 ## NP-E2E-005: text přepínače nerozlišuje automatické sdílení a ruční cinknutí
 
@@ -51,7 +51,7 @@
 - Skutečnost: DB má `share_drinks_with_parta=false`, ale dřívější ruční aktivita zůstává v `active_friends`. Samostatná automatická presence a drink-feed používají tento přepínač; ghost režim skrývá i ruční aktivitu.
 - Očekávání: text nastavení srozumitelně odliší, co se po vypnutí přestane sdílet. Dokument `docs/decisions/one-write-two-readers.md` a existující kontraktové testy rozlišují automatický feed a vědomé sdílení přítomnosti; E2E proto nesmí bez produktového rozhodnutí změnit význam API.
 - Důkaz: skutečný běh `2d7eb19c` uložil přepínač a následný API oracle našel ruční aktivitu. Následný běh `0292bfec` ověřil uložený stav a zachytil [vypnuté sdílení v nastavení](https://files.tmach.dev/social-sharing-off-settings-bc576d996a4c4f588361.png).
-- Stav: bez produktové změny. `tests/places-social/party-privacy.yaml` nyní rozlišuje automatickou presence, drink-feed a explicitní aktivitu; finální runtime tohoto upřesnění ještě čeká.
+- Stav: bez produktové změny. `tests/places-social/party-privacy.yaml` nyní rozlišuje automatickou presence, drink-feed a explicitní aktivitu; upřesněný celý průchod poprvé prošel v `3bd48f79`. To neřeší nejasnost uživatelského textu.
 
 ## NP-E2E-006: formulář vlastního piva slučuje jednotlivé vstupy
 
@@ -61,7 +61,7 @@
 - Skutečnost: formulář je viditelný a pole má focus, ale přesný nativní identifikátor `beer-form-name` není dostupný. Průchod skončí před druhým zápisem; první pivo zůstává skutečně uložené.
 - Příčina: obalový `Pressable` uvnitř `BeerFormModal` slučuje své interaktivní potomky do jednoho přístupného prvku.
 - [Screenshot formuláře před neúspěšným vstupem](https://files.tmach.dev/diary-beer-form-before-input-d94c0a902fc844c8ab18.png). Reprodukce `fc97c485` trvala 73,793 s a skončila selháním `tests/diary/evening.yaml`.
-- Stav: oprava v samostatném [PR #213](https://github.com/tomasmach/na-pivo/pull/213), nezávislé review bez nálezů. Běh `76ba5706` samostatně vyplnil název i cenu, uložil offline pivo a po restartu doručil přesný DB výsledek: dvě zbývající piva za 41 a 43 Kč, jedna uzavřená návštěva. [Vyplněný formulář](https://files.tmach.dev/diary-beer-form-filled-c236a3bdde1b44f38d4a.png), [výsledné statistiky](https://files.tmach.dev/diary-stats-opened-aa0aed84c1684d4395cf.png). Následný celý test `bf0e5e7d` prošel za 2 min 47 s včetně přesného UI statistik a posledního DB oracle po restartu. Tři stabilitní opakování ještě čekají.
+- Stav: oprava v samostatném [PR #213](https://github.com/tomasmach/na-pivo/pull/213), nezávislé review bez nálezů. Běh `76ba5706` samostatně vyplnil název i cenu, uložil offline pivo a po restartu doručil přesný DB výsledek: dvě zbývající piva za 41 a 43 Kč, jedna uzavřená návštěva. [Vyplněný formulář](https://files.tmach.dev/diary-beer-form-filled-c236a3bdde1b44f38d4a.png), [výsledné statistiky](https://files.tmach.dev/diary-stats-opened-aa0aed84c1684d4395cf.png). Následný celý test `bf0e5e7d` prošel za 2 min 47 s včetně přesného UI statistik a posledního DB oracle po restartu. Dotčený deníkový test následně dokončil tři úspěšné průchody; přesná měření uvádí COVERAGE.md.
 
 ## NP-E2E-007: offline publikace večera se po návratu neodešle
 
@@ -71,7 +71,7 @@
 - Skutečnost: UI ukazuje „Visí ve Výčepu · Jen parta“, ale po 15 s zůstává v DB 0 publikovaných nocí, 1 pivo a 1 uzavřená návštěva. Stejný PID před Home, na ploše i po návratu a kontrola aktivního detailu vylučují nechtěný restart nebo test na pozadí.
 - Příčina: `flushNightsQueue()` se spouští při mountu a enqueue, ale chybí v obsluze `AppState` pro návrat do popředí. Ostatní fronty v ní mají opakované doručení.
 - Reprodukce: `tests/diary/vycep.yaml`, běh `c099c714`, 118,561 s, 0/1 úspěšných testů. [Screenshot aktivního detailu bez doručené publikace](https://files.tmach.dev/diary-vycep-foreground-not-synced-9fddd7abd89e4850bb1e.png).
-- Stav: oprava v samostatném [PR #212](https://github.com/tomasmach/na-pivo/pull/212). Stejný celý průchod po opravě prošel v běhu `051e9968` za 2 min 16 s: skutečná DB obsahovala právě jednu publikovanou noc, jedno pivo a uzavřenou návštěvu; po dalším restartu se noc zobrazila i ve Výčepu. [Výsledný screenshot](https://files.tmach.dev/diary-vycep-published-e1e795908295499da217.png). Kontrola typů, 16 souvisejících Jest testů a nezávislé review prošly. Tři stabilitní opakování ještě čekají.
+- Stav: oprava v samostatném [PR #212](https://github.com/tomasmach/na-pivo/pull/212). Stejný celý průchod po opravě prošel v běhu `051e9968` za 2 min 16 s: skutečná DB obsahovala právě jednu publikovanou noc, jedno pivo a uzavřenou návštěvu; po dalším restartu se noc zobrazila i ve Výčepu. [Výsledný screenshot](https://files.tmach.dev/diary-vycep-published-e1e795908295499da217.png). Kontrola typů, 16 souvisejících Jest testů a nezávislé review prošly. Dotčený deníkový test následně dokončil tři úspěšné průchody; přesná měření uvádí COVERAGE.md.
 
 ## NP-E2E-008: offline Parta žádá již vyplněnou přezdívku
 
@@ -80,8 +80,8 @@
 - Očekávání: uložená Parta zachová dostupné akce a nenačtený profil nevydává za nevyplněnou přezdívku.
 - Skutečnost: karta ukazuje dva kamarády a uloženou vlastní aktivitu, ale nabídne „Doplnit přezdívku“. Skutečný účet již přezdívku má.
 - Příčina: CTA používá `nickname == null`, přičemž `selectNickname` vrací `null` i pro nenačtený profil. Existující `selectNeedsNickname` správně rozlišuje nenačtený profil a potvrzenou chybějící přezdívku.
-- Reprodukce: `tests/places-social/invite-offline.yaml`, běh `0292bfec`; [screenshot offline Party](https://files.tmach.dev/social-offline-party-1b89f217326a4d1fa103.png). Původní kontrola snapshotu a API prošla, vizuální kontrola odhalila tento rozpor. Regresní kontrola výzvy je součástí PR #218; její průchod po opravě čeká.
-- Stav: minimální oprava v samostatném [PR #219](https://github.com/tomasmach/na-pivo/pull/219), nezávislé review bez nálezů. Nativní ověření opravy čeká na uvolnění disku.
+- Reprodukce: `tests/places-social/invite-offline.yaml`, běh `0292bfec`; [screenshot offline Party](https://files.tmach.dev/social-offline-party-1b89f217326a4d1fa103.png). Původní kontrola snapshotu a API prošla, vizuální kontrola odhalila tento rozpor. Regresní kontrola výzvy je součástí PR #218; po opravě celý průchod poprvé prošel v `3bd48f79`.
+- Stav: minimální oprava v samostatném [PR #219](https://github.com/tomasmach/na-pivo/pull/219), nezávislé review bez nálezů. První celý nativní průchod `3bd48f79` potvrdil správnou offline Partu a konečný DB oracle; [prohlédnutý screenshot po opravě](https://files.tmach.dev/social-offline-party-0666993abb3b46e09ab8.png). Další dvě opakování čekají.
 
 ## NP-E2E-009: žebříček po blokování ukazuje dvě různá pořadí
 
@@ -101,7 +101,7 @@
 - Skutečnost: nativní strom obsahuje jediný sloučený prvek s nadpisem, popisem a všemi třemi akcemi. Přesný locator galerie selže, přestože je tlačítko vidět.
 - Příčina: vnější a vnitřní `Pressable` v `BeerPhotoSourceSheet` slučují přístupné potomky. Minimální oprava nastavuje oběma obalům `accessible={false}`; samostatná tlačítka si ponechávají role, popisy a callbacky.
 - Reprodukce: `tests/identity/photos.yaml`, běh `e7987064`; [screenshot nabídky před opravou](https://files.tmach.dev/identity-photo-source-accessibility-488cefaeca6c47c4a8c3.png).
-- Stav: oprava v samostatném [PR #214](https://github.com/tomasmach/na-pivo/pull/214), nezávislé review bez nálezů. Celý `identity/media-denied.yaml` v běhu `9cc075a2` prošel za 1 min 58 s: dostupná zamítnutá kamera, skutečný picker galerie, Cancel, restart a skutečná DB bez nechtěné fotky či avataru. [Zkontrolovaný konečný stav](https://files.tmach.dev/identity-media-denied-recovered-575a4d3c98014b76b644.png). Následný celý `identity/photos.yaml` v běhu `39ad9a48` prošel za 2 min 38 s: skutečné soubory, offline fronta, caption a visibility, soukromý přístup, odstranění i restart. Tři stabilitní opakování oblasti nejsou dokončená.
+- Stav: oprava v samostatném [PR #214](https://github.com/tomasmach/na-pivo/pull/214), nezávislé review bez nálezů. Celý `identity/media-denied.yaml` v běhu `9cc075a2` prošel za 1 min 58 s: dostupná zamítnutá kamera, skutečný picker galerie, Cancel, restart a skutečná DB bez nechtěné fotky či avataru. [Zkontrolovaný konečný stav](https://files.tmach.dev/identity-media-denied-recovered-575a4d3c98014b76b644.png). Následný celý `identity/photos.yaml` v běhu `39ad9a48` prošel za 2 min 38 s: skutečné soubory, offline fronta, caption a visibility, soukromý přístup, odstranění i restart. Všech 11 dostupných identity testů následně dokončilo tři úspěšné průchody; přesná měření uvádí COVERAGE.md.
 
 ## NP-E2E-011: po offline restartu není dostupné odhlášení
 
@@ -111,7 +111,7 @@
 - Skutečnost: obrazovka ukazuje pouze Účet a Zpět. Akce Odhlásit se chybí i v nativním stromu. [Zkontrolovaný screenshot](https://files.tmach.dev/identity-account-offline-empty-before-5643c3a985bb4592bfcc.png).
 - Příčina: přihlášená session se správně obnoví ze SecureStore; vzdálený profil zůstane při výpadku `null`. `AccountScreen` v této větvi předčasně vrací samotnou hlavičku, přestože existující `auth.logout` podporuje místní odhlášení při síťové chybě.
 - Reprodukce: `tests/identity/logout.yaml`, běh `9cc075a2`. Dvě offline piva a jejich přetrvání po restartu byly ověřené před selháním.
-- Stav: malá oprava v samostatném [PR #215](https://github.com/tomasmach/na-pivo/pull/215) zachovává stávající tlačítko podle přihlášené session. Kontrola typů, lint, 99 souvisejících Jest testů a nezávislé review prošly. Stejný celý průchod `39ad9a48` prošel za 2 min 24 s: odhlášení offline, anonymní restart, login B a další restart, přesná kontrola oddělené historie a fronty v UI i DB. [Odhlášení dostupné offline](https://files.tmach.dev/identity-account-offline-logout-after-7d53be37cdeb482a98ab.png). Tři stabilitní opakování ještě čekají.
+- Stav: malá oprava v samostatném [PR #215](https://github.com/tomasmach/na-pivo/pull/215) zachovává stávající tlačítko podle přihlášené session. Kontrola typů, lint, 99 souvisejících Jest testů a nezávislé review prošly. Stejný celý průchod `39ad9a48` prošel za 2 min 24 s: odhlášení offline, anonymní restart, login B a další restart, přesná kontrola oddělené historie a fronty v UI i DB. [Odhlášení dostupné offline](https://files.tmach.dev/identity-account-offline-logout-after-7d53be37cdeb482a98ab.png). Dotčený deníkový test následně dokončil tři úspěšné průchody; přesná měření uvádí COVERAGE.md.
 - Hranice kontraktu: úmyslné offline odhlášení místně vymaže soukromá data včetně nedoručené fronty; neslibuje doručení ani vzdálené odvolání tokenu. E2E následně ověřuje, že fronta účtu A nepřejde pod účet B.
 
 ## NP-E2E-012: anglické nastavení vody ořízne vysvětlení
@@ -124,3 +124,14 @@
 - Stav: neopraveno. Průchod ověřil uložení nastavení a změnu jazyka, nikoli úplnou čitelnost popisu. Jeho funkční úspěch tento vizuální nález neuzavírá.
 
 Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, očekávaný a skutečný výsledek, screenshot a odkaz na test. Produktové opravy patří do samostatného malého PR s regresním testem.
+
+
+## NP-E2E-013: seznam hospod v mapě slučuje jednotlivé řádky
+
+- Priorita P1. Základ `origin/dev` `2e7a120e`, iPhone 17 / iOS 26.5, Maestro 2.11.0.
+- Kroky: přihlásit místní fixture, přepnout kompas na mapu, najít vlastní polohu, otevřít seznam podniků a zvolit E2E Druhá hospoda.
+- Očekávání: samostatně přístupný řádek otevře vybranou hospodu.
+- Skutečnost: screenshot ukazuje všechny tři správné hospody, ale nativní strom vrací celou kartu včetně nadpisu, zavření a řádků jako jediný prvek. Přesný existující accessibilityLabel řádku proto nelze použít.
+- Příčina: obalový `Pressable` v `BeerMapScreen` má prázdný `onPress` a automaticky slučuje přístupné potomky.
+- Reprodukce: `tests/places-social/catalogue-offline.yaml`, běhy `3bd48f79` a `0b7023a7`. [Prohlédnutý screenshot před opravou](https://files.tmach.dev/places-map-catalogue-list-b009ac0db45f4f9f8f45.png). Prázdný mapový podklad odpovídá záměrně neplatnému místnímu mapovému klíči; tento nález se týká dostupnosti konkrétních řádků.
+- Stav: známé selhání katalogového testu na původním dev. Minimální oprava `51c46221` nastavuje pouze `accessible={false}` na obalu; jednotlivá tlačítka a jejich handlery zůstávají stejné. Nezávislé review bez nálezů, ESLint a 28 stávajících mapových Jest testů prošly (2,779 s). Stejný nativní průchod po opravě zatím čeká; samostatný PR se dokončuje.
