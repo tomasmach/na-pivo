@@ -5,7 +5,7 @@ tags: [critical, full]
 - runFlow:
     file: ../../maestro/reset.yaml
     env:
-      SCENARIO: places_social
+      SCENARIO: places_catalogue
 - runFlow: ../../maestro/skip-onboarding.yaml
 - runFlow: ../../maestro/login.yaml
 - runScript: oracle.js
@@ -22,9 +22,9 @@ tags: [critical, full]
     element: {text: 'E2E Druhá hospoda, zatím nenavštíveno'}
     direction: DOWN
 - tapOn: 'E2E Druhá hospoda, zatím nenavštíveno'
-- tapOn: O hospodě
+- tapOn: 'E2E Druhá hospoda, O hospodě'
 - assertVisible: E2E Druhá hospoda
-- assertVisible: '.*41\sKč.*'
+- assertVisible: '.*67\sKč.*'
 - tapOn: Namířit kompas na E2E Druhá hospoda
 - assertVisible: '.*E2E Druhá hospoda.*'
 - evalScript: ${output.local.offline()}
@@ -37,9 +37,9 @@ tags: [critical, full]
 - inputText: E2E Druhá hospoda
 - tapOn: 'E2E Druhá hospoda,.*'
 - assertVisible: E2E Druhá hospoda
-- assertVisible: E2E Ležák
-- assertVisible: '0,5 l'
-- assertVisible: '.*41\sKč.*'
+- assertVisible: E2E Jantar druhé hospody
+- assertVisible: '0,3 l'
+- assertVisible: '.*67\sKč.*'
 - evalScript: ${output.local.screenshot('places-offline-catalogue')}
 - evalScript: ${output.local.online()}
 - evalScript: ${output.ps.check('catalogue')}

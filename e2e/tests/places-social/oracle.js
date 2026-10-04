@@ -89,7 +89,7 @@ output.ps = {
     } else if (phase === 'catalogue') {
       const pub = s.community.find(function(r) { return r.name === 'E2E Druhá hospoda'; });
       output.local.check(!!pub, 'The cached pub shown after offline restart still has its real catalogue record.');
-      this.equal(pub.beers, [{name:'E2E Ležák',price_czk:41,volume_ml:500}], 'The offline screen shows the exact durable catalogue beer, price and volume.');
+      this.equal(pub.beers, [{name:'E2E Jantar druhé hospody',price_czk:67,volume_ml:300}], 'The offline screen shows the exact durable catalogue beer, price and volume.');
       this.equal(s.addedPubs, [], 'Browsing the offline catalogue does not create a duplicate pub.');
       this.equal(s.reports, [], 'Browsing the offline catalogue does not hide its pub.');
     } else if (phase === 'privacy-baseline') {
