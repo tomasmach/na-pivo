@@ -82,7 +82,7 @@ Oblasti spouštěj postupně. Pro nový čistý simulátor archivuj vlastní `.e
 
 ## Android
 
-Android se spouští až po zelené dostupné iOS sadě. Příprava používá místní SDK s ARM64 obrazem `system-images;android-36.1;google_apis_playstore;arm64-v8a` a profilem `pixel_10`. Nevhodný nebo chybějící obraz runner sám nestahuje. Vytvoří vlastní pojmenovaný Pixel 10, při dalších bězích použije pouze svůj neobsazený AVD. Běh používá stejný slot, samostatné API/Metro/DB a navíc vlastní konzolový a gRPC port.
+Android ověřování začalo po dokončení dostupné iOS sady s jedním známým selháním NP-E2E-014. Příprava používá místní SDK s ARM64 obrazem `system-images;android-36.1;google_apis_playstore;arm64-v8a` a profilem `pixel_10`. Nevhodný nebo chybějící obraz runner sám nestahuje. Vytvoří vlastní pojmenovaný Pixel 10, při dalších bězích použije pouze svůj neobsazený AVD. Běh používá stejný slot, samostatné API/Metro/DB a navíc vlastní konzolový a gRPC port.
 
 ```sh
 npm run e2e:build:android
@@ -90,7 +90,7 @@ E2E_PLATFORM=android npm run e2e:critical -- e2e/tests/spike/
 E2E_PLATFORM=android npm run e2e:full
 ```
 
-Lokální Android build prošel. První nativní spike také potvrdil přihlášení a uložené pivo po restartu. Stabilita a oblastní flow včetně systémového pickeru a oprávnění se ještě ověřují. Aktuální výsledky jsou v COVERAGE.md; nejde zatím o zelenou celou Android sadu.
+Lokální Android build prošel. Spike i offline publikace večera mají každý tři úspěšné nativní průchody na Pixel 10 / API 36.1. Celá Android sada zatím není ověřená; čeká na úpravy testů pro systémový picker a oprávnění. Přesné výsledky jsou v COVERAGE.md.
 
 Build používá lokální Expo prebuild a `assembleDebug` pouze pro ARM64, nejvýš dva Gradle workery a 2 GiB JVM heap. Nečte skutečný `google-services.json`: explicitní místní E2E konfigurace jej vynechá, v produkčním režimu a EAS skončí chybou. Výchozí konfigurace vydané appky se nemění. APK zůstane v `.e2e/build/na-pivo-debug.apk` a mezi běhy se znovu používá. Build i test vyžadují 30 GiB volného místa a pod 20 GiB zastaví pouze vlastní procesy.
 
