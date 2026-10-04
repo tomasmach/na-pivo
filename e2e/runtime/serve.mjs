@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { ready, start, stop } from './processes.mjs';
 import { controlServer } from './control.mjs';
-import { clearFixtureLocation, platform, setFixtureLocation } from './device.mjs';
+import { clearFixtureLocation, platform, prepareFixtureLocation, setFixtureLocation } from './device.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const runDir = process.env.NA_PIVO_E2E_RUN_DIR;
@@ -75,6 +75,7 @@ try {
   if (migrationCode !== 0) throw new Error('Local E2E migration failed.');
   await online();
   if (platform === 'android') {
+    prepareFixtureLocation();
     // Expo's balanced current-position request accepts fixes at most 3s old.
     // The emulator has no physical receiver; supply the same fixed point while
     // this owned supervisor lives, including during backend outages.
