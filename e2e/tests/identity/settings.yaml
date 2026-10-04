@@ -79,6 +79,7 @@ tags: [full, identity]
     direction: DOWN
     centerElement: true
     timeout: 15000
+# Functional persistence does not close the visual text truncation in [NP-E2E-012](../../BUGS.md).
 - evalScript: ${output.local.screenshot('identity-settings-before-czech')}
 - tapOn: { id: settings-language-cs }
 - runFlow:
