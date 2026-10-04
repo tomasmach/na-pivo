@@ -21,10 +21,10 @@ tags: [critical, full, identity]
 - tapOn: "Přidat fotku piva"
 - tapOn: { id: photo-source-library }
 - extendedWaitUntil:
-    visible: "Cancel|Zrušit"
+    visible: { id: PXGGridLayout-Info, index: 0 }
     timeout: 15000
-- tapOn:
-    point: "16%,28%"
+- waitForAnimationToEnd
+- tapOn: { id: PXGGridLayout-Info, index: 0 }
 - assertVisible: { id: photo-caption }
 - tapOn: { id: photo-caption }
 - eraseText
@@ -65,10 +65,10 @@ tags: [critical, full, identity]
 - tapOn: "Přidat fotku piva"
 - tapOn: { id: photo-source-library }
 - extendedWaitUntil:
-    visible: "Cancel|Zrušit"
+    visible: { id: PXGGridLayout-Info, index: 0 }
     timeout: 15000
-- tapOn:
-    point: "16%,28%"
+- waitForAnimationToEnd
+- tapOn: { id: PXGGridLayout-Info, index: 0 }
 - assertVisible: { id: photo-caption }
 - tapOn: { id: photo-caption }
 - eraseText
