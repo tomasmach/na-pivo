@@ -14,16 +14,33 @@ tags: [full, identity]
     env:
       ROUTE: /profile/edit
 - tapOn: { id: profile-avatar-pick }
-- extendedWaitUntil:
-    visible: "Cancel|Zrušit"
-    timeout: 15000
-- tapOn:
-    point: "16%,28%"
 - runFlow:
     when:
-      visible: "Choose|Vybrat"
+      platform: iOS
     commands:
-      - tapOn: "Choose|Vybrat"
+      - extendedWaitUntil:
+          visible: "Cancel|Zrušit"
+          timeout: 15000
+      - tapOn:
+          point: "16%,28%"
+      - runFlow:
+          when:
+            visible: "Choose|Vybrat"
+          commands:
+            - tapOn: "Choose|Vybrat"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: { text: "Photo taken on .*", index: 0 }
+          timeout: 15000
+      - tapOn: { text: "Photo taken on .*", index: 0 }
+      - tapOn: Done
+      - extendedWaitUntil:
+          visible: { id: "com.tomasmach.na_pivo:id/crop_image_menu_crop" }
+          timeout: 15000
+      - tapOn: { id: "com.tomasmach.na_pivo:id/crop_image_menu_crop" }
 - runScript:
     file: checks.js
     env:
@@ -37,16 +54,33 @@ tags: [full, identity]
 - assertVisible: { id: profile-avatar-remove }
 - evalScript: ${output.local.screenshot('identity-avatar-uploaded')}
 - tapOn: { id: profile-avatar-pick }
-- extendedWaitUntil:
-    visible: "Cancel|Zrušit"
-    timeout: 15000
-- tapOn:
-    point: "49%,28%"
 - runFlow:
     when:
-      visible: "Choose|Vybrat"
+      platform: iOS
     commands:
-      - tapOn: "Choose|Vybrat"
+      - extendedWaitUntil:
+          visible: "Cancel|Zrušit"
+          timeout: 15000
+      - tapOn:
+          point: "49%,28%"
+      - runFlow:
+          when:
+            visible: "Choose|Vybrat"
+          commands:
+            - tapOn: "Choose|Vybrat"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: { text: "Photo taken on .*", index: 1 }
+          timeout: 15000
+      - tapOn: { text: "Photo taken on .*", index: 1 }
+      - tapOn: Done
+      - extendedWaitUntil:
+          visible: { id: "com.tomasmach.na_pivo:id/crop_image_menu_crop" }
+          timeout: 15000
+      - tapOn: { id: "com.tomasmach.na_pivo:id/crop_image_menu_crop" }
 - runScript:
     file: checks.js
     env:

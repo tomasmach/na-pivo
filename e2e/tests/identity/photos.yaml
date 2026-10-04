@@ -38,6 +38,11 @@ tags: [critical, full, identity]
           timeout: 15000
       - waitForAnimationToEnd
       - tapOn: { text: "Photo taken on .*", index: 0 }
+      - runFlow:
+          when:
+            visible: Done
+          commands:
+            - tapOn: Done
 - assertVisible: { id: photo-caption }
 - tapOn: { id: photo-caption }
 - eraseText
@@ -95,6 +100,11 @@ tags: [critical, full, identity]
           timeout: 15000
       - waitForAnimationToEnd
       - tapOn: { text: "Photo taken on .*", index: 0 }
+      - runFlow:
+          when:
+            visible: Done
+          commands:
+            - tapOn: Done
 - assertVisible: { id: photo-caption }
 - tapOn: { id: photo-caption }
 - eraseText
