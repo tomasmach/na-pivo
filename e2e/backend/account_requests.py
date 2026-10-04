@@ -3,6 +3,7 @@
 from collections import deque
 
 requests = deque(maxlen=20)
+export_requests = deque(maxlen=20)
 
 
 class AccountWriteObserver:
@@ -14,6 +15,9 @@ class AccountWriteObserver:
         if request.path == "/v1/account/me" and request.method in ("DELETE", "PATCH"):
             observation = {"method": request.method, "status": None}
             requests.append(observation)
+        elif request.path == "/v1/account/export" and request.method == "POST":
+            observation = {"method": "POST", "status": None}
+            export_requests.append(observation)
         response = self.get_response(request)
         if observation is not None:
             observation["status"] = response.status_code

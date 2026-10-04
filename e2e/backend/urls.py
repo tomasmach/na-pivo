@@ -15,6 +15,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 from pubs.models import Account, AuthToken, DrinkLog, EmailCredential, PubVisit
 
+from .account_requests import export_requests
 from .account_requests import requests as account_requests
 
 
@@ -28,6 +29,7 @@ def reset(request):
     call_command("flush", interactive=False, verbosity=0)
     cache.clear()
     account_requests.clear()
+    export_requests.clear()
     if hasattr(mail, "outbox"):
         mail.outbox.clear()
     module.seed()
@@ -65,12 +67,13 @@ def state(request):
     scenario_file = Path(settings.RUN_DIR) / "scenario.txt"
     scenario_name = scenario_file.read_text() if scenario_file.exists() else "base"
     active_scenario = importlib.import_module(f"e2e.seeds.{scenario_name}")
-    observation = getattr(active_scenario, "observe", lambda: {})()
+    observation = getattr(active_scenario, "observe", dict)()
     return JsonResponse(
         {
             "accounts": accounts,
             "mailCount": len(getattr(mail, "outbox", [])),
             "accountWrites": list(account_requests),
+            "exportRequests": list(export_requests),
             "scenario": observation,
         }
     )
