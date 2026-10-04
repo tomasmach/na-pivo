@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Compass map and pub search use the persisted catalogue offline
 tags: [critical, full]
+# Known failure NP-E2E-014: the selected menu disappears after offline restart.
+# See ../../BUGS.md; retain the exact cached-menu assertions below.
 ---
 - runFlow:
     file: ../../maestro/reset.yaml
