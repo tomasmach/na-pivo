@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Account deletion confirms and revokes sessions
 tags: [critical, full, identity]
+# Known Android dev runtime failure: NP-E2E-016; see ../../BUGS.md.
+# Retain deletion/revocation and UI assertions.
 ---
 - runFlow:
     file: ../../maestro/reset.yaml
