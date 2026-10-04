@@ -45,7 +45,7 @@ import {
   type WireAmenityVote,
 } from './pubAmenitiesClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
-import { clearAmenityVotesRateLimit, getAmenityVotesRetryAt } from './pubAmenitiesRateLimit';
+import { getAmenityVotesRetryAt } from './pubAmenitiesRateLimit';
 import { AppState } from 'react-native';
 
 const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
@@ -242,9 +242,8 @@ export function clearPubAmenitiesQueue(): Promise<void> {
   resetSessionRetry();
   resetThrottleRetry();
   abortInFlight();
-  const rateLimitCleared = clearAmenityVotesRateLimit();
   return runLocked(async () => {
-    await Promise.all([saveQueue([]), rateLimitCleared]);
+    await saveQueue([]);
   });
 }
 

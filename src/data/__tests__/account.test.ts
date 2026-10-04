@@ -17,6 +17,11 @@ import {
 import { setTelemetrySession, trackApiFailure } from '../telemetryClient';
 import { getDrinkRateLimitGeneration, noteDrinkThrottled, shouldPauseDrinkSync } from '../drinksRateLimit';
 import { fetchDrinks } from '../drinksClient';
+import {
+  getAmenityVotesRateLimitGeneration,
+  getAmenityVotesRetryAt,
+  noteAmenityVotesResponse,
+} from '../pubAmenitiesRateLimit';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -725,6 +730,27 @@ it('keeps a drink cooldown for the same account but clears it when an anonymous 
   await expect(fetchDrinks()).resolves.toEqual([]);
   expect(global.fetch).toHaveBeenCalledTimes(1);
   expect(await shouldPauseDrinkSync()).toBe(false);
+});
+
+it('keeps an amenity vote pause for the same account but clears it on sign-in and sign-out', async () => {
+  await seedAccount({ deviceId: 'dev-1', accountId: 'anon-1', token: 'anon-token', authenticated: false });
+  const throttled = {
+    status: 429,
+    headers: { get: (name: string) => name === 'Retry-After' ? '60' : null },
+  } as Response;
+  await noteAmenityVotesResponse(throttled, getAmenityVotesRateLimitGeneration());
+  expect(await getAmenityVotesRetryAt()).toBeGreaterThan(Date.now());
+
+  await setSession({ deviceId: 'dev-1', accountId: 'anon-1', token: 'renewed-token', authenticated: false });
+  expect(await getAmenityVotesRetryAt()).toBeGreaterThan(Date.now());
+
+  await setSession({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true });
+  expect(await getAmenityVotesRetryAt()).toBe(0);
+  expect(await AsyncStorage.getItem('na-pivo-pub-amenities-retry-after')).toBeNull();
+
+  await noteAmenityVotesResponse(throttled, getAmenityVotesRateLimitGeneration());
+  await clearCachedAccount();
+  expect(await getAmenityVotesRetryAt()).toBe(0);
 });
 
 it('retries the same queued drink after a first 429 sent with the last-known account', async () => {

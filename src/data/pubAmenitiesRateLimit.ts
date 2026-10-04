@@ -6,10 +6,10 @@
  * vote both check this pause before sending, so one 429 stops every vote request
  * instead of the queue firing its remaining items into the same closed window.
  * Consecutive 429s with no other answer in between lengthen the pause. The
- * deadline is persisted so a restart cannot skip it.
+ * deadline is persisted so a restart cannot skip it, and account.ts clears it
+ * when the account changes. No other app imports here, so account.ts can call in.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { retryAfterMs } from './apiFetch';
 
 const STORAGE_KEY = 'na-pivo-pub-amenities-retry-after';
 /** Minimum pause per consecutive 429; a longer Retry-After always wins. */
@@ -21,6 +21,15 @@ let attempt = 0;
 let generation = 0;
 let restorePromise: Promise<void> | null = null;
 let storageWrite: Promise<void> = Promise.resolve();
+
+/** Retry-After in delta-seconds or HTTP-date form; null when missing or past. */
+function retryAfterMs(response: Response): number | null {
+  const header = response.headers?.get('Retry-After');
+  if (!header) return null;
+  const seconds = Number(header);
+  const duration = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(header) - Date.now();
+  return Number.isFinite(duration) && duration > 0 ? duration : null;
+}
 
 function restore(): Promise<void> {
   if (!restorePromise) {

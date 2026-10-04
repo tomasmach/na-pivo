@@ -35,6 +35,7 @@ import {
   type AmenityQueueItem,
 } from '../pubAmenitiesQueue';
 import { submitAmenityVotesDetailed } from '../pubAmenitiesClient';
+import { clearAmenityVotesRateLimit } from '../pubAmenitiesRateLimit';
 
 const QUEUE_KEY = 'na-pivo-pub-amenities-queue';
 const ORIGINAL_FETCH = global.fetch;
@@ -88,11 +89,13 @@ const KEYS = ['game_darts', 'practical_wifi', 'payment_card', 'seating_garden'];
 beforeEach(async () => {
   jest.useFakeTimers({ now: new Date('2026-10-04T11:00:00Z') });
   await clearPubAmenitiesQueue();
+  await clearAmenityVotesRateLimit();
   mockDisk.clear();
 });
 
 afterEach(async () => {
   await clearPubAmenitiesQueue();
+  await clearAmenityVotesRateLimit();
   await flushPubAmenitiesQueue();
   jest.clearAllTimers();
   jest.useRealTimers();
