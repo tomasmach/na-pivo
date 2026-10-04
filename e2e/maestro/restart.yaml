@@ -29,6 +29,15 @@ appId: ${MAESTRO_APP_ID}
 - evalScript: ${output.local.request('/app/open', {})}
 - runFlow:
     when:
+      platform: Android
+    commands:
+      # am start finishes before Expo has mounted the Router. Wait for the
+      # actual app navigation before the caller sends its next deep link.
+      - extendedWaitUntil:
+          visible: {id: tab-index}
+          timeout: 60000
+- runFlow:
+    when:
       visible: 'Teď ne, nech mě pít v klidu'
     commands:
       - tapOn: 'Teď ne, nech mě pít v klidu'

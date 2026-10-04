@@ -167,6 +167,7 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
 
   return (
     <Pressable
+      testID={`tab-${routeName}`}
       onPress={onPress}
       style={styles.item}
       hitSlop={6}
