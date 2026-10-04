@@ -26,6 +26,8 @@ E2E_SLOT=2 npm run e2e:critical -- e2e/tests/spike/
 
 `--stability` požaduje tři zelené průchody. Maestro nepoužívá model ani replay cache, proto `--no-cache` nic nemění a replay metriky jsou `null`. Pro oblast používej adresářový filtr. Původní TesterArmy spike lze diagnosticky spustit přes `E2E_ENGINE=testerarmy npm run e2e:critical -- e2e/tests/spike/persist-drink.e2e.ts --stability`; vyžaduje `E2E_TELEMETRY_DISABLED=1 npx e2e login openai` a druhý/třetí průchod v něm nadále vynucují úplný replay.
 
+`e2e/tests/config.yaml` zapíná [hledání flow v podadresářích](https://docs.maestro.dev/maestro-flows/workspace-management/test-discovery-and-tags) pro celou sadu. Sdílené vnořené kroky zůstávají mimo tento adresář v `e2e/maestro/`, takže se nespouštějí samostatně.
+
 `critical` a `full` vynechávají výslovně označené `blocked` scénáře. Ty se spouštějí samostatně přes `e2e:blocked` a nejsou započítané mezi ověřené průchody. Každý musí mít konkrétní důvod v COVERAGE.md. Aktuálně jde o registraci: Maestro vyplní nativní formulář, ale aplikace při odeslání hlásí příliš krátké heslo; příčina není prokázaná. Tento blokátor brání claimu anonymních dat. Ověření e-mailu a export mají samostatný průchod existujícího neověřeného účtu v `identity/email-export.yaml`; aktuální výsledek uvádí COVERAGE.md.
 
 Katalogový průchod má navíc potvrzené známé selhání [NP-E2E-014](BUGS.md#np-e2e-014-nabídka-otevřené-hospody-zmizí-po-offline-restartu): nabídka dříve otevřené hospody se neuloží pro offline restart. Tento test zůstává v `critical` i `full`, takže do opravy vrací celý příkaz nenulový kód. Známou chybu je nutné ve výsledku odlišit od nových selhání; kontrola nabídky nebyla oslabená.
