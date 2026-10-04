@@ -31,6 +31,15 @@ appId: ${MAESTRO_APP_ID}
             camera: deny
             notifications: deny
 - evalScript: ${output.local.request('/app/open', {})}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      # Expo shows its developer menu once after pm clear.
+      - extendedWaitUntil:
+          visible: 'Go home'
+          timeout: 60000
+      - tapOn: 'Close'
 - extendedWaitUntil:
     visible:
       id: onboarding-skip
