@@ -59,6 +59,11 @@ tags: [full]
       ROUTE: /report
 - tapOn: Přidat přílohu
 - tapOn: Vyfotit
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: 'Don’t allow'
 - assertVisible: Bez povolení to nepůjde
 - runFlow:
     when: {visible: Zrušit}
