@@ -1,6 +1,8 @@
 """Synthetic places/social fixtures and a read-only, non-sensitive DB oracle."""
 
+import hashlib
 import io
+import json
 import os
 import uuid
 from datetime import timedelta
@@ -216,6 +218,32 @@ def observe():
         ),
         "eventId": CommunityEvent.objects.values_list("id", flat=True).first(),
         "events": rows(CommunityEvent, ["title", "status"]),
+        # Compare all event content without exposing its address or coordinates.
+        "communityEventContentDigests": [
+            {
+                "id": str(event["id"]),
+                "digest": hashlib.sha256(
+                    json.dumps(event, sort_keys=True, default=str).encode()
+                ).hexdigest(),
+            }
+            for event in CommunityEvent.objects.order_by("pk").values(
+                "id",
+                "host_id",
+                "client_id",
+                "title",
+                "description",
+                "city",
+                "area_label",
+                "exact_address",
+                "lat",
+                "lng",
+                "starts_at",
+                "ends_at",
+                "capacity",
+                "adults_only",
+                "status",
+            )
+        ],
         "createdEvents": [
             {
                 "id": str(event.id),

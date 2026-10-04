@@ -10,6 +10,17 @@ output.ps = {
   equal: function(actual, expected, message) {
     output.local.check(JSON.stringify(actual) === JSON.stringify(expected), message);
   },
+  permissionsCommunity: function(phase) {
+    const s = output.local.state().scenario;
+    if (phase === 'baseline') {
+      output.local.check(s.createdEvents.length === 1 && s.createdEvents[0].title === 'E2E Večer u hosta' && s.createdEvents[0].host === 'E2EPivar', 'The denied-permissions scenario begins with exactly the original seeded community event.');
+      output.ps.deniedCommunityContents = s.communityEventContentDigests;
+      output.local.check(Array.isArray(this.deniedCommunityContents) && this.deniedCommunityContents.length === 1, 'The original seeded event has a safe complete-content digest.');
+    } else if (phase === 'preserved') {
+      output.local.check(!!this.deniedCommunityContents, 'The original community event was observed before the denied flow.');
+      this.equal(s.communityEventContentDigests, this.deniedCommunityContents, 'Anonymous access and denied location never create a community event or change the original event identity and contents.');
+    } else { throw new Error('Unknown denied-permissions community phase.'); }
+  },
   friendActivity: function(automaticVisible, manualVisible) {
     const live = output.local.observe('second', '/v1/friends/live');
     output.local.check(live.status === 200, 'The friend live API responds successfully.');
@@ -183,6 +194,7 @@ output.ps = {
       const body = JSON.stringify(response.body);
       output.local.check(response.status === 200 && body.indexOf('E2E Ověřený kvíz') !== -1 && body.indexOf('E2E Nový kvíz') === -1 && body.indexOf('E2E Skončený kvíz') === -1, 'Public events include the verified current event and exclude pending and expired events.');
     } else if (phase === 'denied-feedback') {
+      this.permissionsCommunity('preserved');
       output.local.check(s.feedback.length === 1, 'Camera denial still submits exactly one text feedback row.');
       const row = s.feedback[0];
       output.local.check(row.message === 'E2E Kamera odmítnuta' && row.attachmentPresent === false && row.category === 'bug', 'Camera denial cannot accidentally attach media or lose the feedback text.');
