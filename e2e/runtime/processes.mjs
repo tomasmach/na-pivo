@@ -8,13 +8,24 @@ function started(pid) {
   catch { return null; }
 }
 function capture(owner) {
-  if (!owner.started || started(owner.pid) !== owner.started) return;
+  if (!owner.started) return;
   let lines;
   try { lines = execFileSync('ps', ['-axo', 'pid=,pgid=,lstart='], { encoding: 'utf8' }).trim().split('\n'); }
   catch { return; } // Keep earlier ownership evidence if process inspection fails.
+  const current = new Map();
   for (const line of lines) {
     const [, pid, group, birth] = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/) || [];
-    if (Number(group) === owner.pid) owner.members.set(Number(pid), { pid: Number(pid), started: birth.trim() });
+    if (pid && birth) current.set(Number(pid), { pid: Number(pid), group: Number(group), started: birth.trim() });
+  }
+  // A long-lived supervisor starts many short-lived children (including ps).
+  // Keep only live identities; retain known descendants even if reparented.
+  for (const [pid, member] of owner.members) {
+    if (current.get(pid)?.started !== member.started) owner.members.delete(pid);
+  }
+  // Only the same snapshot can authorize discovering new group members.
+  if (current.get(owner.pid)?.started !== owner.started) return;
+  for (const member of current.values()) {
+    if (member.group === owner.pid) owner.members.set(member.pid, { pid: member.pid, started: member.started });
   }
 }
 
@@ -36,7 +47,7 @@ export function start(command, args, options = {}) {
 export async function stop(child) {
   const owner = child && ownership.get(child);
   if (!owner?.started) return;
-  if (child.exitCode === null && !child.signalCode) capture(owner);
+  capture(owner);
   clearInterval(owner.watch);
   // Capture individual members while the original group leader is still ours.
   // A leader can exit before its children; never signal its old group ID later.
