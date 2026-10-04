@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Offline hours and beer edits persist once with exact public values
 tags: [critical, full]
 ---

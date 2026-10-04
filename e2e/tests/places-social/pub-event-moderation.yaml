@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Retry submits one moderated event without exposing pending suggestions
 tags: [full]
 ---

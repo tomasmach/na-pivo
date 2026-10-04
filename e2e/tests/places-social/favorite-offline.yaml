@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Private favorite persists offline and retracts from the same account
 tags: [critical, full]
 ---

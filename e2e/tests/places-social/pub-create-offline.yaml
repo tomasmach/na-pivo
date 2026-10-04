@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Confirmed map pin queues one pub and rename preserves its identity
 tags: [critical, full]
 ---

@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Home point changes only after confirmation and survives restart
 tags: [critical, full]
 ---

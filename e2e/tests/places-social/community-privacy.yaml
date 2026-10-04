@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Host approval and cancellation protect the exact event address
 tags: [critical, full]
 ---

@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Offline feedback survives restart and is delivered exactly once
 tags: [critical, full]
 ---

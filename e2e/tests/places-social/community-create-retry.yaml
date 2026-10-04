@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Empty community dashboard and failed creation preserve one retried event
 tags: [full]
 ---

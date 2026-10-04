@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Contest consent keeps diary photos private and moves one vote
 tags: [critical, full]
 ---
