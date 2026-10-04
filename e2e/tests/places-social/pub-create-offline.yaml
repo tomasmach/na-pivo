@@ -14,10 +14,9 @@ tags: [critical, full]
     env:
       ROUTE: /
 - assertVisible: '.*E2E U Testera.*'
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /add-pub
+# The real compass entry passes its current position to the pin picker.
+- tapOn: 'Co ještě\? Mapa, filtry a další'
+- tapOn: Přidat hospodu
 - evalScript: ${output.local.offline()}
 - tapOn: Název hospody
 - inputText: E2E Nová hospoda

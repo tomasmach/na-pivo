@@ -66,8 +66,9 @@ tags: [full]
 - inputText: E2E NenalezitelnyPodnik
 - assertVisible: Nic jsem nenašel
 - evalScript: ${output.local.offline()}
+- tapOn: Smazat hledání
+- assertNotVisible: Smazat hledání
 - tapOn: Hledat hospodu
-- eraseText
 - inputText: E2E Druhá hospoda
 - pressKey: Enter
 - extendedWaitUntil:

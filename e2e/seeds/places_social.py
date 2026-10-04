@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+import math
 import os
 import uuid
 from datetime import timedelta
@@ -196,6 +197,14 @@ def observe():
 
     added_pubs = []
     for pub in UserAddedPub.objects.select_related("account").order_by("pk"):
+        lat_delta = math.radians(float(pub.lat) - base.LOCATION[0])
+        lng_delta = math.radians(float(pub.lng) - base.LOCATION[1])
+        distance_term = (
+            math.sin(lat_delta / 2) ** 2
+            + math.cos(math.radians(float(pub.lat)))
+            * math.cos(math.radians(base.LOCATION[0]))
+            * math.sin(lng_delta / 2) ** 2
+        )
         added_pubs.append(
             {
                 "account__nickname": pub.account.nickname,
@@ -206,6 +215,11 @@ def observe():
                 "nearExpectedSyntheticPin": abs(float(pub.lat) - base.LOCATION[0])
                 < 0.00001
                 and abs(float(pub.lng) - base.LOCATION[1]) < 0.00001,
+                "matchesDefaultCountriesCenter": abs(float(pub.lat) - 49.4) < 0.00001
+                and abs(float(pub.lng) - 17.3) < 0.00001,
+                "distanceToFixtureMetres": round(
+                    2 * 6371000 * math.asin(min(1, math.sqrt(distance_term))), 3
+                ),
             }
         )
 

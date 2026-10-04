@@ -171,7 +171,7 @@ output.ps = {
       output.local.check(pub.account__nickname === 'E2EPivar', 'The created pub belongs to the original primary account.');
       output.local.check(pub.name === 'E2E Nová hospoda', 'The created pub retains the exact submitted name.');
       output.local.check(pub.location_source === 'user_pin', 'The created pub retains the explicitly confirmed map-pin source.');
-      output.local.check(pub.nearExpectedSyntheticPin === true, 'The confirmed map pin exactly matches the synthetic fixture location.');
+      output.local.check(pub.nearExpectedSyntheticPin === true, 'The confirmed map pin exactly matches the synthetic fixture location. Offset metres: ' + pub.distanceToFixtureMetres + '; default countries center: ' + pub.matchesDefaultCountriesCenter + '.');
       output.local.check(pub.active === true, 'The created pub remains active.');
       output.local.check(!!pub.client_id, 'The created pub retains its durable client identity.');
       output.ps.created = pub;
