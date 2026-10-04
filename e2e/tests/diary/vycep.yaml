@@ -28,7 +28,14 @@ tags: [critical, full, diary]
 - assertVisible: Visí ve Výčepu · Jen parta
 - evalScript: ${output.local.screenshot('diary-vycep-offline-restored')}
 - evalScript: ${output.local.online()}
-- runFlow: ../../maestro/foreground.yaml
+- runFlow:
+    when:
+      platform: iOS
+    file: ../../maestro/foreground.yaml
+- runFlow:
+    when:
+      platform: Android
+    file: flows/notification-focus.flow
 - assertVisible: Visí ve Výčepu · Jen parta
 - evalScript: ${output.local.screenshot('diary-vycep-before-foreground-oracle')}
 - runScript:
