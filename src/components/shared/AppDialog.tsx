@@ -20,6 +20,7 @@ export type AppDialogButtonStyle = 'default' | 'cancel' | 'destructive';
 
 export interface AppDialogButton {
   text: string;
+  testID?: string;
   style?: AppDialogButtonStyle;
   onPress?: () => void;
 }
@@ -146,6 +147,7 @@ export function AppDialogHost() {
             {actionButtons.map((button, index) => (
               <Pressable
                 key={`${button.text}-${index}`}
+                testID={button.testID}
                 onPress={() => close(button)}
                 accessibilityRole="button"
                 style={({ pressed }) => [
@@ -168,6 +170,7 @@ export function AppDialogHost() {
           </View>
           {cancelButton ? (
             <Pressable
+              testID={cancelButton.testID}
               onPress={() => close(cancelButton)}
               accessibilityRole="button"
               style={({ pressed }) => [styles.cancelMenuButton, pressed && styles.pressed]}
@@ -204,7 +207,7 @@ export function AppDialogHost() {
           {secondaryButtons.map((button, index) => (
             <Pressable
               key={`${button.text}-${index}`}
-              testID={`app-dialog-secondary-${index}`}
+              testID={button.testID ?? `app-dialog-secondary-${index}`}
               onPress={() => close(button)}
               accessibilityRole="button"
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
@@ -216,7 +219,7 @@ export function AppDialogHost() {
           ))}
           {primaryButton ? (
             <Pressable
-              testID="app-dialog-primary"
+              testID={primaryButton.testID ?? 'app-dialog-primary'}
               onPress={() => close(primaryButton)}
               accessibilityRole="button"
               style={({ pressed }) => [
