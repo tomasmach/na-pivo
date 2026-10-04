@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { ready, start, stop } from './processes.mjs';
 import { controlServer } from './control.mjs';
+import { platform, setFixtureLocation } from './device.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const runDir = process.env.NA_PIVO_E2E_RUN_DIR;
@@ -36,6 +37,7 @@ let migration;
 let closing = false;
 let control;
 let httpControl;
+let locationTimer;
 function record() {
   const owned = [{ pid: process.pid }, migration, backend, metro].filter(child => child?.pid).flatMap(child => {
     try { return [{ pid: child.pid, started: execFileSync('ps', ['-o', 'lstart=', '-p', String(child.pid)], { encoding: 'utf8' }).trim() }]; }
@@ -52,6 +54,7 @@ async function online() {
 async function cleanup(code = 0) {
   if (closing) return;
   closing = true;
+  clearInterval(locationTimer);
   control?.close();
   httpControl?.close();
   await Promise.all([stop(migration), stop(backend), stop(metro)]);
@@ -70,6 +73,15 @@ try {
   migration = undefined;
   if (migrationCode !== 0) throw new Error('Local E2E migration failed.');
   await online();
+  if (platform === 'android') {
+    // Expo's balanced current-position request accepts fixes at most 3s old.
+    // The emulator has no physical receiver; supply the same fixed point while
+    // this owned supervisor lives, including during backend outages.
+    locationTimer = setInterval(() => {
+      try { setFixtureLocation(); }
+      catch { console.error('Owned emulator location update failed.'); void cleanup(1); }
+    }, 1000);
+  }
   if (process.env.NA_PIVO_E2E_CONTROL_PORT) {
     httpControl = controlServer({ online, offline: async () => { await stop(backend); backend = undefined; record(); } });
     httpControl.on('error', () => cleanup(1));

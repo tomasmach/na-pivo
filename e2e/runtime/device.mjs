@@ -45,12 +45,18 @@ export function prepareAppDevice() {
     const port = process.env.NA_PIVO_E2E_METRO_PORT;
     adb('reverse', `tcp:${port}`, `tcp:${port}`);
     adb('shell', 'cmd', 'uimode', 'night', 'yes');
-    // Android's console accepts longitude first. Never forward this output.
-    adb('emu', 'geo', 'fix', '14.42108', '50.08759');
+    setFixtureLocation();
   } else {
     simctl('ui', device(), 'appearance', 'dark');
     simctl('location', device(), 'set', '50.08759,14.42108');
   }
+}
+
+/** Keep the owned emulator's synthetic fix fresh for current-position requests. */
+export function setFixtureLocation() {
+  if (platform !== 'android') return;
+  // Android's console accepts longitude first. Never forward this output.
+  adb('emu', 'geo', 'fix', '14.42108', '50.08759');
 }
 
 export function openLink(link) {
