@@ -123,6 +123,13 @@ function signature(item: AmenityQueueItem): string {
   return JSON.stringify(item);
 }
 
+/** True while a 429 pause runs; a flush is then scheduled for its end. */
+async function waitForThrottle(signal: AbortSignal): Promise<boolean> {
+  const retryAt = await getAmenityVotesRetryAt();
+  if (retryAt && !signal.aborted) scheduleThrottleRetry(retryAt);
+  return retryAt > 0;
+}
+
 async function flushSnapshot(signal: AbortSignal): Promise<void> {
   const queue = await runLocked(loadQueue);
   if (queue.length === 0) {
@@ -132,13 +139,7 @@ async function flushSnapshot(signal: AbortSignal): Promise<void> {
 
   let sessionUnavailable = false;
   for (const item of queue) {
-    if (signal.aborted) return;
-    const retryAt = await getAmenityVotesRetryAt();
-    if (signal.aborted) return;
-    if (retryAt) {
-      scheduleThrottleRetry(retryAt);
-      return;
-    }
+    if (signal.aborted || await waitForThrottle(signal)) return;
     const key = dedupKey(item);
     const attempted = signature(item);
     // A newer edit or account-boundary clear may have replaced this snapshot
@@ -165,7 +166,8 @@ async function flushSnapshot(signal: AbortSignal): Promise<void> {
     if (sessionUnavailable) break;
   }
 
-  if (signal.aborted) return;
+  // The last item may have been the one that got 429.
+  if (signal.aborted || await waitForThrottle(signal)) return;
   if (sessionUnavailable) scheduleSessionRetry();
   else resetSessionRetry();
 }

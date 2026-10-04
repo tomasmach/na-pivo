@@ -17,8 +17,10 @@ jest.mock('../backendConfig', () => ({
   getBackendEndpoint: (path: string) => `https://api.test${path}`,
 }));
 
+const mockSession = { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: false };
+const mockEnsureAccount = jest.fn(async () => mockSession);
 jest.mock('../account', () => ({
-  ensureAccount: async () => ({ deviceId: 'd', accountId: 'a', token: 'tok', authenticated: false }),
+  ensureAccount: () => mockEnsureAccount(),
   clearCachedAnonymousAccount: async () => true,
 }));
 
@@ -121,6 +123,39 @@ it('stops the pass at the first 429 and sends nothing until Retry-After, then de
 
   await flushPubAmenitiesQueue();
   expect(sent).toHaveLength(6);
+});
+
+it('retries on its own when the last queued vote got the 429', async () => {
+  const sent = serve(reply(429, '30'));
+  await enqueueAmenityOp(upsert('game_darts'));
+
+  await flushPubAmenitiesQueue();
+  await jest.advanceTimersByTimeAsync(29_999);
+  expect(sent).toEqual(['game_darts']);
+
+  await jest.advanceTimersByTimeAsync(1);
+  expect(sent).toEqual(['game_darts', 'game_darts']);
+  expect(queuedKeys()).toEqual([]);
+});
+
+it('drops a live vote whose account read finished after another request got 429', async () => {
+  const sent = serve(reply(429, '30'));
+  let releaseAccount!: () => void;
+  const accountRequested = new Promise<void>((started) => {
+    mockEnsureAccount.mockImplementationOnce(() => {
+      started();
+      return new Promise((resolve) => { releaseAccount = () => resolve(mockSession); });
+    });
+  });
+  const live = submitAmenityVotesDetailed([upsert('game_pool').payload]);
+  await accountRequested;
+
+  await enqueueAmenityOp(upsert('game_darts'));
+  await flushPubAmenitiesQueue();
+  releaseAccount();
+
+  expect((await live).status).toBe('retry');
+  expect(sent).toEqual(['game_darts']);
 });
 
 it('lengthens the pause while the server keeps answering 429', async () => {

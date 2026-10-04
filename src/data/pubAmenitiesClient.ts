@@ -34,6 +34,7 @@ import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import {
   getAmenityVotesRateLimitGeneration,
   getAmenityVotesRetryAt,
+  isAmenityVotesPaused,
   noteAmenityVotesResponse,
 } from './pubAmenitiesRateLimit';
 import { trackClientEvent } from './telemetryClient';
@@ -257,6 +258,8 @@ export async function submitAmenityVotes(
     });
     return 'retry';
   }
+  // Another request may have hit 429 while the account was loading.
+  if (isAmenityVotesPaused()) return 'retry';
 
   const rateLimitGeneration = getAmenityVotesRateLimitGeneration();
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
@@ -377,6 +380,7 @@ export async function submitAmenityVotesDetailed(
     });
     return { status: 'retry', body: null };
   }
+  if (isAmenityVotesPaused()) return { status: 'retry', body: null };
 
   const rateLimitGeneration = getAmenityVotesRateLimitGeneration();
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);

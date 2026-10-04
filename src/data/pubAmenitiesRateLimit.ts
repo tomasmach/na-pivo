@@ -44,6 +44,11 @@ export async function getAmenityVotesRetryAt(): Promise<number> {
   return retryAt > Date.now() ? retryAt : 0;
 }
 
+/** Synchronous check right before fetch, after getAmenityVotesRetryAt loaded the saved deadline. */
+export function isAmenityVotesPaused(): boolean {
+  return retryAt > Date.now();
+}
+
 /** Capture before sending, so an answer that lands after an account switch is ignored. */
 export function getAmenityVotesRateLimitGeneration(): number {
   return generation;
