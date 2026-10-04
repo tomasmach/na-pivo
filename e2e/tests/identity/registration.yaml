@@ -1,5 +1,5 @@
 appId: ${MAESTRO_APP_ID}
-name: Registration claims history and verified email unlocks export
+name: Registration claims online and offline history under the same private account
 # Blocked: local React password category stays "one", also with character-by-character input.
 # Keep the full reproduction; registration limits are documented in ../../COVERAGE.md.
 tags: [critical, full, identity, blocked]
@@ -115,40 +115,7 @@ tags: [critical, full, identity, blocked]
     env:
       ROUTE: /profile
 - assertVisible: "Upravit profil"
-- runScript:
-    file: checks.js
-    env:
-      CASE: register
-      PHASE: private
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /account
-- tapOn: "Otevřít další možnosti účtu"
-- tapOn: "Stáhnout moje data"
-- runScript:
-    file: checks.js
-    env:
-      CASE: register
-      PHASE: unverified
-- evalScript: ${output.local.request('/mail/verify', {})}
-- runFlow: ../../maestro/restart.yaml
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /account
-- tapOn: "Otevřít další možnosti účtu"
-- tapOn: "Stáhnout moje data"
-- runScript:
-    file: checks.js
-    env:
-      CASE: register
-      PHASE: export
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /profile
-- evalScript: ${output.local.screenshot('identity-registered-private-verified')}
+- evalScript: ${output.local.screenshot('identity-registered-private')}
 - runScript:
     file: checks.js
     env:

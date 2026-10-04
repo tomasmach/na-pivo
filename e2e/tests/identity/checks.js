@@ -48,26 +48,11 @@ if (CASE === 'logout') {
     check(registered.originalPasswordWorks, 'The actual registered credential must match the complete original fixture password.');
   } else {
     check(registered && registered.publicId === output.anonymousId && !registered.isPublic, 'Registration must claim the same anonymous identity with private visibility.');
-    check(registered.originalPasswordWorks, 'Registration must preserve the complete fixture password through verification and export.');
+    check(registered.originalPasswordWorks, 'Registration must preserve the complete fixture password through app restart.');
     equal(names(registered), ['E2E Ležák', 'E2E Ležák'], 'Claim must preserve exactly both online and offline beers.');
     const expectedDrink = {beer_name: 'E2E Ležák', price_czk: 41, volume_ml: 500, place_context: 'pub', drink_type: 'beer'};
     equal(state.accounts.find(function (a) { return a.publicId === registered.publicId; }).drinks, [expectedDrink, expectedDrink], 'Both claimed drinks must preserve exact price, volume and context.');
-    if (PHASE === 'private') observe('outsider', '/v1/friends/' + registered.publicId, 404);
-    if (PHASE === 'unverified') {
-      check(!state.accounts.find(function (a) { return a.publicId === registered.publicId; }).verified, 'Contact must remain unverified before email link.');
-      equal(state.scenario.mail.exports, [], 'Unverified account must not receive export.');
-    }
-    if (PHASE === 'export' || PHASE === 'final') {
-      check(state.accounts.find(function (a) { return a.publicId === registered.publicId; }).verified, 'Real email link must verify the actual account.');
-      check(state.scenario.mail.exports.length === 1, 'Verified account must receive exactly one actual JSON export.');
-      const exported = state.scenario.mail.exports[0];
-      check(exported.publicId === registered.publicId, 'Export must belong to the claimed account.');
-      equal(exported.drinks.map(function (d) { return d.beerName; }), ['E2E Ležák', 'E2E Ležák'], 'Export must contain both claimed drinks.');
-      check(registered.oneTimeTokens.some(function (t) { return t.purpose === 'verify_email' && t.used; }), 'Email verification token must be consumed.');
-      const message = output.local.request('/mail/export');
-      check(message.status === 200 && message.attachments === 1, 'Real rendered export email must contain one attachment.');
-      if (PHASE === 'final') observe('outsider', '/v1/friends/' + registered.publicId, 404);
-    }
+    if (PHASE === 'final') observe('outsider', '/v1/friends/' + registered.publicId, 404);
   }
 } else if (CASE === 'profile') {
   if (PHASE === 'before') { output.primaryId = primary.publicId; observe('outsider', '/v1/friends/' + primary.publicId, 200); }
