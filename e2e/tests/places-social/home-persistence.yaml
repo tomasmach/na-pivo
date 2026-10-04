@@ -40,12 +40,14 @@ tags: [critical, full]
       - evalScript: ${output.local.screenshot('places-android-home-location-requested')}
       - extendedWaitUntil:
           visible:
-            text: 'For a better experience, your device will need to use Location Accuracy|Uložit domov'
+            text: 'For a better experience, your device will need to use Location Accuracy\s*|Uložit domov'
             enabled: true
           timeout: 30000
       - runFlow:
           when:
-            visible: 'For a better experience, your device will need to use Location Accuracy'
+            visible:
+              id: 'com\.google\.android\.gms:id/message'
+              text: 'For a better experience, your device will need to use Location Accuracy\s*'
           commands:
             - tapOn: Turn on
       - extendedWaitUntil:

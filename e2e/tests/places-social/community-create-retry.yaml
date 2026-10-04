@@ -82,12 +82,14 @@ tags: [full]
       - evalScript: ${output.local.screenshot('social-android-community-location-requested')}
       - extendedWaitUntil:
           visible:
-            text: 'For a better experience, your device will need to use Location Accuracy|Poloha uložená jen k tomuto setkání'
+            text: 'For a better experience, your device will need to use Location Accuracy\s*|Poloha uložená jen k tomuto setkání'
             enabled: true
           timeout: 30000
       - runFlow:
           when:
-            visible: 'For a better experience, your device will need to use Location Accuracy'
+            visible:
+              id: 'com\.google\.android\.gms:id/message'
+              text: 'For a better experience, your device will need to use Location Accuracy\s*'
           commands:
             - tapOn: Turn on
       - extendedWaitUntil:
