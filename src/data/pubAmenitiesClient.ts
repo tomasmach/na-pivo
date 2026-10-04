@@ -21,6 +21,8 @@
  *   - 'ok'              → 2xx: reached the backend, drop from queue.
  *   - 'permanent-error' → 400/422: this byte-stable payload will never succeed.
  *   - 'retry'           → network/timeout/5xx/429/401/dormant: keep + retry.
+ * A 429 also pauses every vote PUT until Retry-After plus backoff has passed
+ * (pubAmenitiesRateLimit.ts); a paused submit returns 'retry' without sending.
  *
  * The read sides (fetchMyAmenityVotes / fetchPubAmenities / getAmenityKinds)
  * return the parsed value or null on ANY failure (never throw).
@@ -29,6 +31,11 @@
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
+import {
+  getAmenityVotesRateLimitGeneration,
+  getAmenityVotesRetryAt,
+  noteAmenityVotesResponse,
+} from './pubAmenitiesRateLimit';
 import { trackClientEvent } from './telemetryClient';
 
 /** Taxonomy item from GET /v1/pub-amenities/kinds (canonical wire names). */
@@ -237,6 +244,9 @@ export async function submitAmenityVotes(
     return 'retry';
   }
 
+  // A recent 429 pauses every vote PUT; the queue keeps this vote for later.
+  if (await getAmenityVotesRetryAt()) return 'retry';
+
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) {
     if (!session && !signal?.aborted) onAccountUnavailable?.();
@@ -248,6 +258,7 @@ export async function submitAmenityVotes(
     return 'retry';
   }
 
+  const rateLimitGeneration = getAmenityVotesRateLimitGeneration();
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
@@ -259,6 +270,7 @@ export async function submitAmenityVotes(
       body: JSON.stringify({ votes }),
       signal: abort.signal,
     });
+    await noteAmenityVotesResponse(resp, rateLimitGeneration);
 
     if (resp.ok) {
       trackAmenitySynced('submit_votes');
@@ -354,6 +366,8 @@ export async function submitAmenityVotesDetailed(
     return { status: 'retry', body: null };
   }
 
+  if (await getAmenityVotesRetryAt()) return { status: 'retry', body: null };
+
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) {
     trackAmenitySyncFailed('submit_votes', {
@@ -364,6 +378,7 @@ export async function submitAmenityVotesDetailed(
     return { status: 'retry', body: null };
   }
 
+  const rateLimitGeneration = getAmenityVotesRateLimitGeneration();
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
@@ -375,6 +390,7 @@ export async function submitAmenityVotesDetailed(
       body: JSON.stringify({ votes }),
       signal: abort.signal,
     });
+    await noteAmenityVotesResponse(resp, rateLimitGeneration);
 
     if (resp.ok) {
       trackAmenitySynced('submit_votes');

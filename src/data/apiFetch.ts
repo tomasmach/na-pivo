@@ -47,6 +47,18 @@ export function chainAbortSignal(
   };
 }
 
+/**
+ * How long a 429 asks the client to wait, from `Retry-After` in delta-seconds or
+ * HTTP-date form. Null when the header is missing, malformed or already past.
+ */
+export function retryAfterMs(response: Response): number | null {
+  const header = response.headers?.get('Retry-After');
+  if (!header) return null;
+  const seconds = Number(header);
+  const duration = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(header) - Date.now();
+  return Number.isFinite(duration) && duration > 0 ? duration : null;
+}
+
 /** Three-state outcome the persisted-queue clients use to decide keep/drop. */
 export type QueueSyncResult = 'ok' | 'permanent-error' | 'retry';
 

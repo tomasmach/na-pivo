@@ -27,6 +27,12 @@
  *   - 'permanent-error' (4xx) → will never succeed → drop from queue.
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
  *
+ * A 429 ends the whole pass, not just its item: the backend counts every vote of
+ * the account in one window, so the rest would only collect more 429s. The queue
+ * stays untouched and one timer flushes it after Retry-After plus backoff
+ * (pubAmenitiesRateLimit.ts). Launch, foreground and enqueue flushes during the
+ * pause send nothing.
+ *
  * We do NOT flush per enqueue: enqueue debounces a single flush (~250ms microtask)
  * after the subscriber settles, so mapping one pub doesn't fire 16 serial 8s-timeout
  * attempts. Network delivery never holds the storage mutex, so another tap can
@@ -39,6 +45,7 @@ import {
   type WireAmenityVote,
 } from './pubAmenitiesClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { clearAmenityVotesRateLimit, getAmenityVotesRetryAt } from './pubAmenitiesRateLimit';
 import { AppState } from 'react-native';
 
 const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
@@ -126,6 +133,12 @@ async function flushSnapshot(signal: AbortSignal): Promise<void> {
   let sessionUnavailable = false;
   for (const item of queue) {
     if (signal.aborted) return;
+    const retryAt = await getAmenityVotesRetryAt();
+    if (signal.aborted) return;
+    if (retryAt) {
+      scheduleThrottleRetry(retryAt);
+      return;
+    }
     const key = dedupKey(item);
     const attempted = signature(item);
     // A newer edit or account-boundary clear may have replaced this snapshot
@@ -163,6 +176,21 @@ const { flush: flushQueue, abortInFlight } = createCoalescingFlush(flushSnapshot
 let _flushTimer: ReturnType<typeof setTimeout> | null = null;
 let _sessionRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let _sessionRetryAttempt = 0;
+let _throttleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function resetThrottleRetry(): void {
+  if (_throttleTimer) clearTimeout(_throttleTimer);
+  _throttleTimer = null;
+}
+
+/** One flush when the 429 pause ends. A suspended app flushes on foreground instead. */
+function scheduleThrottleRetry(retryAt: number): void {
+  resetThrottleRetry();
+  _throttleTimer = setTimeout(() => {
+    _throttleTimer = null;
+    if (AppState.currentState === 'active') void flushQueue();
+  }, retryAt - Date.now());
+}
 
 function resetSessionRetry(): void {
   if (_sessionRetryTimer) clearTimeout(_sessionRetryTimer);
@@ -210,9 +238,11 @@ export function enqueueAmenityOp(item: AmenityQueueItem): Promise<void> {
 /** Drop all pending amenity sync operations without attempting delivery. */
 export function clearPubAmenitiesQueue(): Promise<void> {
   resetSessionRetry();
+  resetThrottleRetry();
   abortInFlight();
+  const rateLimitCleared = clearAmenityVotesRateLimit();
   return runLocked(async () => {
-    await saveQueue([]);
+    await Promise.all([saveQueue([]), rateLimitCleared]);
   });
 }
 
