@@ -32,9 +32,9 @@ appId: ${MAESTRO_APP_ID}
       platform: Android
     commands:
       # am start finishes before Expo has mounted the Router. Wait for the
-      # actual app navigation before the caller sends its next deep link.
+      # actual navigation or unfinished onboarding before the next step.
       - extendedWaitUntil:
-          visible: {id: tab-index}
+          visible: {id: 'tab-index|onboarding-skip'}
           timeout: 60000
 - runFlow:
     when:
