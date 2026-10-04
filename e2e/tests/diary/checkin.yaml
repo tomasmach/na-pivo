@@ -1,3 +1,4 @@
+# Known visual failure NP-E2E-015: ../../BUGS.md. The data oracle verifies the rating; Czech decimal formatting remains incorrect.
 appId: ${MAESTRO_APP_ID}
 name: Offline rating survives restart and populates the beer detail
 tags: [full, diary]
