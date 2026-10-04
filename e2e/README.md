@@ -78,9 +78,9 @@ npm run e2e:full
 npm run e2e:blocked
 ```
 
-Oblasti spouštěj postupně. Pro závěrečný první čistý simulátor archivuj vlastní `.e2e/simulator-1.json` pod jiným názvem; runner vytvoří nový jednoznačně pojmenovaný iPhone 17. Starý simulátor nemaž ani nepřebírej cizí. Závěrečný celý běh zaznamená `command-metrics.json`. Maestro modelovou replay cache nemá, její metriky jsou nepoužitelné; skutečné replay měření původního TesterArmy spike je v COVERAGE.md. Další celý Maestro běh by tento důkaz neposkytl. Registrovaný Android Pixel 10 je dostupný, ale Android runner a ověření čekají na zelené iOS.
+Oblasti spouštěj postupně. Pro nový čistý simulátor archivuj vlastní `.e2e/simulator-1.json` pod jiným názvem; runner vytvoří nový jednoznačně pojmenovaný iPhone 17. Starý simulátor nemaž ani nepřebírej cizí. Čas celého běhu zaznamená `command-metrics.json`. Maestro modelovou replay cache nemá, její metriky jsou nepoužitelné; skutečné replay měření původního TesterArmy spike je v COVERAGE.md. Další celý Maestro běh by tento důkaz neposkytl. Dostupná iOS sada již dokončila 32 PASS a jedno známé selhání; po ní začalo ověřování na Android Pixel 10.
 
-## Android, připraveno k nativnímu ověření
+## Android
 
 Android se spouští až po zelené dostupné iOS sadě. Příprava používá místní SDK s ARM64 obrazem `system-images;android-36.1;google_apis_playstore;arm64-v8a` a profilem `pixel_10`. Nevhodný nebo chybějící obraz runner sám nestahuje. Vytvoří vlastní pojmenovaný Pixel 10, při dalších bězích použije pouze svůj neobsazený AVD. Běh používá stejný slot, samostatné API/Metro/DB a navíc vlastní konzolový a gRPC port.
 
@@ -90,8 +90,8 @@ E2E_PLATFORM=android npm run e2e:critical -- e2e/tests/spike/
 E2E_PLATFORM=android npm run e2e:full
 ```
 
-Tyto Android příkazy zatím nemají doložený nativní výsledek. Oblastní flow ještě potřebují dokončit přizpůsobení systémového pickeru a oprávnění. Stav zůstává v COVERAGE.md; příprava kódu není zelená Android sada.
+Lokální Android build prošel. První nativní spike také potvrdil přihlášení a uložené pivo po restartu. Stabilita a oblastní flow včetně systémového pickeru a oprávnění se ještě ověřují. Aktuální výsledky jsou v COVERAGE.md; nejde zatím o zelenou celou Android sadu.
 
 Build používá lokální Expo prebuild a `assembleDebug` pouze pro ARM64, nejvýš dva Gradle workery a 2 GiB JVM heap. Nečte skutečný `google-services.json`: explicitní místní E2E konfigurace jej vynechá, v produkčním režimu a EAS skončí chybou. Výchozí konfigurace vydané appky se nemění. APK zůstane v `.e2e/build/na-pivo-debug.apk` a mezi běhy se znovu používá. Build i test vyžadují 30 GiB volného místa a pod 20 GiB zastaví pouze vlastní procesy.
 
-Android reset používá skutečné `pm clear`, restart otevírá Expo bundle na `10.0.2.2` a návrat do popředí nemění oprávnění, protože jejich odebrání by ukončilo proces. Fotky vybírá systémový picker bez širokého oprávnění ke galerii. Skutečnou schránku čte lokální gRPC vlastního emulátoru; jeho token i zkopírovaný obsah zůstávají v paměti kontroleru. Domovský bod se čte ze skutečné AsyncStorage DB včetně WAL a ven vrací pouze dvě booleovské hodnoty. Dočasná kopie DB se smaže po čtení i při úklidu běhu.
+Android reset používá skutečné `pm clear`. Expo bundle na `127.0.0.1` se otevře přes vlastní `adb reverse` a studený start `MainActivity`; běžné deep linky proces zachovávají. API používá host `10.0.2.2`. Návrat do popředí nemění oprávnění, protože jejich odebrání by ukončilo proces. Fotky vybírá systémový picker bez širokého oprávnění ke galerii. Skutečnou schránku čte lokální gRPC vlastního emulátoru; jeho token i zkopírovaný obsah zůstávají v paměti kontroleru. Domovský bod se čte ze skutečné AsyncStorage DB včetně WAL a ven vrací pouze dvě booleovské hodnoty. Dočasná kopie DB se smaže po čtení i při úklidu běhu.

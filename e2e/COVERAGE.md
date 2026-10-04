@@ -60,9 +60,9 @@ Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/dro
 - E-mail: skutečně vykreslená zpráva v lokálním paměťovém backendu. Žádný testovací login ani změna API kontraktu.
 - Backendové externí sockety jsou blokované; klíče a produkční `.env` se nenačítají. Mapový klíč je neplatná fixture. iOS 26.5 nepodporuje notifications přes simctl privacy; případný dialog test odmítá a lokální adaptér zabraňuje registraci skutečného push tokenu.
 - První dokončená celá iOS sada `bbf6501c`: 32 úspěšných / 1 známé selhání, engine 3 258,192 s, celý příkaz 3 293,575 s (54 min 54 s), modelová volání a tokeny 0. Podrobnosti a hranice měření níže.
-- Cache celé sady: Maestro replay cache nemá. Při integraci se změří celý příkaz na čistém simulátoru; původní TesterArmy replay spike je doložen níže.
+- Cache celé sady: Maestro replay cache nemá. Celý příkaz `bbf6501c` trval 3 293,575 s na novém vlastním simulátoru, nikoli při prvním studeném startu OS; původní TesterArmy replay spike je doložen níže.
 - Souběh dvou běhů: ověřený zeleným spike ve slotech 1 a 2, vlastní simulátory, API/Metro porty a odlišné účty v oddělených DB. V každé DB právě jedno pivo. Po skončení všechny čtyři porty volné.
-- Android: read-only inventura potvrdila SDK, adb, emulator a existující Google Pixel 10 / API 36.1. První celá iOS sada dokončila 32 zdravých scénářů a jediné známé selhání NP-E2E-014. Lokální Android build a nativní ověření nyní následují; zatím nejsou vykázané jako úspěšné.
+- Android: místní SDK, Google Pixel 10 / API 36.1. Lokální ARM64 debug build prošel za 5 min 31 s. První skutečný spike potvrdil přihlášení a přesně jedno pivo v DB i po restartu; stabilita a oblastní průchody se ještě ověřují. Příprava začala až po dokončení dostupné iOS sady.
 - Po úspěšném důkazu souběhu nyní širší dávky běží jednotlivě: dva simulátory později vyčerpaly dostupné místo na disku. Selhání přípravy z nedostatku místa se nepočítá jako produktový bug.
 
 ### Spike, 3. 10. 2026
@@ -120,7 +120,7 @@ Replay, handed off a missed jsou pro Maestro nepoužitelné. Soukromé raw repor
 
 Dávka identity `bf533099` byla po 217,116 s přerušená s kódem 130 kvůli nedostatku místa, přestože startovala s více než 5 GiB. Mazání účtu před přerušením dokončilo celý průchod; pro zbytek dávky chybí engine souhrn a nelze odvodit výsledky. Souběžný diary běh `bf0e5e7d` dokončil večer, ale zaznamenal ENOSPC během dalších scénářů. Obě tour se proto opakují samostatně. Další nativní souběh na tomto stroji se neprovádí.
 
-Aktuálně je připraveno 33 Maestro průchodů: 1 spike, 12 identity, 5 diary a 15 places/social. Tento počet není počet třikrát ověřených testů.
+V této fázi bylo připraveno 33 Maestro průchodů: 1 spike, 12 identity, 5 diary a 15 places/social. Tento historický počet není počet třikrát ověřených testů.
 
 Infrastrukturní fault check `4db92e24` simuloval pokles volného místa během skutečné přípravy simulátoru a samostatně chybu ENOSPC při zápisu závěrečných metrik. Skutečný disk se neplnil. Runner skončil očekávaným kódem 75; všechny tři vlastní porty byly volné, zaznamenané procesy skončily, simulátor byl Shutdown a slot/boot locky i raw debug byly odstraněné. Jde o ověření úklidu, nikoli o aplikační průchod.
 
@@ -153,7 +153,7 @@ První stabilitní dávku ostatních 11 identity testů `ff585be9` po 246,804 s 
 | Deník a tour | 5 | 5 | 5 | [#217](https://github.com/tomasmach/na-pivo/pull/217) |
 | Hospody a Parta | 15, z toho 1 známé selhání | 14 | 14 | [#218](https://github.com/tomasmach/na-pivo/pull/218) |
 
-Čísla oblastních průchodů nejsou důkazem finální integrované revize. Z 34 připravených scénářů má 32 tři úspěšné průchody. Zbývá známé selhání offline nabídky NP-E2E-014 a blokovaná registrace s claimem. Následuje jeden celý běh na čistém simulátoru podle zadání. Jeho čas zatím nebyl naměřen; čísla se neodhadují. Čas a spotřeba replay cache celé Maestro sady jsou nepoužitelné, protože engine tuto cache nemá. Android zatím nebyl spuštěn; následuje po ověření dostupné iOS sady s výslovně přiznaným známým selháním.
+Z 34 připravených scénářů má 32 tři úspěšné iOS průchody. Integrovaná sada `bbf6501c` následně dokončila 32 PASS a jediné známé selhání offline nabídky NP-E2E-014 za 54 min 54 s; registrace s claimem zůstává `blocked`. Podmínky nového simulátoru a měření jsou popsané níže. Čas a spotřeba replay cache celé Maestro sady jsou nepoužitelné, protože engine tuto cache nemá. Android build už prošel; jeho nativní ověřování následuje po tomto výsledku iOS.
 
 Nezávislé review opravilo slabou kontrolu soukromého feedu na přesná ID a kontrolu starého hesla na konkrétní serverové odmítnutí. Úklid procesů má tři lokální regresní kontroly: neznámý/ukončený PID nedostane signál, vlastní potomek se ukončí i po zániku leadera před nebo během úklidu. Všechny tři prošly za 10,2 s. Krátký nativní průchod `15eb6f6d` ověřil konec runneru, volné porty, Shutdown vlastního simulátoru a smazání soukromých reportů; dlouhá dávka `4b32cc73` následně dokončila úklid za 3,696 s, měřeno od vytvoření engine metrik do dokončení celého příkazu. Nejde o další mobilní testy v tabulce.
 
