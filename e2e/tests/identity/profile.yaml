@@ -22,6 +22,11 @@ tags: [critical, full, identity]
 - tapOn: { id: profile-nickname }
 - eraseText
 - inputText: "E2EKamarad"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - evalScript: ${output.local.screenshot('identity-nickname-validation')}
 - extendedWaitUntil:
     visible: "Tahle přezdívka je zabraná"
