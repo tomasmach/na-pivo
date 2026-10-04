@@ -26,7 +26,7 @@ E2E_SLOT=2 npm run e2e:critical -- e2e/tests/spike/
 
 `--stability` požaduje tři zelené průchody. Maestro nepoužívá model ani replay cache, proto `--no-cache` nic nemění a replay metriky jsou `null`. Pro oblast používej adresářový filtr. Původní TesterArmy spike lze diagnosticky spustit přes `E2E_ENGINE=testerarmy npm run e2e:critical -- e2e/tests/spike/persist-drink.e2e.ts --stability`; vyžaduje `E2E_TELEMETRY_DISABLED=1 npx e2e login openai` a druhý/třetí průchod v něm nadále vynucují úplný replay.
 
-`critical` a `full` vynechávají výslovně označené `blocked` scénáře. Ty se spouštějí samostatně přes `e2e:blocked` a nejsou započítané mezi ověřené průchody. Každý musí mít konkrétní důvod v COVERAGE.md. Aktuálně jde o registraci: Maestro vyplní nativní formulář, ale aplikace při odeslání hlásí příliš krátké heslo; příčina není prokázaná. Tento blokátor současně brání navazujícímu ověření e-mailu, claimu anonymních dat a exportu v daném průchodu.
+`critical` a `full` vynechávají výslovně označené `blocked` scénáře. Ty se spouštějí samostatně přes `e2e:blocked` a nejsou započítané mezi ověřené průchody. Každý musí mít konkrétní důvod v COVERAGE.md. Aktuálně jde o registraci: Maestro vyplní nativní formulář, ale aplikace při odeslání hlásí příliš krátké heslo; příčina není prokázaná. Tento blokátor brání claimu anonymních dat. Ověření e-mailu a export mají samostatný průchod existujícího neověřeného účtu v `identity/email-export.yaml`; aktuální výsledek uvádí COVERAGE.md.
 
 Katalogový průchod má navíc potvrzené známé selhání [NP-E2E-014](BUGS.md#np-e2e-014-nabídka-otevřené-hospody-zmizí-po-offline-restartu): nabídka dříve otevřené hospody se neuloží pro offline restart. Tento test zůstává v `critical` i `full`, takže do opravy vrací celý příkaz nenulový kód. Známou chybu je nutné ve výsledku odlišit od nových selhání; kontrola nabídky nebyla oslabená.
 
@@ -64,7 +64,7 @@ Aktuální důkazy a omezení jsou v [COVERAGE.md](COVERAGE.md), produktové chy
 
 ## Pokračování před sloučením PR
 
-Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Oblasti ověřuj postupně a zachovej diskovou rezervu runneru. Účet, média a deník už mají tři úspěšné průchody; stav zbývajících oblastí a celé sady uvádí COVERAGE.md.
+Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Oblasti ověřuj postupně a zachovej diskovou rezervu runneru. Původních 11 průchodů účtu a médií, všech pět deníkových a 14 zdravých průchodů hospod a Party už má tři úspěchy. Nový průchod e-mailu a exportu a celou sadu eviduje COVERAGE.md.
 
 ```sh
 npm run e2e:full -- e2e/tests/identity/ --stability

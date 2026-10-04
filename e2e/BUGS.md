@@ -81,7 +81,7 @@
 - Skutečnost: karta ukazuje dva kamarády a uloženou vlastní aktivitu, ale nabídne „Doplnit přezdívku“. Skutečný účet již přezdívku má.
 - Příčina: CTA používá `nickname == null`, přičemž `selectNickname` vrací `null` i pro nenačtený profil. Existující `selectNeedsNickname` správně rozlišuje nenačtený profil a potvrzenou chybějící přezdívku.
 - Reprodukce: `tests/places-social/invite-offline.yaml`, běh `0292bfec`; [screenshot offline Party](https://files.tmach.dev/social-offline-party-1b89f217326a4d1fa103.png). Původní kontrola snapshotu a API prošla, vizuální kontrola odhalila tento rozpor. Regresní kontrola výzvy je součástí PR #218; po opravě celý průchod poprvé prošel v `3bd48f79`.
-- Stav: minimální oprava v samostatném [PR #219](https://github.com/tomasmach/na-pivo/pull/219), nezávislé review bez nálezů. První celý nativní průchod `3bd48f79` potvrdil správnou offline Partu a konečný DB oracle; [prohlédnutý screenshot po opravě](https://files.tmach.dev/social-offline-party-0666993abb3b46e09ab8.png). Další dvě opakování čekají.
+- Stav: minimální oprava v samostatném [PR #219](https://github.com/tomasmach/na-pivo/pull/219), nezávislé review bez nálezů. První celý nativní průchod `3bd48f79` potvrdil správnou offline Partu a konečný DB oracle; [prohlédnutý screenshot po opravě](https://files.tmach.dev/social-offline-party-0666993abb3b46e09ab8.png). Další dva celé průchody `a8970dc4` a `72159c27` také prošly, včetně offline restartu, správné nabídky akcí a přesných vazeb v DB.
 
 ## NP-E2E-009: žebříček po blokování ukazuje dvě různá pořadí
 
