@@ -69,6 +69,7 @@ export function DiaryStatsSheet({
   const renderRow = (row: StatRow, isFirstOfGroup: boolean) => (
     <View
       key={row.key}
+      testID={`diary-stats-${row.key}`}
       style={[styles.row, !isFirstOfGroup && styles.rowDivider]}
       accessible
       accessibilityRole="text"
