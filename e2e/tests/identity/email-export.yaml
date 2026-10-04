@@ -15,7 +15,7 @@ tags: [critical, full, identity]
 - assertVisible: "E-mail není ověřen"
 - tapOn: "Otevřít další možnosti účtu"
 - tapOn: "Stáhnout moje data"
-- assertVisible: 'Export e-mailem pošleme až na ověřený e-mail\.'
+# The toast is transient while the sheet closes. Check the actual UI request.
 - runScript:
     file: export-checks.js
     env: { PHASE: denied }

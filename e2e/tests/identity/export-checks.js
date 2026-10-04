@@ -13,6 +13,7 @@ output.local.poll(function () {
     equal(primary.drinks, output.exportBaseline.drinks, 'Verification and export must retain every original drink ID.');
   }
   if (PHASE === 'denied' || PHASE === 'mail') {
+    equal(state.exportRequests, [{ method: 'POST', status: 403 }], 'The actual UI export request must be rejected with HTTP403 before verification.');
     check(!stored.verified, 'The real account must remain unverified before opening the email link.');
     equal(state.scenario.exportAttachments, [], 'An unverified account must not receive a JSON export.');
     equal(state.scenario.exportJobs, [], 'The rejected export must not create a delivery job.');
@@ -21,6 +22,7 @@ output.local.poll(function () {
       output.exportBaseline = { publicId: primary.publicId, drinks: primary.drinks };
     }
   } else {
+    equal(state.exportRequests, [{ method: 'POST', status: 403 }, { method: 'POST', status: 202 }], 'The verified UI export request must be accepted exactly once with HTTP202 after the rejected request.');
     check(stored.verified, 'The actual email link must verify the original account.');
     equal(primary.oneTimeTokens.filter(function (token) { return token.purpose === 'verify_email'; }).map(function (token) { return token.used; }), [true], 'Exactly one actual verification token must be consumed.');
     check(state.scenario.mail.verify === 1 && state.scenario.exportAttachments.length === 1, 'Restart must preserve exactly one verification mail and one actual export.');
