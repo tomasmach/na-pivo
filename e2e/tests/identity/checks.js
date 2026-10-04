@@ -102,7 +102,7 @@ if (CASE === 'logout') {
     }
   }
 } else if (CASE === 'media') {
-  check(primary.displayName === 'E2E Bez fotky' && !primary.hasAvatar, 'Denied permission must preserve profile editing without creating avatar.');
+  check(primary.displayName === 'E2E Bez Fotky' && !primary.hasAvatar, 'Denied permission must preserve profile editing without creating avatar.');
   equal(primary.photos, [], 'Denied camera and canceled native picker must not create photos.');
   observe('primary', '/v1/account/me', 200);
 } else throw new Error('Unknown identity oracle.');

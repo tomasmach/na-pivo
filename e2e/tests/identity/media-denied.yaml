@@ -57,9 +57,9 @@ tags: [full, identity]
     timeout: 15000
 - tapOn: { id: profile-display-name }
 - eraseText
-- inputText: "E2E Bez fotky"
+- inputText: "E2E Bez Fotky"
 - pressKey: Enter
-- assertVisible: { id: profile-display-name, text: "E2E Bez fotky" }
+- assertVisible: { id: profile-display-name, text: "E2E Bez Fotky" }
 - tapOn: { id: profile-save }
 - extendedWaitUntil:
     notVisible: { id: profile-save }
@@ -137,7 +137,7 @@ tags: [full, identity]
     env:
       ROUTE: /profile
 - tapOn: "Upravit profil"
-- assertVisible: "E2E Bez fotky"
+- assertVisible: "E2E Bez Fotky"
 - tapOn: "Zavřít"
 - evalScript: ${output.local.screenshot('identity-media-denied-recovered')}
 - runScript:
