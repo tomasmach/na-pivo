@@ -65,7 +65,7 @@ test('a reused PID with another birth time does not own an abandoned lock', t =>
 
 test('a child remains recorded and stoppable after its group leader exits', async t => {
   const f = fixture(t);
-  const code = `require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); setTimeout(() => process.exit(0), 1200);`;
+  const code = `require('node:child_process').spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], { stdio: 'ignore' }); setTimeout(() => process.exit(0), 1200);`;
   const leader = start(process.execPath, ['-e', code], {
     env: { PATH: process.env.PATH, NA_PIVO_E2E_RUN_DIR: f.runDir }, stdio: 'ignore',
   });

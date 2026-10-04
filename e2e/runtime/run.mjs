@@ -23,8 +23,8 @@ const platform = process.env.E2E_PLATFORM || 'ios';
 if (!['ios', 'android'].includes(platform)) throw new Error('E2E_PLATFORM must be ios or android.');
 if (platform === 'android' && engine !== 'maestro') throw new Error('Android uses the local Maestro runner.');
 const repeat = args.includes('--stability') ? 3 : 1;
-const switches = new Set(['--stability', '--no-cache', '--strict-cache']);
-const filters = new Set(['--tag', '--exclude-tag', '--grep', '--grep-invert', '--tag-mode']);
+const switches = new Set(['--stability', '--no-cache', ...(engine === 'testerarmy' ? ['--strict-cache'] : [])]);
+const filters = new Set(['--tag', '--exclude-tag', ...(engine === 'testerarmy' ? ['--grep', '--grep-invert', '--tag-mode'] : [])]);
 for (let index = 0; index < args.length; index++) {
   if (switches.has(args[index])) continue;
   if (filters.has(args[index]) && args[index + 1] && !args[index + 1].startsWith('--')) { index++; continue; }

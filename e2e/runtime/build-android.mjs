@@ -7,14 +7,12 @@ import { randomUUID } from 'node:crypto';
 import { acquireLock } from './locks.mjs';
 import { start, stop } from './processes.mjs';
 import { sdkPath } from './device.mjs';
+import { requireFreshNativeProject } from './preflight-native-build.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const free = () => { const disk = fs.statfsSync(root); return disk.bavail * disk.bsize; };
-if (free() < 30 * 1024 ** 3) throw new Error('Android E2E build requires at least 30 GiB free.');
+requireFreshNativeProject(root, 'android');
 const marker = path.join(root, '.e2e/android-build-owner.json');
-if (fs.existsSync(path.join(root, 'android')) && !fs.existsSync(marker)) {
-  throw new Error('Existing native Android files have unknown ownership; inspect them before preparing E2E.');
-}
 fs.mkdirSync(path.dirname(marker), { recursive: true });
 const runDir = path.join(root, '.e2e/runs', randomUUID());
 fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });

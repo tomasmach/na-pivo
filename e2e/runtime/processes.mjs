@@ -89,6 +89,8 @@ export async function stop(child) {
   for (const member of members) signal(member, 'SIGTERM');
   for (let attempt = 0; attempt < 40 && members.some(member => started(member.pid) === member.started); attempt++) await delay(100);
   for (const member of members) signal(member, 'SIGKILL');
+  for (let attempt = 0; attempt < 20 && members.some(isAlive); attempt++) await delay(100);
+  if (members.some(isAlive)) throw new Error('Owned processes did not exit after SIGKILL; ownership must remain reserved.');
 }
 
 export async function run(command, args, options = {}) {
