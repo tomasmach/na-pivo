@@ -3,7 +3,14 @@ import os
 from django.contrib.auth.hashers import make_password
 from django.utils import timezone
 from pubs.enrichment import geohash8
-from pubs.models import Account, EmailCredential, PubCommunityData, PubDirectory, PubHours
+from pubs.models import (
+    Account,
+    DrinkLog,
+    EmailCredential,
+    PubCommunityData,
+    PubDirectory,
+    PubHours,
+)
 
 # Synthetic fixtures around a fixed Prague simulator location, never a user's GPS.
 LOCATION = (50.08759, 14.42108)
@@ -53,3 +60,13 @@ def seed():
             city="Praha",
             beers=[{"name": "E2E Ležák", "price_czk": 41, "volume_ml": 500}],
         )
+
+
+def observe():
+    return {
+        "primaryDrinkPubNames": list(
+            DrinkLog.objects.filter(account__nickname="E2EPivar")
+            .order_by("pk")
+            .values_list("name", flat=True)
+        )
+    }

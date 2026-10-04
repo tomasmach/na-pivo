@@ -6,7 +6,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { start, stop } from './processes.mjs';
+import { start, stop, processIdentity, recordedProcesses } from './processes.mjs';
+import { acquireLock } from './locks.mjs';
 import { summarize } from './report.mjs';
 import { startAndroid } from './android.mjs';
 
@@ -38,13 +39,15 @@ const gitDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--gi
 const lockRoot = path.join(gitDir, 'napivo-e2e');
 fs.mkdirSync(lockRoot, { recursive: true });
 const lock = path.join(lockRoot, `slot-${slot}.lock`);
-try { fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, root }), { flag: 'wx', mode: 0o600 }); }
-catch { throw new Error(`E2E slot ${slot} is owned by another run. Choose another E2E_SLOT; no process was stopped.`); }
+const id = crypto.randomUUID();
+const runDir = path.join(root, '.e2e/runs', id);
+const lockOwner = { ...processIdentity(process.pid), root, runDir };
+if (!acquireLock(lock, lockOwner)) throw new Error(`E2E slot ${slot} is reserved. Inspect ${lock} and its .recovering guard; no process was stopped.`);
 let runner;
 let device;
 let android;
 let closing = false;
-let runDir;
+let retainSlot = false;
 let preparation;
 let bootOwned = false;
 let diskWatch;
@@ -60,15 +63,14 @@ function releaseBoot() {
 async function acquireBoot() {
   const deadline = Date.now() + 300_000;
   while (Date.now() < deadline && !closing) {
-    try {
-      fs.writeFileSync(bootLock, JSON.stringify({ pid: process.pid, runDir }), { flag: 'wx', mode: 0o600 });
+    if (acquireLock(bootLock, lockOwner)) {
       bootOwned = true;
       return;
-    } catch (error) { if (error.code !== 'EEXIST') throw error; }
+    }
     await delay(500);
   }
   if (closing) return;
-  throw new Error('Another run still owns simulator startup. Inspect the shared boot.lock; no process was stopped.');
+  throw new Error('Simulator startup remains reserved. Inspect boot.lock and its .recovering guard; no process was stopped.');
 }
 const simctl = (...argv) => execFileSync('xcrun', ['simctl', ...argv], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 async function cleanup(code) {
@@ -79,16 +81,14 @@ async function cleanup(code) {
   // Capture members before terminating leaders; a child can outlive its parent.
   let ownedProcesses = [];
   try {
-    const records = JSON.parse(fs.readFileSync(path.join(runDir, 'processes.json'), 'utf8')).owned;
-    const cliRecord = path.join(runDir, 'maestro-process.json');
-    if (fs.existsSync(cliRecord)) records.push(JSON.parse(fs.readFileSync(cliRecord, 'utf8')));
+    const records = recordedProcesses(runDir);
     const processes = execFileSync('ps', ['-axo', 'pid=,pgid=,lstart='], { encoding: 'utf8' }).trim().split('\n').map(line => {
       const [, pid, pgid, started] = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/) || [];
       // macOS pads every lstart column; record() trims the single-PID form.
       return { pid: Number(pid), pgid: Number(pgid), started: started?.trim() };
     });
     const groups = new Set(records.filter(record => processes.some(p => p.pid === record.pid && p.started === record.started)).map(record => record.pid));
-    ownedProcesses = processes.filter(p => groups.has(p.pgid));
+    ownedProcesses = processes.filter(p => groups.has(p.pgid) || records.some(record => record.pid === p.pid && record.started === p.started));
   } catch { /* No services started. */ }
   await stop(runner);
   if (runDir) {
@@ -115,13 +115,16 @@ async function cleanup(code) {
     // simctl can return while CoreSimulator still reports "Shutting Down".
     // Finish that transition before releasing the slot for a subsequent run.
     try {
+      let confirmed = false;
       for (let attempt = 0; attempt < 30; attempt++) {
         const inventory = Object.values(JSON.parse(simctl('list', 'devices', '--json')).devices).flat();
-        if (inventory.find(candidate => candidate.udid === device)?.state === 'Shutdown') break;
+        if (inventory.find(candidate => candidate.udid === device)?.state === 'Shutdown') { confirmed = true; break; }
         await delay(500);
       }
+      if (!confirmed) throw new Error('Owned simulator shutdown timed out.');
     } catch {
       console.error('Could not confirm shutdown of the owned simulator.');
+      retainSlot = true;
       code ||= 1;
     }
   }
@@ -129,7 +132,7 @@ async function cleanup(code) {
   // Only disposable @example.test accounts are authorized, and their raw debug
   // output must not survive a successful, failed, or interrupted invocation.
   try {
-    if (runDir) {
+    if (fs.existsSync(runDir)) {
       for (const entry of fs.readdirSync(runDir)) {
         if (entry.startsWith('attempt-')) fs.rmSync(path.join(runDir, entry, 'private-debug'), { recursive: true, force: true });
         if (entry.startsWith('private-storage-')) fs.rmSync(path.join(runDir, entry), { recursive: true, force: true });
@@ -144,7 +147,7 @@ async function cleanup(code) {
     code ||= 1;
   } finally {
     releaseBoot();
-    try { fs.rmSync(lock, { force: true }); }
+    try { if (!retainSlot) fs.rmSync(lock, { force: true }); }
     catch { console.error('Could not release the owned E2E slot lock.'); code ||= 1; }
     process.exit(code);
   }
@@ -165,8 +168,6 @@ try {
   if (platform === 'android') await Promise.all([freePort(5554 + slot * 2), freePort(5555 + slot * 2), freePort(18520 + slot)]);
   const appPath = process.env.E2E_APP_PATH || path.join(root, platform === 'android' ? '.e2e/build/na-pivo-debug.apk' : '.e2e/build/Napivo.app');
   if (!fs.existsSync(appPath)) throw new Error(`Build the local client first: npm run e2e:build${platform === 'android' ? ':android' : ''}`);
-  const id = crypto.randomUUID();
-  runDir = path.join(root, '.e2e/runs', id);
   fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
   if (platform === 'ios') {
     const runtimes = JSON.parse(simctl('list', 'runtimes', '--json')).runtimes;

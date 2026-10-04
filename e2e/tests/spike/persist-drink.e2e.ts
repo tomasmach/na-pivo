@@ -18,6 +18,7 @@ test('login and one beer survive a process restart', { tags: ['critical', 'full'
   await expect.poll(async () => (await local.state()).accounts.find(a => a.nickname === 'E2EPivar')?.drinks).toEqual([
     { beer_name: 'E2E Ležák', price_czk: 41, volume_ml: 500, place_context: 'pub', drink_type: 'beer' },
   ]);
+  expect((await local.state()).scenario.primaryDrinkPubNames).toEqual(['E2E U Testera']);
   await app.restart();
   await device.openLink('napivo://profile');
   if (await screen.getByRole('button', 'Open').isVisible()) await screen.getByRole('button', 'Open').tap();
@@ -31,4 +32,5 @@ test('login and one beer survive a process restart', { tags: ['critical', 'full'
   const account = (await local.state()).accounts.find(a => a.nickname === 'E2EPivar');
   expect(account?.drinks).toEqual([{ beer_name: 'E2E Ležák', price_czk: 41, volume_ml: 500, place_context: 'pub', drink_type: 'beer' }]);
   expect(account?.activeTokens).toBeGreaterThan(0);
+  expect((await local.state()).scenario.primaryDrinkPubNames).toEqual(['E2E U Testera']);
 });

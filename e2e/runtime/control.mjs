@@ -27,13 +27,13 @@ export function controlServer({ online, offline }) {
       else if (request.method === 'POST' && url.pathname === '/online') await online();
       else if (request.method === 'POST' && url.pathname === '/offline') await offline();
       else if (request.method === 'POST' && url.pathname === '/reset') {
+        // Stop old app queues before bringing the backend online or seeding it.
+        // Reinstall our built client instead of copying its native bundle.
+        resetApp();
         await online();
         await resetBackend(body.scenario || 'base');
         observers.clear();
         capabilities.clear();
-        // Maestro clearState first copies the entire installed native bundle.
-        // Reinstall our already-built client directly, saving that temporary copy.
-        resetApp();
       } else if (request.method === 'GET' && url.pathname === '/state') result = privateProjection(await readState());
       else if (request.method === 'GET' && url.pathname === '/home-point') result = readHomePoint(device);
       else if (request.method === 'GET' && url.pathname === '/app/process') result = { pid: appProcess() };

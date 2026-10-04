@@ -1,11 +1,36 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const ownership = new WeakMap();
 function started(pid) {
   try { return execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
   catch { return null; }
+}
+export function processIdentity(pid) { return { pid, started: started(pid) }; }
+export function isAlive(record) {
+  return Number.isInteger(record?.pid) && record.pid > 0 && Boolean(record.started) && started(record.pid) === record.started;
+}
+function persist(owner) {
+  if (!owner.recordPath) return;
+  const value = JSON.stringify([...owner.members.values()]);
+  if (value === owner.lastRecord) return;
+  const temporary = `${owner.recordPath}.tmp`;
+  fs.writeFileSync(temporary, value, { mode: 0o600 });
+  fs.renameSync(temporary, owner.recordPath);
+  owner.lastRecord = value;
+}
+export function recordedProcesses(runDir) {
+  if (!fs.existsSync(runDir)) return [];
+  const records = [];
+  for (const name of fs.readdirSync(runDir)) {
+    if (/^process-\d+\.json$/.test(name)) records.push(...JSON.parse(fs.readFileSync(path.join(runDir, name), 'utf8')));
+    else if (['maestro-process.json', 'android-process.json'].includes(name)) records.push(JSON.parse(fs.readFileSync(path.join(runDir, name), 'utf8')));
+    else if (name === 'processes.json') records.push(...JSON.parse(fs.readFileSync(path.join(runDir, name), 'utf8')).owned);
+  }
+  return records;
 }
 function capture(owner) {
   if (!owner.started) return;
@@ -23,10 +48,12 @@ function capture(owner) {
     if (current.get(pid)?.started !== member.started) owner.members.delete(pid);
   }
   // Only the same snapshot can authorize discovering new group members.
-  if (current.get(owner.pid)?.started !== owner.started) return;
-  for (const member of current.values()) {
-    if (member.group === owner.pid) owner.members.set(member.pid, { pid: member.pid, started: member.started });
+  if (current.get(owner.pid)?.started === owner.started) {
+    for (const member of current.values()) {
+      if (member.group === owner.pid) owner.members.set(member.pid, { pid: member.pid, started: member.started });
+    }
   }
+  persist(owner);
 }
 
 export function start(command, args, options = {}) {
@@ -35,6 +62,8 @@ export function start(command, args, options = {}) {
   if (child.pid) {
     const owner = { pid: child.pid, started: started(child.pid), members: new Map() };
     owner.members.set(owner.pid, { pid: owner.pid, started: owner.started });
+    if (options.env?.NA_PIVO_E2E_RUN_DIR) owner.recordPath = path.join(options.env.NA_PIVO_E2E_RUN_DIR, `process-${child.pid}.json`);
+    persist(owner);
     ownership.set(child, owner);
     // Remember children before a long-running supervisor exits on its own.
     owner.watch = setInterval(() => capture(owner), 250);
