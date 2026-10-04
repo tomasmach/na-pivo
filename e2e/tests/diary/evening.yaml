@@ -56,7 +56,19 @@ tags: [critical, full, diary]
     id: diary-stats-open
 - evalScript: ${output.local.screenshot('diary-stats-opened')}
 # iOS exposes the sheet as one accessibility description. Verify each exact value.
-- assertVisible: '.*2 · PIV CELKEM, Večerů · 1, Hospod · 1, Utraceno · 84\sKč,.*'
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible: '.*2 · PIV CELKEM, Večerů · 1, Hospod · 1, Utraceno · 84\sKč,.*'
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - assertVisible: { id: diary-stats-total-beers, text: "^2 · PIV CELKEM$" }
+      - assertVisible: { id: diary-stats-evenings, text: "^Večerů · 1$" }
+      - assertVisible: { id: diary-stats-pubs, text: "^Hospod · 1$" }
+      - assertVisible: { id: diary-stats-spent, text: "^Utraceno · 84\\sKč$" }
 - evalScript: ${output.local.screenshot('diary-offline-reconciled-stats')}
 - runScript:
     file: evening.js
