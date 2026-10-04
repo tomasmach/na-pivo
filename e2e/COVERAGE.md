@@ -267,3 +267,10 @@ Třináct selhání není zelená Android sada. Dvě byla ve změně jazyka a ve
 Běh `02844663` na integračním commitu `ef9638ad` třikrát dokončil všechny tři scénáře nastavení, zamítnutých médií a přerušeného onboardingu. Každé kolo skončilo **3 PASS / 0 FAIL**, engine 398,846 / 389,831 / 384,696 s; celý příkaz 1 215,581 s, exit 0. Modelová volání a tokeny 0, replay metriky nepoužitelné. Změna jazyka čeká na nový hlavní tab před dalším deep linkem, Android test respektuje automatická velká písmena jména a restart rozlišuje hlavní obrazovku od dosud nedokončeného onboardingu.
 
 Všech 12 bezpečných snímků prohlédl nezávislý reviewer. Nový P0/P1/P2 nález nevznikl; známé zkrácení anglického vysvětlení vody NP-E2E-012 přetrvává. Některé snímky nastavení zachycují formulář nebo přechod, proto uložené preference prokazují až dokončené assertions po restartu. Soukromé debug reporty byly odstraněné.
+
+
+### Android, diagnostika zbývajících průchodů
+
+Běh `7addd7bd` na commitu `f8775c5d` dokončil 1 PASS / 8 FAIL za 1 104,355 s v enginu, celý příkaz 1 138,583 s, exit 1. Ověření e-mailu a export prošly s opravou lokálního Android hostu. Reset hesla přerušil pozdní návrat po odhlášení; profil ukázal změnu přezdívky klávesnicí při Enter. Komunitní a domovskou polohu překryl systémový dialog Location Accuracy. Žebříčková kontrola běžela ještě na profilu kamaráda po nedokončeném návratu, proto tento výsledek není důkaz úniku přes cache. Nové hledání ponechalo za kurzorem konec starého dotazu. Opravy zachovávají přesné UI a DB kontroly a čekají na další nativní průchod.
+
+Přidaná hospoda skutečně vznikla jednou pod správným účtem, ale její pin neodpovídal pevné fixture. Bez zaznamenaného středu nativní kamery nelze původní výsledek označit za produktovou ztrátu bodu. Test nově používá běžný vstup z nabídky kompasu, který mapě předává aktuální polohu; tolerance kontroly zůstává stejná. Offline večer dokončil skutečný sync a screenshot ukazuje 2 piva / 1 večer / 1 hospodu / 84 Kč. Selhala až iOS podoba společného accessibility textu na Androidu, proto Android větev ověří stejné čtyři hodnoty po jednotlivých řádcích.
