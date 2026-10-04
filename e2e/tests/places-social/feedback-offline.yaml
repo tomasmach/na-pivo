@@ -18,12 +18,12 @@ tags: [critical, full]
 - tapOn: Přidat přílohu
 - tapOn: Vybrat z galerie
 - extendedWaitUntil:
-    visible: 'Cancel|Zrušit'
+    visible: {id: PXGGridLayout-Info, index: 0}
     timeout: 15000
+- waitForAnimationToEnd
 - evalScript: ${output.local.screenshot('places-feedback-gallery')}
 # The first thumbnail is a seeded synthetic image; other simulator stock photos may follow.
-- tapOn:
-    point: '16%,28%'
+- tapOn: {id: PXGGridLayout-Info, index: 0}
 - assertVisible: Příloha je připravená
 - scrollUntilVisible:
     element: {text: 'Popiš, co se stalo nebo co ti chybí…'}
