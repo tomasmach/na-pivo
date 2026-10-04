@@ -37,7 +37,8 @@
     "e2e:critical": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag critical --exclude-tag blocked",
     "e2e:full": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag full --exclude-tag blocked",
     "e2e:blocked": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag blocked",
-    "e2e:maestro:install": "E2E_TELEMETRY_DISABLED=1 MAESTRO_CLI_NO_ANALYTICS=1 bash e2e/runtime/install-maestro.sh"
+    "e2e:maestro:install": "E2E_TELEMETRY_DISABLED=1 MAESTRO_CLI_NO_ANALYTICS=1 bash e2e/runtime/install-maestro.sh",
+    "e2e:build:android": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/build-android.mjs"
   },
   "dependencies": {
     "@expo/ui": "~56.0.26",
@@ -91,6 +92,8 @@
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
     "@e2e-dev/mobile": "0.9.1",
+    "@grpc/grpc-js": "1.14.5",
+    "@grpc/proto-loader": "0.8.1",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "29.5.14",
     "@types/node": "^25.9.8",

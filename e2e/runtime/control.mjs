@@ -1,16 +1,15 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { setTimeout as delay } from 'node:timers/promises';
 import { apiUrl, observer, readState, resetBackend } from '../helpers/backend.ts';
 import { readHomePoint } from './home-point.mjs';
+import { appProcess, clipboard, openDevelopmentBundle, openLink, resetApp, screenshot } from './device.mjs';
 
 export function controlServer({ online, offline }) {
   const observers = new Map();
   const capabilities = new Map();
-  const simctl = (...args) => execFileSync('xcrun', ['simctl', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const device = process.env.NA_PIVO_E2E_DEVICE;
   const server = http.createServer(async (request, response) => {
     try {
@@ -34,17 +33,11 @@ export function controlServer({ online, offline }) {
         capabilities.clear();
         // Maestro clearState first copies the entire installed native bundle.
         // Reinstall our already-built client directly, saving that temporary copy.
-        try { simctl('terminate', device, 'com.tomasmach.na-pivo'); } catch { /* Not running. */ }
-        simctl('uninstall', device, 'com.tomasmach.na-pivo');
-        simctl('install', device, process.env.NA_PIVO_E2E_APP_PATH);
+        resetApp();
       } else if (request.method === 'GET' && url.pathname === '/state') result = privateProjection(await readState());
       else if (request.method === 'GET' && url.pathname === '/home-point') result = readHomePoint(device);
-      else if (request.method === 'GET' && url.pathname === '/app/process') {
-        const matches = simctl('spawn', device, 'launchctl', 'list').split('\n').map(line => line.trim().split(/\s+/)).filter(fields =>
-          fields.length === 3 && /^[1-9]\d*$/.test(fields[0]) && /^UIKitApplication:com\.tomasmach\.na-pivo(?:\[|$)/.test(fields[2]));
-        if (matches.length !== 1) throw new Error('Expected the owned application process.');
-        result = { pid: Number(matches[0][0]) };
-      }
+      else if (request.method === 'GET' && url.pathname === '/app/process') result = { pid: appProcess() };
+      else if (request.method === 'POST' && url.pathname === '/app/open') openDevelopmentBundle();
       else if (request.method === 'POST' && url.pathname === '/observe') {
         const account = body.account || 'primary';
         if (!['primary', 'second', 'outsider'].includes(account) || !/^\/v1\//.test(body.route)) throw new Error('Invalid observer.');
@@ -64,24 +57,24 @@ export function controlServer({ online, offline }) {
         } else {
           // The app consumes the link token without displaying its manual-code
           // field. Neither the token nor the rendered message enters Maestro.
-          simctl('openurl', device, `napivo://auth/reset?token=${encodeURIComponent(action.searchParams.get('token'))}`);
+          openLink(`napivo://auth/reset?token=${encodeURIComponent(action.searchParams.get('token'))}`);
         }
       } else if (request.method === 'GET' && url.pathname === '/mail/export') {
         const mail = await fetch(`${apiUrl}/__e2e__/mail?purpose=export`);
         const message = await mail.json();
         result = { status: mail.status, attachments: message.attachments || 0 };
       } else if (request.method === 'POST' && url.pathname === '/open-clipboard') {
-        const link = new URL(simctl('pbpaste', device).trim());
+        const link = new URL(await clipboard());
         if (link.origin !== 'https://na-pivo.cz' || !/^\/(p|t)\/[a-zA-Z0-9_-]+$/.test(link.pathname)) throw new Error('Clipboard has no expected local fixture invitation.');
-        simctl('openurl', device, `napivo:/${link.pathname}`);
+        openLink(`napivo:/${link.pathname}`);
       } else if (request.method === 'POST' && url.pathname === '/invite/open') {
         const code = (await readState()).scenario.inviteCode;
         if (typeof code !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(code)) throw new Error('Expected fixture invitation.');
-        simctl('openurl', device, `napivo://parta/pozvanka?code=${encodeURIComponent(code)}`);
+        openLink(`napivo://parta/pozvanka?code=${encodeURIComponent(code)}`);
       } else if (request.method === 'POST' && url.pathname.startsWith('/capability/')) {
         if (!/^[a-z0-9-]{1,40}$/.test(body.name)) throw new Error('Use a capability alias, never a raw token.');
         if (url.pathname === '/capability/store') {
-          const link = new URL(simctl('pbpaste', device).trim());
+          const link = new URL(await clipboard());
           if (link.origin !== 'https://na-pivo.cz' || !/^\/t\/[a-zA-Z0-9_-]+$/.test(link.pathname)) throw new Error('Expected a copied tour link.');
           capabilities.set(body.name, link.pathname);
         } else if (url.pathname === '/capability/discover') {
@@ -102,7 +95,7 @@ export function controlServer({ online, offline }) {
         } else {
           const pathname = capabilities.get(body.name);
           if (!pathname) throw new Error('Capability was not copied in this test.');
-          if (url.pathname === '/capability/open') simctl('openurl', device, `napivo:/${pathname}`);
+          if (url.pathname === '/capability/open') openLink(`napivo:/${pathname}`);
           else if (url.pathname === '/capability/status') {
             // A capability is public to its holder. Logging in here would rotate
             // deletion_epoch and invalidate later sensitive writes from the app.
@@ -124,7 +117,7 @@ export function controlServer({ online, offline }) {
         if (!/^[a-z0-9-]+$/.test(body.name)) throw new Error('Use a safe screenshot name.');
         const directory = path.join(process.env.NA_PIVO_E2E_OUTPUT, body.debug === true ? 'private-debug' : 'screenshots');
         fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-        simctl('io', device, 'screenshot', path.join(directory, `${body.name}.png`));
+        screenshot(path.join(directory, `${body.name}.png`));
       } else {
         response.writeHead(404).end();
         return;

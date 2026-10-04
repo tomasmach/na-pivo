@@ -3,6 +3,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { ready, start, stop } from './processes.mjs';
+import { appId, platform, prepareAppDevice } from './device.mjs';
 
 const root = process.cwd();
 const output = process.env.NA_PIVO_E2E_OUTPUT;
@@ -13,7 +14,6 @@ const privateEnv = { ...process.env, MAESTRO_CLI_NO_ANALYTICS: '1', MAESTRO_DISA
 if (!fs.existsSync(binary)) throw new Error('Install the pinned local CLI with npm run e2e:maestro:install.');
 if (execFileSync(binary, ['--version'], { encoding: 'utf8', env: privateEnv }).trim() !== '2.11.0') throw new Error('Use the verified Maestro 2.11.0.');
 const device = process.env.NA_PIVO_E2E_DEVICE;
-const simctl = (...args) => execFileSync('xcrun', ['simctl', ...args], { stdio: 'ignore' });
 const secrets = [process.env.NA_PIVO_E2E_EMAIL, process.env.NA_PIVO_E2E_PASSWORD, process.env.NA_PIVO_E2E_NEW_PASSWORD];
 function redact(value) {
   let text = value.replace(/\u001b\[[0-9;]*m/g, '').replace(/[^\s"'<>]+@[^\s"'<>]+/g, '[fixture email]').replace(/-?\d{1,3}\.\d{4,}/g, '[decimal value]');
@@ -38,9 +38,7 @@ try {
   services = start(process.execPath, ['e2e/runtime/serve.mjs'], { cwd: root, env: process.env, stdio: ['ignore', serviceLog, serviceLog] });
   fs.closeSync(serviceLog);
   await ready(`http://127.0.0.1:${process.env.NA_PIVO_E2E_METRO_PORT}/status`, services, 90_000);
-  simctl('install', device, process.env.NA_PIVO_E2E_APP_PATH);
-  simctl('ui', device, 'appearance', 'dark');
-  simctl('location', device, 'set', '50.08759,14.42108');
+  prepareAppDevice();
   const args = process.argv.slice(2);
   const filters = [];
   const paths = [];
@@ -58,6 +56,7 @@ try {
     MAESTRO_EMAIL: process.env.NA_PIVO_E2E_EMAIL,
     MAESTRO_PASSWORD: process.env.NA_PIVO_E2E_PASSWORD,
     MAESTRO_NEW_PASSWORD: process.env.NA_PIVO_E2E_NEW_PASSWORD,
+    MAESTRO_APP_ID: appId,
     MAESTRO_CONTROL: `http://127.0.0.1:${process.env.NA_PIVO_E2E_CONTROL_PORT}`,
     MAESTRO_METRO: `http://127.0.0.1:${process.env.NA_PIVO_E2E_METRO_PORT}`,
     MAESTRO_SCREENSHOTS: path.join(output, 'screenshots'),
@@ -68,7 +67,7 @@ try {
   child = start(binary, ['--device', device, 'test', '--no-ansi', '--flatten-debug-output', '--debug-output', privateDir, '--test-output-dir', privateDir, '--format', 'JUNIT', '--output', path.join(privateDir, 'junit.xml'), ...filters, ...(paths.length ? paths : ['e2e/tests'])], { cwd: root, env, stdio: ['ignore', consoleLog, consoleLog] });
   fs.writeFileSync(path.join(process.env.NA_PIVO_E2E_RUN_DIR, 'maestro-process.json'), JSON.stringify({ pid: child.pid, started: execFileSync('ps', ['-o', 'lstart=', '-p', String(child.pid)], { encoding: 'utf8' }).trim() }), { mode: 0o600 });
   fs.closeSync(consoleLog);
-  console.log('Maestro 2.11.0 is running on the owned iPhone 17; raw fixture reports are temporary.');
+  console.log(`Maestro 2.11.0 is running on the owned ${platform === 'android' ? 'Pixel 10' : 'iPhone 17'}; raw fixture reports are temporary.`);
   const [code, signal] = await once(child, 'exit');
   const report = fs.existsSync(path.join(privateDir, 'junit.xml')) ? fs.readFileSync(path.join(privateDir, 'junit.xml'), 'utf8') : '';
   const total = (report.match(/<testcase\b/g) || []).length;

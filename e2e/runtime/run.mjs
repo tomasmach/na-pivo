@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { start, stop } from './processes.mjs';
 import { summarize } from './report.mjs';
+import { startAndroid } from './android.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const commandStarted = Date.now();
@@ -17,6 +18,9 @@ process.chdir(root);
 process.env.E2E_TELEMETRY_DISABLED = '1';
 const args = process.argv.slice(2);
 const engine = process.env.E2E_ENGINE === 'testerarmy' ? 'testerarmy' : 'maestro';
+const platform = process.env.E2E_PLATFORM || 'ios';
+if (!['ios', 'android'].includes(platform)) throw new Error('E2E_PLATFORM must be ios or android.');
+if (platform === 'android' && engine !== 'maestro') throw new Error('Android uses the local Maestro runner.');
 const repeat = args.includes('--stability') ? 3 : 1;
 const switches = new Set(['--stability', '--no-cache', '--strict-cache']);
 const filters = new Set(['--tag', '--exclude-tag', '--grep', '--grep-invert', '--tag-mode']);
@@ -38,6 +42,7 @@ try { fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, root }), { flag:
 catch { throw new Error(`E2E slot ${slot} is owned by another run. Choose another E2E_SLOT; no process was stopped.`); }
 let runner;
 let device;
+let android;
 let closing = false;
 let runDir;
 let preparation;
@@ -104,7 +109,8 @@ async function cleanup(code) {
       for (let attempt = 0; attempt < 20 && ownedProcesses.some(stillOwned); attempt++) await delay(100);
     } catch { /* No service was started. */ }
   }
-  if (device) {
+  await stop(android?.child);
+  if (device && platform === 'ios') {
     try { simctl('shutdown', device); } catch { /* Already down. */ }
     // simctl can return while CoreSimulator still reports "Shutting Down".
     // Finish that transition before releasing the slot for a subsequent run.
@@ -126,7 +132,9 @@ async function cleanup(code) {
     if (runDir) {
       for (const entry of fs.readdirSync(runDir)) {
         if (entry.startsWith('attempt-')) fs.rmSync(path.join(runDir, entry, 'private-debug'), { recursive: true, force: true });
+        if (entry.startsWith('private-storage-')) fs.rmSync(path.join(runDir, entry), { recursive: true, force: true });
       }
+      fs.rmSync(path.join(runDir, 'private-emulator'), { recursive: true, force: true });
       fs.writeFileSync(path.join(runDir, 'command-metrics.json'), JSON.stringify({
         engine, durationSeconds: (Date.now() - commandStarted) / 1000, exitCode: code,
       }, null, 2), { mode: 0o600 });
@@ -154,31 +162,35 @@ try {
   const metroPort = 18220 + slot;
   const controlPort = 18320 + slot;
   await Promise.all([freePort(backendPort), freePort(metroPort), freePort(controlPort)]);
-  const appPath = process.env.E2E_APP_PATH || path.join(root, '.e2e/build/Napivo.app');
-  if (!fs.existsSync(appPath)) throw new Error('Build the local client first: npm run e2e:build');
-  const runtimes = JSON.parse(simctl('list', 'runtimes', '--json')).runtimes;
-  const runtime = runtimes.filter(r => r.isAvailable && r.identifier.includes('.iOS-')).at(-1);
-  if (!runtime) throw new Error('Install an iOS simulator runtime in Xcode.');
+  if (platform === 'android') await Promise.all([freePort(5554 + slot * 2), freePort(5555 + slot * 2), freePort(18520 + slot)]);
+  const appPath = process.env.E2E_APP_PATH || path.join(root, platform === 'android' ? '.e2e/build/na-pivo-debug.apk' : '.e2e/build/Napivo.app');
+  if (!fs.existsSync(appPath)) throw new Error(`Build the local client first: npm run e2e:build${platform === 'android' ? ':android' : ''}`);
   const id = crypto.randomUUID();
   runDir = path.join(root, '.e2e/runs', id);
   fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
-  const deviceFile = path.join(root, `.e2e/simulator-${slot}.json`);
-  try {
-    const prior = JSON.parse(fs.readFileSync(deviceFile, 'utf8'));
-    const inventory = Object.values(JSON.parse(simctl('list', 'devices', 'available', '--json')).devices).flat();
-    const match = inventory.find(d => d.udid === prior.udid && d.name === prior.name && d.state === 'Shutdown' && d.deviceTypeIdentifier === 'com.apple.CoreSimulator.SimDeviceType.iPhone-17');
-    if (match) device = match.udid;
-  } catch { /* First run in this worktree. */ }
-  if (!device) {
-    const name = `Na Pivo E2E ${slot} ${id.slice(0, 8)}`;
-    device = simctl('create', name, 'com.apple.CoreSimulator.SimDeviceType.iPhone-17', runtime.identifier);
-    fs.writeFileSync(deviceFile, JSON.stringify({ name, udid: device }), { mode: 0o600 });
-  }
-  fs.writeFileSync(path.join(runDir, 'owner.json'), JSON.stringify({ pid: process.pid, root, device, slot, backendPort, metroPort, controlPort }), { mode: 0o600 });
+  if (platform === 'ios') {
+    const runtimes = JSON.parse(simctl('list', 'runtimes', '--json')).runtimes;
+    const runtime = runtimes.filter(r => r.isAvailable && r.identifier.includes('.iOS-')).at(-1);
+    if (!runtime) throw new Error('Install an iOS simulator runtime in Xcode.');
+    const deviceFile = path.join(root, `.e2e/simulator-${slot}.json`);
+    try {
+      const prior = JSON.parse(fs.readFileSync(deviceFile, 'utf8'));
+      const inventory = Object.values(JSON.parse(simctl('list', 'devices', 'available', '--json')).devices).flat();
+      const match = inventory.find(d => d.udid === prior.udid && d.name === prior.name && d.state === 'Shutdown' && d.deviceTypeIdentifier === 'com.apple.CoreSimulator.SimDeviceType.iPhone-17');
+      if (match) device = match.udid;
+    } catch { /* First run in this worktree. */ }
+    if (!device) {
+      const name = `Na Pivo E2E ${slot} ${id.slice(0, 8)}`;
+      device = simctl('create', name, 'com.apple.CoreSimulator.SimDeviceType.iPhone-17', runtime.identifier);
+      fs.writeFileSync(deviceFile, JSON.stringify({ name, udid: device }), { mode: 0o600 });
+    }
+  } else device = `emulator-${5554 + slot * 2}`;
+  fs.writeFileSync(path.join(runDir, 'owner.json'), JSON.stringify({ pid: process.pid, root, device, platform, slot, backendPort, metroPort, controlPort }), { mode: 0o600 });
   const env = {
     PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
     LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8', E2E_TELEMETRY_DISABLED: '1',
     NA_PIVO_E2E_RUN_DIR: runDir, NA_PIVO_E2E_DEVICE: device,
+    NA_PIVO_E2E_PLATFORM: platform,
     NA_PIVO_E2E_CONTROL_SOCKET: `/tmp/napivo-e2e-${id}.sock`,
     NA_PIVO_E2E_BACKEND_PORT: String(backendPort), NA_PIVO_E2E_METRO_PORT: String(metroPort),
     NA_PIVO_E2E_CONTROL_PORT: String(controlPort),
@@ -188,6 +200,8 @@ try {
     NA_PIVO_E2E_NEW_PASSWORD: crypto.randomBytes(24).toString('base64url'),
     ...(process.env.XDG_CONFIG_HOME ? { XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME } : {}),
     ...(process.env.E2E_MAESTRO_PATH ? { E2E_MAESTRO_PATH: process.env.E2E_MAESTRO_PATH } : {}),
+    ...(process.env.ANDROID_HOME ? { ANDROID_HOME: process.env.ANDROID_HOME } : {}),
+    ...(process.env.JAVA_HOME ? { JAVA_HOME: process.env.JAVA_HOME } : {}),
   };
   diskWatch = setInterval(() => {
     if (freeBytes() < 20 * 1024 ** 3) {
@@ -195,20 +209,28 @@ try {
       void cleanup(75);
     }
   }, 1000);
-  console.log(`E2E slot ${slot}; iPhone 17 ${device}; API ${backendPort}; Metro ${metroPort}`);
+  console.log(`E2E slot ${slot}; ${platform === 'android' ? 'Pixel 10' : 'iPhone 17'} ${device}; API ${backendPort}; Metro ${metroPort}`);
   for (let index = 1; index <= repeat; index++) {
     // agent-device shares a daemon: a cold-boot timeout can reset other sessions.
     // Serialize only preparation, then let isolated tests run concurrently.
     await acquireBoot();
     if (closing) break;
     fs.rmSync(path.join(runDir, 'engine-ready'), { force: true });
-    preparation = start('xcrun', ['simctl', 'bootstatus', device, '-b'], { cwd: root, env });
-    const bootDeadline = setTimeout(() => cleanup(124), 180_000);
-    const [bootCode] = await once(preparation, 'exit');
-    clearTimeout(bootDeadline);
-    preparation = undefined;
+    if (platform === 'android') {
+      if (!android) android = startAndroid({ root, runDir, slot, id, env, onStart: child => { android = { child }; } });
+      await android.boot();
+      Object.assign(env, { ANDROID_HOME: android.sdk, NA_PIVO_E2E_GRPC_PORT: String(android.grpcPort),
+        NA_PIVO_E2E_GRPC_INFO: android.info, NA_PIVO_E2E_MEDIA_KEY: android.name });
+    } else {
+      preparation = start('xcrun', ['simctl', 'bootstatus', device, '-b'], { cwd: root, env });
+      const bootDeadline = setTimeout(() => cleanup(124), 180_000);
+      const [bootCode] = await once(preparation, 'exit');
+      clearTimeout(bootDeadline);
+      preparation = undefined;
+      if (closing) break;
+      if (bootCode !== 0) throw new Error('Owned iPhone failed to boot.');
+    }
     if (closing) break;
-    if (bootCode !== 0) throw new Error('Owned iPhone failed to boot.');
     const output = path.join(runDir, `attempt-${index}`);
     const runArgs = args.filter(arg => arg !== '--stability');
     if (engine === 'testerarmy' && index > 1) runArgs.push('--strict-cache');

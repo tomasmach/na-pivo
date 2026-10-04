@@ -2,13 +2,14 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Device, LaunchPermissions } from '@e2e-dev/mobile';
+import { addMedia } from '../runtime/device.mjs';
 
 /** Two synthetic images, created once per owned simulator with no EXIF data. */
 export function addGalleryFixtures() {
   const device = process.env.NA_PIVO_E2E_DEVICE!;
   const directory = path.resolve('.e2e/gallery');
   fs.mkdirSync(directory, { recursive: true });
-  const marker = path.join(directory, `${device}.added`);
+  const marker = path.join(directory, `${process.env.NA_PIVO_E2E_MEDIA_KEY || device}.added`);
   if (fs.existsSync(marker)) return;
   execFileSync(path.resolve('backend/.venv/bin/python'), ['-c', `
 from pathlib import Path
@@ -23,7 +24,7 @@ for name, color in [('amber', '#F4B000'), ('foam', '#EEE5D0')]:
     draw.text((80, 116), 'E2E ' + name, fill='#281A0C')
     image.save(destination / (name + '.png'))
 `, directory], { stdio: 'ignore' });
-  execFileSync('xcrun', ['simctl', 'addmedia', device, path.join(directory, 'amber.png'), path.join(directory, 'foam.png')], { stdio: 'ignore' });
+  addMedia([path.join(directory, 'amber.png'), path.join(directory, 'foam.png')]);
   fs.writeFileSync(marker, 'synthetic fixtures only\n');
 }
 

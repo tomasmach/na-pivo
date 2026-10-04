@@ -74,3 +74,19 @@ npm run e2e:blocked
 ```
 
 Oblasti spouštěj postupně. Pro závěrečný první čistý simulátor archivuj vlastní `.e2e/simulator-1.json` pod jiným názvem; runner vytvoří nový jednoznačně pojmenovaný iPhone 17. Starý simulátor nemaž ani nepřebírej cizí. Oba poslední běhy celé sady mají zaznamenat `command-metrics.json`; druhý je opakovaný běh Maestra, ne AI replay cache. Registrovaný Android Pixel 10 je dostupný, ale Android runner a ověření čekají na zelené iOS.
+
+## Android, připraveno k nativnímu ověření
+
+Android se spouští až po zelené dostupné iOS sadě. Příprava používá místní SDK s ARM64 obrazem `system-images;android-36.1;google_apis_playstore;arm64-v8a` a profilem `pixel_10`. Nevhodný nebo chybějící obraz runner sám nestahuje. Vytvoří vlastní pojmenovaný Pixel 10, při dalších bězích použije pouze svůj neobsazený AVD. Běh používá stejný slot, samostatné API/Metro/DB a navíc vlastní konzolový a gRPC port.
+
+```sh
+npm run e2e:build:android
+E2E_PLATFORM=android npm run e2e:critical -- e2e/tests/spike/
+E2E_PLATFORM=android npm run e2e:full
+```
+
+Tyto Android příkazy zatím nemají doložený nativní výsledek. Oblastní flow ještě potřebují dokončit přizpůsobení systémového pickeru a oprávnění. Stav zůstává v COVERAGE.md; příprava kódu není zelená Android sada.
+
+Build používá lokální Expo prebuild a `assembleDebug` pouze pro ARM64, nejvýš dva Gradle workery a 2 GiB JVM heap. Nečte skutečný `google-services.json`: explicitní místní E2E konfigurace jej vynechá, v produkčním režimu a EAS skončí chybou. Výchozí konfigurace vydané appky se nemění. APK zůstane v `.e2e/build/na-pivo-debug.apk` a mezi běhy se znovu používá. Build i test vyžadují 30 GiB volného místa a pod 20 GiB zastaví pouze vlastní procesy.
+
+Android reset používá skutečné `pm clear`, restart otevírá Expo bundle na `10.0.2.2` a návrat do popředí nemění oprávnění, protože jejich odebrání by ukončilo proces. Fotky vybírá systémový picker bez širokého oprávnění ke galerii. Skutečnou schránku čte lokální gRPC vlastního emulátoru; jeho token i zkopírovaný obsah zůstávají v paměti kontroleru. Domovský bod se čte ze skutečné AsyncStorage DB včetně WAL a ven vrací pouze dvě booleovské hodnoty. Dočasná kopie DB se smaže po čtení i při úklidu běhu.

@@ -1,4 +1,4 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 name: Login and a stored beer survive restart
 tags: [critical, full, spike]
 ---

@@ -1,21 +1,36 @@
-appId: com.tomasmach.na-pivo
+appId: ${MAESTRO_APP_ID}
 ---
 - runScript: local.js
 - evalScript: >-
     ${output.local.reset(typeof SCENARIO === 'undefined' ? 'base' : SCENARIO)}
-- launchApp:
-    clearKeychain: true
-    arguments:
-      '--initialUrl': ${MAESTRO_METRO}
-      '-EXDevMenuShowsAtLaunch': 'NO'
-      '-EXDevMenuIsOnboardingFinished': 'YES'
-      '-EXDevMenuShowFloatingActionButton': 'NO'
-    permissions:
-      all: deny
-      location: inuse
-      photos: allow
-      camera: deny
-      notifications: deny
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          clearKeychain: true
+          arguments:
+            '--initialUrl': ${MAESTRO_METRO}
+            '-EXDevMenuShowsAtLaunch': 'NO'
+            '-EXDevMenuIsOnboardingFinished': 'YES'
+            '-EXDevMenuShowFloatingActionButton': 'NO'
+          permissions:
+            all: deny
+            location: inuse
+            photos: allow
+            camera: deny
+            notifications: deny
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - launchApp:
+          permissions:
+            all: deny
+            location: allow
+            camera: deny
+            notifications: deny
+- evalScript: ${output.local.request('/app/open', {})}
 - extendedWaitUntil:
     visible:
       id: onboarding-skip
