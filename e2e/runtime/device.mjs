@@ -22,6 +22,14 @@ export function resetApp() {
   if (platform === 'android') {
     adb('shell', 'am', 'force-stop', appId);
     if (adb('shell', 'pm', 'clear', appId).trim() !== 'Success') throw new Error('Owned app data reset failed.');
+    // Configure only Expo's dev UI before its SharedPreferences are loaded.
+    // The floating Tools button otherwise covers application controls.
+    adb('shell', 'run-as', appId, 'mkdir', '-p', 'shared_prefs');
+    execute(path.join(sdkPath(), 'platform-tools/adb'), ['-s', device(), 'shell',
+      'run-as', appId, 'tee', 'shared_prefs/expo.modules.devmenu.sharedpreferences.xml'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      input: '<?xml version="1.0" encoding="utf-8"?><map><boolean name="showFab" value="false"/><boolean name="showsAtLaunch" value="false"/><boolean name="isOnboardingFinished" value="true"/></map>',
+    });
   } else {
     try { simctl('terminate', device(), appId); } catch { /* Not running. */ }
     simctl('uninstall', device(), appId);
