@@ -8,6 +8,8 @@ tags: [critical, full]
     env:
       SCENARIO: places_social
 - runFlow: ../../maestro/skip-onboarding.yaml
+# Observer login must precede UI login so it cannot rotate the app's write epoch.
+- evalScript: ${output.local.check(output.local.observe('primary', '/v1/friends/live').status === 200, 'The primary observer is authenticated before the UI session.')}
 - runFlow: ../../maestro/login.yaml
 - runScript: oracle.js
 - evalScript: ${output.ps.check('board-beers')}

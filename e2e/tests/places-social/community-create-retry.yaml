@@ -7,6 +7,8 @@ tags: [full]
     env:
       SCENARIO: places_social
 - runFlow: ../../maestro/skip-onboarding.yaml
+# Observer login must precede UI login so it cannot rotate the app's write epoch.
+- evalScript: ${output.local.check(output.local.observe('outsider', '/v1/community-events').status === 200, 'The host observer is authenticated before the UI session.')}
 - runFlow:
     file: ../../maestro/login.yaml
     env:

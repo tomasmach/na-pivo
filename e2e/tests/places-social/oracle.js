@@ -128,7 +128,10 @@ output.ps = {
         output.local.check(s.photos.length === 3 && s.entries.length === 2, 'Withdrawal retains all diary photos and both other contestants.');
       }
       const feed = output.local.observe('second', '/v1/friends/beer-photos/feed');
-      output.local.check(feed.status === 200 && JSON.stringify(feed.body).indexOf('E2E Fotka E2EPivar') === -1, 'The friend feed does not disclose the private diary photo, including while entered.');
+      output.local.check(feed.status === 200 && Array.isArray(feed.body.photos), 'The friend feed returns its actual photo collection.');
+      const photoIds = feed.body.photos.map(function(p) { return p.id; });
+      output.local.check(photoIds.indexOf(photo.public_id) === -1, 'The actual private photo ID never leaks into the friend feed, including while entered.');
+      this.equal(photoIds, [], 'All fixture photos are private, so the real friend feed remains empty.');
     } else if (phase === 'vote-friend' || phase === 'vote-outsider') {
       this.equal(s.votes, [{voter__nickname:'E2EPivar',entry__account__nickname:phase === 'vote-friend' ? 'E2EKamos' : 'E2ECizi'}], 'Moving a vote preserves exactly one vote for the selected contestant.');
     } else if (phase === 'vote-none') {
