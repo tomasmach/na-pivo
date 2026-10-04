@@ -59,7 +59,7 @@ Backend se spouští zvláštním settings modulem mimo produkční Docker conte
 - `output.local.request('/home-point')` čte pouze domovský bod z uložených nastavení vlastní appky. Vrací `present` a `matchesFixture`, nikoli souřadnice; druhý příznak porovná bod s pevnou simulovanou polohou. Ověř jej po uložení a restartu, po zrušení rozpracované změny i po smazání.
 - Sdílené helpery, config, adaptéry a produkční `testID` mění hlavní agent. Každý test musí chytat pojmenovanou regresi z COVERAGE.md a projít třikrát.
 
-Oprávnění jsou výslovně `all: deny`, poloha `inuse` a fotky povolené, kamera a notifikace zakázané. Pro scénář zamítnutí použij konkrétní override v `launchApp`; při návratu nastav celý očekávaný stav. Případné nativní potvrzení odmítni. Lokální fake navíc brání registraci skutečného push tokenu.
+Na iOS jsou oprávnění výslovně `all: deny`, poloha `inuse` a fotky povolené, kamera a notifikace zakázané. Pro scénář zamítnutí použij konkrétní override v `launchApp`; při návratu nastav celý očekávaný stav. Případné nativní potvrzení odmítni. Lokální fake navíc brání registraci skutečného push tokenu.
 
 Aktuální důkazy a omezení jsou v [COVERAGE.md](COVERAGE.md), produktové chyby v [BUGS.md](BUGS.md). Sada není připojená do GitHub Actions.
 
@@ -68,7 +68,7 @@ Aktuální důkazy a omezení jsou v [COVERAGE.md](COVERAGE.md), produktové chy
 
 ## Pokračování před sloučením PR
 
-Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Oblasti ověřuj postupně a zachovej diskovou rezervu runneru. Všech 12 dostupných průchodů účtu a médií, pět deníkových a 14 zdravých průchodů hospod a Party už má tři úspěchy. Celou sadu a známá omezení eviduje COVERAGE.md.
+Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Oblasti ověřuj postupně a zachovej diskovou rezervu runneru. Všech 12 dostupných iOS průchodů účtu a médií, pět deníkových a 14 zdravých průchodů hospod a Party už má tři úspěchy. Celou sadu a známá omezení eviduje COVERAGE.md.
 
 ```sh
 npm run e2e:full -- e2e/tests/identity/ --stability
@@ -90,7 +90,7 @@ E2E_PLATFORM=android npm run e2e:critical -- e2e/tests/spike/
 E2E_PLATFORM=android npm run e2e:full
 ```
 
-Lokální Android build prošel. Spike i offline publikace večera mají každý tři úspěšné nativní průchody na Pixel 10 / API 36.1. Celá Android sada zatím není ověřená; čeká na úpravy testů pro systémový picker a oprávnění. Přesné výsledky jsou v COVERAGE.md.
+Lokální Android build prošel. Spike i offline publikace večera mají každý tři úspěšné nativní průchody na Pixel 10 / API 36.1. Celá Android sada `645f3dd9` dokončila 20 PASS / 13 FAIL za 64 min 18 s v enginu. Cílené opravy testů se ověřují; nejde o zelenou celou Android sadu. Přesné výsledky jsou v COVERAGE.md.
 
 Build používá lokální Expo prebuild a `assembleDebug` pouze pro ARM64, nejvýš dva Gradle workery a 2 GiB JVM heap. Nečte skutečný `google-services.json`: explicitní místní E2E konfigurace jej vynechá, v produkčním režimu a EAS skončí chybou. Výchozí konfigurace vydané appky se nemění. APK zůstane v `.e2e/build/na-pivo-debug.apk` a mezi běhy se znovu používá. Build i test vyžadují 30 GiB volného místa a pod 20 GiB zastaví pouze vlastní procesy.
 
