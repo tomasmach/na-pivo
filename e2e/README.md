@@ -99,3 +99,7 @@ Android reset používá skutečné `pm clear`. Expo bundle na `127.0.0.1` se ot
 Aktuální Android omezení: domovský bod nezískal polohu přes `Accuracy.Balanced` ani po potvrzení Google dialogu. Průběžné dodávání stejného bodu a systémový testovací síťový provider nepomohly; oba experimenty byly odstraněné. Tento průchod zůstává na Androidu neověřený, iOS má tři úspěchy. Detail pokusů je v COVERAGE.md.
 
 Android build používá stejný chráněný mechanismus obnovy zámku jako běhy testů a průběžně eviduje i potomky build procesu. Po pádu lze pokračovat pouze při ověřeném konci vlastníka i všech zaznamenaných procesů. Chyba při zjišťování procesů, rozběhnuté zaznamenávání dítěte, starý zámek bez evidence potomků nebo rozpracovaný recovery guard vyžadují ruční inspekci; runner nic cizího nezastavuje.
+
+Izolovaný iOS build vyžaduje alespoň 30 GiB volného místa a chybějící `ios/`. Existující adresář nebo symlink odmítne beze změny, protože může obsahovat ruční úpravy nebo jinou nativní konfiguraci. Po vlastní kontrole jej přesuň stranou; Expo pak vygeneruje nový projekt s vypnutými widgety a neplatným mapovým klíčem. Runner původní nativní projekt automaticky nemaže ani nepoužije.
+
+Pokud při konci testu selže odstranění soukromých reportů, slot zůstane zamčený. Další spuštění tak musí nejprve úspěšně dokončit kontrolovanou obnovu a úklid původního běhu; chyba souborového systému neztratí vazbu na zbývající reporty.

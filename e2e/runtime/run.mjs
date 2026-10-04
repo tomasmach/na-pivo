@@ -144,6 +144,7 @@ async function cleanup(code) {
     }
   } catch {
     console.error('Could not finish local E2E artifact cleanup or metrics. Inspect the owned run directory.');
+    retainSlot = true;
     code ||= 1;
   } finally {
     releaseBoot();
