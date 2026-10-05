@@ -152,6 +152,7 @@ export function DrinkPickSheet({
             style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
             onPress={() => undefined}
             accessible={false}
+            focusable={false}
           >
             <View style={styles.grabber} />
             <View style={styles.header}>
