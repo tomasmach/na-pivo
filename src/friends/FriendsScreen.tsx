@@ -1151,7 +1151,7 @@ export default function FriendsScreen() {
         onPress: () => router.push('/auth' as Href),
       };
     }
-    if (nickname == null) {
+    if (needsNickname) {
       return {
         label: t.friends.ctaNickname,
         onPress: () => router.push('/profile/edit' as Href),
@@ -1179,7 +1179,7 @@ export default function FriendsScreen() {
       label: t.friends.ctaPing,
       onPress: () => setComposeVisible(true),
     };
-  }, [d?.activeFriends.length, d?.myActiveActivity, friendCount, isSignedIn, nickname, router]);
+  }, [d?.activeFriends.length, d?.myActiveActivity, friendCount, isSignedIn, needsNickname, router]);
 
   const onRequestsLayout = useCallback((event: LayoutChangeEvent) => {
     requestsYRef.current = event.nativeEvent.layout.y;
