@@ -76,6 +76,11 @@ def observe():
             .order_by("drinking_day")
             .values("client_id", "beer_count", "pub_names", "visibility", "is_removed")
         ),
+        # A sync that also writes a copy under another identity must fail.
+        "foreignDiaryWrites": sum(
+            model.objects.exclude(account=account).count()
+            for model in (DrinkLog, PubVisit, BeerCheckIn, PublishedNight)
+        ),
         "stats": {
             key: value
             for key, value in compute_my_stats(account, timezone_name="Europe/Prague").items()

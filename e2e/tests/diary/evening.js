@@ -2,6 +2,7 @@
 function verify() {
   const state = output.local.state().scenario;
   const check = output.local.check;
+  check(state.foreignDiaryWrites === 0, 'Diary writes must never land under another account.');
   if (STAGE === 'original') {
     check(state.drinks.length === 1, 'Expected one online beer before the outage.');
     output.diary = { original: state.drinks[0] };

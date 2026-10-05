@@ -2,6 +2,7 @@
 function verify() {
   const state = output.local.state().scenario;
   const check = output.local.check;
+  check(state.foreignDiaryWrites === 0, 'Diary writes must never land under another account.');
   check(state.nights.length === 1, 'Offline publication must flush after foreground without an additional restart.');
   const night = state.nights[0];
   check(night.beer_count === 1 && night.visibility === 'friends' && !night.is_removed && JSON.stringify(night.pub_names) === JSON.stringify(['E2E U Testera']), 'Expected one friends-only published night with one beer and the original pub.');
