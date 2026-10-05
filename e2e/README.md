@@ -30,7 +30,7 @@ E2E_SLOT=2 npm run e2e:critical -- e2e/tests/spike/
 
 `critical` a `full` vynechávají výslovně označené `blocked` scénáře. Ty se spouštějí samostatně přes `e2e:blocked` a nejsou započítané mezi ověřené průchody. Každý musí mít konkrétní důvod v COVERAGE.md. Aktuálně jde o registraci: Maestro vyplní nativní formulář, ale aplikace při odeslání hlásí příliš krátké heslo; příčina není prokázaná. Tento blokátor brání claimu anonymních dat. Ověření e-mailu a export mají samostatný průchod existujícího neověřeného účtu v `identity/email-export.yaml`; aktuální výsledek uvádí COVERAGE.md.
 
-Katalogový průchod má navíc potvrzené známé selhání [NP-E2E-014](BUGS.md#np-e2e-014-nabídka-otevřené-hospody-zmizí-po-offline-restartu): nabídka dříve otevřené hospody se neuloží pro offline restart. Tento test zůstává v `critical` i `full`, takže do opravy vrací celý příkaz nenulový kód. Známou chybu je nutné ve výsledku odlišit od nových selhání; kontrola nabídky nebyla oslabená.
+Katalogový průchod má navíc potvrzené známé selhání [NP-E2E-014](BUGS.md#np-e2e-014-nabídka-otevřené-hospody-zmizí-po-offline-restartu): nabídka dříve otevřené hospody se neuloží pro offline restart. Tento test zůstává v `critical` i `full`, takže do opravy vrací celý příkaz nenulový kód. Stejně zůstává v obou sadách `places-social/contributions-offline.yaml` se známým selháním [NP-E2E-017](BUGS.md#np-e2e-017-offline-úprava-piv-smaže-veřejnou-nabídku-hospody): offline úprava piv nahradí celou veřejnou nabídku. Známé chyby je nutné ve výsledku odlišit od nových selhání; kontroly nabídky nebyly oslabené.
 
 ## Izolace a úklid
 

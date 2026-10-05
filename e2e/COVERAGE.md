@@ -51,7 +51,7 @@ Není-li výslovně uvedený Android, tabulka uvádí doložené výsledky iOS. 
 | Odznaky | Seed známého odemčeného a zamčeného odznaku, restart | Profil renderuje jiný stav než server | P2 | `identity/badges-information.yaml`: 3× po sobě zelené; přesný odemčený a zamčený stav proti API |
 | Oslava | Příchod k vybrané hospodě a návrat | Jiná hospoda, ztracený výběr nebo automaticky přidané pivo | P2 | P2, nepokryto; rozsah upřednostnil P0/P1 a skutečné offline/soukromé zápisy |
 | About/privacy | Obě navigační cesty, obsah a offline návrat | Prázdná obrazovka, nekonečné načítání, rozbitá navigace | P2 | `identity/badges-information.yaml`: skutečné lokální novinky, offline text o GPS a návrat 3× po sobě zelené |
-| Příspěvky | Hodiny a pivo měněné offline, restart, doručit obě části | Druhý zápis přepíše první část fronty, opakované XP | P1 | `places-social/contributions-offline.yaml`: 3× po sobě zelené, přesné hodiny i 500 ml / 52 Kč pivo a jediná odměna za každý příspěvek |
+| Příspěvky | Hodiny a pivo měněné offline, restart, doručit obě části | Druhý zápis přepíše první část fronty, opakované XP | P1 | `places-social/contributions-offline.yaml`: známé selhání NP-E2E-017, offline úprava piv nahradí celou veřejnou nabídku jediným novým pivem; hodiny, jediný zápis do fronty a odměny XP prošly. Dřívější tři úspěchy kontrolovaly jen přítomnost nového piva |
 | Starý společný stůl | Legacy party-live link a návrat do Party | Prázdný legacy route nebo oživení odstraněného flow | P2 | P2, zatím nepokryto; legacy route není současný společný stůl |
 
 ## Prostředí a měření
@@ -166,7 +166,7 @@ Dřívější auditní blokátory opravil samostatný upstream PR #221. Po aktua
 
 Čerstvý nezávislý reviewer po integraci prošel všech 33 scénářů, assertion JS, seed data, helpery a produkční pojistky. Jediný další nález byl příliš široký slib kontroly termínu veřejné tour: UI termín nevyplňovalo a test četl jen DB snapshot. Tato slabá kontrola i tvrzení byly odstraněné. Scénář dál ověřuje přesné zastávky, identity, jednorázový import a skutečné odvolání obou odkazů. Ochranu vyplněného termínu při serializaci veřejné tour pokrývá existující backendový `test_tour_publications.py`; E2E si tento důkaz nepřisvojuje. Cílená syntaxe JS a Ruff po opravě prošly. Žádný nový nativní běh tím nebyl nahrazen.
 
-Společná integrační větev je `test/e2e-integration`, nikoli samostatný PR. Oblastní PR proti `dev` obsahují pouze svoje scénáře a seed data a vyžadují infra PR #208. Nativní ověřování je dokončené v rozsahu výsledků a omezení níže; žádný PR nebyl mergnut a nic nebylo nasazené.
+Před sloučením skládala infra PR #208 a oblastní PR společná integrační větev. Oblastní PR obsahovala pouze svoje scénáře a seed data.
 
 
 ### Pokračování 4. 10. a ochrana SSD
@@ -317,3 +317,11 @@ Nezávislý reviewer prohlédl všech 12 bezpečných snímků této dávky i 12
 Závěrečné připomínky k runneru doplnily potvrzení konce vlastních procesů po SIGKILL, odmítnutí opakovaného buildu nad existujícím nativním stromem na obou platformách a odmítnutí přepínačů jiného enginu ještě před vytvořením slotu. Nativní projekty se automaticky nemažou. Čtrnáct cílených testů ověřuje vlastnictví a zachování nativních souborů včetně symlinků; čtyři skutečné CLI invokace s nepodporovanými přepínači nevytvořily běh ani zámek. Další mobilní build kvůli těmto pojistkám nebyl potřeba.
 
 Výsledný rozsah je 34 trvalých scénářů: 32 má tři úspěšné iOS průchody, jeden drží známé selhání NP-E2E-014 a registrace s claimem zůstává blokovaná. Každá P0/P1 položka výše má důkaz nebo konkrétní důvod omezení. Android má 30 úspěšných scénářů napříč běhy; zbývající tři a registrace jsou výslovně popsané. Oslava a legacy stůl zůstávají nepokryté P2. Deset malých oprav je připravených v samostatných PR, šest z šestnácti zaznamenaných bugů zůstává otevřených. PR jsou určené proti `dev`; merge ani produkční vydání nebyly součástí provedených akcí.
+
+### Ověření před sloučením, 5. 10. 2026
+
+Nezávislé review před sloučením zpřísnilo osm kontrol: smazání avataru ověřuje stabilní cestu souboru, výměna avataru novou URL, zamítnutá kamera na iOS povinné vysvětlení, deník odmítá zápisy pod jiným účtem a hodnocení bez vazby na večer, příspěvky porovnávají celou nabídku, feedback ověřuje vlastníka a komunitní akce ověřuje, že nepovolený čtenář nedostane souřadnice. Sanitizace pozorování proto místo souřadnic vrací jen příznak `coordinatesPresent`; samotné hodnoty kontroler dál neopouštějí.
+
+Dávka `b54f22d8` na kombinaci `dev` `565b173e` se všemi zbývajícími PR dokončila **8 PASS / 1 FAIL** za 972,899 s v enginu, celý příkaz 1010,655 s. Prošly avatar, zamítnutá média, offline večer, hodnocení, Výčep, offline feedback, komunitní soukromí a zamítnutá oprávnění. Selhaly pouze příspěvky na nově odhalené NP-E2E-017; diagnostický běh `2ce7d107` výsledek zopakoval. Kontroly kombinace dále prošly: typecheck, lint bez chyb, 2146 Jest testů a 21 testů runneru.
+
+Výsledný rozsah je 34 trvalých scénářů: 31 má tři úspěšné iOS průchody a osm z nich má od zpřísnění kontrol jeden úspěšný průchod v `b54f22d8`. Dva drží známá selhání NP-E2E-014 a NP-E2E-017 a registrace s claimem zůstává blokovaná. Android výsledek příspěvků pochází ze slabší kontroly a nepotvrzuje zachování nabídky. Sedm ze sedmnácti zaznamenaných bugů zůstává otevřených.
