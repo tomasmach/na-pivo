@@ -48,7 +48,9 @@ function sanitize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitize);
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value).flatMap(([key, item]) => {
-    if (/token|email|device_id|^lat$|^lng$|^lon$|latitude|longitude|coordinates/i.test(key)) return [];
+    // Coordinates never leave the controller; privacy oracles see only whether any were returned.
+    if (/^lat$|^lng$|^lon$|latitude|longitude|coordinates/i.test(key)) return item == null ? [] : [['coordinatesPresent', true]];
+    if (/token|email|device_id/i.test(key)) return [];
     if (key === 'exact_address') return [['exactAddressPresent', Boolean(item)]];
     return [[key, sanitize(item)]];
   }));
