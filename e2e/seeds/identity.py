@@ -20,6 +20,7 @@ from pubs.models import (
     OneTimeToken,
     ReleaseNote,
     ReleaseNoteItem,
+    account_avatar_path,
 )
 
 from e2e.seeds import base
@@ -106,6 +107,10 @@ def observe():
                 "avatarDigest": avatar_digest(account),
                 "avatarFileExists": bool(
                     account.avatar and account.avatar.storage.exists(account.avatar.name)
+                ),
+                # Avatars use one stable path, so a cleared field cannot hide a kept file.
+                "avatarStoredFile": Account._meta.get_field("avatar").storage.exists(
+                    account_avatar_path(account, "")
                 ),
                 "settings": {
                     "hidePubNames": account.hide_pub_names,

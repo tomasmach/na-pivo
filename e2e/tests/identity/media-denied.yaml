@@ -75,6 +75,12 @@ tags: [full, identity]
       platform: Android
     commands:
       - tapOn: "Don’t allow"
+# iOS starts with camera denied, so the app must explain the blocked access.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible: Přístup je zakázaný. Povol ho v systémovém Nastavení a zkus to znovu.
 - runFlow:
     when:
       visible: Zrušit

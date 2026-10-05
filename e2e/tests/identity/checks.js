@@ -75,9 +75,16 @@ if (CASE === 'logout') {
   check(body.achievements.foto_pivar === true && body.achievements.first_ten === false, 'Actual server badges must match both the unlocked photo and locked ten-beer achievement.');
   equal(names(primary), ['E2E Archiv A'], 'Offline information must preserve the diary.');
 } else if (CASE === 'avatar') {
-  if (PHASE === 'uploaded') { check(primary.hasAvatar && primary.avatarFileExists && primary.avatarDigest, 'Native multipart must create an actual avatar file.'); output.firstAvatarDigest = primary.avatarDigest; }
-  else if (PHASE === 'replaced') check(primary.hasAvatar && primary.avatarFileExists && primary.avatarDigest !== output.firstAvatarDigest, 'Replacing the avatar with the other fixture must persist different actual image content.');
-  else { check(!primary.hasAvatar && !primary.avatarFileExists, 'Avatar deletion must survive restart in actual DB/storage.'); if (PHASE === 'final') observe('primary', '/v1/account/me', 200); }
+  if (PHASE === 'uploaded') {
+    check(primary.hasAvatar && primary.avatarFileExists && primary.avatarDigest, 'Native multipart must create an actual avatar file.');
+    output.firstAvatarDigest = primary.avatarDigest;
+    output.firstAvatarUrl = observe('primary', '/v1/account/me', 200).avatar_url;
+    check(!!output.firstAvatarUrl, 'The real profile must expose the uploaded avatar URL.');
+  } else if (PHASE === 'replaced') {
+    check(primary.hasAvatar && primary.avatarFileExists && primary.avatarDigest !== output.firstAvatarDigest, 'Replacing the avatar with the other fixture must persist different actual image content.');
+    const avatarUrl = observe('primary', '/v1/account/me', 200).avatar_url;
+    check(!!avatarUrl && avatarUrl !== output.firstAvatarUrl, 'A replaced avatar must get a new URL so the app cannot keep the cached old image.');
+  } else { check(!primary.hasAvatar && !primary.avatarFileExists && !primary.avatarStoredFile, 'Avatar deletion must remove the stored file and survive restart in actual DB/storage.'); if (PHASE === 'final') observe('primary', '/v1/account/me', 200); }
 } else if (CASE === 'photos') {
   if (PHASE === 'before') { output.primaryId = primary.publicId; observe('second', '/v1/account/me', 200); observe('outsider', '/v1/account/me', 200); }
   else {
