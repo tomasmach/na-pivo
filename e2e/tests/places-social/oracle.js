@@ -79,21 +79,21 @@ output.ps = {
     const eventRoute = '/v1/community-events/' + s.eventId;
     if (phase === 'community-before') {
       const guest = output.local.observe('second', eventRoute);
-      output.local.check(guest.status === 200 && guest.body.exactAddressPresent === false, 'Pending guest cannot read the exact address.');
+      output.local.check(guest.status === 200 && guest.body.exactAddressPresent === false && !guest.body.coordinatesPresent, 'Pending guest cannot read the exact address or coordinates.');
     } else if (phase === 'community-approved') {
       this.equal(s.memberships, [{account__nickname:'E2EKamos',status:'approved'}], 'Exactly the seeded guest is approved.');
       const guest = output.local.observe('second', eventRoute);
       const outsider = output.local.observe('outsider', eventRoute);
       output.local.check(guest.status === 200 && guest.body.exactAddressPresent === true, 'Approved guest can read the exact address.');
-      output.local.check(outsider.status === 200 && outsider.body.exactAddressPresent === false, 'Unrelated account cannot read the exact address.');
+      output.local.check(outsider.status === 200 && outsider.body.exactAddressPresent === false && !outsider.body.coordinatesPresent, 'Unrelated account cannot read the exact address or coordinates.');
     } else if (phase === 'community-cancelled') {
       this.equal(s.events, [{title:'E2E Večer u hosta',status:'cancelled'}], 'The same event is cancelled in the database.');
       const guest = output.local.observe('second', eventRoute);
-      output.local.check(guest.status === 200 && guest.body.exactAddressPresent === false, 'Cancellation revokes the approved guest address.');
+      output.local.check(guest.status === 200 && guest.body.exactAddressPresent === false && !guest.body.coordinatesPresent, 'Cancellation revokes the approved guest address and coordinates.');
     } else if (phase === 'feedback') {
       output.local.check(s.feedback.length === 1, 'Exactly one feedback row was delivered after offline restart.');
       const row = s.feedback[0];
-      output.local.check(row.message === 'E2E Test zprávy bez signálu.' && row.category === 'bug' && row.attachmentPresent === true && row.fileExists === true && !!row.clientId, 'Persisted feedback retains the exact text, category and uploaded file after offline process restart.');
+      output.local.check(row.owner === 'E2EPivar' && row.message === 'E2E Test zprávy bez signálu.' && row.category === 'bug' && row.attachmentPresent === true && row.fileExists === true && !!row.clientId, 'Persisted feedback retains the exact text, category and uploaded file after offline process restart.');
     } else if (phase === 'unchanged') {
       this.equal(s.addedPubs, [], 'Catalogue and local home operations must not create a pub.');
       this.equal(s.reports, [], 'Read-only catalogue operations must not report a pub.');
@@ -186,7 +186,7 @@ output.ps = {
       const pub = s.community.find(function(r) { return r.name === 'E2E Druhá hospoda'; });
       output.local.check(!!pub, 'The edited pub exists.');
       this.equal(pub.hours_json.mo, [], 'Monday is closed in the persisted public hours.');
-      output.local.check(pub.beers.some(function(b) { return b.name === 'E2E Nový ležák' && b.price_czk === 52 && b.volume_ml === 500; }), 'The public beer has exactly the submitted name, price and volume.');
+      this.equal(pub.beers.map(function(b) { return [b.name,b.price_czk,b.volume_ml]; }).sort(), [['E2E Ležák',41,500],['E2E Nový ležák',52,500]], 'The public menu keeps the original beer and adds exactly one submitted beer.');
     } else if (phase === 'event-pending') {
       const rows = s.pubEvents.filter(function(r) { return r.title === 'E2E Nový kvíz'; });
       output.local.check(rows.length === 1 && rows[0].status === 'pending' && rows[0].account__nickname === 'E2EPivar' && !!rows[0].client_id, 'Retry creates exactly one moderated suggestion for the original account.');
@@ -197,7 +197,7 @@ output.ps = {
       this.permissionsCommunity('preserved');
       output.local.check(s.feedback.length === 1, 'Camera denial still submits exactly one text feedback row.');
       const row = s.feedback[0];
-      output.local.check(row.message === 'E2E Kamera odmítnuta' && row.attachmentPresent === false && row.category === 'bug', 'Camera denial cannot accidentally attach media or lose the feedback text.');
+      output.local.check(row.owner === 'E2EPivar' && row.message === 'E2E Kamera odmítnuta' && row.attachmentPresent === false && row.category === 'bug', 'Camera denial cannot accidentally attach media or lose the feedback text.');
     } else { throw new Error('Unknown places/social oracle phase: ' + phase); }
     return true;
   }

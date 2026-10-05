@@ -300,6 +300,7 @@ def observe():
         "communityXp": rows(PubCommunityXpLedger, ["account__nickname", "kind"]),
         "feedback": [
             {
+                "owner": row.account.nickname if row.account_id else None,
                 "message": row.message,
                 "category": row.category,
                 "clientId": str(row.client_id),
@@ -307,7 +308,7 @@ def observe():
                 "fileExists": bool(row.attachment)
                 and row.attachment.storage.exists(row.attachment.name),
             }
-            for row in FeedbackReport.objects.all()
+            for row in FeedbackReport.objects.select_related("account")
         ],
         "pubEvents": rows(
             PubEvent, ["account__nickname", "client_id", "title", "status"]
