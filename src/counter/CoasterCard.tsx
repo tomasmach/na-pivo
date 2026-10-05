@@ -159,6 +159,7 @@ export function CoasterCard({
       onPress={interactive ? onOpenReceipt : undefined}
       disabled={!interactive}
       accessible={false}
+      focusable={false}
       style={({ pressed }) => [styles.card, interactive && pressed && styles.pressed]}
     >
       <CardSheen />
