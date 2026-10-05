@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { start, stop } from './processes.mjs';
@@ -12,6 +15,19 @@ test('cleanup never signals an exited child or an unowned PID', async t => {
   await stop(child);
   await stop({ pid: process.pid, exitCode: null });
   assert.equal(kill.mock.callCount(), 0);
+});
+
+test('a child whose ownership record cannot be written is stopped before the error', async t => {
+  const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'napivo-e2e-record-'));
+  t.after(() => fs.rmSync(runDir, { recursive: true, force: true }));
+  const marker = `napivo-e2e-unrecorded-${process.pid}-${Date.now()}`;
+  const running = () => execFileSync('ps', ['-axo', 'command='], { encoding: 'utf8' }).includes(marker);
+  t.mock.method(fs, 'renameSync', () => { throw new Error('ENOSPC'); });
+  assert.throws(() => start(process.execPath, ['-e', 'setInterval(()=>{},1000)', marker], {
+    stdio: 'ignore', env: { ...process.env, NA_PIVO_E2E_RUN_DIR: runDir },
+  }), /ENOSPC/);
+  for (let i = 0; i < 20 && running(); i++) await delay(100);
+  assert.equal(running(), false);
 });
 
 for (const exitBeforeCleanup of [false, true]) test(`cleanup stops a descendant when its leader exits ${exitBeforeCleanup ? 'before' : 'during'} cleanup`, async () => {

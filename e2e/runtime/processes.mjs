@@ -63,7 +63,12 @@ export function start(command, args, options = {}) {
     const owner = { pid: child.pid, started: started(child.pid), members: new Map() };
     owner.members.set(owner.pid, { pid: owner.pid, started: owner.started });
     if (options.env?.NA_PIVO_E2E_RUN_DIR) owner.recordPath = path.join(options.env.NA_PIVO_E2E_RUN_DIR, `process-${child.pid}.json`);
-    persist(owner);
+    try { persist(owner); }
+    catch (error) {
+      // Without durable evidence no later cleanup could find this new group.
+      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Already stopped. */ }
+      throw error;
+    }
     ownership.set(child, owner);
     // Remember children before a long-running supervisor exits on its own.
     owner.watch = setInterval(() => capture(owner), 250);

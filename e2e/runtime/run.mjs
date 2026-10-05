@@ -89,7 +89,12 @@ async function cleanup(code) {
     });
     const groups = new Set(records.filter(record => processes.some(p => p.pid === record.pid && p.started === record.started)).map(record => record.pid));
     ownedProcesses = processes.filter(p => groups.has(p.pgid) || records.some(record => record.pid === p.pid && record.started === p.started));
-  } catch { /* No services started. */ }
+  } catch {
+    // Unreadable evidence or ps cannot prove that detached services stopped.
+    console.error('Could not inspect owned local services. The slot stays reserved; inspect the run directory.');
+    retainSlot = true;
+    code ||= 1;
+  }
   await stop(runner);
   if (runDir) {
     try {

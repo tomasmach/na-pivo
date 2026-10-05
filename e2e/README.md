@@ -66,9 +66,9 @@ Aktuální důkazy a omezení jsou v [COVERAGE.md](COVERAGE.md), produktové chy
 `attempt-*/metrics.json` měří jednotlivá spuštění Maestra. `command-metrics.json` navíc obsahuje čas celého příkazu včetně přípravy a úklidu prostředí a jeho návratový kód.
 
 
-## Pokračování před sloučením PR
+## Oblastní běhy
 
-Společná větev `test/e2e-integration` skládá infra PR #208 a oblasti #216, #217 a #218. Oblastní PR samotné obsahují jen testy a seed data. Vlastní lokální dev build z původního worktree lze dál použít přes `E2E_APP_PATH`; při změně nativních vstupů jej sestav znovu. Oblasti ověřuj postupně a zachovej diskovou rezervu runneru. Všech 12 dostupných iOS průchodů účtu a médií, pět deníkových a 14 zdravých průchodů hospod a Party už má tři úspěchy. Celou sadu a známá omezení eviduje COVERAGE.md.
+Testy účtu a médií, deníku a hospod s Partou leží v `e2e/tests/identity/`, `e2e/tests/diary/` a `e2e/tests/places-social/`. Sestavenou binárku z jiného worktree lze použít přes `E2E_APP_PATH`; při změně nativních vstupů ji sestav znovu. Oblasti ověřuj postupně a zachovej diskovou rezervu runneru. Všech 12 dostupných iOS průchodů účtu a médií, pět deníkových a 14 zdravých průchodů hospod a Party už má tři úspěchy. Celou sadu a známá omezení eviduje COVERAGE.md.
 
 ```sh
 npm run e2e:full -- e2e/tests/identity/ --stability
