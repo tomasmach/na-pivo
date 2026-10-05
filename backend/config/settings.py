@@ -898,10 +898,20 @@ CORS_ALLOW_ALL_ORIGINS: bool = DEBUG
 # Firmy.cz scraper settings
 # ---------------------------------------------------------------------------
 
-# Optional residential proxy for all Firmy.cz requests.
-# REQUIRED in production (robots.txt bans bots — see README).
+# Optional residential proxy, used only after Seznam blocks a direct Firmy.cz
+# request (consent wall, 403 or 429). Without it every request stays direct and
+# a block leaves rows in 'error' until direct works again.
 # Format: "http://user:pass@proxy-host:port" or "socks5://..."
 FIRMY_PROXY_URL: str | None = os.environ.get("FIRMY_PROXY_URL") or None
+
+# How long all processes skip the direct path after Seznam blocked it.
+FIRMY_DIRECT_BLOCK_COOLDOWN_MINUTES: int = int(
+    os.environ.get("FIRMY_DIRECT_BLOCK_COOLDOWN_MINUTES", "60")
+)
+
+# Hard daily cap for requests through FIRMY_PROXY_URL (they also count toward
+# FIRMY_DAILY_CAP). 200 requests of ~130 KB stay under 1 GB a month.
+FIRMY_PROXY_DAILY_CAP: int = int(os.environ.get("FIRMY_PROXY_DAILY_CAP", "200"))
 
 # Browser-like User-Agent sent with every Firmy.cz request.
 FIRMY_USER_AGENT: str = os.environ.get(
@@ -978,8 +988,15 @@ MENU_SCAN_JPEG_QUALITY: int = int(os.environ.get("MENU_SCAN_JPEG_QUALITY", "80")
 # Enrichment / cache settings
 # ---------------------------------------------------------------------------
 
-# How many days a cached PubHours row is considered fresh before re-fetching.
-HOURS_TTL_DAYS: int = int(os.environ.get("HOURS_TTL_DAYS", "30"))
+# How many days a cached PubHours row is considered fresh before re-fetching:
+# rows with hours ('ok') and rows Firmy.cz had no hours for ('unknown').
+HOURS_TTL_OK_DAYS: int = int(os.environ.get("HOURS_TTL_OK_DAYS", "90"))
+HOURS_TTL_UNKNOWN_DAYS: int = int(os.environ.get("HOURS_TTL_UNKNOWN_DAYS", "180"))
+
+# Max stale rows refresh_hours re-fetches per UTC day (error retries included).
+# Spreads rows that expire together over several days. Pubs a user opened are
+# queued as EnrichTask and are not limited by this.
+FIRMY_REFRESH_DAILY_CAP: int = int(os.environ.get("FIRMY_REFRESH_DAILY_CAP", "400"))
 
 # How long a transient Firmy.cz ERROR row cools down before another proxy fetch
 # is attempted. This prevents a proxy outage / consent-wall bounce from burning
@@ -1002,13 +1019,6 @@ SYNC_ENRICH_BUDGET: int = _configured_sync_enrich_budget if DEBUG else 0
 # fail fast on insecure configuration and force TLS / secure-cookie defaults.
 if not DEBUG:
     _validate_production_secret_key(SECRET_KEY)
-
-    if not FIRMY_PROXY_URL:
-        raise ImproperlyConfigured(
-            "FIRMY_PROXY_URL is required in production: firmy.cz bounces "
-            "datacenter IPs at the consent wall, so a residential proxy must "
-            "be configured. Set FIRMY_PROXY_URL (see README)."
-        )
 
     if _configured_sync_enrich_budget < 0:
         raise ImproperlyConfigured(
