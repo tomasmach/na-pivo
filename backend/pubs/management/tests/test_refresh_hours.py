@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from io import StringIO
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
@@ -115,8 +115,6 @@ class TestPendingTaskIsProcessed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -140,8 +138,6 @@ class TestPendingTaskIsProcessed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _NO_HOURS_RESULT
 
             _run_command()
@@ -159,8 +155,6 @@ class TestPendingTaskIsProcessed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = None
 
             _run_command()
@@ -209,8 +203,6 @@ class TestPendingTaskIsProcessed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -224,8 +216,6 @@ class TestPendingTaskIsProcessed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -249,8 +239,6 @@ class TestFreshRowSkipsPendingTask:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -269,8 +257,6 @@ class TestFreshRowSkipsPendingTask:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -299,8 +285,6 @@ class TestDailyCapRespected:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             # First call succeeds, second raises cap error
             instance.fetch.side_effect = [
                 _GOOD_RESULT,
@@ -319,8 +303,6 @@ class TestDailyCapRespected:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.side_effect = FirmyDailyCapExceededError("firmy: daily request cap exceeded")
 
             out, _ = _run_command()
@@ -338,8 +320,6 @@ class TestMinIntervalPassedToSource:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             with patch("django.conf.settings.FIRMY_MIN_INTERVAL_SEC", 7.5):
@@ -371,8 +351,6 @@ class TestStaleRowsAreRefreshed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = new_result
 
             _run_command()
@@ -387,8 +365,6 @@ class TestStaleRowsAreRefreshed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -403,8 +379,6 @@ class TestStaleRowsAreRefreshed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -422,8 +396,6 @@ class TestStaleRowsAreRefreshed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -440,8 +412,6 @@ class TestStaleRowsAreRefreshed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.side_effect = Exception("proxy outage")
 
             _run_command()
@@ -462,8 +432,6 @@ class TestStaleRowsAreRefreshed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -480,8 +448,6 @@ class TestStaleRowsAreRefreshed:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -499,8 +465,6 @@ class TestDryRun:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             out, _ = _run_command("--dry-run")
@@ -532,8 +496,6 @@ class TestDryRun:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = new_result
 
             _run_command("--dry-run")
@@ -546,8 +508,6 @@ class TestDryRun:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             out, _ = _run_command("--dry-run")
@@ -574,8 +534,6 @@ class TestLimitFlag:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command("--limit", "2")
@@ -597,8 +555,6 @@ class TestLimitFlag:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command("--limit", "0")
@@ -626,8 +582,6 @@ class TestLimitFlag:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             # Limit 1 → only the pending task is processed; stale refresh is skipped
@@ -645,8 +599,6 @@ class TestAttemptTracking:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             # Simulate fetch raising a non-cap exception
             instance.fetch.side_effect = Exception("network glitch")
 
@@ -666,8 +618,6 @@ class TestAttemptTracking:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -682,8 +632,6 @@ class TestAttemptTracking:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.side_effect = Exception("still failing")
 
             _run_command()
@@ -698,8 +646,6 @@ class TestAttemptTracking:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             _run_command()
@@ -718,8 +664,6 @@ class TestOutputMessages:
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
             instance.fetch.return_value = _GOOD_RESULT
 
             out, _ = _run_command()
@@ -729,11 +673,7 @@ class TestOutputMessages:
 
     def test_zero_items_output(self):
         """No tasks, no stale rows → output says 0 processed."""
-        with patch(FIRMY_SOURCE_PATH) as MockSource:
-            instance = MockSource.return_value
-            instance._owns_session = True
-            instance._session = MagicMock()
-
+        with patch(FIRMY_SOURCE_PATH):
             out, _ = _run_command()
 
         assert "0" in out
