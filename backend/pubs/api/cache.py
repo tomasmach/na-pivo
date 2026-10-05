@@ -9,16 +9,20 @@ get_or_enrich(pubs, sync_budget) -> list[dict]
 
     1. Compute the geohash-8 cache_key.
     2. Bulk-load all PubHours rows for those keys.
-    3. FRESH row (fetched_at within TTL and status in {ok, unknown}):
+    3. FRESH row (status ok/unknown, fetched_at within HOURS_TTL_OK_DAYS /
+       HOURS_TTL_UNKNOWN_DAYS):
          → Return cached data as-is.
     4. Recent ERROR row within FIRMY_ERROR_RETRY_COOLDOWN_MINUTES:
          → Return cached error without spending another Firmy.cz proxy fetch.
     5. STALE row with status in {ok, unknown}:
-         → Return stale cached data immediately and queue refresh_hours.
-    6. MISSING and sync_budget > 0:
+         → Return stale cached data immediately and queue refresh_hours
+           (pubs in Czechia only; Firmy.cz has no others).
+    6. MISSING outside Czechia:
+         → Return status "unknown" without a fetch or an EnrichTask.
+    7. MISSING and sync_budget > 0:
          → Fetch synchronously via FirmyHoursSource, persist result,
            decrement budget.
-    7. MISSING but budget exhausted:
+    8. MISSING but budget exhausted:
          → Upsert an EnrichTask, return status "pending".
 
 get_cached_pub_details(pubs) -> list[dict | None]
@@ -50,7 +54,7 @@ from pubs.enrichment import (
     names_match,
     next_change,
 )
-from pubs.external_api_budget import reserve_external_api_request
+from pubs.firmy_policy import firmy_covers, firmy_source_options, is_fresh
 from pubs.identity import normalize_pub_name, resolve_pub_identities
 from pubs.models import EnrichTask, PubCommunityData, PubExternalBeerMenu, PubHours
 
@@ -62,16 +66,6 @@ logger = logging.getLogger(__name__)
 
 _FRESH_STATUSES = {PubHours.Status.OK, PubHours.Status.UNKNOWN}
 _GARDEN_TAG = "se-zahradkou"
-
-
-def _is_fresh(row: PubHours, ttl_days: int) -> bool:
-    """Return True if *row* was fetched within the TTL and has a good status."""
-    if row.status not in _FRESH_STATUSES:
-        return False
-    if row.fetched_at is None:
-        return False
-    cutoff = dj_tz.now() - timedelta(days=ttl_days)
-    return row.fetched_at >= cutoff
 
 
 def _is_error_in_cooldown(row: PubHours, cooldown_minutes: int) -> bool:
@@ -612,10 +606,6 @@ def get_or_enrich(
         # above the server-configured cap.
         sync_budget = min(sync_budget, configured_budget)
 
-    ttl_days: int = getattr(settings, "HOURS_TTL_DAYS", 30)
-    proxy_url: str | None = getattr(settings, "FIRMY_PROXY_URL", None)
-    min_interval: float = float(getattr(settings, "FIRMY_MIN_INTERVAL_SEC", 3.0))
-    daily_cap: int = int(getattr(settings, "FIRMY_DAILY_CAP", 2000))
     error_retry_cooldown_minutes: int = int(
         getattr(settings, "FIRMY_ERROR_RETRY_COOLDOWN_MINUTES", 15)
     )
@@ -701,7 +691,7 @@ def get_or_enrich(
             if not community_has_menu:
                 _attach_external_menu(results[_result_index], external_menu)
 
-        if row is not None and _is_fresh(row, ttl_days):
+        if row is not None and is_fresh(row):
             # Cache HIT — return as-is (compute isOpenNow/nextChange live), or
             # serve 'unknown' on a geohash-8 collision (a DIFFERENT business
             # occupies this ~38 m cell). We can't overwrite the shared
@@ -745,7 +735,8 @@ def get_or_enrich(
             # as fresh cache hits; a different business in this cell must not
             # inherit the stale row or cause us to flip-flop the shared key.
             if names_match(name, row.name):
-                _upsert_enrich_task(key, name, lat, lng, city)
+                if firmy_covers(lat, lng):
+                    _upsert_enrich_task(key, name, lat, lng, city)
                 results.append(_result_from_row(row))
             else:
                 logger.info(
@@ -760,20 +751,13 @@ def get_or_enrich(
             continue
 
         # Cache MISS, expired error, or another unusable row status
-        if budget_remaining > 0:
+        if not firmy_covers(lat, lng):
+            # Firmy.cz lists Czech businesses only; a lookup abroad never matches.
+            results.append(_unknown_result(key, name))
+        elif budget_remaining > 0:
             # Fetch synchronously
             if source is None:
-                source = FirmyHoursSource(
-                    proxy_url=proxy_url,
-                    min_interval=min_interval,
-                    daily_cap=daily_cap,
-                    request_budget=lambda cap: reserve_external_api_request(
-                        provider="firmy",
-                        operation="http",
-                        cap=cap,
-                        reset_timezone="UTC",
-                    ),
-                )
+                source = FirmyHoursSource(**firmy_source_options())
             row = _enrich_sync(source, key, name, lat, lng, city)
             budget_remaining -= 1
             # If the sync fetch succeeded, close the EnrichTask and clear any
