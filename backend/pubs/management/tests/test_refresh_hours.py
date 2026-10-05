@@ -265,7 +265,7 @@ class TestFreshRowSkipsPendingTask:
     def test_task_still_processed_when_row_stale(self):
         """If the existing row is stale, the task is still fetched normally."""
         task = _make_task()
-        _make_pub_hours(fetched_at=timezone.now() - timedelta(days=31))
+        _make_pub_hours(fetched_at=timezone.now() - timedelta(days=91))
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
             instance = MockSource.return_value
@@ -355,7 +355,7 @@ class TestStaleRowsAreRefreshed:
     """PubHours rows older than TTL are picked up and refreshed."""
 
     def test_stale_row_is_re_fetched(self):
-        stale_time = timezone.now() - timedelta(days=31)
+        stale_time = timezone.now() - timedelta(days=91)
         ph = _make_pub_hours(fetched_at=stale_time)
         original_hours = ph.opening_hours_raw
 
@@ -398,7 +398,7 @@ class TestStaleRowsAreRefreshed:
 
     def test_error_status_row_is_refreshed(self):
         """Rows with status=error are stale-refreshed even within TTL."""
-        stale_time = timezone.now() - timedelta(days=31)
+        stale_time = timezone.now() - timedelta(days=91)
         ph = _make_pub_hours(fetched_at=stale_time, status=PubHours.Status.ERROR)
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
@@ -434,7 +434,7 @@ class TestStaleRowsAreRefreshed:
 
     def test_stale_row_with_open_task_is_not_refreshed_twice(self):
         """The stale-refresh phase skips keys already represented by an open task."""
-        stale_time = timezone.now() - timedelta(days=31)
+        stale_time = timezone.now() - timedelta(days=91)
         ph = _make_pub_hours(fetched_at=stale_time)
         _make_task()
 
@@ -455,7 +455,7 @@ class TestStaleRowsAreRefreshed:
         """A row whose EnrichTask is stuck (done=False, attempts==max_attempts) is
         not shielded from stale-refresh — phase 1 can't process the task, so
         phase 2 must heal the row."""
-        stale_time = timezone.now() - timedelta(days=31)
+        stale_time = timezone.now() - timedelta(days=91)
         ph = _make_pub_hours(fetched_at=stale_time, status=PubHours.Status.ERROR)
         # Task is stuck at max attempts but never marked done.
         _make_task(attempts=3, max_attempts=3, done=False)
@@ -475,7 +475,7 @@ class TestStaleRowsAreRefreshed:
 
     def test_pending_rows_not_touched_by_stale_refresh(self):
         """PubHours with status=pending are not touched by the stale-refresh phase."""
-        stale_time = timezone.now() - timedelta(days=31)
+        stale_time = timezone.now() - timedelta(days=91)
         _make_pub_hours(fetched_at=stale_time, status=PubHours.Status.PENDING)
 
         with patch(FIRMY_SOURCE_PATH) as MockSource:
@@ -516,7 +516,7 @@ class TestDryRun:
         assert "dry-run" in out.lower()
 
     def test_dry_run_stale_row_not_updated(self):
-        stale_time = timezone.now() - timedelta(days=31)
+        stale_time = timezone.now() - timedelta(days=91)
         ph = _make_pub_hours(fetched_at=stale_time)
         original_hours = ph.opening_hours_raw
 
@@ -612,7 +612,7 @@ class TestLimitFlag:
 
         # 1 stale PubHours row (different cache_key)
         stale_key = geohash8(_LAT + 0.1, _LNG + 0.1)
-        stale_time = timezone.now() - timedelta(days=31)
+        stale_time = timezone.now() - timedelta(days=91)
         PubHours.objects.create(
             cache_key=stale_key,
             name="Other Pub",
@@ -773,7 +773,7 @@ def test_unrelated_runtime_error_consumes_retry_and_continues():
 
 @pytest.mark.django_db
 def test_stale_refresh_cap_preserves_existing_hours():
-    pub = _make_pub_hours(fetched_at=timezone.now() - timedelta(days=31))
+    pub = _make_pub_hours(fetched_at=timezone.now() - timedelta(days=91))
     original = PubHours.objects.values().get(pk=pub.pk)
     with patch(FIRMY_SOURCE_PATH) as source:
         source.return_value.fetch.side_effect = FirmyDailyCapExceededError("daily cap")
@@ -794,7 +794,7 @@ def test_real_budget_stops_between_search_and_detail_then_resumes_next_day(setti
     settings.FIRMY_DAILY_CAP = 2
     settings.FIRMY_MIN_INTERVAL_SEC = 0
     task = _make_task(attempts=2)
-    pub = _make_pub_hours(fetched_at=timezone.now() - timedelta(days=31))
+    pub = _make_pub_hours(fetched_at=timezone.now() - timedelta(days=91))
     original_pub = PubHours.objects.values().get(pk=pub.pk)
     now = datetime.now(UTC)
     usage = ExternalApiDailyUsage.objects.create(
@@ -842,4 +842,167 @@ def test_real_budget_stops_between_search_and_detail_then_resumes_next_day(setti
     pub.refresh_from_db()
     assert pub.status == "ok"
     assert pub.opening_hours_raw == "Mo-Su 12:00-22:00"
-    assert ExternalApiDailyUsage.objects.get(day=(now + timedelta(days=1)).date()).request_count == 2
+    next_day = ExternalApiDailyUsage.objects.filter(day=(now + timedelta(days=1)).date())
+    assert dict(next_day.values_list("operation", "request_count")) == {
+        "http": 2,
+        "http_direct": 2,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Firmy.cz only lists Czech businesses; TTLs differ for 'ok' and 'unknown'
+# ---------------------------------------------------------------------------
+
+_BRATISLAVA_LAT, _BRATISLAVA_LNG = 48.1486, 17.1077
+
+
+@pytest.mark.django_db
+def test_task_outside_czechia_closes_without_fetch():
+    task = _make_task(
+        cache_key=geohash8(_BRATISLAVA_LAT, _BRATISLAVA_LNG),
+        name="Bratislavská krčma",
+        lat=_BRATISLAVA_LAT,
+        lng=_BRATISLAVA_LNG,
+    )
+
+    with patch(FIRMY_SOURCE_PATH) as source:
+        _run_command()
+
+    source.return_value.fetch.assert_not_called()
+    task.refresh_from_db()
+    assert task.done
+    assert task.attempts == 0
+    assert not PubHours.objects.exists()
+
+
+@pytest.mark.django_db
+def test_stale_row_outside_czechia_is_left_as_is():
+    row = _make_pub_hours(
+        cache_key=geohash8(_BRATISLAVA_LAT, _BRATISLAVA_LNG),
+        lat=_BRATISLAVA_LAT,
+        lng=_BRATISLAVA_LNG,
+        status=PubHours.Status.UNKNOWN,
+        opening_hours_raw=None,
+        fetched_at=timezone.now() - timedelta(days=400),
+    )
+    original = PubHours.objects.values().get(pk=row.pk)
+
+    with patch(FIRMY_SOURCE_PATH) as source:
+        _run_command()
+
+    source.return_value.fetch.assert_not_called()
+    assert PubHours.objects.values().get(pk=row.pk) == original
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("status", "age_days", "refreshed"),
+    [
+        (PubHours.Status.OK, 89, False),
+        (PubHours.Status.OK, 91, True),
+        (PubHours.Status.UNKNOWN, 179, False),
+        (PubHours.Status.UNKNOWN, 181, True),
+    ],
+)
+def test_refresh_uses_separate_ok_and_unknown_ttls(status, age_days, refreshed):
+    _make_pub_hours(status=status, fetched_at=timezone.now() - timedelta(days=age_days))
+
+    with patch(FIRMY_SOURCE_PATH) as source:
+        source.return_value.fetch.return_value = _GOOD_RESULT
+        _run_command()
+
+    assert source.return_value.fetch.call_count == int(refreshed)
+
+
+@pytest.mark.django_db
+def test_pending_task_closes_on_unknown_row_within_its_ttl():
+    task = _make_task()
+    _make_pub_hours(
+        status=PubHours.Status.UNKNOWN,
+        opening_hours_raw=None,
+        fetched_at=timezone.now() - timedelta(days=100),
+    )
+
+    with patch(FIRMY_SOURCE_PATH) as source:
+        _run_command()
+
+    source.return_value.fetch.assert_not_called()
+    task.refresh_from_db()
+    assert task.done
+
+
+@pytest.mark.django_db
+def test_daily_refresh_budget_spreads_stale_rows_but_not_user_tasks(settings):
+    from pubs.models import ExternalApiDailyUsage
+
+    settings.FIRMY_REFRESH_DAILY_CAP = 1
+    for offset in (0.01, 0.02, 0.03):
+        _make_pub_hours(
+            cache_key=geohash8(_LAT + offset, _LNG),
+            lat=_LAT + offset,
+            fetched_at=timezone.now() - timedelta(days=200),
+        )
+    _make_task()
+
+    with patch(FIRMY_SOURCE_PATH) as source:
+        source.return_value.fetch.return_value = _GOOD_RESULT
+        out, _ = _run_command()
+        # The user's task plus one of the three stale rows.
+        assert source.return_value.fetch.call_count == 2
+        assert "daily refresh budget reached" in out
+
+        _run_command()
+        assert source.return_value.fetch.call_count == 2
+
+    usage = ExternalApiDailyUsage.objects.get(provider="firmy", operation="refresh")
+    assert usage.request_count == 1
+
+
+def _firmy_page(url: str) -> Response:
+    import json
+
+    detail_url = "https://www.firmy.cz/detail/123-qa.html"
+    ld = {
+        "@type": "LocalBusiness", "name": _PUB_NAME,
+        "geo": {"latitude": _LAT, "longitude": _LNG},
+        "url": detail_url, "openingHours": "Mo-Su 12:00-22:00",
+    }
+    response = Response()
+    response.status_code = 200
+    response.url = url
+    response._content = (
+        f'<a href="{detail_url}">QA</a>'
+        f'<script type="application/ld+json">{json.dumps(ld)}</script>'
+    ).encode()
+    return response
+
+
+@pytest.mark.django_db
+def test_blocked_direct_path_uses_proxy_and_later_runs_skip_direct(settings):
+    import requests
+
+    from pubs.models import ExternalApiDailyUsage
+
+    settings.FIRMY_PROXY_URL = "http://proxy.test:8080"
+    settings.FIRMY_MIN_INTERVAL_SEC = 0
+
+    def get(session, url, **kwargs):
+        if session.proxies:
+            return _firmy_page(url)
+        return _firmy_page("https://cmp.seznam.cz/nastaveni-souhlasu?reason=missing")
+
+    with patch.object(requests.Session, "get", autospec=True, side_effect=get):
+        _make_task()
+        first, _ = _run_command()
+        _make_task(cache_key=geohash8(_LAT + 0.01, _LNG), lat=_LAT + 0.01)
+        second, _ = _run_command()
+
+    assert "Firmy.cz requests: 1 direct, 2 via proxy." in first
+    # A new process remembers the block and goes straight to the proxy.
+    assert "Firmy.cz requests: 0 direct, 2 via proxy." in second
+    assert PubHours.objects.filter(status=PubHours.Status.OK).count() == 2
+    assert dict(
+        ExternalApiDailyUsage.objects.filter(provider="firmy").values_list(
+            "operation", "request_count"
+        )
+    ) == {"http": 5, "http_direct": 1, "http_direct_blocked": 1, "http_proxy": 4}
