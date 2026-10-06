@@ -244,6 +244,7 @@ export default function HomePointScreen() {
 
         <View style={styles.mapFrame}>
           <MapView
+            testID="home-map"
             style={StyleSheet.absoluteFill}
             region={region}
             onRegionChangeComplete={setRegion}
@@ -276,7 +277,7 @@ export default function HomePointScreen() {
         ) : null}
 
         {savedPoint ? (
-          <Pressable onPress={clear} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]} accessibilityRole="button">
+          <Pressable testID="home-clear" onPress={clear} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]} accessibilityRole="button">
             <Trash2Icon size={16} color={Colors.foamMuted} />
             <Text style={styles.clearButtonText}>Smazat domovský bod</Text>
           </Pressable>
@@ -284,7 +285,7 @@ export default function HomePointScreen() {
       </KeyboardAwareScrollView>
 
       <View style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
-        <Pressable onPress={save} disabled={!draftPoint || !dirty} style={({ pressed }) => [styles.primaryButton, (!draftPoint || !dirty) && styles.disabled, pressed && styles.pressed]} accessibilityRole="button">
+        <Pressable testID="home-save" onPress={save} disabled={!draftPoint || !dirty} style={({ pressed }) => [styles.primaryButton, (!draftPoint || !dirty) && styles.disabled, pressed && styles.pressed]} accessibilityRole="button">
           <Text style={styles.primaryButtonText}>{savedPoint ? t.homePoint.saveChange : t.homePoint.save}</Text>
         </Pressable>
       </View>

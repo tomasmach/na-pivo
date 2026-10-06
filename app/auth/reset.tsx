@@ -116,6 +116,7 @@ export default function ResetPasswordScreen() {
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>{t.account.resetCodeLabel}</Text>
               <TextInput
+                testID="reset-code"
                 style={styles.input}
                 value={code}
                 onChangeText={(value) => {
@@ -137,6 +138,7 @@ export default function ResetPasswordScreen() {
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>{t.account.resetNewPasswordLabel}</Text>
             <TextInput
+              testID="reset-password"
               style={styles.input}
               value={password}
               onChangeText={(value) => {
@@ -163,6 +165,7 @@ export default function ResetPasswordScreen() {
 
           <View style={styles.submitButton}>
             <GlowButton
+              testID="reset-submit"
               label={busy ? t.account.loading : t.account.resetSubmit}
               onPress={handleSubmit}
               glow={busy ? 'none' : 'soft'}
