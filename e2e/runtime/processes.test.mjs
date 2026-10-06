@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
-import { start, stop } from './processes.mjs';
+import { isAlive, processIdentity, start, stop } from './processes.mjs';
 
 test('cleanup never signals an exited child or an unowned PID', async t => {
   const child = start(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
@@ -63,4 +63,16 @@ for (const exitBeforeCleanup of [false, true]) test(`cleanup stops a descendant 
     await stop(parent);
     if (alive()) process.kill(pid, 'SIGKILL');
   }
+});
+
+test('a zombie counts as exited', async t => {
+  // The parent execs into sleep and never reaps its background child.
+  const parent = spawn('/bin/sh', ['-c', 'sleep 0.3 & echo $!; exec sleep 5'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  t.after(() => parent.kill('SIGKILL'));
+  const [pid] = await once(parent.stdout, 'data');
+  const zombie = processIdentity(Number(String(pid).trim()));
+  assert.equal(isAlive(zombie), true);
+  await delay(800);
+  assert.match(execFileSync('ps', ['-o', 'stat=', '-p', String(zombie.pid)], { encoding: 'utf8' }), /Z/);
+  assert.equal(isAlive(zombie), false);
 });

@@ -6,8 +6,11 @@ import path from 'node:path';
 
 const ownership = new WeakMap();
 function started(pid) {
-  try { return execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
-  catch { return null; }
+  try {
+    const [, state, birth] = execFileSync('ps', ['-o', 'stat=,lstart=', '-p', String(pid)], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().match(/^(\S+)\s+(.+)$/) || [];
+    // A zombie has already exited; ps keeps its row until the parent reaps it.
+    return state && !state.startsWith('Z') ? birth : null;
+  } catch { return null; }
 }
 export function processIdentity(pid) { return { pid, started: started(pid) }; }
 export function isAlive(record) {

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { start, stop, processIdentity, recordedProcesses } from './processes.mjs';
+import { start, stop, isAlive, processIdentity, recordedProcesses } from './processes.mjs';
 import { acquireLock } from './locks.mjs';
 import { summarize } from './report.mjs';
 import { startAndroid } from './android.mjs';
@@ -98,20 +98,19 @@ async function cleanup(code) {
   await stop(runner);
   if (runDir) {
     try {
-      const stillOwned = owned => {
-        try {
-          const started = execFileSync('ps', ['-o', 'lstart=', '-p', String(owned.pid)], { encoding: 'utf8' }).trim();
-          return started === owned.started;
-        } catch { return false; }
-      };
       for (const owned of ownedProcesses) {
-        if (stillOwned(owned)) { try { process.kill(owned.pid, 'SIGTERM'); } catch { /* Already stopped. */ } }
+        if (isAlive(owned)) { try { process.kill(owned.pid, 'SIGTERM'); } catch { /* Already stopped. */ } }
       }
-      if (ownedProcesses.some(stillOwned)) await delay(4000);
+      if (ownedProcesses.some(isAlive)) await delay(4000);
       for (const owned of ownedProcesses) {
-        if (stillOwned(owned)) { try { process.kill(owned.pid, 'SIGKILL'); } catch { /* Already stopped. */ } }
+        if (isAlive(owned)) { try { process.kill(owned.pid, 'SIGKILL'); } catch { /* Already stopped. */ } }
       }
-      for (let attempt = 0; attempt < 20 && ownedProcesses.some(stillOwned); attempt++) await delay(100);
+      for (let attempt = 0; attempt < 20 && ownedProcesses.some(isAlive); attempt++) await delay(100);
+      if (ownedProcesses.some(isAlive)) {
+        console.error('Owned local services survived SIGKILL. The slot stays reserved; inspect the run directory.');
+        retainSlot = true;
+        code ||= 1;
+      }
     } catch { /* No service was started. */ }
   }
   await stop(android?.child);
