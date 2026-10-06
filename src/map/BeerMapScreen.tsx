@@ -1717,6 +1717,8 @@ export default function BeerMapScreen({
                 { paddingBottom: insets.bottom + Spacing.lg },
               ]}
               onPress={() => undefined}
+              accessible={false}
+              focusable={false}
             >
               <View style={styles.listGrabber} />
               <View style={styles.listHeader}>

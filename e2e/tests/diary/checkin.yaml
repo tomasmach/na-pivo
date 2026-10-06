@@ -1,0 +1,58 @@
+# Known visual failure NP-E2E-015: ../../BUGS.md. The data oracle verifies the rating; Czech decimal formatting remains incorrect.
+appId: ${MAESTRO_APP_ID}
+name: Offline rating survives restart and populates the beer detail
+tags: [full, diary]
+---
+- runFlow: flows/start.flow
+- runFlow: flows/menu-beer.flow
+- runScript:
+    file: checkin.js
+    env: { STAGE: baseline }
+- extendedWaitUntil:
+    visible: Ohodnotit
+    timeout: 20000
+- evalScript: ${output.local.offline()}
+- tapOn: Ohodnotit
+- tapOn: Hodnocení 5 z 5
+- tapOn: Hodnocení 4 z 5
+- tapOn: Přidat verdikt Má říz
+- scrollUntilVisible:
+    element: Jen pro mě
+    direction: DOWN
+- tapOn: Jen pro mě
+- scrollUntilVisible:
+    element: Uložit pivo
+    direction: DOWN
+- tapOn: Uložit pivo
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env: { ROUTE: /beer }
+- assertVisible: '1 pivo, utraceno 41\sKč\. Otevře tvůj účet\.'
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- assertVisible: '1 pivo, utraceno 41\sKč\. Otevře tvůj účet\.'
+- runScript:
+    file: checkin.js
+    env: { STAGE: synced }
+- runFlow:
+    file: ../../maestro/route.yaml
+    env: { ROUTE: '/beer-detail?beer=E2E%20Le%C5%BE%C3%A1k' }
+- assertVisible:
+    id: beer-detail-count
+    text: '1'
+- assertVisible: '4\.0'
+- assertVisible: Má říz
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env: { ROUTE: '/beer-detail?beer=E2E%20Le%C5%BE%C3%A1k' }
+- assertVisible:
+    id: beer-detail-count
+    text: '1'
+- assertVisible: '4\.0'
+- assertVisible: Má říz
+- evalScript: ${output.local.screenshot('diary-rated-beer-detail')}
+- runScript:
+    file: checkin.js
+    env: { STAGE: persisted }

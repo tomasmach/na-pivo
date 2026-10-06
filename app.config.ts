@@ -65,6 +65,11 @@ const withoutBackgroundAudio: ConfigPlugin = (config) =>
   });
 
 export default ({ config }: ConfigContext): ExpoConfig => {
+  const localE2ENative = process.env.NA_PIVO_E2E_NATIVE === '1';
+  if (localE2ENative && (process.env.NODE_ENV !== 'development' || process.env.EAS_BUILD || process.env.EAS_BUILD_PLATFORM ||
+      process.env.EXPO_PUBLIC_BACKEND_MODE !== 'local' || process.env.EXPO_PUBLIC_BACKEND_URL !== 'local')) {
+    throw new Error('E2E native configuration requires a local development build outside EAS.');
+  }
   if (isAndroidNativeBuild() && !GOOGLE_MAPS_ANDROID_API_KEY) {
     throw new Error(
       'Android mapa vyžaduje EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY. ' +
@@ -214,7 +219,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
     },
     android: {
-      googleServicesFile: './google-services.json',
+      // Local fixtures never read a real Firebase configuration or register push.
+      googleServicesFile: localE2ENative ? undefined : './google-services.json',
       package: 'com.tomasmach.na_pivo',
       // Geofencing uses broadcasts; dependency manifests must not add an
       // unused foreground service permission back during manifest merging.
