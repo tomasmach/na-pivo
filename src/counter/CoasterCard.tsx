@@ -156,6 +156,7 @@ export function CoasterCard({
 
   return (
     <Pressable
+      testID="counter-count"
       onPress={interactive ? onOpenReceipt : undefined}
       disabled={!interactive}
       accessible={false}

@@ -65,6 +65,7 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
         return (
           <Pressable
             key={seg.key}
+            testID={`${seg.key === 'diary' ? 'diary' : 'counter'}-segment`}
             onPress={() => press(seg.key)}
             style={[styles.segmentItem, active && styles.segmentItemActive]}
             accessibilityRole="tab"
@@ -139,6 +140,7 @@ export default function BeerScreen() {
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel={tab === 'diary' ? t.a11y.diaryStats : t.a11y.counterMore}
+              testID={tab === 'diary' ? 'diary-stats-open' : 'counter-more'}
             >
               <MenuIcon size={20} color={Colors.mutedText} />
             </Pressable>

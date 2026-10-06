@@ -11,6 +11,7 @@
     "ignoreDeprecations": "6.0",
     "types": ["jest", "node"]
   },
+  "files": ["e2e/expo-types.d.ts"],
   "include": [
     "**/*.ts",
     "**/*.tsx",

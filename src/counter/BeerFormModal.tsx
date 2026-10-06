@@ -509,6 +509,7 @@ function BeerFormBody({
             ) : (
               <TextInput
                 style={styles.nameInput}
+                testID="beer-form-name"
                 value={name}
                 onChangeText={onChangeName}
                 placeholder={t.counter.drinkNamePlaceholder(drinkType)}
@@ -605,6 +606,7 @@ function BeerFormBody({
             <View style={styles.priceRow}>
               <TextInput
                 style={styles.priceInput}
+                testID="beer-form-price"
                 value={priceText}
                 onChangeText={(value) =>
                   setPriceText(sanitizePriceInput(value, priceCurrency))
@@ -699,6 +701,7 @@ function BeerFormBody({
             <View style={styles.submitWrap}>
               <GlowButton
                 label={submitLabel}
+                testID="beer-form-submit"
                 onPress={handleSubmit}
                 glow={canSubmit ? 'soft' : 'none'}
                 accessibilityLabel={submitLabel}

@@ -20,6 +20,7 @@ const CTA_HEIGHT = 62;
 const PRESS_SWALLOW_MS = 700;
 
 export interface CounterCtaProps {
+  testID?: string;
   label: string;
   subLabel?: string | null;
   onPress: () => void;
@@ -57,6 +58,7 @@ export const CounterSecondary = memo(function CounterSecondary({
 });
 
 export const CounterCta = memo(function CounterCta({
+  testID,
   label,
   subLabel,
   onPress,
@@ -83,6 +85,7 @@ export const CounterCta = memo(function CounterCta({
   return (
     <View style={styles.wrapper}>
       <Pressable
+        testID={testID}
         onPress={handlePress}
         disabled={disabled}
         style={({ pressed }) => [

@@ -34,15 +34,17 @@ interface BeerPhotoSourceSheetProps {
 }
 
 interface OptionRowProps {
+  testID: string;
   icon: React.ReactNode;
   label: string;
   helper: string;
   onPress: () => void;
 }
 
-function OptionRow({ icon, label, helper, onPress }: OptionRowProps) {
+function OptionRow({ testID, icon, label, helper, onPress }: OptionRowProps) {
   return (
     <Pressable
+      testID={testID}
       onPress={onPress}
       style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
       accessibilityRole="button"
@@ -122,6 +124,7 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
                 </Text>
               </View>
               <Pressable
+                testID="photo-source-close"
                 onPress={onClose}
                 hitSlop={12}
                 style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
@@ -134,12 +137,14 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
 
             <View style={styles.options}>
               <OptionRow
+                testID="photo-source-camera"
                 icon={<CameraIcon size={22} color={Colors.amber} />}
                 label={t.photoDiary.takePhoto}
                 helper={t.photoDiary.cameraHelper}
                 onPress={() => pick('camera')}
               />
               <OptionRow
+                testID="photo-source-library"
                 icon={<ImagesIcon size={22} color={Colors.amber} />}
                 label={t.photoDiary.pickFromLibrary}
                 helper={t.photoDiary.libraryHelper}
