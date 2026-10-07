@@ -79,14 +79,18 @@ def _confirmed_since(rows: list[PubPriceIndex], since: datetime) -> set[str]:
 
     A drink of another beer keeps the old menu prices but still moves the
     index's observed_at, so only a drink or a submitted menu with this exact
-    price and volume counts.
+    price and volume counts. A drink counts by when it was drunk, since the
+    offline queue can deliver it much later, and suspect drinks stay out of
+    public numbers.
     """
 
     selected = {row.cache_key: (row.price_czk, row.volume_ml) for row in rows}
     confirmed: set[str] = set()
     for chunk in _chunks(list(selected)):
         drinks = (
-            DrinkLog.objects.filter(cache_key__in=chunk, created_at__gte=since, price_czk__isnull=False)
+            DrinkLog.objects.filter(
+                cache_key__in=chunk, drank_at__gte=since, is_suspect=False, price_czk__isnull=False
+            )
             .values_list("cache_key", "price_czk", "volume_ml")
             .distinct()
         )

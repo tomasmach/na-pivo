@@ -77,7 +77,7 @@ def _price(
     return row
 
 
-def _drink(row: PubPriceIndex, price: int, volume_ml: int | None = 500) -> None:
+def _drink(row: PubPriceIndex, price: int, volume_ml: int | None = 500, days_ago: int = 0) -> None:
     account, _ = Account.objects.get_or_create(device_id="price-map-drinker")
     DrinkLog.objects.create(
         account=account,
@@ -86,7 +86,7 @@ def _drink(row: PubPriceIndex, price: int, volume_ml: int | None = 500) -> None:
         name=row.name,
         lat=row.lat,
         lng=row.lng,
-        drank_at=timezone.now(),
+        drank_at=timezone.now() - timedelta(days=days_ago),
         beer_name="Jedenáctka",
         price_czk=price,
         volume_ml=volume_ml,
@@ -160,6 +160,8 @@ def test_an_old_cheapest_price_needs_its_own_recent_write():
     _catalog(row, "U Starého ceníku")
     # Someone drank another beer there today: the index moved, the 39 Kč did not.
     _drink(row, 55)
+    # The offline queue delivered today a 39 Kč beer drunk four months ago.
+    _drink(row, 39, days_ago=120)
 
     assert build_price_map()["cheapest"] == []
 
