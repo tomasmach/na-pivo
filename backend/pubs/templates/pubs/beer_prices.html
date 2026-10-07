@@ -11,6 +11,10 @@
 <link rel="alternate" hreflang="cs" href="{{ cs_url }}">
 <link rel="alternate" hreflang="en" href="{{ en_url }}">
 <link rel="alternate" hreflang="x-default" href="{{ cs_url }}">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="{{ asset.baloo2_extrabold_woff2 }}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{{ asset.bricolage_grotesque_woff2 }}" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Na pivo">
 <meta property="og:locale" content="{{ og_locale }}">
@@ -25,7 +29,20 @@
 <meta name="apple-itunes-app" content="app-id=6773790025">
 {{ structured_data }}
 <style>
-  /* Colors of the na-pivo.cz home page. Everything is inline: the page loads no other file. */
+  /* The home page's fonts and colours. Every file the page loads comes from na-pivo.cz. */
+  @font-face {
+    font-family: "Baloo 2";
+    src: url("{{ asset.baloo2_extrabold_woff2 }}") format("woff2");
+    font-weight: 700 800;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Bricolage Grotesque";
+    src: url("{{ asset.bricolage_grotesque_woff2 }}") format("woff2");
+    font-weight: 400 700;
+    font-display: swap;
+  }
+
   :root {
     color-scheme: dark;
     --ground: #231407;
@@ -37,106 +54,328 @@
     --foam: #fbf3e0;
     --foam-muted: #e8dcc0;
     --muted: #a8896a;
+    --paper-muted: #6b5440;
     --hair: rgb(251 243 224 / 0.1);
-    --numeral: ui-rounded, system-ui, sans-serif;
+    --track: rgb(251 243 224 / 0.07);
+    --display: "Baloo 2", ui-rounded, system-ui, sans-serif;
+    --text: "Bricolage Grotesque", system-ui, sans-serif;
+    --gutter: clamp(20px, 5vw, 56px);
+    /* The home page's toss: overshoots a little and settles, like something dropped on the table. */
+    --land: cubic-bezier(0.25, 1.4, 0.5, 1);
   }
   *, *::before, *::after { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
-  body { margin: 0; background: var(--ground); color: var(--foam); font: 400 17px/1.5 system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { margin: 0; background: var(--ground); color: var(--foam); font: 400 17px/1.5 var(--text); -webkit-font-smoothing: antialiased; }
   p { margin: 0; text-wrap: pretty; }
-  h1, h2 { margin: 0; font-weight: 800; text-wrap: balance; }
+  h1, h2 { margin: 0; font-family: var(--display); font-weight: 800; text-wrap: balance; }
   a { color: inherit; }
+  button { font: inherit; }
   :focus-visible { outline: 3px solid var(--foam); outline-offset: 4px; border-radius: 4px; }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* Tilted and tossed paper may reach past the gutter; it must never make the page scroll sideways. */
+  .wrap { max-width: calc(1080px + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); overflow-x: clip; }
 
-  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 12px; }
-  .top a { display: inline-flex; min-height: 48px; align-items: center; text-decoration: none; }
-  .wordmark { color: var(--foam); font: 800 22px/1 var(--numeral); }
-  .lang { margin-right: -14px; padding: 0 14px; border-radius: 10px; color: var(--foam-muted); font-size: 16px; font-weight: 600; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 14px; }
+  .wordmark { display: inline-flex; min-height: 48px; align-items: center; gap: 10px; color: var(--foam); font: 800 24px/1 var(--display); text-decoration: none; }
+  .wordmark img { width: 36px; height: 36px; border-radius: 50%; }
+  .lang { display: inline-flex; min-height: 44px; align-items: center; margin-right: -12px; padding: 0 12px; border-radius: 10px; color: var(--foam-muted); font-size: 16px; font-weight: 600; text-decoration: none; }
   @media (hover: hover) { .lang:hover { color: var(--foam); background: var(--stout-3); } }
   .lang:active { background: var(--stout-3); }
 
-  .crumb { display: inline-flex; min-height: 48px; align-items: center; margin-top: 8px; color: var(--muted); font-size: 15px; text-underline-offset: 0.2em; }
+  /* Hero: the medians are beer mats on the table, the same cream rounds as on the home page prints. */
+  .hero { display: grid; gap: clamp(36px, 5vw, 56px); padding-top: clamp(28px, 5vw, 56px); }
+  .crumb { display: inline-flex; min-height: 44px; align-items: center; color: var(--muted); font-size: 16px; text-underline-offset: 0.2em; }
   @media (hover: hover) { .crumb:hover { color: var(--foam); } }
-  .crumb + h1 { margin-top: 0; }
-  h1 { margin-top: 28px; font-size: clamp(32px, 8vw, 48px); line-height: 1.1; letter-spacing: -0.02em; }
-  .as-of { margin-top: 10px; color: var(--muted); font-size: 16px; }
+  /* Two lines in Baloo and in the fallback alike, so the page doesn't jump when the font arrives. */
+  h1 { max-width: 10em; font-size: clamp(44px, 8.4vw, 96px); line-height: 0.94; letter-spacing: -0.035em; }
+  .as-of { max-width: 38em; margin-top: 18px; color: var(--muted); font-size: 16px; }
 
-  .headline { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; margin: 36px 0 0; padding: 24px 0; border-block: 1px solid var(--hair); }
-  .headline div { min-width: 0; }
-  .headline dt { color: var(--foam-muted); font-size: 16px; font-weight: 600; }
-  .headline dd { margin: 0; }
-  .headline .price { margin-top: 2px; font: 800 clamp(40px, 11vw, 64px)/1.24 var(--numeral); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-  .headline .price span { color: var(--foam-muted); font-size: 0.4em; letter-spacing: 0; }
-  .headline .range { color: var(--muted); font-size: 14px; line-height: 1.35; }
+  .coasters { display: flex; gap: clamp(10px, 3.4vw, 56px); margin: 0; padding: 0; list-style: none; }
+  .coasters li { --tilt: -5deg; --i: 0; display: grid; flex: 1 1 0; align-content: start; justify-items: center; gap: 14px; min-width: 0; max-width: 250px; text-align: center; container-type: inline-size; }
+  .coasters li:nth-child(2) { --tilt: 4deg; --i: 1; }
+  .coasters li:nth-child(3) { --tilt: -2deg; --i: 2; }
+  /* The mat from the home page print: an amber rim, a thin ink ring inside it and a ring left by a glass. */
+  .coaster {
+    position: relative;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    width: 100%;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border: max(5px, 6.5cqi) solid var(--amber);
+    border-radius: 50%;
+    background: var(--foam);
+    color: var(--ink);
+    /* The hard ink offset of the printed buttons. */
+    box-shadow: 4px 5px 0 var(--ink-deep), inset 0 0 0 max(2px, 1.2cqi) var(--ink);
+    rotate: var(--tilt);
+    text-decoration: none;
+  }
+  .coaster::after { content: ""; position: absolute; right: -22%; bottom: -30%; width: 58%; aspect-ratio: 1; border: max(2px, 1.4cqi) solid rgb(196 133 16 / 0.28); border-left-color: transparent; border-radius: 50%; rotate: 25deg; pointer-events: none; }
+  .coasters li:nth-child(2) .coaster::after { top: -20%; right: auto; bottom: auto; left: -14%; rotate: 200deg; }
+  .coasters li:nth-child(3) .coaster::after { top: -8%; right: -24%; bottom: auto; rotate: 110deg; }
+  .coaster .where, .coaster .price { position: relative; z-index: 1; }
+  .coaster .where { max-width: 76cqi; color: var(--paper-muted); font: 700 max(11px, 8cqi)/1.15 var(--text); overflow-wrap: anywhere; text-wrap: balance; }
+  .coaster .price { display: flex; align-items: baseline; gap: 0.1em; margin-top: 1cqi; font: 800 31cqi/1 var(--display); letter-spacing: -0.02em; }
+  .coaster .unit { font-size: 0.36em; letter-spacing: 0; }
+  /* The price itself is the hidden text, so copying a mat gives "56 Kč" once. */
+  .coaster .roll, .coaster .unit { -webkit-user-select: none; user-select: none; }
+  .coasters .range { max-width: 12em; color: var(--muted); font-size: 15px; line-height: 1.35; text-wrap: balance; }
+  .coasters .stale { margin-top: -10px; }
   /* Flags prices older than three months. The words carry it, not the colour. */
-  .stale { display: block; margin-top: 2px; color: var(--foam-muted); font-size: 13px; font-weight: 500; line-height: 1.3; }
+  .stale { display: block; color: var(--foam-muted); font-size: 13px; font-weight: 500; line-height: 1.3; }
 
-  section { margin-top: 44px; }
-  h2 { font-size: 24px; line-height: 1.2; }
-  .table-wrap { margin-top: 12px; overflow-x: auto; }
-  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 16px; }
-  col.name { width: 36%; } col.median { width: 18%; } col.range { width: 26%; } col.count { width: 20%; }
-  th, td { padding: 12px 0; border-bottom: 1px solid var(--hair); text-align: left; vertical-align: baseline; }
-  th + th, td { padding-left: 14px; }
-  thead th { color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.25; }
-  tbody th { font-weight: 600; overflow-wrap: anywhere; }
-  tbody th a { display: block; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
-  @media (hover: hover) { tbody th a:hover { color: var(--amber-light); } }
-  .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  thead .num { white-space: normal; }
-  td.median { font-weight: 700; }
-  td.count { color: var(--foam-muted); }
+  /* A mat that opens its city lifts under the pointer and sinks when pressed, like the store blocks. */
+  a.coaster { transition: translate 140ms ease-out, box-shadow 140ms ease-out; }
+  @media (hover: hover) { a.coaster:hover { translate: -1px -3px; box-shadow: 6px 8px 0 var(--ink-deep), inset 0 0 0 max(2px, 1.2cqi) var(--ink); } }
+  a.coaster:active { translate: 3px 4px; box-shadow: 1px 1px 0 var(--ink-deep), inset 0 0 0 max(2px, 1.2cqi) var(--ink); }
+  a.coaster:focus-visible { border-radius: 50%; outline-offset: 6px; }
 
-  .cheapest { list-style: none; margin: 12px 0 0; padding: 0; }
-  .cheapest li { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--hair); }
-  .cheapest .pub { min-width: 0; overflow-wrap: anywhere; }
-  .cheapest strong { display: block; font-weight: 600; }
-  .cheapest .city { color: var(--muted); font-size: 15px; }
-  .cheapest .cost { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
-  .cheapest .price { display: block; font-weight: 700; }
-  .cheapest .volume { color: var(--muted); font-size: 15px; }
+  /* Each digit is a strip of 0–9 twice, shown through a one-digit window, resting on its own digit in the second run. */
+  .roll { display: inline-flex; }
+  .digit { display: inline-block; width: var(--w); height: 1em; overflow-x: visible; overflow-y: clip; }
+  .digit::before {
+    content: "0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9\A 0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9";
+    display: block;
+    white-space: pre;
+    text-align: center;
+    line-height: 1em;
+    transform: translateY(calc((10 + var(--d)) * -1em));
+  }
+  /* Baloo's own digit widths, so 51 sits as tight as plain text would. */
+  .digit[data-d="0"] { --d: 0; --w: 0.606em; } .digit[data-d="1"] { --d: 1; --w: 0.393em; }
+  .digit[data-d="2"] { --d: 2; --w: 0.522em; } .digit[data-d="3"] { --d: 3; --w: 0.518em; }
+  .digit[data-d="4"] { --d: 4; --w: 0.602em; } .digit[data-d="5"] { --d: 5; --w: 0.522em; }
+  .digit[data-d="6"] { --d: 6; --w: 0.558em; } .digit[data-d="7"] { --d: 7; --w: 0.482em; }
+  .digit[data-d="8"] { --d: 8; --w: 0.56em; } .digit[data-d="9"] { --d: 9; --w: 0.558em; }
 
-  .notice { margin-top: 36px; padding: 24px 0; border-block: 1px solid var(--hair); }
+  /* On load the mats drop onto the table and each digit turns once, from its own digit round to it again,
+     so the first and the last frame both show the right price. */
+  @media (prefers-reduced-motion: no-preference) {
+    .coaster { animation: land 460ms var(--land) backwards; animation-delay: calc(var(--i) * 90ms); }
+    .digit::before { animation: roll 700ms cubic-bezier(0.3, 0.7, 0.2, 1) backwards; animation-delay: calc(var(--i) * 90ms + 120ms); }
+    .digit:last-child::before { animation-delay: calc(var(--i) * 90ms + 200ms); }
+  }
+  @keyframes land { from { transform: translateY(-28px) rotate(12deg) scale(1.06); } }
+  @keyframes roll { from { transform: translateY(calc(var(--d) * -1em)); } }
+
+  /* Lists of cities and districts: one bar per area on one shared price axis. */
+  .areas { margin-top: clamp(72px, 10vw, 120px); }
+  h2 { font-size: clamp(32px, 4.6vw, 48px); line-height: 1; letter-spacing: -0.025em; }
+  .areas-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 20px 32px; }
+  .tools { display: none; flex-wrap: wrap; gap: 10px; }
+  .search { position: relative; flex: 1 1 220px; }
+  .search svg { position: absolute; top: 50%; left: 15px; width: 20px; height: 20px; translate: 0 -50%; color: var(--muted); pointer-events: none; }
+  .search input { width: 100%; min-height: 44px; padding: 0 16px 0 44px; border: 0; border-radius: 999px; background: var(--track); color: var(--foam); font: 500 16px var(--text); -webkit-appearance: none; appearance: none; }
+  .search input::placeholder { color: rgb(251 243 224 / 0.55); }
+  .search input:focus-visible { outline-offset: 2px; border-radius: 999px; }
+  /* The app's filter chips: the active one gets an amber edge and label, not a fill. */
+  .sort { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sort button { flex: 1 0 auto; min-height: 44px; padding: 0 16px; white-space: nowrap; border: 1.5px solid transparent; border-radius: 999px; background: var(--track); color: var(--muted); font-size: 15px; font-weight: 600; cursor: pointer; transition: color 120ms ease-out, border-color 120ms ease-out; }
+  .sort button[aria-pressed="true"] { border-color: rgb(232 163 23 / 0.5); color: var(--amber); }
+  @media (hover: hover) { .sort button:hover { color: var(--foam); } .sort button[aria-pressed="true"]:hover { color: var(--amber-light); } }
+  .sort button:active { opacity: 0.65; }
+  .sort button:focus-visible { border-radius: 999px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 22px; color: var(--foam-muted); font-size: 14px; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .legend i { display: block; flex: none; }
+  .key-range { width: 26px; height: 8px; border-radius: 4px; background: var(--amber); }
+  .key-median { width: 12px; height: 12px; border-radius: 50%; background: var(--foam); }
+  .key-country { width: 2px; height: 16px; background: var(--country-line); }
+
+  .areas { --cols: minmax(0, 1fr) minmax(0, 2.1fr) 6.5rem; --gap: 20px; --country-line: rgb(251 243 224 / 0.4); }
+  .scale, .strip { display: grid; grid-template-columns: var(--cols); grid-template-areas: "who bar cost"; column-gap: var(--gap); }
+  /* The axis stays in view while an open list scrolls past it. */
+  .scale { position: sticky; top: 0; z-index: 2; margin-top: 18px; padding: 8px 0; border-bottom: 1px solid var(--hair); background: var(--ground); color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.25; }
+  .scale-label { grid-area: who; }
+  .scale-median { grid-area: cost; text-align: right; }
+  .ticks { position: relative; grid-area: bar; }
+  .ticks i { position: absolute; top: 0; translate: -50% 0; font-style: normal; font-variant-numeric: tabular-nums; }
+
+  .rows { position: relative; }
+  .strips { position: relative; margin: 0; padding: 0; list-style: none; }
+  .strip { position: relative; align-items: center; min-height: 64px; padding: 10px 0; border-bottom: 1px solid var(--hair); }
+  .strip[hidden] { display: none; }
+  .who { grid-area: who; min-width: 0; overflow-wrap: anywhere; }
+  .who .name { display: block; font-weight: 600; line-height: 1.25; }
+  .who a { text-decoration: none; }
+  /* The whole row opens the city. */
+  .who a::after { content: ""; position: absolute; inset: 0; }
+  .who .count { display: block; color: var(--muted); font-size: 14px; line-height: 1.35; }
+  /* A price line every ten crowns runs through the bars; the brighter one is the median of the whole country.
+     The bar lets clicks through to the row's link. */
+  .bar {
+    position: relative;
+    grid-area: bar;
+    align-self: stretch;
+    margin-block: -10px;
+    background:
+      linear-gradient(var(--country-line), var(--country-line)) var(--country, -10px) 0 / 2px 100% no-repeat,
+      linear-gradient(var(--track), var(--track)) 100% 0 / 1px 100% no-repeat,
+      linear-gradient(90deg, var(--track) 1px, transparent 1px) 0 0 / var(--step) 100% repeat-x;
+    pointer-events: none;
+  }
+  .bar::before, .bar::after { content: ""; position: absolute; top: 50%; }
+  /* The middle half of the pubs, with rounded ends that reach 4 px past it. */
+  .bar::before { left: calc(var(--lo) - 4px); right: calc(100% - var(--hi) - 4px); height: 8px; margin-top: -4px; border-radius: 4px; background: var(--amber); transform-origin: var(--origin) 50%; transition: background-color 120ms ease-out; }
+  .bar::after { left: var(--mid); width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--foam); box-shadow: 0 0 0 2.5px var(--ground); }
+  .strip.is-stale .bar::before { opacity: 0.45; }
+  .strip .stale { margin-top: 2px; }
+  .cost { grid-area: cost; text-align: right; white-space: nowrap; }
+  .cost .median { display: block; font: 800 22px/1.15 var(--display); }
+  .cost .spread { display: block; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+  @media (hover: hover) {
+    .strip:has(a:hover) .name { color: var(--amber-light); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+    .strip:has(a:hover) .bar::before { background: var(--amber-light); }
+  }
+  @supports selector(:has(a)) {
+    .who a:focus-visible { outline: none; }
+    .strip:has(a:focus-visible) { outline: 3px solid var(--foam); outline-offset: 2px; border-radius: 6px; }
+  }
+
+  /* prices.js arms the list; the bars then grow out of their median as it scrolls in. */
+  @media (prefers-reduced-motion: no-preference) {
+    .rows.is-armed .bar::before { transform: scaleX(0); }
+    .rows.is-armed .bar::after { opacity: 0; scale: 0.3; }
+    .rows.is-armed.is-in .bar::before { transform: none; transition: transform 560ms cubic-bezier(0.2, 0.75, 0.2, 1) calc(min(var(--n), 14) * 30ms), background-color 120ms ease-out; }
+    .rows.is-armed.is-in .bar::after { opacity: 1; scale: 1; transition: opacity 160ms ease-out calc(min(var(--n), 14) * 30ms + 280ms), scale 300ms var(--land) calc(min(var(--n), 14) * 30ms + 280ms); }
+  }
+
+  .empty { padding: 28px 0; border-bottom: 1px solid var(--hair); }
+  .empty[hidden] { display: none; }
+  .empty p { max-width: 34em; color: var(--foam-muted); }
+  /* Secondary actions are the app's quiet stout pill. */
+  .retry, .all-cities, .more, .clear { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; padding: 0 20px; border: 0; border-radius: 999px; background: var(--stout-3); color: var(--foam); font-size: 16px; font-weight: 700; text-decoration: none; cursor: pointer; transition: opacity 120ms ease-out; }
+  .retry:active, .all-cities:active, .more:active, .clear:active { opacity: 0.65; }
+  .clear { margin-top: 16px; }
+  .more { display: none; margin-top: 20px; }
+  /* Where scripts run, the search keeps its place from the first paint, so nothing jumps when prices.js arrives.
+     It turns on, and the list folds, only once the script is really there. */
+  @media (scripting: enabled) { .tools { display: flex; visibility: hidden; } }
+  .areas.is-live .tools { display: flex; visibility: visible; }
+  .areas.is-live .more { display: inline-flex; }
+  .areas .more[hidden] { display: none; }
+  .method { max-width: 40em; margin-top: 36px; color: var(--muted); font-size: 15px; }
+  .all-cities { margin-top: 28px; }
+
+  .notice { margin-top: 48px; padding: 28px 0; border-block: 1px solid var(--hair); }
   .notice p { color: var(--foam-muted); }
-  .retry, .all-cities { display: inline-flex; min-height: 48px; align-items: center; margin-top: 16px; padding: 0 18px; border-radius: 999px; background: var(--stout-3); color: var(--foam); font-weight: 700; text-decoration: none; }
-  .method { margin-top: 28px; color: var(--muted); font-size: 15px; }
+  .notice .retry, .notice .all-cities { margin-top: 18px; }
 
-  .cta { margin-top: 56px; padding-top: 28px; border-top: 1px solid var(--hair); }
-  .cta p { margin-top: 6px; color: var(--foam-muted); }
+  /* The cheapest pubs come on the home page's bill; next to it, the ask. */
+  .after { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); align-items: center; gap: 64px clamp(40px, 7vw, 96px); margin-top: clamp(72px, 10vw, 120px); }
+  .bill {
+    position: relative;
+    width: min(500px, 100%);
+    padding: 36px clamp(22px, 5vw, 34px) 60px;
+    background: var(--foam);
+    color: var(--ink);
+    rotate: -1.5deg;
+    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
+            mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 22px 100%;
+  }
+  .bill h2 { font-size: clamp(30px, 4vw, 40px); line-height: 1.05; }
+  .cheapest { margin: 20px 0 0; padding: 0; list-style: none; counter-reset: pub; }
+  .cheapest li { display: grid; grid-template-columns: 1.7em minmax(0, 1fr) auto; column-gap: 8px; align-items: baseline; padding: 9px 0; counter-increment: pub; }
+  .cheapest li::before { content: counter(pub) "."; grid-row: 1; color: var(--paper-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cheapest .pub, .cheapest .cost { display: contents; }
+  .cheapest strong { display: flex; grid-row: 1; grid-column: 2; gap: 8px; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+  .cheapest strong::after { content: ""; flex: 1 0 14px; translate: 0 -5px; border-bottom: 2px dotted rgb(31 19 8 / 0.35); }
+  .cheapest .price { grid-row: 1; grid-column: 3; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+  .cheapest .city, .cheapest .stale { grid-column: 2; color: var(--paper-muted); font-size: 15px; line-height: 1.35; }
+  .cheapest .volume { grid-row: 2; grid-column: 3; color: var(--paper-muted); font-size: 15px; text-align: right; }
+  @media (prefers-reduced-motion: no-preference) {
+    .after.is-armed .bill { opacity: 0; transform: translateY(-48px) rotate(-8deg) scale(1.05); }
+    .after.is-armed.is-in .bill { opacity: 1; transform: none; transition: opacity 180ms ease-out, transform 460ms var(--land); }
+  }
+
+  .cta p { margin-top: 10px; color: var(--foam-muted); font-size: 18px; }
   /* The home page's printed store blocks: an ink outline and a hard offset that sinks when pressed. */
-  .stores { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 20px; }
-  .store { display: inline-flex; flex: 1 1 240px; max-width: 340px; min-height: 56px; justify-content: center; align-items: center; gap: 10px; padding: 0 22px; border: 2.5px solid var(--ink-deep); border-radius: 14px; background: var(--amber); color: var(--ink); box-shadow: 4px 5px 0 var(--ink-deep); font-weight: 700; text-decoration: none; transition: transform 110ms ease-out, box-shadow 110ms ease-out, background-color 110ms ease-out; }
+  .stores { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 28px; }
+  .store { display: inline-flex; flex: 1 1 240px; max-width: 340px; min-height: 58px; justify-content: center; align-items: center; gap: 10px; padding: 0 22px; border: 2.5px solid var(--ink-deep); border-radius: 14px; background: var(--amber); color: var(--ink); box-shadow: 4px 5px 0 var(--ink-deep); font-weight: 700; text-decoration: none; transition: transform 110ms ease-out, box-shadow 110ms ease-out, background-color 110ms ease-out; }
   .store svg { width: 20px; height: 20px; flex: none; }
   @media (hover: hover) { .store:hover { transform: translate(-1px, -2px); box-shadow: 5px 7px 0 var(--ink-deep); background: var(--amber-light); } }
   .store:active { transform: translate(3px, 4px); box-shadow: 1px 1px 0 var(--ink-deep); }
-  @media (prefers-reduced-motion: reduce) { .store { transition: none; } .store:hover, .store:active { transform: none; } }
 
-  footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 24px; margin-top: 56px; padding: 8px 0 28px; border-top: 1px solid var(--hair); color: var(--muted); font-size: 15px; }
+  footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 24px; margin-top: clamp(72px, 10vw, 120px); padding: 8px 0 28px; border-top: 1px solid var(--hair); color: var(--muted); font-size: 15px; }
   footer nav { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0 -8px; }
   footer p, footer a { display: inline-flex; min-height: 48px; align-items: center; }
   footer a { padding: 0 8px; color: var(--foam-muted); text-decoration: none; }
   @media (hover: hover) { footer a:hover { color: var(--foam); text-decoration: underline; } }
 
-  @media (max-width: 420px) {
-    .headline { gap: 10px; }
-    table { font-size: 15px; }
-    th + th, td { padding-left: 10px; }
+  /* Wide screens have room for bigger mats, scattered a little as if dropped on the table. */
+  @media (min-width: 960px) {
+    .coasters li { max-width: 290px; }
+    .coasters li:nth-child(2) { margin-top: 28px; }
+    .coasters li:nth-child(3) { margin-top: 6px; }
+  }
+  /* Phones: name and price share a line and the bar gets the full width below them, so a crown is wide enough to see. */
+  @media (max-width: 640px) {
+    .areas { --gap: 12px; }
+    .scale, .strip { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who cost" "bar bar"; }
+    .scale { row-gap: 6px; }
+    .ticks { height: 16px; margin-inline: 8px; }
+    .strip { row-gap: 8px; padding: 12px 0 10px; }
+    .bar { height: 20px; margin: 0 8px; }
+    .bar::after { width: 12px; height: 12px; margin: -6px 0 0 -6px; }
+    .tools { width: 100%; }
+    .search { flex-basis: 100%; }
+    .sort { flex: 1 1 100%; }
+    .sort button { padding: 0 12px; }
+    .who .name { font-size: 16px; }
+    .who .count { font-size: 13px; }
+    .cost .median { font-size: 19px; }
+    .coasters .range { font-size: 13px; }
+  }
+  @media (max-width: 380px) {
+    .sort button { padding: 0 9px; font-size: 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0ms !important; transition-delay: 0ms !important; }
   }
 </style>
 </head>
 <body>
 <div class="wrap">
 <header class="top">
-  <a class="wordmark" href="{{ home_url }}">Na pivo</a>
+  <a class="wordmark" href="{{ home_url }}"><img src="{{ asset.icon_144_png }}" alt="" width="36" height="36">Na pivo</a>
   {% if LANGUAGE_CODE == "cs" %}<a class="lang" href="{{ switch_url }}" hreflang="en" lang="en">English</a>{% else %}<a class="lang" href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>{% endif %}
 </header>
 
 <main>
-  {% if area %}<a class="crumb" href="{{ prices_url }}">{% translate "Ceny piva" %}</a>{% endif %}
-  <h1>{{ h1 }}</h1>
-  {% if area %}<p class="as-of">{% blocktranslate with pubs=area.pubs date=day|date:"DATE_FORMAT" %}Medián nejlevnějšího piva od 0,4 l z {{ pubs }} hospod, stav k {{ date }}{% endblocktranslate %}</p>
-  {% elif day %}<p class="as-of">{% blocktranslate with date=day|date:"DATE_FORMAT" %}Medián nejlevnějšího piva od 0,4 l, stav k {{ date }}{% endblocktranslate %}</p>{% endif %}
+  <section class="hero" aria-labelledby="page-title">
+    <div>
+      {% if area %}<a class="crumb" href="{{ prices_url }}">{% translate "Ceny piva" %}</a>{% endif %}
+      <h1 id="page-title">{{ h1 }}</h1>
+      {% if area %}<p class="as-of">{% blocktranslate with pubs=area.pubs date=day|date:"DATE_FORMAT" %}Medián nejlevnějšího piva od 0,4 l z {{ pubs }} hospod, stav k {{ date }}{% endblocktranslate %}</p>
+      {% elif day %}<p class="as-of">{% blocktranslate with date=day|date:"DATE_FORMAT" %}Medián nejlevnějšího piva od 0,4 l, stav k {{ date }}{% endblocktranslate %}</p>{% endif %}
+    </div>
+    {% if country and not throttled %}
+    <ul class="coasters" role="list">
+      {% for label, stats, url in headline %}
+      <li>
+        {% if url %}<a class="coaster" href="{{ url }}">{% else %}<div class="coaster">{% endif %}
+          <span class="where">{{ label }}</span>
+          {% if stats %}
+          <span class="price"><span class="sr-only">{{ stats.median }} {% translate "Kč" %}</span><span class="roll" aria-hidden="true">{% for digit in stats.median|stringformat:"d" %}<span class="digit" data-d="{{ digit }}"></span>{% endfor %}</span><span class="unit" aria-hidden="true">{% translate "Kč" %}</span></span>
+          {% else %}
+          <span class="price" aria-hidden="true">–</span>
+          {% endif %}
+        {% if url %}</a>{% else %}</div>{% endif %}
+        {% if stats %}
+        <p class="range">{% blocktranslate with low=stats.p25 high=stats.p75 %}polovina hospod mezi {{ low }} a {{ high }} Kč{% endblocktranslate %}</p>
+        {% if stats.mostly_stale %}<p class="stale">{% translate "hlavně ceny starší 3 měsíců" %}</p>{% endif %}
+        {% else %}
+        <p class="range">{% translate "zatím málo cen" %}</p>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
 
   {% if throttled %}
   <div class="notice" role="alert">
@@ -144,47 +383,21 @@
     <a class="retry" href="{{ page_url }}">{% translate "Načíst znovu" %}</a>
   </div>
   {% elif country %}
-  <dl class="headline">
-    {% for label, area in headline %}
-    <div>
-      <dt>{{ label }}</dt>
-      {% if area %}
-      <dd class="price">{{ area.median }}<span> {% translate "Kč" %}</span></dd>
-      <dd class="range">{% blocktranslate with low=area.p25 high=area.p75 %}polovina hospod mezi {{ low }} a {{ high }} Kč{% endblocktranslate %}</dd>
-      {% if area.mostly_stale %}<dd class="stale">{% translate "hlavně ceny starší 3 měsíců" %}</dd>{% endif %}
-      {% else %}
-      <dd class="price" aria-hidden="true">–</dd>
-      <dd class="range">{% translate "zatím málo cen" %}</dd>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </dl>
 
   {% if cities %}
-  <section aria-labelledby="cities-title">
-    <h2 id="cities-title">{% translate "Města" %}</h2>
-    {% translate "Město" as label %}{% include "pubs/_price_table.html" with areas=cities title_id="cities-title" %}
-  </section>
+  {% translate "Města" as title %}{% translate "Město" as label %}{% translate "Nejvíc hospod" as default_sort %}{% translate "Najdi město" as search_label %}
+  {% blocktranslate with count=cities|length asvar more_label %}Ukázat všechna města ({{ count }}){% endblocktranslate %}
+  {% translate "Tohle město tu zatím nemám. Ukážu ho, až budu mít ceny aspoň z 5 tamních hospod." as empty_text %}
+  {% include "pubs/_price_list.html" with areas=cities list_id="cities" %}
   {% endif %}
 
   {% if districts %}
-  <section aria-labelledby="districts-title">
-    <h2 id="districts-title">{% translate "Praha podle městských částí" %}</h2>
-    {% translate "Městská část" as label %}{% include "pubs/_price_table.html" with areas=districts title_id="districts-title" %}
-  </section>
+  {% translate "Praha podle městských částí" as title %}{% translate "Městská část" as label %}{% translate "Podle čísla" as default_sort %}{% translate "Najdi městskou část" as search_label %}
+  {% blocktranslate with count=districts|length asvar more_label %}Ukázat všechny městské části ({{ count }}){% endblocktranslate %}
+  {% translate "Tuhle část tu zatím nemám. Ukážu ji, až budu mít ceny aspoň z 5 tamních hospod." as empty_text %}
+  {% include "pubs/_price_list.html" with areas=districts list_id="districts" %}
   {% endif %}
 
-  {% if cheapest %}
-  <section aria-labelledby="cheapest-title">
-    {# A small city lists all its pubs, so the list can't promise they are all cheap. #}
-    <h2 id="cheapest-title">{% if area %}{% translate "Hospody od nejlevnější" %}{% else %}{% translate "Nejlevnější hospody" %}{% endif %}</h2>
-    <ol class="cheapest" role="list">
-      {% for pub in cheapest %}<li><div class="pub"><strong>{{ pub.name }}</strong>{% if pub.city and pub.city != area.name %}<span class="city">{{ pub.city }}</span>{% endif %}{% if pub.stale %}<span class="stale">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</div><div class="cost"><span class="price">{{ pub.price_czk }} {% translate "Kč" %}</span><span class="volume">{{ pub.litres }} l</span></div></li>{% endfor %}
-    </ol>
-  </section>
-  {% endif %}
-
-  {% if area %}<a class="all-cities" href="{{ prices_url }}">{% translate "Ceny v dalších městech" %}</a>{% endif %}
   {% else %}
   <div class="notice">
     <p>{% translate "Zatím mám málo cen." %}</p>
@@ -193,12 +406,25 @@
   {% endif %}
 
   {% if not throttled %}<p class="method">{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod." %}</p>{% endif %}
+  {% if area %}<a class="all-cities" href="{{ prices_url }}">{% translate "Ceny v dalších městech" %}</a>{% endif %}
 
-  <section class="cta" aria-labelledby="cta-title">
-    <h2 id="cta-title">{% translate "Znáš cenu ve své hospodě?" %}</h2>
-    <p>{% translate "Zapiš ji v Na pivo." %}</p>
-    {% include "pubs/_store_buttons.html" %}
-  </section>
+  <div class="after" data-reveal>
+    {% if cheapest and not throttled %}
+    <section class="bill" aria-labelledby="cheapest-title">
+      {# A small city lists all its pubs, so the list can't promise they are all cheap. #}
+      <h2 id="cheapest-title">{% if area %}{% translate "Hospody od nejlevnější" %}{% else %}{% translate "Nejlevnější hospody" %}{% endif %}</h2>
+      <ol class="cheapest" role="list">
+        {% for pub in cheapest %}<li><span class="pub"><strong>{{ pub.name }}</strong>{% if pub.city and pub.city != area.name %}<span class="city">{{ pub.city }}</span>{% endif %}{% if pub.stale %}<span class="stale">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</span><span class="cost"><span class="price">{{ pub.price_czk }} {% translate "Kč" %}</span><span class="volume">{{ pub.litres }} l</span></span></li>{% endfor %}
+      </ol>
+    </section>
+    {% endif %}
+
+    <section class="cta" aria-labelledby="cta-title">
+      <h2 id="cta-title">{% translate "Znáš cenu ve své hospodě?" %}</h2>
+      <p>{% translate "Zapiš ji v Na pivo." %}</p>
+      {% include "pubs/_store_buttons.html" %}
+    </section>
+  </div>
 </main>
 
 <footer>
@@ -209,5 +435,6 @@
   </nav>
 </footer>
 </div>
+<script src="{{ asset.prices_js }}" defer></script>
 </body>
 </html>

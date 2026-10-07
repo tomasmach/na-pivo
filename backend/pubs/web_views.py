@@ -42,6 +42,13 @@ _SELF_CONTAINED_CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; "
     "frame-ancestors 'none'; form-action 'none'"
 )
+# The price page also loads the home page's own icon, fonts and one script, all from na-pivo.cz.
+_PRICES_CSP = (
+    "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; "
+    "script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+)
+# Lists longer than this get search and sorting, and start folded to this many rows.
+_FOLDED_ROWS = 12
 
 _ASSET_ROOT = Path(__file__).resolve().parent / "static" / "pubs" / "invite"
 _ASSETS: dict[str, tuple[str, str]] = {
@@ -334,6 +341,44 @@ def _texts(snapshot: PubPriceSnapshot | None, country: dict | None, area: dict |
     }
 
 
+def _on_axis(lists: list[list[dict]], country: dict | None) -> tuple[list[list[dict]], dict]:
+    """Bars for every list on one price axis in round steps, so one spot is one price.
+
+    The step grows with the spread, so a city with tourist prices still leaves at most six
+    gaps between the labels.
+    """
+
+    areas = [area for rows in lists for area in rows] + ([country] if country else [])
+    if not areas:
+        return lists, {}
+    lowest = min(area["p25"] for area in areas)
+    highest = max(area["p75"] for area in areas)
+    steps = (10, 20, 50, 100, 200, 500, 1000)
+    step = next((step for step in steps if -(-highest // step) - lowest // step <= 6), steps[-1])
+    low = lowest // step * step
+    high = max(-(-highest // step) * step, low + 2 * step)
+
+    def at(price: int) -> str:
+        return f"{(price - low) * 100 / (high - low):.2f}%"
+
+    def bar(area: dict) -> dict:
+        spread = area["p75"] - area["p25"]
+        return {
+            "lo": at(area["p25"]),
+            "hi": at(area["p75"]),
+            "mid": at(area["median"]),
+            # The bar grows out of its median.
+            "origin": f"{(area['median'] - area['p25']) * 100 / spread:.2f}%" if spread else "50%",
+        }
+
+    axis = {
+        "ticks": [{"price": price, "at": at(price)} for price in range(low, high + 1, step)],
+        "step": at(low + step),
+        "country": at(country["median"]) if country else None,
+    }
+    return [[{**area, "bar": bar(area)} for area in rows] for rows in lists], axis
+
+
 @canonical_host
 def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpResponse:
     """Public beer price map, or one city of it, read as is from the newest daily snapshot."""
@@ -357,12 +402,25 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
     origin = settings.PUBLIC_WEB_ORIGIN
     with translation.override(lang):
         country = data.get("country")
+        city_urls = {
+            city_area["name"]: f"{PRICE_PATHS[lang]}/{city_slug(city_area['name'])}"
+            for city_area in data.get("cities", [])
+        }
         if area:
-            headline = [(area["name"], area), (gettext("Celá ČR"), country)]
+            headline = [(area["name"], area, None), (gettext("Celá ČR"), country, PRICE_PATHS[lang])]
             cheapest = area.get("cheapest", [])
         else:
-            headline = headline_prices(data)
+            headline = [(label, stats, city_urls.get(label)) for label, stats in headline_prices(data)]
             cheapest = data.get("cheapest", [])
+        (cities, districts), axis = _on_axis(
+            [
+                [] if area else [
+                    {**city_area, "url": city_urls[city_area["name"]]} for city_area in data.get("cities", [])
+                ],
+                data.get("prague_districts", []) if not area or area["name"] == "Praha" else [],
+            ],
+            country,
+        )
         response = render(
             request,
             "pubs/beer_prices.html",
@@ -389,12 +447,12 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
                 "area": area,
                 "missing": missing,
                 "headline": headline,
-                "cities": [] if area else [
-                    {**city_area, "url": f"{PRICE_PATHS[lang]}/{city_slug(city_area['name'])}"}
-                    for city_area in data.get("cities", [])
-                ],
-                "districts": data.get("prague_districts", []) if not area or area["name"] == "Praha" else [],
+                "cities": cities,
+                "districts": districts,
+                "axis": axis,
+                "folded_rows": _FOLDED_ROWS,
                 "cheapest": [{**pub, "litres": pub["volume_ml"] / 1000} for pub in cheapest],
+                "asset": _LANDING_URLS,
                 "app_store_url": APP_STORE_URL,
                 "play_store_url": play_store_url("city-prices" if city else "prices"),
                 "privacy_url": f"{_LEGAL_ROOT}{'' if lang == 'cs' else '/en'}/privacy.html",
@@ -402,7 +460,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
             status=429 if wait else 404 if missing else 200,
         )
     response["Content-Language"] = lang
-    response["Content-Security-Policy"] = _SELF_CONTAINED_CSP
+    response["Content-Security-Policy"] = _PRICES_CSP
     response["Referrer-Policy"] = "no-referrer"
     if wait:
         response["Retry-After"] = str(wait)

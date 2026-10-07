@@ -1296,17 +1296,59 @@ msgstr "City"
 msgid "Medián"
 msgstr "Median"
 
-msgid "Polovina hospod"
-msgstr "Half of pubs"
-
-msgid "Hospod s cenou"
-msgstr "Priced pubs"
+msgid "Tady je polovina hospod"
+msgstr "Half the pubs are here"
 
 msgid "Praha podle městských částí"
 msgstr "Praha by district"
 
 msgid "Městská část"
 msgstr "District"
+
+msgid "Seřadit"
+msgstr "Sort"
+
+msgid "Nejvíc hospod"
+msgstr "Most pubs"
+
+msgid "Podle čísla"
+msgstr "By number"
+
+msgid "Nejlevnější"
+msgstr "Cheapest"
+
+msgid "Nejdražší"
+msgstr "Priciest"
+
+msgid "Najdi město"
+msgstr "Find a city"
+
+msgid "Najdi městskou část"
+msgstr "Find a district"
+
+#, python-format
+msgid "Ukázat všechna města (%(count)s)"
+msgstr "Show all cities (%(count)s)"
+
+#, python-format
+msgid "Ukázat všechny městské části (%(count)s)"
+msgstr "Show all districts (%(count)s)"
+
+msgid "Sbalit"
+msgstr "Show fewer"
+
+msgid "Zrušit hledání"
+msgstr "Clear search"
+
+msgid "Tohle město tu zatím nemám. Ukážu ho, až budu mít ceny aspoň z 5 tamních hospod."
+msgstr "I don't have this city yet. It shows up once I have prices from at least 5 of its pubs."
+
+msgid "Tuhle část tu zatím nemám. Ukážu ji, až budu mít ceny aspoň z 5 tamních hospod."
+msgstr "I don't have this district yet. It shows up once I have prices from at least 5 of its pubs."
+
+#, python-format
+msgid "%(pubs)s hospod"
+msgstr "%(pubs)s pubs"
 
 msgid "Nejlevnější hospody"
 msgstr "Cheapest pubs"
