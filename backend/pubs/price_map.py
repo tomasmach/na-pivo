@@ -21,8 +21,15 @@ from PIL import Image, ImageDraw, ImageFont
 
 from pubs.api.pub_beers_views import _places, city_name
 from pubs.api.views import _globally_reported_pub_cache_keys
-from pubs.enrichment.coverage import SK_POLYGON, in_cz_bbox, point_in_polygon
-from pubs.models import PubPriceIndex, PubPriceSnapshot
+from pubs.enrichment.coverage import coverage_country
+from pubs.models import (
+    CanonicalPub,
+    DrinkLog,
+    PubContributionLog,
+    PubDirectory,
+    PubPriceIndex,
+    PubPriceSnapshot,
+)
 
 WINDOW_DAYS = 90
 # A city or district with fewer priced pubs says more about one pub than the city.
@@ -44,10 +51,60 @@ _MUTED = (168, 137, 106)
 _HAIR = tuple(round(g + (f - g) * 0.12) for g, f in zip(_GROUND, _FOAM, strict=True))
 
 
-def in_czechia(lat: float, lng: float) -> bool:
-    """The generous box keeps border towns; the Slovak polygon removes its corner of Slovakia."""
+def _chunks(keys: list[str], size: int = 500):
+    for start in range(0, len(keys), size):
+        yield keys[start:start + size]
 
-    return in_cz_bbox(lat, lng) and not point_in_polygon(lng, lat, SK_POLYGON)
+
+def _in_czechia(rows: list[PubPriceIndex]) -> list[PubPriceIndex]:
+    """The catalogue's country first; the coarse coverage polygon only for pubs it lacks."""
+
+    countries: dict[str, str] = {}
+    for chunk in _chunks([row.cache_key for row in rows]):
+        for model in (CanonicalPub, PubDirectory):
+            for key, country in (
+                model.objects.filter(cache_key__in=chunk).exclude(country="").values_list("cache_key", "country")
+            ):
+                countries.setdefault(key, country)
+    return [
+        row
+        for row in rows
+        if countries.get(row.cache_key, coverage_country(row.lat, row.lng)) == "cz"
+    ]
+
+
+def _confirmed_since(rows: list[PubPriceIndex], since: datetime) -> set[str]:
+    """Pubs whose selected price itself was written since ``since``.
+
+    A drink of another beer keeps the old menu prices but still moves the
+    index's observed_at, so only a drink or a submitted menu with this exact
+    price and volume counts.
+    """
+
+    selected = {row.cache_key: (row.price_czk, row.volume_ml) for row in rows}
+    confirmed: set[str] = set()
+    for chunk in _chunks(list(selected)):
+        drinks = (
+            DrinkLog.objects.filter(cache_key__in=chunk, created_at__gte=since, price_czk__isnull=False)
+            .values_list("cache_key", "price_czk", "volume_ml")
+            .distinct()
+        )
+        for key, price, volume in drinks:
+            if selected[key] == (price, volume):
+                confirmed.add(key)
+        menus = PubContributionLog.objects.filter(
+            kind=PubContributionLog.Kind.BEERS,
+            cache_key__in=chunk,
+            created_at__gte=since,
+        ).values_list("cache_key", "payload")
+        for key, payload in menus:
+            beers = payload.get("beers") if isinstance(payload, dict) else payload
+            if any(
+                isinstance(beer, dict) and (beer.get("price_czk"), beer.get("volume_ml")) == selected[key]
+                for beer in beers or []
+            ):
+                confirmed.add(key)
+    return confirmed
 
 
 def prague_district(raw: str) -> str:
@@ -122,17 +179,17 @@ def build_price_map(now: datetime | None = None) -> dict:
     """Median, quartiles and pub count per city and Prague district, plus the cheapest pubs."""
 
     now = now or timezone.now()
-    rows = [
-        row
-        for row in PubPriceIndex.objects.filter(
+    since = now - timedelta(days=WINDOW_DAYS)
+    rows = _in_czechia(list(
+        PubPriceIndex.objects.filter(
             active=True,
-            observed_at__gte=now - timedelta(days=WINDOW_DAYS),
+            observed_at__gte=since,
             source__in=_SOURCES,
         ).only("cache_key", "lat", "lng", "city", "price_czk", "volume_ml")
-        if in_czechia(row.lat, row.lng)
-    ]
-    reported = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
-    rows = [row for row in rows if row.cache_key not in reported]
+    ))
+    excluded = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
+    confirmed = _confirmed_since(rows, since)
+    rows = [row for row in rows if row.cache_key in confirmed and row.cache_key not in excluded]
 
     cities: dict[str, list[int]] = defaultdict(list)
     districts: dict[str, list[int]] = defaultdict(list)

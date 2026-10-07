@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import timedelta
 from io import BytesIO, StringIO
 
@@ -9,13 +10,23 @@ from django.core.management import call_command
 from django.utils import timezone
 from PIL import Image
 
-from pubs.models import PubDirectory, PubHours, PubPriceIndex, PubPriceSnapshot
+from pubs.models import (
+    Account,
+    DrinkLog,
+    PubContributionLog,
+    PubDirectory,
+    PubHours,
+    PubPriceIndex,
+    PubPriceSnapshot,
+)
 from pubs.price_map import build_price_map, prague_district
 
 PRAGUE = (50.08, 14.42)
 BRNO = (49.19, 16.61)
 OSTRAVA = (49.83, 18.28)
 BRATISLAVA = (48.14, 17.11)
+ZITTAU = (50.896, 14.807)
+SLUKNOV = (51.004, 14.452)
 TOUR_CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; "
     "frame-ancestors 'none'; form-action 'none'"
@@ -34,8 +45,11 @@ def _price(
     source: str = PubPriceIndex.Source.COMMUNITY,
     active: bool = True,
     volume_ml: int | None = 500,
+    menu_days_ago: int | None = None,
 ) -> PubPriceIndex:
-    return PubPriceIndex.objects.create(
+    """An index row plus the submitted menu that wrote its price, by default as old as the row."""
+
+    row = PubPriceIndex.objects.create(
         cache_key=f"t{next(_keys):07d}",
         name="Hospoda",
         lat=at[0],
@@ -47,15 +61,43 @@ def _price(
         source=source,
         active=active,
     )
+    menu = PubContributionLog.objects.create(
+        cache_key=row.cache_key,
+        name=row.name,
+        lat=row.lat,
+        lng=row.lng,
+        kind=PubContributionLog.Kind.BEERS,
+        payload={"beers": [{"name": "Desítka", "price_czk": price, "volume_ml": volume_ml}]},
+        client_id=uuid.uuid4(),
+    )
+    written = timezone.now() - timedelta(days=days_ago if menu_days_ago is None else menu_days_ago)
+    PubContributionLog.objects.filter(pk=menu.pk).update(created_at=written)
+    return row
 
 
-def _catalog(row: PubPriceIndex, name: str) -> None:
+def _drink(row: PubPriceIndex, price: int, volume_ml: int | None = 500) -> None:
+    account, _ = Account.objects.get_or_create(device_id="price-map-drinker")
+    DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key=row.cache_key,
+        name=row.name,
+        lat=row.lat,
+        lng=row.lng,
+        drank_at=timezone.now(),
+        beer_name="Jedenáctka",
+        price_czk=price,
+        volume_ml=volume_ml,
+    )
+
+
+def _catalog(row: PubPriceIndex, name: str, country: str = "cz") -> None:
     pub = PubDirectory.objects.create(
         name=name,
         lat=row.lat,
         lng=row.lng,
         city=row.city,
-        country="cz",
+        country=country,
         venue_kind=PubHours.VenueKind.PUB,
         source="test",
         active=True,
@@ -108,6 +150,26 @@ def test_only_fresh_active_czech_prices_from_the_app_count(monkeypatch):
 
     assert data["cities"] == [{"name": "Ostrava", "median": 50, "p25": 50, "p75": 50, "pubs": 15}]
     assert data["country"]["pubs"] == 15
+
+
+def test_an_old_cheapest_price_needs_its_own_recent_write():
+    row = _price("Praha 4", 39, menu_days_ago=120)
+    _catalog(row, "U Starého ceníku")
+    # Someone drank another beer there today: the index moved, the 39 Kč did not.
+    _drink(row, 55)
+
+    assert build_price_map()["cheapest"] == []
+
+    _drink(row, 39)
+
+    assert [pub["name"] for pub in build_price_map()["cheapest"]] == ["U Starého ceníku"]
+
+
+def test_the_catalogue_country_beats_the_coverage_polygon():
+    _catalog(_price("Zittau", 40, ZITTAU), "Zum Bier", country="de")
+    _catalog(_price("Šluknov", 41, SLUKNOV), "U Hranice")
+
+    assert [pub["name"] for pub in build_price_map()["cheapest"]] == ["U Hranice"]
 
 
 def test_cheapest_pubs_are_named_only_from_the_catalogue_per_half_litre():
