@@ -66,7 +66,7 @@ jobs:
           fi
 
       - name: Review pull request
-        uses: anthropics/claude-code-action@46a42b43239748e5b25771606bf1f551c3b1b517 # v1.0.232
+        uses: anthropics/claude-code-action@8ce9314fa9a404564fa7e954cd84f25bcba2b829 # v1.0.236
         env:
           # Hide secrets from shell commands the model runs.
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
