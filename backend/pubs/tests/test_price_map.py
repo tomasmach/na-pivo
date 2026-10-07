@@ -83,6 +83,8 @@ def _drink(
     volume_ml: int | None = 500,
     days_ago: int = 0,
     shares: bool = True,
+    drink_type: str = DrinkLog.DrinkType.BEER,
+    pub_name: str | None = None,
 ) -> None:
     account, _ = Account.objects.get_or_create(
         device_id=f"price-map-drinker-{shares}",
@@ -92,14 +94,22 @@ def _drink(
         account=account,
         client_id=uuid.uuid4(),
         cache_key=row.cache_key,
-        name=row.name,
+        name=pub_name or PubPriceIndex.objects.get(pk=row.pk).name,
         lat=row.lat,
         lng=row.lng,
+        drink_type=drink_type,
         drank_at=timezone.now() - timedelta(days=days_ago),
         beer_name="Jedenáctka",
         price_czk=price,
         volume_ml=volume_ml,
     )
+
+
+def _rename(row: PubPriceIndex, name: str) -> None:
+    """The pub the index row and its menu were written for."""
+
+    PubPriceIndex.objects.filter(pk=row.pk).update(name=name)
+    PubContributionLog.objects.filter(cache_key=row.cache_key).update(name=name)
 
 
 def _catalog(row: PubPriceIndex, name: str, country: str = "cz") -> None:
@@ -115,7 +125,7 @@ def _catalog(row: PubPriceIndex, name: str, country: str = "cz") -> None:
         refreshed_at=timezone.now(),
     )
     PubDirectory.objects.filter(pk=pub.pk).update(cache_key=row.cache_key)
-    PubPriceIndex.objects.filter(pk=row.pk).update(name=name)
+    _rename(row, name)
 
 
 def test_prague_district_reads_the_number_or_the_named_district():
@@ -173,6 +183,9 @@ def test_an_old_cheapest_price_needs_its_own_recent_write():
     _drink(row, 39, days_ago=120)
     # This drinker never agreed to share anything, so the drink stays private.
     _drink(row, 39, shares=False)
+    # A 39 Kč lemonade, and a 39 Kč beer at another business in the same cell.
+    _drink(row, 39, drink_type=DrinkLog.DrinkType.SOFT_DRINK)
+    _drink(row, 39, pub_name="Kebab Express")
 
     assert build_price_map()["cheapest"] == []
 
@@ -185,7 +198,7 @@ def test_a_price_is_named_only_after_the_pub_it_belongs_to():
     row = _price("Praha 3", 35)
     _catalog(row, "Bar Modrá laguna")
     # Another business in the same geohash cell wrote this price.
-    PubPriceIndex.objects.filter(pk=row.pk).update(name="Pivovar U Medvěda")
+    _rename(row, "Pivovar U Medvěda")
 
     assert build_price_map()["cheapest"] == []
 
@@ -223,7 +236,7 @@ def test_a_merged_duplicate_keeps_its_price_under_the_merged_name():
         lat=49.74, lng=13.37, city="Plzeň", country="cz",
     )
     duplicate = _price("Plzeň", 35, (49.74, 13.37), days_ago=0)
-    PubPriceIndex.objects.filter(pk=duplicate.pk).update(name="Pivnice Na Rohu")
+    _rename(duplicate, "Pivnice Na Rohu")
     PubAlias.objects.create(
         canonical_pub=pub, cache_key=duplicate.cache_key, name="Pivnice Na Rohu",
         name_key="pivnice na rohu", lat=49.74, lng=13.37,

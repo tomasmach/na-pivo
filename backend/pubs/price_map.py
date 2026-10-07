@@ -81,11 +81,14 @@ def _confirmed_since(rows: list[PubPriceIndex], since: datetime) -> dict[str, da
     A drink of another beer keeps the old menu prices but still moves the
     index's observed_at, so only a drink or a submitted menu with this exact
     price and volume counts. A drink counts by when it was drunk, since the
-    offline queue can deliver it much later. Suspect drinks and drinks of
-    accounts that never agreed to share content stay out of public numbers.
+    offline queue can deliver it much later. Only beers count, and suspect
+    drinks and drinks of accounts that never agreed to share content stay out
+    of public numbers. The write must name the same pub, since two businesses
+    can share one geohash cell.
     """
 
     selected = {row.cache_key: (row.price_czk, row.volume_ml) for row in rows}
+    names = {row.cache_key: row.name for row in rows}
     confirmed: dict[str, datetime] = {}
 
     def confirm(key: str, at: datetime) -> None:
@@ -94,23 +97,24 @@ def _confirmed_since(rows: list[PubPriceIndex], since: datetime) -> dict[str, da
     for chunk in _chunks(list(selected)):
         drinks = DrinkLog.objects.filter(
             cache_key__in=chunk,
+            drink_type=DrinkLog.DrinkType.BEER,
             drank_at__gte=since,
             is_suspect=False,
             price_czk__isnull=False,
             account__status=Account.Status.ACTIVE,
             account__ugc_terms_accepted_at__isnull=False,
-        ).values_list("cache_key", "price_czk", "volume_ml", "drank_at")
-        for key, price, volume, drank_at in drinks:
-            if selected[key] == (price, volume):
+        ).values_list("cache_key", "name", "price_czk", "volume_ml", "drank_at")
+        for key, name, price, volume, drank_at in drinks:
+            if selected[key] == (price, volume) and names_match(name, names[key]):
                 confirm(key, drank_at)
         menus = PubContributionLog.objects.filter(
             kind=PubContributionLog.Kind.BEERS,
             cache_key__in=chunk,
             created_at__gte=since,
-        ).values_list("cache_key", "payload", "created_at")
-        for key, payload, created_at in menus:
+        ).values_list("cache_key", "name", "payload", "created_at")
+        for key, name, payload, created_at in menus:
             beers = payload.get("beers") if isinstance(payload, dict) else payload
-            if any(
+            if names_match(name, names[key]) and any(
                 isinstance(beer, dict) and (beer.get("price_czk"), beer.get("volume_ml")) == selected[key]
                 for beer in beers or []
             ):
