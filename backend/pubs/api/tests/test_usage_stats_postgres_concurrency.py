@@ -161,14 +161,21 @@ def test_amenity_vote_and_client_event_do_not_deadlock_on_postgres(monkeypatch, 
 
 
 @pytest.mark.django_db(transaction=True)
-def test_vote_retries_whole_transaction_after_real_deadlock(caplog):
+def test_vote_retries_whole_transaction_after_real_deadlock(monkeypatch, caplog):
     """A real PostgreSQL deadlock aborts the vote; the rerun pays XP once.
 
-    Another account already created the aggregate. A blocker transaction locks
-    the voter's stats row; the vote locks the aggregate and waits for the stats
-    row; the blocker then asks for the aggregate. The vote waited first, so its
-    deadlock check fires first and PostgreSQL aborts the vote transaction.
+    Another account already created the aggregate. A blocker transaction holds
+    the voter's stats row and waits for the aggregate the paused vote holds;
+    then the vote asks for the stats row. PostgreSQL checks for a deadlock once
+    per wait, deadlock_timeout after it started, and aborts the checker. The
+    blocker's long timeout makes the vote check first, so the vote is the victim
+    regardless of thread timing.
     """
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT has_parameter_privilege(current_user, 'deadlock_timeout', 'SET')")
+        if not cursor.fetchone()[0]:
+            pytest.skip("pinning the deadlock victim needs SET on deadlock_timeout")
 
     other, other_token = _account_with_stats("first-mapper")
     voter, voter_token = _account_with_stats("retry")
@@ -180,18 +187,30 @@ def test_vote_retries_whole_transaction_after_real_deadlock(caplog):
     caplog.set_level(logging.WARNING, logger=views.logger.name)
 
     blocker_holds_stats = threading.Event()
-    vote_waits = threading.Event()
+    vote_holds_aggregate = threading.Event()
+    release_vote = threading.Event()
+    real_award = views._award_mapper_xp
+
+    def pause_before_stats_update(*args, **kwargs):
+        if not vote_holds_aggregate.is_set():
+            vote_holds_aggregate.set()
+            if not release_vote.wait(timeout=10):
+                raise AssertionError("blocker never waited for the aggregate")
+        return real_award(*args, **kwargs)
+
+    monkeypatch.setattr(views, "_award_mapper_xp", pause_before_stats_update)
 
     def blocker():
         with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL deadlock_timeout = '60s'")
             cursor.execute(
                 "UPDATE pubs_accountusagestats SET app_open_count = app_open_count "
                 "WHERE account_id = %s",
                 [voter.pk],
             )
             blocker_holds_stats.set()
-            if not vote_waits.wait(timeout=10):
-                raise AssertionError("vote never waited for the stats row")
+            if not vote_holds_aggregate.wait(timeout=10):
+                raise AssertionError("vote never locked the aggregate")
             cursor.execute("SELECT 1 FROM pubs_pubamenity WHERE id = %s FOR UPDATE", [aggregate.pk])
 
     def put_vote():
@@ -205,7 +224,7 @@ def test_vote_retries_whole_transaction_after_real_deadlock(caplog):
         assert blocker_holds_stats.wait(timeout=10)
         vote_future = executor.submit(_in_thread(put_vote))
         _wait_for_lock_waiters(1)
-        vote_waits.set()
+        release_vote.set()
         vote_status, vote_payload = vote_future.result(timeout=20)
         blocker_future.result(timeout=20)
 
