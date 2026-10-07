@@ -2890,17 +2890,22 @@ export const en: Strings = {
   },
 
   homeTransit: {
-    sectionHeader: 'GETTING HOME',
-    title: (time: string) => `Last direct ride at ${time}`,
-    route: (line: string, from: string, to: string) =>
-      `${line ? `Line ${line}: ` : ''}${from} → ${to}`,
+    title: 'Last direct ride home',
+    vehicleLine: (routeType: number | null, line: string) => {
+      const vehicle =
+        { 0: 'Tram', 1: 'Metro', 2: 'Train', 3: 'Bus', 4: 'Ferry', 7: 'Funicular', 11: 'Trolleybus' }[
+          routeType ?? -1
+        ] ?? 'Line';
+      return `${vehicle} ${line}`;
+    },
+    route: (line: string, from: string, to: string) => `${line ? `${line} · ` : ''}${from} → ${to}`,
     leavesIn: (minutes: number) =>
       minutes < 60
         ? `in ${Math.max(minutes, 1)} min`
         : `in ${Math.floor(minutes / 60)} h ${minutes % 60} min`,
-    openIdos: 'Route home',
+    openIdos: 'Route home in IDOS',
     openIdosA11y: 'Route home, opens the IDOS journey planner',
-    footnote: "Night lines and changes don't count. Timetables: ROPID, CC\u00a0BY\u00a04.0, adapted.",
+    footnote: 'No night lines · ROPID, CC\u00a0BY\u00a04.0, adapted',
   },
 
   notifications: {

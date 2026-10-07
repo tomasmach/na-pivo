@@ -3544,17 +3544,23 @@ export const cs = {
   },
 
   homeTransit: {
-    sectionHeader: 'CESTA DOMŮ',
-    title: (time: string) => `Poslední přímý spoj ${atTime(time)}`,
-    route: (line: string, from: string, to: string) =>
-      `${line ? `Linka ${line}: ` : ''}${from} → ${to}`,
+    title: 'Poslední přímý spoj domů',
+    /** GTFS route_type: 0 tram, 1 metro, 2 vlak, 3 bus, 4 přívoz, 7 lanovka, 11 trolejbus. */
+    vehicleLine: (routeType: number | null, line: string) => {
+      const vehicle =
+        { 0: 'Tramvaj', 1: 'Metro', 2: 'Vlak', 3: 'Bus', 4: 'Přívoz', 7: 'Lanovka', 11: 'Trolejbus' }[
+          routeType ?? -1
+        ] ?? 'Linka';
+      return `${vehicle} ${line}`;
+    },
+    route: (line: string, from: string, to: string) => `${line ? `${line} · ` : ''}${from} → ${to}`,
     leavesIn: (minutes: number) =>
       minutes < 60
         ? `za ${Math.max(minutes, 1)} min`
         : `za ${Math.floor(minutes / 60)} h ${minutes % 60} min`,
-    openIdos: 'Kudy domů',
+    openIdos: 'Kudy domů v IDOS',
     openIdosA11y: 'Kudy domů, otevře hledání spojení v IDOS',
-    footnote: 'Noční linky a přestupy nepočítám. Jízdní řády: ROPID, CC\u00a0BY\u00a04.0, upraveno.',
+    footnote: 'Bez nočních linek · ROPID, CC\u00a0BY\u00a04.0, upraveno',
   },
 
   notifications: {
