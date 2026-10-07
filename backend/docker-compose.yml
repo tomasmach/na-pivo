@@ -69,6 +69,7 @@ services:
           python manage.py prune_friend_data || true
           python manage.py prune_client_events || true
           python manage.py prune_operational_data || true
+          python manage.py snapshot_beer_prices || true
           python manage.py refresh_hours --limit 50 || true
           python manage.py refresh_google_pub_locations --limit 25 || true
           python manage.py sync_feedback_linear --limit 20 || true

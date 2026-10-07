@@ -3386,6 +3386,22 @@ class PubPriceIndex(models.Model):
         return f"{self.price_czk} CZK @ {self.name} [{self.cache_key}]"
 
 
+class PubPriceSnapshot(models.Model):
+    """One day's public beer price map, served as is by the /ceny page."""
+
+    day = models.DateField(unique=True)
+    computed_at = models.DateTimeField()
+    data = models.JSONField()
+    og_image_cs = models.BinaryField()
+    og_image_en = models.BinaryField()
+
+    class Meta:
+        ordering = ["-day"]
+
+    def __str__(self) -> str:
+        return f"Pub price snapshot {self.day}"
+
+
 class BeerBrand(models.Model):
     """
     Canonical beer brand used for suggestions and brand-level pub filtering.
