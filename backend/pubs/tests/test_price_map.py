@@ -549,6 +549,13 @@ def test_city_page_shows_the_city_beside_the_country_and_its_cheapest_pubs(clien
     assert "from 7 pubs" in english
 
 
+def test_play_links_say_which_page_sent_the_visitor(client):
+    _city_snapshot()
+
+    assert 'utm_campaign%3Dprices"' in client.get("/ceny").content.decode()
+    assert 'utm_campaign%3Dcity-prices"' in client.get("/ceny/brno").content.decode()
+
+
 def test_prague_page_lists_its_districts(client):
     _city_snapshot()
 

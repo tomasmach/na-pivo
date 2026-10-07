@@ -11,7 +11,7 @@ import hashlib
 import json
 from functools import wraps
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from django.conf import settings
 from django.http import (
@@ -60,6 +60,13 @@ PATHS = {"cs": "/", "en": "/en"}
 AUTHOR = {"@type": "Person", "name": "Tomáš Mach", "url": "https://www.instagram.com/jsem_mach/"}
 # Keeps "</script>" inside a value from ending the block early.
 _LD_ESCAPES = {ord("<"): "\\u003c", ord(">"): "\\u003e", ord("&"): "\\u0026"}
+
+
+def play_store_url(page: str) -> str:
+    """Play link tagged with the web page, so Play Console counts the installs each page brings."""
+
+    referrer = f"utm_source=na-pivo.cz&utm_medium=web&utm_campaign={page}"
+    return f"{PLAY_STORE_URL}&referrer={quote(referrer, safe='')}"
 
 
 def ld_json(data: dict) -> SafeString:
@@ -142,7 +149,7 @@ def home(request: HttpRequest, lang: str = "cs") -> HttpResponse:
                 "structured_data": _home_structured_data(origin, lang),
                 "og_image_url": f"{origin}{_LANDING_URLS['og_home_png']}",
                 "app_store_url": APP_STORE_URL,
-                "play_store_url": PLAY_STORE_URL,
+                "play_store_url": play_store_url("home"),
                 "privacy_url": f"{legal}/privacy.html",
                 "terms_url": f"{legal}/terms.html",
                 "delete_account_url": f"{legal}/delete-account.html",
