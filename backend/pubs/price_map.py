@@ -40,7 +40,6 @@ _GROUND = (35, 20, 7)
 _FOAM = (251, 243, 224)
 _FOAM_MUTED = (232, 220, 192)
 _MUTED = (168, 137, 106)
-_AMBER = (232, 163, 23)
 # Foam at 12 % over the ground, the hairline the web pages use.
 _HAIR = tuple(round(g + (f - g) * 0.12) for g, f in zip(_GROUND, _FOAM, strict=True))
 
@@ -71,18 +70,32 @@ def _stats(prices: list[int]) -> dict:
 
 
 def _areas(groups: dict[str, list[int]]) -> list[dict]:
+    """Areas with enough priced pubs, the biggest first."""
+
     return sorted(
         ({"name": name, **_stats(prices)} for name, prices in groups.items() if len(prices) >= MIN_PUBS),
         key=lambda area: (-area["pubs"], area["name"]),
     )
 
 
+def _district_order(area: dict) -> tuple:
+    """Praha 1, 2 … 22 by number, then the named districts."""
+
+    numbered = _PRAGUE_NUMBERED.fullmatch(area["name"])
+    return (0, int(numbered.group(1)), "") if numbered else (1, 0, area["name"])
+
+
+def _half_litre_price(row: PubPriceIndex) -> float:
+    return row.price_czk * 500 / (row.volume_ml or 500)
+
+
 def _cheapest(rows: list[PubPriceIndex]) -> list[dict]:
     """The cheapest pubs the public map knows, under the name the map shows."""
 
+    # 41 Kč for 0,4 l is dearer than 45 Kč for 0,5 l.
     candidates = sorted(
         (row for row in rows if row.price_czk >= CHEAPEST_MIN_CZK),
-        key=lambda row: (row.price_czk, row.cache_key),
+        key=lambda row: (_half_litre_price(row), row.cache_key),
     )
     picked: list[dict] = []
     for start in range(0, len(candidates), 100):
@@ -92,15 +105,17 @@ def _cheapest(rows: list[PubPriceIndex]) -> list[dict]:
             place = places.get(row.cache_key)
             if place is None:
                 continue
+            city = place["city"] or row.city
             picked.append({
                 "name": place["name"],
-                "city": " ".join((place["city"] or row.city).split()),
+                # The same city names the tables use.
+                "city": prague_district(city) or city_name(city),
                 "price_czk": row.price_czk,
                 "volume_ml": row.volume_ml or 500,
             })
             if len(picked) == CHEAPEST_PUBS:
-                return sorted(picked, key=lambda pub: (pub["price_czk"], pub["name"]))
-    return sorted(picked, key=lambda pub: (pub["price_czk"], pub["name"]))
+                return picked
+    return picked
 
 
 def build_price_map(now: datetime | None = None) -> dict:
@@ -132,7 +147,7 @@ def build_price_map(now: datetime | None = None) -> dict:
         "min_pubs": MIN_PUBS,
         "country": _stats(prices) if len(prices) >= MIN_PUBS else None,
         "cities": _areas(cities),
-        "prague_districts": _areas(districts),
+        "prague_districts": sorted(_areas(districts), key=_district_order),
         "cheapest": _cheapest(rows),
     }
 
@@ -166,7 +181,7 @@ def render_og_image(data: dict, day, lang: str) -> bytes:
     image = Image.new("RGB", (1200, 630), _GROUND)
     draw = ImageDraw.Draw(image)
     with translation.override(lang):
-        draw.text((80, 92), "Na pivo", font=_font("ExtraBold", 40), fill=_AMBER, anchor="ls")
+        draw.text((80, 92), "Na pivo", font=_font("ExtraBold", 40), fill=_FOAM, anchor="ls")
         title = gettext("Kolik stojí pivo v hospodě")
         draw.text((80, 196), title, font=_fitted(draw, title, "ExtraBold", 72, 1040), fill=_FOAM, anchor="ls")
         draw.line((80, 252, 1120, 252), fill=_HAIR, width=2)

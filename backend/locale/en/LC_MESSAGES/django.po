@@ -1236,10 +1236,6 @@ msgstr "Median beer prices in Czech pubs by city and Prague district, from price
 msgid "Medián ceny piva v Praze, v Brně a v celé ČR."
 msgstr "Median beer price in Prague, in Brno and across Czechia."
 
-#, python-format
-msgid "Stav k %(date)s"
-msgstr "As of %(date)s"
-
 msgid "Načíst znovu"
 msgstr "Reload"
 
@@ -1268,11 +1264,11 @@ msgstr "Median"
 msgid "Polovina hospod"
 msgstr "Half of pubs"
 
-msgid "Počet hospod"
-msgstr "Pubs"
+msgid "Hospod s cenou"
+msgstr "Priced pubs"
 
 msgid "Praha podle městských částí"
-msgstr "Prague by district"
+msgstr "Praha by district"
 
 msgid "Městská část"
 msgstr "District"
@@ -1280,11 +1276,14 @@ msgstr "District"
 msgid "Nejlevnější hospody"
 msgstr "Cheapest pubs"
 
+msgid "Ceny se teď nedotáhly. Zkus to za minutu."
+msgstr "Prices didn't load just now. Try again in a minute."
+
 msgid "Zatím mám málo cen."
 msgstr "I don't have enough prices yet."
 
-msgid "Pro každou hospodu beru nejlevnější pivo od 0,4 l, jehož cenu někdo zapsal v Na pivo za posledních 90 dní, a město nebo městskou část ukážu, až v nich znám ceny aspoň z 15 hospod."
-msgstr "For each pub I take the cheapest beer of 0.4 l or more whose price someone logged in Na pivo in the last 90 days, and I show a city or district only once I know prices from at least 15 of its pubs."
+msgid "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za posledních 90 dní, a město nebo městskou část ukážu, až mám ceny aspoň z 15 tamních hospod."
+msgstr "From each pub I take the cheapest beer of 0.4 l or more that someone logged in Na pivo in the last 90 days, and I show a city or district only once I have prices from at least 15 of its pubs."
 
 msgid "Znáš cenu ve své hospodě?"
 msgstr "Know the price at your local?"
@@ -1294,4 +1293,4 @@ msgstr "Log it in Na pivo."
 
 #, python-format
 msgid "Medián nejlevnějšího piva od 0,4 l, stav k %(date)s"
-msgstr "Median of the cheapest 0.4 l+ beer, as of %(date)s"
+msgstr "Median of the cheapest beer of 0.4 l or more, as of %(date)s"

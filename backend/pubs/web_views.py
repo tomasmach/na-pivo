@@ -18,7 +18,7 @@ from django.utils import translation
 from django.utils.translation import gettext
 
 from pubs.checks import ANDROID_APP_LINK_FINGERPRINTS_ENV, normalized_cert_fingerprints
-from pubs.home_views import _LANDING_URLS, APP_STORE_URL, PLAY_STORE_URL
+from pubs.home_views import _LANDING_URLS, _LEGAL_ROOT, APP_STORE_URL, PLAY_STORE_URL
 from pubs.i18n import current_locale
 from pubs.models import PubPriceSnapshot
 from pubs.price_map import PATHS as PRICE_PATHS
@@ -282,6 +282,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs") -> HttpResponse:
                 ),
                 "throttled": wait is not None,
                 "day": snapshot.day if snapshot else None,
+                "country": data.get("country"),
                 "headline": headline_prices(data),
                 "cities": data.get("cities", []),
                 "districts": data.get("prague_districts", []),
@@ -291,6 +292,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs") -> HttpResponse:
                 ],
                 "app_store_url": APP_STORE_URL,
                 "play_store_url": PLAY_STORE_URL,
+                "privacy_url": f"{_LEGAL_ROOT}{'' if lang == 'cs' else '/en'}/privacy.html",
             },
             status=429 if wait else 200,
         )

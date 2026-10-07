@@ -110,19 +110,27 @@ def test_only_fresh_active_czech_prices_from_the_app_count(monkeypatch):
     assert data["country"]["pubs"] == 15
 
 
-def test_cheapest_pubs_are_named_only_from_the_catalogue():
-    cheap = _price("Praha 7", 32, volume_ml=None)
-    _catalog(cheap, "U Lacina")
-    pricier = _price("Brno", 39, BRNO, volume_ml=400)
-    _catalog(pricier, "Pod Špilberkem")
+def test_cheapest_pubs_are_named_only_from_the_catalogue_per_half_litre():
+    _catalog(_price("Praha 7 - Holešovice", 36, volume_ml=None), "U Lacina")
+    _catalog(_price("Brno-střed", 30, BRNO, volume_ml=400), "Pod Špilberkem")
     _catalog(_price("Praha", 12), "Překlep")
     _price("Praha", 25)
 
     assert build_price_map()["cheapest"] == [
-        {"name": "U Lacina", "city": "Praha 7", "price_czk": 32, "volume_ml": 500},
-        {"name": "Pod Špilberkem", "city": "Brno", "price_czk": 39, "volume_ml": 400},
+        {"name": "U Lacina", "city": "Praha 7", "price_czk": 36, "volume_ml": 500},
+        {"name": "Pod Špilberkem", "city": "Brno", "price_czk": 30, "volume_ml": 400},
     ]
     assert build_price_map()["country"] is None
+
+
+def test_prague_districts_are_listed_by_number():
+    for district in ("Praha-Libuš", "Praha 10", "Praha 2"):
+        for _ in range(15 if district != "Praha 2" else 20):
+            _price(district, 50)
+
+    names = [area["name"] for area in build_price_map()["prague_districts"]]
+
+    assert names == ["Praha 2", "Praha 10", "Praha-Libuš"]
 
 
 def test_snapshot_is_computed_once_a_day():
@@ -179,6 +187,18 @@ def test_share_images_have_preview_dimensions(client):
         assert Image.open(BytesIO(response.content)).size == (1200, 630)
 
 
+def test_country_median_shows_before_any_city_has_fifteen_pubs(client):
+    for city in ("Kolín", "Beroun"):
+        for _ in range(8):
+            _price(city, 44, (50.03, 15.2))
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = client.get("/ceny").content.decode()
+
+    assert "Celá ČR" in html and "zatím málo cen" in html
+    assert 'id="cities-title"' not in html
+
+
 def test_page_without_snapshot_says_it_has_few_prices(client):
     response = client.get("/ceny")
 
@@ -205,4 +225,4 @@ def test_price_page_has_its_own_throttle(client, monkeypatch):
     assert limited.status_code == 429
     assert limited["Cache-Control"] == "no-store"
     assert int(limited["Retry-After"]) >= 1
-    assert "Zkus to prosím za chvíli." in limited.content.decode()
+    assert "Ceny se teď nedotáhly. Zkus to za minutu." in limited.content.decode()
