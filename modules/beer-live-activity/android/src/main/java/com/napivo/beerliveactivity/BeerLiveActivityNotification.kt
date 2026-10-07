@@ -1,5 +1,6 @@
 package com.napivo.beerliveactivity
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -24,6 +25,7 @@ import kotlin.math.roundToInt
 internal object BeerLiveActivityNotification {
   const val ACTION_DISMISSED = "com.napivo.beerliveactivity.DISMISSED"
   const val ACTION_ADD_BEER = "com.napivo.beerliveactivity.ADD_BEER"
+  const val ACTION_TRANSIT_LEFT = "com.napivo.beerliveactivity.TRANSIT_LEFT"
   const val EXTRA_SESSION_ID = "sessionId"
 
   private const val CHANNEL_ID = "beer_live_activity_v1"
@@ -41,6 +43,8 @@ internal object BeerLiveActivityNotification {
   private const val REPEAT_BEER_SERVING_TYPE_KEY = "repeatBeerServingType"
   private const val PENDING_ADDS_KEY = "pendingAdds"
   private const val LOCALE_KEY = "locale"
+  private const val HOME_TRANSIT_LABEL_KEY = "homeTransitLabel"
+  private const val HOME_TRANSIT_DEPARTS_AT_KEY = "homeTransitDepartsAtMs"
   private const val FLAG_PROMOTED_ONGOING = 0x00040000
   // Warm taproom palette mirrored from the iOS Live Activity: a glowing amber
   // tally on a dark, toasted-malt surface.
@@ -88,16 +92,29 @@ internal object BeerLiveActivityNotification {
       repeatBeerPriceCzk = payload.repeatBeerPriceCzk,
       repeatBeerVolumeMl = payload.repeatBeerVolumeMl,
       repeatBeerServingType = payload.repeatBeerServingType,
-      locale = payload.locale
+      locale = payload.locale,
+      homeTransitLabel = payload.homeTransitLabel,
+      homeTransitDepartsAtMs = payload.homeTransitDepartsAtMs?.toLong()
     )
     persistState(context, state)
     notificationManager.notify(NOTIFICATION_ID, buildNotification(context, state))
+    scheduleTransitExpiry(context, state)
     return getStatus(context)
+  }
+
+  /** Redraws without the ride home once it left, even while the app sleeps. */
+  @Synchronized
+  fun dropDepartedTransit(context: Context, sessionId: String) {
+    if (preferences(context).getString(ACTIVE_SESSION_KEY, null) != sessionId) return
+    if (activeNotification(context) == null) return
+    val state = readState(context) ?: return
+    NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, buildNotification(context, state))
   }
 
   @Synchronized
   fun end(context: Context): Map<String, Any?> {
     NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+    context.getSystemService(AlarmManager::class.java)?.cancel(transitExpiryIntent(context, ""))
     preferences(context).edit()
       .remove(ACTIVE_SESSION_KEY)
       .remove(DISMISSED_SESSION_KEY)
@@ -109,6 +126,8 @@ internal object BeerLiveActivityNotification {
       .remove(REPEAT_BEER_PRICE_CZK_KEY)
       .remove(REPEAT_BEER_VOLUME_ML_KEY)
       .remove(REPEAT_BEER_SERVING_TYPE_KEY)
+      .remove(HOME_TRANSIT_LABEL_KEY)
+      .remove(HOME_TRANSIT_DEPARTS_AT_KEY)
       .apply()
     return getStatus(context)
   }
@@ -299,6 +318,29 @@ internal object BeerLiveActivityNotification {
     )
   }
 
+  /** An inexact alarm is enough: the countdown already shows when the ride leaves. */
+  private fun scheduleTransitExpiry(context: Context, state: NotificationState) {
+    val alarms = context.getSystemService(AlarmManager::class.java) ?: return
+    val departsAt = homeTransitDepartsAt(state)
+    if (departsAt == null) {
+      alarms.cancel(transitExpiryIntent(context, state.sessionId))
+      return
+    }
+    alarms.set(AlarmManager.RTC, departsAt + 1_000L, transitExpiryIntent(context, state.sessionId))
+  }
+
+  private fun transitExpiryIntent(context: Context, sessionId: String): PendingIntent {
+    val intent = Intent(context, BeerLiveActivityActionReceiver::class.java)
+      .setAction(ACTION_TRANSIT_LEFT)
+      .putExtra(EXTRA_SESSION_ID, sessionId)
+    return PendingIntent.getBroadcast(
+      context,
+      NOTIFICATION_ID + 2,
+      intent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+  }
+
   private fun addBeerIntent(context: Context, sessionId: String): PendingIntent {
     val intent = Intent(context, BeerLiveActivityActionReceiver::class.java)
       .setAction(ACTION_ADD_BEER)
@@ -345,9 +387,17 @@ internal object BeerLiveActivityNotification {
 
   private fun notificationDetail(strings: Strings, state: NotificationState): String {
     val countLabel = strings.beerCount(state.beerCount)
-    val latestBeer = state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)
-    return listOfNotNull(countLabel, latestBeer).joinToString(" · ")
+    // The way home matters more than the latest beer's name once there is one.
+    val second = state.homeTransitLabel.trim().takeIf { homeTransitDepartsAt(state) != null }?.take(80)
+      ?: state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)
+    return listOfNotNull(countLabel, second).joinToString(" · ")
   }
+
+  /** The departure while it is still ahead and has a label to go with it. */
+  private fun homeTransitDepartsAt(state: NotificationState): Long? =
+    state.homeTransitDepartsAtMs?.takeIf {
+      state.homeTransitLabel.isNotBlank() && it > System.currentTimeMillis()
+    }
 
   /**
    * Maps the beer count onto the progress track. Clamped to a soft cap so the
@@ -389,6 +439,7 @@ internal object BeerLiveActivityNotification {
       .putString(LATEST_BEER_NAME_KEY, state.latestBeerName)
       .putString(REPEAT_BEER_NAME_KEY, state.repeatBeerName)
       .putString(LOCALE_KEY, state.locale)
+      .putString(HOME_TRANSIT_LABEL_KEY, state.homeTransitLabel)
     state.repeatBeerPriceCzk?.let {
       editor.putLong(REPEAT_BEER_PRICE_CZK_KEY, java.lang.Double.doubleToRawLongBits(it))
     } ?: editor.remove(REPEAT_BEER_PRICE_CZK_KEY)
@@ -398,6 +449,9 @@ internal object BeerLiveActivityNotification {
     state.repeatBeerServingType?.let {
       editor.putString(REPEAT_BEER_SERVING_TYPE_KEY, it)
     } ?: editor.remove(REPEAT_BEER_SERVING_TYPE_KEY)
+    state.homeTransitDepartsAtMs?.let {
+      editor.putLong(HOME_TRANSIT_DEPARTS_AT_KEY, it)
+    } ?: editor.remove(HOME_TRANSIT_DEPARTS_AT_KEY)
     val stored = editor.commit()
     check(stored) { "Could not persist beer live activity state" }
   }
@@ -427,7 +481,14 @@ internal object BeerLiveActivityNotification {
         } else {
           null
         },
-      repeatBeerServingType = preferences.getString(REPEAT_BEER_SERVING_TYPE_KEY, null)
+      repeatBeerServingType = preferences.getString(REPEAT_BEER_SERVING_TYPE_KEY, null),
+      homeTransitLabel = preferences.getString(HOME_TRANSIT_LABEL_KEY, "").orEmpty(),
+      homeTransitDepartsAtMs =
+        if (preferences.contains(HOME_TRANSIT_DEPARTS_AT_KEY)) {
+          preferences.getLong(HOME_TRANSIT_DEPARTS_AT_KEY, 0L)
+        } else {
+          null
+        }
     )
   }
 
@@ -534,7 +595,9 @@ internal object BeerLiveActivityNotification {
     val repeatBeerPriceCzk: Double?,
     val repeatBeerVolumeMl: Int?,
     val repeatBeerServingType: String?,
-    val locale: String
+    val locale: String,
+    val homeTransitLabel: String = "",
+    val homeTransitDepartsAtMs: Long? = null
   )
 
   private data class PendingAdd(

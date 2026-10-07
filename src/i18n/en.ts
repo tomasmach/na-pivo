@@ -491,6 +491,10 @@ export const en: Strings = {
       title: 'Remind me about water',
       subtitle: "Optional, after four beers, only on the phone. It doesn't estimate how sober you are.",
     },
+    homeTransitReminder: {
+      title: 'Remind me of the last ride',
+      subtitle: '20 minutes before the last direct ride home. Prague area only, needs your home.',
+    },
     hideClosed: {
       title: 'Hide closed pubs',
       subtitle: 'Show only open ones and those with unknown hours',
@@ -2878,6 +2882,25 @@ export const en: Strings = {
     addBeer: 'One more',
     addBeerA11y: 'Log the same beer',
     openCounter: 'Open the counter',
+    homeTransit: (time: string, stop: string) =>
+      `Last ride home ${time}${stop ? ` · ${stop}` : ''}`,
+    homeTransitCountdown: 'in',
+    homeTransitA11y: (time: string, stop: string, line: string) =>
+      `Last direct ride home${line ? `, line ${line}` : ''}, leaves${stop ? ` ${stop}` : ''} at ${time}`,
+  },
+
+  homeTransit: {
+    sectionHeader: 'GETTING HOME',
+    title: (time: string) => `Last direct ride at ${time}`,
+    route: (line: string, from: string, to: string) =>
+      `${line ? `Line ${line}: ` : ''}${from} → ${to}`,
+    leavesIn: (minutes: number) =>
+      minutes < 60
+        ? `in ${Math.max(minutes, 1)} min`
+        : `in ${Math.floor(minutes / 60)} h ${minutes % 60} min`,
+    openIdos: 'Route home',
+    openIdosA11y: 'Route home, opens the IDOS journey planner',
+    footnote: "Night lines and changes don't count. Timetables: ROPID, CC\u00a0BY\u00a04.0, adapted.",
   },
 
   notifications: {
@@ -2887,6 +2910,10 @@ export const en: Strings = {
     beerCountChannel: 'Counter reminders',
     beerCountTitle: 'Forgot to log a beer?',
     beerCountBody: 'Tap to add another mark to the counter.',
+    homeTransitChannel: 'Last direct ride home',
+    homeTransitTitle: 'Your last direct ride home leaves in 20 minutes',
+    homeTransitBody: (line: string, time: string, stop: string) =>
+      `${line ? `Line ${line} leaves` : 'It leaves'}${stop ? ` ${stop}` : ''} at ${time}.`,
   },
 
   pubDetail: {

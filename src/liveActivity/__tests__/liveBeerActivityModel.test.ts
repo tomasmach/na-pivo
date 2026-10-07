@@ -147,3 +147,71 @@ describe('shouldRequestAndroidNotificationPermission', () => {
     ).toBe(false);
   });
 });
+
+describe('last connection home', () => {
+  const departure = {
+    line: '9',
+    headsign: 'Spojovací',
+    routeType: 0,
+    fromStopId: 'U1Z1P',
+    fromStopName: 'Anděl',
+    toStopId: 'U2Z1P',
+    toStopName: 'Florenc',
+    departsAtMs: Date.parse('2026-07-21T21:58:00.000Z'),
+  };
+
+  it('adds the connection while it is still ahead', () => {
+    const result = buildBeerEveningLiveActivityProps(session(), {
+      hidePubNames: false,
+      priceCurrency: 'CZK',
+      homeTransit: departure,
+      nowMs: departure.departsAtMs - 41 * 60_000,
+    });
+
+    const time = new Date(departure.departsAtMs).toLocaleTimeString(intlLocale, {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    expect(result).toMatchObject({
+      homeTransitLabel: t.liveActivity.homeTransit(time, 'Anděl'),
+      homeTransitDepartsAtMs: departure.departsAtMs,
+      homeTransitCountdownPrefix: t.liveActivity.homeTransitCountdown,
+      homeTransitSymbol: 'tram.fill',
+      homeTransitA11yLabel: t.liveActivity.homeTransitA11y(time, 'Anděl', '9'),
+    });
+  });
+
+  it('leaves the field out without a connection or once it left', () => {
+    for (const homeTransit of [null, departure]) {
+      const result = buildBeerEveningLiveActivityProps(session(), {
+        hidePubNames: false,
+        priceCurrency: 'CZK',
+        homeTransit,
+        nowMs: departure.departsAtMs + 1,
+      });
+      expect(Object.keys(result ?? {}).filter((key) => key.startsWith('homeTransit'))).toEqual([]);
+    }
+  });
+});
+
+it('keeps the stop near the pub off the lock screen when pub names are hidden', () => {
+  const departsAtMs = Date.parse('2026-07-21T21:58:00.000Z');
+  const result = buildBeerEveningLiveActivityProps(session(), {
+    hidePubNames: true,
+    priceCurrency: 'CZK',
+    homeTransit: {
+      line: '9',
+      headsign: 'Spojovací',
+      routeType: 3,
+      fromStopId: 'U1Z1P',
+      fromStopName: 'Anděl',
+      toStopId: 'U2Z1P',
+      toStopName: 'Florenc',
+      departsAtMs,
+    },
+    nowMs: departsAtMs - 60_000,
+  });
+  expect(result?.homeTransitLabel).not.toContain('Anděl');
+  expect(result?.homeTransitA11yLabel).not.toContain('Anděl');
+  expect(result?.homeTransitSymbol).toBe('bus.fill');
+});

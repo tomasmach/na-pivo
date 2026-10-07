@@ -246,6 +246,24 @@ Only pubs inside a box around Czechia are looked up; Firmy.cz lists Czech busine
 
 `refresh_hours` also prints how many requests of the run went direct and through the proxy.
 
+## Prague public transport (PID GTFS)
+
+During a beer evening the app shows the last direct PID ride from the pub home tonight. Home never reaches the server: the app downloads the stop list (`GET /v1/transit/stops`), picks the stops near home on the phone and sends only their ids to `GET /v1/transit/last-direct`. Those ids and the pub coordinates are not logged or stored; cached answers are keyed by a SHA-256 hash.
+
+`python manage.py import_pid_gtfs` downloads the PID GTFS zip and keeps a compact copy: stops used by trips, distinct stop sequences ("patterns"), one row per trip with its departure times, and service days for today −2 … +8 (Prague time). It does not store the 1.8M raw `stop_times` rows. Night lines (`is_night=1`) are skipped: they run until the morning service, so the answer would always be a night tram just before 04:00 instead of the last regular ride. A night is the window from now until the next 04:00 Prague time. The new feed is built and activated in one transaction and the old one is deleted, so a failed import leaves yesterday's timetable in place. Today's feed imports in about 8 s into roughly 250k rows.
+
+The worker loop runs it every 5 minutes; it does nothing until the active feed was checked 20 h ago (`--min-interval-hours`). Downloads are conditional (ETag / Last-Modified), so an unchanged file only updates `checked_at`; an unchanged file older than 3 days is rebuilt anyway so the service-day window moves. Use `--force` to ignore the interval, the budget and conditional GET, and `--source /path/PID_GTFS.zip` to import a local file. Without an active feed, or when its window no longer covers tonight, both endpoints answer `503 {"detail": "transit_unavailable"}`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PID_GTFS_URL` | `https://data.pid.cz/PID_GTFS.zip` | Source zip |
+| `PID_GTFS_MAX_BYTES` | `209715200` | Download size cap (today's zip is ~50 MB) |
+| `PID_GTFS_DAILY_DOWNLOADS` | `4` | Downloads per Prague day, so a broken feed is not fetched every 5 minutes (`ExternalApiDailyUsage`, provider `pid`) |
+| `TRANSIT_STOPS_THROTTLE_RATE` | `20/hour` | Per account |
+| `TRANSIT_LAST_DIRECT_THROTTLE_RATE` | `60/hour` | Per account |
+
+Data source: [PID open data](https://pid.cz/en/opendata/) by ROPID, licensed CC BY 4.0 (checked on pid.cz in October 2026). The licence requires naming the source and any changes, so the app has to credit PID/ROPID where it shows the departures. PID asks systematic users to contact opendata@pid.cz.
+
 ---
 
 ## Configuration reference

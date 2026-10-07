@@ -72,6 +72,7 @@ services:
           python manage.py refresh_hours --limit 50 || true
           python manage.py refresh_google_pub_locations --limit 25 || true
           python manage.py sync_feedback_linear --limit 20 || true
+          python manage.py import_pid_gtfs || true
           sleep 300
         done
 

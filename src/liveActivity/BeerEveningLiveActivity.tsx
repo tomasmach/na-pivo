@@ -17,6 +17,7 @@ import {
   lineLimit,
   minimumScaleFactor,
   monospacedDigit,
+  multilineTextAlignment,
   padding,
   privacySensitive,
   resizable,
@@ -26,6 +27,14 @@ import {
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
+
+export type HomeTransitSymbol =
+  | 'tram.fill'
+  | 'tram.fill.tunnel'
+  | 'train.side.front.car'
+  | 'ferry.fill'
+  | 'cablecar.fill'
+  | 'bus.fill';
 
 /**
  * Complete render state for one running beer-counting evening.
@@ -67,6 +76,13 @@ export interface BeerEveningLiveActivityProps {
   supportsInteractiveAdd?: boolean;
   /** `file://` URI of the staged app icon in the app-group container. */
   iconUri?: string;
+  /** Tonight's last direct connection home; absent without home or outside PID. */
+  homeTransitLabel?: string;
+  /** Departure as epoch ms. The countdown runs natively, so it stays right while the app sleeps. */
+  homeTransitDepartsAtMs?: number;
+  homeTransitCountdownPrefix?: string;
+  homeTransitSymbol?: HomeTransitSymbol;
+  homeTransitA11yLabel?: string;
 }
 
 const BeerEveningLiveActivity = (
@@ -111,6 +127,12 @@ const BeerEveningLiveActivity = (
   const priceLabel = props.totalPriceLabel;
   const latestBeerLabel = props.latestBeerLabel;
   const latestTimeLabel = props.latestTimeLabel;
+  const departsAtMs = props.homeTransitDepartsAtMs;
+  const showHomeTransit = !!props.homeTransitLabel && typeof departsAtMs === 'number';
+  // The countdown only shrinks, so a width picked now stays wide enough.
+  const transitLeftMs = (departsAtMs ?? 0) - Date.now();
+  const transitTimerWidth =
+    transitLeftMs < 60 * 60 * 1000 ? 38 : transitLeftMs < 10 * 60 * 60 * 1000 ? 50 : 60;
 
   return {
     banner: (
@@ -158,7 +180,7 @@ const BeerEveningLiveActivity = (
           <VStack
             alignment="leading"
             spacing={3}
-            modifiers={[frame({ maxWidth: 1000 })]}
+            modifiers={[frame({ maxWidth: 1000, alignment: 'leading' })]}
           >
             <Text
               modifiers={[
@@ -232,7 +254,7 @@ const BeerEveningLiveActivity = (
           <VStack
             alignment="leading"
             spacing={2}
-            modifiers={[frame({ maxWidth: 1000 })]}
+            modifiers={[frame({ maxWidth: 1000, alignment: 'leading' })]}
           >
             <Text
               modifiers={[
@@ -287,6 +309,63 @@ const BeerEveningLiveActivity = (
             />
           )}
         </HStack>
+
+        {showHomeTransit ? (
+          <HStack
+            alignment="center"
+            spacing={6}
+            modifiers={[
+              // Lines up with the beer name and the button edge of the row above.
+              padding({ leading: 14, trailing: 8 }),
+              frame({ maxWidth: 1000 }),
+              accessibilityLabel(props.homeTransitA11yLabel ?? props.homeTransitLabel ?? ''),
+            ]}
+          >
+            <Image
+              systemName={props.homeTransitSymbol ?? 'bus.fill'}
+              size={11}
+              color={secondaryText}
+            />
+            <Text
+              modifiers={[
+                font({ size: 12, weight: 'semibold', design: 'rounded' }),
+                foregroundStyle(secondaryText),
+                lineLimit(1),
+                minimumScaleFactor(0.8),
+                privacySensitive(),
+              ]}
+            >
+              {props.homeTransitLabel}
+            </Text>
+            <Spacer />
+            <Text
+              modifiers={[
+                font({ size: 12, weight: 'medium', design: 'rounded' }),
+                foregroundStyle(secondaryText),
+              ]}
+            >
+              {props.homeTransitCountdownPrefix ?? ''}
+            </Text>
+            {/* Counts down to the departure and stops at 0:00 once it leaves.
+                The lower bound only has to be in the past: a departure is
+                always before the next 04:00, so less than a day away. */}
+            <Text
+              timerInterval={{
+                lower: new Date(departsAtMs - 24 * 60 * 60 * 1000),
+                upper: new Date(departsAtMs),
+              }}
+              countsDown
+              modifiers={[
+                font({ size: 12, weight: 'bold', design: 'rounded' }),
+                foregroundStyle(accent),
+                monospacedDigit(),
+                multilineTextAlignment('trailing'),
+                // Just wide enough for the digits, so "za" stays next to them.
+                frame({ width: transitTimerWidth, alignment: 'trailing' }),
+              ]}
+            />
+          </HStack>
+        ) : null}
       </VStack>
     ),
 
@@ -415,7 +494,7 @@ const BeerEveningLiveActivity = (
         <VStack
           alignment="leading"
           spacing={2}
-          modifiers={[frame({ maxWidth: 1000 })]}
+          modifiers={[frame({ maxWidth: 1000, alignment: 'leading' })]}
         >
           <Text
             modifiers={[

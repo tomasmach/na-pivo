@@ -16,6 +16,10 @@ export type BeerLiveActivityPayload = {
   repeatBeerServingType?: string;
   /** UI language picked in the app; the native notification follows it. */
   locale?: 'cs' | 'en';
+  /** Tonight's last direct connection home, already localized; absent without one. */
+  homeTransitLabel?: string;
+  /** Its departure as epoch ms; the notification counts down to it. */
+  homeTransitDepartsAtMs?: number;
 };
 
 export type BeerLiveActivityPresentation = 'live-update' | 'notification' | 'none';

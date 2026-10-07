@@ -1,7 +1,13 @@
 import { normalizeDrinkType, type ServingType } from '@/drinks/drinkTypes';
+import type { HomeTransitSymbol } from '@/liveActivity/BeerEveningLiveActivity';
 import { intlLocale, t } from '@/i18n';
 import type { TallySession } from '@/stores/tallyStore';
 import { sessionCount, sessionTotalCzk } from '@/stores/tallyStore';
+import {
+  formatDepartureTime,
+  isUpcomingDeparture,
+  type HomeTransitDeparture,
+} from '@/transit/homeTransit';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 
 export interface BeerEveningLiveActivityProps {
@@ -37,6 +43,18 @@ export interface BeerEveningLiveActivityProps {
   supportsInteractiveAdd?: boolean;
   /** iOS only: `file://` URI of the staged app icon in the app-group container. */
   iconUri?: string;
+  // — Tonight's last direct connection home. These travel together and are
+  //   absent without a home point, outside PID, or once the connection left.
+  /** "Poslední spoj domů 23:58 · Anděl". */
+  homeTransitLabel?: string;
+  /** Departure as epoch ms; the widget counts down to it on its own. */
+  homeTransitDepartsAtMs?: number;
+  /** Word in front of the countdown: "za" / "in". */
+  homeTransitCountdownPrefix?: string;
+  /** SF Symbol of the vehicle (tram, bus, metro, train). */
+  homeTransitSymbol?: HomeTransitSymbol;
+  /** VoiceOver sentence with the line and stop. */
+  homeTransitA11yLabel?: string;
 }
 
 export function shouldRequestAndroidNotificationPermission(
@@ -54,7 +72,18 @@ export function shouldRequestAndroidNotificationPermission(
 interface LiveBeerActivityPreferences {
   hidePubNames: boolean;
   priceCurrency: PriceCurrency;
+  homeTransit?: HomeTransitDeparture | null;
+  nowMs?: number;
 }
+
+// GTFS route_type → SF Symbol. Anything unknown reads as a bus.
+const TRANSIT_SYMBOLS: Record<number, HomeTransitSymbol> = {
+  0: 'tram.fill',
+  1: 'tram.fill.tunnel',
+  2: 'train.side.front.car',
+  4: 'ferry.fill',
+  7: 'cablecar.fill',
+};
 
 const MAX_LABEL_LENGTH = 64;
 
@@ -121,5 +150,17 @@ export function buildBeerEveningLiveActivityProps(
   if (typeof latestBeer?.priceCzk === 'number') props.repeatBeerPriceCzk = latestBeer.priceCzk;
   if (typeof latestBeer?.volumeMl === 'number') props.repeatBeerVolumeMl = latestBeer.volumeMl;
   if (latestBeer?.servingType) props.repeatBeerServingType = latestBeer.servingType;
+
+  const transit = preferences.homeTransit;
+  if (isUpcomingDeparture(transit, preferences.nowMs ?? Date.now())) {
+    const time = formatDepartureTime(transit.departsAtMs);
+    // The stop next to the pub gives the pub away as much as its name does.
+    const stop = preferences.hidePubNames ? '' : compactLabel(transit.fromStopName, '');
+    props.homeTransitLabel = t.liveActivity.homeTransit(time, stop);
+    props.homeTransitDepartsAtMs = transit.departsAtMs;
+    props.homeTransitCountdownPrefix = t.liveActivity.homeTransitCountdown;
+    props.homeTransitSymbol = TRANSIT_SYMBOLS[transit.routeType ?? 3] ?? 'bus.fill';
+    props.homeTransitA11yLabel = t.liveActivity.homeTransitA11y(time, stop, transit.line);
+  }
   return props;
 }
