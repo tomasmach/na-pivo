@@ -278,7 +278,7 @@ def _prices_structured_data(origin: str, lang: str, snapshot: PubPriceSnapshot |
             "@type": "Dataset",
             "name": gettext("Kolik stojí pivo v hospodě"),
             "description": gettext(
-                "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod."
+                "Z každé hospody beru nejlevnější pivo od 0,4\u00a0l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod."
             ),
             "url": url,
             "creator": AUTHOR,

@@ -381,6 +381,7 @@ def test_price_page_tells_search_engines_the_year_the_median_and_the_dataset(cli
     english = client.get("/en/prices").content.decode()
     assert f"<title>Beer prices {today.year}: what a beer costs in Czech pubs | Na pivo</title>" in english
     assert "The median beer price in Czech pubs is 47 CZK." in english
+    assert _structured_data(english)["Dataset"]["description"].startswith("From each pub I take")
     assert _structured_data(english)["BreadcrumbList"]["itemListElement"][0]["item"] == "https://na-pivo.cz/en"
     assert f"<loc>https://na-pivo.cz/ceny</loc>\n  <lastmod>{today}</lastmod>" in client.get("/sitemap.xml").content.decode()
 
