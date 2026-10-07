@@ -8,7 +8,10 @@ const { spawnSync } = require('child_process');
 const MIN_FREE_GB = 20;
 const output = path.join(__dirname, '..', 'build', 'na-pivo.ipa');
 
-const stats = fs.statfsSync(process.env.EAS_LOCAL_BUILD_WORKINGDIR || os.tmpdir());
+// EAS creates a custom working dir itself, so measure its nearest existing parent.
+let workDir = path.resolve(process.env.EAS_LOCAL_BUILD_WORKINGDIR || os.tmpdir());
+while (!fs.existsSync(workDir)) workDir = path.dirname(workDir);
+const stats = fs.statfsSync(workDir);
 const freeGb = (stats.bavail * stats.bsize) / 1024 ** 3;
 if (freeGb < MIN_FREE_GB) {
   console.error(
