@@ -1,0 +1,41 @@
+appId: ${MAESTRO_APP_ID}
+name: Host approval and cancellation protect the exact event address
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- evalScript: ${output.ps.check('community-before')}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /community-events
+- tapOn: Moje
+- scrollUntilVisible:
+    element:
+      id: ${'community-request-' + output.local.state().scenario.requestId + '-approve'}
+    direction: DOWN
+- tapOn:
+    id: ${'community-request-' + output.local.state().scenario.requestId + '-approve'}
+- evalScript: ${output.local.poll(function () { output.ps.check('community-approved'); }, 15000)}
+- scrollUntilVisible:
+    element: {text: Zrušit setkání}
+    direction: DOWN
+- tapOn: Zrušit setkání
+- evalScript: ${output.local.poll(function () { output.ps.check('community-cancelled'); }, 15000)}
+- scrollUntilVisible:
+    element:
+      id: ${'community-event-' + output.local.state().scenario.eventId + '-status'}
+    direction: UP
+- assertVisible:
+    id: ${'community-event-' + output.local.state().scenario.eventId + '-status'}
+    text: 'Setkání je zrušené\.'
+- assertNotVisible: 'poslední místo · Pořádá @E2EPivar'
+- assertNotVisible: Máš místo
+- assertNotVisible: Zrušit setkání
+- evalScript: ${output.local.screenshot('social-event-cancelled')}
+- evalScript: ${output.ps.check('community-cancelled')}

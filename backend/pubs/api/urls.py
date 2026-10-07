@@ -16,6 +16,8 @@ POST   drinks       → DrinksView
 DELETE drinks/<client_id> → DrinksView
 GET    release-notes → ReleaseNotesView
 GET    health/      → HealthView
+GET    transit/stops → TransitStopsView
+GET    transit/last-direct → TransitLastDirectView
 """
 
 from django.urls import path
@@ -74,6 +76,7 @@ from .tour_views import (
     TourPubSearchView,
     TourShareView,
 )
+from .transit_views import TransitLastDirectView, TransitStopsView
 from .views import (
     AccountAvatarView,
     AccountDeletionStatusView,
@@ -211,6 +214,8 @@ urlpatterns = [
         name="community-event-report",
     ),
     path("pub-events", PubEventView.as_view(), name="pub-events"),
+    path("transit/stops", TransitStopsView.as_view(), name="transit-stops"),
+    path("transit/last-direct", TransitLastDirectView.as_view(), name="transit-last-direct"),
     path("party-evenings", PartyEveningCollectionView.as_view(), name="party-evenings"),
     # Keep this literal route before the catch-all <code> detail route below.
     path(

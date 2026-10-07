@@ -102,6 +102,8 @@ import {
   initializeLiveBeerActivity,
   reconcileLiveBeerActivityAndAutoArchive,
 } from '@/liveActivity/liveBeerActivity';
+import { initializeHomeTransitReminder } from '@/notifications/homeTransitReminder';
+import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransitSync';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -237,6 +239,8 @@ export default function RootLayout() {
     void initializeBeerCountReminderNotifications();
     void syncTourReminders();
     void initializeLiveBeerActivity();
+    initializeHomeTransit();
+    initializeHomeTransitReminder();
     void refreshCurrencyFromLastKnownLocation();
   }, []);
 
@@ -448,6 +452,7 @@ export default function RootLayout() {
         void ensureFriendPushRegisteredIfGranted();
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
+        void flushNightsQueue();
         void flushTourRunQueue();
         if (pull('diary')) {
           void trackPull('diary', () => useAccountStore.getState().refreshDiarySnapshot());
@@ -459,6 +464,8 @@ export default function RootLayout() {
         }
         void refreshPubReminderGeofences();
         void syncTourReminders();
+        // Tonight's last connection home; skipped while the answer is fresh.
+        void refreshHomeTransit();
       } else {
         flushWalkingDistance();
       }
@@ -470,6 +477,7 @@ export default function RootLayout() {
       Platform.OS === 'android'
         ? AppState.addEventListener('focus', () => {
             void reconcileLiveBeerActivityAndAutoArchive();
+            void flushNightsQueue();
           })
         : null;
     return () => {

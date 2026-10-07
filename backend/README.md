@@ -228,15 +228,41 @@ budget, while leaving hours and tasks unchanged.
 
 ### Consent cookie-wall and `FIRMY_PROXY_URL`
 
-Firmy.cz detail pages sit behind a Seznam GDPR consent cookie-wall (`cmp.seznam.cz` / `cmp.firmy.cz`). Requests from flagged datacenter IPs can be bounced to the consent wall (`reason=missing`), so detail content is not served even with a cookie-aware session and autologin warmup.
+Firmy.cz sits behind a Seznam GDPR consent cookie-wall (`cmp.seznam.cz` / `cmp.firmy.cz`). Requests from flagged datacenter IPs can be bounced to it (`reason=missing`).
 
-The scraper therefore:
+Every request goes direct first. When Seznam blocks it (consent wall, HTTP 403 or 429), the same request repeats through `FIRMY_PROXY_URL` (residential proxy), and all processes skip the direct path for `FIRMY_DIRECT_BLOCK_COOLDOWN_MINUTES`. Proxy requests have their own `FIRMY_PROXY_DAILY_CAP`, so a long block cannot exceed the proxy plan. Without a proxy a block leaves rows in `error` and they retry after the usual cooldown.
 
-- seeds cookie-wall cookies via a homepage + autologin warmup on session creation;
-- detects when a detail fetch was bounced to the consent wall and logs an actionable warning;
-- may require `FIRMY_PROXY_URL` pointing at a residential proxy in production.
+Only pubs inside a box around Czechia are looked up; Firmy.cz lists Czech businesses only. Rows abroad keep their cached data and are no longer refreshed.
 
-Running without a residential proxy from a datacenter IP can make detail fetches return `None` with status `unknown`. The search/matching pipeline can still be otherwise functional depending on the specific request path.
+`ExternalApiDailyUsage` (provider `firmy`, UTC days) shows where the requests went:
+
+| Operation | Counts |
+|---|---|
+| `http` | every request, capped by `FIRMY_DAILY_CAP` |
+| `http_direct` | requests sent without the proxy |
+| `http_proxy` | requests through the proxy, capped by `FIRMY_PROXY_DAILY_CAP` |
+| `http_direct_blocked` | direct responses Seznam blocked |
+| `refresh` | stale rows `refresh_hours` re-fetched, capped by `FIRMY_REFRESH_DAILY_CAP` |
+
+`refresh_hours` also prints how many requests of the run went direct and through the proxy.
+
+## Prague public transport (PID GTFS)
+
+During a beer evening the app shows the last direct PID ride from the pub home tonight. Home never reaches the server: the app downloads the stop list (`GET /v1/transit/stops`), picks the stops near home on the phone and sends only their ids to `GET /v1/transit/last-direct`. Those ids and the pub coordinates are not logged or stored; cached answers are keyed by a SHA-256 hash.
+
+`python manage.py import_pid_gtfs` downloads the PID GTFS zip and keeps a compact copy: every platform stop (the app caches the list for weeks), distinct stop sequences ("patterns"), one row per trip with its departure times, and service days for today −2 … +8 (Prague time). It does not store the 1.8M raw `stop_times` rows. Night lines (`is_night=1`) are skipped: they run until the morning service, so the answer would always be a night tram just before 04:00 instead of the last regular ride. A night is the window from now until the next 04:00 Prague time. The new feed is built and activated in one transaction and the old one is deleted, so a failed import leaves yesterday's timetable in place. Today's feed imports in about 8 s into roughly 250k rows.
+
+The worker loop runs it every 5 minutes; it does nothing until the active feed was checked 20 h ago (`--min-interval-hours`). Downloads are conditional (ETag / Last-Modified), so an unchanged file only updates `checked_at`; an unchanged file older than 3 days is rebuilt anyway so the service-day window moves. Use `--force` to ignore the interval, the budget and conditional GET, and `--source /path/PID_GTFS.zip` to import a local file. Without an active feed, or when its window no longer covers tonight, both endpoints answer `503 {"detail": "transit_unavailable"}`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PID_GTFS_URL` | `https://data.pid.cz/PID_GTFS.zip` | Source zip |
+| `PID_GTFS_MAX_BYTES` | `209715200` | Download size cap (today's zip is ~50 MB) |
+| `PID_GTFS_DAILY_DOWNLOADS` | `4` | Downloads per Prague day, so a broken feed is not fetched every 5 minutes (`ExternalApiDailyUsage`, provider `pid`) |
+| `TRANSIT_STOPS_THROTTLE_RATE` | `20/hour` | Per account |
+| `TRANSIT_LAST_DIRECT_THROTTLE_RATE` | `60/hour` | Per account |
+
+Data source: [PID open data](https://pid.cz/en/opendata/) by ROPID, licensed CC BY 4.0 (checked on pid.cz in October 2026). The licence requires naming the source and any changes, so the app has to credit PID/ROPID where it shows the departures. PID asks systematic users to contact opendata@pid.cz.
 
 ---
 
@@ -258,11 +284,15 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `DB_POOL_MIN_SIZE` | `2` | Connections kept warm per process; clamped into `0..DB_POOL_MAX_SIZE` |
 | `DB_POOL_TIMEOUT` | `10` | Seconds a request waits for a free pooled connection; past this it fails with HTTP 500 (`psycopg_pool.PoolTimeout`), which the app's offline queues retry rather than drop |
 | `DB_POOL_MAX_IDLE` | `60` | Seconds unused before the pool retires a connection. It retires at most one per window, so psycopg's 600 s default would keep a peak's connections open for hours |
-| `FIRMY_PROXY_URL` | _(unset)_ | Residential proxy for Firmy.cz requests |
+| `FIRMY_PROXY_URL` | _(unset)_ | Residential proxy, used only after Seznam blocks a direct Firmy.cz request |
+| `FIRMY_DIRECT_BLOCK_COOLDOWN_MINUTES` | `60` | How long all processes skip the direct path after a block |
+| `FIRMY_PROXY_DAILY_CAP` | `200` | Daily cap for proxy requests (part of `FIRMY_DAILY_CAP`); 200 × ~130 KB stays under 1 GB a month |
 | `FIRMY_USER_AGENT` | mobile Chrome UA | User-Agent header for Firmy.cz |
 | `FIRMY_MIN_INTERVAL_SEC` | `3` | Min seconds between Firmy.cz requests |
 | `FIRMY_DAILY_CAP` | `2000` | Shared DB-backed daily request cap across web and worker processes |
-| `HOURS_TTL_DAYS` | `30` | Days before cached hours are refreshed |
+| `HOURS_TTL_OK_DAYS` | `90` | Days before cached hours with status `ok` are refreshed |
+| `HOURS_TTL_UNKNOWN_DAYS` | `180` | Days before rows where Firmy.cz had no hours (`unknown`) are refreshed |
+| `FIRMY_REFRESH_DAILY_CAP` | `400` | Stale rows `refresh_hours` re-fetches per UTC day; pubs a user opened are not limited |
 | `SYNC_ENRICH_BUDGET` | `3` in dev, forced `0` in production | Max pubs enriched synchronously per API call; production cache misses always return pending and leave enrichment to the worker |
 | `GOOGLE_MAPS_SERVER_API_KEY` | _(unset)_ | Backend-only, IP/API-restricted key for Geocoding API v4 and Places API (New); never ship it in Expo |
 | `GOOGLE_MAPS_TIMEOUT` | `8` | Timeout in seconds for an explicit Google lookup |
@@ -419,7 +449,7 @@ cp .env.production.example .env
 #            ALLOWED_HOSTS=api.na-pivo.cz,na-pivo.cz,
 #            PUBLIC_WEB_ORIGIN=https://na-pivo.cz,
 #            DATABASE_URL=postgres://napivo:strong-pass@db:5432/napivo,
-#            FIRMY_PROXY_URL=http://user:pass@proxy:port when needed
+#            FIRMY_PROXY_URL=http://user:pass@proxy:port as the fallback
 
 docker compose -p na-pivo up -d --build
 ```

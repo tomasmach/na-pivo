@@ -52,6 +52,10 @@ import {
   enableBeerCountReminderNotifications,
   reschedulePendingBeerCountReminder,
 } from '@/notifications/beerCountReminder';
+import {
+  disableHomeTransitReminder,
+  enableHomeTransitReminder,
+} from '@/notifications/homeTransitReminder';
 import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
 import {
   disablePubReminderNotifications,
@@ -111,12 +115,13 @@ function numeralFontSize(value: string): number {
 }
 
 interface ToggleProps {
+  testID?: string;
   value: boolean;
   onToggle: () => void;
   accessibilityLabel: string;
 }
 
-function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
+function Toggle({ value, onToggle, accessibilityLabel, testID }: ToggleProps) {
   const offset = useSharedValue(value ? 24 : 2);
 
   useEffect(() => {
@@ -133,6 +138,7 @@ function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
 
   return (
     <Pressable
+      testID={testID}
       onPress={onToggle}
       style={[styles.toggle, value ? styles.toggleOn : styles.toggleOff]}
       accessibilityRole="switch"
@@ -262,6 +268,7 @@ function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderPro
 }
 
 interface PreferenceRowProps {
+  testID?: string;
   title: string;
   subtitle: string;
   value: boolean;
@@ -272,6 +279,7 @@ interface PreferenceRowProps {
 }
 
 function PreferenceRow({
+  testID,
   title,
   subtitle,
   value,
@@ -304,7 +312,7 @@ function PreferenceRow({
           {subtitle}
         </Text>
       </View>
-      <Toggle value={value} onToggle={onToggle} accessibilityLabel={toggleLabel} />
+      <Toggle testID={testID} value={value} onToggle={onToggle} accessibilityLabel={toggleLabel} />
     </View>
   );
 }
@@ -395,6 +403,7 @@ function LanguageRow() {
             accessibilityRole="radio"
             accessibilityState={{ selected }}
             accessibilityLabel={t.settings.language.option(t.settings.language[code])}
+            testID={`settings-language-${code}`}
           >
             <Text
               style={[styles.languageOptionText, selected && styles.languageOptionTextSelected]}
@@ -451,6 +460,9 @@ export default function SettingsScreen() {
   const beerCountReminderIntervalMinutes = useSettingsStore(
     (state) => state.beerCountReminderIntervalMinutes,
   );
+  const homeTransitReminderEnabled = useSettingsStore(
+    (state) => state.homeTransitReminderEnabled,
+  );
 
   const setMaxDistanceKm = useSettingsStore((state) => state.setMaxDistanceKm);
   const setNavigationProvider = useSettingsStore((state) => state.setNavigationProvider);
@@ -475,6 +487,7 @@ export default function SettingsScreen() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [pubReminderBusy, setPubReminderBusy] = useState(false);
   const [beerCountReminderBusy, setBeerCountReminderBusy] = useState(false);
+  const [homeTransitReminderBusy, setHomeTransitReminderBusy] = useState(false);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const readout = distanceReadout(maxDistanceKm);
@@ -584,6 +597,21 @@ export default function SettingsScreen() {
       setBeerCountReminderBusy(false);
     }
   }, [beerCountReminderBusy, beerCountReminderEnabled]);
+
+  const toggleHomeTransitReminder = useCallback(async () => {
+    if (homeTransitReminderBusy) return;
+    if (homeTransitReminderEnabled) {
+      disableHomeTransitReminder();
+      return;
+    }
+    setHomeTransitReminderBusy(true);
+    try {
+      const result = await enableHomeTransitReminder();
+      if (!result.ok) showPubReminderEnableFailure('notifications-denied');
+    } finally {
+      setHomeTransitReminderBusy(false);
+    }
+  }, [homeTransitReminderBusy, homeTransitReminderEnabled]);
 
   // Off cancels every tour reminder at once; on asks for notifications like the other reminders.
   const toggleTourReminders = useCallback(async () => {
@@ -786,6 +814,7 @@ export default function SettingsScreen() {
             />
             <PreferenceRow
               title={t.settings.hidePubNames.title}
+              testID="settings-hide-names"
               subtitle={t.settings.hidePubNames.subtitle}
               value={hidePubNames}
               onToggle={toggleHidePubNames}
@@ -811,6 +840,15 @@ export default function SettingsScreen() {
             onIntervalChange={changeBeerCountReminderInterval}
           />
           <PreferenceRow
+            title={t.settings.homeTransitReminder.title}
+            testID="settings-home-transit-reminder"
+            subtitle={t.settings.homeTransitReminder.subtitle}
+            value={homeTransitReminderEnabled}
+            onToggle={() => void toggleHomeTransitReminder()}
+            toggleLabel={`${t.settings.homeTransitReminder.title}: ${homeTransitReminderEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
             title={t.tourReminders.settingsTitle}
             subtitle={t.tourReminders.settingsSubtitle}
             value={tourRemindersEnabled}
@@ -820,6 +858,7 @@ export default function SettingsScreen() {
           />
           <PreferenceRow
             title={t.settings.haptics.title}
+            testID="settings-haptics"
             subtitle={t.settings.haptics.subtitle}
             value={hapticEnabled}
             onToggle={toggleHaptic}
@@ -836,6 +875,7 @@ export default function SettingsScreen() {
           />
           <PreferenceRow
             title={t.settings.waterNudge.title}
+            testID="settings-water"
             subtitle={t.settings.waterNudge.subtitle}
             value={waterNudgeEnabled}
             onToggle={toggleWaterNudge}

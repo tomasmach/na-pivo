@@ -54,6 +54,7 @@ function isValidEmail(value: string): boolean {
 // ---------------------------------------------------------------------------
 
 interface FieldProps {
+  testID?: string;
   label: string;
   value: string;
   onChangeText: (value: string) => void;
@@ -66,6 +67,7 @@ interface FieldProps {
 }
 
 function Field({
+  testID,
   label,
   value,
   onChangeText,
@@ -80,6 +82,7 @@ function Field({
     <View style={styles.fieldGroup}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        testID={testID}
         style={styles.input}
         value={value}
         onChangeText={onChangeText}
@@ -351,6 +354,7 @@ export default function AuthScreen() {
               return (
                 <Pressable
                   key={value}
+                  testID={`auth-${value}-mode`}
                   onPress={() => switchMode(value)}
                   style={[styles.segment, selected && styles.segmentSelected]}
                   accessibilityRole="button"
@@ -390,6 +394,7 @@ export default function AuthScreen() {
             </View>
           )}
           <Field
+            testID="auth-email"
             label={t.account.emailLabel}
             value={email}
             onChangeText={(value) => {
@@ -403,6 +408,7 @@ export default function AuthScreen() {
             textContentType="emailAddress"
           />
           <Field
+            testID="auth-password"
             label={t.account.passwordLabel}
             value={password}
             onChangeText={(value) => {
@@ -417,7 +423,7 @@ export default function AuthScreen() {
           />
 
           {!!visibleError && (
-            <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
+            <Text testID="auth-error" style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
               {visibleError}
             </Text>
           )}
@@ -425,6 +431,7 @@ export default function AuthScreen() {
           {/* ── Primary CTA ── */}
           <View style={styles.primaryButton}>
             <GlowButton
+              testID="auth-submit"
               label={submitLabel}
               onPress={handleSubmit}
               glow={busy || sessionRecoveryRequired ? 'none' : 'soft'}
@@ -440,6 +447,7 @@ export default function AuthScreen() {
           {/* ── Forgot password ── */}
           {mode === 'login' && !resetOpen && (
             <Pressable
+              testID="auth-reset-open"
               onPress={() => {
                 trackUiInteraction('auth_reset_open');
                 setResetOpen(true);
@@ -465,6 +473,7 @@ export default function AuthScreen() {
               <TextInput
                 style={styles.input}
                 value={resetEmail}
+                testID="auth-reset-email"
                 onChangeText={setResetEmail}
                 placeholder={t.account.emailPlaceholder}
                 placeholderTextColor={Colors.mutedText}
@@ -478,6 +487,7 @@ export default function AuthScreen() {
               />
               <GlowButton
                 label={t.account.resetSend}
+                testID="auth-reset-request"
                 onPress={handleSendReset}
                 variant="secondary"
                 glow="none"

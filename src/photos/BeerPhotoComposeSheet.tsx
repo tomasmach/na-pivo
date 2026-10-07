@@ -225,6 +225,7 @@ export function BeerPhotoComposeSheet({
               {t.photoDiary.captionLabel}
             </Text>
             <TextInput
+              testID="photo-caption"
               value={caption}
               onChangeText={setCaption}
               placeholder={t.photoDiary.captionPlaceholder}

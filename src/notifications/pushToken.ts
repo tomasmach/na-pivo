@@ -9,6 +9,7 @@ import Constants from 'expo-constants';
 import type * as ExpoNotifications from 'expo-notifications';
 
 import { PUSH_TOKEN_KEY, registerPushDevice, type PushPermissionStatus } from '@/data/pushDeviceClient';
+import { isLocalE2E } from '@/data/localE2E';
 
 type NotificationsModule = typeof ExpoNotifications;
 
@@ -31,6 +32,7 @@ const Notifications = loadNotifications();
  * unless `status === 'granted'`.
  */
 export async function ensurePushTokenRegistered(status: PushPermissionStatus): Promise<string | null> {
+  if (isLocalE2E()) return null;
   if (status !== 'granted' || !Notifications) return null;
   try {
     const projectId =

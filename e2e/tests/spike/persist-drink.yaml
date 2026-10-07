@@ -1,0 +1,30 @@
+appId: ${MAESTRO_APP_ID}
+name: Login and a stored beer survive restart
+tags: [critical, full, spike]
+---
+- runFlow: ../../maestro/reset.yaml
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn:
+    id: counter-primary
+- tapOn: 'Připsat E2E Ležák za 0,5 l · 41 Kč'
+- assertVisible: '1 pivo, utraceno 41\sKč\. Otevře tvůj účet\.'
+- runScript: persist-drink.js
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: Upravit profil
+- assertVisible: E2E Pivař
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- assertVisible: '1 pivo, utraceno 41\sKč\. Otevře tvůj účet\.'
+- evalScript: ${output.local.screenshot('spike-persisted-drink')}
+- runScript: persist-drink.js

@@ -1,0 +1,211 @@
+appId: ${MAESTRO_APP_ID}
+name: Denied location and camera preserve manual search and text feedback
+tags: [full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runScript: oracle.js
+- evalScript: ${output.ps.permissionsCommunity('baseline')}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /community-events
+- assertVisible: 'V okolí teď nikdo stůl neotevřel\.'
+- assertNotVisible: E2E Večer u hosta
+- tapOn: Moje
+- assertVisible: 'Zatím žádné vlastní ani domluvené setkání\.'
+- assertNotVisible: E2E Večer u hosta
+- evalScript: ${output.local.screenshot('places-anonymous-community-empty')}
+- evalScript: ${output.ps.permissionsCommunity('preserved')}
+- runFlow: ../../maestro/login.yaml
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          arguments:
+            '--initialUrl': ${MAESTRO_METRO}
+            '-EXDevMenuShowsAtLaunch': 'NO'
+            '-EXDevMenuIsOnboardingFinished': 'YES'
+            '-EXDevMenuShowFloatingActionButton': 'NO'
+          permissions:
+            all: deny
+            location: never
+            photos: allow
+            camera: deny
+            notifications: deny
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - launchApp:
+          permissions:
+            all: deny
+            location: deny
+            camera: deny
+            notifications: deny
+      - evalScript: ${output.local.request('/app/open', {})}
+      - extendedWaitUntil:
+          visible: {id: tab-index}
+          timeout: 60000
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /
+- assertVisible: Potřebuju tvoji polohu
+- tapOn: Otevřít mapu bez polohy
+- assertVisible: Pivní mapa hospod, navštívených míst a kamarádů
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E NenalezitelnyPodnik
+- assertVisible: Nic jsem nenašel
+- evalScript: ${output.local.offline()}
+- tapOn: Smazat hledání
+- assertNotVisible: Smazat hledání
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá hospoda
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: Hledání teď není dostupné
+    timeout: 15000
+- assertNotVisible: Nic jsem nenašel
+- evalScript: ${output.local.screenshot('places-search-unavailable')}
+- evalScript: ${output.local.online()}
+- tapOn: Zkusit znovu
+- extendedWaitUntil:
+    notVisible: Hledání teď není dostupné
+    timeout: 15000
+- assertVisible: 'E2E Druhá hospoda, Praha'
+- assertNotVisible: Hledám hospody…
+- assertNotVisible: Nic jsem nenašel
+- tapOn: Smazat hledání
+- assertNotVisible: Smazat hledání
+- assertNotVisible: Hledání teď není dostupné
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /community-events
+- tapOn: Založit setkání
+- tapOn: Pivo, deskovky a klid
+- inputText: E2E Stůl bez povolené polohy
+- pressKey: Enter
+- scrollUntilVisible:
+    element: {text: Praha}
+    direction: DOWN
+    centerElement: true
+- tapOn: Praha
+- inputText: Praha
+- pressKey: Enter
+- scrollUntilVisible:
+    element: {text: 'Ulice, číslo a případně zvonek'}
+    direction: DOWN
+    centerElement: true
+- tapOn: Ulice, číslo a případně zvonek
+- inputText: E2E Ulice 34
+- pressKey: Enter
+- scrollUntilVisible:
+    element: {text: Použít polohu tohoto místa}
+    direction: DOWN
+    centerElement: true
+- evalScript: ${output.ps.deniedLocationPid = output.local.request('/app/process').pid}
+- evalScript: ${output.local.check(output.ps.deniedLocationPid > 0, 'The community form runs in an existing app process before the denied location action.')}
+- tapOn: Použít polohu tohoto místa
+- runFlow:
+    when:
+      platform: Android
+      visible: 'Don’t allow'
+    commands:
+      - tapOn: 'Don’t allow'
+- waitForAnimationToEnd:
+    timeout: 5000
+# A denied permission opens Settings. Return without changing it or repeating
+# the location request; the same process must retain the unsent form.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          stopApp: false
+          permissions:
+            all: deny
+            location: never
+            photos: allow
+            camera: deny
+            notifications: deny
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - launchApp:
+          stopApp: false
+          permissions: {}
+- evalScript: ${output.local.check(output.local.request('/app/process').pid === output.ps.deniedLocationPid, 'Returning from Settings must preserve the community form process.')}
+- extendedWaitUntil:
+    visible: {text: Použít polohu tohoto místa, enabled: true}
+    timeout: 15000
+- assertNotVisible: Poloha uložená jen k tomuto setkání
+- assertVisible: E2E Ulice 34
+- scrollUntilVisible:
+    element: {text: 'Je mi 18\+ a setkání je jen pro dospělé\.'}
+    direction: DOWN
+- tapOn: 'Je mi 18\+ a setkání je jen pro dospělé\.'
+- scrollUntilVisible:
+    element: {text: Otevřít stůl, enabled: true}
+    direction: DOWN
+    centerElement: true
+- tapOn: Otevřít stůl
+- scrollUntilVisible:
+    element: {text: E2E Stůl bez povolené polohy}
+    direction: UP
+- assertVisible: E2E Stůl bez povolené polohy
+- evalScript: ${output.ps.permissionsCommunity('preserved')}
+- evalScript: ${output.local.screenshot('places-denied-community-draft')}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /report
+- tapOn: Přidat přílohu
+- tapOn: Vyfotit
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: 'Don’t allow'
+- assertVisible: Bez povolení to nepůjde
+- runFlow:
+    when: {visible: Zrušit}
+    commands:
+      - tapOn: Zrušit
+- runFlow:
+    when: {visible: OK}
+    commands:
+      - tapOn: OK
+- scrollUntilVisible:
+    element: {id: feedback-message}
+    direction: UP
+- tapOn: {id: feedback-message}
+- inputText: E2E Kamera odmítnuta
+# The multiline keyboard can cover submit; dismiss it through the static label.
+- scrollUntilVisible:
+    element: {text: 'Fotka nebo screenshot \(nepovinné\)'}
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- tapOn: 'Fotka nebo screenshot \(nepovinné\)'
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {text: Odeslat zpětnou vazbu}
+    direction: DOWN
+    centerElement: true
+- tapOn: Odeslat zpětnou vazbu
+- assertVisible: Díky!
+- evalScript: ${output.local.poll(function () { output.ps.check('denied-feedback'); }, 15000)}
+- evalScript: ${output.local.screenshot('places-denied-camera-feedback')}
+- evalScript: ${output.ps.check('denied-feedback')}

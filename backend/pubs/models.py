@@ -3386,6 +3386,22 @@ class PubPriceIndex(models.Model):
         return f"{self.price_czk} CZK @ {self.name} [{self.cache_key}]"
 
 
+class PubPriceSnapshot(models.Model):
+    """One day's public beer price map, served as is by the /ceny page."""
+
+    day = models.DateField(unique=True)
+    computed_at = models.DateTimeField()
+    data = models.JSONField()
+    og_image_cs = models.BinaryField()
+    og_image_en = models.BinaryField()
+
+    class Meta:
+        ordering = ["-day"]
+
+    def __str__(self) -> str:
+        return f"Pub price snapshot {self.day}"
+
+
 class BeerBrand(models.Model):
     """
     Canonical beer brand used for suggestions and brand-level pub filtering.
@@ -5219,3 +5235,89 @@ class TourInvite(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["plan", "invitee"], name="tour_invite_identity")]
+
+
+class TransitFeed(models.Model):
+    """One imported PID GTFS timetable. Only the active feed is ever read.
+
+    The rows below a feed are a compact copy of the timetable: stops, distinct
+    stop sequences ("patterns") and one row per trip with its departure times,
+    never the 1.8M raw stop_times rows. Service days are expanded only for a
+    short window around the import day.
+    """
+
+    source = models.CharField(max_length=500)
+    sha256 = models.CharField(max_length=64)
+    # What clients see; changes whenever the stored data can change.
+    version = models.CharField(max_length=40)
+    etag = models.CharField(max_length=255, blank=True, default="")
+    last_modified = models.CharField(max_length=64, blank=True, default="")
+    # Validity declared by feed_info.txt, informational only.
+    feed_start = models.DateField(null=True, blank=True)
+    feed_end = models.DateField(null=True, blank=True)
+    # The service days expanded into TransitServiceDate.
+    window_start = models.DateField()
+    window_end = models.DateField()
+    imported_at = models.DateTimeField(default=timezone.now)
+    checked_at = models.DateTimeField(default=timezone.now)
+    active = models.BooleanField(default=False, db_index=True)
+
+
+class TransitStop(models.Model):
+    """A boarding platform used by at least one stored trip."""
+
+    feed = models.ForeignKey(TransitFeed, on_delete=models.CASCADE, related_name="+")
+    stop_id = models.CharField(max_length=64)
+    name = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["feed", "stop_id"], name="transit_stop_identity")
+        ]
+        indexes = [models.Index(fields=["feed", "lat", "lng"], name="transit_stop_geo")]
+
+
+class TransitPatternStop(models.Model):
+    """Stop ``idx`` of a distinct ordered stop sequence shared by many trips."""
+
+    feed = models.ForeignKey(TransitFeed, on_delete=models.CASCADE, related_name="+")
+    pattern = models.PositiveIntegerField()
+    idx = models.PositiveSmallIntegerField()
+    stop_id = models.CharField(max_length=64)
+    can_board = models.BooleanField()
+    can_alight = models.BooleanField()
+
+    class Meta:
+        indexes = [models.Index(fields=["feed", "stop_id"], name="transit_pattern_stop")]
+
+
+class TransitTrip(models.Model):
+    """One scheduled run of a pattern.
+
+    ``departures[idx]`` is seconds after the service day's noon minus 12 h (the
+    GTFS clock, can exceed 24 h), or -1 when the feed has no time for that stop.
+    """
+
+    feed = models.ForeignKey(TransitFeed, on_delete=models.CASCADE, related_name="+")
+    pattern = models.PositiveIntegerField()
+    route_short_name = models.CharField(max_length=32)
+    route_type = models.PositiveSmallIntegerField()
+    headsign = models.CharField(max_length=255, blank=True, default="")
+    service_id = models.CharField(max_length=64)
+    departures = models.JSONField()
+
+    class Meta:
+        indexes = [models.Index(fields=["feed", "pattern"], name="transit_trip_pattern")]
+
+
+class TransitServiceDate(models.Model):
+    """A day on which trips of ``service_id`` run, inside the feed's window."""
+
+    feed = models.ForeignKey(TransitFeed, on_delete=models.CASCADE, related_name="+")
+    service_id = models.CharField(max_length=64)
+    date = models.DateField()
+
+    class Meta:
+        indexes = [models.Index(fields=["feed", "date"], name="transit_service_date")]
