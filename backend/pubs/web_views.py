@@ -312,7 +312,7 @@ def _texts(snapshot: PubPriceSnapshot | None, country: dict | None, area: dict |
             "page_title": gettext("Cena piva %(city)s %(year)s: medián %(price)s Kč")
             % {**values, "year": snapshot.day.year},
             "description": gettext(
-                "%(city)s: medián ceny piva v hospodě je %(price)s Kč a polovina hospod má nejlevnější pivo mezi %(low)s a %(high)s Kč. Podívej se, kde je nejlevnější."
+                "%(city)s: medián ceny piva v hospodě je %(price)s Kč a polovina hospod má nejlevnější pivo mezi %(low)s a %(high)s Kč. Podívej se, kde ho čepujou nejlevněji."
             ) % values,
         }
     return {
@@ -346,11 +346,13 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
     )
     data = snapshot.data if snapshot else {}
     area = None
+    missing = False
     if city and not wait:
-        # A city drops out once it has fewer than five priced pubs, and its page with it.
         area = next((area for area in data.get("cities", []) if city_slug(area["name"]) == city), None)
+        # A city drops out once it has fewer than five priced pubs. Its old links get a 404
+        # that still leads to the other cities.
         if area is None:
-            raise Http404
+            missing, snapshot, data = True, None, {}
     paths = {code: f"{path}/{city}" if city else path for code, path in PRICE_PATHS.items()}
     origin = settings.PUBLIC_WEB_ORIGIN
     with translation.override(lang):
@@ -385,6 +387,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
                 "day": snapshot.day if snapshot else None,
                 "country": country,
                 "area": area,
+                "missing": missing,
                 "headline": headline,
                 "cities": [] if area else [
                     {**city_area, "url": f"{PRICE_PATHS[lang]}/{city_slug(city_area['name'])}"}
@@ -396,7 +399,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
                 "play_store_url": PLAY_STORE_URL,
                 "privacy_url": f"{_LEGAL_ROOT}{'' if lang == 'cs' else '/en'}/privacy.html",
             },
-            status=429 if wait else 200,
+            status=429 if wait else 404 if missing else 200,
         )
     response["Content-Language"] = lang
     response["Content-Security-Policy"] = _SELF_CONTAINED_CSP

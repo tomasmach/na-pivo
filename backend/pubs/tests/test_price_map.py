@@ -511,6 +511,8 @@ def test_city_page_shows_the_city_beside_the_country_and_its_cheapest_pubs(clien
     assert '<link rel="canonical" href="https://na-pivo.cz/ceny/brno">' in html
     assert '<link rel="alternate" hreflang="en" href="https://na-pivo.cz/en/prices/brno">' in html
     assert 'class="all-cities" href="/ceny"' in html
+    assert '<a class="crumb" href="/ceny">Ceny piva</a>' in html
+    assert "Hospody od nejlevnější" in html
     crumbs = _structured_data(html)["BreadcrumbList"]["itemListElement"]
     assert [(crumb["name"], crumb["item"]) for crumb in crumbs] == [
         ("Na pivo", "https://na-pivo.cz/"),
@@ -519,7 +521,7 @@ def test_city_page_shows_the_city_beside_the_country_and_its_cheapest_pubs(clien
     ]
 
     english = client.get("/en/prices/brno").content.decode()
-    assert "<h1>What a beer costs: Brno</h1>" in english
+    assert "<h1>What a beer costs in Brno</h1>" in english
     assert f"<title>Beer prices in Brno {today.year}: median 42 CZK | Na pivo</title>" in english
     assert "from 7 pubs" in english
 
@@ -545,8 +547,14 @@ def test_country_page_links_every_city_and_the_sitemap_lists_them(client, settin
     assert "<loc>https://na-pivo.cz/en/prices/praha</loc>" in sitemap
 
 
-def test_city_without_enough_prices_has_no_page(client):
+def test_city_without_enough_prices_has_no_page_but_leads_to_the_others(client):
     _city_snapshot()
 
-    assert client.get("/ceny/ostrava").status_code == 404
+    response = client.get("/ceny/ostrava")
+
+    assert response.status_code == 404
+    html = response.content.decode()
+    assert "Zatím mám málo cen." in html
+    assert 'class="all-cities" href="/ceny"' in html
+    assert "Dataset" not in html
     assert client.get("/en/prices/ostrava").status_code == 404
