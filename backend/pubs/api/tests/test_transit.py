@@ -352,7 +352,7 @@ def test_last_direct_response_shape(client, tmp_path):
 
 
 @pytest.mark.django_db
-def test_stops_lists_every_stop_a_stored_trip_uses(client, tmp_path):
+def test_stops_lists_every_platform_even_one_served_only_after_the_window(client, tmp_path):
     feed = _import(
         tmp_path,
         [
@@ -369,7 +369,17 @@ def test_stops_lists_every_stop_a_stored_trip_uses(client, tmp_path):
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {
         "feed_version": feed.version,
-        "stops": [["HOME1", 50.1, 14.1], ["PUB1", 50.0, 14.0]],
+        # FAR and HOME2 only get trips on 25 October, after the stored window;
+        # the app keeps this list for weeks. STATION is not a platform.
+        "stops": [
+            ["FAR", 50.0054, 14.0],
+            ["HOME1", 50.1, 14.1],
+            ["HOME2", 50.1005, 14.1],
+            ["MID", 50.05, 14.05],
+            ["PUB1", 50.0, 14.0],
+            ["PUB2", 50.0018, 14.0],
+            ["UNUSED", 49.0, 13.0],
+        ],
     }
 
 
@@ -402,10 +412,8 @@ def test_import_command_swaps_in_the_new_feed_and_skips_inside_the_interval(tmp_
     assert new.pk != old.pk and new.active
     for model in (TransitTrip, TransitPatternStop, TransitServiceDate, TransitStop):
         assert not model.objects.filter(feed_id=old.pk).exists()
-    assert list(TransitStop.objects.values_list("stop_id", flat=True).order_by("stop_id")) == [
-        "HOME2",
-        "PUB2",
-    ]
+    # The old feed's stops went with it; only the new feed's remain.
+    assert set(TransitStop.objects.values_list("feed_id", flat=True)) == {new.pk}
     assert list(TransitTrip.objects.values_list("departures", flat=True)) == [[85800, 86100]]
 
 

@@ -126,3 +126,13 @@ it('drops the ping when the stored ride belongs to another evening', async () =>
   expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith('notification-1');
   expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
 });
+
+it('replans the ping without the stop once pub names are hidden', async () => {
+  await syncHomeTransitReminder();
+  useSettingsStore.setState({ hidePubNames: true });
+  await syncHomeTransitReminder();
+
+  expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith('notification-1');
+  const replanned = mockScheduleNotificationAsync.mock.calls[1][0] as { content: { body: string } };
+  expect(replanned.content.body).not.toContain('Anděl');
+});

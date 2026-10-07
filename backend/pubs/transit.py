@@ -381,12 +381,12 @@ def import_feed(
                 ),
                 batch_size=_BATCH,
             )
+            # Every platform, not just those of the stored days: the app keeps
+            # the list for weeks, longer than the import window.
             created_stops = TransitStop.objects.bulk_create(
                 (
                     TransitStop(feed=feed, stop_id=stop_id, name=name[:255], lat=lat, lng=lng)
-                    for stop_id in sorted(used_stops)
-                    if stop_id in stops
-                    for name, lat, lng in [stops[stop_id]]
+                    for stop_id, (name, lat, lng) in sorted(stops.items())
                 ),
                 batch_size=_BATCH,
             )
@@ -420,7 +420,7 @@ def active_feed() -> TransitFeed | None:
 
 
 def stops_payload(feed: TransitFeed) -> dict:
-    """Every stop a stored trip uses, the same body for everyone."""
+    """Every platform of the feed, the same body for everyone."""
 
     key = f"transit:stops:{feed.version}"
     payload = cache.get(key)

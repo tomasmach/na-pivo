@@ -321,7 +321,11 @@ internal object BeerLiveActivityNotification {
     )
   }
 
-  /** An inexact alarm is enough: the countdown already shows when the ride leaves. */
+  /**
+   * Redraws the ride as departed. Allowed in Doze and needs no exact-alarm
+   * permission; Android may still deliver it a few minutes late, and the
+   * departure time stays in the text meanwhile.
+   */
   private fun scheduleTransitExpiry(context: Context, state: NotificationState) {
     val alarms = context.getSystemService(AlarmManager::class.java) ?: return
     val departsAt = homeTransitDepartsAt(state)
@@ -329,7 +333,11 @@ internal object BeerLiveActivityNotification {
       alarms.cancel(transitExpiryIntent(context, state.sessionId))
       return
     }
-    alarms.set(AlarmManager.RTC, departsAt + 1_000L, transitExpiryIntent(context, state.sessionId))
+    alarms.setAndAllowWhileIdle(
+      AlarmManager.RTC_WAKEUP,
+      departsAt + 1_000L,
+      transitExpiryIntent(context, state.sessionId)
+    )
   }
 
   private fun transitExpiryIntent(context: Context, sessionId: String): PendingIntent {

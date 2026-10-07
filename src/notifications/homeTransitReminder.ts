@@ -15,7 +15,7 @@ import { homeTransitForCurrentEvening } from '@/transit/homeTransitSync';
 
 const STATE_KEY = 'na-pivo-home-transit-reminder';
 const CHANNEL_ID = 'home-transit-reminders';
-export const HOME_TRANSIT_REMINDER_KIND = 'home_transit_reminder';
+const HOME_TRANSIT_REMINDER_KIND = 'home_transit_reminder';
 /** How long before the departure the reminder rings. */
 export const HOME_TRANSIT_REMINDER_LEAD_MS = 20 * 60 * 1000;
 // Closer than this to the reminder time there is nothing useful left to say.
@@ -25,6 +25,8 @@ interface ReminderState {
   notificationId: string;
   lookupKey: string;
   departsAtMs: number;
+  /** What the ping says; a different text (line, stop, hidden pub names) replans it. */
+  body?: string;
 }
 
 type NotificationsModule = typeof ExpoNotifications;
@@ -97,13 +99,22 @@ async function syncInternal(): Promise<void> {
   const departure = homeTransitForCurrentEvening();
   const enabled = useSettingsStore.getState().homeTransitReminderEnabled;
   const valid = enabled && !!Notifications && !!lookupKey && isUpcomingDeparture(departure);
+  const body = departure
+    ? t.notifications.homeTransitBody(
+        departure.line,
+        formatDepartureTime(departure.departsAtMs),
+        // Same rule as the Live Activity: the stop would give the pub away.
+        useSettingsStore.getState().hidePubNames ? '' : departure.fromStopName,
+      )
+    : '';
 
   const existing = await readState();
-  // An already planned ping for the same ride stays, however close it is.
+  // An already planned ping for the same ride and text stays, however close it is.
   if (
     valid &&
     existing?.lookupKey === lookupKey &&
-    existing.departsAtMs === departure?.departsAtMs
+    existing.departsAtMs === departure?.departsAtMs &&
+    existing.body === body
   ) {
     return;
   }
@@ -116,12 +127,7 @@ async function syncInternal(): Promise<void> {
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: t.notifications.homeTransitTitle,
-        body: t.notifications.homeTransitBody(
-          departure.line,
-          formatDepartureTime(departure.departsAtMs),
-          // Same rule as the Live Activity: the stop would give the pub away.
-          useSettingsStore.getState().hidePubNames ? '' : departure.fromStopName,
-        ),
+        body,
         data: { kind: HOME_TRANSIT_REMINDER_KIND },
       },
       trigger: {
@@ -130,7 +136,7 @@ async function syncInternal(): Promise<void> {
         ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
       },
     });
-    await writeState({ notificationId, lookupKey, departsAtMs: departure.departsAtMs });
+    await writeState({ notificationId, lookupKey, departsAtMs: departure.departsAtMs, body });
   } catch {
     // The connection still shows in the evening; only the ping is missing.
   }
@@ -175,7 +181,10 @@ export function initializeHomeTransitReminder(): void {
     }
   });
   useSettingsStore.subscribe((state, previous) => {
-    if (state.homeTransitReminderEnabled !== previous.homeTransitReminderEnabled) {
+    if (
+      state.homeTransitReminderEnabled !== previous.homeTransitReminderEnabled ||
+      state.hidePubNames !== previous.hidePubNames
+    ) {
       void syncHomeTransitReminder();
     }
   });
