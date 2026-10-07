@@ -34,6 +34,8 @@ MIN_DRINKERS = 3
 PERIODS = ("week", "year", "all")
 # Cities split into numbered or named districts in the pub catalogue.
 CITIES_WITH_DISTRICTS = ("Praha", "Brno", "Ostrava", "Plzeň")
+# Official names some catalogue rows use instead of the city's own.
+CITY_ALIASES = {"Hlavní město Praha": "Praha"}
 _PLACES_CHUNK = 500
 
 
@@ -52,6 +54,7 @@ def city_name(raw: str) -> str:
     """One name per city, so "Praha 2" and "Brno-střed" count as Praha and Brno."""
 
     city = " ".join((raw or "").split())
+    city = CITY_ALIASES.get(city, city)
     # "Praha-východ" or "Brno-venkov" is the county around the city, not the city.
     if city.endswith(("-východ", "-západ", "-venkov")):
         return city

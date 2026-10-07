@@ -16,10 +16,11 @@ from pathlib import Path
 
 from django.conf import settings
 from django.utils import formats, timezone, translation
+from django.utils.text import slugify
 from django.utils.translation import gettext
 from PIL import Image, ImageDraw, ImageFont
 
-from pubs.api.pub_beers_views import _merged_aliases, _places, city_name
+from pubs.api.pub_beers_views import CITY_ALIASES, _merged_aliases, _places, city_name
 from pubs.api.views import _globally_reported_pub_cache_keys
 from pubs.enrichment import names_match
 from pubs.enrichment.coverage import coverage_country
@@ -129,10 +130,16 @@ def prague_district(raw: str) -> str:
     """"Praha 2 - Vinohrady" is Praha 2, "Praha-Libuš" stays itself, plain "Praha" has none."""
 
     city = " ".join((raw or "").split())
-    if city == "Praha" or city_name(city) != "Praha":
+    if city == "Praha" or city in CITY_ALIASES or city_name(city) != "Praha":
         return ""
     numbered = _PRAGUE_NUMBERED.match(city)
     return f"Praha {numbered.group(1)}" if numbered else city
+
+
+def city_slug(name: str) -> str:
+    """The city's address under /ceny: České Budějovice is ceske-budejovice."""
+
+    return slugify(name)
 
 
 def _round(value: float) -> int:
@@ -205,7 +212,10 @@ def _cheapest(rows: list[PubPriceIndex]) -> list[dict]:
 
 
 def build_price_map(now: datetime | None = None) -> dict:
-    """Median, quartiles and pub count per city and Prague district, plus the cheapest pubs."""
+    """Median, quartiles and pub count per city and Prague district, plus the cheapest pubs.
+
+    The cheapest pubs are listed for the whole country and for each city.
+    """
 
     now = now or timezone.now()
     since = now - timedelta(days=WINDOW_DAYS)
@@ -251,7 +261,8 @@ def build_price_map(now: datetime | None = None) -> dict:
         "fresh_days": FRESH_DAYS,
         "min_pubs": MIN_PUBS,
         "country": _stats(rows) if len(rows) >= MIN_PUBS else None,
-        "cities": _areas(cities),
+        # Each city keeps its own cheapest pubs for its page.
+        "cities": [{**area, "cheapest": _cheapest(cities[area["name"]])} for area in _areas(cities)],
         "prague_districts": sorted(_areas(districts), key=_district_order),
         "cheapest": _cheapest(rows),
     }

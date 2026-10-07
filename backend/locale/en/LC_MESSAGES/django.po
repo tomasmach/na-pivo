@@ -1241,6 +1241,21 @@ msgstr "Beer prices %(year)s: what a beer costs in Czech pubs"
 msgid "Medián ceny piva v českých hospodách je %(price)s Kč. Najdeš tu ceny po městech i nejlevnější hospody podle toho, co lidi zapsali v Na pivo."
 msgstr "The median beer price in Czech pubs is %(price)s CZK. See prices by city and the cheapest pubs, based on what people logged in Na pivo."
 
+#, python-format
+msgid "Kolik stojí pivo: %(city)s"
+msgstr "What a beer costs: %(city)s"
+
+#, python-format
+msgid "Cena piva %(city)s %(year)s: medián %(price)s Kč"
+msgstr "Beer prices in %(city)s %(year)s: median %(price)s CZK"
+
+#, python-format
+msgid "%(city)s: medián ceny piva v hospodě je %(price)s Kč a polovina hospod má nejlevnější pivo mezi %(low)s a %(high)s Kč. Podívej se, kde je nejlevnější."
+msgstr "%(city)s: the median beer price in a pub is %(price)s CZK and half of the pubs have their cheapest beer between %(low)s and %(high)s CZK. See where it is cheapest."
+
+msgid "Ceny v dalších městech"
+msgstr "Prices in other cities"
+
 msgid "Medián ceny piva v hospodách po městech a pražských městských částech, z cen, které lidi zapsali v Na pivo."
 msgstr "Median beer prices in Czech pubs by city and Prague district, from prices people logged in Na pivo."
 
@@ -1311,3 +1326,7 @@ msgstr "Log it in Na pivo."
 #, python-format
 msgid "Medián nejlevnějšího piva od 0,4 l, stav k %(date)s"
 msgstr "Median of the cheapest beer of 0.4 l or more, as of %(date)s"
+
+#, python-format
+msgid "Medián nejlevnějšího piva od 0,4 l z %(pubs)s hospod, stav k %(date)s"
+msgstr "Median of the cheapest beer of 0.4 l or more from %(pubs)s pubs, as of %(date)s"

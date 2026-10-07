@@ -14,7 +14,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Na pivo">
 <meta property="og:locale" content="{{ og_locale }}">
-<meta property="og:title" content="{% translate "Kolik stojí pivo v hospodě" %}">
+<meta property="og:title" content="{{ h1 }}">
 <meta property="og:description" content="{{ description }}">
 <meta property="og:url" content="{{ canonical_url }}">
 <meta property="og:image" content="{{ og_image_url }}">
@@ -59,7 +59,7 @@
   h1 { margin-top: 28px; font-size: clamp(32px, 8vw, 48px); line-height: 1.1; letter-spacing: -0.02em; }
   .as-of { margin-top: 10px; color: var(--muted); font-size: 16px; }
 
-  .headline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 36px 0 0; padding: 24px 0; border-block: 1px solid var(--hair); }
+  .headline { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; margin: 36px 0 0; padding: 24px 0; border-block: 1px solid var(--hair); }
   .headline div { min-width: 0; }
   .headline dt { color: var(--foam-muted); font-size: 16px; font-weight: 600; }
   .headline dd { margin: 0; }
@@ -78,6 +78,8 @@
   th + th, td { padding-left: 14px; }
   thead th { color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.25; }
   tbody th { font-weight: 600; overflow-wrap: anywhere; }
+  tbody th a { text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+  @media (hover: hover) { tbody th a:hover { color: var(--amber-light); } }
   .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   thead .num { white-space: normal; }
   td.median { font-weight: 700; }
@@ -94,7 +96,7 @@
 
   .notice { margin-top: 36px; padding: 24px 0; border-block: 1px solid var(--hair); }
   .notice p { color: var(--foam-muted); }
-  .retry { display: inline-flex; min-height: 48px; align-items: center; margin-top: 16px; padding: 0 18px; border-radius: 999px; background: var(--stout-3); color: var(--foam); font-weight: 700; text-decoration: none; }
+  .retry, .all-cities { display: inline-flex; min-height: 48px; align-items: center; margin-top: 16px; padding: 0 18px; border-radius: 999px; background: var(--stout-3); color: var(--foam); font-weight: 700; text-decoration: none; }
   .method { margin-top: 28px; color: var(--muted); font-size: 15px; }
 
   .cta { margin-top: 56px; padding-top: 28px; border-top: 1px solid var(--hair); }
@@ -128,8 +130,9 @@
 </header>
 
 <main>
-  <h1>{% translate "Kolik stojí pivo v hospodě" %}</h1>
-  {% if day %}<p class="as-of">{% blocktranslate with date=day|date:"DATE_FORMAT" %}Medián nejlevnějšího piva od 0,4 l, stav k {{ date }}{% endblocktranslate %}</p>{% endif %}
+  <h1>{{ h1 }}</h1>
+  {% if area %}<p class="as-of">{% blocktranslate with pubs=area.pubs date=day|date:"DATE_FORMAT" %}Medián nejlevnějšího piva od 0,4 l z {{ pubs }} hospod, stav k {{ date }}{% endblocktranslate %}</p>
+  {% elif day %}<p class="as-of">{% blocktranslate with date=day|date:"DATE_FORMAT" %}Medián nejlevnějšího piva od 0,4 l, stav k {{ date }}{% endblocktranslate %}</p>{% endif %}
 
   {% if throttled %}
   <div class="notice" role="alert">
@@ -171,10 +174,12 @@
   <section aria-labelledby="cheapest-title">
     <h2 id="cheapest-title">{% translate "Nejlevnější hospody" %}</h2>
     <ol class="cheapest" role="list">
-      {% for pub in cheapest %}<li><div class="pub"><strong>{{ pub.name }}</strong>{% if pub.city %}<span class="city">{{ pub.city }}</span>{% endif %}{% if pub.stale %}<span class="stale">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</div><div class="cost"><span class="price">{{ pub.price_czk }} {% translate "Kč" %}</span><span class="volume">{{ pub.litres }} l</span></div></li>{% endfor %}
+      {% for pub in cheapest %}<li><div class="pub"><strong>{{ pub.name }}</strong>{% if pub.city and pub.city != area.name %}<span class="city">{{ pub.city }}</span>{% endif %}{% if pub.stale %}<span class="stale">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</div><div class="cost"><span class="price">{{ pub.price_czk }} {% translate "Kč" %}</span><span class="volume">{{ pub.litres }} l</span></div></li>{% endfor %}
     </ol>
   </section>
   {% endif %}
+
+  {% if area %}<a class="all-cities" href="{{ prices_url }}">{% translate "Ceny v dalších městech" %}</a>{% endif %}
   {% else %}
   <div class="notice">
     <p>{% translate "Zatím mám málo cen." %}</p>
