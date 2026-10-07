@@ -15,6 +15,8 @@ from pubs.web_views import (
     invite_asset,
     invite_landing,
     party_invite_landing,
+    robots_txt,
+    sitemap_xml,
     tour_invite_landing,
 )
 
@@ -23,6 +25,8 @@ urlpatterns = [
     path("en", home, {"lang": "en"}, name="home-en"),
     path("en/", RedirectView.as_view(url="/en", permanent=True)),
     path("landing/<str:filename>", landing_asset, name="landing-asset"),
+    path("robots.txt", robots_txt, name="robots-txt"),
+    path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("ceny", beer_prices, name="beer-prices"),
     path("ceny/", RedirectView.as_view(url="/ceny", permanent=True)),
     path("ceny/og.png", beer_prices_og_image, name="beer-prices-og-image"),

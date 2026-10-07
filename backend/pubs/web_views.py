@@ -8,6 +8,7 @@ data to unauthenticated crawlers.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -18,7 +19,16 @@ from django.utils import translation
 from django.utils.translation import gettext
 
 from pubs.checks import ANDROID_APP_LINK_FINGERPRINTS_ENV, normalized_cert_fingerprints
-from pubs.home_views import _LANDING_URLS, _LEGAL_ROOT, APP_STORE_URL, PLAY_STORE_URL
+from pubs.home_views import (
+    _LANDING_URLS,
+    _LEGAL_ROOT,
+    APP_STORE_URL,
+    AUTHOR,
+    PLAY_STORE_URL,
+    canonical_host,
+    ld_json,
+)
+from pubs.home_views import PATHS as HOME_PATHS
 from pubs.i18n import current_locale
 from pubs.models import PubPriceSnapshot
 from pubs.price_map import PATHS as PRICE_PATHS
@@ -251,6 +261,37 @@ def _price_map_wait(request: HttpRequest) -> int | None:
     return int(throttle.wait())
 
 
+def _prices_structured_data(origin: str, lang: str, snapshot: PubPriceSnapshot | None) -> str:
+    """The path Google shows above the result and, once there are numbers, the dataset."""
+
+    url = f"{origin}{PRICE_PATHS[lang]}"
+    graph: list[dict] = [{
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "Na pivo", "item": f"{origin}{HOME_PATHS[lang]}"},
+            {"@type": "ListItem", "position": 2, "name": gettext("Ceny piva"), "item": url},
+        ],
+    }]
+    if snapshot and snapshot.data.get("country"):
+        since = snapshot.day - timedelta(days=snapshot.data.get("window_days", 365))
+        graph.append({
+            "@type": "Dataset",
+            "name": gettext("Kolik stojí pivo v hospodě"),
+            "description": gettext(
+                "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod."
+            ),
+            "url": url,
+            "creator": AUTHOR,
+            "dateModified": snapshot.day.isoformat(),
+            "temporalCoverage": f"{since.isoformat()}/{snapshot.day.isoformat()}",
+            "spatialCoverage": {"@type": "Place", "name": gettext("Česko")},
+            "isAccessibleForFree": True,
+            "inLanguage": lang,
+        })
+    return ld_json({"@graph": graph})
+
+
+@canonical_host
 def beer_prices(request: HttpRequest, lang: str = "cs") -> HttpResponse:
     """Public beer price map, read as is from the newest daily snapshot."""
 
@@ -263,11 +304,28 @@ def beer_prices(request: HttpRequest, lang: str = "cs") -> HttpResponse:
     data = snapshot.data if snapshot else {}
     origin = settings.PUBLIC_WEB_ORIGIN
     with translation.override(lang):
+        country = data.get("country")
         response = render(
             request,
             "pubs/beer_prices.html",
             {
                 "LANGUAGE_CODE": lang,
+                # The year in the title answers "cena piva 2026"; the median makes the result worth a click.
+                "page_title": (
+                    gettext("Cena piva %(year)s: kolik stojí pivo v hospodě") % {"year": snapshot.day.year}
+                    if snapshot
+                    else gettext("Kolik stojí pivo v hospodě")
+                ),
+                "description": (
+                    gettext(
+                        "Medián ceny piva v českých hospodách je %(price)s Kč. Najdeš tu ceny po městech i nejlevnější hospody podle toho, co lidi zapsali v Na pivo."
+                    ) % {"price": country["median"]}
+                    if country
+                    else gettext(
+                        "Medián ceny piva v hospodách po městech a pražských městských částech, z cen, které lidi zapsali v Na pivo."
+                    )
+                ),
+                "structured_data": _prices_structured_data(origin, lang, snapshot),
                 "og_locale": _OG_LOCALES[lang],
                 "page_url": PRICE_PATHS[lang],
                 "canonical_url": f"{origin}{PRICE_PATHS[lang]}",
@@ -282,7 +340,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs") -> HttpResponse:
                 ),
                 "throttled": wait is not None,
                 "day": snapshot.day if snapshot else None,
-                "country": data.get("country"),
+                "country": country,
                 "headline": headline_prices(data),
                 "cities": data.get("cities", []),
                 "districts": data.get("prague_districts", []),
@@ -321,4 +379,37 @@ def beer_prices_og_image(request: HttpRequest, lang: str = "cs") -> HttpResponse
         raise Http404
     response = HttpResponse(bytes(getattr(snapshot, field)), content_type="image/png")
     response["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+def robots_txt(_request: HttpRequest) -> HttpResponse:
+    """Crawlers may read every page; the API only answers the app."""
+
+    lines = [
+        "User-agent: *",
+        "Disallow: /v1/",
+        "Disallow: /admin/",
+        "",
+        f"Sitemap: {settings.PUBLIC_WEB_ORIGIN}/sitemap.xml",
+    ]
+    response = HttpResponse("\n".join(lines) + "\n", content_type="text/plain; charset=utf-8")
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+def sitemap_xml(request: HttpRequest) -> HttpResponse:
+    """Every page worth finding, each with its other language."""
+
+    origin = settings.PUBLIC_WEB_ORIGIN
+    pages = [
+        {"urls": {lang: f"{origin}{path}" for lang, path in HOME_PATHS.items()}},
+        {
+            "urls": {lang: f"{origin}{path}" for lang, path in PRICE_PATHS.items()},
+            "lastmod": PubPriceSnapshot.objects.values_list("day", flat=True).first(),
+        },
+    ]
+    response = render(
+        request, "pubs/sitemap.xml", {"pages": pages}, content_type="application/xml; charset=utf-8"
+    )
+    response["Cache-Control"] = "public, max-age=3600"
     return response

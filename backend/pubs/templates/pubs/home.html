@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#231407">
-<title>{% translate "Na pivo: kompas na hospodu a pivní deníček" %}</title>
+<title>{% translate "Na pivo: aplikace s kompasem na hospodu a pivním deníčkem" %}</title>
 <meta name="description" content="{% translate "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam." %}">
 <link rel="canonical" href="{{ canonical_url }}">
 <link rel="alternate" hreflang="cs" href="{{ cs_url }}">
@@ -18,7 +18,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Na pivo">
 <meta property="og:locale" content="{{ og_locale }}">
-<meta property="og:title" content="{% translate "Na pivo: kompas na hospodu a pivní deníček" %}">
+<meta property="og:title" content="{% translate "Na pivo: aplikace s kompasem na hospodu a pivním deníčkem" %}">
 <meta property="og:description" content="{% translate "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam." %}">
 <meta property="og:url" content="{{ canonical_url }}">
 <meta property="og:image" content="{{ og_image_url }}">
@@ -27,6 +27,7 @@
 <meta property="og:image:alt" content="{% translate "Pivní tácek s čárkami na dubovém stole." %}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="apple-itunes-app" content="app-id=6773790025">
+{{ structured_data }}
 <style>
   @font-face {
     font-family: "Baloo 2";
@@ -465,6 +466,7 @@
   <a class="wordmark" href="{% if LANGUAGE_CODE == 'en' %}/en{% else %}/{% endif %}"><img src="{{ asset.icon_144_png }}" alt="" width="36" height="36">Na pivo</a>
   <nav class="site-nav" aria-label="{% translate "Hlavní navigace" %}">
     <a href="#kompas">{% translate "Co umí" %}</a>
+    <a href="{{ prices_url }}">{% translate "Ceny piva" %}</a>
     <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
     {% if LANGUAGE_CODE == "en" %}
       <a href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>
@@ -607,6 +609,7 @@
 <footer>
   <p>{% translate "Na pivo dělá Tomáš Mach" %}</p>
   <nav aria-label="{% translate "Dokumenty a kontakt" %}">
+    <a href="{{ prices_url }}">{% translate "Ceny piva" %}</a>
     <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
     <a href="{{ terms_url }}">{% translate "Podmínky" %}</a>
     <a href="{{ delete_account_url }}">{% translate "Smazání účtu" %}</a>

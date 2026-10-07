@@ -1004,8 +1004,11 @@ msgid "K tomuhle průchodu se připojit nejde."
 msgstr "You can't join this walk."
 
 # Home page (pubs/templates/pubs/home.html, pubs/home_views.py)
-msgid "Na pivo: kompas na hospodu a pivní deníček"
-msgstr "Na pivo: a compass to the pub and a beer diary"
+msgid "Na pivo: aplikace s kompasem na hospodu a pivním deníčkem"
+msgstr "Na pivo: the app with a compass to the pub and a beer diary"
+
+msgid "Ceny piva"
+msgstr "Beer prices"
 
 msgid "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam."
 msgstr "The compass points to the nearest pub, the counter keeps a tally of your beers and your crew knows where you are sitting. Free, no ads."
@@ -1229,6 +1232,14 @@ msgstr "You don't have an invite to this tour."
 
 msgid "Kolik stojí pivo v hospodě"
 msgstr "What a beer costs in Czech pubs"
+
+#, python-format
+msgid "Cena piva %(year)s: kolik stojí pivo v hospodě"
+msgstr "Beer prices %(year)s: what a beer costs in Czech pubs"
+
+#, python-format
+msgid "Medián ceny piva v českých hospodách je %(price)s Kč. Najdeš tu ceny po městech i nejlevnější hospody podle toho, co lidi zapsali v Na pivo."
+msgstr "The median beer price in Czech pubs is %(price)s CZK. See prices by city and the cheapest pubs, based on what people logged in Na pivo."
 
 msgid "Medián ceny piva v hospodách po městech a pražských městských částech, z cen, které lidi zapsali v Na pivo."
 msgstr "Median beer prices in Czech pubs by city and Prague district, from prices people logged in Na pivo."

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from datetime import timedelta
@@ -344,12 +345,51 @@ def test_price_page_serves_the_snapshot_without_external_resources(client, setti
     assert '<th scope="row">Praha 2</th>' in html
     assert "U Lacina" in html
     assert f'content="https://na-pivo.cz/ceny/og.png?v={day}"' in html
-    assert "<script" not in html and " src=" not in html
+    # Structured data is the only script block, and browsers never run it.
+    assert not re.search(r'<script(?! type="application/ld\+json")', html) and " src=" not in html
     assert not re.search(r'<link rel="(stylesheet|preload|icon)', html)
 
     english = client.get("/en/prices").content.decode()
     assert "What a beer costs in Czech pubs" in english
     assert "Kolik stojí" not in english
+
+
+def _structured_data(html: str) -> dict:
+    block = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    return {item["@type"]: item for item in json.loads(block.group(1))["@graph"]}
+
+
+def test_price_page_tells_search_engines_the_year_the_median_and_the_dataset(client, settings):
+    settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
+    for price in range(40, 55):
+        _price("Praha 2", price)
+    call_command("snapshot_beer_prices", stdout=StringIO())
+    today = timezone.localdate()
+
+    html = client.get("/ceny").content.decode()
+
+    assert f"<title>Cena piva {today.year}: kolik stojí pivo v hospodě | Na pivo</title>" in html
+    assert 'content="Medián ceny piva v českých hospodách je 47 Kč.' in html
+    data = _structured_data(html)
+    assert [crumb["item"] for crumb in data["BreadcrumbList"]["itemListElement"]] == [
+        "https://na-pivo.cz/",
+        "https://na-pivo.cz/ceny",
+    ]
+    assert data["Dataset"]["dateModified"] == today.isoformat()
+    assert data["Dataset"]["temporalCoverage"] == f"{today - timedelta(days=365)}/{today}"
+
+    english = client.get("/en/prices").content.decode()
+    assert f"<title>Beer prices {today.year}: what a beer costs in Czech pubs | Na pivo</title>" in english
+    assert "The median beer price in Czech pubs is 47 CZK." in english
+    assert _structured_data(english)["BreadcrumbList"]["itemListElement"][0]["item"] == "https://na-pivo.cz/en"
+    assert f"<loc>https://na-pivo.cz/ceny</loc>\n  <lastmod>{today}</lastmod>" in client.get("/sitemap.xml").content.decode()
+
+
+def test_price_page_without_numbers_has_no_dataset(client):
+    html = client.get("/ceny").content.decode()
+
+    assert "<title>Kolik stojí pivo v hospodě | Na pivo</title>" in html
+    assert "Dataset" not in _structured_data(html)
 
 
 def test_share_images_have_preview_dimensions(client):
