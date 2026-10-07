@@ -7,9 +7,7 @@ import type { Region } from 'react-native-maps';
 import * as Clipboard from 'expo-clipboard';
 import { BeerIcon, CompassIcon, EllipsisIcon, GlobeIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { MapPubSheet } from '@/components/amenities/MapPubSheet';
-import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
-import { geohash8 } from '@/data/geohash';
+import { openPubPage } from '@/pubPage/openPubPage';
 import { useToursStore, tourContentSignature } from '@/stores/toursStore';
 import { openPubInMaps } from '@/utils/maps';
 import { beerCountLabel, t, intlLocale } from '@/i18n';
@@ -27,7 +25,11 @@ import { loadLastPing, pingRecipients, pingStop, saveLastPing, sendPing } from '
 import { loadPartyFriends, type PartyFriends } from '@/data/friendsClient';
 import { flushFriendsQueue, friendActivityState } from '@/data/friendsQueue';
 import PingSheet from '@/friends/PingSheet';
+import { fetchTourRoster, type TourInviteRow } from '@/data/tourInvitesClient';
+import { useToastStore } from '@/stores/toastStore';
+import { TourInviteRosterRow, TourInviteRosterSheet, TourInviteSheet, type InviteSent } from './TourInviteSheet';
 import { TourJourneyIllustration } from './TourJourneyIllustration';
+import { TourReminderAsk } from './TourReminderAsk';
 import { TourHistoryRow, TourJourneyStop, TourLeg, TourMapPreview, type StopFactsLine } from './TourJourney';
 import { formatWalkDistance, hoursOnDay, planDay, useTourStopFacts, walkingDistance, walkingLeg } from './stopFacts';
 import { runPosition, type TourResult, type TourStop } from './model';
@@ -47,9 +49,12 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const plan = store.plans.find((p) => p.id === id);
   const displayed = run?.snapshot ?? plan;
   const [selected, setSelected] = useState<string | null>(null);
-  const [detail, setDetail] = useState<TourStop | null>(null); const [pubDetail, setPubDetail] = useState(false);
+  const [detail, setDetail] = useState<TourStop | null>(null);
   const [largeMap, setLargeMap] = useState(false); const [shareMode, setShareMode] = useState(false);
   const [crewSheet, setCrewSheet] = useState(false);
+  // Friends invited from Parta: who and what they answered. Null until the server says, or when it cannot.
+  const [roster, setRoster] = useState<TourInviteRow[] | null>(null);
+  const [inviteSheet, setInviteSheet] = useState(false); const [rosterSheet, setRosterSheet] = useState(false);
   const [friends, setFriends] = useState<PartyFriends | null>(null); const [ping, setPing] = useState<CrewPingState | null>(null);
   const [pingSheet, setPingSheet] = useState(false); const pingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // One ping per stop, even across a restart of the app.
@@ -107,6 +112,23 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   // In invisible mode a ping would reach nobody, so the row does not offer one.
   const canPing = !!friends?.friends.length && !friends.ghost;
   const publicToken = plan?.publication?.status === 'active' ? plan.publication.token : null;
+  // Only a plan the server knows can have invites; the answers are read again whenever the tour comes back into view,
+  // and after a new or revoked link, which changes who holds a working one.
+  const shareUrl = plan?.share?.url;
+  const onServer = !!plan && !plan.source && plan.revision > 0;
+  useEffect(() => {
+    if (!focused || !onServer) return;
+    let alive = true;
+    const load = () => void fetchTourRoster(id).then((result) => { if (alive && result.ok) setRoster(result.value); });
+    load();
+    const foreground = AppState.addEventListener('change', (next) => { if (next === 'active') load(); });
+    return () => { alive = false; foreground.remove(); };
+  }, [focused, onServer, id, shareUrl]);
+  function invitesSent(sent: InviteSent) {
+    setInviteSheet(false);
+    setRoster(sent.roster);
+    useToastStore.getState().show(t.tourInvites.sent(sent.invited));
+  }
   useEffect(() => { if (focused && publicToken) void useToursStore.getState().refreshPublicCount(id); }, [focused, publicToken, id]);
   const [openedAt] = useState(() => Date.now());
   async function action(operation: () => Promise<TourResult>, after?: (result: { ok: true; id?: string }) => void) {
@@ -152,7 +174,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     showAppDialog({ title: plan.title, buttons: [
       ...(!plan.source && !active ? [{ text: t.tours.edit, onPress: () => { void edit(); } }] : []),
       { text: t.tours.repeat, onPress: () => { void action(() => store.copyPlan(id, shareMode ? undefined : history?.id), (r) => { if (r.id) router.push({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); } },
-      ...(plan.source ? [{ text: t.tours.checkUpdate, onPress: () => router.push(`/t/${plan.source!.token}` as Href) }] : [{ text: t.tours.share, onPress: () => setShareMode(true) }]),
+      ...(plan.source ? [{ text: t.tours.checkUpdate, onPress: () => router.push(`/t/${plan.source!.token}` as Href) }] : [{ text: t.tourInvites.linkMenu, testID: 'tour-private-link-open', onPress: () => setShareMode(true) }]),
       // A saved public tour is someone else's route until its pubs change; a hidden one waits for moderation.
       ...(!plan.source && !plan.publicSource && plan.publication?.status !== 'hidden' ? [
         { text: plan.publication?.status === 'active' ? t.tours.updatePublic : t.tours.publishPublic, onPress: () => router.push({ pathname: '/tours/publish', params: { id } } as Href) },
@@ -262,6 +284,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             : store.published[id] !== tourContentSignature(plan) || plan.revision > plan.publication.planRevision ? t.tours.publicNewer
               : plan.publication.peopleCount > 0 ? t.tours.publicWithPeople(plan.publication.peopleCount) : t.tours.publicState}</TourText>
         </Pressable>}
+        {!shareMode && !runView && !plan.source && !!roster?.length && <TourInviteRosterRow roster={roster} onPress={() => setRosterSheet(true)} />}
         {!shareMode && live && active && (active.crew || canPing) && <TourCrewRow crew={active.crew} self={crewSelf} ping={rowPing} pingStatus={rowPingStatus}
           onInvite={() => { if (pingTimer.current) { clearTimeout(pingTimer.current); pingTimer.current = null; } setCrewSheet(true); }} onPing={openPing} />}
         {editable && !current.scheduledDate && <Pressable onPress={() => { void edit(); }} style={styles.addMeetup} accessibilityRole="button" accessibilityLabel={t.tours.addMeetup}><TourText style={ui.linkText}>{t.tours.addMeetup}</TourText></Pressable>}
@@ -272,6 +295,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
       <TourButton label={t.tours.useServer} secondary onPress={() => { void action(() => store.chooseServerVersion(plan.id)); }} />
       <TourButton label={t.tours.keepBoth} secondary onPress={() => { void action(() => store.copyLocalConflict(plan.id), (r) => { if (r.id) router.replace({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); }} />
     </View>)}
+      {!shareMode && !run && <TourReminderAsk plan={plan} />}
 
       <View>
         <View style={[ui.row, styles.listHeading]}><TourText style={styles.section}>{t.tours.stops}</TourText>
@@ -329,18 +353,20 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
       {shareMode ? ((!shared || localNewer || !!store.pending[id]) && <TourButton label={shared ? t.tours.publishChanges : t.tours.createLink} busy={acting || store.busy} onPress={() => { void action(() => store.publish(id)); }} />)
         : history ? <TourButton label={t.tours.repeat} onPress={() => { void action(() => store.copyPlan(id, history?.id), (r) => { if (r.id) router.replace({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); }} />
           : active ? <><TourButton label={next ? hereLeg ? t.tours.navigateMinutes(hereLeg.minutes) : t.tours.navigate : t.tours.end} icon={next ? <CompassIcon size={19} color={Colors.stout} /> : undefined} onPress={() => next ? navigate(next) : end()} />{next && <TourButton label={t.tours.logBeerAt(nextIndex + 1)} quiet icon={<BeerIcon size={17} color={Colors.foam} />} onPress={() => logBeer(next)} />}</>
-            : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tours.share} quiet onPress={() => setShareMode(true)} />}</>}
+            : <><TourButton label={t.tours.start} disabled={acting} onPress={start} />{!plan.source && <TourButton label={t.tourInvites.invite} quiet onPress={() => setInviteSheet(true)} />}</>}
     </View>
     </View>
     {crewSheet && active && <TourCrewSheet run={active} pingView={pingView} onPing={openPing} onClose={() => setCrewSheet(false)} />}
     {pingSheet && active && pingTarget && friends && <PingSheet title={t.tours.crewPing} detail={pingNote} friends={awayFriends} ghost={friends.ghost}
       onSend={sendTourPing} onClose={() => setPingSheet(false)} />}
+    {inviteSheet && <TourInviteSheet plan={plan} roster={roster ?? []} onClose={() => setInviteSheet(false)} onSent={invitesSent} />}
+    {rosterSheet && roster && <TourInviteRosterSheet roster={roster} onClose={() => setRosterSheet(false)} />}
     {overlayVisible && <View accessibilityViewIsModal style={[ui.screen, StyleSheet.absoluteFill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TourHeader title={detail?.name ?? t.tours.map} onBack={() => { setLargeMap(false); setDetail(null); }} />
         <ScrollView contentContainerStyle={[ui.content, { flexGrow: 1 }]}>
           <TourMap key={detail ? "stop-detail" : "overview"} stops={current.stops} selectedId={detail?.id ?? selected} onSelect={(stopId) => { setSelected(stopId); setDetail(current.stops.find((s) => s.id === stopId) ?? null); }} height={detail ? 160 : Math.max(240, dimensions.height - insets.top - insets.bottom - 150)} region={region} onRegionChange={setRegion} />
           {detail && <><TourText style={ui.heading}>{current.stops.findIndex((s) => s.id === detail.id) + 1}. {detail.name}</TourText><TourText>{detail.address}</TourText><TourText style={ui.notice}>{factsLine(detail, true)?.hours ?? t.tours.openingHoursUnknown}</TourText>{!!detail.challenge && <TourChallengeText text={detail.challenge} emphasized />}
-            <TourButton label={t.tours.fullPubDetail} secondary onPress={() => setPubDetail(true)} />
+            <TourButton label={t.tours.fullPubDetail} secondary onPress={() => openPubPage(router, pubFromStop(detail))} />
             {!shareMode && active && !history && <><TourText style={ui.notice}>{t.tours.runPrivacy}</TourText>
               <TourButton label={active.statuses[detail.id] ? t.tours.undoMark : t.tours.markVisited} disabled={acting} onPress={() => mark(detail, active.statuses[detail.id] ? null : 'visited')} />
               {!active.statuses[detail.id] && <TourButton label={t.tours.skip} secondary disabled={acting} onPress={() => mark(detail, 'skipped')} />}
@@ -348,8 +374,6 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
             <TourButton label={t.tours.navigate} secondary onPress={() => navigate(detail)} />
           </>}
         </ScrollView>
-        {detail && <MapPubSheet visible={pubDetail} pubKey={detail.cacheKey ?? geohash8(detail.lat, detail.lon)} pubName={detail.name}
-          info={pubInfoFromPub({ id: detail.pubId, name: detail.name, address: detail.address, lat: detail.lat, lng: detail.lon })} onClose={() => setPubDetail(false)} />}
     </View>}
   </View>;
 }

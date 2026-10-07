@@ -27,9 +27,16 @@
  *   - 'permanent-error' (4xx) → will never succeed → drop from queue.
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
  *
+ * A 429 ends the whole pass, not just its item: the backend counts every vote of
+ * the account in one window, so the rest would only collect more 429s. The queue
+ * stays untouched and one timer flushes it after Retry-After plus backoff
+ * (pubAmenitiesRateLimit.ts). Launch, foreground and enqueue flushes during the
+ * pause send nothing.
+ *
  * We do NOT flush per enqueue: enqueue debounces a single flush (~250ms microtask)
  * after the subscriber settles, so mapping one pub doesn't fire 16 serial 8s-timeout
- * attempts and block the mutex.
+ * attempts. Network delivery never holds the storage mutex, so another tap can
+ * persist before an earlier request finishes.
  */
 
 import {
@@ -37,7 +44,9 @@ import {
   type SubmitAmenityResult,
   type WireAmenityVote,
 } from './pubAmenitiesClient';
-import { createQueueStorage, createQueueLock } from './createQueue';
+import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { getAmenityVotesRetryAt } from './pubAmenitiesRateLimit';
+import { AppState } from 'react-native';
 
 const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
 /** Hard cap — one item per (pub, amenity). A realistic offline crawl (~10 pubs ×
@@ -45,6 +54,10 @@ const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
 const MAX_QUEUE_LENGTH = 500;
 /** Debounce window for the post-enqueue flush. */
 const FLUSH_DEBOUNCE_MS = 250;
+// SecureStore reads are suppressed for 2 s after an access error. Retry only
+// while the app is active, with a small cap so a locked/unavailable session does
+// not keep waking the app or generate a failure event for every queued vote.
+const SESSION_RETRY_DELAYS_MS = [2_100, 5_000, 15_000];
 
 /** One pending sync operation, keyed (and deduped) by (pubKey, amenityKey). */
 export type AmenityQueueItem =
@@ -81,14 +94,17 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<AmenityQueueItem
   isQueueItem,
 );
 
-/** Serializes queue mutations — concurrent enqueue/flush calls would otherwise
- *  read-modify-write the same AsyncStorage snapshot and lose items. */
+/** Serializes storage mutations without keeping the lock during network I/O. */
 const runLocked = createQueueLock();
 
-async function deliver(item: AmenityQueueItem): Promise<SubmitAmenityResult> {
+async function deliver(
+  item: AmenityQueueItem,
+  signal: AbortSignal,
+  onAccountUnavailable: () => void,
+): Promise<SubmitAmenityResult> {
   // Both ops are PUTs of the snapshot payload (a delete carries a value:null
   // tombstone) so the backend can apply the same last-write-wins rule.
-  return submitAmenityVotes([item.payload]);
+  return submitAmenityVotes([item.payload], signal, onAccountUnavailable);
 }
 
 /** Pending tombstones that restore must not hydrate back into local state. Keyed
@@ -107,43 +123,100 @@ function signature(item: AmenityQueueItem): string {
   return JSON.stringify(item);
 }
 
-async function flushLocked(): Promise<void> {
-  const queue = await loadQueue();
-  if (queue.length === 0) return;
+/** True while a 429 pause runs; a flush is then scheduled for its end. */
+async function waitForThrottle(signal: AbortSignal): Promise<boolean> {
+  const retryAt = await getAmenityVotesRetryAt();
+  if (retryAt && !signal.aborted) scheduleThrottleRetry(retryAt);
+  return retryAt > 0;
+}
 
-  // Snapshot the exact op (by content) we attempt per (pubKey, amenityKey), plus
-  // its result. We re-load after delivery so an edit that landed mid-flush
-  // (replacing the pending op for a pair) is NOT clobbered: a pair whose op
-  // content changed under us is kept regardless of the stale result.
-  const attempted = new Map<string, string>();
-  const settled = new Set<string>();
-  for (const item of queue) {
-    const key = dedupKey(item);
-    attempted.set(key, signature(item));
-    const result = await deliver(item);
-    if (result !== 'retry') settled.add(key);
+async function flushSnapshot(signal: AbortSignal): Promise<void> {
+  const queue = await runLocked(loadQueue);
+  if (queue.length === 0) {
+    resetSessionRetry();
+    return;
   }
 
-  const current = await loadQueue();
-  const remaining = current.filter((item) => {
+  let sessionUnavailable = false;
+  for (const item of queue) {
+    if (signal.aborted || await waitForThrottle(signal)) return;
     const key = dedupKey(item);
-    const sig = attempted.get(key);
-    // A different/newer op for this pair arrived during the flush → keep it.
-    if (sig === undefined || sig !== signature(item)) return true;
-    return !settled.has(key);
-  });
-  await saveQueue(remaining);
+    const attempted = signature(item);
+    // A newer edit or account-boundary clear may have replaced this snapshot
+    // while an earlier request was in flight.
+    const stillQueued = await runLocked(async () =>
+      (await loadQueue()).some((current) => dedupKey(current) === key && signature(current) === attempted)
+    );
+    if (!stillQueued || signal.aborted) continue;
+
+    const result = await deliver(item, signal, () => { sessionUnavailable = true; });
+    if (signal.aborted) return;
+    if (result !== 'retry') {
+      await runLocked(async () => {
+        const current = await loadQueue();
+        // A completed request must never erase a newer vote or retraction.
+        const remaining = current.filter((entry) =>
+          dedupKey(entry) !== key || signature(entry) !== attempted
+        );
+        if (remaining.length !== current.length) await saveQueue(remaining);
+      });
+    }
+    // Every queued vote needs the same session. One failed read is enough;
+    // retain the untouched siblings for the next attempt.
+    if (sessionUnavailable) break;
+  }
+
+  // The last item may have been the one that got 429.
+  if (signal.aborted || await waitForThrottle(signal)) return;
+  if (sessionUnavailable) scheduleSessionRetry();
+  else resetSessionRetry();
 }
+
+const { flush: flushQueue, abortInFlight } = createCoalescingFlush(flushSnapshot);
 
 /** Pending debounced-flush timer, so rapid enqueues coalesce into one flush. */
 let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+let _sessionRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let _sessionRetryAttempt = 0;
+let _throttleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function resetThrottleRetry(): void {
+  if (_throttleTimer) clearTimeout(_throttleTimer);
+  _throttleTimer = null;
+}
+
+/** One flush when the 429 pause ends. A suspended app flushes on foreground instead. */
+function scheduleThrottleRetry(retryAt: number): void {
+  resetThrottleRetry();
+  _throttleTimer = setTimeout(() => {
+    _throttleTimer = null;
+    if (AppState.currentState === 'active') void flushQueue();
+  }, retryAt - Date.now());
+}
+
+function resetSessionRetry(): void {
+  if (_sessionRetryTimer) clearTimeout(_sessionRetryTimer);
+  _sessionRetryTimer = null;
+  _sessionRetryAttempt = 0;
+}
+
+function scheduleSessionRetry(): void {
+  if (_sessionRetryTimer || AppState.currentState !== 'active') return;
+  const delay = SESSION_RETRY_DELAYS_MS[_sessionRetryAttempt];
+  if (delay == null) return;
+  _sessionRetryAttempt += 1;
+  _sessionRetryTimer = setTimeout(() => {
+    _sessionRetryTimer = null;
+    if (AppState.currentState === 'active') void flushQueue();
+  }, delay);
+}
 
 /** Schedule a single debounced flush. Multiple enqueues within the window share it. */
 function scheduleFlush(): void {
   if (_flushTimer) return;
   _flushTimer = setTimeout(() => {
     _flushTimer = null;
-    void runLocked(flushLocked);
+    void flushQueue();
   }, FLUSH_DEBOUNCE_MS);
 }
 
@@ -166,6 +239,9 @@ export function enqueueAmenityOp(item: AmenityQueueItem): Promise<void> {
 
 /** Drop all pending amenity sync operations without attempting delivery. */
 export function clearPubAmenitiesQueue(): Promise<void> {
+  resetSessionRetry();
+  resetThrottleRetry();
+  abortInFlight();
   return runLocked(async () => {
     await saveQueue([]);
   });
@@ -177,9 +253,10 @@ export function clearPubAmenitiesQueue(): Promise<void> {
  * flushes immediately. Never throws.
  */
 export function flushPubAmenitiesQueue(): Promise<void> {
+  resetSessionRetry();
   if (_flushTimer) {
     clearTimeout(_flushTimer);
     _flushTimer = null;
   }
-  return runLocked(flushLocked);
+  return flushQueue();
 }

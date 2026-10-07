@@ -120,11 +120,14 @@ from pubs.models import (
     PubCommunityXpLedger,
     PubContributionLog,
     PubEvent,
+    PubFavorite,
+    PubFavoriteTombstone,
     PublishedNight,
     PublishedNightComment,
     PubNameCorrection,
     PubPriceIndex,
     PubRating,
+    PubRatingTombstone,
     PubReport,
     PubVisit,
     PushDevice,
@@ -2181,6 +2184,17 @@ def _merge_photo_contest_entries(source: Account, target: Account) -> None:
         target_by_contest[entry.contest_id] = entry
 
 
+def _merge_tour_invites(source: Account, target: Account) -> None:
+    """Keep the claimed account's answer per tour; an invite to one's own tour goes away."""
+    from pubs.models import TourInvite
+
+    TourInvite.objects.filter(invitee=source, plan__owner=target).delete()
+    TourInvite.objects.filter(invitee=target, plan__owner=target).delete()
+    answered = TourInvite.objects.filter(invitee=target).values_list("plan_id", flat=True)
+    TourInvite.objects.filter(invitee=source, plan_id__in=list(answered)).delete()
+    TourInvite.objects.filter(invitee=source).update(invitee=target)
+
+
 def _assert_no_cascade_rows_for_source(source: Account) -> None:
     """Fail closed when a new Account-owned model is omitted from merge logic."""
     remaining: list[str] = []
@@ -2302,6 +2316,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     # every child with an independent identity is moved or deduplicated first.
     from pubs.models import TourPlan
     TourPlan.objects.filter(owner=source).update(owner=target)
+    _merge_tour_invites(source, target)
     _merge_friendships(source, target)
     _merge_follows(source, target)
     _merge_friend_blocks(source, target)
@@ -2323,6 +2338,38 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     _delete_or_move_account_rows(
         PubRating, source=source, target=target, unique_fields=("cache_key",)
     )
+    # Keep the later removal time when both accounts removed the same pub.
+    for tombstone in PubRatingTombstone.objects.filter(account=source):
+        PubRatingTombstone.objects.filter(
+            account=target,
+            cache_key=tombstone.cache_key,
+            client_updated_at__lt=tombstone.client_updated_at,
+        ).update(client_updated_at=tombstone.client_updated_at)
+    _delete_or_move_account_rows(
+        PubRatingTombstone, source=source, target=target, unique_fields=("cache_key",)
+    )
+    # Merging never deletes a rating: a live row beats a removal marker.
+    PubRatingTombstone.objects.filter(
+        account=target,
+        cache_key__in=PubRating.objects.filter(account=target).values("cache_key"),
+    ).delete()
+    _delete_or_move_account_rows(
+        PubFavorite, source=source, target=target, unique_fields=("cache_key",)
+    )
+    # Keep the later removal time when both accounts removed the same pub.
+    for tombstone in PubFavoriteTombstone.objects.filter(account=source):
+        PubFavoriteTombstone.objects.filter(
+            account=target,
+            cache_key=tombstone.cache_key,
+            client_updated_at__lt=tombstone.client_updated_at,
+        ).update(client_updated_at=tombstone.client_updated_at)
+    _delete_or_move_account_rows(
+        PubFavoriteTombstone, source=source, target=target, unique_fields=("cache_key",)
+    )
+    PubFavoriteTombstone.objects.filter(
+        account=target,
+        cache_key__in=PubFavorite.objects.filter(account=target).values("cache_key"),
+    ).delete()
     # Visits are mutable. Preserve the newer revision before applying deletion
     # markers, otherwise an old target row can discard a resumed source visit.
     for visit in PubVisit.objects.filter(account=source):
@@ -2370,6 +2417,18 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
             client_id=marker.client_id,
             client_updated_at__lte=marker.client_updated_at,
         ).delete()
+    # Merged or removed visits can change which visit is the newest one, so the
+    # "Kdo tu sedí s tebou" clock (server created_at) starts again for it. The
+    # others keep their order, so the pick does not jump to another pub.
+    newest_id = (
+        PubVisit.objects.filter(account=target)
+        .order_by("-created_at", "-id")
+        .values_list("id", flat=True)
+        .first()
+    )
+    PubVisit.objects.filter(pk=newest_id, closed_at__isnull=True).update(
+        created_at=timezone.now()
+    )
     _merge_published_nights(source, target)
     _replace_published_night_reference(
         "participant_ids",

@@ -17,6 +17,7 @@ export interface GlowButtonProps {
   glow?: GlowButtonGlow;
   height?: number;
   accessibilityLabel?: string;
+  testID?: string;
   loading?: boolean;
   disabled?: boolean;
 }
@@ -36,6 +37,7 @@ export const GlowButton = memo(function GlowButton({
   glow = 'soft',
   height = 62,
   accessibilityLabel,
+  testID,
   loading = false,
   disabled = false,
 }: GlowButtonProps) {
@@ -55,6 +57,7 @@ export const GlowButton = memo(function GlowButton({
         />
       )}
       <Pressable
+        testID={testID}
         onPress={onPress}
         disabled={disabled || loading}
         style={({ pressed }) => [

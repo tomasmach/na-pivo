@@ -112,7 +112,7 @@ export function newTour(): TourPlan {
 export function stopFromPub(pub: Pub): TourStop {
   return { id: generateUuidV4(), pubId: pub.id, cacheKey: geohash8(pub.lat, pub.lng), name: pub.name, address: pub.address ?? pub.city ?? '', lat: pub.lat, lon: pub.lng };
 }
-export function samePub(a: TourStop, b: TourStop): boolean {
+export function samePub(a: Pick<TourStop, 'pubId' | 'cacheKey' | 'name'>, b: Pick<TourStop, 'pubId' | 'cacheKey' | 'name'>): boolean {
   return a.pubId === b.pubId || (!!a.cacheKey && a.cacheKey === b.cacheKey && a.name.trim().toLocaleLowerCase() === b.name.trim().toLocaleLowerCase());
 }
 /** Challenges are one short line; typed line breaks and runs of spaces collapse. */

@@ -14,6 +14,8 @@ class BeerLiveActivityActionReceiver : BroadcastReceiver() {
         BeerLiveActivityNotification.markDismissed(context, sessionId)
       BeerLiveActivityNotification.ACTION_ADD_BEER ->
         BeerLiveActivityNotification.addBeer(context, sessionId)
+      BeerLiveActivityNotification.ACTION_TRANSIT_LEFT ->
+        BeerLiveActivityNotification.dropDepartedTransit(context, sessionId)
     }
   }
 }

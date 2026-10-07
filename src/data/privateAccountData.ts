@@ -6,6 +6,7 @@ import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueu
 import { clearCommunityQueue } from './communityQueue';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
+import { clearDrinkRateLimit } from './drinksRateLimit';
 import {
   cancelDrinksHistorySeed,
   DRINKS_HISTORY_PROGRESS_KEY,
@@ -23,6 +24,8 @@ import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
 import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
+import { clearPubFavoritesQueue } from './pubFavoritesQueue';
+import { clearLocalPubFavorites } from './pubFavoritesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
@@ -40,6 +43,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 const PRIVATE_STORAGE_KEYS = [
   'na-pivo-tally',
   'na-pivo-pub-ratings',
+  'na-pivo-pub-favorites',
   'na-pivo-pub-amenities',
   'na-pivo-visits-seeded',
   DRINKS_HISTORY_SEEDED_KEY,
@@ -123,6 +127,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // Invalidate a captured pre-logout history snapshot before any async queue
   // clear can yield, so it cannot be enqueued under the replacement account.
   cancelDrinksHistorySeed();
+  const drinksCooldownCleanup = clearDrinkRateLimit();
   const toursCleanup = clearToursPrivateData();
   // The wiped ratings, votes and own pubs must come back on the next foreground
   // even when the same account signs in again within the pull interval.
@@ -131,6 +136,9 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });
   });
+  // Favourite pubs belong to the outgoing account; wipe them without syncing
+  // the wipe as removals and void a pull already under way.
+  clearLocalPubFavorites();
   // Community amenity votes are location-adjacent private data — wipe them under
   // the suppress flag so the reset is not echoed out as server deletes.
   runWithoutPubAmenitiesSync(() => {
@@ -151,6 +159,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   });
 
   await Promise.all([
+    drinksCooldownCleanup,
     toursCleanup,
     clearAddedPubsQueue(),
     clearCommunityQueue(),
@@ -169,6 +178,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearNightsQueue(),
     clearTourRunQueue(),
     clearPubRatingsQueue(),
+    clearPubFavoritesQueue(),
     clearPubAmenitiesQueue(),
   ]);
   const keys = await AsyncStorage.getAllKeys();

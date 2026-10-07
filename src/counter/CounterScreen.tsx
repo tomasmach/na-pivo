@@ -63,7 +63,7 @@ import { buildDrinkEntry } from '@/data/drinksClient';
 import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
-import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { enqueueDelete, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { loadPartyFriends, shareFriendPubActivity, type PartyFriends } from '@/data/friendsClient';
 import { dropQueuedTourPings, enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
@@ -80,6 +80,7 @@ import {
   isBeerMenuTypeOverrideCurrent,
   useCommunityStore,
 } from '@/stores/communityStore';
+import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { formatPrice, pricePlaceholder } from '@/utils/currency';
@@ -986,8 +987,12 @@ function Tacek({
           context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
         });
         if (!pulledFromQueue) {
-          void flushDrinksQueue()
-            .then(() => enqueueDelete(targetId))
+          useAccountStore.getState().forgetDiaryDrink(targetId);
+          // Persist the removal before waiting for any older POST to finish.
+          // A restart during that wait must still have a queued DELETE to send.
+          void enqueueDelete(targetId, { deliver: false })
+            .then(() => flushDrinksQueue())
+            .then(() => flushDeleteDrinksQueue())
             .catch(() => undefined);
         }
       });
@@ -1604,6 +1609,7 @@ function Tacek({
       <NudgeSlot nudge={nudge} />
 
       <CounterCta
+        testID="counter-primary"
         label={cta.label}
         subLabel={cta.subLabel}
         onPress={cta.onPress}

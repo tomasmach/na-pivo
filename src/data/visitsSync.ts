@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { decodeGeohash8 } from './geohash';
 import { enqueueVisitOp, flushVisitsQueue } from './visitsQueue';
 import type { VisitEntry } from './visitsClient';
+import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
 import { cancelQueuedPubBroadcasts } from './friendsQueue';
@@ -88,6 +89,8 @@ export function syncVisit(session: TallySession | null, updatedAt?: string): voi
 /** Enqueue a delete for a removed evening. Fire-and-forget, never throws. */
 export function deleteVisitByClientId(clientId: string): void {
   if (!clientId) return;
+  // Diary totals must stop counting the evening before its DELETE lands.
+  useAccountStore.getState().forgetDiaryVisit(clientId);
   void enqueueVisitOp({ op: 'delete', clientId });
 }
 

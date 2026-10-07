@@ -244,8 +244,8 @@ def test_production_firmy_source_uses_shared_database_daily_budget(settings):
         get_or_enrich([_PUB_ENTRY], sync_budget=1)
 
     budget = source_class.call_args.kwargs["request_budget"]
-    assert budget(1) is True
-    assert budget(1) is False
+    assert budget("direct") is True
+    assert budget("direct") is False
     usage = ExternalApiDailyUsage.objects.get(provider="firmy", operation="http")
     assert usage.request_count == 1
 
@@ -258,7 +258,7 @@ def test_production_firmy_source_uses_shared_database_daily_budget(settings):
 @pytest.mark.django_db
 def test_stale_row_returns_immediately_and_queues_refresh():
     """A stale usable row is served immediately instead of blocking on Firmy.cz."""
-    old_fetched = dj_tz.now() - timedelta(days=31)
+    old_fetched = dj_tz.now() - timedelta(days=91)
     _make_fresh_row(fetched_at=old_fetched)
 
     with patch("pubs.api.cache.FirmyHoursSource") as mock_cls:
@@ -681,3 +681,65 @@ def test_transient_fetch_error_cools_down_before_refetch(settings):
     ok_source.fetch.assert_called_once()
     assert results3[0]["status"] == "ok"
     assert results3[0]["opening_hours"] == _FLEKY_HOURS
+
+
+# ---------------------------------------------------------------------------
+# Firmy.cz only lists Czech businesses; TTLs differ for 'ok' and 'unknown'
+# ---------------------------------------------------------------------------
+
+_BRATISLAVA_ENTRY = {"name": "Bratislavská krčma", "lat": 48.1486, "lng": 17.1077}
+_BRATISLAVA_KEY = geohash8(48.1486, 17.1077)
+
+
+@pytest.mark.django_db
+def test_missing_pub_outside_czechia_is_unknown_without_lookup():
+    with patch("pubs.api.cache.FirmyHoursSource") as mock_cls:
+        results = get_or_enrich([_BRATISLAVA_ENTRY], sync_budget=1)
+        get_or_enrich([_BRATISLAVA_ENTRY], sync_budget=0)
+
+    mock_cls.assert_not_called()
+    assert results[0]["status"] == "unknown"
+    assert results[0]["opening_hours"] is None
+    assert not EnrichTask.objects.exists()
+    assert not PubHours.objects.exists()
+
+
+@pytest.mark.django_db
+def test_stale_row_outside_czechia_is_served_without_queueing():
+    _make_fresh_row(
+        cache_key=_BRATISLAVA_KEY,
+        name=_BRATISLAVA_ENTRY["name"],
+        lat=_BRATISLAVA_ENTRY["lat"],
+        lng=_BRATISLAVA_ENTRY["lng"],
+        status=PubHours.Status.UNKNOWN,
+        opening_hours_raw=None,
+        fetched_at=dj_tz.now() - timedelta(days=400),
+    )
+
+    with patch("pubs.api.cache.FirmyHoursSource") as mock_cls:
+        results = get_or_enrich([_BRATISLAVA_ENTRY], sync_budget=0)
+
+    mock_cls.assert_not_called()
+    assert results[0]["status"] == "unknown"
+    assert not EnrichTask.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("status", "age_days", "queued"),
+    [
+        (PubHours.Status.OK, 60, False),
+        (PubHours.Status.OK, 91, True),
+        (PubHours.Status.UNKNOWN, 100, False),
+        (PubHours.Status.UNKNOWN, 181, True),
+    ],
+)
+def test_ok_and_unknown_rows_expire_on_their_own_ttl(status, age_days, queued):
+    _make_fresh_row(status=status, fetched_at=dj_tz.now() - timedelta(days=age_days))
+
+    with patch("pubs.api.cache.FirmyHoursSource") as mock_cls:
+        results = get_or_enrich([_PUB_ENTRY], sync_budget=0)
+
+    mock_cls.assert_not_called()
+    assert results[0]["status"] == status
+    assert EnrichTask.objects.filter(cache_key=_FLEKY_KEY, done=False).exists() is queued

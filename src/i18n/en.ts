@@ -32,6 +32,7 @@ export const en: Strings = {
     recent: 'Recent searches',
     nearby: 'Nearby',
     frequent: 'Your regulars',
+    favorites: 'Favourite pubs',
     distanceMeters: (value: string) => `${value} m`,
     distanceKm: (value: string) => `${value} km`,
     visitCount: (n: number) => englishPlural(n, {
@@ -82,15 +83,15 @@ export const en: Strings = {
     showMyPubs: 'Show my pubs',
     findMe: 'Find me',
     liveNow: 'OUT RIGHT NOW',
-    visitorsLastWeek: (n: number) =>
+    beersLastWeek: (n: number) =>
       englishPlural(n, {
-        one: 'Last week 1 person was here',
-        other: `Last week ${n} people were here`,
+        one: 'Last week 1 beer went down here',
+        other: `Last week ${n} beers went down here`,
       }),
-    visitorsClusterLastWeek: (n: number) => `Last week's people across these pubs, added up: ${n}`,
-    moreVisitors: 'People counts from last week',
-    moreVisitorsOnly: 'Only pubs someone visited',
-    visitorsOnlyNudge: 'Only pubs someone visited',
+    beersClusterLastWeek: (n: number) => `Last week's beers across these pubs, added up: ${n}`,
+    moreBeers: 'Beer counts from last week',
+    moreBeersOnly: 'Only where people drank last week',
+    moreBoard: 'Pub leaderboard',
     friendFallback: 'Friend',
     friendIsHere: (name: string) => `${name} is here right now`,
     friendsAreHere: (name: string, others: number) => `${name} and ${others} others are here`,
@@ -107,11 +108,12 @@ export const en: Strings = {
     loading: 'Looking for pubs…',
     permissionHint: 'Allow location',
     openWithoutLocation: 'Open the map without location',
-    listTitle: 'Pubs on the map',
-    listLink: 'List',
     refresh: 'Reload',
     closeList: 'Close the pub list',
     emptyList: 'Nothing matches this filter yet.',
+    favoritesOnly: 'Favourites',
+    favoriteA11y: 'favourite pub',
+    emptyFavorites: 'You have no favourite pub here.',
   },
   mapPub: {
     triggerDefault: 'Map the pub',
@@ -307,7 +309,7 @@ export const en: Strings = {
     beerFilterSheetSubtitle: "I'll only show pubs that pour it, going by the records.",
     beerFilterAll: 'All beers',
     beerFilterPopular: 'Popular',
-    beerFilterSearchPlaceholder: 'Search another brand…',
+    beerFilterSearchPlaceholder: 'Search another beer…',
     beerFilterNoResults: 'Nothing like that in the records.',
     beerFilterSearching: 'Searching…',
     beerFilterRotatingHint: 'The filter goes by the last confirmed lineup. Pubs with rotating taps can change.',
@@ -488,6 +490,10 @@ export const en: Strings = {
     waterNudge: {
       title: 'Remind me about water',
       subtitle: "Optional, after four beers, only on the phone. It doesn't estimate how sober you are.",
+    },
+    homeTransitReminder: {
+      title: 'Remind me of the last ride',
+      subtitle: '20 minutes before the last direct ride home. Prague area only, needs your home.',
     },
     hideClosed: {
       title: 'Hide closed pubs',
@@ -1264,7 +1270,7 @@ export const en: Strings = {
     settingsClose: 'Close settings',
     ghostTitle: 'Invisible mode',
     ghostSubtitle:
-      "The crew can't see where you're sitting or what you've drunk. Your pings stay with you, and while it's on I leave you out of the people counts on the map.",
+      "The crew can't see where you're sitting or what you've drunk. Your pings stay with you, and while it's on I leave your beers out of the pub counts on the map and the leaderboard.",
     shareDrinksTitle: 'Show the crew where I am',
     shareDrinksSubtitle: "Your mates see which pub you're in and what you've had tonight. Nobody else does.",
     ghostActive: 'Invisible mode is on',
@@ -1345,6 +1351,22 @@ export const en: Strings = {
       return `${name} and ${others} others are at the table with you.`;
     },
     presenceSameTable: 'at your table',
+    tableTitle: "Who's here with you",
+    tableEntry: 'Add people at your table',
+    tableExplainer:
+      "Only people who've been in the same pub for 15+ minutes and tapped this too will see you. You disappear after 10 minutes.",
+    tableVisibleFor: (minutes: number) => `People here can see you for ${minutes} more min`,
+    tableHiddenAgain: 'Nobody can see you anymore. Tap again.',
+    tableWaiting: 'Nobody yet. Get the others at the table to open this too.',
+    tableNoVisit: "First log which pub you're sitting in.",
+    tableTooSoon: 'Settle in first. This opens after 15 minutes in the pub.',
+    tableTooSoonIn: (minutes: number) => `Settle in first. This opens in ${minutes} min.`,
+    tableGhost: 'Nobody at the table can see you in invisible mode. Turn it off in crew settings.',
+    tablePrivate: 'Nobody can add you here with a private profile. Turn on your public profile.',
+    tableOffline: "Couldn't load the table. The QR code below still works.",
+    tableSent: 'Sent',
+    tableAddA11y: (name: string) => `Add ${name} to the crew`,
+    tableAcceptA11y: (name: string) => `Accept ${name} into the crew`,
     sittingsHeader: 'What people drank',
     sittingsEmpty: "Nobody has drunk anything yet. When that changes, you'll find out here.",
     sittingsMore: 'Load older',
@@ -1493,11 +1515,50 @@ export const en: Strings = {
   leaderboards: {
     back: 'Back',
     screenTitle: 'Leaderboards',
-    categoryTab: (category: 'beers' | 'pubs' | 'mapper') =>
-    category === 'beers' ? 'Drinkers' : category === 'pubs' ? 'Explorers' : 'Mappers',
+    categoryTab: (category: 'beers' | 'pubs' | 'mapper' | 'venues') =>
+    category === 'beers'
+      ? 'Drinkers'
+      : category === 'pubs'
+        ? 'Explorers'
+        : category === 'mapper'
+          ? 'Mappers'
+          : 'Pubs',
     periodTab: (period: 'week' | 'year' | 'all') =>
     period === 'week' ? 'Week' : period === 'year' ? 'This year' : 'All time',
     mapperPeriodNote: 'Counted since day one',
+    venuesPeriodTab: (period: 'week' | 'year' | 'all') =>
+    period === 'week' ? 'Last week' : period === 'year' ? 'This year' : 'All time',
+    venuesSubtitle: (period: 'week' | 'year' | 'all') =>
+    period === 'week'
+      ? 'The most beers went down here last week.'
+      : period === 'year'
+        ? 'The most beers went down here this year.'
+        : 'The most beers went down here, ever.',
+    venuesAllCities: 'All cities',
+    venuesCityTitle: 'Pick a city',
+    venuesCityA11y: (city: string) => `City: ${city}. Tap to change`,
+    venuesListLabel: 'Next up',
+    venuesSince: (date: string) => `since ${date}`,
+    venuesAllTime: 'since day one',
+    venuesEmptyTitle: 'No pubs here yet',
+    venuesEmptyBody: (period: 'week' | 'year' | 'all') =>
+    period === 'week'
+      ? 'A new board comes on Monday.'
+      : 'A pub shows up here once three different people log a beer in it.',
+    venuesRules: (period: 'week' | 'year' | 'all') => [
+      'I add up the beers logged in each pub.',
+      period === 'week'
+        ? 'It counts last week, Monday to Sunday.'
+        : period === 'year'
+          ? 'It counts everything since New Year.'
+          : 'It counts every beer ever logged.',
+      'A pub counts once at least three different people drank there.',
+      'No names anywhere, only beer counts.',
+    ],
+    venuesHeroA11y: (name: string, place: string, beers: string) =>
+    `The most beers went down at ${name}${place ? `, ${place}` : ''}. ${beers}. Tap for details.`,
+    venuesRowA11y: (rank: number, name: string, place: string, beers: string) =>
+    `Place ${rank}, ${name}${place ? `, ${place}` : ''}, ${beers}`,
     selectCategory: (label: string, selected: boolean) =>
     selected ? `${label}, selected` : `Switch to ${label}`,
     selectPeriod: (label: string, selected: boolean) =>
@@ -2288,10 +2349,27 @@ export const en: Strings = {
     emptyTitle: 'Plan a pub crawl', edit: 'Edit', editTour: 'Edit tour',
     untitled: 'Tour draft', draft: 'Draft', continueDraft: 'Continue your draft',
     ready: 'Ready', imported: 'Saved from a link', active: 'On your way', ended: 'Finished',
-    name: 'Name', namePlaceholder: 'Friday around Brno', date: 'Meetup date', time: 'Meetup time',
-    datePlaceholder: 'DD. MM. YYYY', timePlaceholder: 'HH:MM', optional: 'No date set',
+    name: 'Name', optional: 'No date set',
+    when: 'When', whenTitle: 'When are you going?', whenToday: 'today', whenTomorrow: 'tomorrow',
+    whenPast: (day: string) => `${day} has passed`, whenTime: 'Time', whenOtherTime: 'Other time', whenQuickTimes: 'Quick times',
+    whenDone: 'Done', whenClear: 'No date', whenPickDay: 'Pick a day first.',
+    whenDst: "This hour doesn't exist because the clocks change.",
+    whenEarlierWeeks: 'Earlier weeks', whenLaterWeeks: 'Later weeks',
+    whenTimeDown: '15 minutes earlier', whenTimeUp: '15 minutes later',
+    whenUnavailable: 'unavailable',
+    pastTitle: 'This date has passed', pastMessage: 'Pick a new one or save the tour without a date.',
+    pickNewDate: 'Pick a new date', saveWithoutDate: 'Save without a date',
+    suggestedTitle: (day: number | null) => day === null ? 'Pub crawl' : `${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][day]} pub crawl`,
+    addPubs: 'Add pubs', pickerDone: (pubs: string) => `Done · ${pubs}`,
+    needTwo: 'Pick at least 2 pubs.', needOne: 'Add at least one more pub.',
+    pickerFull: '8 is the most that fits. Remove one first.',
+    nearStop: (n: number) => `Close to stop ${n}`, walkMinutes: (minutes: number) => `${minutes} min walk`,
+    addAsStop: (n: number) => `Add as stop ${n}`, removeFromTour: 'Remove from tour',
+    pubAdded: (n: number) => `Added, stop ${n}`, pubRemoved: 'Removed',
+    addPubA11y: (name: string) => `${name}, add to tour`, removePubA11y: (name: string, n: number) => `${name}, stop ${n}, remove`,
+    removeChipA11y: (name: string) => `Remove ${name}`, pubDetailA11y: (name: string) => `Details for ${name}`,
     save: 'Save tour', saveChanges: 'Save changes', saved: 'Saved on this phone',
-    unsavedTitle: 'Save changes to your tour?', discard: 'Discard changes', stay: 'Stay',
+    unsavedTitle: 'Save changes to your tour?', discardDraftTitle: 'Discard this unfinished tour?', discard: 'Discard changes', stay: 'Stay',
     addStop: 'Add a stop', replaceStop: 'Replace pub', removeStop: 'Remove stop',
     publishPublic: 'Publish for everyone', updatePublic: 'Update the public version', unpublish: 'Remove from public',
     sharePublic: 'Share the public link', unpublishTitle: 'Remove from public?', unpublishMessage: 'Anyone who saved it keeps their copy.',
@@ -2453,7 +2531,7 @@ export const en: Strings = {
       "A profile can hold a nickname, a name and an avatar. With a public profile, other people can find you by your nickname and photo; your exact location, your diary and individual beers are not shown publicly.",
       "The counter, the history of your nights, pub visits and your private ratings are stored locally and sync only to your account. When you log out or delete the account, the app clears the local private diary, the ratings and the entries waiting to be sent from this device.",
       "Sharing a night with your crew is on by default: friends you have accepted can see that you are in a pub, how many beers you have and your last entry. You can turn it off in the crew settings, or switch on ghost mode. Nobody other than the friends you have accepted sees any of this.",
-      'On the map I show how many different people were in each pub last week. It is one number for the whole week, with no names, days or times. While ghost mode is on, I leave you out of it. Turning it on shows in the counts within a few hours.',
+      'On the map I show how many beers went down in each pub last week, and the pub leaderboard shows totals for last week, this year and all time. They are only totals, with no names, days or times, and a pub shows up only once at least three different people drank there. While ghost mode is on, I leave your beers out of them. Turning it on shows in the numbers within a few hours.',
       "I store beer photos on the server without metadata or GPS location. By default only your crew sees them; the only public ones are the photos you enter into the photo contest.",
       "When you photograph a beer menu with \"Snap the menu\", the photo goes through my server to an AI model for processing (via the OpenRouter service). I do not store the photo and, under my settings, the provider must not use it for training.",
       "If you allow notifications, I store the device push token and deliver Crew messages through Expo Push Service. Pub reminders show up on the phone itself and are not sent anywhere.",
@@ -2520,8 +2598,8 @@ export const en: Strings = {
     backButton: 'Back',
     modeNearestButton: 'Mode: Nearest pub',
     modeSurpriseButton: 'Mode: Surprise me',
-    beerBrandFilterInput: 'Filter pubs by a beer brand from the entries',
-    beerBrandFilterSuggestion: (name: string) => `Pick the brand ${name}`,
+    beerBrandFilterInput: 'Search for a beer that nearby pubs pour',
+    beerBrandFilterSuggestion: (name: string) => `Pick the beer ${name}`,
     clearBeerBrandFilter: 'Clear the beer brand filter',
     toggleOtherTapPlaces: 'Include other places with a tap',
     openBeerBrandFilter: 'Open the beer brand filter',
@@ -2546,6 +2624,8 @@ export const en: Strings = {
     openBeerMap: 'Open the beer map',
     mapLocate: 'Find me on the map',
     mapList: 'Show places as a list',
+    mapFiltersClear: 'Clear filters',
+    mapSelectionClear: 'Clear selection',
     mapRefresh: 'Refresh places and the crew',
     mapPub: (name: string, visits: number) =>
     visits > 0
@@ -2802,6 +2882,31 @@ export const en: Strings = {
     addBeer: 'One more',
     addBeerA11y: 'Log the same beer',
     openCounter: 'Open the counter',
+    homeTransit: (time: string, stop: string) =>
+      `Last ride home ${time}${stop ? ` · ${stop}` : ''}`,
+    homeTransitCountdown: 'in',
+    homeTransitMissed: 'Night bus it is',
+    homeTransitA11y: (time: string, stop: string, line: string) =>
+      `Last direct ride home${line ? `, line ${line}` : ''}, leaves${stop ? ` ${stop}` : ''} at ${time}`,
+  },
+
+  homeTransit: {
+    title: 'Last direct ride home',
+    vehicleLine: (routeType: number | null, line: string) => {
+      const vehicle =
+        { 0: 'Tram', 1: 'Metro', 2: 'Train', 3: 'Bus', 4: 'Ferry', 7: 'Funicular', 11: 'Trolleybus' }[
+          routeType ?? -1
+        ] ?? 'Line';
+      return `${vehicle} ${line}`;
+    },
+    route: (line: string, from: string, to: string) => `${line ? `${line} · ` : ''}${from} → ${to}`,
+    leavesIn: (minutes: number) =>
+      minutes < 60
+        ? `in ${Math.max(minutes, 1)} min`
+        : `in ${Math.floor(minutes / 60)} h ${minutes % 60} min`,
+    openIdos: 'Route home in IDOS',
+    openIdosA11y: 'Route home, opens the IDOS journey planner',
+    footnote: 'No night lines · ROPID, CC\u00a0BY\u00a04.0, adapted',
   },
 
   notifications: {
@@ -2811,6 +2916,10 @@ export const en: Strings = {
     beerCountChannel: 'Counter reminders',
     beerCountTitle: 'Forgot to log a beer?',
     beerCountBody: 'Tap to add another mark to the counter.',
+    homeTransitChannel: 'Last direct ride home',
+    homeTransitTitle: 'Your last direct ride home leaves in 20 minutes',
+    homeTransitBody: (line: string, time: string, stop: string) =>
+      `${line ? `Line ${line} leaves` : 'It leaves'}${stop ? ` ${stop}` : ''} at ${time}.`,
   },
 
   pubDetail: {
@@ -2860,6 +2969,36 @@ export const en: Strings = {
     activityLoadMore: 'Load more',
     activityLoadMoreRetry: 'Try loading more again',
     activityLoadMoreA11y: 'Load more pub activity',
+    // — Pub page —
+    backA11y: 'Back',
+    mapA11y: (name: string) => `Show ${name} on the map`,
+    ratingLine: (value: string, count: number | null) =>
+      count ? `${value} · ${englishPlural(count, { one: '1 rating', other: `${count} ratings` })}` : value,
+    beersLastWeek: (n: number) => `${beerCountLabel(n)} drunk here last week`,
+    eventRunning: 'On now',
+    eventTodayShort: 'Today',
+    eventTomorrow: 'Tomorrow',
+    eventLine: (when: string, title: string) => `${when} · ${title}`,
+    eventsMore: (n: number) =>
+      `${englishPlural(n, { one: '1 more event', other: `${n} more events` })} in the next two weeks`,
+    eventsHeading: 'Events',
+    tapsVerified: (age: string) => `checked ${age}`,
+    tapsRotating: 'Rotating taps',
+    tapsMore: (n: number) => `and ${englishPlural(n, { one: '1 more beer', other: `${n} more beers` })}`,
+    hoursToday: 'today',
+    aboutTitle: 'About the pub',
+    amenitiesConfirmed: 'Confirmed by other drinkers',
+    amenitiesMore: (n: number) =>
+      `and ${englishPlural(n, { one: '1 more thing', other: `${n} more things` })} · confirmed by other drinkers`,
+    privateOnly: 'Only you see this',
+    privateVerdict: (verdict: string) => `Only you see this · your verdict: ${verdict}`,
+    mappedLine: (pct: number) => `${pct} % mapped`,
+    mappedHint: 'Add what you know. Others will see it.',
+    aimA11y: (name: string) => `Point the compass at ${name}`,
+    favoriteAddA11y: 'Save to favourite pubs',
+    favoriteRemoveA11y: 'Remove from favourite pubs',
+    favoriteSaved: 'Added to your favourite pubs',
+    favoriteRemoved: 'Removed from your favourite pubs',
     stateLoading: 'Loading the pub…',
     stateFailed: "I couldn't load the pub.",
     eventToday: (range: string) => `Today ${range}`,
@@ -2952,5 +3091,60 @@ export const en: Strings = {
     socialAccountPicker: "The Google account picker couldn't open. Check the account on your phone, try again, or sign in with email.",
     socialFailed: "Signing in through the provider didn't work. Please try again.",
     signInFailed: "Sign-in didn't work.",
+  },
+  tourInvites: {
+    invite: 'Invite the crew',
+    sheetTitle: 'Invite to the tour',
+    send: (n: number) => n > 0 ? `Invite ${n} ${englishPlural(n, { one: 'mate', other: 'mates' })}` : 'Invite',
+    alreadyInvited: 'Already invited',
+    linkChanged: 'The link changed, invite again',
+    allInvited: 'Everyone in your crew already has an invite.',
+    shareElsewhere: 'Send the link elsewhere',
+    noFriends: 'Nobody in your crew yet. You can still send the link to anyone.',
+    friendsOffline: "I can't load your crew right now. Try again once you get a signal.",
+    ghost: 'Invisible mode is on, so the invite would reach nobody.',
+    sent: (n: number) => n > 0
+      ? `Invited ${n} ${englishPlural(n, { one: 'mate', other: 'mates' })}. Anyone with notifications on knows right away.`
+      : 'Everyone you picked already has an invite.',
+    rosterSummary: (invited: number, going: number) => going > 0 ? `${invited} invited · ${going} going` : `${invited} invited`,
+    rosterOpen: "Who's coming",
+    rosterHint: "Shows who's coming and who hasn't answered yet",
+    rosterGoing: 'Coming',
+    rosterDeclined: 'Not coming',
+    rosterWaiting: 'No answer yet',
+    linkMenu: 'Tour link',
+    invitedBy: (name: string) => `${name} is inviting you`,
+    going: "I'm in",
+    notGoing: "Can't make it",
+    changeToGoing: "Actually, I'm in",
+    changeToNotGoing: "Actually, I can't make it",
+    answeredGoing: "You're in. The tour is saved on your phone.",
+    answeredDeclined: "You're skipping this one. If you change your mind, say so here.",
+    answerVisible: (name: string) => `${name} will see your answer.`,
+    inboxTitle: 'Invites',
+    inboxGoing: "you're in",
+    inboxDeclined: "you're out",
+    errors: {
+      notFriends: 'You can only invite mates from your crew.',
+      limit: 'You can invite at most 50 mates to one tour.',
+      unsupported: "Invites can't go out right now. Send the link elsewhere for now.",
+      gone: "I can't find this tour anymore.",
+      network: "The invite didn't go out. Try again.",
+      answer: "Your answer didn't go through. Try again once you have a signal.",
+    },
+  },
+  tourReminders: {
+    channel: 'Tour meetups',
+    title: (tour: string) => `Today: ${tour}`,
+    at: (time: string) => `at ${time}`,
+    bodyAt: (at: string, pub: string) => `Meet ${at} · ${pub}`,
+    bodyToday: (pub: string) => `Meeting today · ${pub}`,
+    today: 'today',
+    onDay: ['on Monday', 'on Tuesday', 'on Wednesday', 'on Thursday', 'on Friday', 'on Saturday', 'on Sunday'],
+    ask: (when: string, at: string) => `Want a reminder ${when} ${at}?`,
+    askAccept: 'Remind me',
+    askDismiss: 'Not now',
+    settingsTitle: 'Tour reminders',
+    settingsSubtitle: "On tour day, I'll remind you when and where to meet.",
   },
 };

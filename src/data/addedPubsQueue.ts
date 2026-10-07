@@ -20,6 +20,7 @@ import {
 } from './addedPubsClient';
 import { clearPubsSnapshot, pubIdForCoords, removeLocalPub, upsertLocalPub } from './pubs';
 import { createQueueLock } from './createQueue';
+import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 
 const STORAGE_KEY = 'na-pivo-added-pubs-queue';
 const MAX_SYNCED_SUBMISSIONS = 30;
@@ -174,11 +175,23 @@ function submissionFromResponse(
   };
 }
 
-function applySubmittedResult(previous: AddedPubSubmission, next: AddedPubSubmission): void {
-  const previousId = pubIdForCoords(previous.lat, previous.lng);
-  const nextPub = pubFromSubmission(next);
-  if (nextPub.id !== previousId) removeLocalPub(previousId);
+/** Swap the map copy of an own pub. A moved pin gives it a new id; its heart follows. */
+function replaceLocalPub(previousId: string, nextPub: ReturnType<typeof pubFromSubmission>): void {
+  if (nextPub.id !== previousId) {
+    removeLocalPub(previousId);
+    usePubFavoritesStore.getState().movePubFavorite(previousId, {
+      name: nextPub.name,
+      lat: nextPub.lat,
+      lng: nextPub.lng,
+      city: nextPub.city,
+      externalId: nextPub.id,
+    });
+  }
   upsertLocalPub(nextPub);
+}
+
+function applySubmittedResult(previous: AddedPubSubmission, next: AddedPubSubmission): void {
+  replaceLocalPub(pubIdForCoords(previous.lat, previous.lng), pubFromSubmission(next));
 }
 
 async function flushLocked(): Promise<void> {
@@ -218,8 +231,7 @@ async function flushLocked(): Promise<void> {
       if (submission.pendingOperation === 'create') {
         removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
       } else if (submission.rollback) {
-        removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
-        upsertLocalPub(pubFromSubmission({
+        replaceLocalPub(pubIdForCoords(submission.lat, submission.lng), pubFromSubmission({
           ...submission,
           ...submission.rollback,
           syncState: 'synced',
@@ -323,8 +335,7 @@ export function enqueueAddedPubEdit(
     };
     const next = registry.map((item) => item.client_id === entry.client_id ? submission : item);
     await saveRegistry(next);
-    removeLocalPub(pubIdForCoords(previous.lat, previous.lng));
-    upsertLocalPub(pubFromSubmission(submission));
+    replaceLocalPub(pubIdForCoords(previous.lat, previous.lng), pubFromSubmission(submission));
     await clearPubsSnapshot();
     await flushLocked();
     return outcomeOf(entry.client_id);

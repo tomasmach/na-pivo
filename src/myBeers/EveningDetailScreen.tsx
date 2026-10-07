@@ -31,7 +31,7 @@ import {
 } from '@/data/drinksQueue';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { buildHistoricalDrinkEntry } from '@/data/drinksHistorySync';
-import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { enqueueDelete, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import {
@@ -54,6 +54,7 @@ import {
   normalizeDrinkType,
   normalizePlaceContext,
 } from '@/drinks/drinkTypes';
+import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
@@ -85,6 +86,7 @@ import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { useToastStore } from '@/stores/toastStore';
+import { HomeTransitCard } from '@/transit/HomeTransitCard';
 
 /** The fix-sheet line for a refused field the form can change. */
 function rejectedFieldHint(field: string | undefined): string | undefined {
@@ -219,12 +221,13 @@ export default function EveningDetailScreen() {
             }
             void removeQueuedDrinkUpdate(removed.drinkId);
             void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
-              // Already delivered (or its POST is in flight): wait for the active
-              // flush to settle before the DELETE so it can't race ahead of an
-              // in-flight POST and recreate the drink after we deleted it.
+              // Persist a DELETE before waiting for an in-flight POST. The
+              // server's removal tombstone also protects a restart in between.
               if (!pulledFromQueue) {
-                void flushDrinksQueue()
-                  .then(() => enqueueDelete(removed.drinkId))
+                useAccountStore.getState().forgetDiaryDrink(removed.drinkId);
+                void enqueueDelete(removed.drinkId, { deliver: false })
+                  .then(() => flushDrinksQueue())
+                  .then(() => flushDeleteDrinksQueue())
                   .catch(() => undefined);
               }
             });
@@ -400,6 +403,8 @@ export default function EveningDetailScreen() {
             </Text>
           </View>
 
+          {current?.clientId === session.clientId ? <HomeTransitCard session={session} /> : null}
+
           {/* Breakdown */}
           <View style={styles.card}>
             <View style={styles.cardSectionHeader}>
@@ -417,6 +422,7 @@ export default function EveningDetailScreen() {
               <View style={styles.headerFlex} />
               <Pressable
                 onPress={openAddDrink}
+                testID="evening-add-drink"
                 style={({ pressed }) => [styles.addDrinkButton, pressed && styles.iconButtonPressed]}
                 accessibilityRole="button"
                 accessibilityLabel={t.a11y.myBeersAddDrinkToEvening}
@@ -428,7 +434,7 @@ export default function EveningDetailScreen() {
             {drinkActionGroups.map((group, index) => {
               const fixable = !group.rejected || canFixRejectedField(group.rejectedField);
               return (
-              <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
+              <View key={group.key} testID={`evening-drink-${group.drinks[0].id}`} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
                 <View style={styles.drinkInfo}>
                   <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                     {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
@@ -475,6 +481,7 @@ export default function EveningDetailScreen() {
                       hitSlop={6}
                       accessibilityRole="button"
                       accessibilityLabel={t.myBeers.editDrink}
+                      testID={`evening-edit-${group.drinks[0].id}`}
                     >
                       <PencilIcon size={17} color={Colors.amber} />
                     </Pressable>
@@ -485,6 +492,7 @@ export default function EveningDetailScreen() {
                     hitSlop={6}
                     accessibilityRole="button"
                     accessibilityLabel={t.myBeers.deleteDrink}
+                    testID={`evening-delete-${group.drinks[0].id}`}
                   >
                     <MinusIcon size={17} color={Colors.mutedText} />
                   </Pressable>
@@ -516,6 +524,7 @@ export default function EveningDetailScreen() {
               <View style={styles.vycepActions}>
                 <Pressable
                   onPress={() => setPublishSheetVisible(true)}
+                  testID="night-publish-open"
                   accessibilityRole="button"
                   accessibilityLabel={t.a11y.publishNightButton}
                   style={({ pressed }) => [styles.vycepPrimary, pressed && styles.iconButtonPressed]}
@@ -683,6 +692,7 @@ function EditDrinkNameForm({
       </View>
       <TextInput
         value={name}
+        testID="evening-edit-name-input"
         onChangeText={setName}
         placeholder={t.myBeers.editDrinkPlaceholder}
         placeholderTextColor={Colors.mutedText}
@@ -699,6 +709,7 @@ function EditDrinkNameForm({
         </Pressable>
         <Pressable
           onPress={() => onSave(group, name)}
+          testID="evening-edit-save"
           style={styles.modalPrimaryButton}
           accessibilityRole="button"
         >

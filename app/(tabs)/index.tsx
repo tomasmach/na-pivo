@@ -13,10 +13,7 @@ import {
   Pressable,
   StyleSheet,
   Linking,
-  KeyboardAvoidingView,
-  Modal,
   Platform,
-  TextInput,
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -28,7 +25,7 @@ import {
   withSpring,
 } from 'react-native-reanimated';
 
-import { useCompass } from '@/hooks/useCompass';
+import { UNLIMITED_SEARCH_RADIUS_KM, useCompass } from '@/hooks/useCompass';
 import { getAllLoadedPubs, type Pub, type PubPrice } from '@/data/pubs';
 import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
 import type { CommunityBeer } from '@/data/communityClient';
@@ -48,6 +45,7 @@ import { runGlance } from '@/tours/glance';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { isHeadingAccuracyLow } from '@/compass/headingAccuracy';
 import { openHomeInMaps, openPubInMaps } from '@/utils/maps';
+import { pubHoursLine } from '@/utils/pubHoursLine';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
@@ -58,7 +56,6 @@ import {
   BeerOffIcon,
   RefreshCwIcon,
   SettingsIcon,
-  PencilIcon,
   MapPinIcon,
   MapPinPlusIcon,
   MapIcon,
@@ -70,21 +67,20 @@ import {
   TargetIcon,
   SparklesIcon,
 } from '@/components/shared/IconGlyph';
-import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { CompassCard } from '@/compassui/CompassCard';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
+import { RenamePubModal } from '@/components/compass/RenamePubModal';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
-import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
-import { geohash8 } from '@/data/geohash';
+import { openPubPage } from '@/pubPage/openPubPage';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useToastStore } from '@/stores/toastStore';
 import BeerMapScreen from '@/map/BeerMapScreen';
 import { PubSearchButton } from '@/search/PubSearchButton';
 
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
@@ -101,93 +97,6 @@ const ARROW_SPRING_CONFIG = {
   mass: 1,
   overshootClamping: true,
 } as const;
-
-interface RenamePubModalProps {
-  visible: boolean;
-  currentName: string;
-  value: string;
-  submitting: boolean;
-  onChange: (value: string) => void;
-  onCancel: () => void;
-  onSubmit: () => void;
-}
-
-function RenamePubModal({
-  visible,
-  currentName,
-  value,
-  submitting,
-  onChange,
-  onCancel,
-  onSubmit,
-}: RenamePubModalProps) {
-  const trimmed = value.trim();
-  const canSubmit = trimmed.length > 0 && trimmed !== currentName.trim() && !submitting;
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={styles.renameOverlay}
-      >
-        <Pressable style={styles.renameScrim} onPress={onCancel} />
-        <View style={styles.renamePanel}>
-          <View style={styles.renameIconWell}>
-            <PencilIcon size={19} color={Colors.amber} />
-          </View>
-          <Text style={styles.renameTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {t.compass.renameTitle}
-          </Text>
-          <Text style={styles.renameBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.compass.renameBody(currentName)}
-          </Text>
-          <TextInput
-            value={value}
-            onChangeText={onChange}
-            style={styles.renameInput}
-            placeholder={t.compass.renamePlaceholder}
-            placeholderTextColor={Colors.mutedText}
-            maxLength={200}
-            autoFocus
-            autoCorrect={false}
-            returnKeyType="done"
-            onSubmitEditing={() => {
-              if (canSubmit) onSubmit();
-            }}
-            accessibilityLabel={t.a11y.renamePubInput}
-          />
-          <View style={styles.renameActions}>
-            <Pressable
-              onPress={onCancel}
-              style={({ pressed }) => [styles.renameSecondaryButton, pressed && { opacity: 0.72 }]}
-              accessibilityRole="button"
-              accessibilityLabel={t.common.cancel}
-            >
-              <Text style={styles.renameSecondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.common.cancel}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={onSubmit}
-              disabled={!canSubmit}
-              style={({ pressed }) => [
-                styles.renamePrimaryButton,
-                !canSubmit && styles.renamePrimaryDisabled,
-                pressed && canSubmit && { opacity: 0.86, transform: [{ scale: 0.98 }] },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={t.a11y.renamePubSaveButton}
-            >
-              <Text style={styles.renamePrimaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {submitting ? t.compass.renameSaving : t.compass.renameSave}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 
@@ -541,29 +450,6 @@ function splitDistance(formatted: string | null): { value: string; unit: string 
  * is empty — nobody reads "Načítám" — but once it comes back empty we say so,
  * because "neznám" is an invitation to map it, and the door is right there.
  */
-function pubHoursLine(pub: Pub): { label: string | null; tone: 'open' | 'closed' | 'unknown' } {
-  const loading = pub.hoursStatus === 'loading' || pub.hoursStatus === 'pending';
-  if (loading && pub.isOpenNow == null) return { label: null, tone: 'unknown' };
-
-  const time = hoursTimeFromIso(pub.nextChange);
-  if (pub.isOpenNow === true) {
-    return { label: time ? t.compass.openUntil(time) : t.compass.openNow, tone: 'open' };
-  }
-  if (pub.isOpenNow === false) {
-    return { label: time ? t.compass.closedUntil(time) : t.compass.closedNow, tone: 'closed' };
-  }
-  return { label: t.compass.hoursUnknown, tone: 'unknown' };
-}
-
-/** `HH:MM` straight out of a Europe/Prague ISO stamp — no `Intl`, see OpenStatusChip. */
-function hoursTimeFromIso(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const tIndex = iso.indexOf('T');
-  if (tIndex === -1) return null;
-  const hhmm = iso.slice(tIndex + 1, tIndex + 6);
-  return /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : null;
-}
-
 // ─── Main CompassScreen ───────────────────────────────────────────────────────
 
 export default function CompassScreen() {
@@ -589,7 +475,6 @@ export default function CompassScreen() {
     router.setParams({ view: undefined });
   }, [router, setMapWithoutLocation, view]));
   const [moreOpen, setMoreOpen] = useState(false);
-  const [mapPubOpen, setMapPubOpen] = useState(false);
   // The dial is sized from the card, never the other way round (§5.3).
   const [dialSize, setDialSize] = useState(260);
   const showToast = useToastStore((s) => s.show);
@@ -720,6 +605,14 @@ export default function CompassScreen() {
     () => (filterSheetOpen ? freshPriceCzks(getAllLoadedPubs()) : []),
     [filterSheetOpen],
   );
+  const maxDistanceKm = useSettingsStore((s) => s.maxDistanceKm);
+  const filterSearchArea = currentPosition
+    ? {
+        lat: currentPosition.lat,
+        lng: currentPosition.lng,
+        radiusKm: maxDistanceKm ?? UNLIMITED_SEARCH_RADIUS_KM,
+      }
+    : null;
   const handleShowMap = useCallback(() => {
     trackUiInteraction('compass_map_open');
     if (permissionState !== 'granted') setMapWithoutLocation(true);
@@ -799,14 +692,6 @@ export default function CompassScreen() {
     setReportOpen(true);
   }, [pub]);
 
-  const handleReportFromMap = useCallback(() => {
-    if (!pub) return;
-    // Let the native detail modal finish dismissing before presenting the
-    // report choices. iOS only presents one modal view controller at a time.
-    setMapPubOpen(false);
-    setTimeout(handleReport, 250);
-  }, [handleReport, pub]);
-
 
   // ── Tácek composition state ───────────────────────────────────────────────
   // The pub the needle is actually aimed at: a friend's handoff wins over the
@@ -823,14 +708,8 @@ export default function CompassScreen() {
     !focusedPub && pub
       ? formatBeerLine(pub.beers ?? [], priceCurrency, pub.price, pub.beersUpdatedAt, true)
       : null;
-  // The sheet has the width the card's footer does not, so it gets the full
-  // sentence: volume, price age and "a další".
-  const sheetBeerLine =
-    !focusedPub && pub
-      ? formatBeerLine(pub.beers ?? [], priceCurrency, pub.price, pub.beersUpdatedAt)
-      : null;
 
-  // Tapping the card footer opens what you'd want next: the pub hub when the
+  // Tapping the card footer opens what you'd want next: the pub page when the
   // name is visible, the reveal when it isn't.
   const handleCardFooterPress = useCallback(() => {
     if (!showPubDetails) {
@@ -839,9 +718,10 @@ export default function CompassScreen() {
       return;
     }
     if (focusedPub) return; // a coarse friend target has nothing to map
+    if (!pub) return;
     trackUiInteraction('compass_pub_card_open');
-    setMapPubOpen(true);
-  }, [focusedPub, reveal, showPubDetails]);
+    openPubPage(router, pub);
+  }, [focusedPub, pub, reveal, router, showPubDetails]);
 
   const activeTourRun = useToursStore((s) => s.activeRun);
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
@@ -999,6 +879,7 @@ export default function CompassScreen() {
             visible
             value={pubFilters}
             nearbyPrices={nearbyPrices}
+            searchArea={filterSearchArea}
             onClose={handleCloseFilter}
             onApply={handleApplyFilter}
           />
@@ -1122,21 +1003,9 @@ export default function CompassScreen() {
           visible
           value={pubFilters}
           nearbyPrices={nearbyPrices}
+          searchArea={filterSearchArea}
           onClose={handleCloseFilter}
           onApply={handleApplyFilter}
-        />
-      ) : null}
-      {pub ? (
-        <MapPubSheet
-          visible={mapPubOpen}
-          pubKey={geohash8(pub.lat, pub.lng)}
-          pubName={pub.name}
-          info={pubInfoFromPub(pub)}
-          hoursLabel={hours.label}
-          hoursTone={hours.tone}
-          beerLine={sheetBeerLine}
-          onClose={() => setMapPubOpen(false)}
-          onReport={handleReportFromMap}
         />
       ) : null}
       {pub ? (
@@ -1201,93 +1070,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressedSoft: { opacity: 0.6 },
-  renameOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  renameScrim: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: withAlpha(Colors.black, 0.58),
-  },
-  renamePanel: {
-    marginHorizontal: 14,
-    marginBottom: 14,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.32),
-    backgroundColor: Colors.stout2,
-    padding: 20,
-    gap: 14,
-  },
-  renameIconWell: {
-    width: 42,
-    height: 42,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
-  },
-  renameTitle: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
-    lineHeight: 30,
-    color: Colors.foam,
-  },
-  renameBody: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.foamMuted,
-  },
-  renameInput: {
-    minHeight: 54,
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.38),
-    backgroundColor: Colors.stout3,
-    paddingHorizontal: 14,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 17,
-    color: Colors.foam,
-  },
-  renameActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 2,
-  },
-  renameSecondaryButton: {
-    flex: 1,
-    minHeight: 50,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: withAlpha(Colors.stout, 0.42),
-  },
-  renameSecondaryText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 15,
-    color: Colors.foamMuted,
-  },
-  renamePrimaryButton: {
-    flex: 1.35,
-    minHeight: 50,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  renamePrimaryDisabled: {
-    opacity: 0.42,
-  },
-  renamePrimaryText: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 16,
-    color: Colors.stout,
-  },
 
   // ── Permission ──
   permCard: {

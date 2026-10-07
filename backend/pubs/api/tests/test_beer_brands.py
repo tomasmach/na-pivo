@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from importlib import import_module
+
 import pytest
+from django.apps import apps
 from django.conf import settings
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -15,7 +18,14 @@ from pubs.beer_catalog import (
     match_beer_identity,
     normalize_beer_payload,
 )
-from pubs.models import BeerBrand, BeerProduct
+from pubs.enrichment import geohash8
+from pubs.models import (
+    BeerBrand,
+    BeerProduct,
+    PubBeerBrand,
+    PubCommunityData,
+    PubExternalBeerMenu,
+)
 
 from .query_helpers import count_beer_catalog_selects
 
@@ -166,3 +176,90 @@ def test_match_cache_reuses_product_snapshot():
 
 def test_beer_brand_throttle_scope_is_configured():
     assert settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["beer_brands"]
+
+
+def _menu_pub(name: str, lat: float, beers: list[str]) -> None:
+    PubCommunityData.objects.create(
+        cache_key=geohash8(lat, 14.42),
+        name=name,
+        lat=lat,
+        lng=14.42,
+        beers=[{"name": beer, "price_czk": 50, "volume_ml": 500} for beer in beers],
+    )
+
+
+@pytest.mark.django_db
+def test_suggest_adds_nearby_menu_names_only_with_search_area(client):
+    _menu_pub("U Kocoura", 50.08, ["Kocour Samuraj 12°", "Kozel 11"])
+    _menu_pub("Na Rohu", 50.081, ["kocour samuraj 12", "Pivo z Kocoura"])
+    _menu_pub("Daleko", 51.0, ["Kocour Vážka"])
+
+    released = client.get("/v1/beer-brands/suggest", {"q": "kocour"})
+    nearby = client.get(
+        "/v1/beer-brands/suggest",
+        {"q": "koc", "lat": 50.08, "lng": 14.42, "radius_km": 10},
+    )
+    catalog_duplicate = client.get(
+        "/v1/beer-brands/suggest",
+        {"q": "kozel 11", "lat": 50.08, "lng": 14.42},
+    )
+
+    assert released.status_code == status.HTTP_200_OK
+    assert all(item["kind"] != "menu" for item in released.json()["suggestions"])
+    menu = [item for item in nearby.json()["suggestions"] if item["kind"] == "menu"]
+    assert [(item["slug"], item["name"]) for item in menu] == [
+        ("kocour samuraj 12", "Kocour Samuraj 12°"),
+        ("pivo z kocoura", "Pivo z Kocoura"),
+    ]
+    assert all(item["kind"] != "menu" for item in catalog_duplicate.json()["suggestions"])
+
+
+@pytest.mark.django_db
+def test_suggest_keeps_catalog_names_found_only_on_imported_menus(client):
+    PubExternalBeerMenu.objects.create(
+        cache_key=geohash8(50.08, 14.42),
+        name="Importovaná",
+        lat=50.08,
+        lng=14.42,
+        source=PubExternalBeerMenu.Source.PIVAROVA_MAPA,
+        source_id="import-1",
+        source_url="https://pivarovamapa.cz/",
+        beers=[{"name": "Kozel 11", "price_czk": 45, "volume_ml": 500}],
+    )
+
+    resp = client.get("/v1/beer-brands/suggest", {"q": "kozel 11", "lat": 50.08, "lng": 14.42})
+
+    menu = [item["name"] for item in resp.json()["suggestions"] if item["kind"] == "menu"]
+    assert menu == ["Kozel 11"]
+
+
+@pytest.mark.django_db
+def test_suggest_offers_regional_brewery_from_partial_query(client):
+    resp = client.get("/v1/beer-brands/suggest", {"q": "unet"})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["suggestions"][0]["brand_slug"] == "uneticke"
+
+
+@pytest.mark.django_db
+def test_regional_brand_backfill_indexes_existing_menus_for_filter(client):
+    PubCommunityData.objects.create(
+        cache_key=geohash8(50.15, 14.35),
+        name="Hospoda Na Návsi",
+        lat=50.15,
+        lng=14.35,
+        beers=[
+            {"name": "Únětická 12°", "price_czk": 55, "volume_ml": 500},
+            {"name": "Kozel 11", "price_czk": 45, "volume_ml": 500},
+        ],
+    )
+    migration = import_module("pubs.migrations.0148_seed_regional_beer_brands")
+    migration.add_brands_and_backfill(apps, None)
+
+    assert list(PubBeerBrand.objects.values_list("brand_key", flat=True)) == ["uneticke"]
+    resp = client.get(
+        "/v1/pubs/near",
+        {"lat": 50.15, "lng": 14.35, "radius_km": 5, "beer_brand": "uneticke"},
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["Hospoda Na Návsi"]

@@ -35,16 +35,22 @@ interface SettingsState {
   preferRatedPubs: boolean;
   preferGardenPubs: boolean;
   hidePubNames: boolean;
-  /** Map pins show how many people drank in each pub last week. */
-  showPubVisitors: boolean;
+  /** Map pins show how many beers were logged in each pub last week. */
+  showPubBeers: boolean;
   marketingEmailsEnabled: boolean;
   pubReminderEnabled: boolean;
   /** One-shot reminder refreshed by each beer of an active evening. */
   beerCountReminderEnabled: boolean;
   /** Delay used for the first reminder and each user-confirmed follow-up. */
   beerCountReminderIntervalMinutes: BeerCountReminderIntervalMinutes;
+  /** Day-of reminder of every dated tour on this phone. */
+  tourRemindersEnabled: boolean;
+  /** The tour detail asked once for notifications and was turned down or waved off. */
+  tourReminderAskDismissed: boolean;
   /** Gentle "grab a water" nudge in the counter every few beers in a row. */
   waterNudgeEnabled: boolean;
+  /** Local ping 20 minutes before tonight's last direct connection home. */
+  homeTransitReminderEnabled: boolean;
   /** Parta push opt-in (notification permission only, decoupled from reminders). */
   friendPushEnabled: boolean;
   /** Whether the in-context Parta push prompt strip was already shown/dismissed. */
@@ -69,12 +75,15 @@ interface SettingsState {
   setPreferRatedPubs: (v: boolean) => void;
   setPreferGardenPubs: (v: boolean) => void;
   setHidePubNames: (v: boolean) => void;
-  setShowPubVisitors: (v: boolean) => void;
+  setShowPubBeers: (v: boolean) => void;
   setMarketingEmailsEnabled: (v: boolean) => void;
   setPubReminderEnabled: (v: boolean) => void;
   setBeerCountReminderEnabled: (v: boolean) => void;
   setBeerCountReminderIntervalMinutes: (v: BeerCountReminderIntervalMinutes) => void;
+  setTourRemindersEnabled: (v: boolean) => void;
+  setTourReminderAskDismissed: (v: boolean) => void;
   setWaterNudgeEnabled: (v: boolean) => void;
+  setHomeTransitReminderEnabled: (v: boolean) => void;
   setFriendPushEnabled: (v: boolean) => void;
   setFriendPushPrompted: (v: boolean) => void;
   setFriendPushOptedOut: (v: boolean) => void;
@@ -98,14 +107,18 @@ export const useSettingsStore = create<SettingsState>()(
       preferRatedPubs: false,
       preferGardenPubs: false,
       hidePubNames: false,
-      showPubVisitors: true,
+      showPubBeers: true,
       marketingEmailsEnabled: false,
       pubReminderEnabled: false,
       beerCountReminderEnabled: true,
       beerCountReminderIntervalMinutes: 20,
+      tourRemindersEnabled: true,
+      tourReminderAskDismissed: false,
       // Explicit opt-in: a responsible-drinking nudge must never appear as an
       // unexpected judgment during an evening.
       waterNudgeEnabled: false,
+      // Explicit opt-in: a notification nobody asked for is noise.
+      homeTransitReminderEnabled: false,
       friendPushEnabled: false,
       friendPushPrompted: false,
       friendPushOptedOut: false,
@@ -128,13 +141,16 @@ export const useSettingsStore = create<SettingsState>()(
       setPreferRatedPubs: (v) => set({ preferRatedPubs: v }),
       setPreferGardenPubs: (v) => set({ preferGardenPubs: v }),
       setHidePubNames: (v) => set({ hidePubNames: v }),
-      setShowPubVisitors: (v) => set({ showPubVisitors: v }),
+      setShowPubBeers: (v) => set({ showPubBeers: v }),
       setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
       setPubReminderEnabled: (v) => set({ pubReminderEnabled: v }),
       setBeerCountReminderEnabled: (v) => set({ beerCountReminderEnabled: v }),
       setBeerCountReminderIntervalMinutes: (v) =>
         set({ beerCountReminderIntervalMinutes: v }),
+      setTourRemindersEnabled: (v) => set({ tourRemindersEnabled: v }),
+      setTourReminderAskDismissed: (v) => set({ tourReminderAskDismissed: v }),
       setWaterNudgeEnabled: (v) => set({ waterNudgeEnabled: v }),
+      setHomeTransitReminderEnabled: (v) => set({ homeTransitReminderEnabled: v }),
       setFriendPushEnabled: (v) => set({ friendPushEnabled: v }),
       setFriendPushPrompted: (v) => set({ friendPushPrompted: v }),
       setFriendPushOptedOut: (v) => set({ friendPushOptedOut: v }),
@@ -159,12 +175,15 @@ export const useSettingsStore = create<SettingsState>()(
         preferRatedPubs: state.preferRatedPubs,
         preferGardenPubs: state.preferGardenPubs,
         hidePubNames: state.hidePubNames,
-        showPubVisitors: state.showPubVisitors,
+        showPubBeers: state.showPubBeers,
         marketingEmailsEnabled: state.marketingEmailsEnabled,
         pubReminderEnabled: state.pubReminderEnabled,
         beerCountReminderEnabled: state.beerCountReminderEnabled,
         beerCountReminderIntervalMinutes: state.beerCountReminderIntervalMinutes,
+        tourRemindersEnabled: state.tourRemindersEnabled,
+        tourReminderAskDismissed: state.tourReminderAskDismissed,
         waterNudgeEnabled: state.waterNudgeEnabled,
+        homeTransitReminderEnabled: state.homeTransitReminderEnabled,
         friendPushEnabled: state.friendPushEnabled,
         friendPushPrompted: state.friendPushPrompted,
         friendPushOptedOut: state.friendPushOptedOut,
@@ -176,17 +195,20 @@ export const useSettingsStore = create<SettingsState>()(
           setCurrencyRate(state.priceCurrency, state.priceCurrencyRate);
         }
       },
-      version: 1,
+      version: 2,
       migrate: (persistedState, version) => {
-        const state = persistedState as Partial<SettingsState>;
-        if (version < 1) {
-          return {
-            ...state,
-            // The old value was an implicit default, not recorded consent.
-            waterNudgeEnabled: false,
-          } as SettingsState;
-        }
-        return persistedState as SettingsState;
+        const { showPubVisitors, ...state } = persistedState as Partial<SettingsState> & {
+          showPubVisitors?: unknown;
+        };
+        return {
+          ...state,
+          // The old value was an implicit default, not recorded consent.
+          ...(version < 1 ? { waterNudgeEnabled: false } : null),
+          // The map counts people became counts of beers; an opt-out stays out.
+          ...(version < 2 && typeof showPubVisitors === 'boolean'
+            ? { showPubBeers: showPubVisitors }
+            : null),
+        } as SettingsState;
       },
     }
   )

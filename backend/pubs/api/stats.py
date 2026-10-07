@@ -19,7 +19,9 @@ evening, drinks are ordered by ``drank_at``; the evening's duration is
 
 from __future__ import annotations
 
+import uuid
 from collections import OrderedDict
+from collections.abc import Collection
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -370,6 +372,7 @@ def compute_my_stats(
     *,
     timezone_name: str | None = None,
     exclude_drinking_day: date | None = None,
+    exclude_client_ids: Collection[uuid.UUID] = (),
 ) -> dict:
     """Aggregate ``account``'s drinks into the ``/v1/me/stats`` payload.
 
@@ -378,8 +381,10 @@ def compute_my_stats(
     in Python so the rules stay aligned with the device model. The explicit
     calendar-year horizon bounds detailed period/record work without affecting
     any real Na Pivo diary. ``timezone_name`` affects drinking-day and period
-    buckets without changing the wire shape for older clients. Returns the empty
-    payload (200, never 404) when the account has logged nothing.
+    buckets without changing the wire shape for older clients.
+    ``exclude_client_ids`` leaves out drinks the device already removed while
+    their DELETE is still queued. Returns the empty payload (200, never 404)
+    when the account has logged nothing.
     """
 
     resolved_timezone_name, stats_tz = resolve_stats_timezone(timezone_name)
@@ -391,9 +396,11 @@ def compute_my_stats(
         tzinfo=stats_tz,
     ).astimezone(UTC)
     max_drink_rows = max(1, min(int(settings.STATS_MAX_DRINK_ROWS), 500_000))
+    history = account.drinks.filter(drank_at__gte=history_start)
+    if exclude_client_ids:
+        history = history.exclude(client_id__in=exclude_client_ids)
     recent_drink_ids = (
-        account.drinks.filter(drank_at__gte=history_start)
-        .order_by("-drank_at", "-id")
+        history.order_by("-drank_at", "-id")
         .values("id")[:max_drink_rows]
     )
     drinks = (

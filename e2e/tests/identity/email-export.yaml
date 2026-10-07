@@ -1,0 +1,53 @@
+appId: ${MAESTRO_APP_ID}
+name: Verified email unlocks an export containing only this account's private data
+tags: [critical, full, identity]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: identity_export
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- assertVisible: "E-mail není ověřen"
+- tapOn: "Otevřít další možnosti účtu"
+- tapOn: "Stáhnout moje data"
+# The toast is transient while the sheet closes. Check the actual UI request.
+- runScript:
+    file: export-checks.js
+    env: { PHASE: denied }
+- tapOn: "Poslat znovu"
+- runScript:
+    file: export-checks.js
+    env: { PHASE: mail }
+- evalScript: ${output.local.request('/mail/verify', {})}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- assertVisible: "E-mail ověřen"
+- assertNotVisible: "Poslat znovu"
+- tapOn: "Otevřít další možnosti účtu"
+- tapOn: "Stáhnout moje data"
+- runScript:
+    file: export-checks.js
+    env: { PHASE: exported }
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- assertVisible: "E-mail ověřen"
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- assertVisible: "Upravit profil"
+- evalScript: ${output.local.screenshot('identity-email-verified-exported')}
+- runScript:
+    file: export-checks.js
+    env: { PHASE: final }

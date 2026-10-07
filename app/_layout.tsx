@@ -22,6 +22,8 @@ import { flushDrinksQueue } from '@/data/drinksQueue';
 import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
+import { installPubFavoritesSync, restorePubFavorites } from '@/data/pubFavoritesSync';
+import { flushPubFavoritesQueue } from '@/data/pubFavoritesQueue';
 import { installPubAmenitiesSync, restorePubAmenities } from '@/data/pubAmenitiesSync';
 import { flushPubRatingsQueue } from '@/data/pubRatingsQueue';
 import { flushPubAmenitiesQueue } from '@/data/pubAmenitiesQueue';
@@ -63,7 +65,11 @@ import { usePubStore } from '@/stores/pubStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
-import { ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush';
+import {
+  consumeInitialTourInviteTap,
+  ensureFriendPushRegisteredIfGranted,
+  subscribeTourInviteTap,
+} from '@/notifications/friendPush';
 import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { ContestResultsModal } from '@/photos/ContestResultsModal';
@@ -88,9 +94,16 @@ import {
   subscribeBeerCountReminderTap,
 } from '@/notifications/beerCountReminder';
 import {
+  consumeInitialTourReminderTap,
+  subscribeTourReminderTap,
+  syncTourReminders,
+} from '@/notifications/tourReminder';
+import {
   initializeLiveBeerActivity,
   reconcileLiveBeerActivityAndAutoArchive,
 } from '@/liveActivity/liveBeerActivity';
+import { initializeHomeTransitReminder } from '@/notifications/homeTransitReminder';
+import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransitSync';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -224,7 +237,10 @@ export default function RootLayout() {
     installClientTelemetry();
     void initializePubReminderNotifications();
     void initializeBeerCountReminderNotifications();
+    void syncTourReminders();
     void initializeLiveBeerActivity();
+    initializeHomeTransit();
+    initializeHomeTransitReminder();
     void refreshCurrencyFromLastKnownLocation();
   }, []);
 
@@ -237,15 +253,26 @@ export default function RootLayout() {
       usePartaSignalStore.getState().requestRefresh(payload ?? undefined);
       router.push('/friends' as Href);
     };
+    // A tour reminder opens its plan; a plan deleted since falls back to the list.
+    const navigateToTour = (planId: string | null) =>
+      router.push((planId ? { pathname: '/tours/[id]', params: { id: planId } } : '/tours') as Href);
+    // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
+    const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
+      void consumeInitialTourReminderTap(navigateToTour);
+      void consumeInitialTourInviteTap(openTourInvite);
     }
     const pubSubscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
     const beerCountSubscription = subscribeBeerCountReminderTap(navigateToCounter);
+    const tourSubscription = subscribeTourReminderTap(navigateToTour);
+    const tourInviteSubscription = subscribeTourInviteTap(openTourInvite);
     return () => {
       pubSubscription.remove();
       beerCountSubscription.remove();
+      tourSubscription.remove();
+      tourInviteSubscription.remove();
     };
   }, [fontsLoaded, fontError, router]);
 
@@ -340,6 +367,12 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // Favourite pubs (srdcovky) push the same way as private ratings.
+    const unsubscribeFavorites = installPubFavoritesSync();
+    return unsubscribeFavorites;
+  }, []);
+
+  useEffect(() => {
     // Install the "Zmapuj hospodu" amenity-vote push subscriber once for the
     // process lifetime, mirroring the ratings subscriber: it diffs every store
     // change into a queued per-amenity upsert/delete tombstone.
@@ -362,6 +395,7 @@ export default function RootLayout() {
     // Personal ratings: pull + merge the server set (LWW), pushing local-newer
     // ratings, then flush. Visits: one-time seed of existing history, then flush.
     void trackPull('ratings', () => restorePubRatings());
+    void trackPull('favorites', () => restorePubFavorites());
     // Amenity votes: same pull + merge + push + flush as ratings (spec §4.7).
     void trackPull('amenities', () => restorePubAmenities());
     void seedVisitsFromHistory();
@@ -409,6 +443,8 @@ export default function RootLayout() {
         // restore* = flush + pull + merge; a throttled foreground still flushes.
         if (pull('ratings')) void trackPull('ratings', () => restorePubRatings());
         else void flushPubRatingsQueue();
+        if (pull('favorites')) void trackPull('favorites', () => restorePubFavorites());
+        else void flushPubFavoritesQueue();
         if (pull('amenities')) void trackPull('amenities', () => restorePubAmenities());
         else void flushPubAmenitiesQueue();
         void flushVisitsQueue();
@@ -416,6 +452,7 @@ export default function RootLayout() {
         void ensureFriendPushRegisteredIfGranted();
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
+        void flushNightsQueue();
         void flushTourRunQueue();
         if (pull('diary')) {
           void trackPull('diary', () => useAccountStore.getState().refreshDiarySnapshot());
@@ -426,6 +463,9 @@ export default function RootLayout() {
           void cancelPendingPubReminder();
         }
         void refreshPubReminderGeofences();
+        void syncTourReminders();
+        // Tonight's last connection home; skipped while the answer is fresh.
+        void refreshHomeTransit();
       } else {
         flushWalkingDistance();
       }
@@ -437,6 +477,7 @@ export default function RootLayout() {
       Platform.OS === 'android'
         ? AppState.addEventListener('focus', () => {
             void reconcileLiveBeerActivityAndAutoArchive();
+            void flushNightsQueue();
           })
         : null;
     return () => {
@@ -551,6 +592,13 @@ export default function RootLayout() {
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',
               gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="pub"
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
             }}
           />
           <Stack.Screen

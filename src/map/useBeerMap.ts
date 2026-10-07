@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import type { Region } from 'react-native-maps';
 
 import type { DevicePosition } from '@/compass/useDevicePosition';
+import type { BeerSearchArea } from '@/data/beerSuggestionsClient';
 import { updateCurrencyFromCoordinates } from '@/location/locationCurrency';
 import {
   checkLocationPermission,
@@ -77,6 +78,8 @@ async function readOneShotPosition(maxAgeMs: number): Promise<DevicePosition | n
   }
 }
 
+const MAX_PUB_SEARCH_RADIUS_KM = 80;
+
 function viewportRadiusKm(region: Region): number {
   return Math.min(100, Math.max(1, viewportCoverageKm(region) * 1.25));
 }
@@ -106,6 +109,8 @@ export interface BeerMapData {
   /** Known reference prices of the loaded pubs BEFORE the price cap — feeds
    *  the filter sheet's histogram, which must show the full distribution. */
   nearbyPrices: number[];
+  /** Area of the last pub search, for nearby beer suggestions in the filter. */
+  searchArea: BeerSearchArea | null;
   visitedPubs: VisitedPubSummary[];
   visitedCities: VisitedCitySummary[];
   livePubs: LivePubSummary[];
@@ -297,7 +302,7 @@ export function useBeerMap(
     // The current nearby endpoint is not a country-scale catalogue. Waiting for
     // a city/region zoom avoids a costly, misleading 100 km search on the Czech
     // overview while cached pubs and visited-city markers remain visible.
-    if (radiusKm >= 80) return;
+    if (radiusKm >= MAX_PUB_SEARCH_RADIUS_KM) return;
     const serial = ++requestSerial.current;
     const controller = new AbortController();
     const timer = setTimeout(() => {
@@ -395,9 +400,18 @@ export function useBeerMap(
     [priceMaxCzk, priceMinCzk, visiblePubs],
   );
 
+  const searchArea = useMemo(() => {
+    if (!requestedRegion) return null;
+    const radiusKm = viewportRadiusKm(requestedRegion);
+    // No pub search runs at this zoom, so a menu beer could not be found.
+    if (radiusKm >= MAX_PUB_SEARCH_RADIUS_KM) return null;
+    return { lat: requestedRegion.latitude, lng: requestedRegion.longitude, radiusKm };
+  }, [requestedRegion]);
+
   return {
     pubs: pricedPubs,
     nearbyPrices,
+    searchArea,
     visitedPubs,
     visitedCities,
     livePubs,

@@ -67,10 +67,15 @@ interface PubRatingsState {
    * Last-write-wins by `updatedAt`: a server entry only overwrites the local one
    * when its `updatedAt` is strictly newer; local-only ratings are left
    * untouched (so a freshly-made local rating the server hasn't seen survives).
+   * `removed` lists ratings removed on another device: the local copy goes away
+   * unless it is newer than the removal.
    * Pure state merge — it does NOT enqueue anything; pubRatingsSync runs it under
    * the suppress flag so the resulting state change is not echoed back out.
    */
-  hydrateRatings: (serverRatings: { pubKey: string; rating: PubRating }[]) => void;
+  hydrateRatings: (
+    serverRatings: { pubKey: string; rating: PubRating }[],
+    removed?: { pubKey: string; updatedAt: string }[],
+  ) => void;
 }
 
 /** Trim a note to something worth keeping, or `undefined` when it is blank. */
@@ -159,7 +164,7 @@ export const usePubRatingsStore = create<PubRatingsState>()(
           return { ratings: next };
         }),
 
-      hydrateRatings: (serverRatings) => {
+      hydrateRatings: (serverRatings, removed = []) => {
         let changed = false;
         const next = { ...get().ratings };
         for (const { pubKey, rating } of serverRatings) {
@@ -172,6 +177,15 @@ export const usePubRatingsStore = create<PubRatingsState>()(
             if (!(Number.isFinite(serverMs) && serverMs > localMs)) continue;
           }
           next[pubKey] = rating;
+          changed = true;
+        }
+        // A removal wins a tie, the same as on the server.
+        for (const { pubKey, updatedAt } of removed) {
+          const local = next[pubKey];
+          const removedMs = Date.parse(updatedAt);
+          if (!local || !Number.isFinite(removedMs)) continue;
+          if (Date.parse(local.updatedAt) > removedMs) continue;
+          delete next[pubKey];
           changed = true;
         }
         // Runs on every foreground; skip set() (and the persisted rewrite) when

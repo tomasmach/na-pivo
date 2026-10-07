@@ -122,6 +122,13 @@ interface AccountState {
   profile: AccountProfile | null;
   /** Owner-only drink + visit snapshot used to reconcile offline diary totals. */
   diarySnapshot: { accountId: string; data: DiarySnapshot } | null;
+  /**
+   * Drinks removed on this phone since launch. A read that raced the DELETE can
+   * still return one; the server tombstones the ID, so it never comes back.
+   */
+  removedDrinkIds: ReadonlySet<string>;
+  /** Evenings wiped on this phone since launch, for the same reason. */
+  removedVisitIds: ReadonlySet<string>;
 
   /**
    * Ensure an account (anonymous or the signed-in one) exists. Never throws. A
@@ -135,6 +142,10 @@ interface AccountState {
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
   /** Resolves true when the server snapshot was fetched. */
   refreshDiarySnapshot: () => Promise<boolean>;
+  /** Drop a removed drink from the snapshot before its deletion reaches the server. */
+  forgetDiaryDrink: (clientId: string) => void;
+  /** Drop a wiped evening's visit from the snapshot before its deletion lands. */
+  forgetDiaryVisit: (clientId: string) => void;
   /**
    * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
    * snapshot so Profile climbs immediately after a vote, without a second GET.
@@ -189,6 +200,17 @@ interface AccountState {
   verifyEmail: (token: string) => Promise<AuthActionResult>;
 }
 
+function withoutRemoved(
+  data: DiarySnapshot,
+  drinkIds: ReadonlySet<string>,
+  visitIds: ReadonlySet<string>,
+): DiarySnapshot {
+  return {
+    drinks: data.drinks.filter((drink) => !drinkIds.has(drink.client_id)),
+    visits: data.visits.filter((visit) => !visitIds.has(visit.client_id)),
+  };
+}
+
 export const useAccountStore = create<AccountState>((set, get) => {
   const applyAccountSettings = (settings?: AccountSettings | null) => {
     if (!settings) return;
@@ -222,7 +244,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
     if (!accountId) return false;
     const data = await reconcileDiarySnapshot();
     if (data && get().session?.accountId === accountId) {
-      set({ diarySnapshot: { accountId, data } });
+      const { removedDrinkIds, removedVisitIds } = get();
+      set({ diarySnapshot: { accountId, data: withoutRemoved(data, removedDrinkIds, removedVisitIds) } });
     }
     return data != null;
   };
@@ -254,6 +277,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
     status: 'idle',
     profile: null,
     diarySnapshot: null,
+    removedDrinkIds: new Set(),
+    removedVisitIds: new Set(),
 
     initAccount: async () => {
       if (get().status === 'loading') return;
@@ -334,6 +359,35 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     refreshDiarySnapshot,
 
+    forgetDiaryDrink: (clientId) => {
+      set((state) => {
+        const removedDrinkIds = new Set(state.removedDrinkIds).add(clientId);
+        const snapshot = state.diarySnapshot;
+        return {
+          removedDrinkIds,
+          diarySnapshot: snapshot
+            ? { ...snapshot, data: withoutRemoved(snapshot.data, removedDrinkIds, state.removedVisitIds) }
+            : null,
+        };
+      });
+      // Without a snapshot the profile falls back to its cached server total,
+      // which still counts the removed beer; load the filtered snapshot instead.
+      if (!get().diarySnapshot) void refreshDiarySnapshot();
+    },
+
+    forgetDiaryVisit: (clientId) => {
+      set((state) => {
+        const removedVisitIds = new Set(state.removedVisitIds).add(clientId);
+        const snapshot = state.diarySnapshot;
+        return {
+          removedVisitIds,
+          diarySnapshot: snapshot
+            ? { ...snapshot, data: withoutRemoved(snapshot.data, state.removedDrinkIds, removedVisitIds) }
+            : null,
+        };
+      });
+    },
+
     applyMapperSnapshot: (snapshot) => {
       const current = get().profile;
       if (!current) return;
@@ -378,14 +432,24 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     logout: async (options) => {
       await auth.logout(options);
-      set({ profile: null, diarySnapshot: null });
+      set({
+        profile: null,
+        diarySnapshot: null,
+        removedDrinkIds: new Set(),
+        removedVisitIds: new Set(),
+      });
       await syncSession();
       await get().refreshProfile();
     },
     deleteAccount: async () => {
       const result = await auth.deleteAccount();
       if (result.ok) {
-        set({ profile: null, diarySnapshot: null });
+        set({
+          profile: null,
+          diarySnapshot: null,
+          removedDrinkIds: new Set(),
+          removedVisitIds: new Set(),
+        });
         await syncSession();
         await get().refreshProfile();
       }

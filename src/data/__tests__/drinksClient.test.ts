@@ -31,6 +31,15 @@ jest.mock('../telemetryClient', () => ({
   trackClientEvent: jest.fn(async () => undefined),
 }));
 
+// Cooldown timing and persistence are covered by drinkRateLimitRetry.test.ts.
+jest.mock('../drinksRateLimit', () => ({
+  registerDrinkRetryFlush: jest.fn(),
+  registerDrinkRateLimitAccountReader: jest.fn(),
+  getDrinkRateLimitGeneration: jest.fn(() => 0),
+  noteDrinkThrottled: jest.fn(async () => undefined),
+  shouldPauseDrinkSync: jest.fn(async () => false),
+}));
+
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 

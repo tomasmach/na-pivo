@@ -23,6 +23,32 @@ podle poslední změny od nejnovější. Dole je jediná jantarová akce vysoká
 „Zatím tu žádná není.“. Obnovení tažením, lokální fronta a stávající nabídka
 úprav zůstávají. Formulář a sdílené sheety drží současný vzhled 2.1.
 
+## Schválená stránka hospody (28. 9. 2026)
+
+Varianta B z návrhu „Hospoda, do které se dá nahlédnout“: každá hospoda má
+vlastní obrazovku `/pub`, kterou otevírá kompas, karta na mapě, hledání,
+žebříček hospod a trasy. Počítadlo a „Zmapuj hospodu“ v deníčku dál otevírají
+mapovací panel, protože tam jde o mapování.
+
+Obrazovka leží na `Colors.canvas` se systémovým písmem jako Moje přidané
+hospody. Hlavička má kulatá tlačítka 44 bodů na `Colors.stout2` (zpět a „…“),
+název hospody se v ní objeví až po odscrollování. Název je 28/700, pod ním
+jeden stavový řádek 15 bodů: otevírací doba barvou `open`/`closed`,
+vzdálenost a město. Následuje výřez mapy 112 bodů s radiusem 16 a pinem
+uprostřed, klepnutí otevře velkou mapu nad stránkou. Pod mapou jsou nejvýš tři
+důvody jít (akce, hodnocení, piva za minulý týden) jako řádky s 36bodovou
+ikonou. Sekce Na čepu, Akce, Otevíračka a O hospodě oddělují tmavé pásy
+(`#0F0A05`, 10 bodů, přes celou šířku), nadpisy jsou 18/700 v sentence case.
+Řádek „Zmapováno na N %“ otevírá dnešní mapovací panel beze změny. Dole je
+pevná lišta s jedinou jantarovou akcí „Doveď mě tam“ (48 bodů) a kulatým
+tlačítkem 48 bodů na `Colors.stout3`, které namíří kompas. Přejmenování,
+nahlášení a úprava vlastní hospody jsou v „…“.
+
+Srdíčko v hlavičce stránky (vedle „…“) uloží hospodu do srdcovek; uložená
+má plné jantarové srdce. Srdcovky jsou soukromé, v hledání mají vlastní
+sekci nad „V okolí“, na mapě malé srdce vlevo nahoře u pinu a v seznamu ve
+výřezu filtrační chip „Srdcovky“.
+
 Následující tabulky palety a `MockType` popisují historickou 3.0 referenci,
 nikoli dnešní globální exporty. `src/mocks/mockTheme.ts` už v obnovené 2.1 není;
 `Fonts.display` a `Fonts.ui` stále načítají Baloo a Inter pro původní obrazovky.
@@ -1043,6 +1069,15 @@ textové tlačítko s checkem. Historie má ploché řádky, vysvětlení soukro
 průchod“. Vrácení posledního označení zůstává viditelné v patičce a nepřekrývá obsah.
 Barvy zůstávají podle aktuálních `src/theme/colors.ts`, bez nových gradientů a závislostí.
 
+**Úprava tour (29. 9. 2026).** Výběr hospod se po přidání nezavírá: klepnutí na řádek hospodu přidá
+(jantarové kolečko s pořadím), další klepnutí ji odebere a šipka vpravo otevře detail. Patička drží lištu
+vybraných hospod s křížkem a jedinou plnou akci „Hotovo · N hospod“. S prázdným hledáním nabízí hospody
+nejblíž poslední zastávce s minutami pěšky a mapa se na ni posune. Termín je jeden řádek „Kdy“, který otevře sheet
+`TourWhenSheet`: kalendář po týdnech (5 týdnů na stránku, dny 46 pt, vybraný den plné jantarové kolečko,
+dnešek jantarovým číslem) a čtyři čipy času 18–21 podle `ComposeSheet` s krokovačem po 15 minutách pro jiný čas.
+Tohle je jediná výjimka z §18: systémový `DatePicker` neumí stav „den zatím nevybraný“, který nepovinný
+sraz potřebuje, a klepnutí na předvybraný dnešek u něj nic neudělá.
+
 ### Obecná pravidla
 
 **Kreslený prvek si musí zasloužit místo tím, že nese data.** Obrázek TOHO, co se počítá, data
@@ -1385,9 +1420,9 @@ vlastní povrch, ne jako rozbalovací pole v liště — jeden záměr na povrch
 ### 17.4 List → detail
 
 Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil) — patří do stacku
-vedle `/profile/edit` a `/settings`. **Výjimka je detail hospody:** ten žije uvnitř taženého
-`PlacesSheet` (`PubDetailBody` v `PubListMockScreen`), protože jeho kontextem je mapa, která má
-zůstat vidět. Intent sheet (§7) detail nikdy nenese.
+vedle `/profile/edit` a `/settings`. To platí i pro detail hospody: od 28. 9. 2026 je to
+samostatná obrazovka `/pub` (viz „Schválená stránka hospody“ nahoře), mapu otevírá výřez
+na stránce. Intent sheet (§7) detail nikdy nenese.
 
 ### 17.5 Kompas v seznamu hospod
 

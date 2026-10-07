@@ -1291,7 +1291,7 @@ def test_account_export_reuses_loaded_auth_relations(client):
     assert sum('"pubs_emailcredential"' in sql for sql in select_queries) == 1
     assert sum('"pubs_authidentity"' in sql for sql in select_queries) == 1
     assert sum('"pubs_offlinemutationtombstone"' in sql for sql in select_queries) == 1
-    assert len(queries.captured_queries) <= 42
+    assert len(queries.captured_queries) <= 43
 
 
 @pytest.mark.django_db
@@ -2005,6 +2005,7 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
     exported_relations = {
         "tours": "tours[*].id",
         "tour_run_memberships": "tour_runs[*].run_id",
+        "tour_invites": "tour_invites[*].tour_id",
         "auth_tokens": "auth_sessions[*].device_label",
         "email_credential": "email_credential.created_at",
         "beer_photo_deletion_tombstones": "beer_photo_deletion_tombstones[*].client_id",
@@ -2047,6 +2048,9 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
         ),
         "pub_visits": "visits[*]",
         "pub_ratings": "ratings[*]",
+        "pub_favorites": "favorites[*]",
+        "pub_favorite_tombstones": "removed_favorites[*].cache_key",
+        "pub_rating_tombstones": "removed_ratings[*].cache_key",
         "contribution_logs": "community_contributions[*].payload",
         "pub_reports": "pub_reports[*].reason",
         "feedback_reports": "feedback_reports[*].message",

@@ -31,6 +31,13 @@ jest.mock('../drinksClient', () => ({
   submitDrink: jest.fn(async () => 'ok'),
 }));
 
+// Queue lifecycle tests use a fixed network result; cooldown is covered separately.
+jest.mock('../drinksRateLimit', () => ({
+  registerDrinkRetryFlush: jest.fn(),
+  registerDrinkRateLimitAccountReader: jest.fn(),
+  shouldPauseDrinkSync: jest.fn(() => false),
+}));
+
 const STORAGE_KEY = 'na-pivo-drinks-queue';
 
 let seq = 0;

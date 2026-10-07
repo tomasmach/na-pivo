@@ -288,6 +288,8 @@ function AddFriendSheet({
   visible,
   hasIdentity,
   needsNickname,
+  showTable,
+  tableAutoStart,
   onOpenCode,
   onChanged,
   onClose,
@@ -295,6 +297,8 @@ function AddFriendSheet({
   visible: boolean;
   hasIdentity: boolean;
   needsNickname: boolean;
+  showTable: boolean;
+  tableAutoStart: boolean;
   onOpenCode: () => void;
   onChanged: () => void;
   onClose: () => void;
@@ -312,6 +316,9 @@ function AddFriendSheet({
         onOpenCode={onOpenCode}
         onChanged={onChanged}
         showSearch
+        // A closed Modal can keep its content mounted; the table must go at once.
+        showTable={showTable && visible}
+        tableAutoStart={tableAutoStart}
       />
     </SheetScaffold>
   );
@@ -404,6 +411,7 @@ export default function FriendsScreen() {
   const [codeVisible, setCodeVisible] = useState(false);
   const [composeVisible, setComposeVisible] = useState(false);
   const [addFriendVisible, setAddFriendVisible] = useState(false);
+  const [tableAutoStart, setTableAutoStart] = useState(false);
   const [rosterVisible, setRosterVisible] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -816,14 +824,24 @@ export default function FriendsScreen() {
     }, SHEET_DISMISS_MS);
   }, []);
 
-  const openCodeFromAdd = useCallback(() => {
+  // The table section auto-starts only when "Přidej lidi od stolu" opened the sheet.
+  const openAddFromTable = useCallback(() => {
+    setTableAutoStart(true);
+    setAddFriendVisible(true);
+  }, []);
+  const closeAddFriend = useCallback(() => {
     setAddFriendVisible(false);
+    setTableAutoStart(false);
+  }, []);
+
+  const openCodeFromAdd = useCallback(() => {
+    closeAddFriend();
     if (sheetActionTimerRef.current) clearTimeout(sheetActionTimerRef.current);
     sheetActionTimerRef.current = setTimeout(() => {
       sheetActionTimerRef.current = null;
       setCodeVisible(true);
     }, SHEET_DISMISS_MS);
-  }, []);
+  }, [closeAddFriend]);
 
   const moreRows = useMemo<MoreRow[]>(
     () => [
@@ -1133,7 +1151,7 @@ export default function FriendsScreen() {
         onPress: () => router.push('/auth' as Href),
       };
     }
-    if (nickname == null) {
+    if (needsNickname) {
       return {
         label: t.friends.ctaNickname,
         onPress: () => router.push('/profile/edit' as Href),
@@ -1161,7 +1179,7 @@ export default function FriendsScreen() {
       label: t.friends.ctaPing,
       onPress: () => setComposeVisible(true),
     };
-  }, [d?.activeFriends.length, d?.myActiveActivity, friendCount, isSignedIn, nickname, router]);
+  }, [d?.activeFriends.length, d?.myActiveActivity, friendCount, isSignedIn, needsNickname, router]);
 
   const onRequestsLayout = useCallback((event: LayoutChangeEvent) => {
     requestsYRef.current = event.nativeEvent.layout.y;
@@ -1356,6 +1374,7 @@ export default function FriendsScreen() {
                 sharedCacheKey={sharedTable?.cacheKey ?? null}
                 onOpenProfile={openFriendProfile}
                 onChanged={reload}
+                onAddFromTable={hasIdentity ? openAddFromTable : undefined}
               />
             </View>
           ) : loading && !d ? null : (
@@ -1556,9 +1575,11 @@ export default function FriendsScreen() {
         visible={addFriendVisible}
         hasIdentity={hasIdentity}
         needsNickname={needsNickname}
+        showTable={d?.myPresence != null}
+        tableAutoStart={tableAutoStart}
         onOpenCode={openCodeFromAdd}
         onChanged={reload}
-        onClose={() => setAddFriendVisible(false)}
+        onClose={closeAddFriend}
       />
 
       <RosterSheet

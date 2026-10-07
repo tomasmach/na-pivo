@@ -217,6 +217,7 @@ export default function ReportScreen() {
 
           {/* ── Message ── */}
           <TextInput
+            testID="feedback-message"
             style={styles.messageInput}
             value={message}
             onChangeText={setMessage}

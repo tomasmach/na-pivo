@@ -5,18 +5,24 @@ import {
 } from '../diarySync';
 import { fetchDrinks } from '../drinksClient';
 import { flushDrinksQueue } from '../drinksQueue';
-import { flushDeleteDrinksQueue } from '../deleteDrinksQueue';
+import { flushDeleteDrinksQueue, getQueuedDeleteIds } from '../deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '../updateDrinksQueue';
 import { fetchVisits } from '../visitsClient';
-import { flushVisitsQueue } from '../visitsQueue';
+import { flushVisitsQueue, getQueuedVisitDeleteIds } from '../visitsQueue';
 import type { TallySession } from '@/stores/tallyStore';
 
 jest.mock('../drinksClient', () => ({ fetchDrinks: jest.fn() }));
 jest.mock('../visitsClient', () => ({ fetchVisits: jest.fn() }));
 jest.mock('../drinksQueue', () => ({ flushDrinksQueue: jest.fn(async () => undefined) }));
-jest.mock('../deleteDrinksQueue', () => ({ flushDeleteDrinksQueue: jest.fn(async () => undefined) }));
+jest.mock('../deleteDrinksQueue', () => ({
+  flushDeleteDrinksQueue: jest.fn(async () => undefined),
+  getQueuedDeleteIds: jest.fn(async () => new Set()),
+}));
 jest.mock('../updateDrinksQueue', () => ({ flushUpdateDrinksQueue: jest.fn(async () => undefined) }));
-jest.mock('../visitsQueue', () => ({ flushVisitsQueue: jest.fn(async () => undefined) }));
+jest.mock('../visitsQueue', () => ({
+  flushVisitsQueue: jest.fn(async () => undefined),
+  getQueuedVisitDeleteIds: jest.fn(async () => new Set()),
+}));
 
 const PUB_A = 'u2fkbn0x';
 const PUB_B = 'u2fkbn1y';
@@ -93,6 +99,32 @@ it('loads an authoritative beer and visit snapshot on a new device', async () =>
   expect((flushVisitsQueue as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
     (fetchVisits as jest.Mock).mock.invocationCallOrder[0],
   );
+});
+
+it('leaves out a removed drink whose deletion is still queued', async () => {
+  const visits = [remoteVisit('v1', PUB_A)];
+  (fetchDrinks as jest.Mock).mockResolvedValue([
+    remoteDrink('kept', PUB_A),
+    remoteDrink('removed', PUB_A),
+  ]);
+  (fetchVisits as jest.Mock).mockResolvedValue(visits);
+  (getQueuedDeleteIds as jest.Mock).mockResolvedValueOnce(new Set(['removed']));
+
+  const snapshot = await reconcileDiarySnapshot();
+
+  expect(snapshot).toEqual({ drinks: [remoteDrink('kept', PUB_A)], visits });
+  expect(deriveReconciledDiaryStats(snapshot!, []).totalBeers).toBe(1);
+});
+
+it('leaves out a wiped evening whose visit DELETE is still queued', async () => {
+  (fetchDrinks as jest.Mock).mockResolvedValue([]);
+  (fetchVisits as jest.Mock).mockResolvedValue([remoteVisit('kept', PUB_A), remoteVisit('wiped', PUB_B)]);
+  (getQueuedVisitDeleteIds as jest.Mock).mockResolvedValueOnce(new Set(['wiped']));
+
+  const snapshot = await reconcileDiarySnapshot();
+
+  expect(snapshot?.visits).toEqual([remoteVisit('kept', PUB_A)]);
+  expect(deriveReconciledDiaryStats(snapshot!, []).distinctPubs).toBe(1);
 });
 
 it('merges offline writes by client ID without double-counting synced rows', () => {

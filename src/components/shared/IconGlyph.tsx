@@ -70,6 +70,7 @@ import MapPinned from 'lucide-react-native/icons/map-pinned';
 import MapPinPlus from 'lucide-react-native/icons/map-pin-plus';
 import Map from 'lucide-react-native/icons/map';
 import List from 'lucide-react-native/icons/list';
+import LayoutList from 'lucide-react-native/icons/layout-list';
 import LocateFixed from 'lucide-react-native/icons/locate-fixed';
 import SlidersHorizontal from 'lucide-react-native/icons/sliders-horizontal';
 import Sprout from 'lucide-react-native/icons/sprout';
@@ -129,6 +130,10 @@ export const ChevronLeftIcon = wrap(ChevronLeft, 'ChevronLeftIcon');
 export const ChevronRightIcon = wrap(ChevronRight, 'ChevronRightIcon');
 export const ChevronDownIcon = wrap(ChevronDown, 'ChevronDownIcon');
 export const HeartIcon = wrap(Heart, 'HeartIcon');
+/** The saved state of the heart: same glyph, filled with its colour. */
+export const HeartFilledIcon = memo(function HeartFilledIcon({ size = 20, color }: IconProps) {
+  return <Heart size={size} color={color} fill={color} strokeWidth={2} />;
+});
 export const FlagIcon = wrap(Flag, 'FlagIcon');
 export const MessageSquareIcon = wrap(MessageSquare, 'MessageSquareIcon');
 export const RadiusIcon = wrap(Radius, 'RadiusIcon');
@@ -201,6 +206,7 @@ export const MapPinnedIcon = wrap(MapPinned, 'MapPinnedIcon');
 export const MapPinPlusIcon = wrap(MapPinPlus, 'MapPinPlusIcon');
 export const MapIcon = wrap(Map, 'MapIcon');
 export const ListIcon = wrap(List, 'ListIcon');
+export const LayoutListIcon = wrap(LayoutList, 'LayoutListIcon');
 export const LocateFixedIcon = wrap(LocateFixed, 'LocateFixedIcon');
 export const SlidersHorizontalIcon = wrap(SlidersHorizontal, 'SlidersHorizontalIcon');
 export const SproutIcon = wrap(Sprout, 'SproutIcon');

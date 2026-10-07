@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { clearDeleteDrinksQueue, enqueueDelete, flushDeleteDrinksQueue } from '../deleteDrinksQueue';
+import {
+  clearDeleteDrinksQueue,
+  enqueueDelete,
+  flushDeleteDrinksQueue,
+  getConfirmedDeleteIds,
+  getQueuedDeleteIds,
+} from '../deleteDrinksQueue';
 import { deleteDrink } from '../drinksClient';
 import type { SubmitDrinkResult } from '../drinksClient';
 
@@ -17,6 +23,12 @@ jest.mock('expo-secure-store', () => ({
 jest.mock('../drinksClient', () => ({
   ...jest.requireActual('../drinksClient'),
   deleteDrink: jest.fn(async () => 'ok'),
+}));
+
+// Account-bound cooldown behavior is exercised by drinkRateLimitRetry.test.ts.
+jest.mock('../drinksRateLimit', () => ({
+  ...jest.requireActual('../drinksRateLimit'),
+  shouldPauseDrinkSync: jest.fn(async () => false),
 }));
 
 const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
@@ -47,9 +59,19 @@ beforeEach(async () => {
 });
 
 describe('enqueueDelete', () => {
+  it('can persist a deletion before an older drink POST finishes', async () => {
+    await enqueueDelete('a', { deliver: false });
+    expect(await readQueue()).toEqual(['a']);
+    expect(deleteDrink).not.toHaveBeenCalled();
+
+    await flushDeleteDrinksQueue();
+    expect(deleteDrink).toHaveBeenCalledWith('a', expect.any(AbortSignal));
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('sends the deletion and drops it from the queue on success', async () => {
     await enqueueDelete('a');
-    expect(deleteDrink).toHaveBeenCalledWith('a');
+    expect(deleteDrink).toHaveBeenCalledWith('a', expect.any(AbortSignal));
     expect(await readQueue()).toEqual([]);
   });
 
@@ -57,6 +79,7 @@ describe('enqueueDelete', () => {
     (deleteDrink as jest.Mock).mockResolvedValue('retry');
     await enqueueDelete('a');
     expect(await readQueue()).toEqual(['a']);
+    expect(await getQueuedDeleteIds()).toEqual(new Set(['a']));
   });
 
   it('preserves and later delivers every deletion in an oversized upgrade backlog', async () => {
@@ -71,6 +94,18 @@ describe('enqueueDelete', () => {
     await flushDeleteDrinksQueue();
     expect(deleteDrink).toHaveBeenCalledTimes(251);
     expect(await readQueue()).toEqual([]);
+  });
+
+  it('remembers only deletions the backend confirmed, until an account clear', async () => {
+    (deleteDrink as jest.Mock).mockResolvedValueOnce('retry').mockResolvedValueOnce('ok');
+    await enqueueDelete('throttled');
+    expect(getConfirmedDeleteIds().has('throttled')).toBe(false);
+
+    await enqueueDelete('landed');
+    expect(getConfirmedDeleteIds().has('landed')).toBe(true);
+
+    await clearDeleteDrinksQueue();
+    expect(getConfirmedDeleteIds().size).toBe(0);
   });
 
   it('drops a permanently-rejected deletion from the queue', async () => {

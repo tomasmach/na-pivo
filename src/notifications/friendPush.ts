@@ -135,3 +135,46 @@ export function ensureFriendPushRegisteredIfGranted(): Promise<void> {
     }
   });
 }
+
+type NotificationResponse = ExpoNotifications.NotificationResponse;
+type Subscription = ExpoNotifications.Subscription;
+
+/** The share token a tour invite push carries; anything else (or a malformed token) is not ours. */
+export function tourInviteToken(response: NotificationResponse | null): string | null {
+  const data = response?.notification.request.content.data;
+  const token = data?.kind === 'friend_tour_invite' ? data.tour_token : null;
+  return typeof token === 'string' && /^[A-Za-z0-9_-]{20,200}$/.test(token) ? token : null;
+}
+
+// A launch tap can surface through both the cold-start read and the live event; it opens the tour once.
+const handledInviteTaps = new Set<string>();
+function claimInviteTap(response: NotificationResponse): boolean {
+  const id = response.notification.request.identifier;
+  if (handledInviteTaps.has(id)) return false;
+  if (handledInviteTaps.size >= 32) handledInviteTaps.clear();
+  handledInviteTaps.add(id);
+  return true;
+}
+
+/** A tap on a tour invite while the app runs opens the tour, where the friend answers. */
+export function subscribeTourInviteTap(onTap: (token: string) => void): Subscription {
+  if (!Notifications) return { remove: () => undefined };
+  return Notifications.addNotificationResponseReceivedListener((response) => {
+    const token = tourInviteToken(response);
+    if (token && claimInviteTap(response)) onTap(token);
+  });
+}
+
+/** A cold start from a tour invite tap opens the tour once. */
+export async function consumeInitialTourInviteTap(onTap: (token: string) => void): Promise<void> {
+  if (!Notifications) return;
+  try {
+    const response = await Notifications.getLastNotificationResponseAsync();
+    const token = tourInviteToken(response);
+    if (!token || !response) return;
+    await Notifications.clearLastNotificationResponseAsync();
+    if (claimInviteTap(response)) onTap(token);
+  } catch {
+    // No launch notification, or the API is unavailable.
+  }
+}

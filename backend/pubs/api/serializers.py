@@ -44,6 +44,7 @@ from django.core.validators import EmailValidator
 from django.db import IntegrityError
 from django.db.models import Q
 from django.utils import timezone as dj_timezone
+from django.utils.translation import gettext
 from rest_framework import serializers
 
 from pubs import accounts
@@ -53,6 +54,7 @@ from pubs.beer_catalog import (
     BEER_PRICE_MAX_CZK,
     BEER_PRICE_MIN_CZK,
     normalize_beer_payload,
+    normalize_beer_text,
 )
 from pubs.i18n import current_locale, normalize_locale
 from pubs.mapper import maper_levels, maper_progress, maper_xp_rules
@@ -484,6 +486,7 @@ _CLIENT_EVENT_SCREEN_NAMES = {
     "community_events",
     "my_added_pubs",
     "profile_photos",
+    "pub_page",
 }
 # Mirror of UI_INTERACTION_TARGETS in src/data/uxTelemetry.ts. A target missing
 # here is silently dropped, which is how a week of 3.0 taps landed as an unknown
@@ -2173,6 +2176,18 @@ class BeerBrandSuggestQuerySerializer(serializers.Serializer):
         trim_whitespace=True,
     )
     limit = serializers.IntegerField(required=False, min_value=1, max_value=20, default=12)
+    # Optional search area. When present, beer names from nearby community
+    # menus join the catalog suggestions as kind "menu". Released clients
+    # never send it, so they only ever see catalog slugs.
+    lat = serializers.FloatField(required=False, min_value=-90.0, max_value=90.0)
+    lng = serializers.FloatField(required=False, min_value=-180.0, max_value=180.0)
+    radius_km = serializers.FloatField(required=False, min_value=0.1, default=25.0)
+
+    def validate(self, attrs: dict) -> dict:
+        if ("lat" in attrs) != ("lng" in attrs):
+            raise serializers.ValidationError(gettext("Pošli lat i lng zároveň."))
+        attrs["radius_km"] = min(attrs["radius_km"], PUBS_NEAR_MAX_RADIUS_KM)
+        return attrs
 
 
 class BeerBrandSuggestionSerializer(serializers.Serializer):
@@ -2180,7 +2195,7 @@ class BeerBrandSuggestionSerializer(serializers.Serializer):
 
     slug = serializers.CharField()
     name = serializers.CharField()
-    kind = serializers.ChoiceField(choices=("product", "brand"))
+    kind = serializers.ChoiceField(choices=("product", "brand", "menu"))
     brand_slug = serializers.CharField()
     brand_name = serializers.CharField()
 
@@ -2486,6 +2501,33 @@ class PubRatingRequestSerializer(PubInputSerializer):
     updated_at = serializers.DateTimeField()
 
 
+# ---------------------------------------------------------------------------
+# Pub favourites (PUT/GET /v1/pub-favorites, DELETE /v1/pub-favorites/<cache_key>)
+# ---------------------------------------------------------------------------
+
+
+class PubFavoriteRequestSerializer(PubInputSerializer):
+    """Request body for PUT /v1/pub-favorites (save or remove one favourite).
+
+    Same bounds as PubRatingRequestSerializer. ``favorite: false`` is the
+    favourite's equivalent of an empty rating: a removal guarded by the same
+    last-write-wins timestamp as a save.
+    """
+
+    name = serializers.CharField(
+        max_length=255, required=False, allow_null=True, allow_blank=True, default=""
+    )
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    favorite = serializers.BooleanField(required=False, default=True)
+    updated_at = serializers.DateTimeField()
+
+
 class PubVisitDeleteRequestSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(required=False)
 
@@ -2581,6 +2623,14 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         trim_whitespace=True,
     )
     include_other_places = serializers.BooleanField(required=False, default=False)
+    # Additive free-text filter over current community beer menus, for beers
+    # outside the brand catalog. Released clients never send it.
+    beer_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=80,
+        trim_whitespace=True,
+    )
 
     def validate_radius_km(self, value: float | None) -> float:
         # Default when omitted/null; otherwise clamp into (0, 100]. A value <= 0
@@ -2598,6 +2648,17 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         attrs.setdefault("radius_km", PUBS_NEAR_DEFAULT_RADIUS_KM)
         if not attrs.get("beer_brand"):
             attrs.pop("beer_brand", None)
+        beer_name = normalize_beer_text(attrs.pop("beer_name", ""))
+        if beer_name:
+            if len(beer_name) < 2:
+                raise serializers.ValidationError(
+                    {"beer_name": [gettext("Název piva musí mít aspoň 2 znaky.")]}
+                )
+            if attrs.get("beer_brand") or attrs.get("beer_brands"):
+                raise serializers.ValidationError(
+                    {"beer_name": [gettext("Název piva nejde kombinovat se značkami piva.")]}
+                )
+            attrs["beer_name"] = beer_name
         raw_beer_brands = attrs.get("beer_brands", "")
         if raw_beer_brands:
             keys = []
@@ -2639,6 +2700,42 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         else:
             attrs.pop("amenities", None)
         return attrs
+
+
+TRANSIT_MAX_HOME_STOPS = 80
+_TRANSIT_STOP_ID = re.compile(r"[A-Za-z0-9_.:-]{1,32}")
+
+
+class TransitLastDirectQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):
+    """Query params for GET /v1/transit/last-direct.
+
+    ``to_stop_ids`` are the stops the app found near home; they stand in for the
+    home location, so they are never logged or stored.
+    """
+
+    from_lat = serializers.FloatField()
+    from_lng = serializers.FloatField()
+    to_stop_ids = serializers.CharField(max_length=4000, trim_whitespace=True)
+
+    validate_from_lat = _LatLngBoundsValidationMixin.validate_lat
+    validate_from_lng = _LatLngBoundsValidationMixin.validate_lng
+
+    def validate_to_stop_ids(self, value: str) -> list[str]:
+        ids: list[str] = []
+        for raw in value.split(","):
+            stop_id = raw.strip()
+            if not stop_id or stop_id in ids:
+                continue
+            if not _TRANSIT_STOP_ID.fullmatch(stop_id):
+                raise serializers.ValidationError("Stop ids must be short GTFS stop ids.")
+            if len(ids) == TRANSIT_MAX_HOME_STOPS:
+                raise serializers.ValidationError(
+                    f"Send at most {TRANSIT_MAX_HOME_STOPS} stop ids."
+                )
+            ids.append(stop_id)
+        if not ids:
+            raise serializers.ValidationError("Send at least one stop id.")
+        return ids
 
 
 class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):

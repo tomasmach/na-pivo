@@ -45,10 +45,10 @@ function tileLabel(photo: BeerPhotoLocal): string {
   return photo.caption || photo.pubName || '';
 }
 
-function SyncChip({ state }: { state: 'pending' | 'failed' }) {
+function SyncChip({ state, testID }: { state: 'pending' | 'failed'; testID?: string }) {
   const pending = state === 'pending';
   return (
-    <View style={[styles.syncChip, pending ? styles.syncChipPending : styles.syncChipFailed]}>
+    <View testID={testID} style={[styles.syncChip, pending ? styles.syncChipPending : styles.syncChipFailed]}>
       {pending ? (
         <RefreshCwIcon size={10} color={Colors.foamMuted} />
       ) : (
@@ -76,6 +76,7 @@ function PhotoTile({
   const uri = photo.imageUrl ?? photo.localUri;
   return (
     <ScalePressable
+      testID={`photo-item-${photo.clientId}`}
       onPress={onPress}
       style={[styles.tile, lead ? styles.tileLead : styles.tileSmall]}
       accessibilityRole="button"
@@ -91,7 +92,7 @@ function PhotoTile({
         />
       ) : null}
       {photo.syncState !== 'synced' ? (
-        <SyncChip state={photo.syncState === 'pending' ? 'pending' : 'failed'} />
+        <SyncChip testID={`photo-sync-state-${photo.clientId}`} state={photo.syncState === 'pending' ? 'pending' : 'failed'} />
       ) : null}
     </ScalePressable>
   );

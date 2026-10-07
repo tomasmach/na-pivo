@@ -1,23 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRightIcon, ClockIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import { MapPubSheet } from '@/components/amenities/MapPubSheet';
-import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
-import { fetchPubHours } from '@/data/hoursClient';
-import { type Pub } from '@/data/pubs';
+import type { Pub } from '@/data/pubs';
 import { localPubSearch, resolvePubSearchResult, searchPubNames, type PubSearchResult } from '@/data/pubSearchClient';
-import { EMPTY_PUB_SEARCH_FILTERS, type PubSearchFilters } from '@/data/pubSearchFilters';
-import BeerMapScreen from '@/map/BeerMapScreen';
+import { openPubPage } from '@/pubPage/openPubPage';
 import { useAccountStore } from '@/stores/accountStore';
+import { isSameVenue, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubStore } from '@/stores/pubStore';
-import { useToastStore } from '@/stores/toastStore';
-import { openPubInMaps } from '@/utils/maps';
 import { numberFormat } from '@/utils/intlFormat';
-import { t } from '@/i18n';
+import { intlLocale, t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -49,10 +44,32 @@ function SearchContent() {
   const [retry, setRetry] = useState(0);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [openFailed, setOpenFailed] = useState(false);
-  const [selectedPub, setSelectedPub] = useState<Pub | null>(null);
-  const [mapPub, setMapPub] = useState<Pub | null>(null);
-  const [mapFilters, setMapFilters] = useState<PubSearchFilters>(EMPTY_PUB_SEARCH_FILTERS);
-  const { nearby, frequent, pubs } = usePubSuggestions();
+  const suggestions = usePubSuggestions();
+  const { pubs } = suggestions;
+  const favoriteMap = usePubFavoritesStore((state) => state.favorites);
+  // Srdcovky come first; the same pub is not repeated under V okolí or stálice.
+  // A reported pub disappears here too, like everywhere else in search.
+  const favorites = useMemo(() => Object.entries(favoriteMap)
+    .filter(([key, favorite]) => !reportedKeys.includes(key)
+      && !(favorite.externalId && reportedIds.includes(favorite.externalId)))
+    // Prefer the current catalogue copy, so a corrected name or pin opens.
+    .map(([key, favorite]): Pub => (favorite.externalId && pubs.find((pub) => pub.id === favorite.externalId)) || {
+      id: favorite.externalId || `favorite:${key}`,
+      name: favorite.name,
+      lat: favorite.lat,
+      lng: favorite.lng,
+      ...(favorite.city ? { city: favorite.city } : {}),
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, intlLocale)), [favoriteMap, pubs, reportedIds, reportedKeys]);
+  // Same pub by cell or by provider id, so a pin moved to the next cell still counts.
+  const favoriteIds = useMemo(() => new Set(Object.values(favoriteMap)
+    .map((favorite) => favorite.externalId).filter(Boolean)), [favoriteMap]);
+  const notFavorite = useCallback(({ pub }: { pub: Pub }) => {
+    const inCell = favoriteMap[geohash8(pub.lat, pub.lng)];
+    return !(inCell && isSameVenue(inCell, pub)) && !favoriteIds.has(pub.id);
+  }, [favoriteIds, favoriteMap]);
+  const nearby = useMemo(() => suggestions.nearby.filter(notFavorite), [suggestions.nearby, notFavorite]);
+  const frequent = useMemo(() => suggestions.frequent.filter(notFavorite), [suggestions.frequent, notFavorite]);
   const term = query.trim();
   const canSearch = term.length >= 2;
   const localResults = useMemo(() => {
@@ -94,40 +111,6 @@ function SearchContent() {
     return () => { clearTimeout(timer); controller.abort(); };
   }, [canSearch, term, retry, pubs]);
 
-  useEffect(() => {
-    if (!selectedPub) return;
-    const controller = new AbortController();
-    const pub = selectedPub;
-    void fetchPubHours([pub], controller.signal).then((response) => {
-      const details = response.get(pub.id);
-      if (!details || controller.signal.aborted) return;
-      setSelectedPub((current) => current?.id === pub.id ? {
-        ...current,
-        openingHours: details.openingHours,
-        isOpenNow: details.isOpenNow,
-        nextChange: details.nextChange,
-        hoursStatus: details.status,
-        communityHours: details.communityHours ?? undefined,
-        beers: details.beers,
-        historicalBeers: details.historicalBeers,
-        beerMenuRotates: details.beerMenuRotates,
-        beersUpdatedAt: details.beersUpdatedAt,
-        hoursUpdatedAt: details.hoursUpdatedAt,
-      } : current);
-    });
-    return () => controller.abort();
-    // Refresh only when opening a different pub, not after enriching it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPub?.id]);
-
-  useFocusEffect(useCallback(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (mapPub) { setMapPub(null); return true; }
-      return false;
-    });
-    return () => sub.remove();
-  }, [mapPub]));
-
   const openResult = async (result: PubSearchResult) => {
     resolveController.current?.abort();
     const controller = new AbortController();
@@ -143,7 +126,8 @@ function SearchContent() {
       void saveRecentSearch(recent, term);
       setRecent((current) => mergeRecentSearches(current, term));
     }
-    setSelectedPub(pub);
+    // A favourite without a provider id is listed under a made-up key, not an id.
+    openPubPage(router, pub.id.startsWith('favorite:') ? { ...pub, id: '' } : pub);
   };
 
   const visibleResults = results.filter((result) => !reportedIds.includes(result.id) &&
@@ -166,7 +150,7 @@ function SearchContent() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.screen, { paddingTop: insets.top + Spacing.sm }, mapPub && styles.hidden]}>
+      <View style={[styles.screen, { paddingTop: insets.top + Spacing.sm }]}>
         <View style={styles.header}>
           <View style={styles.field}>
             <SearchIcon size={18} color={Colors.mutedText} />
@@ -196,6 +180,10 @@ function SearchContent() {
         </View>
         <KeyboardAwareScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + Spacing.xl }]}
           keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+          {!term && favorites.length > 0 ? <>
+            <Text style={styles.heading} accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading}>{t.pubSearch.favorites}</Text>
+            {favorites.map((pub) => renderResult({ ...pub, pub }))}
+          </> : null}
           {!term && nearby.length > 0 ? <>
             <Text style={styles.heading} accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading}>{t.pubSearch.nearby}</Text>
             {nearby.map(({ pub, distanceMeters }) => renderResult({ ...pub, pub }, suggestionDistance(distanceMeters!)))}
@@ -225,16 +213,6 @@ function SearchContent() {
           </View> : null}
         </KeyboardAwareScrollView>
       </View>
-      {mapPub ? <BeerMapScreen initialPub={mapPub} focusInitialPub filters={mapFilters} onApplyFilters={setMapFilters}
-        onSearch={() => { setMapPub(null); requestAnimationFrame(() => inputRef.current?.focus()); }} onShowCompass={() => { Keyboard.dismiss(); router.dismissTo({ pathname: '/', params: { view: 'compass' } }); }} /> : null}
-      {selectedPub ? <MapPubSheet visible pubKey={geohash8(selectedPub.lat, selectedPub.lng)} pubName={selectedPub.name}
-        info={pubInfoFromPub(selectedPub)} onClose={() => setSelectedPub(null)}
-        onRenamed={(name) => setSelectedPub((pub) => pub ? { ...pub, name } : pub)}
-        hoursLabel={typeof selectedPub.isOpenNow === 'boolean' ? (selectedPub.isOpenNow ? t.compass.openNow : t.compass.closedNow) : null}
-        hoursTone={selectedPub.isOpenNow === true ? 'open' : selectedPub.isOpenNow === false ? 'closed' : 'unknown'}
-        onShowMap={() => { setMapFilters(EMPTY_PUB_SEARCH_FILTERS); setMapPub(selectedPub); setSelectedPub(null); }}
-        onNavigate={() => { void openPubInMaps(selectedPub).catch(() => useToastStore.getState().show(t.pubSearch.navigationFailed)); }}
-      /> : null}
     </View>
   );
 }
@@ -242,7 +220,6 @@ function SearchContent() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.stout },
   screen: { flex: 1 },
-  hidden: { display: 'none' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, gap: Spacing.md, paddingBottom: Spacing.md },
   field: { flex: 1, minWidth: 0, minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingLeft: Spacing.md, backgroundColor: Colors.stout3, borderRadius: Radius.medium, borderWidth: 1, borderColor: withAlpha(Colors.foam, 0.1) },
   input: { flex: 1, minWidth: 0, minHeight: 46, paddingVertical: Spacing.sm, fontFamily: Fonts.ui.regular, fontSize: 15, color: Colors.foam },

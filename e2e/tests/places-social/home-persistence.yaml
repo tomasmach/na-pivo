@@ -1,0 +1,80 @@
+appId: ${MAESTRO_APP_ID}
+name: Home point changes only after confirmation and survives restart
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /home-point
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - evalScript: ${output.local.screenshot('places-android-home-before-map-tap')}
+- tapOn: {id: home-map}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - evalScript: ${output.local.screenshot('places-android-home-after-map-tap')}
+- assertVisible: {id: home-save, enabled: true}
+- tapOn: Zpět
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /home-point
+- assertVisible: {id: home-save, enabled: false}
+- evalScript: ${output.ps.home(false)}
+- tapOn: Použít moji polohu
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - evalScript: ${output.local.screenshot('places-android-home-location-requested')}
+      - extendedWaitUntil:
+          visible:
+            text: 'For a better experience, your device will need to use Location Accuracy\s*|Uložit domov'
+            enabled: true
+          timeout: 30000
+      - runFlow:
+          when:
+            visible:
+              id: 'com\.google\.android\.gms:id/message'
+              text: 'For a better experience, your device will need to use Location Accuracy\s*'
+          commands:
+            - tapOn: Turn on
+      - extendedWaitUntil:
+          visible: {id: home-save, enabled: true}
+          timeout: 30000
+- assertVisible: {id: home-save, enabled: true}
+- tapOn: {id: home-save}
+- assertNotVisible: {id: home-save}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /home-point
+- evalScript: ${output.local.poll(function () { output.ps.home(true); }, 15000)}
+# Swipe outside the native map, which otherwise consumes the gesture as pan.
+- swipe:
+    start: 2%, 80%
+    end: 2%, 35%
+- assertVisible: {id: home-clear}
+- tapOn: {id: home-clear}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /home-point
+- assertVisible: {id: home-save, enabled: false}
+- assertNotVisible: {id: home-clear}
+- evalScript: ${output.ps.home(false)}
+- evalScript: ${output.local.screenshot('places-home-cleared')}
+- evalScript: ${output.ps.check('unchanged')}
