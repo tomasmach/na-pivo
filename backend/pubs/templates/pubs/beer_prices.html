@@ -65,6 +65,8 @@
   .headline .price { margin-top: 2px; font: 800 clamp(40px, 11vw, 64px)/1.24 var(--numeral); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
   .headline .price span { color: var(--foam-muted); font-size: 0.4em; letter-spacing: 0; }
   .headline .range { color: var(--muted); font-size: 14px; line-height: 1.35; }
+  /* Flags prices older than three months. The words carry it, not the colour. */
+  .stale { display: block; margin-top: 2px; color: var(--foam-muted); font-size: 13px; font-weight: 500; line-height: 1.3; }
 
   section { margin-top: 44px; }
   h2 { font-size: 24px; line-height: 1.2; }
@@ -141,6 +143,7 @@
       {% if area %}
       <dd class="price">{{ area.median }}<span> {% translate "Kč" %}</span></dd>
       <dd class="range">{% blocktranslate with low=area.p25 high=area.p75 %}polovina hospod mezi {{ low }} a {{ high }} Kč{% endblocktranslate %}</dd>
+      {% if area.mostly_stale %}<dd class="stale">{% translate "hlavně ceny starší 3 měsíců" %}</dd>{% endif %}
       {% else %}
       <dd class="price" aria-hidden="true">–</dd>
       <dd class="range">{% translate "zatím málo cen" %}</dd>
@@ -167,7 +170,7 @@
   <section aria-labelledby="cheapest-title">
     <h2 id="cheapest-title">{% translate "Nejlevnější hospody" %}</h2>
     <ol class="cheapest" role="list">
-      {% for pub in cheapest %}<li><div class="pub"><strong>{{ pub.name }}</strong>{% if pub.city %}<span class="city">{{ pub.city }}</span>{% endif %}</div><div class="cost"><span class="price">{{ pub.price_czk }} {% translate "Kč" %}</span><span class="volume">{{ pub.litres }} l</span></div></li>{% endfor %}
+      {% for pub in cheapest %}<li><div class="pub"><strong>{{ pub.name }}</strong>{% if pub.city %}<span class="city">{{ pub.city }}</span>{% endif %}{% if pub.stale %}<span class="stale">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</div><div class="cost"><span class="price">{{ pub.price_czk }} {% translate "Kč" %}</span><span class="volume">{{ pub.litres }} l</span></div></li>{% endfor %}
     </ol>
   </section>
   {% endif %}
@@ -177,7 +180,7 @@
   </div>
   {% endif %}
 
-  {% if not throttled %}<p class="method">{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za posledních 90 dní, a město nebo městskou část ukážu, až mám ceny aspoň z 15 tamních hospod." %}</p>{% endif %}
+  {% if not throttled %}<p class="method">{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod." %}</p>{% endif %}
 
   <section class="cta" aria-labelledby="cta-title">
     <h2 id="cta-title">{% translate "Znáš cenu ve své hospodě?" %}</h2>

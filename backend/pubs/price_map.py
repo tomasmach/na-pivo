@@ -33,9 +33,12 @@ from pubs.models import (
     PubPriceSnapshot,
 )
 
-WINDOW_DAYS = 90
+# A year is how long the app itself shows a pub's price; older ones count as gone.
+WINDOW_DAYS = 365
+# Prices last written longer ago than this still count, but the page flags them.
+FRESH_DAYS = 90
 # A city or district with fewer priced pubs says more about one pub than the city.
-MIN_PUBS = 15
+MIN_PUBS = 5
 CHEAPEST_PUBS = 10
 # A cheapest beer under this is a typo or a joke, not a pub's price.
 CHEAPEST_MIN_CZK = 20
@@ -136,16 +139,22 @@ def _round(value: float) -> int:
     return math.floor(value + 0.5)
 
 
-def _stats(prices: list[int]) -> dict:
-    p25, median, p75 = statistics.quantiles(prices, n=4, method="inclusive")
-    return {"median": _round(median), "p25": _round(p25), "p75": _round(p75), "pubs": len(prices)}
+def _stats(rows: list[PubPriceIndex]) -> dict:
+    p25, median, p75 = statistics.quantiles([row.price_czk for row in rows], n=4, method="inclusive")
+    return {
+        "median": _round(median),
+        "p25": _round(p25),
+        "p75": _round(p75),
+        "pubs": len(rows),
+        "mostly_stale": sum(row.stale for row in rows) * 2 > len(rows),
+    }
 
 
-def _areas(groups: dict[str, list[int]]) -> list[dict]:
+def _areas(groups: dict[str, list[PubPriceIndex]]) -> list[dict]:
     """Areas with enough priced pubs, the biggest first."""
 
     return sorted(
-        ({"name": name, **_stats(prices)} for name, prices in groups.items() if len(prices) >= MIN_PUBS),
+        ({"name": name, **_stats(rows)} for name, rows in groups.items() if len(rows) >= MIN_PUBS),
         key=lambda area: (-area["pubs"], area["name"]),
     )
 
@@ -188,6 +197,7 @@ def _cheapest(rows: list[PubPriceIndex]) -> list[dict]:
                 "city": prague_district(city) or city_name(city),
                 "price_czk": row.price_czk,
                 "volume_ml": row.volume_ml or 500,
+                "stale": row.stale,
             })
             if len(picked) == CHEAPEST_PUBS:
                 return picked
@@ -199,6 +209,7 @@ def build_price_map(now: datetime | None = None) -> dict:
 
     now = now or timezone.now()
     since = now - timedelta(days=WINDOW_DAYS)
+    fresh_since = now - timedelta(days=FRESH_DAYS)
     rows = _in_czechia(list(
         PubPriceIndex.objects.filter(
             active=True,
@@ -219,6 +230,7 @@ def build_price_map(now: datetime | None = None) -> dict:
     ):
         row.pub_key = targets.get(row.cache_key, row.cache_key)
         row.alias_names = alias_names.get(row.cache_key, [])
+        row.stale = confirmed[row.cache_key] < fresh_since
         pubs[row.pub_key] = row
     excluded = _globally_reported_pub_cache_keys(
         {row.cache_key for row in pubs.values()} | set(pubs)
@@ -227,18 +239,18 @@ def build_price_map(now: datetime | None = None) -> dict:
         row for row in pubs.values() if row.cache_key not in excluded and row.pub_key not in excluded
     ]
 
-    cities: dict[str, list[int]] = defaultdict(list)
-    districts: dict[str, list[int]] = defaultdict(list)
+    cities: dict[str, list[PubPriceIndex]] = defaultdict(list)
+    districts: dict[str, list[PubPriceIndex]] = defaultdict(list)
     for row in rows:
         if city := city_name(row.city):
-            cities[city].append(row.price_czk)
+            cities[city].append(row)
         if district := prague_district(row.city):
-            districts[district].append(row.price_czk)
-    prices = [row.price_czk for row in rows]
+            districts[district].append(row)
     return {
         "window_days": WINDOW_DAYS,
+        "fresh_days": FRESH_DAYS,
         "min_pubs": MIN_PUBS,
-        "country": _stats(prices) if len(prices) >= MIN_PUBS else None,
+        "country": _stats(rows) if len(rows) >= MIN_PUBS else None,
         "cities": _areas(cities),
         "prague_districts": sorted(_areas(districts), key=_district_order),
         "cheapest": _cheapest(rows),

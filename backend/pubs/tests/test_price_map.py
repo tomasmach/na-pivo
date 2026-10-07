@@ -137,31 +137,32 @@ def test_prague_district_reads_the_number_or_the_named_district():
     assert prague_district("Brno-střed") == ""
 
 
-def test_cities_and_districts_show_from_fifteen_pubs():
-    for index, price in enumerate(range(40, 55)):
+def test_cities_and_districts_show_from_five_pubs():
+    for index, price in enumerate(range(40, 45)):
         _price("Praha 2 - Vinohrady" if index % 2 else "Praha 2", price)
-    for _ in range(14):
+    for _ in range(4):
         _price("Praha 5", 60)
-    for _ in range(14):
+    for _ in range(4):
         _price("Brno-střed", 45, BRNO)
 
     data = build_price_map()
 
     assert data["prague_districts"] == [
-        {"name": "Praha 2", "median": 47, "p25": 44, "p75": 51, "pubs": 15},
+        {"name": "Praha 2", "median": 42, "p25": 41, "p75": 43, "pubs": 5, "mostly_stale": False},
     ]
-    assert [(city["name"], city["pubs"]) for city in data["cities"]] == [("Praha", 29)]
-    assert data["country"]["pubs"] == 43
+    assert [(city["name"], city["pubs"]) for city in data["cities"]] == [("Praha", 9)]
+    assert data["country"]["pubs"] == 13
 
 
-def test_only_fresh_active_czech_prices_from_the_app_count(monkeypatch):
-    kept = [_price("Ostrava", 50, OSTRAVA) for _ in range(14)]
-    kept.append(_price("Ostrava", 50, OSTRAVA, source=PubPriceIndex.Source.DRINK, days_ago=89))
+def test_only_active_czech_prices_from_the_app_within_a_year_count(monkeypatch):
+    for _ in range(4):
+        _price("Ostrava", 50, OSTRAVA)
+    _price("Ostrava", 50, OSTRAVA, source=PubPriceIndex.Source.DRINK, days_ago=300)
     _price("Ostrava", 10, OSTRAVA, active=False)
-    _price("Ostrava", 10, OSTRAVA, days_ago=91)
+    _price("Ostrava", 10, OSTRAVA, days_ago=366)
     _price("Ostrava", 10, OSTRAVA, source=PubPriceIndex.Source.EXTERNAL)
     reported = _price("Ostrava", 10, OSTRAVA)
-    for _ in range(15):
+    for _ in range(5):
         _price("Bratislava", 30, BRATISLAVA)
     monkeypatch.setattr(
         "pubs.price_map._globally_reported_pub_cache_keys",
@@ -170,17 +171,41 @@ def test_only_fresh_active_czech_prices_from_the_app_count(monkeypatch):
 
     data = build_price_map()
 
-    assert data["cities"] == [{"name": "Ostrava", "median": 50, "p25": 50, "p75": 50, "pubs": 15}]
-    assert data["country"]["pubs"] == 15
+    assert data["cities"] == [
+        {"name": "Ostrava", "median": 50, "p25": 50, "p75": 50, "pubs": 5, "mostly_stale": False},
+    ]
+    assert data["country"]["pubs"] == 5
 
 
-def test_an_old_cheapest_price_needs_its_own_recent_write():
-    row = _price("Praha 4", 39, menu_days_ago=120)
+def test_prices_older_than_three_months_count_but_are_flagged(client):
+    for _ in range(3):
+        _price("Kolín", 42, (50.03, 15.2), days_ago=200)
+    for _ in range(2):
+        _price("Kolín", 46, (50.03, 15.2))
+    _catalog(_price("Beroun", 33, (49.96, 14.07), days_ago=150), "U Berounky")
+
+    data = build_price_map()
+
+    [kolin] = data["cities"]
+    assert (kolin["pubs"], kolin["mostly_stale"]) == (5, True)
+    assert data["country"]["mostly_stale"] is True
+    assert data["cheapest"][0] == {
+        "name": "U Berounky", "city": "Beroun", "price_czk": 33, "volume_ml": 500, "stale": True,
+    }
+
+    call_command("snapshot_beer_prices", stdout=StringIO())
+    html = client.get("/ceny").content.decode()
+
+    assert "hlavně ceny starší 3\u00a0měsíců" in html and "cena starší 3\u00a0měsíců" in html
+
+
+def test_an_old_cheapest_price_needs_its_own_write_within_a_year():
+    row = _price("Praha 4", 39, menu_days_ago=400)
     _catalog(row, "U Starého ceníku")
     # Someone drank another beer there today: the index moved, the 39 Kč did not.
     _drink(row, 55)
-    # The offline queue delivered today a 39 Kč beer drunk four months ago.
-    _drink(row, 39, days_ago=120)
+    # The offline queue delivered today a 39 Kč beer drunk more than a year ago.
+    _drink(row, 39, days_ago=400)
     # This drinker never agreed to share anything, so the drink stays private.
     _drink(row, 39, shares=False)
     # A 39 Kč lemonade, and a 39 Kč beer at another business in the same cell.
@@ -189,9 +214,17 @@ def test_an_old_cheapest_price_needs_its_own_recent_write():
 
     assert build_price_map()["cheapest"] == []
 
+    _drink(row, 39, days_ago=120)
+
+    assert [(pub["name"], pub["stale"]) for pub in build_price_map()["cheapest"]] == [
+        ("U Starého ceníku", True),
+    ]
+
     _drink(row, 39)
 
-    assert [pub["name"] for pub in build_price_map()["cheapest"]] == ["U Starého ceníku"]
+    assert [(pub["name"], pub["stale"]) for pub in build_price_map()["cheapest"]] == [
+        ("U Starého ceníku", False),
+    ]
 
 
 def test_a_price_is_named_only_after_the_pub_it_belongs_to():
@@ -204,7 +237,7 @@ def test_a_price_is_named_only_after_the_pub_it_belongs_to():
 
 
 def test_a_merged_duplicate_counts_as_one_pub():
-    for price in (40,) * 7 + (60,) * 6:
+    for price in (40, 40, 60):
         _price("Plzeň", price, (49.74, 13.37))
     # A late offline drink moved this row's observed_at, but its 44 Kč was written five days ago.
     canonical = _price("Plzeň", 44, (49.74, 13.37), days_ago=0, menu_days_ago=5)
@@ -226,7 +259,7 @@ def test_a_merged_duplicate_counts_as_one_pub():
     [plzen] = build_price_map()["cities"]
 
     # The merged pub sits in the middle: its newest price, 48 Kč, is the median.
-    assert (plzen["pubs"], plzen["median"]) == (15, 48)
+    assert (plzen["pubs"], plzen["median"]) == (5, 48)
 
 
 def test_a_merged_duplicate_keeps_its_price_under_the_merged_name():
@@ -243,7 +276,7 @@ def test_a_merged_duplicate_keeps_its_price_under_the_merged_name():
     )
 
     assert build_price_map()["cheapest"] == [
-        {"name": "U Salzmannů", "city": "Plzeň", "price_czk": 35, "volume_ml": 500},
+        {"name": "U Salzmannů", "city": "Plzeň", "price_czk": 35, "volume_ml": 500, "stale": False},
     ]
 
 
@@ -261,15 +294,15 @@ def test_cheapest_pubs_are_named_only_from_the_catalogue_per_half_litre():
     _price("Praha", 25)
 
     assert build_price_map()["cheapest"] == [
-        {"name": "U Lacina", "city": "Praha 7", "price_czk": 36, "volume_ml": 500},
-        {"name": "Pod Špilberkem", "city": "Brno", "price_czk": 30, "volume_ml": 400},
+        {"name": "U Lacina", "city": "Praha 7", "price_czk": 36, "volume_ml": 500, "stale": False},
+        {"name": "Pod Špilberkem", "city": "Brno", "price_czk": 30, "volume_ml": 400, "stale": False},
     ]
     assert build_price_map()["country"] is None
 
 
 def test_prague_districts_are_listed_by_number():
     for district in ("Praha-Libuš", "Praha 10", "Praha 2"):
-        for _ in range(15 if district != "Praha 2" else 20):
+        for _ in range(5 if district != "Praha 2" else 8):
             _price(district, 50)
 
     names = [area["name"] for area in build_price_map()["prague_districts"]]
@@ -278,7 +311,7 @@ def test_prague_districts_are_listed_by_number():
 
 
 def test_snapshot_is_computed_once_a_day():
-    for _ in range(15):
+    for _ in range(5):
         _price("Praha", 50)
 
     out = StringIO()
@@ -289,7 +322,7 @@ def test_snapshot_is_computed_once_a_day():
 
     assert PubPriceSnapshot.objects.count() == 1
     assert "already computed" in out.getvalue()
-    assert PubPriceSnapshot.objects.get().data["cities"][0]["pubs"] == 16
+    assert PubPriceSnapshot.objects.get().data["cities"][0]["pubs"] == 6
 
 
 def test_price_page_serves_the_snapshot_without_external_resources(client, settings):
@@ -331,9 +364,9 @@ def test_share_images_have_preview_dimensions(client):
         assert Image.open(BytesIO(response.content)).size == (1200, 630)
 
 
-def test_country_median_shows_before_any_city_has_fifteen_pubs(client):
+def test_country_median_shows_before_any_city_has_five_pubs(client):
     for city in ("Kolín", "Beroun"):
-        for _ in range(8):
+        for _ in range(3):
             _price(city, 44, (50.03, 15.2))
     call_command("snapshot_beer_prices", stdout=StringIO())
 

@@ -1252,6 +1252,12 @@ msgstr "half of pubs between %(low)s and %(high)s CZK"
 msgid "zatím málo cen"
 msgstr "not enough prices yet"
 
+msgid "hlavně ceny starší 3 měsíců"
+msgstr "mostly prices over 3 months old"
+
+msgid "cena starší 3 měsíců"
+msgstr "price over 3 months old"
+
 msgid "Města"
 msgstr "Cities"
 
@@ -1282,8 +1288,8 @@ msgstr "Prices didn't load just now. Try again in a minute."
 msgid "Zatím mám málo cen."
 msgstr "I don't have enough prices yet."
 
-msgid "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za posledních 90 dní, a město nebo městskou část ukážu, až mám ceny aspoň z 15 tamních hospod."
-msgstr "From each pub I take the cheapest beer of 0.4 l or more that someone logged in Na pivo in the last 90 days, and I show a city or district only once I have prices from at least 15 of its pubs."
+msgid "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod."
+msgstr "From each pub I take the cheapest beer of 0.4 l or more that someone logged in Na pivo in the last year, and I show a city or district once I have prices from at least 5 of its pubs."
 
 msgid "Znáš cenu ve své hospodě?"
 msgstr "Know the price at your local?"
