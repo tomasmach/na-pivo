@@ -1,0 +1,201 @@
+<!doctype html>
+{% load i18n %}
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#231407">
+<title>{% translate "Kolik stojí pivo v hospodě" %} | Na pivo</title>
+<meta name="description" content="{% translate "Medián ceny piva v hospodách po městech a pražských městských částech, z cen, které lidi zapsali v Na pivo." %}">
+<link rel="canonical" href="{{ canonical_url }}">
+<link rel="alternate" hreflang="cs" href="{{ cs_url }}">
+<link rel="alternate" hreflang="en" href="{{ en_url }}">
+<link rel="alternate" hreflang="x-default" href="{{ cs_url }}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Na pivo">
+<meta property="og:locale" content="{{ og_locale }}">
+<meta property="og:title" content="{% translate "Kolik stojí pivo v hospodě" %}">
+<meta property="og:description" content="{% translate "Medián ceny piva v hospodách po městech a pražských městských částech, z cen, které lidi zapsali v Na pivo." %}">
+<meta property="og:url" content="{{ canonical_url }}">
+<meta property="og:image" content="{{ og_image_url }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{% translate "Medián ceny piva v Praze, v Brně a v celé ČR." %}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="apple-itunes-app" content="app-id=6773790025">
+<style>
+  /* Colors of the na-pivo.cz home page. Everything is inline: the page loads no other file. */
+  :root {
+    color-scheme: dark;
+    --ground: #231407;
+    --stout-3: #3a2515;
+    --ink: #1f1308;
+    --ink-deep: #0d0703;
+    --amber: #e8a317;
+    --amber-light: #f5b642;
+    --foam: #fbf3e0;
+    --foam-muted: #e8dcc0;
+    --muted: #a8896a;
+    --hair: rgb(251 243 224 / 0.1);
+    --numeral: ui-rounded, system-ui, sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--ground); color: var(--foam); font: 400 17px/1.5 system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  p { margin: 0; text-wrap: pretty; }
+  h1, h2 { margin: 0; font-weight: 800; text-wrap: balance; }
+  a { color: inherit; }
+  :focus-visible { outline: 3px solid var(--foam); outline-offset: 4px; border-radius: 4px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; }
+
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 12px; }
+  .top a { display: inline-flex; min-height: 48px; align-items: center; text-decoration: none; }
+  .wordmark { color: var(--foam); font: 800 22px/1 var(--numeral); }
+  .lang { margin-right: -14px; padding: 0 14px; border-radius: 10px; color: var(--foam-muted); font-size: 16px; font-weight: 600; }
+  @media (hover: hover) { .lang:hover { color: var(--foam); background: var(--stout-3); } }
+  .lang:active { background: var(--stout-3); }
+
+  h1 { margin-top: 28px; font-size: clamp(32px, 8vw, 48px); line-height: 1.1; letter-spacing: -0.02em; }
+  .as-of { margin-top: 10px; color: var(--muted); font-size: 16px; }
+
+  .headline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 36px 0 0; padding: 24px 0; border-block: 1px solid var(--hair); }
+  .headline div { min-width: 0; }
+  .headline dt { color: var(--foam-muted); font-size: 16px; font-weight: 600; }
+  .headline dd { margin: 0; }
+  .headline .price { margin-top: 2px; font: 800 clamp(40px, 11vw, 64px)/1.24 var(--numeral); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .headline .price span { color: var(--foam-muted); font-size: 0.4em; letter-spacing: 0; }
+  .headline .range { color: var(--muted); font-size: 14px; line-height: 1.35; }
+  /* Flags prices older than three months. The words carry it, not the colour. */
+  .stale { display: block; margin-top: 2px; color: var(--foam-muted); font-size: 13px; font-weight: 500; line-height: 1.3; }
+
+  section { margin-top: 44px; }
+  h2 { font-size: 24px; line-height: 1.2; }
+  .table-wrap { margin-top: 12px; overflow-x: auto; }
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 16px; }
+  col.name { width: 36%; } col.median { width: 18%; } col.range { width: 26%; } col.count { width: 20%; }
+  th, td { padding: 12px 0; border-bottom: 1px solid var(--hair); text-align: left; vertical-align: baseline; }
+  th + th, td { padding-left: 14px; }
+  thead th { color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.25; }
+  tbody th { font-weight: 600; overflow-wrap: anywhere; }
+  .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  thead .num { white-space: normal; }
+  td.median { font-weight: 700; }
+  td.count { color: var(--foam-muted); }
+
+  .cheapest { list-style: none; margin: 12px 0 0; padding: 0; }
+  .cheapest li { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--hair); }
+  .cheapest .pub { min-width: 0; overflow-wrap: anywhere; }
+  .cheapest strong { display: block; font-weight: 600; }
+  .cheapest .city { color: var(--muted); font-size: 15px; }
+  .cheapest .cost { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+  .cheapest .price { display: block; font-weight: 700; }
+  .cheapest .volume { color: var(--muted); font-size: 15px; }
+
+  .notice { margin-top: 36px; padding: 24px 0; border-block: 1px solid var(--hair); }
+  .notice p { color: var(--foam-muted); }
+  .retry { display: inline-flex; min-height: 48px; align-items: center; margin-top: 16px; padding: 0 18px; border-radius: 999px; background: var(--stout-3); color: var(--foam); font-weight: 700; text-decoration: none; }
+  .method { margin-top: 28px; color: var(--muted); font-size: 15px; }
+
+  .cta { margin-top: 56px; padding-top: 28px; border-top: 1px solid var(--hair); }
+  .cta p { margin-top: 6px; color: var(--foam-muted); }
+  /* The home page's printed store blocks: an ink outline and a hard offset that sinks when pressed. */
+  .stores { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 20px; }
+  .store { display: inline-flex; flex: 1 1 240px; max-width: 340px; min-height: 56px; justify-content: center; align-items: center; gap: 10px; padding: 0 22px; border: 2.5px solid var(--ink-deep); border-radius: 14px; background: var(--amber); color: var(--ink); box-shadow: 4px 5px 0 var(--ink-deep); font-weight: 700; text-decoration: none; transition: transform 110ms ease-out, box-shadow 110ms ease-out, background-color 110ms ease-out; }
+  .store svg { width: 20px; height: 20px; flex: none; }
+  @media (hover: hover) { .store:hover { transform: translate(-1px, -2px); box-shadow: 5px 7px 0 var(--ink-deep); background: var(--amber-light); } }
+  .store:active { transform: translate(3px, 4px); box-shadow: 1px 1px 0 var(--ink-deep); }
+  @media (prefers-reduced-motion: reduce) { .store { transition: none; } .store:hover, .store:active { transform: none; } }
+
+  footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 24px; margin-top: 56px; padding: 8px 0 28px; border-top: 1px solid var(--hair); color: var(--muted); font-size: 15px; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0 -8px; }
+  footer p, footer a { display: inline-flex; min-height: 48px; align-items: center; }
+  footer a { padding: 0 8px; color: var(--foam-muted); text-decoration: none; }
+  @media (hover: hover) { footer a:hover { color: var(--foam); text-decoration: underline; } }
+
+  @media (max-width: 420px) {
+    .headline { gap: 10px; }
+    table { font-size: 15px; }
+    th + th, td { padding-left: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <a class="wordmark" href="{{ home_url }}">Na pivo</a>
+  {% if LANGUAGE_CODE == "cs" %}<a class="lang" href="{{ switch_url }}" hreflang="en" lang="en">English</a>{% else %}<a class="lang" href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>{% endif %}
+</header>
+
+<main>
+  <h1>{% translate "Kolik stojí pivo v hospodě" %}</h1>
+  {% if day %}<p class="as-of">{% blocktranslate with date=day|date:"DATE_FORMAT" %}Medián nejlevnějšího piva od 0,4 l, stav k {{ date }}{% endblocktranslate %}</p>{% endif %}
+
+  {% if throttled %}
+  <div class="notice" role="alert">
+    <p>{% translate "Ceny se teď nedotáhly. Zkus to za minutu." %}</p>
+    <a class="retry" href="{{ page_url }}">{% translate "Načíst znovu" %}</a>
+  </div>
+  {% elif country %}
+  <dl class="headline">
+    {% for label, area in headline %}
+    <div>
+      <dt>{{ label }}</dt>
+      {% if area %}
+      <dd class="price">{{ area.median }}<span> {% translate "Kč" %}</span></dd>
+      <dd class="range">{% blocktranslate with low=area.p25 high=area.p75 %}polovina hospod mezi {{ low }} a {{ high }} Kč{% endblocktranslate %}</dd>
+      {% if area.mostly_stale %}<dd class="stale">{% translate "hlavně ceny starší 3 měsíců" %}</dd>{% endif %}
+      {% else %}
+      <dd class="price" aria-hidden="true">–</dd>
+      <dd class="range">{% translate "zatím málo cen" %}</dd>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </dl>
+
+  {% if cities %}
+  <section aria-labelledby="cities-title">
+    <h2 id="cities-title">{% translate "Města" %}</h2>
+    {% translate "Město" as label %}{% include "pubs/_price_table.html" with areas=cities title_id="cities-title" %}
+  </section>
+  {% endif %}
+
+  {% if districts %}
+  <section aria-labelledby="districts-title">
+    <h2 id="districts-title">{% translate "Praha podle městských částí" %}</h2>
+    {% translate "Městská část" as label %}{% include "pubs/_price_table.html" with areas=districts title_id="districts-title" %}
+  </section>
+  {% endif %}
+
+  {% if cheapest %}
+  <section aria-labelledby="cheapest-title">
+    <h2 id="cheapest-title">{% translate "Nejlevnější hospody" %}</h2>
+    <ol class="cheapest" role="list">
+      {% for pub in cheapest %}<li><div class="pub"><strong>{{ pub.name }}</strong>{% if pub.city %}<span class="city">{{ pub.city }}</span>{% endif %}{% if pub.stale %}<span class="stale">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</div><div class="cost"><span class="price">{{ pub.price_czk }} {% translate "Kč" %}</span><span class="volume">{{ pub.litres }} l</span></div></li>{% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+  {% else %}
+  <div class="notice">
+    <p>{% translate "Zatím mám málo cen." %}</p>
+  </div>
+  {% endif %}
+
+  {% if not throttled %}<p class="method">{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod." %}</p>{% endif %}
+
+  <section class="cta" aria-labelledby="cta-title">
+    <h2 id="cta-title">{% translate "Znáš cenu ve své hospodě?" %}</h2>
+    <p>{% translate "Zapiš ji v Na pivo." %}</p>
+    {% include "pubs/_store_buttons.html" %}
+  </section>
+</main>
+
+<footer>
+  <p>{% translate "Na pivo dělá Tomáš Mach" %}</p>
+  <nav aria-label="{% translate "Dokumenty a kontakt" %}">
+    <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
+    <a href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a>
+  </nav>
+</footer>
+</div>
+</body>
+</html>

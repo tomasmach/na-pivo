@@ -14,13 +14,24 @@ from urllib.parse import quote
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.utils import translation
 from django.utils.translation import gettext
 
 from pubs.checks import ANDROID_APP_LINK_FINGERPRINTS_ENV, normalized_cert_fingerprints
+from pubs.home_views import _LANDING_URLS, _LEGAL_ROOT, APP_STORE_URL, PLAY_STORE_URL
 from pubs.i18n import current_locale
+from pubs.models import PubPriceSnapshot
+from pubs.price_map import PATHS as PRICE_PATHS
+from pubs.price_map import headline_prices
 
 # og:locale wants a full territory tag; the app only ever speaks these two.
 _OG_LOCALES = {"cs": "cs_CZ", "en": "en_US"}
+
+# Nothing but the inline styles of the page itself: no scripts, fonts, images or frames.
+_SELF_CONTAINED_CSP = (
+    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; "
+    "frame-ancestors 'none'; form-action 'none'"
+)
 
 _ASSET_ROOT = Path(__file__).resolve().parent / "static" / "pubs" / "invite"
 _ASSETS: dict[str, tuple[str, str]] = {
@@ -223,5 +234,91 @@ def tour_invite_landing(request: HttpRequest, token: str) -> HttpResponse:
         "navigation_url": f"https://www.google.com/maps/dir/?api=1&destination={first['lat']},{first['lon']}&travelmode=walking",
         **_language_context(),
     })
-    response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+    response["Content-Security-Policy"] = _SELF_CONTAINED_CSP
     return protect_response(response)
+
+
+def _price_map_wait(request: HttpRequest) -> int | None:
+    """Seconds to wait once this address spent its shared price-page budget."""
+    from rest_framework.request import Request
+
+    from pubs.api.throttling import SharedScopedRateThrottle
+
+    throttle = SharedScopedRateThrottle()
+    policy = type("PriceMapPolicy", (), {"throttle_scope": "price_map"})()
+    if throttle.allow_request(Request(request), policy):
+        return None
+    return int(throttle.wait())
+
+
+def beer_prices(request: HttpRequest, lang: str = "cs") -> HttpResponse:
+    """Public beer price map, read as is from the newest daily snapshot."""
+
+    wait = _price_map_wait(request)
+    snapshot = (
+        None
+        if wait
+        else PubPriceSnapshot.objects.defer("og_image_cs", "og_image_en").first()
+    )
+    data = snapshot.data if snapshot else {}
+    origin = settings.PUBLIC_WEB_ORIGIN
+    with translation.override(lang):
+        response = render(
+            request,
+            "pubs/beer_prices.html",
+            {
+                "LANGUAGE_CODE": lang,
+                "og_locale": _OG_LOCALES[lang],
+                "page_url": PRICE_PATHS[lang],
+                "canonical_url": f"{origin}{PRICE_PATHS[lang]}",
+                "cs_url": f"{origin}{PRICE_PATHS['cs']}",
+                "en_url": f"{origin}{PRICE_PATHS['en']}",
+                "switch_url": PRICE_PATHS["en" if lang == "cs" else "cs"],
+                "home_url": "/" if lang == "cs" else "/en",
+                "og_image_url": (
+                    f"{origin}{PRICE_PATHS[lang]}/og.png?v={snapshot.day.isoformat()}"
+                    if snapshot
+                    else f"{origin}{_LANDING_URLS['og_home_png']}"
+                ),
+                "throttled": wait is not None,
+                "day": snapshot.day if snapshot else None,
+                "country": data.get("country"),
+                "headline": headline_prices(data),
+                "cities": data.get("cities", []),
+                "districts": data.get("prague_districts", []),
+                "cheapest": [
+                    {**pub, "litres": pub["volume_ml"] / 1000}
+                    for pub in data.get("cheapest", [])
+                ],
+                "app_store_url": APP_STORE_URL,
+                "play_store_url": PLAY_STORE_URL,
+                "privacy_url": f"{_LEGAL_ROOT}{'' if lang == 'cs' else '/en'}/privacy.html",
+            },
+            status=429 if wait else 200,
+        )
+    response["Content-Language"] = lang
+    response["Content-Security-Policy"] = _SELF_CONTAINED_CSP
+    response["Referrer-Policy"] = "no-referrer"
+    if wait:
+        response["Retry-After"] = str(wait)
+        response["Cache-Control"] = "no-store"
+    else:
+        response["Cache-Control"] = "public, max-age=600"
+    return response
+
+
+def beer_prices_og_image(request: HttpRequest, lang: str = "cs") -> HttpResponse:
+    """Share image of the newest snapshot, rendered when the snapshot was computed."""
+
+    wait = _price_map_wait(request)
+    if wait:
+        response = HttpResponse(status=429)
+        response["Retry-After"] = str(wait)
+        return response
+    field = f"og_image_{lang}"
+    snapshot = PubPriceSnapshot.objects.only("day", field).first()
+    if snapshot is None:
+        raise Http404
+    response = HttpResponse(bytes(getattr(snapshot, field)), content_type="image/png")
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
