@@ -1005,7 +1005,7 @@ msgstr "You can't join this walk."
 
 # Home page (pubs/templates/pubs/home.html, pubs/home_views.py)
 msgid "Na pivo: aplikace s kompasem na hospodu a pivním deníčkem"
-msgstr "Na pivo: the app with a compass to the pub and a beer diary"
+msgstr "Na pivo: a pub compass and beer diary app"
 
 msgid "Ceny piva"
 msgstr "Beer prices"
