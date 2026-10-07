@@ -83,6 +83,10 @@ export interface BeerEveningLiveActivityProps {
   homeTransitCountdownPrefix?: string;
   homeTransitSymbol?: HomeTransitSymbol;
   homeTransitA11yLabel?: string;
+  /** Replaces the ride once it left: "Už jedeš nočkou". */
+  homeTransitMissedLabel?: string;
+  /** Read natively by the patched expo-widgets as the ActivityKit stale date. */
+  staleDateMs?: number;
 }
 
 const BeerEveningLiveActivity = (
@@ -128,7 +132,14 @@ const BeerEveningLiveActivity = (
   const latestBeerLabel = props.latestBeerLabel;
   const latestTimeLabel = props.latestTimeLabel;
   const departsAtMs = props.homeTransitDepartsAtMs;
-  const showHomeTransit = !!props.homeTransitLabel && typeof departsAtMs === 'number';
+  // The system redraws a stale activity at the departure even while the app
+  // sleeps; a later update knows it from the clock.
+  const isStale = (environment as { isStale?: boolean }).isStale === true;
+  const transitMissed =
+    !!props.homeTransitMissedLabel &&
+    (isStale || typeof departsAtMs !== 'number' || departsAtMs <= Date.now());
+  const showHomeTransit =
+    !transitMissed && !!props.homeTransitLabel && typeof departsAtMs === 'number';
   // The countdown only shrinks, so a width picked now stays wide enough.
   const transitLeftMs = (departsAtMs ?? 0) - Date.now();
   const transitTimerWidth =
@@ -364,6 +375,29 @@ const BeerEveningLiveActivity = (
                 frame({ width: transitTimerWidth, alignment: 'trailing' }),
               ]}
             />
+          </HStack>
+        ) : null}
+
+        {transitMissed ? (
+          <HStack
+            alignment="center"
+            spacing={6}
+            modifiers={[
+              padding({ horizontal: 8 }),
+              frame({ maxWidth: 1000, alignment: 'center' }),
+              accessibilityLabel(props.homeTransitMissedLabel ?? ''),
+            ]}
+          >
+            <Image systemName="moon.stars.fill" size={11} color={secondaryText} />
+            <Text
+              modifiers={[
+                font({ size: 12, weight: 'semibold', design: 'rounded' }),
+                foregroundStyle(secondaryText),
+                lineLimit(1),
+              ]}
+            >
+              {props.homeTransitMissedLabel}
+            </Text>
           </HStack>
         ) : null}
       </VStack>

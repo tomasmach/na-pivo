@@ -3539,6 +3539,7 @@ export const cs = {
     homeTransit: (time: string, stop: string) =>
       `Poslední spoj domů ${time}${stop ? ` · ${stop}` : ''}`,
     homeTransitCountdown: 'za',
+    homeTransitMissed: 'Už jedeš nočkou',
     homeTransitA11y: (time: string, stop: string, line: string) =>
       `Poslední přímý spoj domů${line ? `, linka ${line}` : ''}, odjezd ${time}${stop ? ` ze zastávky ${stop}` : ''}`,
   },

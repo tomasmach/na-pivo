@@ -18,8 +18,10 @@ export type BeerLiveActivityPayload = {
   locale?: 'cs' | 'en';
   /** Tonight's last direct connection home, already localized; absent without one. */
   homeTransitLabel?: string;
-  /** Its departure as epoch ms; the notification counts down to it. */
+  /** Its departure as epoch ms; after it the notification says the missed line instead. */
   homeTransitDepartsAtMs?: number;
+  /** "Už jedeš nočkou", shown once the ride left. */
+  homeTransitMissedLabel?: string;
 };
 
 export type BeerLiveActivityPresentation = 'live-update' | 'notification' | 'none';

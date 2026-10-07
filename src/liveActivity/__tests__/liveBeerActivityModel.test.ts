@@ -178,19 +178,32 @@ describe('last connection home', () => {
       homeTransitCountdownPrefix: t.liveActivity.homeTransitCountdown,
       homeTransitSymbol: 'tram.fill',
       homeTransitA11yLabel: t.liveActivity.homeTransitA11y(time, 'Anděl', '9'),
+      homeTransitMissedLabel: t.liveActivity.homeTransitMissed,
+      // iOS redraws the activity as departed at this moment, even while the app sleeps.
+      staleDateMs: departure.departsAtMs,
     });
   });
 
-  it('leaves the field out without a connection or once it left', () => {
-    for (const homeTransit of [null, departure]) {
-      const result = buildBeerEveningLiveActivityProps(session(), {
-        hidePubNames: false,
-        priceCurrency: 'CZK',
-        homeTransit,
-        nowMs: departure.departsAtMs + 1,
-      });
-      expect(Object.keys(result ?? {}).filter((key) => key.startsWith('homeTransit'))).toEqual([]);
-    }
+  it('leaves the field out without a connection', () => {
+    const result = buildBeerEveningLiveActivityProps(session(), {
+      hidePubNames: false,
+      priceCurrency: 'CZK',
+      homeTransit: null,
+    });
+    expect(Object.keys(result ?? {}).filter((key) => /homeTransit|staleDate/.test(key))).toEqual([]);
+  });
+
+  it('only says the night bus is left once the ride departed', () => {
+    const result = buildBeerEveningLiveActivityProps(session(), {
+      hidePubNames: false,
+      priceCurrency: 'CZK',
+      homeTransit: departure,
+      nowMs: departure.departsAtMs + 1,
+    });
+    expect(Object.keys(result ?? {}).filter((key) => /homeTransit|staleDate/.test(key))).toEqual([
+      'homeTransitMissedLabel',
+    ]);
+    expect(result?.homeTransitMissedLabel).toBe(t.liveActivity.homeTransitMissed);
   });
 });
 

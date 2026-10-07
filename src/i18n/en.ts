@@ -2885,6 +2885,7 @@ export const en: Strings = {
     homeTransit: (time: string, stop: string) =>
       `Last ride home ${time}${stop ? ` · ${stop}` : ''}`,
     homeTransitCountdown: 'in',
+    homeTransitMissed: 'Night bus it is',
     homeTransitA11y: (time: string, stop: string, line: string) =>
       `Last direct ride home${line ? `, line ${line}` : ''}, leaves${stop ? ` ${stop}` : ''} at ${time}`,
   },

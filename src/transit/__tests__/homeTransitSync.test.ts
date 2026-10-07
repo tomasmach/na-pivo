@@ -116,3 +116,13 @@ it('forgets the previous evening at once, even while its request is still out', 
   release({ ok: true, departure });
   await pending;
 });
+
+it('keeps the departed ride once nothing direct is left tonight', async () => {
+  await refreshHomeTransit();
+  jest.setSystemTime(departure.departsAtMs + 60_000);
+  mockFetchLastDirectDeparture.mockResolvedValue({ ok: true, departure: null });
+  await refreshHomeTransit({ force: true });
+
+  expect(useHomeTransitStore.getState().departure).toEqual(departure);
+  expect(homeTransitForCurrentEvening()).toEqual(departure);
+});

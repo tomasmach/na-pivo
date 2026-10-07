@@ -45,6 +45,7 @@ internal object BeerLiveActivityNotification {
   private const val LOCALE_KEY = "locale"
   private const val HOME_TRANSIT_LABEL_KEY = "homeTransitLabel"
   private const val HOME_TRANSIT_DEPARTS_AT_KEY = "homeTransitDepartsAtMs"
+  private const val HOME_TRANSIT_MISSED_KEY = "homeTransitMissedLabel"
   private const val FLAG_PROMOTED_ONGOING = 0x00040000
   // Warm taproom palette mirrored from the iOS Live Activity: a glowing amber
   // tally on a dark, toasted-malt surface.
@@ -94,7 +95,8 @@ internal object BeerLiveActivityNotification {
       repeatBeerServingType = payload.repeatBeerServingType,
       locale = payload.locale,
       homeTransitLabel = payload.homeTransitLabel,
-      homeTransitDepartsAtMs = payload.homeTransitDepartsAtMs?.toLong()
+      homeTransitDepartsAtMs = payload.homeTransitDepartsAtMs?.toLong(),
+      homeTransitMissedLabel = payload.homeTransitMissedLabel
     )
     persistState(context, state)
     notificationManager.notify(NOTIFICATION_ID, buildNotification(context, state))
@@ -128,6 +130,7 @@ internal object BeerLiveActivityNotification {
       .remove(REPEAT_BEER_SERVING_TYPE_KEY)
       .remove(HOME_TRANSIT_LABEL_KEY)
       .remove(HOME_TRANSIT_DEPARTS_AT_KEY)
+      .remove(HOME_TRANSIT_MISSED_KEY)
       .apply()
     return getStatus(context)
   }
@@ -387,8 +390,10 @@ internal object BeerLiveActivityNotification {
 
   private fun notificationDetail(strings: Strings, state: NotificationState): String {
     val countLabel = strings.beerCount(state.beerCount)
-    // The way home matters more than the latest beer's name once there is one.
+    // The way home matters more than the latest beer's name once there is one,
+    // and after it left the night bus is what is left.
     val second = state.homeTransitLabel.trim().takeIf { homeTransitDepartsAt(state) != null }?.take(80)
+      ?: state.homeTransitMissedLabel.trim().takeIf { it.isNotEmpty() }?.take(80)
       ?: state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)
     return listOfNotNull(countLabel, second).joinToString(" · ")
   }
@@ -440,6 +445,7 @@ internal object BeerLiveActivityNotification {
       .putString(REPEAT_BEER_NAME_KEY, state.repeatBeerName)
       .putString(LOCALE_KEY, state.locale)
       .putString(HOME_TRANSIT_LABEL_KEY, state.homeTransitLabel)
+      .putString(HOME_TRANSIT_MISSED_KEY, state.homeTransitMissedLabel)
     state.repeatBeerPriceCzk?.let {
       editor.putLong(REPEAT_BEER_PRICE_CZK_KEY, java.lang.Double.doubleToRawLongBits(it))
     } ?: editor.remove(REPEAT_BEER_PRICE_CZK_KEY)
@@ -483,6 +489,7 @@ internal object BeerLiveActivityNotification {
         },
       repeatBeerServingType = preferences.getString(REPEAT_BEER_SERVING_TYPE_KEY, null),
       homeTransitLabel = preferences.getString(HOME_TRANSIT_LABEL_KEY, "").orEmpty(),
+      homeTransitMissedLabel = preferences.getString(HOME_TRANSIT_MISSED_KEY, "").orEmpty(),
       homeTransitDepartsAtMs =
         if (preferences.contains(HOME_TRANSIT_DEPARTS_AT_KEY)) {
           preferences.getLong(HOME_TRANSIT_DEPARTS_AT_KEY, 0L)
@@ -597,7 +604,8 @@ internal object BeerLiveActivityNotification {
     val repeatBeerServingType: String?,
     val locale: String,
     val homeTransitLabel: String = "",
-    val homeTransitDepartsAtMs: Long? = null
+    val homeTransitDepartsAtMs: Long? = null,
+    val homeTransitMissedLabel: String = ""
   )
 
   private data class PendingAdd(

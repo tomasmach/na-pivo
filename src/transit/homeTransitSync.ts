@@ -8,7 +8,11 @@ import {
   type HomePoint,
 } from '@/stores/settingsStore';
 import { useTallyStore, whenTallyHydrated, type TallySession } from '@/stores/tallyStore';
-import { stopIdsNearHome, type HomeTransitDeparture } from '@/transit/homeTransit';
+import {
+  isUpcomingDeparture,
+  stopIdsNearHome,
+  type HomeTransitDeparture,
+} from '@/transit/homeTransit';
 
 // The timetable does not change during an evening; ask again only now and then.
 const REFRESH_AFTER_MS = 20 * 60 * 1000;
@@ -65,21 +69,24 @@ function dropStaleAnswer(): void {
   else state.clear();
 }
 
-/** When the connection leaves, drop it and ask whether anything later is left. */
+/** When the connection leaves, redraw it as departed and ask whether anything later is left. */
 function armDepartureTimer(): void {
   if (departureTimer) clearTimeout(departureTimer);
   departureTimer = null;
   const departure = useHomeTransitStore.getState().departure;
-  if (!departure) return;
+  if (!isUpcomingDeparture(departure)) return;
   const delay = departure.departsAtMs - Date.now() + 1000;
   // setTimeout cannot hold more than ~24 days; a departure is always tonight.
   if (delay > 24 * 60 * 60 * 1000) return;
   departureTimer = setTimeout(() => {
     departureTimer = null;
     const state = useHomeTransitStore.getState();
-    if (state.lookupKey) state.setResult(state.lookupKey, null, 0);
+    // A fresh object, so the lock screen and the reminder notice the departure.
+    if (state.lookupKey && state.departure) {
+      state.setResult(state.lookupKey, { ...state.departure }, state.checkedAt);
+    }
     void refreshHomeTransit({ force: true });
-  }, Math.max(delay, 0));
+  }, delay);
 }
 
 async function refreshInternal(force: boolean): Promise<void> {
@@ -114,7 +121,14 @@ async function refreshInternal(force: boolean): Promise<void> {
         });
   // The evening, pub or home may have changed while the request was out.
   if (!result.ok || currentLookup()?.key !== lookup.key) return;
-  useHomeTransitStore.getState().setResult(lookup.key, result.departure, Date.now());
+  // After the last ride left the server has nothing more for tonight. Keep the
+  // departed one, so the evening can still say that only the night bus is left.
+  const kept = useHomeTransitStore.getState();
+  const departed =
+    kept.lookupKey === lookup.key && kept.departure && !isUpcomingDeparture(kept.departure)
+      ? kept.departure
+      : null;
+  useHomeTransitStore.getState().setResult(lookup.key, result.departure ?? departed, Date.now());
 }
 
 /** Ask for tonight's last connection home when it is missing or getting old. */

@@ -55,6 +55,10 @@ export interface BeerEveningLiveActivityProps {
   homeTransitSymbol?: HomeTransitSymbol;
   /** VoiceOver sentence with the line and stop. */
   homeTransitA11yLabel?: string;
+  /** Shown instead once the ride left: "Už jedeš nočkou". */
+  homeTransitMissedLabel?: string;
+  /** iOS: ActivityKit marks the activity stale then, so it redraws as departed while the app sleeps. */
+  staleDateMs?: number;
 }
 
 export function shouldRequestAndroidNotificationPermission(
@@ -152,6 +156,7 @@ export function buildBeerEveningLiveActivityProps(
   if (latestBeer?.servingType) props.repeatBeerServingType = latestBeer.servingType;
 
   const transit = preferences.homeTransit;
+  if (transit) props.homeTransitMissedLabel = t.liveActivity.homeTransitMissed;
   if (isUpcomingDeparture(transit, preferences.nowMs ?? Date.now())) {
     const time = formatDepartureTime(transit.departsAtMs);
     // The stop next to the pub gives the pub away as much as its name does.
@@ -161,6 +166,7 @@ export function buildBeerEveningLiveActivityProps(
     props.homeTransitCountdownPrefix = t.liveActivity.homeTransitCountdown;
     props.homeTransitSymbol = TRANSIT_SYMBOLS[transit.routeType ?? 3] ?? 'bus.fill';
     props.homeTransitA11yLabel = t.liveActivity.homeTransitA11y(time, stop, transit.line);
+    props.staleDateMs = transit.departsAtMs;
   }
   return props;
 }

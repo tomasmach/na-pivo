@@ -42,4 +42,8 @@ internal class BeerLiveActivityPayload : Record {
   /** Departure of that connection as epoch milliseconds. */
   @Field
   var homeTransitDepartsAtMs: Double? = null
+
+  /** What to say once the ride left ("Už jedeš nočkou"). Empty without a ride. */
+  @Field
+  var homeTransitMissedLabel: String = ""
 }
