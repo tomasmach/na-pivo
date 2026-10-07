@@ -24,9 +24,9 @@ from pubs.home_views import (
     _LEGAL_ROOT,
     APP_STORE_URL,
     AUTHOR,
-    PLAY_STORE_URL,
     canonical_host,
     ld_json,
+    play_store_url,
 )
 from pubs.home_views import PATHS as HOME_PATHS
 from pubs.i18n import current_locale
@@ -396,7 +396,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
                 "districts": data.get("prague_districts", []) if not area or area["name"] == "Praha" else [],
                 "cheapest": [{**pub, "litres": pub["volume_ml"] / 1000} for pub in cheapest],
                 "app_store_url": APP_STORE_URL,
-                "play_store_url": PLAY_STORE_URL,
+                "play_store_url": play_store_url("city-prices" if city else "prices"),
                 "privacy_url": f"{_LEGAL_ROOT}{'' if lang == 'cs' else '/en'}/privacy.html",
             },
             status=429 if wait else 404 if missing else 200,
