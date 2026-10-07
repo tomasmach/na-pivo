@@ -1226,3 +1226,72 @@ msgstr "You can invite at most %(count)s mates to one tour."
 
 msgid "Na tuhle tour pozvánku nemáš."
 msgstr "You don't have an invite to this tour."
+
+msgid "Kolik stojí pivo v hospodě"
+msgstr "What a beer costs in Czech pubs"
+
+msgid "Medián ceny piva v hospodách po městech a pražských městských částech, z cen, které lidi zapsali v Na pivo."
+msgstr "Median beer prices in Czech pubs by city and Prague district, from prices people logged in Na pivo."
+
+msgid "Medián ceny piva v Praze, v Brně a v celé ČR."
+msgstr "Median beer price in Prague, in Brno and across Czechia."
+
+#, python-format
+msgid "Stav k %(date)s"
+msgstr "As of %(date)s"
+
+msgid "Načíst znovu"
+msgstr "Reload"
+
+msgid "Celá ČR"
+msgstr "Czechia"
+
+msgid "Kč"
+msgstr "CZK"
+
+#, python-format
+msgid "polovina hospod mezi %(low)s a %(high)s Kč"
+msgstr "half of pubs between %(low)s and %(high)s CZK"
+
+msgid "zatím málo cen"
+msgstr "not enough prices yet"
+
+msgid "Města"
+msgstr "Cities"
+
+msgid "Město"
+msgstr "City"
+
+msgid "Medián"
+msgstr "Median"
+
+msgid "Polovina hospod"
+msgstr "Half of pubs"
+
+msgid "Počet hospod"
+msgstr "Pubs"
+
+msgid "Praha podle městských částí"
+msgstr "Prague by district"
+
+msgid "Městská část"
+msgstr "District"
+
+msgid "Nejlevnější hospody"
+msgstr "Cheapest pubs"
+
+msgid "Zatím mám málo cen."
+msgstr "I don't have enough prices yet."
+
+msgid "Pro každou hospodu beru nejlevnější pivo od 0,4 l, jehož cenu někdo zapsal v Na pivo za posledních 90 dní, a město nebo městskou část ukážu, až v nich znám ceny aspoň z 15 hospod."
+msgstr "For each pub I take the cheapest beer of 0.4 l or more whose price someone logged in Na pivo in the last 90 days, and I show a city or district only once I know prices from at least 15 of its pubs."
+
+msgid "Znáš cenu ve své hospodě?"
+msgstr "Know the price at your local?"
+
+msgid "Zapiš ji v Na pivo."
+msgstr "Log it in Na pivo."
+
+#, python-format
+msgid "Medián nejlevnějšího piva od 0,4 l, stav k %(date)s"
+msgstr "Median of the cheapest 0.4 l+ beer, as of %(date)s"

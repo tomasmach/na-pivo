@@ -1,0 +1,216 @@
+"""Daily public beer price map behind na-pivo.cz/ceny.
+
+Everything here runs once a day from the ``snapshot_beer_prices`` command. The
+page only reads the newest ``PubPriceSnapshot`` and computes nothing itself.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+import statistics
+from collections import defaultdict
+from datetime import datetime, timedelta
+from io import BytesIO
+from pathlib import Path
+
+from django.conf import settings
+from django.utils import formats, timezone, translation
+from django.utils.translation import gettext
+from PIL import Image, ImageDraw, ImageFont
+
+from pubs.api.pub_beers_views import _places, city_name
+from pubs.api.views import _globally_reported_pub_cache_keys
+from pubs.enrichment.coverage import SK_POLYGON, in_cz_bbox, point_in_polygon
+from pubs.models import PubPriceIndex, PubPriceSnapshot
+
+WINDOW_DAYS = 90
+# A city or district with fewer priced pubs says more about one pub than the city.
+MIN_PUBS = 15
+CHEAPEST_PUBS = 10
+# A cheapest beer under this is a typo or a joke, not a pub's price.
+CHEAPEST_MIN_CZK = 20
+# Prices people entered in the app. Imported third-party menus stay in the app only.
+_SOURCES = (PubPriceIndex.Source.COMMUNITY, PubPriceIndex.Source.DRINK)
+PATHS = {"cs": "/ceny", "en": "/en/prices"}
+_PRAGUE_NUMBERED = re.compile(r"Praha\s*[-–]?\s*(\d{1,2})\b")
+
+_FONTS = Path(__file__).resolve().parent / "fonts"
+_GROUND = (35, 20, 7)
+_FOAM = (251, 243, 224)
+_FOAM_MUTED = (232, 220, 192)
+_MUTED = (168, 137, 106)
+_AMBER = (232, 163, 23)
+# Foam at 12 % over the ground, the hairline the web pages use.
+_HAIR = tuple(round(g + (f - g) * 0.12) for g, f in zip(_GROUND, _FOAM, strict=True))
+
+
+def in_czechia(lat: float, lng: float) -> bool:
+    """The generous box keeps border towns; the Slovak polygon removes its corner of Slovakia."""
+
+    return in_cz_bbox(lat, lng) and not point_in_polygon(lng, lat, SK_POLYGON)
+
+
+def prague_district(raw: str) -> str:
+    """"Praha 2 - Vinohrady" is Praha 2, "Praha-Libuš" stays itself, plain "Praha" has none."""
+
+    city = " ".join((raw or "").split())
+    if city == "Praha" or city_name(city) != "Praha":
+        return ""
+    numbered = _PRAGUE_NUMBERED.match(city)
+    return f"Praha {numbered.group(1)}" if numbered else city
+
+
+def _round(value: float) -> int:
+    return math.floor(value + 0.5)
+
+
+def _stats(prices: list[int]) -> dict:
+    p25, median, p75 = statistics.quantiles(prices, n=4, method="inclusive")
+    return {"median": _round(median), "p25": _round(p25), "p75": _round(p75), "pubs": len(prices)}
+
+
+def _areas(groups: dict[str, list[int]]) -> list[dict]:
+    return sorted(
+        ({"name": name, **_stats(prices)} for name, prices in groups.items() if len(prices) >= MIN_PUBS),
+        key=lambda area: (-area["pubs"], area["name"]),
+    )
+
+
+def _cheapest(rows: list[PubPriceIndex]) -> list[dict]:
+    """The cheapest pubs the public map knows, under the name the map shows."""
+
+    candidates = sorted(
+        (row for row in rows if row.price_czk >= CHEAPEST_MIN_CZK),
+        key=lambda row: (row.price_czk, row.cache_key),
+    )
+    picked: list[dict] = []
+    for start in range(0, len(candidates), 100):
+        batch = candidates[start:start + 100]
+        places = _places([row.cache_key for row in batch])
+        for row in batch:
+            place = places.get(row.cache_key)
+            if place is None:
+                continue
+            picked.append({
+                "name": place["name"],
+                "city": " ".join((place["city"] or row.city).split()),
+                "price_czk": row.price_czk,
+                "volume_ml": row.volume_ml or 500,
+            })
+            if len(picked) == CHEAPEST_PUBS:
+                return sorted(picked, key=lambda pub: (pub["price_czk"], pub["name"]))
+    return sorted(picked, key=lambda pub: (pub["price_czk"], pub["name"]))
+
+
+def build_price_map(now: datetime | None = None) -> dict:
+    """Median, quartiles and pub count per city and Prague district, plus the cheapest pubs."""
+
+    now = now or timezone.now()
+    rows = [
+        row
+        for row in PubPriceIndex.objects.filter(
+            active=True,
+            observed_at__gte=now - timedelta(days=WINDOW_DAYS),
+            source__in=_SOURCES,
+        ).only("cache_key", "lat", "lng", "city", "price_czk", "volume_ml")
+        if in_czechia(row.lat, row.lng)
+    ]
+    reported = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
+    rows = [row for row in rows if row.cache_key not in reported]
+
+    cities: dict[str, list[int]] = defaultdict(list)
+    districts: dict[str, list[int]] = defaultdict(list)
+    for row in rows:
+        if city := city_name(row.city):
+            cities[city].append(row.price_czk)
+        if district := prague_district(row.city):
+            districts[district].append(row.price_czk)
+    prices = [row.price_czk for row in rows]
+    return {
+        "window_days": WINDOW_DAYS,
+        "min_pubs": MIN_PUBS,
+        "country": _stats(prices) if len(prices) >= MIN_PUBS else None,
+        "cities": _areas(cities),
+        "prague_districts": _areas(districts),
+        "cheapest": _cheapest(rows),
+    }
+
+
+def headline_prices(data: dict) -> list[tuple[str, dict | None]]:
+    """The three numbers on the page top and the share image: Czechia, Praha, Brno."""
+
+    cities = {area["name"]: area for area in data.get("cities", [])}
+    return [
+        (gettext("Celá ČR"), data.get("country")),
+        ("Praha", cities.get("Praha")),
+        ("Brno", cities.get("Brno")),
+    ]
+
+
+def _font(name: str, size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(str(_FONTS / f"Baloo2-{name}.ttf"), size)
+
+
+def _fitted(draw: ImageDraw.ImageDraw, text: str, name: str, size: int, width: int):
+    font = _font(name, size)
+    while draw.textlength(text, font=font) > width and size > 24:
+        size -= 2
+        font = _font(name, size)
+    return font
+
+
+def render_og_image(data: dict, day, lang: str) -> bytes:
+    """A flat 1200 × 630 share image with the three headline medians."""
+
+    image = Image.new("RGB", (1200, 630), _GROUND)
+    draw = ImageDraw.Draw(image)
+    with translation.override(lang):
+        draw.text((80, 92), "Na pivo", font=_font("ExtraBold", 40), fill=_AMBER, anchor="ls")
+        title = gettext("Kolik stojí pivo v hospodě")
+        draw.text((80, 196), title, font=_fitted(draw, title, "ExtraBold", 72, 1040), fill=_FOAM, anchor="ls")
+        draw.line((80, 252, 1120, 252), fill=_HAIR, width=2)
+
+        number_font = _font("ExtraBold", 132)
+        unit_font = _font("ExtraBold", 44)
+        label_font = _font("SemiBold", 36)
+        unit = gettext("Kč")
+        for index, (label, stats) in enumerate(headline_prices(data)):
+            x = 80 + index * 360
+            draw.text((x, 318), label, font=label_font, fill=_FOAM_MUTED, anchor="ls")
+            value = str(stats["median"]) if stats else "–"
+            draw.text((x, 462), value, font=number_font, fill=_FOAM, anchor="ls")
+            if stats:
+                unit_x = x + draw.textlength(value, font=number_font) + 14
+                draw.text((unit_x, 462), unit, font=unit_font, fill=_FOAM_MUTED, anchor="ls")
+
+        draw.line((80, 524, 1120, 524), fill=_HAIR, width=2)
+        footer_font = _font("SemiBold", 30)
+        footer = gettext("Medián nejlevnějšího piva od 0,4 l, stav k %(date)s") % {
+            "date": formats.date_format(day, "DATE_FORMAT"),
+        }
+        draw.text((80, 576), footer, font=_fitted(draw, footer, "SemiBold", 30, 760), fill=_MUTED, anchor="ls")
+        address = settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + PATHS[lang]
+        draw.text((1120, 576), address, font=footer_font, fill=_FOAM_MUTED, anchor="rs")
+
+    buffer = BytesIO()
+    image.save(buffer, format="PNG", optimize=True)
+    return buffer.getvalue()
+
+
+def save_price_snapshot(now: datetime | None = None) -> PubPriceSnapshot:
+    """Compute today's map and both share images, replacing a same-day snapshot."""
+
+    now = now or timezone.now()
+    day = timezone.localdate(now)
+    data = build_price_map(now)
+    snapshot, _ = PubPriceSnapshot.objects.update_or_create(
+        day=day,
+        defaults={
+            "computed_at": now,
+            "data": data,
+            "og_image_cs": render_og_image(data, day, "cs"),
+            "og_image_en": render_og_image(data, day, "en"),
+        },
+    )
+    return snapshot
