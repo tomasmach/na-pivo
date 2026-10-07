@@ -57,14 +57,9 @@ function setUpList(section) {
   let order = 'default';
   let expanded = false;
 
-  // Rows that stay visible slide from their old place to the new one; rows that appear just appear.
-  function render(slide) {
-    const before = new Map();
-    if (slide && !reduced) {
-      for (const row of rows) {
-        if (!row.element.hidden) before.set(row, row.element.getBoundingClientRect().top);
-      }
-    }
+  // A new order is dealt out again row by row: most of the visible rows change on a sort, so sliding them would
+  // only show rows crossing each other.
+  function render(deal) {
     const query = plain(search.value);
     const sorted = rows.slice().sort(ORDERS[order]);
     let shown = 0;
@@ -74,21 +69,21 @@ function setUpList(section) {
       const match = !query || row.name.includes(query);
       if (match) matches += 1;
       const show = match && (query || expanded || shown < folded);
-      if (show) shown += 1;
+      // Bars still waiting to grow in follow the order on screen.
+      if (show) row.element.style.setProperty('--n', shown++);
       row.element.hidden = !show;
     }
     empty.hidden = matches > 0;
     more.hidden = Boolean(query);
-    for (const [row, top] of before) {
+    if (!deal || reduced) return;
+    let index = 0;
+    for (const row of sorted) {
       if (row.element.hidden) continue;
-      const shift = top - row.element.getBoundingClientRect().top;
-      if (shift) {
-        row.element.animate(
-          // Faded while moving, so rows passing each other stay readable.
-          [{ transform: `translateY(${shift}px)`, opacity: 0.35 }, { transform: 'none', opacity: 1 }],
-          { duration: 320, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' },
-        );
-      }
+      row.element.animate(
+        [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 220, delay: Math.min(index, 12) * 18, easing: 'ease-out', fill: 'backwards' },
+      );
+      index += 1;
     }
   }
 
@@ -117,10 +112,9 @@ function setUpList(section) {
     more.setAttribute('aria-expanded', String(expanded));
     render(false);
     // Folding a long list would leave the reader far below it.
-    if (!expanded) more.scrollIntoView({ block: 'nearest' });
+    if (!expanded && section.getBoundingClientRect().top < 0) section.scrollIntoView({ block: 'start' });
   });
 
-  for (const row of rows) row.element.classList.remove('is-extra');
   section.classList.add('is-live');
   render(false);
 }

@@ -1296,8 +1296,8 @@ msgstr "City"
 msgid "Medián"
 msgstr "Median"
 
-msgid "Polovina hospod"
-msgstr "Half of pubs"
+msgid "Tady je polovina hospod"
+msgstr "Half the pubs are here"
 
 msgid "Praha podle městských částí"
 msgstr "Praha by district"

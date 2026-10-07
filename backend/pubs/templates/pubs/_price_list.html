@@ -1,4 +1,4 @@
-{% load i18n %}<section class="areas" aria-labelledby="{{ list_id }}-title" data-areas data-folded="{{ folded_rows }}">
+{% load i18n %}<section class="areas" aria-labelledby="{{ list_id }}-title" data-areas data-folded="{{ folded_rows }}" style="--step:{{ axis.step }}{% if axis.country %};--country:{{ axis.country }}{% endif %}">
   <div class="areas-head">
     <h2 id="{{ list_id }}-title">{{ title }}</h2>
     {% if areas|length > folded_rows %}
@@ -16,18 +16,17 @@
     </div>
     {% endif %}
   </div>
-  <p class="legend" aria-hidden="true"><span><i class="key-range"></i>{% translate "Polovina hospod" %}</span><span><i class="key-median"></i>{% translate "Medián" %}</span>{% if country %}<span><i class="key-country"></i>{% translate "Celá ČR" %} {{ country.median }} {% translate "Kč" %}</span>{% endif %}</p>
-  <div class="scale" aria-hidden="true"><span>{{ label }}</span><span class="ticks">{% for tick in axis.ticks %}<i style="left:{{ tick.at }}">{{ tick.price }}</i>{% endfor %}</span><span>{% translate "Medián" %}</span></div>
+  <p class="legend" aria-hidden="true"><span><i class="key-range"></i>{% translate "Tady je polovina hospod" %}</span><span><i class="key-median"></i>{% translate "Medián" %}</span>{% if country %}<span><i class="key-country"></i>{% translate "Celá ČR" %} {{ country.median }} {% translate "Kč" %}</span>{% endif %}</p>
+  <div class="scale" aria-hidden="true"><span class="scale-label">{{ label }}</span><span class="ticks">{% for tick in axis.ticks %}<i style="left:{{ tick.at }}">{{ tick.price }}</i>{% endfor %}</span><span class="scale-median">{% translate "Medián" %}</span></div>
   <div class="rows" data-reveal>
-    <div class="grid" aria-hidden="true"><span>{% for tick in axis.ticks %}<i style="left:{{ tick.at }}"></i>{% endfor %}{% if axis.country %}<b style="left:{{ axis.country }}"></b>{% endif %}</span></div>
     <ol class="strips" role="list" data-rows>
-      {% for area in areas %}<li class="strip{% if area.mostly_stale %} is-stale{% endif %}{% if forloop.counter > folded_rows %} is-extra{% endif %}" data-median="{{ area.median }}" data-low="{{ area.p25 }}" data-high="{{ area.p75 }}" style="--n:{{ forloop.counter0 }};--lo:{{ area.bar.lo }};--hi:{{ area.bar.hi }};--mid:{{ area.bar.mid }};--origin:{{ area.bar.origin }}">
+      {% for area in areas %}<li class="strip{% if area.mostly_stale %} is-stale{% endif %}" data-median="{{ area.median }}" data-low="{{ area.p25 }}" data-high="{{ area.p75 }}" style="--n:{{ forloop.counter0 }};--lo:{{ area.bar.lo }};--hi:{{ area.bar.hi }};--mid:{{ area.bar.mid }};--origin:{{ area.bar.origin }}">
         <span class="who"><span class="name">{% if area.url %}<a href="{{ area.url }}">{{ area.name }}</a>{% else %}{{ area.name }}{% endif %}</span>{# Every listed area has at least five pubs, so the plural never changes. #}<span class="count">{% blocktranslate with pubs=area.pubs %}{{ pubs }} hospod{% endblocktranslate %}</span>{% if area.mostly_stale %}<span class="stale">{% translate "hlavně ceny starší 3 měsíců" %}</span>{% endif %}</span>
         <span class="bar" aria-hidden="true"></span>
-        <span class="cost"><span class="median"><span class="sr-only">{% translate "Medián" %} </span>{{ area.median }} {% translate "Kč" %}</span><span class="spread" aria-hidden="true">{{ area.p25 }}–{{ area.p75 }} {% translate "Kč" %}</span><span class="sr-only">{% blocktranslate with low=area.p25 high=area.p75 %}polovina hospod mezi {{ low }} a {{ high }} Kč{% endblocktranslate %}</span></span>
+        <span class="cost"><span class="median"><span class="sr-only">{% translate "Medián" %} </span>{{ area.median }} {% translate "Kč" %}</span>{% if area.p25 != area.p75 %}<span class="spread" aria-hidden="true">{{ area.p25 }}–{{ area.p75 }} {% translate "Kč" %}</span><span class="sr-only">{% blocktranslate with low=area.p25 high=area.p75 %}polovina hospod mezi {{ low }} a {{ high }} Kč{% endblocktranslate %}</span>{% endif %}</span>
       </li>{% endfor %}
     </ol>
-    <div class="empty" data-empty hidden>
+    <div class="empty" data-empty role="status" hidden>
       <p>{{ empty_text }}</p>
       <button class="clear" type="button" data-clear>{% translate "Zrušit hledání" %}</button>
     </div>

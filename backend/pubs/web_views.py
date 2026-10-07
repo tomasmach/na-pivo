@@ -365,6 +365,7 @@ def _on_axis(lists: list[list[dict]], country: dict | None) -> tuple[list[list[d
 
     axis = {
         "ticks": [{"price": price, "at": at(price)} for price in range(low, high + 1, 10)],
+        "step": at(low + 10),
         "country": at(country["median"]) if country else None,
     }
     return [[{**area, "bar": bar(area)} for area in rows] for rows in lists], axis

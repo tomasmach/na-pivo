@@ -370,7 +370,7 @@ def test_every_bar_on_the_page_sits_on_one_axis_in_whole_tens():
     assert [(tick["price"], tick["at"]) for tick in axis["ticks"]] == [
         (40, "0.00%"), (50, "20.00%"), (60, "40.00%"), (70, "60.00%"), (80, "80.00%"), (90, "100.00%"),
     ]
-    assert axis["country"] == "18.00%"
+    assert (axis["step"], axis["country"]) == ("20.00%", "18.00%")
     assert praha["bar"] == {"lo": "16.00%", "hi": "54.00%", "mid": "32.00%", "origin": "42.11%"}
     assert praha_1["bar"]["hi"] == "98.00%"
 

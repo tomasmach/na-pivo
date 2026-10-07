@@ -90,10 +90,11 @@
   h1 { max-width: 10em; font-size: clamp(44px, 8.4vw, 96px); line-height: 0.94; letter-spacing: -0.035em; }
   .as-of { max-width: 38em; margin-top: 18px; color: var(--muted); font-size: 16px; }
 
-  .coasters { display: flex; gap: clamp(10px, 3.4vw, 44px); margin: 0; padding: 0; list-style: none; }
-  .coasters li { --tilt: -5deg; --i: 0; display: grid; flex: 1 1 0; align-content: start; justify-items: center; gap: 14px; min-width: 0; max-width: 250px; text-align: center; }
+  .coasters { display: flex; gap: clamp(10px, 3.4vw, 56px); margin: 0; padding: 0; list-style: none; }
+  .coasters li { --tilt: -5deg; --i: 0; display: grid; flex: 1 1 0; align-content: start; justify-items: center; gap: 14px; min-width: 0; max-width: 250px; text-align: center; container-type: inline-size; }
   .coasters li:nth-child(2) { --tilt: 4deg; --i: 1; }
   .coasters li:nth-child(3) { --tilt: -2deg; --i: 2; }
+  /* The mat from the home page print: an amber rim, a thin ink ring inside it and a ring left by a glass. */
   .coaster {
     position: relative;
     display: grid;
@@ -101,19 +102,25 @@
     justify-items: center;
     width: 100%;
     aspect-ratio: 1;
-    border: 3px solid var(--ink-deep);
+    overflow: hidden;
+    border: max(5px, 6.5cqi) solid var(--amber);
     border-radius: 50%;
     background: var(--foam);
     color: var(--ink);
-    /* A hard ink offset like the printed buttons, and the printed rim of the mat. */
-    box-shadow: 4px 5px 0 var(--ink-deep), inset 0 0 0 8px var(--foam), inset 0 0 0 10px rgb(31 19 8 / 0.14);
+    /* The hard ink offset of the printed buttons. */
+    box-shadow: 4px 5px 0 var(--ink-deep), inset 0 0 0 max(2px, 1.2cqi) var(--ink);
     rotate: var(--tilt);
-    container-type: inline-size;
     text-decoration: none;
   }
-  .coaster .where { max-width: 74%; color: var(--paper-muted); font: 700 max(11px, 8.5cqi)/1.15 var(--text); overflow-wrap: anywhere; }
-  .coaster .price { display: flex; align-items: baseline; gap: 0.1em; margin-top: 1cqi; font: 800 33cqi/1 var(--display); letter-spacing: -0.02em; }
+  .coaster::after { content: ""; position: absolute; right: -22%; bottom: -30%; width: 58%; aspect-ratio: 1; border: max(2px, 1.4cqi) solid rgb(196 133 16 / 0.28); border-left-color: transparent; border-radius: 50%; rotate: 25deg; pointer-events: none; }
+  .coasters li:nth-child(2) .coaster::after { top: -20%; right: auto; bottom: auto; left: -14%; rotate: 200deg; }
+  .coasters li:nth-child(3) .coaster::after { top: -8%; right: -24%; bottom: auto; rotate: 110deg; }
+  .coaster .where, .coaster .price { position: relative; z-index: 1; }
+  .coaster .where { max-width: 76cqi; color: var(--paper-muted); font: 700 max(11px, 8cqi)/1.15 var(--text); overflow-wrap: anywhere; text-wrap: balance; }
+  .coaster .price { display: flex; align-items: baseline; gap: 0.1em; margin-top: 1cqi; font: 800 31cqi/1 var(--display); letter-spacing: -0.02em; }
   .coaster .unit { font-size: 0.36em; letter-spacing: 0; }
+  /* The price itself is the hidden text, so copying a mat gives "56 Kč" once. */
+  .coaster .roll, .coaster .unit { -webkit-user-select: none; user-select: none; }
   .coasters .range { max-width: 12em; color: var(--muted); font-size: 15px; line-height: 1.35; text-wrap: balance; }
   .coasters .stale { margin-top: -10px; }
   /* Flags prices older than three months. The words carry it, not the colour. */
@@ -121,12 +128,11 @@
 
   /* A mat that opens its city lifts under the pointer and sinks when pressed, like the store blocks. */
   a.coaster { transition: translate 140ms ease-out, box-shadow 140ms ease-out; }
-  @media (hover: hover) { a.coaster:hover { translate: -1px -3px; box-shadow: 6px 8px 0 var(--ink-deep), inset 0 0 0 8px var(--foam), inset 0 0 0 10px rgb(31 19 8 / 0.14); } }
-  a.coaster:active { translate: 3px 4px; box-shadow: 1px 1px 0 var(--ink-deep), inset 0 0 0 8px var(--foam), inset 0 0 0 10px rgb(31 19 8 / 0.14); }
+  @media (hover: hover) { a.coaster:hover { translate: -1px -3px; box-shadow: 6px 8px 0 var(--ink-deep), inset 0 0 0 max(2px, 1.2cqi) var(--ink); } }
+  a.coaster:active { translate: 3px 4px; box-shadow: 1px 1px 0 var(--ink-deep), inset 0 0 0 max(2px, 1.2cqi) var(--ink); }
   a.coaster:focus-visible { border-radius: 50%; outline-offset: 6px; }
 
-  /* Each digit is a strip of 0–9 twice, shown through a one-digit window. At rest it shows its own digit,
-     so the number is right without motion; on load the strip spins in like a till. */
+  /* Each digit is a strip of 0–9 twice, shown through a one-digit window, resting on its own digit in the second run. */
   .roll { display: inline-flex; }
   .digit { display: inline-block; width: var(--w); height: 1em; overflow-x: visible; overflow-y: clip; }
   .digit::before {
@@ -144,13 +150,15 @@
   .digit[data-d="6"] { --d: 6; --w: 0.558em; } .digit[data-d="7"] { --d: 7; --w: 0.482em; }
   .digit[data-d="8"] { --d: 8; --w: 0.56em; } .digit[data-d="9"] { --d: 9; --w: 0.558em; }
 
+  /* On load the mats drop onto the table and each digit turns once, from its own digit round to it again,
+     so the first and the last frame both show the right price. */
   @media (prefers-reduced-motion: no-preference) {
-    .coaster { animation: land 520ms var(--land) backwards; animation-delay: calc(var(--i) * 110ms + 60ms); }
-    .digit::before { animation: roll 1000ms cubic-bezier(0.2, 0.75, 0.2, 1) backwards; animation-delay: calc(var(--i) * 110ms + 200ms); }
-    .digit:last-child::before { animation-delay: calc(var(--i) * 110ms + 320ms); }
+    .coaster { animation: land 460ms var(--land) backwards; animation-delay: calc(var(--i) * 90ms); }
+    .digit::before { animation: roll 700ms cubic-bezier(0.3, 0.7, 0.2, 1) backwards; animation-delay: calc(var(--i) * 90ms + 120ms); }
+    .digit:last-child::before { animation-delay: calc(var(--i) * 90ms + 200ms); }
   }
-  @keyframes land { from { opacity: 0; transform: translateY(-44px) rotate(16deg) scale(1.1); } 50% { opacity: 1; } }
-  @keyframes roll { from { transform: translateY(0); } }
+  @keyframes land { from { transform: translateY(-28px) rotate(12deg) scale(1.06); } }
+  @keyframes roll { from { transform: translateY(calc(var(--d) * -1em)); } }
 
   /* Lists of cities and districts: one bar per area on one shared price axis. */
   .areas { margin-top: clamp(72px, 10vw, 120px); }
@@ -163,8 +171,8 @@
   .search input::placeholder { color: rgb(251 243 224 / 0.55); }
   .search input:focus-visible { outline-offset: 2px; border-radius: 999px; }
   /* The app's filter chips: the active one gets an amber edge and label, not a fill. */
-  .sort { display: flex; gap: 6px; }
-  .sort button { min-height: 44px; padding: 0 16px; border: 1.5px solid transparent; border-radius: 999px; background: var(--track); color: var(--muted); font-size: 15px; font-weight: 600; cursor: pointer; transition: color 120ms ease-out, border-color 120ms ease-out; }
+  .sort { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sort button { flex: 1 0 auto; min-height: 44px; padding: 0 16px; white-space: nowrap; border: 1.5px solid transparent; border-radius: 999px; background: var(--track); color: var(--muted); font-size: 15px; font-weight: 600; cursor: pointer; transition: color 120ms ease-out, border-color 120ms ease-out; }
   .sort button[aria-pressed="true"] { border-color: rgb(232 163 23 / 0.5); color: var(--amber); }
   @media (hover: hover) { .sort button:hover { color: var(--foam); } .sort button[aria-pressed="true"]:hover { color: var(--amber-light); } }
   .sort button:active { opacity: 0.65; }
@@ -175,38 +183,47 @@
   .legend i { display: block; flex: none; }
   .key-range { width: 26px; height: 8px; border-radius: 4px; background: var(--amber); }
   .key-median { width: 12px; height: 12px; border-radius: 50%; background: var(--foam); }
-  .key-country { width: 2px; height: 16px; background: rgb(251 243 224 / 0.4); }
+  .key-country { width: 2px; height: 16px; background: var(--country-line); }
 
-  .areas { --cols: minmax(0, 1fr) minmax(0, 2.1fr) 6.5rem; --gap: 20px; }
-  .scale, .strip, .grid { display: grid; grid-template-columns: var(--cols); column-gap: var(--gap); }
-  .scale { margin-top: 18px; padding-bottom: 8px; border-bottom: 1px solid var(--hair); color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.25; }
-  .scale > :last-child { text-align: right; }
-  .ticks { position: relative; }
+  .areas { --cols: minmax(0, 1fr) minmax(0, 2.1fr) 6.5rem; --gap: 20px; --country-line: rgb(251 243 224 / 0.4); }
+  .scale, .strip { display: grid; grid-template-columns: var(--cols); grid-template-areas: "who bar cost"; column-gap: var(--gap); }
+  /* The axis stays in view while an open list scrolls past it. */
+  .scale { position: sticky; top: 0; z-index: 2; margin-top: 18px; padding: 8px 0; border-bottom: 1px solid var(--hair); background: var(--ground); color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.25; }
+  .scale-label { grid-area: who; }
+  .scale-median { grid-area: cost; text-align: right; }
+  .ticks { position: relative; grid-area: bar; }
   .ticks i { position: absolute; top: 0; translate: -50% 0; font-style: normal; font-variant-numeric: tabular-nums; }
 
   .rows { position: relative; }
-  /* Vertical price lines behind the bars; the brighter one is the median of the whole country. */
-  .grid { position: absolute; inset: 0; pointer-events: none; }
-  .grid span { position: relative; grid-column: 2; }
-  .grid i, .grid b { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--track); }
-  .grid b { width: 2px; margin-left: -1px; background: rgb(251 243 224 / 0.4); }
   .strips { position: relative; margin: 0; padding: 0; list-style: none; }
   .strip { position: relative; align-items: center; min-height: 64px; padding: 10px 0; border-bottom: 1px solid var(--hair); }
   .strip[hidden] { display: none; }
-  .who { min-width: 0; overflow-wrap: anywhere; }
+  .who { grid-area: who; min-width: 0; overflow-wrap: anywhere; }
   .who .name { display: block; font-weight: 600; line-height: 1.25; }
   .who a { text-decoration: none; }
   /* The whole row opens the city. */
   .who a::after { content: ""; position: absolute; inset: 0; }
   .who .count { display: block; color: var(--muted); font-size: 14px; line-height: 1.35; }
-  .bar { position: relative; align-self: stretch; }
+  /* A price line every ten crowns runs through the bars; the brighter one is the median of the whole country.
+     The bar lets clicks through to the row's link. */
+  .bar {
+    position: relative;
+    grid-area: bar;
+    align-self: stretch;
+    margin-block: -10px;
+    background:
+      linear-gradient(var(--country-line), var(--country-line)) var(--country, -10px) 0 / 2px 100% no-repeat,
+      linear-gradient(var(--track), var(--track)) 100% 0 / 1px 100% no-repeat,
+      linear-gradient(90deg, var(--track) 1px, transparent 1px) 0 0 / var(--step) 100% repeat-x;
+    pointer-events: none;
+  }
   .bar::before, .bar::after { content: ""; position: absolute; top: 50%; }
   /* The middle half of the pubs, with rounded ends that reach 4 px past it. */
   .bar::before { left: calc(var(--lo) - 4px); right: calc(100% - var(--hi) - 4px); height: 8px; margin-top: -4px; border-radius: 4px; background: var(--amber); transform-origin: var(--origin) 50%; transition: background-color 120ms ease-out; }
   .bar::after { left: var(--mid); width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--foam); box-shadow: 0 0 0 2.5px var(--ground); }
   .strip.is-stale .bar::before { opacity: 0.45; }
   .strip .stale { margin-top: 2px; }
-  .cost { text-align: right; white-space: nowrap; }
+  .cost { grid-area: cost; text-align: right; white-space: nowrap; }
   .cost .median { display: block; font: 800 22px/1.15 var(--display); }
   .cost .spread { display: block; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 
@@ -235,14 +252,10 @@
   .retry:active, .all-cities:active, .more:active, .clear:active { opacity: 0.65; }
   .clear { margin-top: 16px; }
   .more { display: none; margin-top: 20px; }
-  /* Where scripts run, the search and the fold are there from the first paint, so nothing jumps when prices.js
-     arrives. prices.js marks the list too, for browsers that can't tell. */
-  @media (scripting: enabled) {
-    .tools { display: flex; }
-    .more { display: inline-flex; }
-    .strip.is-extra { display: none; }
-  }
-  .areas.is-live .tools { display: flex; }
+  /* Where scripts run, the search keeps its place from the first paint, so nothing jumps when prices.js arrives.
+     It turns on, and the list folds, only once the script is really there. */
+  @media (scripting: enabled) { .tools { display: flex; visibility: hidden; } }
+  .areas.is-live .tools { display: flex; visibility: visible; }
   .areas.is-live .more { display: inline-flex; }
   .areas .more[hidden] { display: none; }
   .method { max-width: 40em; margin-top: 36px; color: var(--muted); font-size: 15px; }
@@ -293,22 +306,32 @@
   footer a { padding: 0 8px; color: var(--foam-muted); text-decoration: none; }
   @media (hover: hover) { footer a:hover { color: var(--foam); text-decoration: underline; } }
 
-  /* Wide screens have room to scatter the mats a little, as if dropped on the table. */
+  /* Wide screens have room for bigger mats, scattered a little as if dropped on the table. */
   @media (min-width: 960px) {
+    .coasters li { max-width: 290px; }
     .coasters li:nth-child(2) { margin-top: 28px; }
     .coasters li:nth-child(3) { margin-top: 6px; }
   }
-  /* Phones: the bar column narrows and the name gets the room it needs. */
+  /* Phones: name and price share a line and the bar gets the full width below them, so a crown is wide enough to see. */
   @media (max-width: 640px) {
-    .areas { --cols: minmax(0, 1fr) minmax(0, 1.05fr) 4.6rem; --gap: 12px; }
+    .areas { --gap: 12px; }
+    .scale, .strip { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who cost" "bar bar"; }
+    .scale { row-gap: 6px; }
+    .ticks { height: 16px; margin-inline: 8px; }
+    .strip { row-gap: 8px; padding: 12px 0 10px; }
+    .bar { height: 20px; margin: 0 8px; }
+    .bar::after { width: 12px; height: 12px; margin: -6px 0 0 -6px; }
     .tools { width: 100%; }
     .search { flex-basis: 100%; }
     .sort { flex: 1 1 100%; }
-    .sort button { flex: 1 1 auto; padding: 0 10px; }
+    .sort button { padding: 0 12px; }
     .who .name { font-size: 16px; }
     .who .count { font-size: 13px; }
     .cost .median { font-size: 19px; }
     .coasters .range { font-size: 13px; }
+  }
+  @media (max-width: 380px) {
+    .sort button { padding: 0 9px; font-size: 14px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition-duration: 0ms !important; transition-delay: 0ms !important; }
