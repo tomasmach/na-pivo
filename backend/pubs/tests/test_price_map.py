@@ -30,9 +30,9 @@ OSTRAVA = (49.83, 18.28)
 BRATISLAVA = (48.14, 17.11)
 ZITTAU = (50.896, 14.807)
 SLUKNOV = (51.004, 14.452)
-TOUR_CSP = (
-    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; "
-    "frame-ancestors 'none'; form-action 'none'"
+PRICES_CSP = (
+    "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; "
+    "script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
 )
 
 pytestmark = pytest.mark.django_db
@@ -327,7 +327,7 @@ def test_snapshot_is_computed_once_a_day():
     assert PubPriceSnapshot.objects.get().data["cities"][0]["pubs"] == 6
 
 
-def test_price_page_serves_the_snapshot_without_external_resources(client, settings):
+def test_price_page_serves_the_snapshot_and_only_its_own_files(client, settings):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
     for price in range(40, 55):
         _price("Praha 2", price)
@@ -339,20 +339,40 @@ def test_price_page_serves_the_snapshot_without_external_resources(client, setti
 
     assert response.status_code == 200
     assert response["Content-Language"] == "cs"
-    assert response["Content-Security-Policy"] == TOUR_CSP
+    assert response["Content-Security-Policy"] == PRICES_CSP
     assert response["Cache-Control"] == "public, max-age=600"
     html = response.content.decode()
     assert "Kolik stojí pivo v hospodě" in html
-    assert '<th scope="row">Praha 2</th>' in html
+    assert '<span class="name">Praha 2</span>' in html
     assert "U Lacina" in html
     assert f'content="https://na-pivo.cz/ceny/og.png?v={day}"' in html
-    # Structured data is the only script block, and browsers never run it.
-    assert not re.search(r'<script(?! type="application/ld\+json")', html) and " src=" not in html
-    assert not re.search(r'<link rel="(stylesheet|preload|icon)', html)
+    assert '<link rel="icon" href="/favicon.ico" sizes="any">' in html
+    # Icon, fonts and the one script come from na-pivo.cz itself: no CDN, tracker or third party.
+    urls = re.findall(r'<(?:link|script|img)\b[^>]*?\s(?:src|href)="([^"]+)"', html)
+    assert urls and all(re.match(r"/(?!/)|https://na-pivo\.cz/", url) for url in urls)
+    assert re.search(r'<script src="/landing/prices\.js\?v=\w+" defer>', html)
 
     english = client.get("/en/prices").content.decode()
     assert "What a beer costs in Czech pubs" in english
     assert "Kolik stojí" not in english
+
+
+def test_every_bar_on_the_page_sits_on_one_axis_in_whole_tens():
+    from pubs.web_views import _on_axis
+
+    country = {"median": 49, "p25": 42, "p75": 58}
+    cities = [{"name": "Praha", "median": 56, "p25": 48, "p75": 67}]
+    districts = [{"name": "Praha 1", "median": 75, "p25": 62, "p75": 89}]
+
+    ([praha], [praha_1]), axis = _on_axis([cities, districts], country)
+
+    # 40 to 90 Kč across every list, so one spot means one price in both tables.
+    assert [(tick["price"], tick["at"]) for tick in axis["ticks"]] == [
+        (40, "0.00%"), (50, "20.00%"), (60, "40.00%"), (70, "60.00%"), (80, "80.00%"), (90, "100.00%"),
+    ]
+    assert axis["country"] == "18.00%"
+    assert praha["bar"] == {"lo": "16.00%", "hi": "54.00%", "mid": "32.00%", "origin": "42.11%"}
+    assert praha_1["bar"]["hi"] == "98.00%"
 
 
 def _structured_data(html: str) -> dict:
@@ -522,13 +542,15 @@ def test_city_page_shows_the_city_beside_the_country_and_its_cheapest_pubs(clien
     response = client.get("/ceny/brno")
 
     assert response.status_code == 200
-    assert response["Content-Security-Policy"] == TOUR_CSP
+    assert response["Content-Security-Policy"] == PRICES_CSP
     html = response.content.decode()
-    assert "<h1>Kolik stojí pivo: Brno</h1>" in html
+    assert '<h1 id="page-title">Kolik stojí pivo: Brno</h1>' in html
     assert f"<title>Cena piva Brno {today.year}: medián 42 Kč | Na pivo</title>" in html
     assert 'content="Brno: medián ceny piva v hospodě je 42 Kč a polovina hospod má nejlevnější pivo mezi 41 a 44 Kč.' in html
     assert "z 7 hospod" in html
-    assert "<dt>Brno</dt>" in html and "<dt>Celá ČR</dt>" in html
+    # The city's own mat stays put; the country's mat leads back to every city.
+    assert re.search(r'<div class="coaster">\s*<span class="where">Brno</span>', html)
+    assert re.search(r'<a class="coaster" href="/ceny">\s*<span class="where">Celá ČR</span>', html)
     assert "Pod Špilberkem" in html and "U Lacina" not in html
     assert "Praha podle městských částí" not in html
     assert '<link rel="canonical" href="https://na-pivo.cz/ceny/brno">' in html
@@ -544,7 +566,7 @@ def test_city_page_shows_the_city_beside_the_country_and_its_cheapest_pubs(clien
     ]
 
     english = client.get("/en/prices/brno").content.decode()
-    assert "<h1>What a beer costs in Brno</h1>" in english
+    assert '<h1 id="page-title">What a beer costs in Brno</h1>' in english
     assert f"<title>Beer prices in Brno {today.year}: median 42 CZK | Na pivo</title>" in english
     assert "from 7 pubs" in english
 
