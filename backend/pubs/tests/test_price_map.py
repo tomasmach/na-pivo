@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from datetime import timedelta
@@ -21,7 +22,7 @@ from pubs.models import (
     PubPriceIndex,
     PubPriceSnapshot,
 )
-from pubs.price_map import build_price_map, prague_district
+from pubs.price_map import build_price_map, city_slug, prague_district
 
 PRAGUE = (50.08, 14.42)
 BRNO = (49.19, 16.61)
@@ -135,6 +136,7 @@ def test_prague_district_reads_the_number_or_the_named_district():
     assert prague_district("Praha") == ""
     assert prague_district("Praha-východ") == ""
     assert prague_district("Brno-střed") == ""
+    assert prague_district("Hlavní město Praha") == ""
 
 
 def test_cities_and_districts_show_from_five_pubs():
@@ -172,7 +174,7 @@ def test_only_active_czech_prices_from_the_app_within_a_year_count(monkeypatch):
     data = build_price_map()
 
     assert data["cities"] == [
-        {"name": "Ostrava", "median": 50, "p25": 50, "p75": 50, "pubs": 5, "mostly_stale": False},
+        {"name": "Ostrava", "median": 50, "p25": 50, "p75": 50, "pubs": 5, "mostly_stale": False, "cheapest": []},
     ]
     assert data["country"]["pubs"] == 5
 
@@ -344,12 +346,52 @@ def test_price_page_serves_the_snapshot_without_external_resources(client, setti
     assert '<th scope="row">Praha 2</th>' in html
     assert "U Lacina" in html
     assert f'content="https://na-pivo.cz/ceny/og.png?v={day}"' in html
-    assert "<script" not in html and " src=" not in html
+    # Structured data is the only script block, and browsers never run it.
+    assert not re.search(r'<script(?! type="application/ld\+json")', html) and " src=" not in html
     assert not re.search(r'<link rel="(stylesheet|preload|icon)', html)
 
     english = client.get("/en/prices").content.decode()
     assert "What a beer costs in Czech pubs" in english
     assert "Kolik stojí" not in english
+
+
+def _structured_data(html: str) -> dict:
+    block = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    return {item["@type"]: item for item in json.loads(block.group(1))["@graph"]}
+
+
+def test_price_page_tells_search_engines_the_year_the_median_and_the_dataset(client, settings):
+    settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
+    for price in range(40, 55):
+        _price("Praha 2", price)
+    call_command("snapshot_beer_prices", stdout=StringIO())
+    today = timezone.localdate()
+
+    html = client.get("/ceny").content.decode()
+
+    assert f"<title>Cena piva {today.year}: kolik stojí pivo v hospodě | Na pivo</title>" in html
+    assert 'content="Medián ceny piva v českých hospodách je 47 Kč.' in html
+    data = _structured_data(html)
+    assert [crumb["item"] for crumb in data["BreadcrumbList"]["itemListElement"]] == [
+        "https://na-pivo.cz/",
+        "https://na-pivo.cz/ceny",
+    ]
+    assert data["Dataset"]["dateModified"] == today.isoformat()
+    assert data["Dataset"]["temporalCoverage"] == f"{today - timedelta(days=365)}/{today}"
+
+    english = client.get("/en/prices").content.decode()
+    assert f"<title>Beer prices {today.year}: what a beer costs in Czech pubs | Na pivo</title>" in english
+    assert "The median beer price in Czech pubs is 47 CZK." in english
+    assert _structured_data(english)["Dataset"]["description"].startswith("From each pub I take")
+    assert _structured_data(english)["BreadcrumbList"]["itemListElement"][0]["item"] == "https://na-pivo.cz/en"
+    assert f"<loc>https://na-pivo.cz/ceny</loc>\n  <lastmod>{today}</lastmod>" in client.get("/sitemap.xml").content.decode()
+
+
+def test_price_page_without_numbers_has_no_dataset(client):
+    html = client.get("/ceny").content.decode()
+
+    assert "<title>Kolik stojí pivo v hospodě | Na pivo</title>" in html
+    assert "Dataset" not in _structured_data(html)
 
 
 def test_share_images_have_preview_dimensions(client):
@@ -403,3 +445,146 @@ def test_price_page_has_its_own_throttle(client, monkeypatch):
     assert limited["Cache-Control"] == "no-store"
     assert int(limited["Retry-After"]) >= 1
     assert "Ceny se teď nedotáhly. Zkus to za minutu." in limited.content.decode()
+
+
+def test_the_official_name_of_prague_counts_as_praha():
+    for _ in range(3):
+        _price("Hlavní město Praha", 50)
+    for _ in range(2):
+        _price("Praha", 60)
+
+    data = build_price_map()
+
+    assert [(city["name"], city["pubs"]) for city in data["cities"]] == [("Praha", 5)]
+    assert data["prague_districts"] == []
+
+
+def test_each_city_keeps_its_own_cheapest_pubs():
+    _catalog(_price("Brno-střed", 41, BRNO), "Pod Špilberkem")
+    _catalog(_price("Brno-sever", 38, BRNO), "U Bláhovky")
+    for _ in range(3):
+        _price("Brno", 50, BRNO)
+    _catalog(_price("Praha 2", 30), "U Lacina")
+
+    brno = build_price_map()["cities"][0]
+
+    assert brno["name"] == "Brno"
+    assert [(pub["name"], pub["price_czk"]) for pub in brno["cheapest"]] == [
+        ("U Bláhovky", 38),
+        ("Pod Špilberkem", 41),
+    ]
+
+
+def test_spellings_of_one_city_count_together_under_the_common_one():
+    for _ in range(3):
+        _price("Plzeň", 50)
+    for _ in range(2):
+        _price("Plzen", 60)
+
+    assert [(city["name"], city["pubs"]) for city in build_price_map()["cities"]] == [("Plzeň", 5)]
+
+
+def test_city_list_skips_pubs_the_catalogue_puts_in_another_city():
+    for _ in range(4):
+        _price("Brno", 50, BRNO)
+    moved = _price("Brno", 30, BRNO)
+    _catalog(moved, "U Lacina")
+    PubDirectory.objects.filter(cache_key=moved.cache_key).update(city="Praha 7")
+
+    data = build_price_map()
+
+    assert data["cities"][0]["name"] == "Brno"
+    assert data["cities"][0]["cheapest"] == []
+    assert [pub["city"] for pub in data["cheapest"]] == ["Praha 7"]
+
+
+def test_city_addresses_drop_diacritics_and_spaces():
+    assert city_slug("Praha") == "praha"
+    assert city_slug("České Budějovice") == "ceske-budejovice"
+    assert city_slug("Brandýs nad Labem-Stará Boleslav") == "brandys-nad-labem-stara-boleslav"
+
+
+def _city_snapshot() -> None:
+    for price in range(40, 46):
+        _price("Brno", price, BRNO)
+    _catalog(_price("Brno-střed", 35, BRNO), "Pod Špilberkem")
+    for price in range(50, 56):
+        _price("Praha 2", price)
+    _catalog(_price("Praha 7", 33), "U Lacina")
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+
+def test_city_page_shows_the_city_beside_the_country_and_its_cheapest_pubs(client, settings):
+    settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
+    _city_snapshot()
+    today = timezone.localdate()
+
+    response = client.get("/ceny/brno")
+
+    assert response.status_code == 200
+    assert response["Content-Security-Policy"] == TOUR_CSP
+    html = response.content.decode()
+    assert "<h1>Kolik stojí pivo: Brno</h1>" in html
+    assert f"<title>Cena piva Brno {today.year}: medián 42 Kč | Na pivo</title>" in html
+    assert 'content="Brno: medián ceny piva v hospodě je 42 Kč a polovina hospod má nejlevnější pivo mezi 41 a 44 Kč.' in html
+    assert "z 7 hospod" in html
+    assert "<dt>Brno</dt>" in html and "<dt>Celá ČR</dt>" in html
+    assert "Pod Špilberkem" in html and "U Lacina" not in html
+    assert "Praha podle městských částí" not in html
+    assert '<link rel="canonical" href="https://na-pivo.cz/ceny/brno">' in html
+    assert '<link rel="alternate" hreflang="en" href="https://na-pivo.cz/en/prices/brno">' in html
+    assert 'class="all-cities" href="/ceny"' in html
+    assert '<a class="crumb" href="/ceny">Ceny piva</a>' in html
+    assert "Hospody od nejlevnější" in html
+    crumbs = _structured_data(html)["BreadcrumbList"]["itemListElement"]
+    assert [(crumb["name"], crumb["item"]) for crumb in crumbs] == [
+        ("Na pivo", "https://na-pivo.cz/"),
+        ("Ceny piva", "https://na-pivo.cz/ceny"),
+        ("Brno", "https://na-pivo.cz/ceny/brno"),
+    ]
+
+    english = client.get("/en/prices/brno").content.decode()
+    assert "<h1>What a beer costs in Brno</h1>" in english
+    assert f"<title>Beer prices in Brno {today.year}: median 42 CZK | Na pivo</title>" in english
+    assert "from 7 pubs" in english
+
+
+def test_play_links_say_which_page_sent_the_visitor(client):
+    _city_snapshot()
+
+    assert 'utm_campaign%3Dprices"' in client.get("/ceny").content.decode()
+    assert 'utm_campaign%3Dcity-prices"' in client.get("/ceny/brno").content.decode()
+
+
+def test_prague_page_lists_its_districts(client):
+    _city_snapshot()
+
+    html = client.get("/ceny/praha").content.decode()
+
+    assert "Praha podle městských částí" in html
+    # Within Prague the district tells the pubs apart.
+    assert '<span class="city">Praha 7</span>' in html
+
+
+def test_country_page_links_every_city_and_the_sitemap_lists_them(client, settings):
+    settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
+    _city_snapshot()
+
+    assert '<a href="/ceny/brno">Brno</a>' in client.get("/ceny").content.decode()
+    assert '<a href="/en/prices/praha">Praha</a>' in client.get("/en/prices").content.decode()
+    sitemap = client.get("/sitemap.xml").content.decode()
+    assert "<loc>https://na-pivo.cz/ceny/brno</loc>" in sitemap
+    assert "<loc>https://na-pivo.cz/en/prices/praha</loc>" in sitemap
+
+
+def test_city_without_enough_prices_has_no_page_but_leads_to_the_others(client):
+    _city_snapshot()
+
+    response = client.get("/ceny/ostrava")
+
+    assert response.status_code == 404
+    html = response.content.decode()
+    assert "Zatím mám málo cen." in html
+    assert 'class="all-cities" href="/ceny"' in html
+    assert "Dataset" not in html
+    assert client.get("/en/prices/ostrava").status_code == 404
