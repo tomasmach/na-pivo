@@ -77,8 +77,17 @@ def _price(
     return row
 
 
-def _drink(row: PubPriceIndex, price: int, volume_ml: int | None = 500, days_ago: int = 0) -> None:
-    account, _ = Account.objects.get_or_create(device_id="price-map-drinker")
+def _drink(
+    row: PubPriceIndex,
+    price: int,
+    volume_ml: int | None = 500,
+    days_ago: int = 0,
+    shares: bool = True,
+) -> None:
+    account, _ = Account.objects.get_or_create(
+        device_id=f"price-map-drinker-{shares}",
+        defaults={"ugc_terms_accepted_at": timezone.now() if shares else None},
+    )
     DrinkLog.objects.create(
         account=account,
         client_id=uuid.uuid4(),
@@ -162,6 +171,8 @@ def test_an_old_cheapest_price_needs_its_own_recent_write():
     _drink(row, 55)
     # The offline queue delivered today a 39 Kč beer drunk four months ago.
     _drink(row, 39, days_ago=120)
+    # This drinker never agreed to share anything, so the drink stays private.
+    _drink(row, 39, shares=False)
 
     assert build_price_map()["cheapest"] == []
 
@@ -182,7 +193,8 @@ def test_a_price_is_named_only_after_the_pub_it_belongs_to():
 def test_a_merged_duplicate_counts_as_one_pub():
     for price in (40,) * 7 + (60,) * 6:
         _price("Plzeň", price, (49.74, 13.37))
-    canonical = _price("Plzeň", 44, (49.74, 13.37), days_ago=5)
+    # A late offline drink moved this row's observed_at, but its 44 Kč was written five days ago.
+    canonical = _price("Plzeň", 44, (49.74, 13.37), days_ago=0, menu_days_ago=5)
     duplicate = _price("Plzeň", 48, (49.74, 13.37))
     pub = CanonicalPub.objects.create(
         cache_key=canonical.cache_key, name="U Salzmannů", name_key="u salzmannu",
@@ -202,6 +214,24 @@ def test_a_merged_duplicate_counts_as_one_pub():
 
     # The merged pub sits in the middle: its newest price, 48 Kč, is the median.
     assert (plzen["pubs"], plzen["median"]) == (15, 48)
+
+
+def test_a_merged_duplicate_keeps_its_price_under_the_merged_name():
+    canonical = _price("Plzeň", 60, (49.74, 13.37))
+    pub = CanonicalPub.objects.create(
+        cache_key=canonical.cache_key, name="U Salzmannů", name_key="u salzmannu",
+        lat=49.74, lng=13.37, city="Plzeň", country="cz",
+    )
+    duplicate = _price("Plzeň", 35, (49.74, 13.37), days_ago=0)
+    PubPriceIndex.objects.filter(pk=duplicate.pk).update(name="Pivnice Na Rohu")
+    PubAlias.objects.create(
+        canonical_pub=pub, cache_key=duplicate.cache_key, name="Pivnice Na Rohu",
+        name_key="pivnice na rohu", lat=49.74, lng=13.37,
+    )
+
+    assert build_price_map()["cheapest"] == [
+        {"name": "U Salzmannů", "city": "Plzeň", "price_czk": 35, "volume_ml": 500},
+    ]
 
 
 def test_the_catalogue_country_beats_the_coverage_polygon():

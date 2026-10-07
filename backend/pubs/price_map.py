@@ -24,6 +24,7 @@ from pubs.api.views import _globally_reported_pub_cache_keys
 from pubs.enrichment import names_match
 from pubs.enrichment.coverage import coverage_country
 from pubs.models import (
+    Account,
     CanonicalPub,
     DrinkLog,
     PubContributionLog,
@@ -74,41 +75,46 @@ def _in_czechia(rows: list[PubPriceIndex]) -> list[PubPriceIndex]:
     ]
 
 
-def _confirmed_since(rows: list[PubPriceIndex], since: datetime) -> set[str]:
-    """Pubs whose selected price itself was written since ``since``.
+def _confirmed_since(rows: list[PubPriceIndex], since: datetime) -> dict[str, datetime]:
+    """When each pub's selected price itself was last written, if since ``since``.
 
     A drink of another beer keeps the old menu prices but still moves the
     index's observed_at, so only a drink or a submitted menu with this exact
     price and volume counts. A drink counts by when it was drunk, since the
-    offline queue can deliver it much later, and suspect drinks stay out of
-    public numbers.
+    offline queue can deliver it much later. Suspect drinks and drinks of
+    accounts that never agreed to share content stay out of public numbers.
     """
 
     selected = {row.cache_key: (row.price_czk, row.volume_ml) for row in rows}
-    confirmed: set[str] = set()
+    confirmed: dict[str, datetime] = {}
+
+    def confirm(key: str, at: datetime) -> None:
+        confirmed[key] = max(at, confirmed.get(key, at))
+
     for chunk in _chunks(list(selected)):
-        drinks = (
-            DrinkLog.objects.filter(
-                cache_key__in=chunk, drank_at__gte=since, is_suspect=False, price_czk__isnull=False
-            )
-            .values_list("cache_key", "price_czk", "volume_ml")
-            .distinct()
-        )
-        for key, price, volume in drinks:
+        drinks = DrinkLog.objects.filter(
+            cache_key__in=chunk,
+            drank_at__gte=since,
+            is_suspect=False,
+            price_czk__isnull=False,
+            account__status=Account.Status.ACTIVE,
+            account__ugc_terms_accepted_at__isnull=False,
+        ).values_list("cache_key", "price_czk", "volume_ml", "drank_at")
+        for key, price, volume, drank_at in drinks:
             if selected[key] == (price, volume):
-                confirmed.add(key)
+                confirm(key, drank_at)
         menus = PubContributionLog.objects.filter(
             kind=PubContributionLog.Kind.BEERS,
             cache_key__in=chunk,
             created_at__gte=since,
-        ).values_list("cache_key", "payload")
-        for key, payload in menus:
+        ).values_list("cache_key", "payload", "created_at")
+        for key, payload, created_at in menus:
             beers = payload.get("beers") if isinstance(payload, dict) else payload
             if any(
                 isinstance(beer, dict) and (beer.get("price_czk"), beer.get("volume_ml")) == selected[key]
                 for beer in beers or []
             ):
-                confirmed.add(key)
+                confirm(key, created_at)
     return confirmed
 
 
@@ -165,8 +171,11 @@ def _cheapest(rows: list[PubPriceIndex]) -> list[dict]:
         places = _places([row.pub_key for row in batch])
         for row in batch:
             place = places.get(row.pub_key)
-            # Two businesses can share one geohash cell: the price must be this pub's.
-            if place is None or not names_match(place["name"], row.name):
+            # Two businesses can share one geohash cell: the price must be this pub's,
+            # under its own name or the name of a duplicate merged into it.
+            if place is None or not any(
+                names_match(name, row.name) for name in (place["name"], *row.alias_names)
+            ):
                 continue
             city = place["city"] or row.city
             picked.append({
@@ -195,10 +204,17 @@ def build_price_map(now: datetime | None = None) -> dict:
     ))
     confirmed = _confirmed_since(rows, since)
     # A duplicate merged into another pub is that pub: it counts once, with the newest price.
-    targets = dict(_merged_aliases().values_list("cache_key", "canonical_pub__cache_key"))
+    targets: dict[str, str] = {}
+    alias_names: dict[str, list[str]] = defaultdict(list)
+    for key, target, name in _merged_aliases().values_list("cache_key", "canonical_pub__cache_key", "name"):
+        targets[key] = target
+        alias_names[key].append(name)
     pubs: dict[str, PubPriceIndex] = {}
-    for row in sorted((row for row in rows if row.cache_key in confirmed), key=lambda row: row.observed_at):
+    for row in sorted(
+        (row for row in rows if row.cache_key in confirmed), key=lambda row: confirmed[row.cache_key]
+    ):
         row.pub_key = targets.get(row.cache_key, row.cache_key)
+        row.alias_names = alias_names.get(row.cache_key, [])
         pubs[row.pub_key] = row
     excluded = _globally_reported_pub_cache_keys(
         {row.cache_key for row in pubs.values()} | set(pubs)
