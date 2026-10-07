@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pubs', '0152_account_table_visible_until'),
+        ('pubs', '0153_pubpricesnapshot'),
     ]
 
     operations = [
