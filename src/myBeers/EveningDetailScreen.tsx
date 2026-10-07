@@ -86,6 +86,7 @@ import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { useToastStore } from '@/stores/toastStore';
+import { HomeTransitCard } from '@/transit/HomeTransitCard';
 
 /** The fix-sheet line for a refused field the form can change. */
 function rejectedFieldHint(field: string | undefined): string | undefined {
@@ -401,6 +402,8 @@ export default function EveningDetailScreen() {
               )}
             </Text>
           </View>
+
+          {current?.clientId === session.clientId ? <HomeTransitCard session={session} /> : null}
 
           {/* Breakdown */}
           <View style={styles.card}>

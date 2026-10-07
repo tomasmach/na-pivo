@@ -16,6 +16,12 @@ export function formatVolume(ml: number): string {
   return `${text.replace('.', ',')} l`;
 }
 
+/** "v 21:47" but "ve 23:58": Czech needs "ve" before dva, tři, čtyři, dvanáct… */
+function atTime(time: string): string {
+  const hour = Number.parseInt(time, 10);
+  return [2, 3, 4, 12, 13, 14, 20, 21, 22, 23].includes(hour) ? `ve ${time}` : `v ${time}`;
+}
+
 export const cs = {
   appName: 'Na pivo',
 
@@ -568,6 +574,10 @@ export const cs = {
     waterNudge: {
       title: 'Připomenout vodu',
       subtitle: 'Volitelně po čtyřech pivech, jen v telefonu. Neodhaduje střízlivost.',
+    },
+    homeTransitReminder: {
+      title: 'Připomenout poslední spoj',
+      subtitle: '20 minut před posledním přímým spojem domů. Jen Praha a okolí, chce to domov.',
     },
     hideClosed: {
       title: 'Skrýt zavřené hospody',
@@ -3526,6 +3536,32 @@ export const cs = {
     addBeer: 'Přidat další',
     addBeerA11y: 'Přidat stejné pivo',
     openCounter: 'Otevřít počítadlo',
+    homeTransit: (time: string, stop: string) =>
+      `Poslední spoj domů ${time}${stop ? ` · ${stop}` : ''}`,
+    homeTransitCountdown: 'za',
+    homeTransitMissed: 'Už jedeš nočkou',
+    homeTransitA11y: (time: string, stop: string, line: string) =>
+      `Poslední přímý spoj domů${line ? `, linka ${line}` : ''}, odjezd ${time}${stop ? ` ze zastávky ${stop}` : ''}`,
+  },
+
+  homeTransit: {
+    title: 'Poslední přímý spoj domů',
+    /** GTFS route_type: 0 tram, 1 metro, 2 vlak, 3 bus, 4 přívoz, 7 lanovka, 11 trolejbus. */
+    vehicleLine: (routeType: number | null, line: string) => {
+      const vehicle =
+        { 0: 'Tramvaj', 1: 'Metro', 2: 'Vlak', 3: 'Bus', 4: 'Přívoz', 7: 'Lanovka', 11: 'Trolejbus' }[
+          routeType ?? -1
+        ] ?? 'Linka';
+      return `${vehicle} ${line}`;
+    },
+    route: (line: string, from: string, to: string) => `${line ? `${line} · ` : ''}${from} → ${to}`,
+    leavesIn: (minutes: number) =>
+      minutes < 60
+        ? `za ${Math.max(minutes, 1)} min`
+        : `za ${Math.floor(minutes / 60)} h ${minutes % 60} min`,
+    openIdos: 'Kudy domů v IDOS',
+    openIdosA11y: 'Kudy domů, otevře hledání spojení v IDOS',
+    footnote: 'Bez nočních linek · ROPID, CC\u00a0BY\u00a04.0, upraveno',
   },
 
   notifications: {
@@ -3535,6 +3571,10 @@ export const cs = {
     beerCountChannel: 'Připomínky počítadla',
     beerCountTitle: 'Nezapisuješ si pivo?',
     beerCountBody: 'Klepni a přidej další čárku do počítadla.',
+    homeTransitChannel: 'Poslední přímý spoj domů',
+    homeTransitTitle: 'Za 20 minut ti jede poslední přímý spoj domů',
+    homeTransitBody: (line: string, time: string, stop: string) =>
+      `${line ? `Linka ${line} odjíždí` : 'Odjíždí'} ${atTime(time)}${stop ? ` ze zastávky ${stop}` : ''}.`,
   },
 
   pubDetail: {

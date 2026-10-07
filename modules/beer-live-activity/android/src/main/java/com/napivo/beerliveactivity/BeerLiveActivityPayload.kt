@@ -34,4 +34,16 @@ internal class BeerLiveActivityPayload : Record {
   /** UI language picked in the app ("cs" or "en"); the notification follows it, not the device. */
   @Field
   var locale: String = "cs"
+
+  /** Tonight's last direct connection home, already localized. Empty without one. */
+  @Field
+  var homeTransitLabel: String = ""
+
+  /** Departure of that connection as epoch milliseconds. */
+  @Field
+  var homeTransitDepartsAtMs: Double? = null
+
+  /** What to say once the ride left ("Už jedeš nočkou"). Empty without a ride. */
+  @Field
+  var homeTransitMissedLabel: String = ""
 }

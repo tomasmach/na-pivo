@@ -676,6 +676,19 @@ PHOTO_CONTEST_XP_FIRST: int = int(os.environ.get("PHOTO_CONTEST_XP_FIRST", "100"
 PHOTO_CONTEST_XP_SECOND: int = int(os.environ.get("PHOTO_CONTEST_XP_SECOND", "50"))
 PHOTO_CONTEST_XP_THIRD: int = int(os.environ.get("PHOTO_CONTEST_XP_THIRD", "25"))
 
+# --- Public transport home (PID GTFS) ---
+# Daily timetable import (`import_pid_gtfs` in the worker loop). PID open data, CC BY 4.0.
+PID_GTFS_URL: str = os.environ.get("PID_GTFS_URL", "https://data.pid.cz/PID_GTFS.zip")
+# The download is aborted past this size; today's zip is about 50 MB.
+PID_GTFS_MAX_BYTES: int = int(os.environ.get("PID_GTFS_MAX_BYTES", str(200 * 1024 * 1024)))
+# A malformed feed must not be downloaded again every five minutes all day.
+PID_GTFS_DAILY_DOWNLOADS: int = int(os.environ.get("PID_GTFS_DAILY_DOWNLOADS", "4"))
+# The stop list is identical for everyone; the app fetches it about once a day.
+TRANSIT_STOPS_THROTTLE_RATE: str = os.environ.get("TRANSIT_STOPS_THROTTLE_RATE", "20/hour")
+TRANSIT_LAST_DIRECT_THROTTLE_RATE: str = os.environ.get(
+    "TRANSIT_LAST_DIRECT_THROTTLE_RATE", "60/hour"
+)
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -738,6 +751,8 @@ REST_FRAMEWORK = {
         "beer_photo_upload": BEER_PHOTO_UPLOAD_THROTTLE_RATE,
         "photo_contest": PHOTO_CONTEST_THROTTLE_RATE,
         "public_reads": PUBLIC_READS_THROTTLE_RATE,
+        "transit_stops": TRANSIT_STOPS_THROTTLE_RATE,
+        "transit_last_direct": TRANSIT_LAST_DIRECT_THROTTLE_RATE,
     },
 }
 

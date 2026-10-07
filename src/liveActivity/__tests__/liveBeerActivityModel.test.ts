@@ -147,3 +147,84 @@ describe('shouldRequestAndroidNotificationPermission', () => {
     ).toBe(false);
   });
 });
+
+describe('last connection home', () => {
+  const departure = {
+    line: '9',
+    headsign: 'Spojovací',
+    routeType: 0,
+    fromStopId: 'U1Z1P',
+    fromStopName: 'Anděl',
+    toStopId: 'U2Z1P',
+    toStopName: 'Florenc',
+    departsAtMs: Date.parse('2026-07-21T21:58:00.000Z'),
+  };
+
+  it('adds the connection while it is still ahead', () => {
+    const result = buildBeerEveningLiveActivityProps(session(), {
+      hidePubNames: false,
+      priceCurrency: 'CZK',
+      homeTransit: departure,
+      nowMs: departure.departsAtMs - 41 * 60_000,
+    });
+
+    const time = new Date(departure.departsAtMs).toLocaleTimeString(intlLocale, {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    expect(result).toMatchObject({
+      homeTransitLabel: t.liveActivity.homeTransit(time, 'Anděl'),
+      homeTransitDepartsAtMs: departure.departsAtMs,
+      homeTransitCountdownPrefix: t.liveActivity.homeTransitCountdown,
+      homeTransitSymbol: 'tram.fill',
+      homeTransitA11yLabel: t.liveActivity.homeTransitA11y(time, 'Anděl', '9'),
+      homeTransitMissedLabel: t.liveActivity.homeTransitMissed,
+      // iOS redraws the activity as departed at this moment, even while the app sleeps.
+      staleDateMs: departure.departsAtMs,
+    });
+  });
+
+  it('leaves the field out without a connection', () => {
+    const result = buildBeerEveningLiveActivityProps(session(), {
+      hidePubNames: false,
+      priceCurrency: 'CZK',
+      homeTransit: null,
+    });
+    expect(Object.keys(result ?? {}).filter((key) => /homeTransit|staleDate/.test(key))).toEqual([]);
+  });
+
+  it('only says the night bus is left once the ride departed', () => {
+    const result = buildBeerEveningLiveActivityProps(session(), {
+      hidePubNames: false,
+      priceCurrency: 'CZK',
+      homeTransit: departure,
+      nowMs: departure.departsAtMs + 1,
+    });
+    expect(Object.keys(result ?? {}).filter((key) => /homeTransit|staleDate/.test(key))).toEqual([
+      'homeTransitMissedLabel',
+    ]);
+    expect(result?.homeTransitMissedLabel).toBe(t.liveActivity.homeTransitMissed);
+  });
+});
+
+it('keeps the stop near the pub off the lock screen when pub names are hidden', () => {
+  const departsAtMs = Date.parse('2026-07-21T21:58:00.000Z');
+  const result = buildBeerEveningLiveActivityProps(session(), {
+    hidePubNames: true,
+    priceCurrency: 'CZK',
+    homeTransit: {
+      line: '9',
+      headsign: 'Spojovací',
+      routeType: 3,
+      fromStopId: 'U1Z1P',
+      fromStopName: 'Anděl',
+      toStopId: 'U2Z1P',
+      toStopName: 'Florenc',
+      departsAtMs,
+    },
+    nowMs: departsAtMs - 60_000,
+  });
+  expect(result?.homeTransitLabel).not.toContain('Anděl');
+  expect(result?.homeTransitA11yLabel).not.toContain('Anděl');
+  expect(result?.homeTransitSymbol).toBe('bus.fill');
+});

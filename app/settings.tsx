@@ -52,6 +52,10 @@ import {
   enableBeerCountReminderNotifications,
   reschedulePendingBeerCountReminder,
 } from '@/notifications/beerCountReminder';
+import {
+  disableHomeTransitReminder,
+  enableHomeTransitReminder,
+} from '@/notifications/homeTransitReminder';
 import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
 import {
   disablePubReminderNotifications,
@@ -456,6 +460,9 @@ export default function SettingsScreen() {
   const beerCountReminderIntervalMinutes = useSettingsStore(
     (state) => state.beerCountReminderIntervalMinutes,
   );
+  const homeTransitReminderEnabled = useSettingsStore(
+    (state) => state.homeTransitReminderEnabled,
+  );
 
   const setMaxDistanceKm = useSettingsStore((state) => state.setMaxDistanceKm);
   const setNavigationProvider = useSettingsStore((state) => state.setNavigationProvider);
@@ -480,6 +487,7 @@ export default function SettingsScreen() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [pubReminderBusy, setPubReminderBusy] = useState(false);
   const [beerCountReminderBusy, setBeerCountReminderBusy] = useState(false);
+  const [homeTransitReminderBusy, setHomeTransitReminderBusy] = useState(false);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const readout = distanceReadout(maxDistanceKm);
@@ -589,6 +597,21 @@ export default function SettingsScreen() {
       setBeerCountReminderBusy(false);
     }
   }, [beerCountReminderBusy, beerCountReminderEnabled]);
+
+  const toggleHomeTransitReminder = useCallback(async () => {
+    if (homeTransitReminderBusy) return;
+    if (homeTransitReminderEnabled) {
+      disableHomeTransitReminder();
+      return;
+    }
+    setHomeTransitReminderBusy(true);
+    try {
+      const result = await enableHomeTransitReminder();
+      if (!result.ok) showPubReminderEnableFailure('notifications-denied');
+    } finally {
+      setHomeTransitReminderBusy(false);
+    }
+  }, [homeTransitReminderBusy, homeTransitReminderEnabled]);
 
   // Off cancels every tour reminder at once; on asks for notifications like the other reminders.
   const toggleTourReminders = useCallback(async () => {
@@ -815,6 +838,15 @@ export default function SettingsScreen() {
             intervalMinutes={beerCountReminderIntervalMinutes}
             onToggle={() => void toggleBeerCountReminder()}
             onIntervalChange={changeBeerCountReminderInterval}
+          />
+          <PreferenceRow
+            title={t.settings.homeTransitReminder.title}
+            testID="settings-home-transit-reminder"
+            subtitle={t.settings.homeTransitReminder.subtitle}
+            value={homeTransitReminderEnabled}
+            onToggle={() => void toggleHomeTransitReminder()}
+            toggleLabel={`${t.settings.homeTransitReminder.title}: ${homeTransitReminderEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
+            divider
           />
           <PreferenceRow
             title={t.tourReminders.settingsTitle}
