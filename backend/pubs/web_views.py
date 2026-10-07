@@ -342,13 +342,21 @@ def _texts(snapshot: PubPriceSnapshot | None, country: dict | None, area: dict |
 
 
 def _on_axis(lists: list[list[dict]], country: dict | None) -> tuple[list[list[dict]], dict]:
-    """Bars for every list on one price axis in whole tens of crowns, so one spot is one price."""
+    """Bars for every list on one price axis in round steps, so one spot is one price.
+
+    The step grows with the spread, so a city with tourist prices still leaves at most six
+    gaps between the labels.
+    """
 
     areas = [area for rows in lists for area in rows] + ([country] if country else [])
     if not areas:
         return lists, {}
-    low = min(area["p25"] for area in areas) // 10 * 10
-    high = max(-(-max(area["p75"] for area in areas) // 10) * 10, low + 20)
+    lowest = min(area["p25"] for area in areas)
+    highest = max(area["p75"] for area in areas)
+    steps = (10, 20, 50, 100, 200, 500, 1000)
+    step = next((step for step in steps if -(-highest // step) - lowest // step <= 6), steps[-1])
+    low = lowest // step * step
+    high = max(-(-highest // step) * step, low + 2 * step)
 
     def at(price: int) -> str:
         return f"{(price - low) * 100 / (high - low):.2f}%"
@@ -364,8 +372,8 @@ def _on_axis(lists: list[list[dict]], country: dict | None) -> tuple[list[list[d
         }
 
     axis = {
-        "ticks": [{"price": price, "at": at(price)} for price in range(low, high + 1, 10)],
-        "step": at(low + 10),
+        "ticks": [{"price": price, "at": at(price)} for price in range(low, high + 1, step)],
+        "step": at(low + step),
         "country": at(country["median"]) if country else None,
     }
     return [[{**area, "bar": bar(area)} for area in rows] for rows in lists], axis

@@ -357,7 +357,7 @@ def test_price_page_serves_the_snapshot_and_only_its_own_files(client, settings)
     assert "Kolik stojí" not in english
 
 
-def test_every_bar_on_the_page_sits_on_one_axis_in_whole_tens():
+def test_every_bar_on_the_page_sits_on_one_axis_in_round_steps():
     from pubs.web_views import _on_axis
 
     country = {"median": 49, "p25": 42, "p75": 58}
@@ -373,6 +373,11 @@ def test_every_bar_on_the_page_sits_on_one_axis_in_whole_tens():
     assert (axis["step"], axis["country"]) == ("20.00%", "18.00%")
     assert praha["bar"] == {"lo": "16.00%", "hi": "54.00%", "mid": "32.00%", "origin": "42.11%"}
     assert praha_1["bar"]["hi"] == "98.00%"
+
+    # A town with tourist prices stretches the axis, but the labels stay apart.
+    resort = {"name": "Harrachov", "median": 900, "p25": 850, "p75": 1000}
+    _, axis = _on_axis([cities + [resort]], country)
+    assert [tick["price"] for tick in axis["ticks"]] == [0, 200, 400, 600, 800, 1000]
 
 
 def _structured_data(html: str) -> dict:
