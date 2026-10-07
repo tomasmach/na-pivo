@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 import re
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -177,8 +177,12 @@ def _half_litre_price(row: PubPriceIndex) -> float:
     return row.price_czk * 500 / (row.volume_ml or 500)
 
 
-def _cheapest(rows: list[PubPriceIndex]) -> list[dict]:
-    """The cheapest pubs the public map knows, under the name the map shows."""
+def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
+    """The cheapest pubs the public map knows, under the name the map shows.
+
+    With ``in_city`` only pubs the catalogue also puts in that city count, so a
+    city page never lists a pub it would label with another city.
+    """
 
     # 41 Kč for 0,4 l is dearer than 45 Kč for 0,5 l.
     candidates = sorted(
@@ -198,6 +202,8 @@ def _cheapest(rows: list[PubPriceIndex]) -> list[dict]:
             ):
                 continue
             city = place["city"] or row.city
+            if in_city and city_slug(city_name(city)) != city_slug(in_city):
+                continue
             picked.append({
                 "name": place["name"],
                 # The same city names the tables use.
@@ -249,20 +255,26 @@ def build_price_map(now: datetime | None = None) -> dict:
         row for row in pubs.values() if row.cache_key not in excluded and row.pub_key not in excluded
     ]
 
-    cities: dict[str, list[PubPriceIndex]] = defaultdict(list)
+    # Spellings that share an address ("Plzen", "Plzeň") are one city under its most common name.
+    by_slug: dict[str, list[PubPriceIndex]] = defaultdict(list)
+    spellings: dict[str, Counter] = defaultdict(Counter)
     districts: dict[str, list[PubPriceIndex]] = defaultdict(list)
     for row in rows:
-        if city := city_name(row.city):
-            cities[city].append(row)
+        if (city := city_name(row.city)) and (slug := city_slug(city)):
+            by_slug[slug].append(row)
+            spellings[slug][city] += 1
         if district := prague_district(row.city):
             districts[district].append(row)
+    cities = {spellings[slug].most_common(1)[0][0]: group for slug, group in by_slug.items()}
     return {
         "window_days": WINDOW_DAYS,
         "fresh_days": FRESH_DAYS,
         "min_pubs": MIN_PUBS,
         "country": _stats(rows) if len(rows) >= MIN_PUBS else None,
         # Each city keeps its own cheapest pubs for its page.
-        "cities": [{**area, "cheapest": _cheapest(cities[area["name"]])} for area in _areas(cities)],
+        "cities": [
+            {**area, "cheapest": _cheapest(cities[area["name"]], area["name"])} for area in _areas(cities)
+        ],
         "prague_districts": sorted(_areas(districts), key=_district_order),
         "cheapest": _cheapest(rows),
     }

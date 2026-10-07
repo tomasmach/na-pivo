@@ -475,6 +475,29 @@ def test_each_city_keeps_its_own_cheapest_pubs():
     ]
 
 
+def test_spellings_of_one_city_count_together_under_the_common_one():
+    for _ in range(3):
+        _price("Plzeň", 50)
+    for _ in range(2):
+        _price("Plzen", 60)
+
+    assert [(city["name"], city["pubs"]) for city in build_price_map()["cities"]] == [("Plzeň", 5)]
+
+
+def test_city_list_skips_pubs_the_catalogue_puts_in_another_city():
+    for _ in range(4):
+        _price("Brno", 50, BRNO)
+    moved = _price("Brno", 30, BRNO)
+    _catalog(moved, "U Lacina")
+    PubDirectory.objects.filter(cache_key=moved.cache_key).update(city="Praha 7")
+
+    data = build_price_map()
+
+    assert data["cities"][0]["name"] == "Brno"
+    assert data["cities"][0]["cheapest"] == []
+    assert [pub["city"] for pub in data["cheapest"]] == ["Praha 7"]
+
+
 def test_city_addresses_drop_diacritics_and_spaces():
     assert city_slug("Praha") == "praha"
     assert city_slug("České Budějovice") == "ceske-budejovice"
