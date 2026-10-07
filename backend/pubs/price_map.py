@@ -19,8 +19,9 @@ from django.utils import formats, timezone, translation
 from django.utils.translation import gettext
 from PIL import Image, ImageDraw, ImageFont
 
-from pubs.api.pub_beers_views import _places, city_name
+from pubs.api.pub_beers_views import _merged_aliases, _places, city_name
 from pubs.api.views import _globally_reported_pub_cache_keys
+from pubs.enrichment import names_match
 from pubs.enrichment.coverage import coverage_country
 from pubs.models import (
     CanonicalPub,
@@ -157,10 +158,11 @@ def _cheapest(rows: list[PubPriceIndex]) -> list[dict]:
     picked: list[dict] = []
     for start in range(0, len(candidates), 100):
         batch = candidates[start:start + 100]
-        places = _places([row.cache_key for row in batch])
+        places = _places([row.pub_key for row in batch])
         for row in batch:
-            place = places.get(row.cache_key)
-            if place is None:
+            place = places.get(row.pub_key)
+            # Two businesses can share one geohash cell: the price must be this pub's.
+            if place is None or not names_match(place["name"], row.name):
                 continue
             city = place["city"] or row.city
             picked.append({
@@ -185,11 +187,21 @@ def build_price_map(now: datetime | None = None) -> dict:
             active=True,
             observed_at__gte=since,
             source__in=_SOURCES,
-        ).only("cache_key", "lat", "lng", "city", "price_czk", "volume_ml")
+        ).only("cache_key", "name", "lat", "lng", "city", "price_czk", "volume_ml", "observed_at")
     ))
-    excluded = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
     confirmed = _confirmed_since(rows, since)
-    rows = [row for row in rows if row.cache_key in confirmed and row.cache_key not in excluded]
+    # A duplicate merged into another pub is that pub: it counts once, with the newest price.
+    targets = dict(_merged_aliases().values_list("cache_key", "canonical_pub__cache_key"))
+    pubs: dict[str, PubPriceIndex] = {}
+    for row in sorted((row for row in rows if row.cache_key in confirmed), key=lambda row: row.observed_at):
+        row.pub_key = targets.get(row.cache_key, row.cache_key)
+        pubs[row.pub_key] = row
+    excluded = _globally_reported_pub_cache_keys(
+        {row.cache_key for row in pubs.values()} | set(pubs)
+    )
+    rows = [
+        row for row in pubs.values() if row.cache_key not in excluded and row.pub_key not in excluded
+    ]
 
     cities: dict[str, list[int]] = defaultdict(list)
     districts: dict[str, list[int]] = defaultdict(list)

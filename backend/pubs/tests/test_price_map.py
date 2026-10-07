@@ -12,7 +12,9 @@ from PIL import Image
 
 from pubs.models import (
     Account,
+    CanonicalPub,
     DrinkLog,
+    PubAlias,
     PubContributionLog,
     PubDirectory,
     PubHours,
@@ -104,6 +106,7 @@ def _catalog(row: PubPriceIndex, name: str, country: str = "cz") -> None:
         refreshed_at=timezone.now(),
     )
     PubDirectory.objects.filter(pk=pub.pk).update(cache_key=row.cache_key)
+    PubPriceIndex.objects.filter(pk=row.pk).update(name=name)
 
 
 def test_prague_district_reads_the_number_or_the_named_district():
@@ -163,6 +166,40 @@ def test_an_old_cheapest_price_needs_its_own_recent_write():
     _drink(row, 39)
 
     assert [pub["name"] for pub in build_price_map()["cheapest"]] == ["U Starého ceníku"]
+
+
+def test_a_price_is_named_only_after_the_pub_it_belongs_to():
+    row = _price("Praha 3", 35)
+    _catalog(row, "Bar Modrá laguna")
+    # Another business in the same geohash cell wrote this price.
+    PubPriceIndex.objects.filter(pk=row.pk).update(name="Pivovar U Medvěda")
+
+    assert build_price_map()["cheapest"] == []
+
+
+def test_a_merged_duplicate_counts_as_one_pub():
+    for price in (40,) * 7 + (60,) * 6:
+        _price("Plzeň", price, (49.74, 13.37))
+    canonical = _price("Plzeň", 44, (49.74, 13.37), days_ago=5)
+    duplicate = _price("Plzeň", 48, (49.74, 13.37))
+    pub = CanonicalPub.objects.create(
+        cache_key=canonical.cache_key, name="U Salzmannů", name_key="u salzmannu",
+        lat=49.74, lng=13.37, city="Plzeň", country="cz",
+    )
+    PubAlias.objects.create(
+        canonical_pub=pub, cache_key=duplicate.cache_key, name="Salzmann",
+        name_key="salzmann", lat=49.74, lng=13.37,
+    )
+
+    data = build_price_map()
+
+    assert data["cities"] == [] and data["country"] is None
+
+    _price("Plzeň", 60, (49.74, 13.37))
+    [plzen] = build_price_map()["cities"]
+
+    # The merged pub sits in the middle: its newest price, 48 Kč, is the median.
+    assert (plzen["pubs"], plzen["median"]) == (15, 48)
 
 
 def test_the_catalogue_country_beats_the_coverage_polygon():
