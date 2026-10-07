@@ -17,6 +17,8 @@ import {
   ensureNotificationPermissionForBeerFeatures,
   refreshBeerCountReminderAfterBeer,
 } from '@/notifications/beerCountReminder';
+import { useHomeTransitStore } from '@/stores/homeTransitStore';
+import { homeTransitForCurrentEvening } from '@/transit/homeTransitSync';
 import { waitForSettingsHydration, useSettingsStore } from '@/stores/settingsStore';
 import {
   sessionPlaceContext,
@@ -164,6 +166,7 @@ function currentPayload(): BeerEveningLiveActivityProps | null {
   return buildBeerEveningLiveActivityProps(useTallyStore.getState().current, {
     hidePubNames: settings.hidePubNames,
     priceCurrency: settings.priceCurrency,
+    homeTransit: homeTransitForCurrentEvening(),
   });
 }
 
@@ -468,6 +471,9 @@ export async function initializeLiveBeerActivity(): Promise<void> {
     ) {
       requestSync();
     }
+  });
+  useHomeTransitStore.subscribe((state, previousState) => {
+    if (state.departure !== previousState.departure) requestSync();
   });
   requestSync();
 }

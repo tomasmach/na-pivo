@@ -2702,6 +2702,42 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         return attrs
 
 
+TRANSIT_MAX_HOME_STOPS = 80
+_TRANSIT_STOP_ID = re.compile(r"[A-Za-z0-9_.:-]{1,32}")
+
+
+class TransitLastDirectQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):
+    """Query params for GET /v1/transit/last-direct.
+
+    ``to_stop_ids`` are the stops the app found near home; they stand in for the
+    home location, so they are never logged or stored.
+    """
+
+    from_lat = serializers.FloatField()
+    from_lng = serializers.FloatField()
+    to_stop_ids = serializers.CharField(max_length=4000, trim_whitespace=True)
+
+    validate_from_lat = _LatLngBoundsValidationMixin.validate_lat
+    validate_from_lng = _LatLngBoundsValidationMixin.validate_lng
+
+    def validate_to_stop_ids(self, value: str) -> list[str]:
+        ids: list[str] = []
+        for raw in value.split(","):
+            stop_id = raw.strip()
+            if not stop_id or stop_id in ids:
+                continue
+            if not _TRANSIT_STOP_ID.fullmatch(stop_id):
+                raise serializers.ValidationError("Stop ids must be short GTFS stop ids.")
+            if len(ids) == TRANSIT_MAX_HOME_STOPS:
+                raise serializers.ValidationError(
+                    f"Send at most {TRANSIT_MAX_HOME_STOPS} stop ids."
+                )
+            ids.append(stop_id)
+        if not ids:
+            raise serializers.ValidationError("Send at least one stop id.")
+        return ids
+
+
 class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):
     """Query params for local-first pub name/address lookup endpoints."""
 

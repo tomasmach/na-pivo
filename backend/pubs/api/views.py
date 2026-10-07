@@ -38,7 +38,13 @@ import requests
 from django.conf import settings
 from django.core.cache import cache as default_cache
 from django.core.files.uploadhandler import FileUploadHandler, StopUpload
-from django.db import IntegrityError, close_old_connections, connection, transaction
+from django.db import (
+    IntegrityError,
+    OperationalError,
+    close_old_connections,
+    connection,
+    transaction,
+)
 from django.db.models import (
     Avg,
     Case,
@@ -381,6 +387,39 @@ def _internal_error() -> Response:
         {"detail": "Internal server error."},
         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
+
+
+_DEADLOCK_RETRY_ATTEMPTS = 3
+
+
+def _atomic_with_deadlock_retry(write):
+    """Run ``write`` in its own transaction; rerun it after a PostgreSQL deadlock.
+
+    PostgreSQL rolls the victim's whole transaction back, so rerunning ``write``
+    from its first read cannot double a row or an XP award. The error can also
+    surface at COMMIT, where Django's deferred FK checks take their locks, so the
+    retry wraps the atomic block rather than a single statement. Nested inside a
+    caller's transaction the outer locks survive the rollback, so it never retries.
+    """
+    attempt = 1
+    while True:
+        try:
+            with transaction.atomic():
+                return write()
+        except OperationalError as exc:
+            if (
+                attempt >= _DEADLOCK_RETRY_ATTEMPTS
+                or connection.in_atomic_block
+                or not accounts.is_row_lock_conflict(exc)
+            ):
+                raise
+            attempt += 1
+            logger.warning(
+                "db: lock conflict %s, rerunning transaction (attempt %d of %d)",
+                getattr(exc.__cause__, "sqlstate", ""),
+                attempt,
+                _DEADLOCK_RETRY_ATTEMPTS,
+            )
 
 
 def _log_account_bootstrap_failure(reason: str, *, device_id_already_existed: bool) -> None:
@@ -4275,30 +4314,35 @@ class ClientEventsView(APIView):
         data = serializer.validated_data
         account = _account_from_request(request)
 
+        def write() -> None:
+            locked_account = None
+            if account is not None:
+                # Authentication can precede deletion/merge. The same
+                # Account lock is used by those mutations; never recreate
+                # diagnostic data for an account they already removed.
+                # Account -> AccountUsageStats is the order every stats writer
+                # shares (votes, drinks), so this lock comes first.
+                locked_account = Account.objects.select_for_update().filter(
+                    pk=account.pk, status=Account.Status.ACTIVE,
+                ).first()
+                if locked_account is None:
+                    return
+            event = ClientEvent.objects.create(
+                account=locked_account,
+                event=data["event"],
+                severity=data["severity"],
+                message=data.get("message") or "",
+                context=data.get("context") or {},
+                app_version=data.get("app_version") or "",
+                platform=data.get("platform") or "",
+                os_version=data.get("os_version") or "",
+            )
+            # Keep the event and counters together. A failed counter write
+            # must not leave a partial event behind for the client retry.
+            _update_usage_stats(event)
+
         try:
-            with transaction.atomic():
-                if account is not None:
-                    # Authentication can precede deletion/merge. The same
-                    # Account lock is used by those mutations; never recreate
-                    # diagnostic data for an account they already removed.
-                    account = Account.objects.select_for_update().filter(
-                        pk=account.pk, status=Account.Status.ACTIVE,
-                    ).first()
-                    if account is None:
-                        return Response({"accepted": True}, status=status.HTTP_202_ACCEPTED)
-                event = ClientEvent.objects.create(
-                    account=account,
-                    event=data["event"],
-                    severity=data["severity"],
-                    message=data.get("message") or "",
-                    context=data.get("context") or {},
-                    app_version=data.get("app_version") or "",
-                    platform=data.get("platform") or "",
-                    os_version=data.get("os_version") or "",
-                )
-                # Keep the event and counters together. A failed counter write
-                # must not leave a partial event behind for the client retry.
-                _update_usage_stats(event)
+            _atomic_with_deadlock_retry(write)
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "client-events: unexpected error saving event (%s)",
@@ -13748,8 +13792,11 @@ class PubAmenityVoteView(APIView):
         """Apply one amenity vote row and return its result object.
 
         Each row runs in its own atomic block so one stale/ignored row does not
-        roll back its siblings. ``cache_key`` is derived from lat/lng; lat/lng
-        are never logged or echoed.
+        roll back its siblings. A deadlock reruns only this row's transaction;
+        rows already committed by this request are never written twice, and a
+        client replaying a half-saved batch meets them as LWW-stale rows that
+        pay no XP. ``cache_key`` is derived from lat/lng; lat/lng are never
+        logged or echoed.
         """
         amenity_key = data["amenity_key"]
         identity = _resolve_pub_input(data)
@@ -13780,7 +13827,13 @@ class PubAmenityVoteView(APIView):
                 "aggregate": None,
             }
 
-        with transaction.atomic():
+        def write() -> dict:
+            # Account first, like client events and drinks. PostgreSQL checks
+            # the deferred Account FKs of the inserts below at COMMIT; without
+            # this lock that COMMIT waited for a client event holding the
+            # Account while the event waited for the AccountUsageStats row this
+            # transaction had already updated, and PostgreSQL aborted one.
+            Account.objects.select_for_update().filter(pk=account.pk).first()
             existing = (
                 PubAmenityVote.objects.select_for_update()
                 .filter(account=account, pub_identity_key=pub_identity_key, amenity_key=amenity_key)
@@ -13933,20 +13986,22 @@ class PubAmenityVoteView(APIView):
             # value, matching the GET restore path / _rating_item exactly.
             vote.refresh_from_db(fields=["client_updated_at", "value"])
 
-        return {
-            "applied": True,
-            "ignored_unknown_amenity": False,
-            "deleted": False,
-            # was_first_map is an AGGREGATE fact (this write created the row); the
-            # first-mapper XP bonus rides on it (subject to the daily cap).
-            "was_first_map": was_first_map,
-            # The authoritative per-vote award for the optimistic toast (§7.1).
-            "xp_awarded": xp_awarded,
-            # Echo the persisted row (client_updated_at normalised to UTC, like
-            # the GET restore path and _rating_item), not the raw request offset.
-            "vote": _vote_minimal(vote),
-            "aggregate": _amenity_aggregate_item(agg, my_value=value),
-        }
+            return {
+                "applied": True,
+                "ignored_unknown_amenity": False,
+                "deleted": False,
+                # was_first_map is an AGGREGATE fact (this write created the row);
+                # the first-mapper XP bonus rides on it (subject to the daily cap).
+                "was_first_map": was_first_map,
+                # The authoritative per-vote award for the optimistic toast (§7.1).
+                "xp_awarded": xp_awarded,
+                # Echo the persisted row (client_updated_at normalised to UTC, like
+                # the GET restore path and _rating_item), not the raw request offset.
+                "vote": _vote_minimal(vote),
+                "aggregate": _amenity_aggregate_item(agg, my_value=value),
+            }
+
+        return _atomic_with_deadlock_retry(write)
 
     def delete(self, request: Request, cache_key: str, amenity_key: str) -> Response:
         # Idempotent delete scoped to the account, filtering only by (account,
@@ -13955,6 +14010,10 @@ class PubAmenityVoteView(APIView):
         # aggregate so the public truth reflects the removal.
         try:
             with transaction.atomic():
+                # Same Account-first order as PUT: the tombstone's deferred FK
+                # check at COMMIT must not wait for a PUT that holds the Account
+                # and waits for this vote row.
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
                 existing = (
                     PubAmenityVote.objects.select_for_update()
                     .filter(account=request.user, cache_key=cache_key, amenity_key=amenity_key)

@@ -174,7 +174,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
     showAppDialog({ title: plan.title, buttons: [
       ...(!plan.source && !active ? [{ text: t.tours.edit, onPress: () => { void edit(); } }] : []),
       { text: t.tours.repeat, onPress: () => { void action(() => store.copyPlan(id, shareMode ? undefined : history?.id), (r) => { if (r.id) router.push({ pathname: '/tours/[id]', params: { id: r.id } } as Href); }); } },
-      ...(plan.source ? [{ text: t.tours.checkUpdate, onPress: () => router.push(`/t/${plan.source!.token}` as Href) }] : [{ text: t.tourInvites.linkMenu, onPress: () => setShareMode(true) }]),
+      ...(plan.source ? [{ text: t.tours.checkUpdate, onPress: () => router.push(`/t/${plan.source!.token}` as Href) }] : [{ text: t.tourInvites.linkMenu, testID: 'tour-private-link-open', onPress: () => setShareMode(true) }]),
       // A saved public tour is someone else's route until its pubs change; a hidden one waits for moderation.
       ...(!plan.source && !plan.publicSource && plan.publication?.status !== 'hidden' ? [
         { text: plan.publication?.status === 'active' ? t.tours.updatePublic : t.tours.publishPublic, onPress: () => router.push({ pathname: '/tours/publish', params: { id } } as Href) },

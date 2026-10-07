@@ -676,6 +676,19 @@ PHOTO_CONTEST_XP_FIRST: int = int(os.environ.get("PHOTO_CONTEST_XP_FIRST", "100"
 PHOTO_CONTEST_XP_SECOND: int = int(os.environ.get("PHOTO_CONTEST_XP_SECOND", "50"))
 PHOTO_CONTEST_XP_THIRD: int = int(os.environ.get("PHOTO_CONTEST_XP_THIRD", "25"))
 
+# --- Public transport home (PID GTFS) ---
+# Daily timetable import (`import_pid_gtfs` in the worker loop). PID open data, CC BY 4.0.
+PID_GTFS_URL: str = os.environ.get("PID_GTFS_URL", "https://data.pid.cz/PID_GTFS.zip")
+# The download is aborted past this size; today's zip is about 50 MB.
+PID_GTFS_MAX_BYTES: int = int(os.environ.get("PID_GTFS_MAX_BYTES", str(200 * 1024 * 1024)))
+# A malformed feed must not be downloaded again every five minutes all day.
+PID_GTFS_DAILY_DOWNLOADS: int = int(os.environ.get("PID_GTFS_DAILY_DOWNLOADS", "4"))
+# The stop list is identical for everyone; the app fetches it about once a day.
+TRANSIT_STOPS_THROTTLE_RATE: str = os.environ.get("TRANSIT_STOPS_THROTTLE_RATE", "20/hour")
+TRANSIT_LAST_DIRECT_THROTTLE_RATE: str = os.environ.get(
+    "TRANSIT_LAST_DIRECT_THROTTLE_RATE", "60/hour"
+)
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -694,6 +707,8 @@ REST_FRAMEWORK = {
         "tour_write": "20/hour",
         "tour_share": "10/hour",
         "tour_public": "60/min",
+        # Public beer price page and its share image; a reader loads one page at a time.
+        "price_map": "60/min",
         "tour_search": "60/min",
         "tour_publish": "20/hour",
         "tour_run": "240/hour",
@@ -736,6 +751,8 @@ REST_FRAMEWORK = {
         "beer_photo_upload": BEER_PHOTO_UPLOAD_THROTTLE_RATE,
         "photo_contest": PHOTO_CONTEST_THROTTLE_RATE,
         "public_reads": PUBLIC_READS_THROTTLE_RATE,
+        "transit_stops": TRANSIT_STOPS_THROTTLE_RATE,
+        "transit_last_direct": TRANSIT_LAST_DIRECT_THROTTLE_RATE,
     },
 }
 
@@ -898,10 +915,20 @@ CORS_ALLOW_ALL_ORIGINS: bool = DEBUG
 # Firmy.cz scraper settings
 # ---------------------------------------------------------------------------
 
-# Optional residential proxy for all Firmy.cz requests.
-# REQUIRED in production (robots.txt bans bots — see README).
+# Optional residential proxy, used only after Seznam blocks a direct Firmy.cz
+# request (consent wall, 403 or 429). Without it every request stays direct and
+# a block leaves rows in 'error' until direct works again.
 # Format: "http://user:pass@proxy-host:port" or "socks5://..."
 FIRMY_PROXY_URL: str | None = os.environ.get("FIRMY_PROXY_URL") or None
+
+# How long all processes skip the direct path after Seznam blocked it.
+FIRMY_DIRECT_BLOCK_COOLDOWN_MINUTES: int = int(
+    os.environ.get("FIRMY_DIRECT_BLOCK_COOLDOWN_MINUTES", "60")
+)
+
+# Hard daily cap for requests through FIRMY_PROXY_URL (they also count toward
+# FIRMY_DAILY_CAP). 200 requests of ~130 KB stay under 1 GB a month.
+FIRMY_PROXY_DAILY_CAP: int = int(os.environ.get("FIRMY_PROXY_DAILY_CAP", "200"))
 
 # Browser-like User-Agent sent with every Firmy.cz request.
 FIRMY_USER_AGENT: str = os.environ.get(
@@ -978,8 +1005,15 @@ MENU_SCAN_JPEG_QUALITY: int = int(os.environ.get("MENU_SCAN_JPEG_QUALITY", "80")
 # Enrichment / cache settings
 # ---------------------------------------------------------------------------
 
-# How many days a cached PubHours row is considered fresh before re-fetching.
-HOURS_TTL_DAYS: int = int(os.environ.get("HOURS_TTL_DAYS", "30"))
+# How many days a cached PubHours row is considered fresh before re-fetching:
+# rows with hours ('ok') and rows Firmy.cz had no hours for ('unknown').
+HOURS_TTL_OK_DAYS: int = int(os.environ.get("HOURS_TTL_OK_DAYS", "90"))
+HOURS_TTL_UNKNOWN_DAYS: int = int(os.environ.get("HOURS_TTL_UNKNOWN_DAYS", "180"))
+
+# Max stale rows refresh_hours re-fetches per UTC day (error retries included).
+# Spreads rows that expire together over several days. Pubs a user opened are
+# queued as EnrichTask and are not limited by this.
+FIRMY_REFRESH_DAILY_CAP: int = int(os.environ.get("FIRMY_REFRESH_DAILY_CAP", "400"))
 
 # How long a transient Firmy.cz ERROR row cools down before another proxy fetch
 # is attempted. This prevents a proxy outage / consent-wall bounce from burning
@@ -1002,13 +1036,6 @@ SYNC_ENRICH_BUDGET: int = _configured_sync_enrich_budget if DEBUG else 0
 # fail fast on insecure configuration and force TLS / secure-cookie defaults.
 if not DEBUG:
     _validate_production_secret_key(SECRET_KEY)
-
-    if not FIRMY_PROXY_URL:
-        raise ImproperlyConfigured(
-            "FIRMY_PROXY_URL is required in production: firmy.cz bounces "
-            "datacenter IPs at the consent wall, so a residential proxy must "
-            "be configured. Set FIRMY_PROXY_URL (see README)."
-        )
 
     if _configured_sync_enrich_budget < 0:
         raise ImproperlyConfigured(

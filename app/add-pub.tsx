@@ -706,6 +706,7 @@ export default function AddPubScreen() {
 
         <View style={styles.submitButton}>
           <GlowButton
+            testID="add-pub-save"
             label={submitted ? t.addPub.saving : isEditing ? t.addPub.editSave : t.addPub.save}
             onPress={handleSubmit}
             glow="none"

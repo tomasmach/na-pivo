@@ -46,6 +46,19 @@ SK_POLYGON = [
 ]
 
 
+# Box around Czechia's extreme points plus ~2 km: (min_lat, min_lng, max_lat,
+# max_lng). Firmy.cz lists Czech businesses only. CZ_POLYGON is too coarse for
+# that gate: it cuts off Czech towns such as Šluknov, Jeseník or Broumov. The box
+# lets in some border areas of the neighbours instead, which costs a lookup.
+CZ_BBOX = (48.53, 12.07, 51.08, 18.88)
+
+
+def in_cz_bbox(lat: float, lng: float) -> bool:
+    """Return whether a coordinate lies in the box around Czechia."""
+    min_lat, min_lng, max_lat, max_lng = CZ_BBOX
+    return min_lat <= lat <= max_lat and min_lng <= lng <= max_lng
+
+
 def point_in_polygon(
     lng: float,
     lat: float,
