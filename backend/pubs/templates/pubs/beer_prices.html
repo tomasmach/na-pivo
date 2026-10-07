@@ -5,8 +5,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#231407">
-<title>{% translate "Kolik stojí pivo v hospodě" %} | Na pivo</title>
-<meta name="description" content="{% translate "Medián ceny piva v hospodách po městech a pražských městských částech, z cen, které lidi zapsali v Na pivo." %}">
+<title>{{ page_title }} | Na pivo</title>
+<meta name="description" content="{{ description }}">
 <link rel="canonical" href="{{ canonical_url }}">
 <link rel="alternate" hreflang="cs" href="{{ cs_url }}">
 <link rel="alternate" hreflang="en" href="{{ en_url }}">
@@ -15,7 +15,7 @@
 <meta property="og:site_name" content="Na pivo">
 <meta property="og:locale" content="{{ og_locale }}">
 <meta property="og:title" content="{% translate "Kolik stojí pivo v hospodě" %}">
-<meta property="og:description" content="{% translate "Medián ceny piva v hospodách po městech a pražských městských částech, z cen, které lidi zapsali v Na pivo." %}">
+<meta property="og:description" content="{{ description }}">
 <meta property="og:url" content="{{ canonical_url }}">
 <meta property="og:image" content="{{ og_image_url }}">
 <meta property="og:image:width" content="1200">
@@ -23,6 +23,7 @@
 <meta property="og:image:alt" content="{% translate "Medián ceny piva v Praze, v Brně a v celé ČR." %}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="apple-itunes-app" content="app-id=6773790025">
+{{ structured_data }}
 <style>
   /* Colors of the na-pivo.cz home page. Everything is inline: the page loads no other file. */
   :root {
