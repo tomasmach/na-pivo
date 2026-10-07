@@ -40,6 +40,9 @@ const departure = {
 };
 
 beforeEach(() => {
+  // The sync arms a real timer for the departure; a fake one keeps Jest from
+  // waiting an hour for it in a single-process (CI) run.
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
   jest.clearAllMocks();
   resetHomeTransitSync();
   useHomeTransitStore.getState().clear();
@@ -50,6 +53,12 @@ beforeEach(() => {
     { id: 'FAR', lat: HOME.lat + 0.05, lng: HOME.lng },
   ]);
   mockFetchLastDirectDeparture.mockResolvedValue({ ok: true, departure });
+});
+
+afterEach(() => {
+  resetHomeTransitSync();
+  jest.clearAllTimers();
+  jest.useRealTimers();
 });
 
 it('asks with the pub point and only the stop ids near home', async () => {
