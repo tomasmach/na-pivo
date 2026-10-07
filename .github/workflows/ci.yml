@@ -32,6 +32,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Offline compares against the installed SDK's pins, so a new Expo patch
+      # release upstream does not turn CI red without a code change.
+      - name: Check Expo SDK dependency versions
+        run: npx expo install --check
+        env:
+          EXPO_OFFLINE: "1"
+
       - name: Audit production dependencies
         run: npm run audit:ci
 
