@@ -225,8 +225,12 @@ def clean_menu(
     return rows, renamed, merged, conflicts
 
 
-def _latest_drink_price(cache_key: str) -> PriceResolver:
-    """Price of the newest countable drink of this beer at this pub, if any."""
+def _latest_drink_price(cache_key: str, canonical: Callable[[str], str]) -> PriceResolver:
+    """Price of the newest countable drink of this beer at this pub, if any.
+
+    Drink logs keep the name as typed ("Radek 12."), so it goes through the
+    same canonical mapping as the menu row before the two are compared.
+    """
 
     def resolve(name: str, identity: Identity, group: list[dict]) -> int | None:
         drinks = (
@@ -241,7 +245,7 @@ def _latest_drink_price(cache_key: str) -> PriceResolver:
             .only("beer_name", "price_czk")[:200]
         )
         for drink in drinks:
-            if normalize_beer_text(drink.beer_name) == identity[0]:
+            if normalize_beer_text(canonical(drink.beer_name)) == identity[0]:
                 return drink.price_czk
         return None
 
@@ -373,7 +377,9 @@ def _clean_community_row(
     """Clean one community menu; returns the beers now on it."""
     beers = _menu_items(row.beers)
     new_beers, renamed, merged, conflicts = clean_menu(
-        beers, canonicalizer.name, resolve_price=_latest_drink_price(row.cache_key)
+        beers,
+        canonicalizer.name,
+        resolve_price=_latest_drink_price(row.cache_key, canonicalizer.name),
     )
     current = {beer_menu_identity(item) for item in new_beers if _beer_name(item)}
     historical = _menu_items(row.historical_beers)

@@ -112,9 +112,9 @@ def test_cleanup_unifies_names_and_merges_duplicates_without_touching_drinks(tmp
         _beer("Dudák 11°", 40),
         _beer("Dudák 11", 35, volume=300),
         "not a beer row",
-        historical=[_beer("dudák 11", 38), _beer("Démon 13", 50)],
+        historical=[_beer("dudák 11", 38), _beer("Stodolní 13", 50)],
     )
-    _menu(_beer("Démon 13°", 55), name="Jinde", lat=50.2, lng=14.6)
+    _menu(_beer("Stodolní 13°", 55), name="Jinde", lat=50.2, lng=14.6)
     drink = DrinkLog.objects.create(
         account=account,
         client_id=uuid.uuid4(),
@@ -139,7 +139,7 @@ def test_cleanup_unifies_names_and_merges_duplicates_without_touching_drinks(tmp
         "not a beer row",
     ]
     # The history keeps only beers that are off tap, in the shared spelling.
-    assert pub.historical_beers == [_beer("Démon 13°", 50)]
+    assert pub.historical_beers == [_beer("Stodolní 13°", 50)]
     drink.refresh_from_db()
     assert drink.beer_name == "Dudák 11"
     assert DrinkLog.objects.count() == 1
@@ -162,7 +162,8 @@ def test_cleanup_unifies_names_and_merges_duplicates_without_touching_drinks(tmp
 @pytest.mark.django_db
 def test_conflicting_duplicate_prices_follow_the_newest_drink():
     account = Account.objects.create(device_id="cleanup-price")
-    _menu(_beer("Radek 12", 27), _beer("Radek 12.", 21))
+    # A nickname on the menu, typed differently in the diary.
+    _menu(_beer("Radek 12", 27), _beer("Radegast 12°", 21))
     for minutes, price in ((30, 27), (5, 21)):
         DrinkLog.objects.create(
             account=account,
@@ -179,7 +180,7 @@ def test_conflicting_duplicate_prices_follow_the_newest_drink():
 
     plan = run_menu_cleanup(apply=True)
 
-    assert PubCommunityData.objects.get().beers == [_beer("Radek 12", 21)]
+    assert PubCommunityData.objects.get().beers == [_beer("Radegast Ryze Hořká 12°", 21)]
     [conflict] = plan.changes[0].price_conflicts
     assert conflict["prices"] == [27, 21]
     assert conflict["chosen"] == 21
@@ -303,3 +304,40 @@ def test_revert_keeps_menus_edited_after_the_cleanup(tmp_path):
     edited.refresh_from_db()
     assert untouched.beers == [_beer("Kozel 11", 45)]
     assert edited.beers == [_beer("Pilsner Urquell", 65)]
+
+
+@pytest.mark.django_db
+def test_catalog_knows_czech_beer_nicknames():
+    from pubs.beer_catalog import match_beer
+
+    def product(name):
+        match = match_beer(name, fuzzy=False)
+        return match.product.key if match and match.product else None
+
+    assert product("Radek 12") == "radegast-ryze-horka-12"
+    assert product("Radegast Ryzí hořká 12°") == "radegast-ryze-horka-12"
+    assert product("radek 10") == "radegast-razna-10"
+    assert product("Plznička") == "pilsner-urquell"
+    assert product("Staráč 10") == "staropramen-10"
+    assert match_beer("Radek", fuzzy=False).brand.key == "radegast"
+    # Holba 11 may be Šerák or the half-dark 11, so it stays free text.
+    assert match_beer("Holba 11", fuzzy=False) is None
+
+
+@pytest.mark.django_db
+def test_every_catalog_rewrite_lands_on_its_final_name_in_one_step():
+    """A rewritten name must not be rewritten again by the next write or cleanup."""
+    from pubs.beer_catalog import normalize_beer_payload
+
+    names = [
+        name
+        for entity in [*BeerProduct.objects.all(), *BeerBrand.objects.all()]
+        for name in [entity.name, *entity.aliases]
+    ]
+    chains = []
+    for name in names:
+        once = normalize_beer_payload({"name": name})["name"]
+        twice = normalize_beer_payload({"name": once})["name"]
+        if once != twice:
+            chains.append((name, once, twice))
+    assert chains == [], chains
