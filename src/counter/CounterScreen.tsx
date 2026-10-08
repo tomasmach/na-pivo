@@ -54,10 +54,13 @@ import { geohash8 } from '@/data/geohash';
 import { generateUuidV4 } from '@/data/account';
 import {
   mergeBeerIntoMenu,
+  historicalBeersAfterMenuReplacement,
   isSameBeerIdentity,
   normalizeBeerName,
   type CommunityBeer,
 } from '@/data/communityHours';
+import { buildCommunityEntry } from '@/data/communityClient';
+import { enqueuePubCommunity } from '@/data/communityQueue';
 import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
@@ -1127,6 +1130,55 @@ function Tacek({
     [backdateAt, cell, formBeer, formMode, menu, pub, requestCountBeer, setOverride],
   );
 
+  /** Only a beer that is on this pub's menu can come off it; tonight-only rows
+   *  and outside places have no shared menu to change. */
+  const formBeerOnMenu =
+    formMode === 'edit' && !!pub && !!formBeer && menu.some((b) => isSameBeerIdentity(b, formBeer));
+
+  /** The contribute editor's "Smazat pivo" + "Uložit", one beer at a time: the
+   *  same live full-menu write, queued so it survives a dead signal. It changes
+   *  the menu for everyone, so it asks first. iOS cannot present the dialog over
+   *  the open form, so the form closes first and "Nechat" brings it back. */
+  const handleRemoveFromMenu = useCallback(() => {
+    const removed = formBeer;
+    if (!removed || !pub || !cell) return;
+    setFormMode(null);
+    setFormBeer(null);
+    setBackdateAt(null);
+    runAfterSheetClose(() => showAppDialog({
+      title: t.counter.removeFromMenuTitle,
+      message: t.counter.removeFromMenuBody(removed.name),
+      buttons: [
+        { text: t.counter.removeFromMenuKeep, style: 'cancel', onPress: () => openForm('edit', removed) },
+        {
+          text: t.counter.removeFromMenuConfirm,
+          style: 'destructive',
+          onPress: () => {
+            const nextMenu = menu.filter((b) => !isSameBeerIdentity(b, removed));
+            setOverride(cell, {
+              beers: nextMenu,
+              historicalBeers: historicalBeersAfterMenuReplacement(menu, nextMenu, historicalBeers),
+            });
+            void enqueuePubCommunity(
+              buildCommunityEntry(
+                {
+                  externalId: pub.id || null,
+                  name: pub.name,
+                  lat: pub.lat,
+                  lng: pub.lng,
+                  city: pub.city,
+                  beers: nextMenu,
+                },
+                generateUuidV4(),
+              ),
+            );
+            showToast(t.counter.removedFromMenuToast);
+          },
+        },
+      ],
+    }));
+  }, [cell, formBeer, historicalBeers, menu, openForm, pub, runAfterSheetClose, setOverride, showToast]);
+
   // ── Pick sheet ──────────────────────────────────────────────────────────────
 
   const handlePickRow = useCallback(
@@ -1666,6 +1718,8 @@ function Tacek({
           setBackdateAt(null);
         }}
         onSubmit={handleFormSubmit}
+        onRemove={formBeerOnMenu ? handleRemoveFromMenu : undefined}
+        removeLabel={t.counter.removeFromMenu}
         // Hidden in the backdate flow (the scan hands over to the contribute
         // editor, which would drop the picked past timestamp) and outside a pub
         // (there is no pub menu to fill).

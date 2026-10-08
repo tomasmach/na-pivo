@@ -75,3 +75,43 @@ describe('BeerFormModal name autofocus', () => {
     expect(nameAutoFocus({ autoFocusName: false })).toBe(false);
   });
 });
+
+describe('BeerFormModal remove action in edit mode', () => {
+  function render(props: Partial<React.ComponentProps<typeof BeerFormModal>>) {
+    let renderer!: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(
+        <BeerFormModal
+          visible
+          mode="edit"
+          beer={{ name: 'Primátor 11', priceCzk: 55, volumeMl: 500 }}
+          onCancel={() => undefined}
+          onSubmit={() => undefined}
+          {...props}
+        />,
+      );
+    });
+    return renderer;
+  }
+
+  const removeButtons = (renderer: ReturnType<typeof TestRenderer.create>) =>
+    renderer.root.findAll(
+      (n: any) =>
+        n.props?.accessibilityLabel === 'Smazat z lístku' && typeof n.props?.onPress === 'function',
+    );
+
+  it('shows the labelled delete action and calls onRemove', () => {
+    const onRemove = jest.fn();
+    const renderer = render({ onRemove, removeLabel: 'Smazat z lístku' });
+    const [button] = removeButtons(renderer);
+    act(() => button.props.onPress());
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    act(() => renderer.unmount());
+  });
+
+  it('keeps the plain price edit without onRemove', () => {
+    const renderer = render({ removeLabel: 'Smazat z lístku' });
+    expect(removeButtons(renderer)).toHaveLength(0);
+    act(() => renderer.unmount());
+  });
+});
