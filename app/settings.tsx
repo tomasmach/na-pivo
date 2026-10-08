@@ -46,6 +46,8 @@ import { updateAccountPreferences } from '@/data/account';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { locale, SUPPORTED_LOCALES, t, intlLocale, type Locale } from '@/i18n';
 import { switchLocale } from '@/i18n/switchLocale';
+import { palette, PALETTES, type Palette } from '@/theme/palette';
+import { switchPalette } from '@/theme/switchPalette';
 import { useToastStore } from '@/stores/toastStore';
 import {
   disableBeerCountReminderNotifications,
@@ -415,6 +417,48 @@ function LanguageRow() {
           </Pressable>
         );
       })}
+    </View>
+  );
+}
+
+/** Gray or the unmaintained brown. Picking the other one restarts the JS bundle. */
+function AppearanceRow() {
+  const showToast = useToastStore((state) => state.show);
+  const pick = useCallback(
+    async (next: Palette) => {
+      if (!(await switchPalette(next))) showToast(t.account.errorGeneric);
+    },
+    [showToast],
+  );
+  return (
+    <View>
+      <View style={styles.languageRow}>
+        {PALETTES.map((option: Palette) => {
+          const selected = option === palette;
+          return (
+            <Pressable
+              key={option}
+              onPress={() => void pick(option)}
+              style={[styles.languageOption, selected && styles.languageOptionSelected]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              accessibilityLabel={t.settings.appearance.a11y[option]}
+              testID={`settings-palette-${option}`}
+            >
+              <Text
+                style={[styles.languageOptionText, selected && styles.languageOptionTextSelected]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {t.settings.appearance[option]}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={styles.appearanceNote} maxFontSizeMultiplier={FontScaleCap.body}>
+        {t.settings.appearance.brownNote}
+      </Text>
     </View>
   );
 }
@@ -892,6 +936,11 @@ export default function SettingsScreen() {
           />
         </View>
 
+        <SectionLabel spaced>{t.settings.appearanceSection}</SectionLabel>
+        <View style={styles.notificationsCard}>
+          <AppearanceRow />
+        </View>
+
         <SectionLabel spaced>{t.settings.languageSection}</SectionLabel>
         <View style={styles.notificationsCard}>
           <LanguageRow />
@@ -1194,6 +1243,14 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   languageOptionTextSelected: { color: Colors.foam },
+  appearanceNote: {
+    paddingBottom: 12,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
   footer: {
     alignItems: 'center',
     marginTop: 24,

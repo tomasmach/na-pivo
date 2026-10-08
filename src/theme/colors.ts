@@ -3,13 +3,31 @@
  * Names mirror the `na-pivo-*` variables defined there.
  */
 
+import { palette } from './palette';
+
+// Backgrounds (DESIGN.md §2.1). Gray is the ground of the pub page and the
+// maintained look; brown is the earlier palette, selectable in settings.
+// Never pure black: on a warm-accented app that reads as a void.
+const GROUNDS = {
+  gray: {
+    stout: '#15120F',
+    stout2: '#1C1815',
+    stout3: '#262019',
+    border: '#3A322A',
+    // Below the ground: bands between sections, scrims under sheets.
+    deep: '#0E0C0A',
+  },
+  brown: {
+    stout: '#1F1308',
+    stout2: '#2B1A0E',
+    stout3: '#3A2515',
+    border: '#5A3A20',
+    deep: '#0F0A05',
+  },
+} as const;
+
 export const Colors = {
-  // Backgrounds — deep and nearly neutral, the ground of the pub page (DESIGN.md §2.1).
-  // Never pure black: on a warm-accented app that reads as a void.
-  stout: '#15120F',
-  stout2: '#1C1815',
-  stout3: '#262019',
-  border: '#3A322A',
+  ...GROUNDS[palette],
 
   // Amber accent
   amber: '#E8A317',

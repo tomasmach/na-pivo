@@ -43,6 +43,8 @@ export interface BeerEveningLiveActivityProps {
   supportsInteractiveAdd?: boolean;
   /** iOS only: `file://` URI of the staged app icon in the app-group container. */
   iconUri?: string;
+  /** iOS only: the earlier brown palette is picked in settings. */
+  brownPalette?: boolean;
   // — Tonight's last direct connection home. These travel together and are
   //   absent without a home point, outside PID, or once the connection left.
   /** "Poslední spoj domů 23:58 · Anděl". */

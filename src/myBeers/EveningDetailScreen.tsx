@@ -18,7 +18,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { formatVolume, t } from '@/i18n';
@@ -921,7 +921,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: Spacing.lg,
-    backgroundColor: 'rgba(14, 12, 10, 0.72)',
+    backgroundColor: withAlpha(Colors.deep, 0.72),
   },
   modalCard: {
     backgroundColor: Colors.stout2,

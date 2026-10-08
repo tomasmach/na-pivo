@@ -424,6 +424,16 @@ export const en: Strings = {
       en: 'English',
       option: (name: string) => `Switch the language to ${name}`,
     },
+    appearanceSection: 'Appearance',
+    appearance: {
+      gray: 'Gray',
+      brown: 'Brown',
+      a11y: {
+        gray: 'Switch the app to gray',
+        brown: 'Switch the app to brown',
+      },
+      brownNote: "I no longer maintain the brown look. I can't promise future versions will look or work right in it.",
+    },
     locationPrivacy: "Your home and tour progress stay on the phone. Pub plans are shared only when you choose. I don't store location history.",
     sections: {
       search: 'SEARCH',

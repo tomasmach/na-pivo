@@ -45,7 +45,7 @@ interface Slide {
   title: string;
   body: string;
   /** Full-bleed illustration on the stout background (generated brand art —
-   *  the PNG background matches Colors.stout exactly, so it blends edge-free). */
+   *  the PNG background is transparent, so it blends with either palette). */
   image: number;
 }
 

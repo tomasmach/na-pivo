@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+import { palette } from '@/theme/palette';
+
 /**
  * Stages the pre-scaled app icon into the widgets app-group container so the
  * Live Activity extension can render it. The widget process cannot read the
@@ -25,7 +27,10 @@ async function stageIcon(): Promise<string> {
   const { Asset } = require('expo-asset') as typeof import('expo-asset');
   const FileSystem =
     require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
-  const iconModule = require('../../assets/images/live-activity-icon.png');
+  const iconModule =
+    palette === 'brown'
+      ? require('../../assets/images/live-activity-icon-brown.png')
+      : require('../../assets/images/live-activity-icon.png');
   /* eslint-enable @typescript-eslint/no-require-imports */
 
   const asset = Asset.fromModule(iconModule);
@@ -33,7 +38,8 @@ async function stageIcon(): Promise<string> {
   const source = asset.localUri ?? asset.uri;
   if (!source) return '';
 
-  const target = `${widgetsDirectory.replace(/\/?$/, '/')}live-activity-icon.png`;
+  const fileName = palette === 'brown' ? 'live-activity-icon-brown.png' : 'live-activity-icon.png';
+  const target = `${widgetsDirectory.replace(/\/?$/, '/')}${fileName}`;
   const info = await FileSystem.getInfoAsync(target);
   if (!info.exists) {
     await FileSystem.copyAsync({ from: source, to: target });
