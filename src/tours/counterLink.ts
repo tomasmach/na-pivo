@@ -14,10 +14,14 @@ export function pubFromStop(stop: TourStop): Pub {
   return { id: stop.pubId, name: stop.name, lat: stop.lat, lng: stop.lon, address: stop.address || undefined };
 }
 
-/** Beers counted at a stop since the run started, across the live and archived sittings. */
-export function beersAtStop(stop: TourStop, run: Pick<TourRun, 'startedAt'>, sessions: readonly { pubKey: string; drinks: readonly { drinkType?: string; at: string }[] }[]): number {
+/** Beers counted at a stop during the run, across the live and archived sittings; a finished run ignores later visits. */
+export function beersAtStop(stop: TourStop, run: Pick<TourRun, 'startedAt' | 'endedAt'>, sessions: readonly { pubKey: string; drinks: readonly { drinkType?: string; at: string }[] }[]): number {
   const since = Date.parse(run.startedAt);
+  const until = run.endedAt ? Date.parse(run.endedAt) : Infinity;
   const cell = stop.cacheKey ?? geohash8(stop.lat, stop.lon);
   return sessions.filter((session) => session.pubKey === cell)
-    .reduce((sum, session) => sum + session.drinks.filter((drink) => (drink.drinkType ?? 'beer') === 'beer' && Date.parse(drink.at) >= since).length, 0);
+    .reduce((sum, session) => sum + session.drinks.filter((drink) => {
+      const at = Date.parse(drink.at);
+      return (drink.drinkType ?? 'beer') === 'beer' && at >= since && at <= until;
+    }).length, 0);
 }

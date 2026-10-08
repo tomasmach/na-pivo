@@ -15,12 +15,16 @@ export function linkReady(plan: TourPlan, published: Record<string, string>, pen
 async function prepare(planId: string): Promise<TourError | null> {
   const hydrated = await useToursStore.getState().hydrate();
   if (!hydrated.ok) return hydrated.error;
-  const { plans, published, pending } = useToursStore.getState();
-  const plan = plans.find((p) => p.id === planId);
-  if (!plan || plan.source) return 'not_found';
-  if (linkReady(plan, published, pending)) return null;
-  const result = await useToursStore.getState().publish(planId);
-  return result.ok ? null : result.error;
+  // A publish left from an earlier try finishes first with that older plan, so a second pass puts up the one saved since.
+  for (let pass = 0; ; pass++) {
+    const { plans, published, pending } = useToursStore.getState();
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan || plan.source) return 'not_found';
+    if (linkReady(plan, published, pending)) return null;
+    if (pass === 2) return 'network';
+    const result = await useToursStore.getState().publish(planId);
+    if (!result.ok) return result.error;
+  }
 }
 
 function inviteError(error: TourInviteError): string {

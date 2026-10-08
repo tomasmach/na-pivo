@@ -477,8 +477,16 @@ export const useToursStore = create<ToursState>(() => ({
     if (!crew)
       return { ok: false, error: 'not_found' };
     const result = await fetchTourRun(crew.runId);
+    if (!result.run && result.status === 404) {
+      // Left, blocked by the organizer or past the roster window: the server no longer shows this party, so neither does the phone.
+      await mutate((d) => {
+        if (d.activeRun?.crew?.runId === crew.runId)
+          delete d.activeRun.crew.members;
+      });
+      return { ok: false, error: 'not_found' };
+    }
     if (!result.run)
-      return { ok: false, error: result.status === 404 ? 'not_found' : 'network' };
+      return { ok: false, error: 'network' };
     const run = result.run;
     return mutate((d) => {
       if (d.activeRun?.crew?.runId !== crew.runId)
