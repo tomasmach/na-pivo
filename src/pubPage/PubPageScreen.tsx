@@ -153,6 +153,12 @@ function firstParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
 }
 
+/** A link without coordinates must not open a pub at 0,0. */
+function coordinate(value: string, limit: number): number {
+  const parsed = value.trim() ? Number(value) : NaN;
+  return Math.abs(parsed) <= limit ? parsed : NaN;
+}
+
 function toneColor(tone: PubHoursTone): string {
   if (tone === 'open') return Colors.open;
   if (tone === 'closed') return Colors.closed;
@@ -270,8 +276,8 @@ export default function PubPageScreen() {
     key,
     ref,
     firstParam(params.name),
-    Number(firstParam(params.lat)),
-    Number(firstParam(params.lng)),
+    coordinate(firstParam(params.lat), 90),
+    coordinate(firstParam(params.lng), 180),
   );
 
   const [pub, setPub] = useState<Pub | null>(initialPub);

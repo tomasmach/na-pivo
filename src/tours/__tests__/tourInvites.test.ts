@@ -30,3 +30,14 @@ it('passes on why the server refused', async () => {
   jest.mocked(sendTourInvites).mockResolvedValueOnce({ ok: false, error: 'limit', status: 409, retry: false });
   await expect(inviteFriends('plan-1', ['a'])).resolves.toEqual({ error: t.tourInvites.errors.limit });
 });
+
+it('puts up the tour saved since when an older publish was still waiting', async () => {
+  // The waiting publish carries the older plan; only the second one matches what the phone shows.
+  mockStore.published = { 'plan-1': 'older' };
+  mockStore.publish
+    .mockImplementationOnce(async () => { mockStore.published = { 'plan-1': 'older-2' }; return { ok: true }; })
+    .mockImplementationOnce(async () => { mockStore.published = { 'plan-1': 'sig' }; return { ok: true }; });
+  jest.mocked(sendTourInvites).mockResolvedValueOnce({ ok: true, value: { roster: [], invited: 1 } });
+  await expect(inviteFriends('plan-1', ['a'])).resolves.toEqual({ status: 'sent', roster: [], invited: 1 });
+  expect(mockStore.publish).toHaveBeenCalledTimes(2);
+});

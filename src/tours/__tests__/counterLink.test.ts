@@ -27,3 +27,9 @@ it('counts only beers at the stop since the run started', () => {
   ];
   expect(beersAtStop(stop(1, 'aaaa1111'), run(), sessions)).toBe(2);
 });
+
+it('leaves later visits out of a finished run', () => {
+  const sessions = [{ pubKey: 'aaaa1111', drinks: [{ at: '2026-09-24T18:30:00Z' }, { at: '2026-10-01T18:30:00Z' }] }];
+  expect(beersAtStop(stop(1, 'aaaa1111'), { ...run(), endedAt: '2026-09-24T22:00:00Z' }, sessions)).toBe(1);
+  expect(beersAtStop(stop(1, 'aaaa1111'), run(), sessions)).toBe(2);
+});
