@@ -2329,6 +2329,25 @@ export const en: Strings = {
         'I also worked on performance and fixed bugs in groups, notifications, and saving entries. Your added pubs are easier to browse, too.',
       slide3Done: "Let's get a beer",
     },
+    v220: {
+      skip: 'Skip',
+      slide1Title: 'Plan a pub crawl',
+      slide1Body:
+        "Pick two to eight pubs, send your crew a link and head out. I'll show how far each walk is and what's on tap. Find it under Tour in the Crew tab.",
+      slide1Next: 'Continue',
+      slide2Title: 'Look inside any pub',
+      slide2Body:
+        "Open any pub to see what's on tap and at what price, its opening hours and upcoming events. The heart saves it to your favourite pubs.",
+      slide2Next: "There's more",
+      slide3Title: 'Your crew at the table',
+      slide3Body:
+        "Both log the pub you're in, and after 15 minutes tap “Add people at your table” in the Crew tab. You can also ping just the friends you pick.",
+      slide3Next: 'One more thing',
+      slide4Title: 'Last ride home',
+      slide4Body:
+        "Set a home point in Settings and I'll show your last direct ride home while your night is on, with an optional reminder 20 minutes before it leaves. Prague area only for now.",
+      slide4Done: "Let's get a beer",
+    },
   },
   about: {
     tagline: 'Your compass to the nearest beer.',
