@@ -2333,19 +2333,19 @@ export const en: Strings = {
       skip: 'Skip',
       slide1Title: 'Plan a pub crawl',
       slide1Body:
-        'Pick two to eight pubs, send your crew a link and head out. On the way I show how far it is on foot and what each pub has on tap. Find it under Tour in the Crew tab.',
+        "Pick two to eight pubs, send your crew a link and head out. I'll show how far each walk is and what's on tap. Find it under Tour in the Crew tab.",
       slide1Next: 'Continue',
-      slide2Title: 'Every pub has its own page',
+      slide2Title: 'Look inside any pub',
       slide2Body:
-        "Tap a pub to see what's on tap and for how much, when it's open and what events are coming up. Tap the heart to save it to your favourite pubs.",
-      slide2Next: "What's next",
+        "Open any pub to see what's on tap and at what price, its opening hours and upcoming events. The heart saves it to your favourite pubs.",
+      slide2Next: "There's more",
       slide3Title: 'Your crew at the table',
       slide3Body:
-        'Add the people sitting with you in the pub right from the table. You both just open it in the Crew tab. And you can ping just a few picked friends instead of the whole crew.',
+        'Been in the same pub for 15 minutes? Both log it, then tap “Add people at your table” in the Crew tab. You can also ping just the friends you pick.',
       slide3Next: 'One more thing',
       slide4Title: 'Last ride home',
       slide4Body:
-        'With a home point in Settings, I show your last direct connection home during the night and can remind you 20 minutes before it leaves. Prague area only for now.',
+        "Set a home point in Settings and I'll show your last direct ride home while your night is on, with an optional reminder 20 minutes before it leaves. Prague area only for now.",
       slide4Done: "Let's get a beer",
     },
   },

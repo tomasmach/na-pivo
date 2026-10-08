@@ -13,7 +13,7 @@ describe('bundled release pagers', () => {
           },
           v220: {
             slide1Title: locale === 'cs' ? 'Naplánuj tah po hospodách' : 'Plan a pub crawl',
-            slide2Title: locale === 'cs' ? 'Každá hospoda má svou stránku' : 'Every pub has its own page',
+            slide2Title: locale === 'cs' ? 'Nahlédni do hospody' : 'Look inside any pub',
             slide3Title: locale === 'cs' ? 'Parta u stolu' : 'Your crew at the table',
             slide4Title: locale === 'cs' ? 'Poslední spoj domů' : 'Last ride home',
           },

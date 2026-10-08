@@ -2936,17 +2936,17 @@ export const cs = {
     },
     v220: {
       skip: 'Přeskočit',
-      slide1Title: 'Naplánuj tah po hospodách',
+      slide1Title: 'Naplánuj tah po\u00a0hospodách',
       slide1Body:
         'Vyber dvě až osm hospod, pošli partě odkaz a vyrazte. Po cestě ukážu, kolik je to pěšky a co kde čepujou. Najdeš to v Partě pod tlačítkem Tour.',
       slide1Next: 'Pokračovat',
-      slide2Title: 'Každá hospoda má svou stránku',
+      slide2Title: 'Nahlédni do hospody',
       slide2Body:
-        'Klepni na hospodu a uvidíš, co tam čepujou a za kolik, kdy mají otevřeno a jaké akce chystají. Oblíbené si ulož srdíčkem do srdcovek.',
+        'Klepni na hospodu a uvidíš, co tam čepujou a za kolik, kdy mají otevřeno a jaké akce chystají. Srdíčkem si ji uložíš do srdcovek.',
       slide2Next: 'Další novinka',
       slide3Title: 'Parta u stolu',
       slide3Body:
-        'Kdo s tebou sedí v hospodě, toho si přidáš rovnou od stolu. Stačí, když si to v Partě otevřete oba. A cinknout můžeš i jen pár vybraným kámošům.',
+        'Sedíte spolu v hospodě aspoň čtvrt hodiny? Zapište si ji oba a v Partě klepněte na „Přidej lidi od stolu“. A cinknout teď můžeš i jen pár vybraným kámošům.',
       slide3Next: 'Ještě jedna věc',
       slide4Title: 'Poslední spoj domů',
       slide4Body:
