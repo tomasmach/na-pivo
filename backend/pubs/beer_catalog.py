@@ -10,7 +10,8 @@ from django.utils import timezone
 
 from pubs.models import BeerBrand, BeerProduct, PubBeerBrand, PubBeerProduct
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
+# Letters and digits are separate tokens, so "Šerák11°" matches "Šerák 11".
+_TOKEN_RE = re.compile(r"[a-z]+|[0-9]+")
 
 # --- Community-beer domain bounds (single source of truth) ---
 # The serving volumes a community beer may carry and the inclusive CZK price
@@ -90,6 +91,28 @@ def normalize_beer_text(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value)
     ascii_text = decomposed.encode("ascii", "ignore").decode("ascii")
     return " ".join(_TOKEN_RE.findall(ascii_text.casefold()))
+
+
+def beer_menu_identity(beer: dict) -> tuple[str, int | None]:
+    """One pub-menu row per beer and volume, however the name was typed.
+
+    "Primátor 11", "Primátor 11°" and "primator 11." are the same row; a
+    different volume is a different row.
+    """
+    return normalize_beer_text(str(beer.get("name") or "")), beer.get("volume_ml")
+
+
+def dedupe_beer_menu(beers: list[dict]) -> list[dict]:
+    """Keep the first row of each beer_menu_identity, preserving order."""
+    seen: set[tuple[str, int | None]] = set()
+    unique: list[dict] = []
+    for beer in beers:
+        identity = beer_menu_identity(beer)
+        if identity[0] and identity in seen:
+            continue
+        seen.add(identity)
+        unique.append(beer)
+    return unique
 
 
 def _alias_candidates(entity: BeerBrand | BeerProduct) -> list[str]:
