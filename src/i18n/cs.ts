@@ -388,7 +388,7 @@ export const cs = {
     navigateCtaSub: 'otevřu ti navigaci',
     /** Same button, dimmed, while the first search is still running. */
     searchingCtaSub: 'hledám nejbližší hospodu',
-    /** The quiet outline twin: reroll in "Překvap mě", skip in "Nejbližší". */
+    /** The quiet twin under it: reroll in "Překvap mě", skip in "Nejbližší". */
     anotherPub: 'Dej mi jinou',
     /** Same slot while you're aiming at a friend's pub. */
     backToNearest: 'Zpět na nejbližší',
