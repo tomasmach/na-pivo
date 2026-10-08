@@ -6,6 +6,7 @@ import json
 import uuid
 from collections import defaultdict
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from django.core.management import CommandError, call_command
@@ -43,6 +44,10 @@ def _menu(*beers, historical=(), name="U Tygra", lat=_LAT, lng=_LNG) -> PubCommu
 
 def _beer(name, price=None, volume=500):
     return {"name": name, "price_czk": price, "volume_ml": volume}
+
+
+def _report_lines(path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 def test_letters_and_digits_are_separate_tokens():
@@ -139,14 +144,14 @@ def test_cleanup_unifies_names_and_merges_duplicates_without_touching_drinks(tmp
     assert drink.beer_name == "Dudák 11"
     assert DrinkLog.objects.count() == 1
 
-    saved = json.loads(report.read_text())
-    assert saved["summary"]["merged_items"] == 2
-    before = next(c for c in saved["changes"] if c["pk"] == pub.pk and c["field"] == "beers")
+    lines = _report_lines(report)
+    assert lines[-1]["summary"]["merged_items"] == 2
+    before = next(c for c in lines[:-1] if c["pk"] == pub.pk and c["field"] == "beers")
     assert before["before"][0] == _beer("Kozel 11", 45)
-    # The catalog product is now indexed for the brand filter.
-    assert PubBeerProduct.objects.filter(
-        cache_key=_KEY, product_key="velkopopovicky-kozel-11", active=True
-    ).exists()
+    # The catalog product is now indexed for the brand filter, credited to nobody.
+    link = PubBeerProduct.objects.get(cache_key=_KEY, product_key="velkopopovicky-kozel-11")
+    assert link.active is True
+    assert link.account is None
 
     # Idempotent: a second run finds nothing to change.
     second = run_menu_cleanup(apply=False)
@@ -252,3 +257,49 @@ def test_every_catalog_alias_names_one_beer():
     for alias, entries in owners.items():
         assert len({entry for entry in entries if entry[0] == "product"}) <= 1, (alias, entries)
         assert len({entry[2] for entry in entries}) == 1, (alias, entries)
+
+
+@pytest.mark.django_db
+def test_an_interrupted_run_has_a_backup_for_every_saved_menu(tmp_path):
+    pub = _menu(_beer("Primátor 11", 50), _beer("Primátor 11°", 50))
+    PubExternalBeerMenu.objects.create(
+        cache_key=geohash8(50.3, 14.7),
+        name="Pivnice",
+        lat=50.3,
+        lng=14.7,
+        source=PubExternalBeerMenu.Source.PIVAROVA_MAPA,
+        source_id="3",
+        source_url="https://example.com/3",
+        beers=[_beer("Plzeň", 60)],
+    )
+    report = tmp_path / "report.jsonl"
+
+    with patch("pubs.beer_menu_cleanup._clean_external_row", side_effect=RuntimeError("db gone")):
+        with pytest.raises(RuntimeError):
+            call_command("clean_beer_menus", "--apply", "--report", str(report))
+
+    pub.refresh_from_db()
+    assert pub.beers == [_beer("Primátor 11°", 50)]
+    [saved] = _report_lines(report)
+    assert saved["before"] == [_beer("Primátor 11", 50), _beer("Primátor 11°", 50)]
+
+    call_command("clean_beer_menus", "--revert", str(report))
+    pub.refresh_from_db()
+    assert pub.beers == [_beer("Primátor 11", 50), _beer("Primátor 11°", 50)]
+
+
+@pytest.mark.django_db
+def test_revert_keeps_menus_edited_after_the_cleanup(tmp_path):
+    untouched = _menu(_beer("Kozel 11", 45))
+    edited = _menu(_beer("Plzeň", 60), name="Jinde", lat=50.2, lng=14.6)
+    report = tmp_path / "report.jsonl"
+    call_command("clean_beer_menus", "--apply", "--report", str(report))
+    edited.beers = [_beer("Pilsner Urquell", 65)]
+    edited.save(update_fields=["beers"])
+
+    call_command("clean_beer_menus", "--revert", str(report))
+
+    untouched.refresh_from_db()
+    edited.refresh_from_db()
+    assert untouched.beers == [_beer("Kozel 11", 45)]
+    assert edited.beers == [_beer("Pilsner Urquell", 65)]

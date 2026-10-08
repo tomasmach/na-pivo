@@ -1,10 +1,11 @@
 import json
+import os
 from dataclasses import asdict
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-from pubs.beer_menu_cleanup import run_menu_cleanup
+from pubs.beer_menu_cleanup import revert_menu_cleanup, run_menu_cleanup
 
 
 class Command(BaseCommand):
@@ -18,25 +19,51 @@ class Command(BaseCommand):
         parser.add_argument(
             "--report",
             help=(
-                "Write every changed menu (before and after) as JSON. Required with "
-                "--apply: the before lists are the backup for a revert."
+                "JSON Lines file: one line per changed menu (before and after), written "
+                "before that menu is saved, then a summary line. Required with --apply: "
+                "it is the backup for --revert."
             ),
+        )
+        parser.add_argument(
+            "--revert",
+            metavar="REPORT",
+            help="Restore the menus listed in a report that the cleanup left untouched since.",
         )
 
     def handle(self, *args, **options) -> None:
+        if options["revert"]:
+            self._revert(Path(options["revert"]))
+            return
+
         apply = options["apply"]
         report = Path(options["report"]) if options["report"] else None
         if apply and report is None:
             raise CommandError("--apply needs --report so the previous menus are kept.")
         if report is not None and report.exists():
             raise CommandError(f"{report} already exists; refusing to overwrite a backup.")
-        if report is not None:
-            # Fail before writing anything when the backup cannot be saved.
-            report.parent.mkdir(parents=True, exist_ok=True)
-            report.write_text("{}")
 
-        plan = run_menu_cleanup(apply=apply)
-        summary = {
+        if report is None:
+            plan = run_menu_cleanup(apply=apply)
+        else:
+            report.parent.mkdir(parents=True, exist_ok=True)
+            with report.open("x", encoding="utf-8") as backup:
+
+                def record(changes) -> None:
+                    for change in changes:
+                        backup.write(json.dumps(asdict(change), ensure_ascii=False) + "\n")
+                    backup.flush()
+                    os.fsync(backup.fileno())
+
+                plan = run_menu_cleanup(apply=apply, record=record)
+                summary = self._summary(plan, apply)
+                backup.write(json.dumps({"summary": summary}, ensure_ascii=False) + "\n")
+
+        summary = self._summary(plan, apply)
+        prefix = "" if apply else "DRY RUN - "
+        self.stdout.write(prefix + " ".join(f"{key}={value}" for key, value in summary.items()))
+
+    def _summary(self, plan, apply: bool) -> dict:
+        return {
             "applied": apply,
             "community_rows": plan.community_rows,
             "external_rows": plan.external_rows,
@@ -52,13 +79,15 @@ class Command(BaseCommand):
             "index_links_reactivated": plan.index_links_reactivated,
             "price_index_updates": plan.price_index_updates,
         }
-        if report is not None:
-            report.write_text(
-                json.dumps(
-                    {"summary": summary, "changes": [asdict(change) for change in plan.changes]},
-                    ensure_ascii=False,
-                    indent=1,
-                )
-            )
-        prefix = "" if apply else "DRY RUN - "
-        self.stdout.write(prefix + " ".join(f"{key}={value}" for key, value in summary.items()))
+
+    def _revert(self, report: Path) -> None:
+        if not report.exists():
+            raise CommandError(f"{report} does not exist.")
+        with report.open(encoding="utf-8") as lines:
+            changes = [
+                line for line in (json.loads(raw) for raw in lines if raw.strip())
+                if "summary" not in line
+            ]
+        # Newest first, so a menu changed twice ends at its oldest state.
+        restored, skipped = revert_menu_cleanup(reversed(changes))
+        self.stdout.write(f"restored={restored} skipped_changed_since={skipped}")

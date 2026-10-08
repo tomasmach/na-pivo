@@ -288,7 +288,9 @@ def _ensure_index_links(
         "external_id": row.external_id or "",
         "source": PubBeerBrand.Source.COMMUNITY,
         "active": True,
-        "account": row.account,
+        # System work: no contributor, so the link never appears in anybody's
+        # data export and never takes a lock on an account row.
+        "account": None,
         "last_seen_at": row.beers_updated_at or timezone.now(),
     }
     for item in beers:
@@ -333,12 +335,16 @@ def _ensure_index_links(
             if link is None:
                 created += 1
                 if apply:
-                    model.objects.create(cache_key=row.cache_key, **lookup, **defaults)
+                    # A live drink write may create the same link meanwhile.
+                    model.objects.get_or_create(
+                        cache_key=row.cache_key, **lookup, defaults=defaults
+                    )
             elif not link.active:
                 reactivated += 1
                 if apply:
-                    link.active = True
-                    link.save(update_fields=["active", "updated_at"])
+                    model.objects.filter(pk=link.pk, active=False).update(
+                        active=True, updated_at=timezone.now()
+                    )
     return created, reactivated
 
 
@@ -353,14 +359,18 @@ def _update_price_index(plan: CleanupPlan, before: list, after: list, *, apply: 
         upsert_pub_price_index(beers=after, **row)
 
 
+Record = Callable[[list[MenuChange]], None]
+
+
 def _clean_community_row(
     row: PubCommunityData,
     plan: CleanupPlan,
     canonicalizer: _Canonicalizer,
-    index_cache: BeerCatalogMatchCache,
+    record: Record,
     *,
     apply: bool,
-) -> None:
+) -> list:
+    """Clean one community menu; returns the beers now on it."""
     beers = _menu_items(row.beers)
     new_beers, renamed, merged, conflicts = clean_menu(
         beers, canonicalizer.name, resolve_price=_latest_drink_price(row.cache_key)
@@ -371,47 +381,51 @@ def _clean_community_row(
         historical, canonicalizer.name, drop=current
     )
     _count(plan, beers, new_beers)
+    changes = []
     if new_beers != beers:
-        plan.changes.append(
+        changes.append(
             MenuChange(
                 "community", row.pk, row.cache_key, row.name, "beers",
                 beers, new_beers, renamed, merged, conflicts,
             )
         )
-        _update_price_index(
-            plan,
-            beers,
-            new_beers,
-            apply=apply,
-            cache_key=row.cache_key,
-            name=row.name,
-            lat=row.lat,
-            lng=row.lng,
-            city=row.city or "",
-            external_id=row.external_id or "",
-            observed_at=row.beers_updated_at,
-            source=PubPriceIndex.Source.COMMUNITY,
-        )
     if new_historical != historical:
-        plan.changes.append(
+        changes.append(
             MenuChange(
                 "community", row.pk, row.cache_key, row.name, "historical_beers",
                 historical, new_historical, h_renamed, h_merged,
             )
         )
-    if apply and (new_beers != beers or new_historical != historical):
+    if not changes:
+        return new_beers
+    record(changes)
+    plan.changes.extend(changes)
+    if apply:
         row.beers = new_beers
         row.historical_beers = new_historical
         row.save(update_fields=["beers", "historical_beers", "updated_at"])
-    created, reactivated = _ensure_index_links(row, new_beers, index_cache, apply=apply)
-    plan.index_links_created += created
-    plan.index_links_reactivated += reactivated
+    _update_price_index(
+        plan,
+        beers,
+        new_beers,
+        apply=apply,
+        cache_key=row.cache_key,
+        name=row.name,
+        lat=row.lat,
+        lng=row.lng,
+        city=row.city or "",
+        external_id=row.external_id or "",
+        observed_at=row.beers_updated_at,
+        source=PubPriceIndex.Source.COMMUNITY,
+    )
+    return new_beers
 
 
 def _clean_external_row(
     row: PubExternalBeerMenu,
     plan: CleanupPlan,
     canonicalizer: _Canonicalizer,
+    record: Record,
     *,
     apply: bool,
 ) -> None:
@@ -424,12 +438,15 @@ def _clean_external_row(
     _count(plan, beers, new_beers)
     if new_beers == beers:
         return
-    plan.changes.append(
-        MenuChange(
-            "external", row.pk, row.cache_key, row.name, "beers",
-            beers, new_beers, renamed, merged, conflicts,
-        )
+    change = MenuChange(
+        "external", row.pk, row.cache_key, row.name, "beers",
+        beers, new_beers, renamed, merged, conflicts,
     )
+    record([change])
+    plan.changes.append(change)
+    if apply:
+        row.beers = new_beers
+        row.save(update_fields=["beers", "updated_at"])
     if row.active:
         _update_price_index(
             plan,
@@ -444,41 +461,65 @@ def _clean_external_row(
             observed_at=row.verified_at or row.fetched_at,
             source=PubPriceIndex.Source.EXTERNAL,
         )
-    if apply:
-        row.beers = new_beers
-        row.save(update_fields=["beers", "updated_at"])
 
 
-def run_menu_cleanup(*, apply: bool) -> CleanupPlan:
+def run_menu_cleanup(*, apply: bool, record: Record | None = None) -> CleanupPlan:
     """Plan the cleanup and, with ``apply``, write it one pub at a time.
 
     Each pub is locked only for its own short transaction, so live drink
-    writes never wait for the whole run. A rerun finishes an interrupted one.
+    writes never wait for the whole run, and ``record`` receives the pub's
+    changes before they are written, so a backup exists for every committed
+    pub even when the run stops halfway. A rerun finishes an interrupted one.
     """
     plan = CleanupPlan()
+    record = record or (lambda changes: None)
     canonicalizer = _Canonicalizer(preferred_spellings(_all_menu_names()))
     index_cache = BeerCatalogMatchCache()
 
-    for model, clean in (
-        (
-            PubCommunityData,
-            lambda row: _clean_community_row(row, plan, canonicalizer, index_cache, apply=apply),
-        ),
-        (
-            PubExternalBeerMenu,
-            lambda row: _clean_external_row(row, plan, canonicalizer, apply=apply),
-        ),
-    ):
-        for pk in model.objects.order_by("pk").values_list("pk", flat=True):
-            if not apply:
-                row = model.objects.filter(pk=pk).first()
-                if row is not None:
-                    clean(row)
+    def locked(model, pk):
+        rows = model.objects.select_for_update() if apply else model.objects
+        return rows.filter(pk=pk).first()
+
+    for pk in PubCommunityData.objects.order_by("pk").values_list("pk", flat=True):
+        with transaction.atomic():
+            row = locked(PubCommunityData, pk)
+            if row is None:
                 continue
-            with transaction.atomic():
-                row = model.objects.select_for_update().filter(pk=pk).first()
-                if row is not None:
-                    clean(row)
+            beers = _clean_community_row(row, plan, canonicalizer, record, apply=apply)
+        # Outside the menu lock: a drink write locks its account first and the
+        # menu second, so nothing here may wait on an account while holding a menu.
+        with transaction.atomic():
+            created, reactivated = _ensure_index_links(row, beers, index_cache, apply=apply)
+        plan.index_links_created += created
+        plan.index_links_reactivated += reactivated
+
+    for pk in PubExternalBeerMenu.objects.order_by("pk").values_list("pk", flat=True):
+        with transaction.atomic():
+            row = locked(PubExternalBeerMenu, pk)
+            if row is not None:
+                _clean_external_row(row, plan, canonicalizer, record, apply=apply)
+
     plan.community_rows = PubCommunityData.objects.count()
     plan.external_rows = PubExternalBeerMenu.objects.count()
     return plan
+
+
+def revert_menu_cleanup(changes: Iterable[dict]) -> tuple[int, int]:
+    """Put back the "before" lists of a cleanup report.
+
+    Only fields still exactly as the cleanup left them are restored; a menu
+    somebody edited since keeps the newer edit. Returns (restored, skipped).
+    """
+    models = {"community": PubCommunityData, "external": PubExternalBeerMenu}
+    restored = skipped = 0
+    for change in changes:
+        model = models[change["model"]]
+        with transaction.atomic():
+            row = model.objects.select_for_update().filter(pk=change["pk"]).first()
+            if row is None or getattr(row, change["field"]) != change["after"]:
+                skipped += 1
+                continue
+            setattr(row, change["field"], change["before"])
+            row.save(update_fields=[change["field"], "updated_at"])
+            restored += 1
+    return restored, skipped
