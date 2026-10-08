@@ -6,8 +6,8 @@
  * the "…" sheet. Both are things people reach for with a beer already in hand,
  * so both now sit on the surface, in the card, one tap from anywhere.
  *
- * They are outline chips (amber at 6 %), never filled: the screen's one full
- * amber surface is still its one big button. An action with no handler drops its
+ * They are quiet stout3 chips, never amber: the screen's one full amber
+ * surface is still its one big button. An action with no handler drops its
  * chip — outside a pub there is nothing to map — and with no handlers at all the
  * row renders nothing rather than an empty strip.
  */
