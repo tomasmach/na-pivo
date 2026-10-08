@@ -11,6 +11,10 @@ import { palette, writeStoredPalette, type Palette } from './palette';
 
 /** Name of the brown alternate icon registered in app.config.ts. */
 const BROWN_ICON = 'Brown';
+/** iOS settles the icon change once its alert is dismissed; never wait forever. */
+const ICON_WAIT_MS = 10_000;
+
+let switching = false;
 
 async function setAppIcon(next: Palette): Promise<void> {
   // Android swaps icons by disabling MainActivity for an alias that lacks the
@@ -30,13 +34,18 @@ async function setAppIcon(next: Palette): Promise<void> {
 
 /** Returns false when the choice could not be stored; the caller shows an error. */
 export async function switchPalette(next: Palette): Promise<boolean> {
-  if (next === palette) return true;
+  // A second tap while a switch is underway is ignored; the restart follows.
+  if (next === palette || switching) return true;
   try {
     writeStoredPalette(next);
   } catch {
     return false;
   }
-  await setAppIcon(next);
+  switching = true;
+  await Promise.race([
+    setAppIcon(next),
+    new Promise<void>((resolve) => setTimeout(resolve, ICON_WAIT_MS)),
+  ]);
   try {
     await Updates.reloadAsync();
   } catch {
