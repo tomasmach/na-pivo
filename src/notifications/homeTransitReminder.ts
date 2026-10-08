@@ -16,6 +16,8 @@ import { homeTransitForCurrentEvening } from '@/transit/homeTransitSync';
 const STATE_KEY = 'na-pivo-home-transit-reminder';
 const CHANNEL_ID = 'home-transit-reminders';
 const HOME_TRANSIT_REMINDER_KIND = 'home_transit_reminder';
+// One fixed identifier: rescheduling replaces it and cancelling finds it even when the bookkeeping row is lost.
+const REMINDER_ID = 'home-transit-reminder';
 /** How long before the departure the reminder rings. */
 export const HOME_TRANSIT_REMINDER_LEAD_MS = 20 * 60 * 1000;
 // Closer than this to the reminder time there is nothing useful left to say.
@@ -78,12 +80,16 @@ async function writeState(state: ReminderState | null): Promise<void> {
 }
 
 async function cancelExisting(): Promise<void> {
-  const state = await readState();
-  if (!state) return;
-  try {
-    await Notifications?.cancelScheduledNotificationAsync(state.notificationId);
-  } catch {
-    // Already delivered or gone; the bookkeeping still has to go.
+  const ids = [REMINDER_ID];
+  // Test builds before the fixed identifier stored a random one.
+  const legacyId = (await readState())?.notificationId;
+  if (legacyId && legacyId !== REMINDER_ID) ids.push(legacyId);
+  for (const id of ids) {
+    try {
+      await Notifications?.cancelScheduledNotificationAsync(id);
+    } catch {
+      // Already delivered or gone; the bookkeeping still has to go.
+    }
   }
   await writeState(null);
 }
@@ -125,6 +131,7 @@ async function syncInternal(): Promise<void> {
 
   try {
     const notificationId = await Notifications.scheduleNotificationAsync({
+      identifier: REMINDER_ID,
       content: {
         title: t.notifications.homeTransitTitle,
         body,

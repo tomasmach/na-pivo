@@ -1,5 +1,5 @@
 import { useToursStore as store, clearToursPrivateData } from '../toursStore';
-import { fetchSharedTour } from '@/data/toursClient';
+import { fetchSharedTour, fetchTourRun } from '@/data/toursClient';
 import { dropTourRunOps, enqueueTourRunOp, setTourRunDeliveryListener } from '@/data/tourRunQueue';
 import type { TourPlan } from '@/tours/model';
 
@@ -157,4 +157,22 @@ it('drops the party quietly when the server turns the join down', async () => {
   await store.getState().markStop(first.id, 'visited');
   await store.getState().markStop(second.id, 'visited');
   expect(ops()).toEqual(['join']);
+});
+
+it('forgets the roster once the server stops showing the party, but keeps it offline', async () => {
+  const runId = '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab';
+  jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: remote, public: info });
+  await store.getState().joinCrew(token, runId);
+  const friend = { id: 'f', nickname: 'kamarád', displayName: '', avatarUrl: null, left: false, completed: false };
+  jest.mocked(fetchTourRun).mockResolvedValueOnce({ status: 200, run: { ...serverRun(runId), members: [friend] } } as never);
+  await store.getState().refreshCrew();
+  expect(store.getState().activeRun!.crew!.members).toHaveLength(1);
+
+  jest.mocked(fetchTourRun).mockResolvedValueOnce({ status: 0, run: null } as never);
+  expect(await store.getState().refreshCrew()).toEqual({ ok: false, error: 'network' });
+  expect(store.getState().activeRun!.crew!.members).toHaveLength(1);
+
+  jest.mocked(fetchTourRun).mockResolvedValueOnce({ status: 404, run: null } as never);
+  expect(await store.getState().refreshCrew()).toEqual({ ok: false, error: 'not_found' });
+  expect(store.getState().activeRun!.crew).not.toHaveProperty('members');
 });

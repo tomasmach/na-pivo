@@ -98,7 +98,8 @@ export function tourReminderFor(
   if (runs.runs.some((run) => run.planId === plan.id && zonedDate(Date.parse(run.startedAt), plan.timezone) === plan.scheduledDate)) {
     return null;
   }
-  const pub = plan.stops[0]?.name ?? '';
+  // Same rule as the Live Activity: hidden pub names stay off the lock screen.
+  const pub = useSettingsStore.getState().hidePubNames ? '' : plan.stops[0]?.name ?? '';
   return {
     planId: plan.id,
     fireAtMs,
@@ -249,7 +250,9 @@ export async function syncTourReminders(): Promise<void> {
       }
     });
     useSettingsStore.subscribe((state, previous) => {
-      if (state.tourRemindersEnabled !== previous.tourRemindersEnabled) void reconcileTourReminders();
+      if (state.tourRemindersEnabled !== previous.tourRemindersEnabled || state.hidePubNames !== previous.hidePubNames) {
+        void reconcileTourReminders();
+      }
     });
   }
   let loaded = false;
