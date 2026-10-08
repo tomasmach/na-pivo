@@ -3815,8 +3815,8 @@ export const cs = {
     title: (tour: string) => `Dneska ${tour}`,
     /** Czech says „ve“ before hours that start with a consonant cluster: ve dvě, ve čtrnáct, ve dvacet. */
     at: (time: string) => `${[2, 3, 4, 12, 13, 14, 20, 21, 22, 23].includes(Number(time.slice(0, 2))) ? 've' : 'v'} ${time}`,
-    bodyAt: (at: string, pub: string) => `Sraz ${at} · ${pub}`,
-    bodyToday: (pub: string) => `Sraz dneska · ${pub}`,
+    bodyAt: (at: string, pub: string) => (pub ? `Sraz ${at} · ${pub}` : `Sraz ${at}`),
+    bodyToday: (pub: string) => (pub ? `Sraz dneska · ${pub}` : 'Sraz dneska'),
     today: 'dneska',
     onDay: ['v pondělí', 'v úterý', 've středu', 've čtvrtek', 'v pátek', 'v sobotu', 'v neděli'],
     ask: (when: string, at: string) => `Mám ti ${when} ${at} připomenout sraz?`,

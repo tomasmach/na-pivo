@@ -117,6 +117,15 @@ describe('copy', () => {
     expect(tourReminderFor(plan({ scheduledTime: '20:00' }), noRuns, NOW)?.body).toBe('Sraz ve 20:00 · U Vystřelenýho oka');
     expect(tourReminderFor(plan({ scheduledTime: null }), noRuns, NOW)?.body).toBe('Sraz dneska · U Vystřelenýho oka');
   });
+  it('leaves the pub out when pub names are hidden', () => {
+    useSettingsStore.setState({ hidePubNames: true });
+    try {
+      expect(tourReminderFor(plan({}), noRuns, NOW)?.body).toBe('Sraz v 19:00');
+      expect(tourReminderFor(plan({ scheduledTime: null }), noRuns, NOW)?.body).toBe('Sraz dneska');
+    } finally {
+      useSettingsStore.setState({ hidePubNames: false });
+    }
+  });
   it('asks with the weekday and the reminder time', () => {
     const p = plan({});
     expect(tourReminderAskText(p, tourReminderAt(p)!, NOW)).toBe('Mám ti v pátek v 17:00 připomenout sraz?');
