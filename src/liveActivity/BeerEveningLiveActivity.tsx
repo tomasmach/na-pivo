@@ -102,9 +102,9 @@ const BeerEveningLiveActivity = (
   const accent = isDimmed ? '#A98E58' : '#FFB84D';
   const primaryText = isDimmed ? '#CFC5B3' : '#FFF7E8';
   const secondaryText = isDimmed ? '#817767' : '#C4AE8E';
-  const activityBackground = isDimmed ? '#080604' : '#150D06';
-  const raisedSurface = isDimmed ? '#17120C' : '#2E1C0D';
-  const buttonText = '#241404';
+  const activityBackground = isDimmed ? '#090807' : '#15120F';
+  const raisedSurface = isDimmed ? '#1C1815' : '#262019';
+  const buttonText = '#15120F';
   const counterDeepLink = 'napivo://beer';
   // Poured-beer gold gradient for the hero number; flat on the dimmed display.
   const countStyle:

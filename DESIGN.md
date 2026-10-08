@@ -6,13 +6,21 @@
 > Produktová část I a mockový jazyk 3.0 jsou reference pro případný návrat některé
 > funkce, ne zadání.
 
+## Šedá zem pro celou appku (8. 10. 2026)
+
+Celá appka leží na zemi stránky hospody. Stouty mají znovu hodnoty z §2.1:
+`stout` `#15120F`, `stout2` `#1C1815`, `stout3` `#262019`, `border` `#3A322A`.
+Jantar, pěna i texty zůstávají. Samostatný `Colors.canvas` zanikl, jeho
+obrazovky leží na `Colors.stout`. Ilustrace s neprůhledným pozadím (onboarding
+a starší slidy „Co je nového“), ikona appky, splash a Live Activity mají
+pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
+`#0E0C0A`. Hnědý zůstává jen web na na-pivo.cz.
+
 ## Schválená obnova plochých seznamů (22. 9. 2026)
 
 Varianta C pro **Moje přidané hospody** vrací na této obrazovce plochý seznam:
-`Colors.canvas` (`#15120F`), systémové písmo bez `fontFamily`, stávající `amber`
-(`#E8A317`), `foam` (`#FBF3E0`) a `mutedText` (`#A8896A`). Canvas je sdílený
-pojmenovaný token, nikoli soukromá barva obrazovky. `Colors.stout` dál znamená
-hnědý základ vydané 2.1 (`#1F1308`); jeho změna by přebarvila ostatní obrazovky.
+`Colors.stout` (`#15120F`), systémové písmo bez `fontFamily`, stávající `amber`
+(`#E8A317`), `foam` (`#FBF3E0`) a `mutedText` (`#A8896A`).
 Toto rozhodnutí neobnovuje celé téma ani historickou architekturu 3.0.
 
 Seznam má okraj 20 bodů, záhlaví 52 bodů s titulkem 18/700, názvy 16/600,
@@ -30,7 +38,7 @@ vlastní obrazovku `/pub`, kterou otevírá kompas, karta na mapě, hledání,
 žebříček hospod a trasy. Počítadlo a „Zmapuj hospodu“ v deníčku dál otevírají
 mapovací panel, protože tam jde o mapování.
 
-Obrazovka leží na `Colors.canvas` se systémovým písmem jako Moje přidané
+Obrazovka leží na `Colors.stout` se systémovým písmem jako Moje přidané
 hospody. Hlavička má kulatá tlačítka 44 bodů na `Colors.stout2` (zpět a „…“),
 název hospody se v ní objeví až po odscrollování. Název je 28/700, pod ním
 jeden stavový řádek 15 bodů: otevírací doba barvou `open`/`closed`,
@@ -38,7 +46,7 @@ vzdálenost a město. Následuje výřez mapy 112 bodů s radiusem 16 a pinem
 uprostřed, klepnutí otevře velkou mapu nad stránkou. Pod mapou jsou nejvýš tři
 důvody jít (akce, hodnocení, piva za minulý týden) jako řádky s 36bodovou
 ikonou. Sekce Na čepu, Akce, Otevíračka a O hospodě oddělují tmavé pásy
-(`#0F0A05`, 10 bodů, přes celou šířku), nadpisy jsou 18/700 v sentence case.
+(`#0E0C0A`, 10 bodů, přes celou šířku), nadpisy jsou 18/700 v sentence case.
 Řádek „Zmapováno na N %“ otevírá dnešní mapovací panel beze změny. Dole je
 pevná lišta s jedinou jantarovou akcí „Doveď mě tam“ (48 bodů) a kulatým
 tlačítkem 48 bodů na `Colors.stout3`, které namíří kompas. Přejmenování,
@@ -49,8 +57,9 @@ má plné jantarové srdce. Srdcovky jsou soukromé, v hledání mají vlastní
 sekci nad „V okolí“, na mapě malé srdce vlevo nahoře u pinu a v seznamu ve
 výřezu filtrační chip „Srdcovky“.
 
-Následující tabulky palety a `MockType` popisují historickou 3.0 referenci,
-nikoli dnešní globální exporty. `src/mocks/mockTheme.ts` už v obnovené 2.1 není;
+Tabulka tokenů v §2.1 od 8. 10. 2026 odpovídá kódu. Ostatní tabulky palety a
+`MockType` popisují historickou 3.0 referenci, nikoli dnešní globální exporty.
+`src/mocks/mockTheme.ts` už v obnovené 2.1 není;
 `Fonts.display` a `Fonts.ui` stále načítají Baloo a Inter pro původní obrazovky.
 Další změna vzhledu potřebuje vlastní schválený rozsah, nepřebarvuje se tímto PR.
 
@@ -89,7 +98,7 @@ Tři pravidla, která rozhodují o všem ostatním:
 - **Pohyb kopíruje prst, ne sám sebe** (§10). Nekonečné smyčky, dýchající prvky
   a ambientní animace jsou zakázané; povolené jsou jen stavové výjimky z §10.
 
-Podklad je stout (tmavě hnědá), akcent jantar. Světlý režim je **vědomě
+Podklad je stout (skoro černá s teplým podtónem), akcent jantar. Světlý režim je **vědomě
 odložený** — zdvojil by práci na každé obrazovce.
 
 ---

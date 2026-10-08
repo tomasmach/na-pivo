@@ -174,8 +174,8 @@ function ShareNightModalBase({
             <Svg width={frameWidth} height={frameHeight} style={StyleSheet.absoluteFill}>
               <Defs>
                 <SvgLinearGradient id="frameBg" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor="#2B1A0E" />
-                  <Stop offset="1" stopColor="#120A04" />
+                  <Stop offset="0" stopColor={Colors.stout2} />
+                  <Stop offset="1" stopColor="#0E0C0A" />
                 </SvgLinearGradient>
                 <RadialGradient id="frameGlow" cx="50%" cy="42%" r="62%">
                   <Stop offset="0" stopColor={Colors.glow} stopOpacity={0.22} />
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
     flex: 1,
     // Fully opaque: the screen behind showing through made the transparent
     // sticker preview read as broken layout instead of an overlay.
-    backgroundColor: '#0E0803',
+    backgroundColor: '#0E0C0A',
     paddingTop: 64,
     paddingBottom: 40,
   },

@@ -4,13 +4,12 @@
  */
 
 export const Colors = {
-  // Approved flat-screen canvas; legacy screens keep their stout palette (DESIGN.md).
-  canvas: '#15120F',
-  // Backgrounds — dark stout palette
-  stout: '#1F1308',
-  stout2: '#2B1A0E',
-  stout3: '#3A2515',
-  border: '#5A3A20',
+  // Backgrounds — deep and nearly neutral, the ground of the pub page (DESIGN.md §2.1).
+  // Never pure black: on a warm-accented app that reads as a void.
+  stout: '#15120F',
+  stout2: '#1C1815',
+  stout3: '#262019',
+  border: '#3A322A',
 
   // Amber accent
   amber: '#E8A317',

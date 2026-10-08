@@ -321,7 +321,7 @@ export default function MyAddedPubsScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.canvas,
+    backgroundColor: Colors.stout,
     paddingHorizontal: Spacing.lg,
   },
   header: {
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     fontWeight: '700',
-    color: Colors.canvas,
+    color: Colors.stout,
     includeFontPadding: false,
   },
   pressed: { opacity: 0.65 },

@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: Spacing.lg,
-    backgroundColor: 'rgba(12, 8, 5, 0.72)',
+    backgroundColor: 'rgba(14, 12, 10, 0.72)',
   },
   sheet: {
     backgroundColor: Colors.stout2,
