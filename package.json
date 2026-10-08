@@ -48,6 +48,7 @@
     "country-to-currency": "^3.0.1",
     "decode-uri-component": "file:vendor/decode-uri-component",
     "expo": "~56.0.23",
+    "expo-alternate-app-icons": "8.0.0",
     "expo-apple-authentication": "~56.0.4",
     "expo-asset": "~56.0.13",
     "expo-audio": "~56.0.13",

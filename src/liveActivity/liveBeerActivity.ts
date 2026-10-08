@@ -20,6 +20,7 @@ import {
 import { useHomeTransitStore } from '@/stores/homeTransitStore';
 import { homeTransitForCurrentEvening } from '@/transit/homeTransitSync';
 import { waitForSettingsHydration, useSettingsStore } from '@/stores/settingsStore';
+import { palette } from '@/theme/palette';
 import {
   sessionPlaceContext,
   useTallyStore,
@@ -111,6 +112,7 @@ async function syncIos(props: BeerEveningLiveActivityProps | null): Promise<void
     props = {
       ...props,
       supportsInteractiveAdd: Number.isFinite(iosMajorVersion) && iosMajorVersion >= 17,
+      brownPalette: palette === 'brown',
     };
     const iconUri = await ensureLiveActivityIconUri();
     if (iconUri) props = { ...props, iconUri };

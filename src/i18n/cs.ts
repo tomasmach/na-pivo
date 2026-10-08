@@ -501,6 +501,16 @@ export const cs = {
       en: 'English',
       option: (name: string) => `Přepnout jazyk na ${name}`,
     },
+    appearanceSection: 'Vzhled',
+    appearance: {
+      gray: 'Šedá',
+      brown: 'Hnědá',
+      a11y: {
+        gray: 'Přepnout appku na šedou',
+        brown: 'Přepnout appku na hnědou',
+      },
+      brownNote: 'Hnědou už neudržuju. Neručím za to, že v ní budou další verze vypadat a fungovat správně.',
+    },
     locationPrivacy: 'Domov a průchod tour nechávám v telefonu. Plán hospod sdílím jen na tvůj pokyn. Historii polohy neukládám.',
     // Section group labels — one clear meaning per group.
     sections: {

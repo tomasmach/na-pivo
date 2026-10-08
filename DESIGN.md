@@ -11,13 +11,20 @@
 Celá appka leží na zemi stránky hospody. Stouty mají znovu hodnoty z §2.1:
 `stout` `#15120F`, `stout2` `#1C1815`, `stout3` `#262019`, `border` `#3A322A`.
 Jantar, pěna i texty zůstávají. Samostatný `Colors.canvas` zanikl, jeho
-obrazovky leží na `Colors.stout`. Ilustrace s neprůhledným pozadím (onboarding
-a starší slidy „Co je nového“), ikona appky, splash a Live Activity mají
+obrazovky leží na `Colors.stout`. Ikona appky, splash a Live Activity mají
 pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
-`#0E0C0A`. Hnědý zůstává jen web na na-pivo.cz. Jantar s nízkou alfou na
+`Colors.deep` (`#0E0C0A`). Hnědý zůstává jen web na na-pivo.cz. Jantar s nízkou alfou na
 šedé zemi vypadá olivově hnědě, proto klidové plochy nesou neutrální pěnu:
 sekundární tlačítko je `stout3` bez okraje (§6.2), medailonek pod ikonou
 `foam` 0,07. Jantarový nádech zůstává jen vybraným a varovným stavům.
+
+Hnědá zůstává jako neudržovaná volba v Nastavení → Vzhled
+(`src/theme/palette.ts`). Čte se synchronně při startu jako jazyk a přepnutí
+restartuje appku. Mění stouty, `deep`, Live Activity a na iOS i ikonu
+(`expo-alternate-app-icons`, alternativní ikona `Brown`). Android ikonu
+nemění, protože jeho alias nemá filtr `napivo://`. Splash zůstává šedý.
+Ilustrace mají průhledné pozadí a zrno z pěny s alfou ~3 %, takže sedí na
+obou zemích. Nové UI se navrhuje a ověřuje jen v šedé.
 
 ## Schválená obnova plochých seznamů (22. 9. 2026)
 
@@ -49,7 +56,7 @@ vzdálenost a město. Následuje výřez mapy 112 bodů s radiusem 16 a pinem
 uprostřed, klepnutí otevře velkou mapu nad stránkou. Pod mapou jsou nejvýš tři
 důvody jít (akce, hodnocení, piva za minulý týden) jako řádky s 36bodovou
 ikonou. Sekce Na čepu, Akce, Otevíračka a O hospodě oddělují tmavé pásy
-(`#0E0C0A`, 10 bodů, přes celou šířku), nadpisy jsou 18/700 v sentence case.
+(`Colors.deep`, 10 bodů, přes celou šířku), nadpisy jsou 18/700 v sentence case.
 Řádek „Zmapováno na N %“ otevírá dnešní mapovací panel beze změny. Dole je
 pevná lišta s jedinou jantarovou akcí „Doveď mě tam“ (48 bodů) a kulatým
 tlačítkem 48 bodů na `Colors.stout3`, které namíří kompas. Přejmenování,

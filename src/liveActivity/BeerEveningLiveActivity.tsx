@@ -76,6 +76,8 @@ export interface BeerEveningLiveActivityProps {
   supportsInteractiveAdd?: boolean;
   /** `file://` URI of the staged app icon in the app-group container. */
   iconUri?: string;
+  /** The earlier brown palette is picked in settings. */
+  brownPalette?: boolean;
   /** Tonight's last direct connection home; absent without home or outside PID. */
   homeTransitLabel?: string;
   /** Departure as epoch ms. The countdown runs natively, so it stays right while the app sleeps. */
@@ -102,9 +104,15 @@ const BeerEveningLiveActivity = (
   const accent = isDimmed ? '#A98E58' : '#FFB84D';
   const primaryText = isDimmed ? '#CFC5B3' : '#FFF7E8';
   const secondaryText = isDimmed ? '#817767' : '#C4AE8E';
-  const activityBackground = isDimmed ? '#090807' : '#15120F';
-  const raisedSurface = isDimmed ? '#1C1815' : '#262019';
-  const buttonText = '#15120F';
+  // Brown is the earlier palette, picked in settings; gray is the default.
+  const brown = props.brownPalette === true;
+  const activityBackground = brown
+    ? isDimmed ? '#080604' : '#150D06'
+    : isDimmed ? '#090807' : '#15120F';
+  const raisedSurface = brown
+    ? isDimmed ? '#17120C' : '#2E1C0D'
+    : isDimmed ? '#1C1815' : '#262019';
+  const buttonText = brown ? '#241404' : '#15120F';
   const counterDeepLink = 'napivo://beer';
   // Poured-beer gold gradient for the hero number; flat on the dimmed display.
   const countStyle:

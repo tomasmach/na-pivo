@@ -1504,7 +1504,7 @@ const styles = StyleSheet.create({
     height: 10,
     marginTop: Spacing.lg,
     marginHorizontal: -PAGE_PAD,
-    backgroundColor: '#0E0C0A',
+    backgroundColor: Colors.deep,
   },
   sectionHead: {
     marginTop: Spacing.lg,

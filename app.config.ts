@@ -128,6 +128,22 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: SPLASH_BACKGROUND,
       },
     ],
+    // The earlier brown icon, chosen together with the brown palette in
+    // settings (src/theme/switchPalette.ts). Native: needs a new build. Only
+    // iOS switches it; the Android alias stays disabled (see switchPalette).
+    [
+      'expo-alternate-app-icons',
+      [
+        {
+          name: 'Brown',
+          ios: './assets/images/icon-brown.png',
+          android: {
+            foregroundImage: './assets/images/icon-brown.png',
+            backgroundColor: '#1D1209',
+          },
+        },
+      ],
+    ],
     'expo-secure-store',
     // Sign in with Apple (iOS). Adds the com.apple.developer.applesignin
     // entitlement; requires enabling the capability on the App ID in the
