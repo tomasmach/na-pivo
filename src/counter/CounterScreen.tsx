@@ -1135,6 +1135,13 @@ function Tacek({
   const formBeerOnMenu =
     formMode === 'edit' && !!pub && !!formBeer && menu.some((b) => isSameBeerIdentity(b, formBeer));
 
+  /** The menu on screen now. The delete dialog confirms later, and a newer
+   *  backend menu may arrive meanwhile: the full-menu write must not drop it. */
+  const liveMenuRef = useRef({ cell, menu, historicalBeers });
+  useEffect(() => {
+    liveMenuRef.current = { cell, menu, historicalBeers };
+  }, [cell, historicalBeers, menu]);
+
   /** The contribute editor's "Smazat pivo" + "Uložit", one beer at a time: the
    *  same live full-menu write, queued so it survives a dead signal. It changes
    *  the menu for everyone, so it asks first. iOS cannot present the dialog over
@@ -1154,10 +1161,17 @@ function Tacek({
           text: t.counter.removeFromMenuConfirm,
           style: 'destructive',
           onPress: () => {
-            const nextMenu = menu.filter((b) => !isSameBeerIdentity(b, removed));
+            const live = liveMenuRef.current;
+            // Another place, or the beer is already gone: nothing to take off.
+            if (live.cell !== cell || !live.menu.some((b) => isSameBeerIdentity(b, removed))) return;
+            const nextMenu = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
             setOverride(cell, {
               beers: nextMenu,
-              historicalBeers: historicalBeersAfterMenuReplacement(menu, nextMenu, historicalBeers),
+              historicalBeers: historicalBeersAfterMenuReplacement(
+                live.menu,
+                nextMenu,
+                live.historicalBeers,
+              ),
             });
             void enqueuePubCommunity(
               buildCommunityEntry(
@@ -1177,7 +1191,7 @@ function Tacek({
         },
       ],
     }));
-  }, [cell, formBeer, historicalBeers, menu, openForm, pub, runAfterSheetClose, setOverride, showToast]);
+  }, [cell, formBeer, openForm, pub, runAfterSheetClose, setOverride, showToast]);
 
   // ── Pick sheet ──────────────────────────────────────────────────────────────
 

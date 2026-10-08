@@ -748,6 +748,36 @@ describe('CounterScreen removing a beer from the menu', () => {
     expect(enqueueDrink).not.toHaveBeenCalled();
   });
 
+  it('keeps a beer that reached the menu while the dialog was open', async () => {
+    useCommunityStore.setState({ overrides: { [CELL]: { beers: MENU, updatedAt: 1 } } });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    longPressRow(renderer, copy.a11y.counterCountBeer('Primátor 11°', `${formatVolume(500)} · ${copy.counter.price(55)}`));
+    act(() => lastProps(BeerFormModal).onRemove());
+    act(() => jest.advanceTimersByTime(300));
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+
+    // Someone adds Kozel to the menu before the user confirms.
+    const newer = [...MENU, { name: 'Kozel 11°', priceCzk: 48, volumeMl: 500 }];
+    act(() => {
+      useCommunityStore.setState({ overrides: { [CELL]: { beers: newer, updatedAt: 2 } } });
+    });
+    await act(async () => {
+      dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+      await Promise.resolve();
+    });
+
+    expect(useCommunityStore.getState().overrides[CELL].beers).toEqual([MENU[0], MENU[2], newer[3]]);
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Plzeň', price_czk: 62, volume_ml: 500 },
+        { name: 'Kozel 11°', price_czk: 48, volume_ml: 500 },
+      ],
+    });
+  });
+
   it('"Nechat" keeps the menu and brings the same edit form back', () => {
     useCommunityStore.setState({ overrides: { [CELL]: { beers: MENU, updatedAt: 1 } } });
     useNearbyPub.mockReturnValue(nearbyState());
