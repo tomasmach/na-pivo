@@ -1361,7 +1361,7 @@ function MappedRing({ pct }: { pct: number }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.canvas,
+    backgroundColor: Colors.stout,
   },
   nav: {
     height: 52,
@@ -1451,7 +1451,7 @@ const styles = StyleSheet.create({
     height: 30,
     paddingHorizontal: 10,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.canvas, 0.88),
+    backgroundColor: withAlpha(Colors.stout, 0.88),
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1504,7 +1504,7 @@ const styles = StyleSheet.create({
     height: 10,
     marginTop: Spacing.lg,
     marginHorizontal: -PAGE_PAD,
-    backgroundColor: '#0F0A05',
+    backgroundColor: '#0E0C0A',
   },
   sectionHead: {
     marginTop: Spacing.lg,
@@ -1642,7 +1642,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: PAGE_PAD,
     flexDirection: 'row',
     gap: 10,
-    backgroundColor: Colors.canvas,
+    backgroundColor: Colors.stout,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.08),
   },

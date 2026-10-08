@@ -1359,7 +1359,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   tileIconEmpty: {
     backgroundColor: withAlpha(Colors.mutedText, 0.14),
@@ -1478,8 +1478,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
   },
   detailActionRowAccent: {
-    borderColor: withAlpha(Colors.amber, 0.3),
-    backgroundColor: withAlpha(Colors.amber, 0.06),
+    borderColor: 'transparent',
+    backgroundColor: Colors.stout3,
   },
   detailActionLabel: {
     flex: 1,
@@ -1558,9 +1558,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
+    borderColor: withAlpha(Colors.foam, 0.12),
   },
   renameTitle: {
     fontFamily: Fonts.display.extrabold,

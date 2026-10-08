@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.border, 0.6),
   },
   stripRapidBorder: {
-    borderColor: withAlpha(Colors.amber, 0.42),
+    borderColor: withAlpha(Colors.foam, 0.14),
   },
   stripText: {
     flex: 1,

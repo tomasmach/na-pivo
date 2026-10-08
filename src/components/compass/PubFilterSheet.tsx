@@ -852,8 +852,8 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: Radius.medium,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.24),
-    backgroundColor: withAlpha(Colors.amber, 0.07),
+    borderColor: withAlpha(Colors.foam, 0.14),
+    backgroundColor: withAlpha(Colors.foam, 0.06),
   },
   rotatingFilterHintText: {
     flex: 1,

@@ -315,8 +315,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Spacing.md,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.48),
-    backgroundColor: withAlpha(Colors.amber, 0.14),
+    borderColor: withAlpha(Colors.foam, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   title: {
     fontFamily: Fonts.display.extrabold,

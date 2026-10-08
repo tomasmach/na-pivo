@@ -229,9 +229,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.1),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.32),
+    borderColor: withAlpha(Colors.foam, 0.12),
     marginBottom: Spacing.xl,
   },
   heroRing: {

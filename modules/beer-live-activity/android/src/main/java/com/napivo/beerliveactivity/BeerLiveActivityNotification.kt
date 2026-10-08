@@ -51,7 +51,7 @@ internal object BeerLiveActivityNotification {
   // tally on a dark, toasted-malt surface.
   private const val AMBER = 0xFFFFB84D.toInt()
   private const val AMBER_TRACK = 0x30FFB84D
-  private const val TILE_SURFACE = 0xFF2E1C0D.toInt()
+  private const val TILE_SURFACE = 0xFF262019.toInt()
   // The progress track fills like a glass over the course of an evening. A full
   // bar reads as "a proper night out" rather than a hard limit on counting.
   private const val PROGRESS_TOTAL = 100

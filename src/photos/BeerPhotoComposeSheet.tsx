@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.13),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   contestIconWellActive: {
     backgroundColor: Colors.amber,

@@ -8,7 +8,7 @@ const BACKGROUND_LOCATION_REASON =
   'Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv, i když je aplikace zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii neukládáme.';
 
 const LOCAL_BACKEND_MODES = new Set(['local', 'auto']);
-const SPLASH_BACKGROUND = '#1f1007';
+const SPLASH_BACKGROUND = '#15120F';
 const SKIP_IOS_WIDGETS = process.env.NA_PIVO_SKIP_IOS_WIDGETS === '1';
 
 // Reversed iOS OAuth client id for the native Google Sign-In redirect, e.g.
