@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.1),
   },
   fallback: {
-    backgroundColor: withAlpha(Colors.amber, 0.16),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     alignItems: 'center',
     justifyContent: 'center',
   },

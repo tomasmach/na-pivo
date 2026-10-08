@@ -107,8 +107,8 @@ const styles = StyleSheet.create({
   },
   secondaryAction: {
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.22),
-    backgroundColor: withAlpha(Colors.amber, 0.08),
+    borderColor: 'transparent',
+    backgroundColor: Colors.stout3,
   },
   tertiaryAction: {
     flex: 0,

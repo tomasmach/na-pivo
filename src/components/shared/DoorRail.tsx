@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   // Sits on the medallion's shoulder. Amber fill is allowed here for the same
   // reason the nudge strip's confirm pill is: it is tiny, and it only exists

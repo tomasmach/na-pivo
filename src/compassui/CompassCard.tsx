@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   // The 18pt Baloo name line's room, held empty while the first search runs.
   namePlaceholder: {

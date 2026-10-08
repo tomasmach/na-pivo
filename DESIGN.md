@@ -14,7 +14,10 @@ Jantar, pěna i texty zůstávají. Samostatný `Colors.canvas` zanikl, jeho
 obrazovky leží na `Colors.stout`. Ilustrace s neprůhledným pozadím (onboarding
 a starší slidy „Co je nového“), ikona appky, splash a Live Activity mají
 pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
-`#0E0C0A`. Hnědý zůstává jen web na na-pivo.cz.
+`#0E0C0A`. Hnědý zůstává jen web na na-pivo.cz. Jantar s nízkou alfou na
+šedé zemi vypadá olivově hnědě, proto klidové plochy nesou neutrální pěnu:
+sekundární tlačítko je `stout3` bez okraje (§6.2), medailonek pod ikonou
+`foam` 0,07. Jantarový nádech zůstává jen vybraným a varovným stavům.
 
 ## Schválená obnova plochých seznamů (22. 9. 2026)
 
@@ -403,7 +406,8 @@ plocha znamená velký plný jantarový panel nebo tlačítko.
 | Okraj plovoucí pilulky / live baru | `withAlpha(Colors.foam, 0.14)` |
 | Grabber sheetu | `withAlpha(Colors.foam, 0.22–0.26)` |
 | Placeholder v poli (`fieldHint`) | `withAlpha(Colors.foam, 0.55)` |
-| Medailonek pod ikonou / tint skla / podklad varovného pruhu | `withAlpha(Colors.amber, 0.10–0.12)` |
+| Medailonek pod ikonou, pruh s tipem | `withAlpha(Colors.foam, 0.06–0.07)` |
+| Tint skla / podklad varovného pruhu / vybraný stav | `withAlpha(Colors.amber, 0.10–0.12)` |
 | Okraj aktivního filtračního chipu | `withAlpha(Colors.amber, 0.5)` |
 | Aktivní kus baseline (`UnderlineTabs`) | `withAlpha(Colors.amber, 0.85)` |
 | Fallback plovoucí pilulky pod sklem | `withAlpha(Colors.stout, 0.92)` / `withAlpha(Colors.stout2, 0.96)` |

@@ -31,7 +31,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
@@ -462,8 +462,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   avatarBtnPrimary: {
-    backgroundColor: withAlpha(Colors.amber, 0.14),
-    borderColor: withAlpha(Colors.amber, 0.4),
+    backgroundColor: Colors.stout3,
+    borderColor: 'transparent',
   },
   avatarBtnPrimaryText: {
     fontFamily: Fonts.ui.semibold,

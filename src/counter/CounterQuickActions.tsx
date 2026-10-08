@@ -17,7 +17,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MapPinnedIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 
@@ -100,8 +100,8 @@ const styles = StyleSheet.create({
     height: HitArea.min,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.18),
-    backgroundColor: withAlpha(Colors.amber, 0.06),
+    borderColor: 'transparent',
+    backgroundColor: Colors.stout3,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

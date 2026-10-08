@@ -285,9 +285,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: Radius.medium,
-    backgroundColor: withAlpha(Colors.amber, 0.08),
+    backgroundColor: withAlpha(Colors.foam, 0.06),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.24),
+    borderColor: withAlpha(Colors.foam, 0.14),
   },
   rotatingHintText: {
     flex: 1,
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   actionLabel: {
     flex: 1,

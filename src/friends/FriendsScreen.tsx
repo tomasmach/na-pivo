@@ -1700,9 +1700,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.06),
+    backgroundColor: Colors.stout3,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.18),
+    borderColor: 'transparent',
   },
   moreFeedLabel: {
     fontFamily: Fonts.display.bold,

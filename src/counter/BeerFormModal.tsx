@@ -933,12 +933,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.3),
-    backgroundColor: withAlpha(Colors.amber, 0.06),
+    borderColor: 'transparent',
+    backgroundColor: Colors.stout3,
   },
   scanShortcutPressed: {
     transform: [{ scale: 0.98 }],
-    backgroundColor: withAlpha(Colors.amber, 0.14),
+    backgroundColor: withAlpha(Colors.foam, 0.12),
   },
   scanShortcutText: {
     fontFamily: Fonts.ui.semibold,

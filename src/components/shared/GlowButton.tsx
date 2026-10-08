@@ -125,9 +125,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   secondaryBg: {
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: Colors.stout3,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.36),
+    borderColor: 'transparent',
   },
   label: {
     fontFamily: Fonts.display.extrabold,
