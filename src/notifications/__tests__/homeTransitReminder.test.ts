@@ -157,3 +157,12 @@ it('keeps one reminder when its bookkeeping cannot be saved', async () => {
   expect(identifiers).toEqual([REMINDER_ID]);
   expect(mockCancelScheduledNotificationAsync).toHaveBeenLastCalledWith(REMINDER_ID);
 });
+
+it('cancels a reminder an older build planned under a random id', async () => {
+  await AsyncStorage.setItem('na-pivo-home-transit-reminder', JSON.stringify({ notificationId: 'random-1', lookupKey: 'old', departsAtMs: NOW }));
+  useSettingsStore.setState({ homeTransitReminderEnabled: false });
+  await syncHomeTransitReminder();
+
+  expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith('random-1');
+  expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith(REMINDER_ID);
+});

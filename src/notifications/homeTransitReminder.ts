@@ -80,10 +80,16 @@ async function writeState(state: ReminderState | null): Promise<void> {
 }
 
 async function cancelExisting(): Promise<void> {
-  try {
-    await Notifications?.cancelScheduledNotificationAsync(REMINDER_ID);
-  } catch {
-    // Already delivered or gone; the bookkeeping still has to go.
+  const ids = [REMINDER_ID];
+  // Test builds before the fixed identifier stored a random one.
+  const legacyId = (await readState())?.notificationId;
+  if (legacyId && legacyId !== REMINDER_ID) ids.push(legacyId);
+  for (const id of ids) {
+    try {
+      await Notifications?.cancelScheduledNotificationAsync(id);
+    } catch {
+      // Already delivered or gone; the bookkeeping still has to go.
+    }
   }
   await writeState(null);
 }
