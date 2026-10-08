@@ -2341,7 +2341,7 @@ export const en: Strings = {
       slide2Next: "There's more",
       slide3Title: 'Your crew at the table',
       slide3Body:
-        'Been in the same pub for 15 minutes? Both log it, then tap “Add people at your table” in the Crew tab. You can also ping just the friends you pick.',
+        "Both log the pub you're in, and after 15 minutes tap “Add people at your table” in the Crew tab. You can also ping just the friends you pick.",
       slide3Next: 'One more thing',
       slide4Title: 'Last ride home',
       slide4Body:

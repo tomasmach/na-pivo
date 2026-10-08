@@ -130,15 +130,13 @@ interface Pager {
   asksForReview: boolean;
 }
 
-const APOLOGY_PAGER: Pager = {
-  slides: APOLOGY_SLIDES,
-  skip: apology.skip,
-  done: apology.slide3Done,
-  asksForReview: true,
-};
-
 const PAGERS: Record<string, Pager> = {
-  '2.1.0': APOLOGY_PAGER,
+  '2.1.0': {
+    slides: APOLOGY_SLIDES,
+    skip: apology.skip,
+    done: apology.slide3Done,
+    asksForReview: true,
+  },
   '2.1.1': {
     slides: FIXED_211_SLIDES,
     skip: fixed211.skip,
@@ -190,7 +188,7 @@ export function ReleasePagerModal({
 }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const pager = PAGERS[version] ?? APOLOGY_PAGER;
+  const pager = PAGERS[version];
   const { slides, asksForReview } = pager;
   const lastIndex = slides.length - 1;
 

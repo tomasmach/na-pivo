@@ -2946,7 +2946,7 @@ export const cs = {
       slide2Next: 'Další novinka',
       slide3Title: 'Parta u stolu',
       slide3Body:
-        'Sedíte spolu v hospodě aspoň čtvrt hodiny? Zapište si ji oba a v Partě klepněte na „Přidej lidi od stolu“. A cinknout teď můžeš i jen pár vybraným kámošům.',
+        'Zapište si oba hospodu, kde sedíte, a po čtvrt hodině klepněte v Partě na „Přidej lidi od stolu“. A cinknout teď můžeš i jen pár vybraným kámošům.',
       slide3Next: 'Ještě jedna věc',
       slide4Title: 'Poslední spoj domů',
       slide4Body:
