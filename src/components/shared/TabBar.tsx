@@ -282,12 +282,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // No lineHeight: Baloo 2's natural line box (1.6× size) is what centres the
-  // digit. A tighter one makes iOS clip the space above the glyph and lift the
-  // digit ~2.5 pt towards the top of the pill.
+  // Baloo 2 needs a 17.6 pt line box at this size, more than the 14 pt inside
+  // the border. A shorter lineHeight makes iOS lift the digit ~2.5 pt, and a
+  // text clamped to 14 pt drops it ~1.5 pt. A fixed 18 pt box, centred over the
+  // whole pill, keeps the digit within 0.3 pt of the middle on both platforms.
   badgeCount: {
     fontFamily: Fonts.display.bold,
     fontSize: 11,
+    lineHeight: 18,
+    height: 18,
     color: Colors.stout,
     includeFontPadding: false,
   },
