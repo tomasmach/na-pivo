@@ -1,11 +1,11 @@
 /**
- * Full-screen three-card release note for bundled updates (see
+ * Full-screen card release note for bundled updates (see
  * src/data/localReleaseNote.ts). Same bones as the
  * onboarding pager in app/onboarding.tsx: stout background, illustration on
  * top, Baloo title, dots in the header, one amber CTA whose label says what
- * the tap does. The last card offers to open the store rating form; both
- * buttons there dismiss the note so it never shows twice. The 2.1.1 finale
- * simply dismisses without opening the store.
+ * the tap does. The 2.1.0 apology's last card offers to open the store rating
+ * form; both buttons there dismiss the note so it never shows twice. Later
+ * finales simply dismiss without opening the store.
  */
 
 import React, { useCallback, useRef, useState } from 'react';
@@ -41,6 +41,7 @@ interface Slide {
 
 const apology = t.whatsNew.apology;
 const fixed211 = t.whatsNew.fixed211;
+const v220 = t.whatsNew.v220;
 
 const APOLOGY_SLIDES: Slide[] = [
   {
@@ -90,6 +91,63 @@ const FIXED_211_SLIDES: Slide[] = [
   },
 ];
 
+const V220_SLIDES: Slide[] = [
+  {
+    key: 'tour',
+    title: v220.slide1Title,
+    body: v220.slide1Body,
+    next: v220.slide1Next,
+    image: require('../../../assets/images/whats-new/tour-220.png'),
+  },
+  {
+    key: 'pub-page',
+    title: v220.slide2Title,
+    body: v220.slide2Body,
+    next: v220.slide2Next,
+    image: require('../../../assets/images/whats-new/pub-page-220.png'),
+  },
+  {
+    key: 'table',
+    title: v220.slide3Title,
+    body: v220.slide3Body,
+    next: v220.slide3Next,
+    image: require('../../../assets/images/whats-new/table-220.png'),
+  },
+  {
+    key: 'home-ride',
+    title: v220.slide4Title,
+    body: v220.slide4Body,
+    next: v220.slide4Done,
+    image: require('../../../assets/images/whats-new/home-ride-220.png'),
+  },
+];
+
+interface Pager {
+  slides: Slide[];
+  skip: string;
+  done: string;
+  /** The last card's primary button opens the store rating form. */
+  asksForReview: boolean;
+}
+
+const APOLOGY_PAGER: Pager = {
+  slides: APOLOGY_SLIDES,
+  skip: apology.skip,
+  done: apology.slide3Done,
+  asksForReview: true,
+};
+
+const PAGERS: Record<string, Pager> = {
+  '2.1.0': APOLOGY_PAGER,
+  '2.1.1': {
+    slides: FIXED_211_SLIDES,
+    skip: fixed211.skip,
+    done: fixed211.slide3Done,
+    asksForReview: false,
+  },
+  '2.2.0': { slides: V220_SLIDES, skip: v220.skip, done: v220.slide4Done, asksForReview: false },
+};
+
 function PagerSlide({ item, width }: { item: Slide; width: number }) {
   const [artHeight, setArtHeight] = useState(0);
   const side =
@@ -132,10 +190,9 @@ export function ReleasePagerModal({
 }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const is211 = version === '2.1.1';
-  const slides = is211 ? FIXED_211_SLIDES : APOLOGY_SLIDES;
+  const pager = PAGERS[version] ?? APOLOGY_PAGER;
+  const { slides, asksForReview } = pager;
   const lastIndex = slides.length - 1;
-  const copy = is211 ? fixed211 : apology;
 
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
@@ -151,7 +208,7 @@ export function ReleasePagerModal({
   const handlePrimary = useCallback(() => {
     if (indexRef.current >= lastIndex) {
       finish();
-      if (!is211) {
+      if (asksForReview) {
         void openStoreReview().catch(() => {
           // The store app is missing or refused the URL; the note is done anyway.
         });
@@ -159,7 +216,7 @@ export function ReleasePagerModal({
       return;
     }
     listRef.current?.scrollToIndex({ index: indexRef.current + 1, animated: true });
-  }, [finish, is211, lastIndex]);
+  }, [asksForReview, finish, lastIndex]);
 
   const [viewabilityConfig] = useState(() => ({ itemVisiblePercentThreshold: 60 }));
   const [onViewableItemsChanged] = useState(
@@ -179,8 +236,8 @@ export function ReleasePagerModal({
   );
 
   const isLast = index === lastIndex;
-  const primaryLabel = slides[index]?.next ?? copy.slide3Done;
-  const secondaryLabel = isLast ? copy.slide3Done : copy.skip;
+  const primaryLabel = slides[index]?.next ?? pager.done;
+  const secondaryLabel = isLast ? pager.done : pager.skip;
 
   return (
     <Modal
@@ -241,7 +298,7 @@ export function ReleasePagerModal({
         </View>
 
         <View style={styles.secondaryCtaSlot}>
-          {is211 && isLast ? null : (
+          {!asksForReview && isLast ? null : (
             <Pressable
               onPress={finish}
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
