@@ -28,7 +28,9 @@ export function usePubVisitSummary(pub: Pub | null, pubKey: string): VisitedPubS
   const diary = useAccountStore((state) =>
     state.diarySnapshot?.accountId === state.session?.accountId ? state.diarySnapshot : null,
   );
+  const accountId = useAccountStore((state) => state.session?.accountId);
 
+  // Runs again for another account: the boundary hid the previous history, this one loads its own.
   useEffect(() => {
     let active = true;
     const generation = visitsSnapshotGeneration();
@@ -37,13 +39,15 @@ export function usePubVisitSummary(pub: Pub | null, pubKey: string): VisitedPubS
       setCachedVisits([]);
     });
     void loadVisitsSnapshot().then((visits) => {
-      if (active && generation === visitsSnapshotGeneration()) setCachedVisits(visits);
+      if (!active || generation !== visitsSnapshotGeneration()) return;
+      setCachedVisits(visits);
+      setPrivateDataAvailable(true);
     });
     return () => {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [accountId]);
 
   return useMemo(() => {
     if (!pub || !privateDataAvailable) return null;
