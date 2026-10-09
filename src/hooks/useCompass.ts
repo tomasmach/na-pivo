@@ -714,12 +714,17 @@ export function useCompass(
         });
     };
 
-    const settleMs = flippingRef.current
-      ? lastPickAtRef.current + HOURS_SETTLE_MS - Date.now()
-      : 0;
+    // Re-check when the timer fires: a reroll can land on this same pub again,
+    // which keeps flipping going without re-running this effect.
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
-    if (settleMs > 0) settleTimer = setTimeout(lookUpHours, settleMs);
-    else lookUpHours();
+    const lookUpWhenSettled = () => {
+      const settleMs = flippingRef.current
+        ? lastPickAtRef.current + HOURS_SETTLE_MS - Date.now()
+        : 0;
+      if (settleMs > 0) settleTimer = setTimeout(lookUpWhenSettled, settleMs);
+      else lookUpHours();
+    };
+    lookUpWhenSettled();
 
     return () => {
       clearTimeout(settleTimer);

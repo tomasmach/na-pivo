@@ -5,7 +5,7 @@
  * from visible copy, accessibility labels, route params or user-provided data.
  */
 
-import { trackClientEvent } from './telemetryClient';
+import { telemetrySessionGeneration, trackClientEvent } from './telemetryClient';
 
 export const UI_INTERACTION_TARGETS = [
   'tab_compass',
@@ -168,7 +168,8 @@ export function trackRepeatedUiInteraction(
   target: UiInteractionTarget,
   action: UiInteractionAction = 'tap',
 ): void {
-  const key = `${target}:${action}`;
+  const generation = telemetrySessionGeneration();
+  const key = `${generation}:${target}:${action}`;
   const pending = repeatedInteractionCounts.get(key);
   if (pending !== undefined) {
     repeatedInteractionCounts.set(key, pending + 1);
@@ -178,6 +179,9 @@ export function trackRepeatedUiInteraction(
   setTimeout(() => {
     const count = repeatedInteractionCounts.get(key) ?? 1;
     repeatedInteractionCounts.delete(key);
+    // The account changed within the window: drop these taps rather than
+    // credit them to the account that is signed in now.
+    if (telemetrySessionGeneration() !== generation) return;
     void trackClientEvent({
       event: 'ui_interaction',
       context: { target, action, count },

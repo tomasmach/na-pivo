@@ -111,13 +111,22 @@ const UUID_RE =
 const LONG_TOKEN_RE = /\b[A-Za-z0-9._~+/=-]{32,}\b/g;
 
 let sessionToken: string | null = null;
+let sessionGeneration = 0;
 let installed = false;
 let sentThisSession = 0;
 let productSentThisSession = 0;
 const messageRepeats = new Map<string, number>();
 
 export function setTelemetrySession(session: AccountSession | null): void {
-  sessionToken = session?.token ?? null;
+  const token = session?.token ?? null;
+  if (token !== sessionToken) sessionGeneration += 1;
+  sessionToken = token;
+}
+
+/** Changes whenever the telemetry account changes, so batched events are never
+ *  sent under a different account than the one that produced them. */
+export function telemetrySessionGeneration(): number {
+  return sessionGeneration;
 }
 
 export function resetTelemetryForTests(): void {

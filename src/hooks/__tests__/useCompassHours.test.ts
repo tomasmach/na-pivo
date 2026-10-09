@@ -595,6 +595,43 @@ describe('useCompass — opening hours enrichment', () => {
       expect(hook.result.pub?.hoursStatus).toBe('ok');
     });
 
+    it('keeps waiting when a reroll lands on the pub that is already selected', async () => {
+      useSettingsStore.setState({ mode: 'surprise', surpriseSeed: 17 });
+      const bySeed: Record<number, Pub> = { 17: PUBS[0], 18: PUBS[1], 19: PUBS[2], 20: PUBS[2] };
+      (findRandomPubInRadius as jest.Mock).mockImplementation(
+        ({ seed }: { seed: number }) => bySeed[seed] ?? null,
+      );
+      const hook = renderCompassHook();
+      await flush();
+
+      async function rerollAndWait(ms: number) {
+        act(() => {
+          hook.result.reroll();
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(ms);
+          await Promise.resolve();
+        });
+        await flush();
+      }
+
+      await rerollAndWait(300); // t=0: PUBS[1], a lone pick → looked up at once
+      expect(fetchPubHours).toHaveBeenCalledTimes(2);
+      await rerollAndWait(500); // t=300: PUBS[2] while flipping → due at t=900
+      await rerollAndWait(200); // t=800: PUBS[2] again → must now wait until t=1400
+      expect(hook.result.pub?.id).toBe(PUBS[2].id);
+      expect(fetchPubHours).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        jest.advanceTimersByTime(400);
+        await Promise.resolve();
+      });
+      await flush();
+      expect(fetchPubHours).toHaveBeenCalledTimes(3);
+      expect((fetchPubHours as jest.Mock).mock.calls[2][0]).toEqual([PUBS[2]]);
+      expect(hook.result.pub?.hoursStatus).toBe('ok');
+    });
+
     it('shows loading for a pub flipped past without requesting its hours', async () => {
       const hook = renderCompassHook();
       await flush();

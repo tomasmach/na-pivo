@@ -1,7 +1,8 @@
-import { trackClientEvent } from '../telemetryClient';
+import { telemetrySessionGeneration, trackClientEvent } from '../telemetryClient';
 import { trackRepeatedUiInteraction, trackUiInteraction } from '../uxTelemetry';
 
 jest.mock('../telemetryClient', () => ({
+  telemetrySessionGeneration: jest.fn(() => 0),
   trackClientEvent: jest.fn(async () => undefined),
 }));
 
@@ -49,6 +50,30 @@ it('folds a burst of repeated taps into one event per target with the tap count'
       context: { target: 'compass_skip', action: 'tap', count: 1 },
     });
   } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('drops taps from an account that signed out before the window closed', () => {
+  const generation = telemetrySessionGeneration as jest.MockedFunction<
+    typeof telemetrySessionGeneration
+  >;
+  jest.useFakeTimers();
+  try {
+    generation.mockReturnValue(0);
+    trackRepeatedUiInteraction('compass_skip');
+    trackRepeatedUiInteraction('compass_skip');
+    generation.mockReturnValue(1);
+    trackRepeatedUiInteraction('compass_skip');
+
+    jest.advanceTimersByTime(5_000);
+    expect(mockTrackClientEvent).toHaveBeenCalledTimes(1);
+    expect(mockTrackClientEvent).toHaveBeenCalledWith({
+      event: 'ui_interaction',
+      context: { target: 'compass_skip', action: 'tap', count: 1 },
+    });
+  } finally {
+    generation.mockReturnValue(0);
     jest.useRealTimers();
   }
 });
