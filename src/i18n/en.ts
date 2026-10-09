@@ -2049,6 +2049,7 @@ export const en: Strings = {
       shot: 'Name, e.g. Slivovice',
     })[type],
     editModalTitle: 'Edit the price',
+    menuBeerEditPrice: 'Edit the price',
     removeFromMenu: 'Delete from the menu',
     removeFromMenuTitle: 'Delete from the menu?',
     removeFromMenuBody: (name: string) =>
@@ -2702,7 +2703,7 @@ export const en: Strings = {
     `Add ${name} for ${price}`,
     counterCountBeerNoPrice: (name: string) =>
     `Add ${name}, enter the price first`,
-    counterEditBeer: (name: string) => `Edit the price of ${name}`,
+    counterBeerOptions: (name: string) => `Options for ${name}`,
     counterRemoveBeer: (name: string) => `Remove the last ${name}`,
     counterAddBeer: 'Add a new beer',
     counterRequestLocation: 'Allow location',

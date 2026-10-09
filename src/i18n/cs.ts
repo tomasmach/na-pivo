@@ -2565,7 +2565,8 @@ export const cs = {
         shot: 'Název, např. Slivovice',
       })[type],
     editModalTitle: 'Uprav cenu',
-    // Long-press edit of a menu beer can take it off the pub's shared menu.
+    // Options of one menu beer (⋯ / long press in the counter, a row on the pub page).
+    menuBeerEditPrice: 'Upravit cenu',
     removeFromMenu: 'Smazat z lístku',
     removeFromMenuTitle: 'Smazat z lístku?',
     removeFromMenuBody: (name: string) =>
@@ -3338,7 +3339,7 @@ export const cs = {
       `Připsat ${name} za ${price}`,
     counterCountBeerNoPrice: (name: string) =>
       `Připsat ${name}, nejdřív zadej cenu`,
-    counterEditBeer: (name: string) => `Upravit cenu u ${name}`,
+    counterBeerOptions: (name: string) => `Možnosti pro ${name}`,
     counterRemoveBeer: (name: string) => `Odebrat poslední ${name}`,
     counterAddBeer: 'Přidat nové pivo',
     counterRequestLocation: 'Povolit polohu',

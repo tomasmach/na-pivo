@@ -1,11 +1,13 @@
 /**
  * "Co si dáš?" — the counter's add sheet.
  *
- * The one design rule this file enforces: this sheet ONLY adds. There is no
- * minus, no remove, no close-the-evening anywhere in it — removing lives in
- * the "Tvůj účet" receipt sheet. It is also the only place in the app that
- * offers "add a new beer" while counting. Purely presentational: rows in,
- * callbacks out; the parent owns all counting logic.
+ * The one design rule this file enforces: this sheet only adds to tonight.
+ * There is no minus, no remove, no close-the-evening anywhere in it — taking a
+ * drink back lives in the "Tvůj účet" receipt sheet. In a pub each row also
+ * carries a ⋯ button (and a long press) for the pub's menu options: fix the
+ * price, or take a wrong beer off the menu. It is also the only place in the
+ * app that offers "add a new beer" while counting. Purely presentational: rows
+ * in, callbacks out; the parent owns all counting logic.
  */
 
 import React from 'react';
@@ -14,10 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { t } from '@/i18n';
-import { CupSodaIcon, PlusIcon, RefreshCwIcon, XIcon } from '@/components/shared/IconGlyph';
+import { CupSodaIcon, EllipsisIcon, PlusIcon, RefreshCwIcon, XIcon } from '@/components/shared/IconGlyph';
 
 export interface DrinkPickRow {
   /** Stable identity key. */
@@ -38,7 +40,7 @@ export function DrinkPickSheet({
   tonightRows,
   menuRows,
   onCountRow,
-  onEditRow,
+  onRowActions,
   onAddBeer,
   onAddOther,
   onClose,
@@ -52,8 +54,8 @@ export function DrinkPickSheet({
   /** The pub's community menu (empty outside a pub). */
   menuRows: DrinkPickRow[];
   onCountRow: (row: DrinkPickRow) => void;
-  /** Long-press, pub only. */
-  onEditRow: (row: DrinkPickRow) => void;
+  /** The row's ⋯ button or a long press, pub only. */
+  onRowActions: (row: DrinkPickRow) => void;
   onAddBeer: () => void;
   onAddOther: () => void;
   onClose: () => void;
@@ -67,7 +69,7 @@ export function DrinkPickSheet({
     <Pressable
       key={row.key}
       onPress={() => onCountRow(row)}
-      onLongPress={isPub ? () => onEditRow(row) : undefined}
+      onLongPress={isPub ? () => onRowActions(row) : undefined}
       delayLongPress={300}
       style={({ pressed }) => [
         styles.row,
@@ -80,9 +82,6 @@ export function DrinkPickSheet({
           ? t.a11y.counterCountBeer(row.name, row.meta)
           : t.a11y.counterCountBeerNoPrice(row.name)
       }
-      // The long-press edit is invisible otherwise — a screen reader user would
-      // never learn the pub's price can be fixed from here.
-      accessibilityHint={isPub ? t.a11y.counterEditBeer(row.name) : undefined}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -96,6 +95,17 @@ export function DrinkPickSheet({
         <Text style={styles.rowBadge} maxFontSizeMultiplier={FontScaleCap.display}>
           {t.counter.perBeerCount(row.count)}
         </Text>
+      ) : null}
+      {isPub ? (
+        <Pressable
+          onPress={() => onRowActions(row)}
+          hitSlop={{ top: 6, bottom: 6 }}
+          style={({ pressed }) => [styles.rowActions, pressed && styles.rowPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={t.a11y.counterBeerOptions(row.name)}
+        >
+          <EllipsisIcon size={20} color={Colors.mutedText} />
+        </Pressable>
       ) : null}
     </Pressable>
   );
@@ -345,6 +355,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: 2,
+  },
+  // The glyph lines up with the sheet's right edge; the hit area spills left.
+  rowActions: {
+    width: HitArea.min,
+    height: HitArea.min,
+    marginRight: -12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   rowBadge: {
     fontFamily: Fonts.display.bold,

@@ -2,7 +2,7 @@
  * One modal used for the app's beer-entry flows:
  *   • add a brand-new beer (name + price + volume),
  *   • prompt for a missing price on a menu beer (price + volume; name locked),
- *   • edit the price of a menu beer (price + volume; name locked) or take it off the menu,
+ *   • edit the price of a menu beer (price + volume; name locked),
  *   • add or edit a pub-menu row from ContributeScreen (name unlocked, price optional).
  *
  * Mirrors the ContributeScreen beer-entry precedent: name max 80, number-pad
@@ -97,12 +97,6 @@ function parseCustomMl(text: string, drinkType: DrinkType): number | undefined {
 
 export type BeerFormMode = 'add' | 'price' | 'edit' | 'menu';
 
-/** The price and volume typed so far, handed over when the row is removed. */
-export interface BeerFormDraft {
-  priceCzk?: number;
-  volumeMl?: number;
-}
-
 export interface BeerFormResult {
   drinkType: DrinkType;
   name: string;
@@ -133,11 +127,9 @@ interface BeerFormModalProps {
   submitLabelOverride?: string;
   /** 'add' mode only: shows the "vyfoť celý lístek" shortcut into the AI menu scan. */
   onScanMenu?: () => void;
-  /** Remove the current row from the pub's menu: the draft menu in menu mode,
-   *  the live menu from the counter's edit mode. */
-  onRemove?: (draft: BeerFormDraft) => void;
-  /** Visible label of the remove action (default "Smazat pivo"). */
-  removeLabel?: string;
+  /** Menu mode only: remove this row from the contribute editor's draft menu.
+   *  The counter's price edit never deletes; its menu options do. */
+  onRemove?: () => void;
   /** Menu mode only: add a 0,3 l sibling directly below this row. */
   onAddSmallVariant?: () => void;
   canAddSmallVariant?: boolean;
@@ -168,7 +160,6 @@ export function BeerFormModal({
   submitLabelOverride,
   onScanMenu,
   onRemove,
-  removeLabel,
   onAddSmallVariant,
   canAddSmallVariant = false,
   notice,
@@ -198,7 +189,6 @@ export function BeerFormModal({
           submitLabelOverride={submitLabelOverride}
           onScanMenu={onScanMenu}
           onRemove={onRemove}
-          removeLabel={removeLabel}
           onAddSmallVariant={onAddSmallVariant}
           canAddSmallVariant={canAddSmallVariant}
           notice={notice}
@@ -221,8 +211,7 @@ interface BeerFormBodyProps {
   titleOverride?: string;
   submitLabelOverride?: string;
   onScanMenu?: () => void;
-  onRemove?: (draft: BeerFormDraft) => void;
-  removeLabel?: string;
+  onRemove?: () => void;
   onAddSmallVariant?: () => void;
   canAddSmallVariant: boolean;
   notice?: string;
@@ -242,7 +231,6 @@ function BeerFormBody({
   submitLabelOverride,
   onScanMenu,
   onRemove,
-  removeLabel,
   onAddSmallVariant,
   canAddSmallVariant,
   notice,
@@ -741,22 +729,17 @@ function BeerFormBody({
                 ) : null}
                 {onRemove ? (
                   <Pressable
-                    onPress={() =>
-                      onRemove({
-                        ...(typeof priceCzk === 'number' ? { priceCzk } : {}),
-                        ...(typeof volumeMl === 'number' ? { volumeMl } : {}),
-                      })
-                    }
+                    onPress={onRemove}
                     style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
                     accessibilityRole="button"
-                    accessibilityLabel={removeLabel ?? t.a11y.contributeRemoveBeer}
+                    accessibilityLabel={t.a11y.contributeRemoveBeer}
                   >
                     <Trash2Icon size={16} color={Colors.mutedText} />
                     <Text
                       style={styles.menuActionMuted}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {removeLabel ?? t.contribute.removeBeer}
+                      {t.contribute.removeBeer}
                     </Text>
                   </Pressable>
                 ) : null}
