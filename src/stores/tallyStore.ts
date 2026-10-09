@@ -184,6 +184,9 @@ interface TallyState {
   removeDrinkFromSession: (startedAt: string, drinkId: string) => RemovedDrinkResult | null;
   /** Rename one logged beer in the selected evening. Used for typo fixes. */
   updateDrinkNameInSession: (startedAt: string, drinkId: string, beerName: string) => boolean;
+  /** Take the server's beer names, by drink ID, for drinks still named `from`.
+   *  Returns how many drinks changed. */
+  adoptServerBeerNames: (names: ReadonlyMap<string, { from: string; to: string }>) => number;
   /** Mark a drink as no longer queued, so the UI does not offer a local-only undo.
    *  A rejected drink stays rejected until it is fixed. */
   markDrinkSynced: (id: string) => void;
@@ -616,6 +619,30 @@ export const useTallyStore = create<TallyState>()(
           return changed ? { history } : state;
         });
         return changed;
+      },
+
+      adoptServerBeerNames: (names) => {
+        let adopted = 0;
+        if (names.size === 0) return adopted;
+        set((state) => {
+          const adopt = (session: TallySession): TallySession => {
+            let changed = false;
+            const drinks = session.drinks.map((drink) => {
+              const name = names.get(drink.id);
+              if (!name || drink.beerName !== name.from || normalizeDrinkType(drink.drinkType) !== 'beer') {
+                return drink;
+              }
+              changed = true;
+              adopted += 1;
+              return { ...drink, beerName: name.to };
+            });
+            return changed ? { ...session, drinks } : session;
+          };
+          const current = state.current ? adopt(state.current) : null;
+          const history = state.history.map(adopt);
+          return adopted > 0 ? { current, history } : state;
+        });
+        return adopted;
       },
 
       markDrinkSynced: (id) =>
