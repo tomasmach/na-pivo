@@ -2119,9 +2119,11 @@ class PubCommunityView(APIView):
         beers = data.get("beers")
         now = dj_timezone.now()
 
+        # Menus whose brand/product and price indexes follow this write. They are
+        # synced after the menu commits, as before: syncing them while holding
+        # the menu would lock in the opposite order to account deletion.
+        index_rows: list[PubCommunityData] = []
         try:
-            # The menu, its history, the contribution log and the beer and price
-            # indexes are saved together, so a failed step is retried whole.
             with transaction.atomic():
                 # Drink writes lock the account and then the menu: same order
                 # here, so the two never wait on each other in a circle.
@@ -2135,11 +2137,18 @@ class PubCommunityView(APIView):
                         kind=PubContributionLog.Kind.BEERS,
                     ).exists()
                     if already_done:
-                        # A retry of a step that already went through never runs twice.
+                        # A retry of a step that already went through never runs
+                        # twice; it only finishes the index sync, which may have
+                        # failed after the menu was saved.
                         has_beers = False
                         previous = (
                             PubCommunityData.objects.filter(cache_key=cache_key).first()
                         )
+                        index_rows = [
+                            row
+                            for row in [previous, *_alias_menu_rows_for_update(identity)]
+                            if row is not None
+                        ]
                     else:
                         # The row exists and is locked before the change is worked
                         # out, so two first changes of an imported menu apply one
@@ -2172,30 +2181,46 @@ class PubCommunityView(APIView):
                         current_beers = list(shown.get("beers") or [])
                         historical = list(shown.get("historical_beers") or [])
                         beers = _apply_beer_change(current_beers, change)
-                        applied = beers != current_beers
-                        PubContributionLog.objects.create(
-                            account=request.user,
-                            client_id=data["client_id"],
-                            kind=PubContributionLog.Kind.BEERS,
-                            cache_key=cache_key,
-                            name=data["name"],
-                            lat=data["lat"],
-                            lng=data["lng"],
-                            payload={"beers": beers, "beer_change": change, "applied": applied},
-                        )
-                        if applied:
+                        if beers != current_beers:
+                            # Logged as done, so a retry never applies it again.
+                            PubContributionLog.objects.create(
+                                account=request.user,
+                                client_id=data["client_id"],
+                                kind=PubContributionLog.Kind.BEERS,
+                                cache_key=cache_key,
+                                name=data["name"],
+                                lat=data["lat"],
+                                lng=data["lng"],
+                                payload={"beers": beers, "beer_change": change},
+                            )
                             for alias_row in alias_rows:
                                 alias_beers = _apply_beer_change(list(alias_row.beers or []), change)
-                                if alias_beers != list(alias_row.beers or []):
-                                    alias_row.historical_beers = (
-                                        _historical_beers_after_menu_replacement(
-                                            current=list(alias_row.beers or []),
-                                            replacement=alias_beers,
-                                            historical=list(alias_row.historical_beers or []),
-                                        )
+                                if alias_beers == list(alias_row.beers or []):
+                                    continue
+                                alias_row.historical_beers = (
+                                    _historical_beers_after_menu_replacement(
+                                        current=list(alias_row.beers or []),
+                                        replacement=alias_beers,
+                                        historical=list(alias_row.historical_beers or []),
                                     )
-                                    alias_row.beers = alias_beers
-                                    alias_row.save(update_fields=["beers", "historical_beers"])
+                                )
+                                alias_row.beers = alias_beers
+                                alias_row.save(update_fields=["beers", "historical_beers"])
+                                # Its own log: rebuilding this menu after an account
+                                # deletion must not bring the beer back.
+                                PubContributionLog.objects.create(
+                                    account=request.user,
+                                    client_id=uuid.uuid5(
+                                        data["client_id"], f"alias:{alias_row.cache_key}"
+                                    ),
+                                    kind=PubContributionLog.Kind.BEERS,
+                                    cache_key=alias_row.cache_key,
+                                    name=alias_row.name,
+                                    lat=alias_row.lat,
+                                    lng=alias_row.lng,
+                                    payload={"beers": alias_beers, "beer_change": change},
+                                )
+                                index_rows.append(alias_row)
                         else:
                             # Gone or unchanged already: nothing to write for the menu.
                             has_beers = False
@@ -2239,69 +2264,70 @@ class PubCommunityView(APIView):
 
                 if not has_hours and not has_beers:
                     # Nothing to save: report the menu as it is.
-                    return Response(
-                        _community_response_body(previous, cache_key),
-                        status=status.HTTP_200_OK,
+                    record = previous
+                else:
+                    record, _ = PubCommunityData.objects.update_or_create(
+                        cache_key=cache_key,
+                        defaults=defaults,
                     )
-                record, _ = PubCommunityData.objects.update_or_create(
-                    cache_key=cache_key,
-                    defaults=defaults,
-                )
 
-                # Append idempotent history rows, one per submitted kind.
-                if has_hours:
-                    PubContributionLog.objects.get_or_create(
-                        account=request.user,
-                        client_id=data["client_id"],
-                        kind=PubContributionLog.Kind.HOURS,
-                        defaults={
-                            "cache_key": cache_key,
-                            "name": data["name"],
-                            "lat": data["lat"],
-                            "lng": data["lng"],
-                            "payload": data["hours"],
-                        },
-                    )
-                if has_beers:
-                    if change is None:
-                        beer_log_payload = beers
-                        if "beer_menu_rotates" in data:
-                            beer_log_payload = {
-                                "beers": beers,
-                                "beer_menu_rotates": data["beer_menu_rotates"],
-                            }
+                    # Append idempotent history rows, one per submitted kind.
+                    if has_hours:
                         PubContributionLog.objects.get_or_create(
                             account=request.user,
                             client_id=data["client_id"],
-                            kind=PubContributionLog.Kind.BEERS,
+                            kind=PubContributionLog.Kind.HOURS,
                             defaults={
                                 "cache_key": cache_key,
                                 "name": data["name"],
                                 "lat": data["lat"],
                                 "lng": data["lng"],
-                                "payload": beer_log_payload,
+                                "payload": data["hours"],
                             },
                         )
-                    sync_pub_beer_indexes_for_menu(
-                        cache_key=cache_key,
-                        data={
-                            **data,
-                            "name": identity.name,
-                            "lat": identity.lat,
-                            "lng": identity.lng,
-                            "city": identity.city,
-                            "external_id": identity.external_id,
-                        },
-                        beers=beers,
-                        source=PubBeerBrand.Source.COMMUNITY,
-                        account=request.user,
-                        match_cache=match_cache,
-                    )
-                    _upsert_price_index_from_row(
-                        record,
-                        observed_at=now,
-                        source=PubPriceIndex.Source.COMMUNITY,
-                    )
+                    if has_beers:
+                        if change is None:
+                            beer_log_payload = beers
+                            if "beer_menu_rotates" in data:
+                                beer_log_payload = {
+                                    "beers": beers,
+                                    "beer_menu_rotates": data["beer_menu_rotates"],
+                                }
+                            PubContributionLog.objects.get_or_create(
+                                account=request.user,
+                                client_id=data["client_id"],
+                                kind=PubContributionLog.Kind.BEERS,
+                                defaults={
+                                    "cache_key": cache_key,
+                                    "name": data["name"],
+                                    "lat": data["lat"],
+                                    "lng": data["lng"],
+                                    "payload": beer_log_payload,
+                                },
+                            )
+                        index_rows.insert(0, record)
+
+            for index_row in index_rows:
+                sync_pub_beer_indexes_for_menu(
+                    cache_key=index_row.cache_key,
+                    data={
+                        **data,
+                        "name": index_row.name,
+                        "lat": index_row.lat,
+                        "lng": index_row.lng,
+                        "city": index_row.city,
+                        "external_id": index_row.external_id,
+                    },
+                    beers=list(index_row.beers or []),
+                    source=PubBeerBrand.Source.COMMUNITY,
+                    account=request.user,
+                    match_cache=match_cache,
+                )
+                _upsert_price_index_from_row(
+                    index_row,
+                    observed_at=now,
+                    source=PubPriceIndex.Source.COMMUNITY,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-community: unexpected error saving contribution for cache key %s: %s",
@@ -2310,6 +2336,9 @@ class PubCommunityView(APIView):
                 exc_info=True,
             )
             return _internal_error()
+
+        if not has_hours and not has_beers:
+            return Response(_community_response_body(record, cache_key), status=status.HTTP_200_OK)
 
         # ── Mapér XP (additive; an XP failure must never break a saved edit) ──
         xp_awarded = 0

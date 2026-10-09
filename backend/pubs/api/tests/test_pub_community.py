@@ -1121,9 +1121,9 @@ def test_beer_change_for_a_beer_already_gone_changes_nothing(client):
     assert record.beers == _MENU_NOW[:2]
     assert record.beers_updated_at == before.beers_updated_at
     assert resp.json()["beers"] == _MENU_NOW[:2]
-    # Recorded as done, so a retry never applies it after all.
-    log = PubContributionLog.objects.get(client_id="aaaaaaaa-0000-0000-0000-0000000000a4")
-    assert log.payload["applied"] is False
+    assert not PubContributionLog.objects.filter(
+        client_id="aaaaaaaa-0000-0000-0000-0000000000a4"
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -1228,7 +1228,7 @@ def test_beer_change_starts_from_the_imported_menu_people_see(client):
 
 
 @pytest.mark.django_db
-def test_failed_index_sync_saves_nothing_so_the_retry_finishes_the_change(client, monkeypatch):
+def test_a_retry_finishes_an_index_sync_that_failed_after_the_change(client, monkeypatch):
     token = _register(client)
     _seed_menu(client, token, _MENU_NOW)
     remove = {"action": "remove", "name": "Pilsner Urquell", "volume_ml": 500}
@@ -1247,14 +1247,13 @@ def test_failed_index_sync_saves_nothing_so_the_retry_finishes_the_change(client
     monkeypatch.setattr(views, "sync_pub_beer_indexes_for_menu", flaky_sync)
     failed = _change(client, token, "aaaaaaaa-0000-0000-0000-0000000000b4", _MENU_NOW[1:], remove)
     assert failed.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert PubCommunityData.objects.get().beers == _MENU_NOW
-    assert not PubContributionLog.objects.filter(
-        client_id="aaaaaaaa-0000-0000-0000-0000000000b4"
-    ).exists()
+    # The menu change itself is saved; only the indexes are behind.
+    assert PubCommunityData.objects.get().beers == _MENU_NOW[1:]
 
     retried = _change(client, token, "aaaaaaaa-0000-0000-0000-0000000000b4", _MENU_NOW[1:], remove)
     assert retried.status_code == status.HTTP_200_OK
     assert PubCommunityData.objects.get().beers == _MENU_NOW[1:]
+    # The retry ran the sync for the saved menu instead of the change again.
     assert calls["n"] == 2
 
 
@@ -1293,6 +1292,9 @@ def test_beer_change_also_reaches_the_menu_of_a_merged_duplicate(client):
     assert resp.status_code == status.HTTP_200_OK
     assert PubCommunityData.objects.get(cache_key=_KEY).beers == [_MENU_NOW[1]]
     assert PubCommunityData.objects.get(cache_key="u2fkbq00").beers == [_MENU_NOW[1]]
+    # The duplicate's menu has its own record, so rebuilding it later keeps the change.
+    alias_log = PubContributionLog.objects.get(cache_key="u2fkbq00")
+    assert alias_log.payload["beers"] == [_MENU_NOW[1]]
     shown = client.post(
         "/v1/pub-hours",
         data={"pubs": [{"name": _NAME, "lat": _LAT, "lng": _LNG}], "sync_budget": 0},
@@ -1315,3 +1317,48 @@ def test_beer_change_with_no_menu_to_change_leaves_no_row_behind(client):
 
     assert resp.status_code == status.HTTP_200_OK
     assert not PubCommunityData.objects.exists()
+
+
+@pytest.mark.django_db
+def test_rebuilding_a_merged_duplicate_menu_keeps_a_removed_beer_gone(client):
+    from pubs.accounts import _rebuild_community_signals_after_purge
+    from pubs.identity import normalize_pub_name
+    from pubs.models import CanonicalPub, PubAlias
+
+    token = _register(client)
+    _register(client, _OTHER_DEVICE_ID)
+    canonical = CanonicalPub.objects.create(
+        cache_key=_KEY, name=_NAME, name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, city="Praha"
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=_KEY, name=_NAME,
+        name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, is_primary=True,
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key="u2fkbq00", name="Stará hospoda",
+        name_key=normalize_pub_name("Stará hospoda"), lat=_LAT, lng=_LNG,
+    )
+    # Someone else wrote the duplicate's menu before the pubs were merged.
+    from django.utils import timezone
+
+    author = Account.objects.get(device_id=_OTHER_DEVICE_ID)
+    PubCommunityData.objects.create(
+        cache_key="u2fkbq00", name="Stará hospoda", lat=_LAT, lng=_LNG,
+        beers=_MENU_NOW[:2], beers_updated_at=timezone.now(), account=author,
+    )
+    PubContributionLog.objects.create(
+        account=author, client_id="aaaaaaaa-0000-0000-0000-0000000000d1",
+        kind=PubContributionLog.Kind.BEERS, cache_key="u2fkbq00", name="Stará hospoda",
+        lat=_LAT, lng=_LNG, payload=_MENU_NOW[:2],
+    )
+
+    _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000d2",
+        [_MENU_NOW[1]],
+        {"action": "remove", "name": "Pilsner Urquell", "volume_ml": 500},
+    )
+    _rebuild_community_signals_after_purge("u2fkbq00")
+
+    assert PubCommunityData.objects.get(cache_key="u2fkbq00").beers == [_MENU_NOW[1]]
