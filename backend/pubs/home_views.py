@@ -26,6 +26,7 @@ from django.utils import translation
 from django.utils.safestring import SafeString, mark_safe
 from django.utils.translation import gettext
 
+from pubs.beer_pages import PATHS as BEER_PATHS
 from pubs.price_map import PATHS as PRICE_PATHS
 
 _LANDING_ROOT = Path(__file__).resolve().parent / "static" / "pubs" / "landing"
@@ -60,6 +61,18 @@ PATHS = {"cs": "/", "en": "/en"}
 AUTHOR = {"@type": "Person", "name": "Tomáš Mach", "url": "https://www.instagram.com/jsem_mach/"}
 # Keeps "</script>" inside a value from ending the block early.
 _LD_ESCAPES = {ord("<"): "\\u003c", ord(">"): "\\u003e", ord("&"): "\\u0026"}
+
+
+# App Store Connect's provider token (App Analytics, campaign links). Without it the
+# campaign rides along in the link, but App Analytics does not count it.
+APP_STORE_PROVIDER_TOKEN = ""
+
+
+def app_store_url(page: str) -> str:
+    """App Store link tagged with the web page, Apple's twin of ``play_store_url``."""
+
+    provider = f"pt={APP_STORE_PROVIDER_TOKEN}&" if APP_STORE_PROVIDER_TOKEN else ""
+    return f"{APP_STORE_URL}?{provider}ct=web-{page}&mt=8"
 
 
 def play_store_url(page: str) -> str:
@@ -146,9 +159,10 @@ def home(request: HttpRequest, lang: str = "cs") -> HttpResponse:
                 "en_url": f"{origin}{PATHS['en']}",
                 "switch_url": PATHS["en" if lang == "cs" else "cs"],
                 "prices_url": PRICE_PATHS[lang],
+                "beers_url": BEER_PATHS[lang],
                 "structured_data": _home_structured_data(origin, lang),
                 "og_image_url": f"{origin}{_LANDING_URLS['og_home_png']}",
-                "app_store_url": APP_STORE_URL,
+                "app_store_url": app_store_url("home"),
                 "play_store_url": play_store_url("home"),
                 "privacy_url": f"{legal}/privacy.html",
                 "terms_url": f"{legal}/terms.html",

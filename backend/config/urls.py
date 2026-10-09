@@ -7,9 +7,12 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 
 from pubs.home_views import home, landing_asset
+from pubs.models import BeerPage
 from pubs.web_views import (
     android_asset_statements,
     apple_app_site_association,
+    beer_pages,
+    beer_pages_og_image,
     beer_prices,
     beer_prices_og_image,
     invite_asset,
@@ -35,6 +38,20 @@ urlpatterns = [
     path("en/prices/", RedirectView.as_view(url="/en/prices", permanent=True)),
     path("en/prices/og.png", beer_prices_og_image, {"lang": "en"}, name="beer-prices-og-image-en"),
     path("en/prices/<slug:city>", beer_prices, {"lang": "en"}, name="beer-prices-city-en"),
+    path("pivo", beer_pages, name="beer-list"),
+    path("pivo/", RedirectView.as_view(url="/pivo", permanent=True)),
+    path("pivo/og.png", beer_pages_og_image, name="beer-list-og-image"),
+    path("pivo/znacka/<slug:key>", beer_pages, {"kind": BeerPage.Kind.BRAND}, name="beer-brand"),
+    path("pivo/znacka/<slug:key>/og.png", beer_pages_og_image, {"kind": BeerPage.Kind.BRAND}, name="beer-brand-og-image"),
+    path("pivo/<slug:key>", beer_pages, {"kind": BeerPage.Kind.BEER}, name="beer"),
+    path("pivo/<slug:key>/og.png", beer_pages_og_image, {"kind": BeerPage.Kind.BEER}, name="beer-og-image"),
+    path("en/beer", beer_pages, {"lang": "en"}, name="beer-list-en"),
+    path("en/beer/", RedirectView.as_view(url="/en/beer", permanent=True)),
+    path("en/beer/og.png", beer_pages_og_image, {"lang": "en"}, name="beer-list-og-image-en"),
+    path("en/beer/brand/<slug:key>", beer_pages, {"lang": "en", "kind": BeerPage.Kind.BRAND}, name="beer-brand-en"),
+    path("en/beer/brand/<slug:key>/og.png", beer_pages_og_image, {"lang": "en", "kind": BeerPage.Kind.BRAND}, name="beer-brand-og-image-en"),
+    path("en/beer/<slug:key>", beer_pages, {"lang": "en", "kind": BeerPage.Kind.BEER}, name="beer-en"),
+    path("en/beer/<slug:key>/og.png", beer_pages_og_image, {"lang": "en", "kind": BeerPage.Kind.BEER}, name="beer-og-image-en"),
     path("t/<slug:token>", tour_invite_landing, name="tour-invite-landing"),
     path("p/<slug:code>", invite_landing, name="friend-invite-landing"),
     path("party/<slug:code>", party_invite_landing, name="party-invite-landing"),

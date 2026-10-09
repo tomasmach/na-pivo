@@ -1375,3 +1375,164 @@ msgstr "Median of the cheapest beer of 0.4 l or more, as of %(date)s"
 #, python-format
 msgid "Medián nejlevnějšího piva od 0,4 l z %(pubs)s hospod, stav k %(date)s"
 msgstr "Median of the cheapest beer of 0.4 l or more from %(pubs)s pubs, as of %(date)s"
+
+msgid "Kde se čepuje které pivo"
+msgstr "Where each beer is on tap"
+
+msgid "Piva"
+msgstr "Beers"
+
+msgid "Značky"
+msgstr "Brands"
+
+msgid "Hospody"
+msgstr "Pubs"
+
+msgid "Obvykle za 0,5 l"
+msgstr "Usual 0.5 l"
+
+msgid "Nejlevněji za 0,5 l"
+msgstr "Cheapest 0.5 l"
+
+#, python-format
+msgid "Potvrzeno za poslední 3 měsíce, stav k %(date)s"
+msgstr "Confirmed in the last 3 months, as of %(date)s"
+
+msgid "Kde jsi"
+msgstr "You are here"
+
+#, python-format
+msgid "Piva, která za poslední 3 měsíce potvrdily aspoň 3 hospody. Stav k %(date)s."
+msgstr "Beers that at least 3 pubs confirmed in the last 3 months. As of %(date)s."
+
+#, python-format
+msgid "Podle lístků, které lidi zapsali v Na pivo. Stav k %(date)s."
+msgstr "From the menus people logged in Na pivo. As of %(date)s."
+
+msgid "potvrzené za poslední 3 měsíce"
+msgstr "confirmed in the last 3 months"
+
+msgid "Piva se teď nedotáhla. Zkus to za minutu."
+msgstr "Beers didn't load just now. Try again in a minute."
+
+msgid "Tuhle značku tu teď nemám. Ukážu ji, až některé její pivo za poslední 3 měsíce potvrdí aspoň 3 hospody."
+msgstr "I don't have this brand right now. It shows up once at least 3 pubs confirm one of its beers within 3 months."
+
+msgid "Tohle pivo tu teď nemám. Ukážu ho, až ho za poslední 3 měsíce potvrdí aspoň 3 hospody."
+msgstr "I don't have this beer right now. It shows up once at least 3 pubs confirm it within 3 months."
+
+msgid "Tohle pivo tu zatím nemám. Ukážu ho, až ho za poslední 3 měsíce potvrdí aspoň 3 hospody."
+msgstr "I don't have this beer yet. It shows up once at least 3 pubs confirm it within 3 months."
+
+msgid "Zatím nemám dost lístků. Pivo tu ukážu, až ho za poslední 3 měsíce potvrdí aspoň 3 hospody."
+msgstr "Not enough menus yet. A beer shows up here once at least 3 pubs confirm it within 3 months."
+
+msgid "Ostatní piva"
+msgstr "Other beers"
+
+msgid "Najdi hospodu nebo město"
+msgstr "Find a pub or city"
+
+msgid "Najdi pivo"
+msgstr "Find a beer"
+
+msgid "Nejčerstvější"
+msgstr "Latest"
+
+msgid "Hospoda"
+msgstr "Pub"
+
+msgid "Pivo"
+msgstr "Beer"
+
+msgid "Naposledy potvrzeno"
+msgstr "Last confirmed"
+
+msgid "Cena"
+msgstr "Price"
+
+msgid "pípy se tu střídají"
+msgstr "taps change here"
+
+msgid "potvrzeno"
+msgstr "confirmed"
+
+msgid "naposledy potvrzeno"
+msgstr "last confirmed"
+
+msgid "starší 3 měsíců"
+msgstr "over 3 months old"
+
+msgid "cena chybí"
+msgstr "no price yet"
+
+msgid "málo cen"
+msgstr "few prices"
+
+msgid "Takovou hospodu tu s tímhle pivem nemám."
+msgstr "No pub like that has this beer here."
+
+#, python-format
+msgid "Ukázat všechny hospody (%(count)s)"
+msgstr "Show all pubs (%(count)s)"
+
+#, python-format
+msgid "Ukázat všechna piva (%(count)s)"
+msgstr "Show all beers (%(count)s)"
+
+msgid "Hospoda je u piva, když ho tam někdo za poslední rok zapsal na lístek nebo vypil s cenou. Datum ukazuje poslední takový zápis. Pivo má vlastní stránku, dokud ho za poslední 3 měsíce potvrdí aspoň 3 hospody."
+msgstr "A pub is listed under a beer when someone logged the beer on its menu, or drank it there with a price, within the last year. The date is the latest such entry. A beer keeps its own page while at least 3 pubs confirm it within 3 months."
+
+msgid "Víš o další hospodě?"
+msgstr "Know another pub?"
+
+msgid "Zapiš její lístek v Na pivo."
+msgstr "Log its menu in Na pivo."
+
+msgid "hospoda"
+msgstr "pub"
+
+msgid "hospody"
+msgstr "pubs"
+
+msgid "Tohle pivo tu nemám"
+msgstr "I don't have this beer"
+
+msgid "Pivo nenalezeno"
+msgstr "Beer not found"
+
+msgid "Tuhle značku tu nemám"
+msgstr "I don't have this brand"
+
+msgid "Značka nenalezena"
+msgstr "Brand not found"
+
+#, python-format
+msgid "Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, obvykle %(price)s Kč za 0,5 l."
+msgstr "Where %(beer)s is on tap and for how much: %(pubs)s with a recent entry, usually %(price)s CZK for 0.5 l."
+
+#, python-format
+msgid "Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, u každé cena a datum posledního potvrzení."
+msgstr "Where %(beer)s is on tap and for how much: %(pubs)s with a recent entry, each with its price and the date it was last confirmed."
+
+#, python-format
+msgid "Kde se čepuje %(beer)s"
+msgstr "Where %(beer)s is on tap"
+
+#, python-format
+msgid "%(beer)s: kde se čepuje a za kolik"
+msgstr "%(beer)s: where it's on tap and for how much"
+
+#, python-format
+msgid "Piva značky %(brand)s a kde se čepují"
+msgstr "%(brand)s beers and where they're on tap"
+
+#, python-format
+msgid "Piva značky %(brand)s a hospody, kde se čepují. U každé hospody cena a datum posledního potvrzení."
+msgstr "%(brand)s beers and the pubs that pour them, each with its price and the date it was last confirmed."
+
+msgid "Najdi hospody, kde čepují tvoje pivo, za kolik a kdy to tam naposledy někdo potvrdil. Podle lístků, které lidi zapisují v Na pivo."
+msgstr "Find the pubs that pour your beer, what it costs there and when someone last confirmed it. From the menus people log in Na pivo."
+
+msgid "Kde čepují které pivo"
+msgstr "Beers on tap"

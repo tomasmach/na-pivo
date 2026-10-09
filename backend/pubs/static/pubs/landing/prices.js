@@ -1,5 +1,5 @@
-// Price page behaviour. Long lists get a search, sorting and a fold; bars grow and the bill lands as they scroll in.
-// Without this script the page still shows every number and every row.
+// Price and beer page behaviour. Long lists get a search, sorting and a fold; bars grow and the bill lands as they
+// scroll in. Without this script the page still shows every number and every row.
 
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -30,11 +30,14 @@ function plain(text) {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
+// A row without a price goes last whichever way the list is sorted.
+const unpriced = (a, b) => Number.isNaN(a.median) - Number.isNaN(b.median);
 const ORDERS = {
   default: (a, b) => a.order - b.order,
-  cheap: (a, b) => a.median - b.median || a.low - b.low || a.order - b.order,
-  dear: (a, b) => b.median - a.median || b.high - a.high || a.order - b.order,
+  cheap: (a, b) => unpriced(a, b) || a.median - b.median || a.low - b.low || a.order - b.order,
+  dear: (a, b) => unpriced(a, b) || b.median - a.median || b.high - a.high || a.order - b.order,
 };
+const number = (value) => (value ? Number(value) : NaN);
 
 function setUpList(section) {
   const tools = section.querySelector('[data-tools]');
@@ -49,10 +52,11 @@ function setUpList(section) {
   const rows = [...list.children].map((element, order) => ({
     element,
     order,
-    name: plain(element.querySelector('.name').textContent),
-    median: Number(element.dataset.median),
-    low: Number(element.dataset.low),
-    high: Number(element.dataset.high),
+    // A pub is found by its name or its city.
+    name: plain(element.dataset.search || element.querySelector('.name').textContent),
+    median: number(element.dataset.median),
+    low: number(element.dataset.low),
+    high: number(element.dataset.high),
   }));
   let order = 'default';
   let expanded = false;
