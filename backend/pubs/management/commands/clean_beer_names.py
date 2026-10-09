@@ -47,7 +47,9 @@ class Command(BaseCommand):
             menus, diaries = self._run(apply, record=None)
         else:
             report.parent.mkdir(parents=True, exist_ok=True)
-            with report.open("x", encoding="utf-8") as backup:
+            # Private: the report holds what people drank.
+            fd = os.open(report, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as backup:
 
                 def record(changes) -> None:
                     for change in changes:
@@ -97,11 +99,19 @@ class Command(BaseCommand):
     def _revert(self, report: Path) -> None:
         if not report.exists():
             raise CommandError(f"{report} does not exist.")
-        with report.open(encoding="utf-8") as lines:
-            changes = [
-                line for line in (json.loads(raw) for raw in lines if raw.strip())
-                if "summary" not in line
-            ]
+        raw_lines = [raw for raw in report.read_bytes().splitlines() if raw.strip()]
+        changes = []
+        for index, raw in enumerate(raw_lines):
+            try:
+                line = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                # A run killed while writing leaves only its last line cut off.
+                if index == len(raw_lines) - 1:
+                    self.stdout.write("Ignoring the unfinished last line of the report.")
+                    continue
+                raise CommandError(f"{report} line {index + 1} is damaged.") from exc
+            if "summary" not in line:
+                changes.append(line)
         # Newest first, so a menu changed twice ends at its oldest state.
         changes.reverse()
         restored, skipped = revert_menu_cleanup(c for c in changes if c["model"] != "drink")

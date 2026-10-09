@@ -164,12 +164,13 @@ def test_conflicting_duplicate_prices_follow_the_newest_drink():
     account = Account.objects.create(device_id="cleanup-price")
     # A nickname on the menu, typed differently in the diary.
     _menu(_beer("Radek 12", 27), _beer("Radegast 12°", 21))
-    for minutes, price in ((30, 27), (5, 21)):
+    # The newest drink in this cell is from the bar next door, so it does not count.
+    for minutes, price, pub in ((30, 27, "U Tygra"), (5, 21, "U Tygra"), (1, 27, "Kebab Bistro")):
         DrinkLog.objects.create(
             account=account,
             client_id=uuid.uuid4(),
             cache_key=_KEY,
-            name="U Tygra",
+            name=pub,
             lat=_LAT,
             lng=_LNG,
             beer_name="Radek 12.",
@@ -304,6 +305,55 @@ def test_revert_keeps_menus_edited_after_the_cleanup(tmp_path):
     edited.refresh_from_db()
     assert untouched.beers == [_beer("Kozel 11", 45)]
     assert edited.beers == [_beer("Pilsner Urquell", 65)]
+
+
+@pytest.mark.django_db
+def test_revert_restores_the_price_map(tmp_path):
+    from pubs.models import PubPriceIndex
+    from pubs.price_index import compute_reference_price
+
+    pub = _menu(_beer("Primátor 11", 40), _beer("Primátor 11°", 60))
+    DrinkLog.objects.create(
+        account=Account.objects.create(device_id="price-map"),
+        client_id=uuid.uuid4(),
+        cache_key=_KEY,
+        name="U Tygra",
+        lat=_LAT,
+        lng=_LNG,
+        beer_name="Primátor 11",
+        price_czk=60,
+        volume_ml=500,
+        drank_at=timezone.now(),
+    )
+    report = tmp_path / "report.jsonl"
+    call_command("clean_beer_names", "--apply", "--report", str(report))
+    assert report.stat().st_mode & 0o777 == 0o600
+    assert PubPriceIndex.objects.get(cache_key=_KEY).price_czk == 60
+
+    call_command("clean_beer_names", "--revert", str(report))
+
+    pub.refresh_from_db()
+    index = PubPriceIndex.objects.get(cache_key=_KEY)
+    assert (index.price_czk, index.volume_ml) == compute_reference_price(pub.beers) == (40, 500)
+
+
+@pytest.mark.django_db
+def test_revert_survives_a_report_cut_off_mid_line(tmp_path):
+    pub = _menu(_beer("Primátor 11", 50), _beer("Primátor 11°", 50))
+    report = tmp_path / "report.jsonl"
+    call_command("clean_beer_names", "--apply", "--report", str(report))
+    lines = report.read_bytes().splitlines()
+    # A second line cut inside the "á" of "Primátor".
+    cut = lines[0].index("á".encode()) + 1
+    report.write_bytes(lines[0] + b"\n" + lines[0][:cut])
+
+    call_command("clean_beer_names", "--revert", str(report))
+
+    pub.refresh_from_db()
+    assert pub.beers == [_beer("Primátor 11", 50), _beer("Primátor 11°", 50)]
+    report.write_bytes(b"{\n" + lines[0] + b"\n")
+    with pytest.raises(CommandError):
+        call_command("clean_beer_names", "--revert", str(report))
 
 
 @pytest.mark.django_db

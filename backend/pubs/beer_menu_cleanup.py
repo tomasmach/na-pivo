@@ -31,6 +31,7 @@ from pubs.beer_catalog import (
     match_beer,
     normalize_beer_text,
 )
+from pubs.enrichment.matcher import names_match
 from pubs.models import (
     DrinkLog,
     PubBeerBrand,
@@ -224,11 +225,14 @@ def clean_menu(
     return rows, renamed, merged, conflicts
 
 
-def _latest_drink_price(cache_key: str, canonical: Callable[[str], str]) -> PriceResolver:
+def _latest_drink_price(
+    cache_key: str, pub_name: str, canonical: Callable[[str], str]
+) -> PriceResolver:
     """Price of the newest countable drink of this beer at this pub, if any.
 
     Drink logs keep the name as typed ("Radek 12."), so it goes through the
-    same canonical mapping as the menu row before the two are compared.
+    same canonical mapping as the menu row before the two are compared. A
+    drink from another business in the same cell does not count.
     """
 
     def resolve(name: str, identity: Identity, group: list[dict]) -> int | None:
@@ -241,9 +245,11 @@ def _latest_drink_price(cache_key: str, canonical: Callable[[str], str]) -> Pric
                 volume_ml=identity[1],
             )
             .order_by("-drank_at")
-            .only("beer_name", "price_czk")[:200]
+            .only("name", "beer_name", "price_czk")[:200]
         )
         for drink in drinks:
+            if not names_match(pub_name, drink.name):
+                continue
             if normalize_beer_text(canonical(drink.beer_name)) == identity[0]:
                 return drink.price_czk
         return None
@@ -378,7 +384,7 @@ def _clean_community_row(
     new_beers, renamed, merged, conflicts = clean_menu(
         beers,
         canonicalizer.name,
-        resolve_price=_latest_drink_price(row.cache_key, canonicalizer.name),
+        resolve_price=_latest_drink_price(row.cache_key, row.name, canonicalizer.name),
     )
     current = {beer_menu_identity(item) for item in new_beers if _beer_name(item)}
     historical = _menu_items(row.historical_beers)
@@ -501,9 +507,13 @@ def run_menu_cleanup(
             if row is None:
                 continue
             beers = _clean_community_row(row, plan, canonicalizer, record, apply=apply)
-        # Outside the menu lock: a drink write locks its account first and the
-        # menu second, so nothing here may wait on an account while holding a menu.
+        # Outside the menu lock: a drink edit can hold an index row while it
+        # waits for its account, whose drink write waits for this menu. Index
+        # the menu as it is now, so a beer removed meanwhile stays unlisted.
         with transaction.atomic():
+            if apply:
+                current = PubCommunityData.objects.filter(pk=pk).values_list("beers", flat=True)
+                beers = _menu_items(current.first())
             created, reactivated = _ensure_index_links(row, beers, index_cache, apply=apply)
         plan.index_links_created += created
         plan.index_links_reactivated += reactivated
@@ -537,4 +547,33 @@ def revert_menu_cleanup(changes: Iterable[dict]) -> tuple[int, int]:
             setattr(row, change["field"], change["before"])
             row.save(update_fields=[change["field"], "updated_at"])
             restored += 1
+            if change["field"] == "beers":
+                _restore_price_index(row)
     return restored, skipped
+
+
+def _restore_price_index(row) -> None:
+    """Recompute the pub's reference price from the restored menu."""
+    if isinstance(row, PubCommunityData):
+        upsert_pub_price_index(
+            cache_key=row.cache_key,
+            name=row.name,
+            lat=row.lat,
+            lng=row.lng,
+            city=row.city or "",
+            external_id=row.external_id or "",
+            beers=row.beers,
+            observed_at=row.beers_updated_at,
+            source=PubPriceIndex.Source.COMMUNITY,
+        )
+    elif row.active:
+        upsert_pub_price_index(
+            cache_key=row.cache_key,
+            name=row.name,
+            lat=row.lat,
+            lng=row.lng,
+            city=row.city,
+            beers=row.beers,
+            observed_at=row.verified_at or row.fetched_at,
+            source=PubPriceIndex.Source.EXTERNAL,
+        )
