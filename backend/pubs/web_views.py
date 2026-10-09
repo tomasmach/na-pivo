@@ -652,8 +652,6 @@ def beer_pages(request: HttpRequest, lang: str = "cs", kind: str = BeerPage.Kind
                 "listed": listed,
                 "beers": beers,
                 "brands": brands,
-                "pubs_label": _pubs_label(data["pubs"]) if "pubs" in data else "",
-                "beers_label": _beers_label(len(data["beers"])) if kind != BeerPage.Kind.BEER and page else "",
                 "brand_url": (
                     page_path(BeerPage.Kind.BRAND, data["brand_key"], lang)
                     if kind == BeerPage.Kind.BEER and page and data["brand_page"]

@@ -185,18 +185,23 @@ def test_spellings_of_one_beer_are_one_page_with_prices_cities_and_dates():
 
 def test_a_drink_confirms_its_own_beer_but_only_as_the_menu_would_publish_it():
     _three_fresh_pubs()
+    # Two fresh pubs with the other beer: one more would give it a page.
+    _pub("Pod Věží", [("Testovar 12°", 60, 500)])
+    _pub("Na Hrázi", [("Testovar 12°", 60, 500)])
     old = _pub("Stará Hospoda", [("Testovar 11°", 50, 500), ("Testovar 12°", 60, 500)], days_ago=200)
 
-    _drink(old, days_ago=2, ghost_mode=True)
-    _drink(old, days_ago=2, ugc_terms_accepted_at=None)
+    _drink(old, price=50, days_ago=2, ghost_mode=True)
+    _drink(old, price=50, days_ago=2, ugc_terms_accepted_at=None)
     # Logged before the account agreed to share: it stayed private then and stays private now.
-    _drink(old, days_ago=2, ugc_terms_accepted_at=timezone.now() + timedelta(minutes=5))
-    _drink(old, days_ago=2, price=None)
-    _drink(old, days_ago=2, volume_ml=450)
+    _drink(old, price=50, days_ago=2, ugc_terms_accepted_at=timezone.now() + timedelta(minutes=5))
+    _drink(old, price=None, days_ago=2)
+    _drink(old, price=50, volume_ml=450, days_ago=2)
+    # A price the menu never showed, like a drink corrected after it was logged.
+    _drink(old, price=47, days_ago=2)
     listed = build_beer_pages()["beers"]["testovar-11"]["listed"]
     assert listed[-1]["name"] == "Stará Hospoda" and not listed[-1]["fresh"]
 
-    _drink(old, days_ago=5)
+    _drink(old, price=50, days_ago=5)
     pages = build_beer_pages()["beers"]
     listed = pages["testovar-11"]["listed"]
     assert listed[1]["name"] == "Stará Hospoda" and listed[1]["fresh"]
@@ -218,18 +223,35 @@ def test_only_beers_on_the_current_menu_of_the_same_pub_are_listed():
     assert "Hospoda Pod Mostem" not in names
 
 
-def test_a_merged_duplicate_is_one_pub_under_the_merged_name():
-    _pub("U Kalicha", days_ago=3)
-    _pub("Na Růžku", days_ago=10)
-    target = _pub("U Lípy", days_ago=50)
-    duplicate = _pub("U Lipy", days_ago=4)
+def _merge(target: str, duplicate: str, name: str) -> None:
     canonical = CanonicalPub.objects.create(
         cache_key=target, name="U Lípy", name_key="u lipy", lat=PRAGUE[0], lng=PRAGUE[1], city="Praha 2", country="cz",
     )
     PubAlias.objects.create(
-        canonical_pub=canonical, cache_key=duplicate, name="U Lipy", name_key="u lipy", lat=PRAGUE[0], lng=PRAGUE[1],
+        canonical_pub=canonical, cache_key=duplicate, name=name, name_key=name.lower(), lat=PRAGUE[0], lng=PRAGUE[1],
     )
 
+
+def test_a_merged_duplicate_is_one_pub_under_the_merged_name():
+    _pub("U Kalicha", days_ago=3)
+    _pub("Na Růžku", days_ago=10)
+    target = _pub("U Lípy", [("Testovar 12°", 60, 500)], days_ago=50)
+    # The duplicate's old menu had the beer; the pub's own, newer menu no longer does.
+    _merge(target, _pub("U Lipy", days_ago=4), "U Lipy")
+
+    assert build_beer_pages()["beers"] == {}
+
+    # A menu sent from the app under the duplicate's old name lands on the pub under its own key.
+    log = PubContributionLog.objects.create(
+        cache_key=target, name="Hostinec U Lipy", lat=PRAGUE[0], lng=PRAGUE[1],
+        kind=PubContributionLog.Kind.BEERS, payload={"beers": [{"name": "Testovar 11°", "price_czk": 55, "volume_ml": 500}]},
+        client_id=uuid.uuid4(),
+    )
+    PubContributionLog.objects.filter(pk=log.pk).update(created_at=timezone.now() - timedelta(days=6))
+    PubCommunityData.objects.filter(cache_key=target).update(
+        beers=[{"name": "Testovar 11°", "price_czk": 55, "volume_ml": 500}]
+    )
+    PubAlias.objects.filter(cache_key__isnull=False).update(name="Hostinec U Lipy", name_key="hostinec u lipy")
     beer = build_beer_pages()["beers"]["testovar-11"]
 
     assert beer["pubs"] == 3
@@ -250,7 +272,7 @@ def test_beer_page_shows_pubs_prices_and_dates_without_anyone_who_wrote_them(cli
     _pub("Pivotéka", [("Testovar 11°", None, 500)], days_ago=120, rotates=True)
     _pub("Malý výčep", [("Testovar 11°", 33, 300)], days_ago=20)
     _second_beer()
-    _drink(PubCommunityData.objects.get(name="U Lípy").cache_key, days_ago=1, nickname="tajny_pijak")
+    _drink(PubCommunityData.objects.get(name="U Lípy").cache_key, price=64, days_ago=1, nickname="tajny_pijak")
     call_command("snapshot_beer_prices", stdout=StringIO())
     day = timezone.localdate().isoformat()
 

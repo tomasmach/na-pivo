@@ -14,7 +14,7 @@ from io import BytesIO
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext
 from PIL import Image, ImageDraw
@@ -95,27 +95,37 @@ def _serving(beers: list[dict]) -> tuple[int | None, int | None]:
 
 
 def _confirmations(
-    menus: dict[str, PubCommunityData], since: datetime, product_of
+    menus: dict[str, PubCommunityData],
+    names: dict[str, list[str]],
+    on_tap: dict[tuple[str, str], list[dict]],
+    since: datetime,
+    product_of,
 ) -> dict[tuple[str, str], datetime]:
     """When someone last wrote each beer at each pub, if since ``since``.
 
     A submitted menu confirms every beer on it. A drink confirms its own beer, by
-    when it was drunk, since the offline queue can deliver it much later. Only the
-    drinks the app also writes onto the public menu count: not suspect, with a
-    price and a menu glass size, logged after the account agreed to share
-    content. Drinks of accounts in ghost mode stay out, so the
-    date never shows where someone hiding was. The write must name the same pub,
+    when it was drunk, since the offline queue can deliver it much later, but only
+    at the price and glass size the menu shows: that is the price the page puts
+    next to the date, and a drink corrected afterwards never reached the menu.
+    Only drinks the app also writes onto the public menu count: not suspect,
+    logged after the account agreed to share content. Drinks of accounts in ghost
+    mode stay out, so the date never shows where someone hiding was. The write
+    must name this pub, under its own name or one of a duplicate merged into it,
     since two businesses can share one geohash cell.
     """
 
     now = timezone.now()
     confirmed: dict[tuple[str, str], datetime] = {}
 
-    def confirm(cache_key: str, beer_name, at: datetime) -> None:
+    def confirm(cache_key: str, name: str, beer_name, at: datetime, served=None) -> None:
         product = product_of(beer_name)
-        if product is None:
+        if product is None or not any(names_match(name, known) for known in names[cache_key]):
             return
         key = (cache_key, product.key)
+        if served is not None and not any(
+            (_price(beer), beer.get("volume_ml")) == served for beer in on_tap.get(key, [])
+        ):
+            return
         at = min(at, now)
         confirmed[key] = max(at, confirmed.get(key, at))
 
@@ -126,12 +136,10 @@ def _confirmations(
             created_at__gte=since,
         ).values_list("cache_key", "name", "payload", "created_at")
         for cache_key, name, payload, created_at in logs:
-            if not names_match(name, menus[cache_key].name):
-                continue
             beers = payload.get("beers") if isinstance(payload, dict) else payload
             for beer in beers if isinstance(beers, list) else []:
                 if isinstance(beer, dict):
-                    confirm(cache_key, beer.get("name"), created_at)
+                    confirm(cache_key, name, beer.get("name"), created_at)
         drinks = DrinkLog.objects.filter(
             cache_key__in=chunk,
             drink_type=DrinkLog.DrinkType.BEER,
@@ -143,10 +151,9 @@ def _confirmations(
             # Consent given later does not publish what was logged before it.
             account__ugc_terms_accepted_at__lte=F("created_at"),
             account__ghost_mode=False,
-        ).values_list("cache_key", "name", "beer_name", "drank_at")
-        for cache_key, name, beer_name, drank_at in drinks:
-            if names_match(name, menus[cache_key].name):
-                confirm(cache_key, beer_name, drank_at)
+        ).values_list("cache_key", "name", "beer_name", "drank_at", "price_czk", "volume_ml")
+        for cache_key, name, beer_name, drank_at, price, volume in drinks:
+            confirm(cache_key, name, beer_name, drank_at, served=(price, volume))
     return confirmed
 
 
@@ -194,6 +201,23 @@ def build_beer_pages(now: datetime | None = None) -> dict:
         products.setdefault(match.product.key, match.product)
         return match.product
 
+    # A duplicate merged into another pub is that pub: it counts once, with its newest write.
+    # Its old menu stands in only while the pub has no menu of its own, and writes under the
+    # duplicate's old name still count for the pub.
+    targets: dict[str, str] = {}
+    alias_names: dict[str, list[str]] = defaultdict(list)
+    merged_names: dict[str, list[str]] = defaultdict(list)
+    for key, target, name, merged_into in _merged_aliases().values_list(
+        "cache_key", "canonical_pub__cache_key", "name", "canonical_pub__name"
+    ):
+        targets[key] = target
+        alias_names[key].append(name)
+        merged_names[target] += [name, merged_into]
+    with_own_menu = set(
+        PubCommunityData.objects.filter(cache_key__in=set(targets.values()))
+        .filter(~Q(beers=[]) | Q(beers_updated_at__isnull=False))
+        .values_list("cache_key", flat=True)
+    )
     menus = {
         menu.cache_key: menu
         for menu in _in_czechia(list(
@@ -201,20 +225,18 @@ def build_beer_pages(now: datetime | None = None) -> dict:
                 "cache_key", "name", "lat", "lng", "city", "beers", "beer_menu_rotates"
             )
         ))
+        if targets.get(menu.cache_key) not in with_own_menu
     }
     on_tap: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for menu in menus.values():
         for beer in menu.beers if isinstance(menu.beers, list) else []:
             if isinstance(beer, dict) and (product := product_of(beer.get("name"))):
                 on_tap[(menu.cache_key, product.key)].append(beer)
-    confirmed = _confirmations(menus, since, product_of)
+    names = {
+        key: [menu.name, *alias_names.get(key, []), *merged_names.get(key, [])] for key, menu in menus.items()
+    }
+    confirmed = _confirmations(menus, names, on_tap, since, product_of)
 
-    # A duplicate merged into another pub is that pub: it counts once, with its newest write.
-    targets: dict[str, str] = {}
-    alias_names: dict[str, list[str]] = defaultdict(list)
-    for key, target, name in _merged_aliases().values_list("cache_key", "canonical_pub__cache_key", "name"):
-        targets[key] = target
-        alias_names[key].append(name)
     listed = [pair for pair in on_tap if pair in confirmed]
     excluded = _globally_reported_pub_cache_keys(
         {cache_key for cache_key, _ in listed} | {targets.get(cache_key, cache_key) for cache_key, _ in listed}
