@@ -978,12 +978,14 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontFamily: Fonts.display.bold,
     fontSize: 22,
-    lineHeight: 30,
+    // UITextField centres Baloo's own line box, which keeps the digits in the
+    // middle. A shorter fixed lineHeight lifts them ~6 pt above centre on iOS.
+    lineHeight: Platform.OS === 'ios' ? undefined : 30,
     fontVariant: ['tabular-nums'],
     minHeight: 56,
     paddingHorizontal: 14,
-    // The single-line field centres itself on iOS. Extra vertical padding
-    // pushes Baloo's tall line box into the clipping edge of UITextField.
+    // Extra vertical padding pushes the tall line box into the clipping edge
+    // of UITextField.
     paddingVertical: Platform.OS === 'ios' ? 0 : 10,
     textAlign: 'center',
     textAlignVertical: 'center',
@@ -1041,7 +1043,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontFamily: Fonts.display.bold,
     fontSize: 20,
-    lineHeight: 28,
+    lineHeight: Platform.OS === 'ios' ? undefined : 28,
     fontVariant: ['tabular-nums'],
     minHeight: 52,
     paddingHorizontal: 14,
