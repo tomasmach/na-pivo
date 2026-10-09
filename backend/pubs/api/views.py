@@ -252,7 +252,7 @@ from pubs.price_index import upsert_pub_price_index
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
-from .cache import _matching_external_menu, get_cached_pub_details, get_or_enrich
+from .cache import get_cached_pub_details, get_or_enrich
 from .client_time import bounded_client_time
 from .drink_flags import evaluate_drink_flags
 from .profile_helpers import (
@@ -2003,24 +2003,24 @@ def _historical_beers_after_menu_replacement(
     return next_historical
 
 
-def _menu_for_beer_change(
-    cache_key: str,
-    name: str,
-    previous: PubCommunityData | None,
-) -> tuple[list[dict], list[dict]]:
-    """The menu (and its history) a one-beer change applies to: the one
-    /v1/pub-hours shows for this pub. A community menu, even a cleared one,
-    wins; until there is one, the imported menu is what people see."""
-    if previous is not None and names_match(name, previous.name):
-        if previous.beers or previous.beers_updated_at is not None:
-            return list(previous.beers or []), list(previous.historical_beers or [])
-        history = list(previous.historical_beers or [])
-    else:
-        history = []
-    imported = _matching_external_menu(
-        list(PubExternalBeerMenu.objects.filter(cache_key=cache_key, active=True)), name
-    )
-    return (list(imported.beers) if imported and imported.beers else []), history
+def _alias_menu_rows_for_update(identity) -> list[PubCommunityData]:
+    """Menus kept under this pub's older identities, locked.
+
+    /v1/pub-hours shows their beers merged with the current one, so a beer
+    taken off or fixed must change in them too or it would show up again.
+    """
+    if identity.canonical_id is None:
+        return []
+    names_by_key: dict[str, set[str]] = {}
+    for alias_key, name_key in identity.aliases:
+        if alias_key != identity.cache_key:
+            names_by_key.setdefault(alias_key, set()).add(name_key)
+    if not names_by_key:
+        return []
+    rows = PubCommunityData.objects.select_for_update().filter(
+        cache_key__in=list(names_by_key)
+    ).order_by("pk")
+    return [row for row in rows if normalize_pub_name(row.name) in names_by_key[row.cache_key]]
 
 
 def _apply_beer_change(current: list[dict], change: dict) -> list[dict]:
@@ -2123,16 +2123,11 @@ class PubCommunityView(APIView):
             # The menu, its history, the contribution log and the beer and price
             # indexes are saved together, so a failed step is retried whole.
             with transaction.atomic():
-                # Locked so two one-beer changes to this pub apply one after another.
-                previous = (
-                    PubCommunityData.objects.select_for_update()
-                    .filter(cache_key=cache_key)
-                    .first()
-                    if has_beers
-                    else None
-                )
-                current_beers = list(previous.beers or []) if previous else []
-                historical = list(previous.historical_beers or []) if previous else []
+                # Drink writes lock the account and then the menu: same order
+                # here, so the two never wait on each other in a circle.
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
+                alias_rows: list[PubCommunityData] = []
+                created_for_change = False
                 if change is not None:
                     already_done = PubContributionLog.objects.filter(
                         account=request.user,
@@ -2142,10 +2137,40 @@ class PubCommunityView(APIView):
                     if already_done:
                         # A retry of a step that already went through never runs twice.
                         has_beers = False
-                    else:
-                        current_beers, historical = _menu_for_beer_change(
-                            cache_key, identity.name, previous
+                        previous = (
+                            PubCommunityData.objects.filter(cache_key=cache_key).first()
                         )
+                    else:
+                        # The row exists and is locked before the change is worked
+                        # out, so two first changes of an imported menu apply one
+                        # after another instead of overwriting each other.
+                        row, created_for_change = PubCommunityData.objects.get_or_create(
+                            cache_key=cache_key,
+                            defaults={
+                                "name": identity.name,
+                                "lat": identity.lat,
+                                "lng": identity.lng,
+                                "city": identity.city or None,
+                                "external_id": identity.external_id or None,
+                                "account": request.user,
+                            },
+                        )
+                        previous = PubCommunityData.objects.select_for_update().get(pk=row.pk)
+                        alias_rows = _alias_menu_rows_for_update(identity)
+                        # The change applies to the menu people see for this pub.
+                        shown = get_cached_pub_details(
+                            [
+                                {
+                                    "name": data["name"],
+                                    "lat": data["lat"],
+                                    "lng": data["lng"],
+                                    "city": data.get("city") or None,
+                                }
+                            ],
+                            include_next_change=False,
+                        )[0] or {}
+                        current_beers = list(shown.get("beers") or [])
+                        historical = list(shown.get("historical_beers") or [])
                         beers = _apply_beer_change(current_beers, change)
                         applied = beers != current_beers
                         PubContributionLog.objects.create(
@@ -2158,9 +2183,35 @@ class PubCommunityView(APIView):
                             lng=data["lng"],
                             payload={"beers": beers, "beer_change": change, "applied": applied},
                         )
-                        # Gone or unchanged already: nothing to write for the menu.
-                        if not applied:
+                        if applied:
+                            for alias_row in alias_rows:
+                                alias_beers = _apply_beer_change(list(alias_row.beers or []), change)
+                                if alias_beers != list(alias_row.beers or []):
+                                    alias_row.historical_beers = (
+                                        _historical_beers_after_menu_replacement(
+                                            current=list(alias_row.beers or []),
+                                            replacement=alias_beers,
+                                            historical=list(alias_row.historical_beers or []),
+                                        )
+                                    )
+                                    alias_row.beers = alias_beers
+                                    alias_row.save(update_fields=["beers", "historical_beers"])
+                        else:
+                            # Gone or unchanged already: nothing to write for the menu.
                             has_beers = False
+                            if created_for_change:
+                                previous.delete()
+                                previous = None
+                else:
+                    previous = (
+                        PubCommunityData.objects.select_for_update()
+                        .filter(cache_key=cache_key)
+                        .first()
+                        if has_beers
+                        else None
+                    )
+                    current_beers = list(previous.beers or []) if previous else []
+                    historical = list(previous.historical_beers or []) if previous else []
 
                 defaults = {
                     "name": identity.name,

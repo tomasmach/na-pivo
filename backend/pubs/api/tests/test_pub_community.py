@@ -1256,3 +1256,62 @@ def test_failed_index_sync_saves_nothing_so_the_retry_finishes_the_change(client
     assert retried.status_code == status.HTTP_200_OK
     assert PubCommunityData.objects.get().beers == _MENU_NOW[1:]
     assert calls["n"] == 2
+
+
+@pytest.mark.django_db
+def test_beer_change_also_reaches_the_menu_of_a_merged_duplicate(client):
+    from django.utils import timezone
+
+    from pubs.identity import normalize_pub_name
+    from pubs.models import CanonicalPub, PubAlias
+
+    token = _register(client)
+    canonical = CanonicalPub.objects.create(
+        cache_key=_KEY, name=_NAME, name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, city="Praha"
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=_KEY, name=_NAME,
+        name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, is_primary=True,
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key="u2fkbq00", name="Stará hospoda",
+        name_key=normalize_pub_name("Stará hospoda"), lat=_LAT, lng=_LNG,
+    )
+    PubCommunityData.objects.create(
+        cache_key="u2fkbq00", name="Stará hospoda", lat=_LAT, lng=_LNG,
+        beers=_MENU_NOW[:2], beers_updated_at=timezone.now(),
+    )
+
+    resp = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000c1",
+        [_MENU_NOW[1]],
+        {"action": "remove", "name": "Pilsner Urquell", "volume_ml": 500},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert PubCommunityData.objects.get(cache_key=_KEY).beers == [_MENU_NOW[1]]
+    assert PubCommunityData.objects.get(cache_key="u2fkbq00").beers == [_MENU_NOW[1]]
+    shown = client.post(
+        "/v1/pub-hours",
+        data={"pubs": [{"name": _NAME, "lat": _LAT, "lng": _LNG}], "sync_budget": 0},
+        format="json",
+    ).json()["results"][0]
+    assert [beer["name"] for beer in shown["beers"]] == ["Velkopopovický Kozel 11°"]
+
+
+@pytest.mark.django_db
+def test_beer_change_with_no_menu_to_change_leaves_no_row_behind(client):
+    token = _register(client)
+
+    resp = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000c2",
+        [],
+        {"action": "remove", "name": "Pilsner Urquell", "volume_ml": 500},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert not PubCommunityData.objects.exists()
