@@ -2565,6 +2565,14 @@ export const cs = {
         shot: 'Název, např. Slivovice',
       })[type],
     editModalTitle: 'Uprav cenu',
+    // Long-press edit of a menu beer can take it off the pub's shared menu.
+    removeFromMenu: 'Smazat z lístku',
+    removeFromMenuTitle: 'Smazat z lístku?',
+    removeFromMenuBody: (name: string) =>
+      `${name} zmizí z lístku téhle hospody pro všechny. V historii lístku zůstane.`,
+    removeFromMenuConfirm: 'Smazat',
+    removeFromMenuKeep: 'Nechat',
+    removedFromMenuToast: 'Pivo je pryč z lístku.',
     beerNamePlaceholder: 'Název piva, např. Pilsner Urquell 12°',
     // Add-form shortcut into the AI menu scan (hands over to the contribute
     // editor). Framed as filling the PUB's menu, not logging your own drinks.
