@@ -14,6 +14,7 @@ from io import BytesIO
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import F
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext
 from PIL import Image, ImageDraw
@@ -21,6 +22,7 @@ from PIL import Image, ImageDraw
 from pubs.api.pub_beers_views import _merged_aliases, _places, city_name
 from pubs.api.views import _globally_reported_pub_cache_keys
 from pubs.beer_catalog import (
+    ALLOWED_BEER_VOLUMES_ML,
     BEER_PRICE_MAX_CZK,
     BEER_PRICE_MIN_CZK,
     BeerCatalogMatchCache,
@@ -99,10 +101,11 @@ def _confirmations(
 
     A submitted menu confirms every beer on it. A drink confirms its own beer, by
     when it was drunk, since the offline queue can deliver it much later. Only the
-    drinks that also update the public menu count: beers with a price, not
-    suspect, of accounts that agreed to share content. Drinks of accounts in ghost
-    mode stay out, so the date never shows where someone hiding was. The write
-    must name the same pub, since two businesses can share one geohash cell.
+    drinks the app also writes onto the public menu count: not suspect, with a
+    price and a menu glass size, logged after the account agreed to share
+    content. Drinks of accounts in ghost mode stay out, so the
+    date never shows where someone hiding was. The write must name the same pub,
+    since two businesses can share one geohash cell.
     """
 
     now = timezone.now()
@@ -135,8 +138,10 @@ def _confirmations(
             drank_at__gte=since,
             is_suspect=False,
             price_czk__isnull=False,
+            volume_ml__in=ALLOWED_BEER_VOLUMES_ML,
             account__status=Account.Status.ACTIVE,
-            account__ugc_terms_accepted_at__isnull=False,
+            # Consent given later does not publish what was logged before it.
+            account__ugc_terms_accepted_at__lte=F("created_at"),
             account__ghost_mode=False,
         ).values_list("cache_key", "name", "beer_name", "drank_at")
         for cache_key, name, beer_name, drank_at in drinks:

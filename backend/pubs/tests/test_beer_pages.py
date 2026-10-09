@@ -102,11 +102,19 @@ def _pub(
     return directory.cache_key
 
 
-def _drink(cache_key: str, *, beer: str = "Testovar 11°", price: int | None = 55, days_ago: int = 0, **account) -> None:
+def _drink(
+    cache_key: str,
+    *,
+    beer: str = "Testovar 11°",
+    price: int | None = 55,
+    volume_ml: int = 500,
+    days_ago: int = 0,
+    **account,
+) -> None:
     menu = PubCommunityData.objects.get(cache_key=cache_key)
     owner = Account.objects.create(
         device_id=f"beer-pages-{uuid.uuid4()}",
-        ugc_terms_accepted_at=account.pop("ugc_terms_accepted_at", timezone.now()),
+        ugc_terms_accepted_at=account.pop("ugc_terms_accepted_at", timezone.now() - timedelta(days=400)),
         **account,
     )
     DrinkLog.objects.create(
@@ -120,7 +128,7 @@ def _drink(cache_key: str, *, beer: str = "Testovar 11°", price: int | None = 5
         drank_at=timezone.now() - timedelta(days=days_ago),
         beer_name=beer,
         price_czk=price,
-        volume_ml=500,
+        volume_ml=volume_ml,
     )
 
 
@@ -172,7 +180,10 @@ def test_a_drink_confirms_its_own_beer_but_only_as_the_menu_would_publish_it():
 
     _drink(old, days_ago=2, ghost_mode=True)
     _drink(old, days_ago=2, ugc_terms_accepted_at=None)
+    # Logged before the account agreed to share: it stayed private then and stays private now.
+    _drink(old, days_ago=2, ugc_terms_accepted_at=timezone.now() + timedelta(minutes=5))
     _drink(old, days_ago=2, price=None)
+    _drink(old, days_ago=2, volume_ml=450)
     listed = build_beer_pages()["beers"]["testovar-11"]["listed"]
     assert listed[-1]["name"] == "Stará Hospoda" and not listed[-1]["fresh"]
 
