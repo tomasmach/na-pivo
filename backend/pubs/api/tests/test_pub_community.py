@@ -1121,9 +1121,9 @@ def test_beer_change_for_a_beer_already_gone_changes_nothing(client):
     assert record.beers == _MENU_NOW[:2]
     assert record.beers_updated_at == before.beers_updated_at
     assert resp.json()["beers"] == _MENU_NOW[:2]
-    assert not PubContributionLog.objects.filter(
-        client_id="aaaaaaaa-0000-0000-0000-0000000000a4"
-    ).exists()
+    # Recorded as done, so a retry never applies it after all.
+    log = PubContributionLog.objects.get(client_id="aaaaaaaa-0000-0000-0000-0000000000a4")
+    assert log.payload["applied"] is False
 
 
 @pytest.mark.django_db
@@ -1171,3 +1171,88 @@ def test_beer_change_validation(client):
     without_beers.pop("beers")
     resp = client.post("/v1/pub-community", data=without_beers, format="json", **_auth(token))
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_beer_change_retry_never_repeats_a_step_that_went_through(client):
+    token = _register(client)
+    other = _register(client, _OTHER_DEVICE_ID)
+    _seed_menu(client, token, _MENU_NOW)
+    fix_65 = {"action": "update", "name": "Bernard 12°", "volume_ml": 500, "price_czk": 65}
+
+    first = _change(client, token, "aaaaaaaa-0000-0000-0000-0000000000b1", _MENU_NOW, fix_65)
+    assert first.status_code == status.HTTP_200_OK
+    # Someone else fixes the price later; then the first request is retried.
+    later = _change(
+        client,
+        other,
+        "aaaaaaaa-0000-0000-0000-0000000000b2",
+        _MENU_NOW,
+        {**fix_65, "price_czk": 70},
+    )
+    assert later.status_code == status.HTTP_200_OK
+    retry = _change(client, token, "aaaaaaaa-0000-0000-0000-0000000000b1", _MENU_NOW, fix_65)
+
+    assert retry.status_code == status.HTTP_200_OK
+    assert PubCommunityData.objects.get().beers[2]["price_czk"] == 70
+
+
+@pytest.mark.django_db
+def test_beer_change_starts_from_the_imported_menu_people_see(client):
+    from pubs.models import PubExternalBeerMenu
+
+    token = _register(client)
+    PubExternalBeerMenu.objects.create(
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        source=PubExternalBeerMenu.Source.PIVAROVA_MAPA,
+        source_id="pm-1",
+        source_url="https://example.com/pm-1",
+        beers=_MENU_NOW,
+    )
+
+    resp = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000b3",
+        _MENU_NOW[1:],
+        {"action": "remove", "name": "Pilsner Urquell", "volume_ml": 500},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    record = PubCommunityData.objects.get()
+    assert record.beers == _MENU_NOW[1:]
+    assert record.historical_beers == [_MENU_NOW[0]]
+
+
+@pytest.mark.django_db
+def test_failed_index_sync_saves_nothing_so_the_retry_finishes_the_change(client, monkeypatch):
+    token = _register(client)
+    _seed_menu(client, token, _MENU_NOW)
+    remove = {"action": "remove", "name": "Pilsner Urquell", "volume_ml": 500}
+
+    import pubs.api.views as views
+
+    real_sync = views.sync_pub_beer_indexes_for_menu
+    calls = {"n": 0}
+
+    def flaky_sync(**kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("index down")
+        return real_sync(**kwargs)
+
+    monkeypatch.setattr(views, "sync_pub_beer_indexes_for_menu", flaky_sync)
+    failed = _change(client, token, "aaaaaaaa-0000-0000-0000-0000000000b4", _MENU_NOW[1:], remove)
+    assert failed.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert PubCommunityData.objects.get().beers == _MENU_NOW
+    assert not PubContributionLog.objects.filter(
+        client_id="aaaaaaaa-0000-0000-0000-0000000000b4"
+    ).exists()
+
+    retried = _change(client, token, "aaaaaaaa-0000-0000-0000-0000000000b4", _MENU_NOW[1:], remove)
+    assert retried.status_code == status.HTTP_200_OK
+    assert PubCommunityData.objects.get().beers == _MENU_NOW[1:]
+    assert calls["n"] == 2

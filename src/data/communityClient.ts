@@ -14,7 +14,7 @@
 
 import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
-import { chainAbortSignal } from './apiFetch';
+import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import type { CommunityBeer, WeeklyHours, WireBeer } from './communityHours';
 import { DAY_KEYS, beerFromWire, beerToWire } from './communityHours';
 import type { WireMapperSnapshot } from './pubAmenitiesClient';
@@ -135,13 +135,14 @@ function beerChangeToWire(change: BeerChange): WireBeerChange {
 
 /**
  * POST one community submission. Returns the parsed backend response on success
- * (so the caller can refresh local state with the canonical stored data), or
- * null on any failure. Never throws.
+ * (so the caller can refresh local state with the canonical stored data),
+ * 'permanent-error' when the server rejected the payload for good (400/422), or
+ * null on any other failure. Never throws.
  */
 export async function submitPubCommunity(
   entry: CommunityEntry,
   signal?: AbortSignal,
-): Promise<CommunityResponse | null> {
+): Promise<CommunityResponse | 'permanent-error' | null> {
   if (signal?.aborted) return null;
 
   const endpoint = getBackendEndpoint('/v1/pub-community');
@@ -162,7 +163,14 @@ export async function submitPubCommunity(
       signal: abort.signal,
     });
 
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      // 400/422: this byte-stable payload will never succeed; the queue drops it.
+      const result = await classifyQueueHttpFailure(resp.status, session, {
+        source: 'pub_community_submit',
+        endpoint: '/v1/pub-community',
+      });
+      return result === 'permanent-error' ? result : null;
+    }
 
     const data = (await resp.json()) as WireResponse;
     if (!data?.cache_key) return null;

@@ -62,10 +62,23 @@ async function flushLocked(): Promise<Map<string, CommunityResponse>> {
   if (queue.length === 0) return delivered;
 
   const remaining: CommunityEntry[] = [];
+  /** Pubs with an edit still waiting: their later edits must not overtake it. */
+  const waiting = new Set<string>();
   for (const entry of queue) {
+    const cell = entryCell(entry);
+    if (waiting.has(cell)) {
+      remaining.push(entry);
+      continue;
+    }
     const result = await submitPubCommunity(entry);
-    if (result) delivered.set(entry.client_id, result);
-    else remaining.push(entry);
+    // 400/422: this payload can never succeed, so it is dropped for good.
+    if (result === 'permanent-error') continue;
+    if (result) {
+      delivered.set(entry.client_id, result);
+      continue;
+    }
+    remaining.push(entry);
+    waiting.add(cell);
   }
   await saveQueue(remaining);
   return delivered;
@@ -87,20 +100,20 @@ export function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityRes
   return enqueueTask(async () => {
     const queue = await loadQueue();
     const cell = entryCell(entry);
-    const mergeable = (queued: CommunityEntry) =>
-      entryCell(queued) === cell && queued.beer_change === undefined;
+    // Only the pub's latest pending edit may absorb this one: merging into an
+    // earlier one would move it past a one-beer change queued after it.
+    const latest = queue.filter((queued) => entryCell(queued) === cell).at(-1);
     let next: CommunityEntry[];
-    if (entry.beer_change !== undefined) {
-      next = [...queue, entry];
-    } else {
-      const previous = queue.find(mergeable);
-      next = queue.filter((queued) => !mergeable(queued));
+    if (entry.beer_change === undefined && latest && latest.beer_change === undefined) {
+      next = queue.filter((queued) => queued !== latest);
       next.push({
         ...entry,
-        hours: entry.hours ?? previous?.hours,
-        beers: entry.beers ?? previous?.beers,
-        beer_menu_rotates: entry.beer_menu_rotates ?? previous?.beer_menu_rotates,
+        hours: entry.hours ?? latest.hours,
+        beers: entry.beers ?? latest.beers,
+        beer_menu_rotates: entry.beer_menu_rotates ?? latest.beer_menu_rotates,
       });
+    } else {
+      next = [...queue, entry];
     }
     await saveQueue(next.slice(-MAX_QUEUE_LENGTH));
 
