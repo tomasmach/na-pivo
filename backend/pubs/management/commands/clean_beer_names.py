@@ -92,7 +92,6 @@ class Command(BaseCommand):
             "drinks_linked": diaries.linked_rows,
             "diaries_changed": len(diaries.changes),
             "diaries_kept_for_badge": diaries.accounts_kept_for_badge,
-            "drinks_edited_meanwhile": diaries.rows_edited_meanwhile,
         }
 
     def _revert(self, report: Path) -> None:

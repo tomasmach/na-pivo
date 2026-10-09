@@ -127,23 +127,6 @@ def test_nobody_loses_the_taster_badge():
     assert cleaned.drinks.filter(beer_name="Stodolní 11°").count() == 2
 
 
-def test_a_beer_renamed_by_its_owner_meanwhile_keeps_the_owners_name(tmp_path):
-    account = Account.objects.create(device_id="renamer")
-    first = _drink(account, "Radek 12")
-    second = _drink(account, "Primátor 11")
-
-    def owner_renames(changes) -> None:
-        DrinkLog.objects.filter(pk=first.pk).update(beer_name="Kozel 11")
-
-    plan = run_diary_cleanup(build_canonicalizer().name, apply=True, record=owner_renames)
-
-    assert plan.rows_edited_meanwhile == 1
-    first.refresh_from_db()
-    second.refresh_from_db()
-    assert first.beer_name == "Kozel 11"
-    assert second.beer_name == "Primátor 11°"
-
-
 def test_revert_keeps_a_beer_renamed_after_the_cleanup(tmp_path):
     account = Account.objects.create(device_id="later-renamer")
     first = _drink(account, "Radek 12")

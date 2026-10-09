@@ -21,7 +21,7 @@ from django.db import transaction
 
 from pubs.api.profile_helpers import TASTER_MIN_BEERS
 from pubs.beer_catalog import BeerCatalogMatchCache, match_beer
-from pubs.models import BeerBrand, BeerProduct, DrinkLog
+from pubs.models import Account, BeerBrand, BeerProduct, DrinkLog
 
 LINK_FIELDS = (
     "beer_brand_id",
@@ -49,7 +49,6 @@ class DiaryPlan:
     renamed_rows: int = 0
     linked_rows: int = 0
     accounts_kept_for_badge: int = 0
-    rows_edited_meanwhile: int = 0
     names_before: set[str] = field(default_factory=set)
     names_after: set[str] = field(default_factory=set)
 
@@ -110,7 +109,14 @@ def _clean_account(
     *,
     apply: bool,
 ) -> None:
-    drinks = list(DrinkLog.objects.filter(account_id=account_id).order_by("pk"))
+    drinks = DrinkLog.objects.filter(account_id=account_id).order_by("pk")
+    if apply:
+        # The badge check must see the drinks it writes. Lock like a drink
+        # write does: the account first, then its drinks.
+        if Account.objects.select_for_update().filter(pk=account_id).first() is None:
+            return
+        drinks = drinks.select_for_update()
+    drinks = list(drinks)
     before = [(drink, {name: getattr(drink, name) for name in FIELDS}) for drink in drinks]
     after = [(drink, _cleaned(drink, canonical, match_cache)) for drink in drinks]
     rows = [
@@ -135,13 +141,9 @@ def _clean_account(
     change = DiaryChange(rows)
     record([change])
     plan.changes.append(change)
-    if not apply:
-        return
-    with transaction.atomic():
+    if apply:
         for row in rows:
-            # Only a row still as it was read: a rename the owner made meanwhile wins.
-            if not DrinkLog.objects.filter(pk=row["pk"], **row["before"]).update(**row["after"]):
-                plan.rows_edited_meanwhile += 1
+            DrinkLog.objects.filter(pk=row["pk"]).update(**row["after"])
 
 
 def run_diary_cleanup(
@@ -152,8 +154,9 @@ def run_diary_cleanup(
 ) -> DiaryPlan:
     """Plan the drink log cleanup and, with ``apply``, write it one account at a time.
 
-    ``record`` receives each account's rows (before and after) before they are
-    written, so the report is a backup even when the run stops halfway.
+    Each account is locked only for its own short transaction. ``record``
+    receives its rows (before and after) before they are written, so the
+    report is a backup even when the run stops halfway.
     """
     plan = DiaryPlan()
     record = record or (lambda changes: None)
@@ -165,7 +168,8 @@ def run_diary_cleanup(
         .distinct()
     )
     for account_id in account_ids:
-        _clean_account(account_id, canonical, match_cache, plan, record, apply=apply)
+        with transaction.atomic():
+            _clean_account(account_id, canonical, match_cache, plan, record, apply=apply)
     return plan
 
 
