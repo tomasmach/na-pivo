@@ -97,6 +97,12 @@ function parseCustomMl(text: string, drinkType: DrinkType): number | undefined {
 
 export type BeerFormMode = 'add' | 'price' | 'edit' | 'menu';
 
+/** The price and volume typed so far, handed over when the row is removed. */
+export interface BeerFormDraft {
+  priceCzk?: number;
+  volumeMl?: number;
+}
+
 export interface BeerFormResult {
   drinkType: DrinkType;
   name: string;
@@ -129,7 +135,7 @@ interface BeerFormModalProps {
   onScanMenu?: () => void;
   /** Remove the current row from the pub's menu: the draft menu in menu mode,
    *  the live menu from the counter's edit mode. */
-  onRemove?: () => void;
+  onRemove?: (draft: BeerFormDraft) => void;
   /** Visible label of the remove action (default "Smazat pivo"). */
   removeLabel?: string;
   /** Menu mode only: add a 0,3 l sibling directly below this row. */
@@ -215,7 +221,7 @@ interface BeerFormBodyProps {
   titleOverride?: string;
   submitLabelOverride?: string;
   onScanMenu?: () => void;
-  onRemove?: () => void;
+  onRemove?: (draft: BeerFormDraft) => void;
   removeLabel?: string;
   onAddSmallVariant?: () => void;
   canAddSmallVariant: boolean;
@@ -735,7 +741,12 @@ function BeerFormBody({
                 ) : null}
                 {onRemove ? (
                   <Pressable
-                    onPress={onRemove}
+                    onPress={() =>
+                      onRemove({
+                        ...(typeof priceCzk === 'number' ? { priceCzk } : {}),
+                        ...(typeof volumeMl === 'number' ? { volumeMl } : {}),
+                      })
+                    }
                     style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
                     accessibilityRole="button"
                     accessibilityLabel={removeLabel ?? t.a11y.contributeRemoveBeer}

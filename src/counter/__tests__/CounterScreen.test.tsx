@@ -715,7 +715,7 @@ describe('CounterScreen removing a beer from the menu', () => {
     expect(form.removeLabel).toBe(copy.counter.removeFromMenu);
 
     // iOS cannot stack the dialog on the form: the form closes, then it asks.
-    act(() => form.onRemove());
+    act(() => form.onRemove({}));
     expect(lastProps(BeerFormModal).visible).toBe(false);
     act(() => jest.advanceTimersByTime(300));
     // Nothing changes until the user confirms in the dialog.
@@ -754,7 +754,7 @@ describe('CounterScreen removing a beer from the menu', () => {
     const renderer = render();
 
     longPressRow(renderer, copy.a11y.counterCountBeer('Primátor 11°', `${formatVolume(500)} · ${copy.counter.price(55)}`));
-    act(() => lastProps(BeerFormModal).onRemove());
+    act(() => lastProps(BeerFormModal).onRemove({}));
     act(() => jest.advanceTimersByTime(300));
     const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
 
@@ -784,7 +784,7 @@ describe('CounterScreen removing a beer from the menu', () => {
     const renderer = render();
 
     longPressRow(renderer, copy.a11y.counterCountBeer('Primátor 11°', `${formatVolume(500)} · ${copy.counter.price(55)}`));
-    act(() => lastProps(BeerFormModal).onRemove());
+    act(() => lastProps(BeerFormModal).onRemove({}));
     act(() => jest.advanceTimersByTime(300));
     const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
     act(() => dialog.buttons.find((b: any) => b.style === 'cancel').onPress());
@@ -792,6 +792,108 @@ describe('CounterScreen removing a beer from the menu', () => {
     expect(lastProps(BeerFormModal)).toMatchObject({ visible: true, mode: 'edit', beer: MENU[1] });
     expect(useCommunityStore.getState().overrides[CELL].beers).toEqual(MENU);
     expect(enqueuePubCommunity).not.toHaveBeenCalled();
+  });
+
+  function hoursResult(beers: { name: string; priceCzk: number; volumeMl: number }[]) {
+    return {
+      openingHours: null,
+      isOpenNow: null,
+      nextChange: null,
+      status: 'unknown',
+      source: null,
+      communityHours: null,
+      beers,
+      historicalBeers: [],
+      beersUpdatedAt: '2026-10-09T08:00:00Z',
+      beerMenuRotates: false,
+      hoursUpdatedAt: null,
+      rating: null,
+      ratingCount: null,
+      ratingLabel: null,
+      hasGarden: null,
+      venueKind: 'unknown',
+    };
+  }
+
+  function showPubWithCachedMenu() {
+    let answer!: (value: Map<string, unknown>) => void;
+    fetchPubHours.mockImplementation(
+      () => new Promise((resolve) => { answer = resolve; }) as never,
+    );
+    const pub = { ...PUB, beers: MENU };
+    useNearbyPub.mockReturnValue(
+      nearbyState({ selected: pub, candidates: [{ pubKey: CELL, pub, distanceMeters: 12 }] }),
+    );
+    const renderer = render();
+    return {
+      renderer,
+      answer: async (beers: typeof MENU) => {
+        await act(async () => {
+          answer(new Map([[PUB.id, hoursResult(beers)]]));
+          await Promise.resolve();
+        });
+      },
+    };
+  }
+
+  const PLZEN = () => copy.a11y.counterCountBeer('Plzeň', `${formatVolume(500)} · ${copy.counter.price(62)}`);
+
+  it('offers the delete only after the server menu arrives, and keeps the beers it added', async () => {
+    const { renderer, answer } = showPubWithCachedMenu();
+
+    // The cached menu may be older than the server's: no delete yet.
+    longPressRow(renderer, PLZEN());
+    expect(lastProps(BeerFormModal).onRemove).toBeUndefined();
+    act(() => lastProps(BeerFormModal).onCancel());
+
+    const kozel = { name: 'Kozel 11°', priceCzk: 48, volumeMl: 500 };
+    await answer([...MENU, kozel]);
+    longPressRow(renderer, PLZEN());
+    act(() => lastProps(BeerFormModal).onRemove({}));
+    act(() => jest.advanceTimersByTime(300));
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+    await act(async () => {
+      dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+      await Promise.resolve();
+    });
+
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Primátor 11°', price_czk: 55, volume_ml: 500 },
+        { name: 'Kozel 11°', price_czk: 48, volume_ml: 500 },
+      ],
+    });
+  });
+
+  it('offers no delete when the server says the menu is empty', async () => {
+    const { renderer, answer } = showPubWithCachedMenu();
+    await answer([]);
+
+    longPressRow(renderer, PLZEN());
+
+    expect(lastProps(BeerFormModal).onRemove).toBeUndefined();
+  });
+
+  it('"Nechat" brings back the price the user had typed', () => {
+    useCommunityStore.setState({ overrides: { [CELL]: { beers: MENU, updatedAt: 1 } } });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    longPressRow(renderer, PLZEN());
+    act(() => lastProps(BeerFormModal).onRemove({ priceCzk: 65, volumeMl: 500 }));
+    act(() => jest.advanceTimersByTime(300));
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+    act(() => dialog.buttons.find((b: any) => b.style === 'cancel').onPress());
+
+    expect(lastProps(BeerFormModal)).toMatchObject({ visible: true, mode: 'edit', beer: { ...MENU[2], priceCzk: 65 } });
+    // Saving still edits the Plzeň row it was opened for.
+    act(() => lastProps(BeerFormModal).onSubmit({ drinkType: 'beer', name: 'Plzeň', priceCzk: 65, volumeMl: 500 }));
+    expect(useCommunityStore.getState().overrides[CELL].beers).toEqual([
+      MENU[0],
+      MENU[1],
+      { name: 'Plzeň', priceCzk: 65, volumeMl: 500, drinkType: 'beer', servingType: undefined },
+    ]);
   });
 
   it('offers no delete for a beer that was only drunk tonight', () => {
