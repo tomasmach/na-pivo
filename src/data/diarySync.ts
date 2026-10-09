@@ -79,6 +79,8 @@ export async function reconcileDiarySnapshot(): Promise<DiarySnapshot | null> {
   // keeps the new name. A launch pull must not read a diary still loading.
   await whenTallyHydrated();
   const localNames = localBeerNames();
+  // An edit queued now may land after the snapshot was read; it keeps its name.
+  const updatesBefore = await getQueuedUpdateIds();
   await Promise.all([
     flushDrinksQueue(),
     flushDeleteDrinksQueue(),
@@ -95,9 +97,8 @@ export async function reconcileDiarySnapshot(): Promise<DiarySnapshot | null> {
     getQueuedVisitDeleteIds(),
     getQueuedUpdateIds(),
   ]);
-  useTallyStore
-    .getState()
-    .adoptServerBeerNames(serverBeerNameFixes(drinks, localNames, pendingDrinkUpdates));
+  const editedDrinks = new Set([...updatesBefore, ...pendingDrinkUpdates]);
+  useTallyStore.getState().adoptServerBeerNames(serverBeerNameFixes(drinks, localNames, editedDrinks));
   return {
     drinks: drinks.filter((drink) => !pendingDrinkDeletes.has(drink.client_id)),
     visits: visits.filter((visit) => !pendingVisitDeletes.has(visit.client_id)),

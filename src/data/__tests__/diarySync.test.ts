@@ -148,6 +148,23 @@ it('gives the diary the server beer names but keeps a name the user is changing'
   ]);
 });
 
+it('keeps a name whose queued edit lands while the snapshot is read', async () => {
+  const session = localSession('s1', PUB_A, ['edited']);
+  session.drinks[0].beerName = 'Primátor 11';
+  useTallyStore.setState({ current: null, history: [session] });
+  const drink = remoteDrink('edited', PUB_A);
+  (fetchDrinks as jest.Mock).mockResolvedValue([{ ...drink, beer: { ...drink.beer, name: 'Plzeň' } }]);
+  (fetchVisits as jest.Mock).mockResolvedValue([]);
+  // Queued when the pull starts, delivered by another flush before it ends.
+  (getQueuedUpdateIds as jest.Mock)
+    .mockResolvedValueOnce(new Set(['edited']))
+    .mockResolvedValueOnce(new Set());
+
+  await reconcileDiarySnapshot();
+
+  expect(useTallyStore.getState().history[0].drinks[0].beerName).toBe('Primátor 11');
+});
+
 it('leaves out a removed drink whose deletion is still queued', async () => {
   const visits = [remoteVisit('v1', PUB_A)];
   (fetchDrinks as jest.Mock).mockResolvedValue([
