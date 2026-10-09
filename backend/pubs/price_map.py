@@ -62,8 +62,11 @@ def _chunks(keys: list[str], size: int = 500):
         yield keys[start:start + size]
 
 
-def _in_czechia(rows: list[PubPriceIndex]) -> list[PubPriceIndex]:
-    """The catalogue's country first; the coarse coverage polygon only for pubs it lacks."""
+def _in_czechia(rows: list) -> list:
+    """The catalogue's country first; the coarse coverage polygon only for pubs it lacks.
+
+    Takes any rows with a cache_key, lat and lng: index rows or community menus.
+    """
 
     countries: dict[str, str] = {}
     for chunk in _chunks([row.cache_key for row in rows]):

@@ -1,5 +1,5 @@
-// Price page behaviour. Long lists get a search, sorting and a fold; bars grow and the bill lands as they scroll in.
-// Without this script the page still shows every number and every row.
+// Price and beer page behaviour. Long lists get a search, sorting and a fold; bars grow and the bill lands as they
+// scroll in. Without this script the page still shows every number and every row.
 
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -30,11 +30,15 @@ function plain(text) {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
+// Whichever way a list is sorted, a pub not confirmed for three months comes after the current ones and a row
+// without a price goes last.
+const unpriced = (a, b) => a.old - b.old || Number.isNaN(a.median) - Number.isNaN(b.median);
 const ORDERS = {
-  default: (a, b) => a.order - b.order,
-  cheap: (a, b) => a.median - b.median || a.low - b.low || a.order - b.order,
-  dear: (a, b) => b.median - a.median || b.high - a.high || a.order - b.order,
+  default: (a, b) => a.old - b.old || a.order - b.order,
+  cheap: (a, b) => unpriced(a, b) || a.median - b.median || a.low - b.low || a.order - b.order,
+  dear: (a, b) => unpriced(a, b) || b.median - a.median || b.high - a.high || a.order - b.order,
 };
+const number = (value) => (value ? Number(value) : NaN);
 
 function setUpList(section) {
   const tools = section.querySelector('[data-tools]');
@@ -43,16 +47,19 @@ function setUpList(section) {
   const search = section.querySelector('[data-search]');
   const sortButtons = [...section.querySelectorAll('[data-sort]')];
   const more = section.querySelector('[data-more]');
+  const oldHead = list.querySelector('[data-old-head]');
   const empty = section.querySelector('[data-empty]');
   const folded = Number(section.dataset.folded);
   const moreLabel = more.textContent;
   const rows = [...list.children].map((element, order) => ({
     element,
     order,
-    name: plain(element.querySelector('.name').textContent),
-    median: Number(element.dataset.median),
-    low: Number(element.dataset.low),
-    high: Number(element.dataset.high),
+    // A pub is found by its name or its city, a beer by its name or its brand.
+    name: plain(element.dataset.find || element.querySelector('.name').textContent),
+    old: element.hasAttribute('data-old'),
+    median: number(element.dataset.median),
+    low: number(element.dataset.low),
+    high: number(element.dataset.high),
   }));
   let order = 'default';
   let expanded = false;
@@ -74,6 +81,12 @@ function setUpList(section) {
       row.element.hidden = !show;
     }
     empty.hidden = matches > 0;
+    // The heading over the old pubs moves to whichever of them now shows first.
+    if (oldHead) {
+      const first = sorted.find((row) => row.old && !row.element.hidden);
+      for (const row of rows) row.element.classList.toggle('has-head', row === first);
+      if (first) first.element.prepend(oldHead);
+    }
     more.hidden = Boolean(query);
     if (!deal || reduced) return;
     let index = 0;

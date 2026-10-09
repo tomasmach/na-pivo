@@ -8,29 +8,32 @@ data to unauthenticated crawlers.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
-from django.utils import translation
+from django.utils import formats, timezone, translation
 from django.utils.translation import gettext
 
+from pubs.beer_pages import PATHS as BEER_PATHS
+from pubs.beer_pages import counted, page_path
+from pubs.beer_pages import render_og_image as render_beer_og_image
 from pubs.checks import ANDROID_APP_LINK_FINGERPRINTS_ENV, normalized_cert_fingerprints
 from pubs.home_views import (
     _LANDING_URLS,
     _LEGAL_ROOT,
-    APP_STORE_URL,
     AUTHOR,
+    app_store_url,
     canonical_host,
     ld_json,
     play_store_url,
 )
 from pubs.home_views import PATHS as HOME_PATHS
 from pubs.i18n import current_locale
-from pubs.models import PubPriceSnapshot
+from pubs.models import BeerBrand, BeerPage, BeerProduct, PubPriceSnapshot
 from pubs.price_map import PATHS as PRICE_PATHS
 from pubs.price_map import city_slug, headline_prices
 
@@ -436,6 +439,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
                 "switch_url": paths["en" if lang == "cs" else "cs"],
                 "home_url": "/" if lang == "cs" else "/en",
                 "prices_url": PRICE_PATHS[lang],
+                "beers_url": BEER_PATHS[lang],
                 "og_image_url": (
                     f"{origin}{PRICE_PATHS[lang]}/og.png?v={snapshot.day.isoformat()}"
                     if snapshot
@@ -453,7 +457,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
                 "folded_rows": _FOLDED_ROWS,
                 "cheapest": [{**pub, "litres": pub["volume_ml"] / 1000} for pub in cheapest],
                 "asset": _LANDING_URLS,
-                "app_store_url": APP_STORE_URL,
+                "app_store_url": app_store_url("city-prices" if city else "prices"),
                 "play_store_url": play_store_url("city-prices" if city else "prices"),
                 "privacy_url": f"{_LEGAL_ROOT}{'' if lang == 'cs' else '/en'}/privacy.html",
             },
@@ -487,6 +491,227 @@ def beer_prices_og_image(request: HttpRequest, lang: str = "cs") -> HttpResponse
     return response
 
 
+def _short_date(day: date, today: date) -> str:
+    """6. 10. in Czech, Oct. 6 in English; the year only when it is not this one."""
+
+    if translation.get_language() == "en":
+        return formats.date_format(day, "N j" if day.year == today.year else "N j, Y")
+    return f"{day.day}. {day.month}." + ("" if day.year == today.year else f" {day.year}")
+
+
+def _pubs_label(pubs: int) -> str:
+    return counted(pubs, gettext("hospoda"), gettext("hospody"), gettext("hospod"))
+
+
+def _beers_label(beers: int) -> str:
+    return counted(beers, gettext("pivo"), gettext("piva"), gettext("piv"))
+
+
+def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: str) -> str:
+    """The path Google shows above the result, the beers a list links to and a beer's price range."""
+
+    crumbs = [("Na pivo", f"{origin}{HOME_PATHS[lang]}"), (gettext("Piva"), f"{origin}{BEER_PATHS[lang]}")]
+    data = page.data if page else {}
+    if page and page.kind == BeerPage.Kind.BEER and data["brand_page"]:
+        crumbs.append((data["brand_name"], f"{origin}{page_path(BeerPage.Kind.BRAND, data['brand_key'], lang)}"))
+    if page and page.kind != BeerPage.Kind.LIST:
+        crumbs.append((data["name"], url))
+    graph: list[dict] = [{
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": position, "name": name, "item": item}
+            for position, (name, item) in enumerate(crumbs, start=1)
+        ],
+    }]
+    if page and page.kind != BeerPage.Kind.BEER and data["beers"]:
+        graph.append({
+            "@type": "ItemList",
+            "itemListElement": [
+                {
+                    "@type": "ListItem",
+                    "position": position,
+                    "name": beer["name"],
+                    "url": f"{origin}{page_path(BeerPage.Kind.BEER, beer['key'], lang)}",
+                }
+                for position, beer in enumerate(data["beers"], start=1)
+            ],
+        })
+    if page and page.kind == BeerPage.Kind.BEER:
+        # The fresh half litres the page shows, from the cheapest pub to the dearest.
+        prices = [
+            pub["price_czk"] for pub in data["listed"]
+            if pub["fresh"] and pub["volume_ml"] == 500 and pub["price_czk"] is not None
+        ]
+        if prices:
+            graph.append({
+                "@type": "Product",
+                "name": data["name"],
+                "brand": {"@type": "Brand", "name": data["brand_name"]},
+                "url": url,
+                "offers": {
+                    "@type": "AggregateOffer",
+                    "priceCurrency": "CZK",
+                    "lowPrice": min(prices),
+                    "highPrice": max(prices),
+                    "offerCount": len(prices),
+                },
+            })
+    return ld_json({"@graph": graph})
+
+
+def _beer_texts(kind: str, page: BeerPage | None, key: str) -> dict:
+    """Heading, title and description. The beer's name first, since that is what people search for.
+
+    A missing page keeps the catalogue's name, so an old link still says which beer it was;
+    ``known`` tells a beer under the threshold from an address that never was one.
+    """
+
+    data = page.data if page else {}
+    if kind == BeerPage.Kind.LIST:
+        return {
+            "h1": gettext("Kde se čepuje které pivo"),
+            "page_title": gettext("Kde se čepuje které pivo"),
+            "description": gettext(
+                "Najdi hospody, kde čepují tvoje pivo, za kolik a kdy to tam naposledy někdo potvrdil. Podle lístků, které lidi zapisují v Na pivo."
+            ),
+            "known": True,
+        }
+    catalogue = BeerProduct if kind == BeerPage.Kind.BEER else BeerBrand
+    name = data.get("name") or catalogue.objects.filter(key=key, active=True).values_list("name", flat=True).first()
+    if not page:
+        unknown = gettext("Tohle pivo neznám") if kind == BeerPage.Kind.BEER else gettext("Tuhle značku neznám")
+        return {"h1": name or unknown, "page_title": name or unknown, "description": "", "known": bool(name)}
+    values = {"beer": name}
+    if kind == BeerPage.Kind.BRAND:
+        return {
+            "h1": gettext("Kde se čepuje %(beer)s") % values,
+            "page_title": gettext("Piva značky %(brand)s a kde se čepují") % {"brand": name},
+            "description": gettext(
+                "Piva značky %(brand)s a hospody, kde se čepují. U každé hospody cena a datum posledního potvrzení."
+            ) % {"brand": name},
+            "known": True,
+        }
+    values.update(pubs=_pubs_label(data["pubs"]), price=data["median"])
+    description = (
+        gettext("Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, obvykle %(price)s Kč za 0,5 l.")
+        if data["median"] is not None
+        else gettext("Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, u každé cena a datum posledního potvrzení.")
+    ) % values
+    return {
+        "h1": gettext("Kde se čepuje %(beer)s") % values,
+        "page_title": gettext("%(beer)s: kde se čepuje a za kolik") % values,
+        "description": description,
+        "known": True,
+    }
+
+
+@canonical_host
+def beer_pages(request: HttpRequest, lang: str = "cs", kind: str = BeerPage.Kind.LIST, key: str = "") -> HttpResponse:
+    """The list of beers, a beer or a brand, read as is from the newest daily run."""
+
+    wait = _price_map_wait(request)
+    page = None if wait else BeerPage.objects.filter(kind=kind, key=key).first()
+    # A beer drops out once fewer than three pubs confirmed it lately. Its old link gets a 404
+    # that still leads to the other beers.
+    missing = not wait and page is None and kind != BeerPage.Kind.LIST
+    origin = settings.PUBLIC_WEB_ORIGIN
+    paths = {code: page_path(kind, key, code) for code in BEER_PATHS}
+    campaign = {BeerPage.Kind.LIST: "beers", BeerPage.Kind.BEER: "beer", BeerPage.Kind.BRAND: "beer-brand"}[kind]
+    with translation.override(lang):
+        data = page.data if page else {}
+        today = page.day if page else timezone.localdate()
+        first_old = next((index for index, pub in enumerate(data.get("listed", [])) if not pub["fresh"]), None)
+        listed = [
+            {
+                **pub,
+                "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
+                "litres": pub["volume_ml"] / 1000 if pub["volume_ml"] else None,
+                # Sorted per half litre, so 41 Kč for 0,3 l is not the cheapest.
+                "per_half_litre": round(pub["price_czk"] * 500 / (pub["volume_ml"] or 500)) if pub["price_czk"] else "",
+                "map_url": f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+                "first_old": index == first_old,
+            }
+            for index, pub in enumerate(data.get("listed", []))
+        ]
+        beers = [
+            {**beer, "pubs_label": _pubs_label(beer["pubs"]), "url": page_path(BeerPage.Kind.BEER, beer["key"], lang)}
+            for beer in data.get("beers", []) if kind != BeerPage.Kind.BEER
+        ]
+        brands = [
+            {**brand, "beers_label": _beers_label(brand["beers"]), "url": page_path(BeerPage.Kind.BRAND, brand["key"], lang)}
+            for brand in data.get("brands", []) if kind == BeerPage.Kind.LIST
+        ]
+        response = render(
+            request,
+            "pubs/beers.html",
+            {
+                "LANGUAGE_CODE": lang,
+                **_beer_texts(kind, page, key),
+                "kind": kind,
+                "page": data,
+                "listed": listed,
+                "beers": beers,
+                "brands": brands,
+                "brand_url": (
+                    page_path(BeerPage.Kind.BRAND, data["brand_key"], lang)
+                    if kind == BeerPage.Kind.BEER and page and data["brand_page"]
+                    else ""
+                ),
+                "structured_data": _beer_structured_data(origin, lang, page, f"{origin}{paths[lang]}"),
+                "og_locale": _OG_LOCALES[lang],
+                "page_url": paths[lang],
+                "canonical_url": f"{origin}{paths[lang]}",
+                "cs_url": f"{origin}{paths['cs']}",
+                "en_url": f"{origin}{paths['en']}",
+                "switch_url": paths["en" if lang == "cs" else "cs"],
+                "home_url": HOME_PATHS[lang],
+                "beers_url": BEER_PATHS[lang],
+                "prices_url": PRICE_PATHS[lang],
+                "og_image_url": (
+                    f"{origin}{paths[lang]}/og.png?v={page.day.isoformat()}"
+                    if page
+                    else f"{origin}{_LANDING_URLS['og_home_png']}"
+                ),
+                "throttled": wait is not None,
+                "missing": missing,
+                "day": page.day if page else None,
+                "folded_rows": _FOLDED_ROWS,
+                "asset": _LANDING_URLS,
+                "app_store_url": app_store_url(campaign),
+                "play_store_url": play_store_url(campaign),
+                "privacy_url": f"{_LEGAL_ROOT}{'' if lang == 'cs' else '/en'}/privacy.html",
+            },
+            status=429 if wait else 404 if missing else 200,
+        )
+    response["Content-Language"] = lang
+    response["Content-Security-Policy"] = _PRICES_CSP
+    response["Referrer-Policy"] = "no-referrer"
+    if wait:
+        response["Retry-After"] = str(wait)
+        response["Cache-Control"] = "no-store"
+    else:
+        response["Cache-Control"] = "public, max-age=600"
+    return response
+
+
+def beer_pages_og_image(
+    request: HttpRequest, lang: str = "cs", kind: str = BeerPage.Kind.LIST, key: str = ""
+) -> HttpResponse:
+    """Share image of one page, drawn from the newest daily run."""
+
+    wait = _price_map_wait(request)
+    if wait:
+        response = HttpResponse(status=429)
+        response["Retry-After"] = str(wait)
+        return response
+    page = BeerPage.objects.filter(kind=kind, key=key).first()
+    if page is None:
+        raise Http404
+    response = HttpResponse(render_beer_og_image(page, lang), content_type="image/png")
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
 def robots_txt(_request: HttpRequest) -> HttpResponse:
     """Crawlers may read every page; the API only answers the app."""
 
@@ -515,6 +740,8 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
     for area in snapshot.data.get("cities", []) if snapshot else []:
         slug = city_slug(area["name"])
         pages.append({"urls": {lang: f"{origin}{path}/{slug}" for lang, path in PRICE_PATHS.items()}, "lastmod": day})
+    for kind, key, beer_day in BeerPage.objects.order_by("kind", "key").values_list("kind", "key", "day"):
+        pages.append({"urls": {lang: f"{origin}{page_path(kind, key, lang)}" for lang in BEER_PATHS}, "lastmod": beer_day})
     response = render(
         request, "pubs/sitemap.xml", {"pages": pages}, content_type="application/xml; charset=utf-8"
     )

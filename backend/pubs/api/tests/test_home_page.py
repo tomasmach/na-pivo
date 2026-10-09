@@ -22,7 +22,7 @@ def test_home_is_czech_with_store_links_and_alternates(client, settings):
     html = response.content.decode()
     assert '<html lang="cs">' in html
     assert "Čárkuj piva jak na tácku." in html
-    assert f'href="{APP_STORE_URL}"' in html
+    assert f'href="{APP_STORE_URL}?ct=web-home&amp;mt=8"' in html
     assert f'href="{PLAY_STORE_URL}&amp;referrer=utm_source%3Dna-pivo.cz%26utm_medium%3Dweb%26utm_campaign%3Dhome"' in html
     assert '<link rel="canonical" href="https://na-pivo.cz/">' in html
     assert '<link rel="alternate" hreflang="en" href="https://na-pivo.cz/en">' in html

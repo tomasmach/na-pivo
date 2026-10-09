@@ -3402,6 +3402,32 @@ class PubPriceSnapshot(models.Model):
         return f"Pub price snapshot {self.day}"
 
 
+class BeerPage(models.Model):
+    """One public page of na-pivo.cz/pivo, served as is from the newest daily run.
+
+    The daily run replaces every row, so a beer that drops under the threshold
+    loses its page the same day. The list of all beers is the row with an empty key.
+    """
+
+    class Kind(models.TextChoices):
+        LIST = "list", "List of beers"
+        BEER = "beer", "Beer"
+        BRAND = "brand", "Brand"
+
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    key = models.SlugField(max_length=100, blank=True)
+    day = models.DateField()
+    data = models.JSONField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["kind", "key"], name="unique_beer_page"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Beer page {self.kind} {self.key} ({self.day})"
+
+
 class BeerBrand(models.Model):
     """
     Canonical beer brand used for suggestions and brand-level pub filtering.
