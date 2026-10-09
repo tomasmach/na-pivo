@@ -656,13 +656,21 @@ export default function PubPageScreen() {
       if (!pub || !key || !edited || !live.menu) return;
       if (target?.key !== live.key || target.pubId !== live.pubId) return;
       if (!live.menu.some((b) => isSameBeerIdentity(b, edited))) return;
+      if (typeof result.priceCzk !== 'number') return;
       const beer: CommunityBeer = { name: edited.name };
       if (typeof result.priceCzk === 'number') beer.priceCzk = result.priceCzk;
       if (typeof result.volumeMl === 'number') beer.volumeMl = result.volumeMl;
       const next = live.menu
         .map((b) => (isSameBeerIdentity(b, edited) ? beer : b))
         .filter((b) => b === beer || !isSameBeerIdentity(b, beer));
-      recordTapsWrite(pub.id, next, replacePubMenu(key, pub, live.menu, next, live.historical ?? []));
+      const nextHistory = replacePubMenu(key, pub, live.menu, next, live.historical ?? [], {
+        action: 'update',
+        name: edited.name,
+        volumeMl: edited.volumeMl,
+        priceCzk: result.priceCzk,
+        newVolumeMl: result.volumeMl,
+      });
+      recordTapsWrite(pub.id, next, nextHistory);
     },
     [actionBeer, key, pub, recordTapsWrite],
   );
@@ -678,7 +686,12 @@ export default function PubPageScreen() {
           if (target?.key !== live.key || target.pubId !== live.pubId) return;
           if (!live.menu.some((b) => isSameBeerIdentity(b, removed))) return;
           const next = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
-          recordTapsWrite(pub.id, next, replacePubMenu(key, pub, live.menu, next, live.historical ?? []));
+          const nextHistory = replacePubMenu(key, pub, live.menu, next, live.historical ?? [], {
+            action: 'remove',
+            name: removed.name,
+            volumeMl: removed.volumeMl,
+          });
+          recordTapsWrite(pub.id, next, nextHistory);
           showToast(t.counter.removedFromMenuToast);
         }),
       );

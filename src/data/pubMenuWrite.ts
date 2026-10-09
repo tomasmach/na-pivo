@@ -6,7 +6,7 @@
  */
 
 import { generateUuidV4 } from '@/data/account';
-import { buildCommunityEntry } from '@/data/communityClient';
+import { buildCommunityEntry, type BeerChange } from '@/data/communityClient';
 import {
   historicalBeersAfterMenuReplacement,
   type CommunityBeer,
@@ -22,13 +22,17 @@ export interface MenuPub {
   city?: string;
 }
 
-/** Writes `next` for everyone and returns the history that goes with it. */
+/** Writes `next` for everyone and returns the history that goes with it.
+ *  `change` is the one beer it changes: a current server applies just that to
+ *  the menu as it is then, so a list read earlier never drops or brings back
+ *  a beer someone else changed meanwhile. */
 export function replacePubMenu(
   cell: string,
   pub: MenuPub,
   current: readonly CommunityBeer[],
   next: CommunityBeer[],
   historicalBeers: readonly CommunityBeer[],
+  change: BeerChange,
 ): CommunityBeer[] {
   const nextHistory = historicalBeersAfterMenuReplacement(current, next, historicalBeers);
   useCommunityStore.getState().setOverride(cell, { beers: next, historicalBeers: nextHistory });
@@ -41,6 +45,7 @@ export function replacePubMenu(
         lng: pub.lng,
         city: pub.city,
         beers: next,
+        beerChange: change,
       },
       generateUuidV4(),
     ),

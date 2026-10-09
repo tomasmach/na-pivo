@@ -2151,6 +2151,41 @@ class CommunityBeerSerializer(serializers.Serializer):
         }
 
 
+class CommunityBeerChangeSerializer(serializers.Serializer):
+    """One beer fixed or taken off a pub's menu.
+
+    Newer apps send it next to the full ``beers`` list. The server applies just
+    this change to the menu as it is now, so a list the app read earlier cannot
+    drop or bring back beers someone else changed meanwhile. Older servers
+    ignore the field and store ``beers`` as before.
+    """
+
+    action = serializers.ChoiceField(choices=("remove", "update"))
+    # The row as the app saw it; matched like any menu row (beer_menu_identity).
+    name = serializers.CharField(max_length=80, min_length=1, trim_whitespace=True)
+    volume_ml = serializers.IntegerField(required=False, allow_null=True)
+    # update only: the row's new price and, when sent, its new volume.
+    price_czk = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=BEER_PRICE_MIN_CZK,
+        max_value=BEER_PRICE_MAX_CZK,
+    )
+    new_volume_ml = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate_new_volume_ml(self, value: int | None) -> int | None:
+        if value is not None and value not in _ALLOWED_VOLUMES_ML:
+            raise serializers.ValidationError(
+                f"new_volume_ml must be one of {sorted(_ALLOWED_VOLUMES_ML)}."
+            )
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        if attrs["action"] == "update" and attrs.get("price_czk") is None:
+            raise serializers.ValidationError({"price_czk": "An update needs a price."})
+        return attrs
+
+
 class ScannedDrinkSerializer(serializers.Serializer):
     drink_type = serializers.ChoiceField(choices=DrinkLog.DrinkType.choices)
     name = serializers.CharField()
@@ -2234,6 +2269,9 @@ class PubCommunityRequestSerializer(PubInputSerializer):
     beers = CommunityBeerSerializer(many=True, required=False)
     # Optional for released clients: an old beer update must not reset this flag.
     beer_menu_rotates = serializers.BooleanField(required=False)
+    # Optional: the one beer this write changes. When present the server applies
+    # it to the current menu and `beers` is only what older servers store.
+    beer_change = CommunityBeerChangeSerializer(required=False)
 
     def validate_hours(self, value: dict | None) -> dict | None:
         if value is None:
@@ -2300,6 +2338,10 @@ class PubCommunityRequestSerializer(PubInputSerializer):
         if "beer_menu_rotates" in attrs and not has_beers:
             raise serializers.ValidationError(
                 {"beer_menu_rotates": "This field may only be submitted with 'beers'."}
+            )
+        if "beer_change" in attrs and not has_beers:
+            raise serializers.ValidationError(
+                {"beer_change": "This field may only be submitted with 'beers'."}
             )
         return attrs
 

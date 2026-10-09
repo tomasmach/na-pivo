@@ -1194,14 +1194,24 @@ function Tacek({
         // A beer on the confirmed menu is fixed for everyone at once, the same
         // write as the pub page and the delete.
         const live = liveMenuRef.current;
-        if (editedBeer && live.menu?.some((b) => isSameBeerIdentity(b, editedBeer))) {
+        if (
+          editedBeer &&
+          typeof result.priceCzk === 'number' &&
+          live.menu?.some((b) => isSameBeerIdentity(b, editedBeer))
+        ) {
           const fixed: CommunityBeer = { name: editedBeer.name };
           if (typeof result.priceCzk === 'number') fixed.priceCzk = result.priceCzk;
           if (typeof result.volumeMl === 'number') fixed.volumeMl = result.volumeMl;
           const nextMenu = live.menu
             .map((b) => (isSameBeerIdentity(b, editedBeer) ? fixed : b))
             .filter((b) => b === fixed || !isSameBeerIdentity(b, fixed));
-          const nextHistory = replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers);
+          const nextHistory = replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers, {
+            action: 'update',
+            name: editedBeer.name,
+            volumeMl: editedBeer.volumeMl,
+            priceCzk: result.priceCzk,
+            newVolumeMl: result.volumeMl,
+          });
           recordMenuWrite(pub.id, nextMenu, nextHistory);
           return;
         }
@@ -1256,7 +1266,11 @@ function Tacek({
             // Another pub by now, or the beer is already gone: nothing to take off.
             if (isSameMenuPub(target, live) && live.menu?.some((b) => isSameBeerIdentity(b, removed))) {
               const nextMenu = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
-              const nextHistory = replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers);
+              const nextHistory = replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers, {
+                action: 'remove',
+                name: removed.name,
+                volumeMl: removed.volumeMl,
+              });
               recordMenuWrite(pub.id, nextMenu, nextHistory);
               showToast(t.counter.removedFromMenuToast);
             }

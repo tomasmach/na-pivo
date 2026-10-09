@@ -36,6 +36,22 @@ export interface CommunityInput {
   beers?: CommunityBeer[];
   /** Present with a beer-list edit when the pub intentionally rotates its taps. */
   beerMenuRotates?: boolean;
+  /** The one beer this beer-list edit fixes or removes. A newer server applies
+   *  just this to the menu as it is now; `beers` is what older servers store. */
+  beerChange?: BeerChange;
+}
+
+/** One menu row, as the user saw it, taken off or given a new price/size. */
+export type BeerChange =
+  | { action: 'remove'; name: string; volumeMl?: number }
+  | { action: 'update'; name: string; volumeMl?: number; priceCzk: number; newVolumeMl?: number };
+
+interface WireBeerChange {
+  action: 'remove' | 'update';
+  name: string;
+  volume_ml: number | null;
+  price_czk?: number;
+  new_volume_ml?: number | null;
 }
 
 /** The byte-stable payload persisted in the queue and POSTed on every retry. */
@@ -49,6 +65,7 @@ export interface CommunityEntry {
   hours?: WeeklyHours;
   beers?: WireBeer[];
   beer_menu_rotates?: boolean;
+  beer_change?: WireBeerChange;
 }
 
 /** Backend response for a successful submission. */
@@ -99,7 +116,21 @@ export function buildCommunityEntry(input: CommunityInput, clientId: string): Co
   if (typeof input.beerMenuRotates === 'boolean') {
     entry.beer_menu_rotates = input.beerMenuRotates;
   }
+  if (input.beers && input.beerChange) entry.beer_change = beerChangeToWire(input.beerChange);
   return entry;
+}
+
+function beerChangeToWire(change: BeerChange): WireBeerChange {
+  const wire: WireBeerChange = {
+    action: change.action,
+    name: change.name,
+    volume_ml: change.volumeMl ?? null,
+  };
+  if (change.action === 'update') {
+    wire.price_czk = change.priceCzk;
+    wire.new_volume_ml = change.newVolumeMl ?? null;
+  }
+  return wire;
 }
 
 /**

@@ -2003,6 +2003,59 @@ def _historical_beers_after_menu_replacement(
     return next_historical
 
 
+def _apply_beer_change(current: list[dict], change: dict) -> list[dict]:
+    """Apply one fixed or removed beer to the menu as it is now.
+
+    A beer that is no longer on the menu stays as it is: the change was made
+    against an older list. A fix keeps the stored name; moving a row to a size
+    the menu already has replaces that row, one row per beer and size.
+    """
+    target = beer_menu_identity({"name": change["name"], "volume_ml": change.get("volume_ml")})
+    on_menu = next((beer for beer in current if beer_menu_identity(beer) == target), None)
+    if on_menu is None:
+        return list(current)
+    if change["action"] == "remove":
+        return [beer for beer in current if beer_menu_identity(beer) != target]
+
+    fixed = {
+        "name": on_menu.get("name"),
+        "price_czk": change["price_czk"],
+        "volume_ml": change["new_volume_ml"] if "new_volume_ml" in change else on_menu.get("volume_ml"),
+    }
+    fixed_key = beer_menu_identity(fixed)
+    result: list[dict] = []
+    for beer in current:
+        key = beer_menu_identity(beer)
+        if key == target:
+            if fixed not in result:
+                result.append(fixed)
+        elif key != fixed_key:
+            result.append(beer)
+    return result
+
+
+def _community_response_body(
+    record: PubCommunityData | None,
+    cache_key: str,
+    *,
+    xp_awarded: int = 0,
+    mapper: dict | None = None,
+) -> dict:
+    return PubCommunityResponseSerializer(
+        {
+            "cache_key": record.cache_key if record else cache_key,
+            "hours": record.hours_json if record else None,
+            "beers": (record.beers or []) if record else [],
+            "historical_beers": (record.historical_beers or []) if record else [],
+            "beers_updated_at": record.beers_updated_at if record else None,
+            "beer_menu_rotates": record.beer_menu_rotates if record else False,
+            "hours_updated_at": record.hours_updated_at if record else None,
+            "xp_awarded": xp_awarded,
+            "mapper": mapper,
+        }
+    ).data
+
+
 class PubCommunityView(APIView):
     """
     POST /v1/pub-community
@@ -2010,7 +2063,8 @@ class PubCommunityView(APIView):
     Accept community-contributed opening hours and/or a list of beers on tap for
     a pub. Contributions go LIVE IMMEDIATELY (no approval queue): the per-pub
     PubCommunityData row is upserted and full history is appended to
-    PubContributionLog for audit / revert. Community opening hours take
+    PubContributionLog for audit / revert. With ``beer_change`` only that one
+    beer changes on the current menu; the sent ``beers`` list is ignored. Community opening hours take
     precedence over firmy.cz data in the /v1/pub-hours read path.
 
     Auth: Bearer token (per-account). Idempotent on (account, client_id, kind):
@@ -2041,42 +2095,61 @@ class PubCommunityView(APIView):
         cache_key = identity.cache_key
         has_hours = data.get("hours") is not None
         has_beers = "beers" in data
+        change = data.get("beer_change")
+        beers = data.get("beers")
         now = dj_timezone.now()
 
         try:
-            defaults = {
-                "name": identity.name,
-                "lat": identity.lat,
-                "lng": identity.lng,
-                "city": identity.city or None,
-                "external_id": identity.external_id or None,
-                "account": request.user,
-            }
-            if has_hours:
-                hours_json = data["hours"]
-                defaults["hours_json"] = hours_json
-                defaults["opening_hours_raw"] = community_hours_to_osm(hours_json)
-                defaults["hours_updated_at"] = now
-            if has_beers:
+            with transaction.atomic():
+                # Locked so two one-beer changes to this pub apply one after another.
                 previous = (
-                    PubCommunityData.objects.filter(cache_key=cache_key)
-                    .only("beers", "historical_beers")
+                    PubCommunityData.objects.select_for_update()
+                    .filter(cache_key=cache_key)
                     .first()
+                    if has_beers
+                    else None
                 )
-                defaults["historical_beers"] = _historical_beers_after_menu_replacement(
-                    current=previous.beers if previous else [],
-                    replacement=data["beers"],
-                    historical=previous.historical_beers if previous else [],
-                )
-                defaults["beers"] = data["beers"]
-                defaults["beers_updated_at"] = now
-                if "beer_menu_rotates" in data:
-                    defaults["beer_menu_rotates"] = data["beer_menu_rotates"]
+                current_beers = list(previous.beers or []) if previous else []
+                if change is not None:
+                    beers = _apply_beer_change(current_beers, change)
+                    # Gone or unchanged already: nothing to write for the menu.
+                    if beers == current_beers:
+                        has_beers = False
 
-            record, _ = PubCommunityData.objects.update_or_create(
-                cache_key=cache_key,
-                defaults=defaults,
-            )
+                defaults = {
+                    "name": identity.name,
+                    "lat": identity.lat,
+                    "lng": identity.lng,
+                    "city": identity.city or None,
+                    "external_id": identity.external_id or None,
+                    "account": request.user,
+                }
+                if has_hours:
+                    hours_json = data["hours"]
+                    defaults["hours_json"] = hours_json
+                    defaults["opening_hours_raw"] = community_hours_to_osm(hours_json)
+                    defaults["hours_updated_at"] = now
+                if has_beers:
+                    defaults["historical_beers"] = _historical_beers_after_menu_replacement(
+                        current=current_beers,
+                        replacement=beers,
+                        historical=previous.historical_beers if previous else [],
+                    )
+                    defaults["beers"] = beers
+                    defaults["beers_updated_at"] = now
+                    if "beer_menu_rotates" in data:
+                        defaults["beer_menu_rotates"] = data["beer_menu_rotates"]
+
+                if not has_hours and not has_beers:
+                    # A one-beer change that no longer applies: report the menu as it is.
+                    return Response(
+                        _community_response_body(previous, cache_key),
+                        status=status.HTTP_200_OK,
+                    )
+                record, _ = PubCommunityData.objects.update_or_create(
+                    cache_key=cache_key,
+                    defaults=defaults,
+                )
 
             # Append idempotent history rows, one per submitted kind.
             if has_hours:
@@ -2093,12 +2166,13 @@ class PubCommunityView(APIView):
                     },
                 )
             if has_beers:
-                beer_log_payload = data["beers"]
-                if "beer_menu_rotates" in data:
-                    beer_log_payload = {
-                        "beers": data["beers"],
-                        "beer_menu_rotates": data["beer_menu_rotates"],
-                    }
+                beer_log_payload = beers
+                if "beer_menu_rotates" in data or change is not None:
+                    beer_log_payload = {"beers": beers}
+                    if "beer_menu_rotates" in data:
+                        beer_log_payload["beer_menu_rotates"] = data["beer_menu_rotates"]
+                    if change is not None:
+                        beer_log_payload["beer_change"] = change
                 PubContributionLog.objects.get_or_create(
                     account=request.user,
                     client_id=data["client_id"],
@@ -2121,7 +2195,7 @@ class PubCommunityView(APIView):
                         "city": identity.city,
                         "external_id": identity.external_id,
                     },
-                    beers=data["beers"],
+                    beers=beers,
                     source=PubBeerBrand.Source.COMMUNITY,
                     account=request.user,
                     match_cache=match_cache,
@@ -2156,19 +2230,7 @@ class PubCommunityView(APIView):
         except Exception as exc:  # noqa: BLE001
             logger.warning("pub-community: XP award failed for cache key %s: %s", cache_key, exc)
 
-        body = PubCommunityResponseSerializer(
-            {
-                "cache_key": record.cache_key,
-                "hours": record.hours_json,
-                "beers": record.beers or [],
-                "historical_beers": record.historical_beers or [],
-                "beers_updated_at": record.beers_updated_at,
-                "beer_menu_rotates": record.beer_menu_rotates,
-                "hours_updated_at": record.hours_updated_at,
-                "xp_awarded": xp_awarded,
-                "mapper": mapper,
-            }
-        ).data
+        body = _community_response_body(record, cache_key, xp_awarded=xp_awarded, mapper=mapper)
         return Response(body, status=status.HTTP_200_OK)
 
 

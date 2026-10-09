@@ -1025,3 +1025,149 @@ def test_pub_hours_read_is_not_blocked_by_consent_gate(client):
     )
 
     assert read.status_code == status.HTTP_200_OK
+
+
+# ---------------------------------------------------------------------------
+# One-beer changes (beer_change): applied to the menu as it is now
+# ---------------------------------------------------------------------------
+
+_MENU_NOW = [
+    {"name": "Pilsner Urquell", "price_czk": 59, "volume_ml": 500},
+    {"name": "Velkopopovický Kozel 11°", "price_czk": 45, "volume_ml": 500},
+    {"name": "Bernard 12°", "price_czk": 52, "volume_ml": 500},
+]
+
+
+def _seed_menu(client: APIClient, token: str, beers: list[dict]) -> None:
+    payload = _payload(client_id="aaaaaaaa-0000-0000-0000-0000000000a1", beers=beers)
+    payload.pop("hours")
+    resp = client.post("/v1/pub-community", data=payload, format="json", **_auth(token))
+    assert resp.status_code == status.HTTP_200_OK
+
+
+def _change(client: APIClient, token: str, client_id: str, stale_beers: list[dict], change: dict):
+    payload = _payload(client_id=client_id, beers=stale_beers, beer_change=change)
+    payload.pop("hours")
+    return client.post("/v1/pub-community", data=payload, format="json", **_auth(token))
+
+
+@pytest.mark.django_db
+def test_beer_change_remove_applies_to_current_menu_not_the_sent_list(client):
+    token = _register(client)
+    _seed_menu(client, token, _MENU_NOW)
+
+    # The app read the menu before Bernard arrived and removes Pilsner.
+    resp = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000a2",
+        [_MENU_NOW[1]],
+        {"action": "remove", "name": "Pilsner Urquell", "volume_ml": 500},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    record = PubCommunityData.objects.get()
+    assert record.beers == [_MENU_NOW[1], _MENU_NOW[2]]
+    assert record.historical_beers == [_MENU_NOW[0]]
+    assert resp.json()["beers"] == [_MENU_NOW[1], _MENU_NOW[2]]
+    log = PubContributionLog.objects.get(client_id="aaaaaaaa-0000-0000-0000-0000000000a2")
+    assert log.payload["beer_change"]["action"] == "remove"
+
+
+@pytest.mark.django_db
+def test_beer_change_update_fixes_one_price_and_keeps_newer_beers(client):
+    token = _register(client)
+    _seed_menu(client, token, _MENU_NOW)
+
+    resp = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000a3",
+        [{**_MENU_NOW[1], "price_czk": 49}],
+        {
+            "action": "update",
+            "name": "velkopopovicky kozel 11",
+            "volume_ml": 500,
+            "price_czk": 49,
+            "new_volume_ml": 500,
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert PubCommunityData.objects.get().beers == [
+        _MENU_NOW[0],
+        {"name": "Velkopopovický Kozel 11°", "price_czk": 49, "volume_ml": 500},
+        _MENU_NOW[2],
+    ]
+
+
+@pytest.mark.django_db
+def test_beer_change_for_a_beer_already_gone_changes_nothing(client):
+    token = _register(client)
+    _seed_menu(client, token, _MENU_NOW[:2])
+    before = PubCommunityData.objects.get()
+
+    # Someone else already removed it: the fix must not bring it back.
+    resp = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000a4",
+        [_MENU_NOW[0], {**_MENU_NOW[2], "price_czk": 55}],
+        {"action": "update", "name": "Bernard 12°", "volume_ml": 500, "price_czk": 55},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    record = PubCommunityData.objects.get()
+    assert record.beers == _MENU_NOW[:2]
+    assert record.beers_updated_at == before.beers_updated_at
+    assert resp.json()["beers"] == _MENU_NOW[:2]
+    assert not PubContributionLog.objects.filter(
+        client_id="aaaaaaaa-0000-0000-0000-0000000000a4"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_beer_change_moving_to_an_existing_size_keeps_one_row(client):
+    token = _register(client)
+    small = {"name": "Pilsner Urquell", "price_czk": 45, "volume_ml": 300}
+    _seed_menu(client, token, [small, _MENU_NOW[0]])
+
+    resp = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000a5",
+        [{"name": "Pilsner Urquell", "price_czk": 40, "volume_ml": 300}],
+        {
+            "action": "update",
+            "name": "Pilsner Urquell",
+            "volume_ml": 500,
+            "price_czk": 40,
+            "new_volume_ml": 300,
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert PubCommunityData.objects.get().beers == [
+        {"name": "Pilsner Urquell", "price_czk": 40, "volume_ml": 300},
+    ]
+
+
+@pytest.mark.django_db
+def test_beer_change_validation(client):
+    token = _register(client)
+    no_price = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000a6",
+        _MENU_NOW,
+        {"action": "update", "name": "Bernard 12°", "volume_ml": 500},
+    )
+    assert no_price.status_code == status.HTTP_400_BAD_REQUEST
+
+    without_beers = _payload(
+        client_id="aaaaaaaa-0000-0000-0000-0000000000a7",
+        beer_change={"action": "remove", "name": "Bernard 12°", "volume_ml": 500},
+    )
+    without_beers.pop("beers")
+    resp = client.post("/v1/pub-community", data=without_beers, format="json", **_auth(token))
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST

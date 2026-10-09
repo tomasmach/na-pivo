@@ -45,6 +45,22 @@ describe('buildCommunityEntry', () => {
     city: '  Praha  ',
   };
 
+  it('sends a one-beer change with the full menu, sizes as null when unknown', () => {
+    const beers = [{ name: 'Plzeň', priceCzk: 65 }];
+    expect(
+      buildCommunityEntry(
+        { ...base, beers, beerChange: { action: 'update', name: 'Plzeň', priceCzk: 65 } },
+        'c',
+      ).beer_change,
+    ).toEqual({ action: 'update', name: 'Plzeň', volume_ml: null, price_czk: 65, new_volume_ml: null });
+    expect(
+      buildCommunityEntry(
+        { ...base, beers, beerChange: { action: 'remove', name: 'Kozel', volumeMl: 500 } },
+        'c',
+      ).beer_change,
+    ).toEqual({ action: 'remove', name: 'Kozel', volume_ml: 500 });
+  });
+
   it('includes the client_id and core fields, trimming city', () => {
     const entry = buildCommunityEntry(
       { ...base, hours: emptyWeeklyHours() },

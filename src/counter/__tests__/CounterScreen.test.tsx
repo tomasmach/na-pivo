@@ -786,6 +786,8 @@ describe('CounterScreen menu beer options', () => {
         { name: 'Primátor 11°', price_czk: 55, volume_ml: 500 },
         { name: 'Plzeň', price_czk: 65, volume_ml: 500 },
       ],
+      // The server applies just this to the menu as it is then.
+      beer_change: { action: 'update', name: 'Plzeň', volume_ml: 500, price_czk: 65, new_volume_ml: 500 },
     });
   });
 
@@ -831,6 +833,7 @@ describe('CounterScreen menu beer options', () => {
         { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
         { name: 'Plzeň', price_czk: 62, volume_ml: 500 },
       ],
+      beer_change: { action: 'remove', name: 'Primátor 11°', volume_ml: 500 },
     });
     expect(lastProps(BeerFormModal).visible).toBe(false);
     // Back to choosing a beer, now without the deleted one.

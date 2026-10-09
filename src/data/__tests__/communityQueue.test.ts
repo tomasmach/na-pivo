@@ -130,6 +130,32 @@ describe('enqueuePubCommunity', () => {
       client_id: 'new', hours, beers, beer_menu_rotates: false,
     })]);
   });
+
+  it('keeps every one-beer change of a pub queued, in order, and never merges it', async () => {
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+    const menu = [{ name: 'Plzeň', price_czk: 62, volume_ml: 500 }];
+    await enqueuePubCommunity(entry({
+      client_id: 'remove-kozel',
+      hours: undefined,
+      beers: menu,
+      beer_change: { action: 'remove', name: 'Kozel', volume_ml: 500 },
+    }));
+    await enqueuePubCommunity(entry({
+      client_id: 'fix-plzen',
+      hours: undefined,
+      beers: [{ ...menu[0], price_czk: 65 }],
+      beer_change: { action: 'update', name: 'Plzeň', volume_ml: 500, price_czk: 65, new_volume_ml: 500 },
+    }));
+    // A later hours edit neither absorbs nor rewrites the pending changes.
+    await enqueuePubCommunity(entry({ client_id: 'hours' }));
+
+    expect((await readQueue()).map((queued) => queued.client_id)).toEqual([
+      'remove-kozel',
+      'fix-plzen',
+      'hours',
+    ]);
+    expect((await readQueue())[0].beer_change).toEqual({ action: 'remove', name: 'Kozel', volume_ml: 500 });
+  });
 });
 
 describe('flushCommunityQueue', () => {

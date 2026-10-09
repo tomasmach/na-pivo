@@ -78,21 +78,31 @@ async function flushLocked(): Promise<Map<string, CommunityResponse>> {
  * later flush. Never throws.
  *
  * A newer edit of the same pub (same geohash-8 cell) replaces supplied sections
- * while preserving pending changes to the other sections.
+ * while preserving pending changes to the other sections. A one-beer change
+ * (`beer_change`) is its own step: it is never merged, and the queue keeps
+ * every one of them in order, since the server applies each to the menu as
+ * it is when that step arrives.
  */
 export function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityResponse | null> {
   return enqueueTask(async () => {
     const queue = await loadQueue();
     const cell = entryCell(entry);
-    const previous = queue.find((queued) => entryCell(queued) === cell);
-    const deduped = queue.filter((queued) => entryCell(queued) !== cell);
-    deduped.push({
-      ...entry,
-      hours: entry.hours ?? previous?.hours,
-      beers: entry.beers ?? previous?.beers,
-      beer_menu_rotates: entry.beer_menu_rotates ?? previous?.beer_menu_rotates,
-    });
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    const mergeable = (queued: CommunityEntry) =>
+      entryCell(queued) === cell && queued.beer_change === undefined;
+    let next: CommunityEntry[];
+    if (entry.beer_change !== undefined) {
+      next = [...queue, entry];
+    } else {
+      const previous = queue.find(mergeable);
+      next = queue.filter((queued) => !mergeable(queued));
+      next.push({
+        ...entry,
+        hours: entry.hours ?? previous?.hours,
+        beers: entry.beers ?? previous?.beers,
+        beer_menu_rotates: entry.beer_menu_rotates ?? previous?.beer_menu_rotates,
+      });
+    }
+    await saveQueue(next.slice(-MAX_QUEUE_LENGTH));
 
     const delivered = await flushLocked();
     return delivered.get(entry.client_id) ?? null;
