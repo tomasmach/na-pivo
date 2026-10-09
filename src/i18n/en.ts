@@ -2049,6 +2049,13 @@ export const en: Strings = {
       shot: 'Name, e.g. Slivovice',
     })[type],
     editModalTitle: 'Edit the price',
+    removeFromMenu: 'Delete from the menu',
+    removeFromMenuTitle: 'Delete from the menu?',
+    removeFromMenuBody: (name: string) =>
+      `${name} disappears from this pub's menu for everyone. It stays in the menu history.`,
+    removeFromMenuConfirm: 'Delete',
+    removeFromMenuKeep: 'Keep it',
+    removedFromMenuToast: 'The beer is off the menu.',
     beerNamePlaceholder: 'Beer name, e.g. Pilsner Urquell 12°',
     scanMenuShortcut: "Snap the menu and I'll fill in what they have",
     servingLabel: 'How is it served?',

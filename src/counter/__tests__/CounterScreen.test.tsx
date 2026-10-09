@@ -137,6 +137,10 @@ jest.mock('@/friends/PingSheet', () => ({ __esModule: true, default: jest.fn(() 
 const fetchPubHours = jest.fn(async () => new Map());
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
 
+// Community menu writes — assert the queued payload without touching the network.
+const enqueuePubCommunity = jest.fn(async (_entry: unknown) => null);
+jest.mock('@/data/communityQueue', () => ({ enqueuePubCommunity }));
+
 // The weekly-rank chip owns the nudge slot once a beer is counted. Keep its
 // board fetch pending forever so it stays inert (and never updates state after
 // a test ends).
@@ -678,6 +682,232 @@ describe('CounterScreen counting', () => {
     expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
     expect(lastProps(BeerFormModal).visible).toBe(false);
     expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(false);
+  });
+});
+
+// ─── Removing a beer from the pub menu ───────────────────────────────────────
+
+describe('CounterScreen removing a beer from the menu', () => {
+  const MENU = [
+    { name: 'Primátor 11', priceCzk: 55, volumeMl: 500 },
+    { name: 'Primátor 11°', priceCzk: 55, volumeMl: 500 },
+    { name: 'Plzeň', priceCzk: 62, volumeMl: 500 },
+  ];
+
+  /** Long-press a "Co si dáš?" row and let the sheet close into the edit form. */
+  function longPressRow(renderer: any, a11yLabel: string) {
+    const row = sheetButton(renderer, copy.counter.pickTitle, a11yLabel);
+    expect(row).toBeTruthy();
+    act(() => {
+      row.props.onLongPress();
+      jest.advanceTimersByTime(300);
+    });
+    expect(lastProps(BeerFormModal)).toMatchObject({ visible: true, mode: 'edit' });
+  }
+
+  it('takes exactly that beer off the shared menu after a confirm and queues the full menu', async () => {
+    useCommunityStore.setState({ overrides: { [CELL]: { beers: MENU, updatedAt: 1 } } });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    longPressRow(renderer, copy.a11y.counterCountBeer('Primátor 11°', `${formatVolume(500)} · ${copy.counter.price(55)}`));
+    const form = lastProps(BeerFormModal);
+    expect(form.removeLabel).toBe(copy.counter.removeFromMenu);
+
+    // iOS cannot stack the dialog on the form: the form closes, then it asks.
+    act(() => form.onRemove({}));
+    expect(lastProps(BeerFormModal).visible).toBe(false);
+    act(() => jest.advanceTimersByTime(300));
+    // Nothing changes until the user confirms in the dialog.
+    expect(enqueuePubCommunity).not.toHaveBeenCalled();
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+    expect(dialog.title).toBe(copy.counter.removeFromMenuTitle);
+    const confirm = dialog.buttons.find((b: any) => b.style === 'destructive');
+
+    await act(async () => {
+      confirm.onPress();
+      await Promise.resolve();
+    });
+
+    const override = useCommunityStore.getState().overrides[CELL];
+    expect(override.beers).toEqual([MENU[0], MENU[2]]);
+    expect(override.historicalBeers).toEqual([MENU[1]]);
+    expect(enqueuePubCommunity).toHaveBeenCalledTimes(1);
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      external_id: PUB.id,
+      name: PUB.name,
+      lat: PUB.lat,
+      lng: PUB.lng,
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Plzeň', price_czk: 62, volume_ml: 500 },
+      ],
+    });
+    expect(lastProps(BeerFormModal).visible).toBe(false);
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(enqueueDrink).not.toHaveBeenCalled();
+  });
+
+  it('keeps a beer that reached the menu while the dialog was open', async () => {
+    useCommunityStore.setState({ overrides: { [CELL]: { beers: MENU, updatedAt: 1 } } });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    longPressRow(renderer, copy.a11y.counterCountBeer('Primátor 11°', `${formatVolume(500)} · ${copy.counter.price(55)}`));
+    act(() => lastProps(BeerFormModal).onRemove({}));
+    act(() => jest.advanceTimersByTime(300));
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+
+    // Someone adds Kozel to the menu before the user confirms.
+    const newer = [...MENU, { name: 'Kozel 11°', priceCzk: 48, volumeMl: 500 }];
+    act(() => {
+      useCommunityStore.setState({ overrides: { [CELL]: { beers: newer, updatedAt: 2 } } });
+    });
+    await act(async () => {
+      dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+      await Promise.resolve();
+    });
+
+    expect(useCommunityStore.getState().overrides[CELL].beers).toEqual([MENU[0], MENU[2], newer[3]]);
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Plzeň', price_czk: 62, volume_ml: 500 },
+        { name: 'Kozel 11°', price_czk: 48, volume_ml: 500 },
+      ],
+    });
+  });
+
+  it('"Nechat" keeps the menu and brings the same edit form back', () => {
+    useCommunityStore.setState({ overrides: { [CELL]: { beers: MENU, updatedAt: 1 } } });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    longPressRow(renderer, copy.a11y.counterCountBeer('Primátor 11°', `${formatVolume(500)} · ${copy.counter.price(55)}`));
+    act(() => lastProps(BeerFormModal).onRemove({}));
+    act(() => jest.advanceTimersByTime(300));
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+    act(() => dialog.buttons.find((b: any) => b.style === 'cancel').onPress());
+
+    expect(lastProps(BeerFormModal)).toMatchObject({ visible: true, mode: 'edit', beer: MENU[1] });
+    expect(useCommunityStore.getState().overrides[CELL].beers).toEqual(MENU);
+    expect(enqueuePubCommunity).not.toHaveBeenCalled();
+  });
+
+  function hoursResult(beers: { name: string; priceCzk: number; volumeMl: number }[]) {
+    return {
+      openingHours: null,
+      isOpenNow: null,
+      nextChange: null,
+      status: 'unknown',
+      source: null,
+      communityHours: null,
+      beers,
+      historicalBeers: [],
+      beersUpdatedAt: '2026-10-09T08:00:00Z',
+      beerMenuRotates: false,
+      hoursUpdatedAt: null,
+      rating: null,
+      ratingCount: null,
+      ratingLabel: null,
+      hasGarden: null,
+      venueKind: 'unknown',
+    };
+  }
+
+  function showPubWithCachedMenu() {
+    let answer!: (value: Map<string, unknown>) => void;
+    fetchPubHours.mockImplementation(
+      () => new Promise((resolve) => { answer = resolve; }) as never,
+    );
+    const pub = { ...PUB, beers: MENU };
+    useNearbyPub.mockReturnValue(
+      nearbyState({ selected: pub, candidates: [{ pubKey: CELL, pub, distanceMeters: 12 }] }),
+    );
+    const renderer = render();
+    return {
+      renderer,
+      answer: async (beers: typeof MENU) => {
+        await act(async () => {
+          answer(new Map([[PUB.id, hoursResult(beers)]]));
+          await Promise.resolve();
+        });
+      },
+    };
+  }
+
+  const PLZEN = () => copy.a11y.counterCountBeer('Plzeň', `${formatVolume(500)} · ${copy.counter.price(62)}`);
+
+  it('offers the delete only after the server menu arrives, and keeps the beers it added', async () => {
+    const { renderer, answer } = showPubWithCachedMenu();
+
+    // The cached menu may be older than the server's: no delete yet.
+    longPressRow(renderer, PLZEN());
+    expect(lastProps(BeerFormModal).onRemove).toBeUndefined();
+    act(() => lastProps(BeerFormModal).onCancel());
+
+    const kozel = { name: 'Kozel 11°', priceCzk: 48, volumeMl: 500 };
+    await answer([...MENU, kozel]);
+    longPressRow(renderer, PLZEN());
+    act(() => lastProps(BeerFormModal).onRemove({}));
+    act(() => jest.advanceTimersByTime(300));
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+    await act(async () => {
+      dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+      await Promise.resolve();
+    });
+
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Primátor 11°', price_czk: 55, volume_ml: 500 },
+        { name: 'Kozel 11°', price_czk: 48, volume_ml: 500 },
+      ],
+    });
+  });
+
+  it('offers no delete when the server says the menu is empty', async () => {
+    const { renderer, answer } = showPubWithCachedMenu();
+    await answer([]);
+
+    longPressRow(renderer, PLZEN());
+
+    expect(lastProps(BeerFormModal).onRemove).toBeUndefined();
+  });
+
+  it('"Nechat" brings back the price the user had typed', () => {
+    useCommunityStore.setState({ overrides: { [CELL]: { beers: MENU, updatedAt: 1 } } });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    longPressRow(renderer, PLZEN());
+    act(() => lastProps(BeerFormModal).onRemove({ priceCzk: 65, volumeMl: 500 }));
+    act(() => jest.advanceTimersByTime(300));
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+    act(() => dialog.buttons.find((b: any) => b.style === 'cancel').onPress());
+
+    expect(lastProps(BeerFormModal)).toMatchObject({ visible: true, mode: 'edit', beer: { ...MENU[2], priceCzk: 65 } });
+    // Saving still edits the Plzeň row it was opened for.
+    act(() => lastProps(BeerFormModal).onSubmit({ drinkType: 'beer', name: 'Plzeň', priceCzk: 65, volumeMl: 500 }));
+    expect(useCommunityStore.getState().overrides[CELL].beers).toEqual([
+      MENU[0],
+      MENU[1],
+      { name: 'Plzeň', priceCzk: 65, volumeMl: 500, drinkType: 'beer', servingType: undefined },
+    ]);
+  });
+
+  it('offers no delete for a beer that was only drunk tonight', () => {
+    useCommunityStore.setState({ overrides: { [CELL]: { beers: MENU, updatedAt: 1 } } });
+    useTallyStore.setState({
+      current: session({ drinks: [{ ...beerDrink('d1', 30), beerName: 'Kozel' }] }),
+      history: [],
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    longPressRow(renderer, copy.a11y.counterCountBeer('Kozel', `${formatVolume(500)} · ${copy.counter.price(62)}`));
+
+    expect(lastProps(BeerFormModal).onRemove).toBeUndefined();
   });
 });
 

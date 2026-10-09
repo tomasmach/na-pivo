@@ -54,10 +54,13 @@ import { geohash8 } from '@/data/geohash';
 import { generateUuidV4 } from '@/data/account';
 import {
   mergeBeerIntoMenu,
+  historicalBeersAfterMenuReplacement,
   isSameBeerIdentity,
   normalizeBeerName,
   type CommunityBeer,
 } from '@/data/communityHours';
+import { buildCommunityEntry } from '@/data/communityClient';
+import { enqueuePubCommunity } from '@/data/communityQueue';
 import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
@@ -106,7 +109,12 @@ import type { Pub } from '@/data/pubs';
 
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { PubPickerModal } from '@/counter/PubPickerModal';
-import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter/BeerFormModal';
+import {
+  BeerFormModal,
+  type BeerFormDraft,
+  type BeerFormMode,
+  type BeerFormResult,
+} from '@/counter/BeerFormModal';
 import { eveningPriceLabel, sessionBreakdown } from '@/myBeers/eveningModel';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
@@ -382,6 +390,8 @@ function Tacek({
   // — Beer form —
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
+  /** What the form shows when it differs from `formBeer`, the row it edits. */
+  const [formSeed, setFormSeed] = useState<CommunityBeer | null>(null);
   const [formDrinkType, setFormDrinkType] = useState<DrinkType>('beer');
   const [formNonce, setFormNonce] = useState(0);
   /** Outside a pub: the serving the user last picked, seeding the next form. */
@@ -408,6 +418,8 @@ function Tacek({
   // — Menu / scan —
   const [backendMenu, setBackendMenu] = useState<{
     pubId: string;
+    /** The server answered; without it `beers` is only an offline fallback. */
+    fetched: boolean;
     beers: CommunityBeer[];
     historicalBeers: CommunityBeer[];
     beersUpdatedAt: string | null;
@@ -472,6 +484,7 @@ function Tacek({
       const result = resultMap.get(pubId);
       setBackendMenu({
         pubId,
+        fetched: result !== undefined,
         beers: result?.beers ?? [],
         historicalBeers: result?.historicalBeers ?? [],
         beersUpdatedAt: result?.beersUpdatedAt ?? null,
@@ -592,6 +605,17 @@ function Tacek({
     if (currentBeerListOverride?.beers) return currentBeerListOverride.beers;
     if (currentBackendMenu?.beers.length) return currentBackendMenu.beers;
     return pub.beers ?? [];
+  }, [currentBackendMenu, currentBeerListOverride, place, pub]);
+
+  /** The menu a delete rewrites for everyone: a fresh local edit, else the
+   *  server's answer even when empty, else (offline) the menu on screen. Null
+   *  until the first answer for this pub, so a delete never drops beers the
+   *  server added meanwhile. */
+  const deletableMenu = useMemo<CommunityBeer[] | null>(() => {
+    if (!place || !pub) return null;
+    if (currentBeerListOverride?.beers) return currentBeerListOverride.beers;
+    if (!currentBackendMenu) return null;
+    return currentBackendMenu.fetched ? currentBackendMenu.beers : (pub.beers ?? []);
   }, [currentBackendMenu, currentBeerListOverride, place, pub]);
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
@@ -1066,6 +1090,7 @@ function Tacek({
   const openForm = useCallback(
     (mode: BeerFormMode, beer: CommunityBeer | null, drinkType: DrinkType = 'beer') => {
       setFormBeer(beer);
+      setFormSeed(null);
       setFormDrinkType(drinkType);
       setFormMode(mode);
       setFormNonce((n) => n + 1);
@@ -1126,6 +1151,80 @@ function Tacek({
     },
     [backdateAt, cell, formBeer, formMode, menu, pub, requestCountBeer, setOverride],
   );
+
+  /** Only a beer that is on this pub's menu can come off it; tonight-only rows
+   *  and outside places have no shared menu to change. */
+  const formBeerOnMenu =
+    formMode === 'edit' &&
+    !!pub &&
+    !!formBeer &&
+    !!deletableMenu?.some((b) => isSameBeerIdentity(b, formBeer));
+
+  /** The delete dialog confirms later, and a newer backend menu may arrive
+   *  meanwhile: the full-menu write must not drop it. */
+  const liveMenuRef = useRef({ cell, menu: deletableMenu, historicalBeers });
+  useEffect(() => {
+    liveMenuRef.current = { cell, menu: deletableMenu, historicalBeers };
+  }, [cell, deletableMenu, historicalBeers]);
+
+  /** The contribute editor's "Smazat pivo" + "Uložit", one beer at a time: the
+   *  same live full-menu write, queued so it survives a dead signal. It changes
+   *  the menu for everyone, so it asks first. iOS cannot present the dialog over
+   *  the open form, so the form closes first and "Nechat" brings it back. */
+  const handleRemoveFromMenu = useCallback((draft: BeerFormDraft) => {
+    const removed = formBeer;
+    if (!removed || !pub || !cell) return;
+    setFormMode(null);
+    setFormBeer(null);
+    setBackdateAt(null);
+    runAfterSheetClose(() => showAppDialog({
+      title: t.counter.removeFromMenuTitle,
+      message: t.counter.removeFromMenuBody(removed.name),
+      buttons: [
+        {
+          text: t.counter.removeFromMenuKeep,
+          style: 'cancel',
+          // Back with what the user had typed; the row being edited stays `removed`.
+          onPress: () => {
+            openForm('edit', removed);
+            setFormSeed({ ...removed, ...draft });
+          },
+        },
+        {
+          text: t.counter.removeFromMenuConfirm,
+          style: 'destructive',
+          onPress: () => {
+            const live = liveMenuRef.current;
+            // Another place, or the beer is already gone: nothing to take off.
+            if (live.cell !== cell || !live.menu?.some((b) => isSameBeerIdentity(b, removed))) return;
+            const nextMenu = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
+            setOverride(cell, {
+              beers: nextMenu,
+              historicalBeers: historicalBeersAfterMenuReplacement(
+                live.menu,
+                nextMenu,
+                live.historicalBeers,
+              ),
+            });
+            void enqueuePubCommunity(
+              buildCommunityEntry(
+                {
+                  externalId: pub.id || null,
+                  name: pub.name,
+                  lat: pub.lat,
+                  lng: pub.lng,
+                  city: pub.city,
+                  beers: nextMenu,
+                },
+                generateUuidV4(),
+              ),
+            );
+            showToast(t.counter.removedFromMenuToast);
+          },
+        },
+      ],
+    }));
+  }, [cell, formBeer, openForm, pub, runAfterSheetClose, setOverride, showToast]);
 
   // ── Pick sheet ──────────────────────────────────────────────────────────────
 
@@ -1655,7 +1754,7 @@ function Tacek({
       <BeerFormModal
         visible={formMode !== null}
         mode={formMode ?? 'add'}
-        beer={formBeer}
+        beer={formSeed ?? formBeer}
         initialDrinkType={formDrinkType}
         placeContext={outsideContext ?? 'pub'}
         initialServingType={lastServingType}
@@ -1666,6 +1765,8 @@ function Tacek({
           setBackdateAt(null);
         }}
         onSubmit={handleFormSubmit}
+        onRemove={formBeerOnMenu ? handleRemoveFromMenu : undefined}
+        removeLabel={t.counter.removeFromMenu}
         // Hidden in the backdate flow (the scan hands over to the contribute
         // editor, which would drop the picked past timestamp) and outside a pub
         // (there is no pub menu to fill).
