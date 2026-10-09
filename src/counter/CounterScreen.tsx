@@ -54,13 +54,11 @@ import { geohash8 } from '@/data/geohash';
 import { generateUuidV4 } from '@/data/account';
 import {
   mergeBeerIntoMenu,
-  historicalBeersAfterMenuReplacement,
   isSameBeerIdentity,
   normalizeBeerName,
   type CommunityBeer,
 } from '@/data/communityHours';
-import { buildCommunityEntry } from '@/data/communityClient';
-import { enqueuePubCommunity } from '@/data/communityQueue';
+import { replacePubMenu } from '@/data/pubMenuWrite';
 import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
@@ -111,13 +109,13 @@ import { useNearbyPub } from '@/counter/useNearbyPub';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import {
   BeerFormModal,
-  type BeerFormDraft,
   type BeerFormMode,
   type BeerFormResult,
 } from '@/counter/BeerFormModal';
 import { eveningPriceLabel, sessionBreakdown } from '@/myBeers/eveningModel';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
+import { MenuBeerActionsSheet, confirmRemoveFromMenu } from '@/counter/MenuBeerActionsSheet';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { ScanMenuSheet } from '@/components/contribute/ScanMenuSheet';
@@ -211,6 +209,16 @@ export function groupMenuBeers(menu: CommunityBeer[]): MenuBeerGroup[] {
       (a, b) => (a.volumeMl ?? Number.POSITIVE_INFINITY) - (b.volumeMl ?? Number.POSITIVE_INFINITY),
     ),
   }));
+}
+
+/** The pub a menu write is meant for: its cell and the pub inside that cell. */
+interface MenuTarget {
+  cell: string | null;
+  pubId: string | null;
+}
+
+function isSameMenuPub(target: MenuTarget | null, live: MenuTarget): boolean {
+  return !!target && target.cell === live.cell && target.pubId === live.pubId;
 }
 
 /** "Pilsner Urquell · 0,5 l" — the CTA's sub-line and the receipt's meta. */
@@ -390,10 +398,11 @@ function Tacek({
   // — Beer form —
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
-  /** What the form shows when it differs from `formBeer`, the row it edits. */
-  const [formSeed, setFormSeed] = useState<CommunityBeer | null>(null);
   const [formDrinkType, setFormDrinkType] = useState<DrinkType>('beer');
   const [formNonce, setFormNonce] = useState(0);
+  // — Menu beer options (⋯ / long press in "Co si dáš?") —
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionBeer, setActionBeer] = useState<CommunityBeer | null>(null);
   /** Outside a pub: the serving the user last picked, seeding the next form. */
   const [lastServingType, setLastServingType] = useState<ServingType>('bottle');
   /** Set when the form was opened via "zapsat zpětně" — the ISO timestamp the
@@ -418,12 +427,22 @@ function Tacek({
   // — Menu / scan —
   const [backendMenu, setBackendMenu] = useState<{
     pubId: string;
-    /** The server answered; without it `beers` is only an offline fallback. */
-    fetched: boolean;
     beers: CommunityBeer[];
     historicalBeers: CommunityBeer[];
     beersUpdatedAt: string | null;
     beerMenuRotates: boolean;
+  } | null>(null);
+  /** The menu a fix or a delete rewrites for everyone: this pub's menu as the
+   *  server answered it in this session, kept in step with the user's own
+   *  writes and counted beers (the server merges those the same way). Without
+   *  a fresh answer there is none, so nothing is written for everyone from a
+   *  cached or another pub's list. */
+  const [menuBase, setMenuBase] = useState<{
+    pubId: string;
+    beers: CommunityBeer[];
+    historicalBeers: CommunityBeer[];
+    /** Epoch ms of the user's last write here; an older answer lags behind it. */
+    writtenAt: number | null;
   } | null>(null);
   const [scanningDrinks, setScanningDrinks] = useState(false);
   const [scannedDrinks, setScannedDrinks] = useState<ScannedDrink[]>([]);
@@ -484,11 +503,24 @@ function Tacek({
       const result = resultMap.get(pubId);
       setBackendMenu({
         pubId,
-        fetched: result !== undefined,
         beers: result?.beers ?? [],
         historicalBeers: result?.historicalBeers ?? [],
         beersUpdatedAt: result?.beersUpdatedAt ?? null,
         beerMenuRotates: result?.beerMenuRotates ?? false,
+      });
+      setMenuBase((prev) => {
+        // No answer (offline): keep only what this session already confirmed here.
+        if (!result) return prev?.pubId === pubId ? prev : null;
+        const answeredAt = result.beersUpdatedAt ? Date.parse(result.beersUpdatedAt) : 0;
+        if (prev?.pubId === pubId && prev.writtenAt !== null && !(answeredAt > prev.writtenAt)) {
+          return prev;
+        }
+        return {
+          pubId,
+          beers: result.beers,
+          historicalBeers: result.historicalBeers,
+          writtenAt: null,
+        };
       });
     });
 
@@ -607,16 +639,9 @@ function Tacek({
     return pub.beers ?? [];
   }, [currentBackendMenu, currentBeerListOverride, place, pub]);
 
-  /** The menu a delete rewrites for everyone: a fresh local edit, else the
-   *  server's answer even when empty, else (offline) the menu on screen. Null
-   *  until the first answer for this pub, so a delete never drops beers the
-   *  server added meanwhile. */
-  const deletableMenu = useMemo<CommunityBeer[] | null>(() => {
-    if (!place || !pub) return null;
-    if (currentBeerListOverride?.beers) return currentBeerListOverride.beers;
-    if (!currentBackendMenu) return null;
-    return currentBackendMenu.fetched ? currentBackendMenu.beers : (pub.beers ?? []);
-  }, [currentBackendMenu, currentBeerListOverride, place, pub]);
+  const deletableMenu =
+    place && pub && menuBase?.pubId === pub.id ? menuBase.beers : null;
+  const deletableHistory = deletableMenu && menuBase ? menuBase.historicalBeers : [];
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
@@ -628,6 +653,26 @@ function Tacek({
     }
     return pub.historicalBeers ?? [];
   }, [currentBackendMenu, currentBeerListOverride, pub]);
+
+  /** A fix or a delete confirms later, and a newer backend menu may arrive
+   *  meanwhile: the full-menu write must not drop it. */
+  const menuPubId = pub?.id ?? null;
+  const liveMenuRef = useRef({ cell, pubId: menuPubId, menu: deletableMenu, historicalBeers: deletableHistory });
+  useEffect(() => {
+    liveMenuRef.current = { cell, pubId: menuPubId, menu: deletableMenu, historicalBeers: deletableHistory };
+  }, [cell, deletableHistory, deletableMenu, menuPubId]);
+  /** The pub a beer's options or price form were opened for. The counter may
+   *  switch pubs meanwhile, and a write must never land in the next one. */
+  const menuTargetRef = useRef<MenuTarget | null>(null);
+  /** The user's own write is the newest menu this session knows. */
+  const recordMenuWrite = useCallback(
+    (pubId: string, beers: CommunityBeer[], historicalBeers: CommunityBeer[]) => {
+      setMenuBase((prev) =>
+        prev?.pubId === pubId ? { pubId, beers, historicalBeers, writtenAt: Date.now() } : prev,
+      );
+    },
+    [],
+  );
 
   const beerMenuRotates = pub
     ? currentMenuTypeOverride?.beerMenuRotates ??
@@ -831,6 +876,14 @@ function Tacek({
         // Same price already on the menu: skip the persisted write and the
         // re-render of every tab that reads community overrides.
         if (nextMenu !== menu) setOverride(cell, { beers: nextMenu });
+        // The server merges the drink into the menu the same way: a later
+        // full-menu write must not drop it.
+        const pubId = pub.id;
+        setMenuBase((prev) =>
+          prev?.pubId === pubId
+            ? { ...prev, beers: mergeBeerIntoMenu(prev.beers, { ...beer, priceCzk: beer.priceCzk }) }
+            : prev,
+        );
       }
       // The check-in prompt is now-semantic and pub-bound — skip it for a
       // backdated or outside log.
@@ -1090,7 +1143,6 @@ function Tacek({
   const openForm = useCallback(
     (mode: BeerFormMode, beer: CommunityBeer | null, drinkType: DrinkType = 'beer') => {
       setFormBeer(beer);
-      setFormSeed(null);
       setFormDrinkType(drinkType);
       setFormMode(mode);
       setFormNonce((n) => n + 1);
@@ -1136,6 +1188,33 @@ function Tacek({
       if (mode === 'edit') {
         // Community-menu edit is a pub concept; outside rows are session-derived.
         if (!pub || !cell) return;
+        // The form belongs to the pub it was opened in; the counter may have
+        // moved on to another one since.
+        if (!isSameMenuPub(menuTargetRef.current, liveMenuRef.current)) return;
+        // A beer on the confirmed menu is fixed for everyone at once, the same
+        // write as the pub page and the delete.
+        const live = liveMenuRef.current;
+        if (
+          editedBeer &&
+          typeof result.priceCzk === 'number' &&
+          live.menu?.some((b) => isSameBeerIdentity(b, editedBeer))
+        ) {
+          const fixed: CommunityBeer = { name: editedBeer.name };
+          if (typeof result.priceCzk === 'number') fixed.priceCzk = result.priceCzk;
+          if (typeof result.volumeMl === 'number') fixed.volumeMl = result.volumeMl;
+          const nextMenu = live.menu
+            .map((b) => (isSameBeerIdentity(b, editedBeer) ? fixed : b))
+            .filter((b) => b === fixed || !isSameBeerIdentity(b, fixed));
+          const nextHistory = replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers, {
+            action: 'update',
+            name: editedBeer.name,
+            volumeMl: editedBeer.volumeMl,
+            priceCzk: result.priceCzk,
+            newVolumeMl: result.volumeMl,
+          });
+          recordMenuWrite(pub.id, nextMenu, nextHistory);
+          return;
+        }
         // Replace the edited row in place: mergeBeerIntoMenu matches on
         // name+volume, so a volume change would otherwise append a NEW row and
         // orphan the original (PIV-33).
@@ -1149,82 +1228,60 @@ function Tacek({
         requestCountBeer(beer, at);
       }
     },
-    [backdateAt, cell, formBeer, formMode, menu, pub, requestCountBeer, setOverride],
+    [backdateAt, cell, formBeer, formMode, menu, pub, recordMenuWrite, requestCountBeer, setOverride],
   );
 
   /** Only a beer that is on this pub's menu can come off it; tonight-only rows
    *  and outside places have no shared menu to change. */
-  const formBeerOnMenu =
-    formMode === 'edit' &&
-    !!pub &&
-    !!formBeer &&
-    !!deletableMenu?.some((b) => isSameBeerIdentity(b, formBeer));
+  const actionBeerOnMenu =
+    !!pub && !!actionBeer && !!deletableMenu?.some((b) => isSameBeerIdentity(b, actionBeer));
 
-  /** The delete dialog confirms later, and a newer backend menu may arrive
-   *  meanwhile: the full-menu write must not drop it. */
-  const liveMenuRef = useRef({ cell, menu: deletableMenu, historicalBeers });
-  useEffect(() => {
-    liveMenuRef.current = { cell, menu: deletableMenu, historicalBeers };
-  }, [cell, deletableMenu, historicalBeers]);
+  const handleActionEditPrice = useCallback(
+    (beer: CommunityBeer) => {
+      setActionsOpen(false);
+      runAfterSheetClose(() => openForm('edit', beer));
+    },
+    [openForm, runAfterSheetClose],
+  );
 
-  /** The contribute editor's "Smazat pivo" + "Uložit", one beer at a time: the
-   *  same live full-menu write, queued so it survives a dead signal. It changes
-   *  the menu for everyone, so it asks first. iOS cannot present the dialog over
-   *  the open form, so the form closes first and "Nechat" brings it back. */
-  const handleRemoveFromMenu = useCallback((draft: BeerFormDraft) => {
-    const removed = formBeer;
-    if (!removed || !pub || !cell) return;
-    setFormMode(null);
-    setFormBeer(null);
-    setBackdateAt(null);
-    runAfterSheetClose(() => showAppDialog({
-      title: t.counter.removeFromMenuTitle,
-      message: t.counter.removeFromMenuBody(removed.name),
-      buttons: [
-        {
-          text: t.counter.removeFromMenuKeep,
-          style: 'cancel',
-          // Back with what the user had typed; the row being edited stays `removed`.
-          onPress: () => {
-            openForm('edit', removed);
-            setFormSeed({ ...removed, ...draft });
-          },
-        },
-        {
-          text: t.counter.removeFromMenuConfirm,
-          style: 'destructive',
-          onPress: () => {
+  /** Same full-menu write as the contribute editor's "Smazat pivo" + "Uložit",
+   *  queued so it survives a dead signal. It changes the menu for everyone, so
+   *  it asks first. */
+  /** Closing the options or keeping the beer goes back to choosing a beer. */
+  const handleActionsClose = useCallback(() => {
+    setActionsOpen(false);
+    runAfterSheetClose(() => setPickOpen(true));
+  }, [runAfterSheetClose]);
+
+  const handleActionRemove = useCallback(
+    (removed: CommunityBeer) => {
+      if (!pub || !cell) return;
+      setActionsOpen(false);
+      const target = menuTargetRef.current;
+      runAfterSheetClose(() =>
+        confirmRemoveFromMenu(
+          removed,
+          () => {
             const live = liveMenuRef.current;
-            // Another place, or the beer is already gone: nothing to take off.
-            if (live.cell !== cell || !live.menu?.some((b) => isSameBeerIdentity(b, removed))) return;
-            const nextMenu = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
-            setOverride(cell, {
-              beers: nextMenu,
-              historicalBeers: historicalBeersAfterMenuReplacement(
-                live.menu,
-                nextMenu,
-                live.historicalBeers,
-              ),
-            });
-            void enqueuePubCommunity(
-              buildCommunityEntry(
-                {
-                  externalId: pub.id || null,
-                  name: pub.name,
-                  lat: pub.lat,
-                  lng: pub.lng,
-                  city: pub.city,
-                  beers: nextMenu,
-                },
-                generateUuidV4(),
-              ),
-            );
-            showToast(t.counter.removedFromMenuToast);
+            // Another pub by now, or the beer is already gone: nothing to take off.
+            if (isSameMenuPub(target, live) && live.menu?.some((b) => isSameBeerIdentity(b, removed))) {
+              const nextMenu = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
+              const nextHistory = replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers, {
+                action: 'remove',
+                name: removed.name,
+                volumeMl: removed.volumeMl,
+              });
+              recordMenuWrite(pub.id, nextMenu, nextHistory);
+              showToast(t.counter.removedFromMenuToast);
+            }
+            setPickOpen(true);
           },
-        },
-      ],
-    }));
-  }, [cell, formBeer, openForm, pub, runAfterSheetClose, setOverride, showToast]);
+          () => setPickOpen(true),
+        ),
+      );
+    },
+    [cell, pub, recordMenuWrite, runAfterSheetClose, showToast],
+  );
 
   // ── Pick sheet ──────────────────────────────────────────────────────────────
 
@@ -1254,13 +1311,22 @@ function Tacek({
     [lastServingType, openForm, pub, requestCountBeer, rowBeers, runAfterSheetClose],
   );
 
-  const handleEditRow = useCallback(
+  const handleRowActions = useCallback(
     (row: DrinkPickRow) => {
       const beer = rowBeers.get(row.key);
       if (!beer || !pub) return;
-      runAfterSheetClose(() => openForm('edit', beer));
+      menuTargetRef.current = { cell, pubId: pub.id };
+      // Only a beer on the confirmed menu has more than the price to offer.
+      if (!deletableMenu?.some((b) => isSameBeerIdentity(b, beer))) {
+        runAfterSheetClose(() => openForm('edit', beer));
+        return;
+      }
+      runAfterSheetClose(() => {
+        setActionBeer(beer);
+        setActionsOpen(true);
+      });
     },
-    [openForm, pub, rowBeers, runAfterSheetClose],
+    [cell, deletableMenu, openForm, pub, rowBeers, runAfterSheetClose],
   );
 
   // ── Menu scan ───────────────────────────────────────────────────────────────
@@ -1722,10 +1788,19 @@ function Tacek({
         tonightRows={tonightRows}
         menuRows={menuRows}
         onCountRow={handlePickRow}
-        onEditRow={handleEditRow}
+        onRowActions={handleRowActions}
         onAddBeer={() => runAfterSheetClose(handleAddBeer)}
         onAddOther={() => runAfterSheetClose(handleAddOtherDrink)}
         onClose={() => setPickOpen(false)}
+      />
+
+      <MenuBeerActionsSheet
+        visible={actionsOpen}
+        beer={actionBeer}
+        canRemove={actionBeerOnMenu}
+        onClose={handleActionsClose}
+        onEditPrice={handleActionEditPrice}
+        onRemove={handleActionRemove}
       />
 
       <ReceiptSheet
@@ -1754,7 +1829,7 @@ function Tacek({
       <BeerFormModal
         visible={formMode !== null}
         mode={formMode ?? 'add'}
-        beer={formSeed ?? formBeer}
+        beer={formBeer}
         initialDrinkType={formDrinkType}
         placeContext={outsideContext ?? 'pub'}
         initialServingType={lastServingType}
@@ -1765,8 +1840,6 @@ function Tacek({
           setBackdateAt(null);
         }}
         onSubmit={handleFormSubmit}
-        onRemove={formBeerOnMenu ? handleRemoveFromMenu : undefined}
-        removeLabel={t.counter.removeFromMenu}
         // Hidden in the backdate flow (the scan hands over to the contribute
         // editor, which would drop the picked past timestamp) and outside a pub
         // (there is no pub menu to fill).

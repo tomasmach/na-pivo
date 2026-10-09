@@ -1062,7 +1062,8 @@ Na `DiaryStatsSheet` to vyšlo `box 451 / content 707` — potvrzeno funkční. 
 
 | Sheet | Umí | Neumí |
 |---|---|---|
-| „Co si dáš?“ (`DrinkPickSheet`) | připsat pivo, přidat nové pivo, přidat nealko | žádné minus, žádné mazání, žádné „dopito“ |
+| „Co si dáš?“ (`DrinkPickSheet`) | připsat pivo, přidat nové pivo, přidat nealko; ⋯ u piva v hospodě otevře jeho možnosti | žádné minus, žádné mazání, žádné „dopito“ |
+| Možnosti piva (`MenuBeerActionsSheet`) | upravit cenu, smazat pivo z lístku hospody (s potvrzením); otevírá ho ⋯ v „Co si dáš?“ i řádek „Na čepu“ | nepřipisuje pivo, nic nepřidává |
 | „Tvůj účet“ (`ReceiptSheet`) | odebrat drink, zavřít večer | žádné plus, žádné přidání |
 | „Co ještě?“ (`CounterMoreSheet`) | všechno ostatní jako plochý seznam | nepočítá a neubírá |
 

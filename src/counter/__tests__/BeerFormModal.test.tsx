@@ -6,6 +6,7 @@
 import React from 'react';
 import { TextInput } from 'react-native';
 import { BeerFormModal } from '../BeerFormModal';
+import { t } from '@/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -76,8 +77,8 @@ describe('BeerFormModal name autofocus', () => {
   });
 });
 
-describe('BeerFormModal remove action in edit mode', () => {
-  function render(props: Partial<React.ComponentProps<typeof BeerFormModal>>) {
+describe('BeerFormModal price edit', () => {
+  it('stays about the price: no delete action in the form', () => {
     let renderer!: ReturnType<typeof TestRenderer.create>;
     act(() => {
       renderer = TestRenderer.create(
@@ -87,31 +88,36 @@ describe('BeerFormModal remove action in edit mode', () => {
           beer={{ name: 'Primátor 11', priceCzk: 55, volumeMl: 500 }}
           onCancel={() => undefined}
           onSubmit={() => undefined}
-          {...props}
         />,
       );
     });
-    return renderer;
-  }
-
-  const removeButtons = (renderer: ReturnType<typeof TestRenderer.create>) =>
-    renderer.root.findAll(
-      (n: any) =>
-        n.props?.accessibilityLabel === 'Smazat z lístku' && typeof n.props?.onPress === 'function',
-    );
-
-  it('shows the labelled delete action and calls onRemove', () => {
-    const onRemove = jest.fn();
-    const renderer = render({ onRemove, removeLabel: 'Smazat z lístku' });
-    const [button] = removeButtons(renderer);
-    act(() => button.props.onPress());
-    expect(onRemove).toHaveBeenCalledTimes(1);
+    const texts = renderer.root
+      .findAll((n: any) => n.type === 'Text')
+      .map((n: any) => String(n.props.children));
+    expect(texts.some((text: string) => text.startsWith('Smazat'))).toBe(false);
     act(() => renderer.unmount());
   });
 
-  it('keeps the plain price edit without onRemove', () => {
-    const renderer = render({ removeLabel: 'Smazat z lístku' });
-    expect(removeButtons(renderer)).toHaveLength(0);
+  it('keeps the contribute editor delete in menu mode', () => {
+    const onRemove = jest.fn();
+    let renderer!: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(
+        <BeerFormModal
+          visible
+          mode="menu"
+          beer={{ name: 'Primátor 11', priceCzk: 55, volumeMl: 500 }}
+          onCancel={() => undefined}
+          onSubmit={() => undefined}
+          onRemove={onRemove}
+        />,
+      );
+    });
+    const [button] = renderer.root.findAll(
+      (n: any) => n.props?.accessibilityRole === 'button' && n.props?.accessibilityLabel === t.a11y.contributeRemoveBeer && typeof n.props?.onPress === 'function',
+    );
+    act(() => button.props.onPress());
+    expect(onRemove).toHaveBeenCalledTimes(1);
     act(() => renderer.unmount());
   });
 });

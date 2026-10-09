@@ -12,7 +12,7 @@
  * the canvas, dark bands between sections, one amber action in a fixed bar.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   BackHandler,
@@ -67,7 +67,9 @@ import { haversineMeters } from '@/compass/distance';
 import { getAmenityDef } from '@/data/amenities';
 import {
   computeOpenState,
+  isSameBeerIdentity,
   parseOsmOpeningHoursToWeeklyHours,
+  type CommunityBeer,
   type WeeklyHours,
 } from '@/data/communityHours';
 import { geohash8 } from '@/data/geohash';
@@ -82,12 +84,15 @@ import { buildAmenityRows, selectPubInfoCompleteness } from '@/data/pubAmenities
 import { fetchPubBeersLastWeek } from '@/data/pubBeersClient';
 import { fetchUpcomingPubEvents, type PubEvent } from '@/data/pubEventsClient';
 import { pubIdentityKey } from '@/data/pubIdentity';
+import { replacePubMenu } from '@/data/pubMenuWrite';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { EMPTY_PUB_SEARCH_FILTERS, type PubSearchFilters } from '@/data/pubSearchFilters';
 import { getAllLoadedPubs, type Pub } from '@/data/pubs';
 import { formatVolume, intlLocale, t } from '@/i18n';
 import BeerMapScreen from '@/map/BeerMapScreen';
+import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
+import { MenuBeerActionsSheet, confirmRemoveFromMenu } from '@/counter/MenuBeerActionsSheet';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import {
   isBeerListOverrideCurrent,
@@ -285,6 +290,22 @@ export default function PubPageScreen() {
   const [tapsExpanded, setTapsExpanded] = useState(false);
   const [mappingOpen, setMappingOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // — One "Na čepu" beer: its options sheet and the price form —
+  const [beerActionsOpen, setBeerActionsOpen] = useState(false);
+  const [actionBeer, setActionBeer] = useState<CommunityBeer | null>(null);
+  const [priceFormOpen, setPriceFormOpen] = useState(false);
+  const [priceFormNonce, setPriceFormNonce] = useState(0);
+  /** The menu a fix or a delete rewrites for everyone: this pub's menu as the
+   *  server answered it on this page, kept in step with the user's own writes.
+   *  Without an answer there is none, so nothing is written for everyone from
+   *  the opener's older copy or another pub's local list. */
+  const [tapsBase, setTapsBase] = useState<{
+    pubId: string;
+    beers: CommunityBeer[];
+    historicalBeers: CommunityBeer[];
+    /** Epoch ms of the user's last write here; an older answer lags behind it. */
+    writtenAt: number | null;
+  } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
@@ -361,10 +382,11 @@ export default function PubPageScreen() {
     }, [mapOpen]),
   );
 
-  // Fill in hours, taps and the rating when the opener did not have them.
+  // Fill in hours, taps and the rating. Runs even when the opener had hours:
+  // fixing or deleting a beer needs the server's current menu.
   const pubId = pub?.id ?? '';
   useEffect(() => {
-    if (!pub || pub.hoursStatus === 'ok') return;
+    if (!pub) return;
     const controller = new AbortController();
     const opened = pub;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -376,8 +398,20 @@ export default function PubPageScreen() {
       void fetchPubHours([opened], controller.signal).then(apply);
     };
     const apply = (response: Awaited<ReturnType<typeof fetchPubHours>>) => {
+      if (controller.signal.aborted) return;
       const details = response.get(opened.id);
-      if (!details || controller.signal.aborted) return;
+      if (!details) return;
+      const answeredAt = details.beersUpdatedAt ? Date.parse(details.beersUpdatedAt) : 0;
+      setTapsBase((prev) =>
+        prev?.pubId === opened.id && prev.writtenAt !== null && !(answeredAt > prev.writtenAt)
+          ? prev
+          : {
+              pubId: opened.id,
+              beers: details.beers,
+              historicalBeers: details.historicalBeers,
+              writtenAt: null,
+            },
+      );
       if (details.status === 'pending' && attempts < HOURS_RETRY_LIMIT) {
         retryTimer = setTimeout(load, HOURS_RETRY_MS);
       }
@@ -500,6 +534,17 @@ export default function PubPageScreen() {
       false)
     : false;
 
+  const editableTaps = pub && tapsBase?.pubId === pub.id ? tapsBase.beers : null;
+  const historicalTaps = editableTaps && tapsBase ? tapsBase.historicalBeers : null;
+  const tapsPubId = pub?.id ?? null;
+  /** A dialog or the form confirms later: write over the menu as it is then. */
+  const liveTapsRef = useRef({ key, pubId: tapsPubId, menu: editableTaps, historical: historicalTaps });
+  useEffect(() => {
+    liveTapsRef.current = { key, pubId: tapsPubId, menu: editableTaps, historical: historicalTaps };
+  }, [editableTaps, historicalTaps, key, tapsPubId]);
+  /** The pub a beer's options were opened for: a write never lands elsewhere. */
+  const tapsTargetRef = useRef<{ key: string | undefined; pubId: string | null } | null>(null);
+
   const completenessPct = useMemo(() => {
     const rows = buildAmenityRows({ aggregates, myVotes });
     const snap = serverCompleteness
@@ -568,6 +613,91 @@ export default function PubPageScreen() {
   const afterSheet = useCallback((action: () => void) => {
     setTimeout(action, SHEET_DISMISS_MS);
   }, []);
+
+  /** The user's own write is the newest menu this page knows. */
+  const recordTapsWrite = useCallback(
+    (pubId: string, beers: CommunityBeer[], historicalBeers: CommunityBeer[]) => {
+      setTapsBase((prev) =>
+        prev?.pubId === pubId ? { pubId, beers, historicalBeers, writtenAt: Date.now() } : prev,
+      );
+    },
+    [],
+  );
+
+  const openBeerActions = useCallback(
+    (beer: CommunityBeer) => {
+      tapsTargetRef.current = { key, pubId: tapsPubId };
+      setActionBeer(beer);
+      setBeerActionsOpen(true);
+    },
+    [key, tapsPubId],
+  );
+
+  const editBeerPrice = useCallback(
+    (beer: CommunityBeer) => {
+      setBeerActionsOpen(false);
+      afterSheet(() => {
+        setActionBeer(beer);
+        setPriceFormNonce((n) => n + 1);
+        setPriceFormOpen(true);
+      });
+    },
+    [afterSheet],
+  );
+
+  /** Fix one row in place (a volume change must not leave the old row behind)
+   *  and save the whole menu for everyone, as the contribute editor does. */
+  const saveBeerPrice = useCallback(
+    (result: BeerFormResult) => {
+      setPriceFormOpen(false);
+      const edited = actionBeer;
+      const live = liveTapsRef.current;
+      const target = tapsTargetRef.current;
+      if (!pub || !key || !edited || !live.menu) return;
+      if (target?.key !== live.key || target.pubId !== live.pubId) return;
+      if (!live.menu.some((b) => isSameBeerIdentity(b, edited))) return;
+      if (typeof result.priceCzk !== 'number') return;
+      const beer: CommunityBeer = { name: edited.name };
+      if (typeof result.priceCzk === 'number') beer.priceCzk = result.priceCzk;
+      if (typeof result.volumeMl === 'number') beer.volumeMl = result.volumeMl;
+      const next = live.menu
+        .map((b) => (isSameBeerIdentity(b, edited) ? beer : b))
+        .filter((b) => b === beer || !isSameBeerIdentity(b, beer));
+      const nextHistory = replacePubMenu(key, pub, live.menu, next, live.historical ?? [], {
+        action: 'update',
+        name: edited.name,
+        volumeMl: edited.volumeMl,
+        priceCzk: result.priceCzk,
+        newVolumeMl: result.volumeMl,
+      });
+      recordTapsWrite(pub.id, next, nextHistory);
+    },
+    [actionBeer, key, pub, recordTapsWrite],
+  );
+
+  const removeBeer = useCallback(
+    (removed: CommunityBeer) => {
+      setBeerActionsOpen(false);
+      const target = tapsTargetRef.current;
+      afterSheet(() =>
+        confirmRemoveFromMenu(removed, () => {
+          const live = liveTapsRef.current;
+          if (!pub || !key || !live.menu) return;
+          if (target?.key !== live.key || target.pubId !== live.pubId) return;
+          if (!live.menu.some((b) => isSameBeerIdentity(b, removed))) return;
+          const next = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
+          const nextHistory = replacePubMenu(key, pub, live.menu, next, live.historical ?? [], {
+            action: 'remove',
+            name: removed.name,
+            volumeMl: removed.volumeMl,
+          });
+          recordTapsWrite(pub.id, next, nextHistory);
+          showToast(t.counter.removedFromMenuToast);
+        }),
+      );
+    },
+    [afterSheet, key, pub, recordTapsWrite, showToast],
+  );
 
   const startRename = useCallback(() => {
     if (!pub) return;
@@ -759,11 +889,18 @@ export default function PubPageScreen() {
   const hasBeers = !cellIsShared && typeof beersLastWeek === 'number' && beersLastWeek > 0;
   const shownTaps = tapsExpanded ? taps : taps.slice(0, TAPS_COLLAPSED);
   const hiddenTaps = taps.length - shownTaps.length;
-  // A local edit of the list is newer than the server's date; say nothing
-  // rather than pin the old menu's age on the new beers.
+  // A local edit of the list is newer than the server's date: its age is the
+  // edit's own, never the old menu's.
   const localTaps =
     Boolean(override?.beers) && isBeerListOverrideCurrent(override, pub.beersUpdatedAt);
-  const tapsAge = !localTaps && pub.beersUpdatedAt ? priceAgeLabel(pub.beersUpdatedAt) : null;
+  const localTapsAt = override?.beersOverrideUpdatedAt ?? override?.updatedAt;
+  const tapsAge = localTaps
+    ? localTapsAt
+      ? priceAgeLabel(new Date(localTapsAt).toISOString())
+      : null
+    : pub.beersUpdatedAt
+      ? priceAgeLabel(pub.beersUpdatedAt)
+      : null;
   const verdictLabel =
     rating?.verdict === 'like'
       ? t.myBeers.verdictLike
@@ -915,28 +1052,48 @@ export default function PubPageScreen() {
                     : null
               }
             />
-            {shownTaps.map((beer, index) => (
-              <View
-                key={`${beer.name}-${index}`}
-                style={[styles.row, index === 0 && styles.rowFirst]}
-              >
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {beer.name}
-                  </Text>
-                  {typeof beer.volumeMl === 'number' ? (
-                    <Text style={styles.rowSub} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {formatVolume(beer.volumeMl)}
+            {shownTaps.map((beer, index) => {
+              // Only a beer of the menu a write would start from can be changed.
+              const editable = !!editableTaps?.some((b) => isSameBeerIdentity(b, beer));
+              return (
+                <Pressable
+                  key={`${beer.name}-${index}`}
+                  onPress={() => openBeerActions(beer)}
+                  disabled={!editable}
+                  style={({ pressed }) => [
+                    styles.row,
+                    index === 0 && styles.rowFirst,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole={editable ? 'button' : undefined}
+                  accessibilityLabel={[
+                    beer.name,
+                    typeof beer.volumeMl === 'number' ? formatVolume(beer.volumeMl) : null,
+                    typeof beer.priceCzk === 'number' ? formatPrice(beer.priceCzk, priceCurrency) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}
+                  accessibilityHint={editable ? t.a11y.counterBeerOptions(beer.name) : undefined}
+                >
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {beer.name}
+                    </Text>
+                    {typeof beer.volumeMl === 'number' ? (
+                      <Text style={styles.rowSub} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {formatVolume(beer.volumeMl)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {typeof beer.priceCzk === 'number' ? (
+                    <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {formatPrice(beer.priceCzk, priceCurrency)}
                     </Text>
                   ) : null}
-                </View>
-                {typeof beer.priceCzk === 'number' ? (
-                  <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {formatPrice(beer.priceCzk, priceCurrency)}
-                  </Text>
-                ) : null}
-              </View>
-            ))}
+                  {editable ? <EllipsisIcon size={20} color={Colors.mutedText} /> : null}
+                </Pressable>
+              );
+            })}
             {hiddenTaps > 0 ? (
               <LinkRow
                 muted
@@ -1127,6 +1284,22 @@ export default function PubPageScreen() {
         }}
       />
       <MoreSheet visible={moreOpen} rows={moreRows} onClose={() => setMoreOpen(false)} />
+      <MenuBeerActionsSheet
+        visible={beerActionsOpen}
+        beer={actionBeer}
+        canRemove={!!actionBeer && !!editableTaps?.some((b) => isSameBeerIdentity(b, actionBeer))}
+        onClose={() => setBeerActionsOpen(false)}
+        onEditPrice={editBeerPrice}
+        onRemove={removeBeer}
+      />
+      <BeerFormModal
+        visible={priceFormOpen}
+        mode="edit"
+        beer={actionBeer}
+        formKey={priceFormNonce}
+        onCancel={() => setPriceFormOpen(false)}
+        onSubmit={saveBeerPrice}
+      />
       <ReportPubModal
         visible={reportOpen}
         pubName={pub.name}
