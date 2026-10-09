@@ -109,6 +109,7 @@ from pubs.beer_catalog import (
     ALLOWED_BEER_VOLUMES_ML,
     BeerCatalogMatchCache,
     BeerSuggestion,
+    beer_menu_identity,
     match_beer,
     match_beer_brand,
     match_beer_identity,
@@ -1974,11 +1975,6 @@ class UserAddedPubView(APIView):
 _MAX_HISTORICAL_BEERS = 24
 
 
-def _beer_menu_identity(beer: dict) -> tuple[str, int | None]:
-    """Stable menu identity shared with the current-menu replacement contract."""
-    return str(beer.get("name") or "").strip().casefold(), beer.get("volume_ml")
-
-
 def _historical_beers_after_menu_replacement(
     *,
     current: list[dict],
@@ -1991,13 +1987,13 @@ def _historical_beers_after_menu_replacement(
     bounded, de-duplicated memory of removed rows and drops any historical row
     that the new menu confirms is back on tap.
     """
-    replacement_keys = {_beer_menu_identity(beer) for beer in replacement}
-    removed = [beer for beer in current if _beer_menu_identity(beer) not in replacement_keys]
+    replacement_keys = {beer_menu_identity(beer) for beer in replacement}
+    removed = [beer for beer in current if beer_menu_identity(beer) not in replacement_keys]
 
     next_historical: list[dict] = []
     seen: set[tuple[str, int | None]] = set()
     for beer in [*removed, *historical]:
-        identity = _beer_menu_identity(beer)
+        identity = beer_menu_identity(beer)
         if not identity[0] or identity in replacement_keys or identity in seen:
             continue
         seen.add(identity)
@@ -2228,9 +2224,11 @@ _MAX_MENU_BEERS = 12
 def _merge_drink_into_menu(beers: list[dict], beer: dict) -> bool:
     """Merge one drunk ``beer`` into a community ``beers`` menu list IN PLACE.
 
-    The match key is (normalized name, volume_ml): the beer name trimmed +
-    casefolded, plus the exact volume (None matches None). On a match the
-    existing entry's ``price_czk`` is updated to the posted price. Otherwise the
+    The match key is ``beer_menu_identity``: the name without case, accents,
+    punctuation or the degree sign, plus the exact volume (None matches None),
+    so "Primátor 11" updates an existing "Primátor 11°" row instead of adding a
+    second one. On a match the existing entry keeps its name and its
+    ``price_czk`` is updated to the posted price. Otherwise the
     beer is appended IF the menu has room (< 12 entries); a full menu is left
     untouched.
 
@@ -2240,10 +2238,9 @@ def _merge_drink_into_menu(beers: list[dict], beer: dict) -> bool:
     Returns True if the list was changed (price updated or beer appended), False
     if nothing changed (no match and the menu was full).
     """
-    posted_key = ((beer.get("name") or "").strip().casefold(), beer.get("volume_ml"))
+    posted_key = beer_menu_identity(beer)
     for entry in beers:
-        entry_key = ((entry.get("name") or "").strip().casefold(), entry.get("volume_ml"))
-        if entry_key == posted_key:
+        if beer_menu_identity(entry) == posted_key:
             entry["price_czk"] = beer["price_czk"]
             return True
 
@@ -3046,11 +3043,11 @@ class DrinksView(APIView):
         changed = _merge_drink_into_menu(beers, beer)
         if changed:
             row.beers = beers
-            restored_identity = _beer_menu_identity(beer)
+            restored_identity = beer_menu_identity(beer)
             historical_beers = [
                 historical
                 for historical in row.historical_beers or []
-                if _beer_menu_identity(historical) != restored_identity
+                if beer_menu_identity(historical) != restored_identity
             ]
             row.historical_beers = historical_beers
             row.beers_updated_at = now
