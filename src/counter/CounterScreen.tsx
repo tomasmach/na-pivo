@@ -390,6 +390,9 @@ function Tacek({
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
   const [formDrinkType, setFormDrinkType] = useState<DrinkType>('beer');
   const [formNonce, setFormNonce] = useState(0);
+  // — Menu beer options (⋯ / long press in "Co si dáš?") —
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionBeer, setActionBeer] = useState<CommunityBeer | null>(null);
   /** Outside a pub: the serving the user last picked, seeding the next form. */
   const [lastServingType, setLastServingType] = useState<ServingType>('bottle');
   /** Set when the form was opened via "zapsat zpětně" — the ISO timestamp the
@@ -624,6 +627,13 @@ function Tacek({
     }
     return pub.historicalBeers ?? [];
   }, [currentBackendMenu, currentBeerListOverride, pub]);
+
+  /** A fix or a delete confirms later, and a newer backend menu may arrive
+   *  meanwhile: the full-menu write must not drop it. */
+  const liveMenuRef = useRef({ cell, menu: deletableMenu, historicalBeers });
+  useEffect(() => {
+    liveMenuRef.current = { cell, menu: deletableMenu, historicalBeers };
+  }, [cell, deletableMenu, historicalBeers]);
 
   const beerMenuRotates = pub
     ? currentMenuTypeOverride?.beerMenuRotates ??
@@ -1131,6 +1141,19 @@ function Tacek({
       if (mode === 'edit') {
         // Community-menu edit is a pub concept; outside rows are session-derived.
         if (!pub || !cell) return;
+        // A beer on the confirmed menu is fixed for everyone at once, the same
+        // write as the pub page and the delete.
+        const live = liveMenuRef.current;
+        if (editedBeer && live.cell === cell && live.menu?.some((b) => isSameBeerIdentity(b, editedBeer))) {
+          const fixed: CommunityBeer = { name: editedBeer.name };
+          if (typeof result.priceCzk === 'number') fixed.priceCzk = result.priceCzk;
+          if (typeof result.volumeMl === 'number') fixed.volumeMl = result.volumeMl;
+          const nextMenu = live.menu
+            .map((b) => (isSameBeerIdentity(b, editedBeer) ? fixed : b))
+            .filter((b) => b === fixed || !isSameBeerIdentity(b, fixed));
+          replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers);
+          return;
+        }
         // Replace the edited row in place: mergeBeerIntoMenu matches on
         // name+volume, so a volume change would otherwise append a NEW row and
         // orphan the original (PIV-33).
@@ -1147,21 +1170,10 @@ function Tacek({
     [backdateAt, cell, formBeer, formMode, menu, pub, requestCountBeer, setOverride],
   );
 
-  // — Menu beer options (⋯ / long press in "Co si dáš?") —
-  const [actionsOpen, setActionsOpen] = useState(false);
-  const [actionBeer, setActionBeer] = useState<CommunityBeer | null>(null);
-
   /** Only a beer that is on this pub's menu can come off it; tonight-only rows
    *  and outside places have no shared menu to change. */
   const actionBeerOnMenu =
     !!pub && !!actionBeer && !!deletableMenu?.some((b) => isSameBeerIdentity(b, actionBeer));
-
-  /** The delete dialog confirms later, and a newer backend menu may arrive
-   *  meanwhile: the full-menu write must not drop it. */
-  const liveMenuRef = useRef({ cell, menu: deletableMenu, historicalBeers });
-  useEffect(() => {
-    liveMenuRef.current = { cell, menu: deletableMenu, historicalBeers };
-  }, [cell, deletableMenu, historicalBeers]);
 
   const handleActionEditPrice = useCallback(
     (beer: CommunityBeer) => {
@@ -1174,19 +1186,31 @@ function Tacek({
   /** Same full-menu write as the contribute editor's "Smazat pivo" + "Uložit",
    *  queued so it survives a dead signal. It changes the menu for everyone, so
    *  it asks first. */
+  /** Closing the options or keeping the beer goes back to choosing a beer. */
+  const handleActionsClose = useCallback(() => {
+    setActionsOpen(false);
+    runAfterSheetClose(() => setPickOpen(true));
+  }, [runAfterSheetClose]);
+
   const handleActionRemove = useCallback(
     (removed: CommunityBeer) => {
       if (!pub || !cell) return;
       setActionsOpen(false);
       runAfterSheetClose(() =>
-        confirmRemoveFromMenu(removed.name, () => {
-          const live = liveMenuRef.current;
-          // Another place, or the beer is already gone: nothing to take off.
-          if (live.cell !== cell || !live.menu?.some((b) => isSameBeerIdentity(b, removed))) return;
-          const nextMenu = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
-          replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers);
-          showToast(t.counter.removedFromMenuToast);
-        }),
+        confirmRemoveFromMenu(
+          removed,
+          () => {
+            const live = liveMenuRef.current;
+            // Another place, or the beer is already gone: nothing to take off.
+            if (live.cell === cell && live.menu?.some((b) => isSameBeerIdentity(b, removed))) {
+              const nextMenu = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
+              replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers);
+              showToast(t.counter.removedFromMenuToast);
+            }
+            setPickOpen(true);
+          },
+          () => setPickOpen(true),
+        ),
       );
     },
     [cell, pub, runAfterSheetClose, showToast],
@@ -1224,12 +1248,17 @@ function Tacek({
     (row: DrinkPickRow) => {
       const beer = rowBeers.get(row.key);
       if (!beer || !pub) return;
+      // Only a beer on the confirmed menu has more than the price to offer.
+      if (!deletableMenu?.some((b) => isSameBeerIdentity(b, beer))) {
+        runAfterSheetClose(() => openForm('edit', beer));
+        return;
+      }
       runAfterSheetClose(() => {
         setActionBeer(beer);
         setActionsOpen(true);
       });
     },
-    [pub, rowBeers, runAfterSheetClose],
+    [deletableMenu, openForm, pub, rowBeers, runAfterSheetClose],
   );
 
   // ── Menu scan ───────────────────────────────────────────────────────────────
@@ -1701,7 +1730,7 @@ function Tacek({
         visible={actionsOpen}
         beer={actionBeer}
         canRemove={actionBeerOnMenu}
-        onClose={() => setActionsOpen(false)}
+        onClose={handleActionsClose}
         onEditPrice={handleActionEditPrice}
         onRemove={handleActionRemove}
       />

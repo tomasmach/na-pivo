@@ -644,7 +644,7 @@ export default function PubPageScreen() {
     (removed: CommunityBeer) => {
       setBeerActionsOpen(false);
       afterSheet(() =>
-        confirmRemoveFromMenu(removed.name, () => {
+        confirmRemoveFromMenu(removed, () => {
           const live = liveTapsRef.current;
           if (!pub || !key || live.key !== key || !live.menu) return;
           if (!live.menu.some((b) => isSameBeerIdentity(b, removed))) return;
@@ -847,11 +847,18 @@ export default function PubPageScreen() {
   const hasBeers = !cellIsShared && typeof beersLastWeek === 'number' && beersLastWeek > 0;
   const shownTaps = tapsExpanded ? taps : taps.slice(0, TAPS_COLLAPSED);
   const hiddenTaps = taps.length - shownTaps.length;
-  // A local edit of the list is newer than the server's date; say nothing
-  // rather than pin the old menu's age on the new beers.
+  // A local edit of the list is newer than the server's date: its age is the
+  // edit's own, never the old menu's.
   const localTaps =
     Boolean(override?.beers) && isBeerListOverrideCurrent(override, pub.beersUpdatedAt);
-  const tapsAge = !localTaps && pub.beersUpdatedAt ? priceAgeLabel(pub.beersUpdatedAt) : null;
+  const localTapsAt = override?.beersOverrideUpdatedAt ?? override?.updatedAt;
+  const tapsAge = localTaps
+    ? localTapsAt
+      ? priceAgeLabel(new Date(localTapsAt).toISOString())
+      : null
+    : pub.beersUpdatedAt
+      ? priceAgeLabel(pub.beersUpdatedAt)
+      : null;
   const verdictLabel =
     rating?.verdict === 'like'
       ? t.myBeers.verdictLike
@@ -1038,7 +1045,7 @@ export default function PubPageScreen() {
                     {formatPrice(beer.priceCzk, priceCurrency)}
                   </Text>
                 ) : null}
-                {editableTaps ? <ChevronRightIcon size={18} color={Colors.mutedText} /> : null}
+                {editableTaps ? <EllipsisIcon size={20} color={Colors.mutedText} /> : null}
               </Pressable>
             ))}
             {hiddenTaps > 0 ? (

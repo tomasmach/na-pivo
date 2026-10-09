@@ -94,7 +94,7 @@ describe('BeerFormModal price edit', () => {
     const texts = renderer.root
       .findAll((n: any) => n.type === 'Text')
       .map((n: any) => String(n.props.children));
-    expect(texts.some((text: string) => text.startsWith("Smazat"))).toBe(false);
+    expect(texts.some((text: string) => text.startsWith('Smazat'))).toBe(false);
     act(() => renderer.unmount());
   });
 

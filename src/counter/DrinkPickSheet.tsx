@@ -65,41 +65,39 @@ export function DrinkPickSheet({
   const isEmpty = tonightRows.length === 0 && menuRows.length === 0;
   const showCaptions = tonightRows.length > 0 && menuRows.length > 0;
 
+  // The ⋯ sits beside the row, not inside it: a screen reader only reaches a
+  // button that is not nested in another one.
   const renderRow = (row: DrinkPickRow, isFirstOfGroup: boolean) => (
-    <Pressable
-      key={row.key}
-      onPress={() => onCountRow(row)}
-      onLongPress={isPub ? () => onRowActions(row) : undefined}
-      delayLongPress={300}
-      style={({ pressed }) => [
-        styles.row,
-        !isFirstOfGroup && styles.rowDivider,
-        pressed && styles.rowPressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={
-        row.hasPrice
-          ? t.a11y.counterCountBeer(row.name, row.meta)
-          : t.a11y.counterCountBeerNoPrice(row.name)
-      }
-    >
-      <View style={styles.rowText}>
-        <Text style={styles.rowName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {row.name}
-        </Text>
-        <Text style={styles.rowMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {row.meta}
-        </Text>
-      </View>
-      {row.count > 0 ? (
-        <Text style={styles.rowBadge} maxFontSizeMultiplier={FontScaleCap.display}>
-          {t.counter.perBeerCount(row.count)}
-        </Text>
-      ) : null}
+    <View key={row.key} style={[styles.row, !isFirstOfGroup && styles.rowDivider]}>
+      <Pressable
+        onPress={() => onCountRow(row)}
+        onLongPress={isPub ? () => onRowActions(row) : undefined}
+        delayLongPress={300}
+        style={({ pressed }) => [styles.rowMain, pressed && styles.rowPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={
+          row.hasPrice
+            ? t.a11y.counterCountBeer(row.name, row.meta)
+            : t.a11y.counterCountBeerNoPrice(row.name)
+        }
+      >
+        <View style={styles.rowText}>
+          <Text style={styles.rowName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {row.name}
+          </Text>
+          <Text style={styles.rowMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {row.meta}
+          </Text>
+        </View>
+        {row.count > 0 ? (
+          <Text style={styles.rowBadge} maxFontSizeMultiplier={FontScaleCap.display}>
+            {t.counter.perBeerCount(row.count)}
+          </Text>
+        ) : null}
+      </Pressable>
       {isPub ? (
         <Pressable
           onPress={() => onRowActions(row)}
-          hitSlop={{ top: 6, bottom: 6 }}
           style={({ pressed }) => [styles.rowActions, pressed && styles.rowPressed]}
           accessibilityRole="button"
           accessibilityLabel={t.a11y.counterBeerOptions(row.name)}
@@ -107,7 +105,7 @@ export function DrinkPickSheet({
           <EllipsisIcon size={20} color={Colors.mutedText} />
         </Pressable>
       ) : null}
-    </Pressable>
+    </View>
   );
 
   const renderActionRow = (
@@ -336,6 +334,13 @@ const styles = StyleSheet.create({
     minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  rowMain: {
+    flex: 1,
+    alignSelf: 'stretch',
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.sm,
     paddingVertical: Spacing.sm,
   },
@@ -359,7 +364,8 @@ const styles = StyleSheet.create({
   // The glyph lines up with the sheet's right edge; the hit area spills left.
   rowActions: {
     width: HitArea.min,
-    height: HitArea.min,
+    alignSelf: 'stretch',
+    minHeight: HitArea.min,
     marginRight: -12,
     alignItems: 'center',
     justifyContent: 'center',

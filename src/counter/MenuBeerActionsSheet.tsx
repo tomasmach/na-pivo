@@ -11,7 +11,7 @@ import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { PencilIcon, Trash2Icon } from '@/components/shared/IconGlyph';
 import type { CommunityBeer } from '@/data/communityHours';
-import { t } from '@/i18n';
+import { formatVolume, t } from '@/i18n';
 
 export function MenuBeerActionsSheet({
   visible,
@@ -52,16 +52,34 @@ export function MenuBeerActionsSheet({
       ]
     : [];
 
-  return <MoreSheet visible={visible} title={beer?.name} rows={rows} onClose={onClose} />;
+  return (
+    <MoreSheet
+      visible={visible}
+      title={beer ? menuBeerLabel(beer) : undefined}
+      rows={rows}
+      onClose={onClose}
+    />
+  );
+}
+
+/** "Plzeň · 0,5 l": a pub may pour the same beer in two sizes. */
+function menuBeerLabel(beer: CommunityBeer): string {
+  return typeof beer.volumeMl === 'number'
+    ? `${beer.name} · ${formatVolume(beer.volumeMl)}`
+    : beer.name;
 }
 
 /** The delete changes the menu for everyone, so it always asks first. */
-export function confirmRemoveFromMenu(name: string, onConfirm: () => void): void {
+export function confirmRemoveFromMenu(
+  beer: CommunityBeer,
+  onConfirm: () => void,
+  onKeep?: () => void,
+): void {
   showAppDialog({
     title: t.counter.removeFromMenuTitle,
-    message: t.counter.removeFromMenuBody(name),
+    message: t.counter.removeFromMenuBody(menuBeerLabel(beer)),
     buttons: [
-      { text: t.counter.removeFromMenuKeep, style: 'cancel' },
+      { text: t.counter.removeFromMenuKeep, style: 'cancel', onPress: onKeep },
       { text: t.counter.removeFromMenuConfirm, style: 'destructive', onPress: onConfirm },
     ],
   });
