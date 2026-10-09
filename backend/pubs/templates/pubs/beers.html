@@ -118,6 +118,7 @@
   .coaster .price { display: flex; align-items: baseline; gap: 0.1em; margin-top: 1cqi; font: 800 31cqi/1 var(--display); letter-spacing: -0.02em; }
   .coaster .unit { font-size: 0.36em; letter-spacing: 0; }
   .coaster .roll, .coaster .unit { -webkit-user-select: none; user-select: none; }
+  .coaster .per { margin-top: 2cqi; }
   .coasters .range { max-width: 13em; color: var(--muted); font-size: 15px; line-height: 1.35; text-wrap: balance; }
 
   .roll { display: inline-flex; }
@@ -144,10 +145,9 @@
   @keyframes roll { from { transform: translateY(calc(var(--d) * -1em)); } }
 
   /* Lists: one row per pub or beer, with the price page's search, sorting and fold. */
-  .areas { --cols: minmax(0, 1fr) 8.5rem 6.5rem; --gap: 20px; margin-top: clamp(72px, 10vw, 120px); }
+  /* The answer follows the heading closely, in a column a glance can cross. */
+  .areas { --cols: minmax(0, 1fr) 9rem 7rem; --gap: 20px; max-width: 880px; margin-top: clamp(44px, 6vw, 64px); }
   h2 { font-size: clamp(32px, 4.6vw, 48px); line-height: 1; letter-spacing: -0.025em; }
-  /* Without mats above it, the list follows the heading closely. */
-  .areas.is-first { margin-top: clamp(44px, 6vw, 64px); }
   .areas-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 20px 32px; }
   .tools { display: none; flex: 0 1 560px; flex-wrap: wrap; gap: 10px; }
   .search { position: relative; flex: 1 1 240px; }
@@ -172,19 +172,24 @@
   .strip[hidden] { display: none; }
   .who { grid-area: who; min-width: 0; overflow-wrap: anywhere; }
   .who .name { display: block; font-weight: 600; line-height: 1.25; }
-  .who a { text-decoration: none; }
+  .who a { text-decoration: underline; text-decoration-color: rgb(251 243 224 / 0.35); text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
   /* A row that opens a page opens it from anywhere on the row. */
   .who a::after { content: ""; position: absolute; inset: 0; }
   .who .sub, .who .note { display: block; color: var(--muted); font-size: 14px; line-height: 1.35; }
   .who .note { color: var(--foam-muted); font-size: 13px; }
   .when { grid-area: when; color: var(--foam-muted); font-size: 15px; font-variant-numeric: tabular-nums; line-height: 1.35; }
   .when-word { display: none; }
-  /* A pub not confirmed for three months says so in words; its price steps back. */
-  .stale { display: block; color: var(--foam-muted); font-size: 13px; font-weight: 500; line-height: 1.3; }
-  .strip.is-stale .who .name, .strip.is-stale .median { color: var(--foam-muted); }
+  /* Pubs not confirmed for three months come last under their own heading, the whole row stepped back. */
+  .strip.has-head { grid-template-areas: "head head head" "who when cost"; padding-top: 0; }
+  .old-head { grid-area: head; margin: 32px 0 12px; color: var(--foam); font: 800 22px/1.2 var(--display); }
+  .strip.is-old .name, .strip.is-old .when { color: var(--foam-muted); }
+  .strip.is-old .median { color: var(--muted); }
+  .strip.is-old .who a { text-decoration-color: rgb(251 243 224 / 0.2); }
   .cost { grid-area: cost; text-align: right; white-space: nowrap; }
   .cost .median { display: block; font: 800 22px/1.15 var(--display); }
   .cost .spread { display: block; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  /* Not half a litre, so the price says what it buys. */
+  .cost .glass { display: block; color: var(--foam-muted); font-size: 14px; font-weight: 600; }
   .cost .none { color: var(--muted); font-size: 15px; }
   @media (hover: hover) {
     .strip:has(a:hover) .name { color: var(--amber-light); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
@@ -212,6 +217,7 @@
   .brand-links { columns: 15em auto; column-gap: var(--gutter); margin: 18px 0 0; padding: 0; list-style: none; }
   .brand-links li { break-inside: avoid; border-bottom: 1px solid var(--hair); }
   .brand-links a { display: flex; min-height: 48px; justify-content: space-between; align-items: center; gap: 16px; font-weight: 600; text-decoration: none; }
+  .brand-links { max-width: 880px; }
   .brand-links .sub { color: var(--muted); font-size: 14px; font-weight: 400; white-space: nowrap; }
   @media (hover: hover) { .brand-links a:hover { color: var(--amber-light); } }
 
@@ -233,15 +239,17 @@
   footer a { padding: 0 8px; color: var(--foam-muted); text-decoration: none; }
   @media (hover: hover) { footer a:hover { color: var(--foam); text-decoration: underline; } }
 
+  /* Smaller mats than the price page's: here the pubs below them are the answer. */
   @media (min-width: 960px) {
-    .coasters li { max-width: 290px; }
-    .coasters li:nth-child(2) { margin-top: 28px; }
-    .coasters li:nth-child(3) { margin-top: 6px; }
+    .coasters li { max-width: 210px; }
+    .coasters li:nth-child(2) { margin-top: 18px; }
+    .coasters li:nth-child(3) { margin-top: 4px; }
   }
   /* Phones: name and price share the top of the row, the date sits under the name and says what it is. */
   @media (max-width: 640px) {
     .areas { --gap: 12px; }
     .scale, .strip { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who cost" "when cost"; }
+    .strip.has-head { grid-template-areas: "head head" "who cost" "when cost"; }
     .scale span:nth-child(2) { display: none; }
     .strip { row-gap: 2px; padding: 12px 0; }
     .when { font-size: 14px; }
@@ -291,13 +299,13 @@
       </li>
       {% if page.median is not None %}
       <li>
-        <div class="coaster"><span class="where">{% translate "Obvykle za 0,5 l" %}</span>{% translate "Kč" as unit %}{% include "pubs/_mat_number.html" with number=page.median unit=unit %}</div>
+        <div class="coaster"><span class="where">{% translate "Obvykle" %}</span>{% translate "Kč" as unit %}{% include "pubs/_mat_number.html" with number=page.median unit=unit %}<span class="where per">{% translate "za 0,5 l" %}</span></div>
         {% if page.p25 != page.p75 %}<p class="range">{% blocktranslate with low=page.p25 high=page.p75 %}polovina hospod mezi {{ low }} a {{ high }} Kč{% endblocktranslate %}</p>{% endif %}
       </li>
       {% endif %}
       {% if page.cheapest %}
       <li>
-        <div class="coaster"><span class="where">{% translate "Nejlevněji za 0,5 l" %}</span>{% translate "Kč" as unit %}{% include "pubs/_mat_number.html" with number=page.cheapest.price_czk unit=unit %}</div>
+        <div class="coaster"><span class="where">{% translate "Nejlevněji" %}</span>{% translate "Kč" as unit %}{% include "pubs/_mat_number.html" with number=page.cheapest.price_czk unit=unit %}<span class="where per">{% translate "za 0,5 l" %}</span></div>
         <p class="range">{{ page.cheapest.name }}{% if page.cheapest.city %}, {{ page.cheapest.city }}{% endif %}</p>
       </li>
       {% endif %}
@@ -307,12 +315,12 @@
 
   {% if throttled %}
   <div class="notice" role="alert">
-    <p>{% translate "Piva se teď nedotáhla. Zkus to za minutu." %}</p>
+    <p>{% if kind == "beer" %}{% translate "Hospody se teď nedotáhly. Zkus to za minutu." %}{% else %}{% translate "Piva se teď nedotáhla. Zkus to za minutu." %}{% endif %}</p>
     <a class="retry" href="{{ page_url }}">{% translate "Načíst znovu" %}</a>
   </div>
   {% elif missing %}
   <div class="notice">
-    <p>{% if kind == "brand" %}{% translate "Tuhle značku tu teď nemám. Ukážu ji, až některé její pivo za poslední 3 měsíce potvrdí aspoň 3 hospody." %}{% else %}{% translate "Tohle pivo tu teď nemám. Ukážu ho, až ho za poslední 3 měsíce potvrdí aspoň 3 hospody." %}{% endif %}</p>
+    <p>{% if not known %}{% translate "Podívej se na piva, která tu mám." %}{% elif kind == "brand" %}{% translate "Tuhle značku tu teď nemám. Ukážu ji, až tu budou mít stránku aspoň 2 její piva." %}{% else %}{% translate "Tohle pivo tu teď nemám. Ukážu ho, až ho za poslední 3 měsíce potvrdí aspoň 3 hospody." %}{% endif %}</p>
     <a class="all-beers" href="{{ beers_url }}">{% translate "Ostatní piva" %}</a>
   </div>
   {% elif kind == "beer" %}
@@ -328,22 +336,23 @@
           <input type="search" data-search placeholder="{{ search_label }}" aria-label="{{ search_label }}" autocomplete="off" spellcheck="false" enterkeyhint="search">
         </label>
         <div class="sort" role="group" aria-label="{% translate "Seřadit" %}">
-          <button type="button" data-sort="default" aria-pressed="true">{% translate "Nejčerstvější" %}</button>
+          <button type="button" data-sort="default" aria-pressed="true">{% translate "Naposledy potvrzené" %}</button>
           <button type="button" data-sort="cheap" aria-pressed="false">{% translate "Nejlevnější" %}</button>
         </div>
       </div>
       {% endif %}
     </div>
-    <div class="scale" aria-hidden="true"><span>{% translate "Hospoda" %}</span><span>{% translate "Naposledy potvrzeno" %}</span><span>{% translate "Cena" %}</span></div>
+    <div class="scale" aria-hidden="true"><span>{% translate "Hospoda" %}</span><span>{% translate "Naposledy potvrzeno" %}</span><span>{% translate "Cena za 0,5 l" %}</span></div>
     <ol class="strips" role="list" data-rows>
-      {% for pub in listed %}<li class="strip{% if not pub.fresh %} is-stale{% endif %}" data-search="{{ pub.name }} {{ pub.city }}" data-median="{{ pub.per_half_litre }}">
-        <span class="who"><span class="name">{{ pub.name }}</span>{% if pub.city %}<span class="sub">{{ pub.city }}</span>{% endif %}{% if pub.rotates %}<span class="note">{% translate "pípy se tu střídají" %}</span>{% endif %}</span>
-        <span class="when"><span class="when-word">{% translate "potvrzeno" %} </span><span class="sr-only">{% translate "naposledy potvrzeno" %} </span><time datetime="{{ pub.confirmed }}">{{ pub.date }}</time>{% if not pub.fresh %}<span class="stale">{% translate "starší 3 měsíců" %}</span>{% endif %}</span>
-        <span class="cost">{% if pub.price_czk %}<span class="median">{{ pub.price_czk }} {% translate "Kč" %}</span>{% if pub.litres %}<span class="spread">{{ pub.litres }} l</span>{% endif %}{% else %}<span class="none">{% translate "cena chybí" %}</span>{% endif %}</span>
+      {% for pub in listed %}<li class="strip{% if not pub.fresh %} is-old{% endif %}{% if pub.first_old %} has-head{% endif %}" data-find="{{ pub.name }} {{ pub.city }}" data-median="{{ pub.per_half_litre }}"{% if not pub.fresh %} data-old{% endif %}>
+        {% if pub.first_old %}<span class="old-head" data-old-head>{% translate "Zápisy starší než 3 měsíce" %}</span>{% endif %}
+        <span class="who"><span class="name"><a href="{{ pub.map_url }}">{{ pub.name }}<span class="sr-only">, {% translate "na mapě" %}</span></a></span>{% if pub.city %}<span class="sub">{{ pub.city }}</span>{% endif %}{% if pub.rotates %}<span class="note">{% translate "pípy se tu střídají" %}</span>{% endif %}</span>
+        <span class="when"><span class="when-word" aria-hidden="true">{% translate "potvrzeno" %} </span><span class="sr-only">{% translate "naposledy potvrzeno" %} </span><time datetime="{{ pub.confirmed }}">{{ pub.date }}</time>{% if not pub.fresh %}<span class="sr-only">, {% translate "starší než 3 měsíce" %}</span>{% endif %}</span>
+        <span class="cost">{% if pub.price_czk %}<span class="median">{{ pub.price_czk }} {% translate "Kč" %}</span>{% if pub.litres and pub.volume_ml != 500 %}<span class="glass">{% blocktranslate with litres=pub.litres %}za {{ litres }} l{% endblocktranslate %}</span>{% endif %}{% else %}<span class="none">{% translate "cena chybí" %}</span>{% endif %}</span>
       </li>{% endfor %}
     </ol>
     <div class="empty" data-empty role="status" hidden>
-      <p>{% translate "Takovou hospodu tu s tímhle pivem nemám." %}</p>
+      <p>{% translate "Takovou hospodu ani město tu s tímhle pivem nemám." %}</p>
       <button class="clear" type="button" data-clear>{% translate "Zrušit hledání" %}</button>
     </div>
     {% if listed|length > folded_rows %}{% blocktranslate with count=listed|length asvar more_label %}Ukázat všechny hospody ({{ count }}){% endblocktranslate %}<button class="more" type="button" data-more data-less="{% translate "Sbalit" %}" aria-expanded="false">{{ more_label }}</button>{% endif %}
@@ -352,9 +361,10 @@
   {% else %}
 
   {% if beers %}
-  <section class="areas is-first" aria-labelledby="beers-title" data-areas data-folded="{{ folded_rows }}">
+  <section class="areas" aria-labelledby="beers-title" data-areas data-folded="{{ folded_rows }}">
     <div class="areas-head">
-      <h2 id="beers-title">{% translate "Piva" %}</h2>
+      {# The list page's heading already says these are beers. #}
+      <h2 id="beers-title"{% if kind == "list" %} class="sr-only"{% endif %}>{% translate "Piva" %}</h2>
       {% if beers|length > folded_rows %}
       <div class="tools" data-tools>
         {% translate "Najdi pivo" as search_label %}
@@ -371,10 +381,10 @@
     </div>
     <div class="scale" aria-hidden="true"><span>{% translate "Pivo" %}</span><span>{% translate "Hospody" %}</span><span>{% translate "Obvykle za 0,5 l" %}</span></div>
     <ol class="strips" role="list" data-rows>
-      {% for beer in beers %}<li class="strip" data-search="{{ beer.name }} {{ beer.brand_name }}" data-median="{{ beer.median|default_if_none:"" }}">
+      {% for beer in beers %}<li class="strip" data-find="{{ beer.name }} {{ beer.brand_name }}" data-median="{{ beer.median|default_if_none:"" }}">
         <span class="who"><span class="name"><a href="{{ beer.url }}">{{ beer.name }}</a></span>{% if kind == "list" and beer.brand_name not in beer.name %}<span class="sub">{{ beer.brand_name }}</span>{% endif %}</span>
         <span class="when">{{ beer.pubs_label }}</span>
-        <span class="cost">{% if beer.median is not None %}<span class="median"><span class="sr-only">{% translate "Obvykle za 0,5 l" %} </span>{{ beer.median }} {% translate "Kč" %}</span>{% else %}<span class="none">{% translate "málo cen" %}</span>{% endif %}</span>
+        <span class="cost">{% if beer.median is not None %}<span class="median"><span class="sr-only">{% translate "Obvykle za 0,5 l" %} </span>{{ beer.median }} {% translate "Kč" %}</span>{% else %}<span class="none">{% translate "zatím málo cen" %}</span>{% endif %}</span>
       </li>{% endfor %}
     </ol>
     <div class="empty" data-empty role="status" hidden>
@@ -400,12 +410,17 @@
 
   {% endif %}
 
-  {% if not throttled and not missing %}<p class="method">{% translate "Hospoda je u piva, když ho tam někdo za poslední rok zapsal na lístek nebo vypil s cenou. Datum ukazuje poslední takový zápis. Pivo má vlastní stránku, dokud ho za poslední 3 měsíce potvrdí aspoň 3 hospody." %}</p>{% endif %}
+  {% if not throttled and not missing %}<p class="method">{% translate "Hospodu ukážu, když u ní někdo za poslední rok zapsal pivo na lístek nebo si ho tam dal i s cenou. Datum je poslední takový zápis a co je starší než 3 měsíce, označím. Pivo má vlastní stránku, když ho za poslední 3 měsíce potvrdily aspoň 3 hospody." %}</p>{% endif %}
   {% if kind != "list" and not missing and not throttled %}<a class="all-beers" href="{{ beers_url }}">{% translate "Ostatní piva" %}</a>{% endif %}
 
   <section class="cta" aria-labelledby="cta-title">
+    {% if missing and known %}
+    <h2 id="cta-title">{% blocktranslate with beer=h1 %}Víš, kde se čepuje {{ beer }}?{% endblocktranslate %}</h2>
+    <p>{% translate "Zapiš lístek té hospody v Na pivo." %}</p>
+    {% else %}
     <h2 id="cta-title">{% translate "Víš o další hospodě?" %}</h2>
     <p>{% translate "Zapiš její lístek v Na pivo." %}</p>
+    {% endif %}
     {% include "pubs/_store_buttons.html" %}
   </section>
 </main>

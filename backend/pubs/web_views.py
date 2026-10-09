@@ -492,10 +492,10 @@ def beer_prices_og_image(request: HttpRequest, lang: str = "cs") -> HttpResponse
 
 
 def _short_date(day: date, today: date) -> str:
-    """6. 10. in Czech, Oct 6 in English; the year only when it is not this one."""
+    """6. 10. in Czech, Oct. 6 in English; the year only when it is not this one."""
 
     if translation.get_language() == "en":
-        return formats.date_format(day, "M j" if day.year == today.year else "M j, Y")
+        return formats.date_format(day, "N j" if day.year == today.year else "N j, Y")
     return f"{day.day}. {day.month}." + ("" if day.year == today.year else f" {day.year}")
 
 
@@ -512,7 +512,7 @@ def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: st
 
     crumbs = [("Na pivo", f"{origin}{HOME_PATHS[lang]}"), (gettext("Piva"), f"{origin}{BEER_PATHS[lang]}")]
     data = page.data if page else {}
-    if page and page.kind == BeerPage.Kind.BEER:
+    if page and page.kind == BeerPage.Kind.BEER and data["brand_page"]:
         crumbs.append((data["brand_name"], f"{origin}{page_path(BeerPage.Kind.BRAND, data['brand_key'], lang)}"))
     if page and page.kind != BeerPage.Kind.LIST:
         crumbs.append((data["name"], url))
@@ -560,40 +560,48 @@ def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: st
 
 
 def _beer_texts(kind: str, page: BeerPage | None, key: str) -> dict:
-    """Heading, title and description. The beer's name first, since that is what people search for."""
+    """Heading, title and description. The beer's name first, since that is what people search for.
+
+    A missing page keeps the catalogue's name, so an old link still says which beer it was;
+    ``known`` tells a beer under the threshold from an address that never was one.
+    """
 
     data = page.data if page else {}
-    if kind == BeerPage.Kind.BEER:
-        name = data.get("name") or BeerProduct.objects.filter(key=key, active=True).values_list("name", flat=True).first()
-        if not page:
-            return {"h1": name or gettext("Tohle pivo tu nemám"), "page_title": name or gettext("Pivo nenalezeno"), "description": ""}
-        values = {"beer": name, "pubs": _pubs_label(data["pubs"]), "price": data["median"]}
-        description = (
-            gettext("Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, obvykle %(price)s Kč za 0,5 l.")
-            if data["median"] is not None
-            else gettext("Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, u každé cena a datum posledního potvrzení.")
-        ) % values
+    if kind == BeerPage.Kind.LIST:
+        return {
+            "h1": gettext("Kde se čepuje které pivo"),
+            "page_title": gettext("Kde se čepuje které pivo"),
+            "description": gettext(
+                "Najdi hospody, kde čepují tvoje pivo, za kolik a kdy to tam naposledy někdo potvrdil. Podle lístků, které lidi zapisují v Na pivo."
+            ),
+            "known": True,
+        }
+    catalogue = BeerProduct if kind == BeerPage.Kind.BEER else BeerBrand
+    name = data.get("name") or catalogue.objects.filter(key=key, active=True).values_list("name", flat=True).first()
+    if not page:
+        unknown = gettext("Tohle pivo neznám") if kind == BeerPage.Kind.BEER else gettext("Tuhle značku neznám")
+        return {"h1": name or unknown, "page_title": name or unknown, "description": "", "known": bool(name)}
+    values = {"beer": name}
+    if kind == BeerPage.Kind.BRAND:
         return {
             "h1": gettext("Kde se čepuje %(beer)s") % values,
-            "page_title": gettext("%(beer)s: kde se čepuje a za kolik") % values,
-            "description": description,
-        }
-    if kind == BeerPage.Kind.BRAND:
-        name = data.get("name") or BeerBrand.objects.filter(key=key, active=True).values_list("name", flat=True).first()
-        if not page:
-            return {"h1": name or gettext("Tuhle značku tu nemám"), "page_title": name or gettext("Značka nenalezena"), "description": ""}
-        values = {"brand": name}
-        return {
-            "h1": name,
-            "page_title": gettext("Piva značky %(brand)s a kde se čepují") % values,
+            "page_title": gettext("Piva značky %(brand)s a kde se čepují") % {"brand": name},
             "description": gettext(
                 "Piva značky %(brand)s a hospody, kde se čepují. U každé hospody cena a datum posledního potvrzení."
-            ) % values,
+            ) % {"brand": name},
+            "known": True,
         }
+    values.update(pubs=_pubs_label(data["pubs"]), price=data["median"])
+    description = (
+        gettext("Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, obvykle %(price)s Kč za 0,5 l.")
+        if data["median"] is not None
+        else gettext("Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, u každé cena a datum posledního potvrzení.")
+    ) % values
     return {
-        "h1": gettext("Kde se čepuje které pivo"),
-        "page_title": gettext("Kde se čepuje které pivo"),
-        "description": gettext("Najdi hospody, kde čepují tvoje pivo, za kolik a kdy to tam naposledy někdo potvrdil. Podle lístků, které lidi zapisují v Na pivo."),
+        "h1": gettext("Kde se čepuje %(beer)s") % values,
+        "page_title": gettext("%(beer)s: kde se čepuje a za kolik") % values,
+        "description": description,
+        "known": True,
     }
 
 
@@ -612,6 +620,7 @@ def beer_pages(request: HttpRequest, lang: str = "cs", kind: str = BeerPage.Kind
     with translation.override(lang):
         data = page.data if page else {}
         today = page.day if page else timezone.localdate()
+        first_old = next((index for index, pub in enumerate(data.get("listed", [])) if not pub["fresh"]), None)
         listed = [
             {
                 **pub,
@@ -619,8 +628,10 @@ def beer_pages(request: HttpRequest, lang: str = "cs", kind: str = BeerPage.Kind
                 "litres": pub["volume_ml"] / 1000 if pub["volume_ml"] else None,
                 # Sorted per half litre, so 41 Kč for 0,3 l is not the cheapest.
                 "per_half_litre": round(pub["price_czk"] * 500 / (pub["volume_ml"] or 500)) if pub["price_czk"] else "",
+                "map_url": f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+                "first_old": index == first_old,
             }
-            for pub in data.get("listed", [])
+            for index, pub in enumerate(data.get("listed", []))
         ]
         beers = [
             {**beer, "pubs_label": _pubs_label(beer["pubs"]), "url": page_path(BeerPage.Kind.BEER, beer["key"], lang)}
@@ -643,7 +654,11 @@ def beer_pages(request: HttpRequest, lang: str = "cs", kind: str = BeerPage.Kind
                 "brands": brands,
                 "pubs_label": _pubs_label(data["pubs"]) if "pubs" in data else "",
                 "beers_label": _beers_label(len(data["beers"])) if kind != BeerPage.Kind.BEER and page else "",
-                "brand_url": page_path(BeerPage.Kind.BRAND, data["brand_key"], lang) if kind == BeerPage.Kind.BEER and page else "",
+                "brand_url": (
+                    page_path(BeerPage.Kind.BRAND, data["brand_key"], lang)
+                    if kind == BeerPage.Kind.BEER and page and data["brand_page"]
+                    else ""
+                ),
                 "structured_data": _beer_structured_data(origin, lang, page, f"{origin}{paths[lang]}"),
                 "og_locale": _OG_LOCALES[lang],
                 "page_url": paths[lang],

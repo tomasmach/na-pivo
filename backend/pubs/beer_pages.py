@@ -237,6 +237,9 @@ def build_beer_pages(now: datetime | None = None) -> dict:
         by_product[product_key][pub_key] = {
             "name": place["name"],
             "city": prague_district(city) or city_name(city),
+            # The pub's own place, which the app's map already shows everyone.
+            "lat": round(place["lat"], 5),
+            "lng": round(place["lng"], 5),
             "price_czk": price,
             "volume_ml": volume,
             "confirmed": timezone.localdate(at).isoformat(),
@@ -263,6 +266,7 @@ def build_beer_pages(now: datetime | None = None) -> dict:
         }
 
     brands: dict[str, dict] = {}
+    all_pub_keys: set[str] = set()
     for beer in sorted(beers.values(), key=lambda beer: (-beer["pubs"], beer["name"])):
         brand = brands.setdefault(beer["brand_key"], {
             "key": beer["brand_key"],
@@ -271,9 +275,14 @@ def build_beer_pages(now: datetime | None = None) -> dict:
             "pub_keys": set(),
         })
         brand["beers"].append({key: beer[key] for key in ("key", "name", "pubs", "median")})
-        brand["pub_keys"].update(beer.pop("fresh_pub_keys"))
+        brand["pub_keys"].update(beer["fresh_pub_keys"])
+        all_pub_keys.update(beer.pop("fresh_pub_keys"))
     for brand in brands.values():
         brand["pubs"] = len(brand.pop("pub_keys"))
+    # A brand with one beer would only repeat that beer's page.
+    brands = {key: brand for key, brand in brands.items() if len(brand["beers"]) >= 2}
+    for beer in beers.values():
+        beer["brand_page"] = beer["brand_key"] in brands
 
     return {
         "beers": beers,
@@ -281,6 +290,7 @@ def build_beer_pages(now: datetime | None = None) -> dict:
         "list": {
             "fresh_days": FRESH_DAYS,
             "min_pubs": MIN_PUBS,
+            "pubs": len(all_pub_keys),
             "beers": [
                 {key: beer[key] for key in ("key", "name", "brand_key", "brand_name", "pubs", "median")}
                 for beer in sorted(beers.values(), key=lambda beer: (-beer["pubs"], beer["name"]))
@@ -318,12 +328,12 @@ def render_og_image(page: BeerPage, lang: str) -> bytes:
     with translation.override(lang):
         if page.kind == BeerPage.Kind.LIST:
             title = gettext("Kde se čepuje které pivo")
-            figures = [(gettext("Piva"), len(data["beers"]), ""), (gettext("Značky"), len(data["brands"]), "")]
+            figures = [(gettext("Piva"), len(data["beers"]), ""), (gettext("Hospody"), data["pubs"], "")]
         elif page.kind == BeerPage.Kind.BRAND:
-            title = data["name"]
+            title = gettext("Kde se čepuje %(beer)s") % {"beer": data["name"]}
             figures = [(gettext("Piva"), len(data["beers"]), ""), (gettext("Hospody"), data["pubs"], "")]
         else:
-            title = data["name"]
+            title = gettext("Kde se čepuje %(beer)s") % {"beer": data["name"]}
             figures = [(gettext("Hospody"), data["pubs"], "")]
             if data["median"] is not None:
                 figures.append((gettext("Obvykle za 0,5 l"), data["median"], gettext("Kč")))
