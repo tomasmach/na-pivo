@@ -657,6 +657,9 @@ export function useCompass(
 
     const controller = new AbortController();
     const pubForLookup = currentPub;
+    // Until this lookup writes its result, the row for this id is only our
+    // placeholder: 'loading', or 'unknown' once the loading fallback fired.
+    let resultWritten = false;
 
     // Mark this id as in-flight so consumers can show a neutral 'loading' state
     // and so we don't kick off a duplicate request on the next render.
@@ -670,6 +673,7 @@ export function useCompass(
       fetchPubHours([pubForLookup], controller.signal)
         .then((resultMap) => {
           if (controller.signal.aborted) return;
+          resultWritten = true;
           const result = resultMap.get(currentPubId);
           if (result?.status === 'pending') {
             if (!pendingHoursRetryCountsRef.current.has(currentPubId)) {
@@ -729,16 +733,15 @@ export function useCompass(
     return () => {
       clearTimeout(settleTimer);
       controller.abort();
-      // Clear the in-flight 'loading' placeholder for this id. The aborted
-      // .then/.catch above early-return without touching the map, so without
-      // this the stale 'loading' entry would make the cache guard above
-      // (`hoursByIdRef.current.has(currentPubId)`) skip a later refetch if the
-      // selection returns to this same pub (GPS jitter, walking back, a reroll
-      // landing on a previously-seen pub) — leaving it stuck on 'loading'
-      // forever. Only delete while still 'loading'; never clobber a resolved
-      // entry (the abort can race a just-completed resolution).
+      // Clear the placeholder for this id. The aborted .then/.catch above
+      // early-return without touching the map, so without this the stale entry
+      // would make the cache guard above (`hoursByIdRef.current.has(currentPubId)`)
+      // skip a later refetch if the selection returns to this same pub (GPS
+      // jitter, walking back, a reroll landing on a previously-seen pub) —
+      // leaving it on 'loading', or on the fallback's 'unknown', forever. Never
+      // clobber a written result (the abort can race a just-completed resolution).
       setHoursById((prev) => {
-        if (prev.get(currentPubId)?.status !== 'loading') return prev;
+        if (resultWritten || !prev.has(currentPubId)) return prev;
         const next = new Map(prev);
         next.delete(currentPubId);
         return next;

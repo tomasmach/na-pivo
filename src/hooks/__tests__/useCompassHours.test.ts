@@ -632,6 +632,44 @@ describe('useCompass — opening hours enrichment', () => {
       expect(hook.result.pub?.hoursStatus).toBe('ok');
     });
 
+    it('looks up a pub again after flipping on it outlasted the loading fallback', async () => {
+      useSettingsStore.setState({ mode: 'surprise', surpriseSeed: 17 });
+      const bySeed: Record<number, Pub> = { 17: PUBS[0], 18: PUBS[1], 33: PUBS[3], 34: PUBS[2] };
+      for (let seed = 19; seed <= 32; seed += 1) bySeed[seed] = PUBS[2];
+      (findRandomPubInRadius as jest.Mock).mockImplementation(
+        ({ seed }: { seed: number }) => bySeed[seed] ?? null,
+      );
+      const hook = renderCompassHook();
+      await flush();
+
+      async function rerollAndWait(ms: number) {
+        act(() => {
+          hook.result.reroll();
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(ms);
+          await Promise.resolve();
+        });
+        await flush();
+      }
+
+      await rerollAndWait(300); // PUBS[1], looked up at once
+      // Keep landing on PUBS[2] for 5.6 s: its lookup never settles and the
+      // 5 s loading fallback turns the placeholder into 'unknown'.
+      for (let i = 0; i < 14; i += 1) await rerollAndWait(400);
+      expect(hook.result.pub?.id).toBe(PUBS[2].id);
+      expect(hook.result.pub?.hoursStatus).toBe('unknown');
+      expect(fetchPubHours).toHaveBeenCalledTimes(2);
+
+      await rerollAndWait(1_000); // PUBS[3], looked up once the user stops
+      expect(fetchPubHours).toHaveBeenCalledTimes(3);
+      await rerollAndWait(0); // back to PUBS[2], a lone pick
+      expect(fetchPubHours).toHaveBeenCalledTimes(4);
+      expect((fetchPubHours as jest.Mock).mock.calls[3][0]).toEqual([PUBS[2]]);
+      expect(hook.result.pub?.id).toBe(PUBS[2].id);
+      expect(hook.result.pub?.hoursStatus).toBe('ok');
+    });
+
     it('shows loading for a pub flipped past without requesting its hours', async () => {
       const hook = renderCompassHook();
       await flush();
