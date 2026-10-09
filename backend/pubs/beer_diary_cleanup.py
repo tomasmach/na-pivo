@@ -4,7 +4,7 @@ A logged beer takes the name pub menus use after ``beer_menu_cleanup``: the
 catalog name for an exact catalog alias ("Radek 12" -> "Radegast Ryze Hořká
 12°"), otherwise the preferred spelling ("Primátor 11" -> "Primátor 11°"). An
 exact catalog name also links the catalog product, so diary stats count both
-spellings as one beer.
+spellings as one beer, and a linked beer shows the catalog's current name.
 
 Only the name and the catalog link change. No row is added or removed; price,
 volume, pub, time, evening and abuse flags stay as they are. An account that
@@ -72,28 +72,37 @@ def _is_beer(drink: DrinkLog) -> bool:
     return drink.drink_type == DrinkLog.DrinkType.BEER and bool(drink.beer_name.strip())
 
 
-def _cleaned(
-    drink: DrinkLog,
-    canonical: Callable[[str], str],
-    match_cache: BeerCatalogMatchCache,
-) -> dict:
+@dataclass
+class _Catalog:
+    canonical: Callable[[str], str]
+    match_cache: BeerCatalogMatchCache
+    brand_names: dict[int, str]
+    product_names: dict[int, str]
+
+
+def _cleaned(drink: DrinkLog, catalog: _Catalog) -> dict:
     values = {name: getattr(drink, name) for name in FIELDS}
     if not _is_beer(drink):
         return values
-    values["beer_name"] = canonical(drink.beer_name)
+    values["beer_name"] = catalog.canonical(drink.beer_name)
     # Exact names only: the loose match would file "Birell Pomelo Grep Max"
     # under Birell Světlý.
-    match = match_beer(values["beer_name"], fuzzy=False, match_cache=match_cache)
+    match = match_beer(values["beer_name"], fuzzy=False, match_cache=catalog.match_cache)
     if match is not None and match.product is not None:
-        if drink.beer_product_key != match.product.key:
-            values.update(
-                beer_brand_id=match.brand.pk,
-                beer_brand_key=match.brand.key,
-                beer_brand_name=match.brand.name,
-                beer_product_id=match.product.pk,
-                beer_product_key=match.product.key,
-                beer_product_name=match.product.name,
-            )
+        values.update(
+            beer_brand_id=match.brand.pk,
+            beer_brand_key=match.brand.key,
+            beer_brand_name=match.brand.name,
+            beer_product_id=match.product.pk,
+            beer_product_key=match.product.key,
+            beer_product_name=match.product.name,
+        )
+        return values
+    # The friend feed shows the linked name, so it follows a catalog rename.
+    if values["beer_brand_id"] in catalog.brand_names:
+        values["beer_brand_name"] = catalog.brand_names[values["beer_brand_id"]]
+    if values["beer_product_id"] in catalog.product_names:
+        values["beer_product_name"] = catalog.product_names[values["beer_product_id"]]
     return values
 
 
@@ -102,8 +111,7 @@ Record = Callable[[list], None]
 
 def _clean_account(
     account_id: int,
-    canonical: Callable[[str], str],
-    match_cache: BeerCatalogMatchCache,
+    catalog: _Catalog,
     plan: DiaryPlan,
     record: Record,
     *,
@@ -112,13 +120,16 @@ def _clean_account(
     drinks = DrinkLog.objects.filter(account_id=account_id).order_by("pk")
     if apply:
         # The badge check must see the drinks it writes. Lock like a drink
-        # write does: the account first, then its drinks.
-        if Account.objects.select_for_update().filter(pk=account_id).first() is None:
+        # write does, the account first and then its drinks. NO KEY: a drink
+        # edit holding one of these drinks may still add an index row that
+        # points at the account.
+        account = Account.objects.select_for_update(no_key=True).filter(pk=account_id)
+        if account.first() is None:
             return
-        drinks = drinks.select_for_update()
+        drinks = drinks.select_for_update(no_key=True)
     drinks = list(drinks)
     before = [(drink, {name: getattr(drink, name) for name in FIELDS}) for drink in drinks]
-    after = [(drink, _cleaned(drink, canonical, match_cache)) for drink in drinks]
+    after = [(drink, _cleaned(drink, catalog)) for drink in drinks]
     rows = [
         {"pk": drink.pk, "before": old, "after": new}
         for (drink, old), (_, new) in zip(before, after, strict=True)
@@ -160,7 +171,12 @@ def run_diary_cleanup(
     """
     plan = DiaryPlan()
     record = record or (lambda changes: None)
-    match_cache = BeerCatalogMatchCache()
+    catalog = _Catalog(
+        canonical=canonical,
+        match_cache=BeerCatalogMatchCache(),
+        brand_names=dict(BeerBrand.objects.values_list("pk", "name")),
+        product_names=dict(BeerProduct.objects.values_list("pk", "name")),
+    )
     account_ids = (
         DrinkLog.objects.filter(drink_type=DrinkLog.DrinkType.BEER)
         .order_by("account_id")
@@ -169,7 +185,7 @@ def run_diary_cleanup(
     )
     for account_id in account_ids:
         with transaction.atomic():
-            _clean_account(account_id, canonical, match_cache, plan, record, apply=apply)
+            _clean_account(account_id, catalog, plan, record, apply=apply)
     return plan
 
 

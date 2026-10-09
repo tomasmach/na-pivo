@@ -127,6 +127,27 @@ def test_nobody_loses_the_taster_badge():
     assert cleaned.drinks.filter(beer_name="Stodolní 11°").count() == 2
 
 
+def test_a_linked_beer_shows_the_renamed_catalog_name():
+    from pubs.models import BeerProduct
+
+    product = BeerProduct.objects.select_related("brand").get(key="radegast-ryze-horka-12")
+    account = Account.objects.create(device_id="linked")
+    drink = _drink(account, "Radegast Ryze Hořká 12°")
+    DrinkLog.objects.filter(pk=drink.pk).update(
+        beer_brand=product.brand,
+        beer_brand_key=product.brand.key,
+        beer_brand_name=product.brand.name,
+        beer_product=product,
+        beer_product_key=product.key,
+        beer_product_name="Radegast Ryzí hořká 12°",
+    )
+
+    run_diary_cleanup(build_canonicalizer().name, apply=True)
+
+    drink.refresh_from_db()
+    assert drink.beer_product_name == "Radegast Ryze Hořká 12°"
+
+
 def test_revert_keeps_a_beer_renamed_after_the_cleanup(tmp_path):
     account = Account.objects.create(device_id="later-renamer")
     first = _drink(account, "Radek 12")

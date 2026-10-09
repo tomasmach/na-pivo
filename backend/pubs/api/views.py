@@ -1975,11 +1975,6 @@ class UserAddedPubView(APIView):
 _MAX_HISTORICAL_BEERS = 24
 
 
-def _beer_menu_identity(beer: dict) -> tuple[str, int | None]:
-    """Stable menu identity shared with the current-menu replacement contract."""
-    return beer_menu_identity(beer)
-
-
 def _historical_beers_after_menu_replacement(
     *,
     current: list[dict],
@@ -1992,13 +1987,13 @@ def _historical_beers_after_menu_replacement(
     bounded, de-duplicated memory of removed rows and drops any historical row
     that the new menu confirms is back on tap.
     """
-    replacement_keys = {_beer_menu_identity(beer) for beer in replacement}
-    removed = [beer for beer in current if _beer_menu_identity(beer) not in replacement_keys]
+    replacement_keys = {beer_menu_identity(beer) for beer in replacement}
+    removed = [beer for beer in current if beer_menu_identity(beer) not in replacement_keys]
 
     next_historical: list[dict] = []
     seen: set[tuple[str, int | None]] = set()
     for beer in [*removed, *historical]:
-        identity = _beer_menu_identity(beer)
+        identity = beer_menu_identity(beer)
         if not identity[0] or identity in replacement_keys or identity in seen:
             continue
         seen.add(identity)
@@ -3048,11 +3043,11 @@ class DrinksView(APIView):
         changed = _merge_drink_into_menu(beers, beer)
         if changed:
             row.beers = beers
-            restored_identity = _beer_menu_identity(beer)
+            restored_identity = beer_menu_identity(beer)
             historical_beers = [
                 historical
                 for historical in row.historical_beers or []
-                if _beer_menu_identity(historical) != restored_identity
+                if beer_menu_identity(historical) != restored_identity
             ]
             row.historical_beers = historical_beers
             row.beers_updated_at = now
