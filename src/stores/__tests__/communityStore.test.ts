@@ -89,3 +89,20 @@ describe('community beer override precedence', () => {
     expect(isBeerMenuTypeOverrideCurrent(override, SERVER_AT)).toBe(true);
   });
 });
+
+describe('community menu owner marker', () => {
+  afterEach(() => {
+    useCommunityStore.setState({ overrides: {} });
+  });
+
+  it('keeps the marker across an hours-only patch and drops it with an unmarked beer list', () => {
+    const { setOverride } = useCommunityStore.getState();
+    setOverride(CELL, { beers: [{ name: 'Plzeň' }], beersFor: 'u tygra' });
+    setOverride(CELL, { hours: { mo: [], tu: [], we: [], th: [], fr: [], sa: [], su: [] } });
+    expect(useCommunityStore.getState().overrides[CELL].beersFor).toBe('u tygra');
+
+    // A merge the caller could not vouch for is no longer this pub's written menu.
+    setOverride(CELL, { beers: [{ name: 'Plzeň' }, { name: 'Kozel' }] });
+    expect(useCommunityStore.getState().overrides[CELL].beersFor).toBeUndefined();
+  });
+});

@@ -58,7 +58,7 @@ import {
   normalizeBeerName,
   type CommunityBeer,
 } from '@/data/communityHours';
-import { replacePubMenu } from '@/data/pubMenuWrite';
+import { menuOwnerKey, replacePubMenu } from '@/data/pubMenuWrite';
 import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
@@ -209,6 +209,16 @@ export function groupMenuBeers(menu: CommunityBeer[]): MenuBeerGroup[] {
       (a, b) => (a.volumeMl ?? Number.POSITIVE_INFINITY) - (b.volumeMl ?? Number.POSITIVE_INFINITY),
     ),
   }));
+}
+
+/** The pub a menu write is meant for: its cell and the pub inside that cell. */
+interface MenuTarget {
+  cell: string | null;
+  owner: string | null;
+}
+
+function isSameMenuPub(target: MenuTarget | null, live: MenuTarget): boolean {
+  return !!target && target.cell === live.cell && target.owner === live.owner;
 }
 
 /** "Pilsner Urquell · 0,5 l" — the CTA's sub-line and the receipt's meta. */
@@ -606,16 +616,31 @@ function Tacek({
     return pub.beers ?? [];
   }, [currentBackendMenu, currentBeerListOverride, place, pub]);
 
-  /** The menu a delete rewrites for everyone: a fresh local edit, else the
-   *  server's answer even when empty, else (offline) the menu on screen. Null
-   *  until the first answer for this pub, so a delete never drops beers the
-   *  server added meanwhile. */
+  /** Tells this pub apart from another pub sharing its geohash cell. */
+  const menuOwner = pub ? menuOwnerKey(pub.name) : null;
+  /** A local list that is this pub's complete menu as written for everyone. A
+   *  merge into a cached or another pub's menu is not, so it never feeds a
+   *  full-menu write. */
+  const ownMenuOverride =
+    currentBeerListOverride?.beers && currentBeerListOverride.beersFor === menuOwner
+      ? currentBeerListOverride
+      : undefined;
+
+  /** The menu a fix or a delete rewrites for everyone: this pub's own written
+   *  menu, else the server's answer even when empty, else (offline) the pub's
+   *  cached menu. Null until the first answer for this pub, so a write never
+   *  drops beers the server added meanwhile. */
   const deletableMenu = useMemo<CommunityBeer[] | null>(() => {
     if (!place || !pub) return null;
-    if (currentBeerListOverride?.beers) return currentBeerListOverride.beers;
+    if (ownMenuOverride?.beers) return ownMenuOverride.beers;
     if (!currentBackendMenu) return null;
     return currentBackendMenu.fetched ? currentBackendMenu.beers : (pub.beers ?? []);
-  }, [currentBackendMenu, currentBeerListOverride, place, pub]);
+  }, [currentBackendMenu, ownMenuOverride, place, pub]);
+  /** History that goes with `deletableMenu`. */
+  const deletableHistory =
+    ownMenuOverride?.historicalBeers ??
+    (currentBackendMenu?.fetched ? currentBackendMenu.historicalBeers : pub?.historicalBeers) ??
+    [];
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
@@ -630,10 +655,13 @@ function Tacek({
 
   /** A fix or a delete confirms later, and a newer backend menu may arrive
    *  meanwhile: the full-menu write must not drop it. */
-  const liveMenuRef = useRef({ cell, menu: deletableMenu, historicalBeers });
+  const liveMenuRef = useRef({ cell, owner: menuOwner, menu: deletableMenu, historicalBeers: deletableHistory });
   useEffect(() => {
-    liveMenuRef.current = { cell, menu: deletableMenu, historicalBeers };
-  }, [cell, deletableMenu, historicalBeers]);
+    liveMenuRef.current = { cell, owner: menuOwner, menu: deletableMenu, historicalBeers: deletableHistory };
+  }, [cell, deletableHistory, deletableMenu, menuOwner]);
+  /** The pub a beer's options or price form were opened for. The counter may
+   *  switch pubs meanwhile, and a write must never land in the next one. */
+  const menuTargetRef = useRef<MenuTarget | null>(null);
 
   const beerMenuRotates = pub
     ? currentMenuTypeOverride?.beerMenuRotates ??
@@ -836,7 +864,13 @@ function Tacek({
         const nextMenu = mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk });
         // Same price already on the menu: skip the persisted write and the
         // re-render of every tab that reads community overrides.
-        if (nextMenu !== menu) setOverride(cell, { beers: nextMenu });
+        if (nextMenu !== menu) {
+          // Still this pub's complete menu only when it grew from one.
+          setOverride(cell, {
+            beers: nextMenu,
+            beersFor: menu === deletableMenu ? (menuOwner ?? undefined) : undefined,
+          });
+        }
       }
       // The check-in prompt is now-semantic and pub-bound — skip it for a
       // backdated or outside log.
@@ -917,8 +951,10 @@ function Tacek({
       current,
       hapticEnabled,
       isThisSession,
+      deletableMenu,
       markDrinkSynced,
       menu,
+      menuOwner,
       outsideContext,
       place,
       pub,
@@ -1141,10 +1177,13 @@ function Tacek({
       if (mode === 'edit') {
         // Community-menu edit is a pub concept; outside rows are session-derived.
         if (!pub || !cell) return;
+        // The form belongs to the pub it was opened in; the counter may have
+        // moved on to another one since.
+        if (!isSameMenuPub(menuTargetRef.current, liveMenuRef.current)) return;
         // A beer on the confirmed menu is fixed for everyone at once, the same
         // write as the pub page and the delete.
         const live = liveMenuRef.current;
-        if (editedBeer && live.cell === cell && live.menu?.some((b) => isSameBeerIdentity(b, editedBeer))) {
+        if (editedBeer && live.menu?.some((b) => isSameBeerIdentity(b, editedBeer))) {
           const fixed: CommunityBeer = { name: editedBeer.name };
           if (typeof result.priceCzk === 'number') fixed.priceCzk = result.priceCzk;
           if (typeof result.volumeMl === 'number') fixed.volumeMl = result.volumeMl;
@@ -1162,12 +1201,15 @@ function Tacek({
               .map((b) => (isSameBeerIdentity(b, editedBeer) ? beer : b))
               .filter((b) => b === beer || !isSameBeerIdentity(b, beer))
           : mergeBeerIntoMenu(menu, beer);
-        setOverride(cell, { beers: nextMenu });
+        setOverride(cell, {
+          beers: nextMenu,
+          beersFor: menu === deletableMenu ? (menuOwner ?? undefined) : undefined,
+        });
       } else {
         requestCountBeer(beer, at);
       }
     },
-    [backdateAt, cell, formBeer, formMode, menu, pub, requestCountBeer, setOverride],
+    [backdateAt, cell, deletableMenu, formBeer, formMode, menu, menuOwner, pub, requestCountBeer, setOverride],
   );
 
   /** Only a beer that is on this pub's menu can come off it; tonight-only rows
@@ -1196,13 +1238,14 @@ function Tacek({
     (removed: CommunityBeer) => {
       if (!pub || !cell) return;
       setActionsOpen(false);
+      const target = menuTargetRef.current;
       runAfterSheetClose(() =>
         confirmRemoveFromMenu(
           removed,
           () => {
             const live = liveMenuRef.current;
-            // Another place, or the beer is already gone: nothing to take off.
-            if (live.cell === cell && live.menu?.some((b) => isSameBeerIdentity(b, removed))) {
+            // Another pub by now, or the beer is already gone: nothing to take off.
+            if (isSameMenuPub(target, live) && live.menu?.some((b) => isSameBeerIdentity(b, removed))) {
               const nextMenu = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
               replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers);
               showToast(t.counter.removedFromMenuToast);
@@ -1248,6 +1291,7 @@ function Tacek({
     (row: DrinkPickRow) => {
       const beer = rowBeers.get(row.key);
       if (!beer || !pub) return;
+      menuTargetRef.current = { cell, owner: menuOwner };
       // Only a beer on the confirmed menu has more than the price to offer.
       if (!deletableMenu?.some((b) => isSameBeerIdentity(b, beer))) {
         runAfterSheetClose(() => openForm('edit', beer));
@@ -1258,7 +1302,7 @@ function Tacek({
         setActionsOpen(true);
       });
     },
-    [deletableMenu, openForm, pub, rowBeers, runAfterSheetClose],
+    [cell, deletableMenu, menuOwner, openForm, pub, rowBeers, runAfterSheetClose],
   );
 
   // ── Menu scan ───────────────────────────────────────────────────────────────

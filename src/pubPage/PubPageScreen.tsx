@@ -84,7 +84,7 @@ import { buildAmenityRows, selectPubInfoCompleteness } from '@/data/pubAmenities
 import { fetchPubBeersLastWeek } from '@/data/pubBeersClient';
 import { fetchUpcomingPubEvents, type PubEvent } from '@/data/pubEventsClient';
 import { pubIdentityKey } from '@/data/pubIdentity';
-import { replacePubMenu } from '@/data/pubMenuWrite';
+import { menuOwnerKey, replacePubMenu } from '@/data/pubMenuWrite';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { EMPTY_PUB_SEARCH_FILTERS, type PubSearchFilters } from '@/data/pubSearchFilters';
@@ -518,21 +518,34 @@ export default function PubPageScreen() {
       false)
     : false;
 
-  /** The menu a fix or a delete rewrites for everyone: null until this page
-   *  heard from the server, so the write never drops a newer beer. */
-  const editableTaps = pub && menuAnsweredFor === pub.id ? taps : null;
-  const historicalTaps = useMemo<CommunityBeer[]>(() => {
-    if (!pub) return [];
-    if (isBeerListOverrideCurrent(override, pub.beersUpdatedAt) && override?.historicalBeers) {
-      return override.historicalBeers;
-    }
-    return pub.historicalBeers ?? [];
-  }, [override, pub]);
+  /** Tells this pub apart from another pub sharing its geohash cell. */
+  const tapsOwner = pub ? menuOwnerKey(pub.name) : null;
+  /** A local list that is this pub's complete menu as written for everyone;
+   *  any other local list may be a merge into a cached or another pub's menu. */
+  const ownTapsOverride =
+    pub &&
+    override?.beers &&
+    override.beersFor === tapsOwner &&
+    isBeerListOverrideCurrent(override, pub.beersUpdatedAt)
+      ? override
+      : undefined;
+  /** The menu a fix or a delete rewrites for everyone: this pub's own written
+   *  menu, else what the server answered (or, offline, the menu the page
+   *  opened with). Null until this page heard back, so a write never drops a
+   *  beer someone added meanwhile. */
+  const editableTaps =
+    pub && menuAnsweredFor === pub.id ? (ownTapsOverride?.beers ?? pub.beers ?? []) : null;
+  const historicalTaps = useMemo<CommunityBeer[]>(
+    () => ownTapsOverride?.historicalBeers ?? pub?.historicalBeers ?? [],
+    [ownTapsOverride, pub],
+  );
   /** A dialog or the form confirms later: write over the menu as it is then. */
-  const liveTapsRef = useRef({ key, menu: editableTaps, historical: historicalTaps });
+  const liveTapsRef = useRef({ key, owner: tapsOwner, menu: editableTaps, historical: historicalTaps });
   useEffect(() => {
-    liveTapsRef.current = { key, menu: editableTaps, historical: historicalTaps };
-  }, [editableTaps, historicalTaps, key]);
+    liveTapsRef.current = { key, owner: tapsOwner, menu: editableTaps, historical: historicalTaps };
+  }, [editableTaps, historicalTaps, key, tapsOwner]);
+  /** The pub a beer's options were opened for: a write never lands elsewhere. */
+  const tapsTargetRef = useRef<{ key: string | undefined; owner: string | null } | null>(null);
 
   const completenessPct = useMemo(() => {
     const rows = buildAmenityRows({ aggregates, myVotes });
@@ -603,10 +616,14 @@ export default function PubPageScreen() {
     setTimeout(action, SHEET_DISMISS_MS);
   }, []);
 
-  const openBeerActions = useCallback((beer: CommunityBeer) => {
-    setActionBeer(beer);
-    setBeerActionsOpen(true);
-  }, []);
+  const openBeerActions = useCallback(
+    (beer: CommunityBeer) => {
+      tapsTargetRef.current = { key, owner: tapsOwner };
+      setActionBeer(beer);
+      setBeerActionsOpen(true);
+    },
+    [key, tapsOwner],
+  );
 
   const editBeerPrice = useCallback(
     (beer: CommunityBeer) => {
@@ -627,7 +644,9 @@ export default function PubPageScreen() {
       setPriceFormOpen(false);
       const edited = actionBeer;
       const live = liveTapsRef.current;
-      if (!pub || !key || !edited || live.key !== key || !live.menu) return;
+      const target = tapsTargetRef.current;
+      if (!pub || !key || !edited || !live.menu) return;
+      if (target?.key !== live.key || target.owner !== live.owner) return;
       if (!live.menu.some((b) => isSameBeerIdentity(b, edited))) return;
       const beer: CommunityBeer = { name: edited.name };
       if (typeof result.priceCzk === 'number') beer.priceCzk = result.priceCzk;
@@ -643,10 +662,12 @@ export default function PubPageScreen() {
   const removeBeer = useCallback(
     (removed: CommunityBeer) => {
       setBeerActionsOpen(false);
+      const target = tapsTargetRef.current;
       afterSheet(() =>
         confirmRemoveFromMenu(removed, () => {
           const live = liveTapsRef.current;
-          if (!pub || !key || live.key !== key || !live.menu) return;
+          if (!pub || !key || !live.menu) return;
+          if (target?.key !== live.key || target.owner !== live.owner) return;
           if (!live.menu.some((b) => isSameBeerIdentity(b, removed))) return;
           const next = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
           replacePubMenu(key, pub, live.menu, next, live.historical);
@@ -1010,44 +1031,48 @@ export default function PubPageScreen() {
                     : null
               }
             />
-            {shownTaps.map((beer, index) => (
-              <Pressable
-                key={`${beer.name}-${index}`}
-                onPress={() => openBeerActions(beer)}
-                disabled={!editableTaps}
-                style={({ pressed }) => [
-                  styles.row,
-                  index === 0 && styles.rowFirst,
-                  pressed && styles.pressed,
-                ]}
-                accessibilityRole={editableTaps ? 'button' : undefined}
-                accessibilityLabel={[
-                  beer.name,
-                  typeof beer.volumeMl === 'number' ? formatVolume(beer.volumeMl) : null,
-                  typeof beer.priceCzk === 'number' ? formatPrice(beer.priceCzk, priceCurrency) : null,
-                ]
-                  .filter(Boolean)
-                  .join(', ')}
-                accessibilityHint={editableTaps ? t.a11y.counterBeerOptions(beer.name) : undefined}
-              >
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {beer.name}
-                  </Text>
-                  {typeof beer.volumeMl === 'number' ? (
-                    <Text style={styles.rowSub} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {formatVolume(beer.volumeMl)}
+            {shownTaps.map((beer, index) => {
+              // Only a beer of the menu a write would start from can be changed.
+              const editable = !!editableTaps?.some((b) => isSameBeerIdentity(b, beer));
+              return (
+                <Pressable
+                  key={`${beer.name}-${index}`}
+                  onPress={() => openBeerActions(beer)}
+                  disabled={!editable}
+                  style={({ pressed }) => [
+                    styles.row,
+                    index === 0 && styles.rowFirst,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole={editable ? 'button' : undefined}
+                  accessibilityLabel={[
+                    beer.name,
+                    typeof beer.volumeMl === 'number' ? formatVolume(beer.volumeMl) : null,
+                    typeof beer.priceCzk === 'number' ? formatPrice(beer.priceCzk, priceCurrency) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}
+                  accessibilityHint={editable ? t.a11y.counterBeerOptions(beer.name) : undefined}
+                >
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {beer.name}
+                    </Text>
+                    {typeof beer.volumeMl === 'number' ? (
+                      <Text style={styles.rowSub} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {formatVolume(beer.volumeMl)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {typeof beer.priceCzk === 'number' ? (
+                    <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {formatPrice(beer.priceCzk, priceCurrency)}
                     </Text>
                   ) : null}
-                </View>
-                {typeof beer.priceCzk === 'number' ? (
-                  <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {formatPrice(beer.priceCzk, priceCurrency)}
-                  </Text>
-                ) : null}
-                {editableTaps ? <EllipsisIcon size={20} color={Colors.mutedText} /> : null}
-              </Pressable>
-            ))}
+                  {editable ? <EllipsisIcon size={20} color={Colors.mutedText} /> : null}
+                </Pressable>
+              );
+            })}
             {hiddenTaps > 0 ? (
               <LinkRow
                 muted

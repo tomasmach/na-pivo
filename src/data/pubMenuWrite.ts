@@ -22,6 +22,11 @@ export interface MenuPub {
   city?: string;
 }
 
+/** Tells two pubs in one geohash cell apart in the cell's local override. */
+export function menuOwnerKey(pubName: string): string {
+  return pubName.trim().toLocaleLowerCase('cs');
+}
+
 export function replacePubMenu(
   cell: string,
   pub: MenuPub,
@@ -31,6 +36,7 @@ export function replacePubMenu(
 ): void {
   useCommunityStore.getState().setOverride(cell, {
     beers: next,
+    beersFor: menuOwnerKey(pub.name),
     historicalBeers: historicalBeersAfterMenuReplacement(current, next, historicalBeers),
   });
   void enqueuePubCommunity(
