@@ -9,6 +9,7 @@ import { flushDeleteDrinksQueue, getQueuedDeleteIds } from '../deleteDrinksQueue
 import { flushUpdateDrinksQueue, getQueuedUpdateIds } from '../updateDrinksQueue';
 import { fetchVisits } from '../visitsClient';
 import { flushVisitsQueue, getQueuedVisitDeleteIds } from '../visitsQueue';
+import { useCommunityStore } from '@/stores/communityStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -92,6 +93,7 @@ function localSession(clientId: string, pubKey: string, drinkIds: string[]): Tal
 beforeEach(() => {
   jest.clearAllMocks();
   useTallyStore.setState({ current: null, history: [] });
+  useCommunityStore.setState({ overrides: {} });
 });
 
 it('loads an authoritative beer and visit snapshot on a new device', async () => {
@@ -146,6 +148,33 @@ it('gives the diary the server beer names but keeps a name the user is changing'
     'Bernard 11',
     'Kozel 11',
   ]);
+});
+
+it('spells the pub\'s local menu like the server, without making it newer', async () => {
+  const session = localSession('s1', PUB_A, ['radek']);
+  session.drinks[0].beerName = 'Radek 12';
+  useTallyStore.setState({ current: null, history: [session] });
+  const radegast = { name: 'Radegast Ryze Hořká 12°', priceCzk: 45, volumeMl: 500 };
+  useCommunityStore.setState({
+    overrides: {
+      [PUB_A]: {
+        beers: [{ name: 'Radek 12', priceCzk: 45, volumeMl: 500 }, radegast, { name: 'Radek 12', priceCzk: 30, volumeMl: 300 }],
+        beersOverrideUpdatedAt: 7,
+        updatedAt: 7,
+      },
+    },
+  });
+  const drink = remoteDrink('radek', PUB_A);
+  (fetchDrinks as jest.Mock).mockResolvedValue([{ ...drink, beer: { ...drink.beer, name: radegast.name } }]);
+  (fetchVisits as jest.Mock).mockResolvedValue([]);
+
+  await reconcileDiarySnapshot();
+
+  expect(useCommunityStore.getState().overrides[PUB_A]).toEqual({
+    beers: [radegast, { name: radegast.name, priceCzk: 30, volumeMl: 300 }],
+    beersOverrideUpdatedAt: 7,
+    updatedAt: 7,
+  });
 });
 
 it('keeps a name whose queued edit lands while the snapshot is read', async () => {

@@ -109,14 +109,22 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   const deliveredOrDropped = new Set<string>();
   const rejected: { clientId: string; field?: string }[] = [];
   const snapshotIds = new Set(queue.map((entry) => entry.client_id));
-  for (const entry of queue) {
+  for (const queued of queue) {
     // Stop before delivering the next drink once an account-boundary clear has
     // aborted us, so a previous account's queued drinks are never POSTed under
     // the session that replaces this one. (A drink already in flight keeps the
     // token it captured before the boundary, so it still lands on the right
     // account.)
     if (signal.aborted) break;
-    deliveringIds.add(entry.client_id);
+    // Send the drink as it is queued now: a rename while an earlier drink was
+    // sending changed this payload. Marked in flight under the same lock, so a
+    // later rename knows it has to follow up.
+    const entry = await runMutation(async () => {
+      const current = (await loadQueue()).find((e) => e.client_id === queued.client_id);
+      if (current) deliveringIds.add(current.client_id);
+      return current;
+    });
+    if (!entry) continue;
     try {
       const result = await submitDrink(entry, signal, (field) => {
         rejected.push({ clientId: entry.client_id, ...(field ? { field } : {}) });

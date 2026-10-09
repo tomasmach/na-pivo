@@ -14,6 +14,7 @@ import { flushUpdateDrinksQueue, getQueuedUpdateIds } from './updateDrinksQueue'
 import { fetchVisits, type WireVisit } from './visitsClient';
 import { flushVisitsQueue, getQueuedVisitDeleteIds } from './visitsQueue';
 import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
+import { useCommunityStore } from '@/stores/communityStore';
 import {
   allSessionsNewestFirst,
   useTallyStore,
@@ -33,13 +34,28 @@ export interface ReconciledDiaryStats {
   totalSpentCzk: number;
 }
 
+interface LocalBeer {
+  name: string;
+  /** The pub's cell; null outside a pub. */
+  cell: string | null;
+}
+
+interface BeerNameFix {
+  from: string;
+  to: string;
+  cell: string | null;
+}
+
 /** The beer name every local drink shows right now, by drink ID. */
-function localBeerNames(): Map<string, string> {
+function localBeerNames(): Map<string, LocalBeer> {
   const { current, history } = useTallyStore.getState();
-  const names = new Map<string, string>();
+  const names = new Map<string, LocalBeer>();
   for (const session of allSessionsNewestFirst(current, history)) {
+    const cell = isContextPubKey(session.pubKey) ? null : session.pubKey;
     for (const drink of session.drinks) {
-      if (normalizeDrinkType(drink.drinkType) === 'beer') names.set(drink.id, drink.beerName);
+      if (normalizeDrinkType(drink.drinkType) === 'beer') {
+        names.set(drink.id, { name: drink.beerName, cell });
+      }
     }
   }
   return names;
@@ -52,25 +68,38 @@ function localBeerNames(): Map<string, string> {
  */
 function serverBeerNameFixes(
   drinks: WireDrink[],
-  localNames: ReadonlyMap<string, string>,
+  localNames: ReadonlyMap<string, LocalBeer>,
   queuedUpdates: ReadonlySet<string>,
-): Map<string, { from: string; to: string }> {
-  const fixes = new Map<string, { from: string; to: string }>();
+): Map<string, BeerNameFix> {
+  const fixes = new Map<string, BeerNameFix>();
   for (const drink of drinks) {
-    const from = localNames.get(drink.client_id);
+    const local = localNames.get(drink.client_id);
     const to = drink.beer.name.trim();
     if (
-      from === undefined ||
+      local === undefined ||
       !to ||
-      to === from ||
+      to === local.name ||
       drink.drink_type !== 'beer' ||
       queuedUpdates.has(drink.client_id)
     ) {
       continue;
     }
-    fixes.set(drink.client_id, { from, to });
+    fixes.set(drink.client_id, { from: local.name, to, cell: local.cell });
   }
   return fixes;
+}
+
+/** The pub's local menu copy follows, so the counter lists each beer once. */
+function renameLocalMenus(fixes: ReadonlyMap<string, BeerNameFix>): void {
+  const byCell = new Map<string, Map<string, string>>();
+  for (const { from, to, cell } of fixes.values()) {
+    if (!cell) continue;
+    const names = byCell.get(cell) ?? new Map<string, string>();
+    names.set(from, to);
+    byCell.set(cell, names);
+  }
+  const { renameOverrideBeers } = useCommunityStore.getState();
+  byCell.forEach((names, cell) => renameOverrideBeers(cell, names));
 }
 
 /** Flush pending writes first, then pull both authoritative account snapshots. */
@@ -98,7 +127,9 @@ export async function reconcileDiarySnapshot(): Promise<DiarySnapshot | null> {
     getQueuedUpdateIds(),
   ]);
   const editedDrinks = new Set([...updatesBefore, ...pendingDrinkUpdates]);
-  useTallyStore.getState().adoptServerBeerNames(serverBeerNameFixes(drinks, localNames, editedDrinks));
+  const fixes = serverBeerNameFixes(drinks, localNames, editedDrinks);
+  useTallyStore.getState().adoptServerBeerNames(fixes);
+  renameLocalMenus(fixes);
   return {
     drinks: drinks.filter((drink) => !pendingDrinkDeletes.has(drink.client_id)),
     visits: visits.filter((visit) => !pendingVisitDeletes.has(visit.client_id)),
