@@ -91,6 +91,7 @@ const CONTEXT_KEYS = new Set([
   'previous_screen',
   'target',
   'action',
+  'count',
 ]);
 
 export type DiagnosticAppState = 'active' | 'inactive' | 'background' | 'unknown';
@@ -223,7 +224,8 @@ function sanitizeContext(
       key === 'pending_count' ||
       key === 'return_days' ||
       key === 'duration_ms' ||
-      key === 'slide'
+      key === 'slide' ||
+      key === 'count'
     ) {
       const numberValue = Number(value);
       if (Number.isFinite(numberValue)) out[key] = Math.max(0, Math.round(numberValue));

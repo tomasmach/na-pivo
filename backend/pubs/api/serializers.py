@@ -452,6 +452,8 @@ class UGCConsentRequestSerializer(serializers.Serializer):
 _MAX_CLIENT_EVENT_CONTEXT_KEYS = 16
 _MAX_CLIENT_EVENT_DISTANCE_M = 50_000
 _MAX_CLIENT_EVENT_SLIDE = 100
+# Taps folded into one aggregated ui_interaction event (skip/reroll bursts).
+_MAX_CLIENT_EVENT_COUNT = 1_000
 _CLIENT_EVENT_SCREEN_NAMES = {
     "compass",
     "beer",
@@ -673,6 +675,7 @@ _CLIENT_EVENT_CONTEXT_KEYS = {
     "previous_screen",
     "target",
     "action",
+    "count",
     *_CLIENT_EVENT_NATIVE_ENUMS,
 }
 _EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
@@ -752,6 +755,13 @@ def _sanitize_client_scalar(key: str, value: object) -> object | None:
         except (TypeError, ValueError):
             return None
         return max(0, min(slide, _MAX_CLIENT_EVENT_SLIDE))
+
+    if key == "count":
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            return None
+        return max(1, min(count, _MAX_CLIENT_EVENT_COUNT))
 
     if key in {"status", "pending_count", "return_days", "duration_ms"}:
         try:

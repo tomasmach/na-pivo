@@ -81,6 +81,11 @@ def test_observability_report_json_output(settings):
         event=ClientEvent.Event.UI_INTERACTION,
         context={},
     )
+    ClientEvent.objects.create(
+        account=account,
+        event=ClientEvent.Event.UI_INTERACTION,
+        context={"target": "compass_skip", "action": "tap", "count": 4},
+    )
     FeedbackReport.objects.create(
         account=account,
         client_id="9a7b6c5d-4e3f-4a1b-8c9d-8e7f6a5b4c3d",
@@ -143,9 +148,15 @@ def test_observability_report_json_output(settings):
             {"screen": "beer", "views": 1, "unique_accounts": 1},
             {"screen": "compass", "views": 1, "unique_accounts": 1},
         ],
-        "interactions": 1,
+        "interactions": 5,
         "unique_interacting_accounts": 1,
         "interaction_targets": [
+            {
+                "target": "compass_skip",
+                "action": "tap",
+                "events": 4,
+                "unique_accounts": 1,
+            },
             {
                 "target": "tab_beer",
                 "action": "select",

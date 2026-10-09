@@ -52,6 +52,9 @@ const RECOMPUTE_DISTANCE_M = 50;
 export const UNLIMITED_SEARCH_RADIUS_KM = 100;
 const HOURS_LOADING_FALLBACK_MS = 5_000;
 const PENDING_HOURS_RETRY_DELAYS_MS = [10_000, 30_000, 90_000, 300_000] as const;
+/** Skips/rerolls closer together than this are flipping through pubs; the
+ *  hours lookup then waits until the user stops for this long. */
+const HOURS_SETTLE_MS = 600;
 
 type TargetPosition = {
   lat: number;
@@ -622,6 +625,19 @@ export function useCompass(
   const pendingHoursRetryCountsRef = useRef<Map<string, number>>(new Map());
   const [pendingHoursRetryNonce, setPendingHoursRetryNonce] = useState(0);
 
+  // Rapid skip/reroll taps used to fire one /v1/pub-hours request per pub
+  // flipped past and got the client throttled. The first pick still looks up
+  // hours right away; a pick within HOURS_SETTLE_MS of the previous one defers
+  // the lookup until the user stops. Auto-skips (closed / not a pub) never
+  // touch these refs, so they keep resolving without delay.
+  const lastPickAtRef = useRef(0);
+  const flippingRef = useRef(false);
+  const notePick = useCallback(() => {
+    const now = Date.now();
+    flippingRef.current = now - lastPickAtRef.current < HOURS_SETTLE_MS;
+    lastPickAtRef.current = now;
+  }, []);
+
   // Mirror the hours map into a ref so the fetch effect can read the latest
   // contents (to skip already-resolved ids) without listing it as a dependency,
   // which would otherwise retrigger the effect every time hours resolve. The
@@ -650,53 +666,63 @@ export function useCompass(
       return next;
     });
 
-    fetchPubHours([pubForLookup], controller.signal)
-      .then((resultMap) => {
-        if (controller.signal.aborted) return;
-        const result = resultMap.get(currentPubId);
-        if (result?.status === 'pending') {
-          if (!pendingHoursRetryCountsRef.current.has(currentPubId)) {
-            pendingHoursRetryCountsRef.current.set(currentPubId, 0);
-          }
-          setPendingHoursRetryNonce((nonce) => nonce + 1);
-        } else {
-          pendingHoursRetryCountsRef.current.delete(currentPubId);
-        }
-        // Empty/partial map (dormant backend, failure, or this id missing) →
-        // drop the 'loading' placeholder so hours simply don't appear. Pending
-        // stays visible and is retried below; it means the backend accepted the
-        // lookup but deferred the proxy work to refresh_hours.
-        setHoursById((prev) => {
-          const next = new Map(prev);
-          // Cache resolved results and the visible pending state. 'error' is
-          // transient — drop it so a later reselection can retry instead of
-          // caching a dead value for the lifetime of the hook.
-          if (result && result.status !== 'error') {
-            const previous = prev.get(currentPubId);
-            const visibleStatus =
-              result.status === 'pending' && previous?.status === 'unknown'
-                ? 'unknown'
-                : result.status;
-            next.set(currentPubId, hoursStateFromResult(result, visibleStatus));
+    const lookUpHours = () => {
+      fetchPubHours([pubForLookup], controller.signal)
+        .then((resultMap) => {
+          if (controller.signal.aborted) return;
+          const result = resultMap.get(currentPubId);
+          if (result?.status === 'pending') {
+            if (!pendingHoursRetryCountsRef.current.has(currentPubId)) {
+              pendingHoursRetryCountsRef.current.set(currentPubId, 0);
+            }
+            setPendingHoursRetryNonce((nonce) => nonce + 1);
           } else {
-            next.delete(currentPubId);
+            pendingHoursRetryCountsRef.current.delete(currentPubId);
           }
-          return next;
+          // Empty/partial map (dormant backend, failure, or this id missing) →
+          // drop the 'loading' placeholder so hours simply don't appear. Pending
+          // stays visible and is retried below; it means the backend accepted the
+          // lookup but deferred the proxy work to refresh_hours.
+          setHoursById((prev) => {
+            const next = new Map(prev);
+            // Cache resolved results and the visible pending state. 'error' is
+            // transient — drop it so a later reselection can retry instead of
+            // caching a dead value for the lifetime of the hook.
+            if (result && result.status !== 'error') {
+              const previous = prev.get(currentPubId);
+              const visibleStatus =
+                result.status === 'pending' && previous?.status === 'unknown'
+                  ? 'unknown'
+                  : result.status;
+              next.set(currentPubId, hoursStateFromResult(result, visibleStatus));
+            } else {
+              next.delete(currentPubId);
+            }
+            return next;
+          });
+        })
+        .catch(() => {
+          // fetchPubHours never throws, but guard anyway: clear the placeholder so
+          // a failure leaves hours undefined rather than stuck on 'loading'.
+          if (controller.signal.aborted) return;
+          pendingHoursRetryCountsRef.current.delete(currentPubId);
+          setHoursById((prev) => {
+            const next = new Map(prev);
+            next.delete(currentPubId);
+            return next;
+          });
         });
-      })
-      .catch(() => {
-        // fetchPubHours never throws, but guard anyway: clear the placeholder so
-        // a failure leaves hours undefined rather than stuck on 'loading'.
-        if (controller.signal.aborted) return;
-        pendingHoursRetryCountsRef.current.delete(currentPubId);
-        setHoursById((prev) => {
-          const next = new Map(prev);
-          next.delete(currentPubId);
-          return next;
-        });
-      });
+    };
+
+    const settleMs = flippingRef.current
+      ? lastPickAtRef.current + HOURS_SETTLE_MS - Date.now()
+      : 0;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    if (settleMs > 0) settleTimer = setTimeout(lookUpHours, settleMs);
+    else lookUpHours();
 
     return () => {
+      clearTimeout(settleTimer);
       controller.abort();
       // Clear the in-flight 'loading' placeholder for this id. The aborted
       // .then/.catch above early-return without touching the map, so without
@@ -1118,8 +1144,9 @@ export function useCompass(
   }, [currentPub, filterLookupPending, setRevealedPub]);
 
   const reroll = useCallback(() => {
+    notePick();
     bumpSurpriseSeed();
-  }, [bumpSurpriseSeed]);
+  }, [bumpSurpriseSeed, notePick]);
 
   // Skip the current pub: add its id to skippedIds and bump excludeRevision so
   // the selection effect reselects the next nearest eligible pub (excluding both
@@ -1128,8 +1155,9 @@ export function useCompass(
   const skip = useCallback(() => {
     const id = currentPub?.id;
     if (!id) return;
+    notePick();
     addExcluded(skippedIdsRef, id);
-  }, [addExcluded, currentPub]);
+  }, [addExcluded, currentPub, notePick]);
 
   const reportCurrentPub = useCallback(async (reason: PubReportReason): Promise<boolean> => {
     const pub = currentPub;

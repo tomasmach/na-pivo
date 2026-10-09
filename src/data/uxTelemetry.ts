@@ -155,3 +155,32 @@ export function trackUiInteraction(
     context: { target, action },
   });
 }
+
+const REPEATED_INTERACTION_WINDOW_MS = 5_000;
+const repeatedInteractionCounts = new Map<string, number>();
+
+/**
+ * For buttons people tap in quick bursts (skip, reroll). Taps within one window
+ * are sent as a single event with `count`, so flipping through pubs cannot
+ * flood /v1/client-events into its rate limit.
+ */
+export function trackRepeatedUiInteraction(
+  target: UiInteractionTarget,
+  action: UiInteractionAction = 'tap',
+): void {
+  const key = `${target}:${action}`;
+  const pending = repeatedInteractionCounts.get(key);
+  if (pending !== undefined) {
+    repeatedInteractionCounts.set(key, pending + 1);
+    return;
+  }
+  repeatedInteractionCounts.set(key, 1);
+  setTimeout(() => {
+    const count = repeatedInteractionCounts.get(key) ?? 1;
+    repeatedInteractionCounts.delete(key);
+    void trackClientEvent({
+      event: 'ui_interaction',
+      context: { target, action, count },
+    });
+  }, REPEATED_INTERACTION_WINDOW_MS);
+}

@@ -634,6 +634,29 @@ def test_ui_interaction_accepts_only_allowlisted_target_and_action(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(37, 37), ("12", 12), (0, 1), (5_000_000, 1_000)],
+)
+def test_ui_interaction_keeps_bounded_tap_count(client, raw, expected):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "ui_interaction",
+            "context": {"target": "compass_skip", "action": "tap", "count": raw},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {
+        "target": "compass_skip",
+        "action": "tap",
+        "count": expected,
+    }
+
+
+@pytest.mark.django_db
 def test_ui_interaction_drops_unknown_target_and_action(client):
     resp = client.post(
         "/v1/client-events",

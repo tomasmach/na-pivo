@@ -74,7 +74,7 @@ import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
 import { RenamePubModal } from '@/components/compass/RenamePubModal';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { openPubPage } from '@/pubPage/openPubPage';
-import { trackUiInteraction } from '@/data/uxTelemetry';
+import { trackRepeatedUiInteraction, trackUiInteraction } from '@/data/uxTelemetry';
 import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useToastStore } from '@/stores/toastStore';
 import BeerMapScreen from '@/map/BeerMapScreen';
@@ -985,10 +985,10 @@ export default function CompassScreen() {
           label={t.compass.anotherPub}
           onPress={() => {
             if (mode === 'surprise') {
-              trackUiInteraction('compass_reroll');
+              trackRepeatedUiInteraction('compass_reroll');
               reroll();
             } else {
-              trackUiInteraction('compass_skip');
+              trackRepeatedUiInteraction('compass_skip');
               skip();
             }
           }}
