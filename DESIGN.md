@@ -538,6 +538,10 @@ value: {
   `fontSize`), **iOS svisle ořízne vršek cifer** — u „8“ zmizí horní oblouk. Doložené páry:
   22/27, 19/24, 34/42, 40/50. Menší `Fonts.numeral` použití bez `lineHeight` (wordmark, výsledek
   hry) jsou dluh, ne vzor.
+- **Jednořádkové pole (`TextInput`) s Baloo na iOS `lineHeight` nedostává.** Pravidlo výše platí
+  pro `<Text>`. UITextField sám vystředí přirozenou výšku řádku písma; pevný `lineHeight` zvedl
+  cenu v „Uprav cenu“ o 6 pt nad střed pole. Vršek číslic chrání nulový svislý padding na iOS.
+  Android `lineHeight` v těch polích dál drží (`BeerFormModal`).
 - **`fontVariant: ['tabular-nums']` je povinné** u čehokoliv, co se v čase mění (počty, časy,
   skóre). Bez toho číslo při každé změně poskočí do stran.
 - **`allowFontScaling={false}` na číslicích v pevných buňkách** (`StatGrid`, žebříček, tikající
