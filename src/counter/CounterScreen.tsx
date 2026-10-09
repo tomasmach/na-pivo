@@ -626,16 +626,20 @@ function Tacek({
       ? currentBeerListOverride
       : undefined;
 
-  /** The menu a fix or a delete rewrites for everyone: this pub's own written
-   *  menu, else the server's answer even when empty, else (offline) the pub's
-   *  cached menu. Null until the first answer for this pub, so a write never
-   *  drops beers the server added meanwhile. */
+  /** The menu a fix or a delete rewrites for everyone. Null until this pub's
+   *  first answer: only then can a local list be weighed against the server's,
+   *  so a write never drops beers the server added meanwhile. Then this pub's
+   *  own written menu when it is newer, else the server's answer even when
+   *  empty, else (offline) the pub's cached menu. */
   const deletableMenu = useMemo<CommunityBeer[] | null>(() => {
-    if (!place || !pub) return null;
+    if (!place || !pub || !currentBackendMenu) return null;
     if (ownMenuOverride?.beers) return ownMenuOverride.beers;
-    if (!currentBackendMenu) return null;
     return currentBackendMenu.fetched ? currentBackendMenu.beers : (pub.beers ?? []);
   }, [currentBackendMenu, ownMenuOverride, place, pub]);
+  /** A local change keeps the "complete menu" mark only when it grew from the
+   *  menu this session confirmed online; a merge into anything older would
+   *  outrank the next server answer with an incomplete list. */
+  const menuConfirmedOnline = !!currentBackendMenu?.fetched && menu === deletableMenu;
   /** History that goes with `deletableMenu`. */
   const deletableHistory =
     ownMenuOverride?.historicalBeers ??
@@ -868,7 +872,7 @@ function Tacek({
           // Still this pub's complete menu only when it grew from one.
           setOverride(cell, {
             beers: nextMenu,
-            beersFor: menu === deletableMenu ? (menuOwner ?? undefined) : undefined,
+            beersFor: menuConfirmedOnline ? (menuOwner ?? undefined) : undefined,
           });
         }
       }
@@ -951,9 +955,9 @@ function Tacek({
       current,
       hapticEnabled,
       isThisSession,
-      deletableMenu,
       markDrinkSynced,
       menu,
+      menuConfirmedOnline,
       menuOwner,
       outsideContext,
       place,
@@ -1203,13 +1207,13 @@ function Tacek({
           : mergeBeerIntoMenu(menu, beer);
         setOverride(cell, {
           beers: nextMenu,
-          beersFor: menu === deletableMenu ? (menuOwner ?? undefined) : undefined,
+          beersFor: menuConfirmedOnline ? (menuOwner ?? undefined) : undefined,
         });
       } else {
         requestCountBeer(beer, at);
       }
     },
-    [backdateAt, cell, deletableMenu, formBeer, formMode, menu, menuOwner, pub, requestCountBeer, setOverride],
+    [backdateAt, cell, formBeer, formMode, menu, menuConfirmedOnline, menuOwner, pub, requestCountBeer, setOverride],
   );
 
   /** Only a beer that is on this pub's menu can come off it; tonight-only rows
