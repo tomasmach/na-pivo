@@ -66,7 +66,6 @@ import {
   type WeeklyHours,
 } from '@/data/communityHours';
 import { enqueuePubCommunity } from '@/data/communityQueue';
-import { menuOwnerKey } from '@/data/pubMenuWrite';
 import { geohash8 } from '@/data/geohash';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { scanMenuPhoto } from '@/data/menuScanClient';
@@ -859,8 +858,6 @@ export default function ContributeScreen() {
           )
         : undefined,
       beerMenuRotates: sendBeers ? beerMenuRotates : undefined,
-      // The whole menu goes to everyone: later fixes may start from it.
-      beersFor: sendBeers ? menuOwnerKey(pub.name) : undefined,
     });
 
     void enqueuePubCommunity(entry).then((response) => {

@@ -22,23 +22,16 @@ export interface MenuPub {
   city?: string;
 }
 
-/** Tells two pubs in one geohash cell apart in the cell's local override. */
-export function menuOwnerKey(pubName: string): string {
-  return pubName.trim().toLocaleLowerCase('cs');
-}
-
+/** Writes `next` for everyone and returns the history that goes with it. */
 export function replacePubMenu(
   cell: string,
   pub: MenuPub,
   current: readonly CommunityBeer[],
   next: CommunityBeer[],
   historicalBeers: readonly CommunityBeer[],
-): void {
-  useCommunityStore.getState().setOverride(cell, {
-    beers: next,
-    beersFor: menuOwnerKey(pub.name),
-    historicalBeers: historicalBeersAfterMenuReplacement(current, next, historicalBeers),
-  });
+): CommunityBeer[] {
+  const nextHistory = historicalBeersAfterMenuReplacement(current, next, historicalBeers);
+  useCommunityStore.getState().setOverride(cell, { beers: next, historicalBeers: nextHistory });
   void enqueuePubCommunity(
     buildCommunityEntry(
       {
@@ -52,4 +45,5 @@ export function replacePubMenu(
       generateUuidV4(),
     ),
   );
+  return nextHistory;
 }

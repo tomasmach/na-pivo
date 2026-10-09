@@ -84,7 +84,7 @@ import { buildAmenityRows, selectPubInfoCompleteness } from '@/data/pubAmenities
 import { fetchPubBeersLastWeek } from '@/data/pubBeersClient';
 import { fetchUpcomingPubEvents, type PubEvent } from '@/data/pubEventsClient';
 import { pubIdentityKey } from '@/data/pubIdentity';
-import { menuOwnerKey, replacePubMenu } from '@/data/pubMenuWrite';
+import { replacePubMenu } from '@/data/pubMenuWrite';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { EMPTY_PUB_SEARCH_FILTERS, type PubSearchFilters } from '@/data/pubSearchFilters';
@@ -295,10 +295,17 @@ export default function PubPageScreen() {
   const [actionBeer, setActionBeer] = useState<CommunityBeer | null>(null);
   const [priceFormOpen, setPriceFormOpen] = useState(false);
   const [priceFormNonce, setPriceFormNonce] = useState(0);
-  /** The pub whose taps came from the server (or its failed request) on this
-   *  page. Until then the taps may be the opener's older copy, and a full-menu
-   *  write from them could drop beers someone added meanwhile. */
-  const [menuAnsweredFor, setMenuAnsweredFor] = useState<string | null>(null);
+  /** The menu a fix or a delete rewrites for everyone: this pub's menu as the
+   *  server answered it on this page, kept in step with the user's own writes.
+   *  Without an answer there is none, so nothing is written for everyone from
+   *  the opener's older copy or another pub's local list. */
+  const [tapsBase, setTapsBase] = useState<{
+    pubId: string;
+    beers: CommunityBeer[];
+    historicalBeers: CommunityBeer[];
+    /** Epoch ms of the user's last write here; an older answer lags behind it. */
+    writtenAt: number | null;
+  } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
@@ -392,10 +399,19 @@ export default function PubPageScreen() {
     };
     const apply = (response: Awaited<ReturnType<typeof fetchPubHours>>) => {
       if (controller.signal.aborted) return;
-      // Offline the menu on screen is what a write rewrites, as on the counter.
-      setMenuAnsweredFor(opened.id);
       const details = response.get(opened.id);
       if (!details) return;
+      const answeredAt = details.beersUpdatedAt ? Date.parse(details.beersUpdatedAt) : 0;
+      setTapsBase((prev) =>
+        prev?.pubId === opened.id && prev.writtenAt !== null && !(answeredAt > prev.writtenAt)
+          ? prev
+          : {
+              pubId: opened.id,
+              beers: details.beers,
+              historicalBeers: details.historicalBeers,
+              writtenAt: null,
+            },
+      );
       if (details.status === 'pending' && attempts < HOURS_RETRY_LIMIT) {
         retryTimer = setTimeout(load, HOURS_RETRY_MS);
       }
@@ -518,34 +534,16 @@ export default function PubPageScreen() {
       false)
     : false;
 
-  /** Tells this pub apart from another pub sharing its geohash cell. */
-  const tapsOwner = pub ? menuOwnerKey(pub.name) : null;
-  /** A local list that is this pub's complete menu as written for everyone;
-   *  any other local list may be a merge into a cached or another pub's menu. */
-  const ownTapsOverride =
-    pub &&
-    override?.beers &&
-    override.beersFor === tapsOwner &&
-    isBeerListOverrideCurrent(override, pub.beersUpdatedAt)
-      ? override
-      : undefined;
-  /** The menu a fix or a delete rewrites for everyone: this pub's own written
-   *  menu, else what the server answered (or, offline, the menu the page
-   *  opened with). Null until this page heard back, so a write never drops a
-   *  beer someone added meanwhile. */
-  const editableTaps =
-    pub && menuAnsweredFor === pub.id ? (ownTapsOverride?.beers ?? pub.beers ?? []) : null;
-  const historicalTaps = useMemo<CommunityBeer[]>(
-    () => ownTapsOverride?.historicalBeers ?? pub?.historicalBeers ?? [],
-    [ownTapsOverride, pub],
-  );
+  const editableTaps = pub && tapsBase?.pubId === pub.id ? tapsBase.beers : null;
+  const historicalTaps = editableTaps && tapsBase ? tapsBase.historicalBeers : null;
+  const tapsPubId = pub?.id ?? null;
   /** A dialog or the form confirms later: write over the menu as it is then. */
-  const liveTapsRef = useRef({ key, owner: tapsOwner, menu: editableTaps, historical: historicalTaps });
+  const liveTapsRef = useRef({ key, pubId: tapsPubId, menu: editableTaps, historical: historicalTaps });
   useEffect(() => {
-    liveTapsRef.current = { key, owner: tapsOwner, menu: editableTaps, historical: historicalTaps };
-  }, [editableTaps, historicalTaps, key, tapsOwner]);
+    liveTapsRef.current = { key, pubId: tapsPubId, menu: editableTaps, historical: historicalTaps };
+  }, [editableTaps, historicalTaps, key, tapsPubId]);
   /** The pub a beer's options were opened for: a write never lands elsewhere. */
-  const tapsTargetRef = useRef<{ key: string | undefined; owner: string | null } | null>(null);
+  const tapsTargetRef = useRef<{ key: string | undefined; pubId: string | null } | null>(null);
 
   const completenessPct = useMemo(() => {
     const rows = buildAmenityRows({ aggregates, myVotes });
@@ -616,13 +614,23 @@ export default function PubPageScreen() {
     setTimeout(action, SHEET_DISMISS_MS);
   }, []);
 
+  /** The user's own write is the newest menu this page knows. */
+  const recordTapsWrite = useCallback(
+    (pubId: string, beers: CommunityBeer[], historicalBeers: CommunityBeer[]) => {
+      setTapsBase((prev) =>
+        prev?.pubId === pubId ? { pubId, beers, historicalBeers, writtenAt: Date.now() } : prev,
+      );
+    },
+    [],
+  );
+
   const openBeerActions = useCallback(
     (beer: CommunityBeer) => {
-      tapsTargetRef.current = { key, owner: tapsOwner };
+      tapsTargetRef.current = { key, pubId: tapsPubId };
       setActionBeer(beer);
       setBeerActionsOpen(true);
     },
-    [key, tapsOwner],
+    [key, tapsPubId],
   );
 
   const editBeerPrice = useCallback(
@@ -646,7 +654,7 @@ export default function PubPageScreen() {
       const live = liveTapsRef.current;
       const target = tapsTargetRef.current;
       if (!pub || !key || !edited || !live.menu) return;
-      if (target?.key !== live.key || target.owner !== live.owner) return;
+      if (target?.key !== live.key || target.pubId !== live.pubId) return;
       if (!live.menu.some((b) => isSameBeerIdentity(b, edited))) return;
       const beer: CommunityBeer = { name: edited.name };
       if (typeof result.priceCzk === 'number') beer.priceCzk = result.priceCzk;
@@ -654,9 +662,9 @@ export default function PubPageScreen() {
       const next = live.menu
         .map((b) => (isSameBeerIdentity(b, edited) ? beer : b))
         .filter((b) => b === beer || !isSameBeerIdentity(b, beer));
-      replacePubMenu(key, pub, live.menu, next, live.historical);
+      recordTapsWrite(pub.id, next, replacePubMenu(key, pub, live.menu, next, live.historical ?? []));
     },
-    [actionBeer, key, pub],
+    [actionBeer, key, pub, recordTapsWrite],
   );
 
   const removeBeer = useCallback(
@@ -667,15 +675,15 @@ export default function PubPageScreen() {
         confirmRemoveFromMenu(removed, () => {
           const live = liveTapsRef.current;
           if (!pub || !key || !live.menu) return;
-          if (target?.key !== live.key || target.owner !== live.owner) return;
+          if (target?.key !== live.key || target.pubId !== live.pubId) return;
           if (!live.menu.some((b) => isSameBeerIdentity(b, removed))) return;
           const next = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
-          replacePubMenu(key, pub, live.menu, next, live.historical);
+          recordTapsWrite(pub.id, next, replacePubMenu(key, pub, live.menu, next, live.historical ?? []));
           showToast(t.counter.removedFromMenuToast);
         }),
       );
     },
-    [afterSheet, key, pub, showToast],
+    [afterSheet, key, pub, recordTapsWrite, showToast],
   );
 
   const startRename = useCallback(() => {

@@ -23,11 +23,6 @@ export interface CommunityOverride {
   beers?: CommunityBeer[];
   historicalBeers?: CommunityBeer[];
   beerMenuRotates?: boolean;
-  /** Set only when `beers` is a complete menu of this pub that was written for
-   *  everyone (or built on one): the pub's `menuOwnerKey`. A full-menu write may
-   *  start from such a list. Without it the list may be a merge into an older
-   *  or another pub's menu, and only the server's answer is a safe base. */
-  beersFor?: string;
   /** Epoch ms of the latest local beer-list/history edit. */
   beersOverrideUpdatedAt?: number;
   /** Epoch ms of the latest explicit fixed/rotating selection. */
@@ -113,7 +108,6 @@ export const useCommunityStore = create<CommunityState>()(
             hours: patch.hours ?? prev?.hours,
             beers: patch.beers ?? prev?.beers,
             historicalBeers: patch.historicalBeers ?? prev?.historicalBeers,
-            beersFor: touchesBeerList ? patch.beersFor : prev?.beersFor,
             beerMenuRotates: patch.beerMenuRotates ?? prev?.beerMenuRotates,
             beersOverrideUpdatedAt: touchesBeerList ? now : previousBeerListUpdatedAt,
             beerMenuRotatesOverrideUpdatedAt: touchesMenuType
