@@ -9,6 +9,8 @@ from pubs.mapper import maper_progress
 from pubs.models import Account, DrinkLog, Friendship, PublishedNight
 
 PRAGUE_TZ = ZoneInfo("Europe/Prague")
+# Ochutnávač: this many different beers.
+TASTER_MIN_BEERS = 10
 
 
 def derive_account_profile_stats(account: Account) -> dict:
@@ -131,7 +133,7 @@ def derive_account_achievements(account: Account, stats: dict | None = None) -> 
         "pilgrim": stats["distinct_pubs"] >= 25,
         "stamgast": stats["max_visits_to_one_pub"] >= 10,
         "night_owl": bool(stats["night_owl"]),
-        "taster": stats["distinct_beer_identities"] >= 10,
+        "taster": stats["distinct_beer_identities"] >= TASTER_MIN_BEERS,
         "party_animal": stats["accepted_friend_count"] >= 5,
         "chatar": stats["outside_drinks"] >= 1,
         "pod_sirakem": stats["outdoors_drinks"] >= 1,
