@@ -507,8 +507,13 @@ def run_menu_cleanup(
             if row is None:
                 continue
             beers = _clean_community_row(row, plan, canonicalizer, record, apply=apply)
-            # Under the menu lock, so a beer removed meanwhile is not indexed
-            # again. The links name no account, so this never waits on one.
+        # Outside the menu lock: a drink edit can hold an index row while it
+        # waits for its account, whose drink write waits for this menu. Index
+        # the menu as it is now, so a beer removed meanwhile stays unlisted.
+        with transaction.atomic():
+            if apply:
+                current = PubCommunityData.objects.filter(pk=pk).values_list("beers", flat=True)
+                beers = _menu_items(current.first())
             created, reactivated = _ensure_index_links(row, beers, index_cache, apply=apply)
         plan.index_links_created += created
         plan.index_links_reactivated += reactivated

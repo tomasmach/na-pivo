@@ -99,12 +99,12 @@ class Command(BaseCommand):
     def _revert(self, report: Path) -> None:
         if not report.exists():
             raise CommandError(f"{report} does not exist.")
-        raw_lines = [raw for raw in report.read_text(encoding="utf-8").splitlines() if raw.strip()]
+        raw_lines = [raw for raw in report.read_bytes().splitlines() if raw.strip()]
         changes = []
         for index, raw in enumerate(raw_lines):
             try:
-                line = json.loads(raw)
-            except json.JSONDecodeError as exc:
+                line = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 # A run killed while writing leaves only its last line cut off.
                 if index == len(raw_lines) - 1:
                     self.stdout.write("Ignoring the unfinished last line of the report.")

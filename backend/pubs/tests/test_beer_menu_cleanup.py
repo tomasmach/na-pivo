@@ -342,14 +342,16 @@ def test_revert_survives_a_report_cut_off_mid_line(tmp_path):
     pub = _menu(_beer("Primátor 11", 50), _beer("Primátor 11°", 50))
     report = tmp_path / "report.jsonl"
     call_command("clean_beer_names", "--apply", "--report", str(report))
-    lines = report.read_text().splitlines()
-    report.write_text(lines[0] + "\n" + lines[-1][:15])
+    lines = report.read_bytes().splitlines()
+    # A second line cut inside the "á" of "Primátor".
+    cut = lines[0].index("á".encode()) + 1
+    report.write_bytes(lines[0] + b"\n" + lines[0][:cut])
 
     call_command("clean_beer_names", "--revert", str(report))
 
     pub.refresh_from_db()
     assert pub.beers == [_beer("Primátor 11", 50), _beer("Primátor 11°", 50)]
-    report.write_text("{\n" + lines[0] + "\n")
+    report.write_bytes(b"{\n" + lines[0] + b"\n")
     with pytest.raises(CommandError):
         call_command("clean_beer_names", "--revert", str(report))
 
