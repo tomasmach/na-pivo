@@ -60,7 +60,7 @@ async function readQueue(): Promise<DrinkEntry[]> {
   return raw ? JSON.parse(raw) : [];
 }
 
-async function flushMicrotasks(times = 5): Promise<void> {
+async function flushMicrotasks(times = 20): Promise<void> {
   for (let i = 0; i < times; i++) {
     await Promise.resolve();
   }
@@ -588,6 +588,32 @@ describe('updateQueuedDrinkBeerName', () => {
 
     resolveSubmit('ok');
     await flushing;
+  });
+
+  it('sends the new name of a drink renamed while an earlier one was sending', async () => {
+    let resolveFirst!: (value: 'ok') => void;
+    (submitDrink as jest.Mock).mockReturnValueOnce(
+      new Promise<'ok'>((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([entry({ client_id: 'a' }), entry({ client_id: 'b' })]),
+    );
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks();
+    await expect(updateQueuedDrinkBeerName('b', 'Bernard 11')).resolves.toBe('queued');
+    resolveFirst('ok');
+    await flushing;
+
+    const sent = (submitDrink as jest.Mock).mock.calls.map((call) => [call[0].client_id, call[0].beer.name]);
+    expect(sent).toEqual([
+      ['a', 'Plzeň'],
+      ['b', 'Bernard 11'],
+    ]);
+    expect(await readQueue()).toEqual([]);
   });
 
   it('reports missing when the drink is no longer queued', async () => {

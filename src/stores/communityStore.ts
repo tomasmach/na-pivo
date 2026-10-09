@@ -80,6 +80,9 @@ interface CommunityState {
    * beers does not wipe a previously-submitted hours override.
    */
   setOverride: (cell: string, patch: CommunityOverridePatch) => void;
+  /** Spell a cell's local menu the way the server now does. Keeps the
+   *  override's age, so a newer server menu still replaces it. */
+  renameOverrideBeers: (cell: string, names: ReadonlyMap<string, string>) => void;
 }
 
 export const useCommunityStore = create<CommunityState>()(
@@ -113,6 +116,23 @@ export const useCommunityStore = create<CommunityState>()(
             updatedAt: now,
           };
           return { overrides: { ...state.overrides, [cell]: next } };
+        }),
+
+      renameOverrideBeers: (cell, names) =>
+        set((state) => {
+          const prev = state.overrides[cell];
+          if (!prev?.beers?.some((beer) => names.has(beer.name))) return state;
+          const renamed = prev.beers.map((beer) => {
+            const name = names.get(beer.name);
+            return name ? { ...beer, name } : beer;
+          });
+          // One row per beer and volume, as the server keeps the menu.
+          const beers = renamed.filter(
+            (beer, index) =>
+              renamed.findIndex((other) => other.name === beer.name && other.volumeMl === beer.volumeMl) ===
+              index,
+          );
+          return { overrides: { ...state.overrides, [cell]: { ...prev, beers } } };
         }),
     }),
     {
