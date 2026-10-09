@@ -9,7 +9,7 @@
 # version, so aliases are only spellings of that one beer: never a bare brand
 # name, never another degree, never nealko/radler/flavour of a different beer.
 #
-# Existing menus are rewritten separately by `manage.py clean_beer_menus`.
+# Existing menus are rewritten separately by `manage.py clean_beer_names`.
 # Drink logs are not touched here or there.
 
 from django.db import migrations

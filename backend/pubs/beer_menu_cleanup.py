@@ -1,9 +1,8 @@
 """Unify beer names on pub menus and drop rows listing one beer twice.
 
-Only the shared menus change: ``PubCommunityData.beers`` /
+The shared menus change here: ``PubCommunityData.beers`` /
 ``historical_beers`` and the imported ``PubExternalBeerMenu.beers``. Drink
-logs are never read for names and never written, so nobody loses a logged
-beer, a typed name or an achievement.
+logs get the same names in ``beer_diary_cleanup``.
 
 A menu name becomes:
 
@@ -469,7 +468,17 @@ def _clean_external_row(
         )
 
 
-def run_menu_cleanup(*, apply: bool, record: Record | None = None) -> CleanupPlan:
+def build_canonicalizer() -> _Canonicalizer:
+    """The shared name mapping, from the menus as they are now."""
+    return _Canonicalizer(preferred_spellings(_all_menu_names()))
+
+
+def run_menu_cleanup(
+    *,
+    apply: bool,
+    record: Record | None = None,
+    canonicalizer: _Canonicalizer | None = None,
+) -> CleanupPlan:
     """Plan the cleanup and, with ``apply``, write it one pub at a time.
 
     Each pub is locked only for its own short transaction, so live drink
@@ -479,7 +488,7 @@ def run_menu_cleanup(*, apply: bool, record: Record | None = None) -> CleanupPla
     """
     plan = CleanupPlan()
     record = record or (lambda changes: None)
-    canonicalizer = _Canonicalizer(preferred_spellings(_all_menu_names()))
+    canonicalizer = canonicalizer or build_canonicalizer()
     index_cache = BeerCatalogMatchCache()
 
     def locked(model, pk):

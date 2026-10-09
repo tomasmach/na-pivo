@@ -1,4 +1,4 @@
-"""One-off and weekly cleanup of beer names on pub menus (clean_beer_menus)."""
+"""One-off and weekly cleanup of beer names on pub menus (clean_beer_names)."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def test_menu_write_keeps_one_row_per_beer_and_volume():
 
 
 @pytest.mark.django_db
-def test_cleanup_unifies_names_and_merges_duplicates_without_touching_drinks(tmp_path):
+def test_cleanup_unifies_names_and_merges_duplicates(tmp_path):
     account = Account.objects.create(device_id="cleanup-drinker")
     pub = _menu(
         _beer("Kozel 11", 45),
@@ -129,7 +129,7 @@ def test_cleanup_unifies_names_and_merges_duplicates_without_touching_drinks(tmp
     )
 
     report = tmp_path / "report.json"
-    call_command("clean_beer_menus", "--apply", "--report", str(report))
+    call_command("clean_beer_names", "--apply", "--report", str(report))
 
     pub.refresh_from_db()
     assert pub.beers == [
@@ -141,7 +141,7 @@ def test_cleanup_unifies_names_and_merges_duplicates_without_touching_drinks(tmp
     # The history keeps only beers that are off tap, in the shared spelling.
     assert pub.historical_beers == [_beer("Stodolní 13°", 50)]
     drink.refresh_from_db()
-    assert drink.beer_name == "Dudák 11"
+    assert (drink.beer_name, drink.price_czk) == ("Dudák 11°", 40)
     assert DrinkLog.objects.count() == 1
 
     lines = _report_lines(report)
@@ -219,7 +219,7 @@ def test_dry_run_writes_nothing_and_cleans_imported_menus_too():
 
 def test_apply_requires_a_backup_report():
     with pytest.raises(CommandError):
-        call_command("clean_beer_menus", "--apply")
+        call_command("clean_beer_names", "--apply")
 
 
 @pytest.mark.django_db
@@ -277,14 +277,14 @@ def test_an_interrupted_run_has_a_backup_for_every_saved_menu(tmp_path):
 
     with patch("pubs.beer_menu_cleanup._clean_external_row", side_effect=RuntimeError("db gone")):
         with pytest.raises(RuntimeError):
-            call_command("clean_beer_menus", "--apply", "--report", str(report))
+            call_command("clean_beer_names", "--apply", "--report", str(report))
 
     pub.refresh_from_db()
     assert pub.beers == [_beer("Primátor 11°", 50)]
     [saved] = _report_lines(report)
     assert saved["before"] == [_beer("Primátor 11", 50), _beer("Primátor 11°", 50)]
 
-    call_command("clean_beer_menus", "--revert", str(report))
+    call_command("clean_beer_names", "--revert", str(report))
     pub.refresh_from_db()
     assert pub.beers == [_beer("Primátor 11", 50), _beer("Primátor 11°", 50)]
 
@@ -294,11 +294,11 @@ def test_revert_keeps_menus_edited_after_the_cleanup(tmp_path):
     untouched = _menu(_beer("Kozel 11", 45))
     edited = _menu(_beer("Plzeň", 60), name="Jinde", lat=50.2, lng=14.6)
     report = tmp_path / "report.jsonl"
-    call_command("clean_beer_menus", "--apply", "--report", str(report))
+    call_command("clean_beer_names", "--apply", "--report", str(report))
     edited.beers = [_beer("Pilsner Urquell", 65)]
     edited.save(update_fields=["beers"])
 
-    call_command("clean_beer_menus", "--revert", str(report))
+    call_command("clean_beer_names", "--revert", str(report))
 
     untouched.refresh_from_db()
     edited.refresh_from_db()
