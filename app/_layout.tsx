@@ -213,15 +213,23 @@ const onboardingDecisionPromise = useOnboardingStore
   .getState()
   .decide(getCachedAuthenticationState);
 
-// The launch URL is fixed for the process, so read it once. Stashing it now
-// lets the launch claim find the code before the invite screen can open.
-let launchInviteCode: Promise<string | null> | null = Linking.getInitialURL()
-  .then((url) => {
+// The launch URL is fixed for the process, so read it once. The launch claim
+// waits for this, so the stashed code is there before it looks.
+const launchInviteCode = Linking.getInitialURL()
+  .then(async (url) => {
     const code = parseInviteCodeFromUrl(url);
-    if (code) void stashPendingInviteCode(code);
+    if (code) await stashPendingInviteCode(code);
     return code;
   })
   .catch(() => null);
+let launchInviteOpened = false;
+
+// A push before RootLayout renders its Stack makes expo-router push a second
+// root route, which remounts RootLayout and replays every launch effect.
+let markStackMounted: () => void = () => undefined;
+const stackMounted = new Promise<void>((resolve) => {
+  markStackMounted = resolve;
+});
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);
@@ -287,14 +295,20 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError, router]);
 
   useEffect(() => {
-    // A push before the Stack below mounts makes expo-router push a second root
-    // route, which remounts this layout and replays every launch effect.
-    if (!fontsLoaded && !fontError) return;
+    if (fontsLoaded || fontError) markStackMounted();
+  }, [fontsLoaded, fontError]);
+
+  useEffect(() => {
     const openInvite = (code: string | null) => {
-      if (code) router.push({ pathname: '/parta/pozvanka', params: { code } } as Href);
+      if (!code) return;
+      void stackMounted.then(() =>
+        router.push({ pathname: '/parta/pozvanka', params: { code } } as Href),
+      );
     };
-    void launchInviteCode?.then(openInvite);
-    launchInviteCode = null;
+    if (!launchInviteOpened) {
+      launchInviteOpened = true;
+      void launchInviteCode.then(openInvite);
+    }
     const subscription = Linking.addEventListener('url', ({ url }) => {
       const code = parseInviteCodeFromUrl(url);
       if (!code) return;
@@ -302,7 +316,7 @@ export default function RootLayout() {
       openInvite(code);
     });
     return () => subscription.remove();
-  }, [fontsLoaded, fontError, router]);
+  }, [router]);
 
   useEffect(() => {
     let hadActiveCounterSession = (useTallyStore.getState().current?.drinks.length ?? 0) > 0;
@@ -349,7 +363,7 @@ export default function RootLayout() {
         void trackClientEvent({ event: 'app_open', severity: 'info' });
         // A Parta invite deep link tapped before the account existed was stashed;
         // now that an account is ready, claim it (fires a Parta refresh on success).
-        void consumeAndClaimPendingInviteCode();
+        void launchInviteCode.then(() => consumeAndClaimPendingInviteCode());
         // Light up the Parta tab badge without waiting for the first Parta visit.
         seedPartaBadge();
         // Existing installs may hold local diary drinks from before /v1/drinks

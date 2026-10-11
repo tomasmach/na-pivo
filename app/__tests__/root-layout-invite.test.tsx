@@ -44,11 +44,16 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 jest.mock('react-native', () => {
   const rn = jest.requireActual('react-native');
+  let resolveInitialUrl: (url: string) => void = () => undefined;
+  const initialUrl = new Promise<string>((resolve) => {
+    resolveInitialUrl = resolve;
+  });
   return {
     ...rn,
     Linking: {
       ...rn.Linking,
-      getInitialURL: jest.fn(() => Promise.resolve('https://na-pivo.cz/p/YVM4Q4rcJmNs')),
+      getInitialURL: jest.fn(() => initialUrl),
+      resolveInitialUrl: (url: string) => resolveInitialUrl(url),
     },
   };
 });
@@ -227,6 +232,8 @@ jest.mock('@/transit/homeTransitSync', () => ({
   ...mockResolved('refreshHomeTransit'),
 }));
 
+import { Linking } from 'react-native';
+
 import { sendFriendRequest } from '@/data/friendsClient';
 import { restorePubAmenities } from '@/data/pubAmenitiesSync';
 import { restorePubRatings } from '@/data/pubRatingsSync';
@@ -264,6 +271,17 @@ it('claims, syncs and opens one invite link once while fonts load', async () => 
     renderer = TestRenderer.create(<Harness />);
   });
   await settle();
+  // The account is ready before iOS hands over the launch URL; the claim waits for it.
+  expect(sendFriendRequest).not.toHaveBeenCalled();
+
+  await act(async () => {
+    (Linking as unknown as { resolveInitialUrl: (url: string) => void }).resolveInitialUrl(
+      'https://na-pivo.cz/p/YVM4Q4rcJmNs',
+    );
+  });
+  await settle();
+  expect(sendFriendRequest).toHaveBeenCalledTimes(1);
+  expect(invitePushes()).toHaveLength(0);
 
   mockFontsLoaded = true;
   await act(async () => {
