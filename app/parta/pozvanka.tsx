@@ -11,7 +11,7 @@
  * account is ready and the request goes straight out.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
@@ -38,17 +38,19 @@ function nameOf(profile: FriendProfile | null): string {
 }
 
 export default function InviteClaimScreen() {
+  const params = useLocalSearchParams<{ code?: string | string[] }>();
+  const raw = params.code;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const code = typeof value === 'string' ? value.trim() : '';
+  // A second invite link reuses this route; a fresh instance drops the first inviter.
+  return <InviteClaim key={code} code={code} />;
+}
+
+function InviteClaim({ code }: { code: string }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const showToast = useToastStore((s) => s.show);
   const myId = useAccountStore((s) => s.profile?.id ?? null);
-
-  const params = useLocalSearchParams<{ code?: string | string[] }>();
-  const code = useMemo(() => {
-    const raw = params.code;
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    return typeof value === 'string' ? value.trim() : '';
-  }, [params.code]);
 
   // Lazy init from code presence so the effect never needs a synchronous setState.
   const [state, setState] = useState<ClaimState>(() => (code ? 'loading' : 'invalid'));

@@ -213,6 +213,15 @@ const onboardingDecisionPromise = useOnboardingStore
   .getState()
   .decide(getCachedAuthenticationState);
 
+// Expo Router opens the invite screen itself (+native-intent). This only
+// stashes the launch code, and the launch claim waits until it is stored.
+const launchInviteStashed = Linking.getInitialURL()
+  .then(async (url) => {
+    const code = parseInviteCodeFromUrl(url);
+    if (code) await stashPendingInviteCode(code);
+  })
+  .catch(() => undefined);
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);
   const router = useRouter();
@@ -277,19 +286,12 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError, router]);
 
   useEffect(() => {
-    const handleInviteUrl = (url: string | null) => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
       const code = parseInviteCodeFromUrl(url);
-      if (!code) return;
-      void stashPendingInviteCode(code);
-      router.push({ pathname: '/parta/pozvanka', params: { code } } as Href);
-    };
-
-    Linking.getInitialURL()
-      .then(handleInviteUrl)
-      .catch(() => undefined);
-    const subscription = Linking.addEventListener('url', ({ url }) => handleInviteUrl(url));
+      if (code) void stashPendingInviteCode(code);
+    });
     return () => subscription.remove();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     let hadActiveCounterSession = (useTallyStore.getState().current?.drinks.length ?? 0) > 0;
@@ -336,7 +338,7 @@ export default function RootLayout() {
         void trackClientEvent({ event: 'app_open', severity: 'info' });
         // A Parta invite deep link tapped before the account existed was stashed;
         // now that an account is ready, claim it (fires a Parta refresh on success).
-        void consumeAndClaimPendingInviteCode();
+        void launchInviteStashed.then(() => consumeAndClaimPendingInviteCode());
         // Light up the Parta tab badge without waiting for the first Parta visit.
         seedPartaBadge();
         // Existing installs may hold local diary drinks from before /v1/drinks
