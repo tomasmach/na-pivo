@@ -2,10 +2,11 @@
  * Cold start from a Parta invite link (app/_layout.tsx).
  *
  * expo-router answers a push made before the root layout renders its Stack by
- * pushing a second root route, which remounts the layout. In 2.1.1 each
- * remount re-read the launch URL and pushed again while fonts loaded, so one
- * tap sent up to 46 claims and launch syncs. The harness below reproduces
- * that remount; one invite link must still claim and sync exactly once.
+ * pushing a second root route, which remounts the layout. In 2.1.1 the layout
+ * pushed the invite screen itself, and each remount re-read the launch URL and
+ * pushed again while fonts loaded, so one tap sent up to 46 claims and launch
+ * syncs. Expo Router now opens the invite (+native-intent); the harness keeps
+ * the remount so one invite link must still claim and sync exactly once.
  */
 
 import React from 'react';
@@ -259,13 +260,7 @@ async function settle() {
   }
 }
 
-function invitePushes() {
-  return mockPush.mock.calls.filter(
-    ([href]) => (href as { pathname?: string }).pathname === '/parta/pozvanka',
-  );
-}
-
-it('claims, syncs and opens one invite link once while fonts load', async () => {
+it('claims and syncs one invite link once, without pushing from the root layout', async () => {
   let renderer: { unmount: () => void } | undefined;
   await act(async () => {
     renderer = TestRenderer.create(<Harness />);
@@ -280,19 +275,14 @@ it('claims, syncs and opens one invite link once while fonts load', async () => 
     );
   });
   await settle();
-  expect(sendFriendRequest).toHaveBeenCalledTimes(1);
-  expect(invitePushes()).toHaveLength(0);
-
   mockFontsLoaded = true;
   await act(async () => {
     mockFontListeners.forEach((listener) => listener());
   });
   await settle();
 
+  expect(mockPush).not.toHaveBeenCalled();
   expect(mockRemounts).toBe(0);
-  expect(invitePushes()).toEqual([
-    [{ pathname: '/parta/pozvanka', params: { code: 'YVM4Q4rcJmNs' } }],
-  ]);
   expect(sendFriendRequest).toHaveBeenCalledTimes(1);
   expect(sendFriendRequest).toHaveBeenCalledWith({ inviteCode: 'YVM4Q4rcJmNs' });
   expect(restorePubRatings).toHaveBeenCalledTimes(1);
@@ -301,12 +291,11 @@ it('claims, syncs and opens one invite link once while fonts load', async () => 
     (trackClientEvent as jest.Mock).mock.calls.filter(([event]) => event.event === 'app_open'),
   ).toHaveLength(1);
 
-  // A later remount, whatever its cause, must not reopen or re-claim the launch link.
+  // A later remount, whatever its cause, must not re-claim the launch link.
   await act(async () => {
     mockRemountRoot?.();
   });
   await settle();
-  expect(invitePushes()).toHaveLength(1);
   expect(sendFriendRequest).toHaveBeenCalledTimes(1);
 
   await act(async () => {
