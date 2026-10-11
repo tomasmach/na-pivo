@@ -16,7 +16,7 @@ def test_active_hostless_event_is_not_visible_or_joinable():
     client = APIClient()
 
     host, host_token = _account("temporary-host")
-    outsider, outsider_token = _account("outsider-active-hostless")
+    outsider, outsider_token = _account("outsider-hostless")
 
     response = _create(client, host_token, capacity=10)
     assert response.status_code == status.HTTP_201_CREATED

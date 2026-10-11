@@ -87,6 +87,52 @@ jobs:
       - name: Test
         run: uv run pytest
 
+  backend-postgres:
+    name: Backend PostgreSQL tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgres://napivo@localhost:5432/napivo
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: napivo
+          POSTGRES_USER: napivo
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U napivo -d napivo"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Compile translations
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gettext
+          uv run python manage.py compilemessages --ignore=.venv
+
+      - name: Test
+        run: uv run pytest
+
   dependency-review:
     name: Dependency review
     if: github.event_name == 'pull_request'

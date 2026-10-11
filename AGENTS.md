@@ -90,7 +90,7 @@ Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testo
 - Čistě dokumentační změny ověř kontrolou diffu, odkazů a skill metadat; bez změny chování nepotřebují aplikační sadu testů.
 - Mobilní E2E (`e2e/README.md`) pouštěj u běžné změny jen na dotčenou oblast nebo soubor (`npm run e2e:full -- e2e/tests/diary/`). Celá iOS sada trvá kolem hodiny, čtyři scénáře deníku devět minut. `e2e:full` bez filtru patří k releasu, změně E2E runneru nebo mému výslovnému pokynu. `--stability` pouštěj jen na nový nebo změněný test, ten musí projít třikrát.
 - Testy cíleně podle rizika: `npm run typecheck`, `npm test`, `npm run lint`; backend `cd backend && uv run pytest`, `uv run ruff check`. CI na `dev` jede totéž plus `audit-ci`, `pip-audit` a dependency-review.
-- Backend testy běží na SQLite, produkce je Postgres 17 — migraci závislou na PG chování (indexy, constrainty) ověř proti Postgresu z `backend/docker-compose.yml`, ne jen pytestem.
+- Backend testy v CI běží na SQLite i na Postgresu 17, který používá produkce. `Backend PostgreSQL tests` musí před merge projít, hlavně u migrací závislých na chování Postgresu. Lokální Postgres z `backend/docker-compose.yml` spouštěj jen pro diagnostiku jeho selhání.
 
 ## Jak to funguje
 

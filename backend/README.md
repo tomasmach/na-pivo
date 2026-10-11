@@ -92,7 +92,7 @@ uv run pytest
 uv run ruff check
 ```
 
-Tests use an in-memory SQLite database and should not hit the network. Mock external services or use saved fixtures unless you are deliberately writing a separate live integration check.
+Tests use an in-memory SQLite database locally; CI also runs them on PostgreSQL 17 (`Backend PostgreSQL tests`). They should not hit the network. Mock external services or use saved fixtures unless you are deliberately writing a separate live integration check.
 
 ---
 
@@ -527,7 +527,7 @@ back.
 
 Migrations run inside the container on start. `set -e` means a failed migration stops `napivo-web` before gunicorn; check `docker compose logs napivo-web` if it will not go healthy.
 
-Tests run on SQLite, which does not create PostgreSQL `varchar_pattern_ops` `_like` indexes, so verify migrations that depend on PostgreSQL behavior before deploying.
+SQLite does not create PostgreSQL `varchar_pattern_ops` `_like` indexes. The `Backend PostgreSQL tests` CI job runs every migration and test on PostgreSQL 17 before a merge to `dev`.
 
 ---
 
