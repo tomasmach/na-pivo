@@ -213,6 +213,16 @@ const onboardingDecisionPromise = useOnboardingStore
   .getState()
   .decide(getCachedAuthenticationState);
 
+// The launch URL is fixed for the process, so read it once. Stashing it now
+// lets the launch claim find the code before the invite screen can open.
+let launchInviteCode: Promise<string | null> | null = Linking.getInitialURL()
+  .then((url) => {
+    const code = parseInviteCodeFromUrl(url);
+    if (code) void stashPendingInviteCode(code);
+    return code;
+  })
+  .catch(() => null);
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);
   const router = useRouter();
@@ -277,19 +287,22 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError, router]);
 
   useEffect(() => {
-    const handleInviteUrl = (url: string | null) => {
+    // A push before the Stack below mounts makes expo-router push a second root
+    // route, which remounts this layout and replays every launch effect.
+    if (!fontsLoaded && !fontError) return;
+    const openInvite = (code: string | null) => {
+      if (code) router.push({ pathname: '/parta/pozvanka', params: { code } } as Href);
+    };
+    void launchInviteCode?.then(openInvite);
+    launchInviteCode = null;
+    const subscription = Linking.addEventListener('url', ({ url }) => {
       const code = parseInviteCodeFromUrl(url);
       if (!code) return;
       void stashPendingInviteCode(code);
-      router.push({ pathname: '/parta/pozvanka', params: { code } } as Href);
-    };
-
-    Linking.getInitialURL()
-      .then(handleInviteUrl)
-      .catch(() => undefined);
-    const subscription = Linking.addEventListener('url', ({ url }) => handleInviteUrl(url));
+      openInvite(code);
+    });
     return () => subscription.remove();
-  }, [router]);
+  }, [fontsLoaded, fontError, router]);
 
   useEffect(() => {
     let hadActiveCounterSession = (useTallyStore.getState().current?.drinks.length ?? 0) > 0;
