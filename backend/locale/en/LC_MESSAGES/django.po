@@ -479,6 +479,17 @@ msgstr "A mate is out for a beer"
 msgid "%(name)s sedí v %(pub)s. Nechceš se přidat?"
 msgstr "%(name)s is sitting in %(pub)s. Fancy joining?"
 
+msgid "Kamarád jde tour de pub"
+msgstr "A mate is on a pub crawl"
+
+#, python-format
+msgid "%(name)s jde tour „%(tour)s“ a teď sedí tady: %(pub)s. Přidáš se na jedno?"
+msgstr "%(name)s is on the tour “%(tour)s”, sitting here now: %(pub)s. Up for one?"
+
+#, python-format
+msgid "%(name)s jde tour „%(tour)s“ a teď míří sem: %(pub)s. Přidáš se na jedno?"
+msgstr "%(name)s is on the tour “%(tour)s”, heading here now: %(pub)s. Up for one?"
+
 msgid "Tahle hláška už vyšuměla."
 msgstr "This ping has gone flat."
 
@@ -882,5 +893,677 @@ msgstr "Sorry about 2.0"
 msgid "Nová verze se nepovedla. Stará appka je zpátky, stačí aktualizovat."
 msgstr "The new version missed the mark. The old app is back, just update."
 
+msgid "Souřadnice hospody nejsou platné."
+msgstr "The pub coordinates are invalid."
+
+msgid "Vyber platnou časovou zónu."
+msgstr "Choose a valid time zone."
+
+msgid "K času srazu vyber také datum."
+msgstr "Choose a date for the meeting time."
+
+msgid "Sraz může být nejvýše za 90 dní."
+msgstr "The meeting can be up to 90 days from now."
+
+msgid "Tento čas kvůli změně času neexistuje."
+msgstr "This time does not exist because the clocks change."
+
+msgid "Každou hospodu přidej jen jednou."
+msgstr "Add each pub only once."
+
+msgid "Tour se mezitím změnila. Obnov její publikovanou verzi."
+msgstr "The tour has changed. Load its published version."
+
+msgid "Nejdřív smaž některou uloženou tour."
+msgstr "Delete a saved tour first."
+
+msgid "Nejdřív zruš některý z aktivních odkazů."
+msgstr "Revoke an active link first."
+
+msgid "Tenhle odkaz už neplatí."
+msgstr "This link is no longer valid."
+
+msgid "Požádej autora o nový odkaz."
+msgstr "Ask the author for a new link."
+
+msgid "Sraz"
+msgstr "Meeting"
+
+msgid "Výzva:"
+msgstr "Challenge:"
+
+msgid "Otevřít v Na pivo"
+msgstr "Open in Na pivo"
+
+msgid "Navigovat na sraz"
+msgstr "Directions to the meeting"
+
+msgid "Tohle je plán hospod. Poloha lidí ani jejich průchod se nesdílí."
+msgstr "This is a pub itinerary. People's locations and personal progress are not shared."
+
+msgid "Zkus to prosím za chvíli."
+msgstr "Please try again shortly."
+
 msgid "Polohu podle adresy se nepodařilo ověřit. Zkus to znovu."
 msgstr "The address location could not be verified. Try again."
+
+msgid "Tuhle hospodu u veřejné tour neznám. Vyměň ji za hospodu z hledání."
+msgstr "I don't know this pub for a public tour. Swap it for a pub from search."
+
+msgid "Tuhle hospodu komunita skryla. Vyměň ji za jinou."
+msgstr "The community hid this pub. Swap it for another one."
+
+msgid "Zveřejnit může jen přihlášený."
+msgstr "Only signed-in users can publish."
+
+msgid "Nejdřív si vyber přezdívku. Bude u tvých veřejných tour."
+msgstr "Pick a nickname first. It appears on your public tours."
+
+msgid "Veřejné tour jdou jen s veřejným profilem."
+msgstr "Public tours need a public profile."
+
+msgid "Tour je skrytá po nahlášení. Podívám se na ni."
+msgstr "This tour is hidden after reports. I'll take a look."
+
+msgid "Nejdřív odsouhlas pravidla pro veřejné tour."
+msgstr "Accept the public tour rules first."
+
+#, python-format
+msgid "Veřejných tour můžeš mít nejvýš %(count)s."
+msgstr "You can have at most %(count)s public tours."
+
+msgid "Tohle nezveřejním. Veřejné tour nesmí být o tom, kdo víc nebo rychleji vypije, ani obsahovat odkazy nebo telefonní čísla."
+msgstr "I won't publish this. Public tours can't be about who drinks more or faster, and can't include links or phone numbers."
+
+msgid "Vlastní tour nejde nahlásit."
+msgstr "You can't report your own tour."
+
+#, python-format
+msgid "Veřejná tour od %(nickname)s"
+msgstr "Public tour by %(nickname)s"
+
+msgid "Navigovat na první hospodu"
+msgstr "Directions to the first pub"
+
+msgid "Připojit partu může jen přihlášený s přezdívkou."
+msgstr "Only a signed-in walker with a nickname can bring a crew."
+
+msgid "Tahle veřejná tour už není."
+msgstr "This public tour is gone."
+
+msgid "Tahle tour se mezitím změnila, parta jde podle nové verze."
+msgstr "This tour has changed. The crew follows the new version."
+
+msgid "Tenhle průchod patří někomu jinému."
+msgstr "This walk belongs to someone else."
+
+msgid "Připojit se může jen přihlášený s přezdívkou."
+msgstr "Only a signed-in walker with a nickname can join."
+
+msgid "K tomuhle průchodu se připojit nejde."
+msgstr "You can't join this walk."
+
+# Home page (pubs/templates/pubs/home.html, pubs/home_views.py)
+msgid "Na pivo: aplikace s kompasem na hospodu a pivním deníčkem"
+msgstr "Na pivo: a pub compass and beer diary app"
+
+msgid "Ceny piva"
+msgstr "Beer prices"
+
+msgid "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam."
+msgstr "The compass points to the nearest pub, the counter keeps a tally of your beers and your crew knows where you are sitting. Free, no ads."
+
+msgid "Pivní tácek s čárkami na dubovém stole."
+msgstr "A beer coaster with tally marks on an oak table."
+
+msgid "Přeskočit na obsah"
+msgstr "Skip to content"
+
+msgid "Hlavní navigace"
+msgstr "Main navigation"
+
+msgid "Co umí"
+msgstr "What it does"
+
+msgid "Soukromí"
+msgstr "Privacy"
+
+msgid "Čárkuj piva jak na tácku."
+msgstr "Keep a tally, pub style."
+
+msgid "Každé pivo je jedno ťuknutí. Počítadlo hlídá počet i útratu, zapíše se i bez signálu a ráno z něj máš deník celého večera."
+msgstr "Every beer is one tap. The counter keeps the count and the tab, saves without signal, and in the morning you have a diary of the whole night."
+
+msgid "Stáhnout pro iPhone"
+msgstr "Download for iPhone"
+
+msgid "Stáhnout pro Android"
+msgstr "Download for Android"
+
+msgid "Přičárkovat pivo na tácek"
+msgstr "Add a beer to the coaster"
+
+msgid "Čistej tácek."
+msgstr "Clean coaster."
+
+msgid "Ubrat"
+msgstr "Take one off"
+
+msgid "Ťukni na tácek."
+msgstr "Tap the coaster."
+
+msgid "Ještě jedno?"
+msgstr "One more?"
+
+msgid "Pátá čárka se škrtá."
+msgstr "The fifth mark crosses out the other four."
+
+msgid "Víc se jich sem nevejde. Do appky jo."
+msgstr "No room for more here. The app has plenty."
+
+msgid "pivo"
+msgstr "beer"
+
+msgid "piva"
+msgstr "beers"
+
+msgid "piv"
+msgstr "beers"
+
+msgid "Kompas tě dovede."
+msgstr "The compass gets you there."
+
+msgid "Šipka ukáže nejbližší hospodu, jak je daleko a co tam čepujou. Nesedí ti? Ťukni na „Dej mi jinou“."
+msgstr "The arrow points to the nearest pub and shows how far it is and what they pour. Not your place? Tap “Give me another”."
+
+msgid "Cinkni partě, že sedíš."
+msgstr "Ping the crew when you sit down."
+
+msgid "Jdeš na pivo? Cinkni a parta to hned ví. Kámoši kývnou, jestli dorazí."
+msgstr "Going for a beer? Ping and the crew knows right away. Your mates say whether they are coming."
+
+msgid "Ráno víš, kolik to stálo"
+msgstr "In the morning you know what it cost"
+
+msgid "Účet"
+msgstr "The bill"
+
+msgid "Co tě Na pivo stojí"
+msgstr "What Na pivo costs you"
+
+msgid "Appka"
+msgstr "The app"
+
+msgid "0 Kč"
+msgstr "0 CZK"
+
+msgid "Reklamy"
+msgstr "Ads"
+
+msgid "žádné"
+msgstr "none"
+
+msgid "GPS trasa"
+msgstr "GPS track"
+
+msgid "neukládám"
+msgstr "not stored"
+
+msgid "Bez signálu"
+msgstr "No signal"
+
+msgid "zapíše se"
+msgstr "still saved"
+
+msgid "Jazyk"
+msgstr "Language"
+
+msgid "česky, anglicky"
+msgstr "Czech, English"
+
+msgid "Celkem"
+msgstr "Total"
+
+msgid "Díky a přijď zas. Tomáš"
+msgstr "Thanks, come again. Tomáš"
+
+msgid "Na zdraví."
+msgstr "Cheers."
+
+msgid "Na pivo dělá Tomáš Mach"
+msgstr "Na pivo is made by Tomáš Mach"
+
+msgid "Dokumenty a kontakt"
+msgstr "Documents and contact"
+
+msgid "Podmínky"
+msgstr "Terms"
+
+msgid "Smazání účtu"
+msgstr "Delete account"
+
+msgid "Napiš mi"
+msgstr "Email me"
+
+msgid "Ťukni a čárkuj!"
+msgstr "Tap to tally!"
+
+msgid "Co dalšího Na pivo umí"
+msgstr "What else Na pivo does"
+
+msgid "Piva, ceny i hospody zůstanou v deníku."
+msgstr "Beers, prices and pubs stay in your diary."
+
+msgid "Zmapuj hospodu"
+msgstr "Map a pub"
+
+msgid "Šipky, kulečník nebo zahrádka. Co zapíšeš ty, uvidí další."
+msgstr "Darts, pool or a beer garden. What you add, the next person sees."
+
+msgid "Staň se FotoPivařem"
+msgstr "Win Beer Snap"
+
+msgid "Soutěž o nejlepší pivní fotku. Každých 14 dní nové kolo."
+msgstr "A contest for the best beer photo. A new round every 14 days."
+
+msgid "Stoupej po levelech"
+msgstr "Level up"
+
+msgid "Za piva sbíráš XP jako Pivař, za zmapované hospody jako Mapér."
+msgstr "Beers earn you XP as a Drinker, mapped pubs as a Mapper."
+
+msgid "Naplánuj tah po hospodách a pošli partě odkaz."
+msgstr "Plan a pub crawl and send the crew a link."
+
+msgid "Brzy"
+msgstr "Soon"
+
+msgid "Název piva musí mít aspoň 2 znaky."
+msgstr "Beer name must have at least 2 characters."
+
+msgid "Název piva nejde kombinovat se značkami piva."
+msgstr "Beer name cannot be combined with beer brands."
+
+msgid "Pošli lat i lng zároveň."
+msgstr "Send lat and lng together."
+
+#, python-format
+msgid "Srdcovek můžeš mít nejvýš %(limit)s. Nějakou odeber a zkus to znovu."
+msgstr "You can have at most %(limit)s favourite pubs. Remove one and try again."
+
+msgid "Pozvánka na tour"
+msgstr "Tour invite"
+
+#, python-format
+msgid "%(name)s tě zve na tour „%(tour)s“, %(date)s v %(time)s. Jdeš?"
+msgstr "%(name)s is inviting you on the tour “%(tour)s”, %(date)s at %(time)s. You in?"
+
+#, python-format
+msgid "%(name)s tě zve na tour „%(tour)s“, %(date)s. Jdeš?"
+msgstr "%(name)s is inviting you on the tour “%(tour)s”, %(date)s. You in?"
+
+#, python-format
+msgid "%(name)s tě zve na tour „%(tour)s“. Jdeš?"
+msgstr "%(name)s is inviting you on the tour “%(tour)s”. You in?"
+
+#. Translators: Django date format for the day in a tour invite push, e.g. "pá 2. 10."
+msgctxt "tour invite date"
+msgid "D j. n."
+msgstr "D j M"
+
+msgid "Tuhle tour nenacházím."
+msgstr "I can't find this tour."
+
+msgid "Máš zapnutý neviditelný režim, pozvánka by nikomu nepřišla."
+msgstr "Invisible mode is on, so the invite would reach nobody."
+
+msgid "Tour nemá platný odkaz. Vytvoř ho a pozvi je znovu."
+msgstr "The tour has no valid link. Create one and invite them again."
+
+msgid "Pozvat jde jen kámoše z party."
+msgstr "You can only invite mates from your crew."
+
+#, python-format
+msgid "Na jednu tour pozveš nejvýš %(count)s kámošů."
+msgstr "You can invite at most %(count)s mates to one tour."
+
+msgid "Na tuhle tour pozvánku nemáš."
+msgstr "You don't have an invite to this tour."
+
+msgid "Kolik stojí pivo v hospodě"
+msgstr "What a beer costs in Czech pubs"
+
+#, python-format
+msgid "Cena piva %(year)s: kolik stojí pivo v hospodě"
+msgstr "Beer prices %(year)s: what a beer costs in Czech pubs"
+
+#, python-format
+msgid "Medián ceny piva v českých hospodách je %(price)s Kč. Najdeš tu ceny po městech i nejlevnější hospody podle toho, co lidi zapsali v Na pivo."
+msgstr "The median beer price in Czech pubs is %(price)s CZK. See prices by city and the cheapest pubs, based on what people logged in Na pivo."
+
+#, python-format
+msgid "Kolik stojí pivo: %(city)s"
+msgstr "What a beer costs in %(city)s"
+
+#, python-format
+msgid "Cena piva %(city)s %(year)s: medián %(price)s Kč"
+msgstr "Beer prices in %(city)s %(year)s: median %(price)s CZK"
+
+#, python-format
+msgid "%(city)s: medián ceny piva v hospodě je %(price)s Kč a polovina hospod má nejlevnější pivo mezi %(low)s a %(high)s Kč. Podívej se, kde ho čepujou nejlevněji."
+msgstr "%(city)s: the median beer price in a pub is %(price)s CZK and half of the pubs have their cheapest beer between %(low)s and %(high)s CZK. See where it is poured cheapest."
+
+msgid "Ceny v dalších městech"
+msgstr "Prices in other cities"
+
+msgid "Hospody od nejlevnější"
+msgstr "Pubs, cheapest first"
+
+msgid "Medián ceny piva v hospodách po městech a pražských městských částech, z cen, které lidi zapsali v Na pivo."
+msgstr "Median beer prices in Czech pubs by city and Prague district, from prices people logged in Na pivo."
+
+msgid "Medián ceny piva v Praze, v Brně a v celé ČR."
+msgstr "Median beer price in Prague, in Brno and across Czechia."
+
+msgid "Načíst znovu"
+msgstr "Reload"
+
+msgid "Celá ČR"
+msgstr "Czechia"
+
+msgid "Kč"
+msgstr "CZK"
+
+#, python-format
+msgid "polovina hospod mezi %(low)s a %(high)s Kč"
+msgstr "half of pubs between %(low)s and %(high)s CZK"
+
+msgid "zatím málo cen"
+msgstr "not enough prices yet"
+
+msgid "hlavně ceny starší 3 měsíců"
+msgstr "mostly prices over 3 months old"
+
+msgid "cena starší 3 měsíců"
+msgstr "price over 3 months old"
+
+msgid "Města"
+msgstr "Cities"
+
+msgid "Město"
+msgstr "City"
+
+msgid "Medián"
+msgstr "Median"
+
+msgid "Tady je polovina hospod"
+msgstr "Half the pubs are here"
+
+msgid "Praha podle městských částí"
+msgstr "Praha by district"
+
+msgid "Městská část"
+msgstr "District"
+
+msgid "Seřadit"
+msgstr "Sort"
+
+msgid "Nejvíc hospod"
+msgstr "Most pubs"
+
+msgid "Podle čísla"
+msgstr "By number"
+
+msgid "Nejlevnější"
+msgstr "Cheapest"
+
+msgid "Nejdražší"
+msgstr "Priciest"
+
+msgid "Najdi město"
+msgstr "Find a city"
+
+msgid "Najdi městskou část"
+msgstr "Find a district"
+
+#, python-format
+msgid "Ukázat všechna města (%(count)s)"
+msgstr "Show all cities (%(count)s)"
+
+#, python-format
+msgid "Ukázat všechny městské části (%(count)s)"
+msgstr "Show all districts (%(count)s)"
+
+msgid "Sbalit"
+msgstr "Show fewer"
+
+msgid "Zrušit hledání"
+msgstr "Clear search"
+
+msgid "Tohle město tu zatím nemám. Ukážu ho, až budu mít ceny aspoň z 5 tamních hospod."
+msgstr "I don't have this city yet. It shows up once I have prices from at least 5 of its pubs."
+
+msgid "Tuhle část tu zatím nemám. Ukážu ji, až budu mít ceny aspoň z 5 tamních hospod."
+msgstr "I don't have this district yet. It shows up once I have prices from at least 5 of its pubs."
+
+#, python-format
+msgid "%(pubs)s hospod"
+msgstr "%(pubs)s pubs"
+
+msgid "Nejlevnější hospody"
+msgstr "Cheapest pubs"
+
+msgid "Ceny se teď nedotáhly. Zkus to za minutu."
+msgstr "Prices didn't load just now. Try again in a minute."
+
+msgid "Zatím mám málo cen."
+msgstr "I don't have enough prices yet."
+
+msgid "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod."
+msgstr "From each pub I take the cheapest beer of 0.4 l or more that someone logged in Na pivo in the last year, and I show a city or district once I have prices from at least 5 of its pubs."
+
+msgid "Znáš cenu ve své hospodě?"
+msgstr "Know the price at your local?"
+
+msgid "Zapiš ji v Na pivo."
+msgstr "Log it in Na pivo."
+
+#, python-format
+msgid "Medián nejlevnějšího piva od 0,4 l, stav k %(date)s"
+msgstr "Median of the cheapest beer of 0.4 l or more, as of %(date)s"
+
+#, python-format
+msgid "Medián nejlevnějšího piva od 0,4 l z %(pubs)s hospod, stav k %(date)s"
+msgstr "Median of the cheapest beer of 0.4 l or more from %(pubs)s pubs, as of %(date)s"
+
+msgid "Kde se čepuje které pivo"
+msgstr "Where each beer is on tap"
+
+msgid "Piva"
+msgstr "Beers"
+
+msgid "Značky"
+msgstr "Brands"
+
+msgid "Hospody"
+msgstr "Pubs"
+
+msgid "Obvykle za 0,5 l"
+msgstr "Typical per 0.5 l"
+
+msgid "Nejlevněji za 0,5 l"
+msgstr "Cheapest per 0.5 l"
+
+#, python-format
+msgid "Potvrzeno za poslední 3 měsíce, stav k %(date)s"
+msgstr "Confirmed in the last 3 months, as of %(date)s"
+
+msgid "Kde jsi"
+msgstr "You are here"
+
+#, python-format
+msgid "Piva, která za poslední 3 měsíce potvrdily aspoň 3 hospody. Stav k %(date)s."
+msgstr "Beers that at least 3 pubs confirmed in the last 3 months. As of %(date)s."
+
+#, python-format
+msgid "Podle lístků, které lidi zapsali v Na pivo. Stav k %(date)s."
+msgstr "From the menus people logged in Na pivo. As of %(date)s."
+
+msgid "potvrzené za poslední 3 měsíce"
+msgstr "confirmed in the last 3 months"
+
+msgid "Piva se teď nedotáhla. Zkus to za minutu."
+msgstr "Beers didn't load just now. Try again in a minute."
+
+
+msgid "Tohle pivo tu teď nemám. Ukážu ho, až ho za poslední 3 měsíce potvrdí aspoň 3 hospody."
+msgstr "I don't have this beer right now. It shows up once at least 3 pubs confirm it within 3 months."
+
+msgid "Tohle pivo tu zatím nemám. Ukážu ho, až ho za poslední 3 měsíce potvrdí aspoň 3 hospody."
+msgstr "I don't have this beer yet. It shows up once at least 3 pubs confirm it within 3 months."
+
+msgid "Zatím nemám dost lístků. Pivo tu ukážu, až ho za poslední 3 měsíce potvrdí aspoň 3 hospody."
+msgstr "Not enough menus yet. A beer shows up here once at least 3 pubs confirm it within 3 months."
+
+msgid "Ostatní piva"
+msgstr "Other beers"
+
+msgid "Najdi hospodu nebo město"
+msgstr "Find a pub or city"
+
+msgid "Najdi pivo"
+msgstr "Find a beer"
+
+
+msgid "Hospoda"
+msgstr "Pub"
+
+msgid "Pivo"
+msgstr "Beer"
+
+msgid "Naposledy potvrzeno"
+msgstr "Last confirmed"
+
+
+msgid "pípy se tu střídají"
+msgstr "rotating taps"
+
+msgid "potvrzeno"
+msgstr "confirmed"
+
+msgid "naposledy potvrzeno"
+msgstr "last confirmed"
+
+
+msgid "cena chybí"
+msgstr "no price yet"
+
+
+
+#, python-format
+msgid "Ukázat všechny hospody (%(count)s)"
+msgstr "Show all pubs (%(count)s)"
+
+#, python-format
+msgid "Ukázat všechna piva (%(count)s)"
+msgstr "Show all beers (%(count)s)"
+
+
+msgid "Víš o další hospodě?"
+msgstr "Know another pub?"
+
+msgid "Zapiš její lístek v Na pivo."
+msgstr "Log its menu in Na pivo."
+
+msgid "hospoda"
+msgstr "pub"
+
+msgid "hospody"
+msgstr "pubs"
+
+
+
+
+
+#, python-format
+msgid "Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, obvykle %(price)s Kč za 0,5 l."
+msgstr "Where %(beer)s is on tap and for how much: %(pubs)s with a recent entry, usually %(price)s CZK for 0.5 l."
+
+#, python-format
+msgid "Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, u každé cena a datum posledního potvrzení."
+msgstr "Where %(beer)s is on tap and for how much: %(pubs)s with a recent entry, each with its price and the date it was last confirmed."
+
+#, python-format
+msgid "Kde se čepuje %(beer)s"
+msgstr "Where %(beer)s is on tap"
+
+#, python-format
+msgid "%(beer)s: kde se čepuje a za kolik"
+msgstr "%(beer)s: where it's on tap and for how much"
+
+#, python-format
+msgid "Piva značky %(brand)s a kde se čepují"
+msgstr "%(brand)s beers and where they're on tap"
+
+#, python-format
+msgid "Piva značky %(brand)s a hospody, kde se čepují. U každé hospody cena a datum posledního potvrzení."
+msgstr "%(brand)s beers and the pubs that pour them, each with its price and the date it was last confirmed."
+
+msgid "Najdi hospody, kde čepují tvoje pivo, za kolik a kdy to tam naposledy někdo potvrdil. Podle lístků, které lidi zapisují v Na pivo."
+msgstr "Find the pubs that pour your beer, what it costs there and when someone last confirmed it. From the menus people log in Na pivo."
+
+msgid "Obvykle"
+msgstr "Typical"
+
+msgid "Nejlevněji"
+msgstr "Cheapest"
+
+msgid "za 0,5 l"
+msgstr "per 0.5 l"
+
+#, python-format
+msgid "za %(litres)s l"
+msgstr "per %(litres)s l"
+
+msgid "Cena za 0,5 l"
+msgstr "Price per 0.5 l"
+
+msgid "Naposledy potvrzené"
+msgstr "Recently confirmed"
+
+msgid "Zápisy starší než 3 měsíce"
+msgstr "Entries older than 3 months"
+
+msgid "starší než 3 měsíce"
+msgstr "older than 3 months"
+
+msgid "na mapě"
+msgstr "on the map"
+
+msgid "Takovou hospodu ani město tu s tímhle pivem nemám."
+msgstr "No pub or city matches that."
+
+msgid "Hospody se teď nedotáhly. Zkus to za minutu."
+msgstr "Pubs didn't load just now. Try again in a minute."
+
+msgid "Podívej se na piva, která tu mám."
+msgstr "Have a look at the beers I do have."
+
+msgid "Tuhle značku tu teď nemám. Ukážu ji, až tu budou mít stránku aspoň 2 její piva."
+msgstr "I don't have this brand right now. It shows up once at least 2 of its beers have their own page."
+
+msgid "Tohle pivo neznám"
+msgstr "I don't know this beer"
+
+msgid "Tuhle značku neznám"
+msgstr "I don't know this brand"
+
+msgid "Hospodu ukážu, když u ní někdo za poslední rok zapsal pivo na lístek nebo si ho tam dal i s cenou. Datum je poslední takový zápis a co je starší než 3 měsíce, označím. Pivo má vlastní stránku, když ho za poslední 3 měsíce potvrdily aspoň 3 hospody."
+msgstr "A pub shows up when someone logged the beer on its menu within the last year, or logged a drink of it there with its price. The date is the latest such entry, and anything older than 3 months is marked. A beer has its own page when at least 3 pubs confirmed it in the last 3 months."
+
+#, python-format
+msgid "Víš, kde se čepuje %(beer)s?"
+msgstr "Know where %(beer)s is on tap?"
+
+msgid "Zapiš lístek té hospody v Na pivo."
+msgstr "Log that pub's menu in Na pivo."

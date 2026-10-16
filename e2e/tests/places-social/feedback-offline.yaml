@@ -1,0 +1,79 @@
+appId: ${MAESTRO_APP_ID}
+name: Offline feedback survives restart and is delivered exactly once
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /report
+- evalScript: ${output.local.request('/media', {})}
+- evalScript: ${output.local.offline()}
+- tapOn: Přidat přílohu
+- tapOn: Vybrat z galerie
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: {id: PXGGridLayout-Info, index: 0}
+          timeout: 15000
+      - waitForAnimationToEnd
+      - evalScript: ${output.local.screenshot('places-feedback-gallery')}
+      # The first thumbnail is a seeded synthetic image; other simulator stock photos may follow.
+      - tapOn: {id: PXGGridLayout-Info, index: 0}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: {text: 'Photo taken on .*', index: 0}
+          timeout: 15000
+      - waitForAnimationToEnd
+      - evalScript: ${output.local.screenshot('places-feedback-gallery')}
+      - tapOn: {text: 'Photo taken on .*', index: 0}
+      - runFlow:
+          when: {visible: Done}
+          commands:
+            - tapOn: Done
+- assertVisible: Příloha je připravená
+- scrollUntilVisible:
+    element: {id: feedback-message}
+    direction: UP
+- tapOn: {id: feedback-message}
+- inputText: E2E Test zprávy bez signálu.
+# The message is multiline; dismiss by its static attachment label, not Enter.
+- scrollUntilVisible:
+    element: {text: 'Fotka nebo screenshot \(nepovinné\)'}
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- tapOn: 'Fotka nebo screenshot \(nepovinné\)'
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: {text: Odeslat zpětnou vazbu}
+    direction: DOWN
+    centerElement: true
+- tapOn: Odeslat zpětnou vazbu
+- assertVisible: Díky!
+- assertVisible: 'Zpráva dorazí, i kdyby teď zrovna nebylo připojení\. Odešlu ji, jakmile budeš online\.'
+- evalScript: ${output.local.screenshot('places-feedback-queued')}
+- runFlow: ../../maestro/restart.yaml
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- evalScript: ${output.local.poll(function () { output.ps.check('feedback'); }, 15000)}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /report
+- assertVisible: Napiš mi
+- evalScript: ${output.local.screenshot('places-feedback-delivered')}
+- evalScript: ${output.ps.check('feedback')}

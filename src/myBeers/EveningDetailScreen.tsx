@@ -18,7 +18,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { formatVolume, t } from '@/i18n';
@@ -30,7 +30,8 @@ import {
   flushDrinksQueue,
 } from '@/data/drinksQueue';
 import { buildDrinkEntry } from '@/data/drinksClient';
-import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { buildHistoricalDrinkEntry } from '@/data/drinksHistorySync';
+import { enqueueDelete, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import {
@@ -38,6 +39,7 @@ import {
   ChevronLeftIcon,
   HandPlatterIcon,
   HouseIcon,
+  InfoIcon,
   MapPinIcon,
   MinusIcon,
   PencilIcon,
@@ -52,6 +54,7 @@ import {
   normalizeDrinkType,
   normalizePlaceContext,
 } from '@/drinks/drinkTypes';
+import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
@@ -68,6 +71,7 @@ import {
   sessionBreakdown,
   eveningPriceLabel,
   sessionDrinkActionGroups,
+  canFixRejectedField,
   sessionDrinkSummary,
   eveningDateLabel,
   type DrinkActionGroup,
@@ -82,6 +86,15 @@ import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { useToastStore } from '@/stores/toastStore';
+import { HomeTransitCard } from '@/transit/HomeTransitCard';
+
+/** The fix-sheet line for a refused field the form can change. */
+function rejectedFieldHint(field: string | undefined): string | undefined {
+  if (field === 'beer.volume_ml') return t.myBeers.fixDrinkHintVolume;
+  if (field === 'beer.price_czk') return t.myBeers.fixDrinkHintPrice;
+  if (field === 'beer.name') return t.myBeers.fixDrinkHintName;
+  return undefined;
+}
 
 function latestDrinkAt(session: TallySession): string {
   let latest = session.startedAt;
@@ -110,11 +123,15 @@ export default function EveningDetailScreen() {
   const updateDrinkNameInSession = useTallyStore((s) => s.updateDrinkNameInSession);
   const addDrinkToSession = useTallyStore((s) => s.addDrinkToSession);
   const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
+  const markDrinkRejected = useTallyStore((s) => s.markDrinkRejected);
+  const fixDrinkInSession = useTallyStore((s) => s.fixDrinkInSession);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
   const [editingGroup, setEditingGroup] = useState<DrinkActionGroup | null>(null);
   const [addingDrink, setAddingDrink] = useState(false);
   const [addDrinkFormNonce, setAddDrinkFormNonce] = useState(0);
+  const [fixingGroup, setFixingGroup] = useState<DrinkActionGroup | null>(null);
+  const [fixFormNonce, setFixFormNonce] = useState(0);
   const [publishSheetVisible, setPublishSheetVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
 
@@ -204,12 +221,13 @@ export default function EveningDetailScreen() {
             }
             void removeQueuedDrinkUpdate(removed.drinkId);
             void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
-              // Already delivered (or its POST is in flight): wait for the active
-              // flush to settle before the DELETE so it can't race ahead of an
-              // in-flight POST and recreate the drink after we deleted it.
+              // Persist a DELETE before waiting for an in-flight POST. The
+              // server's removal tombstone also protects a restart in between.
               if (!pulledFromQueue) {
-                void flushDrinksQueue()
-                  .then(() => enqueueDelete(removed.drinkId))
+                useAccountStore.getState().forgetDiaryDrink(removed.drinkId);
+                void enqueueDelete(removed.drinkId, { deliver: false })
+                  .then(() => flushDrinksQueue())
+                  .then(() => flushDeleteDrinksQueue())
                   .catch(() => undefined);
               }
             });
@@ -217,6 +235,51 @@ export default function EveningDetailScreen() {
         },
       ],
     });
+  };
+
+  const openFixDrink = (group: DrinkActionGroup) => {
+    setFixFormNonce((value) => value + 1);
+    setFixingGroup(group);
+  };
+
+  /** Save the corrected details of drinks the server refused and send them
+   *  again under their own client_id. A new rejection flags them again. */
+  const handleFixDrink = (result: BeerFormResult) => {
+    const group = fixingGroup;
+    setFixingGroup(null);
+    if (!session || !group) return;
+
+    for (const drink of group.drinks) {
+      fixDrinkInSession(session.startedAt, drink.id, {
+        beerName: result.name,
+        drinkType: result.drinkType,
+        priceCzk: result.priceCzk,
+        volumeMl: result.volumeMl,
+        servingType: result.servingType,
+      });
+    }
+    const nextSession = findSessionByStart(
+      useTallyStore.getState().current,
+      useTallyStore.getState().history,
+      session.startedAt,
+    );
+    if (!nextSession) return;
+    syncVisit(nextSession, new Date().toISOString());
+
+    let queued = false;
+    for (const drink of group.drinks) {
+      const fixed = nextSession.drinks.find((candidate) => candidate.id === drink.id);
+      const entry = fixed ? buildHistoricalDrinkEntry(nextSession, fixed) : null;
+      if (!entry) {
+        markDrinkRejected(drink.id, group.rejectedField);
+        continue;
+      }
+      queued = true;
+      void enqueueDrink(entry).then((delivered) => {
+        if (delivered) markDrinkSynced(drink.id);
+      });
+    }
+    if (queued) showToast(t.myBeers.fixDrinkSaved);
   };
 
   const openAddDrink = () => {
@@ -340,6 +403,8 @@ export default function EveningDetailScreen() {
             </Text>
           </View>
 
+          {current?.clientId === session.clientId ? <HomeTransitCard session={session} /> : null}
+
           {/* Breakdown */}
           <View style={styles.card}>
             <View style={styles.cardSectionHeader}>
@@ -357,6 +422,7 @@ export default function EveningDetailScreen() {
               <View style={styles.headerFlex} />
               <Pressable
                 onPress={openAddDrink}
+                testID="evening-add-drink"
                 style={({ pressed }) => [styles.addDrinkButton, pressed && styles.iconButtonPressed]}
                 accessibilityRole="button"
                 accessibilityLabel={t.a11y.myBeersAddDrinkToEvening}
@@ -365,8 +431,10 @@ export default function EveningDetailScreen() {
                 <Text style={styles.addDrinkButtonText}>{t.myBeers.addDrinkToEvening}</Text>
               </Pressable>
             </View>
-            {drinkActionGroups.map((group, index) => (
-              <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
+            {drinkActionGroups.map((group, index) => {
+              const fixable = !group.rejected || canFixRejectedField(group.rejectedField);
+              return (
+              <View key={group.key} testID={`evening-drink-${group.drinks[0].id}`} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
                 <View style={styles.drinkInfo}>
                   <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                     {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
@@ -389,29 +457,49 @@ export default function EveningDetailScreen() {
                       .filter(Boolean)
                       .join(' · ') || '-'}
                   </Text>
+                  {group.rejected ? (
+                    <Pressable
+                      onPress={fixable ? () => openFixDrink(group) : undefined}
+                      disabled={!fixable}
+                      style={({ pressed }) => [styles.drinkRejected, pressed && styles.iconButtonPressed]}
+                      accessibilityRole={fixable ? 'button' : 'text'}
+                    >
+                      <View style={styles.drinkRejectedIcon}>
+                        <InfoIcon size={12} color={Colors.amber} />
+                      </View>
+                      <Text style={styles.drinkRejectedText} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {fixable ? t.myBeers.drinkRejected : t.myBeers.drinkRejectedRemoveOnly}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
                 <View style={styles.drinkActions}>
-                  <Pressable
-                    onPress={() => setEditingGroup(group)}
-                    style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.myBeers.editDrink}
-                  >
-                    <PencilIcon size={17} color={Colors.amber} />
-                  </Pressable>
+                  {fixable ? (
+                    <Pressable
+                      onPress={() => (group.rejected ? openFixDrink(group) : setEditingGroup(group))}
+                      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.myBeers.editDrink}
+                      testID={`evening-edit-${group.drinks[0].id}`}
+                    >
+                      <PencilIcon size={17} color={Colors.amber} />
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     onPress={() => handleDeleteDrink(group.drinks[group.drinks.length - 1])}
                     style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                     hitSlop={6}
                     accessibilityRole="button"
                     accessibilityLabel={t.myBeers.deleteDrink}
+                    testID={`evening-delete-${group.drinks[0].id}`}
                   >
                     <MinusIcon size={17} color={Colors.mutedText} />
                   </Pressable>
                 </View>
               </View>
-            ))}
+              );
+            })}
           </View>
 
           {/* Výčep — hang the night on the feed and/or share it as a story.
@@ -436,6 +524,7 @@ export default function EveningDetailScreen() {
               <View style={styles.vycepActions}>
                 <Pressable
                   onPress={() => setPublishSheetVisible(true)}
+                  testID="night-publish-open"
                   accessibilityRole="button"
                   accessibilityLabel={t.a11y.publishNightButton}
                   style={({ pressed }) => [styles.vycepPrimary, pressed && styles.iconButtonPressed]}
@@ -516,6 +605,33 @@ export default function EveningDetailScreen() {
         onCancel={() => setAddingDrink(false)}
         onSubmit={handleAddDrink}
       />
+      <BeerFormModal
+        visible={fixingGroup !== null}
+        mode="add"
+        beer={
+          fixingGroup
+            ? {
+                name: fixingGroup.name,
+                priceCzk: fixingGroup.drinks[0]?.priceCzk,
+                volumeMl: fixingGroup.volumeMl,
+              }
+            : null
+        }
+        initialDrinkType={fixingGroup?.drinkType}
+        placeContext={normalizePlaceContext(
+          session?.placeContext ?? contextFromPubKey(session?.pubKey ?? ''),
+        )}
+        initialServingType={fixingGroup?.servingType}
+        formKey={`fix-${fixFormNonce}`}
+        titleOverride={t.myBeers.fixDrinkTitle}
+        submitLabelOverride={t.myBeers.fixDrinkSubmit}
+        notice={rejectedFieldHint(fixingGroup?.rejectedField)}
+        requireChange
+        // The keyboard would hide the size and price the hint asks about.
+        autoFocusName={fixingGroup?.rejectedField === 'beer.name'}
+        onCancel={() => setFixingGroup(null)}
+        onSubmit={handleFixDrink}
+      />
     </SafeAreaView>
   );
 }
@@ -576,6 +692,7 @@ function EditDrinkNameForm({
       </View>
       <TextInput
         value={name}
+        testID="evening-edit-name-input"
         onChangeText={setName}
         placeholder={t.myBeers.editDrinkPlaceholder}
         placeholderTextColor={Colors.mutedText}
@@ -592,6 +709,7 @@ function EditDrinkNameForm({
         </Pressable>
         <Pressable
           onPress={() => onSave(group, name)}
+          testID="evening-edit-save"
           style={styles.modalPrimaryButton}
           accessibilityRole="button"
         >
@@ -718,6 +836,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.amber,
   },
+  drinkRejected: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  drinkRejectedIcon: { marginTop: 2 },
+  drinkRejectedText: {
+    flex: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.amber,
+  },
   drinkActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -790,7 +921,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: Spacing.lg,
-    backgroundColor: 'rgba(12, 8, 5, 0.72)',
+    backgroundColor: withAlpha(Colors.deep, 0.72),
   },
   modalCard: {
     backgroundColor: Colors.stout2,

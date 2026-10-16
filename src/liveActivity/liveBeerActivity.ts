@@ -17,7 +17,10 @@ import {
   ensureNotificationPermissionForBeerFeatures,
   refreshBeerCountReminderAfterBeer,
 } from '@/notifications/beerCountReminder';
+import { useHomeTransitStore } from '@/stores/homeTransitStore';
+import { homeTransitForCurrentEvening } from '@/transit/homeTransitSync';
 import { waitForSettingsHydration, useSettingsStore } from '@/stores/settingsStore';
+import { palette } from '@/theme/palette';
 import {
   sessionPlaceContext,
   useTallyStore,
@@ -109,6 +112,7 @@ async function syncIos(props: BeerEveningLiveActivityProps | null): Promise<void
     props = {
       ...props,
       supportsInteractiveAdd: Number.isFinite(iosMajorVersion) && iosMajorVersion >= 17,
+      brownPalette: palette === 'brown',
     };
     const iconUri = await ensureLiveActivityIconUri();
     if (iconUri) props = { ...props, iconUri };
@@ -164,6 +168,7 @@ function currentPayload(): BeerEveningLiveActivityProps | null {
   return buildBeerEveningLiveActivityProps(useTallyStore.getState().current, {
     hidePubNames: settings.hidePubNames,
     priceCurrency: settings.priceCurrency,
+    homeTransit: homeTransitForCurrentEvening(),
   });
 }
 
@@ -468,6 +473,9 @@ export async function initializeLiveBeerActivity(): Promise<void> {
     ) {
       requestSync();
     }
+  });
+  useHomeTransitStore.subscribe((state, previousState) => {
+    if (state.departure !== previousState.departure) requestSync();
   });
   requestSync();
 }

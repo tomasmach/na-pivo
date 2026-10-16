@@ -44,6 +44,7 @@ from django.core.validators import EmailValidator
 from django.db import IntegrityError
 from django.db.models import Q
 from django.utils import timezone as dj_timezone
+from django.utils.translation import gettext
 from rest_framework import serializers
 
 from pubs import accounts
@@ -52,7 +53,9 @@ from pubs.beer_catalog import (
     ALLOWED_BEER_VOLUMES_ML,
     BEER_PRICE_MAX_CZK,
     BEER_PRICE_MIN_CZK,
+    dedupe_beer_menu,
     normalize_beer_payload,
+    normalize_beer_text,
 )
 from pubs.i18n import current_locale, normalize_locale
 from pubs.mapper import maper_levels, maper_progress, maper_xp_rules
@@ -449,6 +452,8 @@ class UGCConsentRequestSerializer(serializers.Serializer):
 _MAX_CLIENT_EVENT_CONTEXT_KEYS = 16
 _MAX_CLIENT_EVENT_DISTANCE_M = 50_000
 _MAX_CLIENT_EVENT_SLIDE = 100
+# Taps folded into one aggregated ui_interaction event (skip/reroll bursts).
+_MAX_CLIENT_EVENT_COUNT = 1_000
 _CLIENT_EVENT_SCREEN_NAMES = {
     "compass",
     "beer",
@@ -484,6 +489,7 @@ _CLIENT_EVENT_SCREEN_NAMES = {
     "community_events",
     "my_added_pubs",
     "profile_photos",
+    "pub_page",
 }
 # Mirror of UI_INTERACTION_TARGETS in src/data/uxTelemetry.ts. A target missing
 # here is silently dropped, which is how a week of 3.0 taps landed as an unknown
@@ -669,6 +675,7 @@ _CLIENT_EVENT_CONTEXT_KEYS = {
     "previous_screen",
     "target",
     "action",
+    "count",
     *_CLIENT_EVENT_NATIVE_ENUMS,
 }
 _EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
@@ -748,6 +755,13 @@ def _sanitize_client_scalar(key: str, value: object) -> object | None:
         except (TypeError, ValueError):
             return None
         return max(0, min(slide, _MAX_CLIENT_EVENT_SLIDE))
+
+    if key == "count":
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            return None
+        return max(1, min(count, _MAX_CLIENT_EVENT_COUNT))
 
     if key in {"status", "pending_count", "return_days", "duration_ms"}:
         try:
@@ -1066,6 +1080,16 @@ class FriendActivityRequestSerializer(_Pub200NameValidationMixin, PubInputSerial
         required=False,
         allow_empty=False,
     )
+    # Sent from a Tour de pub run: only picks the push wording, no new column.
+    tour_title = serializers.CharField(
+        max_length=120,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    # True while the crew is still walking to the stop rather than sitting in it.
+    tour_heading = serializers.BooleanField(required=False, default=False)
 
 
 class FriendshipSerializer(serializers.ModelSerializer):
@@ -2127,6 +2151,41 @@ class CommunityBeerSerializer(serializers.Serializer):
         }
 
 
+class CommunityBeerChangeSerializer(serializers.Serializer):
+    """One beer fixed or taken off a pub's menu.
+
+    Newer apps send it next to the full ``beers`` list. The server applies just
+    this change to the menu as it is now, so a list the app read earlier cannot
+    drop or bring back beers someone else changed meanwhile. Older servers
+    ignore the field and store ``beers`` as before.
+    """
+
+    action = serializers.ChoiceField(choices=("remove", "update"))
+    # The row as the app saw it; matched like any menu row (beer_menu_identity).
+    name = serializers.CharField(max_length=80, min_length=1, trim_whitespace=True)
+    volume_ml = serializers.IntegerField(required=False, allow_null=True)
+    # update only: the row's new price and, when sent, its new volume.
+    price_czk = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=BEER_PRICE_MIN_CZK,
+        max_value=BEER_PRICE_MAX_CZK,
+    )
+    new_volume_ml = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate_new_volume_ml(self, value: int | None) -> int | None:
+        if value is not None and value not in _ALLOWED_VOLUMES_ML:
+            raise serializers.ValidationError(
+                f"new_volume_ml must be one of {sorted(_ALLOWED_VOLUMES_ML)}."
+            )
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        if attrs["action"] == "update" and attrs.get("price_czk") is None:
+            raise serializers.ValidationError({"price_czk": "An update needs a price."})
+        return attrs
+
+
 class ScannedDrinkSerializer(serializers.Serializer):
     drink_type = serializers.ChoiceField(choices=DrinkLog.DrinkType.choices)
     name = serializers.CharField()
@@ -2163,6 +2222,18 @@ class BeerBrandSuggestQuerySerializer(serializers.Serializer):
         trim_whitespace=True,
     )
     limit = serializers.IntegerField(required=False, min_value=1, max_value=20, default=12)
+    # Optional search area. When present, beer names from nearby community
+    # menus join the catalog suggestions as kind "menu". Released clients
+    # never send it, so they only ever see catalog slugs.
+    lat = serializers.FloatField(required=False, min_value=-90.0, max_value=90.0)
+    lng = serializers.FloatField(required=False, min_value=-180.0, max_value=180.0)
+    radius_km = serializers.FloatField(required=False, min_value=0.1, default=25.0)
+
+    def validate(self, attrs: dict) -> dict:
+        if ("lat" in attrs) != ("lng" in attrs):
+            raise serializers.ValidationError(gettext("Pošli lat i lng zároveň."))
+        attrs["radius_km"] = min(attrs["radius_km"], PUBS_NEAR_MAX_RADIUS_KM)
+        return attrs
 
 
 class BeerBrandSuggestionSerializer(serializers.Serializer):
@@ -2170,7 +2241,7 @@ class BeerBrandSuggestionSerializer(serializers.Serializer):
 
     slug = serializers.CharField()
     name = serializers.CharField()
-    kind = serializers.ChoiceField(choices=("product", "brand"))
+    kind = serializers.ChoiceField(choices=("product", "brand", "menu"))
     brand_slug = serializers.CharField()
     brand_name = serializers.CharField()
 
@@ -2198,6 +2269,9 @@ class PubCommunityRequestSerializer(PubInputSerializer):
     beers = CommunityBeerSerializer(many=True, required=False)
     # Optional for released clients: an old beer update must not reset this flag.
     beer_menu_rotates = serializers.BooleanField(required=False)
+    # Optional: the one beer this write changes. When present the server applies
+    # it to the current menu and `beers` is only what older servers store.
+    beer_change = CommunityBeerChangeSerializer(required=False)
 
     def validate_hours(self, value: dict | None) -> dict | None:
         if value is None:
@@ -2246,10 +2320,11 @@ class PubCommunityRequestSerializer(PubInputSerializer):
         # /v1/pub-hours read path) has a stable shape regardless of which
         # optional fields the client sent.
         match_cache = self.context.get("beer_match_cache")
-        return [
-            normalize_beer_payload(beer, match_cache=match_cache)
-            for beer in value
-        ]
+        # Two spellings of one beer at one volume ("Primátor 11" and
+        # "Primátor 11°") are one menu row; the first one wins.
+        return dedupe_beer_menu(
+            [normalize_beer_payload(beer, match_cache=match_cache) for beer in value]
+        )
 
     def validate(self, attrs: dict) -> dict:
         has_hours = attrs.get("hours") is not None
@@ -2264,6 +2339,10 @@ class PubCommunityRequestSerializer(PubInputSerializer):
             raise serializers.ValidationError(
                 {"beer_menu_rotates": "This field may only be submitted with 'beers'."}
             )
+        if "beer_change" in attrs and not has_beers:
+            raise serializers.ValidationError(
+                {"beer_change": "This field may only be submitted with 'beers'."}
+            )
         return attrs
 
 
@@ -2272,11 +2351,43 @@ class PubCommunityRequestSerializer(PubInputSerializer):
 # ---------------------------------------------------------------------------
 
 
+class PrivateVolumeField(serializers.Field):
+    """Private drink volume that never rejects the drink.
+
+    Offline queues drop a drink forever on 400, and a lost beer is worse than
+    an unknown size: numbers round to whole ml, anything outside 10 ml to 3 l
+    or not a number becomes null.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(required=False, allow_null=True, **kwargs)
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool):
+            return None
+        try:
+            value = round(float(data))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return value if 10 <= value <= 3000 else None
+
+    def to_representation(self, value):
+        return value
+
+
+def shot_volume(drink_type: str | None, volume_ml: int | None) -> int | None:
+    """A shot above 200 ml is a mistyped size; keep the drink, drop the size."""
+    if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
+        return None
+    return volume_ml
+
+
 class DrinkItemSerializer(serializers.Serializer):
     """The named item inside a drink-log request.
 
     The wire key remains ``beer`` so released clients stay compatible. Private
-    drinks accept real custom sizes from 10 ml to 3 l (shots stop at 200 ml).
+    drinks keep real custom sizes from 10 ml to 3 l (shots up to 200 ml);
+    any other size is stored as unknown instead of rejecting the drink.
     Beer sizes outside the public community-menu presets remain private.
     """
 
@@ -2284,12 +2395,7 @@ class DrinkItemSerializer(serializers.Serializer):
     # catalogue; private history must accept what that catalogue returns.
     name = serializers.CharField(max_length=160, trim_whitespace=True)
     price_czk = serializers.IntegerField(required=False, min_value=1, max_value=1000)
-    volume_ml = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        min_value=10,
-        max_value=3000,
-    )
+    volume_ml = PrivateVolumeField()
     serving_type = serializers.ChoiceField(
         choices=DrinkLog.ServingType.choices,
         default=DrinkLog.ServingType.UNKNOWN,
@@ -2374,20 +2480,11 @@ class DrinkRequestSerializer(PubInputSerializer):
             normalized["serving_type"] = item["serving_type"]
             attrs["beer"] = normalized
         else:
-            volume_ml = item.get("volume_ml")
-            if (
-                attrs["drink_type"] == DrinkLog.DrinkType.SHOT
-                and volume_ml is not None
-                and volume_ml > 200
-            ):
-                raise serializers.ValidationError(
-                    {"beer": {"volume_ml": "A shot volume must not exceed 200 ml."}}
-                )
             # Keep non-beer names human-entered and avoid beer catalogue aliases.
             attrs["beer"] = {
                 "name": item["name"],
                 "price_czk": item.get("price_czk"),
-                "volume_ml": item.get("volume_ml"),
+                "volume_ml": shot_volume(attrs["drink_type"], item.get("volume_ml")),
                 "serving_type": item["serving_type"],
             }
         return attrs
@@ -2404,7 +2501,7 @@ class DrinkUpdateSerializer(serializers.Serializer):
     beer_name = serializers.CharField(max_length=160, trim_whitespace=True, required=False)
     drink_type = serializers.ChoiceField(choices=DrinkLog.DrinkType.choices, required=False)
     price_czk = serializers.IntegerField(min_value=1, max_value=1000, required=False, allow_null=True)
-    volume_ml = serializers.IntegerField(min_value=10, max_value=3000, required=False, allow_null=True)
+    volume_ml = PrivateVolumeField()
     serving_type = serializers.ChoiceField(choices=DrinkLog.ServingType.choices, required=False)
 
     def validate_beer_name(self, value: str) -> str:
@@ -2415,10 +2512,6 @@ class DrinkUpdateSerializer(serializers.Serializer):
     def validate(self, attrs: dict) -> dict:
         if not attrs:
             raise serializers.ValidationError("At least one drink field must be provided.")
-        drink_type = attrs.get("drink_type")
-        volume_ml = attrs.get("volume_ml")
-        if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
-            raise serializers.ValidationError({"volume_ml": "A shot volume must not exceed 200 ml."})
         return attrs
 
 
@@ -2459,6 +2552,33 @@ class PubRatingRequestSerializer(PubInputSerializer):
     note = serializers.CharField(
         max_length=280, required=False, allow_null=True, allow_blank=True, trim_whitespace=True
     )
+    updated_at = serializers.DateTimeField()
+
+
+# ---------------------------------------------------------------------------
+# Pub favourites (PUT/GET /v1/pub-favorites, DELETE /v1/pub-favorites/<cache_key>)
+# ---------------------------------------------------------------------------
+
+
+class PubFavoriteRequestSerializer(PubInputSerializer):
+    """Request body for PUT /v1/pub-favorites (save or remove one favourite).
+
+    Same bounds as PubRatingRequestSerializer. ``favorite: false`` is the
+    favourite's equivalent of an empty rating: a removal guarded by the same
+    last-write-wins timestamp as a save.
+    """
+
+    name = serializers.CharField(
+        max_length=255, required=False, allow_null=True, allow_blank=True, default=""
+    )
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    favorite = serializers.BooleanField(required=False, default=True)
     updated_at = serializers.DateTimeField()
 
 
@@ -2557,6 +2677,14 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         trim_whitespace=True,
     )
     include_other_places = serializers.BooleanField(required=False, default=False)
+    # Additive free-text filter over current community beer menus, for beers
+    # outside the brand catalog. Released clients never send it.
+    beer_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=80,
+        trim_whitespace=True,
+    )
 
     def validate_radius_km(self, value: float | None) -> float:
         # Default when omitted/null; otherwise clamp into (0, 100]. A value <= 0
@@ -2574,6 +2702,17 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         attrs.setdefault("radius_km", PUBS_NEAR_DEFAULT_RADIUS_KM)
         if not attrs.get("beer_brand"):
             attrs.pop("beer_brand", None)
+        beer_name = normalize_beer_text(attrs.pop("beer_name", ""))
+        if beer_name:
+            if len(beer_name) < 2:
+                raise serializers.ValidationError(
+                    {"beer_name": [gettext("Název piva musí mít aspoň 2 znaky.")]}
+                )
+            if attrs.get("beer_brand") or attrs.get("beer_brands"):
+                raise serializers.ValidationError(
+                    {"beer_name": [gettext("Název piva nejde kombinovat se značkami piva.")]}
+                )
+            attrs["beer_name"] = beer_name
         raw_beer_brands = attrs.get("beer_brands", "")
         if raw_beer_brands:
             keys = []
@@ -2615,6 +2754,42 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         else:
             attrs.pop("amenities", None)
         return attrs
+
+
+TRANSIT_MAX_HOME_STOPS = 80
+_TRANSIT_STOP_ID = re.compile(r"[A-Za-z0-9_.:-]{1,32}")
+
+
+class TransitLastDirectQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):
+    """Query params for GET /v1/transit/last-direct.
+
+    ``to_stop_ids`` are the stops the app found near home; they stand in for the
+    home location, so they are never logged or stored.
+    """
+
+    from_lat = serializers.FloatField()
+    from_lng = serializers.FloatField()
+    to_stop_ids = serializers.CharField(max_length=4000, trim_whitespace=True)
+
+    validate_from_lat = _LatLngBoundsValidationMixin.validate_lat
+    validate_from_lng = _LatLngBoundsValidationMixin.validate_lng
+
+    def validate_to_stop_ids(self, value: str) -> list[str]:
+        ids: list[str] = []
+        for raw in value.split(","):
+            stop_id = raw.strip()
+            if not stop_id or stop_id in ids:
+                continue
+            if not _TRANSIT_STOP_ID.fullmatch(stop_id):
+                raise serializers.ValidationError("Stop ids must be short GTFS stop ids.")
+            if len(ids) == TRANSIT_MAX_HOME_STOPS:
+                raise serializers.ValidationError(
+                    f"Send at most {TRANSIT_MAX_HOME_STOPS} stop ids."
+                )
+            ids.append(stop_id)
+        if not ids:
+            raise serializers.ValidationError("Send at least one stop id.")
+        return ids
 
 
 class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):

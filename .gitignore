@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+/.e2e/
+/e2e/**/__pycache__/
 
 # Expo
 # Directory patterns are anchored to the repo root so they can't swallow

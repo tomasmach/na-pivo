@@ -6,13 +6,31 @@
 > Produktová část I a mockový jazyk 3.0 jsou reference pro případný návrat některé
 > funkce, ne zadání.
 
+## Šedá zem pro celou appku (8. 10. 2026)
+
+Celá appka leží na zemi stránky hospody. Stouty mají znovu hodnoty z §2.1:
+`stout` `#15120F`, `stout2` `#1C1815`, `stout3` `#262019`, `border` `#3A322A`.
+Jantar, pěna i texty zůstávají. Samostatný `Colors.canvas` zanikl, jeho
+obrazovky leží na `Colors.stout`. Ikona appky, splash a Live Activity mají
+pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
+`Colors.deep` (`#0E0C0A`). Hnědý zůstává jen web na na-pivo.cz. Jantar s nízkou alfou na
+šedé zemi vypadá olivově hnědě, proto klidové plochy nesou neutrální pěnu:
+sekundární tlačítko je `stout3` bez okraje (§6.2), medailonek pod ikonou
+`foam` 0,07. Jantarový nádech zůstává jen vybraným a varovným stavům.
+
+Hnědá zůstává jako neudržovaná volba v Nastavení → Vzhled
+(`src/theme/palette.ts`). Čte se synchronně při startu jako jazyk a přepnutí
+restartuje appku. Mění stouty, `deep`, Live Activity a na iOS i ikonu
+(`expo-alternate-app-icons`, alternativní ikona `Brown`). Android ikonu
+nemění, protože jeho alias nemá filtr `napivo://`. Splash zůstává šedý.
+Ilustrace mají průhledné pozadí a zrno z pěny s alfou ~3 %, takže sedí na
+obou zemích. Nové UI se navrhuje a ověřuje jen v šedé.
+
 ## Schválená obnova plochých seznamů (22. 9. 2026)
 
 Varianta C pro **Moje přidané hospody** vrací na této obrazovce plochý seznam:
-`Colors.canvas` (`#15120F`), systémové písmo bez `fontFamily`, stávající `amber`
-(`#E8A317`), `foam` (`#FBF3E0`) a `mutedText` (`#A8896A`). Canvas je sdílený
-pojmenovaný token, nikoli soukromá barva obrazovky. `Colors.stout` dál znamená
-hnědý základ vydané 2.1 (`#1F1308`); jeho změna by přebarvila ostatní obrazovky.
+`Colors.stout` (`#15120F`), systémové písmo bez `fontFamily`, stávající `amber`
+(`#E8A317`), `foam` (`#FBF3E0`) a `mutedText` (`#A8896A`).
 Toto rozhodnutí neobnovuje celé téma ani historickou architekturu 3.0.
 
 Seznam má okraj 20 bodů, záhlaví 52 bodů s titulkem 18/700, názvy 16/600,
@@ -23,8 +41,35 @@ podle poslední změny od nejnovější. Dole je jediná jantarová akce vysoká
 „Zatím tu žádná není.“. Obnovení tažením, lokální fronta a stávající nabídka
 úprav zůstávají. Formulář a sdílené sheety drží současný vzhled 2.1.
 
-Následující tabulky palety a `MockType` popisují historickou 3.0 referenci,
-nikoli dnešní globální exporty. `src/mocks/mockTheme.ts` už v obnovené 2.1 není;
+## Schválená stránka hospody (28. 9. 2026)
+
+Varianta B z návrhu „Hospoda, do které se dá nahlédnout“: každá hospoda má
+vlastní obrazovku `/pub`, kterou otevírá kompas, karta na mapě, hledání,
+žebříček hospod a trasy. Počítadlo a „Zmapuj hospodu“ v deníčku dál otevírají
+mapovací panel, protože tam jde o mapování.
+
+Obrazovka leží na `Colors.stout` se systémovým písmem jako Moje přidané
+hospody. Hlavička má kulatá tlačítka 44 bodů na `Colors.stout2` (zpět a „…“),
+název hospody se v ní objeví až po odscrollování. Název je 28/700, pod ním
+jeden stavový řádek 15 bodů: otevírací doba barvou `open`/`closed`,
+vzdálenost a město. Následuje výřez mapy 112 bodů s radiusem 16 a pinem
+uprostřed, klepnutí otevře velkou mapu nad stránkou. Pod mapou jsou nejvýš tři
+důvody jít (akce, hodnocení, piva za minulý týden) jako řádky s 36bodovou
+ikonou. Sekce Na čepu, Akce, Otevíračka a O hospodě oddělují tmavé pásy
+(`Colors.deep`, 10 bodů, přes celou šířku), nadpisy jsou 18/700 v sentence case.
+Řádek „Zmapováno na N %“ otevírá dnešní mapovací panel beze změny. Dole je
+pevná lišta s jedinou jantarovou akcí „Doveď mě tam“ (48 bodů) a kulatým
+tlačítkem 48 bodů na `Colors.stout3`, které namíří kompas. Přejmenování,
+nahlášení a úprava vlastní hospody jsou v „…“.
+
+Srdíčko v hlavičce stránky (vedle „…“) uloží hospodu do srdcovek; uložená
+má plné jantarové srdce. Srdcovky jsou soukromé, v hledání mají vlastní
+sekci nad „V okolí“, na mapě malé srdce vlevo nahoře u pinu a v seznamu ve
+výřezu filtrační chip „Srdcovky“.
+
+Tabulka tokenů v §2.1 od 8. 10. 2026 odpovídá kódu. Ostatní tabulky palety a
+`MockType` popisují historickou 3.0 referenci, nikoli dnešní globální exporty.
+`src/mocks/mockTheme.ts` už v obnovené 2.1 není;
 `Fonts.display` a `Fonts.ui` stále načítají Baloo a Inter pro původní obrazovky.
 Další změna vzhledu potřebuje vlastní schválený rozsah, nepřebarvuje se tímto PR.
 
@@ -63,7 +108,7 @@ Tři pravidla, která rozhodují o všem ostatním:
 - **Pohyb kopíruje prst, ne sám sebe** (§10). Nekonečné smyčky, dýchající prvky
   a ambientní animace jsou zakázané; povolené jsou jen stavové výjimky z §10.
 
-Podklad je stout (tmavě hnědá), akcent jantar. Světlý režim je **vědomě
+Podklad je stout (skoro černá s teplým podtónem), akcent jantar. Světlý režim je **vědomě
 odložený** — zdvojil by práci na každé obrazovce.
 
 ---
@@ -368,7 +413,8 @@ plocha znamená velký plný jantarový panel nebo tlačítko.
 | Okraj plovoucí pilulky / live baru | `withAlpha(Colors.foam, 0.14)` |
 | Grabber sheetu | `withAlpha(Colors.foam, 0.22–0.26)` |
 | Placeholder v poli (`fieldHint`) | `withAlpha(Colors.foam, 0.55)` |
-| Medailonek pod ikonou / tint skla / podklad varovného pruhu | `withAlpha(Colors.amber, 0.10–0.12)` |
+| Medailonek pod ikonou, pruh s tipem | `withAlpha(Colors.foam, 0.06–0.07)` |
+| Tint skla / podklad varovného pruhu / vybraný stav | `withAlpha(Colors.amber, 0.10–0.12)` |
 | Okraj aktivního filtračního chipu | `withAlpha(Colors.amber, 0.5)` |
 | Aktivní kus baseline (`UnderlineTabs`) | `withAlpha(Colors.amber, 0.85)` |
 | Fallback plovoucí pilulky pod sklem | `withAlpha(Colors.stout, 0.92)` / `withAlpha(Colors.stout2, 0.96)` |
@@ -492,6 +538,10 @@ value: {
   `fontSize`), **iOS svisle ořízne vršek cifer** — u „8“ zmizí horní oblouk. Doložené páry:
   22/27, 19/24, 34/42, 40/50. Menší `Fonts.numeral` použití bez `lineHeight` (wordmark, výsledek
   hry) jsou dluh, ne vzor.
+- **Jednořádkové pole (`TextInput`) s Baloo na iOS `lineHeight` nedostává.** Pravidlo výše platí
+  pro `<Text>`. UITextField sám vystředí přirozenou výšku řádku písma; pevný `lineHeight` zvedl
+  cenu v „Uprav cenu“ o 6 pt nad střed pole. Vršek číslic chrání nulový svislý padding na iOS.
+  Android `lineHeight` v těch polích dál drží (`BeerFormModal`).
 - **`fontVariant: ['tabular-nums']` je povinné** u čehokoliv, co se v čase mění (počty, časy,
   skóre). Bez toho číslo při každé změně poskočí do stran.
 - **`allowFontScaling={false}` na číslicích v pevných buňkách** (`StatGrid`, žebříček, tikající
@@ -1012,7 +1062,8 @@ Na `DiaryStatsSheet` to vyšlo `box 451 / content 707` — potvrzeno funkční. 
 
 | Sheet | Umí | Neumí |
 |---|---|---|
-| „Co si dáš?“ (`DrinkPickSheet`) | připsat pivo, přidat nové pivo, přidat nealko | žádné minus, žádné mazání, žádné „dopito“ |
+| „Co si dáš?“ (`DrinkPickSheet`) | připsat pivo, přidat nové pivo, přidat nealko; ⋯ u piva v hospodě otevře jeho možnosti | žádné minus, žádné mazání, žádné „dopito“ |
+| Možnosti piva (`MenuBeerActionsSheet`) | upravit cenu, smazat pivo z lístku hospody (s potvrzením); otevírá ho ⋯ v „Co si dáš?“ i řádek „Na čepu“ | nepřipisuje pivo, nic nepřidává |
 | „Tvůj účet“ (`ReceiptSheet`) | odebrat drink, zavřít večer | žádné plus, žádné přidání |
 | „Co ještě?“ (`CounterMoreSheet`) | všechno ostatní jako plochý seznam | nepočítá a neubírá |
 
@@ -1025,6 +1076,34 @@ přidat akci opačného směru, **udělej místo toho druhý sheet**.
 ---
 
 ## 9. Ilustrace a osobnost
+
+### Schválený vzor Tour de pub (18. 9. 2026)
+
+Detail tour používá [variantu A](https://4mhfgkc9i5ba.postplan.dev): SVG pás hospod
+(`TourJourneyIllustration`), propojený seznam zastávek a skutečnou mapu v náhledu pod seznamem.
+Každá ze 2–8 hospod v ilustraci odpovídá jedné zastávce; jantarové dveře označují příští,
+check navštívenou a minus přeskočenou. Fasády jsou smyšlené, spojnice ukazuje pořadí, ne geografii.
+Tohle je schválené rozšíření obecného pravidla „nejdřív mapa“ níže, ne náhrada mapy kresbou.
+
+Pás má `viewBox="0 0 350 158"`, pro 5–8 zastávek `0 24 350 134`; výška vychází ze šířky. Seznam používá kruhy 30 pt,
+řádek minimálně 78 pt a systémové písmo: název 17/23, příští hospoda 21/27, popisek 12/18.
+Výzva autora leží pod popiskem ve `foamMuted` 12/18 na nejvýš dva řádky, u příští hospody celá 15/21;
+v úpravě tour má jeden řádek a celý text ukáže sheet výzvy.
+Titulek je 30/34, váha 800. Jediná plná jantarová akce je v patičce; označení zastávky je
+textové tlačítko s checkem. Historie má ploché řádky, vysvětlení soukromí otevírá „Jen tvůj
+průchod“. Vrácení posledního označení zůstává viditelné v patičce a nepřekrývá obsah.
+Barvy zůstávají podle aktuálních `src/theme/colors.ts`, bez nových gradientů a závislostí.
+
+**Úprava tour (29. 9. 2026).** Výběr hospod se po přidání nezavírá: klepnutí na řádek hospodu přidá
+(jantarové kolečko s pořadím), další klepnutí ji odebere a šipka vpravo otevře detail. Patička drží lištu
+vybraných hospod s křížkem a jedinou plnou akci „Hotovo · N hospod“. S prázdným hledáním nabízí hospody
+nejblíž poslední zastávce s minutami pěšky a mapa se na ni posune. Termín je jeden řádek „Kdy“, který otevře sheet
+`TourWhenSheet`: kalendář po týdnech (5 týdnů na stránku, dny 46 pt, vybraný den plné jantarové kolečko,
+dnešek jantarovým číslem) a čtyři čipy času 18–21 podle `ComposeSheet` s krokovačem po 15 minutách pro jiný čas.
+Tohle je jediná výjimka z §18: systémový `DatePicker` neumí stav „den zatím nevybraný“, který nepovinný
+sraz potřebuje, a klepnutí na předvybraný dnešek u něj nic neudělá.
+
+### Obecná pravidla
 
 **Kreslený prvek si musí zasloužit místo tím, že nese data.** Obrázek TOHO, co se počítá, data
 nenese — a přesně na tom umřely dvě ilustrace, které tu dřív byly povinné:
@@ -1366,9 +1445,9 @@ vlastní povrch, ne jako rozbalovací pole v liště — jeden záměr na povrch
 ### 17.4 List → detail
 
 Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil) — patří do stacku
-vedle `/profile/edit` a `/settings`. **Výjimka je detail hospody:** ten žije uvnitř taženého
-`PlacesSheet` (`PubDetailBody` v `PubListMockScreen`), protože jeho kontextem je mapa, která má
-zůstat vidět. Intent sheet (§7) detail nikdy nenese.
+vedle `/profile/edit` a `/settings`. To platí i pro detail hospody: od 28. 9. 2026 je to
+samostatná obrazovka `/pub` (viz „Schválená stránka hospody“ nahoře), mapu otevírá výřez
+na stránce. Intent sheet (§7) detail nikdy nenese.
 
 ### 17.5 Kompas v seznamu hospod
 

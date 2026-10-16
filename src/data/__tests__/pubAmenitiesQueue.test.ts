@@ -188,26 +188,72 @@ describe('flushPubAmenitiesQueue', () => {
     expect(queue[0].amenityKey).toBe('practical_wifi');
   });
 
-  it('keeps a pair whose op content changed mid-flush (content-signature preservation)', async () => {
-    // The user re-taps the SAME (pubKey, amenityKey) WHILE a slow flush is in
-    // flight. flushLocked re-loads the queue after delivery and must KEEP the
-    // newer op even though the stale 'ok' said the old one settled. We simulate
-    // the mid-flush write by replacing the persisted op during delivery (writing
-    // AsyncStorage directly bypasses the mutex flushLocked is holding).
+  it('persists a newer vote while the previous network request is pending', async () => {
     await enqueueAmenityOp(upsert('aaaaaaaa', 'game_darts', { value: 'yes' }));
-    submitAmenityVotes.mockImplementationOnce(async () => {
-      await AsyncStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify([upsert('aaaaaaaa', 'game_darts', { value: 'no' })]),
-      );
-      return 'ok';
+    let started!: () => void;
+    const requestStarted = new Promise<void>((resolve) => { started = resolve; });
+    let finishRequest!: (result: string) => void;
+    submitAmenityVotes.mockImplementationOnce(() => {
+      started();
+      return new Promise<string>((resolve) => { finishRequest = resolve; });
     });
 
-    await flushPubAmenitiesQueue();
+    const firstFlush = flushPubAmenitiesQueue();
+    await requestStarted;
+    const newer = upsert('aaaaaaaa', 'game_darts', { value: 'no' });
+    await enqueueAmenityOp(newer);
+    expect(await readQueue()).toEqual([newer]);
 
-    const queue = await readQueue();
-    expect(queue).toHaveLength(1);
-    expect((queue[0] as { payload: WireAmenityVote }).payload.value).toBe('no');
+    const secondFlush = flushPubAmenitiesQueue();
+    finishRequest('ok');
+    await Promise.all([firstFlush, secondFlush]);
+
+    expect(submitAmenityVotes).toHaveBeenCalledTimes(2);
+    expect(submitAmenityVotes.mock.calls[1][0]).toEqual([newer.payload]);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('persists a retraction before the pending request settles', async () => {
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'game_darts'));
+    let started!: () => void;
+    const requestStarted = new Promise<void>((resolve) => { started = resolve; });
+    let finishRequest!: (result: string) => void;
+    submitAmenityVotes.mockImplementationOnce(() => {
+      started();
+      return new Promise<string>((resolve) => { finishRequest = resolve; });
+    });
+
+    const inFlight = flushPubAmenitiesQueue();
+    await requestStarted;
+    const retraction = tombstone('aaaaaaaa', 'game_darts');
+    await enqueueAmenityOp(retraction);
+    expect(await readQueue()).toEqual([retraction]);
+
+    finishRequest('ok');
+    await inFlight;
+    expect(await readQueue()).toEqual([retraction]);
+  });
+
+  it('clears pending work before a slow request returns, without sending its siblings', async () => {
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'game_darts'));
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'practical_wifi'));
+    let started!: () => void;
+    const requestStarted = new Promise<void>((resolve) => { started = resolve; });
+    let finishRequest!: (result: string) => void;
+    submitAmenityVotes.mockImplementationOnce(() => {
+      started();
+      return new Promise<string>((resolve) => { finishRequest = resolve; });
+    });
+
+    const inFlight = flushPubAmenitiesQueue();
+    await requestStarted;
+    await clearPubAmenitiesQueue();
+    expect(await readQueue()).toEqual([]);
+
+    finishRequest('retry');
+    await inFlight;
+    expect(submitAmenityVotes).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
   });
 
   it('does nothing on an empty queue', async () => {

@@ -2,10 +2,11 @@
 pubs.management.commands.refresh_hours — process pending EnrichTasks and refresh
 stale PubHours rows via FirmyHoursSource.
 
-Intended to run via cron (e.g. every 5 minutes). Respects FIRMY_MIN_INTERVAL_SEC
-FIRMY_DAILY_CAP, and FIRMY_ERROR_RETRY_COOLDOWN_MINUTES settings. Each invocation
-processes up to --limit rows. --dry-run preserves hours/tasks but still reserves
-the shared request budget when fetching data.
+Intended to run via cron (e.g. every 5 minutes). Respects FIRMY_MIN_INTERVAL_SEC,
+FIRMY_DAILY_CAP, FIRMY_PROXY_DAILY_CAP, FIRMY_REFRESH_DAILY_CAP and
+FIRMY_ERROR_RETRY_COOLDOWN_MINUTES settings. Pubs outside Czechia are never
+looked up. Each invocation processes up to --limit rows. --dry-run preserves
+hours/tasks but still reserves the shared request budget when fetching data.
 
 Usage
 -----
@@ -32,7 +33,15 @@ from pubs.enrichment import (
     classify_venue,
     geohash8,
 )
-from pubs.external_api_budget import reserve_external_api_request
+from pubs.enrichment.firmy import DIRECT, PROXY
+from pubs.firmy_policy import (
+    firmy_covered_q,
+    firmy_covers,
+    firmy_source_options,
+    fresh_hours_q,
+    reserve_refresh,
+    stale_hours_q,
+)
 from pubs.models import EnrichTask, PubHours
 
 logger = logging.getLogger(__name__)
@@ -173,10 +182,6 @@ class Command(BaseCommand):
         limit: int = options["limit"]
         dry_run: bool = options["dry_run"]
 
-        proxy_url: str | None = getattr(settings, "FIRMY_PROXY_URL", None)
-        min_interval: float = float(getattr(settings, "FIRMY_MIN_INTERVAL_SEC", 3))
-        daily_cap: int = int(getattr(settings, "FIRMY_DAILY_CAP", 2000))
-        ttl_days: int = int(getattr(settings, "HOURS_TTL_DAYS", 30))
         error_retry_cooldown_minutes: int = int(
             getattr(settings, "FIRMY_ERROR_RETRY_COOLDOWN_MINUTES", 15)
         )
@@ -187,17 +192,7 @@ class Command(BaseCommand):
         processed = 0
         cap_exceeded = False
 
-        source = FirmyHoursSource(
-            proxy_url=proxy_url,
-            min_interval=min_interval,
-            daily_cap=daily_cap,
-            request_budget=lambda cap: reserve_external_api_request(
-                provider="firmy",
-                operation="http",
-                cap=cap,
-                reset_timezone="UTC",
-            ),
-        )
+        source = FirmyHoursSource(**firmy_source_options())
 
         try:
             processed, cap_exceeded = self._process_pending_tasks(
@@ -211,17 +206,19 @@ class Command(BaseCommand):
             if not cap_exceeded and (limit == 0 or processed < limit):
                 processed, cap_exceeded = self._refresh_stale_rows(
                     source=source,
-                    ttl_days=ttl_days,
                     error_retry_cooldown_minutes=error_retry_cooldown_minutes,
                     limit=limit,
                     processed_so_far=processed,
                     dry_run=dry_run,
                 )
         finally:
-            if source._owns_session:
-                source._session.close()
+            source.close()
 
         verb = "(dry-run) " if dry_run else ""
+        counts = source.request_counts
+        self.stdout.write(
+            f"{verb}Firmy.cz requests: {counts[DIRECT]} direct, {counts[PROXY]} via proxy."
+        )
         if cap_exceeded:
             self.stdout.write(
                 self.style.WARNING(
@@ -260,10 +257,6 @@ class Command(BaseCommand):
             )
         qs = qs.order_by("created_at")
 
-        ttl_days: int = int(getattr(settings, "HOURS_TTL_DAYS", 30))
-        fresh_cutoff = timezone.now() - timedelta(days=ttl_days)
-        fresh_statuses = [PubHours.Status.OK, PubHours.Status.UNKNOWN]
-
         processed = processed_so_far
         cap_exceeded = False
 
@@ -275,13 +268,20 @@ class Command(BaseCommand):
             # request sync-enriched the same pub after the task was queued),
             # close the task without spending a fetch.
             already_fresh = PubHours.objects.filter(
-                cache_key=task.cache_key,
-                status__in=fresh_statuses,
-                fetched_at__gte=fresh_cutoff,
+                fresh_hours_q(timezone.now()), cache_key=task.cache_key
             ).exists()
             if already_fresh:
                 logger.info(
                     "EnrichTask %s already has a fresh PubHours row — marking done",
+                    task.cache_key,
+                )
+                _mark_task_done(task, dry_run)
+                continue
+
+            if not firmy_covers(task.lat, task.lng):
+                logger.info(
+                    "EnrichTask %s is outside Czechia, which Firmy.cz does not "
+                    "list — marking done without a fetch",
                     task.cache_key,
                 )
                 _mark_task_done(task, dry_run)
@@ -354,32 +354,30 @@ class Command(BaseCommand):
     def _refresh_stale_rows(
         self,
         source: FirmyHoursSource,
-        ttl_days: int,
         error_retry_cooldown_minutes: int,
         limit: int,
         processed_so_far: int,
         dry_run: bool,
     ) -> tuple[int, bool]:
         """
-        Re-fetch PubHours rows whose fetched_at is older than HOURS_TTL_DAYS.
-        Error rows use FIRMY_ERROR_RETRY_COOLDOWN_MINUTES instead of the full TTL.
+        Re-fetch PubHours rows in Czechia older than HOURS_TTL_OK_DAYS ('ok') or
+        HOURS_TTL_UNKNOWN_DAYS ('unknown'). Error rows use
+        FIRMY_ERROR_RETRY_COOLDOWN_MINUTES instead. At most
+        FIRMY_REFRESH_DAILY_CAP rows a day, so rows that expire together are
+        spread over several days.
 
         Returns (total_processed, cap_exceeded).
         """
-        stale_cutoff = timezone.now() - timedelta(days=ttl_days)
-        error_retry_cutoff = timezone.now() - timedelta(
-            minutes=error_retry_cooldown_minutes
-        )
+        now = timezone.now()
+        error_retry_cutoff = now - timedelta(minutes=error_retry_cooldown_minutes)
 
         qs = PubHours.objects.filter(
-            models.Q(
-                status__in=[PubHours.Status.OK, PubHours.Status.UNKNOWN],
-                fetched_at__lt=stale_cutoff,
-            )
+            stale_hours_q(now)
             | models.Q(
                 status=PubHours.Status.ERROR,
                 fetched_at__lt=error_retry_cutoff,
-            )
+            ),
+            firmy_covered_q(),
         ).exclude(
             cache_key__in=EnrichTask.objects.filter(done=False)
             .extra(where=["attempts < max_attempts"])
@@ -391,6 +389,12 @@ class Command(BaseCommand):
 
         for row in qs.iterator():
             if limit > 0 and processed >= limit:
+                break
+
+            if not reserve_refresh():
+                self.stdout.write(
+                    "  daily refresh budget reached — stale rows wait for tomorrow"
+                )
                 break
 
             logger.info(

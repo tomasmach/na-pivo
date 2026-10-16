@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.1),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   rowText: { flex: 1 },
   name: { fontFamily: Fonts.ui.semibold, fontSize: 16, color: Colors.foam },

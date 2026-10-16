@@ -1,0 +1,14 @@
+appId: ${MAESTRO_APP_ID}
+---
+- openLink: ${'napivo:/' + ROUTE}
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- runFlow:
+    when:
+      visible: 'Teď ne, nech mě pít v klidu'
+    commands:
+      - tapOn: 'Teď ne, nech mě pít v klidu'
+      - openLink: ${'napivo:/' + ROUTE}

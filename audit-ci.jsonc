@@ -2,4 +2,11 @@
   "$schema": "https://github.com/IBM/audit-ci/raw/main/docs/schema.json",
   "high": true,
   "skip-dev": true,
+  // Neither advisory has a patched release (node-forge <= 1.4.0, braces <= 3.0.3).
+  // node-forge (RSA signature verification) is reached through @expo/cli and the
+  // expo-updates code-signing CLI commands. braces (stack exhaustion on nested
+  // patterns) is reached through micromatch in Metro. Both run only on dev/CI
+  // machines and never ship in the app bundle. Remove these entries once a
+  // patched release exists.
+  "allowlist": ["GHSA-86w9-cpqp-85rv", "GHSA-vfj7-8cjw-p6xm"]
 }

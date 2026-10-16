@@ -14,7 +14,7 @@
 
 import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
-import { chainAbortSignal } from './apiFetch';
+import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import type { CommunityBeer, WeeklyHours, WireBeer } from './communityHours';
 import { DAY_KEYS, beerFromWire, beerToWire } from './communityHours';
 import type { WireMapperSnapshot } from './pubAmenitiesClient';
@@ -36,6 +36,22 @@ export interface CommunityInput {
   beers?: CommunityBeer[];
   /** Present with a beer-list edit when the pub intentionally rotates its taps. */
   beerMenuRotates?: boolean;
+  /** The one beer this beer-list edit fixes or removes. A newer server applies
+   *  just this to the menu as it is now; `beers` is what older servers store. */
+  beerChange?: BeerChange;
+}
+
+/** One menu row, as the user saw it, taken off or given a new price/size. */
+export type BeerChange =
+  | { action: 'remove'; name: string; volumeMl?: number }
+  | { action: 'update'; name: string; volumeMl?: number; priceCzk: number; newVolumeMl?: number };
+
+interface WireBeerChange {
+  action: 'remove' | 'update';
+  name: string;
+  volume_ml: number | null;
+  price_czk?: number;
+  new_volume_ml?: number | null;
 }
 
 /** The byte-stable payload persisted in the queue and POSTed on every retry. */
@@ -49,6 +65,7 @@ export interface CommunityEntry {
   hours?: WeeklyHours;
   beers?: WireBeer[];
   beer_menu_rotates?: boolean;
+  beer_change?: WireBeerChange;
 }
 
 /** Backend response for a successful submission. */
@@ -99,18 +116,33 @@ export function buildCommunityEntry(input: CommunityInput, clientId: string): Co
   if (typeof input.beerMenuRotates === 'boolean') {
     entry.beer_menu_rotates = input.beerMenuRotates;
   }
+  if (input.beers && input.beerChange) entry.beer_change = beerChangeToWire(input.beerChange);
   return entry;
+}
+
+function beerChangeToWire(change: BeerChange): WireBeerChange {
+  const wire: WireBeerChange = {
+    action: change.action,
+    name: change.name,
+    volume_ml: change.volumeMl ?? null,
+  };
+  if (change.action === 'update') {
+    wire.price_czk = change.priceCzk;
+    wire.new_volume_ml = change.newVolumeMl ?? null;
+  }
+  return wire;
 }
 
 /**
  * POST one community submission. Returns the parsed backend response on success
- * (so the caller can refresh local state with the canonical stored data), or
- * null on any failure. Never throws.
+ * (so the caller can refresh local state with the canonical stored data),
+ * 'permanent-error' when the server rejected the payload for good (400/422), or
+ * null on any other failure. Never throws.
  */
 export async function submitPubCommunity(
   entry: CommunityEntry,
   signal?: AbortSignal,
-): Promise<CommunityResponse | null> {
+): Promise<CommunityResponse | 'permanent-error' | null> {
   if (signal?.aborted) return null;
 
   const endpoint = getBackendEndpoint('/v1/pub-community');
@@ -131,7 +163,14 @@ export async function submitPubCommunity(
       signal: abort.signal,
     });
 
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      // 400/422: this byte-stable payload will never succeed; the queue drops it.
+      const result = await classifyQueueHttpFailure(resp.status, session, {
+        source: 'pub_community_submit',
+        endpoint: '/v1/pub-community',
+      });
+      return result === 'permanent-error' ? result : null;
+    }
 
     const data = (await resp.json()) as WireResponse;
     if (!data?.cache_key) return null;

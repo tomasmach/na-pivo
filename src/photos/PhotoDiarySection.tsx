@@ -45,10 +45,10 @@ function tileLabel(photo: BeerPhotoLocal): string {
   return photo.caption || photo.pubName || '';
 }
 
-function SyncChip({ state }: { state: 'pending' | 'failed' }) {
+function SyncChip({ state, testID }: { state: 'pending' | 'failed'; testID?: string }) {
   const pending = state === 'pending';
   return (
-    <View style={[styles.syncChip, pending ? styles.syncChipPending : styles.syncChipFailed]}>
+    <View testID={testID} style={[styles.syncChip, pending ? styles.syncChipPending : styles.syncChipFailed]}>
       {pending ? (
         <RefreshCwIcon size={10} color={Colors.foamMuted} />
       ) : (
@@ -76,6 +76,7 @@ function PhotoTile({
   const uri = photo.imageUrl ?? photo.localUri;
   return (
     <ScalePressable
+      testID={`photo-item-${photo.clientId}`}
       onPress={onPress}
       style={[styles.tile, lead ? styles.tileLead : styles.tileSmall]}
       accessibilityRole="button"
@@ -91,7 +92,7 @@ function PhotoTile({
         />
       ) : null}
       {photo.syncState !== 'synced' ? (
-        <SyncChip state={photo.syncState === 'pending' ? 'pending' : 'failed'} />
+        <SyncChip testID={`photo-sync-state-${photo.clientId}`} state={photo.syncState === 'pending' ? 'pending' : 'failed'} />
       ) : null}
     </ScalePressable>
   );
@@ -289,7 +290,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: withAlpha(Colors.amber, 0.55),
-    backgroundColor: withAlpha(Colors.amber, 0.07),
+    backgroundColor: withAlpha(Colors.foam, 0.04),
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
@@ -298,7 +299,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: Radius.medium,
-    backgroundColor: withAlpha(Colors.amber, 0.14),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -356,9 +357,9 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 16,
-    backgroundColor: withAlpha(Colors.amber, 0.16),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.4),
+    borderColor: withAlpha(Colors.foam, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },

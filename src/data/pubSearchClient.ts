@@ -171,7 +171,7 @@ export function localPubSearch(query: string): PubSearchResult[] {
 
 async function postItems(
   path: '/v1/pubs/suggest' | '/v1/pubs/geocode',
-  body: Record<string, string | boolean>,
+  body: Record<string, string | number | boolean>,
   signal?: AbortSignal,
 ): Promise<{ items: WireSearchItem[]; failed: boolean }> {
   const endpoint = getBackendEndpoint(path);
@@ -219,6 +219,26 @@ export async function searchPubNames(
     .map((item) => resultFromWire(item))
     .filter((item): item is PubSearchResult => item !== null);
   return { pubs: mergeResults(local, remote), failed: response.failed };
+}
+
+/** Places for the add-pub form, or null when the lookup failed. Uses the
+ * released add-pub lookup, so Google places are not limited to pub types. */
+export async function suggestPubsToAdd(
+  query: string,
+  near: { lat: number; lng: number } | null,
+  signal?: AbortSignal,
+): Promise<PubSearchResult[] | null> {
+  const trimmed = query.trim().slice(0, 150);
+  if (trimmed.length < 3) return [];
+  const response = await postItems(
+    '/v1/pubs/suggest',
+    { query: trimmed, ...(near ? { lat: near.lat, lng: near.lng } : {}) },
+    signal,
+  );
+  if (response.failed) return null;
+  return response.items
+    .map((item) => resultFromWire(item))
+    .filter((item): item is PubSearchResult => item !== null);
 }
 
 export async function resolvePubSearchResult(

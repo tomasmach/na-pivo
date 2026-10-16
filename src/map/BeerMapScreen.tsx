@@ -8,7 +8,10 @@ import {
   StyleSheet,
   Text,
   useColorScheme,
+  useWindowDimensions,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import MapView, {
   PROVIDER_GOOGLE,
@@ -25,29 +28,35 @@ import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { haversineMeters } from '@/compass/distance';
 import {
   BeerIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   MenuIcon,
-  ExternalLinkIcon,
   FlagIcon,
+  HeartFilledIcon,
+  HeartIcon,
   ListFilterIcon,
+  LayoutListIcon,
   LocateFixedIcon,
   MapPinPlusIcon,
   MapPinnedIcon,
   RefreshCwIcon,
   StarIcon,
+  TrophyIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { PubSearchButton } from '@/search/PubSearchButton';
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
-import { GlowButton } from '@/components/shared/GlowButton';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import type { Pub } from '@/data/pubs';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
+import { isSameVenue, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubStore } from '@/stores/pubStore';
+import { useToastStore } from '@/stores/toastStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
+import { fetchPubBeersLastWeek, type PubBeersByKey } from '@/data/pubBeersClient';
 import {
   EMPTY_PUB_SEARCH_FILTERS,
   activePubSearchFilterCount,
@@ -75,6 +84,7 @@ import {
 } from './mapModel';
 import { useBeerMap } from './useBeerMap';
 import { StaticMapMarker, useMarkerSnapshotRefresh } from './StaticMapMarker';
+import { openPubPage } from '@/pubPage/openPubPage';
 
 const DEFAULT_REGION: Region = {
   latitude: 49.8175,
@@ -96,6 +106,7 @@ let rememberedRegion: Region | null = null;
 /** A fresher locate fix closer than this does not re-animate the map. */
 const LOCATE_FOLLOW_UP_M = 25;
 let rememberedLayer: Layer = 'all';
+let rememberedBeersOnly = false;
 let rememberedSelection: MapSelection | null = null;
 const layerListeners = new Set<() => void>();
 
@@ -119,6 +130,10 @@ export interface BeerMapScreenProps {
   initialPub?: Pub | null;
   focusInitialPub?: boolean;
   onSearch?: () => void;
+  /** Set when the map is opened over another screen, which it returns to. */
+  onBack?: () => void;
+  /** Overrides opening the pub page, e.g. when the map sits over that page. */
+  onOpenPub?: (pub: Pub) => void;
   filters: PubSearchFilters;
   onApplyFilters: (filters: PubSearchFilters) => void;
   onShowCompass: () => void;
@@ -184,140 +199,172 @@ function showsStatusDot(tone: MetaTone): boolean {
   return tone !== 'neutral';
 }
 
+/** Above this text size the action gets its own row; beside it the hours would be a few words wide. */
+const STACKED_ACTION_FONT_SCALE = 1.1;
+
 interface PlaceCardProps {
-  /**
-   * The loud line: the pub's name when one is selected, otherwise what the
-   * viewport is showing. There is no separate section title — the layer switch
-   * in the footer already names the mode, and "Parta teď" printed directly above
-   * a highlighted "Parta teď" segment was the same word twice.
-   */
+  /** The selected pub, friend or city. The name owns the full card width. */
   title: string;
   /** Opening hours, with the status dot. Null when the card is not about a pub. */
   meta: string | null;
   metaTone: MetaTone;
   /** The quiet tail of the same line (city, "navštíveno"), or null. */
   fact: string | null;
+  /** How many beers the selected pub poured last week, on its own quiet line. */
+  beers?: string | null;
   /** Star rating, rendered with a ★ glyph ahead of the fact text. */
   rating?: { value: string; count: string | null } | null;
-  titlePress?: {
+  /** Opens the pub detail. Only a pub has one; a friend or a city leaves it out. */
+  open?: {
     onPress: () => void;
     accessibilityLabel: string;
   };
-  door?: {
+  action: {
     label: string;
     onPress: () => void;
     accessibilityLabel: string;
   };
-  /** The layer switch, rendered as the card's own footer. */
-  layers: React.ReactNode;
+  /** Clears the selection and brings the layer switch back. */
+  onClose: () => void;
 }
 
+/**
+ * The card of a selection. It replaces the layer switch at the bottom of the
+ * map instead of stacking on it, and it carries its own primary action, so a
+ * selection costs one short card rather than a card, a switch and a 62pt button.
+ */
 function PlaceCard({
   title,
   meta,
   metaTone,
   fact,
+  beers,
   rating,
-  titlePress,
-  door,
-  layers,
+  open,
+  action,
+  onClose,
 }: PlaceCardProps) {
+  const { fontScale } = useWindowDimensions();
+  const stacked = fontScale > STACKED_ACTION_FONT_SCALE;
   const ratingText = rating
     ? rating.count
       ? `${rating.value} (${rating.count})`
       : rating.value
     : null;
-  // Rating and city share the hours line. Two stacked half-empty lines next to a
-  // vertically centred door aligned with neither of them.
   const detailText = [ratingText, fact].filter(Boolean).join(' · ');
-  const titleContent = (
-    <>
-      {/* The name owns the full card width. The door used to sit beside it and
-          pushed two-word pub names onto a second line for no reason. */}
-      <Text
-        style={styles.placeTitle}
-        numberOfLines={2}
-        maxFontSizeMultiplier={FontScaleCap.heading}
-      >
-        {title}
-      </Text>
-      {titlePress ? <ExternalLinkIcon size={15} color={Colors.amber} /> : null}
-    </>
-  );
 
   return (
     <View style={styles.placeCard}>
       <CardSheen />
 
-      {titlePress ? (
+      <View style={styles.placeTitleRow}>
         <Pressable
-          onPress={titlePress.onPress}
-          hitSlop={12}
-          style={({ pressed }) => [styles.placeTitleRow, pressed && styles.pressedSoft]}
-          accessibilityRole="button"
-          accessibilityLabel={titlePress.accessibilityLabel}
+          onPress={open?.onPress}
+          disabled={!open}
+          accessible={Boolean(open)}
+          style={({ pressed }) => [styles.placeTitlePress, pressed && styles.pressedSoft]}
+          accessibilityRole={open ? 'button' : undefined}
+          accessibilityLabel={open ? `${title}, ${open.accessibilityLabel}` : undefined}
         >
-          {titleContent}
-        </Pressable>
-      ) : (
-        <View style={styles.placeTitleRow}>{titleContent}</View>
-      )}
-
-      {/* §5.4: the hours keep a line of their own, full width — they are what the
-          person on the street came for and they must never truncate first. */}
-      {meta ? (
-        <View style={styles.placeMetaRow}>
-          {showsStatusDot(metaTone) ? (
-            <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
-          ) : null}
           <Text
-            style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
+            style={styles.placeTitle}
+            numberOfLines={2}
+            maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {meta}
+            {title}
           </Text>
-        </View>
-      ) : null}
-
-      {/* The door sits on the quiet line, not beside the name and not centred
-          against the whole block: it is the shortest line, so it has the room,
-          and sharing one row means the two halves share one baseline. */}
-      <View style={styles.placeInfoRow}>
-        <View style={styles.placeFactRow}>
-          {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
-          {detailText ? (
-            <Text
-              style={styles.placeFact}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {detailText}
-            </Text>
-          ) : null}
-        </View>
-
-        {door ? (
-          <Pressable
-            onPress={door.onPress}
-            hitSlop={12}
-            style={({ pressed }) => [styles.placeDoor, pressed && styles.pressedSoft]}
-            accessibilityRole="button"
-            accessibilityLabel={door.accessibilityLabel}
-          >
-            <Text
-              style={styles.placeDoorLabel}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {door.label}
-            </Text>
-            <ChevronRightIcon size={15} color={Colors.amber} />
-          </Pressable>
-        ) : null}
+          {open ? <ChevronRightIcon size={18} color={Colors.mutedText} /> : null}
+        </Pressable>
+        {/* Tapping the empty map does the same, but a screen reader lands on
+            the centred pin instead, and nobody else knows the gesture. */}
+        <Pressable
+          onPress={onClose}
+          hitSlop={6}
+          style={({ pressed }) => [styles.placeClose, pressed && styles.pressedSoft]}
+          accessibilityRole="button"
+          accessibilityLabel={t.a11y.mapSelectionClear}
+        >
+          <XIcon size={16} color={Colors.foamMuted} />
+        </Pressable>
       </View>
 
-      <View style={styles.placeLayers}>{layers}</View>
+      <View style={stacked ? styles.placeBottomStacked : styles.placeBottomRow}>
+        {/* The same door as the title, for thumbs; VoiceOver reads the lines
+            as text and opens the detail from the title button. */}
+        <Pressable
+          onPress={open?.onPress}
+          disabled={!open}
+          accessible={false}
+          style={({ pressed }) => [
+            !stacked && styles.placeDetailsBeside,
+            pressed && styles.pressedSoft,
+          ]}
+        >
+          {/* §5.4: the hours are what the person on the street came for, so
+              they wrap instead of truncating first. */}
+          {meta ? (
+            <View style={styles.placeMetaRow}>
+              <View style={styles.placeLead}>
+                {showsStatusDot(metaTone) ? (
+                  <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
+                ) : null}
+              </View>
+              <Text
+                style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
+                numberOfLines={2}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {meta}
+              </Text>
+            </View>
+          ) : null}
+
+          {beers ? (
+            <View style={styles.placeMetaRow}>
+              <View style={styles.placeLead}>
+                <BeerIcon size={13} color={Colors.mutedText} />
+              </View>
+              <Text
+                style={styles.placeFact}
+                numberOfLines={2}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {beers}
+              </Text>
+            </View>
+          ) : null}
+
+          {detailText ? (
+            <View style={styles.placeMetaRow}>
+              <View style={styles.placeLead}>
+                {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
+              </View>
+              <Text
+                style={styles.placeFact}
+                numberOfLines={2}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {detailText}
+              </Text>
+            </View>
+          ) : null}
+        </Pressable>
+
+        <Pressable
+          onPress={action.onPress}
+          style={({ pressed }) => [styles.placeAction, pressed && styles.pressedSoft]}
+          accessibilityRole="button"
+          accessibilityLabel={action.accessibilityLabel}
+        >
+          <Text
+            style={styles.placeActionLabel}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {action.label}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -329,6 +376,10 @@ function PlaceCard({
  * name of the active one — so the map's main mode switch was two taps deep and
  * looked like a label. Same segmented track as the Kompas/Mapa switch: neutral
  * foam, never a second amber surface.
+ *
+ * Segments are as wide as their labels plus an equal share of what is left, so
+ * the count after "Parta teď" takes room from "V okolí" instead of squeezing
+ * its own label.
  */
 function LayerSwitch({
   layer,
@@ -368,14 +419,15 @@ function LayerSwitch({
               numberOfLines={1}
               adjustsFontSizeToFit
               minimumFontScale={0.85}
-              maxFontSizeMultiplier={FontScaleCap.body}
+              maxFontSizeMultiplier={FontScaleCap.heading}
             >
               {segment.label}
             </Text>
             {segment.badge ? (
               <Text
                 style={[styles.layerBadge, active && styles.layerLabelActive]}
-                maxFontSizeMultiplier={FontScaleCap.body}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.display}
               >
                 {segment.badge > 9 ? '9+' : segment.badge}
               </Text>
@@ -410,14 +462,58 @@ function pubWithDetails(pub: Pub, details: PubHoursResult | undefined): Pub {
   };
 }
 
-function PubMarker({ visited, selected }: { visited: boolean; selected: boolean }) {
+function PubMarker({
+  visited,
+  selected,
+  beers,
+  favorite = false,
+}: {
+  visited: boolean;
+  selected: boolean;
+  beers?: number;
+  favorite?: boolean;
+}) {
   return (
-    <View style={styles.pinHit}>
+    <View style={[styles.pinHit, beers ? styles.pinHitWide : null]}>
       {selected ? <View style={styles.pubPinRing} /> : null}
       <View style={[styles.pubPin, visited && styles.pubPinVisited, selected && styles.pubPinSelected]}>
         <BeerIcon size={selected ? 18 : 15} color={visited ? Colors.stout : Colors.foam} />
       </View>
       {visited ? <View style={styles.visitedNotch} /> : null}
+      {favorite ? (
+        <View
+          style={[
+            styles.pinHeartBadge,
+            beers ? styles.pinHeartBadgeWide : null,
+            selected && (beers ? styles.pinHeartBadgeSelectedWide : styles.pinHeartBadgeSelected),
+          ]}
+        >
+          <HeartFilledIcon size={10} color={Colors.amber} />
+        </View>
+      ) : null}
+      {beers ? (
+        <BeersBadge
+          beers={beers}
+          style={[styles.pinBeersBadge, selected && styles.pinBeersBadgeSelected]}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function BeersBadge({
+  beers,
+  style,
+}: {
+  beers: number;
+  style: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[styles.beersBadge, style]}>
+      <BeerIcon size={10} color={Colors.stout} />
+      <Text style={styles.beersBadgeText} maxFontSizeMultiplier={FontScaleCap.display}>
+        {beers > 99 ? '99+' : beers}
+      </Text>
     </View>
   );
 }
@@ -428,10 +524,18 @@ function clusterTier(count: number): { size: number; fontSize: number } {
   return { size: 34, fontSize: 13 };
 }
 
-function ClusterMarker({ count, visited }: { count: number; visited: boolean }) {
+function ClusterMarker({
+  count,
+  visited,
+  beers,
+}: {
+  count: number;
+  visited: boolean;
+  beers: number;
+}) {
   const { size, fontSize } = clusterTier(count);
   return (
-    <View style={styles.clusterHit}>
+    <View style={[styles.clusterHit, beers ? styles.clusterHitWithBadge : null]}>
       <View
         style={[
           styles.clusterPin,
@@ -450,6 +554,9 @@ function ClusterMarker({ count, visited }: { count: number; visited: boolean }) 
           {count}
         </Text>
       </View>
+      {beers ? (
+        <BeersBadge beers={beers} style={styles.clusterBeersBadge} />
+      ) : null}
     </View>
   );
 }
@@ -501,6 +608,8 @@ export default function BeerMapScreen({
   initialPub,
   focusInitialPub = false,
   onSearch,
+  onBack,
+  onOpenPub,
   filters,
   onApplyFilters,
   onShowCompass,
@@ -512,10 +621,13 @@ export default function BeerMapScreen({
   const mapRef = useRef<MapView>(null);
   const reduceMotion = useReduceMotion();
   const hapticEnabled = useSettingsStore((state) => state.hapticEnabled);
+  const showPubBeers = useSettingsStore((state) => state.showPubBeers);
+  const setShowPubBeers = useSettingsStore((state) => state.setShowPubBeers);
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const {
     pubs,
     nearbyPrices,
+    searchArea,
     visitedPubs,
     visitedCities,
     livePubs,
@@ -563,9 +675,10 @@ export default function BeerMapScreen({
   const [detailOpen, setDetailOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [pubBeers, setPubBeers] = useState<PubBeersByKey | null>(null);
+  const [beersOnlyChoice, setBeersOnlyChoice] = useState(rememberedBeersOnly);
   const [listOpen, setListOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [placingPin, setPlacingPin] = useState(false);
   const [detailsByPubKey, setDetailsByPubKey] = useState<Record<string, PubHoursResult>>({});
   const [loadingDetailKey, setLoadingDetailKey] = useState<string | null>(null);
   const [timedOutDetailKey, setTimedOutDetailKey] = useState<string | null>(null);
@@ -592,6 +705,37 @@ export default function BeerMapScreen({
     loadRegion(initialRegion);
   }, [initialRegion, loadRegion]);
 
+  // Retries ride on each catalogue load, so a failed first fetch (bad signal
+  // in the pub) recovers without a restart; a loaded week is a cache hit. A
+  // pan must not cancel a slow request, so only hiding or leaving aborts it.
+  const beersRequest = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!showPubBeers || beersRequest.current) return;
+    const controller = new AbortController();
+    beersRequest.current = controller;
+    void fetchPubBeersLastWeek(controller.signal).then((beers) => {
+      if (beersRequest.current === controller) beersRequest.current = null;
+      if (!controller.signal.aborted && beers) setPubBeers(beers);
+    });
+  }, [pubs, showPubBeers]);
+  useEffect(() => {
+    if (showPubBeers) return;
+    beersRequest.current?.abort();
+    beersRequest.current = null;
+  }, [showPubBeers]);
+  useEffect(() => {
+    const request = beersRequest;
+    return () => request.current?.abort();
+  }, []);
+
+  // Last week's counts only mean something while they are shown and loaded.
+  const visibleBeers = showPubBeers && layer !== 'friends' ? pubBeers : null;
+  const beersOnly = beersOnlyChoice && visibleBeers != null;
+  const setBeersOnly = useCallback((next: boolean) => {
+    rememberedBeersOnly = next;
+    setBeersOnlyChoice(next);
+  }, []);
+
   useEffect(() => {
     if (!position || didAutoLocate.current) return;
     didAutoLocate.current = true;
@@ -609,13 +753,16 @@ export default function BeerMapScreen({
 
   const points = useMemo(
     () => {
-      const points = buildMapPubPoints(
+      let points = buildMapPubPoints(
         pubs,
         visitedPubs,
         layer === 'visited',
         false,
         activeFilterCount === 0,
       ).points;
+      if (beersOnly && visibleBeers) {
+        points = points.filter((point) => visibleBeers.has(point.key));
+      }
       // Keep the searched place visible before its catalogue area is loaded.
       // Later filters, layers and reports still apply; updates of the same pub win.
       if (focusedPoint && (
@@ -635,7 +782,17 @@ export default function BeerMapScreen({
       }
       return points;
     },
-    [activeFilterCount, focusedPoint, layer, pubs, reportedCacheKeys, reportedPubIds, visitedPubs],
+    [
+      activeFilterCount,
+      focusedPoint,
+      layer,
+      pubs,
+      reportedCacheKeys,
+      reportedPubIds,
+      visibleBeers,
+      visitedPubs,
+      beersOnly,
+    ],
   );
 
   const activeSelection =
@@ -713,6 +870,25 @@ export default function BeerMapScreen({
     typeof selectedDetailPub?.ratingCount === 'number' && selectedDetailPub.ratingCount > 0
       ? selectedDetailPub.ratingCount.toLocaleString(intlLocale)
       : null;
+  const favorites = usePubFavoritesStore((state) => state.favorites);
+  // A catalogue fix can move a saved pub to the next cell; its id still counts.
+  const favoriteIds = useMemo(
+    () =>
+      new Set(
+        Object.values(favorites)
+          .map((favorite) => favorite.externalId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [favorites],
+  );
+  const isFavoritePoint = useCallback(
+    (point: { key: string; pub: { id: string; name: string } }) => {
+      const inCell = favorites[point.key];
+      return (Boolean(inCell) && isSameVenue(inCell, point.pub)) || favoriteIds.has(point.pub.id);
+    },
+    [favoriteIds, favorites],
+  );
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const visiblePoints = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
     const lngMargin = region.longitudeDelta * 0.65;
@@ -728,6 +904,13 @@ export default function BeerMapScreen({
       return aDistance - bDistance;
     });
   }, [points, region]);
+  const hasFavorites = Object.keys(favorites).length > 0;
+  // With no favourites left the chip is gone, so the filter must not linger.
+  const favoritesFilter = favoritesOnly && hasFavorites;
+  const listedPoints = useMemo(
+    () => (favoritesFilter ? visiblePoints.filter(isFavoritePoint) : visiblePoints),
+    [favoritesFilter, isFavoritePoint, visiblePoints],
+  );
 
   const visibleLivePubs = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -752,9 +935,16 @@ export default function BeerMapScreen({
     if (showCities || layer === 'friends') return [];
     // Cluster only the viewport-filtered points — clustering the full
     // accumulated catalogue (up to 600) and discarding offscreen clusters
-    // afterwards wastes work on every pan.
-    return clusterCoordinates(visiblePoints, region);
-  }, [layer, region, showCities, visiblePoints]);
+    // afterwards wastes work on every pan. The selected pub always keeps its
+    // own pin: a pub opened from elsewhere must not hide inside a bubble.
+    const selectedKey = selectedPub?.key;
+    const selected = selectedKey ? visiblePoints.find((point) => point.key === selectedKey) : undefined;
+    if (!selected) return clusterCoordinates(visiblePoints, region);
+    return [
+      ...clusterCoordinates(visiblePoints.filter((point) => point !== selected), region),
+      { id: `selected:${selected.key}`, lat: selected.lat, lng: selected.lng, items: [selected] },
+    ];
+  }, [layer, region, selectedPub?.key, showCities, visiblePoints]);
 
   const handleRegionChange = useCallback(
     (next: Region) => {
@@ -797,38 +987,17 @@ export default function BeerMapScreen({
 
   const renameSelectedPub = useCallback(() => setDetailOpen(true), []);
 
-  // Add-pub straight from the map: a fixed pin over the viewport center that
-  // the user aims by panning the map, so the chosen point is explicit — no
-  // silently inherited coordinates.
-  const startPinPlacement = useCallback(() => {
+  // Same form as from the compass; the map center only seeds the pin picker
+  // there, nothing is selected until the user aims it.
+  const openAddPub = useCallback(() => {
     trackUiInteraction('map_add_pub_open');
     setDetailOpen(false);
     clearSelection();
-    setPlacingPin(true);
-  }, [clearSelection]);
-
-  const cancelPinPlacement = useCallback(() => setPlacingPin(false), []);
-
-  const confirmPinPlacement = useCallback(async () => {
-    trackUiInteraction('map_add_pub_open', 'submit');
-    // The settled region can lag one gesture behind; the camera is exact.
-    let center = { latitude: region.latitude, longitude: region.longitude };
-    try {
-      const camera = await mapRef.current?.getCamera();
-      if (camera?.center) center = camera.center;
-    } catch {
-      // Fall back to the last settled region.
-    }
-    setPlacingPin(false);
     router.push({
       pathname: '/add-pub' as never,
-      params: {
-        lat: String(center.latitude),
-        lng: String(center.longitude),
-        source: 'map',
-      },
+      params: { lat: String(region.latitude), lng: String(region.longitude) },
     });
-  }, [region.latitude, region.longitude, router]);
+  }, [clearSelection, region.latitude, region.longitude, router]);
 
   const handleMapPress = useCallback(
     (event: MapPressEvent) => {
@@ -839,7 +1008,6 @@ export default function BeerMapScreen({
 
   const selectPub = useCallback(
     (point: MapPubPoint) => {
-      if (placingPin) return;
       trackUiInteraction('map_pub_select', 'select');
       if (hapticEnabled) fireLightImpactHaptic();
       const next: MapSelection = { kind: 'pub', key: point.key, accountId };
@@ -858,12 +1026,11 @@ export default function BeerMapScreen({
         { duration: reduceMotion ? 0 : 220 },
       );
     },
-    [accountId, hapticEnabled, placingPin, reduceMotion],
+    [accountId, hapticEnabled, reduceMotion],
   );
 
   const selectLive = useCallback(
     (live: LivePubSummary) => {
-      if (placingPin) return;
       trackUiInteraction('map_live_select', 'select');
       if (hapticEnabled) fireLightImpactHaptic();
       const next: MapSelection = { kind: 'live', key: live.cacheKey, accountId };
@@ -882,7 +1049,7 @@ export default function BeerMapScreen({
         { duration: reduceMotion ? 0 : 220 },
       );
     },
-    [accountId, hapticEnabled, placingPin, reduceMotion],
+    [accountId, hapticEnabled, reduceMotion],
   );
 
   const selectLayer = useCallback((next: Layer) => {
@@ -986,6 +1153,7 @@ export default function BeerMapScreen({
         ? t.map.viewportKnownNone
         : t.map.viewportKnown(visitedInView);
 
+  const selectedBeers = selectedPub ? visibleBeers?.get(selectedPub.key) ?? 0 : 0;
   const cardState = useMemo(() => {
     if (selectedPub) {
       const hours = openingMeta(selectedDetailPub ?? selectedPub.pub, selectedHoursStatus);
@@ -1007,6 +1175,7 @@ export default function BeerMapScreen({
           [selectedPub.pub.city, selectedPub.visit ? t.map.visited : null]
             .filter(Boolean)
             .join(' · ') || null,
+        beers: selectedBeers ? t.map.beersLastWeek(selectedBeers) : null,
       };
     }
     if (selectedLive) {
@@ -1050,6 +1219,7 @@ export default function BeerMapScreen({
     selectedPub,
     selectedRating,
     selectedRatingCount,
+    selectedBeers,
     viewportDetail,
     viewportHeadline,
   ]);
@@ -1063,14 +1233,8 @@ export default function BeerMapScreen({
         onUndo: refresh,
       };
     }
-    if (activeFilterCount > 0) {
-      return {
-        kind: 'rapid',
-        text: t.compass.nudgeFilters(activeFilterCount),
-        confirmLabel: t.compass.nudgeFiltersClear,
-        onConfirm: () => onApplyFilters(EMPTY_PUB_SEARCH_FILTERS),
-      };
-    }
+    // Active filters are the chip under the header, not a strip: they last the
+    // whole visit, and a full-width strip for that long was map taken away.
     if (loadingPubs) {
       return {
         kind: 'dopito',
@@ -1091,23 +1255,12 @@ export default function BeerMapScreen({
       return { kind: 'dopito', label: t.map.permissionHint, onPress: locate };
     }
     return null;
-  }, [
-    activeFilterCount,
-    layer,
-    loadingPubs,
-    locate,
-    onApplyFilters,
-    permissionState,
-    refresh,
-    region.latitudeDelta,
-    stale,
-  ]);
+  }, [layer, loadingPubs, locate, permissionState, refresh, region.latitudeDelta, stale]);
 
   const primaryAction = useMemo(() => {
     if (cardState.kind === 'pub' && selectedPub) {
       return {
         label: t.map.aimCompass,
-        subLabel: null as string | null,
         accessibilityLabel: t.map.aimCompass,
         onPress: () =>
           aimCompass({
@@ -1121,7 +1274,6 @@ export default function BeerMapScreen({
     if (cardState.kind === 'live' && selectedLive) {
       return {
         label: t.map.aimCompass,
-        subLabel: null as string | null,
         accessibilityLabel: t.map.aimCompass,
         onPress: () =>
           aimCompass({
@@ -1135,7 +1287,6 @@ export default function BeerMapScreen({
     if (cardState.kind === 'city' && selectedCity) {
       return {
         label: t.map.showMyPubs,
-        subLabel: null as string | null,
         accessibilityLabel: t.map.showMyPubs,
         onPress: () => focusCity(selectedCity),
       };
@@ -1147,7 +1298,6 @@ export default function BeerMapScreen({
     // Compiler rules treat its ref-capturing closures as a ref read in render.
     return {
       label: t.map.findMe,
-      subLabel: null as string | null,
       accessibilityLabel: t.a11y.mapLocate,
       onPress: locate,
     };
@@ -1175,6 +1325,46 @@ export default function BeerMapScreen({
         onPress: () => runAfterMoreClose(() => setFilterSheetOpen(true)),
       },
       {
+        key: 'beers',
+        label: t.map.moreBeers,
+        icon: BeerIcon,
+        selected: showPubBeers,
+        onPress: () => {
+          setMoreOpen(false);
+          // Hidden counts cannot narrow the map, so turning them back on starts unfiltered.
+          if (showPubBeers) setBeersOnly(false);
+          setShowPubBeers(!showPubBeers);
+        },
+      },
+      ...(showPubBeers
+        ? [
+            {
+              key: 'beers-only',
+              label: t.map.moreBeersOnly,
+              icon: MapPinnedIcon,
+              selected: beersOnly,
+              onPress: () => {
+                setMoreOpen(false);
+                setBeersOnly(!beersOnly);
+              },
+            },
+          ]
+        : []),
+      // A map opened from the board goes back to it instead of stacking another.
+      ...(onBack
+        ? []
+        : [
+            {
+              key: 'board',
+              label: t.map.moreBoard,
+              icon: TrophyIcon,
+              onPress: () =>
+                runAfterMoreClose(() =>
+                  router.push({ pathname: '/leaderboards' as never, params: { board: 'venues', source: 'map' } }),
+                ),
+            },
+          ]),
+      {
         key: 'refresh',
         label: t.map.refresh,
         icon: RefreshCwIcon,
@@ -1188,7 +1378,7 @@ export default function BeerMapScreen({
         key: 'add-pub',
         label: t.compass.moreAddPub,
         icon: MapPinPlusIcon,
-        onPress: () => runAfterMoreClose(startPinPlacement),
+        onPress: () => runAfterMoreClose(openAddPub),
       },
     ];
     return selectedPub
@@ -1206,11 +1396,29 @@ export default function BeerMapScreen({
   }, [
     activeFilterCount,
     openSelectedPubReport,
+    onBack,
     refresh,
+    router,
     runAfterMoreClose,
     selectedPub,
-    startPinPlacement,
+    setShowPubBeers,
+    setBeersOnly,
+    showPubBeers,
+    openAddPub,
+    beersOnly,
   ]);
+
+  // "Jen kde se pilo" narrows the map like any filter, so the chip counts it too.
+  const filterCount = activeFilterCount + (beersOnly ? 1 : 0);
+  const openFilters = useCallback(() => {
+    // The beers toggle lives in the "…" sheet, next to the filters row.
+    if (activeFilterCount > 0) setFilterSheetOpen(true);
+    else setMoreOpen(true);
+  }, [activeFilterCount]);
+  const clearFilters = useCallback(() => {
+    if (activeFilterCount > 0) onApplyFilters(EMPTY_PUB_SEARCH_FILTERS);
+    setBeersOnly(false);
+  }, [activeFilterCount, onApplyFilters, setBeersOnly]);
 
   return (
     <View style={styles.root}>
@@ -1273,32 +1481,48 @@ export default function BeerMapScreen({
           if (cluster.items.length === 1) {
             const point = cluster.items[0];
             const selected = selectedPub?.key === point.key;
+            const beers = visibleBeers?.get(point.key) ?? 0;
+            const favorite = isFavoritePoint(point);
             return (
               <StaticMapMarker
-                key={`${point.key}:${point.visit?.visitCount ?? 0}:${selected ? 'selected' : 'idle'}`}
+                key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${favorite ? 'fav' : ''}:${selected ? 'selected' : 'idle'}`}
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 onPress={() => selectPub(point)}
-                accessibilityLabel={t.a11y.mapPub(
-                  point.pub.name,
-                  point.visit?.visitCount ?? 0,
-                )}
+                accessibilityLabel={[
+                  t.a11y.mapPub(point.pub.name, point.visit?.visitCount ?? 0),
+                  favorite ? t.map.favoriteA11y : null,
+                  beers ? t.map.beersLastWeek(beers) : null,
+                ].filter(Boolean).join(', ')}
               >
-                <PubMarker visited={Boolean(point.visit)} selected={selected} />
+                <PubMarker
+                  visited={Boolean(point.visit)}
+                  selected={selected}
+                  beers={beers}
+                  favorite={favorite}
+                />
               </StaticMapMarker>
             );
           }
+          // Beers add up across the pubs of a cluster.
+          const clusterBeers = visibleBeers
+            ? cluster.items.reduce((sum, item) => sum + (visibleBeers.get(item.key) ?? 0), 0)
+            : 0;
           return (
             <StaticMapMarker
-              key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}`}
+              key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}:${clusterBeers}`}
               stopPropagation
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
-              accessibilityLabel={t.a11y.mapCluster(cluster.items.length)}
+              accessibilityLabel={[
+                t.a11y.mapCluster(cluster.items.length),
+                clusterBeers ? t.map.beersClusterLastWeek(clusterBeers) : null,
+              ].filter(Boolean).join(', ')}
             >
               <ClusterMarker
                 count={cluster.items.length}
                 visited={cluster.items.some((item) => item.visit != null)}
+                beers={clusterBeers}
               />
             </StaticMapMarker>
           );
@@ -1318,44 +1542,22 @@ export default function BeerMapScreen({
         )) : null}
       </MapView>
 
-      {placingPin ? (
-        <View style={styles.pinOverlay} pointerEvents="none">
-          <View style={styles.pinBalloon}>
-            <View style={styles.pinHead}>
-              <MapPinPlusIcon size={20} color={Colors.amber} />
-            </View>
-            <View style={styles.pinStem} />
-          </View>
-          <View style={styles.pinDot} />
-        </View>
-      ) : null}
-
       <View
         style={[styles.topStack, { paddingTop: insets.top }]}
         pointerEvents="box-none"
       >
-        {placingPin ? (
-          <View style={styles.header}>
+        <View style={styles.header}>
+          {onBack ? (
             <Pressable
-              onPress={cancelPinPlacement}
-              style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
+              onPress={onBack}
+              style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={t.a11y.mapPinCancel}
+              accessibilityLabel={t.leaderboards.back}
             >
-              <XIcon size={19} color={Colors.foamMuted} />
+              <ChevronLeftIcon size={22} color={Colors.foamMuted} />
             </Pressable>
-            <View style={styles.pinHintWrap} pointerEvents="none">
-              <View style={styles.pinHintPill}>
-                <Text style={styles.pinHintText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.map.pinHint}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.headerBalanceSpacer} />
-          </View>
-        ) : (
-        <View style={styles.header}>
+          ) : null}
           <ExploreSwitch
             activeView="map"
             onSelectCompass={onShowCompass}
@@ -1381,23 +1583,45 @@ export default function BeerMapScreen({
             <MenuIcon size={20} color={Colors.foamMuted} />
           </Pressable>
         </View>
-        )}
-        {!placingPin ? (
-          <View style={styles.mapStatusRow} pointerEvents="box-none">
-            <View style={styles.nudgeWrap}>
-              <NudgeSlot nudge={nudge} />
-            </View>
+        {filterCount > 0 ? (
+          <View style={styles.filterChip}>
             <Pressable
-              onPress={locate}
-              style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
-              hitSlop={8}
+              onPress={openFilters}
+              hitSlop={{ top: 4, bottom: 4, left: 8 }}
+              style={({ pressed }) => [styles.filterChipBody, pressed && styles.pressedSoft]}
               accessibilityRole="button"
-              accessibilityLabel={t.a11y.mapLocate}
+              accessibilityLabel={`${t.compass.moreFilters}, ${t.compass.moreFiltersActive(filterCount)}`}
             >
-              <LocateFixedIcon size={19} color={Colors.amber} />
+              <ListFilterIcon size={15} color={Colors.amber} />
+              <Text
+                style={styles.filterChipLabel}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.heading}
+              >
+                {t.compass.moreFilters}
+              </Text>
+              <Text
+                style={styles.filterChipCount}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.display}
+              >
+                {filterCount}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={clearFilters}
+              hitSlop={{ top: 4, bottom: 4, right: 8 }}
+              style={({ pressed }) => [styles.filterChipClear, pressed && styles.pressedSoft]}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.mapFiltersClear}
+            >
+              <XIcon size={15} color={Colors.amber} />
             </Pressable>
           </View>
         ) : null}
+        <View style={styles.nudgeWrap} pointerEvents="box-none">
+          <NudgeSlot nudge={nudge} collapseWhenEmpty />
+        </View>
       </View>
 
       <View
@@ -1407,76 +1631,65 @@ export default function BeerMapScreen({
         ]}
         pointerEvents="box-none"
       >
-        {placingPin ? (
-          <GlowButton
-            label={t.map.pinConfirm}
-            onPress={() => void confirmPinPlacement()}
-            variant="primary"
-            glow="soft"
-            height={62}
-            accessibilityLabel={t.map.pinConfirm}
-          />
-        ) : (
-        <>
-        <PlaceCard
-          title={cardState.title}
-          meta={cardState.meta}
-          metaTone={cardState.metaTone}
-          fact={cardState.fact}
-          rating={'rating' in cardState ? cardState.rating : null}
-          titlePress={
-            cardState.kind === 'pub' && selectedPub
-              ? {
-                  onPress: () =>
-                    void openPubInMaps(selectedDetailPub ?? selectedPub.pub),
-                  accessibilityLabel: t.a11y.pubPillRevealed(
-                    selectedPub.pub.name,
-                  ),
-                }
-              : undefined
-          }
-          door={
-            cardState.kind === 'pub'
-              ? {
-                  label: t.compass.mapPubLink,
-                  onPress: () => {
-                    trackUiInteraction('map_pub_detail_open');
-                    setDetailOpen(true);
-                  },
-                  accessibilityLabel: t.compass.mapPubLink,
-                }
-              : cardState.kind === 'idle'
-                ? {
-                    label: t.map.listLink,
-                    onPress: () => {
-                      trackUiInteraction('map_list_open');
-                      setListOpen(true);
-                    },
-                    accessibilityLabel: t.a11y.mapList,
-                  }
-                : undefined
-          }
-          layers={
+        <Pressable
+          onPress={locate}
+          style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t.a11y.mapLocate}
+        >
+          <LocateFixedIcon size={20} color={Colors.amber} />
+        </Pressable>
+        {/* One row at the bottom, never two: the layers when nothing is picked,
+            the selection once something is. Tapping the empty map goes back. */}
+        {cardState.kind === 'idle' ? (
+          <View style={styles.dock}>
             <LayerSwitch
               layer={layer}
               liveCount={visibleLivePubs.length}
               onSelect={selectLayer}
             />
-          }
-        />
-        {/* Only a selection earns a button. */}
-        {cardState.kind !== 'idle' ? (
-          <GlowButton
-            label={primaryAction.label}
-            subLabel={primaryAction.subLabel}
-            onPress={primaryAction.onPress}
-            variant="primary"
-            glow="soft"
-            height={62}
-            accessibilityLabel={primaryAction.accessibilityLabel}
+            <Pressable
+              onPress={() => {
+                trackUiInteraction('map_list_open');
+                setListOpen(true);
+              }}
+              style={({ pressed }) => [styles.dockListButton, pressed && styles.pressedSoft]}
+              accessibilityRole="button"
+              accessibilityLabel={`${t.a11y.mapList}, ${cardState.title}`}
+            >
+              <LayoutListIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+        ) : (
+          <PlaceCard
+            title={cardState.title}
+            meta={cardState.meta}
+            metaTone={cardState.metaTone}
+            fact={cardState.fact}
+            beers={'beers' in cardState ? cardState.beers : null}
+            rating={'rating' in cardState ? cardState.rating : null}
+            open={
+              cardState.kind === 'pub'
+                ? {
+                    onPress: () => {
+                      if (!selectedPub) return;
+                      trackUiInteraction('map_pub_detail_open');
+                      const target = selectedDetailPub ?? selectedPub.pub;
+                      if (onOpenPub) onOpenPub(target);
+                      else openPubPage(router, target);
+                    },
+                    accessibilityLabel: t.compass.mapPubLink,
+                  }
+                : undefined
+            }
+            action={{
+              label: primaryAction.label,
+              onPress: primaryAction.onPress,
+              accessibilityLabel: primaryAction.accessibilityLabel,
+            }}
+            onClose={clearSelection}
           />
-        ) : null}
-        </>
         )}
       </View>
 
@@ -1504,6 +1717,8 @@ export default function BeerMapScreen({
                 { paddingBottom: insets.bottom + Spacing.lg },
               ]}
               onPress={() => undefined}
+              accessible={false}
+              focusable={false}
             >
               <View style={styles.listGrabber} />
               <View style={styles.listHeader}>
@@ -1512,7 +1727,7 @@ export default function BeerMapScreen({
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.heading}
                 >
-                  {layer === 'friends' ? t.map.layerFriends : t.map.listTitle}
+                  {layer === 'friends' ? t.map.layerFriends : viewportHeadline}
                 </Text>
                 <Pressable
                   onPress={() => setListOpen(false)}
@@ -1526,6 +1741,38 @@ export default function BeerMapScreen({
                   <XIcon size={20} color={Colors.foamMuted} />
                 </Pressable>
               </View>
+              {layer !== 'friends' && viewportDetail ? (
+                <Text
+                  style={styles.listSubtitle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {viewportDetail}
+                </Text>
+              ) : null}
+              {layer !== 'friends' && hasFavorites ? (
+                <View style={styles.listChips}>
+                  <Pressable
+                    onPress={() => setFavoritesOnly(!favoritesFilter)}
+                    style={({ pressed }) => [
+                      styles.listChip,
+                      favoritesFilter && styles.listChipActive,
+                      pressed && styles.pressedSoft,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: favoritesFilter }}
+                    accessibilityLabel={t.map.favoritesOnly}
+                  >
+                    <HeartIcon size={15} color={favoritesFilter ? Colors.amber : Colors.mutedText} />
+                    <Text
+                      style={[styles.listChipText, favoritesFilter && styles.listChipTextActive]}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {t.map.favoritesOnly}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {layer === 'friends' ? (
                 <FlatList
                   style={styles.list}
@@ -1592,7 +1839,7 @@ export default function BeerMapScreen({
               ) : (
                 <FlatList
                   style={styles.list}
-                  data={visiblePoints}
+                  data={listedPoints}
                   keyExtractor={(item) => item.key}
                   contentContainerStyle={styles.listContent}
                   showsVerticalScrollIndicator={false}
@@ -1625,13 +1872,18 @@ export default function BeerMapScreen({
                       accessibilityRole="button"
                     >
                       <View style={styles.listRowCopy}>
-                        <Text
-                          style={styles.listRowTitle}
-                          numberOfLines={1}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                        >
-                          {item.pub.name}
-                        </Text>
+                        <View style={styles.listRowTitleLine}>
+                          <Text
+                            style={[styles.listRowTitle, styles.listRowTitleShrink]}
+                            numberOfLines={1}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                          >
+                            {item.pub.name}
+                          </Text>
+                          {isFavoritePoint(item) ? (
+                            <HeartFilledIcon size={13} color={Colors.amber} />
+                          ) : null}
+                        </View>
                         <Text
                           style={styles.listRowMeta}
                           numberOfLines={1}
@@ -1649,7 +1901,7 @@ export default function BeerMapScreen({
                       style={styles.emptyList}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {t.map.emptyList}
+                      {favoritesFilter ? t.map.emptyFavorites : t.map.emptyList}
                     </Text>
                   }
                 />
@@ -1670,6 +1922,7 @@ export default function BeerMapScreen({
           visible
           value={filters}
           nearbyPrices={nearbyPrices}
+          searchArea={searchArea}
           onClose={() => setFilterSheetOpen(false)}
           onApply={onApplyFilters}
         />
@@ -1688,6 +1941,11 @@ export default function BeerMapScreen({
               : 'unknown'
           }
           onClose={() => setDetailOpen(false)}
+          onNavigate={() => {
+            void openPubInMaps(selectedDetailPub ?? selectedPub.pub).catch(() =>
+              useToastStore.getState().show(t.pubSearch.navigationFailed),
+            );
+          }}
           onReport={() => {
             setDetailOpen(false);
             setTimeout(() => setReportOpen(true), 250);
@@ -1729,77 +1987,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: Spacing.sm,
   },
-  mapStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: Spacing.sm,
-    paddingRight: 12,
-  },
-  headerBalanceSpacer: {
-    width: 40,
-    height: 40,
-  },
-  // Pin-placement mode: the pin is a fixed overlay whose stem bottom touches
-  // the exact viewport center — the user aims by panning the map underneath.
-  pinOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinBalloon: {
-    alignItems: 'center',
-    // Head (40) + stem (12) column, shifted up so the stem tip anchors at the
-    // overlay center where pinDot marks the exact spot.
-    transform: [{ translateY: -26 }],
-  },
-  pinHead: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinStem: {
-    width: 2,
-    height: 12,
-    backgroundColor: Colors.stout2,
-  },
-  pinDot: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    width: 6,
-    height: 6,
-    marginTop: -3,
-    marginLeft: -3,
-    borderRadius: 3,
-    backgroundColor: Colors.amber,
-  },
-  pinHintWrap: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: Spacing.sm,
-  },
-  pinHintPill: {
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  pinHintText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.foam,
-  },
   // The only place in the app where the overflow glyph needs a surface under
   // it: everywhere else it sits on stout, here it floats over a light map and
   // a bare muted glyph simply disappears into the streets. Same dark pill as
@@ -1807,15 +1994,15 @@ const styles = StyleSheet.create({
   // Round glyph target that has to stay legible over the map, so unlike the
   // header buttons on the tácek screens it carries its own surface.
   mapGlyphButton: {
-    width: 40,
-    height: 40,
+    alignSelf: 'flex-end',
+    width: 48,
+    height: 48,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.stout, 0.94),
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.16),
-    marginRight: Spacing.sm,
     ...softDrop(),
   },
   moreButton: {
@@ -1824,16 +2011,105 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.stout, 0.86),
+    backgroundColor: withAlpha(Colors.stout, 0.94),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.12),
+    borderColor: withAlpha(Colors.foam, 0.16),
+    ...softDrop(),
   },
   nudgeWrap: {
-    flex: 1,
+    paddingTop: Spacing.sm,
     paddingHorizontal: 24,
+  },
+  // A filter lasts the whole visit, so it is a chip in the corner, not a strip
+  // across the map. The body opens the filters, the cross clears them.
+  filterChip: {
+    alignSelf: 'flex-start',
+    marginTop: Spacing.sm,
+    marginLeft: 12,
+    height: 36,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.5),
+    ...softDrop(),
+  },
+  filterChipBody: {
+    height: '100%',
+    paddingLeft: 12,
+    paddingRight: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterChipLabel: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 14,
+    color: Colors.amber,
+    includeFontPadding: false,
+  },
+  filterChipCount: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 14,
+    color: Colors.amber,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  // 36 wide plus the slop is a full 44pt target, split from the body by a hairline.
+  filterChipClear: {
+    height: '100%',
+    minWidth: 36,
+    paddingLeft: 10,
+    paddingRight: 12,
+    justifyContent: 'center',
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: withAlpha(Colors.foam, 0.16),
   },
 
   pinHit: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  // Symmetric so the pin stays on the coordinate; the badge needs the right half.
+  pinHitWide: { width: 80 },
+  pinBeersBadge: { top: 5, left: 47 },
+  // Top left of the pin, mirroring the beer badge on the right.
+  pinHeartBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.foam,
+    borderWidth: 1.5,
+    borderColor: Colors.stout,
+  },
+  pinHeartBadgeWide: { left: 18 },
+  pinHeartBadgeSelected: { top: 2, left: 2 },
+  pinHeartBadgeSelectedWide: { top: 2, left: 14 },
+  pinBeersBadgeSelected: { top: 2, left: 50 },
+  clusterHitWithBadge: { paddingTop: 10, paddingHorizontal: 26 },
+  clusterBeersBadge: { top: 0, right: 0 },
+  beersBadge: {
+    position: 'absolute',
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: Colors.foam,
+    borderWidth: 1.5,
+    borderColor: Colors.stout,
+  },
+  beersBadgeText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 10,
+    color: Colors.stout,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
   pubPin: {
     width: 31,
     height: 31,
@@ -1964,51 +2240,90 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 24,
+    paddingHorizontal: 12,
     gap: 12,
+  },
+  dock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  dockListButton: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.16),
+    ...softDrop(),
   },
   // Same surface as every hero card, only shorter and floating over the map.
   // `minHeight`, not `height`: with the biggest system font the rows grow instead
   // of getting shaved off, and the stack is anchored to the bottom anyway.
   placeCard: {
     ...CardSurface.card,
-    paddingTop: 16,
-    paddingBottom: 10,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 14,
   },
-  placeInfoRow: {
+  placeBottomRow: {
     marginTop: 2,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
   },
-  placeFactRow: {
-    flexShrink: 1,
+  placeBottomStacked: {
+    marginTop: 2,
+    gap: 12,
+  },
+  placeDetailsBeside: {
+    flex: 1,
     minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
   },
   placeTitleRow: {
-    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  placeTitlePress: {
+    flex: 1,
     minWidth: 0,
-    minHeight: 24,
+    minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 2,
+  },
+  placeClose: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.foam, 0.08),
+  },
+  // Every detail line starts at the same x, whatever glyph (or none) leads it.
+  placeLead: {
+    width: 13,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   placeTitle: {
     flexShrink: 1,
     minWidth: 0,
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
+    lineHeight: 23,
     color: Colors.foam,
     includeFontPadding: false,
   },
+  // Top-aligned so a wrapped second line does not pull the glyph off the first.
   placeMetaRow: {
-    marginTop: 6,
+    marginTop: 4,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
   },
   // The one dot allowed to be decoration-shaped, because it carries real state.
@@ -2033,48 +2348,52 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
-  placeLayers: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-  },
   // Shorter than HitArea.min so the quiet line stays a line — the 12 pt hitSlop
   // on the Pressable puts the real target back over the minimum.
-  placeDoor: {
-    minHeight: 34,
-    flexDirection: 'row',
+  // Compact primary: the card's only amber surface, no glow (§6.1). Never
+  // shrinks, so the label stays whole and the details column gives way.
+  placeAction: {
+    flexShrink: 0,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
   },
-  placeDoorLabel: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.amber,
+  placeActionLabel: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 16,
+    color: Colors.stout,
     includeFontPadding: false,
   },
 
   // — Layer switch (§2.2: neutral track, never a second amber surface) —
   layerTrack: {
-    height: 38,
-    padding: 3,
+    flex: 1,
+    minWidth: 0,
+    height: 48,
+    padding: 4,
     borderRadius: Radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(Colors.foam, 0.04),
+    backgroundColor: withAlpha(Colors.stout, 0.94),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.08),
+    borderColor: withAlpha(Colors.foam, 0.16),
+    ...softDrop(),
   },
   layerSegment: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
     minWidth: 0,
-    height: 30,
+    height: 40,
     borderRadius: Radius.pill,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: 4,
   },
   layerSegmentActive: {
     backgroundColor: withAlpha(Colors.foam, 0.1),
@@ -2082,7 +2401,7 @@ const styles = StyleSheet.create({
   layerLabel: {
     flexShrink: 1,
     fontFamily: Fonts.display.bold,
-    fontSize: 13,
+    fontSize: 14,
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
@@ -2090,6 +2409,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
   },
   layerBadge: {
+    flexShrink: 0,
     fontFamily: Fonts.display.extrabold,
     fontSize: 12,
     color: Colors.amber,
@@ -2140,6 +2460,13 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     includeFontPadding: false,
   },
+  listSubtitle: {
+    marginTop: -Spacing.xs,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
   closeButton: {
     width: HitArea.min,
     height: HitArea.min,
@@ -2169,6 +2496,41 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.border, 0.4),
   },
   listRowCopy: { flex: 1, minWidth: 0 },
+  listChips: {
+    flexDirection: 'row',
+    marginTop: Spacing.sm,
+  },
+  listChip: {
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    // The list card is stout2 already; the chip sits one step lighter.
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  listChipActive: {
+    borderColor: withAlpha(Colors.amber, 0.5),
+  },
+  listChipText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+  listChipTextActive: {
+    color: Colors.amber,
+  },
+  listRowTitleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  listRowTitleShrink: {
+    flexShrink: 1,
+  },
   listRowTitle: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,

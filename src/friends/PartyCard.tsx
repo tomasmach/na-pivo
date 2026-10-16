@@ -111,8 +111,6 @@ export function PartyCard({
 
   const content = (
     <>
-      {topRow !== undefined ? <View style={styles.topRow}>{topRow}</View> : null}
-
       <View style={styles.body} onLayout={(event) => setBodyHeight(event.nativeEvent.layout.height)}>
         <View style={styles.countColumn}>
           <Text
@@ -174,8 +172,6 @@ export function PartyCard({
           ) : null}
         </View>
       ) : null}
-
-      {rail ?? null}
     </>
   );
 
@@ -185,21 +181,28 @@ export function PartyCard({
     return (
       <View style={styles.card} accessibilityRole="text" accessibilityLabel={accessibilityLabel}>
         <CardSheen />
+        {topRow !== undefined ? <View style={styles.topRow}>{topRow}</View> : null}
         {content}
+        {rail ?? null}
       </View>
     );
   }
 
+  // Header controls and the rail must stay beside the accessible card button.
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-    >
+    <View style={styles.card}>
       <CardSheen />
-      {content}
-    </Pressable>
+      {topRow !== undefined ? <View style={styles.topRow}>{topRow}</View> : null}
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={({ pressed }) => [styles.pressArea, pressed && styles.pressed]}
+      >
+        {content}
+      </Pressable>
+      {rail ?? null}
+    </View>
   );
 }
 
@@ -211,6 +214,9 @@ const styles = StyleSheet.create({
   // takes over, which is exactly the NightCard behaviour.
   card: {
     ...CardSurface.card,
+    flex: 1,
+  },
+  pressArea: {
     flex: 1,
   },
   pressed: {

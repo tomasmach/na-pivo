@@ -1,0 +1,10 @@
+appId: ${MAESTRO_APP_ID}
+---
+- runFlow:
+    file: ../../../maestro/route.yaml
+    env:
+      ROUTE: /beer
+- tapOn:
+    id: diary-segment
+- tapOn:
+    id: diary-latest-evening

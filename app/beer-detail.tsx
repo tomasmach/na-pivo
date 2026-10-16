@@ -145,7 +145,7 @@ export default function BeerDetailScreen() {
 
           <View style={styles.statsRow}>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{detail.myCount}</Text>
+              <Text testID="beer-detail-count" style={styles.statValue}>{detail.myCount}</Text>
               <Text style={styles.statLabel}>moje</Text>
             </View>
             <View style={styles.stat}>

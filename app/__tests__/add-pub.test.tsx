@@ -7,6 +7,7 @@ import AddPubScreen from '../add-pub';
 
 let mockSearchParams: Record<string, string> = {};
 const mockBack: jest.Mock = jest.fn();
+const mockPush: jest.Mock = jest.fn();
 const mockBumpCatalogRevision: jest.Mock = jest.fn();
 const mockShowToast: jest.Mock = jest.fn();
 const mockEnsureLocationPermission: jest.Mock = jest.fn(async () => 'granted');
@@ -23,10 +24,13 @@ const mockUpsertLocalPub: jest.Mock = jest.fn();
 const mockFireSuccessHaptic: jest.Mock = jest.fn(async () => undefined);
 const mockLookupAddedPubLocation: jest.Mock = jest.fn();
 const mockResetBeerMapLayerForAddedPub: jest.Mock = jest.fn();
+const mockSuggestPubsToAdd: jest.Mock = jest.fn(async () => []);
+const mockResolvePubSearchResult: jest.Mock = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
     back: mockBack,
+    push: mockPush,
   })),
   useLocalSearchParams: jest.fn(() => mockSearchParams),
 }));
@@ -76,6 +80,8 @@ jest.mock('@/components/shared/GlowButton', () => {
 jest.mock('@/components/shared/IconGlyph', () => ({
   CheckIcon: jest.fn(() => null),
   ChevronLeftIcon: jest.fn(() => null),
+  ChevronRightIcon: jest.fn(() => null),
+  MapIcon: jest.fn(() => null),
   MapPinIcon: jest.fn(() => null),
   TargetIcon: jest.fn(() => null),
 }));
@@ -101,7 +107,7 @@ jest.mock('@/data/account', () => ({
 
 jest.mock('@/data/addedPubsQueue', () => ({
   enqueueAddedPub: (entry: unknown) => mockEnqueueAddedPub(entry),
-  enqueueAddedPubEdit: (entry: unknown) => mockEnqueueAddedPubEdit(entry),
+  enqueueAddedPubEdit: (...args: unknown[]) => mockEnqueueAddedPubEdit(...args),
   loadAddedPubSubmissions: () => mockLoadAddedPubSubmissions(),
 }));
 
@@ -114,6 +120,29 @@ jest.mock('@/data/pubs', () => ({
 jest.mock('@/map/BeerMapScreen', () => ({
   resetBeerMapLayerForAddedPub: () => mockResetBeerMapLayerForAddedPub(),
 }));
+
+const mockPickerStarts: unknown[] = [];
+jest.mock('@/map/MapPinPicker', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    MapPinPicker: ({ visible, start, onCancel, onConfirm }: {
+      visible: boolean;
+      start: unknown;
+      onCancel: () => void;
+      onConfirm: (coords: { lat: number; lng: number }) => void;
+    }) => {
+      if (!visible) return null;
+      mockPickerStarts.push(start);
+      return React.createElement(React.Fragment, null,
+        React.createElement('Pressable', {
+          accessibilityLabel: 'mock-pin-confirm',
+          onPress: () => onConfirm({ lat: 49.2, lng: 16.61 }),
+        }),
+        React.createElement('Pressable', { accessibilityLabel: 'mock-pin-cancel', onPress: onCancel }),
+      );
+    },
+  };
+});
 
 jest.mock('@/stores/pubStore', () => ({
   usePubStore: (selector: (state: { bumpCatalogRevision: () => void }) => unknown) =>
@@ -133,6 +162,11 @@ jest.mock('@/data/addedPubLocationClient', () => ({
   lookupAddedPubLocation: (...args: unknown[]) => mockLookupAddedPubLocation(...args),
 }));
 
+jest.mock('@/data/pubSearchClient', () => ({
+  suggestPubsToAdd: (...args: unknown[]) => mockSuggestPubsToAdd(...args),
+  resolvePubSearchResult: (...args: unknown[]) => mockResolvePubSearchResult(...args),
+}));
+
 jest.mock('@/data/uxTelemetry', () => ({ trackUiInteraction: jest.fn() }));
 
 const resolvedAddress = { lat: 49.1951, lng: 16.6068, city: 'Brno', address: 'Česká 12' };
@@ -148,6 +182,7 @@ describe('AddPubScreen location confirmation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPickerStarts.length = 0;
     mockSearchParams = { lat: '50.087', lng: '14.421', city: 'Praha' };
     mockLoadAddedPubSubmissions.mockResolvedValue([]);
     mockEnsureLocationPermission.mockResolvedValue('granted');
@@ -156,6 +191,7 @@ describe('AddPubScreen location confirmation', () => {
     });
     mockLookupAddedPubLocation.mockResolvedValue(resolvedAddress);
     mockEnqueueAddedPub.mockResolvedValue('queued');
+    mockSuggestPubsToAdd.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -220,6 +256,61 @@ describe('AddPubScreen location confirmation', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
+  it('suggests places for a typed name and saves the picked place', async () => {
+    const place = { lat: 50.0884, lng: 14.4036, city: 'Praha', address: 'Nerudova 2' };
+    mockLookupAddedPubLocation.mockResolvedValue(place);
+    mockSuggestPubsToAdd.mockResolvedValue([
+      { id: 'google:abc', name: 'U Kocoura', location: 'Nerudova 2, Praha', providerPlaceId: 'abc' },
+    ]);
+    mockResolvePubSearchResult.mockResolvedValue({ id: 'google:abc', name: 'U Kocoura', ...place });
+    jest.useFakeTimers();
+    try {
+      await renderScreen();
+      change(t.a11y.addPubNameInput, 'U Koc');
+      await act(async () => { jest.advanceTimersByTime(400); });
+      expect(mockSuggestPubsToAdd).toHaveBeenCalledWith(
+        'U Koc', { lat: 50.087, lng: 14.421 }, expect.any(AbortSignal),
+      );
+      await press(t.a11y.addPubSuggestion('U Kocoura'));
+      await act(async () => { jest.advanceTimersByTime(400); });
+      expect(mockSuggestPubsToAdd).toHaveBeenCalledTimes(1);
+      expect(mockLookupAddedPubLocation).toHaveBeenCalledWith(
+        { address: 'Nerudova 2', city: 'Praha' }, expect.any(AbortSignal),
+      );
+      await submit();
+      expectNoWrite();
+      await press(`${t.addPub.confirmAddress}: Nerudova 2, Praha`);
+      await submit();
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({ name: 'U Kocoura', ...place }));
+  });
+
+  it('drops a map pin when a place is picked until its address is confirmed', async () => {
+    const place = { lat: 50.0884, lng: 14.4036, city: 'Praha', address: 'Nerudova 2' };
+    mockLookupAddedPubLocation.mockResolvedValue(place);
+    mockSuggestPubsToAdd.mockResolvedValue([{ id: 'google:abc', name: 'U Kocoura', providerPlaceId: 'abc' }]);
+    mockResolvePubSearchResult.mockResolvedValue({ id: 'google:abc', name: 'U Kocoura', ...place });
+    jest.useFakeTimers();
+    try {
+      await renderScreen();
+      await press(t.a11y.addPubPickOnMapButton);
+      await press('mock-pin-confirm');
+      expect(button(t.a11y.addPubMapPinSelected)).toBeDefined();
+      change(t.a11y.addPubNameInput, 'U Koc');
+      await act(async () => { jest.advanceTimersByTime(400); });
+      await press(t.a11y.addPubSuggestion('U Kocoura'));
+      await submit();
+      expectNoWrite();
+      await press(`${t.addPub.confirmAddress}: Nerudova 2, Praha`);
+      await submit();
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining(place));
+  });
+
   it('takes a fresh GPS fix and requires confirmation of its reverse-geocoded address', async () => {
     await renderScreen();
     fillAddress();
@@ -280,37 +371,70 @@ describe('AddPubScreen location confirmation', () => {
     expectNoWrite();
   });
 
-  it('preserves an explicitly aimed map pin while offline and marks its origin', async () => {
-    mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
+  it('saves an explicitly aimed map pin while offline and marks its origin', async () => {
     mockLookupAddedPubLocation.mockResolvedValue(null);
     await renderScreen();
     fillAddress();
+    await press(t.a11y.addPubPickOnMapButton);
+    expect(mockPickerStarts.at(-1)).toEqual({ lat: 50.087, lng: 14.421 });
+    await press('mock-pin-confirm');
     await submit();
     expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({
-      lat: 50.087, lng: 14.421, location_source: 'map_pin', address: 'Česká 12', city: 'Brno',
+      lat: 49.2, lng: 16.61, location_source: 'map_pin', address: 'Česká 12', city: 'Brno',
     }));
     expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
     expect(mockResetBeerMapLayerForAddedPub).toHaveBeenCalledTimes(1);
   });
 
-  it('lets the user deselect a map pin and blocks saving', async () => {
-    mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
+  it('prefills the address of an aimed pin but keeps the pin point', async () => {
+    mockSearchParams = { lat: '50.087', lng: '14.421' };
+    await renderScreen();
+    change(t.a11y.addPubNameInput, 'Hospoda U Testu');
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-confirm');
+    expect(mockLookupAddedPubLocation).toHaveBeenCalledWith({ lat: 49.2, lng: 16.61 }, expect.anything());
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubCityInput }).props.value).toBe('Brno');
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubAddressInput }).props.value).toBe('Česká 12');
+    await submit();
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({
+      lat: 49.2, lng: 16.61, location_source: 'map_pin', address: 'Česká 12', city: 'Brno',
+    }));
+  });
+
+  it('does not overwrite an address field the user already filled', async () => {
+    mockSearchParams = { lat: '50.087', lng: '14.421' };
+    await renderScreen();
+    change(t.a11y.addPubCityInput, 'Kostelec');
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-confirm');
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubCityInput }).props.value).toBe('Kostelec');
+    expect(renderer!.root.findByProps({ accessibilityLabel: t.a11y.addPubAddressInput }).props.value).toBe('Česká 12');
+  });
+
+  it('does not treat the entry coordinates as a location when the map is closed without aiming', async () => {
     await renderScreen();
     fillAddress();
-    await press(t.a11y.addPubMapPinSelected);
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-cancel');
     await submit();
     expectNoWrite();
   });
 
+  it('reopens the map at the chosen pin', async () => {
+    await renderScreen();
+    await press(t.a11y.addPubPickOnMapButton);
+    await press('mock-pin-confirm');
+    await press(t.a11y.addPubMapPinSelected);
+    expect(mockPickerStarts.at(-1)).toEqual(expect.objectContaining({ lat: 49.2, lng: 16.61, source: 'pin' }));
+  });
+
   it.each<Record<string, string>>([{ lng: '14.421' }, { lat: '50.087' }])(
-    'does not turn a missing map coordinate into zero (%j)', async (coordinates) => {
-      mockSearchParams = { ...coordinates, source: 'map' };
+    'does not turn a missing entry coordinate into zero (%j)', async (coordinates) => {
+      mockSearchParams = coordinates;
       await renderScreen();
-      fillAddress();
-      await submit();
-      expectNoWrite();
-      expect(button(t.a11y.addPubMapPinSelected)).toBeUndefined();
+      await press(t.a11y.addPubPickOnMapButton);
+      expect(mockPickerStarts.at(-1)).toBeNull();
     },
   );
 
@@ -320,11 +444,12 @@ describe('AddPubScreen location confirmation', () => {
       address: 'Stará 1', lat: '50.087', lng: '14.421',
     };
     await renderScreen();
+    expect(button(t.a11y.addPubPickOnMapButton)).toBeUndefined();
     change(t.a11y.addPubNameInput, 'Nové jméno');
     await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
       client_id: 'existing-client-id', name: 'Nové jméno',
-    });
+    }, { locationSource: undefined });
     expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
     expect(mockUpsertLocalPub).toHaveBeenCalledWith(expect.objectContaining({
@@ -352,7 +477,96 @@ describe('AddPubScreen location confirmation', () => {
     await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
       client_id: 'unresolved-id', name: 'Hospoda U Testu', ...resolvedAddress,
+    }, { locationSource: undefined });
+  });
+
+  it('lets an unsent addition with an unknown address be saved with a map pin', async () => {
+    mockSearchParams = {
+      clientId: 'unresolved-id', name: 'Hospoda U Testu', city: 'Brno',
+      address: 'Neznámá 1', lat: '50.087', lng: '14.421', needsLocation: '1',
+    };
+    mockLoadAddedPubSubmissions.mockResolvedValue([{
+      client_id: 'unresolved-id', failureReason: 'location-not-found', pendingOperation: 'create',
+    }]);
+    await renderScreen();
+    expect(renderer!.root.findAllByProps({ children: t.addPub.locationNeedsFixOrPin }).length).toBeGreaterThan(0);
+    expect(renderer!.root.findAllByProps({ children: t.addPub.locationBody })).toHaveLength(0);
+    expect(renderer!.root.findAllByProps({ children: t.addPub.useCurrentLocation }).length).toBeGreaterThan(0);
+    await press(t.a11y.addPubPickOnMapButton);
+    expect(mockPickerStarts.at(-1)).toEqual({ lat: 50.087, lng: 14.421 });
+    await press('mock-pin-confirm');
+    expect(renderer!.root.findAllByProps({ children: t.addPub.locationNeedsFixOrPin })).toHaveLength(0);
+    await submit();
+    expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith(
+      { client_id: 'unresolved-id', lat: 49.2, lng: 16.61, city: 'Brno', address: 'Neznámá 1' },
+      { locationSource: 'map_pin' },
+    );
+    expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
+  });
+
+  it('keeps the map pin away from edits of a published pub', async () => {
+    mockSearchParams = {
+      clientId: 'rejected-edit', name: 'Hospoda U Testu', city: 'Brno',
+      address: 'Neznámá 1', lat: '50.087', lng: '14.421', needsLocation: '1',
+    };
+    mockLoadAddedPubSubmissions.mockResolvedValue([{
+      client_id: 'rejected-edit', failureReason: 'location-not-found', pendingOperation: 'edit',
+    }]);
+    await renderScreen();
+    expect(button(t.a11y.addPubPickOnMapButton)).toBeUndefined();
+    expect(renderer!.root.findAllByProps({ children: t.addPub.locationNeedsFix }).length).toBeGreaterThan(0);
+  });
+
+  it('opens the fix form for a new pub whose address the server cannot place', async () => {
+    mockEnqueueAddedPub.mockResolvedValue('location-not-found');
+    await renderScreen();
+    fillAddress();
+    await press(t.addPub.findAddress);
+    await press(confirmLabel);
+    await submit();
+    await act(async () => { await Promise.resolve(); });
+    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/add-pub',
+      params: {
+        clientId: 'uuid-fixed', name: 'Hospoda U Testu', city: 'Brno', address: 'Česká 12',
+        lat: String(resolvedAddress.lat), lng: String(resolvedAddress.lng), needsLocation: '1',
+      },
     });
+    expect(mockShowToast).not.toHaveBeenCalled();
+    expect(mockFireSuccessHaptic).not.toHaveBeenCalled();
+  });
+
+  it('suggests the pin when a corrected address of an unsent pub still cannot be found', async () => {
+    mockSearchParams = {
+      clientId: 'unresolved-id', name: 'Hospoda U Testu', city: 'Praha',
+      address: 'Neznámá 1', lat: '50.087', lng: '14.421', needsLocation: '1',
+    };
+    mockLoadAddedPubSubmissions.mockResolvedValue([{
+      client_id: 'unresolved-id', failureReason: 'location-not-found', pendingOperation: 'create',
+    }]);
+    mockEnqueueAddedPubEdit.mockResolvedValue('location-not-found');
+    await renderScreen();
+    fillAddress();
+    await press(t.addPub.findAddress);
+    await press(confirmLabel);
+    await submit();
+    await act(async () => { await Promise.resolve(); });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenLastCalledWith(t.addPub.stillNotFoundToast);
+  });
+
+  it('confirms only the real sync result', async () => {
+    mockEnqueueAddedPub.mockResolvedValue('pending');
+    await renderScreen();
+    fillAddress();
+    await press(t.addPub.findAddress);
+    await press(confirmLabel);
+    await submit();
+    await act(async () => { await Promise.resolve(); });
+    expect(mockShowToast).toHaveBeenCalledTimes(1);
+    expect(mockShowToast).toHaveBeenLastCalledWith(t.addPub.queuedToast);
+    expect(mockFireSuccessHaptic).not.toHaveBeenCalled();
   });
 
   it('blocks an edit with changed name and address until the new location is confirmed', async () => {
@@ -371,7 +585,7 @@ describe('AddPubScreen location confirmation', () => {
     await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
       client_id: 'existing-client-id', name: 'Hospoda U Testu', ...resolvedAddress,
-    });
+    }, { locationSource: undefined });
   });
 
   it('queues only one pub when save is tapped twice before a render', async () => {

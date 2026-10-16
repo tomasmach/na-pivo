@@ -22,7 +22,7 @@ import React, { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
-import { CompassIcon } from '@/components/shared/IconGlyph';
+import { CompassIcon, UserPlusIcon } from '@/components/shared/IconGlyph';
 import type { FriendPresence, MyPresence } from '@/data/friendsClient';
 import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
@@ -171,6 +171,8 @@ export interface PresenceListProps {
   onOpenProfile: (accountId: string) => void;
   /** Called after a block/report so the screen can reload the graph. */
   onChanged: () => void;
+  /** Opens "Kdo tu sedí s tebou"; shown under my own row while I sit somewhere. */
+  onAddFromTable?: () => void;
 }
 
 export function PresenceList({
@@ -180,6 +182,7 @@ export function PresenceList({
   sharedCacheKey = null,
   onOpenProfile,
   onChanged,
+  onAddFromTable,
 }: PresenceListProps) {
   const openSafetyMenu = useFriendSafety(onChanged);
   const handleLongPress = useCallback(
@@ -208,6 +211,18 @@ export function PresenceList({
           mine
           onOpenProfile={onOpenProfile}
         />
+      ) : null}
+      {myPresence && onAddFromTable ? (
+        <Pressable
+          onPress={onAddFromTable}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.tableEntry, pressed && styles.dim]}
+        >
+          <UserPlusIcon size={16} color={Colors.amber} />
+          <Text style={styles.tableEntryText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.friends.tableEntry}
+          </Text>
+        </Pressable>
       ) : null}
       {rows.map((row) => (
         <PresenceRow
@@ -304,6 +319,23 @@ const styles = StyleSheet.create({
     height: HitArea.min,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // A text link under my row, not a pill: it is a way in, not a second action
+  // competing with the screen's primary one (§6.3). Indented to the text column.
+  tableEntry: {
+    minHeight: HitArea.min,
+    marginTop: -Spacing.sm,
+    paddingLeft: 34 + Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tableEntryText: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.bold,
+    fontSize: 14,
+    color: Colors.amber,
+    includeFontPadding: false,
   },
   hiddenNote: {
     paddingBottom: Spacing.md,

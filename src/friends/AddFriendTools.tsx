@@ -21,7 +21,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useIsFocused, useRouter, type Href } from 'expo-router';
 
 import {
   fetchFriendInviteCode,
@@ -37,6 +37,7 @@ import {
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
+  CheckIcon,
   LinkIcon,
   PlusIcon,
   QrCodeIcon,
@@ -53,6 +54,7 @@ import { useToastStore } from '@/stores/toastStore';
 
 import { FriendMini } from './FriendMini';
 import HairlineRow from './HairlineRow';
+import { TableAdd } from './TableAdd';
 
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
@@ -65,6 +67,10 @@ interface AddFriendToolsProps {
   onChanged: () => void;
   /** Show the @nickname search row (default true). */
   showSearch?: boolean;
+  /** Show "Kdo tu sedí s tebou": only while I am sitting in a pub. */
+  showTable?: boolean;
+  /** Start it right away (opened from its entry line). */
+  tableAutoStart?: boolean;
 }
 
 export function AddFriendTools({
@@ -73,9 +79,14 @@ export function AddFriendTools({
   onOpenCode,
   onChanged,
   showSearch = true,
+  showTable = false,
+  tableAutoStart = false,
 }: AddFriendToolsProps) {
   const router = useRouter();
   const showToast = useToastStore((s) => s.show);
+  // Unmounting the table hides me, so it lives only while this screen is on top.
+  const focused = useIsFocused();
+  const tableShown = showTable && focused;
 
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -114,11 +125,11 @@ export function AddFriendTools({
   }, [query, showToast]);
 
   const requestFriend = useCallback(
-    async (profile?: FriendProfile) => {
+    async (profile?: FriendProfile): Promise<boolean> => {
       const nickname = query.trim().replace(/^@/, '');
-      if (!profile && nickname.length < 2) return;
+      if (!profile && nickname.length < 2) return false;
       const requestKey = profile?.id ?? `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`;
-      if (requestingKey) return;
+      if (requestingKey) return false;
       trackUiInteraction('friend_request_send', 'submit');
       setRequestingKey(requestKey);
       const queuedRequest: FriendQueueItem =
@@ -128,24 +139,32 @@ export function AddFriendTools({
       const result = profile
         ? await sendFriendRequest({ accountId: profile.id })
         : await sendFriendRequest({ nickname });
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return false;
       setRequestingKey(null);
       if (result.ok || isRetriableFriendError(result)) {
         trackUiInteraction('friend_request_send', 'success');
         if (!result.ok) {
           await enqueueFriendOp(queuedRequest);
-          if (!mountedRef.current) return;
+          if (!mountedRef.current) return false;
         }
-        showToast(t.friends.requestSent, {
-          icon: <UserPlusIcon size={20} color={Colors.amber} />,
+        // Asking someone who already asked me accepts their request on the server.
+        const accepted = result.ok && result.accepted;
+        showToast(accepted ? t.friends.requestAccepted : t.friends.requestSent, {
+          icon:
+            accepted ? (
+              <CheckIcon size={20} color={Colors.amber} />
+            ) : (
+              <UserPlusIcon size={20} color={Colors.amber} />
+            ),
         });
         setQuery('');
         setResults([]);
         onChanged();
-      } else {
-        trackUiInteraction('friend_request_send', 'failure');
-        showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
+        return true;
       }
+      trackUiInteraction('friend_request_send', 'failure');
+      showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
+      return false;
     },
     [onChanged, query, requestingKey, showToast],
   );
@@ -189,14 +208,30 @@ export function AddFriendTools({
 
   return (
     <>
+      {tableShown ? (
+        <TableAdd autoStart={tableAutoStart} requestingKey={requestingKey} onRequest={requestFriend} />
+      ) : null}
+
       <View style={styles.growthActions}>
-        <GlowButton
-          label={t.friends.myCodeCta}
-          onPress={onOpenCode}
-          variant="primary"
-          glow="soft"
-          icon={<QrCodeIcon size={20} color={Colors.stout} />}
-        />
+        {/* Opened to add people at the table: their + / ✓ are the main targets. */}
+        {tableShown && tableAutoStart ? (
+          <GlowButton
+            label={t.friends.myCodeCta}
+            onPress={onOpenCode}
+            variant="secondary"
+            glow="none"
+            height={52}
+            icon={<QrCodeIcon size={18} color={Colors.foam} />}
+          />
+        ) : (
+          <GlowButton
+            label={t.friends.myCodeCta}
+            onPress={onOpenCode}
+            variant="primary"
+            glow="soft"
+            icon={<QrCodeIcon size={20} color={Colors.stout} />}
+          />
+        )}
         <GlowButton
           label={t.friends.inviteShareCta}
           onPress={() => void shareInvite()}

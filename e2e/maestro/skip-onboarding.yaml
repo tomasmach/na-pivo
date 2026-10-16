@@ -1,0 +1,8 @@
+appId: ${MAESTRO_APP_ID}
+---
+- tapOn:
+    id: onboarding-skip
+- extendedWaitUntil:
+    notVisible:
+      id: onboarding-skip
+    timeout: 10000

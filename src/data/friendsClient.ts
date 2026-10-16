@@ -1,6 +1,12 @@
 import { t } from '@/i18n';
 
-import { clearCachedAnonymousAccount, ensureAccount, generateUuidV4, type AccountSession } from './account';
+import {
+  clearCachedAnonymousAccount,
+  ensureAccount,
+  generateUuidV4,
+  getSessionToken,
+  type AccountSession,
+} from './account';
 import {
   parseAchievementsBlock,
   type AccountAchievements,
@@ -9,7 +15,7 @@ import {
 import { parseBeerCheckIn, type BeerCheckIn } from './beerCheckinsClient';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
-import { saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
+import { loadFriendsDashboardSnapshot, saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
 import { trackApiFailure } from './telemetryClient';
 import type { Pub } from './pubs';
 
@@ -278,6 +284,17 @@ export interface FriendProfileDetail {
   publicStats: PublicProfileStats | null;
   /** Null on older backends → hide the badge showcase. */
   achievements: AccountAchievements | null;
+  /** The person's public Tour de pub copies; empty on older backends. */
+  publicTours: ProfilePublicTour[];
+}
+
+export interface ProfilePublicTour {
+  id: string;
+  token: string;
+  title: string;
+  city: string;
+  stopCount: number;
+  peopleCount: number;
 }
 
 /** The failure half of {@link FriendActionResult}. */
@@ -433,6 +450,7 @@ interface RawFriendProfileDetail {
   incoming_request_id?: string | null;
   public_stats?: RawPublicProfileStats | null;
   achievements?: RawAchievementsBlock | null;
+  public_tours?: unknown[];
 }
 
 interface RawFriendInvite {
@@ -684,7 +702,21 @@ function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
     incomingRequestId: raw.incoming_request_id ?? null,
     publicStats: parsePublicStats(raw.public_stats),
     achievements: raw.achievements ? parseAchievementsBlock(raw.achievements) : null,
+    publicTours: parsePublicTours(raw.public_tours),
   };
+}
+
+function parsePublicTours(raw: unknown[] | undefined): ProfilePublicTour[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    const row = item as Record<string, unknown>;
+    if (typeof row?.id !== 'string' || typeof row.token !== 'string' || typeof row.title !== 'string') return [];
+    return [{
+      id: row.id, token: row.token, title: row.title, city: typeof row.city === 'string' ? row.city : '',
+      stopCount: Number.isInteger(row.stop_count) ? (row.stop_count as number) : 0,
+      peopleCount: Number.isInteger(row.people_count) ? (row.people_count as number) : 0,
+    }];
+  });
 }
 
 function extractError(data: unknown, status: number): FriendActionError {
@@ -703,14 +735,14 @@ function extractError(data: unknown, status: number): FriendActionError {
 
 async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: { method?: string; body?: unknown; signal?: AbortSignal; session?: AccountSession } = {},
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: FriendActionError }> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'offline', detail: t.clientErrors.offline } };
   }
 
-  const session = await ensureAccount(options.signal);
+  const session = options.session ?? (await ensureAccount(options.signal));
   if (!session || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'account', detail: t.clientErrors.account } };
   }
@@ -748,6 +780,34 @@ async function requestJson(
   } finally {
     abort.cleanup();
   }
+}
+
+export interface PartyFriends { friends: FriendProfile[]; ghost: boolean }
+
+function partyOf(dashboard: FriendsDashboard | null | undefined): PartyFriends | null {
+  return dashboard ? { friends: dashboard.friends, ghost: dashboard.settings?.ghostMode === true } : null;
+}
+
+/**
+ * The party for picking who hears a cinknutí. Answers at once from the party the
+ * phone last saw and still asks the server, since a friend may have accepted or
+ * invisible mode changed since Parta was open: `onFresh` gets the newer party.
+ * Without a saved party it waits for the server. Null offline with nothing saved.
+ */
+export async function loadPartyFriends(signal?: AbortSignal, onFresh?: (party: PartyFriends) => void): Promise<PartyFriends | null> {
+  // A sign-out or account switch meanwhile must not hand the previous account's friends to the next one.
+  const generation = snapshotGeneration();
+  const sameAccount = () => generation === snapshotGeneration();
+  const saved = partyOf((await loadFriendsDashboardSnapshot())?.dashboard);
+  if (!saved) {
+    const fetched = partyOf(await fetchFriendsDashboard(signal));
+    return sameAccount() ? fetched : null;
+  }
+  void fetchFriendsDashboard().then((dashboard) => {
+    const fresh = partyOf(dashboard);
+    if (fresh && sameAccount()) onFresh?.(fresh);
+  });
+  return sameAccount() ? saved : null;
 }
 
 export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
@@ -860,11 +920,119 @@ export async function searchFriends(query: string, signal?: AbortSignal): Promis
     : [];
 }
 
+export type FriendTableReason = 'no_visit' | 'too_soon' | 'ghost' | 'private' | 'no_nickname';
+export type FriendTableStatus = 'none' | 'outgoing' | 'incoming';
+
+export interface FriendTablePerson extends FriendProfile {
+  friendshipStatus: FriendTableStatus;
+}
+
+/** "Kdo tu sedí s tebou": who else opened it in the same pub. Profiles only, no place. */
+export interface FriendTable {
+  eligible: boolean;
+  reason: FriendTableReason | null;
+  /** Null when I am not showing up at the table right now. */
+  visibleUntil: string | null;
+  /** Only for `too_soon`: when the server lets me in. */
+  availableAt: string | null;
+  people: FriendTablePerson[];
+}
+
+const FRIEND_TABLE_REASONS: readonly FriendTableReason[] = ['no_visit', 'too_soon', 'ghost', 'private', 'no_nickname'];
+
+export function parseFriendTable(raw: unknown): FriendTable | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Record<string, unknown>;
+  const reason = FRIEND_TABLE_REASONS.find((value) => value === data.reason) ?? null;
+  const isoOrNull = (value: unknown) =>
+    typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+  const visibleUntil = isoOrNull(data.visible_until);
+  const people = Array.isArray(data.people)
+    ? (data.people as (RawFriendProfile & { friendship_status?: unknown })[])
+        .map((person): FriendTablePerson => ({
+          ...parseProfile(person),
+          friendshipStatus:
+            person?.friendship_status === 'outgoing' || person?.friendship_status === 'incoming'
+              ? person.friendship_status
+              : 'none',
+        }))
+        .filter((person) => person.id.length > 0)
+    : [];
+  return {
+    eligible: data.eligible === true && reason === null,
+    reason,
+    visibleUntil,
+    availableAt: isoOrNull(data.available_at),
+    people,
+  };
+}
+
+export async function fetchFriendTable(signal?: AbortSignal): Promise<FriendTable | null> {
+  const res = await requestJson('/v1/friends/table', { signal });
+  return res.ok ? parseFriendTable(res.data) : null;
+}
+
+/** Bumped by every opt-in so a pending hide retry never undoes a newer one. */
+let friendTableOpenings = 0;
+/** Token of the account behind the latest opt-in. */
+let friendTableOpenedBy: string | null = null;
+const CLOSE_TABLE_RETRY_MS = [2_000, 10_000, 30_000];
+
+/**
+ * Show me to people in the same pub for a few minutes; the server decides if I qualify.
+ * `closed` fires when the screen closes. The POST is not cancelled, because the
+ * server could still apply it after the screen's hide; instead this opt-in is
+ * hidden again once its request has finished, whatever the answer was. A failed
+ * or lost answer hides it too: the screen then says it is not open.
+ */
+export async function openFriendTable(closed?: AbortSignal): Promise<FriendTable | null> {
+  const opening = ++friendTableOpenings;
+  // One session for the opt-in and its hide, even if the account changes meanwhile.
+  const session = await ensureAccount();
+  if (!session) return null;
+  friendTableOpenedBy = session.token;
+  const res = await requestJson('/v1/friends/table', { method: 'POST', session });
+  const table = res.ok ? parseFriendTable(res.data) : null;
+  // Anything but an open window (closed screen, lost or odd answer) is hidden again.
+  if (closed?.aborted || !table?.visibleUntil) {
+    void closeFriendTable(opening, session);
+    return closed?.aborted ? null : table;
+  }
+  return table;
+}
+
+/** Hide me again. A lost request is repeated; the server ends the window after 10 min anyway. */
+export async function closeFriendTable(
+  opening = friendTableOpenings,
+  posted?: AccountSession,
+): Promise<void> {
+  let session = posted ?? null;
+  if (!session) {
+    // Without an account there is nothing to hide; do not create one for this.
+    const token = await getSessionToken();
+    if (!token) return;
+    session = await ensureAccount();
+    // The account changed between the two reads: not mine to hide.
+    if (session?.token !== token) return;
+  }
+  for (const delay of [0, ...CLOSE_TABLE_RETRY_MS]) {
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    // The same account opted in again meanwhile: that newer window stays.
+    if (opening !== friendTableOpenings && friendTableOpenedBy === session.token) return;
+    // Sent with the captured session, so it can only ever hide that account.
+    const res = await requestJson('/v1/friends/table', { method: 'DELETE', session });
+    if (res.ok || !/^(network|http_429|http_5\d\d)$/.test(res.result.code)) return;
+  }
+}
+
+/** `accepted`: the target had already asked me, so the server made us friends. */
+export type FriendRequestResult = { ok: true; accepted: boolean } | FriendActionError;
+
 export async function sendFriendRequest(params: {
   accountId?: string;
   nickname?: string;
   inviteCode?: string;
-}): Promise<FriendActionResult> {
+}): Promise<FriendRequestResult> {
   // Exactly one path is sent; invite code wins, then account id, then nickname —
   // matching the backend's mutually-exclusive `validate` (contract §A3).
   const body = params.inviteCode
@@ -873,7 +1041,7 @@ export async function sendFriendRequest(params: {
       ? { target_account_id: params.accountId }
       : { nickname: params.nickname ?? '' };
   const res = await requestJson('/v1/friends/requests', { method: 'POST', body });
-  return res.ok ? { ok: true } : res.result;
+  return res.ok ? { ok: true, accepted: res.data.status === 'accepted' } : res.result;
 }
 
 /** My reusable invite code + deep link, minting one if none is active (§A1). */
@@ -1015,12 +1183,20 @@ export async function removeFriend(accountId: string): Promise<FriendActionResul
   return res.ok ? { ok: true } : res.result;
 }
 
+/** A cinknutí sent from a tour: its title and whether the crew is still walking to the pub. */
+export interface TourPing {
+  title: string;
+  heading: boolean;
+}
+
 export async function shareFriendPubActivity(
   pub: Pub,
   message?: string,
   clientId?: string,
   recipientIds?: string[],
   startedAt?: string,
+  /** From a Tour de pub run: only changes the push wording, the server stores nothing. */
+  tour?: TourPing,
 ): Promise<FriendActionResult> {
   const now = startedAt ? new Date(startedAt) : new Date();
   const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000);
@@ -1038,6 +1214,7 @@ export async function shareFriendPubActivity(
       started_at: now.toISOString(),
       expires_at: expires.toISOString(),
       ...(targetIds ? { recipient_ids: targetIds } : {}),
+      ...(tour ? { tour_title: tour.title, tour_heading: tour.heading } : {}),
     },
   });
   if (res.ok && res.data.applied === false) {

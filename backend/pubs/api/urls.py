@@ -16,6 +16,8 @@ POST   drinks       → DrinksView
 DELETE drinks/<client_id> → DrinksView
 GET    release-notes → ReleaseNotesView
 GET    health/      → HealthView
+GET    transit/stops → TransitStopsView
+GET    transit/last-direct → TransitLastDirectView
 """
 
 from django.urls import path
@@ -60,7 +62,21 @@ from .party_views import (
     PartyGameEventView,
     party_game_stream,
 )
+from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
+from .tour_invite_views import MyTourInviteListView, MyTourInviteView, TourInvitesView
+from .tour_run_views import TourRunMemberView, TourRunPreviewView, TourRunView
+from .tour_search_views import TourSearchView
+from .tour_views import (
+    PublicTourView,
+    TourDetailView,
+    TourListView,
+    TourPublicationReportView,
+    TourPublicationView,
+    TourPubSearchView,
+    TourShareView,
+)
+from .transit_views import TransitLastDirectView, TransitStopsView
 from .views import (
     AccountAvatarView,
     AccountDeletionStatusView,
@@ -100,6 +116,7 @@ from .views import (
     FriendSettingsView,
     FriendsLiveView,
     FriendsView,
+    FriendTableView,
     HealthView,
     LeaderboardsView,
     MenuScanView,
@@ -112,6 +129,7 @@ from .views import (
     PubAmenityReadView,
     PubAmenityVoteView,
     PubCommunityView,
+    PubFavoriteView,
     PubHoursView,
     PublishedNightCommentDeleteView,
     PublishedNightCommentView,
@@ -134,6 +152,20 @@ from .views import (
 )
 
 urlpatterns = [
+    path("tours", TourListView.as_view()),
+    path("tours/<uuid:plan_id>", TourDetailView.as_view()),
+    path("tours/<uuid:plan_id>/share", TourShareView.as_view()),
+    path("tours/<uuid:plan_id>/publication", TourPublicationView.as_view()),
+    path("tours/<uuid:plan_id>/invites", TourInvitesView.as_view()),
+    path("tour-invites", MyTourInviteListView.as_view()),
+    path("tour-invites/<uuid:plan_id>", MyTourInviteView.as_view()),
+    path("tour-publications/<uuid:public_id>/report", TourPublicationReportView.as_view()),
+    path("tour-publications/search", TourSearchView.as_view()),
+    path("tour-runs/<uuid:run_id>", TourRunView.as_view()),
+    path("tour-runs/<uuid:run_id>/me", TourRunMemberView.as_view()),
+    path("tour-runs/<uuid:run_id>/preview", TourRunPreviewView.as_view()),
+    path("tour-shares/<slug:token>", PublicTourView.as_view()),
+    path("pubs/search", TourPubSearchView.as_view()),
     path("challenges", ChallengeListView.as_view(), name="challenges"),
     path("community-events", CommunityEventCollectionView.as_view(), name="community-events"),
     path(
@@ -182,6 +214,8 @@ urlpatterns = [
         name="community-event-report",
     ),
     path("pub-events", PubEventView.as_view(), name="pub-events"),
+    path("transit/stops", TransitStopsView.as_view(), name="transit-stops"),
+    path("transit/last-direct", TransitLastDirectView.as_view(), name="transit-last-direct"),
     path("party-evenings", PartyEveningCollectionView.as_view(), name="party-evenings"),
     # Keep this literal route before the catch-all <code> detail route below.
     path(
@@ -325,6 +359,16 @@ urlpatterns = [
         name="pub-ratings-delete",
     ),
     path(
+        "pub-favorites",
+        PubFavoriteView.as_view(http_method_names=["get", "put", "options"]),
+        name="pub-favorites",
+    ),
+    path(
+        "pub-favorites/<str:cache_key>",
+        PubFavoriteView.as_view(http_method_names=["delete", "options"]),
+        name="pub-favorites-delete",
+    ),
+    path(
         "pub-visits",
         PubVisitView.as_view(http_method_names=["get", "post", "options"]),
         name="pub-visits",
@@ -361,6 +405,12 @@ urlpatterns = [
         name="user-added-pubs",
     ),
     path("pubs/near", PubsNearView.as_view(), name="pubs-near"),
+    path(
+        "pubs/beers-last-week",
+        PubBeersLastWeekView.as_view(),
+        name="pubs-beers-last-week",
+    ),
+    path("pubs/beer-board", PubBeerBoardView.as_view(), name="pubs-beer-board"),
     path("pubs/suggest", PubLocationSuggestView.as_view(), name="pubs-suggest"),
     path("pubs/geocode", PubLocationGeocodeView.as_view(), name="pubs-geocode"),
     path(
@@ -382,6 +432,7 @@ urlpatterns = [
     path("friends/live", FriendsLiveView.as_view(), name="friends-live"),
     path("friends/drink-feed", FriendDrinkFeedView.as_view(), name="friends-drink-feed"),
     path("friends/search", FriendSearchView.as_view(), name="friends-search"),
+    path("friends/table", FriendTableView.as_view(), name="friends-table"),
     path("friends/requests", FriendRequestView.as_view(), name="friends-requests"),
     path(
         "friends/requests/<uuid:request_id>/<str:action>",

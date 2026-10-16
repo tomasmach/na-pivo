@@ -1,0 +1,29 @@
+appId: ${MAESTRO_APP_ID}
+---
+- evalScript: ${output.foregroundPid = output.local.request('/app/process').pid}
+- pressKey: Home
+- waitForAnimationToEnd:
+    timeout: 5000
+- evalScript: ${output.local.check(output.local.request('/app/process').pid === output.foregroundPid, 'Backgrounding must preserve the app process.')}
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          stopApp: false
+          permissions:
+            all: deny
+            location: inuse
+            photos: allow
+            camera: deny
+            notifications: deny
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - launchApp:
+          stopApp: false
+          permissions: {}
+- waitForAnimationToEnd:
+    timeout: 5000
+- evalScript: ${output.local.check(output.local.request('/app/process').pid === output.foregroundPid, 'Foreground sync must not use a cold app restart.')}

@@ -25,6 +25,10 @@ _PARTY_WEB_PATH_RE = re.compile(
 _INVITE_PATH_RE = re.compile(
     rf"({_SLASH}p{_SLASH})[A-Za-z0-9_-]{{8,}}(?=[^A-Za-z0-9_-]|$)",
 )
+_TOUR_PATH_RE = re.compile(
+    rf"({_SLASH}(?:v1{_SLASH}tour-shares|t){_SLASH})[A-Za-z0-9_-]+",
+    re.IGNORECASE,
+)
 _PARTY_FIELD_RE = re.compile(
     r"(?P<prefix>(?<!\w)[\"']?(?:join_code|party_code)[\"']?\s*[:=]\s*[\"']?)"
     r"[A-Z2-9]{6}(?=[\"']|\b)",
@@ -40,6 +44,7 @@ _QUERY_SECRET_RE = re.compile(
 def redact_party_codes(value: str) -> str:
     """Remove capability secrets from request paths and diagnostic text."""
 
+    value = _TOUR_PATH_RE.sub(r"\1[redacted-tour-token]", value)
     redacted = _PARTY_PATH_RE.sub(r"\1[redacted-party-code]", value)
     redacted = _PARTY_WEB_PATH_RE.sub(r"\1[redacted-party-code]", redacted)
     redacted = _INVITE_PATH_RE.sub(r"\1[redacted-invite-token]", redacted)

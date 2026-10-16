@@ -171,6 +171,7 @@ export const NicknameField = memo(function NicknameField({
           @
         </Text>
         <TextInput
+          testID="profile-nickname"
           style={styles.input}
           value={value}
           onChangeText={onChangeText}

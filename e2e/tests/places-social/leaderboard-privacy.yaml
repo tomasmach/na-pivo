@@ -1,0 +1,62 @@
+# Known visual ambiguity NP-E2E-009: ../../BUGS.md. Hero and row use their separate API ranks; a green flow does not resolve how that difference is explained.
+appId: ${MAESTRO_APP_ID}
+name: Leaderboard scores exclude private and blocked accounts
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+# Observer login must precede UI login so it cannot rotate the app's write epoch.
+- evalScript: ${output.local.check(output.local.observe('primary', '/v1/friends/live').status === 200, 'The primary observer is authenticated before the UI session.')}
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- evalScript: ${output.ps.check('board-beers')}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /leaderboards
+- assertVisible: '1\. @E2EKamos, 2 piva'
+- assertVisible: '2\. Ty, 1 pivo'
+- assertNotVisible: '.*E2ECizi.*'
+- tapOn: Přepnout na Mapéři
+- assertVisible: '1\. @E2EKamos, 20 XP'
+- assertVisible: '2\. Ty, 10 XP'
+- evalScript: ${output.ps.check('board-mapper')}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: ${'/parta/' + output.local.state().scenario.fixtureAccounts.E2EKamos}
+- tapOn: Další možnosti
+- tapOn: Zablokovat
+- tapOn: Zablokovat
+- evalScript: ${output.local.poll(function () { output.ps.check('board-blocked'); }, 15000)}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      # The DB write can finish before the profile's asynchronous goBack.
+      - extendedWaitUntil:
+          visible: Žebříčky
+          timeout: 15000
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /leaderboards
+- assertVisible: Žebříčky
+- swipe:
+    start: 50%, 30%
+    end: 50%, 75%
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - evalScript: ${output.local.screenshot('social-android-board-after-block-refresh')}
+- assertNotVisible: '.*E2EKamos.*'
+- assertNotVisible: '.*E2ECizi.*'
+- evalScript: ${output.ps.check('board-blocked')}
+- assertVisible: ${output.ps.boardSelf}
+- assertVisible: ${output.ps.boardHero}
+- evalScript: ${output.local.screenshot('social-private-blocked-board')}
+- evalScript: ${output.ps.check('board-blocked')}

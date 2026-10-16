@@ -211,6 +211,7 @@ function PublishNightSheetBase({
 
           <Pressable
             onPress={handlePublish}
+            testID="night-publish-submit"
             disabled={busy}
             accessibilityRole="button"
             accessibilityLabel={t.a11y.publishNightButton}
@@ -235,7 +236,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: Spacing.lg,
-    backgroundColor: 'rgba(12, 8, 5, 0.72)',
+    backgroundColor: withAlpha(Colors.deep, 0.72),
   },
   sheet: {
     backgroundColor: Colors.stout2,

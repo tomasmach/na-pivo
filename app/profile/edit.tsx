@@ -16,7 +16,7 @@
  * apply immediately (their own endpoints) and are NOT part of the Uložit batch.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
@@ -50,6 +50,7 @@ import {
   selectIsPublic,
 } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
+import { useToursStore } from '@/stores/toursStore';
 
 export default function ProfileEditScreen() {
   const router = useRouter();
@@ -69,6 +70,8 @@ export default function ProfileEditScreen() {
   const [nicknameError, setNicknameError] = useState('');
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
   const [isPublic, setIsPublic] = useState(initialIsPublic);
+  const hasPublicTours = useToursStore((s) => s.plans.some((plan) => plan.publication?.status === 'active'));
+  useEffect(() => { void useToursStore.getState().hydrate(); }, []);
 
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState('');
@@ -220,6 +223,7 @@ export default function ProfileEditScreen() {
                 signals it opens the photo picker. */}
             <Pressable
               onPress={handlePickAvatar}
+              testID="profile-avatar-pick"
               disabled={avatarBusy}
               style={({ pressed }) => [styles.avatarTap, pressed && styles.pressed]}
               accessibilityRole="button"
@@ -252,6 +256,7 @@ export default function ProfileEditScreen() {
               {!!avatarUrl && (
                 <Pressable
                   onPress={handleRemoveAvatar}
+                  testID="profile-avatar-remove"
                   style={({ pressed }) => [styles.avatarBtn, pressed && styles.pressed]}
                   accessibilityRole="button"
                   accessibilityLabel={t.a11y.profileRemovePhoto}
@@ -299,6 +304,7 @@ export default function ProfileEditScreen() {
           {/* ── Display name ── */}
           <Text style={styles.sectionHeader}>{t.profile.edit.displayNameHeader}</Text>
           <TextInput
+            testID="profile-display-name"
             style={styles.input}
             value={displayName}
             onChangeText={setDisplayName}
@@ -315,6 +321,7 @@ export default function ProfileEditScreen() {
           <Text style={styles.sectionHeader}>{t.profile.edit.visibilityHeader}</Text>
           <View style={styles.consentCard}>
             <VisibilityToggle
+              testID="profile-public"
               value={isPublic}
               onToggle={setIsPublic}
               label={t.profile.edit.visibilityToggleLabel}
@@ -331,6 +338,11 @@ export default function ProfileEditScreen() {
                 {t.profile.edit.consentPrivate}
               </Text>
             )}
+            {!isPublic && hasPublicTours && (
+              <Text style={styles.consentPrivate} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.tours.privateHidesPublic}
+              </Text>
+            )}
           </View>
         </KeyboardAwareScrollView>
 
@@ -338,6 +350,7 @@ export default function ProfileEditScreen() {
             below the fold of a long form. ── */}
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <GlowButton
+            testID="profile-save"
             label={saving ? t.profile.edit.saving : t.profile.edit.save}
             onPress={handleSave}
             glow={saving ? 'none' : 'soft'}
@@ -449,8 +462,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   avatarBtnPrimary: {
-    backgroundColor: withAlpha(Colors.amber, 0.14),
-    borderColor: withAlpha(Colors.amber, 0.4),
+    backgroundColor: Colors.stout3,
+    borderColor: 'transparent',
   },
   avatarBtnPrimaryText: {
     fontFamily: Fonts.ui.semibold,

@@ -11,6 +11,9 @@ import {
   updateQueuedDrinkBeerName,
 } from '../drinksQueue';
 import { submitDrink, type DrinkEntry } from '../drinksClient';
+import { t } from '@/i18n';
+import { useTallyStore } from '@/stores/tallyStore';
+import { useToastStore } from '@/stores/toastStore';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -26,6 +29,13 @@ jest.mock('expo-secure-store', () => ({
 jest.mock('../drinksClient', () => ({
   ...jest.requireActual('../drinksClient'),
   submitDrink: jest.fn(async () => 'ok'),
+}));
+
+// Queue lifecycle tests use a fixed network result; cooldown is covered separately.
+jest.mock('../drinksRateLimit', () => ({
+  registerDrinkRetryFlush: jest.fn(),
+  registerDrinkRateLimitAccountReader: jest.fn(),
+  shouldPauseDrinkSync: jest.fn(() => false),
 }));
 
 const STORAGE_KEY = 'na-pivo-drinks-queue';
@@ -50,15 +60,28 @@ async function readQueue(): Promise<DrinkEntry[]> {
   return raw ? JSON.parse(raw) : [];
 }
 
-async function flushMicrotasks(times = 5): Promise<void> {
+async function flushMicrotasks(times = 20): Promise<void> {
   for (let i = 0; i < times; i++) {
     await Promise.resolve();
   }
 }
 
+function countLocally(clientId: string): void {
+  useTallyStore.getState().addDrink(
+    { pubKey: 'u2fkbnhu', pubName: 'U Testu' },
+    { id: clientId, beerName: 'Plzeň', priceCzk: 62, volumeMl: 500 },
+  );
+}
+
+function localStatus(clientId: string): string | undefined {
+  return useTallyStore.getState().current?.drinks.find((d) => d.id === clientId)?.syncStatus;
+}
+
 beforeEach(async () => {
   seq = 0;
   jest.clearAllMocks();
+  useTallyStore.setState({ current: null, history: [] });
+  useToastStore.getState().hide();
   (submitDrink as jest.Mock).mockResolvedValue('ok');
   await AsyncStorage.clear();
 });
@@ -163,6 +186,131 @@ describe('flushDrinksQueue', () => {
     expect(await readQueue()).toHaveLength(0);
   });
 
+  it('keeps a rejected drink in the diary, flags it once and never resends it', async () => {
+    countLocally('a');
+    await enqueueDrink(entry({ client_id: 'a' }), { deliver: false });
+
+    (submitDrink as jest.Mock).mockImplementation(
+      async (_entry: DrinkEntry, _signal: AbortSignal, onRejected: (field?: string) => void) => {
+        onRejected('beer.volume_ml');
+        return 'permanent-error';
+      },
+    );
+    await flushDrinksQueue();
+
+    expect(await readQueue()).toEqual([]);
+    expect(localStatus('a')).toBe('rejected');
+    expect(useTallyStore.getState().current?.drinks[0].rejectedField).toBe('beer.volume_ml');
+    expect(useToastStore.getState().message).toBe(t.counter.drinkRejectedToast(1));
+
+    // The counter marks a drink synced once it left the queue; that must not
+    // hide the rejection, and later flushes must not retry the payload.
+    useTallyStore.getState().markDrinkSynced('a');
+    await flushDrinksQueue();
+    expect(localStatus('a')).toBe('rejected');
+    expect(submitDrink).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the persisted tally before flagging a cold-start rejection', async () => {
+    // The diary on disk holds the drink; memory is still the empty initial state.
+    await AsyncStorage.setItem(
+      'na-pivo-tally',
+      JSON.stringify({
+        state: {
+          current: {
+            clientId: 'v1',
+            pubKey: 'u2fkbnhu',
+            pubName: 'U Testu',
+            startedAt: '2026-06-12T19:45:00.000Z',
+            drinks: [{ id: 'a', beerName: 'Plzeň', at: '2026-06-12T19:45:00.000Z', syncStatus: 'pending' }],
+          },
+          history: [],
+        },
+        version: 1,
+      }),
+    );
+    const hydrated = jest.spyOn(useTallyStore.persist, 'hasHydrated').mockReturnValue(false);
+    const finished: (() => void)[] = [];
+    jest.spyOn(useTallyStore.persist, 'onFinishHydration').mockImplementation((listener) => {
+      finished.push(() => listener(useTallyStore.getState()));
+      return () => undefined;
+    });
+    const rehydrate = jest.spyOn(useTallyStore.persist, 'rehydrate').mockImplementation(async () => undefined);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+    (submitDrink as jest.Mock).mockImplementation(
+      async (_entry: DrinkEntry, _signal: AbortSignal, onRejected: (field?: string) => void) => {
+        onRejected('beer.volume_ml');
+        return 'permanent-error';
+      },
+    );
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks(20);
+    // Not flagged on the empty state and the payload is still queued.
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(await readQueue()).toHaveLength(1);
+
+    hydrated.mockRestore();
+    rehydrate.mockRestore();
+    await useTallyStore.persist.rehydrate();
+    finished.forEach((resolve) => resolve());
+    await flushing;
+
+    expect(localStatus('a')).toBe('rejected');
+    expect(await readQueue()).toEqual([]);
+    jest.restoreAllMocks();
+  });
+
+  it('stays quiet when the rejected drink was already removed from the diary', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'gone' })]));
+    (submitDrink as jest.Mock).mockImplementation(
+      async (_entry: DrinkEntry, _signal: AbortSignal, onRejected: (field?: string) => void) => {
+        onRejected();
+        return 'permanent-error';
+      },
+    );
+    await flushDrinksQueue();
+
+    expect(await readQueue()).toEqual([]);
+    expect(useToastStore.getState().message).toBeNull();
+  });
+
+  it('drops a drink over the daily cap without flagging it for a fix', async () => {
+    countLocally('a');
+    await enqueueDrink(entry({ client_id: 'a' }), { deliver: false });
+
+    (submitDrink as jest.Mock).mockResolvedValue('limited');
+    await flushDrinksQueue();
+
+    expect(await readQueue()).toEqual([]);
+    expect(localStatus('a')).toBe('pending');
+    expect(useToastStore.getState().message).toBeNull();
+  });
+
+  it('does not flag a rejection that lands after an account-boundary clear', async () => {
+    countLocally('a');
+    let resolveFirst!: (value: 'permanent-error') => void;
+    (submitDrink as jest.Mock).mockImplementationOnce(
+      (_entry: DrinkEntry, _signal: AbortSignal, onRejected: (field?: string) => void) =>
+        new Promise<'permanent-error'>((resolve) => {
+          resolveFirst = (value) => {
+            onRejected();
+            resolve(value);
+          };
+        }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks();
+    await clearDrinksQueue();
+    resolveFirst('permanent-error');
+    await flushing;
+
+    expect(localStatus('a')).toBe('pending');
+    expect(useToastStore.getState().message).toBeNull();
+  });
+
   it('persists a new drink while a slow flush is still delivering an older snapshot', async () => {
     let resolveSubmit!: (value: 'retry') => void;
     const slowSubmit = new Promise<'retry'>((resolve) => {
@@ -177,6 +325,7 @@ describe('flushDrinksQueue', () => {
     expect(submitDrink).toHaveBeenCalledWith(
       expect.objectContaining({ client_id: 'a' }),
       expect.anything(),
+      expect.any(Function),
     );
 
     const enqueueing = enqueueDrink(entry({ client_id: 'b' }), { deliver: false });
@@ -207,6 +356,7 @@ describe('flushDrinksQueue', () => {
     expect(submitDrink).toHaveBeenCalledWith(
       expect.objectContaining({ client_id: 'a' }),
       expect.anything(),
+      expect.any(Function),
     );
 
     resolveSubmit('ok');
@@ -241,6 +391,7 @@ describe('flushDrinksQueue', () => {
     expect(submitDrink).toHaveBeenCalledWith(
       expect.objectContaining({ client_id: 'b' }),
       expect.anything(),
+      expect.any(Function),
     );
     expect(await readQueue()).toEqual([]);
   });
@@ -437,6 +588,32 @@ describe('updateQueuedDrinkBeerName', () => {
 
     resolveSubmit('ok');
     await flushing;
+  });
+
+  it('sends the new name of a drink renamed while an earlier one was sending', async () => {
+    let resolveFirst!: (value: 'ok') => void;
+    (submitDrink as jest.Mock).mockReturnValueOnce(
+      new Promise<'ok'>((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([entry({ client_id: 'a' }), entry({ client_id: 'b' })]),
+    );
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks();
+    await expect(updateQueuedDrinkBeerName('b', 'Bernard 11')).resolves.toBe('queued');
+    resolveFirst('ok');
+    await flushing;
+
+    const sent = (submitDrink as jest.Mock).mock.calls.map((call) => [call[0].client_id, call[0].beer.name]);
+    expect(sent).toEqual([
+      ['a', 'Plzeň'],
+      ['b', 'Bernard 11'],
+    ]);
+    expect(await readQueue()).toEqual([]);
   });
 
   it('reports missing when the drink is no longer queued', async () => {

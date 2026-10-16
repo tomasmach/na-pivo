@@ -20,7 +20,6 @@ def run_settings(
     env["DEBUG"] = "True" if debug else "False"
     env["SECRET_KEY"] = secret_key
     env["PUBLIC_API_ORIGIN"] = "https://api.example.test"
-    env["FIRMY_PROXY_URL"] = "https://proxy.example.test"
     env["APPLE_TEAM_ID"] = "TEST_TEAM"
     env["APPLE_KEY_ID"] = "TEST_KEY"
     env["APPLE_PRIVATE_KEY"] = "TEST_PRIVATE_KEY"

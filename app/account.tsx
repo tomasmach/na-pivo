@@ -36,6 +36,7 @@ import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import {
   selectAvatarUrl,
+  selectIsSignedIn,
   selectNickname,
   useAccountStore,
 } from '@/stores/accountStore';
@@ -60,6 +61,7 @@ export default function AccountScreen() {
   const showToast = useToastStore((state) => state.show);
 
   const profile = useAccountStore((state) => state.profile);
+  const isSignedIn = useAccountStore(selectIsSignedIn);
   const nickname = useAccountStore(selectNickname);
   const avatarUrl = useAccountStore(selectAvatarUrl);
   const linkGoogle = useAccountStore((state) => state.linkGoogle);
@@ -427,6 +429,13 @@ export default function AccountScreen() {
         ]}
       >
         {header}
+        {isSignedIn ? (
+          <CounterSecondary
+            label={busy === 'logout' ? t.account.loading : t.account.logout}
+            onPress={() => void handleLogout()}
+            accessibilityLabel={t.a11y.accountLogout}
+          />
+        ) : null}
       </View>
     );
   }

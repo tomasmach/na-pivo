@@ -73,6 +73,12 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<VisitQueueItem>(
  *  from being persisted immediately. */
 const runMutation = createQueueLock();
 
+/** Visits the user wiped whose DELETE has not reached the backend yet. */
+export async function getQueuedVisitDeleteIds(): Promise<Set<string>> {
+  const queue = await runMutation(loadQueue);
+  return new Set(queue.filter((item) => item.op === 'delete').map((item) => item.clientId));
+}
+
 async function deliver(item: VisitQueueItem, signal: AbortSignal): Promise<SubmitVisitResult> {
   return item.op === 'upsert' ? submitVisit(item.entry, signal) : deleteVisit(item.clientId, signal);
 }

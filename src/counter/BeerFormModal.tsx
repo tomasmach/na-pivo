@@ -37,7 +37,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { CameraIcon, PlusIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
+import { CameraIcon, InfoIcon, PlusIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
 import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { formatVolume, t } from '@/i18n';
@@ -127,11 +127,18 @@ interface BeerFormModalProps {
   submitLabelOverride?: string;
   /** 'add' mode only: shows the "vyfoť celý lístek" shortcut into the AI menu scan. */
   onScanMenu?: () => void;
-  /** Menu mode only: remove the current row from the pub's draft menu. */
+  /** Menu mode only: remove this row from the contribute editor's draft menu.
+   *  The counter's price edit never deletes; its menu options do. */
   onRemove?: () => void;
   /** Menu mode only: add a 0,3 l sibling directly below this row. */
   onAddSmallVariant?: () => void;
   canAddSmallVariant?: boolean;
+  /** One line under the title, e.g. why a saved drink needs fixing. */
+  notice?: string;
+  /** Keep submit disabled until something differs from the prefilled form. */
+  requireChange?: boolean;
+  /** Open with the keyboard on the name field (default). */
+  autoFocusName?: boolean;
 }
 
 /**
@@ -155,6 +162,9 @@ export function BeerFormModal({
   onRemove,
   onAddSmallVariant,
   canAddSmallVariant = false,
+  notice,
+  requireChange = false,
+  autoFocusName = true,
 }: BeerFormModalProps) {
   return (
     <Modal
@@ -181,6 +191,9 @@ export function BeerFormModal({
           onRemove={onRemove}
           onAddSmallVariant={onAddSmallVariant}
           canAddSmallVariant={canAddSmallVariant}
+          notice={notice}
+          requireChange={requireChange}
+          autoFocusName={autoFocusName}
         />
       ) : null}
     </Modal>
@@ -201,6 +214,9 @@ interface BeerFormBodyProps {
   onRemove?: () => void;
   onAddSmallVariant?: () => void;
   canAddSmallVariant: boolean;
+  notice?: string;
+  requireChange: boolean;
+  autoFocusName: boolean;
 }
 
 function BeerFormBody({
@@ -217,6 +233,9 @@ function BeerFormBody({
   onRemove,
   onAddSmallVariant,
   canAddSmallVariant,
+  notice,
+  requireChange,
+  autoFocusName,
 }: BeerFormBodyProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -246,7 +265,8 @@ function BeerFormBody({
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   // After picking a suggestion we keep the list dismissed until the user edits
   // the field again — otherwise the effect would instantly re-fetch the pick.
-  const pickedNameRef = useRef<string | null>(null);
+  // A sheet that opens without the keyboard keeps its prefilled name quiet too.
+  const pickedNameRef = useRef<string | null>(autoFocusName ? null : (beer?.name ?? null));
 
   const onChangeName = (text: string) => {
     pickedNameRef.current = null;
@@ -286,7 +306,6 @@ function BeerFormBody({
   const priceValid =
     outside || menuMode ? priceText.trim() === '' || priceCzk !== null : priceCzk !== null;
   const nameValid = nameLocked || trimmedName.length > 0;
-  const canSubmit = priceValid && nameValid;
   const placeholder = menuMode
     ? t.contribute.beerPriceOptional
     : outside
@@ -329,6 +348,17 @@ function BeerFormBody({
       ? undefined
       : parseCustomMl(customMl, drinkType)
     : selectedPreset;
+
+  // What submit would send, compared with the form as it opened.
+  const formState = [
+    drinkType,
+    trimmedName,
+    priceText.trim(),
+    volumeMl ?? '',
+    outside && drinkType === 'beer' ? servingType : '',
+  ].join('|');
+  const [openedFormState] = useState(formState);
+  const canSubmit = priceValid && nameValid && (!requireChange || formState !== openedFormState);
 
   const title =
     titleOverride ??
@@ -402,6 +432,8 @@ function BeerFormBody({
         <Pressable
           style={[styles.card, { paddingBottom: bottomPad }]}
           onPress={() => undefined}
+          accessible={false}
+          focusable={false}
         >
           <View style={styles.grabber} />
           <View style={styles.header}>
@@ -421,6 +453,17 @@ function BeerFormBody({
               <XIcon size={20} color={Colors.foamMuted} />
             </Pressable>
           </View>
+
+          {notice ? (
+            <View style={styles.notice}>
+              <View style={styles.noticeIcon}>
+                <InfoIcon size={14} color={Colors.amber} />
+              </View>
+              <Text style={styles.noticeText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {notice}
+              </Text>
+            </View>
+          ) : null}
 
           <KeyboardAwareScrollView
             style={[styles.list, contentHeight > 0 ? { height: contentHeight } : null]}
@@ -467,12 +510,13 @@ function BeerFormBody({
             ) : (
               <TextInput
                 style={styles.nameInput}
+                testID="beer-form-name"
                 value={name}
                 onChangeText={onChangeName}
                 placeholder={t.counter.drinkNamePlaceholder(drinkType)}
                 placeholderTextColor={Colors.mutedText}
                 maxLength={80}
-                autoFocus
+                autoFocus={autoFocusName}
                 accessibilityLabel={t.counter.drinkNamePlaceholder(drinkType)}
               />
             )}
@@ -563,6 +607,7 @@ function BeerFormBody({
             <View style={styles.priceRow}>
               <TextInput
                 style={styles.priceInput}
+                testID="beer-form-price"
                 value={priceText}
                 onChangeText={(value) =>
                   setPriceText(sanitizePriceInput(value, priceCurrency))
@@ -657,6 +702,7 @@ function BeerFormBody({
             <View style={styles.submitWrap}>
               <GlowButton
                 label={submitLabel}
+                testID="beer-form-submit"
                 onPress={handleSubmit}
                 glow={canSubmit ? 'soft' : 'none'}
                 accessibilityLabel={submitLabel}
@@ -666,7 +712,7 @@ function BeerFormBody({
               ) : null}
             </View>
 
-            {menuMode && (canAddSmallVariant || onRemove) ? (
+            {(menuMode && canAddSmallVariant) || onRemove ? (
               <View style={styles.menuActions}>
                 {canAddSmallVariant && onAddSmallVariant ? (
                   <Pressable
@@ -743,6 +789,20 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     ...softDrop(),
+  },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  noticeIcon: { marginTop: 2 },
+  noticeText: {
+    flex: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    lineHeight: 19,
+    color: Colors.amber,
   },
   grabber: {
     width: 40,
@@ -874,12 +934,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.3),
-    backgroundColor: withAlpha(Colors.amber, 0.06),
+    borderColor: 'transparent',
+    backgroundColor: Colors.stout3,
   },
   scanShortcutPressed: {
     transform: [{ scale: 0.98 }],
-    backgroundColor: withAlpha(Colors.amber, 0.14),
+    backgroundColor: withAlpha(Colors.foam, 0.12),
   },
   scanShortcutText: {
     fontFamily: Fonts.ui.semibold,
@@ -901,12 +961,14 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontFamily: Fonts.display.bold,
     fontSize: 22,
-    lineHeight: 30,
+    // UITextField centres Baloo's own line box, which keeps the digits in the
+    // middle. A shorter fixed lineHeight lifts them ~6 pt above centre on iOS.
+    lineHeight: Platform.OS === 'ios' ? undefined : 30,
     fontVariant: ['tabular-nums'],
     minHeight: 56,
     paddingHorizontal: 14,
-    // The single-line field centres itself on iOS. Extra vertical padding
-    // pushes Baloo's tall line box into the clipping edge of UITextField.
+    // Extra vertical padding pushes the tall line box into the clipping edge
+    // of UITextField.
     paddingVertical: Platform.OS === 'ios' ? 0 : 10,
     textAlign: 'center',
     textAlignVertical: 'center',
@@ -964,7 +1026,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontFamily: Fonts.display.bold,
     fontSize: 20,
-    lineHeight: 28,
+    lineHeight: Platform.OS === 'ios' ? undefined : 28,
     fontVariant: ['tabular-nums'],
     minHeight: 52,
     paddingHorizontal: 14,

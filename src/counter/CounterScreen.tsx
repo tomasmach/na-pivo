@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Linking, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -47,6 +47,7 @@ import {
   GlassWaterIcon,
   WineIcon,
   CircleDotIcon,
+  MapIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -57,15 +58,17 @@ import {
   normalizeBeerName,
   type CommunityBeer,
 } from '@/data/communityHours';
+import { replacePubMenu } from '@/data/pubMenuWrite';
 import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
-import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { enqueueDelete, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
-import { shareFriendPubActivity } from '@/data/friendsClient';
-import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { loadPartyFriends, shareFriendPubActivity, type PartyFriends } from '@/data/friendsClient';
+import { dropQueuedTourPings, enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import PingSheet from '@/friends/PingSheet';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { ShareNightModal } from '@/vycep/ShareNightModal';
@@ -78,6 +81,7 @@ import {
   isBeerMenuTypeOverrideCurrent,
   useCommunityStore,
 } from '@/stores/communityStore';
+import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { formatPrice, pricePlaceholder } from '@/utils/currency';
@@ -103,10 +107,15 @@ import type { Pub } from '@/data/pubs';
 
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { PubPickerModal } from '@/counter/PubPickerModal';
-import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter/BeerFormModal';
+import {
+  BeerFormModal,
+  type BeerFormMode,
+  type BeerFormResult,
+} from '@/counter/BeerFormModal';
 import { eveningPriceLabel, sessionBreakdown } from '@/myBeers/eveningModel';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
+import { MenuBeerActionsSheet, confirmRemoveFromMenu } from '@/counter/MenuBeerActionsSheet';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { ScanMenuSheet } from '@/components/contribute/ScanMenuSheet';
@@ -120,6 +129,10 @@ import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
 import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
+import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
+import { useToursStore } from '@/stores/toursStore';
+import { tourStopAtPub } from '@/tours/counterLink';
+import { runGlance } from '@/tours/glance';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
 // ─── Timings ──────────────────────────────────────────────────────────────────
@@ -196,6 +209,16 @@ export function groupMenuBeers(menu: CommunityBeer[]): MenuBeerGroup[] {
       (a, b) => (a.volumeMl ?? Number.POSITIVE_INFINITY) - (b.volumeMl ?? Number.POSITIVE_INFINITY),
     ),
   }));
+}
+
+/** The pub a menu write is meant for: its cell and the pub inside that cell. */
+interface MenuTarget {
+  cell: string | null;
+  pubId: string | null;
+}
+
+function isSameMenuPub(target: MenuTarget | null, live: MenuTarget): boolean {
+  return !!target && target.cell === live.cell && target.pubId === live.pubId;
 }
 
 /** "Pilsner Urquell · 0,5 l" — the CTA's sub-line and the receipt's meta. */
@@ -377,6 +400,9 @@ function Tacek({
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
   const [formDrinkType, setFormDrinkType] = useState<DrinkType>('beer');
   const [formNonce, setFormNonce] = useState(0);
+  // — Menu beer options (⋯ / long press in "Co si dáš?") —
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionBeer, setActionBeer] = useState<CommunityBeer | null>(null);
   /** Outside a pub: the serving the user last picked, seeding the next form. */
   const [lastServingType, setLastServingType] = useState<ServingType>('bottle');
   /** Set when the form was opened via "zapsat zpětně" — the ISO timestamp the
@@ -388,7 +414,11 @@ function Tacek({
    *  has been written; a timeout is a no. */
   const [pendingRapid, setPendingRapid] = useState<{ beer: CountableBeer; minutes: number | null } | null>(null);
   /** The drink counted within the last UNDO_WINDOW_MS, undoable from the strip. */
-  const [lastCounted, setLastCounted] = useState<{ id: string; ordinal: number; isBeer: boolean } | null>(null);
+  const [lastCounted, setLastCounted] = useState<{ id: string; ordinal: number; isBeer: boolean; tourStop?: number } | null>(null);
+  /** Tour stops a counted drink checked off, so undoing the drink undoes the mark. */
+  const tourMarks = useRef<Map<string, { stopId: string; cell: string }>>(new Map());
+  const activeTourRun = useToursStore((s) => s.activeRun);
+  useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
   const [checkInVisitClientId, setCheckInVisitClientId] = useState<string | null>(null);
   /** Session clientId whose "Dopito?" nudge was already shown and answered. */
@@ -402,15 +432,41 @@ function Tacek({
     beersUpdatedAt: string | null;
     beerMenuRotates: boolean;
   } | null>(null);
+  /** The menu a fix or a delete rewrites for everyone: this pub's menu as the
+   *  server answered it in this session, kept in step with the user's own
+   *  writes and counted beers (the server merges those the same way). Without
+   *  a fresh answer there is none, so nothing is written for everyone from a
+   *  cached or another pub's list. */
+  const [menuBase, setMenuBase] = useState<{
+    pubId: string;
+    beers: CommunityBeer[];
+    historicalBeers: CommunityBeer[];
+    /** Epoch ms of the user's last write here; an older answer lags behind it. */
+    writtenAt: number | null;
+  } | null>(null);
   const [scanningDrinks, setScanningDrinks] = useState(false);
   const [scannedDrinks, setScannedDrinks] = useState<ScannedDrink[]>([]);
 
   // — Friends broadcast —
   const [sharingWithFriends, setSharingWithFriends] = useState(false);
   const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
+  // The party a quick ping can go to while its sheet is open, and the pub it was opened for.
+  const [pingParty, setPingParty] = useState<(PartyFriends & { key: string }) | null>(null);
+  const pingLoading = useRef(false);
+  // A ping names one pub, so another pub (even in the same cell) closes its sheet and drops a late load.
+  const pingKey = pub ? `${pub.id}@${cell}` : null;
+  const livePingKey = useRef(pingKey);
+  useEffect(() => { livePingKey.current = pingKey; }, [pingKey]);
+  const [pingFor, setPingFor] = useState(pingKey);
+  if (pingFor !== pingKey) {
+    setPingFor(pingKey);
+    setPingParty(null);
+  }
   const broadcasted = cell !== null && broadcastCell === cell;
 
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const tour = useMemo(() => runGlance(activeTourRun, nowMs), [activeTourRun, nowMs]);
+  const tourHere = useMemo(() => (pub && cell ? tourStopAtPub(activeTourRun, cell, pub.id, nowMs) : null), [activeTourRun, cell, nowMs, pub]);
 
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
@@ -451,6 +507,20 @@ function Tacek({
         historicalBeers: result?.historicalBeers ?? [],
         beersUpdatedAt: result?.beersUpdatedAt ?? null,
         beerMenuRotates: result?.beerMenuRotates ?? false,
+      });
+      setMenuBase((prev) => {
+        // No answer (offline): keep only what this session already confirmed here.
+        if (!result) return prev?.pubId === pubId ? prev : null;
+        const answeredAt = result.beersUpdatedAt ? Date.parse(result.beersUpdatedAt) : 0;
+        if (prev?.pubId === pubId && prev.writtenAt !== null && !(answeredAt > prev.writtenAt)) {
+          return prev;
+        }
+        return {
+          pubId,
+          beers: result.beers,
+          historicalBeers: result.historicalBeers,
+          writtenAt: null,
+        };
       });
     });
 
@@ -569,6 +639,10 @@ function Tacek({
     return pub.beers ?? [];
   }, [currentBackendMenu, currentBeerListOverride, place, pub]);
 
+  const deletableMenu =
+    place && pub && menuBase?.pubId === pub.id ? menuBase.beers : null;
+  const deletableHistory = deletableMenu && menuBase ? menuBase.historicalBeers : [];
+
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
     if (currentBeerListOverride?.historicalBeers) {
@@ -579,6 +653,26 @@ function Tacek({
     }
     return pub.historicalBeers ?? [];
   }, [currentBackendMenu, currentBeerListOverride, pub]);
+
+  /** A fix or a delete confirms later, and a newer backend menu may arrive
+   *  meanwhile: the full-menu write must not drop it. */
+  const menuPubId = pub?.id ?? null;
+  const liveMenuRef = useRef({ cell, pubId: menuPubId, menu: deletableMenu, historicalBeers: deletableHistory });
+  useEffect(() => {
+    liveMenuRef.current = { cell, pubId: menuPubId, menu: deletableMenu, historicalBeers: deletableHistory };
+  }, [cell, deletableHistory, deletableMenu, menuPubId]);
+  /** The pub a beer's options or price form were opened for. The counter may
+   *  switch pubs meanwhile, and a write must never land in the next one. */
+  const menuTargetRef = useRef<MenuTarget | null>(null);
+  /** The user's own write is the newest menu this session knows. */
+  const recordMenuWrite = useCallback(
+    (pubId: string, beers: CommunityBeer[], historicalBeers: CommunityBeer[]) => {
+      setMenuBase((prev) =>
+        prev?.pubId === pubId ? { pubId, beers, historicalBeers, writtenAt: Date.now() } : prev,
+      );
+    },
+    [],
+  );
 
   const beerMenuRotates = pub
     ? currentMenuTypeOverride?.beerMenuRotates ??
@@ -754,6 +848,12 @@ function Tacek({
       if (!atOverride && drinkType === 'beer' && landedSession) {
         void refreshBeerCountReminderAfterBeer(landedSession.clientId);
       }
+      // A live drink in a pub of the running tour checks that stop off.
+      const tourStop = pub && !atOverride ? tourStopAtPub(useToursStore.getState().activeRun, cell, pub.id) : null;
+      if (tourStop) {
+        tourMarks.current.set(id, { stopId: tourStop.stop.id, cell });
+        void useToursStore.getState().markStop(tourStop.stop.id, 'visited');
+      }
       // An outside evening is NOT a pub visit — skip the visit record there.
       if (pub) syncVisit(landedSession);
       if (!atOverride && startsSession) {
@@ -776,6 +876,14 @@ function Tacek({
         // Same price already on the menu: skip the persisted write and the
         // re-render of every tab that reads community overrides.
         if (nextMenu !== menu) setOverride(cell, { beers: nextMenu });
+        // The server merges the drink into the menu the same way: a later
+        // full-menu write must not drop it.
+        const pubId = pub.id;
+        setMenuBase((prev) =>
+          prev?.pubId === pubId
+            ? { ...prev, beers: mergeBeerIntoMenu(prev.beers, { ...beer, priceCzk: beer.priceCzk }) }
+            : prev,
+        );
       }
       // The check-in prompt is now-semantic and pub-bound — skip it for a
       // backdated or outside log.
@@ -818,7 +926,7 @@ function Tacek({
       // drink is not "the beer you just had", so it gets no strip.
       if (!atOverride) {
         const liveCountAfter = sessionCount(useTallyStore.getState().current);
-        setLastCounted({ id, ordinal: liveCountAfter, isBeer: drinkType === 'beer' });
+        setLastCounted({ id, ordinal: liveCountAfter, isBeer: drinkType === 'beer', tourStop: tourStop?.number });
       }
 
       if (hapticEnabled) fireSuccessHaptic();
@@ -929,6 +1037,17 @@ function Tacek({
       const currentVisitClientId = current?.clientId;
       removeDrink(targetId);
 
+      // Undo the tour check-off only while it is still ours and no other drink keeps the group there.
+      const tourMark = tourMarks.current.get(targetId);
+      if (tourMark) {
+        tourMarks.current.delete(targetId);
+        const live = useTallyStore.getState().current;
+        const stillThere = live?.pubKey === tourMark.cell && live.drinks.length > 0;
+        if (!stillThere && useToursStore.getState().activeRun?.statuses[tourMark.stopId] === 'visited') {
+          void useToursStore.getState().markStop(tourMark.stopId, null);
+        }
+      }
+
       // Outside evenings never had a visit record, so there's none to touch.
       if (pub) {
         const nextSession = useTallyStore.getState().current;
@@ -945,8 +1064,12 @@ function Tacek({
           context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
         });
         if (!pulledFromQueue) {
-          void flushDrinksQueue()
-            .then(() => enqueueDelete(targetId))
+          useAccountStore.getState().forgetDiaryDrink(targetId);
+          // Persist the removal before waiting for any older POST to finish.
+          // A restart during that wait must still have a queued DELETE to send.
+          void enqueueDelete(targetId, { deliver: false })
+            .then(() => flushDrinksQueue())
+            .then(() => flushDeleteDrinksQueue())
             .catch(() => undefined);
         }
       });
@@ -1065,6 +1188,33 @@ function Tacek({
       if (mode === 'edit') {
         // Community-menu edit is a pub concept; outside rows are session-derived.
         if (!pub || !cell) return;
+        // The form belongs to the pub it was opened in; the counter may have
+        // moved on to another one since.
+        if (!isSameMenuPub(menuTargetRef.current, liveMenuRef.current)) return;
+        // A beer on the confirmed menu is fixed for everyone at once, the same
+        // write as the pub page and the delete.
+        const live = liveMenuRef.current;
+        if (
+          editedBeer &&
+          typeof result.priceCzk === 'number' &&
+          live.menu?.some((b) => isSameBeerIdentity(b, editedBeer))
+        ) {
+          const fixed: CommunityBeer = { name: editedBeer.name };
+          if (typeof result.priceCzk === 'number') fixed.priceCzk = result.priceCzk;
+          if (typeof result.volumeMl === 'number') fixed.volumeMl = result.volumeMl;
+          const nextMenu = live.menu
+            .map((b) => (isSameBeerIdentity(b, editedBeer) ? fixed : b))
+            .filter((b) => b === fixed || !isSameBeerIdentity(b, fixed));
+          const nextHistory = replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers, {
+            action: 'update',
+            name: editedBeer.name,
+            volumeMl: editedBeer.volumeMl,
+            priceCzk: result.priceCzk,
+            newVolumeMl: result.volumeMl,
+          });
+          recordMenuWrite(pub.id, nextMenu, nextHistory);
+          return;
+        }
         // Replace the edited row in place: mergeBeerIntoMenu matches on
         // name+volume, so a volume change would otherwise append a NEW row and
         // orphan the original (PIV-33).
@@ -1078,7 +1228,59 @@ function Tacek({
         requestCountBeer(beer, at);
       }
     },
-    [backdateAt, cell, formBeer, formMode, menu, pub, requestCountBeer, setOverride],
+    [backdateAt, cell, formBeer, formMode, menu, pub, recordMenuWrite, requestCountBeer, setOverride],
+  );
+
+  /** Only a beer that is on this pub's menu can come off it; tonight-only rows
+   *  and outside places have no shared menu to change. */
+  const actionBeerOnMenu =
+    !!pub && !!actionBeer && !!deletableMenu?.some((b) => isSameBeerIdentity(b, actionBeer));
+
+  const handleActionEditPrice = useCallback(
+    (beer: CommunityBeer) => {
+      setActionsOpen(false);
+      runAfterSheetClose(() => openForm('edit', beer));
+    },
+    [openForm, runAfterSheetClose],
+  );
+
+  /** Same full-menu write as the contribute editor's "Smazat pivo" + "Uložit",
+   *  queued so it survives a dead signal. It changes the menu for everyone, so
+   *  it asks first. */
+  /** Closing the options or keeping the beer goes back to choosing a beer. */
+  const handleActionsClose = useCallback(() => {
+    setActionsOpen(false);
+    runAfterSheetClose(() => setPickOpen(true));
+  }, [runAfterSheetClose]);
+
+  const handleActionRemove = useCallback(
+    (removed: CommunityBeer) => {
+      if (!pub || !cell) return;
+      setActionsOpen(false);
+      const target = menuTargetRef.current;
+      runAfterSheetClose(() =>
+        confirmRemoveFromMenu(
+          removed,
+          () => {
+            const live = liveMenuRef.current;
+            // Another pub by now, or the beer is already gone: nothing to take off.
+            if (isSameMenuPub(target, live) && live.menu?.some((b) => isSameBeerIdentity(b, removed))) {
+              const nextMenu = live.menu.filter((b) => !isSameBeerIdentity(b, removed));
+              const nextHistory = replacePubMenu(cell, pub, live.menu, nextMenu, live.historicalBeers, {
+                action: 'remove',
+                name: removed.name,
+                volumeMl: removed.volumeMl,
+              });
+              recordMenuWrite(pub.id, nextMenu, nextHistory);
+              showToast(t.counter.removedFromMenuToast);
+            }
+            setPickOpen(true);
+          },
+          () => setPickOpen(true),
+        ),
+      );
+    },
+    [cell, pub, recordMenuWrite, runAfterSheetClose, showToast],
   );
 
   // ── Pick sheet ──────────────────────────────────────────────────────────────
@@ -1109,13 +1311,22 @@ function Tacek({
     [lastServingType, openForm, pub, requestCountBeer, rowBeers, runAfterSheetClose],
   );
 
-  const handleEditRow = useCallback(
+  const handleRowActions = useCallback(
     (row: DrinkPickRow) => {
       const beer = rowBeers.get(row.key);
       if (!beer || !pub) return;
-      runAfterSheetClose(() => openForm('edit', beer));
+      menuTargetRef.current = { cell, pubId: pub.id };
+      // Only a beer on the confirmed menu has more than the price to offer.
+      if (!deletableMenu?.some((b) => isSameBeerIdentity(b, beer))) {
+        runAfterSheetClose(() => openForm('edit', beer));
+        return;
+      }
+      runAfterSheetClose(() => {
+        setActionBeer(beer);
+        setActionsOpen(true);
+      });
     },
-    [openForm, pub, rowBeers, runAfterSheetClose],
+    [cell, deletableMenu, openForm, pub, rowBeers, runAfterSheetClose],
   );
 
   // ── Menu scan ───────────────────────────────────────────────────────────────
@@ -1295,27 +1506,53 @@ function Tacek({
 
   // ── Friends ─────────────────────────────────────────────────────────────────
 
-  const handleShareWithFriends = useCallback(async () => {
-    if (!pub || !cell || sharingWithFriends || broadcasted) return;
+  /** Sends to the chosen friends (undefined = the whole party); a hard failure comes back for the sheet to show. */
+  const handleShareWithFriends = useCallback(async (recipientIds?: string[]): Promise<string | null> => {
+    if (!pub || !cell || sharingWithFriends || broadcasted) return null;
     trackUiInteraction('counter_share_friends', 'share');
     setSharingWithFriends(true);
     const shareClientId = isThisSession && current?.clientId ? current.clientId : generateUuidV4();
     const startedAt = new Date().toISOString();
-    const result = await shareFriendPubActivity(pub, '', shareClientId, undefined, startedAt);
+    // A tour ping still waiting for signal must not land after this newer one.
+    await dropQueuedTourPings();
+    const result = await shareFriendPubActivity(pub, '', shareClientId, recipientIds, startedAt);
     setSharingWithFriends(false);
-    if (useTallyStore.getState().history.some((session) => session.clientId === shareClientId && session.closedAt)) return;
+    if (useTallyStore.getState().history.some((session) => session.clientId === shareClientId && session.closedAt)) return null;
     if (result.ok) {
       setBroadcastCell(cell);
       showToast(t.friends.shareSuccess);
       if (hapticEnabled) fireLightImpactHaptic();
     } else if (isRetriableFriendError(result)) {
-      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '', startedAt } });
+      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '', recipientIds, startedAt } });
       setBroadcastCell(cell);
       showToast(t.friends.composeQueued);
     } else {
-      showToast(result.detail || t.friends.shareError);
+      return result.detail || t.friends.shareError;
     }
+    return null;
   }, [broadcasted, cell, current, hapticEnabled, isThisSession, pub, sharingWithFriends, showToast]);
+
+  // Who can hear it. Without a saved party (offline, Parta never opened) or with an empty one, which may be
+  // out of date, the ping goes to everyone as before and the server works out who that is.
+  async function openPingSheet() {
+    if (pingLoading.current) return;
+    pingLoading.current = true;
+    const from = pingKey;
+    if (!from) { pingLoading.current = false; return; }
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(), 3000);
+    // A newer party only refreshes a sheet still open for the same pub.
+    const party = await loadPartyFriends(timeout.signal, (fresh) => setPingParty((open) => (open?.key === from ? { ...fresh, key: from } : open)));
+    clearTimeout(timer);
+    pingLoading.current = false;
+    // The place changed while the party loaded: this ping was about the old one.
+    if (livePingKey.current !== from) return;
+    if (party?.friends.length) setPingParty({ ...party, key: from });
+    else {
+      const failure = await handleShareWithFriends();
+      if (failure) showToast(failure);
+    }
+  }
 
   // ── The one button ──────────────────────────────────────────────────────────
 
@@ -1417,9 +1654,13 @@ function Tacek({
     if (lastCounted) {
       return {
         kind: 'counted',
-        text: lastCounted.isBeer
-          ? t.counter.countedStrip(lastCounted.ordinal)
-          : t.counter.countedStripOther,
+        text: lastCounted.tourStop
+          ? lastCounted.isBeer
+            ? t.tours.countedAtStop(lastCounted.ordinal, lastCounted.tourStop)
+            : t.tours.stopCheckedOff(lastCounted.tourStop)
+          : lastCounted.isBeer
+            ? t.counter.countedStrip(lastCounted.ordinal)
+            : t.counter.countedStripOther,
         undoLabel: t.counter.undo,
         onUndo: () => removeDrinkById(lastCounted.id),
       };
@@ -1436,11 +1677,24 @@ function Tacek({
         onDismiss: () => setCheckInBeerName(null),
       };
     }
+    if (tour) {
+      return {
+        kind: 'rapid',
+        text: tourHere ? t.tours.counterAtStop(tourHere.number) : tour.next ? t.tours.compassNudge(tour.next.name) : t.tours.counterAllDone,
+        confirmLabel: t.tours.open,
+        confirmAccessibilityLabel: tour.next ? t.tours.openTour(tour.next.name) : t.tours.open,
+        icon: MapIcon,
+        onConfirm: () => router.push({ pathname: '/tours/[id]', params: { id: tour.planId } } as Href),
+      };
+    }
     if (count > 0) {
       return { kind: 'rank', node: <WeeklyRankChip sessionBeerCount={count} /> };
     }
     return null;
   }, [
+    tour,
+    tourHere,
+    router,
     checkInBeerName,
     confirmRapid,
     count,
@@ -1520,6 +1774,7 @@ function Tacek({
       <NudgeSlot nudge={nudge} />
 
       <CounterCta
+        testID="counter-primary"
         label={cta.label}
         subLabel={cta.subLabel}
         onPress={cta.onPress}
@@ -1533,10 +1788,19 @@ function Tacek({
         tonightRows={tonightRows}
         menuRows={menuRows}
         onCountRow={handlePickRow}
-        onEditRow={handleEditRow}
+        onRowActions={handleRowActions}
         onAddBeer={() => runAfterSheetClose(handleAddBeer)}
         onAddOther={() => runAfterSheetClose(handleAddOtherDrink)}
         onClose={() => setPickOpen(false)}
+      />
+
+      <MenuBeerActionsSheet
+        visible={actionsOpen}
+        beer={actionBeer}
+        canRemove={actionBeerOnMenu}
+        onClose={handleActionsClose}
+        onEditPrice={handleActionEditPrice}
+        onRemove={handleActionRemove}
       />
 
       <ReceiptSheet
@@ -1555,7 +1819,7 @@ function Tacek({
         onClose={closeMore}
         onDone={sessionDrinks.length > 0 ? () => runAfterSheetClose(handleDone) : undefined}
         onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
-        onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
+        onPingFriends={pub ? () => runAfterSheetClose(() => { void openPingSheet(); }) : undefined}
         broadcasted={broadcasted}
         onBackdate={() => runAfterSheetClose(handleBackdatePress)}
         onScanMenu={pub ? () => runAfterSheetClose(() => setScanSourceVisible(true)) : undefined}
@@ -1595,6 +1859,17 @@ function Tacek({
         onSelect={handleSelectScannedDrink}
       />
       <BeerPhotoCaptureFlow open={photoCaptureOpen} onClose={() => setPhotoCaptureOpen(false)} />
+      {/* A sheet opened for another place never shows: the ping names one pub. */}
+      {pub && pingParty && pingParty.key === pingKey ? (
+        <PingSheet
+          title={t.friends.shareHereShort}
+          detail={t.friends.pingSheetDetail(pub.name)}
+          friends={pingParty.friends}
+          ghost={pingParty.ghost}
+          onSend={handleShareWithFriends}
+          onClose={() => setPingParty(null)}
+        />
+      ) : null}
       {liveNight ? (
         <ShareNightModal
           visible={stickerOpen}
@@ -1672,6 +1947,20 @@ export default function CounterScreen({
   });
   const hadActiveSessionOnOpen = useRef((useTallyStore.getState().current?.drinks.length ?? 0) > 0);
 
+  const [handedOff, setHandedOff] = useState(false);
+  // A tour stop asked to log a beer here: open on that pub, as a manual pick.
+  // Taken on focus, so only the counter the user actually lands on consumes it.
+  useFocusEffect(
+    useCallback(() => {
+      const pub = useCounterHandoffStore.getState().pub;
+      if (!pub) return;
+      useCounterHandoffStore.getState().clear();
+      setHandedOff(true);
+      setOutsideContext(null);
+      selectPub(pub);
+    }, [selectPub]),
+  );
+
   useEffect(() => {
     void trackCounterTabOpened(hadActiveSessionOnOpen.current);
   }, []);
@@ -1693,7 +1982,7 @@ export default function CounterScreen({
 
   // The gate replaces the whole counter, sheets included — tell the host so its
   // "…" glyph disappears with them instead of turning into a no-op.
-  const gated = permissionState !== 'granted' && !outsideContext;
+  const gated = permissionState !== 'granted' && !outsideContext && !handedOff;
   useEffect(() => {
     onMoreAvailability?.(!gated);
   }, [gated, onMoreAvailability]);

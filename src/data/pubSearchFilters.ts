@@ -15,6 +15,17 @@ export interface BeerBrandFilterValue {
   label: string;
 }
 
+/**
+ * Filter keys with this prefix carry a beer name picked from nearby menus
+ * instead of a catalog brand slug. Brand slugs never contain a colon.
+ */
+export const BEER_NAME_FILTER_PREFIX = 'name:';
+
+export function beerNameFromFilterKey(key: string | null | undefined): string | null {
+  if (!key?.startsWith(BEER_NAME_FILTER_PREFIX)) return null;
+  return key.slice(BEER_NAME_FILTER_PREFIX.length).trim() || null;
+}
+
 export interface PubSearchFilters {
   beerBrand: BeerBrandFilterValue | null;
   amenityKeys: AmenityKey[];

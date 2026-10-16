@@ -14,6 +14,11 @@ import {
 } from '../pubAmenitiesClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
 import { getBackendEndpoint } from '../backendConfig';
+import { clearAmenityVotesRateLimit } from '../pubAmenitiesRateLimit';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 jest.mock('../backendConfig', () => ({
   getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
@@ -68,8 +73,10 @@ function vote(over: Partial<WireAmenityVote> = {}): WireAmenityVote {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
+  // The 429 case below pauses every later vote PUT.
+  await clearAmenityVotesRateLimit();
   mockGetBackendEndpoint.mockImplementation((path: string) => `https://api.test${path}`);
   mockEnsureAccount.mockResolvedValue({ deviceId: 'd', accountId: 'a', token: 'anon-tok', authenticated: false });
   mockClearAnon.mockResolvedValue(true);

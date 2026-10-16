@@ -6,7 +6,7 @@ import { showAppDialog } from '@/components/shared/AppDialog';
 import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import type { ContentReportReason } from '@/data/auth';
@@ -78,9 +78,9 @@ const styles = StyleSheet.create({
     minHeight: 36,
     paddingHorizontal: 12,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: Colors.stout3,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.35),
+    borderColor: 'transparent',
   },
   label: {
     fontFamily: Fonts.ui.semibold,

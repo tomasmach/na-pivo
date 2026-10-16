@@ -33,7 +33,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t, intlLocale, beerCountLabel, beerNoun, plural } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
-import { ChevronRightIcon, MenuIcon } from '@/components/shared/IconGlyph';
+import { ChevronRightIcon, InfoIcon, MenuIcon } from '@/components/shared/IconGlyph';
 
 import { NightCard } from '@/diary/NightCard';
 import { TallyCoaster } from '@/diary/TallyCoaster';
@@ -248,6 +248,13 @@ export default function DiaryScreen({
   const nights = useMemo(() => sessions.filter((s) => s.drinks.length > 0), [sessions]);
   const lastNight = nights[0] ?? null;
   const olderNights = nights.slice(1);
+  // Drinks the server refused stay here until fixed; the nudge leads to the
+  // newest evening that holds one and counts only what that evening shows.
+  const rejected = useMemo(() => {
+    const isRejected = (drink: TallySession['drinks'][number]) => drink.syncStatus === 'rejected';
+    const session = nights.find((night) => night.drinks.some(isRejected));
+    return session ? { count: session.drinks.filter(isRejected).length, session } : null;
+  }, [nights]);
 
   // ── Lifetime numbers for the sheet. This precedence is lifted verbatim from
   // the old Výkon screen: durable backend numbers win only when they're at
@@ -410,6 +417,19 @@ export default function DiaryScreen({
 
   // ── One nudge, one priority, never two at once.
   const nudge: Nudge | null = useMemo(() => {
+    if (rejected) {
+      return {
+        kind: 'rapid',
+        icon: InfoIcon,
+        text: t.diary.rejected(rejected.count),
+        confirmLabel: t.diary.rejectedFix,
+        confirmAccessibilityLabel: t.diary.rejectedFix,
+        onConfirm: () => {
+          trackUiInteraction('diary_evening_open');
+          router.push({ pathname: '/evening', params: { startedAt: rejected.session.startedAt } });
+        },
+      };
+    }
     if (loadFailed) {
       return {
         kind: 'counted',
@@ -426,7 +446,7 @@ export default function DiaryScreen({
       return { kind: 'dopito', label: t.diary.queued(pendingCount), onPress: () => undefined };
     }
     return null;
-  }, [loadFailed, pendingCount]);
+  }, [loadFailed, pendingCount, rejected, router]);
 
   const openEvening = useCallback(
     (session: TallySession) => {

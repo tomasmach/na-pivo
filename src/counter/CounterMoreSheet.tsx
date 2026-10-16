@@ -132,11 +132,13 @@ export function CounterMoreSheet({
     >
       {/* The backdrop is a dismiss target, not an announced control: the real
           close button carries the label so VoiceOver hears "Zavřít" once. */}
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no">
+      <Pressable style={styles.backdrop} onPress={onClose} accessible={false} importantForAccessibility="no">
         {/* The card swallows backdrop taps so a row press never dismisses twice. */}
         <Pressable
           style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
           onPress={() => undefined}
+          accessible={false}
+          focusable={false}
         >
           <View style={styles.grabber} />
 
@@ -254,7 +256,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   rowLabel: {
     flex: 1,

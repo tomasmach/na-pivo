@@ -9,6 +9,7 @@
 import { updateDrink, type DrinkUpdate } from './drinksClient';
 import { isDrinkType, isServingType } from '@/drinks/drinkTypes';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { registerDrinkRetryFlush, shouldPauseDrinkSync } from './drinksRateLimit';
 
 const STORAGE_KEY = 'na-pivo-update-drinks-queue';
 const MAX_QUEUE_LENGTH = 200;
@@ -50,6 +51,7 @@ function signature(entry: DrinkUpdateEntry): string {
 }
 
 async function flushUnlocked(signal: AbortSignal): Promise<void> {
+  if (await shouldPauseDrinkSync()) return;
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
@@ -66,6 +68,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     const { client_id, ...update } = entry;
     const result = await updateDrink(client_id, update, signal);
     if (result !== 'retry') settled.add(entry.client_id);
+    if (result === 'retry' && await shouldPauseDrinkSync()) break;
   }
 
   await runMutation(async () => {
@@ -89,6 +92,11 @@ export async function enqueueDrinkUpdate(entry: DrinkUpdateEntry): Promise<void>
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
   });
   await flushUpdateDrinksQueue();
+}
+
+/** Drinks with an edit that has not reached the backend yet. */
+export async function getQueuedUpdateIds(): Promise<Set<string>> {
+  return new Set((await runMutation(loadQueue)).map((entry) => entry.client_id));
 }
 
 export function removeQueuedDrinkUpdate(clientId: string): Promise<boolean> {
@@ -121,3 +129,5 @@ export function clearUpdateDrinksQueue(): Promise<void> {
 export function flushUpdateDrinksQueue(): Promise<void> {
   return _flush();
 }
+
+registerDrinkRetryFlush(flushUpdateDrinksQueue);

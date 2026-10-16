@@ -225,6 +225,7 @@ export function BeerPhotoComposeSheet({
               {t.photoDiary.captionLabel}
             </Text>
             <TextInput
+              testID="photo-caption"
               value={caption}
               onChangeText={setCaption}
               placeholder={t.photoDiary.captionPlaceholder}
@@ -525,7 +526,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.13),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   contestIconWellActive: {
     backgroundColor: Colors.amber,

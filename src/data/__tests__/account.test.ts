@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import {
   clearCachedAccount,
@@ -9,11 +9,19 @@ import {
   fetchAccountPreferences,
   getCachedAuthenticationState,
   getOrCreateDeviceId,
+  revertToAnonymous,
   setSession,
   setAnonymousSessionEvictionListener,
   updateAccountPreferences,
 } from '../account';
 import { setTelemetrySession, trackApiFailure } from '../telemetryClient';
+import { getDrinkRateLimitGeneration, noteDrinkThrottled, shouldPauseDrinkSync } from '../drinksRateLimit';
+import { fetchDrinks } from '../drinksClient';
+import {
+  getAmenityVotesRateLimitGeneration,
+  getAmenityVotesRetryAt,
+  noteAmenityVotesResponse,
+} from '../pubAmenitiesRateLimit';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -45,6 +53,7 @@ jest.mock('expo-secure-store', () => {
 jest.mock('../telemetryClient', () => ({
   setTelemetrySession: jest.fn(),
   trackApiFailure: jest.fn(),
+  trackClientEvent: jest.fn(async () => undefined),
 }));
 
 const secureStoreMock = SecureStore as unknown as {
@@ -517,6 +526,41 @@ describe('ensureAccount — already established (once-per-install)', () => {
       authenticated: false,
     });
   });
+
+  it('re-saves a pre-1.4.0 record once per launch so iOS can read it in the background', async () => {
+    const blob = { deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1', authenticated: true };
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount(blob);
+    jest.mocked(SecureStore.setItemAsync).mockClear();
+
+    await ensureAccount();
+    await ensureAccount();
+
+    expect(SecureStore.setItemAsync).toHaveBeenCalledTimes(1);
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(ACCOUNT_KEY, JSON.stringify(blob), {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+  });
+
+  it('keeps the session when the re-save fails and never re-saves on Android', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    jest.mocked(SecureStore.setItemAsync).mockClear();
+    jest.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error('Keychain locked'));
+
+    await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1', token: 'tok-1' });
+
+    await clearCachedAccount();
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    jest.mocked(SecureStore.setItemAsync).mockClear();
+    (Platform as { OS: string }).OS = 'android';
+    try {
+      await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1' });
+    } finally {
+      (Platform as { OS: string }).OS = 'ios';
+    }
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  });
 });
 
 describe('ensureAccount — cache desync guard', () => {
@@ -668,11 +712,167 @@ describe('clearCachedAccount', () => {
   });
 });
 
+it('keeps a drink cooldown for the same account but clears it when an anonymous account is claimed', async () => {
+  await seedAccount({ deviceId: 'dev-1', accountId: 'anon-1', token: 'anon-token', authenticated: false });
+  const throttled = {
+    headers: { get: (name: string) => name === 'Retry-After' ? '60' : null },
+  } as Response;
+  await noteDrinkThrottled(throttled);
+  expect(await shouldPauseDrinkSync()).toBe(true);
+
+  await setSession({ deviceId: 'dev-1', accountId: 'anon-1', token: 'renewed-token', authenticated: false });
+  expect(await shouldPauseDrinkSync()).toBe(true);
+
+  await setSession({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true });
+  expect(await AsyncStorage.getItem('na-pivo-drinks-retry-after')).toBeNull();
+  setBackend('https://api.example.com');
+  global.fetch = mockFetchOk({ drinks: [] });
+  await expect(fetchDrinks()).resolves.toEqual([]);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(await shouldPauseDrinkSync()).toBe(false);
+});
+
+it('keeps an amenity vote pause for the same account but clears it on sign-in and sign-out', async () => {
+  await seedAccount({ deviceId: 'dev-1', accountId: 'anon-1', token: 'anon-token', authenticated: false });
+  const throttled = {
+    status: 429,
+    headers: { get: (name: string) => name === 'Retry-After' ? '60' : null },
+  } as Response;
+  await noteAmenityVotesResponse(throttled, getAmenityVotesRateLimitGeneration());
+  expect(await getAmenityVotesRetryAt()).toBeGreaterThan(Date.now());
+
+  await setSession({ deviceId: 'dev-1', accountId: 'anon-1', token: 'renewed-token', authenticated: false });
+  expect(await getAmenityVotesRetryAt()).toBeGreaterThan(Date.now());
+
+  await setSession({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true });
+  expect(await getAmenityVotesRetryAt()).toBe(0);
+  expect(await AsyncStorage.getItem('na-pivo-pub-amenities-retry-after')).toBeNull();
+
+  await noteAmenityVotesResponse(throttled, getAmenityVotesRateLimitGeneration());
+  await clearCachedAccount();
+  expect(await getAmenityVotesRetryAt()).toBe(0);
+});
+
+it('retries the same queued drink after a first 429 sent with the last-known account', async () => {
+  jest.resetModules();
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-09-29T16:00:00Z'));
+  const storage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const secureStore = require('expo-secure-store') as typeof SecureStore & typeof secureStoreMock;
+  secureStore.__setStore({
+    [ACCOUNT_KEY]: JSON.stringify({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true }),
+  });
+  const { ensureAccount: ensure } = require('../account') as typeof import('../account');
+  const { enqueueDrink } = require('../drinksQueue') as typeof import('../drinksQueue');
+  const entry = {
+    client_id: '00000000-0000-4000-8000-000000000041',
+    name: 'U Testu', lat: 50.08, lng: 14.42,
+    beer: { name: 'Plzeň', volume_ml: 500 },
+    drank_at: '2026-09-29T16:00:00Z',
+  };
+  expect((await ensure())?.accountId).toBe('signed-1');
+  setBackend('https://api.example.com');
+  global.fetch = jest.fn().mockResolvedValueOnce({
+    ok: false,
+    status: 429,
+    headers: { get: (name: string) => name === 'Retry-After' ? '5' : null },
+  }).mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
+  jest.mocked(secureStore.getItemAsync).mockRejectedValueOnce(new Error('temporarily locked'));
+
+  await expect(enqueueDrink(entry)).resolves.toBe(false);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(JSON.parse((await storage.getItem('na-pivo-drinks-queue'))!)).toEqual([entry]);
+  expect(JSON.parse((await storage.getItem('na-pivo-drinks-retry-after'))!)).toEqual({
+    accountId: 'signed-1', retryAt: Date.now() + 5_000,
+  });
+  await jest.advanceTimersByTimeAsync(4_999);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  await jest.advanceTimersByTimeAsync(1);
+  expect(global.fetch).toHaveBeenCalledTimes(2);
+  expect(JSON.parse((global.fetch as jest.Mock).mock.calls[1][1].body).client_id).toBe(entry.client_id);
+  expect(await storage.getItem('na-pivo-drinks-queue')).toBeNull();
+});
+
+it('finishes an account claim when removing the previous drink cooldown fails', async () => {
+  await seedAccount({ deviceId: 'dev-1', accountId: 'anon-1', token: 'anon-token', authenticated: false });
+  await noteDrinkThrottled({ headers: { get: () => '60' } } as unknown as Response);
+  const originalRemove = (AsyncStorage.removeItem as jest.Mock).getMockImplementation() as typeof AsyncStorage.removeItem;
+  const removeSpy = jest.spyOn(AsyncStorage, 'removeItem').mockImplementation((key) =>
+    key === 'na-pivo-drinks-retry-after'
+      ? Promise.reject(new Error('storage unavailable'))
+      : originalRemove(key),
+  );
+  let saved: string | null = null;
+  try {
+    await expect(setSession({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true })).resolves.toBeUndefined();
+    expect((await ensureAccount())?.accountId).toBe('signed-1');
+    expect(await shouldPauseDrinkSync()).toBe(false);
+    saved = await AsyncStorage.getItem('na-pivo-drinks-retry-after');
+    expect(saved).not.toBeNull();
+  } finally {
+    removeSpy.mockRestore();
+  }
+
+  // The secure session was already saved when cooldown removal failed.
+  jest.resetModules();
+  const restartedStorage = require('@react-native-async-storage/async-storage') as typeof AsyncStorage;
+  const restartedSecureStore = require('expo-secure-store') as typeof SecureStore & typeof secureStoreMock;
+  restartedSecureStore.__setStore({
+    [ACCOUNT_KEY]: JSON.stringify({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true }),
+  });
+  await restartedStorage.setItem('na-pivo-drinks-retry-after', saved!);
+  setBackend('https://api.example.com');
+  global.fetch = mockFetchOk({ drinks: [] });
+  const { fetchDrinks: restartedFetchDrinks } = require('../drinksClient') as typeof import('../drinksClient');
+  await expect(restartedFetchDrinks()).resolves.toEqual([]);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+});
+
+it('finishes reverting to an anonymous account when removing the old drink cooldown fails', async () => {
+  await seedAccount({ deviceId: 'dev-1', accountId: 'signed-1', token: 'signed-token', authenticated: true });
+  await noteDrinkThrottled({ headers: { get: () => '60' } } as unknown as Response);
+  setBackend('https://api.example.com');
+  global.fetch = mockFetchOk({ id: 'anon-2', token: 'anon-token-2' });
+  const originalRemove = (AsyncStorage.removeItem as jest.Mock).getMockImplementation() as typeof AsyncStorage.removeItem;
+  const removeSpy = jest.spyOn(AsyncStorage, 'removeItem').mockImplementation((key) =>
+    key === 'na-pivo-drinks-retry-after'
+      ? Promise.reject(new Error('storage unavailable'))
+      : originalRemove(key),
+  );
+  try {
+    await expect(revertToAnonymous()).resolves.toMatchObject({ accountId: 'anon-2', authenticated: false });
+    expect((await ensureAccount())?.accountId).toBe('anon-2');
+    expect(await shouldPauseDrinkSync()).toBe(false);
+  } finally {
+    removeSpy.mockRestore();
+  }
+});
+
 describe('clearCachedAnonymousAccount', () => {
   const requestContext = {
     source: 'account_preferences_fetch',
     endpoint: '/v1/account/me',
   };
+
+  it('releases the old cooldown after an automatic 401 replacement and ignores the late 429', async () => {
+    await seedAccount({ deviceId: 'dev-1', accountId: 'anon-1', token: 'old-token', authenticated: false });
+    const oldSession = await ensureAccount();
+    await shouldPauseDrinkSync();
+    const generation = getDrinkRateLimitGeneration();
+    const throttled = { headers: { get: () => '60' } } as unknown as Response;
+    await noteDrinkThrottled(throttled, generation);
+    expect(await shouldPauseDrinkSync()).toBe(true);
+
+    await expect(clearCachedAnonymousAccount(oldSession, requestContext)).resolves.toBe(true);
+    setBackend('https://api.example.com');
+    global.fetch = mockFetchOk({ id: 'anon-2', token: 'new-token' });
+    expect((await ensureAccount())?.accountId).toBe('anon-2');
+    global.fetch = mockFetchOk({ drinks: [] });
+    await expect(fetchDrinks()).resolves.toEqual([]);
+    expect(await shouldPauseDrinkSync()).toBe(false);
+    await noteDrinkThrottled(throttled, generation);
+    expect(await shouldPauseDrinkSync()).toBe(false);
+  });
 
   it('ignores an old anonymous 401 after an authenticated session was saved', async () => {
     await seedAccount({

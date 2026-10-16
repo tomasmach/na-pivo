@@ -17,6 +17,10 @@ bulk ``.update()``) so a no-op tick is cheap. What it does, in order:
 5. **Delete stale declined requests** — ``Friendship`` rows left ``declined`` past
    ``FRIEND_DECLINE_COOLDOWN_DAYS``, which naturally re-enables a clean fresh
    request later.
+6. **Delete dead tour invites** — ``TourInvite`` rows whose tour link has been
+   revoked or expired for ``TOUR_INVITE_RETENTION`` (the privacy policy promises
+   expired invitations go within 14 days). A link made again in the meantime
+   keeps who goes.
 
 Usage:
     python manage.py prune_friend_data            # prune expired / old rows
@@ -38,13 +42,16 @@ from pubs.models import (
     FriendNotification,
     FriendPubActivity,
     Friendship,
+    TourInvite,
 )
 
 logger = logging.getLogger("pubs.friends")
 
+TOUR_INVITE_RETENTION = timedelta(days=14)
+
 
 class Command(BaseCommand):
-    help = "Prune expired friend activities, old notifications, spent invite codes and stale declines."
+    help = "Prune expired friend activities, old notifications, spent invite codes, stale declines and dead tour invites."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
@@ -81,13 +88,22 @@ class Command(BaseCommand):
             responded_at__lt=now - decline_cooldown,
         )
 
+        # 6. Invites to a tour whose link stopped working long enough ago.
+        invite_cutoff = now - TOUR_INVITE_RETENTION
+        dead_invite_qs = TourInvite.objects.filter(
+            Q(plan__share__isnull=True, created_at__lt=invite_cutoff)
+            | Q(plan__share__revoked_at__lt=invite_cutoff)
+            | Q(plan__share__expires_at__lt=invite_cutoff)
+        )
+
         if dry_run:
             self.stdout.write(
                 f"(dry-run) would deactivate {straggler_qs.count()} straggler "
                 f"activity(ies); hard-delete {old_activity_qs.count()} old "
                 f"activity(ies); delete {old_notification_qs.count()} notification(s), "
                 f"{spent_code_qs.count()} invite code(s), "
-                f"{stale_declined_qs.count()} declined request(s)."
+                f"{stale_declined_qs.count()} declined request(s), "
+                f"{dead_invite_qs.count()} tour invite(s)."
             )
             return
 
@@ -101,12 +117,14 @@ class Command(BaseCommand):
         deleted_codes, _ = spent_code_qs.delete()
         _, declined_detail = stale_declined_qs.delete()
         deleted_declined = declined_detail.get(Friendship._meta.label, 0)
+        deleted_invites, _ = dead_invite_qs.delete()
 
         self.stdout.write(
             self.style.SUCCESS(
                 f"Deactivated {deactivated} straggler activity(ies); hard-deleted "
                 f"{deleted_activities} old activity(ies); deleted "
                 f"{deleted_notifications} notification(s), {deleted_codes} invite "
-                f"code(s), {deleted_declined} declined request(s)."
+                f"code(s), {deleted_declined} declined request(s), "
+                f"{deleted_invites} tour invite(s)."
             )
         )

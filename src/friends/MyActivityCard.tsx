@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     alignItems: 'center',
     justifyContent: 'center',
   },

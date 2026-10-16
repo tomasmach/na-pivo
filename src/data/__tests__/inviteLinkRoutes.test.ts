@@ -1,5 +1,5 @@
 import { redirectSystemPath } from '../../../app/+native-intent';
-import { isLegacyTableInviteUrl, parseInviteCodeFromUrl } from '../inviteLinkRoutes';
+import { isLegacyTableInviteUrl, parseInviteCodeFromUrl, parseTourRunFromUrl, parseTourTokenFromUrl } from '../inviteLinkRoutes';
 
 describe('restored app invitation routes', () => {
   it.each([
@@ -55,3 +55,32 @@ describe('restored app invitation routes', () => {
     expect(redirectSystemPath({ path, initial: true })).toBe(path);
   });
 });
+
+const tourToken = 'test_token_with_at_least_32_characters';
+describe('tour invitation routes', () => {
+  it.each([true, false])('routes cold/warm start with the same token (initial=%s)', (initial) => {
+    for (const path of [`napivo://t/${tourToken}`, `https://na-pivo.cz/t/${tourToken}`]) {
+      expect(parseTourTokenFromUrl(path)).toBe(tourToken);
+      expect(redirectSystemPath({ path, initial })).toBe(`/t/${tourToken}`);
+      expect(parseInviteCodeFromUrl(path)).toBeNull();
+    }
+  });
+  it.each([
+    'https://evil.example/t/test_token_with_at_least_32_characters',
+    'https://evil.example@na-pivo.cz/t/test_token_with_at_least_32_characters',
+    'napivo://t/short', 'https://na-pivo.cz/t/%2Fbad',
+    'https://na-pivo.cz/t/test_token_with_at_least_32_characters/extra',
+  ])('rejects malformed and third party tour URLs', (path) => {
+    expect(parseTourTokenFromUrl(path)).toBeNull();
+  });
+  it('keeps the party run of a public tour QR and ignores anything else in the query', () => {
+    const run = '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab';
+    const url = `https://na-pivo.cz/t/dScKWxNag_XfiHiQcx2BTA?r=${run}`;
+    expect(parseTourRunFromUrl(url)).toBe(run);
+    expect(redirectSystemPath({ path: url, initial: true })).toBe(`/t/dScKWxNag_XfiHiQcx2BTA?r=${run}`);
+    expect(parseTourRunFromUrl('https://na-pivo.cz/t/dScKWxNag_XfiHiQcx2BTA?r=not-a-run')).toBeNull();
+    expect(redirectSystemPath({ path: 'napivo://t/dScKWxNag_XfiHiQcx2BTA', initial: false })).toBe('/t/dScKWxNag_XfiHiQcx2BTA');
+    expect(parseTourRunFromUrl(`https://example.com/t/dScKWxNag_XfiHiQcx2BTA?r=${run}`)).toBeNull();
+  });
+});
+

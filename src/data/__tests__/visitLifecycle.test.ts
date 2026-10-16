@@ -4,7 +4,10 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 let uuid = 0;
-jest.mock('../account', () => ({ generateUuidV4: () => `visit-${++uuid}` }));
+jest.mock('../account', () => ({
+  generateUuidV4: () => `visit-${++uuid}`,
+  setAnonymousSessionEvictionListener: jest.fn(),
+}));
 const submitVisit = jest.fn(async (_entry: unknown, _signal?: AbortSignal) => 'retry');
 jest.mock('../visitsClient', () => ({
   submitVisit: (entry: unknown, signal?: AbortSignal) => submitVisit(entry, signal),
@@ -167,7 +170,7 @@ it('Dopito discards offline broadcasts and delayed retries without blocking a ne
   });
   expect(shareFriendPubActivity).toHaveBeenCalledTimes(2);
   expect(shareFriendPubActivity).toHaveBeenLastCalledWith(
-    broadcastPub, undefined, useTallyStore.getState().current!.clientId, undefined, returnedAt,
+    broadcastPub, undefined, useTallyStore.getState().current!.clientId, undefined, returnedAt, undefined,
   );
 });
 

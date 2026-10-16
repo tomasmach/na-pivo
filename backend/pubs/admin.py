@@ -23,6 +23,7 @@ from .models import (
     PubCommunityData,
     PubContributionLog,
     PubExternalBeerMenu,
+    PubFavorite,
     PubHours,
     PublishedNight,
     PublishedNightComment,
@@ -35,6 +36,7 @@ from .models import (
     PushDevice,
     ReleaseNote,
     ReleaseNoteItem,
+    TourPublication,
     UserAddedPub,
 )
 
@@ -707,6 +709,26 @@ class PubRatingAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     ordering = ("-client_updated_at",)
 
 
+@admin.register(PubFavorite)
+class PubFavoriteAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+    # Per-user private favourites — read-only audit view, like PubRatingAdmin.
+    list_display = ("client_updated_at", "name", "cache_key", "account", "updated_at")
+    list_select_related = ("account",)
+    search_fields = ("name", "cache_key")
+    readonly_fields = (
+        "account",
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "external_id",
+        "client_updated_at",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-client_updated_at",)
+
+
 @admin.register(PubVisit)
 class PubVisitAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     # Per-user explicit visits — read-only audit view.
@@ -748,3 +770,32 @@ class ReleaseNoteAdmin(admin.ModelAdmin):
     readonly_fields = ("published_at", "created_at", "updated_at")
     ordering = ("-created_at",)
     inlines = [ReleaseNoteItemInline]
+
+
+@admin.register(TourPublication)
+class TourPublicationAdmin(admin.ModelAdmin):
+    """Public tours: a reported one hides itself, and only this admin brings it back."""
+
+    list_display = ("title", "status", "hidden_reason", "city", "stop_count", "people_count", "published_at")
+    list_filter = ("status", "hidden_reason")
+    search_fields = ("title", "city", "plan__owner__nickname", "public_id", "token")
+    readonly_fields = ("plan", "public_id", "token", "snapshot", "published_at", "updated_at")
+    actions = ("restore_publications", "hide_publications", "reset_people_counts")
+
+    @admin.action(description="Restore selected tours")
+    def restore_publications(self, request, queryset) -> None:  # noqa: ARG002
+        restored = list(queryset.filter(status=TourPublication.Status.HIDDEN).values_list("public_id", flat=True))
+        # The reports behind a restore are settled; otherwise one new report would hide it again.
+        ContentReport.objects.filter(
+            target_snapshot__tour_publication_id__in=[str(public_id) for public_id in restored],
+            status__in=[ContentReport.Status.NEW, ContentReport.Status.TRIAGED],
+        ).update(status=ContentReport.Status.DISMISSED)
+        TourPublication.objects.filter(public_id__in=restored).update(status=TourPublication.Status.ACTIVE, hidden_reason="")
+
+    @admin.action(description="Hide selected tours")
+    def hide_publications(self, request, queryset) -> None:  # noqa: ARG002
+        queryset.filter(status=TourPublication.Status.ACTIVE).update(status=TourPublication.Status.HIDDEN, hidden_reason="admin")
+
+    @admin.action(description="Reset people counts")
+    def reset_people_counts(self, request, queryset) -> None:  # noqa: ARG002
+        queryset.update(people_count=0, people_count_at=None, count_since=timezone.now())

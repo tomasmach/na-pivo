@@ -24,18 +24,22 @@ The XP constants under test are the env defaults (settings.MAPER_XP_*): first_fa
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from django.conf import settings
 from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api import views
 from pubs.enrichment import geohash8
 from pubs.models import (
     Account,
     AccountPubCompletion,
     AccountUsageStats,
     AmenityKind,
+    AmenityXpLedger,
     PubAmenity,
     PubAmenityVote,
 )
@@ -232,6 +236,48 @@ def test_retract_then_revote_does_not_refarm(client):
     assert result["was_first_map"] is False
     assert result["xp_awarded"] == 0
     assert _stats(_DEVICE_A).mapper_xp == 40
+
+
+@pytest.mark.django_db
+def test_replayed_half_saved_batch_counts_each_vote_and_xp_once(client):
+    """Rows commit one by one, so a failure on row 3 leaves rows 1-2 saved. The
+    client keeps the batch on 500 and replays it whole; the saved rows are
+    LWW-stale and only row 3 is written and paid."""
+    token = _register(client)
+    keys = list(
+        AmenityKind.objects.filter(active=True).order_by("rank", "key").values_list("key", flat=True)
+    )[:3]
+    batch = [_vote(amenity_key=key) for key in keys]
+    real_award = views._award_mapper_xp
+    calls = 0
+
+    def fail_third_row(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise RuntimeError("row failed")
+        return real_award(**kwargs)
+
+    with patch("pubs.api.views._award_mapper_xp", side_effect=fail_third_row):
+        failed = _put(client, token, *batch)
+    assert failed.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert PubAmenityVote.objects.count() == 2
+
+    replay = _put(client, token, *batch)
+    assert replay.status_code == status.HTTP_200_OK
+    per_vote = settings.MAPER_XP_FIRST_FACT + settings.MAPER_XP_FIRST_MAPPER_BONUS
+    results = replay.json()["results"]
+    assert [row["applied"] for row in results] == [False, False, True]
+    assert [row["xp_awarded"] for row in results] == [0, 0, per_vote]
+    stats = _stats(_DEVICE_A)
+    assert stats.mapper_xp == 3 * per_vote
+    assert stats.amenity_votes_count == 3
+    assert stats.first_mapper_count == 3
+    assert stats.mapped_pubs_count == 1
+    assert replay.json()["mapper"]["xp"] == 3 * per_vote
+    assert PubAmenityVote.objects.count() == 3
+    assert AmenityXpLedger.objects.count() == 3
+    assert sorted(PubAmenity.objects.values_list("yes_count", flat=True)) == [1, 1, 1]
 
 
 @pytest.mark.django_db

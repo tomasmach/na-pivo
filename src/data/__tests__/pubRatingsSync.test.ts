@@ -47,14 +47,14 @@ beforeEach(() => {
 
 describe('restorePubRatings — pull + merge (LWW)', () => {
   it('merges a server rating into an empty local store', async () => {
-    fetchRatings.mockResolvedValue([wire()]);
+    fetchRatings.mockResolvedValue({ ratings: [wire()], removed: [] });
     await restorePubRatings();
     expect(usePubRatingsStore.getState().ratings[PUB]?.verdict).toBe('like');
     expect(flushPubRatingsQueue).toHaveBeenCalled();
   });
 
   it('does NOT echo a pulled rating back out as an upsert (suppress flag)', async () => {
-    fetchRatings.mockResolvedValue([wire()]);
+    fetchRatings.mockResolvedValue({ ratings: [wire()], removed: [] });
     // Install the push subscriber so a non-suppressed write WOULD enqueue.
     const unsub = installPubRatingsSync();
     await restorePubRatings();
@@ -68,7 +68,7 @@ describe('restorePubRatings — pull + merge (LWW)', () => {
     usePubRatingsStore.setState({
       ratings: { [OTHER]: { verdict: 'dislike', updatedAt: '2026-06-14T11:00:00.000Z' } },
     });
-    fetchRatings.mockResolvedValue([wire()]); // server only has PUB
+    fetchRatings.mockResolvedValue({ ratings: [wire()], removed: [] }); // server only has PUB
     await restorePubRatings();
     const calls = enqueueRatingOp.mock.calls.map((c) => c[0] as unknown as { op: string; pubKey: string });
     expect(calls).toContainEqual(expect.objectContaining({ op: 'upsert', pubKey: OTHER }));
@@ -78,7 +78,7 @@ describe('restorePubRatings — pull + merge (LWW)', () => {
     usePubRatingsStore.setState({
       ratings: { [PUB]: { verdict: 'dislike', updatedAt: '2026-06-14T18:00:00.000Z' } },
     });
-    fetchRatings.mockResolvedValue([wire({ updated_at: '2026-06-14T12:00:00.000Z' })]);
+    fetchRatings.mockResolvedValue({ ratings: [wire({ updated_at: '2026-06-14T12:00:00.000Z' })], removed: [] });
     await restorePubRatings();
     // Local stays (newer) and is pushed up.
     expect(usePubRatingsStore.getState().ratings[PUB]?.verdict).toBe('dislike');
@@ -90,7 +90,7 @@ describe('restorePubRatings — pull + merge (LWW)', () => {
     usePubRatingsStore.setState({
       ratings: { [PUB]: { verdict: 'dislike', updatedAt: '2026-06-14T08:00:00.000Z' } },
     });
-    fetchRatings.mockResolvedValue([wire({ verdict: 'like', updated_at: '2026-06-14T12:00:00.000Z' })]);
+    fetchRatings.mockResolvedValue({ ratings: [wire({ verdict: 'like', updated_at: '2026-06-14T12:00:00.000Z' })], removed: [] });
     await restorePubRatings();
     expect(usePubRatingsStore.getState().ratings[PUB]?.verdict).toBe('like');
   });
@@ -102,9 +102,43 @@ describe('restorePubRatings — pull + merge (LWW)', () => {
     expect(enqueueRatingOp).not.toHaveBeenCalled();
   });
 
+  it('drops a rating another device removed and does not push it back', async () => {
+    usePubRatingsStore.setState({
+      ratings: { [PUB]: { verdict: 'like', updatedAt: '2026-06-14T12:00:00.000Z' } },
+    });
+    fetchRatings.mockResolvedValue({
+      ratings: [],
+      removed: [{ cache_key: PUB, updated_at: '2026-06-14T12:00:00.000Z' }],
+    });
+    const unsub = installPubRatingsSync();
+
+    await restorePubRatings();
+
+    expect(usePubRatingsStore.getState().ratings[PUB]).toBeUndefined();
+    expect(enqueueRatingOp).not.toHaveBeenCalled();
+    unsub();
+  });
+
+  it('keeps and pushes a local rating made after the removal', async () => {
+    usePubRatingsStore.setState({
+      ratings: { [PUB]: { verdict: 'like', updatedAt: '2026-06-14T13:00:00.000Z' } },
+    });
+    fetchRatings.mockResolvedValue({
+      ratings: [],
+      removed: [{ cache_key: PUB, updated_at: '2026-06-14T12:00:00.000Z' }],
+    });
+
+    await restorePubRatings();
+
+    expect(usePubRatingsStore.getState().ratings[PUB]?.verdict).toBe('like');
+    expect(enqueueRatingOp).toHaveBeenCalledWith(
+      expect.objectContaining({ op: 'upsert', pubKey: PUB }),
+    );
+  });
+
   it('does not hydrate server ratings with a pending local delete tombstone', async () => {
     getQueuedRatingDeletePubKeys.mockResolvedValue(new Set([PUB]));
-    fetchRatings.mockResolvedValue([wire()]);
+    fetchRatings.mockResolvedValue({ ratings: [wire()], removed: [] });
     await restorePubRatings();
     expect(usePubRatingsStore.getState().ratings[PUB]).toBeUndefined();
     expect(enqueueRatingOp).not.toHaveBeenCalled();

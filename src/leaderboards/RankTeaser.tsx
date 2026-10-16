@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   textCol: {
     flex: 1,

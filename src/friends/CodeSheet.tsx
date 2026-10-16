@@ -410,9 +410,9 @@ const styles = StyleSheet.create({
     minHeight: HitArea.min,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.1),
+    backgroundColor: Colors.stout3,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
+    borderColor: 'transparent',
   },
   actionLabel: {
     fontFamily: Fonts.display.semibold,

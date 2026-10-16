@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearToursPrivateData } from '@/stores/toursStore';
 
 import { clearAddedPubsQueue } from './addedPubsQueue';
 import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueue';
 import { clearCommunityQueue } from './communityQueue';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
+import { clearDrinkRateLimit } from './drinksRateLimit';
 import {
   cancelDrinksHistorySeed,
   DRINKS_HISTORY_PROGRESS_KEY,
@@ -17,10 +19,13 @@ import { clearFriendsQueue } from './friendsQueue';
 import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
 import { resetForegroundPulls } from './foregroundPulls';
 import { clearNightsQueue } from './nightsQueue';
+import { clearTourRunQueue } from './tourRunQueue';
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
 import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
+import { clearPubFavoritesQueue } from './pubFavoritesQueue';
+import { clearLocalPubFavorites } from './pubFavoritesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
@@ -38,6 +43,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 const PRIVATE_STORAGE_KEYS = [
   'na-pivo-tally',
   'na-pivo-pub-ratings',
+  'na-pivo-pub-favorites',
   'na-pivo-pub-amenities',
   'na-pivo-visits-seeded',
   DRINKS_HISTORY_SEEDED_KEY,
@@ -46,6 +52,8 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-pub',
   'na-pivo-added-pubs-queue',
   'na-pivo-party-groups',
+  'na-pivo-friends-delivered',
+  'na-pivo-tour-last-ping',
   'na-pivo-beer-photos',
   'na-pivo-vycep',
   // Retired 2.0 features can still have private data after an app update.
@@ -119,6 +127,8 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // Invalidate a captured pre-logout history snapshot before any async queue
   // clear can yield, so it cannot be enqueued under the replacement account.
   cancelDrinksHistorySeed();
+  const drinksCooldownCleanup = clearDrinkRateLimit();
+  const toursCleanup = clearToursPrivateData();
   // The wiped ratings, votes and own pubs must come back on the next foreground
   // even when the same account signs in again within the pull interval.
   resetForegroundPulls();
@@ -126,6 +136,9 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });
   });
+  // Favourite pubs belong to the outgoing account; wipe them without syncing
+  // the wipe as removals and void a pull already under way.
+  clearLocalPubFavorites();
   // Community amenity votes are location-adjacent private data — wipe them under
   // the suppress flag so the reset is not echoed out as server deletes.
   runWithoutPubAmenitiesSync(() => {
@@ -146,6 +159,8 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   });
 
   await Promise.all([
+    drinksCooldownCleanup,
+    toursCleanup,
     clearAddedPubsQueue(),
     clearCommunityQueue(),
     clearDrinksQueue(),
@@ -161,7 +176,9 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearFriendsQueue(),
     clearFriendsDashboardSnapshot(),
     clearNightsQueue(),
+    clearTourRunQueue(),
     clearPubRatingsQueue(),
+    clearPubFavoritesQueue(),
     clearPubAmenitiesQueue(),
   ]);
   const keys = await AsyncStorage.getAllKeys();

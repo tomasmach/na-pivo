@@ -1,0 +1,57 @@
+appId: ${MAESTRO_APP_ID}
+name: Compass map and pub search use the persisted catalogue offline
+tags: [critical, full]
+# Known failure NP-E2E-014: the selected menu disappears after offline restart.
+# See ../../BUGS.md; retain the exact cached-menu assertions below.
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_catalogue
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /
+- assertVisible: '.*E2E U Testera.*'
+- tapOn: Přepnout na mapu
+- tapOn: Najít mě na mapě
+- tapOn: 'Zobrazit podniky jako seznam.*'
+- evalScript: ${output.local.screenshot('places-map-catalogue-list')}
+- scrollUntilVisible:
+    element: {text: 'E2E Druhá hospoda, zatím nenavštíveno'}
+    direction: DOWN
+- tapOn: 'E2E Druhá hospoda, zatím nenavštíveno'
+- tapOn: 'E2E Druhá hospoda, O hospodě'
+- assertVisible: E2E Druhá hospoda
+- scrollUntilVisible:
+    element: {text: E2E Jantar druhé hospody}
+    direction: DOWN
+    centerElement: true
+- assertVisible: '.*67\sKč.*'
+- evalScript: ${output.local.screenshot('places-online-catalogue')}
+- tapOn: Namířit kompas na E2E Druhá hospoda
+- assertVisible: '.*E2E Druhá hospoda.*'
+- evalScript: ${output.local.offline()}
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá hospoda
+- tapOn: 'E2E Druhá hospoda,.*'
+- assertVisible: E2E Druhá hospoda
+- evalScript: ${output.local.screenshot('places-offline-catalogue-top')}
+- scrollUntilVisible:
+    element: {text: E2E Jantar druhé hospody}
+    direction: DOWN
+    centerElement: true
+- assertVisible: E2E Jantar druhé hospody
+- assertVisible: '0,3 l'
+- assertVisible: '.*67\sKč.*'
+- evalScript: ${output.local.screenshot('places-offline-catalogue')}
+- evalScript: ${output.local.online()}
+- evalScript: ${output.ps.check('catalogue')}

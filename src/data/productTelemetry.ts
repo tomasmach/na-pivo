@@ -42,6 +42,7 @@ export const PRODUCT_SCREEN_NAMES = [
   'community_events',
   'my_added_pubs',
   'profile_photos',
+  'pub_page',
 ] as const;
 
 export type ProductScreenName = (typeof PRODUCT_SCREEN_NAMES)[number];
@@ -77,6 +78,7 @@ const EXACT_SCREENS: Readonly<Record<string, ProductScreenName>> = {
   '/photo-contest': 'photo_contest',
   '/community-events': 'community_events',
   '/my-added-pubs': 'my_added_pubs',
+  '/pub': 'pub_page',
   '/profile/photos': 'profile_photos',
 };
 

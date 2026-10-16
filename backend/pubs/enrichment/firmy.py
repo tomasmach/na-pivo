@@ -7,14 +7,18 @@ firmy.cz robots.txt declares "User-agent: * / Disallow: /", which means automate
 crawling is prohibited. This module is designed as a *low-volume, lazy-fill* cache
 loader and implements the following mitigations:
 
-  * All requests route through an optional residential proxy (FIRMY_PROXY_URL).
-    In production the proxy MUST be set. In dev/tests it may be omitted (direct).
+  * Requests go direct first. Only when Seznam blocks the direct path (consent
+    wall, 403 or 429) does the request repeat through the optional residential
+    proxy (FIRMY_PROXY_URL), which is then used for FIRMY_DIRECT_BLOCK_COOLDOWN_MINUTES
+    before direct is tried again. Without a proxy every request stays direct.
   * A configurable minimum interval (FIRMY_MIN_INTERVAL_SEC, default 3 s) is
     enforced between consecutive HTTP requests.
   * A hard daily cap (FIRMY_DAILY_CAP, default 2 000 requests/day) is checked
-    before each request; if exceeded the fetch is refused.
-  * Aggressive caching (HOURS_TTL_DAYS, default 30 days) means each pub is
-    re-fetched at most ~12 times a year.
+    before each request; if exceeded the fetch is refused. Proxy requests also
+    have their own smaller cap (FIRMY_PROXY_DAILY_CAP).
+  * Aggressive caching (HOURS_TTL_OK_DAYS 90 / HOURS_TTL_UNKNOWN_DAYS 180) means
+    each pub is re-fetched a few times a year at most. Only pubs in Czechia are
+    looked up; Firmy.cz lists Czech businesses only.
   * Only *lazy fill* is performed — data is fetched on user demand, never
     bulk pre-crawled.
   * This proxy is used exclusively by this module; the mobile app's Mapy.cz
@@ -34,18 +38,18 @@ Pipeline
      match before spending a second request on its detail page.
    - HTTP status: firmy.cz answers 410 Gone (and 404) for a search with ZERO
      results — that is a genuine no-match (→ None), NOT a transient failure.
-     Only 429 (rate limit) and 5xx (server) are retryable.
+     Only 403/429 (blocked / rate limit) and 5xx (server) are retryable.
 
 2. DETAIL:  GET https://www.firmy.cz/detail/{firmId}-{slug}.html
    - Served directly to a plain cookie-aware session; the LocalBusiness JSON-LD
      block carries openingHours (string | list | openingHoursSpecification).
    - HTTP status: a firm removed between search and detail answers 410/404 —
-     a genuine "firm gone" no-match (→ None). Only 429 and 5xx are retryable.
+     a genuine "firm gone" no-match (→ None). Only 403, 429 and 5xx are retryable.
    - Seznam can bounce automated traffic from flagged (datacenter) IPs to its
-     GDPR consent wall (cmp.seznam.cz, reason=missing). If that happens, route
-     requests through FIRMY_PROXY_URL (a residential proxy). _is_consent_wall
-     detects the bounce and logs an actionable warning. A residential IP is not
-     bounced, so no autologin / consent handshake is performed.
+     GDPR consent wall (cmp.seznam.cz, reason=missing). _is_consent_wall detects
+     the bounce; the request then repeats through FIRMY_PROXY_URL (a residential
+     proxy). A residential IP is not bounced, so no autologin / consent
+     handshake is performed.
 
    NOTE: an earlier version "warmed up" the session via the szn.cz autologin
    endpoint — that actively pushed the session INTO the consent wall and broke
@@ -64,6 +68,7 @@ import math
 import re
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from html import unescape
@@ -108,6 +113,14 @@ _CONSENT_WALL_HOSTS = ("cmp.seznam.cz", "cmp.firmy.cz")
 # Path token the consent wall uses; matched against the URL PATH only (never the
 # query string) so a user-controlled ?q= search term can't false-trigger it.
 _CONSENT_WALL_PATH_TOKEN = "nastaveni-souhlasu"
+
+# Request routes, also used as the suffix of the per-route usage counters.
+DIRECT = "direct"
+PROXY = "proxy"
+
+# Statuses that mean Seznam refuses the direct path (besides the consent wall).
+# Other 4xx answers are genuine no-matches (see _search_once).
+_BLOCKED_STATUSES = (403, 429)
 
 # Minimum confidence required to accept a Firmy.cz result.
 # Raised from 0.40 to 0.55 together with the matcher's hard name-similarity gate
@@ -262,9 +275,9 @@ class TransientFetchError(Exception):
     Distinguishing this from a genuine "no confident match" (fetch returns None)
     is the whole point: the caller persists a transient error as status 'error'
     (which is NOT cache-fresh, so the next request re-fetches it), whereas a real
-    no-match is persisted as 'unknown' and cached for HOURS_TTL_DAYS. Without this
+    no-match is persisted as 'unknown' and cached for HOURS_TTL_UNKNOWN_DAYS. Without this
     split, an intermittent proxy 502 would freeze a pub as a fresh 'unknown' for
-    30 days even though the next attempt would have succeeded.
+    months even though the next attempt would have succeeded.
     """
 
 
@@ -315,6 +328,20 @@ class FirmyDailyCapExceededError(RuntimeError):
     """The shared request budget is exhausted; retry after its UTC reset."""
 
 
+class DirectBlockMemory:
+    """Remembers in this process that Seznam blocked the direct path."""
+
+    def __init__(self, cooldown_seconds: float = 3600) -> None:
+        self._cooldown_seconds = cooldown_seconds
+        self._blocked_until = 0.0
+
+    def is_blocked(self) -> bool:
+        return time.monotonic() < self._blocked_until
+
+    def mark_blocked(self) -> None:
+        self._blocked_until = time.monotonic() + self._cooldown_seconds
+
+
 class FirmyHoursSource:
     """
     Fetch opening hours for a pub from Firmy.cz.
@@ -322,12 +349,14 @@ class FirmyHoursSource:
     Parameters
     ----------
     session : requests.Session | None
-        Supply a pre-configured session (e.g. in tests with a mocked adapter).
-        If None, a plain cookie-aware session with a browser User-Agent is
-        created (no login / warmup — detail pages are served directly).
+        Supply a pre-configured direct session (e.g. in tests with a mocked
+        adapter). If None, a plain cookie-aware session with a browser
+        User-Agent is created (no login / warmup — pages are served directly).
     proxy_url : str | None
-        HTTP/SOCKS proxy URL for all Firmy.cz requests.
+        HTTP/SOCKS proxy URL used only after Seznam blocks the direct path.
         Example: "http://user:pass@proxy:8888"
+    proxy_session : requests.Session | None
+        Pre-configured proxy session (tests); overrides proxy_url.
     min_interval : float
         Minimum seconds between consecutive HTTP requests (rate limiting).
     timeout : int
@@ -336,6 +365,11 @@ class FirmyHoursSource:
         Hard cap on the number of Firmy.cz requests per UTC calendar day.
     min_confidence : float
         Minimum verify_match score required to accept a result.
+    request_budget : Callable[[str], bool] | None
+        Reserves one request on a route (DIRECT or PROXY); False refuses it.
+        Defaults to an in-process counter capped at daily_cap.
+    direct_block : DirectBlockMemory | None
+        Where a direct-path block is remembered; defaults to this process.
     """
 
     def __init__(
@@ -346,26 +380,39 @@ class FirmyHoursSource:
         timeout: int = 15,
         daily_cap: int = 2000,
         min_confidence: float = MIN_CONFIDENCE,
-        request_budget: Callable[[int], bool] | None = None,
+        request_budget: Callable[[str], bool] | None = None,
+        proxy_session: requests.Session | None = None,
+        direct_block: DirectBlockMemory | None = None,
     ) -> None:
         self._min_interval = min_interval
         self._timeout = timeout
         self._daily_cap = daily_cap
-        self._request_budget = request_budget or _global_counter.increment_and_check
+        self._request_budget = request_budget or (
+            lambda _route: _global_counter.increment_and_check(self._daily_cap)
+        )
+        self._direct_block = direct_block or DirectBlockMemory()
         self._min_confidence = min_confidence
         self._last_request_at: float = 0.0
         self._lock = threading.Lock()
+        # Requests actually sent in this source's lifetime, per route.
+        self.request_counts: Counter[str] = Counter()
 
         if session is not None:
             self._session = session
             self._owns_session = False
         else:
-            self._session = self._build_session(proxy_url)
+            self._session = self._build_session(None)
             self._owns_session = True
+
+        if proxy_session is None and proxy_url:
+            proxy_session = self._build_session(proxy_url)
+        self._proxy_session = proxy_session
 
         # Cap redirect chains on every session (injected or built) so a
         # hostile/compromised proxy cannot loop us (requests' default is 30).
         self._session.max_redirects = _MAX_REDIRECTS
+        if self._proxy_session is not None:
+            self._proxy_session.max_redirects = _MAX_REDIRECTS
 
     # ------------------------------------------------------------------
     # Session construction
@@ -382,7 +429,6 @@ class FirmyHoursSource:
         # No warmup: a plain cookie-aware session reaches search + detail pages
         # directly. (A previous autologin "warmup" pushed the session into the
         # Seznam consent wall and broke every live fetch — see module docstring.)
-        self._session = s
         return s
 
     # ------------------------------------------------------------------
@@ -397,8 +443,22 @@ class FirmyHoursSource:
                 time.sleep(self._min_interval - elapsed)
             self._last_request_at = time.monotonic()
 
-    def _check_cap(self) -> bool:
-        return self._request_budget(self._daily_cap)
+    def _reserve(self, route: str) -> None:
+        if self._request_budget(route):
+            return
+        if route == PROXY:
+            raise FirmyDailyCapExceededError(
+                "firmy: daily request cap for proxy requests exceeded — "
+                "not making further proxy requests today."
+            )
+        raise FirmyDailyCapExceededError(
+            f"firmy: daily request cap of {self._daily_cap} exceeded — "
+            "not making further requests today."
+        )
+
+    def _is_blocked(self, resp: requests.Response) -> bool:
+        """True if Seznam refused the request rather than answering it."""
+        return resp.status_code in _BLOCKED_STATUSES or self._is_consent_wall(resp)
 
     # ------------------------------------------------------------------
     # HTTP helpers
@@ -453,16 +513,32 @@ class FirmyHoursSource:
         finally:
             resp._content = b"".join(chunks)[:_MAX_BODY_BYTES]
 
-    def _get(self, url: str, **kwargs) -> requests.Response:
-        """Throttled, cap-checked GET request with redirect/size/host guards."""
-        if not self._check_cap():
-            raise FirmyDailyCapExceededError(
-                f"firmy: daily request cap of {self._daily_cap} exceeded — "
-                "not making further requests today."
+    def _get(self, url: str) -> requests.Response:
+        """GET *url* directly, repeating it through the proxy if Seznam blocks us.
+
+        A block is remembered (direct_block), so later requests skip the direct
+        attempt until it expires instead of spending two requests each time.
+        """
+        if self._proxy_session is None or not self._direct_block.is_blocked():
+            resp = self._send(DIRECT, self._session, url)
+            if not self._is_blocked(resp):
+                return resp
+            self._direct_block.mark_blocked()
+            if self._proxy_session is None:
+                return resp
+            logger.warning(
+                "firmy: direct request was blocked (HTTP %d, %s) — using FIRMY_PROXY_URL "
+                "until the direct block expires.",
+                resp.status_code, urlparse(resp.url or "").hostname,
             )
+        return self._send(PROXY, self._proxy_session, url)
+
+    def _send(self, route: str, session: requests.Session, url: str) -> requests.Response:
+        """Throttled, cap-checked GET request with redirect/size/host guards."""
+        self._reserve(route)
         self._throttle()
-        kwargs.setdefault("stream", True)
-        resp = self._session.get(url, timeout=self._timeout, **kwargs)
+        self.request_counts[route] += 1
+        resp = session.get(url, timeout=self._timeout, stream=True)
 
         # Reject responses that ended up off the firmy.cz / seznam.cz families
         # (a hostile proxy could redirect us elsewhere). We still return the
@@ -732,10 +808,10 @@ class FirmyHoursSource:
         # HTTP status semantics: firmy.cz answers 410 Gone (and 404) for searches
         # with ZERO results — the SSR no-results page. That is a GENUINE no-match,
         # not a transient failure: retrying it forever spams logs and burns proxy
-        # quota instead of caching 'unknown' for HOURS_TTL_DAYS. So any 4xx EXCEPT
-        # 429 means "no result" → return None. 429 (rate limit) and 5xx (server)
+        # quota instead of caching 'unknown' for HOURS_TTL_UNKNOWN_DAYS. So any 4xx EXCEPT
+        # 403/429 means "no result" → return None. 403/429 (blocked) and 5xx (server)
         # stay retryable → TransientFetchError.
-        if 400 <= resp.status_code < 500 and resp.status_code != 429:
+        if 400 <= resp.status_code < 500 and resp.status_code not in _BLOCKED_STATUSES:
             logger.info(
                 "firmy: search for %r returned HTTP %d (no results) — treating as no-match",
                 query, resp.status_code,
@@ -752,7 +828,7 @@ class FirmyHoursSource:
         # SEARCH is the FIRST request, so a flagged/datacenter proxy IP is bounced
         # to the Seznam consent wall HERE (HTTP 200 from cmp.seznam.cz, no detail
         # link). Detect it so it raises (retryable) instead of degrading to a
-        # "no results" None → a sticky 30-day 'unknown'. (Mirror of _fetch_detail.)
+        # "no results" None → a sticky 'unknown'. (Mirror of _fetch_detail.)
         if self._is_consent_wall(resp):
             logger.warning(
                 "firmy: search for %r was bounced to the Seznam consent wall (%s) — "
@@ -809,9 +885,9 @@ class FirmyHoursSource:
 
         # HTTP status semantics (mirror of _search): a firm removed between the
         # search and detail fetch answers 410 Gone (or 404). That is a genuine
-        # "firm gone" no-match → return None, not a retry. Any 4xx EXCEPT 429 is a
-        # no-match; 429 (rate limit) and 5xx (server) stay retryable.
-        if 400 <= resp.status_code < 500 and resp.status_code != 429:
+        # "firm gone" no-match → return None, not a retry. Any 4xx EXCEPT 403/429 is a
+        # no-match; 403/429 (blocked) and 5xx (server) stay retryable.
+        if 400 <= resp.status_code < 500 and resp.status_code not in _BLOCKED_STATUSES:
             logger.info(
                 "firmy: detail for firm %s returned HTTP %d (gone) — treating as no-match",
                 firm_id, resp.status_code,
@@ -829,7 +905,7 @@ class FirmyHoursSource:
         # If the cookie-wall bounced us to the consent page we never reached the
         # detail content. With a residential proxy this should not happen; when it
         # does it is a transient proxy-rotation flag, so treat it as retryable
-        # (raise) rather than caching a sticky 'unknown' for 30 days.
+        # (raise) rather than caching a sticky 'unknown' for months.
         if self._is_consent_wall(resp):
             logger.warning(
                 "firmy: detail for firm %s was bounced to the Seznam consent wall "
@@ -989,9 +1065,14 @@ class FirmyHoursSource:
     # Context manager
     # ------------------------------------------------------------------
 
+    def close(self) -> None:
+        if self._owns_session:
+            self._session.close()
+        if self._proxy_session is not None:
+            self._proxy_session.close()
+
     def __enter__(self) -> FirmyHoursSource:
         return self
 
     def __exit__(self, *_: object) -> None:
-        if self._owns_session:
-            self._session.close()
+        self.close()

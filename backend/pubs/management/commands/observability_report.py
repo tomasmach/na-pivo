@@ -33,6 +33,11 @@ def _iso(value) -> str:
     return value.isoformat() if value else ""
 
 
+def _interaction_count(context) -> int:
+    count = (context or {}).get("count")
+    return count if isinstance(count, int) and count > 0 else 1
+
+
 class Command(BaseCommand):
     help = "Print app usage, client errors and feedback in JSON or Markdown."
 
@@ -156,7 +161,8 @@ class Command(BaseCommand):
             if not target or not action:
                 continue
             key = (target, action)
-            interaction_counts[key] += 1
+            # Skip/reroll bursts arrive as one event carrying the tap count.
+            interaction_counts[key] += _interaction_count(context)
             if account_id is not None:
                 interaction_accounts[key].add(account_id)
                 interacting_account_ids.add(account_id)

@@ -7,10 +7,12 @@ from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
-from django.db import close_old_connections, connection
+from django.db import OperationalError, close_old_connections, connection
+from psycopg.errors import DeadlockDetected
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api import views
 from pubs.models import Account, AccountUsageStats, ClientEvent
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
@@ -70,6 +72,31 @@ def test_stats_failure_rolls_back_event_before_a_retry(client, caplog):
 
     retry = client.post("/v1/client-events", data={"event": "app_open"}, format="json", **_auth(token))
     assert retry.status_code == 202
+    assert ClientEvent.objects.count() == 1
+    assert AccountUsageStats.objects.get().app_open_count == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_deadlock_reruns_event_transaction_without_duplicates(client):
+    token = _register(client)
+    real_update = views._update_usage_stats
+    calls = 0
+
+    def deadlock_after_writes(event):
+        nonlocal calls
+        calls += 1
+        real_update(event)
+        if calls == 1:
+            exc = OperationalError("deadlock detected")
+            exc.__cause__ = DeadlockDetected("deadlock detected")
+            raise exc
+
+    with patch("pubs.api.views._update_usage_stats", side_effect=deadlock_after_writes):
+        response = client.post(
+            "/v1/client-events", data={"event": "app_open"}, format="json", **_auth(token),
+        )
+    assert response.status_code == 202
+    assert calls == 2
     assert ClientEvent.objects.count() == 1
     assert AccountUsageStats.objects.get().app_open_count == 1
 
@@ -603,6 +630,29 @@ def test_ui_interaction_accepts_only_allowlisted_target_and_action(client):
     assert ClientEvent.objects.get().context == {
         "target": "community_join_request",
         "action": "submit",
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(37, 37), ("12", 12), (0, 1), (5_000_000, 1_000)],
+)
+def test_ui_interaction_keeps_bounded_tap_count(client, raw, expected):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "ui_interaction",
+            "context": {"target": "compass_skip", "action": "tap", "count": raw},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {
+        "target": "compass_skip",
+        "action": "tap",
+        "count": expected,
     }
 
 

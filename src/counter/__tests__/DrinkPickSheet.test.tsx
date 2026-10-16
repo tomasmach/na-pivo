@@ -37,7 +37,7 @@ jest.mock('react-native-reanimated', () => {
 jest.mock('@/components/shared/IconGlyph', () => {
   const ReactModule = require('react');
   const icon = () => ReactModule.createElement('Icon');
-  return { CupSodaIcon: icon, PlusIcon: icon, RefreshCwIcon: icon, XIcon: icon };
+  return { CupSodaIcon: icon, EllipsisIcon: icon, PlusIcon: icon, RefreshCwIcon: icon, XIcon: icon };
 });
 
 jest.mock('@/theme/fonts', () => ({
@@ -73,7 +73,7 @@ const MENU: DrinkPickRow[] = [
 function render(props: Partial<React.ComponentProps<typeof DrinkPickSheet>> = {}) {
   const handlers = {
     onCountRow: jest.fn(),
-    onEditRow: jest.fn(),
+    onRowActions: jest.fn(),
     onAddBeer: jest.fn(),
     onAddOther: jest.fn(),
     onClose: jest.fn(),
@@ -154,7 +154,7 @@ describe('DrinkPickSheet', () => {
   });
 
   it('hands the tapped row straight back to onCountRow', () => {
-    const { renderer, onCountRow, onEditRow } = render();
+    const { renderer, onCountRow, onRowActions } = render();
 
     act(() => {
       pressable(renderer, t.a11y.counterCountBeer('Radegast 12', '0,5 l · 49 Kč')).props.onPress();
@@ -166,27 +166,40 @@ describe('DrinkPickSheet', () => {
       pressable(renderer, t.a11y.counterCountBeerNoPrice('Kozel 11')).props.onPress();
     });
     expect(onCountRow).toHaveBeenLastCalledWith(TONIGHT[1]);
-    expect(onEditRow).not.toHaveBeenCalled();
+    expect(onRowActions).not.toHaveBeenCalled();
   });
 
-  it('long-press edits the row inside a pub', () => {
-    const { renderer, onEditRow, onCountRow } = render();
+  it('opens the menu options from the ⋯ button inside a pub', () => {
+    const { renderer, onRowActions, onCountRow } = render();
+
+    act(() => {
+      pressable(renderer, t.a11y.counterBeerOptions('Radegast 12'), 'button').props.onPress();
+    });
+
+    expect(onRowActions).toHaveBeenCalledTimes(1);
+    expect(onRowActions).toHaveBeenCalledWith(MENU[0]);
+    expect(onCountRow).not.toHaveBeenCalled();
+  });
+
+  it('long-press opens the same options inside a pub', () => {
+    const { renderer, onRowActions, onCountRow } = render();
 
     act(() => {
       pressable(renderer, t.a11y.counterCountBeer('Pilsner Urquell', '0,5 l · 62 Kč')).props.onLongPress();
     });
 
-    expect(onEditRow).toHaveBeenCalledTimes(1);
-    expect(onEditRow).toHaveBeenCalledWith(TONIGHT[0]);
+    expect(onRowActions).toHaveBeenCalledTimes(1);
+    expect(onRowActions).toHaveBeenCalledWith(TONIGHT[0]);
     expect(onCountRow).not.toHaveBeenCalled();
   });
 
-  it('has no long-press handler outside a pub', () => {
-    const { renderer, onEditRow } = render({ isPub: false, menuRows: [] });
+  it('has no options outside a pub', () => {
+    const { renderer, onRowActions } = render({ isPub: false, menuRows: [] });
 
     const node = pressable(renderer, t.a11y.counterCountBeer('Pilsner Urquell', '0,5 l · 62 Kč'));
     expect(node.props.onLongPress).toBeUndefined();
-    expect(onEditRow).not.toHaveBeenCalled();
+    expect(labels(renderer)).not.toContain(t.a11y.counterBeerOptions('Pilsner Urquell'));
+    expect(onRowActions).not.toHaveBeenCalled();
   });
 
   it('badges only the rows already drunk tonight', () => {

@@ -10,7 +10,7 @@
  * or account switch pulls again immediately.
  */
 
-export type ForegroundPull = 'ratings' | 'amenities' | 'diary' | 'addedPubs';
+export type ForegroundPull = 'ratings' | 'favorites' | 'amenities' | 'diary' | 'addedPubs';
 
 export const FOREGROUND_PULL_MIN_INTERVAL_MS = 5 * 60 * 1000;
 

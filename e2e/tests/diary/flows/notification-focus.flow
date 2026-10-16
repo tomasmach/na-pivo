@@ -1,0 +1,17 @@
+appId: ${MAESTRO_APP_ID}
+---
+- evalScript: ${output.focusPid = output.local.request('/app/process').pid}
+# Android's notification drawer emits blur/focus without an AppState change.
+- swipe:
+    start: '50%, 1%'
+    end: '50%, 80%'
+    duration: 600
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: 'Internet.*'
+- evalScript: ${output.local.check(output.local.request('/app/process').pid === output.focusPid, 'Notification drawer must preserve the app process.')}
+- evalScript: ${output.local.screenshot('diary-android-notification-drawer')}
+- pressKey: Back
+- waitForAnimationToEnd:
+    timeout: 5000
+- evalScript: ${output.local.check(output.local.request('/app/process').pid === output.focusPid, 'Notification focus must preserve the app process.')}

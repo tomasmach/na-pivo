@@ -6,7 +6,7 @@
  * that deserves explicit context before a profile becomes discoverable.
  */
 
-import React, { useCallback, useState, type ReactNode } from 'react';
+import React, { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +23,7 @@ import { useAccountStore, selectIsPublic } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { useToursStore } from '@/stores/toursStore';
 
 interface PrivacyChoiceProps {
   selected: boolean;
@@ -68,6 +69,8 @@ export default function ProfilePrivacyScreen() {
   const updateProfile = useAccountStore((state) => state.updateProfile);
 
   const [isPublic, setIsPublic] = useState(initialIsPublic);
+  const hasPublicTours = useToursStore((s) => s.plans.some((plan) => plan.publication?.status === 'active'));
+  useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -153,6 +156,12 @@ export default function ProfilePrivacyScreen() {
           />
         </View>
 
+        {!isPublic && hasPublicTours && (
+          <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.tours.privateHidesPublic}
+          </Text>
+        )}
+
         <View style={styles.promise}>
           <ShieldIcon size={18} color={Colors.amber} />
           <Text style={styles.promiseText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -220,9 +229,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.1),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.32),
+    borderColor: withAlpha(Colors.foam, 0.12),
     marginBottom: Spacing.xl,
   },
   heroRing: {

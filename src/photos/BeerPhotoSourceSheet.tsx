@@ -34,15 +34,17 @@ interface BeerPhotoSourceSheetProps {
 }
 
 interface OptionRowProps {
+  testID: string;
   icon: React.ReactNode;
   label: string;
   helper: string;
   onPress: () => void;
 }
 
-function OptionRow({ icon, label, helper, onPress }: OptionRowProps) {
+function OptionRow({ testID, icon, label, helper, onPress }: OptionRowProps) {
   return (
     <Pressable
+      testID={testID}
       onPress={onPress}
       style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
       accessibilityRole="button"
@@ -96,9 +98,9 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button">
+      <Pressable accessible={false} style={styles.backdrop} onPress={onClose}>
         {/* Stop backdrop dismissal when tapping inside the card */}
-        <Pressable onPress={() => undefined}>
+        <Pressable accessible={false} focusable={false} onPress={() => undefined}>
           <Animated.View
             style={[
               styles.card,
@@ -122,6 +124,7 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
                 </Text>
               </View>
               <Pressable
+                testID="photo-source-close"
                 onPress={onClose}
                 hitSlop={12}
                 style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
@@ -134,12 +137,14 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
 
             <View style={styles.options}>
               <OptionRow
+                testID="photo-source-camera"
                 icon={<CameraIcon size={22} color={Colors.amber} />}
                 label={t.photoDiary.takePhoto}
                 helper={t.photoDiary.cameraHelper}
                 onPress={() => pick('camera')}
               />
               <OptionRow
+                testID="photo-source-library"
                 icon={<ImagesIcon size={22} color={Colors.amber} />}
                 label={t.photoDiary.pickFromLibrary}
                 helper={t.photoDiary.libraryHelper}
@@ -240,9 +245,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.medium,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
+    borderColor: withAlpha(Colors.foam, 0.12),
   },
   optionText: {
     flex: 1,

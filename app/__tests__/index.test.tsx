@@ -3,7 +3,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Platform } from 'react-native';
-import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import { openPubPage } from '@/pubPage/openPubPage';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { CompassCard } from '@/compassui/CompassCard';
 import { MoreSheet } from '@/components/shared/MoreSheet';
@@ -58,8 +58,8 @@ jest.mock('@/components/compass/PubFilterSheet', () => ({
   PubFilterSheet: jest.fn(() => null),
 }));
 
-jest.mock('@/components/amenities/MapPubSheet', () => ({
-  MapPubSheet: jest.fn(() => null),
+jest.mock('@/pubPage/openPubPage', () => ({
+  openPubPage: jest.fn(),
 }));
 
 jest.mock('@/components/compass/ReportPubModal', () => ({
@@ -161,7 +161,7 @@ const { updateAccountPreferences } = require('@/data/account') as {
 const mockedUseRouter = useRouter as jest.Mock;
 const CompassCardMock = CompassCard as jest.Mock;
 const MoreSheetMock = MoreSheet as jest.Mock;
-const MapPubSheetMock = MapPubSheet as jest.Mock;
+const openPubPageMock = openPubPage as jest.Mock;
 const ReportPubModalMock = ReportPubModal as jest.Mock;
 
 const TestRenderer = require('react-test-renderer');
@@ -504,73 +504,33 @@ describe('CompassScreen', () => {
     expect(reportCurrentPub).toHaveBeenCalledWith('not_pub');
   });
 
-  it('passes Firmy.cz opening hours to the map hub when community hours are absent', () => {
+  it('opens the pub page for the targeted pub from the card footer', () => {
+    const pub = {
+      id: 'osm:1',
+      name: 'U Testu',
+      lat: 50.08,
+      lng: 14.42,
+      city: 'Praha',
+      openingHours: 'Mo-Fr 11:00-23:00; Sa 12:00-00:00',
+      hoursSource: 'firmy',
+    };
     useCompass.mockReturnValue({
       ...baseCompassState(),
       revealed: true,
-      pub: {
-        id: 'osm:1',
-        name: 'U Testu',
-        lat: 50.08,
-        lng: 14.42,
-        city: 'Praha',
-        openingHours: 'Mo-Fr 11:00-23:00; Sa 12:00-00:00',
-        hoursSource: 'firmy',
-      },
+      pub,
     });
-
-    let renderer: any;
 
     act(() => {
-      renderer = TestRenderer.create(React.createElement(CompassScreen));
+      TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    expect(latestProps(MapPubSheetMock).visible).toBe(false);
+    expect(openPubPageMock).not.toHaveBeenCalled();
     act(() => {
       latestProps(CompassCardMock).onPressFooter();
     });
 
-    const sheet = latestProps(MapPubSheetMock);
-    expect(sheet.visible).toBe(true);
-    expect(sheet.info.openingHours).toBe('Mo-Fr 11:00-23:00; Sa 12:00-00:00');
-    expect(sheet.info.prefillHours).toBeNull();
-    expect(sheet.pubName).toBe('U Testu');
-  });
-
-  it('opens report choices from the pub mapping detail', () => {
-    jest.useFakeTimers();
-    try {
-      useCompass.mockReturnValue({
-        ...baseCompassState(),
-        revealed: true,
-      });
-
-      act(() => {
-        TestRenderer.create(React.createElement(CompassScreen));
-      });
-
-      act(() => {
-        latestProps(CompassCardMock).onPressFooter();
-      });
-
-      const sheet = latestProps(MapPubSheetMock);
-      expect(sheet.onReport).toEqual(expect.any(Function));
-
-      act(() => {
-        sheet.onReport();
-      });
-
-      expect(latestProps(MapPubSheetMock).visible).toBe(false);
-      expect(latestProps(ReportPubModalMock).visible).toBe(false);
-
-      act(() => {
-        jest.advanceTimersByTime(250);
-      });
-
-      expect(latestProps(ReportPubModalMock).visible).toBe(true);
-    } finally {
-      jest.useRealTimers();
-    }
+    expect(openPubPageMock).toHaveBeenCalledTimes(1);
+    expect(openPubPageMock.mock.calls[0][1]).toEqual(pub);
   });
 
   it('opens add-pub from the report modal reached through the more sheet', () => {

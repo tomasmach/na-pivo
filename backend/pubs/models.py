@@ -761,6 +761,12 @@ class Account(models.Model):
         default=True,
         help_text="Whether accepted friends can see my live pub presence and automatic drink feed.",
     )
+    table_visible_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Short explicit opt-in: until then, people sitting in the same pub "
+        "may see this profile in 'Kdo tu sedí s tebou'. Null = hidden.",
+    )
     # Off by default, unlike the drink feed: what a beer cost is a different
     # order of disclosure from how many you had, and nobody opted into it when
     # they joined a parta. Only the Souboj reads it, and only when BOTH sides
@@ -1393,6 +1399,8 @@ class FriendNotification(models.Model):
         FRIEND_CHEERS = "friend_cheers", "Friend cheers"
         # A friend planned a pub tonight (RSVP-forward plan).
         FRIEND_PLAN = "friend_plan", "Friend plan"
+        # A friend invited me to their tour de pub.
+        FRIEND_TOUR_INVITE = "friend_tour_invite", "Friend tour invite"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     recipient = models.ForeignKey(
@@ -2949,6 +2957,8 @@ class ContentReport(models.Model):
         INAPPROPRIATE_AVATAR = "inappropriate_avatar", "Inappropriate avatar"
         # Additive (photo diary / FotoPivař): a reported beer photo.
         INAPPROPRIATE_PHOTO = "inappropriate_photo", "Inappropriate photo"
+        # Additive (public Tour de pub): a reported title or challenge.
+        INAPPROPRIATE_TOUR = "inappropriate_tour", "Inappropriate tour"
         IMPERSONATION = "impersonation", "Impersonation"
         SPAM = "spam", "Spam"
         OTHER = "other", "Other"
@@ -3374,6 +3384,48 @@ class PubPriceIndex(models.Model):
 
     def __str__(self) -> str:
         return f"{self.price_czk} CZK @ {self.name} [{self.cache_key}]"
+
+
+class PubPriceSnapshot(models.Model):
+    """One day's public beer price map, served as is by the /ceny page."""
+
+    day = models.DateField(unique=True)
+    computed_at = models.DateTimeField()
+    data = models.JSONField()
+    og_image_cs = models.BinaryField()
+    og_image_en = models.BinaryField()
+
+    class Meta:
+        ordering = ["-day"]
+
+    def __str__(self) -> str:
+        return f"Pub price snapshot {self.day}"
+
+
+class BeerPage(models.Model):
+    """One public page of na-pivo.cz/pivo, served as is from the newest daily run.
+
+    The daily run replaces every row, so a beer that drops under the threshold
+    loses its page the same day. The list of all beers is the row with an empty key.
+    """
+
+    class Kind(models.TextChoices):
+        LIST = "list", "List of beers"
+        BEER = "beer", "Beer"
+        BRAND = "brand", "Brand"
+
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    key = models.SlugField(max_length=100, blank=True)
+    day = models.DateField()
+    data = models.JSONField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["kind", "key"], name="unique_beer_page"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Beer page {self.kind} {self.key} ({self.day})"
 
 
 class BeerBrand(models.Model):
@@ -3947,6 +3999,128 @@ class PubRating(models.Model):
 
     def __str__(self) -> str:
         return f"PubRating({self.name or self.cache_key} [{self.cache_key}] — {self.verdict or 'note'})"
+
+
+class PubRatingTombstone(models.Model):
+    """
+    Durable LWW marker for a removed private rating.
+
+    The PubRating row is hard-deleted on removal, but the removal time must
+    survive. Otherwise another device that still has the rating pushes an older
+    copy on its next restore, finds no row and brings the rating back.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="pub_rating_tombstones",
+    )
+    cache_key = models.CharField(max_length=12)
+    client_updated_at = models.DateTimeField(
+        help_text="Client time of the latest removal; the last-write-wins conflict key.",
+    )
+
+    class Meta:
+        verbose_name = "Pub Rating Tombstone"
+        verbose_name_plural = "Pub Rating Tombstones"
+        ordering = ["-client_updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key"],
+                name="unique_rating_tombstone_per_account_pub",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubRatingTombstone({self.cache_key})"
+
+
+class PubFavorite(models.Model):
+    """
+    A pub the user saved as a favourite ("srdcovka"), keyed by its geohash-8 cell.
+
+    Mirrors PubRating: private per account, one row per (account, ``cache_key``),
+    synced two-way with LAST-WRITE-WINS on ``client_updated_at``. Removing a
+    favourite deletes the row and records a PubFavoriteTombstone. Never
+    aggregated and never shown to other users.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="pub_favorites",
+        help_text="The user who owns this private favourite.",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubRating.cache_key.",
+    )
+    # TextField (not bounded CharField): see PubRating rationale.
+    name = models.TextField(
+        blank=True,
+        default="",
+        help_text="Pub name as the client saw it.",
+    )
+    lat = models.FloatField()
+    lng = models.FloatField()
+    external_id = models.TextField(
+        blank=True,
+        default="",
+        help_text="Client-side provider id, e.g. Mapy.cz item id.",
+    )
+    client_updated_at = models.DateTimeField(
+        help_text="Client's local updatedAt; the last-write-wins conflict key.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Favorite"
+        verbose_name_plural = "Pub Favorites"
+        ordering = ["-client_updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key"],
+                name="unique_favorite_per_account_pub",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubFavorite({self.name or self.cache_key} [{self.cache_key}])"
+
+
+class PubFavoriteTombstone(models.Model):
+    """
+    Durable LWW marker for a removed favourite, like PubRatingTombstone.
+
+    Without it another device that still has the heart pushes an older save on
+    its next restore, finds no row and brings the favourite back.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="pub_favorite_tombstones",
+    )
+    cache_key = models.CharField(max_length=12)
+    client_updated_at = models.DateTimeField(
+        help_text="Client time of the latest removal; the last-write-wins conflict key.",
+    )
+
+    class Meta:
+        verbose_name = "Pub Favorite Tombstone"
+        verbose_name_plural = "Pub Favorite Tombstones"
+        ordering = ["-client_updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key"],
+                name="unique_favorite_tombstone_per_account_pub",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubFavoriteTombstone({self.cache_key})"
 
 
 class PubVisit(models.Model):
@@ -4929,3 +5103,247 @@ from .community_events import (  # noqa: E402,F401
     CommunityEventTeamMembership,
 )
 from .pub_events import PubEvent  # noqa: E402,F401
+
+
+class TourPlan(models.Model):
+    """Explicitly published itinerary. Private progress never reaches the server."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="tours")
+    title = models.CharField(max_length=60)
+    scheduled_date = models.DateField(null=True, blank=True)
+    scheduled_time = models.TimeField(null=True, blank=True)
+    timezone = models.CharField(max_length=64, default="Europe/Prague")
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+
+class TourStop(models.Model):
+    plan = models.ForeignKey(TourPlan, on_delete=models.CASCADE, related_name="stops")
+    client_id = models.UUIDField()
+    position = models.PositiveSmallIntegerField()
+    pub_id = models.CharField(max_length=256)
+    cache_key = models.CharField(max_length=32, null=True, blank=True)
+    name = models.CharField(max_length=255)
+    address = models.CharField(max_length=500, blank=True)
+    lat = models.FloatField()
+    lon = models.FloatField()
+    # Author-written, one line. Released apps omit the key; the owner PUT keeps it then.
+    challenge = models.CharField(max_length=120, blank=True, default="", db_default="")
+
+    class Meta:
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "client_id"], name="tour_stop_identity"),
+            models.UniqueConstraint(fields=["plan", "position"], name="tour_stop_position"),
+            models.UniqueConstraint(fields=["plan", "pub_id"], name="tour_stop_pub"),
+        ]
+
+
+class TourShare(models.Model):
+    plan = models.OneToOneField(TourPlan, on_delete=models.CASCADE, related_name="share")
+    # A random operation UUID is the nonce for an HMAC under SECRET_KEY. A DB
+    # leak alone cannot recover the capability; authenticated owners can recover
+    # the same URL on another device. SECRET_KEY rotation revokes all old URLs.
+    operation_id = models.UUIDField()
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField(db_index=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class TourOperation(models.Model):
+    result_revision = models.PositiveIntegerField(default=0)
+    result_share_operation_id = models.UUIDField(null=True, blank=True)
+    plan = models.ForeignKey(TourPlan, on_delete=models.CASCADE, related_name="operations")
+    operation_id = models.UUIDField()
+    kind = models.CharField(max_length=8)
+    fingerprint = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "operation_id"], name="tour_operation_identity"),
+        ]
+
+
+class TourPublication(models.Model):
+    """A frozen public copy of a tour, changed only by publishing it again.
+
+    Editing the plan or its party link never reaches the public copy. The author
+    stays attached through the plan owner and is shown by nickname and avatar.
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        HIDDEN = "hidden", "Hidden"
+        UNPUBLISHED = "unpublished", "Unpublished"
+
+    plan = models.OneToOneField(TourPlan, on_delete=models.CASCADE, related_name="publication")
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    # Public links are not secrets, so a random stored token is enough.
+    token = models.CharField(max_length=32, unique=True)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE, db_index=True)
+    hidden_reason = models.CharField(max_length=32, blank=True, default="")
+    revision = models.PositiveIntegerField(default=1)
+    plan_revision = models.PositiveIntegerField()
+    snapshot = models.JSONField()
+    title = models.CharField(max_length=60)
+    city = models.CharField(max_length=128, blank=True, default="")
+    start_lat = models.FloatField()
+    start_lon = models.FloatField()
+    stop_count = models.PositiveSmallIntegerField()
+    walk_m = models.PositiveIntegerField()
+    has_challenges = models.BooleanField(default=False)
+    # Title, pubs and addresses folded to plain lowercase ASCII, so "tygr" finds "U Zlatého tygra".
+    search_text = models.TextField(blank=True, default="")
+    # A cache of who walked it, refreshed from TourRunMember at most every few minutes.
+    people_count = models.PositiveIntegerField(default=0)
+    people_count_at = models.DateTimeField(null=True, blank=True)
+    # A new route or an admin reset counts walkers from here on.
+    count_since = models.DateTimeField(default=timezone.now)
+    rules_accepted_at = models.DateTimeField()
+    published_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["status", "start_lat", "start_lon"], name="tour_publication_geo")]
+
+
+class TourRun(models.Model):
+    """A party walking one public tour together.
+
+    Only membership and a "walked half the pubs" flag reach the server; which
+    stops, when, beers and location stay on each phone.
+    """
+
+    id = models.UUIDField(primary_key=True, editable=False)  # the organizer's local run id
+    publication = models.ForeignKey(TourPublication, on_delete=models.CASCADE, related_name="runs")
+    # A deleted organizer must not take the rest of the party's walks with them.
+    organizer = models.ForeignKey(Account, null=True, on_delete=models.SET_NULL, related_name="organized_tour_runs")
+    registered_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+
+class TourRunMember(models.Model):
+    run = models.ForeignKey(TourRun, on_delete=models.CASCADE, related_name="members")
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="tour_run_memberships")
+    joined_at = models.DateTimeField(default=timezone.now)
+    left_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["run", "account"], name="tour_run_member_identity")]
+        indexes = [models.Index(fields=["account", "completed_at"], name="tour_run_member_done")]
+
+
+class TourInvite(models.Model):
+    """A Parta friend invited to someone's dated tour, with their answer.
+
+    The invitee opens the tour through the plan's share link; the invite only
+    records who was asked and whether they go. The owner is the plan's owner.
+    """
+
+    class Status(models.TextChoices):
+        INVITED = "invited", "Invited"
+        GOING = "going", "Going"
+        DECLINED = "declined", "Declined"
+
+    plan = models.ForeignKey(TourPlan, on_delete=models.CASCADE, related_name="invites")
+    invitee = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="tour_invites")
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.INVITED)
+    # The share link generation the last push named. A rotated or recreated link leaves the invite re-sendable.
+    share_operation_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["plan", "invitee"], name="tour_invite_identity")]
+
+
+class TransitFeed(models.Model):
+    """One imported PID GTFS timetable. Only the active feed is ever read.
+
+    The rows below a feed are a compact copy of the timetable: stops, distinct
+    stop sequences ("patterns") and one row per trip with its departure times,
+    never the 1.8M raw stop_times rows. Service days are expanded only for a
+    short window around the import day.
+    """
+
+    source = models.CharField(max_length=500)
+    sha256 = models.CharField(max_length=64)
+    # What clients see; changes whenever the stored data can change.
+    version = models.CharField(max_length=40)
+    etag = models.CharField(max_length=255, blank=True, default="")
+    last_modified = models.CharField(max_length=64, blank=True, default="")
+    # Validity declared by feed_info.txt, informational only.
+    feed_start = models.DateField(null=True, blank=True)
+    feed_end = models.DateField(null=True, blank=True)
+    # The service days expanded into TransitServiceDate.
+    window_start = models.DateField()
+    window_end = models.DateField()
+    imported_at = models.DateTimeField(default=timezone.now)
+    checked_at = models.DateTimeField(default=timezone.now)
+    active = models.BooleanField(default=False, db_index=True)
+
+
+class TransitStop(models.Model):
+    """A boarding platform used by at least one stored trip."""
+
+    feed = models.ForeignKey(TransitFeed, on_delete=models.CASCADE, related_name="+")
+    stop_id = models.CharField(max_length=64)
+    name = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["feed", "stop_id"], name="transit_stop_identity")
+        ]
+        indexes = [models.Index(fields=["feed", "lat", "lng"], name="transit_stop_geo")]
+
+
+class TransitPatternStop(models.Model):
+    """Stop ``idx`` of a distinct ordered stop sequence shared by many trips."""
+
+    feed = models.ForeignKey(TransitFeed, on_delete=models.CASCADE, related_name="+")
+    pattern = models.PositiveIntegerField()
+    idx = models.PositiveSmallIntegerField()
+    stop_id = models.CharField(max_length=64)
+    can_board = models.BooleanField()
+    can_alight = models.BooleanField()
+
+    class Meta:
+        indexes = [models.Index(fields=["feed", "stop_id"], name="transit_pattern_stop")]
+
+
+class TransitTrip(models.Model):
+    """One scheduled run of a pattern.
+
+    ``departures[idx]`` is seconds after the service day's noon minus 12 h (the
+    GTFS clock, can exceed 24 h), or -1 when the feed has no time for that stop.
+    """
+
+    feed = models.ForeignKey(TransitFeed, on_delete=models.CASCADE, related_name="+")
+    pattern = models.PositiveIntegerField()
+    route_short_name = models.CharField(max_length=32)
+    route_type = models.PositiveSmallIntegerField()
+    headsign = models.CharField(max_length=255, blank=True, default="")
+    service_id = models.CharField(max_length=64)
+    departures = models.JSONField()
+
+    class Meta:
+        indexes = [models.Index(fields=["feed", "pattern"], name="transit_trip_pattern")]
+
+
+class TransitServiceDate(models.Model):
+    """A day on which trips of ``service_id`` run, inside the feed's window."""
+
+    feed = models.ForeignKey(TransitFeed, on_delete=models.CASCADE, related_name="+")
+    service_id = models.CharField(max_length=64)
+    date = models.DateField()
+
+    class Meta:
+        indexes = [models.Index(fields=["feed", "date"], name="transit_service_date")]

@@ -315,6 +315,7 @@ function FriendSettingsSheet({
           </View>
 
           <Pressable
+            testID="friend-settings-close"
             onPress={onClose}
             hitSlop={12}
             style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedDim]}
@@ -347,6 +348,7 @@ function FriendSettingsSheet({
                   </Text>
                 </View>
                 <Toggle
+                  testID="friend-settings-ghost"
                   value={draft.ghostMode}
                   onToggle={handleGhostToggle}
                   accessibilityLabel={t.friends.ghostTitle}
@@ -374,6 +376,7 @@ function FriendSettingsSheet({
                   </Text>
                 </View>
                 <Toggle
+                  testID="friend-settings-sharing"
                   value={draft.shareDrinksWithParta && !draft.ghostMode}
                   onToggle={handleShareDrinksToggle}
                   disabled={draft.ghostMode}

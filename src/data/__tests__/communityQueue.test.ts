@@ -130,6 +130,93 @@ describe('enqueuePubCommunity', () => {
       client_id: 'new', hours, beers, beer_menu_rotates: false,
     })]);
   });
+
+  it('keeps every one-beer change of a pub queued, in order, and never merges it', async () => {
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+    const menu = [{ name: 'Plzeň', price_czk: 62, volume_ml: 500 }];
+    await enqueuePubCommunity(entry({
+      client_id: 'remove-kozel',
+      hours: undefined,
+      beers: menu,
+      beer_change: { action: 'remove', name: 'Kozel', volume_ml: 500 },
+    }));
+    await enqueuePubCommunity(entry({
+      client_id: 'fix-plzen',
+      hours: undefined,
+      beers: [{ ...menu[0], price_czk: 65 }],
+      beer_change: { action: 'update', name: 'Plzeň', volume_ml: 500, price_czk: 65, new_volume_ml: 500 },
+    }));
+    // A later hours edit neither absorbs nor rewrites the pending changes.
+    await enqueuePubCommunity(entry({ client_id: 'hours' }));
+
+    expect((await readQueue()).map((queued) => queued.client_id)).toEqual([
+      'remove-kozel',
+      'fix-plzen',
+      'hours',
+    ]);
+    expect((await readQueue())[0].beer_change).toEqual({ action: 'remove', name: 'Kozel', volume_ml: 500 });
+  });
+
+  it('merges an hours edit only into the latest pending edit, never past a one-beer change', async () => {
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+    const menu = [
+      { name: 'Plzeň', price_czk: 62, volume_ml: 500 },
+      { name: 'Kozel', price_czk: 48, volume_ml: 500 },
+    ];
+    await enqueuePubCommunity(entry({ client_id: 'full', hours: undefined, beers: menu }));
+    await enqueuePubCommunity(entry({
+      client_id: 'remove-kozel',
+      hours: undefined,
+      beers: [menu[0]],
+      beer_change: { action: 'remove', name: 'Kozel', volume_ml: 500 },
+    }));
+    await enqueuePubCommunity(entry({ client_id: 'hours' }));
+
+    const queued = await readQueue();
+    expect(queued.map((q) => q.client_id)).toEqual(['full', 'remove-kozel', 'hours']);
+    // The hours edit carries no stale menu that would bring Kozel back.
+    expect(queued[2].beers).toBeUndefined();
+  });
+
+  it('holds a pub\'s later edits while an earlier one keeps failing', async () => {
+    const submit = submitPubCommunity as jest.Mock;
+    submit.mockResolvedValue(null);
+    await enqueuePubCommunity(entry({
+      client_id: 'fix-65',
+      hours: undefined,
+      beers: [],
+      beer_change: { action: 'update', name: 'Plzeň', volume_ml: 500, price_czk: 65, new_volume_ml: 500 },
+    }));
+    // The next attempt would succeed, but it must not overtake the first fix.
+    submit.mockClear();
+    submit.mockResolvedValueOnce(null).mockResolvedValue({ cacheKey: 'k', hours: null, beers: [] });
+    await enqueuePubCommunity(entry({
+      client_id: 'fix-70',
+      hours: undefined,
+      beers: [],
+      beer_change: { action: 'update', name: 'Plzeň', volume_ml: 500, price_czk: 70, new_volume_ml: 500 },
+    }));
+
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(submit.mock.calls[0][0].client_id).toBe('fix-65');
+    expect((await readQueue()).map((q) => q.client_id)).toEqual(['fix-65', 'fix-70']);
+
+    await flushCommunityQueue();
+    expect(submit.mock.calls.map(([sent]) => sent.client_id)).toEqual(['fix-65', 'fix-65', 'fix-70']);
+    await expect(readQueue()).resolves.toEqual([]);
+  });
+
+  it('drops an edit the server rejected for good and sends the next one', async () => {
+    const submit = submitPubCommunity as jest.Mock;
+    submit.mockResolvedValueOnce('permanent-error').mockResolvedValue({ cacheKey: 'k', hours: null, beers: [] });
+    await enqueuePubCommunity(entry({
+      client_id: 'bad',
+      hours: undefined,
+      beers: [],
+      beer_change: { action: 'remove', name: 'Kozel', volume_ml: 500 },
+    }));
+    await expect(readQueue()).resolves.toEqual([]);
+  });
 });
 
 describe('flushCommunityQueue', () => {

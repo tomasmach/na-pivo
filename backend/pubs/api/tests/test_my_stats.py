@@ -101,6 +101,7 @@ def test_empty_stats_returns_zeroes_not_404(client):
         for key, value in body.items()
         if key not in {"timeline", "night_timeline"}
     } == {
+        "excluded_drink_count": 0,
         "total_beers": 0,
         "total_evenings": 0,
         "total_nights": 0,
@@ -609,6 +610,44 @@ def test_night_records_group_pub_crawl_and_can_exclude_current_drinking_day(clie
         "longest_date": "2026-06-11",
         "longest_pub_names": ["U Zlatého tygra", "Lokál"],
     }
+
+
+@pytest.mark.django_db
+def test_stats_leave_out_drinks_whose_deletion_is_still_queued(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    evening = datetime(2026, 6, 11, 18, 0, tzinfo=PRAGUE)
+    _drink(account, cache_key=_KEY_TYGR, name="U Zlatého tygra", price_czk=60, drank_at=evening)
+    removed = [
+        _drink(
+            account,
+            cache_key=_KEY_LOKAL,
+            name="Lokál",
+            price_czk=58,
+            drank_at=evening + timedelta(minutes=30 * (index + 1)),
+        )
+        for index in range(2)
+    ]
+
+    resp = client.get(
+        f"/v1/me/stats?exclude_client_ids={removed[0].client_id},not-a-uuid,{removed[1].client_id}",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["excluded_drink_count"] == 2
+    assert body["total_beers"] == 1
+    assert body["total_spent_czk"] == 60
+    assert [pub["cache_key"] for pub in body["top_pubs"]] == [_KEY_TYGR]
+    assert body["records"]["most_beers_pub_name"] == "U Zlatého tygra"
+    assert body["periods"]["months"][0]["beers"] == 1
+
+    # A released client sends no exclusions and keeps the full history.
+    full = client.get("/v1/me/stats", **_auth(token)).json()
+    assert full["excluded_drink_count"] == 0
+    assert full["total_beers"] == 3
+    assert full["records"]["most_beers_pub_name"] == "Lokál"
 
 
 @pytest.mark.django_db

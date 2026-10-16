@@ -24,6 +24,8 @@ from requests.models import Response
 
 from pubs.enrichment.firmy import (
     _DETAIL_RE,
+    DirectBlockMemory,
+    FirmyDailyCapExceededError,
     FirmyHoursSource,
     RawHours,
     TransientFetchError,
@@ -738,9 +740,11 @@ class TestHttpStatusSemantics:
     too). A 410 is therefore a genuine no-match, NOT a transient failure:
     treating it as TransientFetchError makes the worker retry the same pub on
     every request forever (log spam + wasted proxy quota) instead of caching
-    'unknown' for HOURS_TTL_DAYS.
+    'unknown' for HOURS_TTL_UNKNOWN_DAYS.
 
-    Contract: 4xx (except 429) → no-match (None); 429/5xx/network → transient.
+    Contract: 4xx (except 403/429) → no-match (None); 403/429/5xx/network →
+    transient. A 403 is Seznam refusing us, so caching it would hide a real
+    pub for months.
     """
 
     def _source_with_search(self, handler) -> FirmyHoursSource:
@@ -770,6 +774,14 @@ class TestHttpStatusSemantics:
     def test_search_429_raises_transient(self):
         def handle_search(_req):
             return _make_response("", status_code=429)
+
+        src = self._source_with_search(handle_search)
+        with pytest.raises(TransientFetchError):
+            src.fetch("Test Pub", 50.0, 14.0)
+
+    def test_search_403_raises_transient(self):
+        def handle_search(_req):
+            return _make_response("", status_code=403)
 
         src = self._source_with_search(handle_search)
         with pytest.raises(TransientFetchError):
@@ -935,3 +947,134 @@ class TestSearchLadderBehaviour:
         )
         assert result is not None
         assert result.source_ref == "200"
+
+
+# ---------------------------------------------------------------------------
+# Direct first, residential proxy only after Seznam blocks the direct path
+# ---------------------------------------------------------------------------
+
+_CONSENT_WALL_URL = "https://cmp.seznam.cz/nastaveni-souhlasu?reason=missing"
+
+
+def _mock_session(handlers: dict[str, Callable]) -> requests.Session:
+    session = requests.Session()
+    adapter = MockFirmyAdapter(handlers)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+class TestDirectFirstProxyFallback:
+    name = "Pivnice Na Rohu"
+    lat, lng = 50.0812, 14.4182
+
+    def _pub_handlers(self) -> dict[str, Callable]:
+        search_html = _make_search_html("777", "pivnice-na-rohu", self.name, self.lat, self.lng)
+        ld = {
+            "@type": "LocalBusiness",
+            "name": self.name,
+            "geo": {"latitude": self.lat, "longitude": self.lng},
+            "openingHours": "Mo-Su 16:00-23:00",
+        }
+        detail_html = f'<script type="application/ld+json">{json.dumps(ld)}</script>'
+        return {
+            r"firmy\.cz/\?q=": lambda _req: _make_response(search_html),
+            r"/detail/": lambda _req: _make_response(detail_html),
+        }
+
+    def _source(self, direct_handlers, proxy_handlers=None, **kwargs):
+        routes: list[str] = []
+
+        def budget(route: str) -> bool:
+            routes.append(route)
+            return True
+
+        source = FirmyHoursSource(
+            session=_mock_session(direct_handlers),
+            proxy_session=_mock_session(proxy_handlers) if proxy_handlers is not None else None,
+            min_interval=0.0,
+            request_budget=kwargs.pop("request_budget", budget),
+            **kwargs,
+        )
+        return source, routes
+
+    def test_direct_success_never_uses_proxy(self):
+        proxy = {r".": lambda _req: pytest.fail("proxy used while direct works")}
+        source, routes = self._source(self._pub_handlers(), proxy)
+
+        result = source.fetch(self.name, self.lat, self.lng)
+
+        assert result is not None
+        assert result.opening_hours_raw == "Mo-Su 16:00-23:00"
+        assert routes == ["direct", "direct"]
+        assert source.request_counts == {"direct": 2}
+
+    def test_consent_wall_repeats_through_proxy_and_is_remembered(self):
+        direct = {r".": lambda _req: _make_response("consent", url=_CONSENT_WALL_URL)}
+        source, routes = self._source(direct, self._pub_handlers())
+
+        first = source.fetch(self.name, self.lat, self.lng)
+        second = source.fetch(self.name, self.lat, self.lng)
+
+        assert first is not None and second is not None
+        assert first.opening_hours_raw == "Mo-Su 16:00-23:00"
+        # Only the first request tried direct; the block is remembered after it.
+        assert routes == ["direct", "proxy", "proxy", "proxy", "proxy"]
+        assert source.request_counts == {"direct": 1, "proxy": 4}
+
+    @pytest.mark.parametrize("status_code", [403, 429])
+    def test_blocking_status_repeats_through_proxy(self, status_code):
+        direct = {r".": lambda _req: _make_response("", status_code=status_code)}
+        source, routes = self._source(direct, self._pub_handlers())
+
+        result = source.fetch(self.name, self.lat, self.lng)
+
+        assert result is not None
+        assert routes == ["direct", "proxy", "proxy"]
+
+    def test_server_error_does_not_switch_to_proxy(self):
+        direct = {r".": lambda _req: _make_response("", status_code=503)}
+        proxy = {r".": lambda _req: pytest.fail("proxy used for a server error")}
+        source, routes = self._source(direct, proxy)
+
+        with pytest.raises(TransientFetchError):
+            source.fetch(self.name, self.lat, self.lng)
+        assert routes == ["direct"]
+
+    def test_direct_is_tried_again_after_the_block_expires(self):
+        direct = {r".": lambda _req: _make_response("consent", url=_CONSENT_WALL_URL)}
+        source, routes = self._source(
+            direct, self._pub_handlers(), direct_block=DirectBlockMemory(cooldown_seconds=0)
+        )
+
+        source.fetch(self.name, self.lat, self.lng)
+
+        assert routes == ["direct", "proxy", "direct", "proxy"]
+
+    def test_without_proxy_a_blocked_direct_request_stays_transient(self):
+        direct = {r".": lambda _req: _make_response("consent", url=_CONSENT_WALL_URL)}
+        source, routes = self._source(direct)
+
+        with pytest.raises(TransientFetchError):
+            source.fetch(self.name, self.lat, self.lng)
+        assert routes == ["direct"]
+
+    def test_exhausted_proxy_budget_stops_the_fetch(self):
+        direct = {r".": lambda _req: _make_response("consent", url=_CONSENT_WALL_URL)}
+        source, _ = self._source(
+            direct, self._pub_handlers(), request_budget=lambda route: route == "direct"
+        )
+
+        with pytest.raises(FirmyDailyCapExceededError, match="proxy"):
+            source.fetch(self.name, self.lat, self.lng)
+        assert source.request_counts == {"direct": 1}
+
+    def test_proxy_url_builds_a_separate_proxy_session(self):
+        source = FirmyHoursSource(proxy_url="http://user:pass@proxy.test:8080")
+
+        assert source._session.proxies == {}
+        assert source._proxy_session.proxies == {
+            "http": "http://user:pass@proxy.test:8080",
+            "https": "http://user:pass@proxy.test:8080",
+        }
+        source.close()

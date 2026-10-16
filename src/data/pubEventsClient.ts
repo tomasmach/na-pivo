@@ -9,6 +9,9 @@ export interface PubEvent {
   startsAt: string;
   endsAt: string;
   verifiedAt: string;
+  /** The pub the event was suggested for; older backends leave it out. */
+  pubName?: string;
+  pubExternalId?: string;
 }
 
 interface WirePubEvent {
@@ -18,6 +21,8 @@ interface WirePubEvent {
   starts_at?: unknown;
   ends_at?: unknown;
   verified_at?: unknown;
+  pub_name?: unknown;
+  pub_external_id?: unknown;
 }
 
 export interface PubEventSuggestion {
@@ -59,6 +64,10 @@ function parseEvent(value: WirePubEvent): PubEvent | null {
     startsAt: value.starts_at,
     endsAt: value.ends_at,
     verifiedAt: value.verified_at,
+    ...(typeof value.pub_name === 'string' && value.pub_name ? { pubName: value.pub_name } : {}),
+    ...(typeof value.pub_external_id === 'string' && value.pub_external_id
+      ? { pubExternalId: value.pub_external_id }
+      : {}),
   };
 }
 
@@ -66,11 +75,12 @@ export function isPubEventActive(event: PubEvent, now = Date.now()): boolean {
   return Date.parse(event.startsAt) <= now && Date.parse(event.endsAt) > now;
 }
 
-export async function fetchActivePubEvents(
-  pubKey: string,
+async function fetchPubEvents(
+  path: string,
+  keep: (event: PubEvent) => boolean,
   signal?: AbortSignal,
 ): Promise<PubEvent[] | null> {
-  const endpoint = getBackendEndpoint(`/v1/pub-events?cache_key=${encodeURIComponent(pubKey)}`);
+  const endpoint = getBackendEndpoint(path);
   if (!endpoint || signal?.aborted) return null;
 
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
@@ -82,12 +92,40 @@ export async function fetchActivePubEvents(
     return body.events
       .map((event) => parseEvent(event as WirePubEvent))
       .filter((event): event is PubEvent => event != null)
-      .filter((event) => isPubEventActive(event));
+      .filter(keep);
   } catch {
     return null;
   } finally {
     abort.cleanup();
   }
+}
+
+export async function fetchActivePubEvents(
+  pubKey: string,
+  signal?: AbortSignal,
+): Promise<PubEvent[] | null> {
+  return fetchPubEvents(
+    `/v1/pub-events?cache_key=${encodeURIComponent(pubKey)}`,
+    (event) => isPubEventActive(event),
+    signal,
+  );
+}
+
+/**
+ * Verified events that have not ended and start within two weeks, soonest
+ * first. A backend without the `window` parameter answers with the running
+ * events only, which is still a correct subset.
+ */
+export async function fetchUpcomingPubEvents(
+  pubKey: string,
+  signal?: AbortSignal,
+): Promise<PubEvent[] | null> {
+  const events = await fetchPubEvents(
+    `/v1/pub-events?cache_key=${encodeURIComponent(pubKey)}&window=upcoming`,
+    (event) => Date.parse(event.endsAt) > Date.now(),
+    signal,
+  );
+  return events?.sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt)) ?? null;
 }
 
 export async function submitPubEventSuggestion(

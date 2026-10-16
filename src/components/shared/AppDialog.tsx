@@ -20,6 +20,7 @@ export type AppDialogButtonStyle = 'default' | 'cancel' | 'destructive';
 
 export interface AppDialogButton {
   text: string;
+  testID?: string;
   style?: AppDialogButtonStyle;
   onPress?: () => void;
 }
@@ -146,6 +147,7 @@ export function AppDialogHost() {
             {actionButtons.map((button, index) => (
               <Pressable
                 key={`${button.text}-${index}`}
+                testID={button.testID}
                 onPress={() => close(button)}
                 accessibilityRole="button"
                 style={({ pressed }) => [
@@ -168,6 +170,7 @@ export function AppDialogHost() {
           </View>
           {cancelButton ? (
             <Pressable
+              testID={cancelButton.testID}
               onPress={() => close(cancelButton)}
               accessibilityRole="button"
               style={({ pressed }) => [styles.cancelMenuButton, pressed && styles.pressed]}
@@ -204,6 +207,7 @@ export function AppDialogHost() {
           {secondaryButtons.map((button, index) => (
             <Pressable
               key={`${button.text}-${index}`}
+              testID={button.testID ?? `app-dialog-secondary-${index}`}
               onPress={() => close(button)}
               accessibilityRole="button"
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
@@ -215,6 +219,7 @@ export function AppDialogHost() {
           ))}
           {primaryButton ? (
             <Pressable
+              testID={primaryButton.testID ?? 'app-dialog-primary'}
               onPress={() => close(primaryButton)}
               accessibilityRole="button"
               style={({ pressed }) => [
@@ -243,6 +248,7 @@ export function AppDialogHost() {
       onDismiss={runPendingAction}
     >
       <Pressable
+        accessible={false}
         style={[styles.backdrop, !isActionMenu && styles.centerBackdrop]}
         onPress={closeFromBackdrop}
       >
@@ -255,7 +261,7 @@ export function AppDialogHost() {
             { marginBottom: isActionMenu ? Math.max(insets.bottom, Spacing.lg) : 0 },
           ]}
         >
-          <Pressable onPress={(event) => event.stopPropagation()}>{content}</Pressable>
+          <Pressable accessible={false} onPress={(event) => event.stopPropagation()}>{content}</Pressable>
         </Animated.View>
       </Pressable>
     </Modal>
@@ -309,8 +315,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Spacing.md,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.48),
-    backgroundColor: withAlpha(Colors.amber, 0.14),
+    borderColor: withAlpha(Colors.foam, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   title: {
     fontFamily: Fonts.display.extrabold,

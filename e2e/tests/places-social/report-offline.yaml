@@ -1,0 +1,42 @@
+appId: ${MAESTRO_APP_ID}
+name: Cancelled report is inert and offline report hides only for its author
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: places_social
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: oracle.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá hospoda
+- tapOn: 'E2E Druhá hospoda,.*'
+- assertVisible: E2E Druhá hospoda
+- tapOn: Další možnosti hospody
+- tapOn: Nahlásit hospodu
+- tapOn: Hospoda už nefunguje
+- tapOn: Zpátky
+- evalScript: ${output.ps.check('report-none')}
+- evalScript: ${output.local.offline()}
+- tapOn: Další možnosti hospody
+- tapOn: Nahlásit hospodu
+- tapOn: Hospoda už nefunguje
+- tapOn: Nahlásit
+- runFlow: ../../maestro/restart.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá
+- assertNotVisible: '.*E2E Druhá hospoda.*'
+- evalScript: ${output.local.screenshot('places-reported-hidden-offline')}
+- evalScript: ${output.local.online()}
+- runFlow: ../../maestro/foreground.yaml
+- evalScript: ${output.local.poll(function () { output.ps.check('reported'); }, 15000)}
+- evalScript: ${output.ps.check('reported')}

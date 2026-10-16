@@ -15,7 +15,8 @@
  * the running tally itself lives in the persisted store, so nothing is lost.
  */
 
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,6 +27,7 @@ import { t } from '@/i18n';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { MenuIcon } from '@/components/shared/IconGlyph';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
 import { reconcileLiveBeerActivityAndAutoArchive } from '@/liveActivity/liveBeerActivity';
 import CounterScreen from '@/counter/CounterScreen';
 import DiaryScreen from '@/diary/DiaryScreen';
@@ -63,6 +65,7 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
         return (
           <Pressable
             key={seg.key}
+            testID={`${seg.key === 'diary' ? 'diary' : 'counter'}-segment`}
             onPress={() => press(seg.key)}
             style={[styles.segmentItem, active && styles.segmentItemActive]}
             accessibilityRole="tab"
@@ -86,6 +89,12 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 export default function BeerScreen() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<BeerTab>('count');
+  // A tour stop handing a pub to the counter must land on the counter, not the diary.
+  useFocusEffect(
+    useCallback(() => {
+      if (useCounterHandoffStore.getState().pub) setTab('count');
+    }, []),
+  );
   // Both halves hand their "…" door to this header, so their open state lives
   // here too. `counterMoreReady` goes false while the counter shows the location
   // permission gate — no counter, no overflow sheet, so no glyph either.
@@ -131,6 +140,7 @@ export default function BeerScreen() {
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel={tab === 'diary' ? t.a11y.diaryStats : t.a11y.counterMore}
+              testID={tab === 'diary' ? 'diary-stats-open' : 'counter-more'}
             >
               <MenuIcon size={20} color={Colors.mutedText} />
             </Pressable>

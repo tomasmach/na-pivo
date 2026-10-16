@@ -20,6 +20,7 @@ const CTA_HEIGHT = 62;
 const PRESS_SWALLOW_MS = 700;
 
 export interface CounterCtaProps {
+  testID?: string;
   label: string;
   subLabel?: string | null;
   onPress: () => void;
@@ -34,8 +35,8 @@ export interface CounterSecondaryProps {
 }
 
 /** The quiet twin under the CTA: "Něco jiného" — a different beer, a shot, a
- *  Kofola. Outlined, never filled, so the amber button stays the one obvious
- *  target — but it is always on screen, because "the same again" must never be
+ *  Kofola. A quiet stout3 pill, never amber, so the amber button stays the one
+ *  obvious target — but it is always on screen, because "the same again" must never be
  *  the only visible way to log a drink. */
 export const CounterSecondary = memo(function CounterSecondary({
   label,
@@ -57,6 +58,7 @@ export const CounterSecondary = memo(function CounterSecondary({
 });
 
 export const CounterCta = memo(function CounterCta({
+  testID,
   label,
   subLabel,
   onPress,
@@ -83,6 +85,7 @@ export const CounterCta = memo(function CounterCta({
   return (
     <View style={styles.wrapper}>
       <Pressable
+        testID={testID}
         onPress={handlePress}
         disabled={disabled}
         style={({ pressed }) => [
@@ -169,14 +172,14 @@ const styles = StyleSheet.create({
   subLabelDisabled: {
     color: withAlpha(Colors.stout, 0.55),
   },
-  // The secondary carries the accent at 5-6%: enough to read as part of the
-  // same family, nowhere near enough to compete with the filled button above.
+  // A quiet stout3 pill without a visible edge (DESIGN.md §6.2): low-alpha
+  // amber read olive on the gray ground and competed with the button above.
   secondary: {
     height: 48,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.18),
-    backgroundColor: withAlpha(Colors.amber, 0.06),
+    borderColor: 'transparent',
+    backgroundColor: Colors.stout3,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,

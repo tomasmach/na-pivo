@@ -8,7 +8,7 @@ const BACKGROUND_LOCATION_REASON =
   'Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv, i když je aplikace zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii neukládáme.';
 
 const LOCAL_BACKEND_MODES = new Set(['local', 'auto']);
-const SPLASH_BACKGROUND = '#1f1007';
+const SPLASH_BACKGROUND = '#15120F';
 const SKIP_IOS_WIDGETS = process.env.NA_PIVO_SKIP_IOS_WIDGETS === '1';
 
 // Reversed iOS OAuth client id for the native Google Sign-In redirect, e.g.
@@ -65,6 +65,11 @@ const withoutBackgroundAudio: ConfigPlugin = (config) =>
   });
 
 export default ({ config }: ConfigContext): ExpoConfig => {
+  const localE2ENative = process.env.NA_PIVO_E2E_NATIVE === '1';
+  if (localE2ENative && (process.env.NODE_ENV !== 'development' || process.env.EAS_BUILD || process.env.EAS_BUILD_PLATFORM ||
+      process.env.EXPO_PUBLIC_BACKEND_MODE !== 'local' || process.env.EXPO_PUBLIC_BACKEND_URL !== 'local')) {
+    throw new Error('E2E native configuration requires a local development build outside EAS.');
+  }
   if (isAndroidNativeBuild() && !GOOGLE_MAPS_ANDROID_API_KEY) {
     throw new Error(
       'Android mapa vyžaduje EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY. ' +
@@ -123,6 +128,22 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: SPLASH_BACKGROUND,
       },
     ],
+    // The earlier brown icon, chosen together with the brown palette in
+    // settings (src/theme/switchPalette.ts). Native: needs a new build. Only
+    // iOS switches it; the Android alias stays disabled (see switchPalette).
+    [
+      'expo-alternate-app-icons',
+      [
+        {
+          name: 'Brown',
+          ios: './assets/images/icon-brown.png',
+          android: {
+            foregroundImage: './assets/images/icon-brown.png',
+            backgroundColor: '#1D1209',
+          },
+        },
+      ],
+    ],
     'expo-secure-store',
     // Sign in with Apple (iOS). Adds the com.apple.developer.applesignin
     // entitlement; requires enabling the capability on the App ID in the
@@ -173,7 +194,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: 'na-pivo',
     owner: 'tomasmachs-organization',
     scheme: 'napivo',
-    version: '2.1.1',
+    version: '2.2.0',
     icon: './assets/images/icon.png',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
@@ -214,7 +235,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
     },
     android: {
-      googleServicesFile: './google-services.json',
+      // Local fixtures never read a real Firebase configuration or register push.
+      googleServicesFile: localE2ENative ? undefined : './google-services.json',
       package: 'com.tomasmach.na_pivo',
       // Geofencing uses broadcasts; dependency manifests must not add an
       // unused foreground service permission back during manifest merging.
@@ -232,6 +254,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
               host: 'na-pivo.cz',
               pathPrefix: '/p',
             },
+            { scheme: 'https', host: 'na-pivo.cz', pathPrefix: '/t/' },
           ],
           category: ['BROWSABLE', 'DEFAULT'],
         },

@@ -167,6 +167,37 @@ describe('PubFilterSheet', () => {
     expect(text).toContain(t.compass.beerFilterRotatingHint);
   });
 
+  it('filters by a nearby menu beer picked from search suggestions', async () => {
+    const { suggestBeerBrands } = jest.requireMock('@/data/beerSuggestionsClient');
+    suggestBeerBrands.mockResolvedValueOnce([
+      { slug: 'kocour samuraj 12', name: 'Kocour Samuraj 12°', kind: 'menu' },
+    ]);
+    jest.useFakeTimers();
+    const { renderer, onApply } = renderSheet();
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.beerBrandFilterInput }).props.onChangeText('koc');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(250);
+    });
+    jest.useRealTimers();
+    act(() => {
+      renderer.root.findByProps({
+        accessibilityLabel: t.a11y.beerBrandFilterSuggestion('Kocour Samuraj 12°'),
+      }).props.onPress();
+    });
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.applyPubFilters }).props.onPress();
+    });
+
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        beerBrand: { key: 'name:kocour samuraj 12', label: 'Kocour Samuraj 12°' },
+      }),
+    );
+  });
+
   it('renders only amenities marked as map-filterable', () => {
     const { renderer } = renderSheet();
 

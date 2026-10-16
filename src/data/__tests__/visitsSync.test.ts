@@ -13,10 +13,13 @@ jest.mock('../visitsQueue', () => ({
 
 import {
   buildVisitEntry,
+  deleteVisitByClientId,
   syncVisit,
   seedVisitsFromHistory,
 } from '../visitsSync';
 import { geohash8 } from '../geohash';
+import type { DiarySnapshot } from '../diarySync';
+import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 
 const PUB_KEY = geohash8(50.0876, 14.4214);
@@ -98,6 +101,19 @@ describe('buildVisitEntry', () => {
       session({ pubCity: 'Praha', pubExternalId: 'mapy:pub-1' }),
     );
     expect(entry).toEqual(expect.objectContaining({ city: 'Praha', external_id: 'mapy:pub-1' }));
+  });
+});
+
+describe('deleteVisitByClientId', () => {
+  it('drops the evening from the diary snapshot before queuing its DELETE', () => {
+    const visit = { client_id: 'v1' } as DiarySnapshot['visits'][number];
+    useAccountStore.setState({ diarySnapshot: { accountId: 'a', data: { drinks: [], visits: [visit] } } });
+
+    deleteVisitByClientId('v1');
+
+    expect(useAccountStore.getState().diarySnapshot?.data.visits).toEqual([]);
+    expect(enqueueVisitOp).toHaveBeenCalledWith({ op: 'delete', clientId: 'v1' });
+    useAccountStore.setState({ diarySnapshot: null, removedVisitIds: new Set() });
   });
 });
 

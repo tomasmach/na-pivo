@@ -156,6 +156,23 @@ describe('trackClientEvent', () => {
     });
   });
 
+  it('keeps the aggregated tap count as a whole number', async () => {
+    const fetchSpy = jest.fn(async () => ({ ok: true }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await trackClientEvent({
+      event: 'ui_interaction',
+      context: { target: 'compass_skip', action: 'tap', count: 12.4 },
+    });
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string).context).toEqual({
+      target: 'compass_skip',
+      action: 'tap',
+      count: 12,
+    });
+  });
+
   it('keeps diagnostics alive when product events exhaust their own budget', async () => {
     const fetchSpy = jest.fn(async () => ({ ok: true }));
     global.fetch = fetchSpy as unknown as typeof fetch;

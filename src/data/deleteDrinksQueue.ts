@@ -21,6 +21,7 @@
 
 import { deleteDrink } from './drinksClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { registerDrinkRetryFlush, shouldPauseDrinkSync } from './drinksRateLimit';
 
 const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
 
@@ -38,7 +39,11 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<string>(
  *  being persisted immediately. */
 const runMutation = createQueueLock();
 
+/** Deletions the backend confirmed during this launch. */
+const confirmedIds = new Set<string>();
+
 async function flushUnlocked(signal: AbortSignal): Promise<void> {
+  if (await shouldPauseDrinkSync()) return;
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
@@ -51,8 +56,10 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     // keeps the token it captured before the boundary, so it still lands on the
     // right account.)
     if (signal.aborted) break;
-    const result = await deleteDrink(clientId);
+    const result = await deleteDrink(clientId, signal);
     if (result !== 'retry') settled.add(clientId);
+    if (result === 'ok') confirmedIds.add(clientId);
+    if (result === 'retry' && await shouldPauseDrinkSync()) break;
   }
 
   await runMutation(async () => {
@@ -70,7 +77,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * deletion queue. Never throws. Deduped: enqueuing the same client_id twice is
  * a no-op (the DELETE is idempotent, but there is no point queueing it twice).
  */
-export async function enqueueDelete(clientId: string): Promise<void> {
+export async function enqueueDelete(clientId: string, options?: { deliver?: boolean }): Promise<void> {
   await runMutation(async () => {
     const queue = await loadQueue();
     if (!queue.includes(clientId)) {
@@ -78,7 +85,17 @@ export async function enqueueDelete(clientId: string): Promise<void> {
       await saveQueue(queue);
     }
   });
-  await flushDeleteDrinksQueue();
+  if (options?.deliver !== false) await flushDeleteDrinksQueue();
+}
+
+/** Drinks the user removed whose deletion has not reached the backend yet. */
+export async function getQueuedDeleteIds(): Promise<Set<string>> {
+  return new Set(await runMutation(loadQueue));
+}
+
+/** Drinks whose deletion the backend confirmed since launch. */
+export function getConfirmedDeleteIds(): ReadonlySet<string> {
+  return confirmedIds;
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
@@ -89,6 +106,7 @@ export function clearDeleteDrinksQueue(): Promise<void> {
   // so without this it could keep sending the previous account's drink deletions
   // under the session that replaces this one.
   abortInFlight();
+  confirmedIds.clear();
   return runMutation(async () => {
     await saveQueue([]);
   });
@@ -103,3 +121,5 @@ export function clearDeleteDrinksQueue(): Promise<void> {
 export function flushDeleteDrinksQueue(): Promise<void> {
   return _flush();
 }
+
+registerDrinkRetryFlush(flushDeleteDrinksQueue);

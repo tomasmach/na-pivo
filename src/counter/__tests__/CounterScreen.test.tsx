@@ -87,6 +87,8 @@ jest.mock('@/photos/BeerPhotoCaptureFlow', () => ({ BeerPhotoCaptureFlow: () => 
 const mockRouterPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ push: mockRouterPush, back: jest.fn() })),
+  // The counter is always the focused screen in these tests.
+  useFocusEffect: (effect: () => void) => jest.requireActual<typeof import('react')>('react').useEffect(effect, [effect]),
 }));
 
 jest.mock('@/components/shared/IconGlyph', () => {
@@ -104,7 +106,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     'CreditCardIcon', 'AccessibilityIcon', 'TargetIcon', 'CircleDotIcon', 'SoccerBallIcon',
     'RadioIcon', 'MicIcon', 'TvIcon', 'SquareParkingIcon', 'MapPinnedIcon', 'MapPinPlusIcon',
     'MapIcon', 'ListIcon', 'LocateFixedIcon', 'SlidersHorizontalIcon', 'SproutIcon',
-    'ClipboardListIcon', 'FlameIcon', 'TrophyIcon', 'MoonIcon', 'QrCodeIcon', 'MenuIcon',
+    'ClipboardListIcon', 'FlameIcon', 'TrophyIcon', 'MoonIcon', 'QrCodeIcon', 'MenuIcon', 'EllipsisIcon',
   ];
   const glyphs: Record<string, unknown> = {};
   for (const name of names) glyphs[name] = jest.fn(() => null);
@@ -128,10 +130,16 @@ const mockTrackCounterTabOpened = jest.fn(async () => undefined);
 jest.mock('@/data/counterTelemetry', () => ({ trackCounterTabOpened: mockTrackCounterTabOpened }));
 
 const mockShareFriendPubActivity = jest.fn(async () => ({ ok: true }));
-jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: mockShareFriendPubActivity }));
+const mockLoadPartyFriends = jest.fn(async (): Promise<{ friends: { id: string }[]; ghost: boolean } | null> => null);
+jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: mockShareFriendPubActivity, loadPartyFriends: mockLoadPartyFriends }));
+jest.mock('@/friends/PingSheet', () => ({ __esModule: true, default: jest.fn(() => null) }));
 
 const fetchPubHours = jest.fn(async () => new Map());
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
+
+// Community menu writes — assert the queued payload without touching the network.
+const enqueuePubCommunity = jest.fn(async (_entry: unknown) => null);
+jest.mock('@/data/communityQueue', () => ({ enqueuePubCommunity }));
 
 // The weekly-rank chip owns the nudge slot once a beer is counted. Keep its
 // board fetch pending forever so it stays inert (and never updates state after
@@ -161,7 +169,24 @@ jest.mock('@/data/visitsSync', () => ({ syncVisit, deleteVisitByClientId }));
 const useNearbyPub = jest.fn();
 jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() }));
 
+// Tour de pub: only the running tour and its stop marks matter to the counter.
+const mockTours: { activeRun: any; hydrate: jest.Mock; markStop: jest.Mock } = {
+  activeRun: null,
+  hydrate: jest.fn(async () => ({ ok: true })),
+  markStop: jest.fn(async (id: string, status: 'visited' | 'skipped' | null) => {
+    const statuses = { ...mockTours.activeRun.statuses };
+    if (status) statuses[id] = status; else delete statuses[id];
+    mockTours.activeRun = { ...mockTours.activeRun, statuses };
+    return { ok: true };
+  }),
+};
+jest.mock('@/stores/toursStore', () => ({
+  useToursStore: Object.assign((select?: (s: unknown) => unknown) => (select ? select(mockTours) : mockTours), { getState: () => mockTours }),
+}));
+
+import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import type { WireDrink } from '@/data/drinksClient';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -171,6 +196,7 @@ import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { CounterMoreSheet } from '@/counter/CounterMoreSheet';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
 
 const { default: CounterScreen, groupMenuBeers, UNDO_WINDOW_MS } = require('../CounterScreen');
 const TestRenderer = require('react-test-renderer');
@@ -533,6 +559,55 @@ describe('CounterScreen CTA state machine', () => {
   });
 });
 
+describe('CounterScreen pinging the party', () => {
+  it('lets the party ping go to chosen friends only', async () => {
+    const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
+    useNearbyPub.mockReturnValue(nearbyState());
+    mockLoadPartyFriends.mockResolvedValueOnce({ friends: [{ id: 'eva' }, { id: 'pepa' }], ghost: false });
+    const renderer = render();
+    await act(async () => {
+      renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
+      jest.advanceTimersByTime(1000);
+    });
+    const sheet = PingSheet.mock.calls.at(-1)[0];
+    expect(sheet.friends).toEqual([{ id: 'eva' }, { id: 'pepa' }]);
+    await act(async () => { expect(await sheet.onSend(['eva'])).toBeNull(); });
+    expect(mockShareFriendPubActivity).toHaveBeenCalledWith(expect.objectContaining({ name: PUB.name }), '', expect.any(String), ['eva'], expect.any(String));
+  });
+
+  it('keeps the chosen friends through a wait for signal and hands a hard error back to the sheet', async () => {
+    const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
+    const enqueueFriendOp = jest.spyOn(jest.requireActual('@/data/friendsQueue'), 'enqueueFriendOp').mockResolvedValue(undefined);
+    useNearbyPub.mockReturnValue(nearbyState());
+    mockLoadPartyFriends.mockResolvedValueOnce({ friends: [{ id: 'eva' }], ghost: true });
+    const renderer = render();
+    await act(async () => {
+      renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
+      jest.advanceTimersByTime(1000);
+    });
+    const sheet = PingSheet.mock.calls.at(-1)[0];
+    expect(sheet.ghost).toBe(true);
+    mockShareFriendPubActivity.mockResolvedValueOnce({ ok: false, code: 'no_recipients', detail: 'Nikdo z party.' } as never);
+    await act(async () => { expect(await sheet.onSend(['eva'])).toBe('Nikdo z party.'); });
+    mockShareFriendPubActivity.mockResolvedValueOnce({ ok: false, code: 'offline', detail: '' } as never);
+    await act(async () => { expect(await PingSheet.mock.calls.at(-1)[0].onSend(['eva'])).toBeNull(); });
+    expect(enqueueFriendOp).toHaveBeenCalledWith(expect.objectContaining({ op: 'activity', payload: expect.objectContaining({ recipientIds: ['eva'] }) }));
+    enqueueFriendOp.mockRestore();
+  });
+
+  it.each([['no', null], ['an empty', { friends: [], ghost: false }]])('with %s saved party still pings everyone, as before', async (_label, saved) => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    // An empty party saved before a friend accepted elsewhere must not block the ping offline.
+    mockLoadPartyFriends.mockResolvedValueOnce(saved);
+    const renderer = render();
+    await act(async () => {
+      renderer.root.findByType(CounterMoreSheet).props.onPingFriends();
+      jest.advanceTimersByTime(1000);
+    });
+    expect(mockShareFriendPubActivity).toHaveBeenCalledWith(expect.objectContaining({ name: PUB.name }), '', expect.any(String), undefined, expect.any(String));
+  });
+});
+
 // ─── 2. Counting through the CTA ─────────────────────────────────────────────
 
 describe('CounterScreen counting', () => {
@@ -610,6 +685,491 @@ describe('CounterScreen counting', () => {
   });
 });
 
+// ─── Menu beer options: fix the price or take a beer off the menu ────────────
+
+describe('CounterScreen menu beer options', () => {
+  const MENU = [
+    { name: 'Primátor 11', priceCzk: 55, volumeMl: 500 },
+    { name: 'Primátor 11°', priceCzk: 55, volumeMl: 500 },
+    { name: 'Plzeň', priceCzk: 62, volumeMl: 500 },
+  ];
+
+  const PRIMATOR = () =>
+    copy.a11y.counterCountBeer('Primátor 11°', `${formatVolume(500)} · ${copy.counter.price(55)}`);
+  const PLZEN = () => copy.a11y.counterCountBeer('Plzeň', `${formatVolume(500)} · ${copy.counter.price(62)}`);
+
+  beforeEach(() => {
+    // Writes for everyone start from the menu the server answered here.
+    fetchPubHours.mockImplementation(async () => new Map([[PUB.id, hoursResult(MENU)]]) as never);
+  });
+
+  /** Mount and let this pub's menu answer land: writes wait for it. */
+  async function renderAnswered(): Promise<any> {
+    const renderer = render();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    return renderer;
+  }
+
+  /** The options sheet is the modal that offers "Upravit cenu". */
+  function optionsSheet(renderer: any): any {
+    return renderer.root
+      .findAll((n: any) => n.type === 'Modal')
+      .find(
+        (m: any) =>
+          m.findAll((n: any) => n.props?.accessibilityLabel === copy.counter.menuBeerEditPrice).length > 0,
+      );
+  }
+
+  function option(renderer: any, label: string): any {
+    return optionsSheet(renderer)?.findAll(
+      (n: any) => n.props?.accessibilityLabel === label && typeof n.props?.onPress === 'function',
+    )[0];
+  }
+
+  /** Long-press a "Co si dáš?" row and let the sheet close into the options. */
+  function longPressRow(renderer: any, a11yLabel: string) {
+    const row = sheetButton(renderer, copy.counter.pickTitle, a11yLabel);
+    expect(row).toBeTruthy();
+    act(() => {
+      row.props.onLongPress();
+      jest.advanceTimersByTime(300);
+    });
+    expect(optionsSheet(renderer).props.visible).toBe(true);
+  }
+
+  /** A beer the confirmed menu does not hold has only its price to offer. */
+  function longPressToForm(renderer: any, a11yLabel: string) {
+    const row = sheetButton(renderer, copy.counter.pickTitle, a11yLabel);
+    act(() => {
+      row.props.onLongPress();
+      jest.advanceTimersByTime(300);
+    });
+    expect(lastProps(BeerFormModal)).toMatchObject({ visible: true, mode: 'edit' });
+    expect(optionsSheet(renderer)?.props.visible ?? false).toBe(false);
+  }
+
+  function chooseRemove(renderer: any) {
+    act(() => option(renderer, copy.counter.removeFromMenu).props.onPress());
+    act(() => jest.advanceTimersByTime(300));
+    return (showAppDialog as jest.Mock).mock.calls.at(-1)![0];
+  }
+
+  it('opens the options from the ⋯ button and keeps the price form free of a delete', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = await renderAnswered();
+
+    act(() => surface(renderer, copy.counter.ctaPick).props.onPress());
+    const more = sheetButton(renderer, copy.counter.pickTitle, copy.a11y.counterBeerOptions('Plzeň'));
+    act(() => {
+      more.props.onPress();
+      jest.advanceTimersByTime(300);
+    });
+    expect(optionsSheet(renderer).props.visible).toBe(true);
+    expect(option(renderer, copy.counter.removeFromMenu)).toBeTruthy();
+
+    act(() => option(renderer, copy.counter.menuBeerEditPrice).props.onPress());
+    act(() => jest.advanceTimersByTime(300));
+    const form = lastProps(BeerFormModal);
+    expect(form).toMatchObject({ visible: true, mode: 'edit', beer: MENU[2] });
+    expect(form.onRemove).toBeUndefined();
+
+    // Saving fixes the Plzeň row it was opened for, for everyone at once.
+    act(() => form.onSubmit({ drinkType: 'beer', name: 'Plzeň', priceCzk: 65, volumeMl: 500 }));
+    const fixed = { name: 'Plzeň', priceCzk: 65, volumeMl: 500 };
+    expect(useCommunityStore.getState().overrides[CELL].beers).toEqual([MENU[0], MENU[1], fixed]);
+    expect(enqueuePubCommunity).toHaveBeenCalledTimes(1);
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Primátor 11°', price_czk: 55, volume_ml: 500 },
+        { name: 'Plzeň', price_czk: 65, volume_ml: 500 },
+      ],
+      // The server applies just this to the menu as it is then.
+      beer_change: { action: 'update', name: 'Plzeň', volume_ml: 500, price_czk: 65, new_volume_ml: 500 },
+    });
+  });
+
+  it('closing the options goes back to choosing a beer', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = await renderAnswered();
+
+    longPressRow(renderer, PLZEN());
+    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(false);
+    act(() => optionsSheet(renderer).props.onRequestClose());
+    act(() => jest.advanceTimersByTime(300));
+
+    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(true);
+  });
+
+  it('takes exactly that beer off the shared menu after a confirm and queues the full menu', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = await renderAnswered();
+
+    longPressRow(renderer, PRIMATOR());
+    const dialog = chooseRemove(renderer);
+    expect(optionsSheet(renderer).props.visible).toBe(false);
+    // Nothing changes until the user confirms in the dialog.
+    expect(enqueuePubCommunity).not.toHaveBeenCalled();
+    expect(dialog.title).toBe(copy.counter.removeFromMenuTitle);
+    expect(dialog.message).toBe(copy.counter.removeFromMenuBody(`Primátor 11° · ${formatVolume(500)}`));
+
+    await act(async () => {
+      dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+      await Promise.resolve();
+    });
+
+    const override = useCommunityStore.getState().overrides[CELL];
+    expect(override.beers).toEqual([MENU[0], MENU[2]]);
+    expect(override.historicalBeers).toEqual([MENU[1]]);
+    expect(enqueuePubCommunity).toHaveBeenCalledTimes(1);
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      external_id: PUB.id,
+      name: PUB.name,
+      lat: PUB.lat,
+      lng: PUB.lng,
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Plzeň', price_czk: 62, volume_ml: 500 },
+      ],
+      beer_change: { action: 'remove', name: 'Primátor 11°', volume_ml: 500 },
+    });
+    expect(lastProps(BeerFormModal).visible).toBe(false);
+    // Back to choosing a beer, now without the deleted one.
+    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(true);
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(enqueueDrink).not.toHaveBeenCalled();
+  });
+
+  it('keeps a beer that reached the menu while the dialog was open', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = await renderAnswered();
+
+    longPressRow(renderer, PRIMATOR());
+    const dialog = chooseRemove(renderer);
+
+    // A new Kozel is counted before the user confirms; the server merges it
+    // into the menu too.
+    act(() => {
+      sheetButton(renderer, copy.counter.pickTitle, copy.a11y.counterAddBeer).props.onPress();
+      jest.advanceTimersByTime(300);
+    });
+    await submitForm({ drinkType: 'beer', name: 'Kozel 11°', priceCzk: 48, volumeMl: 500 });
+    const kozel = { name: 'Kozel 11°', priceCzk: 48, volumeMl: 500 };
+    await act(async () => {
+      dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+      await Promise.resolve();
+    });
+
+    expect(useCommunityStore.getState().overrides[CELL].beers).toEqual([MENU[0], MENU[2], kozel]);
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Plzeň', price_czk: 62, volume_ml: 500 },
+        { name: 'Kozel 11°', price_czk: 48, volume_ml: 500 },
+      ],
+    });
+  });
+
+  it('"Nechat" keeps the menu untouched and goes back to choosing a beer', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = await renderAnswered();
+
+    longPressRow(renderer, PRIMATOR());
+    const dialog = chooseRemove(renderer);
+    act(() => dialog.buttons.find((b: any) => b.style === 'cancel').onPress());
+
+    expect(useCommunityStore.getState().overrides[CELL]).toBeUndefined();
+    expect(enqueuePubCommunity).not.toHaveBeenCalled();
+    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(true);
+  });
+
+  function hoursResult(beers: { name: string; priceCzk: number; volumeMl: number }[]) {
+    return {
+      openingHours: null,
+      isOpenNow: null,
+      nextChange: null,
+      status: 'unknown',
+      source: null,
+      communityHours: null,
+      beers,
+      historicalBeers: [],
+      beersUpdatedAt: '2026-10-09T08:00:00Z',
+      beerMenuRotates: false,
+      hoursUpdatedAt: null,
+      rating: null,
+      ratingCount: null,
+      ratingLabel: null,
+      hasGarden: null,
+      venueKind: 'unknown',
+    };
+  }
+
+  function showPubWithCachedMenu() {
+    let answer!: (value: Map<string, unknown>) => void;
+    fetchPubHours.mockImplementation(
+      () => new Promise((resolve) => { answer = resolve; }) as never,
+    );
+    const pub = { ...PUB, beers: MENU };
+    useNearbyPub.mockReturnValue(
+      nearbyState({ selected: pub, candidates: [{ pubKey: CELL, pub, distanceMeters: 12 }] }),
+    );
+    const renderer = render();
+    return {
+      renderer,
+      answer: async (beers: typeof MENU) => {
+        await act(async () => {
+          answer(new Map([[PUB.id, hoursResult(beers)]]));
+          await Promise.resolve();
+        });
+      },
+    };
+  }
+
+  it('offers the delete only after the server menu arrives, and keeps the beers it added', async () => {
+    const { renderer, answer } = showPubWithCachedMenu();
+
+    // The cached menu may be older than the server's: only the price for now.
+    longPressToForm(renderer, PLZEN());
+    act(() => lastProps(BeerFormModal).onCancel());
+
+    const kozel = { name: 'Kozel 11°', priceCzk: 48, volumeMl: 500 };
+    await answer([...MENU, kozel]);
+    longPressRow(renderer, PLZEN());
+    const dialog = chooseRemove(renderer);
+    await act(async () => {
+      dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+      await Promise.resolve();
+    });
+
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Primátor 11°', price_czk: 55, volume_ml: 500 },
+        { name: 'Kozel 11°', price_czk: 48, volume_ml: 500 },
+      ],
+    });
+  });
+
+  it('offers only the price when the server says the menu is empty', async () => {
+    const { renderer, answer } = showPubWithCachedMenu();
+    await answer([]);
+
+    longPressToForm(renderer, PLZEN());
+  });
+
+  it('opens the price form straight away for a beer that was only drunk tonight', async () => {
+    useTallyStore.setState({
+      current: session({ drinks: [{ ...beerDrink('d1', 30), beerName: 'Kozel' }] }),
+      history: [],
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = await renderAnswered();
+
+    longPressToForm(renderer, copy.a11y.counterCountBeer('Kozel', `${formatVolume(500)} · ${copy.counter.price(62)}`));
+
+    // Fixing the price of a tonight-only beer stays a local edit.
+    act(() => lastProps(BeerFormModal).onSubmit({ drinkType: 'beer', name: 'Kozel', priceCzk: 60, volumeMl: 500 }));
+    expect(enqueuePubCommunity).not.toHaveBeenCalled();
+  });
+
+  it('never writes from a local merge into a menu the server has not confirmed', async () => {
+    const { renderer, answer } = showPubWithCachedMenu();
+    // A priced count merged into the cached menu: complete only by luck.
+    act(() => {
+      useCommunityStore.setState({
+        overrides: { [CELL]: { beers: [MENU[2]], updatedAt: Date.now() } },
+      });
+    });
+    longPressToForm(renderer, PLZEN());
+    act(() => lastProps(BeerFormModal).onSubmit({ drinkType: 'beer', name: 'Plzeň', priceCzk: 65, volumeMl: 500 }));
+    expect(enqueuePubCommunity).not.toHaveBeenCalled();
+
+    // The server's menu also holds both Primátors: a delete keeps them.
+    await answer(MENU);
+    longPressRow(renderer, copy.a11y.counterCountBeer('Plzeň', `${formatVolume(500)} · ${copy.counter.price(65)}`));
+    const dialog = chooseRemove(renderer);
+    await act(async () => {
+      dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+      await Promise.resolve();
+    });
+
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Primátor 11°', price_czk: 55, volume_ml: 500 },
+      ],
+    });
+  });
+
+  it("never writes another pub's local menu from the same cell", async () => {
+    const { renderer, answer } = showPubWithCachedMenu();
+    act(() => {
+      useCommunityStore.setState({
+        overrides: {
+          [CELL]: {
+            beers: [{ name: 'Kozel 11°', priceCzk: 48, volumeMl: 500 }],
+            updatedAt: Date.now(),
+          },
+        },
+      });
+    });
+    await answer(MENU);
+
+    // The other pub's Kozel shows here, but only this pub's server menu is writable.
+    longPressToForm(renderer, copy.a11y.counterCountBeer('Kozel 11°', `${formatVolume(500)} · ${copy.counter.price(48)}`));
+    act(() => lastProps(BeerFormModal).onCancel());
+    expect(enqueuePubCommunity).not.toHaveBeenCalled();
+  });
+
+  it('drops a price fix when the counter moved to another pub while the form was open', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = await renderAnswered();
+
+    longPressRow(renderer, PLZEN());
+    act(() => option(renderer, copy.counter.menuBeerEditPrice).props.onPress());
+    act(() => jest.advanceTimersByTime(300));
+
+    // Same cell, another pub whose menu holds a Plzeň too.
+    const other = { ...PUB, id: 'osm:2', name: 'U Kocoura' };
+    act(() => {
+      useCommunityStore.setState({
+        overrides: { [CELL]: { beers: [MENU[2]], updatedAt: 2 } },
+      });
+      useNearbyPub.mockReturnValue(
+        nearbyState({ selected: other, candidates: [{ pubKey: CELL, pub: other, distanceMeters: 8 }] }),
+      );
+      renderer.update(React.createElement(CounterScreen));
+    });
+    act(() => lastProps(BeerFormModal).onSubmit({ drinkType: 'beer', name: 'Plzeň', priceCzk: 99, volumeMl: 500 }));
+
+    expect(enqueuePubCommunity).not.toHaveBeenCalled();
+    expect(useCommunityStore.getState().overrides[CELL].beers).toEqual([MENU[2]]);
+  });
+
+  it('a beer counted before the answer never lets an older local menu outrank the server', async () => {
+    useCommunityStore.setState({
+      overrides: { [CELL]: { beers: [MENU[0], MENU[2]], updatedAt: Date.parse('2026-10-09T09:00:00Z') } },
+    });
+    const { renderer, answer } = showPubWithCachedMenu();
+    // Nothing the server has not answered for is writable yet.
+    act(() => {
+      sheetButton(renderer, copy.counter.pickTitle, copy.a11y.counterAddBeer).props.onPress();
+      jest.advanceTimersByTime(300);
+    });
+    await submitForm({ drinkType: 'beer', name: 'Kozel 11°', priceCzk: 48, volumeMl: 500 });
+
+    // The server meanwhile also holds Primátor 11°: a delete keeps it.
+    await answer(MENU);
+    longPressRow(renderer, PLZEN());
+    const dialog = chooseRemove(renderer);
+    await act(async () => {
+      dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+      await Promise.resolve();
+    });
+
+    expect(enqueuePubCommunity.mock.calls[0][0]).toMatchObject({
+      beers: [
+        { name: 'Primátor 11', price_czk: 55, volume_ml: 500 },
+        { name: 'Primátor 11°', price_czk: 55, volume_ml: 500 },
+      ],
+    });
+  });
+
+  it('offers no shared change without a server answer and keeps the price fix local', async () => {
+    fetchPubHours.mockImplementation(async () => new Map() as never);
+    useNearbyPub.mockReturnValue(nearbyState({ selected: { ...PUB, beers: MENU } }));
+    const renderer = await renderAnswered();
+
+    const more = sheetButton(renderer, copy.counter.pickTitle, copy.a11y.counterBeerOptions('Plzeň'));
+    act(() => {
+      more.props.onPress();
+      jest.advanceTimersByTime(300);
+    });
+    expect(lastProps(BeerFormModal)).toMatchObject({ visible: true, mode: 'edit' });
+    expect(optionsSheet(renderer)?.props.visible ?? false).toBe(false);
+
+    act(() => lastProps(BeerFormModal).onSubmit({ drinkType: 'beer', name: 'Plzeň', priceCzk: 65, volumeMl: 500 }));
+    expect(enqueuePubCommunity).not.toHaveBeenCalled();
+  });
+
+  it('a second delete builds on the first instead of bringing its beer back', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = await renderAnswered();
+
+    for (const label of [PRIMATOR(), copy.a11y.counterCountBeer('Primátor 11', `${formatVolume(500)} · ${copy.counter.price(55)}`)]) {
+      longPressRow(renderer, label);
+      const dialog = chooseRemove(renderer);
+      await act(async () => {
+        dialog.buttons.find((b: any) => b.style === 'destructive').onPress();
+        await Promise.resolve();
+      });
+    }
+
+    expect(enqueuePubCommunity).toHaveBeenCalledTimes(2);
+    expect(enqueuePubCommunity.mock.calls[1][0]).toMatchObject({
+      beers: [{ name: 'Plzeň', price_czk: 62, volume_ml: 500 }],
+    });
+    expect(useCommunityStore.getState().overrides[CELL].historicalBeers).toEqual([MENU[0], MENU[1]]);
+  });
+});
+
+// ─── Tour de pub link ────────────────────────────────────────────────────────
+
+describe('CounterScreen and a running tour', () => {
+  const stop = (n: number, cacheKey: string) => ({ id: `stop-${n}`, pubId: `pub-${n}`, cacheKey, name: `Hospoda ${n}`, address: '', lat: 50, lon: 14 });
+  beforeEach(() => {
+    mockTours.markStop.mockClear();
+    mockTours.activeRun = {
+      id: 'run', planId: 'plan', startedAt: new Date().toISOString(), endedAt: null, statuses: { 'stop-1': 'visited' },
+      snapshot: { id: 'plan', title: 'Pátek', scheduledDate: null, scheduledTime: null, timezone: 'Europe/Prague', revision: 1, updatedAt: new Date().toISOString(), stops: [stop(1, 'aaaaaaaa'), stop(2, CELL), stop(3, 'cccccccc')] },
+    };
+  });
+  afterAll(() => { mockTours.activeRun = null; });
+
+  it('a beer in a tour pub checks that stop off, and undo takes it back', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    expect(surfaceText(renderer)).toContain(copy.tours.counterAtStop(2));
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+    expect(mockTours.markStop).toHaveBeenLastCalledWith('stop-2', 'visited');
+    expect(surfaceText(renderer)).toContain(copy.tours.countedAtStop(1, 2));
+
+    await act(async () => {
+      surface(renderer, copy.a11y.counterUndoStrip).props.onPress();
+      await Promise.resolve();
+    });
+    expect(mockTours.markStop).toHaveBeenLastCalledWith('stop-2', null);
+  });
+
+  it('opens on the pub a tour stop handed over, once', () => {
+    const state = nearbyState();
+    useNearbyPub.mockReturnValue(state);
+    const lokal = { id: 'pub-3', name: 'Lokál Dlouhááá', lat: 50.09, lng: 14.42 };
+    useCounterHandoffStore.getState().handOff(lokal);
+    render();
+    expect(state.selectPub).toHaveBeenCalledWith(lokal);
+    expect(useCounterHandoffStore.getState().pub).toBeNull();
+  });
+
+  it('leaves a stop marked by hand alone when its drink is undone', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+    mockTours.activeRun.statuses['stop-2'] = 'skipped';
+    mockTours.markStop.mockClear();
+    await act(async () => {
+      surface(renderer, copy.a11y.counterUndoStrip).props.onPress();
+      await Promise.resolve();
+    });
+    expect(mockTours.markStop).not.toHaveBeenCalled();
+  });
+});
+
 // ─── 3. Undo ─────────────────────────────────────────────────────────────────
 
 describe('CounterScreen undo', () => {
@@ -676,12 +1236,19 @@ describe('CounterScreen undo', () => {
       await Promise.resolve();
     });
     flushDrinksQueue.mockClear();
+    flushDeleteDrinksQueue.mockClear();
 
     act(() => surface(renderer, copy.a11y.counterReceiptChip).props.onPress());
     expect(sheet(renderer, copy.counter.receiptTitle).props.visible).toBe(true);
 
     // The payload is no longer pullable → the removal has to be delivered.
     removeQueuedDrink.mockResolvedValueOnce(false);
+    useAccountStore.setState({
+      diarySnapshot: {
+        accountId: 'a',
+        data: { drinks: [{ client_id: 'uuid-1' } as WireDrink], visits: [] },
+      },
+    });
     await act(async () => {
       sheetButton(
         renderer,
@@ -694,7 +1261,10 @@ describe('CounterScreen undo', () => {
     });
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
-    expect(enqueueDelete).toHaveBeenCalledWith('uuid-1');
+    expect(enqueueDelete).toHaveBeenCalledWith('uuid-1', { deliver: false });
+    expect(enqueueDelete.mock.invocationCallOrder[0]).toBeLessThan(flushDrinksQueue.mock.invocationCallOrder[0]);
+    expect(flushDeleteDrinksQueue).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState().diarySnapshot?.data.drinks).toEqual([]);
     expect(mockTrackClientEvent).toHaveBeenCalledWith({
       event: 'drink_removed',
       context: { delivery_state: 'delivered' },

@@ -519,4 +519,167 @@ describe('useCompass — opening hours enrichment', () => {
     expect(hook.result.pub?.hoursStatus).toBe('ok');
     expect(hook.result.pub?.isOpenNow).toBe(true);
   });
+
+  // Production 8. 10. 2026: one iOS client tapped "another pub" ~120x in 50 s,
+  // fired 141 POST /v1/pub-hours and got throttled (429). Flipping through pubs
+  // must only look up the pub the user stops on.
+  describe('rapid skipping', () => {
+    const PUBS: Pub[] = Array.from({ length: 130 }, (_, i) => ({
+      id: `mapy:${i}`,
+      name: `Pub ${i}`,
+      lat: 50 + i / 1000,
+      lng: 14.4,
+      city: 'Praha',
+    }));
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      (findNearestPub as jest.Mock).mockImplementation(
+        ({ excludeIds }: { excludeIds: string[] }) =>
+          PUBS.find((pub) => !excludeIds.includes(pub.id)) ?? null,
+      );
+      (fetchPubHours as jest.Mock).mockImplementation(async (pubs: Pub[]) =>
+        new Map(pubs.map((pub) => [pub.id, result()])),
+      );
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    async function skipAndWait(hook: ReturnType<typeof renderCompassHook>, ms: number) {
+      act(() => {
+        hook.result.skip();
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+        await Promise.resolve();
+      });
+      await flush();
+    }
+
+    it('looks up only the settled pub after a burst of 120 skips in 50 s', async () => {
+      const hook = renderCompassHook();
+      await flush();
+      expect(fetchPubHours).toHaveBeenCalledTimes(1);
+
+      for (let i = 0; i < 120; i += 1) {
+        await skipAndWait(hook, 416);
+      }
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+        await Promise.resolve();
+      });
+      await flush();
+
+      // Mount + the first skip (looked up at once) + the pub the user stopped on.
+      expect(fetchPubHours).toHaveBeenCalledTimes(3);
+      const lastPub = PUBS[120];
+      expect((fetchPubHours as jest.Mock).mock.calls[2][0]).toEqual([lastPub]);
+      expect(hook.result.pub?.id).toBe(lastPub.id);
+      expect(hook.result.pub?.hoursStatus).toBe('ok');
+      expect(hook.result.pub?.openingHours).toBe('Po–Ne 11:00–23:00');
+    });
+
+    it('looks up a single deliberate skip right away', async () => {
+      const hook = renderCompassHook();
+      await flush();
+
+      act(() => {
+        hook.result.skip();
+      });
+      await flush();
+
+      expect(fetchPubHours).toHaveBeenCalledTimes(2);
+      expect(hook.result.pub?.id).toBe(PUBS[1].id);
+      expect(hook.result.pub?.hoursStatus).toBe('ok');
+    });
+
+    it('keeps waiting when a reroll lands on the pub that is already selected', async () => {
+      useSettingsStore.setState({ mode: 'surprise', surpriseSeed: 17 });
+      const bySeed: Record<number, Pub> = { 17: PUBS[0], 18: PUBS[1], 19: PUBS[2], 20: PUBS[2] };
+      (findRandomPubInRadius as jest.Mock).mockImplementation(
+        ({ seed }: { seed: number }) => bySeed[seed] ?? null,
+      );
+      const hook = renderCompassHook();
+      await flush();
+
+      async function rerollAndWait(ms: number) {
+        act(() => {
+          hook.result.reroll();
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(ms);
+          await Promise.resolve();
+        });
+        await flush();
+      }
+
+      await rerollAndWait(300); // t=0: PUBS[1], a lone pick → looked up at once
+      expect(fetchPubHours).toHaveBeenCalledTimes(2);
+      await rerollAndWait(500); // t=300: PUBS[2] while flipping → due at t=900
+      await rerollAndWait(200); // t=800: PUBS[2] again → must now wait until t=1400
+      expect(hook.result.pub?.id).toBe(PUBS[2].id);
+      expect(fetchPubHours).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        jest.advanceTimersByTime(400);
+        await Promise.resolve();
+      });
+      await flush();
+      expect(fetchPubHours).toHaveBeenCalledTimes(3);
+      expect((fetchPubHours as jest.Mock).mock.calls[2][0]).toEqual([PUBS[2]]);
+      expect(hook.result.pub?.hoursStatus).toBe('ok');
+    });
+
+    it('looks up a pub again after flipping on it outlasted the loading fallback', async () => {
+      useSettingsStore.setState({ mode: 'surprise', surpriseSeed: 17 });
+      const bySeed: Record<number, Pub> = { 17: PUBS[0], 18: PUBS[1], 33: PUBS[3], 34: PUBS[2] };
+      for (let seed = 19; seed <= 32; seed += 1) bySeed[seed] = PUBS[2];
+      (findRandomPubInRadius as jest.Mock).mockImplementation(
+        ({ seed }: { seed: number }) => bySeed[seed] ?? null,
+      );
+      const hook = renderCompassHook();
+      await flush();
+
+      async function rerollAndWait(ms: number) {
+        act(() => {
+          hook.result.reroll();
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(ms);
+          await Promise.resolve();
+        });
+        await flush();
+      }
+
+      await rerollAndWait(300); // PUBS[1], looked up at once
+      // Keep landing on PUBS[2] for 5.6 s: its lookup never settles and the
+      // 5 s loading fallback turns the placeholder into 'unknown'.
+      for (let i = 0; i < 14; i += 1) await rerollAndWait(400);
+      expect(hook.result.pub?.id).toBe(PUBS[2].id);
+      expect(hook.result.pub?.hoursStatus).toBe('unknown');
+      expect(fetchPubHours).toHaveBeenCalledTimes(2);
+
+      await rerollAndWait(1_000); // PUBS[3], looked up once the user stops
+      expect(fetchPubHours).toHaveBeenCalledTimes(3);
+      await rerollAndWait(0); // back to PUBS[2], a lone pick
+      expect(fetchPubHours).toHaveBeenCalledTimes(4);
+      expect((fetchPubHours as jest.Mock).mock.calls[3][0]).toEqual([PUBS[2]]);
+      expect(hook.result.pub?.id).toBe(PUBS[2].id);
+      expect(hook.result.pub?.hoursStatus).toBe('ok');
+    });
+
+    it('shows loading for a pub flipped past without requesting its hours', async () => {
+      const hook = renderCompassHook();
+      await flush();
+
+      await skipAndWait(hook, 100);
+      await skipAndWait(hook, 100);
+
+      expect(fetchPubHours).toHaveBeenCalledTimes(2);
+      expect(hook.result.pub?.id).toBe(PUBS[2].id);
+      expect(hook.result.pub?.hoursStatus).toBe('loading');
+    });
+  });
 });

@@ -4,9 +4,17 @@ import { chainAbortSignal } from './apiFetch';
 export interface BeerBrandSuggestion {
   slug: string;
   name: string;
-  kind?: 'product' | 'brand';
+  /** `menu` = a beer name from nearby community menus, outside the catalog. */
+  kind?: 'product' | 'brand' | 'menu';
   brandSlug?: string;
   brandName?: string;
+}
+
+/** Area whose community menus may add `menu` suggestions. */
+export interface BeerSearchArea {
+  lat: number;
+  lng: number;
+  radiusKm: number;
 }
 
 interface WireSuggestion {
@@ -240,7 +248,10 @@ function normalizeSuggestions(raw: unknown, limit: number): BeerBrandSuggestion[
     const name = item.name.trim();
     if (!slug || !name || seen.has(slug)) continue;
     seen.add(slug);
-    const kind = item.kind === 'product' || item.kind === 'brand' ? item.kind : undefined;
+    const kind =
+      item.kind === 'product' || item.kind === 'brand' || item.kind === 'menu'
+        ? item.kind
+        : undefined;
     const brandSlug = typeof item.brand_slug === 'string' ? item.brand_slug.trim() : undefined;
     const brandName = typeof item.brand_name === 'string' ? item.brand_name.trim() : undefined;
     out.push({
@@ -260,6 +271,7 @@ export async function suggestBeerBrands(
   signal?: AbortSignal,
   limit = DEFAULT_LIMIT,
   brewery = '',
+  area: BeerSearchArea | null = null,
 ): Promise<BeerBrandSuggestion[]> {
   const trimmed = query.trim().slice(0, 80);
   const cappedLimit = Math.max(1, Math.min(20, Math.floor(limit)));
@@ -276,6 +288,11 @@ export async function suggestBeerBrands(
     url.searchParams.set('q', trimmed);
     url.searchParams.set('limit', String(cappedLimit));
     if (cleanBrewery) url.searchParams.set('brewery', cleanBrewery);
+    if (area) {
+      url.searchParams.set('lat', String(area.lat));
+      url.searchParams.set('lng', String(area.lng));
+      url.searchParams.set('radius_km', String(area.radiusKm));
+    }
     const resp = await fetch(url.toString(), {
       method: 'GET',
       signal: abort.signal,

@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.14),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
   mapperValue: {
     marginTop: 6,
@@ -241,9 +241,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.16),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.4),
+    borderColor: withAlpha(Colors.foam, 0.12),
   },
   mapperEmptyText: {
     flex: 1,

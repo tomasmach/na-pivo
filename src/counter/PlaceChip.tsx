@@ -17,7 +17,7 @@ import {
   MapPinIcon,
   TreePineIcon,
 } from '@/components/shared/IconGlyph';
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
@@ -98,9 +98,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   chipUnknown: {
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: Colors.stout3,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.32),
+    borderColor: 'transparent',
     paddingHorizontal: Spacing.md,
   },
   pressed: {

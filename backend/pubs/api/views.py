@@ -38,7 +38,13 @@ import requests
 from django.conf import settings
 from django.core.cache import cache as default_cache
 from django.core.files.uploadhandler import FileUploadHandler, StopUpload
-from django.db import IntegrityError, close_old_connections, connection, transaction
+from django.db import (
+    IntegrityError,
+    OperationalError,
+    close_old_connections,
+    connection,
+    transaction,
+)
 from django.db.models import (
     Avg,
     Case,
@@ -102,8 +108,12 @@ from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
 from pubs.beer_catalog import (
     ALLOWED_BEER_VOLUMES_ML,
     BeerCatalogMatchCache,
+    BeerSuggestion,
+    beer_menu_identity,
+    match_beer,
     match_beer_brand,
     match_beer_identity,
+    normalize_beer_text,
     suggest_beer_brands,
     sync_pub_beer_indexes_for_menu,
     upsert_pub_beer_brand,
@@ -210,6 +220,9 @@ from pubs.models import (
     PubContributionLog,
     PubDirectory,
     PubEvent,
+    PubExternalBeerMenu,
+    PubFavorite,
+    PubFavoriteTombstone,
     PubGooglePlace,
     PubHours,
     PublishedNight,
@@ -218,11 +231,15 @@ from pubs.models import (
     PubNameCorrection,
     PubPriceIndex,
     PubRating,
+    PubRatingTombstone,
     PubReport,
     PubSearchCache,
     PubVisit,
     PushDevice,
     ReleaseNote,
+    TourInvite,
+    TourPlan,
+    TourRunMember,
     UserAddedPub,
     account_deletion_fingerprint,
     account_deletion_fingerprint_matches,
@@ -290,6 +307,7 @@ from .serializers import (
     PubAmenityVotesRequestSerializer,
     PubCommunityRequestSerializer,
     PubCommunityResponseSerializer,
+    PubFavoriteRequestSerializer,
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
     PublishedNightCommentRequestSerializer,
@@ -320,6 +338,7 @@ from .serializers import (
     _amenity_aggregate_item,
     _amenity_vote_item,
     normalize_beer_checkin_tags,
+    shot_volume,
 )
 from .stats import compute_my_stats, drinking_day, drinking_day_bounds
 from .ugc_consent import ugc_consent_precondition, ugc_consent_snapshot, ugc_may_publish
@@ -369,6 +388,39 @@ def _internal_error() -> Response:
         {"detail": "Internal server error."},
         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
+
+
+_DEADLOCK_RETRY_ATTEMPTS = 3
+
+
+def _atomic_with_deadlock_retry(write):
+    """Run ``write`` in its own transaction; rerun it after a PostgreSQL deadlock.
+
+    PostgreSQL rolls the victim's whole transaction back, so rerunning ``write``
+    from its first read cannot double a row or an XP award. The error can also
+    surface at COMMIT, where Django's deferred FK checks take their locks, so the
+    retry wraps the atomic block rather than a single statement. Nested inside a
+    caller's transaction the outer locks survive the rollback, so it never retries.
+    """
+    attempt = 1
+    while True:
+        try:
+            with transaction.atomic():
+                return write()
+        except OperationalError as exc:
+            if (
+                attempt >= _DEADLOCK_RETRY_ATTEMPTS
+                or connection.in_atomic_block
+                or not accounts.is_row_lock_conflict(exc)
+            ):
+                raise
+            attempt += 1
+            logger.warning(
+                "db: lock conflict %s, rerunning transaction (attempt %d of %d)",
+                getattr(exc.__cause__, "sqlstate", ""),
+                attempt,
+                _DEADLOCK_RETRY_ATTEMPTS,
+            )
 
 
 def _log_account_bootstrap_failure(reason: str, *, device_id_already_existed: bool) -> None:
@@ -1923,11 +1975,6 @@ class UserAddedPubView(APIView):
 _MAX_HISTORICAL_BEERS = 24
 
 
-def _beer_menu_identity(beer: dict) -> tuple[str, int | None]:
-    """Stable menu identity shared with the current-menu replacement contract."""
-    return str(beer.get("name") or "").strip().casefold(), beer.get("volume_ml")
-
-
 def _historical_beers_after_menu_replacement(
     *,
     current: list[dict],
@@ -1940,13 +1987,13 @@ def _historical_beers_after_menu_replacement(
     bounded, de-duplicated memory of removed rows and drops any historical row
     that the new menu confirms is back on tap.
     """
-    replacement_keys = {_beer_menu_identity(beer) for beer in replacement}
-    removed = [beer for beer in current if _beer_menu_identity(beer) not in replacement_keys]
+    replacement_keys = {beer_menu_identity(beer) for beer in replacement}
+    removed = [beer for beer in current if beer_menu_identity(beer) not in replacement_keys]
 
     next_historical: list[dict] = []
     seen: set[tuple[str, int | None]] = set()
     for beer in [*removed, *historical]:
-        identity = _beer_menu_identity(beer)
+        identity = beer_menu_identity(beer)
         if not identity[0] or identity in replacement_keys or identity in seen:
             continue
         seen.add(identity)
@@ -1956,6 +2003,79 @@ def _historical_beers_after_menu_replacement(
     return next_historical
 
 
+def _alias_menu_rows_for_update(identity) -> list[PubCommunityData]:
+    """Menus kept under this pub's older identities, locked.
+
+    /v1/pub-hours shows their beers merged with the current one, so a beer
+    taken off or fixed must change in them too or it would show up again.
+    """
+    if identity.canonical_id is None:
+        return []
+    names_by_key: dict[str, set[str]] = {}
+    for alias_key, name_key in identity.aliases:
+        if alias_key != identity.cache_key:
+            names_by_key.setdefault(alias_key, set()).add(name_key)
+    if not names_by_key:
+        return []
+    rows = PubCommunityData.objects.select_for_update().filter(
+        cache_key__in=list(names_by_key)
+    ).order_by("pk")
+    return [row for row in rows if normalize_pub_name(row.name) in names_by_key[row.cache_key]]
+
+
+def _apply_beer_change(current: list[dict], change: dict) -> list[dict]:
+    """Apply one fixed or removed beer to the menu as it is now.
+
+    A beer that is no longer on the menu stays as it is: the change was made
+    against an older list. A fix keeps the stored name; moving a row to a size
+    the menu already has replaces that row, one row per beer and size.
+    """
+    target = beer_menu_identity({"name": change["name"], "volume_ml": change.get("volume_ml")})
+    on_menu = next((beer for beer in current if beer_menu_identity(beer) == target), None)
+    if on_menu is None:
+        return list(current)
+    if change["action"] == "remove":
+        return [beer for beer in current if beer_menu_identity(beer) != target]
+
+    fixed = {
+        "name": on_menu.get("name"),
+        "price_czk": change["price_czk"],
+        "volume_ml": change["new_volume_ml"] if "new_volume_ml" in change else on_menu.get("volume_ml"),
+    }
+    fixed_key = beer_menu_identity(fixed)
+    result: list[dict] = []
+    for beer in current:
+        key = beer_menu_identity(beer)
+        if key == target:
+            if fixed not in result:
+                result.append(fixed)
+        elif key != fixed_key:
+            result.append(beer)
+    return result
+
+
+def _community_response_body(
+    record: PubCommunityData | None,
+    cache_key: str,
+    *,
+    xp_awarded: int = 0,
+    mapper: dict | None = None,
+) -> dict:
+    return PubCommunityResponseSerializer(
+        {
+            "cache_key": record.cache_key if record else cache_key,
+            "hours": record.hours_json if record else None,
+            "beers": (record.beers or []) if record else [],
+            "historical_beers": (record.historical_beers or []) if record else [],
+            "beers_updated_at": record.beers_updated_at if record else None,
+            "beer_menu_rotates": record.beer_menu_rotates if record else False,
+            "hours_updated_at": record.hours_updated_at if record else None,
+            "xp_awarded": xp_awarded,
+            "mapper": mapper,
+        }
+    ).data
+
+
 class PubCommunityView(APIView):
     """
     POST /v1/pub-community
@@ -1963,7 +2083,8 @@ class PubCommunityView(APIView):
     Accept community-contributed opening hours and/or a list of beers on tap for
     a pub. Contributions go LIVE IMMEDIATELY (no approval queue): the per-pub
     PubCommunityData row is upserted and full history is appended to
-    PubContributionLog for audit / revert. Community opening hours take
+    PubContributionLog for audit / revert. With ``beer_change`` only that one
+    beer changes on the current menu; the sent ``beers`` list is ignored. Community opening hours take
     precedence over firmy.cz data in the /v1/pub-hours read path.
 
     Auth: Bearer token (per-account). Idempotent on (account, client_id, kind):
@@ -1994,93 +2115,216 @@ class PubCommunityView(APIView):
         cache_key = identity.cache_key
         has_hours = data.get("hours") is not None
         has_beers = "beers" in data
+        change = data.get("beer_change")
+        beers = data.get("beers")
         now = dj_timezone.now()
 
+        # Menus whose brand/product and price indexes follow this write. They are
+        # synced after the menu commits, as before: syncing them while holding
+        # the menu would lock in the opposite order to account deletion.
+        index_rows: list[PubCommunityData] = []
         try:
-            defaults = {
-                "name": identity.name,
-                "lat": identity.lat,
-                "lng": identity.lng,
-                "city": identity.city or None,
-                "external_id": identity.external_id or None,
-                "account": request.user,
-            }
-            if has_hours:
-                hours_json = data["hours"]
-                defaults["hours_json"] = hours_json
-                defaults["opening_hours_raw"] = community_hours_to_osm(hours_json)
-                defaults["hours_updated_at"] = now
-            if has_beers:
-                previous = (
-                    PubCommunityData.objects.filter(cache_key=cache_key)
-                    .only("beers", "historical_beers")
-                    .first()
-                )
-                defaults["historical_beers"] = _historical_beers_after_menu_replacement(
-                    current=previous.beers if previous else [],
-                    replacement=data["beers"],
-                    historical=previous.historical_beers if previous else [],
-                )
-                defaults["beers"] = data["beers"]
-                defaults["beers_updated_at"] = now
-                if "beer_menu_rotates" in data:
-                    defaults["beer_menu_rotates"] = data["beer_menu_rotates"]
+            with transaction.atomic():
+                # Drink writes lock the account and then the menu: same order
+                # here, so the two never wait on each other in a circle.
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
+                alias_rows: list[PubCommunityData] = []
+                created_for_change = False
+                if change is not None:
+                    already_done = PubContributionLog.objects.filter(
+                        account=request.user,
+                        client_id=data["client_id"],
+                        kind=PubContributionLog.Kind.BEERS,
+                    ).exists()
+                    if already_done:
+                        # A retry of a step that already went through never runs
+                        # twice; it only finishes the index sync, which may have
+                        # failed after the menu was saved.
+                        has_beers = False
+                        previous = (
+                            PubCommunityData.objects.filter(cache_key=cache_key).first()
+                        )
+                        index_rows = [
+                            row
+                            for row in [previous, *_alias_menu_rows_for_update(identity)]
+                            if row is not None
+                        ]
+                    else:
+                        # The row exists and is locked before the change is worked
+                        # out, so two first changes of an imported menu apply one
+                        # after another instead of overwriting each other.
+                        row, created_for_change = PubCommunityData.objects.get_or_create(
+                            cache_key=cache_key,
+                            defaults={
+                                "name": identity.name,
+                                "lat": identity.lat,
+                                "lng": identity.lng,
+                                "city": identity.city or None,
+                                "external_id": identity.external_id or None,
+                                "account": request.user,
+                            },
+                        )
+                        previous = PubCommunityData.objects.select_for_update().get(pk=row.pk)
+                        alias_rows = _alias_menu_rows_for_update(identity)
+                        # The change applies to the menu people see for this pub.
+                        shown = get_cached_pub_details(
+                            [
+                                {
+                                    "name": data["name"],
+                                    "lat": data["lat"],
+                                    "lng": data["lng"],
+                                    "city": data.get("city") or None,
+                                }
+                            ],
+                            include_next_change=False,
+                        )[0] or {}
+                        current_beers = list(shown.get("beers") or [])
+                        historical = list(shown.get("historical_beers") or [])
+                        beers = _apply_beer_change(current_beers, change)
+                        if beers != current_beers:
+                            # Logged as done, so a retry never applies it again.
+                            PubContributionLog.objects.create(
+                                account=request.user,
+                                client_id=data["client_id"],
+                                kind=PubContributionLog.Kind.BEERS,
+                                cache_key=cache_key,
+                                name=data["name"],
+                                lat=data["lat"],
+                                lng=data["lng"],
+                                payload={"beers": beers, "beer_change": change},
+                            )
+                            for alias_row in alias_rows:
+                                alias_beers = _apply_beer_change(list(alias_row.beers or []), change)
+                                if alias_beers == list(alias_row.beers or []):
+                                    continue
+                                alias_row.historical_beers = (
+                                    _historical_beers_after_menu_replacement(
+                                        current=list(alias_row.beers or []),
+                                        replacement=alias_beers,
+                                        historical=list(alias_row.historical_beers or []),
+                                    )
+                                )
+                                alias_row.beers = alias_beers
+                                alias_row.save(update_fields=["beers", "historical_beers"])
+                                # Its own log: rebuilding this menu after an account
+                                # deletion must not bring the beer back.
+                                PubContributionLog.objects.create(
+                                    account=request.user,
+                                    client_id=uuid.uuid5(
+                                        data["client_id"], f"alias:{alias_row.cache_key}"
+                                    ),
+                                    kind=PubContributionLog.Kind.BEERS,
+                                    cache_key=alias_row.cache_key,
+                                    name=alias_row.name,
+                                    lat=alias_row.lat,
+                                    lng=alias_row.lng,
+                                    payload={"beers": alias_beers, "beer_change": change},
+                                )
+                                index_rows.append(alias_row)
+                        else:
+                            # Gone or unchanged already: nothing to write for the menu.
+                            has_beers = False
+                            if created_for_change:
+                                previous.delete()
+                                previous = None
+                else:
+                    previous = (
+                        PubCommunityData.objects.select_for_update()
+                        .filter(cache_key=cache_key)
+                        .first()
+                        if has_beers
+                        else None
+                    )
+                    current_beers = list(previous.beers or []) if previous else []
+                    historical = list(previous.historical_beers or []) if previous else []
 
-            record, _ = PubCommunityData.objects.update_or_create(
-                cache_key=cache_key,
-                defaults=defaults,
-            )
+                defaults = {
+                    "name": identity.name,
+                    "lat": identity.lat,
+                    "lng": identity.lng,
+                    "city": identity.city or None,
+                    "external_id": identity.external_id or None,
+                    "account": request.user,
+                }
+                if has_hours:
+                    hours_json = data["hours"]
+                    defaults["hours_json"] = hours_json
+                    defaults["opening_hours_raw"] = community_hours_to_osm(hours_json)
+                    defaults["hours_updated_at"] = now
+                if has_beers:
+                    defaults["historical_beers"] = _historical_beers_after_menu_replacement(
+                        current=current_beers,
+                        replacement=beers,
+                        historical=historical,
+                    )
+                    defaults["beers"] = beers
+                    defaults["beers_updated_at"] = now
+                    if "beer_menu_rotates" in data:
+                        defaults["beer_menu_rotates"] = data["beer_menu_rotates"]
 
-            # Append idempotent history rows, one per submitted kind.
-            if has_hours:
-                PubContributionLog.objects.get_or_create(
-                    account=request.user,
-                    client_id=data["client_id"],
-                    kind=PubContributionLog.Kind.HOURS,
-                    defaults={
-                        "cache_key": cache_key,
-                        "name": data["name"],
-                        "lat": data["lat"],
-                        "lng": data["lng"],
-                        "payload": data["hours"],
-                    },
-                )
-            if has_beers:
-                beer_log_payload = data["beers"]
-                if "beer_menu_rotates" in data:
-                    beer_log_payload = {
-                        "beers": data["beers"],
-                        "beer_menu_rotates": data["beer_menu_rotates"],
-                    }
-                PubContributionLog.objects.get_or_create(
-                    account=request.user,
-                    client_id=data["client_id"],
-                    kind=PubContributionLog.Kind.BEERS,
-                    defaults={
-                        "cache_key": cache_key,
-                        "name": data["name"],
-                        "lat": data["lat"],
-                        "lng": data["lng"],
-                        "payload": beer_log_payload,
-                    },
-                )
+                if not has_hours and not has_beers:
+                    # Nothing to save: report the menu as it is.
+                    record = previous
+                else:
+                    record, _ = PubCommunityData.objects.update_or_create(
+                        cache_key=cache_key,
+                        defaults=defaults,
+                    )
+
+                    # Append idempotent history rows, one per submitted kind.
+                    if has_hours:
+                        PubContributionLog.objects.get_or_create(
+                            account=request.user,
+                            client_id=data["client_id"],
+                            kind=PubContributionLog.Kind.HOURS,
+                            defaults={
+                                "cache_key": cache_key,
+                                "name": data["name"],
+                                "lat": data["lat"],
+                                "lng": data["lng"],
+                                "payload": data["hours"],
+                            },
+                        )
+                    if has_beers:
+                        if change is None:
+                            beer_log_payload = beers
+                            if "beer_menu_rotates" in data:
+                                beer_log_payload = {
+                                    "beers": beers,
+                                    "beer_menu_rotates": data["beer_menu_rotates"],
+                                }
+                            PubContributionLog.objects.get_or_create(
+                                account=request.user,
+                                client_id=data["client_id"],
+                                kind=PubContributionLog.Kind.BEERS,
+                                defaults={
+                                    "cache_key": cache_key,
+                                    "name": data["name"],
+                                    "lat": data["lat"],
+                                    "lng": data["lng"],
+                                    "payload": beer_log_payload,
+                                },
+                            )
+                        index_rows.insert(0, record)
+
+            for index_row in index_rows:
                 sync_pub_beer_indexes_for_menu(
-                    cache_key=cache_key,
+                    cache_key=index_row.cache_key,
                     data={
                         **data,
-                        "name": identity.name,
-                        "lat": identity.lat,
-                        "lng": identity.lng,
-                        "city": identity.city,
-                        "external_id": identity.external_id,
+                        "name": index_row.name,
+                        "lat": index_row.lat,
+                        "lng": index_row.lng,
+                        "city": index_row.city,
+                        "external_id": index_row.external_id,
                     },
-                    beers=data["beers"],
+                    beers=list(index_row.beers or []),
                     source=PubBeerBrand.Source.COMMUNITY,
                     account=request.user,
                     match_cache=match_cache,
                 )
                 _upsert_price_index_from_row(
-                    record,
+                    index_row,
                     observed_at=now,
                     source=PubPriceIndex.Source.COMMUNITY,
                 )
@@ -2092,6 +2336,9 @@ class PubCommunityView(APIView):
                 exc_info=True,
             )
             return _internal_error()
+
+        if not has_hours and not has_beers:
+            return Response(_community_response_body(record, cache_key), status=status.HTTP_200_OK)
 
         # ── Mapér XP (additive; an XP failure must never break a saved edit) ──
         xp_awarded = 0
@@ -2109,19 +2356,7 @@ class PubCommunityView(APIView):
         except Exception as exc:  # noqa: BLE001
             logger.warning("pub-community: XP award failed for cache key %s: %s", cache_key, exc)
 
-        body = PubCommunityResponseSerializer(
-            {
-                "cache_key": record.cache_key,
-                "hours": record.hours_json,
-                "beers": record.beers or [],
-                "historical_beers": record.historical_beers or [],
-                "beers_updated_at": record.beers_updated_at,
-                "beer_menu_rotates": record.beer_menu_rotates,
-                "hours_updated_at": record.hours_updated_at,
-                "xp_awarded": xp_awarded,
-                "mapper": mapper,
-            }
-        ).data
+        body = _community_response_body(record, cache_key, xp_awarded=xp_awarded, mapper=mapper)
         return Response(body, status=status.HTTP_200_OK)
 
 
@@ -2144,11 +2379,24 @@ class BeerBrandSuggestView(APIView):
         if not query.is_valid():
             return Response(query.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        data = query.validated_data
+        limit = data["limit"]
         brands = suggest_beer_brands(
-            query.validated_data.get("q") or "",
-            brewery=query.validated_data.get("brewery") or "",
-            limit=query.validated_data["limit"],
+            data.get("q") or "",
+            brewery=data.get("brewery") or "",
+            limit=limit,
         )
+        if "lat" in data and not data.get("brewery"):
+            menu_names = _nearby_menu_beer_suggestions(
+                data.get("q") or "",
+                lat=data["lat"],
+                lng=data["lng"],
+                radius_km=data["radius_km"],
+                limit=limit,
+            )
+            # Keep room for nearby menu names; the catalog still leads.
+            catalog_slots = limit - min(len(menu_names), limit // 2)
+            brands = [*brands[:catalog_slots], *menu_names][:limit]
         return Response(
             {"suggestions": BeerBrandSuggestionSerializer(brands, many=True).data},
             status=status.HTTP_200_OK,
@@ -2164,9 +2412,11 @@ _MAX_MENU_BEERS = 12
 def _merge_drink_into_menu(beers: list[dict], beer: dict) -> bool:
     """Merge one drunk ``beer`` into a community ``beers`` menu list IN PLACE.
 
-    The match key is (normalized name, volume_ml): the beer name trimmed +
-    casefolded, plus the exact volume (None matches None). On a match the
-    existing entry's ``price_czk`` is updated to the posted price. Otherwise the
+    The match key is ``beer_menu_identity``: the name without case, accents,
+    punctuation or the degree sign, plus the exact volume (None matches None),
+    so "Primátor 11" updates an existing "Primátor 11°" row instead of adding a
+    second one. On a match the existing entry keeps its name and its
+    ``price_czk`` is updated to the posted price. Otherwise the
     beer is appended IF the menu has room (< 12 entries); a full menu is left
     untouched.
 
@@ -2176,10 +2426,9 @@ def _merge_drink_into_menu(beers: list[dict], beer: dict) -> bool:
     Returns True if the list was changed (price updated or beer appended), False
     if nothing changed (no match and the menu was full).
     """
-    posted_key = ((beer.get("name") or "").strip().casefold(), beer.get("volume_ml"))
+    posted_key = beer_menu_identity(beer)
     for entry in beers:
-        entry_key = ((entry.get("name") or "").strip().casefold(), entry.get("volume_ml"))
-        if entry_key == posted_key:
+        if beer_menu_identity(entry) == posted_key:
             entry["price_czk"] = beer["price_czk"]
             return True
 
@@ -2806,16 +3055,7 @@ class DrinksView(APIView):
                 old_drink_type = drink.drink_type
                 beer_name = update.get("beer_name", drink.beer_name)
                 drink_type = update.get("drink_type", drink.drink_type)
-                volume_ml = update.get("volume_ml", drink.volume_ml)
-                if (
-                    drink_type == DrinkLog.DrinkType.SHOT
-                    and volume_ml is not None
-                    and volume_ml > 200
-                ):
-                    return Response(
-                        {"volume_ml": ["A shot volume must not exceed 200 ml."]},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                volume_ml = shot_volume(drink_type, update.get("volume_ml", drink.volume_ml))
 
                 brand_match = (
                     match_beer_brand(beer_name, match_cache=match_cache)
@@ -2991,11 +3231,11 @@ class DrinksView(APIView):
         changed = _merge_drink_into_menu(beers, beer)
         if changed:
             row.beers = beers
-            restored_identity = _beer_menu_identity(beer)
+            restored_identity = beer_menu_identity(beer)
             historical_beers = [
                 historical
                 for historical in row.historical_beers or []
-                if _beer_menu_identity(historical) != restored_identity
+                if beer_menu_identity(historical) != restored_identity
             ]
             row.historical_beers = historical_beers
             row.beers_updated_at = now
@@ -3493,6 +3733,14 @@ def _rating_item(rating: PubRating) -> dict:
     }
 
 
+def _removal_item(tombstone) -> dict:
+    """Serialize one removal marker: the key and the client time of removal."""
+    return {
+        "cache_key": tombstone.cache_key,
+        "updated_at": tombstone.client_updated_at.isoformat(),
+    }
+
+
 class PubRatingView(APIView):
     """
     PUT    /v1/pub-ratings            → upsert one private rating
@@ -3504,8 +3752,10 @@ class PubRatingView(APIView):
     server-side from lat/lng. Conflict resolution is LAST-WRITE-WINS on the
     client's ``updated_at``: a PUT older than the stored client_updated_at is
     ignored (``applied: false``). An empty rating (no verdict, tag, or note)
-    deletes any existing row. GET returns every rating so a fresh install can
-    restore. Throttled per-IP (scope "pub_ratings").
+    deletes any existing row and records a PubRatingTombstone, so an older copy
+    pushed later by another device cannot bring the rating back. GET returns
+    every rating so a fresh install can restore, plus ``removed`` so other
+    devices can drop their stale copies. Throttled per-IP (scope "pub_ratings").
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -3520,12 +3770,16 @@ class PubRatingView(APIView):
                 PubRating.objects.filter(account=request.user),
             )
             items = [_rating_item(rating) for rating in ratings]
+            removed = [
+                _removal_item(tombstone)
+                for tombstone in PubRatingTombstone.objects.filter(account=request.user)
+            ]
         except ValueError:
             return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-ratings: unexpected error listing ratings: %s", exc, exc_info=True)
             return _internal_error()
-        return Response({"ratings": items, **page}, status=status.HTTP_200_OK)
+        return Response({"ratings": items, "removed": removed, **page}, status=status.HTTP_200_OK)
 
     def put(self, request: Request) -> Response:
         serializer = PubRatingRequestSerializer(data=request.data)
@@ -3543,6 +3797,10 @@ class PubRatingView(APIView):
 
         try:
             with transaction.atomic():
+                # With no row yet there is nothing to lock, so a parallel save and
+                # removal could insert both a rating and a tombstone. Serializing
+                # the account's rating writes keeps exactly one of them.
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
                 existing = (
                     PubRating.objects.select_for_update()
                     .filter(account=request.user, cache_key=cache_key)
@@ -3554,17 +3812,36 @@ class PubRatingView(APIView):
                     body = _rating_item(existing)
                     body["applied"] = False
                     return Response(body, status=status.HTTP_200_OK)
+                # A removal at the same time or later wins even though the row is
+                # gone, so an older copy from another device stays removed.
+                tombstone = (
+                    PubRatingTombstone.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                if tombstone is not None and tombstone.client_updated_at >= updated_at:
+                    return Response(
+                        {**_removal_item(tombstone), "applied": False},
+                        status=status.HTTP_200_OK,
+                    )
 
                 # No signal at all → this is a clear/delete, guarded by the same
                 # last-write-wins timestamp as normal upserts.
                 if not verdict and not tag and not note:
                     if existing is not None:
                         existing.delete()
+                    PubRatingTombstone.objects.update_or_create(
+                        account=request.user,
+                        cache_key=cache_key,
+                        defaults={"client_updated_at": updated_at},
+                    )
                     return Response(
                         {"deleted": existing is not None, "applied": True},
                         status=status.HTTP_200_OK,
                     )
 
+                if tombstone is not None:
+                    tombstone.delete()
                 rating, _ = PubRating.objects.update_or_create(
                     account=request.user,
                     cache_key=cache_key,
@@ -3596,12 +3873,228 @@ class PubRatingView(APIView):
         # Idempotent delete: the account filter means a cache_key belonging to
         # another account (or never rated, or already deleted) matches nothing →
         # deleted: false, never a hard 404, so the client can retry safely.
-        return _idempotent_delete(
-            PubRating.objects.filter(account=request.user, cache_key=cache_key),
-            scope="pub-ratings",
-            key_label="rating",
-            key_value=cache_key,
+        # Released apps remove with an empty PUT instead. DELETE has no client
+        # time, so its tombstone blocks only the removed copy and older ones.
+        try:
+            with transaction.atomic():
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
+                rating = (
+                    PubRating.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                if rating is not None:
+                    rating.delete()
+                    PubRatingTombstone.objects.update_or_create(
+                        account=request.user,
+                        cache_key=cache_key,
+                        defaults={"client_updated_at": rating.client_updated_at},
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-ratings: unexpected error deleting rating (%s)", type(exc).__name__
+            )
+            return _internal_error()
+        return Response({"deleted": rating is not None}, status=status.HTTP_200_OK)
+
+
+def _favorite_item(favorite: PubFavorite) -> dict:
+    """Serialize one PubFavorite; updated_at is the client's LWW timestamp in UTC."""
+    return {
+        "cache_key": favorite.cache_key,
+        "name": favorite.name,
+        "lat": favorite.lat,
+        "lng": favorite.lng,
+        "external_id": favorite.external_id,
+        "updated_at": favorite.client_updated_at.astimezone(UTC).isoformat(),
+    }
+
+
+class PubFavoriteView(APIView):
+    """
+    PUT    /v1/pub-favorites             → save (or remove) one private favourite
+    GET    /v1/pub-favorites             → list all favourites of the account
+    DELETE /v1/pub-favorites/<cache_key> → idempotent delete by geohash-8 key
+
+    Same sync semantics as PubRatingView, except ``cache_key`` is the plain
+    geohash-8 of the submitted lat/lng: no alias resolution, so the key always
+    matches the one the app stores. Conflict resolution is LAST-WRITE-WINS on
+    the client's ``updated_at``: a PUT older than the stored one is ignored
+    (``applied: false``). ``favorite: false`` removes the row under the same LWW
+    guard and records a PubFavoriteTombstone, like an empty rating does. GET
+    lists those removals in ``removed``.
+
+    Saving a NEW favourite beyond PUB_FAVORITES_PER_ACCOUNT_CAP returns 409
+    ``favorites_limit``. The app's offline queues drop 400/422 forever but keep
+    and retry 409, so an over-cap save is never silently lost: it goes through
+    once the user frees a slot. Updates and removals are never capped.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pub_favorites"
+
+    def get(self, request: Request) -> Response:
+        try:
+            favorites, page = _optional_snapshot_page(
+                request,
+                PubFavorite.objects.filter(account=request.user),
+            )
+            items = [_favorite_item(favorite) for favorite in favorites]
+            removed = [
+                _removal_item(tombstone)
+                for tombstone in PubFavoriteTombstone.objects.filter(account=request.user)
+            ]
+        except ValueError:
+            return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-favorites: unexpected error listing favorites (%s)",
+                type(exc).__name__,
+            )
+            return _internal_error()
+        return Response(
+            {"favorites": items, "removed": removed, **page}, status=status.HTTP_200_OK
         )
+
+    def put(self, request: Request) -> Response:
+        serializer = PubFavoriteRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        # Keyed by the submitted cell, never by a merged canonical pub: the app
+        # stores geohash8(lat, lng) and removes by it, so an alias rewrite would
+        # leave a heart it can never take back. Favourites feed no aggregate.
+        cache_key = geohash8(data["lat"], data["lng"])
+        updated_at = bounded_client_time(data["updated_at"])
+        cap = settings.PUB_FAVORITES_PER_ACCOUNT_CAP
+
+        try:
+            with transaction.atomic():
+                # With no row yet there is nothing to lock, so a parallel save and
+                # removal could insert both a favourite and a tombstone. Serializing
+                # the account's favourite writes keeps exactly one of them.
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
+                existing = (
+                    PubFavorite.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                if existing is not None and existing.client_updated_at > updated_at:
+                    body = _favorite_item(existing)
+                    body["applied"] = False
+                    return Response(body, status=status.HTTP_200_OK)
+                tombstone = (
+                    PubFavoriteTombstone.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                if tombstone is not None and tombstone.client_updated_at >= updated_at:
+                    return Response(
+                        {**_removal_item(tombstone), "applied": False},
+                        status=status.HTTP_200_OK,
+                    )
+
+                if not data["favorite"]:
+                    if existing is not None:
+                        existing.delete()
+                    PubFavoriteTombstone.objects.update_or_create(
+                        account=request.user,
+                        cache_key=cache_key,
+                        defaults={"client_updated_at": updated_at},
+                    )
+                    return Response(
+                        {"deleted": existing is not None, "applied": True},
+                        status=status.HTTP_200_OK,
+                    )
+
+                if (
+                    existing is None
+                    and PubFavorite.objects.filter(account=request.user).count() >= cap
+                ):
+                    return Response(
+                        {
+                            "detail": gettext(
+                                "Srdcovek můžeš mít nejvýš %(limit)s. Nějakou odeber a zkus to znovu."
+                            )
+                            % {"limit": cap},
+                            "code": "favorites_limit",
+                            "limit": cap,
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                if tombstone is not None:
+                    tombstone.delete()
+                fields = {
+                    "name": data.get("name") or "",
+                    "lat": data["lat"],
+                    "lng": data["lng"],
+                    "external_id": data.get("external_id") or "",
+                    "client_updated_at": updated_at,
+                }
+                favorite = existing
+                if favorite is None:
+                    try:
+                        with transaction.atomic():
+                            favorite = PubFavorite.objects.create(
+                                account=request.user, cache_key=cache_key, **fields
+                            )
+                    except IntegrityError:
+                        # Another device saved the same pub first; no row was
+                        # there to lock, so compare against its write now.
+                        favorite = PubFavorite.objects.select_for_update().get(
+                            account=request.user, cache_key=cache_key
+                        )
+                        if favorite.client_updated_at > updated_at:
+                            body = _favorite_item(favorite)
+                            body["applied"] = False
+                            return Response(body, status=status.HTTP_200_OK)
+                        for name, value in fields.items():
+                            setattr(favorite, name, value)
+                        favorite.save()
+                else:
+                    for name, value in fields.items():
+                        setattr(favorite, name, value)
+                    favorite.save()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-favorites: unexpected error saving favorite (%s)",
+                type(exc).__name__,
+            )
+            return _internal_error()
+
+        body = _favorite_item(favorite)
+        body["applied"] = True
+        return Response(body, status=status.HTTP_200_OK)
+
+    def delete(self, request: Request, cache_key: str) -> Response:
+        # A foreign / unknown / already-deleted key matches nothing → deleted:
+        # false, never 404, so a queued delete can be retried safely. Without a
+        # client time the tombstone blocks only the removed copy and older ones.
+        try:
+            with transaction.atomic():
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
+                favorite = (
+                    PubFavorite.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                if favorite is not None:
+                    favorite.delete()
+                    PubFavoriteTombstone.objects.update_or_create(
+                        account=request.user,
+                        cache_key=cache_key,
+                        defaults={"client_updated_at": favorite.client_updated_at},
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-favorites: unexpected error deleting favorite (%s)", type(exc).__name__
+            )
+            return _internal_error()
+        return Response({"deleted": favorite is not None}, status=status.HTTP_200_OK)
 
 
 def _visit_item(visit: PubVisit) -> dict:
@@ -3752,7 +4245,7 @@ class PubVisitView(APIView):
                     else (existing.party_evening_id if existing is not None else None)
                 )
 
-                _, created = PubVisit.objects.update_or_create(
+                visit, created = PubVisit.objects.update_or_create(
                     account=account,
                     client_id=data["client_id"],
                     defaults={
@@ -3773,6 +4266,24 @@ class PubVisitView(APIView):
                         "party_evening_id": party_evening_id,
                     },
                 )
+                if existing is not None and (
+                    existing.cache_key != cache_key
+                    or not _same_table_pub(existing, visit)
+                    or (existing.closed_at is not None and visit.closed_at is None)
+                ):
+                    # Moving a visit to another pub (even next door, in the
+                    # same map cell) or resuming a closed one
+                    # starts its server-side clock again: "Kdo tu sedí s tebou"
+                    # trusts created_at as the time the server has seen the
+                    # account sitting at this pub since.
+                    PubVisit.objects.filter(pk=visit.pk).update(created_at=dj_timezone.now())
+                elif created and visit.closed_at is not None:
+                    # A past visit delivered late (offline queue, history seed)
+                    # must not become the account's newest one and hide the
+                    # table; it counts from when it began. Resuming it resets.
+                    PubVisit.objects.filter(pk=visit.pk).update(
+                        created_at=min(visit.started_at, dj_timezone.now())
+                    )
                 closed_at = data.get("closed_at")
                 if closed_at is not None:
                     # A delayed departure must not end a later return to the
@@ -3832,13 +4343,37 @@ class PubVisitView(APIView):
                         marker.client_updated_at = revision
                         marker.save(update_fields=["client_updated_at"])
                     visits = visits.filter(client_updated_at__lte=marker.client_updated_at)
+                newest_id = (
+                    PubVisit.objects.filter(account=account)
+                    .order_by("-created_at", "-id")
+                    .values_list("id", flat=True)
+                    .first()
+                )
                 # Legacy DELETE of a missing UUID carries no revision. Retain its
                 # successful no-op instead of permanently banning that visit.
                 deleted_count, _ = visits.delete()
+                if deleted_count and not PubVisit.objects.filter(pk=newest_id).exists():
+                    # Removing the newest visit must not hand the table to an
+                    # older one elsewhere with its old server clock. Only the
+                    # visit that becomes the newest restarts, so the rest keep
+                    # their order.
+                    fallback_id = (
+                        PubVisit.objects.filter(account=account)
+                        .order_by("-created_at", "-id")
+                        .values_list("id", flat=True)
+                        .first()
+                    )
+                    PubVisit.objects.filter(pk=fallback_id, closed_at__isnull=True).update(
+                        created_at=dj_timezone.now()
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-visits: unexpected error deleting visit (%s)", type(exc).__name__)
             return _internal_error()
         return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
+
+
+# Bounds the query a client can make the stats read exclude per request.
+_MY_STATS_MAX_EXCLUDED_DRINKS = 100
 
 
 class MyStatsView(APIView):
@@ -3854,7 +4389,10 @@ class MyStatsView(APIView):
     without a valid token); repeated aggregate rebuilds have their own read
     throttle budget.
     New clients may pass an IANA ``timezone`` query parameter; invalid or absent
-    values use Europe/Prague for backwards compatibility.
+    values use Europe/Prague for backwards compatibility. They may also pass
+    ``exclude_client_ids`` (comma-separated drink UUIDs) for drinks removed on
+    the device whose DELETE has not landed yet; malformed IDs are ignored. The
+    additive ``excluded_drink_count`` tells such clients the server applied it.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -3872,15 +4410,24 @@ class MyStatsView(APIView):
                 # Additive hint for 3.0 recap clients. Older or malformed
                 # callers still receive the released lifetime payload.
                 exclude_drinking_day = None
+        exclude_client_ids = set()
+        raw_exclude_ids = request.query_params.get("exclude_client_ids", "")
+        for raw_id in raw_exclude_ids.split(",")[:_MY_STATS_MAX_EXCLUDED_DRINKS]:
+            try:
+                exclude_client_ids.add(uuid.UUID(raw_id.strip()))
+            except ValueError:
+                continue
         try:
             payload = compute_my_stats(
                 request.user,
                 timezone_name=request.query_params.get("timezone"),
                 exclude_drinking_day=exclude_drinking_day,
+                exclude_client_ids=exclude_client_ids,
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("me-stats: unexpected error computing stats: %s", exc, exc_info=True)
             return _internal_error()
+        payload["excluded_drink_count"] = len(exclude_client_ids)
         return Response(payload, status=status.HTTP_200_OK)
 
 
@@ -3952,30 +4499,35 @@ class ClientEventsView(APIView):
         data = serializer.validated_data
         account = _account_from_request(request)
 
+        def write() -> None:
+            locked_account = None
+            if account is not None:
+                # Authentication can precede deletion/merge. The same
+                # Account lock is used by those mutations; never recreate
+                # diagnostic data for an account they already removed.
+                # Account -> AccountUsageStats is the order every stats writer
+                # shares (votes, drinks), so this lock comes first.
+                locked_account = Account.objects.select_for_update().filter(
+                    pk=account.pk, status=Account.Status.ACTIVE,
+                ).first()
+                if locked_account is None:
+                    return
+            event = ClientEvent.objects.create(
+                account=locked_account,
+                event=data["event"],
+                severity=data["severity"],
+                message=data.get("message") or "",
+                context=data.get("context") or {},
+                app_version=data.get("app_version") or "",
+                platform=data.get("platform") or "",
+                os_version=data.get("os_version") or "",
+            )
+            # Keep the event and counters together. A failed counter write
+            # must not leave a partial event behind for the client retry.
+            _update_usage_stats(event)
+
         try:
-            with transaction.atomic():
-                if account is not None:
-                    # Authentication can precede deletion/merge. The same
-                    # Account lock is used by those mutations; never recreate
-                    # diagnostic data for an account they already removed.
-                    account = Account.objects.select_for_update().filter(
-                        pk=account.pk, status=Account.Status.ACTIVE,
-                    ).first()
-                    if account is None:
-                        return Response({"accepted": True}, status=status.HTTP_202_ACCEPTED)
-                event = ClientEvent.objects.create(
-                    account=account,
-                    event=data["event"],
-                    severity=data["severity"],
-                    message=data.get("message") or "",
-                    context=data.get("context") or {},
-                    app_version=data.get("app_version") or "",
-                    platform=data.get("platform") or "",
-                    os_version=data.get("os_version") or "",
-                )
-                # Keep the event and counters together. A failed counter write
-                # must not leave a partial event behind for the client retry.
-                _update_usage_stats(event)
+            _atomic_with_deadlock_retry(write)
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "client-events: unexpected error saving event (%s)",
@@ -5018,6 +5570,8 @@ def _friend_suggestion_payloads(
             "count": mutual_count,
         }
         # Never derive non-friend discovery from private visit or drink rows.
+        # The one narrow exception is FriendTableView: both sides opt in for a
+        # few minutes, and it returns profiles only, never the pub or the visit.
         rank = (mutual_count, -index)
         ranked.append((rank, payload))
 
@@ -5098,6 +5652,192 @@ class FriendSearchView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+_FRIEND_TABLE_PEOPLE_LIMIT = 20
+_FRIEND_TABLE_VISIT_SCAN_LIMIT = 200
+# Phone clock skew and a short offline delay still count as the current visit.
+_FRIEND_TABLE_LATE_VISIT_GRACE = timedelta(minutes=5)
+
+
+def _friend_table_visits(now: datetime):
+    """Each account's table visit: its newest visit on the server, if still open.
+
+    The pick happens before any closed/recency filter. Filtering first would let
+    one account plant visits in many pubs, wait once, then close or backdate the
+    newest and fall back to an older one somewhere else. Client timestamps only
+    decide whether the pinned visit still counts (same window as
+    ``_friend_presence_slice``), never which visit is pinned. A visit whose last
+    beer is older than the server's first sight of it arrived late from an
+    offline queue: it is history, not where the account sits now.
+    """
+
+    cutoff = now - timedelta(minutes=settings.FRIEND_PRESENCE_WINDOW_MINUTES)
+    newest_id = (
+        PubVisit.objects.filter(account_id=OuterRef("account_id"))
+        .order_by("-created_at", "-id")
+        .values("id")[:1]
+    )
+    return (
+        PubVisit.objects.filter(closed_at__isnull=True)
+        .filter(Q(ended_at__gte=cutoff) | Q(started_at__gte=cutoff))
+        .annotate(last_seen_at=Coalesce("ended_at", "started_at"))
+        .filter(last_seen_at__gte=cutoff)
+        .filter(
+            Q(ended_at__isnull=True)
+            | Q(ended_at__gte=F("created_at") - _FRIEND_TABLE_LATE_VISIT_GRACE)
+        )
+        .annotate(newest_id=Subquery(newest_id))
+        .filter(id=F("newest_id"))
+        .order_by("-created_at", "-id")
+    )
+
+
+_COORDINATE_PUB_ID = re.compile(r"^mapy:-?\d+(\.\d+)?,-?\d+(\.\d+)?$")
+
+
+def _same_table_pub(a: PubVisit, b: PubVisit) -> bool:
+    """Whether two visits in one geohash cell are the same business.
+
+    Mirrors ``isSamePubRecord`` in the app: equal provider ids match, two
+    different stable ids are two neighbours, and otherwise the names decide.
+    """
+
+    if (
+        a.external_id
+        and a.external_id == b.external_id
+        and not _COORDINATE_PUB_ID.match(a.external_id)
+    ):
+        return True
+    stable = [
+        bool(value) and not _COORDINATE_PUB_ID.match(value) for value in (a.external_id, b.external_id)
+    ]
+    if all(stable):
+        return False
+    return bool(a.name.strip()) and a.name.strip().casefold() == b.name.strip().casefold()
+
+
+class FriendTableView(APIView):
+    """GET/POST/DELETE /v1/friends/table — add people sitting in the same pub.
+
+    The one place where non-friends learn anything derived from a visit row, so
+    it is narrow on purpose: both sides must have tapped "show me at the table"
+    in the last few minutes, be public, not ghosts, and have had an open visit
+    at the same pub for a while (server ``created_at``, never the client clock).
+    The payload is profiles only: no pub, place, coordinates, times or counts.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def get(self, request: Request) -> Response:
+        return Response(self._payload(request, dj_timezone.now()), status=status.HTTP_200_OK)
+
+    def post(self, request: Request) -> Response:
+        now = dj_timezone.now()
+        _visit, reason = self._caller_visit(request.user, now)
+        if reason is None:
+            visible_until = now + timedelta(minutes=settings.FRIEND_TABLE_VISIBLE_MINUTES)
+            Account.objects.filter(pk=request.user.pk).update(table_visible_until=visible_until)
+            request.user.table_visible_until = visible_until
+        return Response(self._payload(request, now), status=status.HTTP_200_OK)
+
+    def delete(self, request: Request) -> Response:
+        Account.objects.filter(pk=request.user.pk).update(table_visible_until=None)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @staticmethod
+    def _caller_visit(account: Account, now: datetime) -> tuple[PubVisit | None, str | None]:
+        if not account.nickname:
+            return None, "no_nickname"
+        if not account.is_public:
+            return None, "private"
+        if account.ghost_mode:
+            return None, "ghost"
+        visit = _friend_table_visits(now).filter(account=account).first()
+        if visit is None:
+            return None, "no_visit"
+        if visit.created_at > now - timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES):
+            return None, "too_soon"
+        return visit, None
+
+    def _payload(self, request: Request, now: datetime) -> dict:
+        account = request.user
+        visit, reason = self._caller_visit(account, now)
+        visible_until = account.table_visible_until
+        if reason is not None or visible_until is None or visible_until <= now:
+            # Seeing the table requires being visible to it: nobody lurks.
+            payload = {
+                "eligible": reason is None,
+                "reason": reason,
+                "visible_until": None,
+                "people": [],
+            }
+            if reason == "too_soon":
+                gate_start = _friend_table_visits(now).filter(account=account).first()
+                payload["available_at"] = (
+                    gate_start.created_at + timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES)
+                ).isoformat()
+            return payload
+
+        excluded_ids = {account.pk, *_blocked_account_ids(account)}
+        statuses: dict[int, str] = {}
+        cooldown_start = now - timedelta(days=settings.FRIEND_DECLINE_COOLDOWN_DAYS)
+        rows = Friendship.objects.filter(Q(requester=account) | Q(recipient=account)).values_list(
+            "requester_id", "recipient_id", "status", "responded_at"
+        )
+        for requester_id, recipient_id, row_status, responded_at in rows:
+            outgoing = requester_id == account.pk
+            other_id = recipient_id if outgoing else requester_id
+            if row_status == Friendship.Status.ACCEPTED:
+                excluded_ids.add(other_id)
+            elif row_status == Friendship.Status.DECLINED:
+                # They said no to me recently: do not put me in front of them again.
+                if outgoing and (responded_at is None or responded_at > cooldown_start):
+                    excluded_ids.add(other_id)
+            elif row_status == Friendship.Status.PENDING:
+                statuses[other_id] = "outgoing" if outgoing else "incoming"
+
+        visits = list(
+            _friend_table_visits(now)
+            .filter(
+                cache_key=visit.cache_key,
+                created_at__lte=now - timedelta(minutes=settings.FRIEND_TABLE_MIN_MINUTES),
+                account__status=Account.Status.ACTIVE,
+                account__is_public=True,
+                account__ghost_mode=False,
+                account__nickname__isnull=False,
+                account__table_visible_until__gt=now,
+            )
+            .exclude(account__nickname="")
+            .exclude(account_id__in=excluded_ids)
+            .select_related("account")[:_FRIEND_TABLE_VISIT_SCAN_LIMIT]
+        )
+        people_accounts: list[Account] = []
+        seen: set[int] = set()
+        for row in visits:
+            if row.account_id in seen or not _same_table_pub(visit, row):
+                continue
+            seen.add(row.account_id)
+            people_accounts.append(row.account)
+            if len(people_accounts) >= _FRIEND_TABLE_PEOPLE_LIMIT:
+                break
+
+        profiles = FriendProfileSerializer(
+            people_accounts, many=True, context=_friend_profile_context(request)
+        ).data
+        people = [
+            {**profile, "friendship_status": statuses.get(person.pk, "none")}
+            for person, profile in zip(people_accounts, profiles, strict=True)
+        ]
+        return {
+            "eligible": True,
+            "reason": None,
+            "visible_until": visible_until.isoformat(),
+            "people": people,
+        }
 
 
 def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, datetime | None]:
@@ -6036,6 +6776,16 @@ def _published_profile_timeline(
     }
 
 
+def _public_tours(account: Account) -> list[dict]:
+    """The author's public Tour de pub copies, newest first; hidden ones never list."""
+    from pubs.tours import publication_summary, readable_publications
+
+    return [
+        publication_summary(publication)
+        for publication in readable_publications().filter(plan__owner=account).order_by("-published_at")[:20]
+    ]
+
+
 class FriendDetailView(APIView):
     """GET/DELETE /v1/friends/<account_id> — friend profile / remove friend or cancel invite."""
 
@@ -6159,6 +6909,7 @@ class FriendDetailView(APIView):
                     now=now,
                 ),
                 "achievements": derive_account_public_achievements(friend, public_profile_stats),
+                "public_tours": _public_tours(friend),
                 "stats": {
                     "shared_pub_count": shared_count,
                     "nights_together": shared_count,
@@ -6576,6 +7327,9 @@ class FriendActivityView(APIView):
                     or activity.expires_at <= now
                     or activity.cache_key != cache_key
                     or previous_target_signature != target_signature
+                    # Every new tour ping tells friends (the app offers one per stop), even at a pub they heard
+                    # about from the counter or an earlier walk; a retry of the same ping stays quiet.
+                    or (bool(data.get("tour_title")) and activity.client_id != data["client_id"])
                 )
                 if activity is None:
                     activity = FriendPubActivity.objects.create(
@@ -6662,6 +7416,17 @@ class FriendActivityView(APIView):
                 )
                 notif_kind = FriendNotification.Kind.FRIEND_PLAN
                 push_kind = "friend_plan"
+            elif data.get("tour_title"):
+                # Same kind as a plain broadcast, so older apps still open Parta on tap.
+                title = LocalizedText(gettext_lazy("Kamarád jde tour de pub"))
+                body = LocalizedText(
+                    gettext_lazy("%(name)s jde tour „%(tour)s“ a teď míří sem: %(pub)s. Přidáš se na jedno?")
+                    if data.get("tour_heading")
+                    else gettext_lazy("%(name)s jde tour „%(tour)s“ a teď sedí tady: %(pub)s. Přidáš se na jedno?"),
+                    {"name": actor, "tour": data["tour_title"], "pub": activity.name},
+                )
+                notif_kind = FriendNotification.Kind.FRIEND_AT_PUB
+                push_kind = "friend_at_pub"
             else:
                 title = LocalizedText(gettext_lazy("Kamarád je na pivu"))
                 body = LocalizedText(
@@ -9072,6 +9837,9 @@ _COMMUNITY_PUB_SCAN_LIMIT = 200
 _COMMUNITY_PUB_MAX_RESULTS = 50
 _BEER_BRAND_SCAN_LIMIT = 200
 _BEER_BRAND_MAX_RESULTS = 50
+# Free-text beer search reads menus in Python, so it scans a wider but still
+# bounded set of the nearest pubs with a menu.
+_BEER_NAME_SCAN_LIMIT = 1000
 _PRICE_INDEX_SCAN_LIMIT = 900
 _PRICE_INDEX_MAX_RESULTS = 300
 # Treat venues inside the same short walking-distance band as similarly close.
@@ -9182,7 +9950,7 @@ def _pub_beer_brand_item(link: PubBeerBrand) -> dict:
     return item
 
 
-def _pub_community_item(pub: PubCommunityData) -> dict:
+def _pub_community_item(pub: PubCommunityData | PubExternalBeerMenu) -> dict:
     """Mapy-shaped fallback for a pub confirmed through community activity."""
     item = {
         "name": pub.name,
@@ -9190,8 +9958,10 @@ def _pub_community_item(pub: PubCommunityData) -> dict:
         "position": {"lat": pub.lat, "lon": pub.lng},
         "source": "community_signal",
     }
-    if pub.external_id:
-        item["id"] = pub.external_id
+    # Imported menus carry no provider id; the name and cell identify them.
+    external_id = getattr(pub, "external_id", "")
+    if external_id:
+        item["id"] = external_id
     if pub.city:
         item["regionalStructure"] = [
             {"name": pub.city, "type": "regional.municipality"},
@@ -9398,6 +10168,132 @@ def _nearby_pub_beer_brand_items(
         [_pub_beer_brand_item(link) for link in unique_links.values()],
         set(unique_links),
     )
+
+
+def _nearby_menu_rows(
+    *, lat: float, lng: float, radius_km: float
+) -> list[PubCommunityData | PubExternalBeerMenu]:
+    """Nearby pubs with a current public beer menu, nearest first.
+
+    Imported menus count only where no community menu exists for the same pub,
+    the same precedence the pub detail uses. Reported pubs are left out.
+    """
+    community = _nearest_rows(
+        PubCommunityData.objects.exclude(beers=[]),
+        lat,
+        lng,
+        radius_km,
+        tiebreak="-updated_at",
+        scan_limit=_BEER_NAME_SCAN_LIMIT,
+        max_results=_BEER_NAME_SCAN_LIMIT,
+    )
+    external = _nearest_rows(
+        PubExternalBeerMenu.objects.filter(active=True).exclude(beers=[]),
+        lat,
+        lng,
+        radius_km,
+        tiebreak="-fetched_at",
+        scan_limit=_BEER_NAME_SCAN_LIMIT,
+        max_results=_BEER_NAME_SCAN_LIMIT,
+    )
+    if external:
+        confirmed: dict[str, list[PubCommunityData]] = {}
+        for row in PubCommunityData.objects.filter(
+            cache_key__in={row.cache_key for row in external}
+        ).filter(~Q(beers=[]) | Q(beers_updated_at__isnull=False)):
+            confirmed.setdefault(row.cache_key, []).append(row)
+        external = [
+            row
+            for row in external
+            if not any(names_match(row.name, pub.name) for pub in confirmed.get(row.cache_key, []))
+        ]
+    rows = sorted(
+        [*community, *external],
+        key=lambda row: _haversine_km(lat, lng, row.lat, row.lng),
+    )
+    blocked_cache_keys = _globally_reported_pub_cache_keys({row.cache_key for row in rows})
+    return [row for row in rows if row.cache_key not in blocked_cache_keys]
+
+
+def _menu_beer_names(row: PubCommunityData | PubExternalBeerMenu) -> dict[str, str]:
+    """Normalized name -> display name for each beer on a pub's current menu."""
+    names: dict[str, str] = {}
+    for beer in row.beers if isinstance(row.beers, list) else []:
+        display = str(beer.get("name") or "").strip() if isinstance(beer, dict) else ""
+        normalized = normalize_beer_text(display)
+        if normalized:
+            names.setdefault(normalized, display)
+    return names
+
+
+def _nearby_pub_beer_name_items(
+    *,
+    beer_name: str,
+    lat: float,
+    lng: float,
+    radius_km: float,
+) -> tuple[list[dict], set[str]]:
+    """Pubs whose current menu names contain ``beer_name`` as whole words."""
+    needle = f" {beer_name} "
+    rows = [
+        row
+        for row in _nearby_menu_rows(lat=lat, lng=lng, radius_km=radius_km)
+        if any(needle in f" {name} " for name in _menu_beer_names(row))
+    ][:_BEER_BRAND_MAX_RESULTS]
+    return [_pub_community_item(row) for row in rows], {row.cache_key for row in rows}
+
+
+def _nearby_menu_beer_suggestions(
+    query: str,
+    *,
+    lat: float,
+    lng: float,
+    radius_km: float,
+    limit: int,
+) -> list[BeerSuggestion]:
+    """Beer names from nearby menus that start a word with ``query``.
+
+    Only the searched area is used, so every suggestion finds at least one pub
+    and nobody can list free-text names from the whole country. Names the
+    catalog already knows exactly are left to the catalog suggestions unless an
+    imported menu lists them.
+    """
+    normalized_query = normalize_beer_text(query)
+    if len(normalized_query) < 2:
+        return []
+    prefix = f" {normalized_query}"
+    pub_counts: dict[str, int] = {}
+    displays: dict[str, str] = {}
+    # Imported menus never reach the brand index, so a catalog suggestion
+    # would not find those pubs; keep their names as menu suggestions.
+    imported_names: set[str] = set()
+    for row in _nearby_menu_rows(lat=lat, lng=lng, radius_km=radius_km):
+        for name, display in _menu_beer_names(row).items():
+            if prefix not in f" {name}":
+                continue
+            pub_counts[name] = pub_counts.get(name, 0) + 1
+            displays.setdefault(name, display)
+            if isinstance(row, PubExternalBeerMenu):
+                imported_names.add(name)
+
+    ranked = sorted(
+        pub_counts,
+        key=lambda name: (not name.startswith(normalized_query), -pub_counts[name], name),
+    )
+    match_cache = BeerCatalogMatchCache()
+    suggestions: list[BeerSuggestion] = []
+    for name in ranked:
+        if (
+            name not in imported_names
+            and match_beer(displays[name], fuzzy=False, match_cache=match_cache) is not None
+        ):
+            continue
+        suggestions.append(
+            BeerSuggestion(slug=name, name=displays[name], kind="menu", brand_slug="", brand_name="")
+        )
+        if len(suggestions) >= limit:
+            break
+    return suggestions
 
 
 def _nearby_pub_community_items(
@@ -9836,6 +10732,7 @@ class PubsNearView(APIView):
         beer_brand_key = data.get("beer_brand") or ""
         explicit_beer_brand_keys: list[str] = data.get("beer_brands") or []
         beer_brand_keys = explicit_beer_brand_keys or ([beer_brand_key] if beer_brand_key else [])
+        beer_name: str = data.get("beer_name") or ""
         amenity_keys: list[str] = data.get("amenities") or []
         include_other_places: bool = data["include_other_places"]
         max_beer_filters = max(
@@ -9980,7 +10877,7 @@ class PubsNearView(APIView):
                 "cached": cached,
                 "fetched_at": fetched_at,
             }
-            if beer_brand_keys or amenity_keys or include_other_places:
+            if beer_brand_keys or beer_name or amenity_keys or include_other_places:
                 applied_filters = {
                     "version": 3
                     if explicit_beer_brand_keys
@@ -9992,6 +10889,8 @@ class PubsNearView(APIView):
                 if explicit_beer_brand_keys:
                     applied_filters["beer_brands"] = beer_brand_keys
                     applied_filters["beer_match"] = "any"
+                if beer_name:
+                    applied_filters["beer_name"] = beer_name
                 if include_other_places:
                     applied_filters["include_other_places"] = True
                 body["applied_filters"] = applied_filters
@@ -10004,19 +10903,38 @@ class PubsNearView(APIView):
                 lng=data["lng"],
                 radius_km=radius_km,
             )
-            if not beer_brand_key and not amenity_keys
+            if not beer_brand_key and not beer_name and not amenity_keys
             else []
         )
         beer_brand_items: list[dict] = []
         beer_brand_cache_keys: set[str] = set()
-        if beer_brand_keys:
-            beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_brand_items(
-                brand_keys=beer_brand_keys,
-                lat=data["lat"],
-                lng=data["lng"],
-                radius_km=radius_km,
-            )
-            user_added_items = _filter_items_by_cache_key(user_added_items, beer_brand_cache_keys)
+        # A menu-name filter shares the brand-filter path: the same AND with
+        # amenities and the same empty result.
+        beer_filter = bool(beer_brand_keys or beer_name)
+
+        def filter_by_beer_signals(items: list[dict]) -> list[dict]:
+            # A menu-name match must also match the pub name: two venues can
+            # share one geohash cell and only one of them pours the beer.
+            if beer_name:
+                return _filter_items_by_amenity_signals(items, beer_brand_items)
+            return _filter_items_by_cache_key(items, beer_brand_cache_keys)
+
+        if beer_filter:
+            if beer_name:
+                beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_name_items(
+                    beer_name=beer_name,
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    radius_km=radius_km,
+                )
+            else:
+                beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_brand_items(
+                    brand_keys=beer_brand_keys,
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    radius_km=radius_km,
+                )
+            user_added_items = filter_by_beer_signals(user_added_items)
             if not beer_brand_cache_keys:
                 return Response(
                     response_body(
@@ -10037,11 +10955,11 @@ class PubsNearView(APIView):
                 radius_km=radius_km,
             )
             user_added_items = _filter_items_by_amenity_signals(user_added_items, amenity_items)
-            if beer_brand_keys:
+            if beer_filter:
                 beer_brand_items = _filter_items_by_amenity_signals(beer_brand_items, amenity_items)
                 beer_brand_cache_keys = {_item_cache_key(item) for item in beer_brand_items}
                 beer_brand_cache_keys.discard("")
-            if not amenity_cache_keys or (beer_brand_keys and not beer_brand_cache_keys):
+            if not amenity_cache_keys or (beer_filter and not beer_brand_cache_keys):
                 return Response(
                     response_body(
                         items=[],
@@ -10055,8 +10973,8 @@ class PubsNearView(APIView):
             filtered_items = items
             if amenity_keys:
                 filtered_items = _filter_items_by_amenity_signals(filtered_items, amenity_items)
-            if beer_brand_keys:
-                filtered_items = _filter_items_by_cache_key(filtered_items, beer_brand_cache_keys)
+            if beer_filter:
+                filtered_items = filter_by_beer_signals(filtered_items)
                 filtered_items = _with_pub_signal_items(beer_brand_items, filtered_items)
                 return _with_user_added_items(user_added_items, filtered_items)
             if amenity_keys:
@@ -10563,8 +11481,17 @@ def _load_export_account(account: Account) -> Account:
     loaded_account = (
         Account.objects.select_related("email_credential", "usage_stats")
         .annotate(
+            has_tours=Exists(TourPlan.objects.filter(owner=OuterRef("pk"), deleted_at__isnull=True)),
+            has_tour_runs=Exists(TourRunMember.objects.filter(account=OuterRef("pk"))),
+            has_tour_invites=Exists(TourInvite.objects.filter(invitee=OuterRef("pk"))),
             has_amenity_vote_tombstones=Exists(
                 PubAmenityVoteTombstone.objects.filter(account=OuterRef("pk"))
+            ),
+            has_pub_rating_tombstones=Exists(
+                PubRatingTombstone.objects.filter(account=OuterRef("pk"))
+            ),
+            has_pub_favorite_tombstones=Exists(
+                PubFavoriteTombstone.objects.filter(account=OuterRef("pk"))
             ),
             has_amenity_xp_ledger=Exists(AmenityXpLedger.objects.filter(account=OuterRef("pk"))),
             has_mapped_pubs=Exists(AccountMappedPub.objects.filter(account=OuterRef("pk"))),
@@ -10633,6 +11560,7 @@ def _load_export_account(account: Account) -> Account:
                 queryset=PubVisit.objects.select_related("party_evening"),
             ),
             "pub_ratings",
+            "pub_favorites",
             "contribution_logs",
             "pub_reports",
             "feedback_reports",
@@ -10737,10 +11665,27 @@ def _load_export_account(account: Account) -> Account:
 
     conditional_prefetches: list[tuple[str, str, Prefetch | None]] = [
         (
+            "tours",
+            "has_tours",
+            Prefetch("tours", queryset=TourPlan.objects.filter(deleted_at__isnull=True).prefetch_related("stops").select_related("publication")),
+        ),
+        (
+            "tour_run_memberships",
+            "has_tour_runs",
+            Prefetch("tour_run_memberships", queryset=TourRunMember.objects.select_related("run__publication").order_by("joined_at")),
+        ),
+        (
+            "tour_invites",
+            "has_tour_invites",
+            Prefetch("tour_invites", queryset=TourInvite.objects.select_related("plan").order_by("created_at", "pk")),
+        ),
+        (
             "amenity_vote_tombstones",
             "has_amenity_vote_tombstones",
             None,
         ),
+        ("pub_rating_tombstones", "has_pub_rating_tombstones", None),
+        ("pub_favorite_tombstones", "has_pub_favorite_tombstones", None),
         ("amenity_xp_ledger", "has_amenity_xp_ledger", None),
         ("mapped_pubs", "has_mapped_pubs", None),
         ("pub_completions", "has_pub_completions", None),
@@ -10924,7 +11869,22 @@ def _export_account_data(account: Account) -> dict:
     usage = getattr(account, "usage_stats", None)
     credential = getattr(account, "email_credential", None)
     identity = _export_account_identity(account)
+    from pubs.tours import tour_export
     return {
+        "tours": [tour_export(plan) for plan in account.tours.all() if plan.deleted_at is None],
+        "tour_runs": [
+            {"run_id": str(row.run_id), "tour": row.run.publication.title, "joined_at": row.joined_at.isoformat(),
+             "left_at": row.left_at.isoformat() if row.left_at else None,
+             "completed_at": row.completed_at.isoformat() if row.completed_at else None}
+            for row in account.tour_run_memberships.all()
+        ],
+        # Invites to friends' tours and my answers; the tour itself stays its owner's data.
+        "tour_invites": [
+            {"tour_id": str(row.plan_id), "tour": row.plan.title, "status": row.status,
+             "invited_at": row.created_at.isoformat(),
+             "responded_at": row.responded_at.isoformat() if row.responded_at else None}
+            for row in account.tour_invites.all()
+        ],
         "exported_at": dj_timezone.now().isoformat(),
         "account": {
             "id": str(account.public_id),
@@ -10963,6 +11923,7 @@ def _export_account_data(account: Account) -> dict:
             "marketing_emails_enabled": account.marketing_emails_enabled,
             "ghost_mode": account.ghost_mode,
             "share_drinks_with_parta": account.share_drinks_with_parta,
+            "table_visible_until": _iso(account.table_visible_until),
             "quiet_hours_enabled": account.quiet_hours_enabled,
             "quiet_hours_start": account.quiet_hours_start,
             "quiet_hours_end": account.quiet_hours_end,
@@ -11401,6 +12362,13 @@ def _export_account_data(account: Account) -> dict:
         },
         "visits": [_export_visit_item(visit) for visit in account.pub_visits.all()],
         "ratings": [_rating_item(rating) for rating in account.pub_ratings.all()],
+        "removed_ratings": [
+            _removal_item(tombstone) for tombstone in account.pub_rating_tombstones.all()
+        ],
+        "favorites": [_favorite_item(favorite) for favorite in account.pub_favorites.all()],
+        "removed_favorites": [
+            _removal_item(tombstone) for tombstone in account.pub_favorite_tombstones.all()
+        ],
         "community_contributions": [
             {
                 "client_id": str(row.client_id),
@@ -13009,8 +13977,11 @@ class PubAmenityVoteView(APIView):
         """Apply one amenity vote row and return its result object.
 
         Each row runs in its own atomic block so one stale/ignored row does not
-        roll back its siblings. ``cache_key`` is derived from lat/lng; lat/lng
-        are never logged or echoed.
+        roll back its siblings. A deadlock reruns only this row's transaction;
+        rows already committed by this request are never written twice, and a
+        client replaying a half-saved batch meets them as LWW-stale rows that
+        pay no XP. ``cache_key`` is derived from lat/lng; lat/lng are never
+        logged or echoed.
         """
         amenity_key = data["amenity_key"]
         identity = _resolve_pub_input(data)
@@ -13041,7 +14012,13 @@ class PubAmenityVoteView(APIView):
                 "aggregate": None,
             }
 
-        with transaction.atomic():
+        def write() -> dict:
+            # Account first, like client events and drinks. PostgreSQL checks
+            # the deferred Account FKs of the inserts below at COMMIT; without
+            # this lock that COMMIT waited for a client event holding the
+            # Account while the event waited for the AccountUsageStats row this
+            # transaction had already updated, and PostgreSQL aborted one.
+            Account.objects.select_for_update().filter(pk=account.pk).first()
             existing = (
                 PubAmenityVote.objects.select_for_update()
                 .filter(account=account, pub_identity_key=pub_identity_key, amenity_key=amenity_key)
@@ -13194,20 +14171,22 @@ class PubAmenityVoteView(APIView):
             # value, matching the GET restore path / _rating_item exactly.
             vote.refresh_from_db(fields=["client_updated_at", "value"])
 
-        return {
-            "applied": True,
-            "ignored_unknown_amenity": False,
-            "deleted": False,
-            # was_first_map is an AGGREGATE fact (this write created the row); the
-            # first-mapper XP bonus rides on it (subject to the daily cap).
-            "was_first_map": was_first_map,
-            # The authoritative per-vote award for the optimistic toast (§7.1).
-            "xp_awarded": xp_awarded,
-            # Echo the persisted row (client_updated_at normalised to UTC, like
-            # the GET restore path and _rating_item), not the raw request offset.
-            "vote": _vote_minimal(vote),
-            "aggregate": _amenity_aggregate_item(agg, my_value=value),
-        }
+            return {
+                "applied": True,
+                "ignored_unknown_amenity": False,
+                "deleted": False,
+                # was_first_map is an AGGREGATE fact (this write created the row);
+                # the first-mapper XP bonus rides on it (subject to the daily cap).
+                "was_first_map": was_first_map,
+                # The authoritative per-vote award for the optimistic toast (§7.1).
+                "xp_awarded": xp_awarded,
+                # Echo the persisted row (client_updated_at normalised to UTC, like
+                # the GET restore path and _rating_item), not the raw request offset.
+                "vote": _vote_minimal(vote),
+                "aggregate": _amenity_aggregate_item(agg, my_value=value),
+            }
+
+        return _atomic_with_deadlock_retry(write)
 
     def delete(self, request: Request, cache_key: str, amenity_key: str) -> Response:
         # Idempotent delete scoped to the account, filtering only by (account,
@@ -13216,6 +14195,10 @@ class PubAmenityVoteView(APIView):
         # aggregate so the public truth reflects the removal.
         try:
             with transaction.atomic():
+                # Same Account-first order as PUT: the tombstone's deferred FK
+                # check at COMMIT must not wait for a PUT that holds the Account
+                # and waits for this vote row.
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
                 existing = (
                     PubAmenityVote.objects.select_for_update()
                     .filter(account=request.user, cache_key=cache_key, amenity_key=amenity_key)
