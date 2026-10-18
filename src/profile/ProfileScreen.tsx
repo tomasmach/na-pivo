@@ -12,6 +12,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  BellRingIcon,
   MenuIcon,
   ExternalLinkIcon,
   SettingsIcon,
@@ -43,6 +44,7 @@ import {
   useAccountStore,
 } from '@/stores/accountStore';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   allSessionsNewestFirst,
@@ -86,6 +88,7 @@ export default function ProfileScreen() {
   const [codeVisible, setCodeVisible] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   const [partaCount, setPartaCount] = useState(0);
+  const beerWatchCount = useBeerWatchStore((s) => s.watches.length);
   const [dismissedNudge, setDismissedNudge] = useState<string | null>(null);
 
   useEffect(() => {
@@ -336,6 +339,17 @@ export default function ProfileScreen() {
         },
       },
       {
+        key: 'beer-watches',
+        label: t.profile.moreBeerWatches,
+        value: beerWatchCount > 0 ? beerWatchCount.toLocaleString(intlLocale) : null,
+        icon: BellRingIcon,
+        testID: 'profile-beer-watches',
+        onPress: () => {
+          setMoreVisible(false);
+          router.push('/profile/beer-watches' as Href);
+        },
+      },
+      {
         key: 'follow',
         label: t.profile.moreFollow,
         icon: ExternalLinkIcon,
@@ -345,7 +359,7 @@ export default function ProfileScreen() {
         },
       },
     ],
-    [partaCount, router],
+    [beerWatchCount, partaCount, router],
   );
 
   const beersLabel = beers.toLocaleString(intlLocale);

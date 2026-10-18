@@ -93,6 +93,7 @@ import { formatVolume, intlLocale, t } from '@/i18n';
 import BeerMapScreen from '@/map/BeerMapScreen';
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { MenuBeerActionsSheet, confirmRemoveFromMenu } from '@/counter/MenuBeerActionsSheet';
+import { helpedCountFor, useBeerWatchStore } from '@/stores/beerWatchStore';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import {
   isBeerListOverrideCurrent,
@@ -542,6 +543,10 @@ export default function PubPageScreen() {
   useEffect(() => {
     liveTapsRef.current = { key, pubId: tapsPubId, menu: editableTaps, historical: historicalTaps };
   }, [editableTaps, historicalTaps, key, tapsPubId]);
+  // Only a beer of the menu a write would start from can be changed.
+  const actionBeerEditable =
+    !!actionBeer && !!editableTaps?.some((b) => isSameBeerIdentity(b, actionBeer));
+  const beerHelped = useBeerWatchStore((s) => s.helped);
   /** The pub a beer's options were opened for: a write never lands elsewhere. */
   const tapsTargetRef = useRef<{ key: string | undefined; pubId: string | null } | null>(null);
 
@@ -1053,19 +1058,17 @@ export default function PubPageScreen() {
               }
             />
             {shownTaps.map((beer, index) => {
-              // Only a beer of the menu a write would start from can be changed.
-              const editable = !!editableTaps?.some((b) => isSameBeerIdentity(b, beer));
+              const helpedCount = helpedCountFor(beerHelped, key, beer.name);
               return (
                 <Pressable
                   key={`${beer.name}-${index}`}
                   onPress={() => openBeerActions(beer)}
-                  disabled={!editable}
                   style={({ pressed }) => [
                     styles.row,
                     index === 0 && styles.rowFirst,
                     pressed && styles.pressed,
                   ]}
-                  accessibilityRole={editable ? 'button' : undefined}
+                  accessibilityRole="button"
                   accessibilityLabel={[
                     beer.name,
                     typeof beer.volumeMl === 'number' ? formatVolume(beer.volumeMl) : null,
@@ -1073,7 +1076,7 @@ export default function PubPageScreen() {
                   ]
                     .filter(Boolean)
                     .join(', ')}
-                  accessibilityHint={editable ? t.a11y.counterBeerOptions(beer.name) : undefined}
+                  accessibilityHint={t.a11y.counterBeerOptions(beer.name)}
                 >
                   <View style={styles.rowText}>
                     <Text style={styles.rowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -1084,13 +1087,22 @@ export default function PubPageScreen() {
                         {formatVolume(beer.volumeMl)}
                       </Text>
                     ) : null}
+                    {helpedCount > 0 ? (
+                      <Text
+                        testID="menu-beer-helped"
+                        style={styles.rowSub}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {t.beerWatch.helped(helpedCount)}
+                      </Text>
+                    ) : null}
                   </View>
                   {typeof beer.priceCzk === 'number' ? (
                     <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
                       {formatPrice(beer.priceCzk, priceCurrency)}
                     </Text>
                   ) : null}
-                  {editable ? <EllipsisIcon size={20} color={Colors.mutedText} /> : null}
+                  <EllipsisIcon size={20} color={Colors.mutedText} />
                 </Pressable>
               );
             })}
@@ -1287,7 +1299,8 @@ export default function PubPageScreen() {
       <MenuBeerActionsSheet
         visible={beerActionsOpen}
         beer={actionBeer}
-        canRemove={!!actionBeer && !!editableTaps?.some((b) => isSameBeerIdentity(b, actionBeer))}
+        canEdit={actionBeerEditable}
+        canRemove={actionBeerEditable}
         onClose={() => setBeerActionsOpen(false)}
         onEditPrice={editBeerPrice}
         onRemove={removeBeer}

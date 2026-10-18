@@ -37,6 +37,9 @@ jest.mock('expo-notifications', () => ({
   scheduleNotificationAsync: mockScheduleNotification,
   cancelScheduledNotificationAsync: mockCancelNotification,
   SchedulableTriggerInputTypes: { TIME_INTERVAL: 'timeInterval' },
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  clearLastNotificationResponseAsync: jest.fn(async () => undefined),
 }));
 
 jest.mock('expo-task-manager', () => ({
@@ -87,6 +90,8 @@ import {
   disablePubReminderNotifications,
   isPubReminderEligible,
   refreshPubReminderGeofences,
+  subscribePubReminderTap,
+  consumeInitialPubReminderTap,
 } from '../pubReminderNotifications';
 
 function location(lat: number, lng: number) {
@@ -522,5 +527,36 @@ describe('first enable permission dialogs', () => {
     await expect(enablePubReminderNotifications()).resolves.toEqual({ ok: false, reason: 'background-location-denied' });
     expect(AppState.addEventListener).not.toHaveBeenCalled();
     expect(mockGetBackgroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('beer watch pushes', () => {
+  const beerOnTap = {
+    notification: {
+      request: {
+        identifier: 'beer-1',
+        content: { data: { kind: 'beer_on_tap', key: 'u2fkbbbb', name: 'U Hrocha', lat: 50.08, lng: 14.4 } },
+      },
+    },
+  } as unknown as Notifications.NotificationResponse;
+
+  it('are not routed as a pub reminder or a Parta tap while the app runs', () => {
+    const onReminder = jest.fn();
+    const onFriend = jest.fn();
+    subscribePubReminderTap(onReminder, onFriend);
+    const listener = jest.mocked(Notifications.addNotificationResponseReceivedListener).mock.calls.at(-1)![0];
+    listener(beerOnTap);
+    expect(onReminder).not.toHaveBeenCalled();
+    expect(onFriend).not.toHaveBeenCalled();
+  });
+
+  it('leave the cold-start response for the beer watch handler', async () => {
+    jest.mocked(Notifications.getLastNotificationResponseAsync).mockResolvedValueOnce(beerOnTap);
+    const onReminder = jest.fn();
+    const onFriend = jest.fn();
+    await consumeInitialPubReminderTap(onReminder, onFriend);
+    expect(onReminder).not.toHaveBeenCalled();
+    expect(onFriend).not.toHaveBeenCalled();
+    expect(Notifications.clearLastNotificationResponseAsync).not.toHaveBeenCalled();
   });
 });
