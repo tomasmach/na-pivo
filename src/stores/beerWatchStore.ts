@@ -15,7 +15,6 @@ import {
   type BeerWatch,
   type BeerWatchSnapshot,
 } from '@/data/beerWatchClient';
-import { normalizeBeerName } from '@/data/communityHours';
 
 const DEFAULT_RADIUS_M = 3000;
 
@@ -119,6 +118,12 @@ export const useBeerWatchStore = create<BeerWatchState>((set, get) => ({
   },
 }));
 
+/** Same tokens the server's catalog matcher compares: "Bernard 12°" and "bernard 12" are equal. */
+function catalogKey(name: string): string {
+  const folded = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return (folded.match(/[a-z]+|[0-9]+/g) ?? []).join(' ');
+}
+
 /**
  * The watch whose catalog name or alias is this beer name, if any. Like the
  * server when it adds a watch, falls back to "{brewery} {beer}".
@@ -131,12 +136,12 @@ export function findBeerWatch(
   const find = (name: string) =>
     watches.find(
       (w) =>
-        normalizeBeerName(w.name) === name ||
-        w.aliases.some((alias) => normalizeBeerName(alias) === name),
+        catalogKey(w.name) === name ||
+        w.aliases.some((alias) => catalogKey(alias) === name),
     ) ?? null;
-  const beer = normalizeBeerName(beerName);
+  const beer = catalogKey(beerName);
   if (!beer) return null;
-  const brewery = normalizeBeerName(breweryName ?? '');
+  const brewery = catalogKey(breweryName ?? '');
   return find(beer) ?? (brewery ? find(`${brewery} ${beer}`) : null);
 }
 
@@ -147,8 +152,8 @@ export function helpedCountFor(
   beerName: string,
 ): number {
   if (!cacheKey) return 0;
-  const name = normalizeBeerName(beerName);
+  const name = catalogKey(beerName);
   return helped
-    .filter((h) => h.cacheKey === cacheKey && normalizeBeerName(h.productName) === name)
+    .filter((h) => h.cacheKey === cacheKey && catalogKey(h.productName) === name)
     .reduce((sum, h) => sum + h.helpedCount, 0);
 }

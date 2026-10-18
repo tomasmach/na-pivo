@@ -151,6 +151,13 @@ describe('findBeerWatch', () => {
     expect(findBeerWatch([kozel], '11')).toBeNull();
     expect(findBeerWatch([kozel], '', 'Kozel')).toBeNull();
   });
+
+  it('ignores accents and the degree sign like the server catalog matcher', () => {
+    const bernard: BeerWatch = { productKey: 'bernard-12', name: 'Bernard 12°', aliases: [] };
+    expect(findBeerWatch([bernard], '12', 'Bernard')).toBe(bernard);
+    expect(findBeerWatch([bernard], 'bernard 12.')).toBe(bernard);
+    expect(findBeerWatch([bernard], 'Bernard 11°')).toBeNull();
+  });
 });
 
 describe('helpedCountFor', () => {
