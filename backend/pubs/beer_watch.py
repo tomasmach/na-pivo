@@ -39,7 +39,7 @@ def record_new_tap_events(
     lng: float,
     contributor,
     observed_at,
-) -> int:
+) -> None:
     """Create an event for each product this menu write put on tap that the pub never had before.
 
     Only products of this write count: a drink logged at the same pub meanwhile
@@ -54,7 +54,7 @@ def record_new_tap_events(
         - known_product_ids
     )
     if not new_ids:
-        return 0
+        return
     BeerTapEvent.objects.bulk_create(
         [
             BeerTapEvent(
@@ -70,4 +70,3 @@ def record_new_tap_events(
         ],
         ignore_conflicts=True,
     )
-    return len(new_ids)

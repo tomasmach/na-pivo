@@ -67,7 +67,6 @@ beforeEach(async () => {
 describe('grid snapping (same formula as the backend)', () => {
   it('returns the centre of the ~500 m cell rounded to 5 decimals', () => {
     const { location } = load();
-    // (floor(v / step) + 0.5) * step
     expect(location.snapToGrid(50.08147, 0.0045)).toBe(50.08275);
     expect(location.snapToGrid(14.41862, 0.007)).toBe(14.4165);
     expect(location.snapToGrid(-0.001, 0.0045)).toBe(-0.00225);

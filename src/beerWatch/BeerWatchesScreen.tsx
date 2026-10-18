@@ -1,8 +1,3 @@
-/**
- * Hlídaná piva — pushed route `/profile/beer-watches`: the watched beers with a
- * remove button, how far to watch, and why a push might not come.
- */
-
 import { useCallback, useState } from 'react';
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';

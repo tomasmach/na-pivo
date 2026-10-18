@@ -12,7 +12,6 @@ import { useSettingsStore } from '@/stores/settingsStore';
 const mockEnsurePushTokenRegistered = jest.fn<Promise<string | null>, []>(
   async () => 'ExponentPushToken[test]',
 );
-const mockDisablePushDevice = jest.fn(async () => true);
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -30,13 +29,11 @@ jest.mock('@/notifications/pushToken', () => ({
 
 jest.mock('@/data/pushDeviceClient', () => ({
   PUSH_TOKEN_KEY: 'na-pivo-expo-push-token',
-  disablePushDevice: (...a: unknown[]) => mockDisablePushDevice(...(a as [])),
 }));
 
 beforeEach(async () => {
   jest.clearAllMocks();
   mockEnsurePushTokenRegistered.mockResolvedValue('ExponentPushToken[test]');
-  mockDisablePushDevice.mockResolvedValue(true);
   jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue({
     status: 'granted',
   } as Notifications.NotificationPermissionsStatus);
@@ -54,7 +51,6 @@ it('does not force the toggle back on when the user has opted out', async () => 
 
   await ensureFriendPushRegisteredIfGranted();
 
-  // The launch/focus re-register must respect the opt-out — no re-register, no flip.
   expect(mockEnsurePushTokenRegistered).not.toHaveBeenCalled();
   expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
 });
@@ -135,10 +131,8 @@ it('keeps the device registered on Parta toggle-off instead of deleting it', asy
   await AsyncStorage.setItem('na-pivo-expo-push-token', 'ExponentPushToken[test]');
 
   await expect(disableFriendPush()).resolves.toBe(true);
-  // The re-registration reads the persisted opt-out and sends friend_push: false.
   expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
   expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted');
-  expect(mockDisablePushDevice).not.toHaveBeenCalled();
 });
 
 it('re-registers an opted-out grantee on launch without lighting Parta up', async () => {
@@ -148,7 +142,6 @@ it('re-registers an opted-out grantee on launch without lighting Parta up', asyn
   await ensureFriendPushRegisteredIfGranted();
 
   expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted');
-  expect(mockDisablePushDevice).not.toHaveBeenCalled();
   expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
 });
 
@@ -190,5 +183,5 @@ describe('requestPushRegistration (beer watch)', () => {
 
 it('treats a missing token as already-disabled without a server call', async () => {
   await expect(disableFriendPush()).resolves.toBe(true);
-  expect(mockDisablePushDevice).not.toHaveBeenCalled();
+  expect(mockEnsurePushTokenRegistered).not.toHaveBeenCalled();
 });

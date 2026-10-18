@@ -43,8 +43,6 @@ export interface BoardSegmentedProps {
   /** Screen-reader label for a single segment; defaults to its visible label. */
   describeOption?: (label: string, selected: boolean) => string;
   accessibilityLabel?: string;
-  /** One per option, same order. */
-  optionTestIDs?: readonly string[];
 }
 
 function BoardSegmentedBase({
@@ -53,7 +51,6 @@ function BoardSegmentedBase({
   onChange,
   describeOption,
   accessibilityLabel,
-  optionTestIDs,
 }: BoardSegmentedProps) {
   const reduceMotion = useReduceMotion();
   const [trackWidth, setTrackWidth] = useState(0);
@@ -110,7 +107,6 @@ function BoardSegmentedBase({
         return (
           <Pressable
             key={label}
-            testID={optionTestIDs?.[index]}
             onPress={() => handlePress(index)}
             hitSlop={{ top: VERTICAL_SLOP, bottom: VERTICAL_SLOP }}
             style={({ pressed }) => [styles.segment, pressed && styles.segmentPressed]}

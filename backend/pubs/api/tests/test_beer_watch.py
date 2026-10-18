@@ -75,13 +75,13 @@ def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
 
-def _post_menu(client, token, beers, *, name=_PUB, lat=_LAT, lng=_LNG, client_id=None, change=None):
+def _post_menu(client, token, beers, *, name=_PUB, lat=_LAT, lng=_LNG, change=None):
     payload = {
         "name": name,
         "lat": lat,
         "lng": lng,
         "city": "Praha",
-        "client_id": client_id or str(uuid.uuid4()),
+        "client_id": str(uuid.uuid4()),
         "beers": beers,
     }
     if change is not None:
@@ -206,7 +206,6 @@ def test_watch_resolves_with_brewery_and_rejects_unknown_beer(client):
     assert unknown.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert unknown.json() == {"code": "unknown_beer"}
 
-    # A brewery alone is not a beer anyone can watch.
     brand_only = client.post(
         "/v1/beer-watches", data={"beer_name": "Bernard"}, format="json", **_auth(token)
     )
@@ -229,7 +228,6 @@ def test_watch_limit_is_fifty(client):
     resp = client.post("/v1/beer-watches", data={"beer_name": "Limit 50"}, format="json", **_auth(token))
     assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert resp.json() == {"code": "too_many"}
-    # Re-watching one already watched stays idempotent at the limit.
     assert (
         client.post("/v1/beer-watches", data={"beer_name": "Limit 3"}, format="json", **_auth(token))
         .status_code
@@ -273,7 +271,6 @@ def test_events_only_for_beers_new_at_the_pub(client):
     first = list(BeerTapEvent.objects.values_list("cache_key", "product__key", "contributor_id"))
     assert first == [(_KEY, "pilsner-urquell", contributor.pk)]
 
-    # A replayed identical menu and an added beer: only the added beer is new.
     _post_menu(client, token, [_PILSNER])
     _post_menu(client, token, [_PILSNER, _KOZEL])
     assert sorted(BeerTapEvent.objects.values_list("product__key", flat=True)) == [
@@ -281,13 +278,11 @@ def test_events_only_for_beers_new_at_the_pub(client):
         "velkopopovicky-kozel-11",
     ]
 
-    # Removed and added back (also an old full menu replayed): it was here before.
     _post_menu(client, token, [_KOZEL])
     assert PubBeerProduct.objects.get(cache_key=_KEY, product__key="pilsner-urquell").active is False
     _post_menu(client, token, [_PILSNER, _KOZEL])
     assert BeerTapEvent.objects.count() == 2
 
-    # A one-beer change goes through the same path and adds nothing new.
     _post_menu(
         client, token, [_PILSNER], change={"action": "remove", "name": _KOZEL["name"], "volume_ml": 500}
     )
@@ -308,7 +303,6 @@ def test_beer_already_on_a_merged_duplicate_is_not_new(client):
     token, _contributor = _register(client)
     old_lat, old_lng = 50.0825, 14.4205
     old_key = geohash8(old_lat, old_lng)
-    # The duplicate had Pilsner on its own menu before the two were merged.
     _post_menu(client, token, [_PILSNER], name="Stará hospoda", lat=old_lat, lng=old_lng)
     canonical = CanonicalPub.objects.create(
         cache_key=_KEY, name=_PUB, name_key=normalize_pub_name(_PUB), lat=_LAT, lng=_LNG, city="Praha"
@@ -404,7 +398,6 @@ def test_watcher_gets_one_push_per_day_across_two_events(client, monkeypatch):
     assert BeerWatchPush.objects.filter(account=watcher).count() == 1
     assert BeerTapEvent.objects.filter(fanned_out_at__isnull=True).count() == 0
 
-    # A third beer on the same day: still nothing.
     client.post("/v1/beer-watches", data={"beer_name": "Bernard 12"}, format="json", **_auth(_token))
     _post_menu(client, contributor_token, [_PILSNER, _KOZEL, _BERNARD])
     assert _send(monkeypatch) == []
@@ -650,7 +643,6 @@ def test_anonymous_merge_moves_watches_pushes_and_contributions(client, monkeypa
     ]
     assert BeerWatchPush.objects.filter(account=target).count() == 1
     assert BeerTapEvent.objects.get(product__key="bernard-12").contributor_id == target.pk
-    # The target had no location yet, so it takes the anonymous one.
     assert (target.beer_watch_lat, target.beer_watch_lng) == snap_location(*_NEAR)
     assert target.beer_watch_radius_m == 3000
 
@@ -704,7 +696,6 @@ def test_catalogue_merge_moves_watches_and_events(client, monkeypatch):
     dup_on_menu = {"name": "Merge IPA dup", "price_czk": 70, "volume_ml": 500}
     _post_menu(client, contributor_token, [dup_on_menu])
     _send(monkeypatch)
-    # The same pub also lists the target product, so both events exist there.
     _post_menu(client, contributor_token, [dup_on_menu, {"name": "Merge IPA", "price_czk": 70, "volume_ml": 300}])
     target_event = BeerTapEvent.objects.get(product=target)
 

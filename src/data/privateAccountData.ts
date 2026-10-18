@@ -84,7 +84,6 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-pub-reminder-state',
   'na-pivo-pub-reminder-geofences',
   'na-pivo-handled-notification-responses-v1',
-  // Last grid cell sent for beer watch (src/beerWatch/beerWatchLocation.ts).
   'na-pivo-beer-watch-location-v1',
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot

@@ -22,11 +22,9 @@ jest.mock('@/utils/appVersion', () => ({ getAppVersionLabel: () => 'test' }));
 
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 const originalFetch = global.fetch;
-// Parta pushes the server would send to this device.
 let serverParta: boolean;
 let requests: string[];
 
-/** 'PUT on' / 'PUT off' (Parta) or 'DELETE' (whole device). */
 function requestKind(init?: RequestInit): string {
   if (init?.method !== 'PUT') return init?.method ?? '';
   const friendPush = JSON.parse(init.body as string).friend_push;
@@ -70,7 +68,6 @@ it.each(['silent', 'explicit'] as const)('keeps the server and persisted choice 
   expect(serverParta).toBe(false);
   expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
   expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
-  // The opt-out keeps the device registered (beer watch) and only turns Parta off.
   expect(requests).toEqual(['PUT on started', 'PUT on applied', 'PUT off']);
   const persisted = JSON.parse((await AsyncStorage.getItem('na-pivo-settings'))!);
   expect(persisted.state.friendPushOptedOut).toBe(true);

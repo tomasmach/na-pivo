@@ -729,7 +729,6 @@ REST_FRAMEWORK = {
         "beer_brands": BEER_BRANDS_THROTTLE_RATE,
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
         "pub_favorites": PUB_FAVORITES_THROTTLE_RATE,
-        # Watch toggles and the settings screen; the app refreshes on foreground.
         "beer_watches": "60/min",
         "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,

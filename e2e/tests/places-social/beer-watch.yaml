@@ -37,7 +37,6 @@ tags: [critical, full]
     env:
       ROUTE: '/beer-detail?beer=E2E%20Hl%C3%ADdan%C3%A1%2012%C2%B0'
 - evalScript: ${output.local.screenshot('beer-watch-detail')}
-# Someone else adds a watched beer to a nearby pub that never poured it.
 - evalScript: ${output.bw.tap('E2E Třetí hospoda', 'E2E Hlídaná 12°')}
 - evalScript: ${output.bw.firstPush()}
 - runFlow:
@@ -55,7 +54,6 @@ tags: [critical, full]
           visible: E2E Třetí hospoda
           timeout: 15000
       - evalScript: ${output.local.screenshot('beer-watch-push-opened-pub')}
-# A second new tap the same day is processed but sends nothing.
 - evalScript: ${output.bw.tap('E2E U Testera', 'E2E Druhá 11°')}
 - evalScript: ${output.bw.sameDay()}
 - runFlow:
@@ -79,7 +77,6 @@ tags: [critical, full]
 - assertVisible:
     id: profile-beer-watches
 - evalScript: ${output.local.screenshot('beer-watch-profile-row')}
-# The contributor sees at their lístek entry that it helped one person.
 - runFlow:
     file: ../../maestro/route.yaml
     env:

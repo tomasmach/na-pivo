@@ -16,7 +16,7 @@ import { useBeerWatchStore } from '@/stores/beerWatchStore';
 const LAT_STEP = 0.0045;
 const LNG_STEP = 0.007;
 const RESEND_AFTER_MS = 24 * 60 * 60 * 1000;
-export const BEER_WATCH_LOCATION_KEY = 'na-pivo-beer-watch-location-v1';
+const BEER_WATCH_LOCATION_KEY = 'na-pivo-beer-watch-location-v1';
 
 interface SentCell {
   accountId: string;
@@ -34,7 +34,7 @@ export function snapBeerWatchLocation(lat: number, lng: number): { lat: number; 
   return { lat: snapToGrid(lat, LAT_STEP), lng: snapToGrid(lng, LNG_STEP) };
 }
 
-export function shouldSendBeerWatchCell(
+function shouldSendBeerWatchCell(
   last: SentCell | null,
   cell: { accountId: string; lat: number; lng: number },
   serverHasLocation: boolean,

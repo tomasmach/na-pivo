@@ -187,7 +187,6 @@ function trackPull(name: ForegroundPull, run: () => Promise<boolean>): Promise<b
   return trackForegroundPull(name, run, currentAccountId);
 }
 
-/** Pull the watched beers, then send the rounded watch location if it is due. */
 function refreshBeerWatches(pullFromServer: boolean): void {
   if (!currentAccountId()) return;
   const pulled = pullFromServer
@@ -283,7 +282,6 @@ export default function RootLayout() {
       router.push((planId ? { pathname: '/tours/[id]', params: { id: planId } } : '/tours') as Href);
     // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
     const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
-    // A watched beer newly on tap nearby opens that pub's page.
     const openBeerOnTapPub = ({ key, name, lat, lng }: BeerOnTapPub) =>
       router.push({
         pathname: '/pub',

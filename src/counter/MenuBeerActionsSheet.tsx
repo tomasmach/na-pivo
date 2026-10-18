@@ -1,9 +1,4 @@
-/**
- * What you can do with one beer on a pub's menu: fix its price, watch it or
- * take it off the menu. The counter opens it from "Co si dáš?" (the ⋯ button or
- * a long press) and the pub page from any "Na čepu" row, so both places offer
- * the same doors. The price form stays about the price; deleting lives only here.
- */
+/** Deleting a menu beer lives only here so the price form stays about the price. */
 
 import React from 'react';
 

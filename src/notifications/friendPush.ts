@@ -62,7 +62,7 @@ async function keepDeviceWithoutParta(): Promise<boolean> {
   }
 }
 
-export type PushRegistration = 'registered' | 'denied' | 'unavailable' | 'cancelled';
+type PushRegistration = 'registered' | 'denied' | 'unavailable' | 'cancelled';
 
 /** Ask for notifications when undetermined, then register this device's token. */
 async function requestAndRegister(

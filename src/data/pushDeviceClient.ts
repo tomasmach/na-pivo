@@ -103,55 +103,6 @@ export async function registerPushDevice(
   }
 }
 
-export async function disablePushDevice(
-  pushToken?: string | null,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  const endpoint = getBackendEndpoint('/v1/push-device');
-  if (!endpoint || !pushToken || signal?.aborted) return false;
-
-  const session = await ensureAccount(signal);
-  if (!session || signal?.aborted) return false;
-
-  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
-  try {
-    const resp = await fetch(endpoint, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.token}`,
-      },
-      body: JSON.stringify({ push_token: pushToken, client_revision: await nextRevision() }),
-      signal: abort.signal,
-    });
-
-    if (resp.status === 401) {
-      await handleUnauthorized(session, 'push_device_disable');
-      return false;
-    }
-    if (!resp.ok) {
-      trackApiFailure('push_device_disable', {
-        endpoint: '/v1/push-device',
-        status: resp.status,
-      });
-      return false;
-    }
-    return true;
-  } catch (err) {
-    const isAbortError = err instanceof Error && err.name === 'AbortError';
-    if (!signal?.aborted && !isAbortError) {
-      trackApiFailure('push_device_disable', {
-        endpoint: '/v1/push-device',
-        reason: 'exception',
-        error: err,
-      });
-    }
-    return false;
-  } finally {
-    abort.cleanup();
-  }
-}
-
 export async function disableCachedPushDeviceWithBearer(
   bearerToken: string | null,
   signal?: AbortSignal,

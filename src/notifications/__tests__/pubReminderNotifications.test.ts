@@ -1,6 +1,6 @@
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { registerPushDevice, disablePushDevice } from '@/data/pushDeviceClient';
+import { registerPushDevice } from '@/data/pushDeviceClient';
 
 const mockGetLastKnownPositionAsync = jest.fn();
 const mockGetCurrentPositionAsync = jest.fn();
@@ -66,7 +66,6 @@ jest.mock('expo-location', () => ({
 jest.mock('@/data/pushDeviceClient', () => ({
   PUSH_TOKEN_KEY: 'push-token',
   registerPushDevice: jest.fn(),
-  disablePushDevice: jest.fn(),
 }));
 
 jest.mock('@/data/pubs', () => ({
@@ -434,7 +433,6 @@ it('keeps local reminders independent of the Parta server push choice', async ()
     expect(mockStopGeofencingAsync).toHaveBeenCalled();
     expect(await AsyncStorage.getItem('na-pivo-pub-reminders-enabled')).toBe('false');
     expect(registerPushDevice).not.toHaveBeenCalled();
-    expect(disablePushDevice).not.toHaveBeenCalled();
   } finally {
     jest.useRealTimers();
   }
