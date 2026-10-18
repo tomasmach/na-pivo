@@ -81,6 +81,9 @@ from pubs.models import (
     BeerPhoto,
     BeerPhotoDeletionTombstone,
     BeerPhotoFileDeletion,
+    BeerTapEvent,
+    BeerWatch,
+    BeerWatchPush,
     ClientEvent,
     CommunityEvent,
     CommunityEventMembership,
@@ -2211,6 +2214,28 @@ def _assert_no_cascade_rows_for_source(source: Account) -> None:
         )
 
 
+def _merge_beer_watches(source: Account, target: Account) -> None:
+    target_had_watches = BeerWatch.objects.filter(account=target).exists()
+    _delete_or_move_account_rows(
+        BeerWatch, source=source, target=target, unique_fields=("product_id",)
+    )
+    _delete_or_move_account_rows(
+        BeerWatchPush, source=source, target=target, unique_fields=("local_date",)
+    )
+    BeerTapEvent.objects.filter(contributor=source).update(contributor=target)
+    update_fields = []
+    if not target_had_watches and BeerWatch.objects.filter(account=target).exists():
+        target.beer_watch_radius_m = source.beer_watch_radius_m
+        update_fields.append("beer_watch_radius_m")
+    if target.beer_watch_lat is None and source.beer_watch_lat is not None:
+        target.beer_watch_lat = source.beer_watch_lat
+        target.beer_watch_lng = source.beer_watch_lng
+        target.beer_watch_located_at = source.beer_watch_located_at
+        update_fields += ["beer_watch_lat", "beer_watch_lng", "beer_watch_located_at"]
+    if update_fields:
+        target.save(update_fields=update_fields)
+
+
 def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     """Move best-effort anonymous data onto an existing signed-in account.
 
@@ -2624,6 +2649,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         target=target,
         unique_fields=("push_token",),
     )
+    _merge_beer_watches(source, target)
 
     PubCommunityData.objects.filter(account=source).update(account=target)
     PubBeerBrand.objects.filter(account=source).update(account=target)
@@ -3214,7 +3240,16 @@ def schedule_deletion(account: Account) -> None:
 
         locked.status = Account.Status.PENDING_DELETION
         locked.deleted_at = timezone.now()
-        locked.save(update_fields=["status", "deleted_at"])
+        locked.beer_watch_lat = locked.beer_watch_lng = locked.beer_watch_located_at = None
+        locked.save(
+            update_fields=[
+                "status",
+                "deleted_at",
+                "beer_watch_lat",
+                "beer_watch_lng",
+                "beer_watch_located_at",
+            ]
+        )
 
         account.status = locked.status
         account.deleted_at = locked.deleted_at

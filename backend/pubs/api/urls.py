@@ -37,6 +37,7 @@ from .auth_views import (
     UnlinkView,
     VerifyEmailView,
 )
+from .beer_watch_views import BeerWatchDetailView, BeerWatchesView, BeerWatchSettingsView
 from .challenge_views import ChallengeListView
 from .community_event_views import (
     CommunityEventCancelView,
@@ -357,6 +358,21 @@ urlpatterns = [
         "pub-ratings/<str:cache_key>",
         PubRatingView.as_view(http_method_names=["delete", "options"]),
         name="pub-ratings-delete",
+    ),
+    path(
+        "beer-watches",
+        BeerWatchesView.as_view(http_method_names=["get", "post", "options"]),
+        name="beer-watches",
+    ),
+    path(
+        "beer-watches/settings",
+        BeerWatchSettingsView.as_view(http_method_names=["patch", "options"]),
+        name="beer-watches-settings",
+    ),
+    path(
+        "beer-watches/<str:product_key>",
+        BeerWatchDetailView.as_view(http_method_names=["delete", "options"]),
+        name="beer-watches-delete",
     ),
     path(
         "pub-favorites",

@@ -2068,6 +2068,9 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
         "pub_beer_products": "mapping_history.pub_beer_products[*].product_key",
         "photo_contest_entries": "photo_contests.entries[*].entry_id",
         "photo_contest_votes": "photo_contests.votes[*].entry_id",
+        "beer_watches": "beer_watch.watches[*].product_key",
+        "beer_watch_pushes": "beer_watch.pushes[*].local_date",
+        "beer_tap_events": "beer_watch.contributed_events[*].helped_count",
     }
 
     # Reverse accessors deliberately absent from the export, each with a

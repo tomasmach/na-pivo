@@ -123,6 +123,7 @@ from pubs.beer_photo_deletions import (
     retry_beer_photo_file_deletions,
     schedule_beer_photo_file_deletions,
 )
+from pubs.beer_watch import pub_product_ids, record_new_tap_events
 from pubs.community_trust import trusted_account_q
 from pubs.enrichment import (
     GoogleGeocodingSource,
@@ -180,6 +181,9 @@ from pubs.models import (
     BeerPhoto,
     BeerPhotoDeletionTombstone,
     BeerPhotoFileDeletion,
+    BeerTapEvent,
+    BeerWatch,
+    BeerWatchPush,
     ClientEvent,
     CommunityEvent,
     CommunityEventMembership,
@@ -1304,6 +1308,7 @@ def _send_friend_push(
         account_id__in=deliver_ids,
         enabled=True,
         permission_status=PushDevice.PermissionStatus.GRANTED,
+        friend_push_enabled=True,
     )
     if app_version_prefix is not None:
         # Released clients register display labels such as "v2.0.0 (1)".
@@ -1318,18 +1323,11 @@ def _send_friend_push(
     if not tokens_by_locale:
         return
 
-    # Expo caps a single /push/send POST at 100 messages; chunk the (now opt-in
-    # driven, so potentially large) token base into batches. Tickets come back in
-    # the same order as the messages sent, so we can map a per-token delivery
-    # result back to its device and retire tokens Expo reports as unreachable.
-    chunk_size = max(1, int(getattr(settings, "EXPO_PUSH_CHUNK_SIZE", 100)))
-    dead_tokens: list[str] = []
     for locale, tokens in tokens_by_locale.items():
         rendered_title = render_localized(title, locale)
         rendered_body = render_localized(body, locale)
-        for start in range(0, len(tokens), chunk_size):
-            batch_tokens = tokens[start : start + chunk_size]
-            messages = [
+        _post_expo(
+            [
                 {
                     "to": token,
                     "title": rendered_title,
@@ -1337,42 +1335,57 @@ def _send_friend_push(
                     "sound": "default",
                     "data": data,
                 }
-                for token in batch_tokens
+                for token in tokens
             ]
-            try:
-                response = requests.post(
-                    "https://exp.host/--/api/v2/push/send",
-                    json=messages,
-                    timeout=3,
-                )
-                response.raise_for_status()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "friend push delivery failed",
-                    extra={
-                        "event": "friend_push_failed",
-                        "observability": {
-                            "recipient_count": len(deliver_ids),
-                            "token_count": len(batch_tokens),
-                            "error": exc.__class__.__name__,
-                        },
+        )
+
+
+def _post_expo(messages: list[dict]) -> None:
+    """POST Expo push messages, best effort, and retire tokens Expo calls unreachable.
+
+    Every push leaves the server through this one function, so local E2E can
+    replace it. Never logs token values, bodies or responses.
+    """
+
+    # Expo caps a single /push/send POST at 100 messages. Tickets come back in
+    # the same order as the messages sent, so a per-token delivery result maps
+    # back to its device.
+    chunk_size = max(1, int(getattr(settings, "EXPO_PUSH_CHUNK_SIZE", 100)))
+    dead_tokens: list[str] = []
+    for start in range(0, len(messages), chunk_size):
+        batch = messages[start : start + chunk_size]
+        try:
+            response = requests.post(
+                "https://exp.host/--/api/v2/push/send",
+                json=batch,
+                timeout=3,
+            )
+            response.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "push delivery failed",
+                extra={
+                    "event": "push_delivery_failed",
+                    "observability": {
+                        "token_count": len(batch),
+                        "error": exc.__class__.__name__,
                     },
-                )
-                continue
-            # Best-effort ticket parse: a device that uninstalled reports
-            # DeviceNotRegistered, so we disable that token to shrink future fanout.
-            # Never log token values or bodies.
-            try:
-                tickets = response.json().get("data", [])
-            except Exception:  # noqa: BLE001
-                tickets = []
-            for token, ticket in zip(batch_tokens, tickets):
-                if (
-                    isinstance(ticket, dict)
-                    and ticket.get("status") == "error"
-                    and (ticket.get("details") or {}).get("error") == "DeviceNotRegistered"
-                ):
-                    dead_tokens.append(token)
+                },
+            )
+            continue
+        # An uninstalled app reports DeviceNotRegistered; disabling that token
+        # shrinks future fanout.
+        try:
+            tickets = response.json().get("data", [])
+        except Exception:  # noqa: BLE001
+            tickets = []
+        for message, ticket in zip(batch, tickets):
+            if (
+                isinstance(ticket, dict)
+                and ticket.get("status") == "error"
+                and (ticket.get("details") or {}).get("error") == "DeviceNotRegistered"
+            ):
+                dead_tokens.append(message["to"])
 
     if dead_tokens:
         PushDevice.objects.filter(push_token__in=dead_tokens).update(
@@ -2307,6 +2320,17 @@ class PubCommunityView(APIView):
                             )
                         index_rows.insert(0, record)
 
+            pub_cache_keys = {cache_key, *identity.cache_keys}
+            known_product_ids = None
+            if index_rows:
+                try:
+                    known_product_ids = pub_product_ids(pub_cache_keys)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "pub-community: beer watch snapshot failed for cache key %s: %s",
+                        cache_key,
+                        exc,
+                    )
             for index_row in index_rows:
                 sync_pub_beer_indexes_for_menu(
                     cache_key=index_row.cache_key,
@@ -2336,6 +2360,23 @@ class PubCommunityView(APIView):
                 exc_info=True,
             )
             return _internal_error()
+
+        if known_product_ids is not None:
+            try:
+                record_new_tap_events(
+                    cache_keys=pub_cache_keys,
+                    known_product_ids=known_product_ids,
+                    cache_key=cache_key,
+                    pub_name=identity.name or data["name"],
+                    lat=identity.lat if identity.lat is not None else data["lat"],
+                    lng=identity.lng if identity.lng is not None else data["lng"],
+                    contributor=request.user,
+                    observed_at=now,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "pub-community: beer watch event failed for cache key %s: %s", cache_key, exc
+                )
 
         if not has_hours and not has_beers:
             return Response(_community_response_body(record, cache_key), status=status.HTTP_200_OK)
@@ -4596,6 +4637,8 @@ class PushDeviceView(APIView):
                     "app_version": data.get("app_version") or "",
                     "locale": locale,
                 }
+                if "friend_push" in data:
+                    defaults["friend_push_enabled"] = data["friend_push"]
                 if revision is None:
                     # Released clients keep their original wire contract.
                     device, _created = PushDevice.objects.update_or_create(
@@ -11522,6 +11565,9 @@ def _load_export_account(account: Account) -> Account:
             has_beer_photo_deletion_tombstones=Exists(
                 BeerPhotoDeletionTombstone.objects.filter(account=OuterRef("pk"))
             ),
+            has_beer_watches=Exists(BeerWatch.objects.filter(account=OuterRef("pk"))),
+            has_beer_watch_pushes=Exists(BeerWatchPush.objects.filter(account=OuterRef("pk"))),
+            has_beer_tap_events=Exists(BeerTapEvent.objects.filter(contributor=OuterRef("pk"))),
         )
         .prefetch_related(
             "identities",
@@ -11745,6 +11791,34 @@ def _load_export_account(account: Account) -> Account:
             "beer_photo_deletion_tombstones",
             "has_beer_photo_deletion_tombstones",
             None,
+        ),
+        (
+            "beer_watches",
+            "has_beer_watches",
+            Prefetch(
+                "beer_watches",
+                queryset=BeerWatch.objects.select_related("product").order_by("created_at", "id"),
+            ),
+        ),
+        (
+            "beer_watch_pushes",
+            "has_beer_watch_pushes",
+            Prefetch(
+                "beer_watch_pushes",
+                queryset=BeerWatchPush.objects.select_related("event__product").order_by(
+                    "local_date", "id"
+                ),
+            ),
+        ),
+        (
+            "beer_tap_events",
+            "has_beer_tap_events",
+            Prefetch(
+                "beer_tap_events",
+                queryset=BeerTapEvent.objects.select_related("product")
+                .annotate(helped_count=Count("pushes"))
+                .order_by("observed_at", "id"),
+            ),
         ),
     ]
     for relation_name, flag_name, custom_prefetch in conditional_prefetches:
@@ -11984,6 +12058,43 @@ def _export_account_data(account: Account) -> dict:
             }
             for device in account.push_devices.all()
         ],
+        "beer_watch": {
+            "radius_m": account.beer_watch_radius_m,
+            # Only the ~500 m grid cell the app sent, never a precise position.
+            "location": (
+                {"lat": account.beer_watch_lat, "lng": account.beer_watch_lng}
+                if account.beer_watch_lat is not None
+                else None
+            ),
+            "located_at": _iso(account.beer_watch_located_at),
+            "watches": [
+                {
+                    "product_key": watch.product.key,
+                    "name": watch.product.name,
+                    "created_at": _iso(watch.created_at),
+                }
+                for watch in account.beer_watches.all()
+            ],
+            "pushes": [
+                {
+                    "local_date": push.local_date.isoformat(),
+                    "sent_at": _iso(push.sent_at),
+                    "product_key": push.event.product.key,
+                    "pub_name": push.event.pub_name,
+                }
+                for push in account.beer_watch_pushes.all()
+            ],
+            "contributed_events": [
+                {
+                    "cache_key": event.cache_key,
+                    "pub_name": event.pub_name,
+                    "product_key": event.product.key,
+                    "observed_at": _iso(event.observed_at),
+                    "helped_count": event.helped_count,
+                }
+                for event in account.beer_tap_events.all()
+            ],
+        },
         "usage": {
             "app_open_count": usage.app_open_count if usage else 0,
             "app_foreground_count": usage.app_foreground_count if usage else 0,

@@ -788,6 +788,21 @@ class Account(models.Model):
         help_text="Local Europe/Prague hour (0-23) the quiet window ends, exclusive.",
     )
 
+    # ---------- beer watch ----------
+    # Only a ~500 m grid cell ever reaches the server for this feature.
+    beer_watch_lat = models.FloatField(
+        null=True, blank=True, help_text="Latitude of the beer-watch grid cell centre."
+    )
+    beer_watch_lng = models.FloatField(
+        null=True, blank=True, help_text="Longitude of the beer-watch grid cell centre."
+    )
+    beer_watch_located_at = models.DateTimeField(
+        null=True, blank=True, help_text="When the app last sent the beer-watch cell."
+    )
+    beer_watch_radius_m = models.PositiveIntegerField(
+        default=3000, help_text="How far from the cell a watched beer on tap is reported."
+    )
+
     # ---------- subscription / restore-purchases scaffold ----------
     subscription_tier = models.CharField(
         max_length=16,
@@ -1140,6 +1155,8 @@ class PushDevice(models.Model):
         db_index=True,
     )
     enabled = models.BooleanField(default=True, db_index=True)
+    # Parta pushes only; beer-watch pushes ignore it. Released apps never send it.
+    friend_push_enabled = models.BooleanField(default=True)
     # Optional ordering marker from newer installs. Old released clients omit it.
     client_revision = models.PositiveBigIntegerField(null=True, blank=True)
     app_version = models.CharField(max_length=64, blank=True, default="")
@@ -3677,6 +3694,70 @@ class PubBeerProduct(models.Model):
 
     def __str__(self) -> str:
         return f"{self.product_name} @ {self.name} [{self.cache_key}]"
+
+
+class BeerWatch(models.Model):
+    """A catalogue beer the account wants to hear about when a pub nearby starts serving it."""
+
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="beer_watches")
+    product = models.ForeignKey(BeerProduct, on_delete=models.CASCADE, related_name="watches")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["account", "product"], name="unique_beer_watch"),
+        ]
+
+    def __str__(self) -> str:
+        return f"BeerWatch({self.account_id} -> {self.product_id})"
+
+
+class BeerTapEvent(models.Model):
+    """A beer that first appeared on a pub's community menu.
+
+    Push outbox (``fanned_out_at``), the lasting "this beer was here already"
+    marker, and the row the contributor's "helped N people" count hangs on.
+    """
+
+    cache_key = models.CharField(max_length=12)
+    pub_name = models.TextField()
+    lat = models.FloatField()
+    lng = models.FloatField()
+    product = models.ForeignKey(BeerProduct, on_delete=models.CASCADE, related_name="tap_events")
+    contributor = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="beer_tap_events",
+    )
+    observed_at = models.DateTimeField()
+    fanned_out_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["cache_key", "product"], name="unique_beer_tap_event"),
+        ]
+        indexes = [models.Index(fields=["fanned_out_at", "observed_at"])]
+
+    def __str__(self) -> str:
+        return f"BeerTapEvent({self.product_id} @ {self.cache_key})"
+
+
+class BeerWatchPush(models.Model):
+    """One beer-watch push per account and Prague day; the unique key is the daily cap."""
+
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="beer_watch_pushes")
+    event = models.ForeignKey(BeerTapEvent, on_delete=models.CASCADE, related_name="pushes")
+    local_date = models.DateField()
+    sent_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "local_date"], name="unique_beer_watch_push_per_day"
+            ),
+        ]
 
 
 class DrinkLog(models.Model):
