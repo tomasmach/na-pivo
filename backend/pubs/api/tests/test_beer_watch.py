@@ -17,6 +17,7 @@ from rest_framework.test import APIClient
 
 from pubs import accounts
 from pubs.api import views as api_views
+from pubs.beer_catalog import upsert_pub_beer_brand
 from pubs.beer_catalog_merge import merge_beer_products
 from pubs.beer_watch import snap_location
 from pubs.enrichment import geohash8
@@ -31,6 +32,7 @@ from pubs.models import (
     BeerWatchPush,
     CanonicalPub,
     PubAlias,
+    PubBeerBrand,
     PubBeerProduct,
     PushDevice,
 )
@@ -323,6 +325,33 @@ def test_beer_already_on_a_merged_duplicate_is_not_new(client):
     assert list(
         BeerTapEvent.objects.filter(cache_key=_KEY).values_list("product__key", flat=True)
     ) == ["velkopopovicky-kozel-11"]
+
+
+@pytest.mark.django_db
+def test_drink_logged_during_a_menu_write_is_not_its_event(client, monkeypatch):
+    token, contributor = _register(client)
+    drinker = Account.objects.create()
+    real_sync = api_views.sync_pub_beer_indexes_for_menu
+
+    def sync_then_drink(**kwargs):
+        written = real_sync(**kwargs)
+        # Another request logs a Kozel at this pub between the snapshot and the recorder.
+        upsert_pub_beer_brand(
+            cache_key=_KEY,
+            data={"name": _PUB, "lat": _LAT, "lng": _LNG},
+            beer=_KOZEL,
+            source=PubBeerBrand.Source.DRINK,
+            account=drinker,
+        )
+        return written
+
+    monkeypatch.setattr(api_views, "sync_pub_beer_indexes_for_menu", sync_then_drink)
+    _post_menu(client, token, [_PILSNER])
+
+    assert PubBeerProduct.objects.get(cache_key=_KEY, product__key="velkopopovicky-kozel-11").active
+    assert list(BeerTapEvent.objects.values_list("product__key", "contributor_id")) == [
+        ("pilsner-urquell", contributor.pk)
+    ]
 
 
 @pytest.mark.django_db

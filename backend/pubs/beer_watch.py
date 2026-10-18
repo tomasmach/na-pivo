@@ -32,6 +32,7 @@ def record_new_tap_events(
     *,
     cache_keys,
     known_product_ids: set[int],
+    written_product_ids: set[int],
     cache_key: str,
     pub_name: str,
     lat: float,
@@ -39,12 +40,16 @@ def record_new_tap_events(
     contributor,
     observed_at,
 ) -> int:
-    """Create an event for each product now served at the pub that it never had before."""
+    """Create an event for each product this menu write put on tap that the pub never had before.
+
+    Only products of this write count: a drink logged at the same pub meanwhile
+    must not become this contributor's event.
+    """
     new_ids = (
         set(
-            PubBeerProduct.objects.filter(cache_key__in=cache_keys, active=True).values_list(
-                "product_id", flat=True
-            )
+            PubBeerProduct.objects.filter(
+                cache_key__in=cache_keys, active=True, product_id__in=written_product_ids
+            ).values_list("product_id", flat=True)
         )
         - known_product_ids
     )

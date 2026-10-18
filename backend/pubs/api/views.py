@@ -2322,6 +2322,7 @@ class PubCommunityView(APIView):
 
             pub_cache_keys = {cache_key, *identity.cache_keys}
             known_product_ids = None
+            written_product_ids: set[int] = set()
             if index_rows:
                 try:
                     known_product_ids = pub_product_ids(pub_cache_keys)
@@ -2332,7 +2333,7 @@ class PubCommunityView(APIView):
                         exc,
                     )
             for index_row in index_rows:
-                sync_pub_beer_indexes_for_menu(
+                written_product_ids |= sync_pub_beer_indexes_for_menu(
                     cache_key=index_row.cache_key,
                     data={
                         **data,
@@ -2366,6 +2367,7 @@ class PubCommunityView(APIView):
                 record_new_tap_events(
                     cache_keys=pub_cache_keys,
                     known_product_ids=known_product_ids,
+                    written_product_ids=written_product_ids,
                     cache_key=cache_key,
                     pub_name=identity.name or data["name"],
                     lat=identity.lat if identity.lat is not None else data["lat"],

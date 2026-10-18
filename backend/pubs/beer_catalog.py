@@ -345,10 +345,14 @@ def sync_pub_beer_indexes_for_menu(
     source: str,
     account,
     match_cache: BeerCatalogMatchCache | None = None,
-) -> None:
-    """Make the active per-pub beer indexes match a full community menu write."""
+) -> set[int]:
+    """Make the active per-pub beer indexes match a full community menu write.
+
+    Returns the ids of the catalogue products this menu has on tap.
+    """
     active_brand_keys: set[str] = set()
     active_product_keys: set[str] = set()
+    active_product_ids: set[int] = set()
 
     for beer in beers:
         match = upsert_pub_beer_brand(
@@ -364,6 +368,7 @@ def sync_pub_beer_indexes_for_menu(
         active_brand_keys.add(match.brand.key)
         if match.product is not None:
             active_product_keys.add(match.product.key)
+            active_product_ids.add(match.product.id)
 
     now = timezone.now()
     stale_brands = PubBeerBrand.objects.filter(cache_key=cache_key, active=True)
@@ -375,6 +380,7 @@ def sync_pub_beer_indexes_for_menu(
     if active_product_keys:
         stale_products = stale_products.exclude(product_key__in=active_product_keys)
     stale_products.update(active=False, last_seen_at=now)
+    return active_product_ids
 
 
 def suggest_beers(query: str, *, brewery: str = "", limit: int = 12) -> list[BeerSuggestion]:
