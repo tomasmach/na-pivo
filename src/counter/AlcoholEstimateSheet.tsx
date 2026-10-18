@@ -1,7 +1,6 @@
 /**
  * The blood alcohol estimate: one quiet row on the counter card and the sheet
- * it opens. Presentational only — the counter hands in the estimate and the
- * profile; nothing here reads a store.
+ * it opens. Both read the estimate themselves, so only they re-render each minute.
  */
 
 import React from 'react';
@@ -242,7 +241,6 @@ export function AlcoholEstimateSheet({ visible, profile, onEdit, onTurnOff, onCl
 }
 
 const styles = StyleSheet.create({
-  // Sits right above the card's own footer, which brings its top margin.
   coasterRow: {
     ...CardSurface.footer,
     marginTop: 12,

@@ -71,8 +71,11 @@ export function formatZeroAt(date: Date, nowMs: number): string {
   return t.alcohol.whenDate(date.toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' }), time);
 }
 
-/** "13:00" today, "zítra 13:00" otherwise — for the short morning line. */
+/** "13:00" today, "zítra 13:00" tomorrow — for the short morning line. */
 export function formatZeroAtShort(date: Date, nowMs: number): string {
   const time = formatClock(date);
-  return dayOffset(date, nowMs) <= 0 ? t.alcohol.shortToday(time) : t.alcohol.shortTomorrow(time);
+  const offset = dayOffset(date, nowMs);
+  if (offset <= 0) return t.alcohol.shortToday(time);
+  if (offset === 1) return t.alcohol.shortTomorrow(time);
+  return formatZeroAt(date, nowMs);
 }

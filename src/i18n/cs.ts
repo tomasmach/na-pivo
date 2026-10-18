@@ -3864,7 +3864,7 @@ export const cs = {
     morningNow: (high: string) => `Teď můžeš mít ještě až ${high} ‰`,
     morningHint: 'Spíš méně, ale radši počítám s horším koncem.',
     warning: 'Je to jen odhad ze zapsaného pití. Skutečnost se může lišit o dost. Za volant podle toho nesedej.',
-    empty: 'Za poslední dny nemáš zapsané nic s alkoholem.',
+    empty: 'Podle odhadu jsi na nule.',
     drinksTitle: 'S čím počítám',
     drinkRow: (count: number, name: string) => `${count}× ${name}`,
     drinkAbv: (abv: string) => `${abv} % alkoholu`,

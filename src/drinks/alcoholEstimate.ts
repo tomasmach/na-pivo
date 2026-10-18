@@ -1,5 +1,5 @@
 /**
- * Blood alcohol estimate from the drinks logged in the last 24 hours and the
+ * Blood alcohol estimate from the drinks logged in the last three days and the
  * body numbers the user typed in. It is a guess and every surface says so.
  *
  * Model: Watson total body water from sex, age, height and weight, Widmark
@@ -55,7 +55,9 @@ export interface EstimateDrink {
   at: string;
 }
 
-const NON_ALCOHOLIC = /nealko|birell|\bfree\b|(^|\s)0[,.]0(\s|%|$)|alkoholfrei|non[- ]?alc|alcohol[- ]?free/i;
+// Catalog names that hide the nealko label: HAKSNA Clear Mind, Clock Krystus, Litovel Svěží pomelo.
+const NON_ALCOHOLIC =
+  /nealko|birell|bernard free|(^|\s)0[,.]0(\s|%|$)|alkoholfrei|non[- ]?alc|alcohol[- ]?free|clear mind|krystus|svěží pomelo/i;
 const RADLER = /radler|shandy/i;
 const DEGREES = /(\d{1,2}(?:[,.]\d)?)\s*°/;
 

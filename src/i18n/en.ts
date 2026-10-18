@@ -3204,7 +3204,7 @@ export const en: Strings = {
     morningNow: (high: string) => `You may still have up to ${high} ‰`,
     morningHint: 'Probably less, but I would rather assume the worse case.',
     warning: 'This is only an estimate from what you logged. Reality can differ a lot. Do not decide to drive based on it.',
-    empty: 'Nothing alcoholic logged in the last few days.',
+    empty: 'By my estimate you are at zero.',
     drinksTitle: 'What I count',
     drinkRow: (count: number, name: string) => `${count}× ${name}`,
     drinkAbv: (abv: string) => `${abv} % alcohol`,
