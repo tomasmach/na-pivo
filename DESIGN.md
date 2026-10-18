@@ -182,8 +182,8 @@ Pravidla, která jsou produktová, ne matematická:
 2. **Remíza je remíza.** MVP je `null`, když se o špičku dělí dva.
 3. **Prázdná hodina dostane sloupec.** Jinak se večer nakreslí klidnější, než byl.
 4. **Vyrovnat rekord není překonat rekord.**
-5. **Promile a čas do řízení se neobjevují nikdy**
-   (`docs/decisions/no-bac-or-driving-estimates.md`).
+5. **Promile jen jako odhad, nikdy jako rada k řízení**
+   (`docs/decisions/alcohol-estimate.md`).
 6. **Útrata je moje vlastní.** Cenu nese jen pivo, které zapsal můj telefon, takže
    sečíst jde jenom moje útrata (`nightSpend`). Celková útrata stolu by byla tiše
    špatně: cena je nepovinná a kdo nesdílí pití, nemá ve večeru řádky. Do
@@ -2139,8 +2139,8 @@ Zbývající dev-dluh mocků a kódu vůči dokumentu (opravuje se v kódu, ne v
 
 - **Světlý režim.** Odložený vědomě — zdvojil by práci na každé obrazovce.
 - **Grafy v běžícím večeru.** Patří do recapu (§20.2).
-- **Cokoliv, co počítá promile nebo čas do řízení.** Rozhodnuto
-  a nediskutovatelné (`docs/decisions/no-bac-or-driving-estimates.md`).
+- **Cokoliv, co radí, kdy jde řídit.** Odhad promile smí jen jako odhad
+  (`docs/decisions/alcohol-estimate.md`).
 - **Veřejný žebříček podle vypitých piv.** Hra na pití nemá vítěze. Celostátní
   žebříčky měří objevené hospody a Mapér XP, nikdy litry.
 - **Podium nad partou.** Jedno pořadí od prvního k poslednímu je přesně ta

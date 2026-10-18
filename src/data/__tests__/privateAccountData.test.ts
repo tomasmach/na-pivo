@@ -202,10 +202,12 @@ it('removes retired 2.0 private data and settings while retaining public caches 
   await AsyncStorage.setItem('na-pivo-pubs-snapshot', 'public-pubs');
   useSettingsStore.setState({
     marketingEmailsEnabled: true, lastSeenPartyStreak: 12, navigationProvider: 'mapy', hapticEnabled: false,
+    bodyProfile: { sex: 'male', age: 32, heightCm: 182, weightKg: 84 },
   });
   await AsyncStorage.setItem('na-pivo-settings', JSON.stringify({ version: 1, state: {
     navigationProvider: 'mapy', hapticEnabled: false,
     homePoint: { lat: 50, lng: 14 }, marketingEmailsEnabled: true, lastSeenPartyStreak: 12,
+    bodyProfile: { sex: 'male', age: 32, heightCm: 182, weightKg: 84 },
     pendingAccountPreferences: { home_point: { lat: 50, lng: 14 } },
     pendingAccountPreferencesOwnerId: 'old-account',
   } }));
@@ -215,11 +217,11 @@ it('removes retired 2.0 private data and settings while retaining public caches 
   for (const key of retiredKeys) expect(await AsyncStorage.getItem(key)).toBeNull();
   expect(await AsyncStorage.getItem('na-pivo-pubs-snapshot')).toBe('public-pubs');
   expect(useSettingsStore.getState()).toMatchObject({
-    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0,
+    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0, bodyProfile: null,
   });
   const settings = JSON.parse((await AsyncStorage.getItem('na-pivo-settings'))!);
   expect(settings.state).toMatchObject({
-    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0,
+    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0, bodyProfile: null,
     pendingAccountPreferences: {}, pendingAccountPreferencesOwnerId: null,
     navigationProvider: 'mapy',
   });
