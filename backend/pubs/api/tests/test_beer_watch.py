@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from io import StringIO
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -22,6 +23,7 @@ from pubs.beer_catalog_merge import merge_beer_products
 from pubs.beer_watch import snap_location
 from pubs.enrichment import geohash8
 from pubs.identity import normalize_pub_name
+from pubs.management.commands import send_beer_watch_pushes
 from pubs.management.commands.send_beer_watch_pushes import in_quiet_hours
 from pubs.models import (
     Account,
@@ -439,6 +441,32 @@ def test_quiet_hours_keep_events_pending(client, monkeypatch, settings):
 
     settings.BEER_WATCH_QUIET_HOURS = (0, 0)
     assert len(_send(monkeypatch)) == 1
+
+
+@pytest.mark.django_db
+def test_run_stops_when_quiet_hours_begin_mid_run(client, monkeypatch, settings):
+    _watcher(client, "Pilsner Urquell")
+    _watcher(client, "Kozel 11")
+    contributor_token, _contributor = _register(client)
+    _post_menu(client, contributor_token, [_PILSNER, _KOZEL])
+    evening = datetime.combine(timezone.localdate(timezone.now(), _PRAGUE), time(21, 59, 58), _PRAGUE)
+    BeerTapEvent.objects.update(observed_at=evening - timedelta(hours=1))
+    settings.BEER_WATCH_QUIET_HOURS = (22, 9)
+    # Start and the first event before 22:00, the second event at 22:00.
+    ticks = iter([evening, evening + timedelta(seconds=1), evening + timedelta(seconds=2)])
+    monkeypatch.setattr(
+        send_beer_watch_pushes,
+        "timezone",
+        SimpleNamespace(now=lambda: next(ticks), localtime=timezone.localtime),
+    )
+
+    assert len(_send(monkeypatch)) == 1
+    assert BeerTapEvent.objects.filter(fanned_out_at__isnull=True).count() == 1
+
+    settings.BEER_WATCH_QUIET_HOURS = (0, 0)
+    ticks = iter([evening + timedelta(hours=1)] * 3)
+    assert len(_send(monkeypatch)) == 1
+    assert BeerTapEvent.objects.filter(fanned_out_at__isnull=True).count() == 0
 
 
 def test_quiet_hours_window(settings):

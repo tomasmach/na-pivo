@@ -158,6 +158,9 @@ class Command(BaseCommand):
         )
         events = pushes = 0
         for event_id in pending:
+            now = timezone.now()
+            if in_quiet_hours(now):
+                break  # the rest wait for the morning, unclaimed
             # Claimed by exactly one worker run, so an event never fans out twice.
             if not BeerTapEvent.objects.filter(id=event_id, fanned_out_at__isnull=True).update(
                 fanned_out_at=now
