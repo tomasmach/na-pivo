@@ -3,9 +3,9 @@ appId: ${MAESTRO_APP_ID}
 - openLink: ${'napivo:/' + ROUTE}
 - runFlow:
     when:
-      visible: Open
+      visible: 'Open|Otevřít'
     commands:
-      - tapOn: Open
+      - tapOn: 'Open|Otevřít'
 - runFlow:
     when:
       visible: 'Teď ne, nech mě pít v klidu'

@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Buffer } from 'node:buffer';
 import { setTimeout as delay } from 'node:timers/promises';
-import { apiUrl, observer, readState, resetBackend } from '../helpers/backend.ts';
+import { apiUrl, localRequest, observer, readState, resetBackend } from '../helpers/backend.ts';
 import { readHomePoint } from './home-point.mjs';
 import { localMailAction } from './mail.mjs';
-import { appProcess, clipboard, openDevelopmentBundle, openLink, resetApp, screenshot } from './device.mjs';
+import { appProcess, clipboard, deliverPush, openDevelopmentBundle, openLink, resetApp, screenshot } from './device.mjs';
 
 export function controlServer({ online, offline }) {
   const observers = new Map();
@@ -110,6 +110,18 @@ export function controlServer({ online, offline }) {
             }
           } else throw new Error('Unknown capability action.');
         }
+      } else if (request.method === 'POST' && url.pathname === '/beer-tap') {
+        if (body.account !== 'second' || typeof body.pub !== 'string' || typeof body.beer !== 'string') throw new Error('Invalid beer tap fixture.');
+        await localRequest('/__e2e__/beer-tap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      } else if (request.method === 'POST' && url.pathname === '/beer-watch-worker') {
+        await localRequest('/__e2e__/beer-watch-worker', { method: 'POST' });
+      } else if (request.method === 'POST' && url.pathname === '/push/deliver') {
+        const payload = await (await localRequest('/__e2e__/push')).text();
+        const directory = path.join(process.env.NA_PIVO_E2E_OUTPUT, 'private-debug');
+        fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+        const file = path.join(directory, 'push.apns');
+        fs.writeFileSync(file, payload, { mode: 0o600 });
+        deliverPush(file);
       } else if (request.method === 'POST' && url.pathname === '/media') {
         const { addGalleryFixtures } = await import('../helpers/media.ts');
         addGalleryFixtures();

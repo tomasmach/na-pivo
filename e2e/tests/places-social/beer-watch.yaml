@@ -1,0 +1,103 @@
+appId: ${MAESTRO_APP_ID}
+name: Watched beer newly on tap nearby sends one push a day that opens the pub
+tags: [critical, full]
+---
+- runFlow:
+    file: ../../maestro/reset.yaml
+    env:
+      SCENARIO: beer_watch
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow: ../../maestro/login.yaml
+- runScript: beer-watch.js
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Druhá hospoda
+- tapOn: 'E2E Druhá hospoda,.*'
+- assertVisible: E2E Druhá hospoda
+- tapOn: 'E2E Hlídaná 12°.*'
+- evalScript: ${output.local.screenshot('beer-watch-sheet')}
+- tapOn:
+    id: menu-beer-watch
+- evalScript: ${output.local.poll(function () { output.bw.watching(['E2E Hlídaná 12°']); }, 15000)}
+# The first watch asks for notifications; allowing them lets the push show as a real banner.
+- runFlow:
+    when:
+      visible: 'Povolit|Allow'
+    commands:
+      - tapOn: 'Povolit|Allow'
+- tapOn: 'E2E Druhá 11°.*'
+- tapOn:
+    id: menu-beer-watch
+- evalScript: ${output.local.poll(function () { output.bw.watching(['E2E Druhá 11°', 'E2E Hlídaná 12°']); }, 15000)}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: '/beer-detail?beer=E2E%20Hl%C3%ADdan%C3%A1%2012%C2%B0'
+- evalScript: ${output.local.screenshot('beer-watch-detail')}
+# Someone else adds a watched beer to a nearby pub that never poured it.
+- evalScript: ${output.bw.tap('E2E Třetí hospoda', 'E2E Hlídaná 12°')}
+- evalScript: ${output.bw.firstPush()}
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - evalScript: ${output.local.request('/push/deliver', {})}
+      - evalScript: "${output.local.request('/wait', { milliseconds: 1000 })}"
+      - evalScript: "${output.local.request('/wait', { milliseconds: 1000 })}"
+      - evalScript: ${output.local.screenshot('beer-watch-push-banner')}
+      # The banner belongs to SpringBoard, outside the app's view hierarchy.
+      - tapOn:
+          point: 50%,11%
+      - extendedWaitUntil:
+          visible: E2E Třetí hospoda
+          timeout: 15000
+      - evalScript: ${output.local.screenshot('beer-watch-push-opened-pub')}
+# A second new tap the same day is processed but sends nothing.
+- evalScript: ${output.bw.tap('E2E U Testera', 'E2E Druhá 11°')}
+- evalScript: ${output.bw.sameDay()}
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile/beer-watches
+- assertVisible: '.*E2E Hlídaná 12°.*'
+- assertVisible: '.*E2E Druhá 11°.*'
+- evalScript: ${output.local.screenshot('beer-watch-list')}
+- tapOn:
+    id: beer-watch-remove-e2e-druha-11
+- evalScript: ${output.local.poll(function () { output.bw.watching(['E2E Hlídaná 12°']); }, 15000)}
+- assertNotVisible: '.*E2E Druhá 11°.*'
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /profile
+- tapOn: 'Co ještě? Nastavení, žebříčky a další'
+- assertVisible:
+    id: profile-beer-watches
+- evalScript: ${output.local.screenshot('beer-watch-profile-row')}
+# The contributor sees at their lístek entry that it helped one person.
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /account
+- tapOn: Odhlásit se
+- assertNotVisible: Odhlásit se
+- runFlow:
+    file: ../../maestro/login.yaml
+    env:
+      ACCOUNT: second
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /pub-search
+- tapOn: Hledat hospodu
+- inputText: E2E Třetí hospoda
+- tapOn: 'E2E Třetí hospoda,.*'
+- extendedWaitUntil:
+    visible:
+      id: menu-beer-helped
+    timeout: 15000
+- assertVisible: '.*Pomohlo 1 člověku.*'
+- evalScript: ${output.local.screenshot('beer-watch-helped')}
