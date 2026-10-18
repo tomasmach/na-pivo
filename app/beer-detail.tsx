@@ -150,10 +150,8 @@ export default function BeerDetailScreen() {
               onPress={() => void toggleBeerWatch(detail.beerName, detail.breweryName)}
               style={({ pressed }) => [styles.watchButton, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityState={{ selected: watched }}
-              accessibilityLabel={
-                watched ? t.beerWatch.unwatchA11y(detail.beerName) : t.beerWatch.watchA11y(detail.beerName)
-              }
+              accessibilityLabel={watched ? t.beerWatch.watching : t.beerWatch.watch}
+              accessibilityHint={watched ? t.beerWatch.unwatchHint : t.beerWatch.watchHint}
             >
               <BellRingIcon size={16} color={watched ? Colors.amber : Colors.foam} />
               <Text

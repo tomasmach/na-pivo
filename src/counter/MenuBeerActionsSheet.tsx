@@ -55,9 +55,7 @@ export function MenuBeerActionsSheet({
           label: watched ? t.beerWatch.sheetUnwatch : t.beerWatch.sheetWatch,
           icon: BellRingIcon,
           testID: 'menu-beer-watch',
-          accessibilityLabel: watched
-            ? t.beerWatch.unwatchA11y(beer.name)
-            : t.beerWatch.watchA11y(beer.name),
+          accessibilityHint: watched ? undefined : t.beerWatch.watchHint,
           onPress: () => {
             onClose();
             void toggleBeerWatch(beer.name);

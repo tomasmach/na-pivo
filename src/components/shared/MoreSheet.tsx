@@ -50,6 +50,7 @@ export interface MoreRow {
   disabled?: boolean;
   onPress: () => void;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
   accessibilityRole?: AccessibilityRole;
   testID?: string;
 }
@@ -133,6 +134,7 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                     ]}
                     accessibilityRole={row.accessibilityRole ?? 'button'}
                     accessibilityLabel={row.accessibilityLabel ?? row.label}
+                    accessibilityHint={row.accessibilityHint}
                     accessibilityState={{
                       ...(row.selected != null && row.accessibilityRole === 'radio'
                         ? { checked: row.selected }
