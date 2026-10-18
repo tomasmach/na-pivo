@@ -242,9 +242,12 @@ export function AlcoholEstimateSheet({ visible, profile, onEdit, onTurnOff, onCl
 }
 
 const styles = StyleSheet.create({
+  // Sits right above the card's own footer, which brings its top margin.
   coasterRow: {
     ...CardSurface.footer,
     marginTop: 12,
+    paddingTop: 4,
+    paddingBottom: 0,
     minHeight: 44,
   },
   coasterMain: {
