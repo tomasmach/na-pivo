@@ -1,6 +1,6 @@
 /**
- * Hlídaná piva — pushed route `/profile/beer-watches`: how far to watch, the
- * watched beers with a remove button, and why a push might not come.
+ * Hlídaná piva — pushed route `/profile/beer-watches`: the watched beers with a
+ * remove button, how far to watch, and why a push might not come.
  */
 
 import { useCallback, useState } from 'react';
@@ -10,16 +10,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
 import { ChevronLeftIcon, XIcon } from '@/components/shared/IconGlyph';
+import SegmentedPicker from '@/components/shared/SegmentedPicker';
 import { BEER_WATCH_RADII } from '@/data/beerWatchClient';
 import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
 import { t } from '@/i18n';
-import BoardSegmented from '@/leaderboards/BoardSegmented';
-import { notificationsAllowed } from '@/notifications/beerWatchPush';
+import { notificationsDenied } from '@/notifications/beerWatchPush';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useToastStore } from '@/stores/toastStore';
-import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { Colors, withAlpha } from '@/theme/colors';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
 
 import { syncBeerWatchLocation } from './beerWatchLocation';
@@ -50,14 +50,14 @@ export default function BeerWatchesScreen() {
       let alive = true;
       void load();
       void Promise.all([
-        notificationsAllowed(),
+        notificationsDenied(),
         Location.getForegroundPermissionsAsync().then(
           (p) => p.status === Location.PermissionStatus.GRANTED,
           () => false,
         ),
-      ]).then(([notifications, location]) => {
+      ]).then(([notificationsBlocked, location]) => {
         if (!alive) return;
-        setNotificationsOff(!notifications);
+        setNotificationsOff(notificationsBlocked);
         setLocationOff(!location);
       });
       return () => {
@@ -101,11 +101,10 @@ export default function BeerWatchesScreen() {
   );
 
   const radiusIndex = Math.max(0, BEER_WATCH_RADII.findIndex((m) => m === radiusM));
-  const hints = watches.length > 0
-    ? [notificationsOff ? t.beerWatch.notificationsOff : null, locationOff ? t.beerWatch.locationOff : null].filter(
-        (hint): hint is string => hint !== null,
-      )
-    : [];
+  const hints = [
+    notificationsOff ? t.beerWatch.notificationsOff : null,
+    locationOff ? t.beerWatch.locationOff : null,
+  ].filter((hint): hint is string => hint !== null);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
@@ -130,84 +129,90 @@ export default function BeerWatchesScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.amber} />}
         showsVerticalScrollIndicator={false}
       >
-        {loadFailed && !loaded ? (
+        {!loaded ? (
+          loadFailed ? (
+            <View style={styles.errorBar}>
+              <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.beerWatch.loadFailed}
+              </Text>
+              <Pressable
+                onPress={() => void load()}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t.beerWatch.retry}
+                style={({ pressed }) => [styles.errorAction, pressed && styles.pressed]}
+              >
+                <Text style={[styles.linkText, styles.errorActionText]} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.beerWatch.retry}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null
+        ) : watches.length === 0 ? (
           <View style={styles.section}>
-            <Text style={styles.bodyText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.beerWatch.loadFailed}
-            </Text>
-            <Pressable
-              onPress={() => void load()}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={t.beerWatch.retry}
-              style={({ pressed }) => [styles.link, pressed && styles.pressed]}
-            >
-              <Text style={styles.linkText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.beerWatch.retry}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {hints.length > 0 ? (
-          <View style={styles.section}>
-            {hints.map((hint) => (
-              <Text key={hint} style={styles.bodyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {hint}
-              </Text>
-            ))}
-            <Pressable
-              onPress={() => void Linking.openSettings()}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={t.beerWatch.openSettings}
-              style={({ pressed }) => [styles.link, pressed && styles.pressed]}
-            >
-              <Text style={styles.linkText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.beerWatch.openSettings}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        <View style={styles.section}>
-          <SectionHeader label={t.beerWatch.radiusHeader} />
-          <BoardSegmented
-            options={RADIUS_LABELS}
-            value={radiusIndex}
-            onChange={changeRadius}
-            accessibilityLabel={t.beerWatch.radiusA11y}
-            optionTestIDs={RADIUS_TEST_IDS}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <SectionHeader label={t.beerWatch.listHeader} />
-          {watches.length > 0 ? (
-            watches.map((watch, i) => (
-              <HairlineRow key={watch.productKey} first={i === 0}>
-                <View style={styles.row} testID={`beer-watch-row-${watch.productKey}`}>
-                  <Text style={styles.rowTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {watch.name}
-                  </Text>
-                  <Pressable
-                    testID={`beer-watch-remove-${watch.productKey}`}
-                    onPress={() => remove(watch.productKey)}
-                    style={({ pressed }) => [styles.removeBtn, pressed && styles.pressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.beerWatch.unwatchA11y(watch.name)}
-                  >
-                    <XIcon size={18} color={Colors.mutedText} />
-                  </Pressable>
-                </View>
-              </HairlineRow>
-            ))
-          ) : loaded ? (
+            <SectionHeader label={t.beerWatch.listHeader} />
             <Text style={styles.bodyText} maxFontSizeMultiplier={FontScaleCap.body}>
               {t.beerWatch.empty}
             </Text>
-          ) : null}
-        </View>
+          </View>
+        ) : (
+          <>
+            {hints.length > 0 ? (
+              <View style={styles.section}>
+                {hints.map((hint) => (
+                  <Text key={hint} style={styles.bodyText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {hint}
+                  </Text>
+                ))}
+                <Pressable
+                  onPress={() => void Linking.openSettings()}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.beerWatch.openSettings}
+                  style={({ pressed }) => [styles.link, pressed && styles.pressed]}
+                >
+                  <Text style={styles.linkText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.beerWatch.openSettings}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <View style={styles.section}>
+              <SectionHeader label={t.beerWatch.listHeader} />
+              {watches.map((watch, i) => (
+                <HairlineRow key={watch.productKey} first={i === 0}>
+                  <View style={styles.row} testID={`beer-watch-row-${watch.productKey}`}>
+                    <Text style={styles.rowTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {watch.name}
+                    </Text>
+                    <Pressable
+                      testID={`beer-watch-remove-${watch.productKey}`}
+                      onPress={() => remove(watch.productKey)}
+                      style={({ pressed }) => [styles.removeBtn, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.beerWatch.unwatchA11y(watch.name)}
+                    >
+                      <XIcon size={18} color={Colors.mutedText} />
+                    </Pressable>
+                  </View>
+                </HairlineRow>
+              ))}
+            </View>
+
+            <View style={styles.section}>
+              <SectionHeader label={t.beerWatch.radiusHeader} />
+              <SegmentedPicker
+                options={RADIUS_LABELS}
+                value={radiusIndex}
+                onChange={changeRadius}
+                accessibilityLabel={t.beerWatch.radiusA11y}
+                testID="beer-watch-radius"
+                optionTestIDs={RADIUS_TEST_IDS}
+              />
+            </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -234,8 +239,10 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '700',
     fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.2,
     color: Colors.foam,
   },
   pressed: {
@@ -248,8 +255,32 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xl,
     gap: Spacing.xs,
   },
+  errorBar: {
+    marginTop: Spacing.xl,
+    minHeight: HitArea.min,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.22),
+    backgroundColor: withAlpha(Colors.foam, 0.06),
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    color: Colors.foamMuted,
+  },
+  errorAction: {
+    minHeight: HitArea.min,
+    justifyContent: 'center',
+  },
+  errorActionText: {
+    fontSize: 12,
+  },
   bodyText: {
-    fontFamily: Fonts.ui.medium,
     fontSize: 14,
     lineHeight: 19,
     color: Colors.mutedText,
@@ -260,7 +291,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   linkText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.amber,
   },
@@ -273,8 +304,9 @@ const styles = StyleSheet.create({
   rowTitle: {
     flex: 1,
     minWidth: 0,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 16,
+    lineHeight: 21,
     color: Colors.foam,
   },
   removeBtn: {

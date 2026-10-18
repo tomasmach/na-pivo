@@ -71,11 +71,11 @@ export async function consumeInitialBeerOnTapTap(onTap: (pub: BeerOnTapPub) => v
   }
 }
 
-/** True when the OS lets the app show notifications; never prompts. */
-export async function notificationsAllowed(): Promise<boolean> {
+/** True only after the user said no; "not asked yet" is not denied, the first watch asks. Never prompts. */
+export async function notificationsDenied(): Promise<boolean> {
   if (!Notifications) return false;
   try {
-    return (await Notifications.getPermissionsAsync()).status === 'granted';
+    return (await Notifications.getPermissionsAsync()).status === 'denied';
   } catch {
     return false;
   }
