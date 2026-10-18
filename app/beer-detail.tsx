@@ -62,7 +62,7 @@ export default function BeerDetailScreen() {
 
   const [detail, setDetail] = useState<BeerDetail | null>(null);
   const watches = useBeerWatchStore((s) => s.watches);
-  const watched = !!detail && findBeerWatch(watches, detail.beerName) !== null;
+  const watched = !!detail && findBeerWatch(watches, detail.beerName, detail.breweryName) !== null;
   const [failed, setFailed] = useState(() => !beerName);
   const mountedRef = useRef(true);
   useEffect(

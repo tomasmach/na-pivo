@@ -140,6 +140,17 @@ describe('findBeerWatch', () => {
     expect(findBeerWatch([unetice, plzen], 'Kozel')).toBeNull();
     expect(findBeerWatch([unetice], '')).toBeNull();
   });
+
+  it('also tries "{brewery} {beer}" like the server does when adding the watch', () => {
+    const kozel: BeerWatch = {
+      productKey: 'velkopopovicky-kozel-11',
+      name: 'Velkopopovický Kozel 11°',
+      aliases: ['Kozel 11'],
+    };
+    expect(findBeerWatch([kozel], '11', 'Kozel')).toBe(kozel);
+    expect(findBeerWatch([kozel], '11')).toBeNull();
+    expect(findBeerWatch([kozel], '', 'Kozel')).toBeNull();
+  });
 });
 
 describe('helpedCountFor', () => {

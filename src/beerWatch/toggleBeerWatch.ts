@@ -18,7 +18,7 @@ export async function toggleBeerWatch(beerName: string, breweryName?: string | n
   const toast = useToastStore.getState().show;
   try {
     const store = useBeerWatchStore.getState();
-    const existing = findBeerWatch(store.watches, beerName);
+    const existing = findBeerWatch(store.watches, beerName, breweryName);
     if (existing) {
       const ok = await store.unwatch(existing.productKey);
       toast(ok ? t.beerWatch.unwatchedToast : t.beerWatch.failedToast);

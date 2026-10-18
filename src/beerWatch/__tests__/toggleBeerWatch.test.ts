@@ -59,6 +59,17 @@ it('stops watching a beer matched by alias', async () => {
   expect(useToastStore.getState().message).toBe(t.beerWatch.unwatchedToast);
 });
 
+it('stops watching a beer the server matched through its brewery', async () => {
+  const kozel = { productKey: 'velkopopovicky-kozel-11', name: 'Velkopopovický Kozel 11°', aliases: ['Kozel 11'] };
+  useBeerWatchStore.setState({ watches: [kozel] });
+  mockRemove.mockResolvedValue(true);
+
+  await toggleBeerWatch('11', 'Kozel');
+
+  expect(mockRemove).toHaveBeenCalledWith('velkopopovicky-kozel-11');
+  expect(mockAdd).not.toHaveBeenCalled();
+});
+
 it.each([
   ['unknown_beer', t.beerWatch.unknownBeerToast],
   ['too_many', t.beerWatch.tooManyToast],

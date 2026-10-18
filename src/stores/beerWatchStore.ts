@@ -119,17 +119,25 @@ export const useBeerWatchStore = create<BeerWatchState>((set, get) => ({
   },
 }));
 
-/** The watch whose catalog name or alias is this lístek name, if any. */
-export function findBeerWatch(watches: readonly BeerWatch[], beerName: string): BeerWatch | null {
-  const name = normalizeBeerName(beerName);
-  if (!name) return null;
-  return (
+/**
+ * The watch whose catalog name or alias is this beer name, if any. Like the
+ * server when it adds a watch, falls back to "{brewery} {beer}".
+ */
+export function findBeerWatch(
+  watches: readonly BeerWatch[],
+  beerName: string,
+  breweryName?: string | null,
+): BeerWatch | null {
+  const find = (name: string) =>
     watches.find(
       (w) =>
         normalizeBeerName(w.name) === name ||
         w.aliases.some((alias) => normalizeBeerName(alias) === name),
-    ) ?? null
-  );
+    ) ?? null;
+  const beer = normalizeBeerName(beerName);
+  if (!beer) return null;
+  const brewery = normalizeBeerName(breweryName ?? '');
+  return find(beer) ?? (brewery ? find(`${brewery} ${beer}`) : null);
 }
 
 /** How many people this account's lístek edit at the pub helped with this beer. */
