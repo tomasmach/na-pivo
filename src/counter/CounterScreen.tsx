@@ -123,6 +123,9 @@ import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { CounterMoreSheet } from '@/counter/CounterMoreSheet';
 import { PlaceChip, type PlaceChipKind } from '@/counter/PlaceChip';
 import { CoasterCard } from '@/counter/CoasterCard';
+import { AlcoholEstimateRow, AlcoholEstimateSheet } from '@/counter/AlcoholEstimateSheet';
+import { AlcoholProfileSheet } from '@/counter/AlcoholProfileSheet';
+import type { BodyProfile } from '@/drinks/alcoholEstimate';
 import { CounterQuickActions } from '@/counter/CounterQuickActions';
 import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
@@ -394,6 +397,7 @@ function Tacek({
   const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
   const [stickerOpen, setStickerOpen] = useState(false);
   const [checkInSheetOpen, setCheckInSheetOpen] = useState(false);
+  const [alcoholSheet, setAlcoholSheet] = useState<'estimate' | 'profile' | null>(null);
 
   // — Beer form —
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
@@ -563,6 +567,47 @@ function Tacek({
     },
     [closeMore],
   );
+
+  const bodyProfile = useSettingsStore((s) => s.bodyProfile);
+  const setBodyProfile = useSettingsStore((s) => s.setBodyProfile);
+  const alcoholTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (alcoholTimer.current) clearTimeout(alcoholTimer.current);
+  }, []);
+  const openAlcoholSheet = useCallback((next: 'estimate' | 'profile' | null) => {
+    if (alcoholTimer.current) clearTimeout(alcoholTimer.current);
+    alcoholTimer.current = null;
+    setAlcoholSheet(next);
+  }, []);
+  /** iOS will not present a modal while another one is still leaving. */
+  const switchAlcoholSheet = useCallback((next: 'estimate' | 'profile' | null, then?: () => void) => {
+    setAlcoholSheet(null);
+    if (alcoholTimer.current) clearTimeout(alcoholTimer.current);
+    alcoholTimer.current = setTimeout(() => {
+      alcoholTimer.current = null;
+      setAlcoholSheet(next);
+      then?.();
+    }, SHEET_DISMISS_MS);
+  }, []);
+  const handleAlcoholProfileSave = useCallback(
+    (profile: BodyProfile) => {
+      setBodyProfile(profile);
+      switchAlcoholSheet('estimate');
+    },
+    [setBodyProfile, switchAlcoholSheet],
+  );
+  const handleAlcoholTurnOff = useCallback(() => {
+    switchAlcoholSheet(null, () =>
+      showAppDialog({
+        title: t.alcohol.turnOffTitle,
+        message: t.alcohol.turnOffMessage,
+        buttons: [
+          { text: t.counter.cancel, style: 'cancel', onPress: () => openAlcoholSheet('estimate') },
+          { text: t.alcohol.turnOffConfirm, style: 'destructive', onPress: () => setBodyProfile(null) },
+        ],
+      }),
+    );
+  }, [openAlcoholSheet, setBodyProfile, switchAlcoholSheet]);
 
   // ── Session state ───────────────────────────────────────────────────────────
 
@@ -1769,6 +1814,7 @@ function Tacek({
           onPickOther={showQuickOtherBeer ? handlePickOpen : undefined}
           onMapPub={pub ? () => setMapPubOpen(true) : undefined}
         />
+        {bodyProfile ? <AlcoholEstimateRow onPress={() => openAlcoholSheet('estimate')} /> : null}
       </CoasterCard>
 
       <NudgeSlot nudge={nudge} />
@@ -1824,6 +1870,22 @@ function Tacek({
         onBackdate={() => runAfterSheetClose(handleBackdatePress)}
         onScanMenu={pub ? () => runAfterSheetClose(() => setScanSourceVisible(true)) : undefined}
         scanning={scanningDrinks}
+        onAlcoholEstimate={() => runAfterSheetClose(() => openAlcoholSheet(bodyProfile ? 'estimate' : 'profile'))}
+      />
+
+      <AlcoholEstimateSheet
+        visible={alcoholSheet === 'estimate'}
+        profile={bodyProfile}
+        onEdit={() => switchAlcoholSheet('profile')}
+        onTurnOff={handleAlcoholTurnOff}
+        onClose={() => setAlcoholSheet(null)}
+      />
+
+      <AlcoholProfileSheet
+        visible={alcoholSheet === 'profile'}
+        profile={bodyProfile}
+        onSave={handleAlcoholProfileSave}
+        onClose={() => setAlcoholSheet(null)}
       />
 
       <BeerFormModal

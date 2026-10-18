@@ -93,7 +93,7 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/components/shared/IconGlyph', () => {
   const names = [
-    'BeerIcon', 'BeerOffIcon', 'CompassIcon', 'Undo2Icon', 'LockKeyholeIcon', 'EyeIcon',
+    'GaugeIcon', 'BeerIcon', 'BeerOffIcon', 'CompassIcon', 'Undo2Icon', 'LockKeyholeIcon', 'EyeIcon',
     'EyeOffIcon', 'MapPinIcon', 'ExternalLinkIcon', 'RefreshCwIcon', 'SettingsIcon',
     'BellRingIcon', 'Volume2Icon', 'InfoIcon', 'ShieldIcon', 'ChevronLeftIcon',
     'ChevronRightIcon', 'ChevronDownIcon', 'HeartIcon', 'FlagIcon', 'MessageSquareIcon',

@@ -86,6 +86,23 @@ describe('useSettingsStore', () => {
     expect(useSettingsStore.getState().hideClosedPubs).toBe(false);
   });
 
+  it('restores a saved body profile and drops a malformed one', async () => {
+    const storage = currentAsyncStorage();
+    const profile = { sex: 'female', age: 29, heightCm: 168, weightKg: 61 };
+    await storage.setItem('na-pivo-settings', JSON.stringify({ state: { bodyProfile: profile }, version: 2 }));
+
+    const { useSettingsStore } = require('../settingsStore');
+    await (useSettingsStore.persist as any).rehydrate?.();
+    expect(useSettingsStore.getState().bodyProfile).toEqual(profile);
+
+    await storage.setItem('na-pivo-settings', JSON.stringify({
+      state: { bodyProfile: { ...profile, weightKg: 'lots' } },
+      version: 2,
+    }));
+    await (useSettingsStore.persist as any).rehydrate?.();
+    expect(useSettingsStore.getState().bodyProfile).toBeNull();
+  });
+
   it('stores only an explicitly set home point and navigation provider', async () => {
     const { useSettingsStore } = require('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();

@@ -94,6 +94,7 @@ const PRIVATE_SETTINGS_DEFAULTS = {
   homePoint: null,
   marketingEmailsEnabled: false,
   lastSeenPartyStreak: 0,
+  bodyProfile: null,
   pendingAccountPreferences: {},
   pendingAccountPreferencesOwnerId: null,
 };
