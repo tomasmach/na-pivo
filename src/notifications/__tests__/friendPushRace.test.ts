@@ -3,7 +3,7 @@ import * as Notifications from 'expo-notifications';
 
 import { disableFriendPush, ensureFriendPushRegisteredIfGranted, registerFriendPush } from '../friendPush';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
+import { disableCachedPushDeviceWithBearer, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -22,20 +22,30 @@ jest.mock('@/utils/appVersion', () => ({ getAppVersionLabel: () => 'test' }));
 
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 const originalFetch = global.fetch;
-let serverEnabled: boolean;
+// Parta pushes the server would send to this device.
+let serverParta: boolean;
 let requests: string[];
+
+/** 'PUT on' / 'PUT off' (Parta) or 'DELETE' (whole device). */
+function requestKind(init?: RequestInit): string {
+  if (init?.method !== 'PUT') return init?.method ?? '';
+  const friendPush = JSON.parse(init.body as string).friend_push;
+  return friendPush === true ? 'PUT on' : friendPush === false ? 'PUT off' : 'PUT without friend_push';
+}
+function apply(init?: RequestInit): void {
+  serverParta = requestKind(init) === 'PUT on';
+}
 
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
   await useSettingsStore.persist.rehydrate();
   useSettingsStore.setState({ friendPushEnabled: true, friendPushOptedOut: false });
-  serverEnabled = true;
+  serverParta = true;
   requests = [];
   global.fetch = jest.fn(async (_url: unknown, init?: RequestInit) => {
-    const method = init?.method ?? '';
-    requests.push(method);
-    serverEnabled = method === 'PUT';
+    requests.push(requestKind(init));
+    apply(init);
     return { ok: true, status: 200, json: async () => ({}) } as Response;
   }) as typeof fetch;
 });
@@ -43,11 +53,11 @@ afterEach(() => { global.fetch = originalFetch; });
 
 it.each(['silent', 'explicit'] as const)('keeps the server and persisted choice off after a delayed %s registration', async (mode) => {
   let finishPut!: () => void;
-  jest.mocked(global.fetch).mockImplementationOnce(async () => {
-    requests.push('PUT started');
+  jest.mocked(global.fetch).mockImplementationOnce(async (_url, init) => {
+    requests.push(`${requestKind(init)} started`);
     await new Promise<void>((resolve) => { finishPut = resolve; });
-    serverEnabled = true;
-    requests.push('PUT applied');
+    apply(init);
+    requests.push(`${requestKind(init)} applied`);
     return { ok: true, status: 200, json: async () => ({}) } as Response;
   });
   const registration = mode === 'silent' ? ensureFriendPushRegisteredIfGranted() : registerFriendPush();
@@ -57,10 +67,11 @@ it.each(['silent', 'explicit'] as const)('keeps the server and persisted choice 
   await settle();
   finishPut();
   await Promise.all([registration, disabling]);
-  expect(serverEnabled).toBe(false);
+  expect(serverParta).toBe(false);
   expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
   expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
-  expect(requests).toEqual(['PUT started', 'PUT applied', 'DELETE']);
+  // The opt-out keeps the device registered (beer watch) and only turns Parta off.
+  expect(requests).toEqual(['PUT on started', 'PUT on applied', 'PUT off']);
   const persisted = JSON.parse((await AsyncStorage.getItem('na-pivo-settings'))!);
   expect(persisted.state.friendPushOptedOut).toBe(true);
 });
@@ -75,8 +86,9 @@ it('also disables a token that was not acquired until after the opt-out', async 
   await settle();
   finishToken({ data: 'ExponentPushToken[synthetic-late]', type: 'expo' });
   await Promise.all([registration, disabling]);
-  expect(serverEnabled).toBe(false);
-  expect(requests.at(-1)).toBe('DELETE');
+  expect(serverParta).toBe(false);
+  expect(requests.at(-1)).toBe('PUT off');
+  expect(requests).not.toContain('DELETE');
 });
 
 it('retries an offline opt-out on focus using the persisted choice', async () => {
@@ -86,20 +98,19 @@ it('retries an offline opt-out on focus using the persisted choice', async () =>
   await expect(disableFriendPush()).resolves.toBe(false);
   await useSettingsStore.persist.rehydrate();
   await ensureFriendPushRegisteredIfGranted();
-  expect(requests).toEqual(['DELETE']);
-  expect(serverEnabled).toBe(false);
+  expect(requests).toEqual(['PUT off']);
+  expect(serverParta).toBe(false);
   expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
-  expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
 });
 
 it('lets a later explicit enable win over an in-flight disable', async () => {
   await AsyncStorage.setItem(PUSH_TOKEN_KEY, 'ExponentPushToken[synthetic-race]');
-  let finishDelete!: () => void;
-  jest.mocked(global.fetch).mockImplementationOnce(async () => {
-    requests.push('DELETE started');
-    await new Promise<void>((resolve) => { finishDelete = resolve; });
-    serverEnabled = false;
-    requests.push('DELETE applied');
+  let finishOptOut!: () => void;
+  jest.mocked(global.fetch).mockImplementationOnce(async (_url, init) => {
+    requests.push(`${requestKind(init)} started`);
+    await new Promise<void>((resolve) => { finishOptOut = resolve; });
+    apply(init);
+    requests.push(`${requestKind(init)} applied`);
     return { ok: true, status: 200, json: async () => ({}) } as Response;
   });
   useSettingsStore.setState({ friendPushEnabled: false, friendPushOptedOut: true });
@@ -107,12 +118,12 @@ it('lets a later explicit enable win over an in-flight disable', async () => {
   await settle();
   const registration = registerFriendPush();
   await settle();
-  finishDelete();
+  finishOptOut();
   await Promise.all([disabling, registration]);
-  expect(serverEnabled).toBe(true);
+  expect(serverParta).toBe(true);
   expect(useSettingsStore.getState().friendPushEnabled).toBe(true);
   expect(useSettingsStore.getState().friendPushOptedOut).toBe(false);
-  expect(requests).toEqual(['DELETE started', 'DELETE applied', 'PUT']);
+  expect(requests).toEqual(['PUT off started', 'PUT off applied', 'PUT on']);
 });
 
 it('waits for the saved opt-out before doing any startup registration', async () => {
@@ -130,9 +141,8 @@ it('waits for the saved opt-out before doing any startup registration', async ()
     expect(requests).toEqual([]);
     finishHydration(storedSettings);
     await Promise.all([restoring, registration]);
-    expect(requests).toEqual(['DELETE']);
-    expect(serverEnabled).toBe(false);
-    expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
+    expect(requests).toEqual(['PUT off']);
+    expect(serverParta).toBe(false);
   } finally {
     storageRead.mockImplementation(getItem);
   }
@@ -158,4 +168,24 @@ it('does not report success when a stale registration was ignored by the server'
   await expect(registerFriendPush()).resolves.toEqual({ ok: false, reason: 'unavailable' });
   expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
   expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
+});
+
+it('does not touch the server on opt-out without permission', async () => {
+  await AsyncStorage.setItem(PUSH_TOKEN_KEY, 'ExponentPushToken[synthetic-race]');
+  jest.mocked(Notifications.getPermissionsAsync).mockResolvedValueOnce({
+    status: 'denied',
+  } as Notifications.NotificationPermissionsStatus);
+  await expect(disableFriendPush()).resolves.toBe(true);
+  expect(requests).toEqual([]);
+});
+
+it('still disables the whole device with DELETE on logout', async () => {
+  await AsyncStorage.setItem(PUSH_TOKEN_KEY, 'ExponentPushToken[synthetic-race]');
+  await expect(disableCachedPushDeviceWithBearer('synthetic-bearer')).resolves.toBe(true);
+  expect(requests).toEqual(['DELETE']);
+  const [, init] = jest.mocked(global.fetch).mock.calls[0];
+  expect(JSON.parse(init!.body as string)).toEqual({
+    push_token: 'ExponentPushToken[synthetic-race]',
+    client_revision: expect.any(Number),
+  });
 });

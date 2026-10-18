@@ -5,6 +5,7 @@ import {
   disableFriendPush,
   ensureFriendPushRegisteredIfGranted,
   registerFriendPush,
+  requestPushRegistration,
 } from '../friendPush';
 import { useSettingsStore } from '@/stores/settingsStore';
 
@@ -130,11 +131,61 @@ it('returns a retryable failure if the permission API throws', async () => {
   expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
 });
 
-it('disables the device server-side on toggle-off', async () => {
+it('keeps the device registered on Parta toggle-off instead of deleting it', async () => {
   await AsyncStorage.setItem('na-pivo-expo-push-token', 'ExponentPushToken[test]');
 
   await expect(disableFriendPush()).resolves.toBe(true);
-  expect(mockDisablePushDevice).toHaveBeenCalledWith('ExponentPushToken[test]');
+  // The re-registration reads the persisted opt-out and sends friend_push: false.
+  expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
+  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted');
+  expect(mockDisablePushDevice).not.toHaveBeenCalled();
+});
+
+it('re-registers an opted-out grantee on launch without lighting Parta up', async () => {
+  await AsyncStorage.setItem('na-pivo-expo-push-token', 'ExponentPushToken[test]');
+  useSettingsStore.setState({ friendPushEnabled: false, friendPushOptedOut: true });
+
+  await ensureFriendPushRegisteredIfGranted();
+
+  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted');
+  expect(mockDisablePushDevice).not.toHaveBeenCalled();
+  expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
+});
+
+it('sends Parta on explicitly when the user turns it back on', async () => {
+  useSettingsStore.setState({ friendPushOptedOut: true });
+
+  await registerFriendPush();
+
+  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted', true);
+});
+
+describe('requestPushRegistration (beer watch)', () => {
+  it('asks only while undecided and keeps the Parta choice', async () => {
+    jest.mocked(Notifications.getPermissionsAsync).mockResolvedValueOnce({
+      status: 'undetermined',
+    } as Notifications.NotificationPermissionsStatus);
+    useSettingsStore.setState({ friendPushOptedOut: true, friendPushEnabled: false });
+
+    await expect(requestPushRegistration()).resolves.toBe('registered');
+
+    expect(Notifications.requestPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted', undefined);
+    expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
+    expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
+    expect(useSettingsStore.getState().friendPushPrompted).toBe(false);
+  });
+
+  it('does not prompt again after a denial and reports it', async () => {
+    jest.mocked(Notifications.getPermissionsAsync).mockResolvedValueOnce({
+      status: 'denied',
+    } as Notifications.NotificationPermissionsStatus);
+
+    await expect(requestPushRegistration()).resolves.toBe('denied');
+
+    expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    expect(mockEnsurePushTokenRegistered).not.toHaveBeenCalled();
+  });
 });
 
 it('treats a missing token as already-disabled without a server call', async () => {

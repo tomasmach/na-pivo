@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearLocalPrivateAccountData } from '../privateAccountData';
 import { pulledRecently, trackForegroundPull } from '../foregroundPulls';
+import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
@@ -46,6 +47,7 @@ const PRIVATE_KEYS = [
   'na-pivo-pub-amenities-queue',
   'na-pivo-community',
   'na-pivo-pub',
+  'na-pivo-beer-watch-location-v1',
 ];
 
 function session(overrides: Partial<TallySession> = {}): TallySession {
@@ -121,6 +123,14 @@ it('clears local private stores and private sync queue storage', async () => {
     reportedCacheKeys: ['u2fkbn1x'],
   });
 
+  useBeerWatchStore.setState({
+    watches: [{ productKey: 'unetice-12', name: 'Únětická 12°', aliases: [] }],
+    helped: [{ cacheKey: 'u2fkbn1x', productName: 'Únětická 12°', helpedCount: 2 }],
+    radiusM: 10000,
+    locationSet: true,
+    loaded: true,
+  });
+
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
   }
@@ -146,6 +156,13 @@ it('clears local private stores and private sync queue storage', async () => {
   expect(usePubStore.getState().revealedPub).toBeNull();
   expect(usePubStore.getState().reportedPubIds).toEqual([]);
   expect(usePubStore.getState().reportedCacheKeys).toEqual([]);
+  expect(useBeerWatchStore.getState()).toMatchObject({
+    watches: [],
+    helped: [],
+    radiusM: 3000,
+    locationSet: false,
+    loaded: false,
+  });
   expect(useSettingsStore.getState().homePoint).toBeNull();
   expect(useSettingsStore.getState().navigationProvider).toBe('mapy');
 

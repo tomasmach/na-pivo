@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 import { locale } from '@/i18n';
+import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 
 import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
@@ -40,6 +41,8 @@ export async function registerPushDevice(
   pushToken: string,
   permissionStatus: PushPermissionStatus,
   signal?: AbortSignal,
+  /** Parta pushes; defaults to the persisted Parta choice. */
+  friendPush?: boolean,
 ): Promise<boolean> {
   const endpoint = getBackendEndpoint('/v1/push-device');
   if (!endpoint || signal?.aborted) return false;
@@ -47,8 +50,12 @@ export async function registerPushDevice(
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return false;
 
+  await waitForSettingsHydration();
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
+    const clientRevision = await nextRevision();
+    // Read after the revision is taken: a Parta opt-out made later sends a newer revision.
+    const partaPush = friendPush ?? !useSettingsStore.getState().friendPushOptedOut;
     const resp = await fetch(endpoint, {
       method: 'PUT',
       headers: {
@@ -56,13 +63,14 @@ export async function registerPushDevice(
         Authorization: `Bearer ${session.token}`,
       },
       body: JSON.stringify({
-        client_revision: await nextRevision(),
+        client_revision: clientRevision,
         push_token: pushToken,
         platform: Platform.OS === 'android' || Platform.OS === 'ios' ? Platform.OS : 'unknown',
         permission_status: permissionStatus,
         enabled: permissionStatus === 'granted',
         app_version: getAppVersionLabel(),
         locale,
+        friend_push: partaPush,
       }),
       signal: abort.signal,
     });

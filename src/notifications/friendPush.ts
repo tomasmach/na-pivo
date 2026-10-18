@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type * as ExpoNotifications from 'expo-notifications';
 
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
-import { disablePushDevice, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
+import { PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
 import { ensurePushTokenRegistered } from '@/notifications/pushToken';
 
 type NotificationsModule = typeof ExpoNotifications;
@@ -34,7 +34,7 @@ export type FriendPushResult =
   | { ok: true }
   | { ok: false; reason: 'denied' | 'unavailable' | 'cancelled' };
 
-// A DELETE must follow every earlier registration, including token acquisition.
+// An opt-out must follow every earlier registration, including token acquisition.
 // Cancelling fetch is insufficient: the server may already be applying its PUT.
 let pendingChange: Promise<unknown> = Promise.resolve();
 let choiceVersion = 0;
@@ -45,13 +45,62 @@ function inOrder<T>(operation: () => Promise<T>): Promise<T> {
   return result;
 }
 
-async function disableCachedDevice(): Promise<boolean> {
+/**
+ * The Parta opt-out keeps the device registered for other pushes (beer watch);
+ * the PUT tells the server to skip Parta. Without a token or permission there
+ * is nothing to update.
+ */
+async function keepDeviceWithoutParta(): Promise<boolean> {
   try {
     const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
-    return token ? await disablePushDevice(token) : true;
+    if (!token || !Notifications) return true;
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') return true;
+    return (await ensurePushTokenRegistered('granted')) !== null;
   } catch {
     return false;
   }
+}
+
+export type PushRegistration = 'registered' | 'denied' | 'unavailable' | 'cancelled';
+
+/** Ask for notifications when undetermined, then register this device's token. */
+async function requestAndRegister(
+  isCurrent: () => boolean,
+  friendPush?: boolean,
+): Promise<PushRegistration> {
+  if (!Notifications) return 'unavailable';
+  try {
+    const existing = await Notifications.getPermissionsAsync();
+    if (!isCurrent()) return 'cancelled';
+    let status = existing.status;
+    if (status === 'undetermined') {
+      const requested = await Notifications.requestPermissionsAsync({
+        ios: { allowAlert: true, allowBadge: false, allowSound: false },
+      });
+      status = requested.status;
+    }
+    if (!isCurrent()) return 'cancelled';
+    if (status !== 'granted') return 'denied';
+    const token = await ensurePushTokenRegistered('granted', friendPush);
+    if (!isCurrent()) return 'cancelled';
+    return token ? 'registered' : 'unavailable';
+  } catch {
+    // Native permission APIs can be unavailable in an incompatible client.
+    return 'unavailable';
+  }
+}
+
+/**
+ * Notification permission for a non-Parta feature (beer watch): prompts only
+ * when undetermined and keeps the Parta choice as it is.
+ */
+export function requestPushRegistration(): Promise<Exclude<PushRegistration, 'cancelled'>> {
+  return inOrder(async () => {
+    await waitForSettingsHydration();
+    const outcome = await requestAndRegister(() => true);
+    return outcome === 'cancelled' ? 'unavailable' : outcome;
+  });
 }
 
 /** Request notification permission and confirm the latest opt-in on the server. */
@@ -65,41 +114,20 @@ export function registerFriendPush(): Promise<FriendPushResult> {
       useSettingsStore.getState();
     setFriendPushPrompted(true);
 
-    try {
-      if (Notifications) {
-        const existing = await Notifications.getPermissionsAsync();
-        if (!isCurrent()) return { ok: false, reason: 'cancelled' };
-        let status = existing.status;
-        if (status === 'undetermined') {
-          const requested = await Notifications.requestPermissionsAsync({
-            ios: { allowAlert: true, allowBadge: false, allowSound: false },
-          });
-          status = requested.status;
-        }
-        if (!isCurrent()) return { ok: false, reason: 'cancelled' };
-        if (status !== 'granted') {
-          setFriendPushEnabled(false);
-          return { ok: false, reason: 'denied' };
-        }
-        const token = await ensurePushTokenRegistered('granted');
-        if (!isCurrent()) return { ok: false, reason: 'cancelled' };
-        if (token) {
-          setFriendPushOptedOut(false);
-          setFriendPushEnabled(true);
-          return { ok: true };
-        }
-      }
-    } catch {
-      // Native permission APIs can be unavailable in an incompatible client.
+    const outcome = await requestAndRegister(isCurrent, true);
+    if (outcome === 'cancelled' || !isCurrent()) return { ok: false, reason: 'cancelled' };
+    if (outcome === 'registered') {
+      setFriendPushOptedOut(false);
+      setFriendPushEnabled(true);
+      return { ok: true };
     }
-    if (!isCurrent()) return { ok: false, reason: 'cancelled' };
     setFriendPushEnabled(false);
-    return { ok: false, reason: 'unavailable' };
+    return { ok: false, reason: outcome };
   });
 }
 
 /**
- * Persist the opt-out and disable this device after earlier registrations finish.
+ * Persist the opt-out and tell the server after earlier registrations finish.
  * Keep the choice on failure so launch/focus/foreground can retry it. Local pub
  * reminders have their own permission gate and do not change this device token.
  */
@@ -109,7 +137,7 @@ export function disableFriendPush(): Promise<boolean> {
   // background/termination while waiting for an older network request.
   useSettingsStore.getState().setFriendPushEnabled(false);
   useSettingsStore.getState().setFriendPushOptedOut(true);
-  return inOrder(disableCachedDevice);
+  return inOrder(keepDeviceWithoutParta);
 }
 
 /** Reconcile the persisted choice on launch, Parta focus and app foreground. */
@@ -119,7 +147,7 @@ export function ensureFriendPushRegisteredIfGranted(): Promise<void> {
     await waitForSettingsHydration();
     if (version !== choiceVersion) return;
     if (useSettingsStore.getState().friendPushOptedOut) {
-      await disableCachedDevice();
+      await keepDeviceWithoutParta();
       return;
     }
     if (!Notifications) return;

@@ -31,7 +31,10 @@ const Notifications = loadNotifications();
  * the device on the backend. Returns the token, or null when unavailable. No-ops
  * unless `status === 'granted'`.
  */
-export async function ensurePushTokenRegistered(status: PushPermissionStatus): Promise<string | null> {
+export async function ensurePushTokenRegistered(
+  status: PushPermissionStatus,
+  friendPush?: boolean,
+): Promise<string | null> {
   if (isLocalE2E()) return null;
   if (status !== 'granted' || !Notifications) return null;
   try {
@@ -42,7 +45,7 @@ export async function ensurePushTokenRegistered(status: PushPermissionStatus): P
       : await Notifications.getExpoPushTokenAsync();
     const token = response.data;
     await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
-    const registered = await registerPushDevice(token, status);
+    const registered = await registerPushDevice(token, status, undefined, friendPush);
     return registered ? token : null;
   } catch {
     return null;

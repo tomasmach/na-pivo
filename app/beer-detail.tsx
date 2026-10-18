@@ -4,16 +4,18 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BeerTagChips, sortTagsByCount } from '@/components/shared/BeerTagChips';
-import { BeerIcon, ChevronLeftIcon, StarIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, BellRingIcon, ChevronLeftIcon, StarIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import { toggleBeerWatch } from '@/beerWatch/toggleBeerWatch';
 import { fetchBeerDetail, type BeerDetail } from '@/data/beerCheckinsClient';
 import { FriendMini } from '@/friends/FriendMini';
 import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { t, intlLocale } from '@/i18n';
+import { findBeerWatch, useBeerWatchStore } from '@/stores/beerWatchStore';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 function shortDate(iso: string): string {
@@ -59,6 +61,8 @@ export default function BeerDetailScreen() {
   }, [params.brewery]);
 
   const [detail, setDetail] = useState<BeerDetail | null>(null);
+  const watches = useBeerWatchStore((s) => s.watches);
+  const watched = !!detail && findBeerWatch(watches, detail.beerName) !== null;
   const [failed, setFailed] = useState(() => !beerName);
   const mountedRef = useRef(true);
   useEffect(
@@ -141,6 +145,24 @@ export default function BeerDetailScreen() {
                 {t.beerCheckins.detailSinceMonth(sinceMonth)}
               </Text>
             ) : null}
+            <Pressable
+              testID="beer-watch-toggle"
+              onPress={() => void toggleBeerWatch(detail.beerName, detail.breweryName)}
+              style={({ pressed }) => [styles.watchButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: watched }}
+              accessibilityLabel={
+                watched ? t.beerWatch.unwatchA11y(detail.beerName) : t.beerWatch.watchA11y(detail.beerName)
+              }
+            >
+              <BellRingIcon size={16} color={watched ? Colors.amber : Colors.foam} />
+              <Text
+                style={[styles.watchLabel, watched && styles.watchLabelOn]}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {watched ? t.beerWatch.watching : t.beerWatch.watch}
+              </Text>
+            </Pressable>
           </View>
 
           <View style={styles.statsRow}>
@@ -304,6 +326,27 @@ const styles = StyleSheet.create({
   },
   rowTags: {
     marginTop: 4,
+  },
+  watchButton: {
+    minHeight: HitArea.min,
+    marginTop: Spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    paddingHorizontal: Spacing.lg,
+  },
+  watchLabel: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 14,
+    color: Colors.foam,
+  },
+  watchLabelOn: {
+    color: Colors.amber,
+  },
+  pressed: {
+    opacity: 0.65,
   },
   statsRow: {
     flexDirection: 'row',

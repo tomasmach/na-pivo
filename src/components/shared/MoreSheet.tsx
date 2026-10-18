@@ -51,6 +51,7 @@ export interface MoreRow {
   onPress: () => void;
   accessibilityLabel?: string;
   accessibilityRole?: AccessibilityRole;
+  testID?: string;
 }
 
 export interface MoreSheetProps {
@@ -122,6 +123,7 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                 return (
                   <Pressable
                     key={row.key}
+                    testID={row.testID}
                     onPress={row.onPress}
                     disabled={row.disabled}
                     style={({ pressed }) => [
