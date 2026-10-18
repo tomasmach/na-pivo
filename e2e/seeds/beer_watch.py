@@ -79,6 +79,7 @@ def observe():
                 "product__name", flat=True
             )
         ),
+        "radiusM": Account.objects.get(nickname="E2EPivar").beer_watch_radius_m,
         "locationSet": Account.objects.filter(
             nickname="E2EPivar", beer_watch_located_at__isnull=False
         ).exists(),

@@ -65,6 +65,8 @@ tags: [critical, full]
 - assertVisible: '.*E2E Hlídaná 12°.*'
 - assertVisible: '.*E2E Druhá 11°.*'
 - evalScript: ${output.local.screenshot('beer-watch-list')}
+- tapOn: 5 km
+- evalScript: ${output.local.poll(function () { output.local.check(output.local.state().scenario.radiusM === 5000, 'The chosen 5 km radius is stored on the server.'); }, 15000)}
 - tapOn:
     id: beer-watch-remove-e2e-druha-11
 - evalScript: ${output.local.poll(function () { output.bw.watching(['E2E Hlídaná 12°']); }, 15000)}
