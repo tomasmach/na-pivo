@@ -547,6 +547,12 @@ export default function PubPageScreen() {
   const actionBeerEditable =
     !!actionBeer && !!editableTaps?.some((b) => isSameBeerIdentity(b, actionBeer));
   const beerHelped = useBeerWatchStore((s) => s.helped);
+  // After a login the launch pull belongs to the previous account.
+  useEffect(() => {
+    if (useAccountStore.getState().session && !useBeerWatchStore.getState().loaded) {
+      void useBeerWatchStore.getState().refresh();
+    }
+  }, []);
   /** The pub a beer's options were opened for: a write never lands elsewhere. */
   const tapsTargetRef = useRef<{ key: string | undefined; pubId: string | null } | null>(null);
 
