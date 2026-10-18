@@ -70,6 +70,13 @@ import {
   ensureFriendPushRegisteredIfGranted,
   subscribeTourInviteTap,
 } from '@/notifications/friendPush';
+import {
+  consumeInitialBeerOnTapTap,
+  subscribeBeerOnTapTap,
+  type BeerOnTapPub,
+} from '@/notifications/beerWatchPush';
+import { syncBeerWatchLocation } from '@/beerWatch/beerWatchLocation';
+import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { ContestResultsModal } from '@/photos/ContestResultsModal';
@@ -180,6 +187,14 @@ function trackPull(name: ForegroundPull, run: () => Promise<boolean>): Promise<b
   return trackForegroundPull(name, run, currentAccountId);
 }
 
+function refreshBeerWatches(pullFromServer: boolean): void {
+  if (!currentAccountId()) return;
+  const pulled = pullFromServer
+    ? trackPull('beerWatches', () => useBeerWatchStore.getState().refresh())
+    : Promise.resolve(true);
+  void pulled.then(() => syncBeerWatchLocation());
+}
+
 function restoreAndFlushAddedPubsQueue(pullOwnAddedPubs = true): void {
   void restoreQueuedAddedPubs()
     .then((restoredCount) => {
@@ -267,21 +282,29 @@ export default function RootLayout() {
       router.push((planId ? { pathname: '/tours/[id]', params: { id: planId } } : '/tours') as Href);
     // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
     const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
+    const openBeerOnTapPub = ({ key, name, lat, lng }: BeerOnTapPub) =>
+      router.push({
+        pathname: '/pub',
+        params: { key, name, lat: String(lat), lng: String(lng) },
+      } as unknown as Href);
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
       void consumeInitialTourReminderTap(navigateToTour);
       void consumeInitialTourInviteTap(openTourInvite);
+      void consumeInitialBeerOnTapTap(openBeerOnTapPub);
     }
     const pubSubscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
     const beerCountSubscription = subscribeBeerCountReminderTap(navigateToCounter);
     const tourSubscription = subscribeTourReminderTap(navigateToTour);
     const tourInviteSubscription = subscribeTourInviteTap(openTourInvite);
+    const beerOnTapSubscription = subscribeBeerOnTapTap(openBeerOnTapPub);
     return () => {
       pubSubscription.remove();
       beerCountSubscription.remove();
       tourSubscription.remove();
       tourInviteSubscription.remove();
+      beerOnTapSubscription.remove();
     };
   }, [fontsLoaded, fontError, router]);
 
@@ -341,6 +364,7 @@ export default function RootLayout() {
         void launchInviteStashed.then(() => consumeAndClaimPendingInviteCode());
         // Light up the Parta tab badge without waiting for the first Parta visit.
         seedPartaBadge();
+        refreshBeerWatches(true);
         // Existing installs may hold local diary drinks from before /v1/drinks
         // sync existed. Seed only after account initialization has settled so
         // the private history cannot race a session rotation.
@@ -452,6 +476,7 @@ export default function RootLayout() {
         void flushVisitsQueue();
         void flushFriendsQueue();
         void ensureFriendPushRegisteredIfGranted();
+        refreshBeerWatches(pull('beerWatches'));
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
         void flushNightsQueue();
@@ -670,6 +695,13 @@ export default function RootLayout() {
             options={{
               // A back-navigable "place" (party management), pushed like a detail
               // screen with the native right-edge back-swipe.
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
+            name="profile/beer-watches"
+            options={{
               animation: 'slide_from_right',
               gestureEnabled: true,
             }}

@@ -62,6 +62,7 @@ services:
       - |
         while true; do
           python manage.py advance_friend_plans || true
+          python manage.py send_beer_watch_pushes || true
           python manage.py advance_photo_contests || true
           python manage.py process_account_exports --limit 10 || true
           python manage.py purge_deleted_accounts || true

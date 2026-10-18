@@ -192,6 +192,14 @@ jest.mock('@/notifications/friendPush', () => ({
   ...mockResolved('consumeInitialTourInviteTap', 'ensureFriendPushRegisteredIfGranted'),
   ...mockSubscriptions('subscribeTourInviteTap'),
 }));
+jest.mock('@/notifications/beerWatchPush', () => ({
+  ...mockResolved('consumeInitialBeerOnTapTap'),
+  ...mockSubscriptions('subscribeBeerOnTapTap'),
+}));
+jest.mock('@/beerWatch/beerWatchLocation', () => mockResolved('syncBeerWatchLocation'));
+jest.mock('@/stores/beerWatchStore', () => ({
+  useBeerWatchStore: { getState: () => mockResolved('refresh') },
+}));
 jest.mock('@/location/locationCurrency', () => mockResolved('refreshCurrencyFromLastKnownLocation'));
 jest.mock('@/components/shared/WhatsNewModal', () => mockComponents('WhatsNewModal'));
 jest.mock('@/photos/ContestResultsModal', () => mockComponents('ContestResultsModal'));

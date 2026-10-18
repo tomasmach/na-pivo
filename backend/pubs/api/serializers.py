@@ -883,6 +883,8 @@ class PushDeviceRequestSerializer(serializers.Serializer):
         default="",
         trim_whitespace=True,
     )
+    # Additive: Parta pushes on this device. Absent leaves the stored value alone.
+    friend_push = serializers.BooleanField(required=False)
 
     def validate_push_token(self, value: str) -> str:
         if not value:

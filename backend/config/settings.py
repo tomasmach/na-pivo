@@ -543,6 +543,8 @@ EXPO_PUSH_CHUNK_SIZE: int = int(os.environ.get("EXPO_PUSH_CHUNK_SIZE", "100"))
 # Friend request/accept responses must not wait on Expo's network round-trip.
 FRIEND_PUSH_ASYNC: bool = os.environ.get("FRIEND_PUSH_ASYNC", "1") != "0"
 FRIEND_PUSH_WORKERS: int = int(os.environ.get("FRIEND_PUSH_WORKERS", "2"))
+# Prague hours with no beer-watch push: start inclusive, end exclusive; equal = never quiet.
+BEER_WATCH_QUIET_HOURS: tuple[int, int] = (22, 9)
 
 # Per-IP rate limit for credential auth endpoints (register / login / social /
 # link / unlink / verify-email / set-password). Kept tight to blunt credential
@@ -727,6 +729,7 @@ REST_FRAMEWORK = {
         "beer_brands": BEER_BRANDS_THROTTLE_RATE,
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
         "pub_favorites": PUB_FAVORITES_THROTTLE_RATE,
+        "beer_watches": "60/min",
         "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,
         "pub_location_lookup": PUB_LOCATION_LOOKUP_THROTTLE_RATE,

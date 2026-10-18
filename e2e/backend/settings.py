@@ -29,6 +29,9 @@ EMAIL_ENABLED = False
 # Exercise the real export serializer and mail delivery without a job worker.
 ACCOUNT_EXPORT_ASYNC = False
 RESEND_API_KEY = ""
+# Tests run at any hour; the night-time pause has its own backend tests.
+BEER_WATCH_QUIET_HOURS = (0, 0)
+FRIEND_PUSH_ASYNC = False
 MEDIA_ROOT = RUN_DIR / "media"
 # URL formatting only: the shipped mobile parser requires this canonical host.
 # Tests extract synthetic capabilities in memory and open napivo:// links;

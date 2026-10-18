@@ -31,6 +31,7 @@ import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
 import { clearVisitsSnapshot } from './visitsSnapshot';
 import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
@@ -83,6 +84,7 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-pub-reminder-state',
   'na-pivo-pub-reminder-geofences',
   'na-pivo-handled-notification-responses-v1',
+  'na-pivo-beer-watch-location-v1',
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
@@ -151,6 +153,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   useBeerPhotosStore.setState({ photos: [] });
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
+  useBeerWatchStore.getState().reset();
   // Výčep publication ledger is tied to the outgoing account's nights.
   useVycepStore.setState({ published: {} });
   usePubStore.setState({

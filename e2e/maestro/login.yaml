@@ -23,6 +23,6 @@ appId: ${MAESTRO_APP_ID}
     timeout: 20000
 - runFlow:
     when:
-      visible: Not Now
+      visible: 'Not Now|Teď ne'
     commands:
-      - tapOn: Not Now
+      - tapOn: 'Not Now|Teď ne'

@@ -89,6 +89,12 @@ export function screenshot(destination) {
   } else simctl('io', device(), 'screenshot', destination);
 }
 
+/** Deliver a captured remote notification payload to the owned iOS simulator. */
+export function deliverPush(payloadFile) {
+  if (platform === 'android') throw new Error('Simulated remote push delivery is iOS-only.');
+  simctl('push', device(), appId, payloadFile);
+}
+
 export function addMedia(files) {
   if (platform === 'android') {
     for (const file of files) {

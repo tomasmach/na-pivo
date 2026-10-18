@@ -3,6 +3,7 @@
 import importlib
 import json
 import re
+import uuid
 from pathlib import Path
 
 from django.conf import settings
@@ -13,8 +14,17 @@ from django.http import JsonResponse
 from django.urls import include, path
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
-from pubs.models import Account, AuthToken, DrinkLog, EmailCredential, PubVisit
+from pubs.models import (
+    Account,
+    AuthToken,
+    DrinkLog,
+    EmailCredential,
+    PubCommunityData,
+    PubVisit,
+)
+from rest_framework.test import APIClient
 
+from . import push_outbox
 from .account_requests import export_requests
 from .account_requests import requests as account_requests
 
@@ -30,6 +40,7 @@ def reset(request):
     cache.clear()
     account_requests.clear()
     export_requests.clear()
+    push_outbox.messages.clear()
     if hasattr(mail, "outbox"):
         mail.outbox.clear()
     module.seed()
@@ -94,9 +105,55 @@ def mailbox(request):
     return JsonResponse({"text": messages[-1].body, "attachments": len(messages[-1].attachments)})
 
 
+@csrf_exempt
+@require_POST
+def beer_tap(request):
+    """A fixture account adds one beer to a seeded pub through the real endpoint."""
+    body = json.loads(request.body or b"{}")
+    account = Account.objects.get(nickname={"second": "E2EKamos"}[body["account"]])
+    pub = PubCommunityData.objects.get(name=body["pub"])
+    client = APIClient()
+    client.force_authenticate(user=account)
+    response = client.post(
+        "/v1/pub-community",
+        {
+            "client_id": str(uuid.uuid4()),
+            "name": pub.name,
+            "lat": pub.lat,
+            "lng": pub.lng,
+            "external_id": None,
+            "beers": [*pub.beers, {"name": body["beer"], "price_czk": 52, "volume_ml": 500}],
+        },
+        format="json",
+    )
+    return JsonResponse({"status": response.status_code}, status=response.status_code)
+
+
+@csrf_exempt
+@require_POST
+def beer_watch_worker(request):
+    call_command("send_beer_watch_pushes", verbosity=0)
+    return JsonResponse({"ran": True})
+
+
+@require_GET
+def last_push(request):
+    """The newest captured message in the APNs shape expo-notifications reads."""
+    if not push_outbox.messages:
+        return JsonResponse({"pending": True}, status=404)
+    message = push_outbox.messages[-1]
+    alert = {"body": message["body"]}
+    if message.get("title"):
+        alert["title"] = message["title"]
+    return JsonResponse({"aps": {"alert": alert, "sound": "default"}, "body": message["data"]})
+
+
 urlpatterns = [
     path("__e2e__/reset", reset),
     path("__e2e__/state", state),
     path("__e2e__/mail", mailbox),
+    path("__e2e__/beer-tap", beer_tap),
+    path("__e2e__/beer-watch-worker", beer_watch_worker),
+    path("__e2e__/push", last_push),
     path("", include("config.urls")),
 ]

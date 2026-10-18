@@ -50,7 +50,9 @@ export interface MoreRow {
   disabled?: boolean;
   onPress: () => void;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
   accessibilityRole?: AccessibilityRole;
+  testID?: string;
 }
 
 export interface MoreSheetProps {
@@ -122,6 +124,7 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                 return (
                   <Pressable
                     key={row.key}
+                    testID={row.testID}
                     onPress={row.onPress}
                     disabled={row.disabled}
                     style={({ pressed }) => [
@@ -131,6 +134,7 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                     ]}
                     accessibilityRole={row.accessibilityRole ?? 'button'}
                     accessibilityLabel={row.accessibilityLabel ?? row.label}
+                    accessibilityHint={row.accessibilityHint}
                     accessibilityState={{
                       ...(row.selected != null && row.accessibilityRole === 'radio'
                         ? { checked: row.selected }
