@@ -56,6 +56,21 @@ describe('refresh', () => {
     await expect(pending).resolves.toBe(false);
     expect(useBeerWatchStore.getState().watches).toEqual([]);
   });
+
+  it('does not undo a watch confirmed while the pull was on the way', async () => {
+    let finish!: (snapshot: BeerWatchSnapshot) => void;
+    mockFetch.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const pending = useBeerWatchStore.getState().refresh();
+    mockAdd.mockResolvedValue({ ok: true, watch: unetice });
+    await useBeerWatchStore.getState().watch('Únětická 12');
+
+    mockFetch.mockResolvedValueOnce({ radiusM: 3000, locationSet: true, watches: [unetice], helped: [] });
+    finish({ radiusM: 3000, locationSet: false, watches: [], helped: [] });
+
+    await expect(pending).resolves.toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(useBeerWatchStore.getState()).toMatchObject({ watches: [unetice], loaded: true });
+  });
 });
 
 describe('watch', () => {

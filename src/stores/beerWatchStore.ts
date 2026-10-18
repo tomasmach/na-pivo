@@ -43,14 +43,18 @@ const EMPTY = {
 
 // Bumped on logout, so an answer for the previous account is dropped.
 let generation = 0;
+// Bumped by every server answer applied, so a pull that started earlier cannot undo it.
+let mutations = 0;
 
 export const useBeerWatchStore = create<BeerWatchState>((set, get) => ({
   ...EMPTY,
 
   refresh: async () => {
     const gen = generation;
+    const seen = mutations;
     const snapshot = await fetchBeerWatches();
     if (!snapshot || gen !== generation) return false;
+    if (seen !== mutations) return get().refresh();
     get().applySnapshot(snapshot);
     set({ loaded: true });
     return true;
@@ -60,6 +64,7 @@ export const useBeerWatchStore = create<BeerWatchState>((set, get) => ({
     const gen = generation;
     const result = await addBeerWatch(beerName, breweryName);
     if (result.ok && gen === generation) {
+      mutations += 1;
       set((s) => ({
         watches: [
           ...s.watches.filter((w) => w.productKey !== result.watch.productKey),
@@ -74,6 +79,7 @@ export const useBeerWatchStore = create<BeerWatchState>((set, get) => ({
     const gen = generation;
     const ok = await removeBeerWatch(productKey);
     if (ok && gen === generation) {
+      mutations += 1;
       set((s) => {
         const watches = s.watches.filter((w) => w.productKey !== productKey);
         // The server forgets the watch location with the last watch.
@@ -98,6 +104,7 @@ export const useBeerWatchStore = create<BeerWatchState>((set, get) => ({
   },
 
   applySnapshot: (snapshot) => {
+    mutations += 1;
     set({
       radiusM: snapshot.radiusM,
       locationSet: snapshot.locationSet,
