@@ -66,14 +66,30 @@ describe('estimateAlcohol', () => {
     expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('13:00', 18)))).toBeNull();
   });
 
-  it('ignores soft drinks, alcohol-free beer and drinks older than 24 hours', () => {
+  it('ignores soft drinks, alcohol-free beer and drinks older than three days', () => {
     const drinks: EstimateDrink[] = [
       { id: 'k', beerName: 'Kofola', drinkType: 'soft_drink', at: at('20:00') },
       beer('n', '20:10', 'Birell'),
-      { ...beer('old', '19:00'), at: at('19:00', 16) },
+      { ...beer('old', '19:00'), at: at('19:00', 14) },
     ];
 
     expect(estimateAlcohol(drinks, PROFILE, Date.parse(at('21:00')))).toBeNull();
+  });
+
+  it('keeps a heavy night until the cautious run is at zero, even past 24 hours', () => {
+    const small: BodyProfile = { sex: 'female', age: 30, heightCm: 165, weightKg: 58 };
+    const night = ['18:00', '19:00', '20:00', '21:00', '22:00'].map((time, i) => beer(`h${i}`, time));
+    const evening = estimateAlcohol(night, small, Date.parse(at('23:00')));
+    const nextEvening = estimateAlcohol(night, small, Date.parse(at('18:30', 18)));
+
+    expect(nextEvening?.zeroAt.getTime()).toBe(evening!.zeroAt.getTime());
+  });
+
+  it('flags the first minutes after a drink as still absorbing', () => {
+    const first = [beer('a', '20:00')];
+
+    expect(estimateAlcohol(first, PROFILE, Date.parse(at('20:05')))!.absorbing).toBe(true);
+    expect(estimateAlcohol(first, PROFILE, Date.parse(at('21:00')))!.absorbing).toBe(false);
   });
 
   it('ignores drinks timed in the future', () => {

@@ -89,7 +89,8 @@ const ETHANOL_DENSITY = 0.789;
 const BLOOD_WATER = 0.8;
 const BLOOD_DENSITY = 1.055;
 const ABSORPTION_MIN = 45;
-const WINDOW_MS = 24 * 60 * 60 * 1000;
+// Long enough that a heavy night is never cut off before the cautious run ends.
+export const ESTIMATE_WINDOW_MS = 72 * 60 * 60 * 1000;
 const STEP_MS = 60 * 1000;
 const HALF_HOUR_MS = 30 * 60 * 1000;
 
@@ -140,13 +141,15 @@ export interface AlcoholEstimate {
   high: number;
   /** When the cautious run reaches zero, rounded up to the half hour. */
   zeroAt: Date;
+  /** The last drink is still being absorbed, so the level is not falling yet. */
+  absorbing: boolean;
   /** The drinks that went into the guess, alcoholic only. */
   drinks: EstimateDrink[];
 }
 
 /**
- * Null when nothing alcoholic was logged in the last 24 hours or the cautious
- * run is already back at zero.
+ * Null when nothing alcoholic was logged in the window or the cautious run is
+ * already back at zero.
  */
 export function estimateAlcohol(
   drinks: readonly EstimateDrink[],
@@ -157,7 +160,7 @@ export function estimateAlcohol(
   const counted = drinks
     .filter((drink) => {
       const atMs = Date.parse(drink.at);
-      return Number.isFinite(atMs) && atMs <= nowMs && atMs > nowMs - WINDOW_MS && drinkAbv(drink) > 0;
+      return Number.isFinite(atMs) && atMs <= nowMs && atMs > nowMs - ESTIMATE_WINDOW_MS && drinkAbv(drink) > 0;
     })
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   if (counted.length === 0) return null;
@@ -177,6 +180,7 @@ export function estimateAlcohol(
     low: simulate(doses, LOW, nowMs).at,
     high: cautious.at,
     zeroAt: new Date(zeroAtMs),
+    absorbing: nowMs < doses[doses.length - 1].startMs + ABSORPTION_MIN * STEP_MS,
     drinks: counted,
   };
 }

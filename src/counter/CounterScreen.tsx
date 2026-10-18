@@ -125,8 +125,6 @@ import { PlaceChip, type PlaceChipKind } from '@/counter/PlaceChip';
 import { CoasterCard } from '@/counter/CoasterCard';
 import { AlcoholEstimateRow, AlcoholEstimateSheet } from '@/counter/AlcoholEstimateSheet';
 import { AlcoholProfileSheet } from '@/counter/AlcoholProfileSheet';
-import { useAlcoholEstimate } from '@/counter/useAlcoholEstimate';
-import { useNowTick } from '@/friends/useNowTick';
 import type { BodyProfile } from '@/drinks/alcoholEstimate';
 import { CounterQuickActions } from '@/counter/CounterQuickActions';
 import { CounterCta } from '@/counter/CounterCta';
@@ -572,11 +570,14 @@ function Tacek({
 
   const bodyProfile = useSettingsStore((s) => s.bodyProfile);
   const setBodyProfile = useSettingsStore((s) => s.setBodyProfile);
-  const alcoholEstimate = useAlcoholEstimate();
-  const alcoholNowMs = useNowTick();
   const alcoholTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (alcoholTimer.current) clearTimeout(alcoholTimer.current);
+  }, []);
+  const openAlcoholSheet = useCallback((next: 'estimate' | 'profile' | null) => {
+    if (alcoholTimer.current) clearTimeout(alcoholTimer.current);
+    alcoholTimer.current = null;
+    setAlcoholSheet(next);
   }, []);
   /** iOS will not present a modal while another one is still leaving. */
   const switchAlcoholSheet = useCallback((next: 'estimate' | 'profile' | null, then?: () => void) => {
@@ -601,12 +602,12 @@ function Tacek({
         title: t.alcohol.turnOffTitle,
         message: t.alcohol.turnOffMessage,
         buttons: [
-          { text: t.counter.cancel, style: 'cancel' },
+          { text: t.counter.cancel, style: 'cancel', onPress: () => openAlcoholSheet('estimate') },
           { text: t.alcohol.turnOffConfirm, style: 'destructive', onPress: () => setBodyProfile(null) },
         ],
       }),
     );
-  }, [setBodyProfile, switchAlcoholSheet]);
+  }, [openAlcoholSheet, setBodyProfile, switchAlcoholSheet]);
 
   // ── Session state ───────────────────────────────────────────────────────────
 
@@ -1813,13 +1814,7 @@ function Tacek({
           onPickOther={showQuickOtherBeer ? handlePickOpen : undefined}
           onMapPub={pub ? () => setMapPubOpen(true) : undefined}
         />
-        {alcoholEstimate ? (
-          <AlcoholEstimateRow
-            estimate={alcoholEstimate}
-            nowMs={alcoholNowMs}
-            onPress={() => setAlcoholSheet('estimate')}
-          />
-        ) : null}
+        {bodyProfile ? <AlcoholEstimateRow onPress={() => openAlcoholSheet('estimate')} /> : null}
       </CoasterCard>
 
       <NudgeSlot nudge={nudge} />
@@ -1875,14 +1870,12 @@ function Tacek({
         onBackdate={() => runAfterSheetClose(handleBackdatePress)}
         onScanMenu={pub ? () => runAfterSheetClose(() => setScanSourceVisible(true)) : undefined}
         scanning={scanningDrinks}
-        onAlcoholEstimate={() => runAfterSheetClose(() => setAlcoholSheet(bodyProfile ? 'estimate' : 'profile'))}
+        onAlcoholEstimate={() => runAfterSheetClose(() => openAlcoholSheet(bodyProfile ? 'estimate' : 'profile'))}
       />
 
       <AlcoholEstimateSheet
         visible={alcoholSheet === 'estimate'}
-        estimate={alcoholEstimate}
         profile={bodyProfile}
-        nowMs={alcoholNowMs}
         onEdit={() => switchAlcoholSheet('profile')}
         onTurnOff={handleAlcoholTurnOff}
         onClose={() => setAlcoholSheet(null)}

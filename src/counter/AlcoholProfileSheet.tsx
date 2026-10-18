@@ -82,7 +82,15 @@ export function AlcoholProfileSheet({ visible, profile, onSave, onClose }: Alcoh
   const invalid = (key: NumberField) => draft[key] !== '' && !isBodyValueValid(key, values[key]);
   const firstMissing = sex === null ? t.alcohol.missingSex : FIELDS.find((f) => draft[f.key] === '')?.missing();
   const firstInvalid = FIELDS.find((f) => invalid(f.key));
-  const blocker = firstMissing ?? (firstInvalid ? firstInvalid.missing() : undefined);
+  const blocker =
+    firstMissing ??
+    (firstInvalid
+      ? t.alcohol.fixField(
+          firstInvalid.label(),
+          BODY_LIMITS[firstInvalid.key].min,
+          BODY_LIMITS[firstInvalid.key].max,
+        )
+      : undefined);
 
   const save = () => {
     if (blocker || sex === null) return;

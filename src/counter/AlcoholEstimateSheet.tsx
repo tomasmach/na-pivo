@@ -17,23 +17,20 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import {
+  cautiousCeil,
   formatClock,
   formatPromile,
   formatZeroAt,
   formatZeroAtShort,
-  MORNING_THRESHOLD,
+  isMorning,
+  useAlcoholEstimate,
 } from '@/counter/useAlcoholEstimate';
 
-export function AlcoholEstimateRow({
-  estimate,
-  nowMs,
-  onPress,
-}: {
-  estimate: AlcoholEstimate;
-  nowMs: number;
-  onPress: () => void;
-}) {
-  const morning = estimate.now < MORNING_THRESHOLD;
+/** Owns the minute tick, so the counter itself does not re-render every minute. */
+export function AlcoholEstimateRow({ onPress }: { onPress: () => void }) {
+  const { estimate, nowMs } = useAlcoholEstimate();
+  if (!estimate) return null;
+  const morning = isMorning(estimate);
   const when = formatZeroAt(estimate.zeroAt, nowMs);
   return (
     <Pressable
@@ -47,7 +44,11 @@ export function AlcoholEstimateRow({
       }
       style={({ pressed }) => [styles.coasterRow, pressed && styles.pressed]}
     >
-      <Text style={styles.coasterMain} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+      <Text
+        style={[styles.coasterMain, morning && styles.coasterMainShrink]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
         {morning
           ? t.alcohol.rowMorning(formatZeroAtShort(estimate.zeroAt, nowMs))
           : t.alcohol.rowNow(formatPromile(estimate.now))}
@@ -84,25 +85,17 @@ function drinkLines(estimate: AlcoholEstimate): DrinkLine[] {
 
 export interface AlcoholEstimateSheetProps {
   visible: boolean;
-  estimate: AlcoholEstimate | null;
   profile: BodyProfile | null;
-  nowMs: number;
   onEdit: () => void;
   onTurnOff: () => void;
   onClose: () => void;
 }
 
-export function AlcoholEstimateSheet({
-  visible,
-  estimate,
-  profile,
-  nowMs,
-  onEdit,
-  onTurnOff,
-  onClose,
-}: AlcoholEstimateSheetProps) {
+export function AlcoholEstimateSheet({ visible, profile, onEdit, onTurnOff, onClose }: AlcoholEstimateSheetProps) {
   const insets = useSafeAreaInsets();
-  const morning = estimate !== null && estimate.now < MORNING_THRESHOLD;
+  const { estimate, nowMs } = useAlcoholEstimate();
+  const morning = estimate !== null && isMorning(estimate);
+  const cautiousNow = estimate ? cautiousCeil(estimate.high) : 0;
 
   return (
     <Modal
@@ -157,23 +150,25 @@ export function AlcoholEstimateSheet({
                     </View>
                     <Text style={styles.bigCaption} maxFontSizeMultiplier={FontScaleCap.body}>
                       {morning
-                        ? t.alcohol.morningCaption
+                        ? t.alcohol.morningCaption(formatZeroAt(estimate.zeroAt, nowMs))
                         : t.alcohol.nowCaption(formatPromile(estimate.low), formatPromile(estimate.high))}
                     </Text>
                   </View>
 
-                  <View style={styles.row}>
-                    <View style={styles.rowText}>
-                      <Text style={styles.rowName} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {morning
-                          ? t.alcohol.morningNow(formatPromile(estimate.high))
-                          : t.alcohol.zeroTitle(formatZeroAt(estimate.zeroAt, nowMs))}
-                      </Text>
-                      <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {morning ? t.alcohol.morningHint : t.alcohol.zeroHint}
-                      </Text>
+                  {morning && cautiousNow === 0 ? null : (
+                    <View style={styles.row}>
+                      <View style={styles.rowText}>
+                        <Text style={styles.rowName} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {morning
+                            ? t.alcohol.morningNow(formatPromile(cautiousNow))
+                            : t.alcohol.zeroTitle(formatZeroAt(estimate.zeroAt, nowMs))}
+                        </Text>
+                        <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {morning ? t.alcohol.morningHint : t.alcohol.zeroHint}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
+                  )}
                 </>
               )}
 
@@ -258,6 +253,10 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     includeFontPadding: false,
     flexShrink: 0,
+  },
+  coasterMainShrink: {
+    flex: 1,
+    flexShrink: 1,
   },
   coasterSide: {
     flex: 1,

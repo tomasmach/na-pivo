@@ -1,34 +1,53 @@
 import { useMemo } from 'react';
 
-import { estimateAlcohol, type AlcoholEstimate, type EstimateDrink } from '@/drinks/alcoholEstimate';
+import {
+  ESTIMATE_WINDOW_MS,
+  estimateAlcohol,
+  type AlcoholEstimate,
+  type EstimateDrink,
+} from '@/drinks/alcoholEstimate';
 import { useNowTick } from '@/friends/useNowTick';
 import { intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 
-const RECENT_SESSION_MS = 48 * 60 * 60 * 1000;
+// A session can start a day before its last drink.
+const RECENT_SESSION_MS = ESTIMATE_WINDOW_MS + 24 * 60 * 60 * 1000;
 
 /** Recomputed every minute: the level keeps falling while nothing is logged. */
-export function useAlcoholEstimate(): AlcoholEstimate | null {
+export function useAlcoholEstimate(): { estimate: AlcoholEstimate | null; nowMs: number } {
   const profile = useSettingsStore((s) => s.bodyProfile);
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
-  const nowMs = useNowTick();
+  const tickMs = useNowTick();
 
   return useMemo(() => {
-    if (!profile) return null;
+    if (!profile) return { estimate: null, nowMs: tickMs };
     const drinks = new Map<string, EstimateDrink>();
+    // A drink logged since the last tick must count straight away.
+    let nowMs = tickMs;
     const sessions = current ? [current, ...history] : history;
     for (const session of sessions) {
-      if (Date.parse(session.startedAt) < nowMs - RECENT_SESSION_MS) continue;
-      for (const drink of session.drinks) drinks.set(drink.id, drink);
+      if (Date.parse(session.startedAt) < tickMs - RECENT_SESSION_MS) continue;
+      for (const drink of session.drinks) {
+        drinks.set(drink.id, drink);
+        const atMs = Date.parse(drink.at);
+        if (atMs > nowMs && atMs - tickMs < 2 * 60 * 1000) nowMs = atMs;
+      }
     }
-    return estimateAlcohol([...drinks.values()], profile, nowMs);
-  }, [profile, current, history, nowMs]);
+    return { estimate: estimateAlcohol([...drinks.values()], profile, nowMs), nowMs };
+  }, [profile, current, history, tickMs]);
 }
 
-/** Below this the middle guess reads as zero and the cautious end takes over. */
-export const MORNING_THRESHOLD = 0.05;
+/** Once absorbed and below this, the middle guess reads as zero and the cautious end takes over. */
+export function isMorning(estimate: AlcoholEstimate): boolean {
+  return !estimate.absorbing && estimate.now < 0.05;
+}
+
+/** The cautious level rounded up, so a morning never reads 0,0 while it is not zero. */
+export function cautiousCeil(value: number): number {
+  return Math.ceil(value * 10) / 10;
+}
 
 export function formatPromile(value: number): string {
   return value.toLocaleString(intlLocale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -55,5 +74,5 @@ export function formatZeroAt(date: Date, nowMs: number): string {
 /** "13:00" today, "zítra 13:00" otherwise — for the short morning line. */
 export function formatZeroAtShort(date: Date, nowMs: number): string {
   const time = formatClock(date);
-  return dayOffset(date, nowMs) <= 0 ? time : t.alcohol.shortTomorrow(time);
+  return dayOffset(date, nowMs) <= 0 ? t.alcohol.shortToday(time) : t.alcohol.shortTomorrow(time);
 }
