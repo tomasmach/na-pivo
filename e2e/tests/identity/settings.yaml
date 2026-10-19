@@ -43,10 +43,10 @@ tags: [full, identity]
     timeout: 15000
 - assertVisible: "Schovávat názvy hospod: zapnuto"
 - scrollUntilVisible:
-    element: { text: "Vibrace u cíle: vypnuto" }
+    element: { text: "Vibrace: vypnuto" }
     direction: DOWN
     timeout: 15000
-- assertVisible: "Vibrace u cíle: vypnuto"
+- assertVisible: "Vibrace: vypnuto"
 - scrollUntilVisible:
     element: { text: "Připomenout vodu: zapnuto" }
     direction: DOWN
