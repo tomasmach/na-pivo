@@ -101,6 +101,14 @@ def _candidate(
     )
     street = _component(components, "route")
     street_number = _component(components, "street_number")
+    if street and not street_number:
+        # Google often returns a Czech house number only as the conscription
+        # number ("premise"). The address must keep it, because it is geocoded
+        # again when the pub is saved. A named building has no number to keep.
+        premise = _component(components, "premise")
+        street_number = premise if premise[:1].isdigit() else ""
+        if require_precise and not street_number:
+            return None
     address = " ".join(value for value in (street, street_number) if value)
     if not address:
         formatted = result.get("formattedAddress")
