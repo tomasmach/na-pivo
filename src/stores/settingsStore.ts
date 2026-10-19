@@ -66,6 +66,8 @@ interface SettingsState {
   lastSeenPartyStreak: number;
   /** Body numbers for the blood alcohol estimate. Null means the estimate is off. */
   bodyProfile: BodyProfile | null;
+  /** The user turned the estimate off, so the counter stops offering its setup. */
+  alcoholEstimateHidden: boolean;
   setMode: (m: Mode) => void;
   setMapWithoutLocation: (value: boolean) => void;
   setHomePoint: (point: HomePoint | null) => void;
@@ -93,6 +95,7 @@ interface SettingsState {
   bumpSurpriseSeed: () => void;
   setLastSeenPartyStreak: (v: number) => void;
   setBodyProfile: (profile: BodyProfile | null) => void;
+  setAlcoholEstimateHidden: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -129,6 +132,7 @@ export const useSettingsStore = create<SettingsState>()(
       surpriseSeed: 1,
       lastSeenPartyStreak: 0,
       bodyProfile: null,
+      alcoholEstimateHidden: false,
 
       setMode: (m) => set({ mode: m }),
       setMapWithoutLocation: (value) => set({ mapWithoutLocation: value }),
@@ -163,6 +167,7 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({ surpriseSeed: state.surpriseSeed + 1 })),
       setLastSeenPartyStreak: (v) => set({ lastSeenPartyStreak: v }),
       setBodyProfile: (profile) => set({ bodyProfile: profile }),
+      setAlcoholEstimateHidden: (v) => set({ alcoholEstimateHidden: v }),
     }),
     {
       name: 'na-pivo-settings',
@@ -196,10 +201,15 @@ export const useSettingsStore = create<SettingsState>()(
         surpriseSeed: state.surpriseSeed,
         lastSeenPartyStreak: state.lastSeenPartyStreak,
         bodyProfile: state.bodyProfile,
+        alcoholEstimateHidden: state.alcoholEstimateHidden,
       }),
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted as Partial<SettingsState>) };
-        return { ...state, bodyProfile: isBodyProfile(state.bodyProfile) ? state.bodyProfile : null };
+        return {
+          ...state,
+          bodyProfile: isBodyProfile(state.bodyProfile) ? state.bodyProfile : null,
+          alcoholEstimateHidden: state.alcoholEstimateHidden === true,
+        };
       },
       onRehydrateStorage: () => (state) => {
         if (state?.priceCurrency && state.priceCurrencyRate > 0) {

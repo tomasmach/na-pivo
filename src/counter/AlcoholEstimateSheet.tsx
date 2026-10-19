@@ -11,6 +11,7 @@ import { CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon, InfoIcon, XIcon } from '@/components/shared/IconGlyph';
 import { drinkAbv, drinkVolumeMl, type AlcoholEstimate, type BodyProfile } from '@/drinks/alcoholEstimate';
 import { formatVolume, intlLocale, t } from '@/i18n';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -25,36 +26,61 @@ import {
   useAlcoholEstimate,
 } from '@/counter/useAlcoholEstimate';
 
-/** Owns the minute tick, so the counter itself does not re-render every minute. */
+/**
+ * Owns the minute tick, so the counter itself does not re-render every minute.
+ * Without body numbers it still shows, as the way to set them up.
+ */
 export function AlcoholEstimateRow({ onPress }: { onPress: () => void }) {
+  const hasProfile = useSettingsStore((s) => s.bodyProfile !== null);
   const { estimate, nowMs } = useAlcoholEstimate();
-  if (!estimate) return null;
-  const morning = isMorning(estimate);
-  const when = formatZeroAt(estimate.zeroAt, nowMs);
+  let main: string;
+  let side: string | null = null;
+  let a11y: string;
+  let shrinkMain = false;
+  if (!hasProfile) {
+    main = t.alcohol.moreRow;
+    side = t.alcohol.rowSetup;
+    a11y = t.alcohol.rowSetupA11y;
+  } else if (!estimate) {
+    main = t.alcohol.rowNow(formatPromile(0));
+    a11y = t.alcohol.rowEmptyA11y;
+  } else if (isMorning(estimate)) {
+    main = t.alcohol.rowMorning(formatZeroAtShort(estimate.zeroAt, nowMs));
+    a11y = t.alcohol.rowMorningA11y(formatZeroAt(estimate.zeroAt, nowMs));
+    shrinkMain = true;
+  } else {
+    const when = formatZeroAt(estimate.zeroAt, nowMs);
+    const promile = formatPromile(estimate.now);
+    main = t.alcohol.rowNow(promile);
+    if (estimate.rising) {
+      const peak = formatPromile(estimate.rising.promile);
+      side = t.alcohol.rowRising(peak);
+      a11y = t.alcohol.rowRisingA11y(promile, peak, when);
+    } else {
+      side = t.alcohol.rowZero(when);
+      a11y = t.alcohol.rowA11y(promile, when);
+    }
+  }
   return (
     <Pressable
       testID="alcohol-estimate-row"
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={
-        morning
-          ? t.alcohol.rowMorningA11y(when)
-          : t.alcohol.rowA11y(formatPromile(estimate.now), when)
-      }
+      accessibilityLabel={a11y}
       style={({ pressed }) => [styles.coasterRow, pressed && styles.pressed]}
     >
       <Text
-        style={[styles.coasterMain, morning && styles.coasterMainShrink]}
+        style={[styles.coasterMain, shrinkMain && styles.coasterMainShrink]}
         numberOfLines={1}
         maxFontSizeMultiplier={FontScaleCap.body}
       >
-        {morning
-          ? t.alcohol.rowMorning(formatZeroAtShort(estimate.zeroAt, nowMs))
-          : t.alcohol.rowNow(formatPromile(estimate.now))}
+        {main}
       </Text>
-      {morning ? null : (
+      {side === null ? (
+        <View style={styles.coasterSpacer} />
+      ) : (
         <Text style={styles.coasterSide} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.alcohol.rowZero(when)}
+          {side}
         </Text>
       )}
       <ChevronRightIcon size={15} color={Colors.mutedText} />
@@ -154,6 +180,19 @@ export function AlcoholEstimateSheet({ visible, profile, onEdit, onTurnOff, onCl
                     </Text>
                   </View>
 
+                  {estimate.rising ? (
+                    <View style={styles.row} testID="alcohol-estimate-rising">
+                      <View style={styles.rowText}>
+                        <Text style={styles.rowName} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {t.alcohol.risingTitle(formatPromile(estimate.rising.promile), formatClock(estimate.rising.at))}
+                        </Text>
+                        <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {t.alcohol.risingHint}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+
                   {morning && cautiousNow === 0 ? null : (
                     <View style={styles.row}>
                       <View style={styles.rowText}>
@@ -244,9 +283,9 @@ const styles = StyleSheet.create({
   coasterRow: {
     ...CardSurface.footer,
     marginTop: 12,
-    paddingTop: 4,
+    paddingTop: 0,
     paddingBottom: 0,
-    minHeight: 44,
+    minHeight: 48,
   },
   coasterMain: {
     fontFamily: Fonts.ui.semibold,
@@ -258,6 +297,9 @@ const styles = StyleSheet.create({
   coasterMainShrink: {
     flex: 1,
     flexShrink: 1,
+  },
+  coasterSpacer: {
+    flex: 1,
   },
   coasterSide: {
     flex: 1,

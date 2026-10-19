@@ -6,7 +6,8 @@
  * distribution into that water, each drink absorbed evenly over 45 minutes,
  * linear elimination. Three runs give the shown range; the cautious run (slow
  * elimination, 20 % more alcohol than logged) decides when you are at zero, so
- * the morning answer errs late rather than early.
+ * the morning answer errs late rather than early. While a drink is still being
+ * absorbed the level is low on purpose, so the estimate also says where it peaks.
  */
 
 import { normalizeDrinkType, type DrinkType } from './drinkTypes';
@@ -116,13 +117,22 @@ interface Dose {
   promile: number;
 }
 
-/** Promile at `untilMs`, or the first minute the curve is back at zero. */
-function simulate(doses: Dose[], scenario: Scenario, untilMs: number): { at: number; zeroAt: number } {
+interface Run {
+  at: number;
+  peak: number;
+  peakAt: number;
+  zeroAt: number;
+}
+
+/** Promile at `untilMs`, the highest level after it, and the first minute the curve is back at zero. */
+function simulate(doses: Dose[], scenario: Scenario, untilMs: number): Run {
   const firstMs = doses[0].startMs;
   const lastAbsorbedMs = doses[doses.length - 1].startMs + ABSORPTION_MIN * STEP_MS;
   const eliminationPerStep = scenario.eliminationPerHour / 60;
   let level = 0;
   let at = 0;
+  let peak = 0;
+  let peakAt = untilMs;
   for (let ms = firstMs; ; ms += STEP_MS) {
     let absorbed = 0;
     for (const dose of doses) {
@@ -132,7 +142,11 @@ function simulate(doses: Dose[], scenario: Scenario, untilMs: number): { at: num
     }
     level = Math.max(0, level + absorbed - (level > 0 ? eliminationPerStep : 0));
     if (ms <= untilMs) at = level;
-    if (ms >= lastAbsorbedMs && level <= 0) return { at, zeroAt: ms };
+    else if (level > peak) {
+      peak = level;
+      peakAt = ms;
+    }
+    if (ms >= lastAbsorbedMs && level <= 0) return { at, peak, peakAt, zeroAt: ms };
   }
 }
 
@@ -145,6 +159,8 @@ export interface AlcoholEstimate {
   zeroAt: Date;
   /** The last drink is still being absorbed, so the level is not falling yet. */
   absorbing: boolean;
+  /** While absorbing and still rising: the middle guess's coming peak. */
+  rising: { promile: number; at: Date } | null;
   /** The drinks that went into the guess, alcoholic only. */
   drinks: EstimateDrink[];
 }
@@ -177,12 +193,15 @@ export function estimateAlcohol(
   const zeroAtMs = Math.ceil(cautious.zeroAt / HALF_HOUR_MS) * HALF_HOUR_MS;
   if (zeroAtMs <= nowMs) return null;
 
+  const mid = simulate(doses, MID, nowMs);
+  const absorbing = nowMs < doses[doses.length - 1].startMs + ABSORPTION_MIN * STEP_MS;
   return {
-    now: simulate(doses, MID, nowMs).at,
+    now: mid.at,
     low: simulate(doses, LOW, nowMs).at,
     high: cautious.at,
     zeroAt: new Date(zeroAtMs),
-    absorbing: nowMs < doses[doses.length - 1].startMs + ABSORPTION_MIN * STEP_MS,
+    absorbing,
+    rising: absorbing && mid.peak > mid.at ? { promile: mid.peak, at: new Date(mid.peakAt) } : null,
     drinks: counted,
   };
 }

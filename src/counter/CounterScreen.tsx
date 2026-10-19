@@ -570,6 +570,8 @@ function Tacek({
 
   const bodyProfile = useSettingsStore((s) => s.bodyProfile);
   const setBodyProfile = useSettingsStore((s) => s.setBodyProfile);
+  const alcoholEstimateHidden = useSettingsStore((s) => s.alcoholEstimateHidden);
+  const setAlcoholEstimateHidden = useSettingsStore((s) => s.setAlcoholEstimateHidden);
   const alcoholTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (alcoholTimer.current) clearTimeout(alcoholTimer.current);
@@ -592,9 +594,10 @@ function Tacek({
   const handleAlcoholProfileSave = useCallback(
     (profile: BodyProfile) => {
       setBodyProfile(profile);
+      setAlcoholEstimateHidden(false);
       switchAlcoholSheet('estimate');
     },
-    [setBodyProfile, switchAlcoholSheet],
+    [setAlcoholEstimateHidden, setBodyProfile, switchAlcoholSheet],
   );
   const handleAlcoholTurnOff = useCallback(() => {
     switchAlcoholSheet(null, () =>
@@ -603,11 +606,18 @@ function Tacek({
         message: t.alcohol.turnOffMessage,
         buttons: [
           { text: t.counter.cancel, style: 'cancel', onPress: () => openAlcoholSheet('estimate') },
-          { text: t.alcohol.turnOffConfirm, style: 'destructive', onPress: () => setBodyProfile(null) },
+          {
+            text: t.alcohol.turnOffConfirm,
+            style: 'destructive',
+            onPress: () => {
+              setBodyProfile(null);
+              setAlcoholEstimateHidden(true);
+            },
+          },
         ],
       }),
     );
-  }, [openAlcoholSheet, setBodyProfile, switchAlcoholSheet]);
+  }, [openAlcoholSheet, setAlcoholEstimateHidden, setBodyProfile, switchAlcoholSheet]);
 
   // ── Session state ───────────────────────────────────────────────────────────
 
@@ -1802,6 +1812,11 @@ function Tacek({
             ? t.a11y.counterCoaster(beerCountLabel(count), spentLabel ?? undefined)
             : t.a11y.counterCoasterEmpty
         }
+        estimate={
+          bodyProfile || !alcoholEstimateHidden ? (
+            <AlcoholEstimateRow onPress={() => openAlcoholSheet(bodyProfile ? 'estimate' : 'profile')} />
+          ) : undefined
+        }
       >
         {/* The room the drawn mug used to take, spent on the two shortcuts
             people actually reach for with a beer in hand. The community doors
@@ -1814,7 +1829,6 @@ function Tacek({
           onPickOther={showQuickOtherBeer ? handlePickOpen : undefined}
           onMapPub={pub ? () => setMapPubOpen(true) : undefined}
         />
-        {bodyProfile ? <AlcoholEstimateRow onPress={() => openAlcoholSheet('estimate')} /> : null}
       </CoasterCard>
 
       <NudgeSlot nudge={nudge} />

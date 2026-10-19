@@ -103,6 +103,19 @@ describe('useSettingsStore', () => {
     expect(useSettingsStore.getState().bodyProfile).toBeNull();
   });
 
+  it('keeps the estimate turned off only when it was saved as off', async () => {
+    const storage = currentAsyncStorage();
+    const { useSettingsStore } = require('../settingsStore');
+
+    await storage.setItem('na-pivo-settings', JSON.stringify({ state: { alcoholEstimateHidden: true }, version: 2 }));
+    await (useSettingsStore.persist as any).rehydrate?.();
+    expect(useSettingsStore.getState().alcoholEstimateHidden).toBe(true);
+
+    await storage.setItem('na-pivo-settings', JSON.stringify({ state: { alcoholEstimateHidden: 'yes' }, version: 2 }));
+    await (useSettingsStore.persist as any).rehydrate?.();
+    expect(useSettingsStore.getState().alcoholEstimateHidden).toBe(false);
+  });
+
   it('stores only an explicitly set home point and navigation provider', async () => {
     const { useSettingsStore } = require('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();
