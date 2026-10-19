@@ -24,7 +24,7 @@ import {
   StyleSheet,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -123,6 +123,14 @@ export default function AboutScreen() {
             <ExternalLinkIcon size={17} color={Colors.amber} />
           </Pressable>
         ) : null}
+
+        <Pressable
+          onPress={() => router.push('/privacy' as Href)}
+          style={({ pressed }) => [styles.privacyLink, pressed && styles.pressed]}
+          accessibilityRole="link"
+        >
+          <Text style={styles.privacyLinkLabel}>{t.about.privacyLink}</Text>
+        </Pressable>
 
         {/* ── Changelog ── */}
         <View style={styles.section}>
@@ -415,6 +423,17 @@ const styles = StyleSheet.create({
   },
 
   // ── Footer ──
+  privacyLink: {
+    minHeight: 48,
+    marginBottom: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  privacyLinkLabel: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.amber,
+  },
   footer: {
     fontFamily: Fonts.ui.medium,
     fontSize: 11,

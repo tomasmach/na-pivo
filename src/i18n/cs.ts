@@ -493,8 +493,11 @@ export const cs = {
 
   settings: {
     title: 'Nastavení',
-    compassSection: 'Co ti kompas najde',
-    notificationsSection: 'Kdy se ozvu',
+    compassSection: 'Kompas',
+    notificationsSection: 'Připomínky',
+    phoneSection: 'Telefon',
+    appSection: 'Na pivo',
+    aboutRow: 'O appce a novinky',
     languageSection: 'Jazyk · Language',
     language: {
       cs: 'Čeština',
@@ -512,39 +515,33 @@ export const cs = {
       brownNote: 'Hnědou už neudržuju. Neručím za to, že v ní budou další verze vypadat a fungovat správně.',
     },
     locationPrivacy: 'Domov a průchod tour nechávám v telefonu. Plán hospod sdílím jen na tvůj pokyn. Historii polohy neukládám.',
-    // Section group labels — one clear meaning per group.
-    sections: {
-      search: 'HLEDÁNÍ',
-      app: 'APLIKACE',
-      contribute: 'PŘISPĚJ',
-      about: 'O APLIKACI',
-    },
-    // Account hub card at the top of settings (drills into /account when signed
-    // in, into /auth when signed out).
     accountCard: {
-      header: 'ÚČET',
-      verified: 'E-mail ověřen',
       verifiedInline: 'e-mail ověřen',
       ctaSignedIn: 'Můj účet',
       ctaSignedOutSubtitle: 'Deník i parta v novém mobilu',
       signedOutTitle: 'Přihlásit se',
-      signedOutSubtitle: 'Piva, hodnocení i odznaky na všech zařízeních',
     },
     distance: {
-      header: 'MAXIMÁLNÍ VZDÁLENOST',
-      helper: 'Hledám hospody jen v této vzdálenosti od tebe.',
+      title: 'Jak daleko hledat',
+      sheetTitle: 'Jak daleko mám hledat?',
       unlimited: 'Bez limitu',
-      unlimitedUnit: 'BEZ LIMITU',
       kmShort: 'km',
-      rangeMin: '500 m',
-      rangeMax: '∞',
-      accessibilityLabel: 'Maximální dosah hledání',
-      increase: 'Zvětšit dosah',
-      decrease: 'Zmenšit dosah',
+      meters: (meters: number) => `${meters} m`,
+    },
+    navigation: {
+      title: 'Navigovat přes',
+      google: 'Google',
+      mapy: 'Mapy.com',
+      a11y: (name: string) => `Navigovat přes ${name}`,
+    },
+    homePoint: {
+      title: 'Domovský bod',
+      configured: 'Nastavený',
+      notConfigured: 'Nenastavený',
     },
     haptics: {
-      title: 'Vibrace u cíle',
-      subtitle: 'Zabzučí ti to v kapse',
+      title: 'Vibrace',
+      subtitle: 'Při ťukání i když dojdeš k cíli',
     },
     pubReminders: {
       title: 'Připomenout v hospodě',
@@ -572,7 +569,7 @@ export const cs = {
     beerCountReminder: {
       title: 'Připomenout další pivo',
       subtitle: 'Po každém pivu posunu jednu upomínku. Sama se neopakuje.',
-      intervalLabel: 'Za',
+      intervalTitle: 'Za kolik minut',
       intervalOption: (minutes: number) =>
         `Připomenout za ${minutes} ${czechPlural(minutes, { one: 'minutu', few: 'minuty', many: 'minut' })}`,
       intervalShort: (minutes: number) => `${minutes} min`,
@@ -597,21 +594,9 @@ export const cs = {
       title: 'Radši dobře hodnocené',
       subtitle: 'Přeskočí známé podniky pod 4 hvězdy',
     },
-    preferGarden: {
-      title: 'Radši se zahrádkou',
-      subtitle: 'Když vím, že zahrádku nemají, jdu dál',
-    },
     hidePubNames: {
       title: 'Schovávat názvy hospod',
       subtitle: 'Název se ukáže až po ťuknutí',
-    },
-    currency: {
-      title: 'Měna cen',
-      subtitle: 'Automaticky podle země, kde zrovna jsi',
-      czk: 'Kč',
-      eur: '€',
-      footer: (currency: string) =>
-        `Ceny počítám v ${currency === 'EUR' ? '€' : 'Kč'}, podle země, kde zrovna jsi.`,
     },
     marketingEmails: {
       title: 'Novinky e-mailem',
@@ -620,34 +605,7 @@ export const cs = {
     about: {
       title: 'O appce',
     },
-    feedback: 'Napiš mi / nahlas chybu',
-    feedbackCtaSubtitle: 'Něco nehraje nebo ti něco chybí? Dej mi vědět.',
-    addPub: 'Přidat chybějící hospodu',
-    addPubCtaSubtitle: 'Nevidíš svůj podnik? Přidej ho mezi ostatní.',
-    privacy: 'Soukromí',
-    more: {
-      title: 'Co ještě?',
-      accessibilityLabel: 'Další možnosti nastavení',
-      homePoint: 'Domovský bod',
-      configured: 'Nastavený',
-      notConfigured: 'Nenastavený',
-      navigateGoogle: 'Navigovat přes Google',
-      navigateMapy: 'Navigovat přes Mapy.com',
-      myAddedPubs: 'Moje přidané hospody',
-    },
-    discord: {
-      title: 'Přidej se na komunitní Discord',
-      subtitle: 'Pivo, hospody a řeči kolem. Stav se na jedno.',
-      url: 'https://discord.gg/EDw8EW7Az8',
-    },
-    creator: {
-      header: 'TVŮRCE',
-      name: 'Tomáš Mach',
-      instagram: 'Instagram',
-      instagramUrl: 'https://www.instagram.com/jsem_mach/',
-      linkedin: 'LinkedIn',
-      linkedinUrl: 'https://www.linkedin.com/in/mach-tomas/',
-    },
+    feedback: 'Napiš mi nebo nahlas chybu',
     footer: 'Bez reklam · Bez placení',
   },
 
@@ -2972,6 +2930,7 @@ export const cs = {
   },
 
   about: {
+    privacyLink: 'Zásady soukromí',
     // Screen title reuses settings.about.title ("O appce") as the single source.
     tagline: 'Tvůj kompas k nejbližšímu pivu.',
     whatsNewHeader: 'CO JE NOVÉHO',

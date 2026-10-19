@@ -43,8 +43,8 @@ export interface MoreRow {
   label: string;
   /** Quiet right-hand text, e.g. "2 aktivní". */
   value?: string | null;
-  /** Leading icon — the parent passes it in from IconGlyph. */
-  icon: React.ComponentType<{ size?: number; color: string }>;
+  /** Leading icon — the parent passes it in from IconGlyph. A value picker has none. */
+  icon?: React.ComponentType<{ size?: number; color: string }>;
   /** Ticked mode (Nejbližší / Překvap mě). */
   selected?: boolean;
   disabled?: boolean;
@@ -144,9 +144,11 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                       ...(row.disabled != null ? { disabled: row.disabled } : {}),
                     }}
                   >
-                    <View style={styles.rowIcon}>
-                      <Icon size={18} color={Colors.amber} />
-                    </View>
+                    {Icon ? (
+                      <View style={styles.rowIcon}>
+                        <Icon size={18} color={Colors.amber} />
+                      </View>
+                    ) : null}
                     <Text
                       style={styles.rowLabel}
                       numberOfLines={1}

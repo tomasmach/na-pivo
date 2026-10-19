@@ -3,13 +3,15 @@
  * hospody"): sections on the ground, dark bands between them, hairline rows.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
 
 export const PAGE_PAD = 20;
 
@@ -70,6 +72,7 @@ export function ListRow({
   title,
   subtitle,
   value,
+  leading,
   onPress,
   first = false,
   testID,
@@ -77,6 +80,7 @@ export function ListRow({
   title: string;
   subtitle?: string | null;
   value?: string | null;
+  leading?: React.ReactNode;
   onPress: () => void;
   first?: boolean;
   testID?: string;
@@ -89,6 +93,7 @@ export function ListRow({
       accessibilityRole="button"
       accessibilityLabel={[title, subtitle, value].filter(Boolean).join(', ')}
     >
+      {leading}
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
           {title}
@@ -106,6 +111,79 @@ export function ListRow({
       ) : null}
       <ChevronRightIcon size={16} color={Colors.mutedText} />
     </Pressable>
+  );
+}
+
+function Toggle({
+  value,
+  onToggle,
+  accessibilityLabel,
+  testID,
+}: {
+  value: boolean;
+  onToggle: () => void;
+  accessibilityLabel: string;
+  testID?: string;
+}) {
+  const offset = useSharedValue(value ? 24 : 2);
+
+  useEffect(() => {
+    offset.value = withSpring(value ? 24 : 2, { mass: 0.6, damping: 14, stiffness: 200 });
+  }, [offset, value]);
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: offset.value }],
+  }));
+
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onToggle}
+      style={[styles.toggle, value ? styles.toggleOn : styles.toggleOff]}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
+    >
+      <Animated.View
+        style={[styles.toggleThumb, value ? styles.toggleThumbOn : styles.toggleThumbOff, softDrop(), thumbStyle]}
+      />
+    </Pressable>
+  );
+}
+
+/** A switch row. The switch's label carries its state, e.g. "Vibrace: zapnuto". */
+export function ToggleRow({
+  title,
+  subtitle,
+  value,
+  onToggle,
+  toggleLabel,
+  first = false,
+  testID,
+}: {
+  title: string;
+  subtitle?: string | null;
+  value: boolean;
+  onToggle: () => void;
+  toggleLabel: string;
+  first?: boolean;
+  testID?: string;
+}) {
+  return (
+    <View style={[styles.row, !first && styles.rowDivided]}>
+      <View style={styles.rowText}>
+        <Text style={styles.rowTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={styles.rowSub} numberOfLines={3} maxFontSizeMultiplier={FontScaleCap.body}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      <Toggle testID={testID} value={value} onToggle={onToggle} accessibilityLabel={toggleLabel} />
+    </View>
   );
 }
 
@@ -176,4 +254,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.mutedText,
   },
+  toggle: {
+    width: 50,
+    height: 30,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+  },
+  toggleOn: {
+    backgroundColor: withAlpha(Colors.amber, 0.32),
+    borderColor: withAlpha(Colors.amber, 0.45),
+  },
+  toggleOff: {
+    backgroundColor: Colors.stout3,
+    borderColor: withAlpha(Colors.foam, 0.08),
+  },
+  toggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: Radius.pill,
+  },
+  toggleThumbOn: { backgroundColor: Colors.foam },
+  toggleThumbOff: { backgroundColor: Colors.mutedText },
 });
