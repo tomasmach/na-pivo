@@ -43,6 +43,7 @@ import { submitPubRename } from '@/components/amenities/pubRename';
 import { RenamePubModal } from '@/components/compass/RenamePubModal';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { Band, PAGE_PAD, RoundButton, SectionTitle } from '@/components/shared/FlatPage';
 import {
   BeerIcon,
   ClockIcon,
@@ -110,7 +111,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Radius, Spacing } from '@/theme/layout';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
@@ -137,7 +138,6 @@ import {
 } from './pubPageModel';
 import { usePubVisitSummary } from './usePubVisitSummary';
 
-const PAGE_PAD = 20;
 const BAR_BUTTON = 48;
 const TAPS_COLLAPSED = 5;
 const POSITION_MAX_AGE_MS = 5 * 60 * 1000;
@@ -1350,59 +1350,6 @@ export default function PubPageScreen() {
 
 // ─── Pieces ─────────────────────────────────────────────────────────────────
 
-function RoundButton({
-  onPress,
-  label,
-  selected,
-  children,
-}: {
-  onPress: () => void;
-  label: string;
-  selected?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={selected === undefined ? undefined : { selected }}
-    >
-      {children}
-    </Pressable>
-  );
-}
-
-/** The dark gap between sections; runs edge to edge (DESIGN.md §5.2). */
-function Band() {
-  return <View style={styles.band} />;
-}
-
-function SectionTitle({ title, aside }: { title: string; aside?: string | null }) {
-  return (
-    <View style={styles.sectionHead}>
-      <Text
-        style={styles.sectionTitle}
-        accessibilityRole="header"
-        maxFontSizeMultiplier={FontScaleCap.heading}
-      >
-        {title}
-      </Text>
-      {aside ? (
-        <Text
-          style={styles.sectionAside}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {aside}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
 function ReasonRow({
   icon,
   title,
@@ -1576,14 +1523,6 @@ const styles = StyleSheet.create({
   hidden: {
     opacity: 0,
   },
-  roundButton: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   pressed: {
     opacity: 0.65,
   },
@@ -1690,31 +1629,6 @@ const styles = StyleSheet.create({
   reasonSub: {
     marginTop: 2,
     fontSize: 14,
-    color: Colors.mutedText,
-  },
-  band: {
-    height: 10,
-    marginTop: Spacing.lg,
-    marginHorizontal: -PAGE_PAD,
-    backgroundColor: Colors.deep,
-  },
-  sectionHead: {
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.xs,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-    color: Colors.foam,
-  },
-  sectionAside: {
-    flexShrink: 1,
-    fontSize: 13,
     color: Colors.mutedText,
   },
   row: {

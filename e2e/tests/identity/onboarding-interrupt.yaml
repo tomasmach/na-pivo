@@ -16,7 +16,7 @@ tags: [full, identity]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /profile
-- assertVisible: "Vytvořit účet"
+- assertVisible: "Zatím bez účtu"
 - assertNotVisible: { id: onboarding-skip }
 - evalScript: ${output.local.screenshot('identity-onboarding-skipped')}
 - runScript:

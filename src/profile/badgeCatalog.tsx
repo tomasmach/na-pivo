@@ -27,7 +27,7 @@ import {
   TrophyIcon,
   UsersIcon,
 } from '@/components/shared/IconGlyph';
-import type { AccountAchievements } from '@/data/auth';
+import type { AccountAchievements, AccountMapper } from '@/data/auth';
 import { t } from '@/i18n';
 
 export interface BadgeDef {
@@ -71,4 +71,19 @@ export const BADGE_CATALOG: readonly BadgeDef[] = [
 /** The unlocked slice, in catalog order — the public showcase. */
 export function unlockedBadges(achievements: AccountAchievements): BadgeDef[] {
   return BADGE_CATALOG.filter((badge) => achievements[badge.key]);
+}
+
+/** Mapér badges the server has not flagged yet still count once their counters say so. */
+export function resolvedAchievements(
+  mapper: AccountMapper | undefined,
+  achievements: AccountAchievements,
+): AccountAchievements {
+  return {
+    ...achievements,
+    firstMap: achievements.firstMap || (mapper?.firstMapperCount ?? 0) >= 1,
+    explorer: achievements.explorer || (mapper?.distinctMappedPubs ?? 0) >= 10,
+    cartographer: achievements.cartographer || (mapper?.distinctMappedPubs ?? 0) >= 25,
+    completionist: achievements.completionist || (mapper?.completedPubsCount ?? 0) >= 1,
+    factMachine: achievements.factMachine || (mapper?.amenityVotesCount ?? 0) >= 100,
+  };
 }

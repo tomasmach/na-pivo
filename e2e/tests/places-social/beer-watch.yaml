@@ -73,9 +73,10 @@ tags: [critical, full]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /profile
-- tapOn: 'Co ještě? Nastavení, žebříčky a další'
-- assertVisible:
-    id: profile-beer-watches
+- scrollUntilVisible:
+    element:
+      id: profile-beer-watches
+    direction: DOWN
 - evalScript: ${output.local.screenshot('beer-watch-profile-row')}
 - runFlow:
     file: ../../maestro/route.yaml

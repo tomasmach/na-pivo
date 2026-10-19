@@ -18,6 +18,7 @@ import { clearFeedbackQueue } from './feedbackQueue';
 import { clearFriendsQueue } from './friendsQueue';
 import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
 import { resetForegroundPulls } from './foregroundPulls';
+import { clearLeaderboardsCache } from './leaderboardsClient';
 import { clearNightsQueue } from './nightsQueue';
 import { clearTourRunQueue } from './tourRunQueue';
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
@@ -154,6 +155,8 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
   useBeerWatchStore.getState().reset();
+  // The cached boards carry the outgoing account's own rank.
+  clearLeaderboardsCache();
   // Výčep publication ledger is tied to the outgoing account's nights.
   useVycepStore.setState({ published: {} });
   usePubStore.setState({
