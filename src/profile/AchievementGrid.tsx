@@ -5,23 +5,9 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { LockKeyholeIcon } from '@/components/shared/IconGlyph';
-import { BADGE_CATALOG } from '@/profile/badgeCatalog';
+import { BADGE_CATALOG, resolvedAchievements } from '@/profile/badgeCatalog';
 import type { AccountAchievements, AccountMapper } from '@/data/auth';
 import { t } from '@/i18n';
-
-function resolvedAchievements(
-  mapper: AccountMapper | undefined,
-  achievements: AccountAchievements,
-): AccountAchievements {
-  return {
-    ...achievements,
-    firstMap: achievements.firstMap || (mapper?.firstMapperCount ?? 0) >= 1,
-    explorer: achievements.explorer || (mapper?.distinctMappedPubs ?? 0) >= 10,
-    cartographer: achievements.cartographer || (mapper?.distinctMappedPubs ?? 0) >= 25,
-    completionist: achievements.completionist || (mapper?.completedPubsCount ?? 0) >= 1,
-    factMachine: achievements.factMachine || (mapper?.amenityVotesCount ?? 0) >= 100,
-  };
-}
 
 export function AchievementGrid({
   mapper,

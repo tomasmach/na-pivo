@@ -2175,58 +2175,54 @@ export const cs = {
     // — Tab header —
     title: 'Profil',
 
-    // — Tácek rebuild: one card, one amber button, the rest behind "…" —
-
-    /** Identity row when there is no account yet. */
     noAccountNick: 'Zatím bez účtu',
     noAccountCaption: 'Piva ti počítám i tak.',
-    /** Wide caption under the big lifetime numeral. */
-    lifetimeCaption: 'PIV ZA ŽIVOT',
-    lifetimeCaptionEmpty: 'ČISTEJ TÁCEK',
-    /** Amber door in the card footer. */
-    badgesLink: 'Odznaky',
-    /** Footer facts. */
+    nicknameMissing: 'Doplň přezdívku',
+    lifetimeLabel: (n: number) =>
+      czechPlural(n, { one: 'pivo za život', few: 'piva za život', many: 'piv za život' }),
+    lifetimeEmpty: 'čistej tácek',
     levelLine: (level: number, title: string) => `Úroveň ${level} · ${title}`,
     levelToNext: (xp: number) => `ještě ${xp} XP do dalšího levelu`,
     levelMaxed: 'Máš všechno, jsi legenda.',
     levelNoAccount: 'Level ti naskočí s účtem.',
-    /** Caption under the level ring while there is no account to have a rung. */
-    levelRingCaption: 'Úroveň',
-    // — Lifetime trio in the card. Shorter than the `stat*` labels of the old
-    //   stats grid, because each one only gets a narrow share of the card. —
-    cardStatPubs: 'HOSPODY',
-    cardStatEvenings: 'VEČERY',
-    cardStatSpent: 'UTRACENO',
-    cardStatDailyAverage: 'PIV DENNĚ',
+    statPubsLabel: (n: number) => czechPlural(n, { one: 'hospoda', few: 'hospody', many: 'hospod' }),
+    statEveningsLabel: (n: number) => czechPlural(n, { one: 'večer', few: 'večery', many: 'večerů' }),
+    statSpentLabel: 'utraceno',
+    // A decimal average always takes "piva": "0,4 piva denně".
+    factDailyAverage: (formatted: string, value: number) =>
+      `${formatted} ${Number.isInteger(value) ? czechPlural(value, { one: 'pivo', few: 'piva', many: 'piv' }) : 'piva'} denně`,
+    factSince: (date: string) => `od ${date}`,
+    factFavoriteBeer: (beer: string) => `nejčastěji ${beer}`,
 
-    // — The one button —
     ctaCode: 'Ukaž svůj kód',
-    ctaCodeSub: 'Kámoš tě naskenuje a jste parta.',
+    ctaFirstBeer: 'Zapiš první pivo',
     ctaSignUp: 'Založ si profil',
     ctaSignUpSub: 'Ať o piva nepřijdeš při výměně mobilu.',
-    secondaryPhotos: 'Pivní fotky',
 
-    // — "Co ještě?" rows —
-    moreTitle: 'Co ještě?',
-    moreSettings: 'Nastavení',
-    moreLeaderboards: 'Žebříčky',
-    moreParta: 'Parta',
-    moreBeerWatches: 'Hlídaná piva',
-    morePartaCount: (friends: string) => friends,
-    morePartaEmpty: 'Sežeň si partu',
-    moreFollow: 'Sleduj Na pivo',
-
-    // — Nudge slot: at most one —
-    nudgePhotoFailed: 'Fotka se nenahrála.',
-    nudgePhotoRetry: 'Zkusit',
-    nudgeNickname: 'Bez přezdívky tě parta nepozná.',
-    nudgeNicknameFix: 'Doplnit',
-    // Count first: the strip truncates from the right, and losing the pub name
-    // costs less than losing the number the line exists to show.
-    nudgeLastNight: (pub: string, beers: string) => `${beers} · ${pub}`,
-    nudgeLastNightOpen: 'Otevřít',
-    nudgeEmpty: 'Zatím čistej tácek. Zapiš první pivo.',
-    nudgeEmptyCta: 'Na tácek',
+    favoritesTitle: 'Srdcovky',
+    favoritesShowAll: (n: number) =>
+      czechPlural(n, { one: 'Ukázat 1', few: `Ukázat všechny ${n}`, many: `Ukázat všech ${n}` }),
+    favoritesShowLess: 'Ukázat méně',
+    badgesTitle: 'Odznaky',
+    badgesCount: (unlocked: number, total: number) => `${unlocked} z ${total}`,
+    badgesEmpty: 'Mrkni, které odznaky se dají získat',
+    photosTitle: 'Pivní fotky',
+    photosAll: 'Všechny fotky',
+    photosEmpty: 'Vyfoť pivo a pověs ho sem.',
+    photosAdd: 'Přidat fotku',
+    photoFailed: 'Fotka se nenahrála.',
+    photoRetry: 'Zkusit',
+    addedPubsTitle: 'Přidané hospody',
+    myAddedPubs: 'Moje přidané hospody',
+    addedPubsWaiting: (n: number) =>
+      czechPlural(n, { one: `${n} čeká`, few: `${n} čekají`, many: `${n} čeká` }),
+    addPub: 'Přidat chybějící hospodu',
+    moreTitle: 'Další',
+    partaRow: 'Parta',
+    partaEmpty: 'Sežeň si partu',
+    beerWatchesRow: 'Hlídaná piva',
+    leaderboardsRow: 'Žebříčky',
+    weeklyRank: (rank: number) => `${rank}. tenhle týden`,
 
     // — Identity —
     editProfile: 'Upravit profil',
@@ -3374,9 +3370,7 @@ export const cs = {
     ratingNoteInput: (pub: string) => `Vlastní poznámka k hospodě ${pub}`,
 
     // — Profil —
-    profileMore: 'Co ještě? Nastavení, žebříčky a další',
-    profileCard: (beers: string, level: string) =>
-      `${beers} za život. ${level}. Ťukni pro odznaky.`,
+    profileCard: (beers: string, level: string) => `${beers} za život. ${level}.`,
     profileBadges: 'Otevřít odznaky',
     profileIdentity: 'Upravit profil',
 
