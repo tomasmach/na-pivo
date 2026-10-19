@@ -92,6 +92,8 @@ export interface CoasterCardProps {
    * rail. The card owns their vertical rhythm and nothing else about them.
    */
   children?: React.ReactNode;
+  /** The alcohol estimate band, ruled off above and directly above the footer. */
+  estimate?: React.ReactNode;
 }
 
 export function CoasterCard({
@@ -103,6 +105,7 @@ export function CoasterCard({
   onOpenReceipt,
   accessibilityLabel,
   children,
+  estimate,
 }: CoasterCardProps) {
   const reducedMotion = useReducedMotion();
   const countScale = useSharedValue(1);
@@ -206,9 +209,10 @@ export function CoasterCard({
       </Pressable>
 
       {children}
+      {estimate}
 
       {hasFooter ? (
-        <View style={styles.footer}>
+        <View style={[styles.footer, estimate ? styles.footerAfterEstimate : null]}>
           <View style={styles.facts}>
             {spentLabel !== null ? (
               <Text style={styles.fact} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -286,6 +290,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   footer: CardSurface.footer,
+  // The estimate band already ends in its own breathing room; another 20 would
+  // push its text off the middle between the two hairlines.
+  footerAfterEstimate: {
+    marginTop: 0,
+  },
   facts: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -96,6 +96,18 @@ describe('estimateAlcohol', () => {
     expect(estimateAlcohol(first, PROFILE, Date.parse(at('21:00')))!.absorbing).toBe(false);
   });
 
+  it('tells where a fresh round peaks while it is still being absorbed', () => {
+    const nine = Array.from({ length: 9 }, (_, i) => beer(`n${i}`, '20:00'));
+    const justLogged = estimateAlcohol(nine, PROFILE, Date.parse(at('20:01')))!;
+    const absorbed = estimateAlcohol(nine, PROFILE, Date.parse(at('20:45')))!;
+
+    expect(justLogged.now).toBeLessThan(0.2);
+    expect(justLogged.rising!.promile).toBeGreaterThan(2.5);
+    expect(justLogged.rising!.promile).toBeCloseTo(absorbed.now, 2);
+    expect(justLogged.rising!.at.getTime()).toBe(Date.parse(at('20:44')));
+    expect(absorbed.rising).toBeNull();
+  });
+
   it('ignores drinks timed in the future', () => {
     expect(estimateAlcohol([beer('f', '23:00')], PROFILE, Date.parse(at('21:00')))).toBeNull();
   });
