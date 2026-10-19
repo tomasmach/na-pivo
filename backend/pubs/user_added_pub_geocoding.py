@@ -74,16 +74,27 @@ def resolve_user_added_pub_location(
 
     timeout = int(getattr(settings, "GOOGLE_MAPS_TIMEOUT", 8))
     daily_cap = int(getattr(settings, "GOOGLE_MAPS_DAILY_CAP", 250))
-    with GoogleGeocodingSource(
-        api_key=api_key,
-        timeout=timeout,
-        reserve_request=lambda: reserve_external_api_request(
-            provider="google_maps",
-            operation="billable",
-            cap=daily_cap,
-        ),
-    ) as source:
-        candidate = source.geocode_address(address=address, city=city)
+    try:
+        with GoogleGeocodingSource(
+            api_key=api_key,
+            timeout=timeout,
+            reserve_request=lambda: reserve_external_api_request(
+                provider="google_maps",
+                operation="billable",
+                cap=daily_cap,
+            ),
+        ) as source:
+            candidate = source.geocode_address(address=address, city=city)
+    except GoogleGeocodingUnavailableError as exc:
+        # The messages carry only the HTTP status or failure kind, never the address.
+        logger.warning(
+            "pub address lookup could not reach Google",
+            extra={
+                "event": "pub_address_lookup",
+                "observability": {"result": "unavailable", "reason": str(exc)},
+            },
+        )
+        raise
 
     if candidate is None:
         # Only cache a completed no-match. Timeouts, exhausted budgets and
