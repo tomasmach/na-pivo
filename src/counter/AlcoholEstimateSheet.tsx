@@ -26,10 +26,7 @@ import {
   useAlcoholEstimate,
 } from '@/counter/useAlcoholEstimate';
 
-/**
- * Owns the minute tick, so the counter itself does not re-render every minute.
- * Without body numbers it still shows, as the way to set them up.
- */
+/** Owns the minute tick, so the counter itself does not re-render every minute. */
 export function AlcoholEstimateRow({ onPress }: { onPress: () => void }) {
   const hasProfile = useSettingsStore((s) => s.bodyProfile !== null);
   const { estimate, nowMs } = useAlcoholEstimate();
@@ -79,7 +76,7 @@ export function AlcoholEstimateRow({ onPress }: { onPress: () => void }) {
       {side === null ? (
         <View style={styles.coasterSpacer} />
       ) : (
-        <Text style={styles.coasterSide} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        <Text style={styles.coasterSide} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
           {side}
         </Text>
       )}

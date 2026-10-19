@@ -64,7 +64,7 @@ interface SettingsState {
   friendPushOptedOut: boolean;
   surpriseSeed: number;
   lastSeenPartyStreak: number;
-  /** Body numbers for the blood alcohol estimate. Null means the estimate is off. */
+  /** Body numbers for the blood alcohol estimate, null until the user enters them. */
   bodyProfile: BodyProfile | null;
   /** The user turned the estimate off, so the counter stops offering its setup. */
   alcoholEstimateHidden: boolean;
