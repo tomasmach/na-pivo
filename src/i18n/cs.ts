@@ -580,23 +580,23 @@ export const cs = {
     },
     waterNudge: {
       title: 'Připomenout vodu',
-      subtitle: 'Volitelně po čtyřech pivech, jen v telefonu. Neodhaduje střízlivost.',
+      subtitle: 'Po čtyřech pivech, jen v telefonu. Střízlivost neodhaduju.',
     },
     homeTransitReminder: {
       title: 'Připomenout poslední spoj',
-      subtitle: '20 minut před posledním přímým spojem domů. Jen Praha a okolí, chce to domov.',
+      subtitle: '20 minut před posledním přímým spojem domů. Jen Praha a okolí, potřebuju tvůj domovský bod.',
     },
     hideClosed: {
       title: 'Skrýt zavřené hospody',
-      subtitle: 'Ukázat jen otevřené a ty s neznámou dobou',
+      subtitle: 'Ukážu jen otevřené a ty s neznámou dobou',
     },
     preferRated: {
       title: 'Radši dobře hodnocené',
-      subtitle: 'Přeskočí známé podniky pod 4 hvězdy',
+      subtitle: 'Přeskočím známé podniky pod 4 hvězdy',
     },
     hidePubNames: {
       title: 'Schovávat názvy hospod',
-      subtitle: 'Název se ukáže až po ťuknutí',
+      subtitle: 'Název ukážu až po ťuknutí a skryju ho i v upozorněních',
     },
     marketingEmails: {
       title: 'Novinky e-mailem',

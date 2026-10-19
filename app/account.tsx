@@ -543,14 +543,16 @@ export default function AccountScreen() {
         </View>
       </View>
 
-      <ToggleRow
-        first
-        title={t.settings.marketingEmails.title}
-        subtitle={t.settings.marketingEmails.subtitle}
-        value={marketingEmailsEnabled}
-        onToggle={toggleMarketingEmails}
-        toggleLabel={`${t.settings.marketingEmails.title}: ${marketingEmailsEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-      />
+      <View style={styles.preferenceCard}>
+        <ToggleRow
+          first
+          title={t.settings.marketingEmails.title}
+          subtitle={t.settings.marketingEmails.subtitle}
+          value={marketingEmailsEnabled}
+          onToggle={toggleMarketingEmails}
+          toggleLabel={`${t.settings.marketingEmails.title}: ${marketingEmailsEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
+        />
+      </View>
 
       <NudgeSlot nudge={nudge} />
 
@@ -657,6 +659,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 8,
+  },
+  preferenceCard: {
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingHorizontal: Spacing.lg,
   },
   cardBody: {
     flex: 1,

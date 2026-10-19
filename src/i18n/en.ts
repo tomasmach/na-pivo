@@ -499,23 +499,23 @@ export const en: Strings = {
     },
     waterNudge: {
       title: 'Remind me about water',
-      subtitle: "Optional, after four beers, only on the phone. It doesn't estimate how sober you are.",
+      subtitle: "After four beers, only on the phone. I don't estimate how sober you are.",
     },
     homeTransitReminder: {
       title: 'Remind me of the last ride',
-      subtitle: '20 minutes before the last direct ride home. Prague area only, needs your home.',
+      subtitle: '20 minutes before the last direct ride home. Prague area only, I need your home point.',
     },
     hideClosed: {
       title: 'Hide closed pubs',
-      subtitle: 'Show only open ones and those with unknown hours',
+      subtitle: "I'll show only open ones and those with unknown hours",
     },
     preferRated: {
       title: 'Prefer well rated',
-      subtitle: 'Skips known places under 4 stars',
+      subtitle: "I'll skip known places under 4 stars",
     },
     hidePubNames: {
       title: 'Hide pub names',
-      subtitle: 'The name shows after a tap',
+      subtitle: "I'll show the name after a tap and hide it in notifications too",
     },
     marketingEmails: {
       title: 'News by email',
