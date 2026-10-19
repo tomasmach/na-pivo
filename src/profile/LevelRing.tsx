@@ -22,7 +22,7 @@ import { FontScaleCap } from '@/theme/fonts';
 
 const STROKE = 6;
 /** Below a full turn the arc needs a visible start, so it never reads as empty. */
-const MIN_ARC = 0.04;
+const MIN_ARC = 0.08;
 
 export interface LevelRingProps {
   /** Rung number, or null when there is no account and so no level. */

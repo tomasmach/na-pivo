@@ -37,6 +37,7 @@ import {
 } from '@/profile/dailyBeerAverage';
 import { LevelRing } from '@/profile/LevelRing';
 import { favoriteBeerName, savedFavoritePubs } from '@/profile/profileModel';
+import { useMyStats } from '@/stats/useMyStats';
 import {
   selectAvatarUrl,
   selectIsPublic,
@@ -92,6 +93,7 @@ export default function ProfileScreen() {
   const reportedIds = usePubStore((state) => state.reportedPubIds);
   const beerWatchCount = useBeerWatchStore((state) => state.watches.length);
 
+  const remoteStats = useMyStats();
   const [codeVisible, setCodeVisible] = useState(false);
   const [allFavorites, setAllFavorites] = useState(false);
   const [partaCount, setPartaCount] = useState<number | null>(null);
@@ -110,7 +112,7 @@ export default function ProfileScreen() {
         if (alive) setAddedPubs(submissions);
       });
       void fetchLeaderboard('beers', 'week').then((board) => {
-        if (alive && board) setWeeklyRank(board.me.rank);
+        if (alive) setWeeklyRank(board?.me.rank ?? null);
       });
       return () => {
         alive = false;
@@ -143,8 +145,8 @@ export default function ProfileScreen() {
     beers = Math.max(profile.stats.totalBeers, localBeers);
   }
 
-  // Local sessions are the floor; the reconciled account snapshot wins for pubs
-  // and money once it's there, because it also knows evenings this phone never had.
+  // Local sessions are the floor; the server knows evenings this phone never had,
+  // so its numbers win once they are larger, as in Deník.
   const lifetime = useMemo(() => {
     const evenings = sessions.filter((session) => session.drinks.length > 0).length;
     const localPubs = new Set(
@@ -154,11 +156,11 @@ export default function ProfileScreen() {
     ).size;
     const localSpent = sessions.reduce((total, session) => total + sessionTotalCzk(session), 0);
     return {
-      evenings,
+      evenings: Math.max(remoteStats?.totalEvenings ?? 0, evenings),
       pubs: Math.max(reconciledStats?.distinctPubs ?? 0, localPubs),
       spentCzk: Math.max(reconciledStats?.totalSpentCzk ?? 0, localSpent),
     };
-  }, [reconciledStats, sessions]);
+  }, [reconciledStats, remoteStats, sessions]);
 
   // The server snapshot holds the whole drink history; scan it only when the
   // snapshot changes, not on every local drink.
@@ -392,9 +394,11 @@ export default function ProfileScreen() {
               <Stat
                 value={lifetime.evenings.toLocaleString(intlLocale)}
                 label={t.profile.statEveningsLabel(lifetime.evenings)}
-                align="center"
+                align={lifetime.spentCzk > 0 ? 'center' : 'right'}
               />
-              <Stat value={formatPrice(lifetime.spentCzk, priceCurrency)} label={t.profile.statSpentLabel} align="right" />
+              {lifetime.spentCzk > 0 ? (
+                <Stat value={formatPrice(lifetime.spentCzk, priceCurrency)} label={t.profile.statSpentLabel} align="right" />
+              ) : null}
             </View>
           ) : null}
           {facts ? (
@@ -540,19 +544,14 @@ export default function ProfileScreen() {
           title={t.profile.addedPubsTitle}
           aside={addedPubs.length > 0 ? addedPubs.length.toLocaleString(intlLocale) : null}
         />
-        {addedPubs.length > 0 ? (
-          <ListRow
-            first
-            title={t.profile.myAddedPubs}
-            value={waitingPubs > 0 ? t.profile.addedPubsWaiting(waitingPubs) : null}
-            onPress={() => router.push('/my-added-pubs' as Href)}
-          />
-        ) : null}
+        {/* Always reachable: after a sign-in the list is only on the server until the screen loads it. */}
         <ListRow
-          first={addedPubs.length === 0}
-          title={t.profile.addPub}
-          onPress={() => router.push('/add-pub' as Href)}
+          first
+          title={t.profile.myAddedPubs}
+          value={waitingPubs > 0 ? t.profile.addedPubsWaiting(waitingPubs) : null}
+          onPress={() => router.push('/my-added-pubs' as Href)}
         />
+        <ListRow title={t.profile.addPub} onPress={() => router.push('/add-pub' as Href)} />
 
         <Band />
         <SectionTitle title={t.profile.moreTitle} />
@@ -767,7 +766,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.5),
     alignItems: 'center',
