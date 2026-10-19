@@ -1,12 +1,15 @@
 """Exercise released-client retries through the real address resolver."""
 
+import json
 from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
+from urllib.parse import unquote
 
 import pytest
 from django.core.management import call_command
 from django.utils import timezone
+from requests.models import Response
 from rest_framework.test import APIClient
 
 from pubs.enrichment.google_geocoding import (
@@ -100,14 +103,53 @@ def test_expired_miss_retries_and_can_publish(client):
     "error",
     [GoogleGeocodingUnavailableError("timeout"), GoogleGeocodingDailyCapExceededError("cap")],
 )
-def test_provider_failure_does_not_cache_a_false_miss(client, error):
+def test_provider_failure_does_not_cache_a_false_miss(client, error, caplog):
     with patch(GOOGLE_METHOD, side_effect=[error, CANDIDATE]) as google:
         response = client.post("/v1/pubs", payload(), format="json")
         assert response.status_code == 503
         assert response.json()["code"] == "geocoding_unavailable"
+        records = [r.observability for r in caplog.records if getattr(r, "event", "") == "pub_address_lookup"]
+        assert records == [{"result": "unavailable", "reason": str(error)}]
         assert not PubGeocodingMiss.objects.exists()
         assert client.post("/v1/pubs", payload(), format="json").status_code == 201
         assert google.call_count == 2
+
+
+@pytest.mark.django_db
+def test_address_confirmed_from_a_conscription_number_result_is_saved(client):
+    # Google's real answer for "Masarykovo náměstí 1, Jihlava" has the house
+    # number only as the conscription number. The app sends back the address
+    # the lookup returned, so saving must resolve that same text again.
+    def google(url, **_kwargs):
+        precise = unquote(url).endswith("/Masarykovo náměstí 1, Jihlava")
+        result = {
+            "placeId": "jihlava-place",
+            "location": {"latitude": 49.3961, "longitude": 15.5912},
+            "granularity": "ROOFTOP" if precise else "GEOMETRIC_CENTER",
+            "addressComponents": [
+                *([{"longText": "1", "types": ["premise"]}] if precise else []),
+                {"longText": "Masarykovo náměstí", "types": ["route"]},
+                {"longText": "Jihlava", "types": ["locality"]},
+            ],
+            "types": ["street_address", "subpremise"] if precise else ["route"],
+        }
+        response = Response()
+        response.status_code = 200
+        response._content = json.dumps({"results": [result]}).encode()
+        return response
+
+    lookup = {"query": "Masarykovo náměstí 1, Jihlava", "address_lookup": True}
+    with patch("pubs.enrichment.google_geocoding.requests.Session.get", side_effect=google):
+        item = client.post("/v1/pubs/geocode", lookup, format="json").json()["items"][0]
+        city, street = (part["name"] for part in item["regionalStructure"])
+        response = client.post(
+            "/v1/pubs",
+            payload(address=street, city=city, lat=item["position"]["lat"], lng=item["position"]["lon"]),
+            format="json",
+        )
+    assert response.status_code == 201
+    assert response.json()["address"] == "Masarykovo náměstí 1"
+    assert UserAddedPub.objects.get().google_place_id == "jihlava-place"
 
 
 @pytest.mark.django_db
