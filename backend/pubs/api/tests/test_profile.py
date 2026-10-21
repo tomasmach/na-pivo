@@ -1166,6 +1166,55 @@ def test_pivar_achievements_flip_at_documentation_thresholds(client):
     ] is True
 
 
+@pytest.mark.django_db
+def test_badge_progress_reads_drinking_days_cities_and_moments(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    prague = ZoneInfo("Europe/Prague")
+
+    def drink(at, city="", drink_type=DrinkLog.DrinkType.BEER, **extra):
+        DrinkLog.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key="badge-pub",
+            name="Testovací hospoda",
+            lat=50.0876,
+            lng=14.4214,
+            city=city,
+            beer_name="Pilsner Urquell",
+            drink_type=drink_type,
+            drank_at=at,
+            **extra,
+        )
+
+    drink(datetime(2025, 12, 24, 20, tzinfo=prague), city="Praha")
+    # 01:30 on New Year's Day still belongs to the Silvestr evening.
+    drink(datetime(2026, 1, 1, 1, 30, tzinfo=prague), city=" praha ")
+    drink(datetime(2026, 3, 2, 12, tzinfo=prague), city="Brno")
+    drink(datetime(2026, 8, 7, 18, tzinfo=prague))
+    drink(datetime(2026, 8, 8, 18, tzinfo=prague), drink_type=DrinkLog.DrinkType.SOFT_DRINK)
+    drink(
+        datetime(2026, 5, 5, 12, tzinfo=prague),
+        city="Ostrava",
+        is_suspect=True,
+        suspect_reason="manual",
+    )
+
+    progress = client.get("/v1/account/me", **_auth(token)).json()["badge_progress"]
+
+    assert progress["beers"] == 4
+    assert progress["distinct_cities"] == 2
+    assert progress["soft_drinks"] == 1
+    assert progress["lunch_beers"] == 1
+    assert progress["after_midnight_drinks"] == 1
+    assert progress["beer_weekdays"] == [0, 2, 4]
+    assert progress["beer_months"] == [3, 8, 12]
+    assert progress["best_week_streak"] == 2
+    assert progress["christmas_eves"] == 1
+    assert progress["new_years_eves"] == 1
+    assert progress["beer_day_fridays"] == 1
+
+
 # ===========================================================================
 # 10. Google picture capture (once) + display_name seed; Apple no-op
 # ===========================================================================

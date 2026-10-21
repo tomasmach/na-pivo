@@ -96,6 +96,7 @@ from pubs.privacy import redact_party_codes
 
 from .profile_helpers import (
     derive_account_achievements,
+    derive_account_badge_progress,
     derive_account_profile_stats,
 )
 from .ugc_consent import ugc_consent_snapshot
@@ -3156,6 +3157,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
     subscription = serializers.SerializerMethodField()
     stats = serializers.SerializerMethodField()
     achievements = serializers.SerializerMethodField()
+    badge_progress = serializers.SerializerMethodField()
     mapper = serializers.SerializerMethodField()
     pivar = serializers.SerializerMethodField()
     ugc_consent = serializers.SerializerMethodField()
@@ -3180,6 +3182,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "subscription",
             "stats",
             "achievements",
+            "badge_progress",
             "mapper",
             "pivar",
             "ugc_consent",
@@ -3310,6 +3313,9 @@ class AccountMeSerializer(serializers.ModelSerializer):
         return AccountAchievementsSerializer(
             derive_account_achievements(obj, stats)
         ).data
+
+    def get_badge_progress(self, obj: Account) -> dict:
+        return derive_account_badge_progress(self._stats_for(obj))
 
     def get_mapper(self, obj: Account) -> dict:
         """The additive Mapér block (§7.2): derived level/title/progress from the

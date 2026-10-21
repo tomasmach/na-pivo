@@ -2081,6 +2081,16 @@ def test_friend_profile_detail(client):
     assert body["public_stats"]["total_beers"] == 0
     assert body["public_stats"]["mapper_level"] == 3
     assert body["achievements"]["first_beer"] is False
+    # Only public badge values; the private diary drink stays invisible.
+    assert body["badge_progress"] == {
+        "beers": 0,
+        "distinct_pubs": 0,
+        "mapped_pubs": 0,
+        "first_mapped_pubs": 0,
+        "completed_pubs": 0,
+        "facts": 0,
+        "contest_wins": 0,
+    }
     assert body["stats"]["shared_pub_count"] == 1
     assert body["stats"]["nights_together"] == 1
     assert len(body["recent_together"]) == 1

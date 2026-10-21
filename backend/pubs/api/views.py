@@ -261,6 +261,7 @@ from .client_time import bounded_client_time
 from .drink_flags import evaluate_drink_flags
 from .profile_helpers import (
     derive_account_public_achievements,
+    derive_account_public_badge_progress,
     derive_account_public_stats,
 )
 from .serializers import (
@@ -6954,6 +6955,9 @@ class FriendDetailView(APIView):
                     now=now,
                 ),
                 "achievements": derive_account_public_achievements(friend, public_profile_stats),
+                "badge_progress": derive_account_public_badge_progress(
+                    friend, public_profile_stats
+                ),
                 "public_tours": _public_tours(friend),
                 "stats": {
                     "shared_pub_count": shared_count,
