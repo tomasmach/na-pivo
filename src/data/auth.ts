@@ -29,8 +29,11 @@ import {
 import { bindAccountMerge, clearAccountMerge, hasPendingAccountMerge, readAccountMerge } from './accountMerge';
 import {
   parseAchievementsBlock,
+  parseBadgeProgress,
   type AccountAchievements,
+  type BadgeProgress,
   type RawAchievementsBlock,
+  type RawBadgeProgress,
 } from './achievements';
 import { getBackendEndpoint } from './backendConfig';
 import { createQueueLock } from './createQueue';
@@ -84,8 +87,8 @@ export interface AccountStats {
   maxVisitsToOnePub: number;
 }
 
-export { EMPTY_ACHIEVEMENTS, parseAchievementsBlock } from './achievements';
-export type { AccountAchievements, RawAchievementsBlock } from './achievements';
+export { EMPTY_ACHIEVEMENTS, parseAchievementsBlock, parseBadgeProgress } from './achievements';
+export type { AccountAchievements, BadgeProgress, RawAchievementsBlock } from './achievements';
 
 /** One level rung of the Mapér ladder (server copy of the locked table). */
 export interface MapperLevel {
@@ -153,6 +156,8 @@ export interface AccountProfile {
   subscription?: AccountSubscription;
   stats?: AccountStats;
   achievements?: AccountAchievements;
+  /** Values behind the badge collection; absent on older backends. */
+  badgeProgress?: BadgeProgress;
   usage?: { walkedDistanceM: number };
   /** Mapér gamification snapshot — attached only when the backend returns it. */
   mapper?: AccountMapper;
@@ -214,6 +219,7 @@ interface RawAccount {
     max_visits_to_one_pub?: number;
   };
   achievements?: RawAchievementsBlock;
+  badge_progress?: RawBadgeProgress;
   usage?: { walked_distance_m?: number };
   mapper?: {
     xp?: number;
@@ -427,6 +433,7 @@ function parseProfile(data: RawAccount): AccountProfile {
   if (subscription) profile.subscription = subscription;
   if (stats) profile.stats = stats;
   if (achievements) profile.achievements = achievements;
+  if (data.badge_progress) profile.badgeProgress = parseBadgeProgress(data.badge_progress);
   if (usage) profile.usage = usage;
   if (mapper) profile.mapper = mapper;
   if (pivar) profile.pivar = pivar;
