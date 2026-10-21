@@ -208,6 +208,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
   };
 
   /** Re-read the (possibly rotated) session token into the store. */
+  // Bumped when the profile is wiped for logout or account deletion: the store
+  // still holds the old session until syncSession finishes, so the token alone
+  // cannot tell a late answer from a current one.
+  let profileGeneration = 0;
+
   const syncSession = async () => {
     const session = await ensureAccount();
     setTelemetrySession(session);
@@ -331,10 +336,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     refreshProfile: async () => {
       const token = get().session?.token;
+      const generation = profileGeneration;
       const profile = await auth.fetchAccountProfile();
       // A late answer for an account that has since logged out or switched
       // would put its private profile back on screen.
-      if (get().session?.token !== token) return;
+      if (get().session?.token !== token || generation !== profileGeneration) return;
       if (profile) {
         set({ profile });
         applyAccountSettings(profile.settings);
@@ -409,6 +415,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     logout: async (options) => {
       await auth.logout(options);
+      profileGeneration += 1;
       set({
         profile: null,
         diarySnapshot: null,
@@ -421,6 +428,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
     deleteAccount: async () => {
       const result = await auth.deleteAccount();
       if (result.ok) {
+        profileGeneration += 1;
         set({
           profile: null,
           diarySnapshot: null,

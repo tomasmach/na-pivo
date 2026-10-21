@@ -500,6 +500,30 @@ describe('unlink', () => {
 // logout — clears profile + reverts (via auth.logout)
 // ---------------------------------------------------------------------------
 describe('logout', () => {
+  it('keeps the old account out when its late profile lands while the new session loads', async () => {
+    const before = { deviceId: 'd', accountId: 'a', token: 'old', authenticated: true };
+    useAccountStore.setState({ session: before, profile: signedInProfile({ id: 'a' }) });
+    let lateAnswer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile
+      .mockReturnValueOnce(new Promise((resolve) => (lateAnswer = resolve)))
+      .mockResolvedValueOnce(null);
+    let newSession: (session: typeof before) => void = () => undefined;
+    mockEnsureAccount.mockReturnValueOnce(new Promise((resolve) => (newSession = resolve)));
+    mockedAuth.logout.mockResolvedValue({ ok: true });
+
+    const late = useAccountStore.getState().refreshProfile();
+    const logout = useAccountStore.getState().logout();
+    await Promise.resolve();
+    await Promise.resolve();
+    lateAnswer(signedInProfile({ id: 'a' }));
+    await late;
+    newSession({ deviceId: 'd', accountId: 'b', token: 'anon', authenticated: false });
+    await logout;
+
+    expect(useAccountStore.getState().session?.accountId).toBe('b');
+    expect(useAccountStore.getState().profile).toBeNull();
+  });
+
   it('clears the profile and re-syncs the anonymous session', async () => {
     useAccountStore.setState({ profile: signedInProfile(), removedDrinkIds: new Set(['old-drink']) });
     mockedAuth.logout.mockResolvedValue({ ok: true });
