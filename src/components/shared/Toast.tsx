@@ -83,7 +83,7 @@ export function Toast() {
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={[styles.wrap, subtitle ? styles.wrapWide : null, { top: insets.top + Spacing.sm }, anim]}
+      style={[styles.wrap, subtitle ? styles.wrapWide : null, { top: insets.top + (subtitle ? 0 : Spacing.sm) }, anim]}
     >
       <Pressable
         onPress={() => {
