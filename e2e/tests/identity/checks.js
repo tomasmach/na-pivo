@@ -72,7 +72,7 @@ if (CASE === 'logout') {
   if (PHASE === 'final') { observe('primary', '/v1/account/me', 200); equal(names(primary), ['E2E Archiv A'], 'Settings and language must preserve identity and diary.'); }
 } else if (CASE === 'badges') {
   const body = observe('primary', '/v1/account/me', 200);
-  check(body.achievements.foto_pivar === true && body.achievements.first_ten === false, 'Actual server badges must match both the unlocked photo and locked ten-beer achievement.');
+  check(body.badge_progress.contest_wins === 1 && body.badge_progress.distinct_pubs === 0, 'Actual server badge values must match both the won photo round and the locked pub badge.');
   equal(names(primary), ['E2E Archiv A'], 'Offline information must preserve the diary.');
 } else if (CASE === 'avatar') {
   if (PHASE === 'uploaded') {

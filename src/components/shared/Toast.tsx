@@ -20,7 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { BeerIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
@@ -34,6 +34,9 @@ export function Toast() {
   const message = useToastStore((s) => s.message);
   const token = useToastStore((s) => s.token);
   const icon = useToastStore((s) => s.icon);
+  const subtitle = useToastStore((s) => s.subtitle);
+  const onPress = useToastStore((s) => s.onPress);
+  const durationMs = useToastStore((s) => s.durationMs);
   const hide = useToastStore((s) => s.hide);
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
@@ -62,7 +65,7 @@ export function Toast() {
       ? withTiming(1, { duration: 0 })
       : withSpring(1, { damping: 18, stiffness: 180, mass: 0.8 });
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(dismiss, VISIBLE_MS);
+    timer.current = setTimeout(dismiss, durationMs ?? VISIBLE_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
@@ -83,8 +86,11 @@ export function Toast() {
       style={[styles.wrap, { top: insets.top + Spacing.sm }, anim]}
     >
       <Pressable
-        onPress={dismiss}
-        style={[styles.toast, softDrop()]}
+        onPress={() => {
+          onPress?.();
+          dismiss();
+        }}
+        style={[styles.toast, subtitle ? styles.toastTall : null, softDrop()]}
         accessibilityRole="button"
       >
         {/* Leading visual: a caller-supplied IconGlyph, or a drawn beer glyph.
@@ -93,13 +99,21 @@ export function Toast() {
         <View style={styles.iconSlot}>
           {icon ?? <BeerIcon size={18} color={Colors.amber} />}
         </View>
-        <Text
-          style={styles.text}
-          numberOfLines={2}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {message}
-        </Text>
+        <View style={styles.textColumn}>
+          <Text
+            style={styles.text}
+            numberOfLines={2}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {message}
+          </Text>
+          {subtitle ? (
+            <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+        {onPress ? <ChevronRightIcon size={18} color={Colors.mutedText} /> : null}
       </Pressable>
     </Animated.View>
   );
@@ -125,16 +139,29 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.lg,
   },
+  toastTall: {
+    borderRadius: Radius.card,
+    paddingLeft: Spacing.sm + 2,
+    paddingRight: Spacing.md,
+  },
   iconSlot: {
-    width: 22,
-    height: 22,
+    minWidth: 22,
+    minHeight: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: {
+  textColumn: {
     flexShrink: 1,
+  },
+  text: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
+  },
+  subtitle: {
+    marginTop: 1,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    color: Colors.mutedText,
   },
 });

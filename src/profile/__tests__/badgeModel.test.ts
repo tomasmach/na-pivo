@@ -1,6 +1,14 @@
 import { parseBadgeProgress } from '@/data/achievements';
 import type { AccountMapper } from '@/data/auth';
-import { BADGE_RULES, badgeState, badgeStates, withMapperCounters } from '@/profile/badgeModel';
+import {
+  BADGE_RULES,
+  badgeState,
+  badgeStates,
+  daysUntilHoliday,
+  medalFrame,
+  nearestGoals,
+  withMapperCounters,
+} from '@/profile/badgeModel';
 
 const rule = (key: string) => {
   const found = BADGE_RULES.find((candidate) => candidate.key === key);
@@ -56,5 +64,45 @@ describe('withMapperCounters', () => {
 
     expect(badgeState(rule('mapped'), merged).tier).toBe(1);
     expect(merged.facts).toBe(120);
+  });
+});
+
+describe('nearestGoals', () => {
+  it('picks the closest next levels and never a volume badge', () => {
+    const states = badgeStates(
+      parseBadgeProgress({ beers: 99, distinct_pubs: 47, ratings: 8, facts: 30, distinct_cities: 1 }),
+    );
+
+    expect(nearestGoals(states).map((state) => state.key)).toEqual(['pubs', 'ratings', 'cities']);
+  });
+
+  it('drops a family once every level is reached', () => {
+    const states = badgeStates(parseBadgeProgress({ distinct_pubs: 140, ratings: 9 }));
+
+    expect(nearestGoals(states, 1).map((state) => state.key)).toEqual(['ratings']);
+  });
+});
+
+describe('medalFrame', () => {
+  it('gives the top level the wreath even in a three-level family', () => {
+    expect(medalFrame(3, 3)).toBe(4);
+    expect(medalFrame(3, 4)).toBe(3);
+    expect(medalFrame(1, 4)).toBe(1);
+  });
+});
+
+describe('daysUntilHoliday', () => {
+  it('counts down to the next Christmas Eve and says 0 on the day itself', () => {
+    expect(daysUntilHoliday('christmasEve', new Date(2026, 9, 21, 12))).toBe(64);
+    expect(daysUntilHoliday('christmasEve', new Date(2026, 11, 24, 21))).toBe(0);
+  });
+
+  it('keeps the evening until 4 a.m. on the holiday', () => {
+    expect(daysUntilHoliday('newYearsEve', new Date(2027, 0, 1, 2))).toBe(0);
+    expect(daysUntilHoliday('newYearsEve', new Date(2027, 0, 1, 5))).toBe(364);
+  });
+
+  it('finds the first Friday of August for Beer Day', () => {
+    expect(daysUntilHoliday('beerDay', new Date(2027, 6, 30, 12))).toBe(7);
   });
 });

@@ -252,28 +252,6 @@ describe('registerEmail', () => {
         totalSpentCzk: 720,
         maxVisitsToOnePub: 5,
       },
-      achievements: {
-        firstTen: true,
-        regular: true,
-        reviewer: false,
-        firstMap: false,
-        explorer: false,
-        cartographer: false,
-        completionist: false,
-        factMachine: false,
-        fotoPivar: false,
-        chatar: false,
-        podSirakem: false,
-        lahvacovyFilozof: false,
-        plechovkac: false,
-        firstBeer: false,
-        century: false,
-        pilgrim: false,
-        stamgast: false,
-        nightOwl: false,
-        taster: false,
-        partyAnimal: false,
-      },
       usage: { walkedDistanceM: 1234 },
     });
 
@@ -943,28 +921,6 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
 
     const profile = await auth.fetchAccountProfile();
     expect(profile).not.toBeNull();
-    expect(profile?.achievements).toEqual({
-      firstTen: true,
-      regular: false,
-      reviewer: false,
-      firstMap: true,
-      explorer: true,
-      cartographer: false,
-      completionist: true,
-      factMachine: false,
-      fotoPivar: false,
-      chatar: false,
-      podSirakem: false,
-      lahvacovyFilozof: false,
-      plechovkac: false,
-      firstBeer: true,
-      century: false,
-      pilgrim: false,
-      stamgast: true,
-      nightOwl: true,
-      taster: false,
-      partyAnimal: false,
-    });
     expect(profile?.mapper).toEqual({
       xp: 285,
       level: 3,
@@ -986,7 +942,7 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
     });
   });
 
-  it('tolerates an absent mapper block and missing new-badge fields', async () => {
+  it('tolerates an absent mapper block', async () => {
     installFetch(
       fetchResolving(200, {
         id: 'acc',
@@ -996,29 +952,6 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
     );
 
     const profile = await auth.fetchAccountProfile();
-    // The old badges keep working; the new ones default to false; mapper is absent.
-    expect(profile?.achievements).toEqual({
-      firstTen: true,
-      regular: false,
-      reviewer: false,
-      firstMap: false,
-      explorer: false,
-      cartographer: false,
-      completionist: false,
-      factMachine: false,
-      fotoPivar: false,
-      chatar: false,
-      podSirakem: false,
-      lahvacovyFilozof: false,
-      plechovkac: false,
-      firstBeer: false,
-      century: false,
-      pilgrim: false,
-      stamgast: false,
-      nightOwl: false,
-      taster: false,
-      partyAnimal: false,
-    });
     expect(profile?.mapper).toBeUndefined();
   });
 });

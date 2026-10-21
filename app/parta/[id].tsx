@@ -39,7 +39,9 @@ import {
   type FriendProfileDetail,
 } from '@/data/friendsClient';
 import { ScalePressable } from '@/photos/ScalePressable';
-import { unlockedBadges } from '@/profile/badgeCatalog';
+import { BadgeCell, BadgeGrid } from '@/profile/BadgeRows';
+import { badgeStates, PUBLIC_BADGE_KEYS } from '@/profile/badgeModel';
+import { badgeAmount } from '@/profile/badgeText';
 import { focusPubFromActivity } from '@/friends/focusPubHandoff';
 import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
@@ -288,7 +290,14 @@ export default function FriendProfileScreen() {
   const recent = detail?.recentTogether ?? [];
   const latestBeers = detail?.latestBeers ?? [];
   const publicStats = detail?.publicStats ?? null;
-  const showcase = detail?.achievements ? unlockedBadges(detail.achievements) : [];
+  const badgeProgress = detail?.badgeProgress;
+  const showcase = useMemo(
+    () =>
+      badgeProgress
+        ? badgeStates(badgeProgress).filter((state) => PUBLIC_BADGE_KEYS.has(state.key) && state.tier > 0)
+        : [],
+    [badgeProgress],
+  );
   // A tour this phone reported stays out of the author's list too.
   const hiddenPublic = useToursStore((s) => s.hiddenPublic);
   const publicTours = (detail?.publicTours ?? []).filter((tour) => !hiddenPublic?.includes(tour.id));
@@ -434,24 +443,20 @@ export default function FriendProfileScreen() {
             </View>
           ) : null}
 
-          {/* Vitrína — unlocked badges only; a locked grid is nobody's business. */}
+          {/* Vitrína — public medals only, earned levels only; progress and locked ones are nobody's business. */}
           {showcase.length > 0 ? (
             <View style={styles.recentSection}>
-              <SectionHeader label={t.friends.showcaseHeader} />
-              <View style={styles.showcaseWrap}>
-                {showcase.map(({ key, title, Icon }) => (
-                  <View key={key} style={styles.showcaseChip}>
-                    <Icon size={14} color={Colors.amber} />
-                    <Text
-                      style={styles.showcaseChipText}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {title}
-                    </Text>
-                  </View>
+              <SectionHeader label={t.badges.showcase} />
+              <BadgeGrid>
+                {showcase.map((state) => (
+                  <BadgeCell
+                    key={state.key}
+                    state={state}
+                    now={new Date()}
+                    status={badgeAmount(state.key, state.tiers[state.tier - 1])}
+                  />
                 ))}
-              </View>
+              </BadgeGrid>
             </View>
           ) : null}
 
@@ -727,30 +732,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     fontSize: 13,
     color: Colors.mutedText,
-  },
-
-  // — Badge showcase —
-  showcaseWrap: {
-    marginTop: Spacing.sm,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  showcaseChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: Spacing.md - 2,
-    borderRadius: 999,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.35),
-  },
-  showcaseChipText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    color: Colors.foam,
   },
 
   // — Stat tiles —

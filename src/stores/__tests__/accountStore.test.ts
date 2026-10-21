@@ -14,7 +14,7 @@ import {
   selectNeedsNickname,
 } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
-import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
+import type { AccountMapper, AccountProfile, AuthResult } from '@/data/auth';
 import { ensureAccount, fetchAccountPreferences, setAnonymousSessionEvictionListener } from '@/data/account';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
@@ -671,8 +671,6 @@ describe('applyMapperSnapshot', () => {
       ],
       xpRules: { firstFact: 15, firstMapperBonus: 25, confirm: 5, pubCompleteBonus: 30 },
     });
-    expect(patched?.achievements?.firstMap).toBe(true);
-    expect(patched?.achievements?.explorer).toBe(false);
   });
 
   it('treats a null xpForNextLevel snapshot as max level', () => {
@@ -704,46 +702,6 @@ describe('applyMapperSnapshot', () => {
     });
 
     expect(useAccountStore.getState().profile?.mapper?.xpForNextLevel).toBe(250);
-  });
-
-  it('updates Mapér achievements from snapshot counters without clearing old badges', () => {
-    useAccountStore.setState({
-      profile: signedInProfile({
-        achievements: {
-          ...EMPTY_ACHIEVEMENTS,
-          firstTen: true,
-          regular: false,
-          reviewer: true,
-        },
-        mapper: fullMapper({ distinctMappedPubs: 9, amenityVotesCount: 99, completedPubsCount: 0 }),
-      }),
-    });
-
-    useAccountStore.getState().applyMapperSnapshot({
-      xp: 500,
-      level: 4,
-      title: 'Znalec',
-      xpIntoLevel: 100,
-      xpForNextLevel: 500,
-      distinctMappedPubs: 25,
-      amenityVotesCount: 100,
-      firstMapperCount: 1,
-      completedPubsCount: 1,
-    });
-
-    expect(useAccountStore.getState().profile?.achievements).toEqual({
-      ...EMPTY_ACHIEVEMENTS,
-      firstTen: true,
-      regular: false,
-      reviewer: true,
-      firstMap: true,
-      explorer: true,
-      cartographer: true,
-      completionist: true,
-      factMachine: true,
-      // Server-only badge: a mapper snapshot must carry it through unchanged.
-      fotoPivar: false,
-    });
   });
 });
 

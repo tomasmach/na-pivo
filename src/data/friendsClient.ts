@@ -7,14 +7,7 @@ import {
   getSessionToken,
   type AccountSession,
 } from './account';
-import {
-  parseAchievementsBlock,
-  parseBadgeProgress,
-  type AccountAchievements,
-  type BadgeProgress,
-  type RawAchievementsBlock,
-  type RawBadgeProgress,
-} from './achievements';
+import { parseBadgeProgress, type BadgeProgress, type RawBadgeProgress } from './achievements';
 import { parseBeerCheckIn, type BeerCheckIn } from './beerCheckinsClient';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
@@ -285,9 +278,7 @@ export interface FriendProfileDetail {
   incomingRequestId: string | null;
   /** Null on older backends → hide the public-numbers strip. */
   publicStats: PublicProfileStats | null;
-  /** Null on older backends → hide the badge showcase. */
-  achievements: AccountAchievements | null;
-  /** Public badge values only; null on older backends. */
+  /** Public badge values only; null on older backends → hide the showcase. */
   badgeProgress: BadgeProgress | null;
   /** The person's public Tour de pub copies; empty on older backends. */
   publicTours: ProfilePublicTour[];
@@ -454,7 +445,6 @@ interface RawFriendProfileDetail {
   friendship_status?: string;
   incoming_request_id?: string | null;
   public_stats?: RawPublicProfileStats | null;
-  achievements?: RawAchievementsBlock | null;
   badge_progress?: RawBadgeProgress | null;
   public_tours?: unknown[];
 }
@@ -707,7 +697,6 @@ function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
     friendshipStatus: parseFriendshipStatus(raw),
     incomingRequestId: raw.incoming_request_id ?? null,
     publicStats: parsePublicStats(raw.public_stats),
-    achievements: raw.achievements ? parseAchievementsBlock(raw.achievements) : null,
     badgeProgress: raw.badge_progress ? parseBadgeProgress(raw.badge_progress) : null,
     publicTours: parsePublicTours(raw.public_tours),
   };

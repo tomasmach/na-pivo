@@ -28,11 +28,8 @@ import {
 } from './account';
 import { bindAccountMerge, clearAccountMerge, hasPendingAccountMerge, readAccountMerge } from './accountMerge';
 import {
-  parseAchievementsBlock,
   parseBadgeProgress,
-  type AccountAchievements,
   type BadgeProgress,
-  type RawAchievementsBlock,
   type RawBadgeProgress,
 } from './achievements';
 import { getBackendEndpoint } from './backendConfig';
@@ -87,8 +84,8 @@ export interface AccountStats {
   maxVisitsToOnePub: number;
 }
 
-export { EMPTY_ACHIEVEMENTS, parseAchievementsBlock, parseBadgeProgress } from './achievements';
-export type { AccountAchievements, BadgeProgress, RawAchievementsBlock } from './achievements';
+export { parseBadgeProgress } from './achievements';
+export type { BadgeProgress } from './achievements';
 
 /** One level rung of the Mapér ladder (server copy of the locked table). */
 export interface MapperLevel {
@@ -155,7 +152,6 @@ export interface AccountProfile {
   settings?: AccountSettings;
   subscription?: AccountSubscription;
   stats?: AccountStats;
-  achievements?: AccountAchievements;
   /** Values behind the badge collection; absent on older backends. */
   badgeProgress?: BadgeProgress;
   usage?: { walkedDistanceM: number };
@@ -218,7 +214,6 @@ interface RawAccount {
     total_spent_czk?: number;
     max_visits_to_one_pub?: number;
   };
-  achievements?: RawAchievementsBlock;
   badge_progress?: RawBadgeProgress;
   usage?: { walked_distance_m?: number };
   mapper?: {
@@ -324,13 +319,6 @@ function parseStats(data: RawAccount): AccountStats | undefined {
   };
 }
 
-function parseAchievements(data: RawAccount): AccountAchievements | undefined {
-  const raw = data.achievements;
-  if (!raw) return undefined;
-  // Every badge is additive; absent fields (older backends) stay false.
-  return parseAchievementsBlock(raw);
-}
-
 function numberOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -425,14 +413,12 @@ function parseProfile(data: RawAccount): AccountProfile {
   const settings = parseSettings(data);
   const subscription = parseSubscription(data);
   const stats = parseStats(data);
-  const achievements = parseAchievements(data);
   const usage = parseUsage(data);
   const mapper = parseMapper(data);
   const pivar = parsePivar(data);
   if (settings) profile.settings = settings;
   if (subscription) profile.subscription = subscription;
   if (stats) profile.stats = stats;
-  if (achievements) profile.achievements = achievements;
   if (data.badge_progress) profile.badgeProgress = parseBadgeProgress(data.badge_progress);
   if (usage) profile.usage = usage;
   if (mapper) profile.mapper = mapper;

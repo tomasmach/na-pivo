@@ -213,6 +213,7 @@ jest.mock('@/components/shared/PubReminderEnableFailureModal', () =>
 jest.mock('@/components/shared/AppDialog', () => mockComponents('AppDialogScreen'));
 jest.mock('@/reviews/AppReviewPromptGate', () => mockComponents('AppReviewPromptGate'));
 jest.mock('@/components/shared/Toast', () => mockComponents('Toast'));
+jest.mock('@/profile/BadgeHost', () => mockComponents('BadgeHost'));
 jest.mock('@/notifications/pubReminderNotifications', () => ({
   ...mockResolved(
     'cancelPendingPubReminder',

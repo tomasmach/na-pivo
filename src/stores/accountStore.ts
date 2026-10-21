@@ -10,8 +10,6 @@ import * as auth from '@/data/auth';
 import { trackForegroundPull } from '@/data/foregroundPulls';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import {
-  EMPTY_ACHIEVEMENTS,
-  type AccountAchievements,
   type AccountMapper,
   type AccountPivar,
   type AccountProfile,
@@ -94,24 +92,6 @@ function pivarFromSnapshot(
         ? current?.xpForNextLevel ?? null
         : snapshot.xpForNextLevel,
     levels: current?.levels ?? [],
-  };
-}
-
-function achievementsFromMapper(
-  current: AccountAchievements | undefined,
-  mapper: AccountMapper,
-): AccountAchievements {
-  return {
-    ...EMPTY_ACHIEVEMENTS,
-    ...current,
-    firstMap: (current?.firstMap ?? false) || mapper.firstMapperCount >= 1,
-    explorer: (current?.explorer ?? false) || mapper.distinctMappedPubs >= 10,
-    cartographer: (current?.cartographer ?? false) || mapper.distinctMappedPubs >= 25,
-    completionist: (current?.completionist ?? false) || mapper.completedPubsCount >= 1,
-    factMachine: (current?.factMachine ?? false) || mapper.amenityVotesCount >= 100,
-    // Server-only badge (photo-contest win) — no local unlock rule; carry it
-    // through so a mapper snapshot never clobbers it back to false.
-    fotoPivar: current?.fotoPivar ?? false,
   };
 }
 
@@ -391,14 +371,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
     applyMapperSnapshot: (snapshot) => {
       const current = get().profile;
       if (!current) return;
-      const mapper = mapperFromSnapshot(current.mapper, snapshot);
-      set({
-        profile: {
-          ...current,
-          mapper,
-          achievements: achievementsFromMapper(current.achievements, mapper),
-        },
-      });
+      set({ profile: { ...current, mapper: mapperFromSnapshot(current.mapper, snapshot) } });
     },
 
     applyPivarSnapshot: (snapshot) => {
