@@ -83,7 +83,7 @@ export function Toast() {
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={[styles.wrap, { top: insets.top + Spacing.sm }, anim]}
+      style={[styles.wrap, subtitle ? styles.wrapWide : null, { top: insets.top + Spacing.sm }, anim]}
     >
       <Pressable
         onPress={() => {
@@ -139,8 +139,15 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.lg,
   },
+  wrapWide: {
+    left: Spacing.md - 2,
+    right: Spacing.md - 2,
+    alignItems: 'stretch',
+  },
+  // The two-line toast announces a medal: full width so nothing peeks out from under it.
   toastTall: {
     borderRadius: Radius.card,
+    borderColor: withAlpha(Colors.amber, 0.5),
     paddingLeft: Spacing.sm + 2,
     paddingRight: Spacing.md,
   },

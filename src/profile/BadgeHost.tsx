@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
 import { t } from '@/i18n';
@@ -56,7 +57,7 @@ export function BadgeHost() {
     const first = medals[0];
     if (!first) return;
     if (useSettingsStore.getState().hapticEnabled) fireSuccessHaptic();
-    const icon = <BadgeMedal badge={first.key} look={medalLook(first)} size={36} />;
+    const icon = <BadgeMedal badge={first.key} look={medalLook(first)} size={44} />;
     if (medals.length === 1) {
       useToastStore.getState().show(t.badges.toastOne(badgeName(first)), {
         icon,
@@ -64,16 +65,18 @@ export function BadgeHost() {
         onPress: () => useBadgeStore.getState().open(first.key),
         durationMs: TOAST_MS,
       });
-      medalToast.current = useToastStore.getState().token;
-      return;
+    } else {
+      useToastStore.getState().show(t.badges.toastMany(medals.length), {
+        icon,
+        subtitle: medals.map((state) => badgeName(state)).join(', '),
+        onPress: () => router.push('/profile/badges' as Href),
+        durationMs: TOAST_MS,
+      });
     }
-    useToastStore.getState().show(t.badges.toastMany(medals.length), {
-      icon,
-      subtitle: medals.map((state) => badgeName(state)).join(', '),
-      onPress: () => router.push('/profile/badges' as Href),
-      durationMs: TOAST_MS,
-    });
-    medalToast.current = useToastStore.getState().token;
+    const { token, message, subtitle } = useToastStore.getState();
+    medalToast.current = token;
+    // The toast leaves after 4 s; a screen reader hears it right away instead.
+    AccessibilityInfo.announceForAccessibility(`${message}. ${subtitle}`);
   }, [accountId, hydrated, router, states]);
 
   const state = sheet && (states ?? LOCKED_BADGES).find((candidate) => candidate.key === sheet.key);

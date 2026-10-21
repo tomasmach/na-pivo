@@ -5,7 +5,7 @@
  * tap and it settles. Reduced motion swaps the art at once; the haptics stay.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -28,7 +28,6 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
 import { fireHeavyImpactHaptic, fireSuccessHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
@@ -36,6 +35,7 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 const MINT_DELAY_MS = 350;
 const PRESS_MS = 120;
 const POP_MS = 180;
+const MEDAL_SIZE = 128;
 /** Past this many, the missing days or months are counted instead of named. */
 const MISSING_NAMED = 3;
 
@@ -53,16 +53,16 @@ function subtitle(state: BadgeState): string {
   return t.badges.about[state.key];
 }
 
+/** Both levels are drawn on top of each other; the swap happens on the UI thread at the strike. */
 function useMint(minting: boolean) {
   const reduceMotion = useReduceMotion();
   const scale = useSharedValue(1);
-  const [landed, setLanded] = useState(!minting);
+  const landed = useSharedValue(minting ? 0 : 1);
 
   useEffect(() => {
     if (!minting) return;
     const haptics = useSettingsStore.getState().hapticEnabled;
-    const land = () => {
-      setLanded(true);
+    const strike = () => {
       if (haptics) fireHeavyImpactHaptic();
     };
     let settle: ReturnType<typeof setTimeout> | undefined;
@@ -71,12 +71,14 @@ function useMint(minting: boolean) {
         if (haptics) fireSuccessHaptic();
       }, reduceMotion ? 0 : PRESS_MS + POP_MS);
       if (reduceMotion) {
-        land();
+        landed.value = 1;
+        strike();
         return;
       }
       scale.value = withTiming(0.9, { duration: PRESS_MS, easing: Easing.in(Easing.quad) }, (finished) => {
         if (!finished) return;
-        runOnJS(land)();
+        landed.value = 1;
+        runOnJS(strike)();
         scale.value = withSequence(
           withTiming(1.08, { duration: POP_MS, easing: Easing.out(Easing.cubic) }),
           withSpring(1, { damping: 14, stiffness: 220 }),
@@ -92,7 +94,9 @@ function useMint(minting: boolean) {
   }, [minting]);
 
   const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  return { landed, style };
+  const before = useAnimatedStyle(() => ({ opacity: 1 - landed.value }));
+  const after = useAnimatedStyle(() => ({ opacity: landed.value }));
+  return { style, before, after };
 }
 
 function Slots({ state }: { state: BadgeState }) {
@@ -116,7 +120,7 @@ function Slots({ state }: { state: BadgeState }) {
                 key={label}
                 style={styles.slot}
                 accessible
-                accessibilityLabel={`${names[index]}, ${on ? t.badges.a11yEarned : t.badges.a11yLocked}`}
+                accessibilityLabel={`${names[index]}, ${on ? t.badges.a11yEarned : t.badges.a11yMissing}`}
               >
                 <View style={[styles.slotDisc, on ? styles.slotDiscOn : styles.slotDiscOff]}>
                   {on ? <CheckIcon size={20} color={Colors.amber} /> : null}
@@ -206,11 +210,10 @@ export function BadgeDetailSheet({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { landed, style: mintStyle } = useMint(minting);
+  const mint = useMint(minting);
   const earned = state.tier > 0;
   const quip = earned ? (t.badges.quips as Partial<Record<string, string>>)[state.key] : undefined;
   const still = stillLine(state);
-  const shownLook = landed ? medalLook(state) : medalLook(state, state.tier - 1);
   const isPublic = PUBLIC_BADGE_KEYS.has(state.key);
 
   return (
@@ -238,6 +241,7 @@ export function BadgeDetailSheet({
             <View style={styles.grabber} />
             <Pressable
               onPress={onClose}
+              hitSlop={6}
               style={({ pressed }) => [styles.close, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={t.a11y.counterCloseModal}
@@ -245,8 +249,15 @@ export function BadgeDetailSheet({
               <XIcon size={20} color={Colors.foamMuted} />
             </Pressable>
             <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-              <Animated.View style={[styles.medal, mintStyle]}>
-                <BadgeMedal badge={state.key} look={shownLook} size={128} />
+              <Animated.View style={[styles.medal, mint.style]}>
+                {minting ? (
+                  <Animated.View style={[styles.medalBefore, mint.before]}>
+                    <BadgeMedal badge={state.key} look={medalLook(state, state.tier - 1)} size={MEDAL_SIZE} />
+                  </Animated.View>
+                ) : null}
+                <Animated.View style={mint.after}>
+                  <BadgeMedal badge={state.key} look={medalLook(state)} size={MEDAL_SIZE} />
+                </Animated.View>
               </Animated.View>
               {minting ? (
                 <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -332,33 +343,26 @@ const styles = StyleSheet.create({
   },
   card: {
     flexShrink: 1,
-    backgroundColor: Colors.stout2,
+    backgroundColor: Colors.stout,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
     paddingTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
-    ...softDrop(),
   },
   grabber: {
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     alignSelf: 'center',
   },
   close: {
     position: 'absolute',
-    top: Spacing.md,
-    right: Spacing.md,
+    top: Spacing.sm,
+    right: Spacing.sm,
     zIndex: 1,
     width: HitArea.min,
     height: HitArea.min,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -375,6 +379,9 @@ const styles = StyleSheet.create({
   },
   medal: {
     alignSelf: 'center',
+  },
+  medalBefore: {
+    position: 'absolute',
   },
   kicker: {
     marginTop: Spacing.sm,

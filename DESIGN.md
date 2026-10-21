@@ -1148,12 +1148,16 @@ podtrhuje a bere se z tokenů: I `mutedText`, II `foamMuted`, III `amber`, IV `a
 v `neon`. Objemové odznaky (Čárkař, lahváče, plechovky) zůstávají cínové na všech úrovních a nikdy
 nejsou cíl ani odpočet. Jednorázové chvíle jsou čtvercové plakety, sbírky (Celý týden, Kolo roku)
 kulaté medaile, na kterých se sloty plní jantarem. Zamčená medaile je slepá ražba: tvar a motiv
-v pěně na 6–34 %, složené do plné barvy přes zem, aby se vrstvy nesčítaly. Tajná je čárkovaná
-plaketa s otazníkem. Neotevřená nová medaile má jantarovou tečku 6/100 vpravo nahoře.
+v pěně na 6–34 %, složené do plné barvy přes zem, aby se vrstvy nesčítaly. Další úroveň v řádku
+„Na řadě“ je o stupeň jasnější (motiv 50 %, obrys 30 %), protože je to to, co se nahání. Tajná je
+čárkovaná plaketa s otazníkem; neobjevená tajná jednoho tématu sdílí jednu buňku („2 přijdou
+samy“). Neotevřená nová medaile má jantarovou tečku 6/100 vpravo nahoře.
 
-Sbírka má nahoře „Na řadě“ (tři nejbližší úrovně podle podílu hotového), pod pásem šest témat
-v mřížce po čtyřech: medaile 64 pt, název s úrovní 13/600 a jedno číslo 12 pt. Profil ukazuje
-poslední čtyři medaile 56 pt a jeden řádek „Na řadě“. Detail je sheet s medailí 128 pt.
+Sbírka má pevnou hlavičku se zpětným tlačítkem, nahoře „Na řadě“ (tři nejbližší úrovně podle
+podílu hotového), pod pásem šest témat v mřížce po čtyřech: medaile 64 pt, název s úrovní 13/600
+(strop písma 1,1) a jedno číslo 12 pt. Profil ukazuje
+poslední čtyři medaile 56 pt a jeden řádek „Na řadě“. Detail je intent sheet podle §7 (zem `stout`,
+madlo 44 × 4) s medailí 128 pt.
 
 ---
 
@@ -1199,12 +1203,14 @@ Pravidla:
 **Výjimka: ražba medaile (21. 10. 2026).** Když se medaile od posledního otevření zvedla o úroveň,
 její detail ji jednou vyrazí: 350 ms po otevření se zamáčkne na 0,9 (120 ms, ease-in quad),
 kresba se naráz vymění na novou úroveň s haptikou Heavy, vyskočí na 1,08 (180 ms, ease-out cubic)
-a usadí se springem (damping 14, stiffness 220) s haptikou Success. Spouští ji otevření detailu,
+a usadí se springem (damping 14, stiffness 220) s haptikou Success. Obě kresby leží přes sebe
+a vymění se na UI vlákně, takže úder nečeká na JS. Spouští ji otevření detailu,
 nikdy počítadlo, a podruhé se už neopakuje. Při omezeném pohybu je nová kresba hned na místě
 a haptika zůstává. Pop 130/180 ms by úder nenesl, proto je pomalejší.
 
-**Toast s medailí.** Novou medaili ohlásí stávající `Toast` nahoře: medaile 36 pt místo ikony,
-druhý řádek s dosaženou hodnotou, šipka a 4 s místo 2,4 s. Ťuknutí otevře detail (víc medailí
+**Toast s medailí.** Novou medaili ohlásí stávající `Toast` nahoře přes celou šířku (okraj 12 pt):
+medaile 44 pt místo ikony, druhý řádek s dosaženou hodnotou, okraj `amber` 0,5, šipka a 4 s místo
+2,4 s. Čtečka obrazovky ho slyší hned při zobrazení. Ťuknutí otevře detail (víc medailí
 najednou otevře sbírku). Počítadlo se nehne; pivo odchází až po okně „Vrátit“, takže se toast
 s „Vrátit“ nepotká.
 

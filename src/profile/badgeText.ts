@@ -11,7 +11,7 @@ export const roman = (tier: number) => ROMAN[tier - 1] ?? String(tier);
 export function badgeName(state: BadgeState, tier = state.tier): string {
   if (state.secret && state.tier === 0) return t.badges.secretName;
   const name = t.badges.names[state.key];
-  return state.kind === 'tiered' && tier > 0 ? `${name}\u00A0${roman(tier)}` : name;
+  return state.kind === 'tiered' && tier > 0 ? `${name} ${roman(tier)}` : name;
 }
 
 /** "47 hospod" for a family's own count. */

@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { t } from '@/i18n';
-import { BadgeMedal, medalLook } from '@/profile/BadgeMedal';
+import { BadgeMedal, goalLook, medalLook } from '@/profile/BadgeMedal';
 import type { BadgeState } from '@/profile/badgeModel';
 import { badgeA11y, badgeName, cellStatus, stillLine } from '@/profile/badgeText';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -40,9 +40,9 @@ export function BadgeGoalRow({
       onPress={onPress}
       style={({ pressed }) => [styles.goal, !first && styles.divided, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={[title, still, `${state.value}/${next}`].filter(Boolean).join(', ')}
+      accessibilityLabel={[title, still, t.badges.earnedOf(state.value, next)].filter(Boolean).join(', ')}
     >
-      <BadgeMedal badge={state.key} look={medalLook(state, state.tier + 1)} size={48} />
+      <BadgeMedal badge={state.key} look={goalLook(state)} size={48} />
       <View style={styles.goalText}>
         <Text style={styles.goalTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {title}
@@ -85,7 +85,7 @@ export function BadgeCell({
       <Text
         style={[styles.cellName, !earned && styles.cellNameLocked]}
         numberOfLines={2}
-        maxFontSizeMultiplier={FontScaleCap.body}
+        maxFontSizeMultiplier={FontScaleCap.display}
       >
         {badgeName(state)}
       </Text>
@@ -174,14 +174,14 @@ const styles = StyleSheet.create({
   },
   grid: {
     marginTop: Spacing.xs,
-    marginHorizontal: -4,
+    marginHorizontal: -6,
     flexDirection: 'row',
     flexWrap: 'wrap',
     rowGap: Spacing.md,
   },
   cell: {
     width: '25%',
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
     alignItems: 'center',
   },
   cellName: {

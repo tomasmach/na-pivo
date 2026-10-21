@@ -19,10 +19,10 @@ tags: [full, identity]
       ROUTE: /profile/badges
 - assertVisible: "Poutník, zamčeno, Ještě 5 hospod"
 - scrollUntilVisible:
-    element: { text: "FotoPivař\u00A0I, získáno, Ještě 2 vyhraná kola" }
+    element: { text: "FotoPivař I, získáno, Ještě 2 vyhraná kola" }
     direction: DOWN
     timeout: 15000
-- assertVisible: "FotoPivař\u00A0I, získáno, Ještě 2 vyhraná kola"
+- assertVisible: "FotoPivař I, získáno, Ještě 2 vyhraná kola"
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
@@ -30,10 +30,10 @@ tags: [full, identity]
       ROUTE: /profile/badges
 - assertVisible: "Poutník, zamčeno, Ještě 5 hospod"
 - scrollUntilVisible:
-    element: { text: "FotoPivař\u00A0I, získáno, Ještě 2 vyhraná kola" }
+    element: { text: "FotoPivař I, získáno, Ještě 2 vyhraná kola" }
     direction: DOWN
     timeout: 15000
-- assertVisible: "FotoPivař\u00A0I, získáno, Ještě 2 vyhraná kola"
+- assertVisible: "FotoPivař I, získáno, Ještě 2 vyhraná kola"
 - runFlow:
     file: ../../maestro/route.yaml
     env:

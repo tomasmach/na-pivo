@@ -13,7 +13,8 @@ import type { BadgeKey, BadgeState } from '@/profile/badgeModel';
 import { medalFrame } from '@/profile/badgeModel';
 import { Colors, withAlpha } from '@/theme/colors';
 
-type Tone = 'copper' | 'tin' | 'gold' | 'top' | 'blind';
+/** Blind is a locked medal; preview is the same relief a step brighter, for the next goal. */
+type Tone = 'copper' | 'tin' | 'gold' | 'top' | 'blind' | 'preview';
 
 export type MedalLook =
   | { shape: 'coin'; frame: 1 | 2 | 3 | 4; tone: Tone }
@@ -41,6 +42,12 @@ export function medalLook(state: BadgeState, tier = state.tier): MedalLook {
   if (tier === 0) return { shape: 'coin', frame: 1, tone: 'blind' };
   const frame = medalFrame(tier, state.tiers.length);
   return { shape: 'coin', frame, tone: earned ? (state.volume ? 'tin' : FRAME_TONE[frame]) : 'blind' };
+}
+
+/** The next level of a family, a step brighter than a locked medal: the thing to chase. */
+export function goalLook(state: BadgeState): MedalLook {
+  const look = medalLook(state, state.tier + 1);
+  return look.shape === 'coin' && look.tone === 'blind' ? { ...look, tone: 'preview' } : look;
 }
 
 /** Solid colour of `top` at `alpha` over the ground, so stacked shapes never double up. */
@@ -292,12 +299,13 @@ const MOTIFS: Record<BadgeKey | 'secret', Motif> = {
   ),
   months: (I, _K, slots) => (
     <>
+      <Circle cx={50} cy={50} r={5} fill={I} />
       {Array.from({ length: 12 }, (_, month) => {
         const from = -90 + month * 30 + 2.5;
         return slots && !slots.filled[month] ? (
-          <Path key={month} d={sector(13, 21.5, from + 1, from + 24)} fill="none" stroke={slots.off} strokeWidth={1.5} />
+          <Path key={month} d={sector(18, 32, from + 1, from + 24)} fill="none" stroke={slots.off} strokeWidth={2.2} />
         ) : (
-          <Path key={month} d={sector(11, 23, from, from + 25)} fill={slots?.on ?? I} />
+          <Path key={month} d={sector(17, 33, from, from + 25)} fill={slots?.on ?? I} />
         );
       })}
     </>
@@ -446,14 +454,16 @@ interface Palette {
 }
 
 function palette(tone: Tone): Palette {
-  if (tone === 'blind') {
+  if (tone === 'blind' || tone === 'preview') {
+    const preview = tone === 'preview';
+    const line = over(Colors.foam, preview ? 0.3 : 0.2);
     return {
-      body: over(Colors.foam, 0.06),
-      ink: over(Colors.foam, 0.34),
-      detail: over(Colors.foam, 0.2),
-      edge: over(Colors.foam, 0.2),
-      highlight: over(Colors.foam, 0.2),
-      shade: over(Colors.foam, 0.2),
+      body: over(Colors.foam, preview ? 0.08 : 0.06),
+      ink: over(Colors.foam, preview ? 0.5 : 0.34),
+      detail: line,
+      edge: line,
+      highlight: line,
+      shade: line,
     };
   }
   const tin = tone === 'tin';
@@ -462,7 +472,7 @@ function palette(tone: Tone): Palette {
     ink: Colors.stout,
     detail: withAlpha(Colors.stout, tin ? 0.3 : 0.36),
     edge: null,
-    highlight: tin ? withAlpha(Colors.foam, 0.95) : tone === 'copper' ? withAlpha(Colors.foam, 0.42) : Colors.neon,
+    highlight: tin ? withAlpha(Colors.foam, 0.95) : tone === 'copper' ? withAlpha(Colors.foam, 0.6) : Colors.neon,
     shade: withAlpha(Colors.stout, tin ? 0.2 : 0.3),
   };
 }
@@ -517,10 +527,10 @@ function Wreath({ color, edge }: { color: string; edge: string | null }) {
 
 function Coin({ badge, frame, tone, filled }: { badge: BadgeKey; frame: 1 | 2 | 3 | 4 | 'ring'; tone: Tone; filled?: readonly boolean[] }) {
   const p = palette(tone);
-  const blind = tone === 'blind';
+  const blind = p.edge != null;
   const top = frame === 'ring' ? 2 : frame;
   const edge = (width = 1.3) => (p.edge ? { stroke: p.edge, strokeWidth: width } : {});
-  const slots = filled ? { filled, on: Colors.amber, off: over(Colors.foam, 0.3) } : undefined;
+  const slots = filled ? { filled, on: Colors.amber, off: over(Colors.foam, 0.34) } : undefined;
   return (
     <>
       {top >= 4 ? <Wreath color={blind ? p.body : tone === 'top' ? Colors.neon : p.highlight} edge={p.edge} /> : null}
@@ -556,8 +566,16 @@ function Coin({ badge, frame, tone, filled }: { badge: BadgeKey; frame: 1 | 2 | 
       <Circle cx={50} cy={50} r={28.4} fill={p.body} {...(top === 1 ? edge() : {})} />
       {blind ? null : (
         <>
-          <Circle cx={50} cy={50} r={25} fill="none" stroke={p.shade} strokeWidth={1.1} />
-          <Path d={arcPath(26.7, 198, 282)} fill="none" stroke={p.highlight} strokeWidth={1.8} strokeLinecap="round" />
+          {/* A plain coin needs its own minted rim, or at 64 pt it reads as a flat disc. */}
+          {top === 1 ? <Circle cx={50} cy={50} r={27.4} fill="none" stroke={withAlpha(Colors.stout, 0.35)} strokeWidth={2} /> : null}
+          <Circle cx={50} cy={50} r={25} fill="none" stroke={p.shade} strokeWidth={1.8} />
+          <Path
+            d={arcPath(26.7, 198, 282)}
+            fill="none"
+            stroke={p.highlight}
+            strokeWidth={tone === 'copper' ? 2.6 : 1.8}
+            strokeLinecap="round"
+          />
         </>
       )}
       {motif(badge, p.ink, p.body, 0.72, slots)}

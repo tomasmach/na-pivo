@@ -2168,7 +2168,7 @@ export const cs = {
       facts: 'Fakta o hospodách, která máš zapsaná.',
       photos: 'Pivní fotky, které máš nahrané.',
       contest: 'Vyhraná kola fotosoutěže.',
-      softDrinks: 'Nealko v deníku. Kdo řídí, počítá se taky.',
+      softDrinks: 'Nealko v deníku, třeba když řídíš.',
       weekdays: 'Pivo v každý den týdne.',
       months: 'Pivo v každém měsíci roku.',
       outsidePub: 'Pivo mimo hospodu.',
@@ -2231,7 +2231,7 @@ export const cs = {
     levels: 'Úrovně',
     missing: (n: string) => `chybí ${n}`,
     done: 'Hotovo',
-    allLevels: 'Máš všechny úrovně.',
+    allLevels: 'Víc už se vyrazit nedá.',
     newMedal: 'Nová medaile',
     toastOne: (name: string) => `Nová medaile: ${name}`,
     toastMany: (n: number) =>
@@ -2241,6 +2241,8 @@ export const cs = {
     secretName: 'Tajné',
     secretAbout: 'Co to je, zjistíš, až ho získáš.',
     secretStatus: 'Přijde samo',
+    secretsStatus: (n: number) =>
+      czechPlural(n, { one: 'Přijde samo', few: `${n} přijdou samy`, many: `${n} jich přijde samo` }),
     inDays: (n: number) =>
       n === 0 ? 'Dnes' : n === 1 ? 'Zítra' : czechPlural(n, { one: `Za ${n} den`, few: `Za ${n} dny`, many: `Za ${n} dní` }),
     slotsOf: (have: number, total: number) => `${have} ${total === 7 ? 'ze' : 'z'} ${total}`,
@@ -2263,9 +2265,9 @@ export const cs = {
     friendsSee: 'Tenhle odznak vidí i tvoje parta.',
     onlyYou: 'Tenhle vidíš jen ty.',
     showcase: 'Vitrína',
-    showcaseCount: (n: number) => czechPlural(n, { one: '1 odznak', few: `${n} odznaky`, many: `${n} odznaků` }),
     a11yEarned: 'získáno',
     a11yLocked: 'zamčeno',
+    a11yMissing: 'chybí',
     a11yNew: 'nové',
   },
   profile: {

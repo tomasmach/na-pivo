@@ -474,7 +474,7 @@ export default function ProfileScreen() {
                 onPress={openBadges}
                 style={({ pressed }) => [styles.badges, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel={t.a11y.profileBadges}
+                accessibilityLabel={`${t.a11y.profileBadges}: ${shelf.shown.map((state) => badgeName(state)).join(', ')}`}
               >
                 {shelf.shown.map((state) => (
                   <View key={state.key} style={styles.badge}>
@@ -484,7 +484,7 @@ export default function ProfileScreen() {
                       size={56}
                       dot={ownLedger && unopenedBadges.includes(state.key)}
                     />
-                    <Text style={styles.badgeTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+                    <Text style={styles.badgeTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.display}>
                       {badgeName(state)}
                     </Text>
                   </View>
@@ -777,10 +777,10 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: 4,
   },
   badge: {
-    width: 72,
+    width: 80,
     alignItems: 'center',
     gap: 6,
   },
