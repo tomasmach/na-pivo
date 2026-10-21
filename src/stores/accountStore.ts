@@ -208,9 +208,10 @@ export const useAccountStore = create<AccountState>((set, get) => {
   };
 
   /** Re-read the (possibly rotated) session token into the store. */
-  // Bumped when the profile is wiped for logout or account deletion: the store
-  // still holds the old session until syncSession finishes, so the token alone
-  // cannot tell a late answer from a current one.
+  // Bumped whenever the account behind the profile changes (logout, deletion,
+  // sign-in): the store still holds the old session until syncSession
+  // finishes, so the token alone cannot tell a late answer from a current one.
+  // Every profile read checks it before writing.
   let profileGeneration = 0;
 
   const syncSession = async () => {
@@ -238,6 +239,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
   /** After a session-changing auth call: persist the new token + profile. */
   const applyAuthResult = async (result: AuthResult): Promise<AuthResult> => {
     if (result.ok) {
+      profileGeneration += 1;
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
       await syncSession();
@@ -278,11 +280,13 @@ export const useAccountStore = create<AccountState>((set, get) => {
             state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
         }));
         if (session) {
+          const generation = profileGeneration;
           const [profile] = await Promise.all([
             auth.fetchAccountProfile(),
             // A successful launch pull lets the first foreground skip it.
             trackForegroundPull('diary', refreshDiarySnapshot, () => get().session?.accountId ?? null),
           ]);
+          if (generation !== profileGeneration || get().session?.token !== session.token) return;
           if (profile) {
             set({ profile });
             applyAccountSettings(profile.settings);
@@ -313,10 +317,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
       if (!session) return 'unavailable';
       if (!session.authenticated) return 'anonymous';
 
+      const generation = profileGeneration;
       const validation = await auth.validateAccountSession(session);
       // Ignore a response for a session that was replaced while validation was
       // in flight (for example by a manual login opened from another screen).
-      if (get().session?.token !== session.token) return 'unavailable';
+      if (get().session?.token !== session.token || generation !== profileGeneration) return 'unavailable';
 
       if (validation.status === 'invalid') {
         // Keep the credential and all account-local state intact. The auth

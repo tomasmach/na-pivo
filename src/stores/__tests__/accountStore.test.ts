@@ -500,6 +500,27 @@ describe('unlink', () => {
 // logout — clears profile + reverts (via auth.logout)
 // ---------------------------------------------------------------------------
 describe('logout', () => {
+  it('keeps a late anonymous profile from replacing the account just signed in to', async () => {
+    const anonymous = { deviceId: 'd', accountId: 'a', token: 'anon', authenticated: false };
+    useAccountStore.setState({ session: anonymous, profile: signedInProfile({ id: 'a', isAnonymous: true }) });
+    let lateAnswer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(new Promise((resolve) => (lateAnswer = resolve)));
+    let newSession: (session: typeof anonymous) => void = () => undefined;
+    mockEnsureAccount.mockReturnValueOnce(new Promise((resolve) => (newSession = resolve)));
+    mockedAuth.loginEmail.mockResolvedValue({ ok: true, profile: signedInProfile({ id: 'b' }) } as AuthResult);
+
+    const late = useAccountStore.getState().refreshProfile();
+    const login = useAccountStore.getState().login({ email: 'jan@example.com', password: 'x' });
+    await Promise.resolve();
+    await Promise.resolve();
+    lateAnswer(signedInProfile({ id: 'a', isAnonymous: true }));
+    await late;
+    newSession({ deviceId: 'd', accountId: 'b', token: 'signed', authenticated: true });
+    await login;
+
+    expect(useAccountStore.getState().profile?.id).toBe('b');
+  });
+
   it('keeps the old account out when its late profile lands while the new session loads', async () => {
     const before = { deviceId: 'd', accountId: 'a', token: 'old', authenticated: true };
     useAccountStore.setState({ session: before, profile: signedInProfile({ id: 'a' }) });
