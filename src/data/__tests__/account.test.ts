@@ -25,7 +25,7 @@ import {
 
 // Delivery also refetches the profile; drinksQueue.test.ts covers that call.
 jest.mock('@/stores/accountStore', () => ({
-  useAccountStore: { getState: () => ({ refreshProfile: jest.fn(async () => undefined) }) },
+  useAccountStore: { getState: () => ({ refreshBadges: jest.fn(async () => undefined) }) },
 }));
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')

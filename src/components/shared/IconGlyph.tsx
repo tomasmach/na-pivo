@@ -77,7 +77,6 @@ import Sprout from 'lucide-react-native/icons/sprout';
 import ClipboardList from 'lucide-react-native/icons/clipboard-list';
 import Flame from 'lucide-react-native/icons/flame';
 import Trophy from 'lucide-react-native/icons/trophy';
-import Moon from 'lucide-react-native/icons/moon';
 import QrCode from 'lucide-react-native/icons/qr-code';
 import Menu from 'lucide-react-native/icons/menu';
 import GlassWater from 'lucide-react-native/icons/glass-water';
@@ -85,7 +84,6 @@ import Wine from 'lucide-react-native/icons/wine';
 import Gauge from 'lucide-react-native/icons/gauge';
 import ListFilter from 'lucide-react-native/icons/list-filter';
 import House from 'lucide-react-native/icons/house';
-import Milk from 'lucide-react-native/icons/milk';
 import CupSoda from 'lucide-react-native/icons/cup-soda';
 import HandPlatter from 'lucide-react-native/icons/hand-platter';
 import Share2 from 'lucide-react-native/icons/share-2';
@@ -168,7 +166,6 @@ export const ImagesIcon = wrap(Images, 'ImagesIcon');
 export const SparklesIcon = wrap(Sparkles, 'SparklesIcon');
 export const TreePineIcon = wrap(TreePine, 'TreePineIcon');
 export const HouseIcon = wrap(House, 'HouseIcon');
-export const MilkIcon = wrap(Milk, 'MilkIcon');
 export const CupSodaIcon = wrap(CupSoda, 'CupSodaIcon');
 export const HandPlatterIcon = wrap(HandPlatter, 'HandPlatterIcon');
 export const Share2Icon = wrap(Share2, 'Share2Icon');
@@ -216,7 +213,6 @@ export const ClipboardListIcon = wrap(ClipboardList, 'ClipboardListIcon');
 // Parta 2.0 — streak flame + leaderboard trophy.
 export const FlameIcon = wrap(Flame, 'FlameIcon');
 export const TrophyIcon = wrap(Trophy, 'TrophyIcon');
-export const MoonIcon = wrap(Moon, 'MoonIcon');
 // Parta 3.0 — "Můj kód" QR growth glyph.
 export const QrCodeIcon = wrap(QrCode, 'QrCodeIcon');
 // Overflow menu glyph — three stacked lines, not a horizontal ellipsis.

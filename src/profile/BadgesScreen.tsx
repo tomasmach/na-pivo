@@ -8,7 +8,7 @@ import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { BadgeCell, BadgeGoalRow, BadgeGrid } from '@/profile/BadgeRows';
 import { BADGE_GROUPS, nearestGoals, type BadgeKey, type BadgeState } from '@/profile/badgeModel';
-import { LOCKED_BADGES, useAccountBadges } from '@/profile/useAccountBadges';
+import { LOCKED_BADGES, useAccountBadges, useRefreshBadgesOnFocus } from '@/profile/useAccountBadges';
 import { useAccountStore } from '@/stores/accountStore';
 import { useBadgeStore } from '@/stores/badgeStore';
 import { Colors } from '@/theme/colors';
@@ -28,6 +28,7 @@ export function BadgesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const accountId = useAccountStore((s) => s.profile?.id ?? null);
+  useRefreshBadgesOnFocus();
   const states = useAccountBadges() ?? LOCKED_BADGES;
   const unopened = useBadgeStore((s) => (s.accountId === accountId ? s.unopened : NONE));
   const open = useBadgeStore((s) => s.open);

@@ -38,6 +38,19 @@ interface ToastState {
   hide: () => void;
 }
 
+/** Runs `show` once no toast is on screen, so a waiting one never replaces another. */
+export function whenToastIsFree(show: () => void): void {
+  if (!useToastStore.getState().message) {
+    show();
+    return;
+  }
+  const stop = useToastStore.subscribe((state) => {
+    if (state.message) return;
+    stop();
+    show();
+  });
+}
+
 export const useToastStore = create<ToastState>((set) => ({
   message: null,
   token: 0,

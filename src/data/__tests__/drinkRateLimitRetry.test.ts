@@ -19,7 +19,7 @@ jest.mock('../account', () => ({
 }));
 // Delivery also refetches the profile; drinksQueue.test.ts covers that call.
 jest.mock('@/stores/accountStore', () => ({
-  useAccountStore: { getState: () => ({ refreshProfile: jest.fn(async () => undefined) }) },
+  useAccountStore: { getState: () => ({ refreshBadges: jest.fn(async () => undefined) }) },
 }));
 jest.mock('../telemetryClient', () => ({
   trackApiFailure: jest.fn(),

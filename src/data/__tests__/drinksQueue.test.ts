@@ -84,7 +84,7 @@ beforeEach(async () => {
   useTallyStore.setState({ current: null, history: [] });
   useToastStore.getState().hide();
   (submitDrink as jest.Mock).mockResolvedValue('ok');
-  useAccountStore.setState({ refreshProfile: jest.fn(async () => undefined) });
+  useAccountStore.setState({ refreshBadges: jest.fn(async () => undefined) });
   await AsyncStorage.clear();
 });
 
@@ -172,14 +172,14 @@ describe('flushDrinksQueue', () => {
 
     await flushDrinksQueue();
 
-    expect(useAccountStore.getState().refreshProfile).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState().refreshBadges).toHaveBeenCalledTimes(1);
   });
 
   it('does not refetch the profile when no drink reached the server', async () => {
     (submitDrink as jest.Mock).mockResolvedValue('retry');
     await enqueueDrink(entry());
 
-    expect(useAccountStore.getState().refreshProfile).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().refreshBadges).not.toHaveBeenCalled();
   });
 
   it('keeps only the drinks that still need retrying', async () => {
@@ -442,7 +442,7 @@ describe('flushDrinksQueue', () => {
     expect(submitDrink).toHaveBeenCalledTimes(1);
     expect((submitDrink as jest.Mock).mock.calls[0][0]).toMatchObject({ client_id: 'a' });
     expect(await readQueue()).toEqual([]);
-    expect(useAccountStore.getState().refreshProfile).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().refreshBadges).not.toHaveBeenCalled();
   });
 
   it('does nothing on an empty queue', async () => {

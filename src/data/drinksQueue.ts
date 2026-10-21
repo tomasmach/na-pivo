@@ -159,7 +159,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
   // Badges unlock on the server; refetch once so a new one shows up now,
   // not on the next app launch.
-  if (delivered && !signal.aborted) void useAccountStore.getState().refreshProfile();
+  if (delivered && !signal.aborted) void useAccountStore.getState().refreshBadges();
 }
 
 /**

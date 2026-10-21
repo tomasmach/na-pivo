@@ -119,6 +119,11 @@ interface AccountState {
   resumeSession: () => Promise<SessionResumeResult>;
   /** Re-fetch GET /v1/account/me into `profile`. */
   refreshProfile: () => Promise<void>;
+  /**
+   * Re-fetch only the badge values into the current profile. Settings and the
+   * rest stay as they are, so a slow answer cannot undo a change made meanwhile.
+   */
+  refreshBadges: () => Promise<void>;
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
   /** Resolves true when the server snapshot was fetched. */
   refreshDiarySnapshot: () => Promise<boolean>;
@@ -359,6 +364,17 @@ export const useAccountStore = create<AccountState>((set, get) => {
       }
     },
 
+    refreshBadges: async () => {
+      const token = get().session?.token;
+      const ticket = takeProfileTicket();
+      const fresh = await auth.fetchAccountProfile();
+      if (!fresh?.badgeProgress || get().session?.token !== token || ticket < writtenTicket) return;
+      const badgeProgress = fresh.badgeProgress;
+      set((state) =>
+        state.profile?.id === fresh.id ? { profile: { ...state.profile, badgeProgress } } : state,
+      );
+    },
+
     refreshDiarySnapshot,
 
     forgetDiaryDrink: (clientId) => {
@@ -467,7 +483,9 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
 setAnonymousSessionEvictionListener(async (evictedAccountId) => {
   await releaseToursToDevice(evictedAccountId);
-  useAccountStore.setState({ session: null, status: 'idle' });
+  // The evicted account's profile and badges must not linger if the
+  // replacement's profile cannot be fetched.
+  useAccountStore.setState({ session: null, status: 'idle', profile: null });
   await useAccountStore.getState().initAccount();
 });
 

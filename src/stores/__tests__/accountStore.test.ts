@@ -169,6 +169,7 @@ describe('initAccount', () => {
     useAccountStore.setState({
       session: { deviceId: 'old-d', accountId: 'old-a', token: 'dead', authenticated: false },
       status: 'ready',
+      profile: signedInProfile({ id: 'old-a', isAnonymous: true }),
     });
     mockEnsureAccount.mockResolvedValueOnce({
       deviceId: 'new-d',
@@ -189,6 +190,8 @@ describe('initAccount', () => {
       },
       status: 'ready',
     });
+    // The replacement's profile did not load, so nothing of the old one may show.
+    expect(useAccountStore.getState().profile).toBeNull();
   });
 
   it('reports init exceptions with only the error class', async () => {
@@ -499,6 +502,23 @@ describe('unlink', () => {
 // ---------------------------------------------------------------------------
 // logout — clears profile + reverts (via auth.logout)
 // ---------------------------------------------------------------------------
+describe('refreshBadges', () => {
+  it('takes only the badge values, so a slow answer cannot undo a settings change', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: signedInProfile({ nickname: 'local', settings: { hidePubNames: false } }),
+    });
+    mockedAuth.fetchAccountProfile.mockResolvedValueOnce(
+      signedInProfile({ nickname: 'server', settings: { hidePubNames: true }, badgeProgress: { beers: 3 } as AccountProfile['badgeProgress'] }),
+    );
+
+    await useAccountStore.getState().refreshBadges();
+
+    expect(useAccountStore.getState().profile).toMatchObject({ nickname: 'local', badgeProgress: { beers: 3 } });
+    expect(mockSetHidePubNames).not.toHaveBeenCalled();
+  });
+});
+
 describe('logout', () => {
   it('keeps a newer profile when an older read answers last', async () => {
     useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true }, profile: null });

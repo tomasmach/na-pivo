@@ -18,7 +18,7 @@ import { LOCKED_BADGES, useAccountBadges } from '@/profile/useAccountBadges';
 import { useAccountStore } from '@/stores/accountStore';
 import { useBadgeStore } from '@/stores/badgeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useToastStore } from '@/stores/toastStore';
+import { useToastStore, whenToastIsFree } from '@/stores/toastStore';
 import { fireSuccessHaptic } from '@/utils/haptics';
 
 const TOAST_MS = 4000;
@@ -56,27 +56,32 @@ export function BadgeHost() {
     const medals = states.filter((state) => raised.includes(state.key));
     const first = medals[0];
     if (!first) return;
-    if (useSettingsStore.getState().hapticEnabled) fireSuccessHaptic();
     const icon = <BadgeMedal badge={first.key} look={medalLook(first)} size={44} />;
-    if (medals.length === 1) {
-      useToastStore.getState().show(t.badges.toastOne(badgeName(first)), {
-        icon,
-        subtitle: reachedAmount(first),
-        onPress: () => useBadgeStore.getState().open(first.key),
-        durationMs: TOAST_MS,
-      });
-    } else {
-      useToastStore.getState().show(t.badges.toastMany(medals.length), {
-        icon,
-        subtitle: medals.map((state) => badgeName(state)).join(', '),
-        onPress: () => router.push('/profile/badges' as Href),
-        durationMs: TOAST_MS,
-      });
-    }
-    const { token, message, subtitle } = useToastStore.getState();
-    medalToast.current = token;
-    // The toast leaves after 4 s; a screen reader hears it right away instead.
-    AccessibilityInfo.announceForAccessibility(`${message}. ${subtitle}`);
+    // The dot is already on the medal; the toast waits for any message on screen,
+    // such as a warning about drinks the server refused.
+    whenToastIsFree(() => {
+      if (useAccountStore.getState().profile?.id !== accountId) return;
+      if (useSettingsStore.getState().hapticEnabled) fireSuccessHaptic();
+      if (medals.length === 1) {
+        useToastStore.getState().show(t.badges.toastOne(badgeName(first)), {
+          icon,
+          subtitle: reachedAmount(first),
+          onPress: () => useBadgeStore.getState().open(first.key),
+          durationMs: TOAST_MS,
+        });
+      } else {
+        useToastStore.getState().show(t.badges.toastMany(medals.length), {
+          icon,
+          subtitle: medals.map((state) => badgeName(state)).join(', '),
+          onPress: () => router.push('/profile/badges' as Href),
+          durationMs: TOAST_MS,
+        });
+      }
+      const { token, message, subtitle } = useToastStore.getState();
+      medalToast.current = token;
+      // The toast leaves after 4 s; a screen reader hears it right away instead.
+      AccessibilityInfo.announceForAccessibility(`${message}. ${subtitle}`);
+    });
   }, [accountId, hydrated, router, states]);
 
   const state = sheet && (states ?? LOCKED_BADGES).find((candidate) => candidate.key === sheet.key);

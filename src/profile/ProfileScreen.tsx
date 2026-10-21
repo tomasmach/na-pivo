@@ -32,7 +32,7 @@ import { BadgeMedal, medalLook } from '@/profile/BadgeMedal';
 import { nearestGoals, type BadgeKey } from '@/profile/badgeModel';
 import { BadgeGoalRow } from '@/profile/BadgeRows';
 import { badgeName } from '@/profile/badgeText';
-import { useAccountBadges } from '@/profile/useAccountBadges';
+import { useAccountBadges, useRefreshBadgesOnFocus } from '@/profile/useAccountBadges';
 import {
   dailyBeerAverage,
   earliestTimestamp,
@@ -247,6 +247,7 @@ export default function ProfileScreen() {
   );
   const shownFavorites = allFavorites ? favorites : favorites.slice(0, FAVORITES_COLLAPSED);
 
+  useRefreshBadgesOnFocus();
   const badges = useAccountBadges();
   const ownLedger = useBadgeStore((s) => s.accountId != null && s.accountId === profile?.id);
   const recentBadges = useBadgeStore((s) => s.recent);
