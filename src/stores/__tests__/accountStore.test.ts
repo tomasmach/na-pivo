@@ -226,6 +226,21 @@ describe('resumeSession', () => {
     expect(useAccountStore.getState()).toMatchObject({ status: 'ready', profile: refreshed });
   });
 
+  it('drops a profile that arrives after the account changed', async () => {
+    const before = { deviceId: 'd', accountId: 'a', token: 'old', authenticated: true };
+    const after = { deviceId: 'd', accountId: 'b', token: 'new', authenticated: false };
+    useAccountStore.setState({ session: before, profile: null });
+    let answer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+
+    const refresh = useAccountStore.getState().refreshProfile();
+    useAccountStore.setState({ session: after });
+    answer(signedInProfile({ id: 'a' }));
+    await refresh;
+
+    expect(useAccountStore.getState().profile).toBeNull();
+  });
+
   it('rehydrates credentials that became available again before validating them', async () => {
     useAccountStore.setState({ session: null, status: 'idle', profile: null });
     const refreshed = signedInProfile();

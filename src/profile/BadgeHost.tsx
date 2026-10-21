@@ -5,7 +5,7 @@
  * medal detail over whichever screen asked for it, the counter included.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, type Href } from 'expo-router';
 
 import { t } from '@/i18n';
@@ -36,8 +36,16 @@ export function BadgeHost() {
   const sheetOpen = useBadgeStore((s) => s.sheetOpen);
   const close = useBadgeStore((s) => s.close);
   const [hydrated, setHydrated] = useState(() => useBadgeStore.persist.hasHydrated());
+  const medalToast = useRef<number | null>(null);
 
   useEffect(() => useBadgeStore.persist.onFinishHydration(() => setHydrated(true)), []);
+
+  // A medal toast names the account's own diary, so it leaves with that account.
+  useEffect(() => {
+    const toast = useToastStore.getState();
+    if (medalToast.current != null && medalToast.current === toast.token) toast.hide();
+    medalToast.current = null;
+  }, [accountId]);
 
   useEffect(() => {
     if (!hydrated || !accountId || !states) return;
@@ -56,6 +64,7 @@ export function BadgeHost() {
         onPress: () => useBadgeStore.getState().open(first.key),
         durationMs: TOAST_MS,
       });
+      medalToast.current = useToastStore.getState().token;
       return;
     }
     useToastStore.getState().show(t.badges.toastMany(medals.length), {
@@ -64,6 +73,7 @@ export function BadgeHost() {
       onPress: () => router.push('/profile/badges' as Href),
       durationMs: TOAST_MS,
     });
+    medalToast.current = useToastStore.getState().token;
   }, [accountId, hydrated, router, states]);
 
   const state = sheet && (states ?? LOCKED_BADGES).find((candidate) => candidate.key === sheet.key);

@@ -330,7 +330,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
     },
 
     refreshProfile: async () => {
+      const token = get().session?.token;
       const profile = await auth.fetchAccountProfile();
+      // A late answer for an account that has since logged out or switched
+      // would put its private profile back on screen.
+      if (get().session?.token !== token) return;
       if (profile) {
         set({ profile });
         applyAccountSettings(profile.settings);
