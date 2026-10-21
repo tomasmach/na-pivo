@@ -503,6 +503,26 @@ describe('unlink', () => {
 // logout — clears profile + reverts (via auth.logout)
 // ---------------------------------------------------------------------------
 describe('refreshBadges', () => {
+  it('keeps newer badge values when an older answer comes last', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: signedInProfile(),
+    });
+    let olderAnswer: (profile: AccountProfile) => void = () => undefined;
+    const withBeers = (beers: number) =>
+      signedInProfile({ badgeProgress: { beers } as AccountProfile['badgeProgress'] });
+    mockedAuth.fetchAccountProfile
+      .mockReturnValueOnce(new Promise((resolve) => (olderAnswer = resolve)))
+      .mockResolvedValueOnce(withBeers(10));
+
+    const older = useAccountStore.getState().refreshBadges();
+    await useAccountStore.getState().refreshBadges();
+    olderAnswer(withBeers(1));
+    await older;
+
+    expect(useAccountStore.getState().profile?.badgeProgress?.beers).toBe(10);
+  });
+
   it('takes only the badge values, so a slow answer cannot undo a settings change', async () => {
     useAccountStore.setState({
       session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },

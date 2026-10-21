@@ -368,11 +368,10 @@ export const useAccountStore = create<AccountState>((set, get) => {
       const token = get().session?.token;
       const ticket = takeProfileTicket();
       const fresh = await auth.fetchAccountProfile();
-      if (!fresh?.badgeProgress || get().session?.token !== token || ticket < writtenTicket) return;
-      const badgeProgress = fresh.badgeProgress;
-      set((state) =>
-        state.profile?.id === fresh.id ? { profile: { ...state.profile, badgeProgress } } : state,
-      );
+      if (!fresh?.badgeProgress || get().session?.token !== token) return;
+      const current = get().profile;
+      if (current?.id !== fresh.id || !claimProfileWrite(ticket)) return;
+      set({ profile: { ...current, badgeProgress: fresh.badgeProgress } });
     },
 
     refreshDiarySnapshot,
