@@ -32,6 +32,7 @@ import { createQueueStorage, createQueueLock, createCoalescingFlush } from './cr
 import { registerDrinkRetryFlush, shouldPauseDrinkSync } from './drinksRateLimit';
 import { isDrinkType, isOutsidePlaceContext, isServingType } from '@/drinks/drinkTypes';
 import { t } from '@/i18n';
+import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, whenTallyHydrated } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 
@@ -107,6 +108,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   if (queue.length === 0) return;
 
   const deliveredOrDropped = new Set<string>();
+  let delivered = false;
   const rejected: { clientId: string; field?: string }[] = [];
   const snapshotIds = new Set(queue.map((entry) => entry.client_id));
   for (const queued of queue) {
@@ -130,6 +132,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
         rejected.push({ clientId: entry.client_id, ...(field ? { field } : {}) });
       });
       if (result !== 'retry') deliveredOrDropped.add(entry.client_id);
+      if (result === 'ok') delivered = true;
       if (result === 'retry' && await shouldPauseDrinkSync()) break;
     } finally {
       deliveringIds.delete(entry.client_id);
@@ -153,6 +156,10 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     });
     await saveQueue(remaining);
   });
+
+  // Badges unlock on the server; refetch once so a new one shows up now,
+  // not on the next app launch.
+  if (delivered && !signal.aborted) void useAccountStore.getState().refreshProfile();
 }
 
 /**
