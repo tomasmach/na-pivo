@@ -205,11 +205,6 @@ describe('registerEmail', () => {
           total_spent_czk: 720,
           max_visits_to_one_pub: 5,
         },
-        achievements: {
-          first_ten: true,
-          regular: true,
-          reviewer: false,
-        },
         usage: { walked_distance_m: 1234 },
       }),
     );
@@ -874,29 +869,12 @@ describe('fetchAccountProfile legacy settings', () => {
   });
 });
 
-describe('fetchAccountProfile — Mapér block + new badges', () => {
-  it('parses the mapper block (xp key, levels, xp_rules) and the 5 new badges', async () => {
+describe('fetchAccountProfile — Mapér block', () => {
+  it('parses the mapper block (xp key, levels, xp_rules)', async () => {
     installFetch(
       fetchResolving(200, {
         id: 'acc',
         is_anonymous: false,
-        achievements: {
-          first_ten: true,
-          regular: false,
-          reviewer: false,
-          first_map: true,
-          explorer: true,
-          cartographer: false,
-          completionist: true,
-          fact_machine: false,
-          first_beer: true,
-          century: false,
-          pilgrim: false,
-          stamgast: true,
-          night_owl: true,
-          taster: false,
-          party_animal: false,
-        },
         mapper: {
           xp: 285,
           level: 3,
@@ -947,7 +925,6 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
       fetchResolving(200, {
         id: 'acc',
         is_anonymous: false,
-        achievements: { first_ten: true },
       }),
     );
 

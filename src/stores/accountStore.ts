@@ -207,13 +207,20 @@ export const useAccountStore = create<AccountState>((set, get) => {
     }
   };
 
-  /** Re-read the (possibly rotated) session token into the store. */
-  // Bumped whenever the account behind the profile changes (logout, deletion,
-  // sign-in): the store still holds the old session until syncSession
-  // finishes, so the token alone cannot tell a late answer from a current one.
-  // Every profile read checks it before writing.
-  let profileGeneration = 0;
+  // Profile answers arrive late and out of order. Every read and write takes a
+  // ticket, and an answer to a read older than the last write (a newer read,
+  // a sign-in, a logout or a deletion) is dropped. The store keeps the old
+  // session while syncSession runs, so the token alone cannot tell.
+  let profileTickets = 0;
+  let writtenTicket = 0;
+  const takeProfileTicket = () => ++profileTickets;
+  const claimProfileWrite = (ticket: number) => {
+    if (ticket < writtenTicket) return false;
+    writtenTicket = ticket;
+    return true;
+  };
 
+  /** Re-read the (possibly rotated) session token into the store. */
   const syncSession = async () => {
     const session = await ensureAccount();
     setTelemetrySession(session);
@@ -239,7 +246,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
   /** After a session-changing auth call: persist the new token + profile. */
   const applyAuthResult = async (result: AuthResult): Promise<AuthResult> => {
     if (result.ok) {
-      profileGeneration += 1;
+      claimProfileWrite(takeProfileTicket());
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
       await syncSession();
@@ -253,6 +260,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
    *  + settings. Mirrors applyAuthResult without the session re-sync. */
   const applyProfileResult = (result: AuthResult): AuthResult => {
     if (result.ok) {
+      claimProfileWrite(takeProfileTicket());
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
     }
@@ -280,14 +288,15 @@ export const useAccountStore = create<AccountState>((set, get) => {
             state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
         }));
         if (session) {
-          const generation = profileGeneration;
+          const ticket = takeProfileTicket();
           const [profile] = await Promise.all([
             auth.fetchAccountProfile(),
             // A successful launch pull lets the first foreground skip it.
             trackForegroundPull('diary', refreshDiarySnapshot, () => get().session?.accountId ?? null),
           ]);
-          if (generation !== profileGeneration || get().session?.token !== session.token) return;
+          if (get().session?.token !== session.token) return;
           if (profile) {
+            if (!claimProfileWrite(ticket)) return;
             set({ profile });
             applyAccountSettings(profile.settings);
           } else {
@@ -317,11 +326,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
       if (!session) return 'unavailable';
       if (!session.authenticated) return 'anonymous';
 
-      const generation = profileGeneration;
+      const ticket = takeProfileTicket();
       const validation = await auth.validateAccountSession(session);
       // Ignore a response for a session that was replaced while validation was
       // in flight (for example by a manual login opened from another screen).
-      if (get().session?.token !== session.token || generation !== profileGeneration) return 'unavailable';
+      if (get().session?.token !== session.token || !claimProfileWrite(ticket)) return 'unavailable';
 
       if (validation.status === 'invalid') {
         // Keep the credential and all account-local state intact. The auth
@@ -341,12 +350,10 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     refreshProfile: async () => {
       const token = get().session?.token;
-      const generation = profileGeneration;
+      const ticket = takeProfileTicket();
       const profile = await auth.fetchAccountProfile();
-      // A late answer for an account that has since logged out or switched
-      // would put its private profile back on screen.
-      if (get().session?.token !== token || generation !== profileGeneration) return;
-      if (profile) {
+      if (get().session?.token !== token) return;
+      if (profile && claimProfileWrite(ticket)) {
         set({ profile });
         applyAccountSettings(profile.settings);
       }
@@ -420,7 +427,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     logout: async (options) => {
       await auth.logout(options);
-      profileGeneration += 1;
+      claimProfileWrite(takeProfileTicket());
       set({
         profile: null,
         diarySnapshot: null,
@@ -433,7 +440,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
     deleteAccount: async () => {
       const result = await auth.deleteAccount();
       if (result.ok) {
-        profileGeneration += 1;
+        claimProfileWrite(takeProfileTicket());
         set({
           profile: null,
           diarySnapshot: null,

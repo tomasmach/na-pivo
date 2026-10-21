@@ -500,6 +500,21 @@ describe('unlink', () => {
 // logout — clears profile + reverts (via auth.logout)
 // ---------------------------------------------------------------------------
 describe('logout', () => {
+  it('keeps a newer profile when an older read answers last', async () => {
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true }, profile: null });
+    let olderAnswer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile
+      .mockReturnValueOnce(new Promise((resolve) => (olderAnswer = resolve)))
+      .mockResolvedValueOnce(signedInProfile({ nickname: 'newer' }));
+
+    const older = useAccountStore.getState().refreshProfile();
+    await useAccountStore.getState().refreshProfile();
+    olderAnswer(signedInProfile({ nickname: 'older' }));
+    await older;
+
+    expect(useAccountStore.getState().profile?.nickname).toBe('newer');
+  });
+
   it('keeps a late anonymous profile from replacing the account just signed in to', async () => {
     const anonymous = { deviceId: 'd', accountId: 'a', token: 'anon', authenticated: false };
     useAccountStore.setState({ session: anonymous, profile: signedInProfile({ id: 'a', isAnonymous: true }) });

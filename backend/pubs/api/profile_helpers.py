@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count, F, Min, Q, Sum, TextField, Value
+from django.db.models import BooleanField, Count, ExpressionWrapper, Min, Q, Sum, TextField, Value
 from django.db.models.functions import Coalesce, ExtractHour, Lower, NullIf, Trim, TruncDate
 
 from pubs.mapper import maper_progress
@@ -14,7 +14,7 @@ PRAGUE_TZ = ZoneInfo("Europe/Prague")
 TASTER_MIN_BEERS = 10
 # Same 04:00 rollover as stats.drinking_day: a beer at 1 a.m. belongs to the
 # evening before, so it still counts for Silvestr or a Friday.
-DRINKING_DAY_CUTOFF = timedelta(hours=4)
+DRINKING_DAY_CUTOFF_HOUR = 4
 
 
 def derive_account_profile_stats(account: Account) -> dict:
@@ -95,15 +95,22 @@ def derive_account_profile_stats(account: Account) -> dict:
         .distinct()
         .count()
     )
-    beer_drinking_days = set(
-        public_drinks.filter(is_beer)
+    # Same wall-clock rule as stats.drinking_day(): before 04:00 local time still
+    # counts as the day before, also on the nights the clocks change.
+    beer_drinking_days = {
+        local_date - timedelta(days=1) if early else local_date
+        for local_date, early in public_drinks.filter(is_beer)
+        .annotate(local_hour=ExtractHour("drank_at", tzinfo=PRAGUE_TZ))
         .annotate(
-            day=TruncDate(F("drank_at") - DRINKING_DAY_CUTOFF, tzinfo=PRAGUE_TZ)
+            local_date=TruncDate("drank_at", tzinfo=PRAGUE_TZ),
+            early=ExpressionWrapper(
+                Q(local_hour__lt=DRINKING_DAY_CUTOFF_HOUR), output_field=BooleanField()
+            ),
         )
         .order_by()
-        .values_list("day", flat=True)
+        .values_list("local_date", "early")
         .distinct()
-    )
+    }
 
     accepted_friend_count = Friendship.objects.filter(
         Q(requester=account) | Q(recipient=account),
@@ -123,7 +130,6 @@ def derive_account_profile_stats(account: Account) -> dict:
         "first_mapper_count": int(getattr(usage, "first_mapper_count", 0) or 0),
         "amenity_votes_count": int(getattr(usage, "amenity_votes_count", 0) or 0),
         "completed_pubs_count": int(getattr(usage, "completed_pubs_count", 0) or 0),
-        # FotoPivař stored counter (feeds the foto_pivar achievement only).
         "photo_contest_wins_count": int(getattr(usage, "photo_contest_wins_count", 0) or 0),
         "night_owl": drink_totals["after_midnight_drinks"] > 0,
         "distinct_beer_identities": distinct_beer_identities,

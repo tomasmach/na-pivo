@@ -1,9 +1,3 @@
-/**
- * Odznaky — the whole collection. Up top the three closest levels worth
- * chasing, then the medals by theme. Tapping any of them opens its detail,
- * which BadgeHost draws.
- */
-
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';

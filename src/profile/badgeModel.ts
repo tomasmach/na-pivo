@@ -212,8 +212,9 @@ function holidayDate(holiday: BadgeHoliday, year: number): Date {
 
 /** Whole days until the holiday's next drinking day; 0 on the day itself. */
 export function daysUntilHoliday(holiday: BadgeHoliday, now: Date): number {
-  const shifted = new Date(now.getTime() - DRINKING_DAY_CUTOFF_HOURS * 3_600_000);
-  const today = new Date(shifted.getFullYear(), shifted.getMonth(), shifted.getDate());
+  // By the local clock, like the server: before 04:00 is still the day before.
+  const early = now.getHours() < DRINKING_DAY_CUTOFF_HOURS ? 1 : 0;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate() - early);
   let date = holidayDate(holiday, today.getFullYear());
   if (date < today) date = holidayDate(holiday, today.getFullYear() + 1);
   return Math.round((date.getTime() - today.getTime()) / 86_400_000);

@@ -1167,6 +1167,31 @@ def test_pivar_achievements_flip_at_documentation_thresholds(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("local", "weekday"),
+    [
+        # The night clocks go forward: 04:30 is already Sunday's drinking day.
+        ((2026, 3, 29, 4, 30), 6),
+        # The night clocks go back: 03:30 still belongs to Saturday.
+        ((2026, 10, 25, 3, 30), 5),
+    ],
+)
+def test_badge_progress_drinking_day_follows_the_local_clock_across_dst(client, local, weekday):
+    token, account_id = _bootstrap(client)
+    DrinkLog.objects.create(
+        account=Account.objects.get(public_id=account_id),
+        client_id=uuid.uuid4(),
+        beer_name="Pilsner Urquell",
+        place_context=DrinkLog.PlaceContext.PRIVATE,
+        drank_at=datetime(*local, tzinfo=ZoneInfo("Europe/Prague")),
+    )
+
+    progress = client.get("/v1/account/me", **_auth(token)).json()["badge_progress"]
+
+    assert progress["beer_weekdays"] == [weekday]
+
+
+@pytest.mark.django_db
 def test_badge_progress_reads_drinking_days_cities_and_moments(client):
     token, account_id = _bootstrap(client)
     account = Account.objects.get(public_id=account_id)
