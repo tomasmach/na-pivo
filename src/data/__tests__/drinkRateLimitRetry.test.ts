@@ -17,6 +17,10 @@ jest.mock('../account', () => ({
   ...jest.requireActual('../account'),
   ensureAccount: jest.fn(async () => ({ deviceId: 'd', accountId: 'a', token: 'tok' })),
 }));
+// Delivery also refetches the profile; drinksQueue.test.ts covers that call.
+jest.mock('@/stores/accountStore', () => ({
+  useAccountStore: { getState: () => ({ refreshBadges: jest.fn(async () => undefined) }) },
+}));
 jest.mock('../telemetryClient', () => ({
   trackApiFailure: jest.fn(),
   trackClientEvent: jest.fn(async () => undefined),

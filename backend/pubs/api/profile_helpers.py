@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count, Min, Q, Sum, TextField, Value
-from django.db.models.functions import Coalesce, ExtractHour, Lower, NullIf, Trim
+from django.db.models import BooleanField, Count, ExpressionWrapper, Min, Q, Sum, TextField, Value
+from django.db.models.functions import Coalesce, ExtractHour, Lower, NullIf, Trim, TruncDate
 
 from pubs.mapper import maper_progress
 from pubs.models import Account, DrinkLog, Friendship, PublishedNight
@@ -11,14 +12,20 @@ from pubs.models import Account, DrinkLog, Friendship, PublishedNight
 PRAGUE_TZ = ZoneInfo("Europe/Prague")
 # Ochutnávač: this many different beers.
 TASTER_MIN_BEERS = 10
+# Same 04:00 rollover as stats.drinking_day: a beer at 1 a.m. belongs to the
+# evening before, so it still counts for Silvestr or a Friday.
+DRINKING_DAY_CUTOFF_HOUR = 4
 
 
 def derive_account_profile_stats(account: Account) -> dict:
     """Aggregate durable account history for profile stats and achievements."""
 
     public_drinks = account.drinks.filter(is_suspect=False)
-    drink_totals = public_drinks.aggregate(
-        total_beers=Count("id", filter=Q(drink_type=DrinkLog.DrinkType.BEER)),
+    is_beer = Q(drink_type=DrinkLog.DrinkType.BEER)
+    drink_totals = public_drinks.annotate(
+        local_hour=ExtractHour("drank_at", tzinfo=PRAGUE_TZ),
+    ).aggregate(
+        total_beers=Count("id", filter=is_beer),
         first_beer_at=Min("drank_at", filter=Q(drink_type=DrinkLog.DrinkType.BEER)),
         total_spent_czk=Sum("price_czk"),
         outside_drinks=Count(
@@ -41,6 +48,9 @@ def derive_account_profile_stats(account: Account) -> dict:
                 serving_type=DrinkLog.ServingType.CAN,
             ),
         ),
+        soft_drinks=Count("id", filter=Q(drink_type=DrinkLog.DrinkType.SOFT_DRINK)),
+        after_midnight_drinks=Count("id", filter=Q(local_hour__lte=3)),
+        lunch_beers=Count("id", filter=is_beer & Q(local_hour__gte=11, local_hour__lte=13)),
     )
     # order_by() first: the models' default ordering would otherwise leak the
     # ordering column into SELECT DISTINCT and defeat the dedup.
@@ -62,13 +72,6 @@ def derive_account_profile_stats(account: Account) -> dict:
     )
 
     usage = getattr(account, "usage_stats", None)
-    night_owl = (
-        public_drinks.annotate(
-            local_hour=ExtractHour("drank_at", tzinfo=PRAGUE_TZ),
-        )
-        .filter(local_hour__lte=3)
-        .exists()
-    )
     beer_identity = Coalesce(
         NullIf(Trim("beer_product_key"), Value("")),
         NullIf(Trim("beer_brand_key"), Value("")),
@@ -82,6 +85,32 @@ def derive_account_profile_stats(account: Account) -> dict:
         .distinct()
         .count()
     )
+
+    distinct_cities = (
+        public_drinks.filter(is_beer)
+        .annotate(city_key=Lower(Trim("city")))
+        .exclude(city_key="")
+        .order_by()
+        .values("city_key")
+        .distinct()
+        .count()
+    )
+    # Same wall-clock rule as stats.drinking_day(): before 04:00 local time still
+    # counts as the day before, also on the nights the clocks change.
+    beer_drinking_days = {
+        local_date - timedelta(days=1) if early else local_date
+        for local_date, early in public_drinks.filter(is_beer)
+        .annotate(local_hour=ExtractHour("drank_at", tzinfo=PRAGUE_TZ))
+        .annotate(
+            local_date=TruncDate("drank_at", tzinfo=PRAGUE_TZ),
+            early=ExpressionWrapper(
+                Q(local_hour__lt=DRINKING_DAY_CUTOFF_HOUR), output_field=BooleanField()
+            ),
+        )
+        .order_by()
+        .values_list("local_date", "early")
+        .distinct()
+    }
 
     accepted_friend_count = Friendship.objects.filter(
         Q(requester=account) | Q(recipient=account),
@@ -101,15 +130,20 @@ def derive_account_profile_stats(account: Account) -> dict:
         "first_mapper_count": int(getattr(usage, "first_mapper_count", 0) or 0),
         "amenity_votes_count": int(getattr(usage, "amenity_votes_count", 0) or 0),
         "completed_pubs_count": int(getattr(usage, "completed_pubs_count", 0) or 0),
-        # FotoPivař stored counter (feeds the foto_pivar achievement only).
         "photo_contest_wins_count": int(getattr(usage, "photo_contest_wins_count", 0) or 0),
-        "night_owl": night_owl,
+        "night_owl": drink_totals["after_midnight_drinks"] > 0,
         "distinct_beer_identities": distinct_beer_identities,
         "accepted_friend_count": accepted_friend_count,
         "outside_drinks": int(drink_totals["outside_drinks"] or 0),
         "outdoors_drinks": int(drink_totals["outdoors_drinks"] or 0),
         "bottled_beers": int(drink_totals["bottled_beers"] or 0),
         "canned_beers": int(drink_totals["canned_beers"] or 0),
+        "soft_drinks": int(drink_totals["soft_drinks"] or 0),
+        "after_midnight_drinks": int(drink_totals["after_midnight_drinks"] or 0),
+        "lunch_beers": int(drink_totals["lunch_beers"] or 0),
+        "distinct_cities": distinct_cities,
+        "beer_drinking_days": beer_drinking_days,
+        "photos_count": account.beer_photos.count(),
     }
 
 
@@ -139,6 +173,56 @@ def derive_account_achievements(account: Account, stats: dict | None = None) -> 
         "pod_sirakem": stats["outdoors_drinks"] >= 1,
         "lahvacovy_filozof": stats["bottled_beers"] >= 25,
         "plechovkac": stats["canned_beers"] >= 25,
+    }
+
+
+def _best_week_streak(days: set[date]) -> int:
+    best = run = 0
+    previous: date | None = None
+    for monday in sorted({day - timedelta(days=day.weekday()) for day in days}):
+        run = run + 1 if previous is not None and monday == previous + timedelta(weeks=1) else 1
+        best = max(best, run)
+        previous = monday
+    return best
+
+
+def derive_account_badge_progress(stats: dict) -> dict:
+    """Raw values behind the badge collection; the app owns the tier thresholds.
+
+    Weekdays are 0 = Monday … 6 = Sunday, months 1 … 12, both by drinking day.
+    """
+
+    days = stats["beer_drinking_days"]
+    return {
+        "beers": stats["total_beers"],
+        "distinct_pubs": stats["distinct_pubs"],
+        "max_pub_visits": stats["max_visits_to_one_pub"],
+        "distinct_beers": stats["distinct_beer_identities"],
+        "distinct_cities": stats["distinct_cities"],
+        "best_week_streak": _best_week_streak(days),
+        "ratings": stats["ratings_count"],
+        "friends": stats["accepted_friend_count"],
+        "mapped_pubs": stats["mapped_pubs_count"],
+        "first_mapped_pubs": stats["first_mapper_count"],
+        "completed_pubs": stats["completed_pubs_count"],
+        "facts": stats["amenity_votes_count"],
+        "photos": stats["photos_count"],
+        "contest_wins": stats["photo_contest_wins_count"],
+        "soft_drinks": stats["soft_drinks"],
+        "beer_weekdays": sorted({day.weekday() for day in days}),
+        "beer_months": sorted({day.month for day in days}),
+        "outside_pub_drinks": stats["outside_drinks"],
+        "outdoors_drinks": stats["outdoors_drinks"],
+        "bottled_beers": stats["bottled_beers"],
+        "canned_beers": stats["canned_beers"],
+        "after_midnight_drinks": stats["after_midnight_drinks"],
+        "lunch_beers": stats["lunch_beers"],
+        "christmas_eves": sum(1 for day in days if (day.month, day.day) == (12, 24)),
+        "new_years_eves": sum(1 for day in days if (day.month, day.day) == (12, 31)),
+        # International Beer Day: the first Friday of August.
+        "beer_day_fridays": sum(
+            1 for day in days if day.month == 8 and day.weekday() == 4 and day.day <= 7
+        ),
     }
 
 
@@ -209,4 +293,19 @@ def derive_account_public_achievements(account: Account, public_stats: dict) -> 
         "pod_sirakem": False,
         "lahvacovy_filozof": False,
         "plechovkac": False,
+    }
+
+
+def derive_account_public_badge_progress(account: Account, public_stats: dict) -> dict:
+    """Only the badge values another account may see, same boundary as above."""
+
+    usage = getattr(account, "usage_stats", None)
+    return {
+        "beers": int(public_stats["total_beers"]),
+        "distinct_pubs": int(public_stats["distinct_pubs"]),
+        "mapped_pubs": int(getattr(usage, "mapped_pubs_count", 0) or 0),
+        "first_mapped_pubs": int(getattr(usage, "first_mapper_count", 0) or 0),
+        "completed_pubs": int(getattr(usage, "completed_pubs_count", 0) or 0),
+        "facts": int(getattr(usage, "amenity_votes_count", 0) or 0),
+        "contest_wins": int(getattr(usage, "photo_contest_wins_count", 0) or 0),
     }

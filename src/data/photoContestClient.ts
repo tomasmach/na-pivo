@@ -3,8 +3,8 @@
  *
  * Every 14 days one contest round runs server-side: each account may enter ONE
  * diary photo, vote for ONE other entry (upsert/move), and at period end the
- * top 3 get XP and the winner the "FotoPivař" badge (surfaced additively via
- * GET /v1/account/me achievements.foto_pivar).
+ * top 3 get XP and the winner the "FotoPivař" badge (counted in
+ * GET /v1/account/me badge_progress.contest_wins).
  *
  * Entering and voting are ONLINE-ONLY — no offline queue. A vote against a
  * finished round or a moved entry cannot be meaningfully replayed later, so

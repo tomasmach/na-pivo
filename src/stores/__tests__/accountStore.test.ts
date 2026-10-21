@@ -14,7 +14,7 @@ import {
   selectNeedsNickname,
 } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
-import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
+import type { AccountMapper, AccountProfile, AuthResult } from '@/data/auth';
 import { ensureAccount, fetchAccountPreferences, setAnonymousSessionEvictionListener } from '@/data/account';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
@@ -169,6 +169,7 @@ describe('initAccount', () => {
     useAccountStore.setState({
       session: { deviceId: 'old-d', accountId: 'old-a', token: 'dead', authenticated: false },
       status: 'ready',
+      profile: signedInProfile({ id: 'old-a', isAnonymous: true }),
     });
     mockEnsureAccount.mockResolvedValueOnce({
       deviceId: 'new-d',
@@ -189,6 +190,8 @@ describe('initAccount', () => {
       },
       status: 'ready',
     });
+    // The replacement's profile did not load, so nothing of the old one may show.
+    expect(useAccountStore.getState().profile).toBeNull();
   });
 
   it('reports init exceptions with only the error class', async () => {
@@ -224,6 +227,21 @@ describe('resumeSession', () => {
       authenticated: true,
     });
     expect(useAccountStore.getState()).toMatchObject({ status: 'ready', profile: refreshed });
+  });
+
+  it('drops a profile that arrives after the account changed', async () => {
+    const before = { deviceId: 'd', accountId: 'a', token: 'old', authenticated: true };
+    const after = { deviceId: 'd', accountId: 'b', token: 'new', authenticated: false };
+    useAccountStore.setState({ session: before, profile: null });
+    let answer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+
+    const refresh = useAccountStore.getState().refreshProfile();
+    useAccountStore.setState({ session: after });
+    answer(signedInProfile({ id: 'a' }));
+    await refresh;
+
+    expect(useAccountStore.getState().profile).toBeNull();
   });
 
   it('rehydrates credentials that became available again before validating them', async () => {
@@ -484,7 +502,104 @@ describe('unlink', () => {
 // ---------------------------------------------------------------------------
 // logout — clears profile + reverts (via auth.logout)
 // ---------------------------------------------------------------------------
+describe('refreshBadges', () => {
+  it('keeps newer badge values when an older answer comes last', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: signedInProfile(),
+    });
+    let olderAnswer: (profile: AccountProfile) => void = () => undefined;
+    const withBeers = (beers: number) =>
+      signedInProfile({ badgeProgress: { beers } as AccountProfile['badgeProgress'] });
+    mockedAuth.fetchAccountProfile
+      .mockReturnValueOnce(new Promise((resolve) => (olderAnswer = resolve)))
+      .mockResolvedValueOnce(withBeers(10));
+
+    const older = useAccountStore.getState().refreshBadges();
+    await useAccountStore.getState().refreshBadges();
+    olderAnswer(withBeers(1));
+    await older;
+
+    expect(useAccountStore.getState().profile?.badgeProgress?.beers).toBe(10);
+  });
+
+  it('takes only the badge values, so a slow answer cannot undo a settings change', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: signedInProfile({ nickname: 'local', settings: { hidePubNames: false } }),
+    });
+    mockedAuth.fetchAccountProfile.mockResolvedValueOnce(
+      signedInProfile({ nickname: 'server', settings: { hidePubNames: true }, badgeProgress: { beers: 3 } as AccountProfile['badgeProgress'] }),
+    );
+
+    await useAccountStore.getState().refreshBadges();
+
+    expect(useAccountStore.getState().profile).toMatchObject({ nickname: 'local', badgeProgress: { beers: 3 } });
+    expect(mockSetHidePubNames).not.toHaveBeenCalled();
+  });
+});
+
 describe('logout', () => {
+  it('keeps a newer profile when an older read answers last', async () => {
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true }, profile: null });
+    let olderAnswer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile
+      .mockReturnValueOnce(new Promise((resolve) => (olderAnswer = resolve)))
+      .mockResolvedValueOnce(signedInProfile({ nickname: 'newer' }));
+
+    const older = useAccountStore.getState().refreshProfile();
+    await useAccountStore.getState().refreshProfile();
+    olderAnswer(signedInProfile({ nickname: 'older' }));
+    await older;
+
+    expect(useAccountStore.getState().profile?.nickname).toBe('newer');
+  });
+
+  it('keeps a late anonymous profile from replacing the account just signed in to', async () => {
+    const anonymous = { deviceId: 'd', accountId: 'a', token: 'anon', authenticated: false };
+    useAccountStore.setState({ session: anonymous, profile: signedInProfile({ id: 'a', isAnonymous: true }) });
+    let lateAnswer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(new Promise((resolve) => (lateAnswer = resolve)));
+    let newSession: (session: typeof anonymous) => void = () => undefined;
+    mockEnsureAccount.mockReturnValueOnce(new Promise((resolve) => (newSession = resolve)));
+    mockedAuth.loginEmail.mockResolvedValue({ ok: true, profile: signedInProfile({ id: 'b' }) } as AuthResult);
+
+    const late = useAccountStore.getState().refreshProfile();
+    const login = useAccountStore.getState().login({ email: 'jan@example.com', password: 'x' });
+    await Promise.resolve();
+    await Promise.resolve();
+    lateAnswer(signedInProfile({ id: 'a', isAnonymous: true }));
+    await late;
+    newSession({ deviceId: 'd', accountId: 'b', token: 'signed', authenticated: true });
+    await login;
+
+    expect(useAccountStore.getState().profile?.id).toBe('b');
+  });
+
+  it('keeps the old account out when its late profile lands while the new session loads', async () => {
+    const before = { deviceId: 'd', accountId: 'a', token: 'old', authenticated: true };
+    useAccountStore.setState({ session: before, profile: signedInProfile({ id: 'a' }) });
+    let lateAnswer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile
+      .mockReturnValueOnce(new Promise((resolve) => (lateAnswer = resolve)))
+      .mockResolvedValueOnce(null);
+    let newSession: (session: typeof before) => void = () => undefined;
+    mockEnsureAccount.mockReturnValueOnce(new Promise((resolve) => (newSession = resolve)));
+    mockedAuth.logout.mockResolvedValue({ ok: true });
+
+    const late = useAccountStore.getState().refreshProfile();
+    const logout = useAccountStore.getState().logout();
+    await Promise.resolve();
+    await Promise.resolve();
+    lateAnswer(signedInProfile({ id: 'a' }));
+    await late;
+    newSession({ deviceId: 'd', accountId: 'b', token: 'anon', authenticated: false });
+    await logout;
+
+    expect(useAccountStore.getState().session?.accountId).toBe('b');
+    expect(useAccountStore.getState().profile).toBeNull();
+  });
+
   it('clears the profile and re-syncs the anonymous session', async () => {
     useAccountStore.setState({ profile: signedInProfile(), removedDrinkIds: new Set(['old-drink']) });
     mockedAuth.logout.mockResolvedValue({ ok: true });
@@ -671,8 +786,6 @@ describe('applyMapperSnapshot', () => {
       ],
       xpRules: { firstFact: 15, firstMapperBonus: 25, confirm: 5, pubCompleteBonus: 30 },
     });
-    expect(patched?.achievements?.firstMap).toBe(true);
-    expect(patched?.achievements?.explorer).toBe(false);
   });
 
   it('treats a null xpForNextLevel snapshot as max level', () => {
@@ -704,46 +817,6 @@ describe('applyMapperSnapshot', () => {
     });
 
     expect(useAccountStore.getState().profile?.mapper?.xpForNextLevel).toBe(250);
-  });
-
-  it('updates Mapér achievements from snapshot counters without clearing old badges', () => {
-    useAccountStore.setState({
-      profile: signedInProfile({
-        achievements: {
-          ...EMPTY_ACHIEVEMENTS,
-          firstTen: true,
-          regular: false,
-          reviewer: true,
-        },
-        mapper: fullMapper({ distinctMappedPubs: 9, amenityVotesCount: 99, completedPubsCount: 0 }),
-      }),
-    });
-
-    useAccountStore.getState().applyMapperSnapshot({
-      xp: 500,
-      level: 4,
-      title: 'Znalec',
-      xpIntoLevel: 100,
-      xpForNextLevel: 500,
-      distinctMappedPubs: 25,
-      amenityVotesCount: 100,
-      firstMapperCount: 1,
-      completedPubsCount: 1,
-    });
-
-    expect(useAccountStore.getState().profile?.achievements).toEqual({
-      ...EMPTY_ACHIEVEMENTS,
-      firstTen: true,
-      regular: false,
-      reviewer: true,
-      firstMap: true,
-      explorer: true,
-      cartographer: true,
-      completionist: true,
-      factMachine: true,
-      // Server-only badge: a mapper snapshot must carry it through unchanged.
-      fotoPivar: false,
-    });
   });
 });
 

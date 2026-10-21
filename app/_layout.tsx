@@ -86,6 +86,7 @@ import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEn
 import { AppDialogScreen } from '@/components/shared/AppDialog';
 import { AppReviewPromptGate } from '@/reviews/AppReviewPromptGate';
 import { Toast } from '@/components/shared/Toast';
+import { BadgeHost } from '@/profile/BadgeHost';
 import {
   cancelPendingPubReminder,
   consumeInitialPubReminderTap,
@@ -769,6 +770,7 @@ export default function RootLayout() {
             !(onboardingDecision === 'show' && pathname !== '/onboarding')
           }
         />
+        <BadgeHost />
         <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>

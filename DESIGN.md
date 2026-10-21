@@ -392,6 +392,9 @@ přes něj, nikdy ručně `'#FBF3E01A'` a nikdy `opacity` na kontejneru s textem
 zvlášť:** jantarový disk Party v tab baru (§17.2) a `+1` CTA v live baru (§20.5) jsou trvalé
 kotvy chromu a s obsahem nesoupeří — právě proto v obsahu platí pravidlo o to přísněji.
 
+**Medaile odznaků** do 64 pt jsou ilustrace, ne plocha, i když jsou jantarové (§9). Medaile 128 pt
+smí být na obrazovce jedna, v detailu odznaku.
+
 **Jantar jako text/ikona** patří aktivnímu stavu, akcentovaným akcím („Zkusit znovu“, „Obnovit“)
 a aktivnímu kusu baseline. Hlavní číslice jsou **pěna**, ne jantar (§3.2). Malé stavové prvky —
 `PR` kapsle, jantarový medailonek pod ikonou, podium bloky na alfě — se za „plochu“ nepočítají;
@@ -1134,6 +1137,28 @@ hex uvnitř SVG, **reaguje na data, ne na čas**, komponenta je `memo`, pevný `
 odvozená od šířky konstantním poměrem, prázdný stav je vidět (`foam` na 4–8 %) a dekorativní
 kresba je pro čtečku skrytá (`accessibilityElementsHidden`).
 
+### Medaile odznaků (21. 10. 2026)
+
+Varianta B „Ražba“. Odznak je jedna medaile (`src/profile/BadgeMedal.tsx`) ve `viewBox`
+100 × 100, kreslená jen kruhy, cestami a elipsami. Rodina s úrovněmi roste o kus ražby:
+**I** holá mince (jádro r 28,4), **II** obruba s 16 nýty (r 34,4), **III** korunka jako na pivním
+uzávěru (21 zubů), **IV** korunka s věncem. Nejvyšší úroveň rodiny má vždycky věnec, i když má
+rodina jen tři úrovně. Úroveň čteš z obrysu, takže drží i v šedi a pro barvoslepé. Barva ji jen
+podtrhuje a bere se z tokenů: I `mutedText`, II `foamMuted`, III `amber`, IV `amber` s věncem
+v `neon`. Objemové odznaky (Čárkař, lahváče, plechovky) zůstávají cínové na všech úrovních a nikdy
+nejsou cíl ani odpočet. Jednorázové chvíle jsou čtvercové plakety, sbírky (Celý týden, Kolo roku)
+kulaté medaile, na kterých se sloty plní jantarem. Zamčená medaile je slepá ražba: tvar a motiv
+v pěně na 6–34 %, složené do plné barvy přes zem, aby se vrstvy nesčítaly. Další úroveň v řádku
+„Na řadě“ je o stupeň jasnější (motiv 50 %, obrys 30 %), protože je to to, co se nahání. Tajná je
+čárkovaná plaketa s otazníkem; neobjevená tajná jednoho tématu sdílí jednu buňku („2 přijdou
+samy“). Neotevřená nová medaile má jantarovou tečku 6/100 vpravo nahoře.
+
+Sbírka má pevnou hlavičku se zpětným tlačítkem, nahoře „Na řadě“ (tři nejbližší úrovně podle
+podílu hotového), pod pásem šest témat v mřížce po čtyřech: medaile 64 pt, název s úrovní 13/600
+(strop písma 1,1) a jedno číslo 12 pt. Profil ukazuje
+poslední čtyři medaile 56 pt a jeden řádek „Na řadě“. Detail je intent sheet podle §7 (zem `stout`,
+madlo 44 × 4) s medailí 128 pt.
+
 ---
 
 ## 10. Pohyb
@@ -1174,6 +1199,20 @@ Pravidla:
   pevnou výšku — obsah se mění, výška ne, takže nic pod nimi neposkočí.
 - Stisk se řeší stylem, ne animací: `pressed && { opacity: 0.65–0.9 }` (§6.2), u jantarové CTA
   navíc `transform: [{ scale: 0.97 }]`.
+
+**Výjimka: ražba medaile (21. 10. 2026).** Když se medaile od posledního otevření zvedla o úroveň,
+její detail ji jednou vyrazí: 350 ms po otevření se zamáčkne na 0,9 (120 ms, ease-in quad),
+kresba se naráz vymění na novou úroveň s haptikou Heavy, vyskočí na 1,08 (180 ms, ease-out cubic)
+a usadí se springem (damping 14, stiffness 220) s haptikou Success. Obě kresby leží přes sebe
+a vymění se na UI vlákně, takže úder nečeká na JS. Spouští ji otevření detailu,
+nikdy počítadlo, a podruhé se už neopakuje. Při omezeném pohybu je nová kresba hned na místě
+a haptika zůstává. Pop 130/180 ms by úder nenesl, proto je pomalejší.
+
+**Toast s medailí.** Novou medaili ohlásí stávající `Toast` nahoře přes celou šířku (okraj 12 pt):
+medaile 44 pt místo ikony, druhý řádek s dosaženou hodnotou, okraj `amber` 0,5, šipka a 4 s místo
+2,4 s. Čtečka obrazovky ho slyší hned při zobrazení. Ťuknutí otevře detail (víc medailí
+najednou otevře sbírku). Počítadlo se nehne; pivo odchází až po okně „Vrátit“, takže se toast
+s „Vrátit“ nepotká.
 
 ---
 

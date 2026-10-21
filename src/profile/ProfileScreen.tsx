@@ -19,7 +19,6 @@ import {
 import { ChevronRightIcon, SettingsIcon } from '@/components/shared/IconGlyph';
 import { accountXpProgress } from '@/data/accountXp';
 import { loadAddedPubSubmissions, type AddedPubSubmission } from '@/data/addedPubsQueue';
-import { EMPTY_ACHIEVEMENTS } from '@/data/auth';
 import { enqueueBeerPhoto } from '@/data/beerPhotosQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
@@ -29,7 +28,11 @@ import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import { t, intlLocale } from '@/i18n';
 import { openPubPage } from '@/pubPage/openPubPage';
 import { Avatar } from '@/profile/Avatar';
-import { BADGE_CATALOG, resolvedAchievements } from '@/profile/badgeCatalog';
+import { BadgeMedal, medalLook } from '@/profile/BadgeMedal';
+import { nearestGoals, type BadgeKey } from '@/profile/badgeModel';
+import { BadgeGoalRow } from '@/profile/BadgeRows';
+import { badgeName } from '@/profile/badgeText';
+import { useAccountBadges, useRefreshBadgesOnFocus } from '@/profile/useAccountBadges';
 import {
   dailyBeerAverage,
   earliestTimestamp,
@@ -46,6 +49,7 @@ import {
   useAccountStore,
 } from '@/stores/accountStore';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { useBadgeStore } from '@/stores/badgeStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -243,11 +247,27 @@ export default function ProfileScreen() {
   );
   const shownFavorites = allFavorites ? favorites : favorites.slice(0, FAVORITES_COLLAPSED);
 
-  const unlocked = useMemo(() => {
-    if (!profile) return null;
-    const effective = resolvedAchievements(profile.mapper, profile.achievements ?? EMPTY_ACHIEVEMENTS);
-    return BADGE_CATALOG.filter((badge) => effective[badge.key]);
-  }, [profile]);
+  useRefreshBadgesOnFocus();
+  const badges = useAccountBadges();
+  const ownLedger = useBadgeStore((s) => s.accountId != null && s.accountId === profile?.id);
+  const recentBadges = useBadgeStore((s) => s.recent);
+  const unopenedBadges = useBadgeStore((s) => s.unopened);
+  const shelf = useMemo(() => {
+    if (!badges) return null;
+    const recent: readonly BadgeKey[] = ownLedger ? recentBadges : [];
+    const rank = (key: BadgeKey) => {
+      const index = recent.indexOf(key);
+      return index === -1 ? recent.length : index;
+    };
+    const earned = badges.filter((state) => state.tier > 0);
+    return {
+      earned: earned.length,
+      shown: [...earned]
+        .sort((a, b) => rank(a.key) - rank(b.key) || b.tier - a.tier)
+        .slice(0, BADGES_SHOWN),
+      goal: nearestGoals(badges, 1)[0] ?? null,
+    };
+  }, [badges, ownLedger, recentBadges]);
 
   const failedPhoto = useMemo(
     () => photos.find((photo) => photo.syncState === 'failed') ?? null,
@@ -446,27 +466,27 @@ export default function ProfileScreen() {
           </>
         ) : null}
 
-        {unlocked ? (
+        {shelf && badges ? (
           <>
             <Band />
-            <SectionTitle
-              title={t.profile.badgesTitle}
-              aside={t.profile.badgesCount(unlocked.length, BADGE_CATALOG.length)}
-            />
-            {unlocked.length > 0 ? (
+            <SectionTitle title={t.badges.title} aside={t.badges.earnedOf(shelf.earned, badges.length)} />
+            {shelf.shown.length > 0 ? (
               <Pressable
                 onPress={openBadges}
                 style={({ pressed }) => [styles.badges, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel={t.a11y.profileBadges}
+                accessibilityLabel={`${t.a11y.profileBadges}: ${shelf.shown.map((state) => badgeName(state)).join(', ')}`}
               >
-                {unlocked.slice(-BADGES_SHOWN).map(({ key, title, Icon }) => (
-                  <View key={key} style={styles.badge}>
-                    <View style={styles.medallion}>
-                      <Icon size={20} color={Colors.amber} />
-                    </View>
-                    <Text style={styles.badgeTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {title}
+                {shelf.shown.map((state) => (
+                  <View key={state.key} style={styles.badge}>
+                    <BadgeMedal
+                      badge={state.key}
+                      look={medalLook(state)}
+                      size={56}
+                      dot={ownLedger && unopenedBadges.includes(state.key)}
+                    />
+                    <Text style={styles.badgeTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.display}>
+                      {badgeName(state)}
                     </Text>
                   </View>
                 ))}
@@ -474,9 +494,12 @@ export default function ProfileScreen() {
                   <ChevronRightIcon size={16} color={Colors.mutedText} />
                 </View>
               </Pressable>
-            ) : (
-              <ListRow first title={t.profile.badgesEmpty} onPress={openBadges} />
-            )}
+            ) : null}
+            {shelf.goal && (shelf.shown.length > 0 || shelf.goal.value > 0) ? (
+              <BadgeGoalRow state={shelf.goal} first={shelf.shown.length === 0} prefixed onPress={openBadges} />
+            ) : shelf.shown.length === 0 ? (
+              <ListRow first title={t.badges.empty} onPress={openBadges} />
+            ) : null}
           </>
         ) : null}
 
@@ -587,7 +610,7 @@ export default function ProfileScreen() {
             router.push({ pathname: '/leaderboards', params: { source: 'profile' } } as Href);
           }}
         />
-        {!unlocked ? <ListRow title={t.profile.badgesTitle} onPress={openBadges} /> : null}
+        {!shelf ? <ListRow title={t.badges.title} onPress={openBadges} /> : null}
       </ScrollView>
 
       {codeVisible ? (
@@ -755,22 +778,12 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: 4,
   },
   badge: {
-    width: 64,
+    width: 80,
     alignItems: 'center',
     gap: 6,
-  },
-  medallion: {
-    width: 52,
-    height: 52,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.07),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.5),
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   badgeTitle: {
     fontSize: 12,
@@ -780,7 +793,7 @@ const styles = StyleSheet.create({
   },
   badgesMore: {
     flex: 1,
-    height: 52,
+    height: 56,
     alignItems: 'flex-end',
     justifyContent: 'center',
   },

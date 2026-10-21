@@ -19,3 +19,7 @@ export function fireSuccessHaptic(): void {
 export function fireLightImpactHaptic(): void {
   fireHaptic(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
 }
+
+export function fireHeavyImpactHaptic(): void {
+  fireHaptic(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));
+}
