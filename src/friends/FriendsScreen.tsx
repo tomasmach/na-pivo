@@ -145,6 +145,7 @@ import MyActivityCard from './MyActivityCard';
 import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
 import { TourGlanceLine } from '@/tours/TourGlanceLine';
+import { useBottomInset, useFirstFocus } from '@/navigation/TabScreen';
 import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
 import { PresenceList } from './PresenceList';
@@ -397,6 +398,8 @@ function RosterSheet({
 
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset(Spacing.sm);
+  const opened = useFirstFocus();
   const router = useRouter();
   const showToast = useToastStore((state) => state.show);
 
@@ -1285,18 +1288,9 @@ export default function FriendsScreen() {
   const requests = d?.incomingRequests ?? [];
 
   return (
-    <View
-      style={[
-        styles.root,
-        {
-          paddingTop: insets.top,
-          // The tab bar under this screen already pads for the home indicator,
-          // so `insets.bottom` here would be that gap charged twice — 26pt of
-          // stout between the pill and the bar. Just the block gap.
-          paddingBottom: Spacing.sm,
-        },
-      ]}
-    >
+    // Not collapsable, so the scroll view stays first in the native tree, where
+    // a second tap on the tab looks for it to scroll back to the top.
+    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: bottomInset }]} collapsable={false}>
       {/* The stream and the fade that ends it share one box, so the fade is
           never an out-of-bounds child (Android clips those). */}
       <View style={styles.body}>
@@ -1405,7 +1399,7 @@ export default function FriendsScreen() {
           ) : null}
 
           {/* 2. Čerstvě cvaknuto — between the people and what they drank. */}
-          <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
+          {opened ? <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} /> : null}
 
           {/* 3. Žebříček party — who out-drank and out-sat whom, last 30 days. */}
           <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>

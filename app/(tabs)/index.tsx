@@ -83,6 +83,7 @@ import { PubSearchButton } from '@/search/PubSearchButton';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
+import { TabScreen, useBottomInset } from '@/navigation/TabScreen';
 import { amberGlowStrong } from '@/theme/shadows';
 import { formatVolume, t } from '@/i18n';
 
@@ -108,8 +109,9 @@ interface PermissionScreenProps {
 
 function PermissionScreen({ permissionState, requestPermission, onShowMap }: PermissionScreenProps) {
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
   return (
-    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: bottomInset }]}>
       <View style={[styles.headerRow, styles.headerRowEmpty]}>
         <View style={styles.headerSpacer} />
         <PubSearchButton />
@@ -171,13 +173,14 @@ interface LoadingScreenProps {
  */
 function LoadingScreen({ rotation, onShowMap }: LoadingScreenProps) {
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset(Spacing.sm);
   const [dialSize, setDialSize] = useState(CompassSize);
   return (
     <View
       style={[
         styles.root,
         styles.surface,
-        { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+        { paddingTop: insets.top + 8, paddingBottom: bottomInset },
       ]}
     >
       <View style={styles.headerRow}>
@@ -452,10 +455,12 @@ function splitDistance(formatted: string | null): { value: string; unit: string 
  */
 // ─── Main CompassScreen ───────────────────────────────────────────────────────
 
-export default function CompassScreen() {
+function CompassScreen() {
   const router = useRouter();
   const { view } = useLocalSearchParams<{ view?: string }>();
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
+  const bottomGapInset = useBottomInset(Spacing.sm);
   useWindowDimensions();
   const [, setSceneSize] = useState<{ width: number; height: number } | null>(null);
   const [pubFilters, setPubFilters] = useState<PubSearchFilters>(EMPTY_PUB_SEARCH_FILTERS);
@@ -852,7 +857,7 @@ export default function CompassScreen() {
   // "Zpět na nejbližší" in the thumb arc.
   if (pub === null && !focusedPub) {
     return (
-      <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={[styles.root, { paddingTop: insets.top, paddingBottom: bottomInset }]}>
         {/* Nothing within reach is exactly when the map earns its place, so the
             switch stays in the header here too. */}
         <View style={[styles.headerRow, styles.headerRowEmpty]}>
@@ -899,7 +904,7 @@ export default function CompassScreen() {
       style={[
         styles.root,
         styles.surface,
-        { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+        { paddingTop: insets.top + 8, paddingBottom: bottomGapInset },
       ]}
     >
       {/* The map is not a menu item. It is the compass's twin, so it lives where
@@ -1208,3 +1213,11 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
 });
+
+export default function CompassTab() {
+  return (
+    <TabScreen>
+      <CompassScreen />
+    </TabScreen>
+  );
+}

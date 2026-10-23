@@ -85,6 +85,7 @@ import {
 import { useBeerMap } from './useBeerMap';
 import { StaticMapMarker, useMarkerSnapshotRefresh } from './StaticMapMarker';
 import { openPubPage } from '@/pubPage/openPubPage';
+import { useBottomInset, useTabBarInset } from '@/navigation/TabScreen';
 
 const DEFAULT_REGION: Region = {
   latitude: 49.8175,
@@ -616,6 +617,9 @@ export default function BeerMapScreen({
 }: BeerMapScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // The gap under the bottom controls is where the Google logo sits.
+  const bottomInset = useBottomInset(Spacing.xl);
+  const tabBarInset = useTabBarInset();
   const colorScheme = useColorScheme();
   const mapColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
   const mapRef = useRef<MapView>(null);
@@ -1427,6 +1431,8 @@ export default function BeerMapScreen({
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
+        // Keeps the Google logo and the camera center above the floating tab bar.
+        mapPadding={{ top: 0, right: 0, bottom: tabBarInset, left: 0 }}
         initialRegion={region}
         onRegionChangeComplete={handleRegionChange}
         onPress={handleMapPress}
@@ -1627,7 +1633,7 @@ export default function BeerMapScreen({
       <View
         style={[
           styles.bottomStack,
-          { paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+          { paddingBottom: bottomInset },
         ]}
         pointerEvents="box-none"
       >

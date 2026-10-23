@@ -137,6 +137,7 @@ import { useToursStore } from '@/stores/toursStore';
 import { tourStopAtPub } from '@/tours/counterLink';
 import { runGlance } from '@/tours/glance';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
+import { useBottomInset } from '@/navigation/TabScreen';
 
 // ─── Timings ──────────────────────────────────────────────────────────────────
 
@@ -224,6 +225,13 @@ function isSameMenuPub(target: MenuTarget | null, live: MenuTarget): boolean {
   return !!target && target.cell === live.cell && target.pubId === live.pubId;
 }
 
+/** The outside place of the evening still being counted, if it has one. */
+function liveOutsideContext(): OutsidePlaceContext | null {
+  const current = useTallyStore.getState().current;
+  if (!current || current.drinks.length === 0) return null;
+  return contextFromPubKey(current.pubKey);
+}
+
 /** "Pilsner Urquell · 0,5 l" — the CTA's sub-line and the receipt's meta. */
 function beerLine(beer: { name: string; volumeMl?: number; servingType?: ServingType }): string {
   const serving =
@@ -260,12 +268,13 @@ function PermissionGate({
   embedded: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
   return (
     <View
       style={[
         styles.root,
         styles.gate,
-        { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom },
+        { paddingTop: embedded ? 0 : insets.top, paddingBottom: bottomInset },
       ]}
     >
       <View style={styles.gateIcon}>
@@ -354,6 +363,7 @@ function Tacek({
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
   const topInset = embedded ? 0 : insets.top;
+  const bottomInset = useBottomInset(Spacing.sm);
 
   const pub = place?.kind === 'pub' ? place.pub : null;
   const outsideContext = place?.kind === 'outside' ? place.context : null;
@@ -1768,7 +1778,7 @@ function Tacek({
       style={[
         styles.root,
         styles.surface,
-        { paddingTop: topInset, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+        { paddingTop: topInset, paddingBottom: bottomInset },
       ]}
     >
       <View style={styles.header}>
@@ -2016,12 +2026,19 @@ export default function CounterScreen({
   }, [pickerOpen, setPicking]);
   // "Mimo hospodu" mode, restored from a live outside session so returning to
   // the tab mid-evening lands back in it (useNearbyPub ignores ctx sessions).
-  const [outsideContext, setOutsideContext] = useState<OutsidePlaceContext | null>(() => {
-    const current = useTallyStore.getState().current;
-    if (!current || current.drinks.length === 0) return null;
-    return contextFromPubKey(current.pubKey);
-  });
-  const hadActiveSessionOnOpen = useRef((useTallyStore.getState().current?.drinks.length ?? 0) > 0);
+  const [outsideContext, setOutsideContext] = useState(liveOutsideContext);
+
+  // The tab mounts with the app, before the tally may have loaded. The counter
+  // counts as opened the first time it is on screen, so restore and track then.
+  const openedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (openedRef.current) return;
+      openedRef.current = true;
+      setOutsideContext(liveOutsideContext());
+      void trackCounterTabOpened((useTallyStore.getState().current?.drinks.length ?? 0) > 0);
+    }, []),
+  );
 
   const [handedOff, setHandedOff] = useState(false);
   // A tour stop asked to log a beer here: open on that pub, as a manual pick.
@@ -2036,10 +2053,6 @@ export default function CounterScreen({
       selectPub(pub);
     }, [selectPub]),
   );
-
-  useEffect(() => {
-    void trackCounterTabOpened(hadActiveSessionOnOpen.current);
-  }, []);
 
   // Active pub: ONLY an explicit selection (auto-pick within 120 m, a pinned
   // session, or a manual pick). We never silently attribute drinks to a pub the
