@@ -1,6 +1,6 @@
 import { Stack, useRouter, usePathname, type Href } from 'expo-router';
 import { useFonts } from 'expo-font';
-import * as SplashScreen from 'expo-splash-screen';
+import { hideAsync, preventAutoHideAsync } from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, Linking, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -216,7 +216,7 @@ function restoreAndFlushAddedPubsQueue(pullOwnAddedPubs = true): void {
 // Every backend request carries Accept-Language from the first render on.
 installBackendLocaleHeader();
 
-SplashScreen.preventAutoHideAsync().catch(() => {
+preventAutoHideAsync().catch(() => {
   // ignore — splash may already be hidden
 });
 
@@ -254,7 +254,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if ((fontsLoaded || fontError) && onboardingDecided) {
-      SplashScreen.hideAsync().catch(() => undefined);
+      hideAsync().catch(() => undefined);
     }
   }, [fontsLoaded, fontError, onboardingDecided]);
 
