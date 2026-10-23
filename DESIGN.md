@@ -1384,7 +1384,7 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 ```
 
 `expo-glass-effect` přímo importuje šest produkčních souborů (`TabBar`, `GlassIconButton`, …),
-ale v `package.json` zatím chybí — funguje jako tranzitivní závislost Expo 56. Je to dluh: přímý
+ale v `package.json` zatím chybí — funguje jako tranzitivní závislost Expo 58. Je to dluh: přímý
 import chce přímou dependency (Část III).
 
 Android sklo nemá vůbec. Tam platí fallback větev vždycky.

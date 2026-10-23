@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Keyboard, Modal, PanResponder, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { useNavigation, useRouter, type Href } from 'expo-router';
+import { AccessibilityInfo, Keyboard, Modal, PanResponder, Pressable, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
+import { usePreventRemove, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { usePreventRemove } from 'expo-router/react-navigation';
 import type { Region } from 'react-native-maps';
 import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, GripVerticalIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog, AppDialogHost } from '@/components/shared/AppDialog';
@@ -46,7 +45,7 @@ export default function TourEditorScreen() {
   return draft ? <TourEditor key={draft.id} /> : <View style={[ui.screen, { paddingTop: insets.top }]}><TourHeader title={t.tours.editTour} onBack={() => router.replace('/tours' as Href)} /><TourError code={error} /></View>;
 }
 function TourEditor() {
-  const router = useRouter(); const navigation = useNavigation(); const insets = useSafeAreaInsets();
+  const router = useRouter(); const insets = useSafeAreaInsets();
   const store = useToursStore(); const draft = store.draft;
   const keyboardHeight = useKeyboardHeight();
   const [title, setTitle] = useState(draft?.title ?? '');
@@ -71,7 +70,7 @@ function TourEditor() {
   const [reorder, setReorder] = useState(false); const [undo, setUndo] = useState<TourStop[] | null>(null);
   const [undoLabel, setUndoLabel] = useState(t.tours.moved);
   const [drag, setDrag] = useState<{ id: string; dy: number } | null>(null);
-  const scroll = useRef<ScrollView>(null); const rowY = useRef<Record<string, { y: number; height: number }>>({});
+  const scroll = useRef<ScrollViewInstance>(null); const rowY = useRef<Record<string, { y: number; height: number }>>({});
   const listY = useRef(0); const sectionY = useRef(0); const saving = useRef(false); const [allowExit, setAllowExit] = useState(false);
 
   async function save(dropDate = false) {
@@ -114,12 +113,12 @@ function TourEditor() {
       { text: t.tours.stay, style: 'cancel' },
     ] });
   };
-  usePreventRemove(!!draft && !allowExit, ({ data }) => {
+  usePreventRemove(!!draft && !allowExit, ({ repeat }) => {
     if (whenOpen) { setWhenOpen(false); return; }
     if (challengeStop) { setChallengeStop(null); return; }
     if (picker) { setPicker(false); return; }
     if (largeMap) { setLargeMap(false); return; }
-    askExit(() => navigation.dispatch(data.action));
+    askExit(repeat);
   });
   const select = (id: string) => { setSelected(id); const row = rowY.current[id]; if (row) scroll.current?.scrollTo({ y: Math.max(0, sectionY.current + listY.current + row.y - 16), animated: true }); };
   async function move(id: string, delta: number) {

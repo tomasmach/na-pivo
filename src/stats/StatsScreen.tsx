@@ -470,7 +470,7 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
   // Keep the "today / yesterday" hero relation honest while open.
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000);
+    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000) as number | NodeJS.Timeout;
     if (typeof timer === 'object' && 'unref' in timer && typeof timer.unref === 'function') {
       timer.unref();
     }

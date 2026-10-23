@@ -18,7 +18,7 @@ import {
   Text,
   View,
   useWindowDimensions,
-  type View as RNView,
+  type ViewInstance,
 } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import * as Clipboard from 'expo-clipboard';
@@ -67,7 +67,7 @@ function ShareNightModalBase({
 }: ShareNightModalProps) {
   const showToast = useToastStore((s) => s.show);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const cardRef = useRef<RNView>(null);
+  const cardRef = useRef<ViewInstance>(null);
   const [busy, setBusy] = useState(false);
 
   const dateLabel = useMemo(

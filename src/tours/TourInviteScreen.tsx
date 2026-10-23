@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRightIcon, EllipsisIcon, UsersIcon } from '@/components/shared/IconGlyph';
@@ -45,7 +45,7 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
   const [answering, setAnswering] = useState(false); const answerLock = useRef(false);
   // Whose invite this is: another account on the same screen (logout, switch) must never see or answer it.
   const inviteeId = useAccountStore((s) => s.session?.accountId ?? null);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   const listY = useRef(0);
   const rowY = useRef<Record<string, number>>({});
   function select(id: string) {

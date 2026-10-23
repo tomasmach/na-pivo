@@ -33,6 +33,7 @@ import {
   StyleSheet,
   TextInput,
   KeyboardAvoidingView,
+  type ScrollViewInstance,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -218,7 +219,7 @@ export function MapPubSheet({
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
-  const bodyRef = useRef<ScrollView>(null);
+  const bodyRef = useRef<ScrollViewInstance>(null);
 
   // Reset to "loading" during render when the pub changes, so a previous pub's
   // data never bleeds into a new open (the React-recommended alternative to a

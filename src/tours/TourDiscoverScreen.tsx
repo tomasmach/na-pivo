@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputInstance } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -102,7 +102,7 @@ export default function TourDiscoverScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const hidden = useToursStore((s) => s.hiddenPublic);
-  const input = useRef<TextInput>(null);
+  const input = useRef<TextInputInstance>(null);
   const [query, setQuery] = useState('');
   const [position, setPosition] = useState<Position | null>(null);
   const [locating, setLocating] = useState(false);
@@ -247,7 +247,7 @@ export default function TourDiscoverScreen() {
       </View>}
       ListFooterComponent={more ? <ActivityIndicator style={styles.more} color={Colors.amber} />
         : moreFailedFor === key ? <TextLink label={t.tours.retry} onPress={() => { void loadMore(); }} />
-        : settled && !results.nearby && hits.length > 0 ? <TextLink label={t.tours.discoverPlanOwn} onPress={() => { void planOwn(); }} /> : null} />
+        : settled && !results.nearby && hits.length > 0 ? <TextLink label={t.tours.discoverPlanOwn} onPress={() => { void planOwn(); }} /> : undefined} />
     {stopsSheet && <StopsSheet value={stops} onClose={() => setStopsSheet(false)} onPick={(value) => { setStops(value); setStopsSheet(false); }} />}
   </View>;
 }

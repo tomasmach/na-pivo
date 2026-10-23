@@ -15,7 +15,7 @@
  */
 
 import { forwardRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type ViewInstance } from 'react-native';
 import Svg, { Defs, G, Path, Text as SvgText, TextPath } from 'react-native-svg';
 
 import { t } from '@/i18n';
@@ -182,7 +182,7 @@ interface NightStoryCardProps {
   mode?: StickerMode;
 }
 
-export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
+export const NightStoryCard = forwardRef<ViewInstance, NightStoryCardProps>(
   function NightStoryCard({ night, dateLabel, mode = 'recap' }, ref) {
     const {
       live,

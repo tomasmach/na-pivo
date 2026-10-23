@@ -1,6 +1,5 @@
 import type { ExpoConfig, ConfigContext } from 'expo/config';
-import type { ConfigPlugin } from 'expo/config-plugins';
-import { withInfoPlist } from 'expo/config-plugins.js';
+import { withInfoPlist, type ConfigPlugin } from 'expo/config-plugins';
 
 const LOCATION_REASON =
   'Na pivo používá tvou polohu k nalezení hospod v okolí a namíření šipky. Aktuální nebo přibližná poloha se může poslat našemu serveru; GPS trasu ani historii neukládáme.';
@@ -194,7 +193,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: 'na-pivo',
     owner: 'tomasmachs-organization',
     scheme: 'napivo',
-    version: '2.2.1',
+    version: '2.3.0',
     icon: './assets/images/icon.png',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',

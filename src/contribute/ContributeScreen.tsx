@@ -9,7 +9,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  InteractionManager,
   Pressable,
   StyleSheet,
   Text,
@@ -431,7 +430,7 @@ export default function ContributeScreen() {
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000);
+    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000) as number | NodeJS.Timeout;
     if (
       typeof timer === 'object' &&
       'unref' in timer &&
@@ -444,10 +443,10 @@ export default function ContributeScreen() {
 
   useEffect(() => {
     if (parseStringParam(params.autoScan) !== '1') return;
-    const task = InteractionManager.runAfterInteractions(() => {
+    const id = requestIdleCallback(() => {
       setScanSourceVisible(true);
     });
-    return () => task.cancel();
+    return () => cancelIdleCallback(id);
     // One-shot after the route transition and the previous modal settle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

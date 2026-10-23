@@ -87,7 +87,7 @@ export interface BeerEveningLiveActivityProps {
   homeTransitA11yLabel?: string;
   /** Replaces the ride once it left: "Už jedeš nočkou". */
   homeTransitMissedLabel?: string;
-  /** Read natively by the patched expo-widgets as the ActivityKit stale date. */
+  /** Sent to ActivityKit as the stale date, so the lock screen redraws once the ride left. */
   staleDateMs?: number;
 }
 

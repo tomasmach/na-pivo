@@ -9,6 +9,7 @@ import {
   type LayoutChangeEvent,
   type ScrollViewProps,
   type TargetedEvent,
+  type ScrollViewInstance,
 } from 'react-native';
 
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
@@ -28,7 +29,7 @@ function focusedTextInputHandle(): number | null {
   if (!input) return null;
   // React Native's public TextInput state returns a Fabric host instance while
   // findNodeHandle still exposes its legacy component-shaped TypeScript input.
-  return findNodeHandle(input as unknown as Parameters<typeof findNodeHandle>[0]);
+  return findNodeHandle(input as unknown as Parameters<typeof findNodeHandle>[0]) ?? null;
 }
 
 /**
@@ -40,7 +41,7 @@ function focusedTextInputHandle(): number | null {
  * descendant focus events, adds a keyboard-sized trailing inset, and scrolls
  * the focused field above the keyboard after its animation finishes.
  */
-export const KeyboardAwareScrollView = forwardRef<ScrollView, KeyboardAwareScrollViewProps>(function KeyboardAwareScrollView(
+export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAwareScrollViewProps>(function KeyboardAwareScrollView(
   {
     automaticallyAdjustKeyboardInsets,
     contentContainerStyle,
@@ -54,7 +55,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollView, KeyboardAwareScrol
   },
   forwardedRef,
 ) {
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const scrollYRef = useRef(0);
   const viewportHeightRef = useRef(0);
   const contentHeightRef = useRef(0);
@@ -64,7 +65,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollView, KeyboardAwareScrol
   const keyboardHeightRef = useRef(keyboardHeight);
   keyboardHeightRef.current = keyboardHeight;
 
-  useImperativeHandle(forwardedRef, () => scrollRef.current as ScrollView);
+  useImperativeHandle(forwardedRef, () => scrollRef.current as ScrollViewInstance);
 
   const cancelScheduledScroll = useCallback(() => {
     if (scrollFrameRef.current !== null) {
