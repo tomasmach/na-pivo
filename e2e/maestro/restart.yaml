@@ -36,7 +36,7 @@ appId: ${MAESTRO_APP_ID}
       # system tab bar keeps its testID in a view tag Maestro cannot read, so
       # the Kompas tab is matched by its accessibility label.
       - extendedWaitUntil:
-          visible: {text: 'Záložka Kompas|Compass tab|Přeskočit|Skip'}
+          visible: {text: 'Kompas|Compass|Přeskočit|Skip'}
           timeout: 60000
 - runFlow:
     when:

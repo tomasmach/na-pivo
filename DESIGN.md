@@ -141,6 +141,9 @@ věc produktu. Přestal ale být celou appkou.
 | **Parta** | kamarádi, kdo kde sedí, co se pilo, žebříček party |
 | **Profil** | statistiky, odznaky, fotky, účet a nastavení |
 
+Jantarový disk Party uprostřed baru z plánu 3.0 systémový tab bar neumí, takže Party (route
+`beer`, dnes Štamgast) zůstává běžným tabem.
+
 Pravidla tab baru, rout a deep-linků: §17.
 
 ## Večer — jádro produktu
@@ -352,6 +355,7 @@ dekorace, ne animace a rozhodně ne emoji v chromu.
 | `Colors.border` | `#3A322A` | Jazyk 2.x. Nové UI odděluje hairliny z pěny (§2.2), ne plným okrajem. |
 | `Colors.amber` | `#E8A317` | Akcent. Primární tlačítko, aktivní stav, akcentované akce a ikony. Číslice jsou pěna (§3.2). |
 | `Colors.amberLight` | `#F5B642` | Jen uvnitř ilustrací (horní stop gradientu piva). |
+| `Colors.amberDeep` | `#9A6A0C` | Jen podklad odznaku tab baru na iOS, který text odznaku kreslí vždy bíle. Bílá na něm má 4,7 : 1, na `amber` 2,2 : 1. |
 | `Colors.glow` | `#FF7A1A` | Jazyk 2.x (`amberGlow*`). **V novém UI se nepoužívá vůbec** (§6.1). |
 | `Colors.neon` | `#FFD27A` | Rezerva pro zvýrazněné stavy. Na etalonu se nepoužívá. |
 | `Colors.foam` | `#FBF3E0` | Primární text a světlé hairliny (s alfou). |
@@ -591,11 +595,15 @@ screen: { paddingHorizontal: MockLayout.screenPad },   // 20
   sobě ~60 pt hnědého čela; každý přidaný bod se pak čte jako prázdné čelo, ne jako vzduch.
 - **Spodní okap obrazovky v tabu: `useBottomInset(gap)`** (`src/navigation/TabScreen.tsx`).
   Systémový tab bar na iOS plave nad scénou a scéna pod ním pokračuje, takže okraj si přidává
-  každá obrazovka sama. Pevný layout: `paddingBottom: useBottomInset(Spacing.sm)`. Scroll:
+  každá obrazovka sama. Pevný layout: `paddingBottom: useBottomInset(Spacing.md)`, takže spodní
+  CTA končí 14 pt nad barem. Scroll:
   `contentContainerStyle.paddingBottom: useBottomInset(Spacing.xl)`, obsah pak zajíždí pod sklo
-  a poslední řádek doskroluje nad bar. Hook vrací na iOS výšku baru i s home indicatorem plus
-  `gap`, na Androidu jen `gap` (tab tam scénu ukončí nad barem sám) a mimo taby
+  a poslední řádek doskroluje nad bar. Když pod scrollem visí pevný prvek (nudge v Partě), platí
+  pro něj pravidlo pevného layoutu a scroll končí nad ním. Hook vrací na iOS výšku baru i s home
+  indicatorem plus `gap`, na Androidu jen `gap` (tab tam scénu ukončí nad barem sám) a mimo taby
   `Math.max(insets.bottom, gap)`, což je pravidlo obrazovek bez tab baru.
+- **Boční lišta tab baru (zavřený iPhone Duo) obrazovku zúží.** `TabScreen` odečte boční inset,
+  který lišta přidá, takže obrazovky si boky z insetů nepočítají.
 - **`useSafeAreaInsets()` uvnitř tabu vrací insety zařízení, ne baru.** Sheet nebo modal otevřený
   z tabu bar překryje, takže s ním počítat nesmí. Kdo potřebuje bar, čte `useBottomInset` nebo
   `useTabBarInset` (výška, kterou bar zakrývá; mimo taby 0).
@@ -1387,7 +1395,7 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 )}
 ```
 
-Tab bar fallback řeší systém: na iOS do 25 a na Androidu má plný `Colors.stout2`
+Tab bar fallback řeší systém: na iOS 18 a starším a na Androidu má plný `Colors.stout2`
 (`backgroundColor` v `NativeTabs`). `expo-glass-effect` dnes žádný soubor neimportuje a
 v `package.json` není; první vlastní sklo ho přidá jako přímou závislost.
 
@@ -1458,8 +1466,8 @@ Rozpad 60 / 30 / 10 z §2.2 platí beze změny — gradient je pořád těch 60 
 
 Tab bar je systémový: `NativeTabs` z `expo-router/native-tabs` v `app/(tabs)/_layout.tsx`. Na
 iPhonu s iOS 26 je to plovoucí skleněná pilulka, na skládacím iPhonu Duo ho iOS na zavřeném
-displeji přesune do svislé lišty u pravého okraje a na iOS do 25 a na Androidu je to plný bar
-`Colors.stout2`. Vlastní JS bar nestavíme, protože ten by systém přesunout nemohl.
+displeji přesune do svislé lišty u pravého okraje a na iOS 18 a starším a na Androidu je to plný
+bar `Colors.stout2`. Vlastní JS bar nestavíme, protože ten by systém přesunout nemohl.
 
 Route názvy jsou deep-link cíle (`napivo://beer`, `/friends`, `/profile`) a v telemetrii mají
 jména `tab_compass`, `tab_beer`, `tab_friends`, `tab_profile` (whitelist v
@@ -1471,11 +1479,14 @@ Nastavení nemá vlastní vstupní bod v chromu. Žije v Profilu (§0.4: okrajov
 ### 17.2 Barvy, odznak a chování
 
 - Aktivní položka je jantarová (`tintColor`), neaktivní `mutedText`. iOS 26 neaktivní barvu
-  ignoruje a kreslí ji systémově. Label má systémové písmo. Glow v baru není (§6.1).
-- **Parta nese jantarový odznak** z `usePartaSignalStore`: počet čekajících žádostí o přátelství
+  ignoruje a kreslí ji systémově. Label je Baloo 2 Bold 12 jako dřív, jen bez trackingu, který
+  systémový bar nenastaví. Glow v baru není (§6.1).
+- **Parta nese odznak** z `usePartaSignalStore`: počet čekajících žádostí o přátelství
   (od deseti „9+“), jinak prázdný odznak, když je v partě nepřečtená novinka nebo někdo live.
-  Text odznaku kreslí iOS bíle a jinou barvu nastavit nejde; bílá na jantaru má kontrast
-  2,2 : 1. Počet je proto i v accessibility labelu („Parta, 3 novinky“).
+  Text odznaku kreslí iOS vždy bíle, takže podklad je tam `Colors.amberDeep` (4,7 : 1).
+  Android barvu textu nastavit umí, tam je odznak `Colors.amber` se `stout` textem. Červený
+  systémový odznak nepoužíváme (§2.1). Počet je i v accessibility labelu („Parta, 3 novinky“);
+  ostatní taby mají label jen názvem, roli „tab“ VoiceOver přečte sám.
 - Každé ťuknutí na tab dá lehkou haptiku (pokud ji uživatel nevypnul). Telemetrie `tab_* select`
   jde jen při přepnutí na jiný tab, přechod z kódu ani deep link ji nepošle.
 - Druhé ťuknutí na otevřený tab odroluje nahoru, když je scroll první v nativním stromu
@@ -1556,10 +1567,11 @@ nevykreslí.
 
 Používáme Lucide (dnes 80+ glyfů). Vlastní sada by byla samostatné rozhodnutí.
 
-**Výjimka je tab bar.** Systémový bar Lucide vykreslit neumí, takže nese SF Symbols na iOS a
-Material Symbols na Androidu, vybrané podle významu původních glyfů: Kompas `safari.fill` /
-`explore`, Štamgast `mug.fill` / `sports_bar`, Parta `person.2.fill` / `group`, Profil
-`person.fill` / `person`.
+**Tab bar nese Lucide jako obrázky.** Systémový bar komponentu nevykreslí, takže glyfy
+`compass`, `beer`, `users` a `user` leží v `assets/images/tabs/` jako PNG šablony
+(@1x/@2x/@3x, 24 pt, tah 2, bílá na průhledné). Barvu aktivní a neaktivní položky jim dává bar.
+Nový glyf do baru se vyrenderuje ze SVG Lucide stejně; SF Symbols ani Material Symbols ne,
+protože plné systémové glyfy vedle tenkých Lucide působí jako cizí sada.
 
 **Ikona musí něco rozlišovat.** Tři výzvy se stejnou jiskřičkou jsou dekorace na
 místě myšlenky — každá výzva má glyf podle toho, co je (špendlík / hodiny /

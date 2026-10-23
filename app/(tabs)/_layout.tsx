@@ -2,6 +2,7 @@ import { NativeTabs } from 'expo-router/native-tabs';
 import { Platform } from 'react-native';
 
 import { Colors } from '@/theme/colors';
+import { Fonts } from '@/theme/fonts';
 import { t } from '@/i18n';
 import { handleTabPress, partaBadge } from '@/navigation/tabs';
 import { TabsInsetsRoot } from '@/navigation/TabScreen';
@@ -15,10 +16,14 @@ const SCREEN = {
   disableAutomaticContentInsets: Platform.OS === 'ios',
 };
 
+// iOS always draws the badge text white, which amber cannot carry.
+const BADGE_BACKGROUND = Platform.OS === 'ios' ? Colors.amberDeep : Colors.amber;
+
 /**
  * The system tab bar, so iOS can place it where the device wants it (bottom
  * pill on iPhone, side rail on the folded iPhone Duo). The background, shadow
  * and inactive colors reach Android and iOS before 26; iOS 26 draws its own glass.
+ * Icons are the Lucide glyphs as template PNGs, tinted by the bar.
  */
 export default function TabsLayout() {
   const pendingRequests = usePartaSignalStore((s) => s.pendingRequests);
@@ -31,23 +36,26 @@ export default function TabsLayout() {
       <NativeTabs
         tintColor={Colors.amber}
         iconColor={{ default: Colors.mutedText, selected: Colors.amber }}
-        labelStyle={{ default: { color: Colors.mutedText }, selected: { color: Colors.amber } }}
+        labelStyle={{
+          default: { color: Colors.mutedText, fontFamily: Fonts.display.bold, fontSize: 12 },
+          selected: { color: Colors.amber },
+        }}
         backgroundColor={Colors.stout2}
         shadowColor={Colors.border}
         disableTransparentOnScrollEdge
         indicatorColor={Colors.stout3}
-        badgeBackgroundColor={Colors.amber}
+        badgeBackgroundColor={BADGE_BACKGROUND}
         badgeTextColor={Colors.stout}
         screenListeners={({ navigation, route }) => ({
           tabPress: () => handleTabPress(route.name, navigation.isFocused()),
         })}
       >
         <NativeTabs.Trigger name="index" testID="tab-index" accessibilityLabel={t.a11y.tabCompass} {...SCREEN}>
-          <NativeTabs.Trigger.Icon sf="safari.fill" md="explore" />
+          <NativeTabs.Trigger.Icon src={require('../../assets/images/tabs/compass.png')} renderingMode="template" />
           <NativeTabs.Trigger.Label>{t.tabs.compass}</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="beer" testID="tab-beer" accessibilityLabel={t.a11y.tabBeer} {...SCREEN}>
-          <NativeTabs.Trigger.Icon sf="mug.fill" md="sports_bar" />
+          <NativeTabs.Trigger.Icon src={require('../../assets/images/tabs/beer.png')} renderingMode="template" />
           <NativeTabs.Trigger.Label>{t.tabs.beer}</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
         <NativeTabs.Trigger
@@ -58,16 +66,16 @@ export default function TabsLayout() {
           }
           {...SCREEN}
         >
-          <NativeTabs.Trigger.Icon sf="person.2.fill" md="group" />
+          <NativeTabs.Trigger.Icon src={require('../../assets/images/tabs/users.png')} renderingMode="template" />
           <NativeTabs.Trigger.Label>{t.tabs.friends}</NativeTabs.Trigger.Label>
           {badge === null ? null : badge ? (
-            <NativeTabs.Trigger.Badge selectedBackgroundColor={Colors.amber}>{badge}</NativeTabs.Trigger.Badge>
+            <NativeTabs.Trigger.Badge>{badge}</NativeTabs.Trigger.Badge>
           ) : (
             <NativeTabs.Trigger.Badge />
           )}
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="profile" testID="tab-profile" accessibilityLabel={t.a11y.tabProfile} {...SCREEN}>
-          <NativeTabs.Trigger.Icon sf="person.fill" md="person" />
+          <NativeTabs.Trigger.Icon src={require('../../assets/images/tabs/user.png')} renderingMode="template" />
           <NativeTabs.Trigger.Label>{t.tabs.profile}</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
       </NativeTabs>

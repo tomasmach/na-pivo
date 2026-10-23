@@ -173,7 +173,7 @@ interface LoadingScreenProps {
  */
 function LoadingScreen({ rotation, onShowMap }: LoadingScreenProps) {
   const insets = useSafeAreaInsets();
-  const bottomInset = useBottomInset(Spacing.sm);
+  const bottomInset = useBottomInset(Spacing.md);
   const [dialSize, setDialSize] = useState(CompassSize);
   return (
     <View
@@ -460,7 +460,7 @@ function CompassScreen() {
   const { view } = useLocalSearchParams<{ view?: string }>();
   const insets = useSafeAreaInsets();
   const bottomInset = useBottomInset();
-  const bottomGapInset = useBottomInset(Spacing.sm);
+  const bottomGapInset = useBottomInset(Spacing.md);
   useWindowDimensions();
   const [, setSceneSize] = useState<{ width: number; height: number } | null>(null);
   const [pubFilters, setPubFilters] = useState<PubSearchFilters>(EMPTY_PUB_SEARCH_FILTERS);

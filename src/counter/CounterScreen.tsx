@@ -363,7 +363,7 @@ function Tacek({
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
   const topInset = embedded ? 0 : insets.top;
-  const bottomInset = useBottomInset(Spacing.sm);
+  const bottomInset = useBottomInset(Spacing.md);
 
   const pub = place?.kind === 'pub' ? place.pub : null;
   const outsideContext = place?.kind === 'outside' ? place.context : null;

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useState, type PropsWithChildren } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import {
   SafeAreaInsetsContext,
@@ -22,13 +22,21 @@ export function TabsInsetsRoot({ children }: PropsWithChildren) {
  * system tab bar, and every sheet or modal opened from the screen would inherit
  * it. Descendants keep the device insets; the bar is read via useBottomInset().
  * On Android the tabs already end the screen above the bar.
+ *
+ * The folded iPhone Duo puts the bar in a side rail, which comes as a left or
+ * right inset. Screens do not pad their sides from insets, so the whole tab is
+ * narrowed by the rail instead; modals cover the rail and keep the full width.
  */
 export function TabScreen({ children }: PropsWithChildren) {
   const tabInsets = useSafeAreaInsets();
   const deviceInsets = useContext(DeviceInsetsContext) ?? tabInsets;
+  const railLeft = Math.max(0, tabInsets.left - deviceInsets.left);
+  const railRight = Math.max(0, tabInsets.right - deviceInsets.right);
   return (
     <TabBarInsetContext.Provider value={Platform.OS === 'ios' ? tabInsets.bottom : 0}>
-      <SafeAreaInsetsContext.Provider value={deviceInsets}>{children}</SafeAreaInsetsContext.Provider>
+      <SafeAreaInsetsContext.Provider value={deviceInsets}>
+        <View style={{ flex: 1, marginLeft: railLeft, marginRight: railRight }}>{children}</View>
+      </SafeAreaInsetsContext.Provider>
     </TabBarInsetContext.Provider>
   );
 }

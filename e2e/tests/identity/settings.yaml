@@ -63,7 +63,7 @@ tags: [full, identity]
       platform: Android
     commands:
       - extendedWaitUntil:
-          visible: { text: "Compass tab" }
+          visible: { text: "Compass" }
           timeout: 60000
 - runFlow:
     file: ../../maestro/route.yaml
@@ -94,7 +94,7 @@ tags: [full, identity]
       platform: Android
     commands:
       - extendedWaitUntil:
-          visible: { text: "Záložka Kompas" }
+          visible: { text: "Kompas" }
           timeout: 60000
 - runFlow:
     file: ../../maestro/route.yaml

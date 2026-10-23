@@ -193,7 +193,7 @@ export default function DiaryScreen({
 }: DiaryScreenProps = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const bottomInset = useBottomInset(Spacing.sm);
+  const bottomInset = useBottomInset(Spacing.md);
 
   // Keep the relative date labels honest while the screen is open — the same
   // one-minute tick both predecessors used.
