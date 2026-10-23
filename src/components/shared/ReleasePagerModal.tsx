@@ -42,6 +42,7 @@ interface Slide {
 const apology = t.whatsNew.apology;
 const fixed211 = t.whatsNew.fixed211;
 const v220 = t.whatsNew.v220;
+const v221 = t.whatsNew.v221;
 
 const APOLOGY_SLIDES: Slide[] = [
   {
@@ -122,6 +123,37 @@ const V220_SLIDES: Slide[] = [
   },
 ];
 
+const V221_SLIDES: Slide[] = [
+  {
+    key: 'alcohol-estimate',
+    title: v221.slide1Title,
+    body: v221.slide1Body,
+    next: v221.slide1Next,
+    image: require('../../../assets/images/whats-new/alcohol-estimate-221.png'),
+  },
+  {
+    key: 'beer-watch',
+    title: v221.slide2Title,
+    body: v221.slide2Body,
+    next: v221.slide2Next,
+    image: require('../../../assets/images/whats-new/beer-watch-221.png'),
+  },
+  {
+    key: 'medals',
+    title: v221.slide3Title,
+    body: v221.slide3Body,
+    next: v221.slide3Next,
+    image: require('../../../assets/images/whats-new/medals-221.png'),
+  },
+  {
+    key: 'profile',
+    title: v221.slide4Title,
+    body: v221.slide4Body,
+    next: v221.slide4Done,
+    image: require('../../../assets/images/whats-new/profile-221.png'),
+  },
+];
+
 interface Pager {
   slides: Slide[];
   skip: string;
@@ -144,6 +176,7 @@ const PAGERS: Record<string, Pager> = {
     asksForReview: false,
   },
   '2.2.0': { slides: V220_SLIDES, skip: v220.skip, done: v220.slide4Done, asksForReview: false },
+  '2.2.1': { slides: V221_SLIDES, skip: v221.skip, done: v221.slide4Done, asksForReview: false },
 };
 
 function PagerSlide({ item, width }: { item: Slide; width: number }) {

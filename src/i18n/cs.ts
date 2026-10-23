@@ -3028,6 +3028,25 @@ export const cs = {
         'Když máš v Nastavení domovský bod, ukážu ti během večera poslední přímý spoj domů a můžu tě na něj 20 minut předem upozornit. Zatím jen v Praze a okolí.',
       slide4Done: 'Jdu na pivo',
     },
+    v221: {
+      skip: 'Přeskočit',
+      slide1Title: 'Odhad promile',
+      slide1Body:
+        'Ze zapsaného pití ti na počítadle odhadnu promile a kdy budeš na nule. Je to jen odhad, za volant podle něj nesedej.',
+      slide1Next: 'Pokračovat',
+      slide2Title: 'Hlídej si svoje pivo',
+      slide2Body:
+        'Na lístku hospody ťukni na pivo a vyber Hlídat pivo. Až ho začnou čepovat poblíž, dám ti vědět.',
+      slide2Next: 'Další novinka',
+      slide3Title: 'Z\u00a0odznaků jsou medaile',
+      slide3Body:
+        'Medaile s\u00a0každou úrovní roste a ukážu ti, kolik do další chybí. Přibyly nové, třeba Silvestr, a\u00a0některé jsou tajné.',
+      slide3Next: 'Ještě jedna věc',
+      slide4Title: 'Profil na jedné stránce',
+      slide4Body:
+        'Na Profilu máš srdcovky, odznaky, fotky i\u00a0přidané hospody. Nastavení je pod ozubeným\u00a0kolem.',
+      slide4Done: 'Jdu na pivo',
+    },
   },
 
   about: {
