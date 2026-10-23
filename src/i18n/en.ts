@@ -2434,6 +2434,25 @@ export const en: Strings = {
         "Set a home point in Settings and I'll show your last direct ride home while your night is on, with an optional reminder 20 minutes before it leaves. Prague area only for now.",
       slide4Done: "Let's get a beer",
     },
+    v221: {
+      skip: 'Skip',
+      slide1Title: 'Blood alcohol estimate',
+      slide1Body:
+        "In the Counter I'll estimate your blood alcohol and when you'll be back to zero. It's only an estimate, so never drive based on it.",
+      slide1Next: 'Continue',
+      slide2Title: 'Watch your beer',
+      slide2Body:
+        "Tap a beer on a pub's tap list and pick Watch this beer. I'll tell you when a pub nearby starts pouring it.",
+      slide2Next: "There's more",
+      slide3Title: 'Badges are now medals',
+      slide3Body:
+        "Medals grow with every level, and you'll see what's left until the next one. New ones include New Year's Eve, and some are secret.",
+      slide3Next: 'One more thing',
+      slide4Title: 'Your profile on one page',
+      slide4Body:
+        'Your profile now shows your favourite pubs, badges, photos and the pubs you added. Settings are behind the gear icon.',
+      slide4Done: "Let's get a beer",
+    },
   },
   about: {
     privacyLink: 'Privacy policy',
