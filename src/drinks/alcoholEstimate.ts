@@ -119,6 +119,8 @@ interface Dose {
 
 interface Run {
   at: number;
+  /** When the bout running at `untilMs` began: the first dose absorbed after the level was at zero. */
+  boutStartMs: number;
   peak: number;
   peakAt: number;
   zeroAt: number;
@@ -133,6 +135,7 @@ function simulate(doses: Dose[], scenario: Scenario, untilMs: number): Run {
   let at = 0;
   let peak = 0;
   let peakAt = untilMs;
+  let boutStartMs = firstMs;
   for (let ms = firstMs; ; ms += STEP_MS) {
     let absorbed = 0;
     for (const dose of doses) {
@@ -140,13 +143,14 @@ function simulate(doses: Dose[], scenario: Scenario, untilMs: number): Run {
         absorbed += (dose.promile * scenario.alcohol) / ABSORPTION_MIN;
       }
     }
+    if (absorbed > 0 && level <= 0 && ms <= untilMs) boutStartMs = ms;
     level = Math.max(0, level + absorbed - (level > 0 ? eliminationPerStep : 0));
     if (ms <= untilMs) at = level;
     else if (level > peak) {
       peak = level;
       peakAt = ms;
     }
-    if (ms >= lastAbsorbedMs && level <= 0) return { at, peak, peakAt, zeroAt: ms };
+    if (ms >= lastAbsorbedMs && level <= 0) return { at, boutStartMs, peak, peakAt, zeroAt: ms };
   }
 }
 
@@ -161,7 +165,7 @@ export interface AlcoholEstimate {
   absorbing: boolean;
   /** While absorbing and still rising: the middle guess's coming peak. */
   rising: { promile: number; at: Date } | null;
-  /** The drinks that went into the guess, alcoholic only. */
+  /** The alcoholic drinks since the level was last at zero; older ones are long gone. */
   drinks: EstimateDrink[];
 }
 
@@ -202,6 +206,6 @@ export function estimateAlcohol(
     zeroAt: new Date(zeroAtMs),
     absorbing,
     rising: absorbing && mid.peak > mid.at ? { promile: mid.peak, at: new Date(mid.peakAt) } : null,
-    drinks: counted,
+    drinks: counted.filter((drink) => Date.parse(drink.at) >= cautious.boutStartMs),
   };
 }

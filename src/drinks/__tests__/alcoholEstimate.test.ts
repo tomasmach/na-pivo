@@ -108,6 +108,17 @@ describe('estimateAlcohol', () => {
     expect(absorbed.rising).toBeNull();
   });
 
+  it('lists only the drinks since the level was last at zero', () => {
+    const yesterday = { ...beer('y', '19:39', 'Primátor 11°'), at: at('19:39', 16) };
+    const tonight = ['20:04', '20:04', '20:42', '21:16', '23:11'].map((time, i) => beer(`t${i}`, time, 'Radegast 10°'));
+    const now = Date.parse(at('23:30'));
+    const estimate = estimateAlcohol([yesterday, ...tonight], PROFILE, now)!;
+
+    expect(estimate.drinks.map((drink) => drink.id)).toEqual(tonight.map((drink) => drink.id));
+    expect(estimate.now).toBe(estimateAlcohol(tonight, PROFILE, now)!.now);
+    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('07:30', 18)))!.drinks).toHaveLength(EVENING.length);
+  });
+
   it('ignores drinks timed in the future', () => {
     expect(estimateAlcohol([beer('f', '23:00')], PROFILE, Date.parse(at('21:00')))).toBeNull();
   });
