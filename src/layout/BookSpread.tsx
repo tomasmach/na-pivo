@@ -129,7 +129,13 @@ export function BookSpread({ tab, primary, secondary, phoneShows = 'primary' }: 
   let showSecondary = true;
   if (mode === 'book') {
     primaryStyle = hasSecondary ? { width: foldInX } : styles.fill;
-    secondaryStyle = hasSecondary ? styles.fill : [styles.overlay, { left: foldInX, bottom: 0 }];
+    // An explicit width: when the side rail's inset arrives after a turn or an
+    // unfold, Yoga narrows this view but keeps a flex: 1 right half at its old width.
+    secondaryStyle = hasSecondary
+      ? frame
+        ? { width: Math.max(0, frame.width - foldInX) }
+        : styles.fill
+      : [styles.overlay, { left: foldInX, bottom: 0 }];
   } else if (mode === 'tabletop') {
     primaryStyle = styles.fill;
     secondaryStyle = hasSecondary ? { height: foldInY } : [styles.overlay, { left: 0, height: foldInY }];

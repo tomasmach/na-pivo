@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { Modal } from '@/components/shared/Modal';
@@ -124,6 +124,24 @@ describe('BookSpread', () => {
 
     act(() => useBookStore.getState().back('stamgast'));
     expect(underPage(renderer).accessibilityElementsHidden).toBe(false);
+  });
+
+  it('ends the right half where the measured spread ends, short of the side rail', () => {
+    setWindow(951, 669);
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(spread('primary', false), {
+        createNodeMock: () => ({
+          measureInWindow: (done: (x: number, y: number, width: number, height: number) => void) =>
+            done(0, 0, 951 - 84, 669),
+        }),
+      });
+    });
+    mounted.push(renderer);
+    const root = renderer.root.find((node: any) => node.type === 'View' && node.props.onLayout);
+    act(() => root.props.onLayout());
+    const right = root.children[1].findAll((node: any) => node.type === 'View')[0];
+    expect(StyleSheet.flatten(right.props.style)).toEqual({ width: 951 - 84 - 951 / 2 });
   });
 
   it('moves the fold margin to the fold side only of a half that has a twin', () => {
