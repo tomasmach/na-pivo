@@ -109,12 +109,16 @@ describe('Modal', () => {
     expect(placed(render(sheet(), { tab: 'kompas', side: 'primary' }))).toEqual([]);
   });
 
-  it('counts itself open for its half while visible', () => {
+  it('counts itself open for its half until the native dismissal ends', () => {
     const pane = { tab: 'stamgast', side: 'secondary' } as const;
-    const renderer = render(sheet(), pane);
+    const onDismiss = jest.fn();
+    const renderer = render(sheet({ onDismiss }), pane);
     expect(useBookStore.getState().openModals['stamgast:secondary']).toBe(1);
 
-    act(() => renderer.update(<PaneContext.Provider value={pane}>{sheet({ visible: false })}</PaneContext.Provider>));
+    act(() => renderer.update(<PaneContext.Provider value={pane}>{sheet({ visible: false, onDismiss })}</PaneContext.Provider>));
+    expect(useBookStore.getState().openModals['stamgast:secondary']).toBe(1);
+    act(() => renderer.root.findByType(RNModal).props.onDismiss());
+    expect(onDismiss).toHaveBeenCalledTimes(1);
     expect(useBookStore.getState().openModals['stamgast:secondary']).toBe(0);
 
     act(() => renderer.update(<PaneContext.Provider value={pane}>{sheet()}</PaneContext.Provider>));

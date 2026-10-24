@@ -15,17 +15,20 @@
  *   part its frame already keeps clear of.
  * - It counts itself open per half (or outside the tabs), so folding the phone
  *   keeps the half that owns it mounted and unfolding leaves a pushed page in
- *   place until it closes (a draft never disappears).
+ *   place until it closes (a draft never disappears). On iOS it stays open
+ *   until the native dismissal ends: a dialog runs the chosen action from
+ *   `onDismiss`, and its host must still be there.
  * - Inside it the amber button is allowed again: the sheet is its own window.
  *
  * The child tree is the same in every mode, so a sheet never remounts when the
  * window changes size under it.
  */
 
-import { createContext, useContext, useEffect, useMemo, type PropsWithChildren } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import {
   Modal as RNModal,
   PixelRatio,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -211,6 +214,7 @@ export function Modal({
   visible,
   transparent,
   onRequestClose,
+  onDismiss,
   scrimColor = DEFAULT_SCRIM,
   centered = false,
   ...rest
@@ -226,11 +230,24 @@ export function Modal({
     [confined, frame, window.height, window.width, windowInsets],
   );
 
+  const [wasVisible, setWasVisible] = useState(visible);
+  const [dismissing, setDismissing] = useState(false);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    setDismissing(!visible && Platform.OS === 'ios');
+  }
+  const open = visible || dismissing;
+
+  const handleDismiss = useCallback(() => {
+    onDismiss?.();
+    setDismissing(false);
+  }, [onDismiss]);
+
   useEffect(() => {
-    if (!visible) return;
+    if (!open) return;
     useBookStore.getState().modalOpened(halfKey);
     return () => useBookStore.getState().modalClosed(halfKey);
-  }, [halfKey, visible]);
+  }, [halfKey, open]);
 
   return (
     <RNModal
@@ -238,6 +255,7 @@ export function Modal({
       visible={visible}
       transparent={transparent}
       onRequestClose={onRequestClose}
+      onDismiss={handleDismiss}
       supportedOrientations={ALL_ORIENTATIONS}
     >
       <SheetContext insets={insets}>

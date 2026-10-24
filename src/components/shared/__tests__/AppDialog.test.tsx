@@ -1,5 +1,6 @@
-import React from 'react';
-import { Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import React, { useState } from 'react';
+import { Modal as RNModal, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import { useRootNavigationState, useRouter } from 'expo-router';
 
 import {
   AppDialogHost,
@@ -8,11 +9,16 @@ import {
   type AppDialogOptions,
 } from '@/components/shared/AppDialog';
 import { PaneContext, type PaneInfo } from '@/layout/pane';
+import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
 import { useBookStore } from '@/stores/bookStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-jest.mock('expo-router', () => ({ useIsFocused: () => true }));
+jest.mock('expo-router', () => ({
+  useIsFocused: () => true,
+  useRouter: jest.fn(),
+  useRootNavigationState: jest.fn(),
+}));
 jest.mock('react-native-safe-area-context', () => {
   const { createContext } = jest.requireActual<typeof import('react')>('react');
   return {
@@ -131,5 +137,66 @@ describe('AppDialog on an open iPhone Duo', () => {
     tapAsk(renderer);
     expect(frameOf(renderer)).toBeUndefined();
     expect(JSON.stringify(renderer.toJSON())).toContain('Dopito?');
+  });
+});
+
+describe('AppDialog action after the native dismissal', () => {
+  beforeEach(() => useBookStore.setState(useBookStore.getInitialState(), true));
+  afterEach(() => act(() => mounted.splice(0).forEach((renderer) => renderer.unmount())));
+  afterAll(() => setWindow(390, 844));
+
+  const nativeDismiss = (renderer: any) => act(() => renderer.root.findByType(RNModal).props.onDismiss());
+
+  it('runs the action once, from onDismiss, on a phone', () => {
+    setWindow(402, 874);
+    const onPress = jest.fn();
+    const renderer = render({ title: 'Smazat večer?', buttons: [{ text: 'Smazat', onPress }] });
+    tapAsk(renderer);
+
+    confirm(renderer);
+    expect(onPress).not.toHaveBeenCalled();
+    nativeDismiss(renderer);
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(useBookStore.getState().openModals).toEqual({ 'stamgast:primary': 0 });
+  });
+
+  it('keeps the page under a confirmation until its action ran, when the phone opens under it', () => {
+    const tabs = { name: '(tabs)', state: { index: 1, routes: [{ name: 'index' }, { name: 'beer' }] } };
+    const evening = { name: 'evening', params: { startedAt: 's1' } };
+    let closeEvening = () => undefined as void;
+    const router = { dismissAll: jest.fn(() => closeEvening()), replace: jest.fn() };
+    (useRouter as jest.Mock).mockReturnValue(router);
+    (useRootNavigationState as jest.Mock).mockReturnValue({ routes: [{ name: '__root', state: { routes: [tabs, evening] } }] });
+    const onPress = jest.fn();
+
+    function App() {
+      const [eveningShown, setEveningShown] = useState(true);
+      closeEvening = () => setEveningShown(false);
+      return (
+        <>
+          {eveningShown ? <AppDialogHost /> : null}
+          <PaneRouteMigrator />
+        </>
+      );
+    }
+
+    setWindow(402, 874);
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(<App />);
+    });
+    mounted.push(renderer);
+    act(() => showAppDialog({ title: 'Smazat večer?', buttons: [{ text: 'Smazat', onPress }] }));
+
+    setWindow(951, 669);
+    act(() => renderer.update(<App />));
+    confirm(renderer);
+    expect(router.dismissAll).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByType(AppDialogHost)).toHaveLength(1);
+
+    nativeDismiss(renderer);
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(router.dismissAll).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findAllByType(AppDialogHost)).toHaveLength(0);
   });
 });
