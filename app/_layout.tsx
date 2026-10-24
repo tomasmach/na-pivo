@@ -79,6 +79,7 @@ import { NicknameNudgeModal } from '@/components/shared/NicknameNudgeModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
 import { AppDialogScreen } from '@/components/shared/AppDialog';
 import { WindowSafeAreaProvider } from '@/components/shared/Modal';
+import { RouteScreen } from '@/navigation/TabScreen';
 import { AppReviewPromptGate } from '@/reviews/AppReviewPromptGate';
 import { Toast } from '@/components/shared/Toast';
 import { BadgeHost } from '@/profile/BadgeHost';
@@ -502,7 +503,12 @@ export default function RootLayout() {
       <WindowSafeAreaProvider>
         <StatusBar style="light" />
         <Stack
-          screenLayout={({ children }) => <AppDialogScreen>{children}</AppDialogScreen>}
+          screenLayout={({ route, children }) => (
+            <AppDialogScreen>
+              {/* The tabs narrow each tab themselves, leaving the system tab bar where it is. */}
+              {route.name === '(tabs)' ? children : <RouteScreen>{children}</RouteScreen>}
+            </AppDialogScreen>
+          )}
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: Colors.stout },

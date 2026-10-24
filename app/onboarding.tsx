@@ -109,7 +109,9 @@ function OnboardingSlide({ item, width }: { item: Slide; width: number }) {
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const windowWidth = useWindowDimensions().width;
+  // A page fills the pager, which is narrower than the window beside the iPhone Duo's camera column.
+  const [width, setWidth] = useState(windowWidth);
 
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
@@ -204,6 +206,7 @@ export default function OnboardingScreen() {
       <FlatList
         ref={listRef}
         style={styles.pager}
+        onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)}
         data={SLIDES}
         keyExtractor={(item) => item.key}
         renderItem={renderSlide}
