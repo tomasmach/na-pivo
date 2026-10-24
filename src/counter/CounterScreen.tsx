@@ -1718,6 +1718,7 @@ function Tacek({
             ? t.counter.rapidInlineJustNow
             : t.counter.rapidInline(pendingRapid.minutes),
         confirmLabel: t.counter.rapidInlineConfirm,
+        confirmAccessibilityLabel: t.a11y.counterRapidConfirm,
         onConfirm: confirmRapid,
       };
     }

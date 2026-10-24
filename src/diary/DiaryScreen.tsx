@@ -426,7 +426,6 @@ export default function DiaryScreen({
         icon: InfoIcon,
         text: t.diary.rejected(rejected.count),
         confirmLabel: t.diary.rejectedFix,
-        confirmAccessibilityLabel: t.diary.rejectedFix,
         onConfirm: () => {
           trackUiInteraction('diary_evening_open');
           openEveningPage(router, rejected.session.startedAt);

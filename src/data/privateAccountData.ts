@@ -32,7 +32,7 @@ import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
 import { clearVisitsSnapshot } from './visitsSnapshot';
 import { BADGE_STORAGE_KEY, useBadgeStore } from '@/stores/badgeStore';
-import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { clearBeerPhotosForAccountBoundary } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useBookStore } from '@/stores/bookStore';
 import { useCommunityStore } from '@/stores/communityStore';
@@ -139,7 +139,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // The wiped ratings, votes and own pubs must come back on the next foreground
   // even when the same account signs in again within the pull interval.
   resetForegroundPulls();
-  useTallyStore.setState({ current: null, history: [] });
+  useTallyStore.setState({ current: null, history: [], restoredAccountId: null });
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });
   });
@@ -154,7 +154,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   useCommunityStore.setState({ overrides: {} });
   // Photo diary is private data: wipe the store, the durable local JPEGs, and
   // (below) the pending-upload queue before the session boundary moves.
-  useBeerPhotosStore.setState({ photos: [] });
+  clearBeerPhotosForAccountBoundary();
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
   // A friend's profile or an evening left in a right half of the open iPhone Duo.

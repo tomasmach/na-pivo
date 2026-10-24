@@ -6,9 +6,12 @@
  * AFTER the what's-new popup is dismissed (gated on releaseStore.checkSettled +
  * pendingNote, same as the pub-reminder onboarding), never during the first
  * launch session, and never blocks anything — the user can dismiss it and keep
- * using the app. The nickname can be saved right here via NicknameField.
+ * using the app. It starts only while nothing covers the tabs and stays when a
+ * route then opens above it. The nickname can be saved right here via
+ * NicknameField.
  */
 
+import { useRootNavigationState } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -30,6 +33,7 @@ import {
 } from '@/profile/nicknameNudge';
 import { getCurrentAppVersion } from '@/data/releaseNotesClient';
 import { selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
+import { useBadgeStore } from '@/stores/badgeStore';
 import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useReleaseStore } from '@/stores/releaseStore';
@@ -38,6 +42,18 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
+
+// iOS silently drops a Modal presented while another modal is still
+// mid-dismissal, and the dropped host then swallows every touch.
+const PRESENT_SETTLE_MS = 600;
+
+// The root navigator wraps the app's Stack in its single `__root` route. A tab
+// route pushed above a full-screen one inherits its modal presentation, so the
+// focused route alone does not prove that nothing covers the tabs.
+function rootHoldsOnlyTabs(rootState: ReturnType<typeof useRootNavigationState> | undefined) {
+  const stack = rootState?.routes.length === 1 ? rootState.routes[0].state : undefined;
+  return !!stack?.routes.length && stack.routes.every((route) => route.name === '(tabs)');
+}
 
 export function NicknameNudgeModal() {
   const insets = useSafeAreaInsets();
@@ -68,11 +84,9 @@ export function NicknameNudgeModal() {
       if (cancelled) return;
       setVersion(currentVersion);
       if (!shouldShowNicknameNudge({ currentVersion, seenVersion })) return;
-      // Present a beat later: iOS silently drops a Modal presented while the
-      // what's-new modal is still mid-dismissal, wedging the UI.
       showTimer = setTimeout(() => {
         if (!cancelled) setEligible(true);
-      }, 600);
+      }, PRESENT_SETTLE_MS);
     }
 
     void checkVisibility();
@@ -82,19 +96,42 @@ export function NicknameNudgeModal() {
     };
   }, [releaseSettled, releaseNote]);
 
-  // `needsNickname` keeps this quiet for anonymous sessions, signed-out users,
-  // accounts that already have a handle, and while the profile hasn't loaded.
-  const wantVisible =
-    eligible && needsNickname && releaseNote === null && !firstLaunchSession;
+  // A full-screen route such as auth or profile/privacy takes the root view off
+  // the window. If the nudge presents then, or while that route is still
+  // dismissing, iOS never presents it but its host stays above the app. The
+  // medal sheet is an RN Modal outside the launch mutex, and presenting over it
+  // wedges iOS the same way.
+  const medalSheetOpen = useBadgeStore((s) => s.sheetOpen);
+  const tabsUncovered = rootHoldsOnlyTabs(useRootNavigationState()) && !medalSheetOpen;
+  const [tabsSettled, setTabsSettled] = useState(false);
+  useEffect(() => {
+    if (!tabsUncovered) return;
+    const timer = setTimeout(() => setTabsSettled(true), PRESENT_SETTLE_MS);
+    return () => {
+      clearTimeout(timer);
+      setTabsSettled(false);
+    };
+  }, [tabsUncovered]);
 
   const mutexHolder = useLaunchModalMutex((s) => s.holder);
+  // Once presented, a route change must not hide the nudge: that would hand the
+  // launch slot to the next popup before iOS has dismissed this one.
+  const presented = mutexHolder === 'nickname-nudge';
+
+  const wantVisible =
+    eligible &&
+    (presented || (tabsUncovered && tabsSettled)) &&
+    needsNickname &&
+    releaseNote === null &&
+    !firstLaunchSession;
+
   useEffect(() => {
     const mutex = useLaunchModalMutex.getState();
     if (wantVisible) mutex.claim('nickname-nudge');
     else mutex.release('nickname-nudge');
   }, [wantVisible, mutexHolder]);
   useEffect(() => () => useLaunchModalMutex.getState().release('nickname-nudge'), []);
-  const visible = wantVisible && mutexHolder === 'nickname-nudge';
+  const visible = wantVisible && presented;
 
   const progress = useSharedValue(0);
   useEffect(() => {

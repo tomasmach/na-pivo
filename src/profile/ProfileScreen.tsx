@@ -85,6 +85,7 @@ export default function ProfileScreen() {
   const nickname = useAccountStore(selectNickname);
   const avatarUrl = useAccountStore(selectAvatarUrl);
   const isPublic = useAccountStore(selectIsPublic);
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const diarySnapshot = useAccountStore((state) => {
     const snapshot = state.diarySnapshot;
     if (!snapshot || snapshot.accountId !== state.session?.accountId) return null;
@@ -128,12 +129,13 @@ export default function ProfileScreen() {
     }, []),
   );
 
+  // The tab outlives logout and sign-in, so the photos follow the account.
   useEffect(() => {
     if (!opened) return;
     const controller = new AbortController();
     void loadBeerPhotos(controller.signal);
     return () => controller.abort();
-  }, [opened]);
+  }, [opened, accountId]);
 
   const sessions = useMemo(
     () => allSessionsNewestFirst(current, history),

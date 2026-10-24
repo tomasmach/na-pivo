@@ -22,7 +22,8 @@ import {
   type NicknameAvailability,
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
-import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
+import { reconcileDiarySnapshot, restoreAccountDiary, type DiarySnapshot } from '@/data/diarySync';
+import { tourBoundary } from '@/data/toursBoundary';
 import { useBookStore } from '@/stores/bookStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { releaseToursToDevice } from '@/stores/toursStore';
@@ -244,10 +245,17 @@ export const useAccountStore = create<AccountState>((set, get) => {
   const refreshDiarySnapshot = async (): Promise<boolean> => {
     const accountId = get().session?.accountId;
     if (!accountId) return false;
+    const boundary = tourBoundary();
     const data = await reconcileDiarySnapshot();
     if (data && get().session?.accountId === accountId) {
       const { removedDrinkIds, removedVisitIds } = get();
-      set({ diarySnapshot: { accountId, data: withoutRemoved(data, removedDrinkIds, removedVisitIds) } });
+      const snapshot = withoutRemoved(data, removedDrinkIds, removedVisitIds);
+      set({ diarySnapshot: { accountId, data: snapshot } });
+      // A login or logout around the read may have swapped the local diary.
+      const after = tourBoundary();
+      if (!boundary.changing && !after.changing && after.generation === boundary.generation) {
+        restoreAccountDiary(snapshot, accountId);
+      }
     }
     return data != null;
   };

@@ -55,6 +55,7 @@ export interface WireVisit {
   external_id: string | null;
   started_at: string;
   ended_at: string | null;
+  closed_at?: string | null;
   updated_at: string;
 }
 
