@@ -406,17 +406,30 @@ describe('restoring the account history into the diary', () => {
   });
 
   it('files a drink under a same-day visit whose pub identity the server repaired', () => {
+    // The canonical pub's pin sits about 50 m from the duplicate the drink was logged at.
+    const repaired = { ...visit('v1', PUB_B, at(10, 18), at(10, 21)), lat: 50.0004, lng: 14.0003 };
     const history = mergeServerDiaryHistory(
-      {
-        drinks: [pubDrink('d1', at(10, 19), 'u2fkbnzz')],
-        visits: [visit('v1', PUB_B, at(10, 18), at(10, 21))],
-      },
+      { drinks: [pubDrink('d1', at(10, 19), 'u2fkbnzz')], visits: [repaired] },
       null,
       [],
     );
 
     expect(history).toEqual([
       expect.objectContaining({ clientId: 'v1', pubKey: PUB_B, drinks: [expect.objectContaining({ id: 'd1' })] }),
+    ]);
+  });
+
+  it('keeps a drink at its own pub when the overlapping visit is somewhere else', () => {
+    const brno = { ...visit('v1', 'u2ezcgsw', at(10, 18), at(10, 22)), lat: 49.1951, lng: 16.6068 };
+    const history = mergeServerDiaryHistory({ drinks: [pubDrink('d1', at(10, 20))], visits: [brno] }, null, []);
+
+    expect(ids(history)).toEqual([['d1', ['d1']]]);
+    expect(history?.[0]).toMatchObject({ pubKey: PUB_A, pubName: 'Hospoda' });
+
+    const withoutPlace = { ...pubDrink('d2', at(10, 20), 'u2fkbnzz'), lat: null, lng: null };
+    const nearby = visit('v2', PUB_B, at(10, 18), at(10, 22));
+    expect(ids(mergeServerDiaryHistory({ drinks: [withoutPlace], visits: [nearby] }, null, []))).toEqual([
+      ['d2', ['d2']],
     ]);
   });
 

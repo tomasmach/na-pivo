@@ -14,6 +14,7 @@ import { flushDeleteDrinksQueue, getQueuedDeleteIds } from './deleteDrinksQueue'
 import { flushUpdateDrinksQueue, getQueuedUpdateIds } from './updateDrinksQueue';
 import { fetchVisits, type WireVisit } from './visitsClient';
 import { flushVisitsQueue, getQueuedVisitDeleteIds } from './visitsQueue';
+import { haversineMeters } from '@/compass/distance';
 import {
   contextFromPubKey,
   contextPubKey,
@@ -253,24 +254,36 @@ function latestStart<T extends { startMs: number }>(items: T[]): T | null {
 }
 
 /**
+ * Pub merges are reviewed by hand, so the backend has no distance rule; its
+ * catalogue matcher counts pins under 100 m apart as the same location.
+ */
+const SAME_PUB_RADIUS_M = 100;
+
+function samePlace(drink: WireDrink, visit: WireVisit): boolean {
+  const { lat, lng } = drink;
+  return (
+    typeof lat === 'number' &&
+    typeof lng === 'number' &&
+    typeof visit.lat === 'number' &&
+    typeof visit.lng === 'number' &&
+    haversineMeters({ lat, lng }, visit) <= SAME_PUB_RADIUS_M
+  );
+}
+
+/**
  * The visit a pub drink was poured in. The pub-visits read returns repaired pub
  * identities and the drinks read does not, so a drink whose pub has no visit
- * that day may belong to a same-day visit keyed by the repaired pub.
+ * that day may belong to a same-day visit of the repaired pub at the same place.
  */
-function visitOfDrink(
-  windows: VisitWindow[],
-  cacheKey: string | null,
-  atMs: number,
-  day: string,
-): VisitWindow | null {
+function visitOfDrink(windows: VisitWindow[], drink: WireDrink, atMs: number, day: string): VisitWindow | null {
   const sameDay = windows.filter((window) => window.day === day);
   const containing = sameDay.filter(
     (window) => window.startMs <= atMs && (window.endMs === null || atMs <= window.endMs),
   );
-  const samePub = containing.filter((window) => window.visit.cache_key === cacheKey);
+  const samePub = containing.filter((window) => window.visit.cache_key === drink.cache_key);
   if (samePub.length > 0) return latestStart(samePub);
-  if (sameDay.some((window) => window.visit.cache_key === cacheKey)) return null;
-  return latestStart(containing);
+  if (sameDay.some((window) => window.visit.cache_key === drink.cache_key)) return null;
+  return latestStart(containing.filter((window) => samePlace(drink, window.visit)));
 }
 
 function sessionFromVisit(visit: WireVisit, startMs: number): TallySession {
@@ -372,7 +385,7 @@ export function mergeServerDiaryHistory(
   for (const item of byTime) {
     const { drink, atMs, day } = item;
     const atPub = normalizePlaceContext(drink.place_context) === 'pub';
-    const window = atPub ? visitOfDrink(windows, drink.cache_key, atMs, day) : null;
+    const window = atPub ? visitOfDrink(windows, drink, atMs, day) : null;
     if (!window) {
       withoutVisit.push(item);
       continue;
