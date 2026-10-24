@@ -396,7 +396,16 @@ function RosterSheet({
   );
 }
 
+/**
+ * The tab mounts with the app and outlives logout and sign-in, so everything
+ * this screen holds belongs to one account: a new account gets a fresh screen.
+ */
 export default function FriendsScreen() {
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  return <AccountFriendsScreen key={accountId ?? ''} />;
+}
+
+function AccountFriendsScreen() {
   const insets = useSafeAreaInsets();
   const nudgeInset = useBottomInset(Spacing.md);
   const streamEndInset = useBottomInset(Spacing.xl);
