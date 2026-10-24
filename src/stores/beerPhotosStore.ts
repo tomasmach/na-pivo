@@ -26,7 +26,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { getSessionToken } from '@/data/account';
+import { getSessionAccountId } from '@/data/account';
 import {
   fetchMyBeerPhotos,
   type BeerPhoto,
@@ -211,6 +211,9 @@ let boundaryGeneration = 0;
  */
 export function clearBeerPhotosForAccountBoundary(): void {
   boundaryGeneration += 1;
+  // clearStorage also voids a hydration still reading the outgoing account's
+  // blob; without it that read would write the old photos back into memory.
+  useBeerPhotosStore.persist.clearStorage();
   useBeerPhotosStore.setState({ photos: [] });
 }
 
@@ -230,12 +233,13 @@ export async function loadBeerPhotos(signal?: AbortSignal): Promise<void> {
       // A failed rehydrate only loses the cached view; the fetch below still runs.
     }
   }
-  const token = await getSessionToken();
+  const accountId = await getSessionAccountId();
   const photos = await fetchMyBeerPhotos(signal);
   if (!photos) return;
-  // A sign-in or claim replaces the bearer without a wipe, so the list may
-  // belong to the session that was current when the request left.
-  const tokenNow = await getSessionToken();
-  if (generation !== boundaryGeneration || tokenNow !== token) return;
+  // Signing in to another account replaces the session without a wipe, so the
+  // list may belong to the previous one. E-mail registration keeps the account
+  // and only rotates its token, so its list stays.
+  const accountIdNow = await getSessionAccountId();
+  if (generation !== boundaryGeneration || accountIdNow !== accountId) return;
   useBeerPhotosStore.getState().setServerPhotos(photos);
 }

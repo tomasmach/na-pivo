@@ -17,9 +17,9 @@ jest.mock('@/data/beerPhotosClient', () => ({
   fetchMyBeerPhotos: (...args: unknown[]) => fetchMyBeerPhotos(...(args as [])),
 }));
 
-const getSessionToken = jest.fn(async (): Promise<string | null> => 'token-a');
+let mockSession: { accountId: string; token: string } | null = null;
 jest.mock('@/data/account', () => ({
-  getSessionToken: () => getSessionToken(),
+  getSessionAccountId: async () => mockSession?.accountId ?? null,
 }));
 
 import {
@@ -59,6 +59,7 @@ function pendingInput(clientId: string, over: Partial<PendingBeerPhotoInput> = {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockSession = { accountId: 'account-a', token: 'token-a' };
   await AsyncStorage.clear();
   useBeerPhotosStore.setState({ photos: [] });
 });
@@ -224,12 +225,27 @@ describe('loadBeerPhotos', () => {
   });
 
   it('drops a list fetched for the session a sign-in has since replaced', async () => {
-    getSessionToken.mockResolvedValueOnce('token-anonymous').mockResolvedValueOnce('token-a');
-    fetchMyBeerPhotos.mockResolvedValueOnce([serverPhoto('anonymous-1')]);
+    mockSession = { accountId: 'anonymous-1', token: 'token-anonymous' };
+    fetchMyBeerPhotos.mockImplementationOnce(async () => {
+      mockSession = { accountId: 'account-a', token: 'token-a' };
+      return [serverPhoto('anonymous-1')];
+    });
 
     await loadBeerPhotos();
 
     expect(useBeerPhotosStore.getState().photos).toEqual([]);
+  });
+
+  it('keeps a list fetched while e-mail registration gave the same account a new token', async () => {
+    mockSession = { accountId: 'account-a', token: 'token-anonymous' };
+    fetchMyBeerPhotos.mockImplementationOnce(async () => {
+      mockSession = { accountId: 'account-a', token: 'token-registered' };
+      return [serverPhoto('a-1')];
+    });
+
+    await loadBeerPhotos();
+
+    expect(useBeerPhotosStore.getState().photos.map((p) => p.clientId)).toEqual(['a-1']);
   });
 
   it('rehydrates the persisted snapshot only once per process', async () => {
@@ -245,5 +261,33 @@ describe('loadBeerPhotos', () => {
     // markSynced that landed mid-flush) with the stale persisted snapshot.
     expect(rehydrateSpy).not.toHaveBeenCalled();
     rehydrateSpy.mockRestore();
+  });
+});
+
+describe('first rehydration', () => {
+  it('stays empty when an account boundary wipes the diary while the cache is still loading', async () => {
+    jest.resetModules();
+    const storage = (await import('@react-native-async-storage/async-storage')).default;
+    const outgoingAccountBlob = JSON.stringify({
+      state: { photos: [{ ...serverPhoto('cached-a'), syncState: 'synced' }] },
+      version: 1,
+    });
+    let releaseRead!: () => void;
+    const readReleased = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    // The read already holds the outgoing account's blob when the wipe lands.
+    jest.spyOn(storage, 'getItem').mockImplementation(async (key: string) => {
+      await readReleased;
+      return key === 'na-pivo-beer-photos' ? outgoingAccountBlob : null;
+    });
+    const fresh = await import('@/stores/beerPhotosStore');
+    const loading = fresh.loadBeerPhotos();
+
+    fresh.clearBeerPhotosForAccountBoundary();
+    releaseRead();
+    await loading;
+
+    expect(fresh.useBeerPhotosStore.getState().photos).toEqual([]);
   });
 });
