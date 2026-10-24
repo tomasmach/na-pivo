@@ -8,5 +8,9 @@
   // patterns) is reached through micromatch in Metro. Both run only on dev/CI
   // machines and never ship in the app bundle. Remove these entries once a
   // patched release exists.
-  "allowlist": ["GHSA-86w9-cpqp-85rv", "GHSA-vfj7-8cjw-p6xm"]
+  // zod (memory exhaustion on oversized constrained collections) is patched only
+  // in zod 4, while @expo/cli depends on zod 3 to validate local project config.
+  // The app never imports zod, so it stays out of the bundle. Remove the entry
+  // once @expo/cli ships a patched zod.
+  "allowlist": ["GHSA-86w9-cpqp-85rv", "GHSA-vfj7-8cjw-p6xm", "GHSA-mrhx-c7xc-m3w5"]
 }

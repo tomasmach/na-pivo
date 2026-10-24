@@ -32,7 +32,7 @@ import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
 import { clearVisitsSnapshot } from './visitsSnapshot';
 import { BADGE_STORAGE_KEY, useBadgeStore } from '@/stores/badgeStore';
-import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { clearBeerPhotosForAccountBoundary } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
@@ -153,7 +153,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   useCommunityStore.setState({ overrides: {} });
   // Photo diary is private data: wipe the store, the durable local JPEGs, and
   // (below) the pending-upload queue before the session boundary moves.
-  useBeerPhotosStore.setState({ photos: [] });
+  clearBeerPhotosForAccountBoundary();
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
   useBeerWatchStore.getState().reset();
