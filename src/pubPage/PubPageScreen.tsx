@@ -29,7 +29,6 @@ import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
 import {
   useFocusEffect,
-  useLocalSearchParams,
   useNavigation,
   useRouter,
   type Href,
@@ -42,7 +41,7 @@ import { pubInfoFromPub, usePubInfoFacts } from '@/components/amenities/pubInfoC
 import { submitPubRename } from '@/components/amenities/pubRename';
 import { RenamePubModal } from '@/components/compass/RenamePubModal';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { Band, PAGE_PAD, RoundButton, SectionTitle } from '@/components/shared/FlatPage';
 import {
   BeerIcon,
@@ -118,7 +117,10 @@ import { openPubInMaps } from '@/utils/maps';
 import { priceAgeLabel } from '@/utils/priceAge';
 import { pubHoursLine, type PubHoursTone } from '@/utils/pubHoursLine';
 
-import { openPubPage } from './openPubPage';
+import { openPubPage, pubPageParams } from './openPubPage';
+import { useDetailNav, useDetailParams } from '@/layout/detail';
+import { useTone } from '@/layout/pane';
+import { useBottomInset } from '@/navigation/TabScreen';
 import {
   calendarDaysBetween,
   confirmedAmenityKeys,
@@ -265,11 +267,17 @@ function useInitialPub(
 }
 
 export default function PubPageScreen() {
+  const showAppDialog = useShowAppDialog();
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-  const params = useLocalSearchParams<{
+  // Set when the page sits in a tab's right half instead of on the stack.
+  const pane = useDetailNav();
+  const quiet = useTone() === 'quiet';
+  // Clears the tab bar when the page sits in a tab's right half; the home indicator otherwise.
+  const barBottom = useBottomInset(Spacing.sm);
+  const params = useDetailParams<{
     key?: string;
     ref?: string;
     name?: string;
@@ -348,7 +356,8 @@ export default function PubPageScreen() {
       const fresh = getAllLoadedPubs().find((item) => item.userAddedClientId === ownClientId);
       if (!fresh) return;
       if (geohash8(fresh.lat, fresh.lng) !== key) {
-        openPubPage(router, fresh, { replace: true });
+        if (pane) pane.replace({ kind: 'pub', params: pubPageParams(fresh) });
+        else openPubPage(router, fresh, { replace: true });
         return;
       }
       setPub((current) =>
@@ -365,13 +374,15 @@ export default function PubPageScreen() {
           : current,
       );
     });
-  }, [key, ownClientId, router]);
+  }, [key, ownClientId, pane, router]);
 
   // The map covers the page; an edge swipe or Android back must close it, not
   // pop the page.
   useEffect(() => {
+    // In a right half the navigation belongs to the tab, not to this page.
+    if (pane) return;
     navigation.setOptions({ gestureEnabled: !mapOpen });
-  }, [mapOpen, navigation]);
+  }, [mapOpen, navigation, pane]);
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -579,9 +590,21 @@ export default function PubPageScreen() {
 
   // ── Actions ──
   const goBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
+    if (pane) pane.back();
+    else if (router.canGoBack()) router.back();
     else router.replace('/');
-  }, [router]);
+  }, [pane, router]);
+
+  const showCompass = useCallback(() => {
+    if (pane) {
+      pane.showCompass();
+      return;
+    }
+    router.dismissTo({
+      pathname: '/',
+      params: { view: 'compass' },
+    } as unknown as Href);
+  }, [pane, router]);
 
   const navigateToPub = useCallback(() => {
     if (!pub) return;
@@ -596,11 +619,8 @@ export default function PubPageScreen() {
       name: pub.name,
       cacheKey: key,
     });
-    router.dismissTo({
-      pathname: '/',
-      params: { view: 'compass' },
-    } as unknown as Href);
-  }, [key, pub, router]);
+    showCompass();
+  }, [key, pub, showCompass]);
 
   const suggestEvent = useCallback(() => {
     if (!info) return;
@@ -704,10 +724,10 @@ export default function PubPageScreen() {
           });
           recordTapsWrite(pub.id, next, nextHistory);
           showToast(t.counter.removedFromMenuToast);
-        }),
+        }, undefined, showAppDialog),
       );
     },
-    [afterSheet, key, pub, recordTapsWrite, showToast],
+    [afterSheet, key, pub, recordTapsWrite, showAppDialog, showToast],
   );
 
   const startRename = useCallback(() => {
@@ -790,7 +810,7 @@ export default function PubPageScreen() {
         }),
       );
     },
-    [afterSheet, pub, submitReport],
+    [afterSheet, pub, showAppDialog, submitReport],
   );
 
   const addPubNear = useCallback(() => {
@@ -861,12 +881,15 @@ export default function PubPageScreen() {
       // The same cell can hold a neighbour; only this very pub just closes the map.
       const samePub = pubPageRef(target) === ref || (Boolean(pub?.id) && target.id === pub?.id);
       if (samePub) setMapOpen(false);
+      else if (pane) pane.push({ kind: 'pub', params: pubPageParams(target) });
       else openPubPage(router, target);
     },
-    [pub?.id, ref, router],
+    [pane, pub?.id, ref, router],
   );
 
-  const barHeight = Spacing.md + BAR_BUTTON + Math.max(insets.bottom, Spacing.sm);
+  const barHeight = Spacing.md + BAR_BUTTON + barBottom;
+  // In the right half of a wide window the left inset is the fold margin.
+  const navInsets = { paddingLeft: Math.max(16, insets.left), paddingRight: Math.max(16, insets.right) };
   // The big map covers the page; screen readers must not reach what is under it.
   const hiddenUnderMap = {
     accessibilityElementsHidden: mapOpen,
@@ -876,7 +899,7 @@ export default function PubPageScreen() {
   if (!pub) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
-        <View style={styles.nav}>
+        <View style={[styles.nav, navInsets]}>
           <RoundButton onPress={goBack} label={t.pubDetail.backA11y}>
             <ChevronLeftIcon size={24} color={Colors.foam} />
           </RoundButton>
@@ -921,7 +944,7 @@ export default function PubPageScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={[styles.nav, showTitle && styles.navDivided]} {...hiddenUnderMap}>
+      <View style={[styles.nav, navInsets, showTitle && styles.navDivided]} {...hiddenUnderMap}>
         <RoundButton onPress={goBack} label={t.pubDetail.backA11y}>
           <ChevronLeftIcon size={24} color={Colors.foam} />
         </RoundButton>
@@ -1236,17 +1259,17 @@ export default function PubPageScreen() {
       </ScrollView>
 
       <View
-        style={[styles.bar, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}
+        style={[styles.bar, { paddingBottom: barBottom }]}
         {...hiddenUnderMap}
       >
         <Pressable
           onPress={navigateToPub}
-          style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+          style={({ pressed }) => [styles.cta, quiet && styles.ctaQuiet, pressed && styles.ctaPressed]}
           accessibilityRole="button"
           accessibilityLabel={t.compass.navigateCta}
         >
           <Text
-            style={styles.ctaLabel}
+            style={[styles.ctaLabel, quiet && styles.ctaLabelQuiet]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.8}
@@ -1275,12 +1298,7 @@ export default function PubPageScreen() {
             filters={mapFilters}
             onApplyFilters={setMapFilters}
             onSearch={() => router.push('/pub-search' as Href)}
-            onShowCompass={() =>
-              router.dismissTo({
-                pathname: '/',
-                params: { view: 'compass' },
-              } as unknown as Href)
-            }
+            onShowCompass={showCompass}
           />
         </View>
       ) : null}
@@ -1770,6 +1788,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.stout,
   },
+  // In a right half the amber belongs to the left one.
+  ctaQuiet: { backgroundColor: Colors.stout3 },
+  ctaLabelQuiet: { color: Colors.foam },
   mapLayer: {
     ...StyleSheet.absoluteFill,
     backgroundColor: Colors.stout,

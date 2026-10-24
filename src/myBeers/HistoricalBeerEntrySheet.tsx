@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,8 +11,8 @@ import {
   type KeyboardEvent,
   type ScrollViewInstance,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal, ModalInsetView } from '@/components/shared/Modal';
 import { BeerIcon, LockKeyholeIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
 import { type BeerCheckInInput, type BeerCheckInVisibility } from '@/data/beerCheckinsClient';
@@ -87,7 +86,6 @@ function useKeyboardHeight(): number {
 }
 
 export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: HistoricalBeerEntrySheetProps) {
-  const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
   const showToast = useToastStore((s) => s.show);
@@ -270,14 +268,21 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   ]);
 
   const sheetBottomOffset = keyboardHeight > 0 ? keyboardHeight : 0;
-  const bottomPad = keyboardHeight > 0 ? Spacing.sm : Math.max(insets.bottom, Spacing.md);
-  const maxHeight = windowHeight - insets.top - sheetBottomOffset - Spacing.md;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal scrimColor={styles.backdrop.backgroundColor} visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
-        <View style={[styles.sheet, { marginBottom: sheetBottomOffset, paddingBottom: bottomPad, maxHeight }]}>
+        <ModalInsetView
+          style={(insets) => [
+            styles.sheet,
+            {
+              marginBottom: sheetBottomOffset,
+              paddingBottom: keyboardHeight > 0 ? Spacing.sm : Math.max(insets.bottom, Spacing.md),
+              maxHeight: windowHeight - insets.top - sheetBottomOffset - Spacing.md,
+            },
+          ]}
+        >
           <View style={styles.header}>
             <View style={styles.headerText}>
               <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
@@ -515,7 +520,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
               <Text style={styles.submitText}>{t.myBeers.historicalSubmit}</Text>
             </Pressable>
           </KeyboardAwareScrollView>
-        </View>
+        </ModalInsetView>
       </View>
     </Modal>
   );

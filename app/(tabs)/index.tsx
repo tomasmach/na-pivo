@@ -6,7 +6,7 @@
  *   + Permission gate and loading state
  */
 
-import React, { useEffect, useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useState, type ReactNode } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,8 @@ import {
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import {
   useAnimatedReaction,
   useSharedValue,
@@ -27,6 +27,7 @@ import {
 
 import { UNLIMITED_SEARCH_RADIUS_KM, useCompass } from '@/hooks/useCompass';
 import { getAllLoadedPubs, type Pub, type PubPrice } from '@/data/pubs';
+import { geohash8 } from '@/data/geohash';
 import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
 import type { CommunityBeer } from '@/data/communityClient';
 import type { PubReportReason } from '@/data/pubReportsClient';
@@ -84,6 +85,8 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { TabScreen, useBottomInset } from '@/navigation/TabScreen';
+import { useBookLayout, useOnBookOpen } from '@/layout/bookLayout';
+import { BookSpread } from '@/layout/BookSpread';
 import { amberGlowStrong } from '@/theme/shadows';
 import { formatVolume, t } from '@/i18n';
 
@@ -98,13 +101,15 @@ const ARROW_SPRING_CONFIG = {
   mass: 1,
   overshootClamping: true,
 } as const;
+const FOLD_SIDE_SLOP = { top: 8, bottom: 8, left: 8, right: 0 } as const;
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 
 interface PermissionScreenProps {
   permissionState: 'denied' | 'undetermined';
   requestPermission: () => Promise<void>;
-  onShowMap: () => void;
+  /** Unset on a wide window, where the map already fills the other half. */
+  onShowMap?: () => void;
 }
 
 function PermissionScreen({ permissionState, requestPermission, onShowMap }: PermissionScreenProps) {
@@ -112,7 +117,7 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
   const bottomInset = useBottomInset();
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: bottomInset }]}>
-      <View style={[styles.headerRow, styles.headerRowEmpty]}>
+      <View style={[styles.headerRow, styles.headerRowEmpty, { paddingRight: Math.max(12, insets.right) }]}>
         <View style={styles.headerSpacer} />
         <PubSearchButton />
       </View>
@@ -138,18 +143,28 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
           accessibilityLabel={permissionState === 'denied' ? t.permissions.openSettings : t.permissions.cta}
         />
 
-        <Pressable
-          onPress={onShowMap}
-          style={({ pressed }) => [styles.permissionMapButton, pressed && { opacity: 0.72 }]}
-          accessibilityRole="button"
-          accessibilityLabel={t.map.openWithoutLocation}
-        >
-          <MapIcon size={18} color={Colors.amber} />
-          <Text style={styles.permissionMapText}>{t.map.openWithoutLocation}</Text>
-        </Pressable>
+        {onShowMap ? (
+          <Pressable
+            onPress={onShowMap}
+            style={({ pressed }) => [styles.permissionMapButton, pressed && { opacity: 0.72 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t.map.openWithoutLocation}
+          >
+            <MapIcon size={18} color={Colors.amber} />
+            <Text style={styles.permissionMapText}>{t.map.openWithoutLocation}</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
+}
+
+/**
+ * Reads the insets of the half it is rendered in. The states built inline in
+ * CompassScreen sit inside the spread, but CompassScreen itself sits above it.
+ */
+function InPane({ children }: { children: (insets: EdgeInsets) => ReactNode }) {
+  return <>{children(useSafeAreaInsets())}</>;
 }
 
 // ─── Loading screen ────────────────────────────────────────────────────────────
@@ -183,7 +198,7 @@ function LoadingScreen({ rotation, onShowMap }: LoadingScreenProps) {
         { paddingTop: insets.top + 8, paddingBottom: bottomInset },
       ]}
     >
-      <View style={styles.headerRow}>
+      <View style={[styles.headerRow, { marginRight: Math.max(-12, insets.right - 24) }]}>
         <ExploreSwitch
           activeView="compass"
           variant="flat"
@@ -458,7 +473,6 @@ function splitDistance(formatted: string | null): { value: string; unit: string 
 function CompassScreen() {
   const router = useRouter();
   const { view } = useLocalSearchParams<{ view?: string }>();
-  const insets = useSafeAreaInsets();
   const bottomInset = useBottomInset();
   const bottomGapInset = useBottomInset(Spacing.md);
   useWindowDimensions();
@@ -472,7 +486,21 @@ function CompassScreen() {
   const [mapOpen, setMapOpen] = useState(false);
   const mapWithoutLocation = useSettingsStore((state) => state.mapWithoutLocation === true);
   const setMapWithoutLocation = useSettingsStore((state) => state.setMapWithoutLocation);
-  const mapVisible = mapOpen || mapWithoutLocation;
+  // A wide window shows the map beside the compass, so only a phone switches.
+  const { mode: bookMode, wide } = useBookLayout();
+  const mapVisible = !wide && (mapOpen || mapWithoutLocation);
+  // Google's map takes its first camera from its first layout, which a hidden
+  // tab never gets; meanwhile it would report its default view of the world
+  // as where the map was. So the map beside the compass waits for the tab to
+  // be seen once after the window opens, and then stays.
+  const focused = useIsFocused();
+  const [mapSeen, setMapSeen] = useState(false);
+  if (mapSeen !== (wide && (focused || mapSeen))) setMapSeen(wide && (focused || mapSeen));
+  // Folding the phone again lands on the compass, never on the map.
+  useOnBookOpen(() => {
+    setMapOpen(false);
+    setMapWithoutLocation(false);
+  });
   useFocusEffect(useCallback(() => {
     if (view !== 'compass') return;
     setMapOpen(false);
@@ -824,31 +852,41 @@ function CompassScreen() {
     targetPub,
   ]);
 
-  if (mapVisible) {
-    return (
-      <BeerMapScreen
-        initialPub={pub}
-        filters={pubFilters}
-        onApplyFilters={handleApplyFilter}
-        onShowCompass={handleShowCompass}
-      />
-    );
-  }
+  // The map is the compass's twin: the other half of a wide window, or the
+  // whole screen once a phone switches to it. Beside the compass it marks the
+  // target, unless the target's name is still a secret.
+  const map = (
+    <BeerMapScreen
+      initialPub={wide && !showPubDetails ? null : pub}
+      highlightPubKey={wide && showPubDetails && pub && !focusedPub ? geohash8(pub.lat, pub.lng) : null}
+      filters={pubFilters}
+      onApplyFilters={handleApplyFilter}
+      onShowCompass={handleShowCompass}
+    />
+  );
+  const spread = (compass: ReactNode) => (
+    <BookSpread
+      tab="kompas"
+      primary={compass}
+      secondary={wide && !focused && !mapSeen ? null : map}
+      phoneShows={mapVisible ? 'secondary' : 'primary'}
+    />
+  );
 
   // ── State A: permission not granted ──────────────────────────────────────
   if (permissionState === 'denied' || permissionState === 'undetermined') {
-    return (
+    return spread(
       <PermissionScreen
         permissionState={permissionState}
         requestPermission={requestPermission}
-        onShowMap={handleShowMap}
-      />
+        onShowMap={wide ? undefined : handleShowMap}
+      />,
     );
   }
 
   // ── State B: loading ──────────────────────────────────────────────────────
   if (isLoading) {
-    return <LoadingScreen rotation={rotation} onShowMap={handleShowMap} />;
+    return spread(<LoadingScreen rotation={rotation} onShowMap={handleShowMap} />);
   }
 
   // ── State D: nothing nearby / pub lookup failed ───────────────────────────
@@ -856,40 +894,44 @@ function CompassScreen() {
   // state of the one composition below: a strip in the nudge slot and a quiet
   // "Zpět na nejbližší" in the thumb arc.
   if (pub === null && !focusedPub) {
-    return (
-      <View style={[styles.root, { paddingTop: insets.top, paddingBottom: bottomInset }]}>
-        {/* Nothing within reach is exactly when the map earns its place, so the
-            switch stays in the header here too. */}
-        <View style={[styles.headerRow, styles.headerRowEmpty]}>
-          <ExploreSwitch
-            activeView="compass"
-            variant="flat"
-            onSelectCompass={() => undefined}
-            onSelectMap={handleShowMap}
-          />
-          <View style={styles.headerSpacer} />
-          <PubSearchButton />
-        </View>
-        <EmptyScreen
-          onSettings={handleSettings}
-          onRetry={retrySearch}
-          onAddPub={handleAddPub}
-          searchFailed={searchFailed}
-          filtersActive={activeFilterCount > 0}
-          onEditFilters={handleOpenFilter}
-          onClearFilters={handleClearFilter}
-        />
-        {filterSheetOpen ? (
-          <PubFilterSheet
-            visible
-            value={pubFilters}
-            nearbyPrices={nearbyPrices}
-            searchArea={filterSearchArea}
-            onClose={handleCloseFilter}
-            onApply={handleApplyFilter}
-          />
-        ) : null}
-      </View>
+    return spread(
+      <InPane>
+        {(paneInsets) => (
+          <View style={[styles.root, { paddingTop: paneInsets.top, paddingBottom: bottomInset }]}>
+            {/* Nothing within reach is exactly when the map earns its place, so the
+                switch stays in the header here too. */}
+            <View style={[styles.headerRow, styles.headerRowEmpty, { paddingRight: Math.max(12, paneInsets.right) }]}>
+              <ExploreSwitch
+                activeView="compass"
+                variant="flat"
+                onSelectCompass={() => undefined}
+                onSelectMap={handleShowMap}
+              />
+              <View style={styles.headerSpacer} />
+              <PubSearchButton />
+            </View>
+            <EmptyScreen
+              onSettings={handleSettings}
+              onRetry={retrySearch}
+              onAddPub={handleAddPub}
+              searchFailed={searchFailed}
+              filtersActive={activeFilterCount > 0}
+              onEditFilters={handleOpenFilter}
+              onClearFilters={handleClearFilter}
+            />
+            {filterSheetOpen ? (
+              <PubFilterSheet
+                visible
+                value={pubFilters}
+                nearbyPrices={nearbyPrices}
+                searchArea={filterSearchArea}
+                onClose={handleCloseFilter}
+                onApply={handleApplyFilter}
+              />
+            ) : null}
+          </View>
+        )}
+      </InPane>,
     );
   }
 
@@ -898,143 +940,163 @@ function CompassScreen() {
   // button. Everything the header and the bottom bar used to carry — the map,
   // the filters, walking home, the search mode, reporting a wrong pub — is one
   // tap away behind "…".
-  return (
-    <View
-      onLayout={handleSceneLayout}
-      style={[
-        styles.root,
-        styles.surface,
-        { paddingTop: insets.top + 8, paddingBottom: bottomGapInset },
-      ]}
-    >
-      {/* The map is not a menu item. It is the compass's twin, so it lives where
-          you cannot miss it: half of the screen's title. */}
-      <View style={styles.headerRow}>
-        <ExploreSwitch
-          activeView="compass"
-          variant="flat"
-          onSelectCompass={() => undefined}
-          onSelectMap={handleShowMap}
-        />
-        <View style={styles.headerSpacer} />
-        <PubSearchButton />
-        <Pressable
-          onPress={() => {
-            trackUiInteraction('compass_more_open');
-            setMoreOpen(true);
-          }}
-          onLongPress={handleDevArrival}
-          delayLongPress={800}
-          style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={t.a11y.compassMore}
-        >
-          <MenuIcon size={20} color={Colors.mutedText} />
-        </Pressable>
-      </View>
-
-      <CompassCard
-        dial={<CompassContainer rotation={rotation} size={dialSize} />}
-        onDialSize={setDialSize}
-        distanceValue={distanceParts?.value ?? null}
-        distanceUnit={distanceParts?.unit ?? ''}
-        pubName={showPubDetails ? (targetPub?.name ?? null) : null}
-        hoursLabel={showPubDetails ? hours.label : null}
-        hoursTone={hours.tone}
-        beerLine={showPubDetails ? beerLine : null}
-        beerMenuRotates={showPubDetails && !focusedPub && pub?.beerMenuRotates === true}
-        hidden={!showPubDetails}
-        showDetailLink={showPubDetails && !focusedPub && targetPub !== null}
-        onPressFooter={handleCardFooterPress}
-        accessibilityLabel={
-          showPubDetails
-            ? t.a11y.compassCard(
-                targetPub?.name ?? '',
-                distanceFormatted ?? '',
-                [
-                  hours.label,
-                  pub?.beerMenuRotates ? t.counter.rotatingMenuBadge : null,
-                  beerLine,
-                ].filter(Boolean).join(' · '),
-              )
-            : t.a11y.compassCardHidden
+  const tabletop = bookMode === 'tabletop';
+  const navigateButton = (
+    <CounterCta
+      label={t.compass.navigateCta}
+      subLabel={t.compass.navigateCtaSub}
+      onPress={handleOpenMaps}
+      accessibilityLabel={t.a11y.compassNavigate(targetPub?.name ?? '')}
+    />
+  );
+  const anotherButton = focusedPub ? (
+    <CounterSecondary
+      label={t.compass.backToNearest}
+      onPress={() => {
+        trackUiInteraction('compass_focus_clear');
+        clearFocusedPub();
+      }}
+      accessibilityLabel={t.a11y.compassBackToNearest}
+    />
+  ) : (
+    <CounterSecondary
+      label={t.compass.anotherPub}
+      onPress={() => {
+        if (mode === 'surprise') {
+          trackRepeatedUiInteraction('compass_reroll');
+          reroll();
+        } else {
+          trackRepeatedUiInteraction('compass_skip');
+          skip();
         }
-      />
+      }}
+      accessibilityLabel={t.a11y.compassAnother}
+    />
+  );
+  return spread(
+    <InPane>
+      {(paneInsets) => (
+        <View
+          onLayout={handleSceneLayout}
+          style={[
+            styles.root,
+            styles.surface,
+            { paddingTop: paneInsets.top + 8, paddingBottom: bottomGapInset },
+          ]}
+        >
+          {/* The map is not a menu item. It is the compass's twin, so it lives where
+              you cannot miss it: half of the screen's title. */}
+          <View style={[styles.headerRow, { marginRight: Math.max(-12, paneInsets.right - 24) }]}>
+            <ExploreSwitch
+              activeView="compass"
+              variant="flat"
+              onSelectCompass={() => undefined}
+              onSelectMap={handleShowMap}
+            />
+            <View style={styles.headerSpacer} />
+            <PubSearchButton />
+            <Pressable
+              onPress={() => {
+                trackUiInteraction('compass_more_open');
+                setMoreOpen(true);
+              }}
+              onLongPress={handleDevArrival}
+              delayLongPress={800}
+              style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
+              // Beside the fold the glyph already sits a fold margin from it; the slop must not cross that.
+              hitSlop={bookMode === 'book' ? FOLD_SIDE_SLOP : 8}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.compassMore}
+            >
+              <MenuIcon size={20} color={Colors.mutedText} />
+            </Pressable>
+          </View>
 
-      {/* Collapsed when empty, unlike the counter's. The compass screen has no
-          nudge most of the time, and a permanent 52pt band under the card is
-          52pt the dial does not get — on an iPhone 17 that is a quarter of the
-          dial's diameter spent on an empty brown stripe. The dial does resize
-          when a nudge does arrive; that is the price, and it is worth it. */}
-      <NudgeSlot nudge={compassNudge} collapseWhenEmpty />
-
-      <CounterCta
-        label={t.compass.navigateCta}
-        subLabel={t.compass.navigateCtaSub}
-        onPress={handleOpenMaps}
-        accessibilityLabel={t.a11y.compassNavigate(targetPub?.name ?? '')}
-      />
-
-      {focusedPub ? (
-        <CounterSecondary
-          label={t.compass.backToNearest}
-          onPress={() => {
-            trackUiInteraction('compass_focus_clear');
-            clearFocusedPub();
-          }}
-          accessibilityLabel={t.a11y.compassBackToNearest}
-        />
-      ) : (
-        <CounterSecondary
-          label={t.compass.anotherPub}
-          onPress={() => {
-            if (mode === 'surprise') {
-              trackRepeatedUiInteraction('compass_reroll');
-              reroll();
-            } else {
-              trackRepeatedUiInteraction('compass_skip');
-              skip();
+          <CompassCard
+            dial={<CompassContainer rotation={rotation} size={dialSize} />}
+            onDialSize={setDialSize}
+            distanceValue={distanceParts?.value ?? null}
+            distanceUnit={distanceParts?.unit ?? ''}
+            pubName={showPubDetails ? (targetPub?.name ?? null) : null}
+            hoursLabel={showPubDetails ? hours.label : null}
+            hoursTone={hours.tone}
+            beerLine={showPubDetails ? beerLine : null}
+            beerMenuRotates={showPubDetails && !focusedPub && pub?.beerMenuRotates === true}
+            hidden={!showPubDetails}
+            showDetailLink={showPubDetails && !focusedPub && targetPub !== null}
+            onPressFooter={handleCardFooterPress}
+            sideways={tabletop}
+            accessibilityLabel={
+              showPubDetails
+                ? t.a11y.compassCard(
+                    targetPub?.name ?? '',
+                    distanceFormatted ?? '',
+                    [
+                      hours.label,
+                      pub?.beerMenuRotates ? t.counter.rotatingMenuBadge : null,
+                      beerLine,
+                    ].filter(Boolean).join(' · '),
+                  )
+                : t.a11y.compassCardHidden
             }
-          }}
-          accessibilityLabel={t.a11y.compassAnother}
-        />
+          />
+
+          {/* Collapsed when empty, unlike the counter's. The compass screen has no
+              nudge most of the time, and a permanent 52pt band under the card is
+              52pt the dial does not get — on an iPhone 17 that is a quarter of the
+              dial's diameter spent on an empty brown stripe. The dial does resize
+              when a nudge does arrive; that is the price, and it is worth it. */}
+          <NudgeSlot nudge={compassNudge} collapseWhenEmpty />
+
+          {/* On a table the half is short, so the pair sits side by side. */}
+          {tabletop ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionMain}>{navigateButton}</View>
+              <View style={styles.actionSide}>{anotherButton}</View>
+            </View>
+          ) : (
+            <>
+              {navigateButton}
+              {anotherButton}
+            </>
+          )}
+
+          <MoreSheet visible={moreOpen} rows={moreRows} onClose={() => setMoreOpen(false)} />
+
+          {filterSheetOpen ? (
+            <PubFilterSheet
+              visible
+              value={pubFilters}
+              nearbyPrices={nearbyPrices}
+              searchArea={filterSearchArea}
+              onClose={handleCloseFilter}
+              onApply={handleApplyFilter}
+            />
+          ) : null}
+          {pub ? (
+            <ReportPubModal
+              visible={reportOpen}
+              pubName={pub.name}
+              onClose={handleReportClose}
+              onAddPub={handleAddPub}
+              onRename={handleRenamePress}
+              onReportReason={handleReportReason}
+            />
+          ) : null}
+          {pub ? (
+            <RenamePubModal
+              visible={renameOpen}
+              currentName={pub.name}
+              value={renameDraft}
+              submitting={renameSubmitting}
+              onChange={setRenameDraft}
+              onCancel={handleRenameCancel}
+              onSubmit={handleRenameSubmit}
+            />
+          ) : null}
+        </View>
       )}
-
-      <MoreSheet visible={moreOpen} rows={moreRows} onClose={() => setMoreOpen(false)} />
-
-      {filterSheetOpen ? (
-        <PubFilterSheet
-          visible
-          value={pubFilters}
-          nearbyPrices={nearbyPrices}
-          searchArea={filterSearchArea}
-          onClose={handleCloseFilter}
-          onApply={handleApplyFilter}
-        />
-      ) : null}
-      {pub ? (
-        <ReportPubModal
-          visible={reportOpen}
-          pubName={pub.name}
-          onClose={handleReportClose}
-          onAddPub={handleAddPub}
-          onRename={handleRenamePress}
-          onReportReason={handleReportReason}
-        />
-      ) : null}
-      {pub ? (
-        <RenamePubModal
-          visible={renameOpen}
-          currentName={pub.name}
-          value={renameDraft}
-          submitting={renameSubmitting}
-          onChange={setRenameDraft}
-          onCancel={handleRenameCancel}
-          onSubmit={handleRenameSubmit}
-        />
-      ) : null}
-    </View>
+    </InPane>,
   );
 }
 
@@ -1051,6 +1113,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
   },
+  // Inline overrides keep the header's glyphs a fold margin away from the fold
+  // when the screen is the left half of a wide window (the pane's right inset).
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1075,6 +1139,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressedSoft: { opacity: 0.6 },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  actionMain: { flex: 1 },
+  actionSide: { width: 180 },
 
   // ── Permission ──
   permCard: {

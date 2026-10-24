@@ -19,6 +19,7 @@ import { ensureAccount, fetchAccountPreferences, setAnonymousSessionEvictionList
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 import { beginTourAccountChange, endTourAccountChange } from '@/data/toursBoundary';
+import { useBookStore } from '@/stores/bookStore';
 import { useTallyStore } from '@/stores/tallyStore';
 
 jest.mock('@/data/auth');
@@ -436,6 +437,28 @@ describe('login', () => {
 
     expect(useAccountStore.getState().profile).toBeNull();
     expect(mockEnsureAccount).not.toHaveBeenCalled();
+  });
+
+  it('empties the right halves when the sign-in switches accounts', async () => {
+    // An anonymous device signs in to an existing account (the anonymous one is claimed).
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'anon', token: 't0', authenticated: false } });
+    useBookStore.getState().show('kompas', { kind: 'friend', id: 'acc-friend' });
+    mockedAuth.loginEmail.mockResolvedValue(okResult());
+
+    await useAccountStore.getState().login({ email: 'jan@example.com', password: 'pw' });
+
+    expect(useBookStore.getState().pages.kompas).toEqual([]);
+  });
+
+  it('keeps the right halves when the account stays the same', async () => {
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 't0', authenticated: false } });
+    useBookStore.getState().show('kompas', { kind: 'friend', id: 'acc-friend' });
+    mockedAuth.loginEmail.mockResolvedValue(okResult());
+
+    await useAccountStore.getState().login({ email: 'jan@example.com', password: 'pw' });
+
+    expect(useBookStore.getState().pages.kompas).toEqual([{ kind: 'friend', id: 'acc-friend' }]);
+    useBookStore.getState().clearAll();
   });
 
   it('returns a session waiting for recovery to ready after successful login', async () => {

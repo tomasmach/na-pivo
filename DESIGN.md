@@ -793,8 +793,8 @@ V appce existují **dva druhy spodních panelů** a nezaměňují se:
    0.26`). **Pan gesto je na madle, ne na celém sheetu**; tělo táhne jen pod `full`, na `full` jen
    dolů a jen když je list nahoře. Throw: `projected = translateY + velocityY * 0.12` → nejbližší
    detent, spring `{ damping: 22, stiffness: 190, mass: 0.7 }`.
-2. **Intent sheet** — modal s jedním záměrem (§8), přes `BottomSheetModal` wrapper. Mechanika
-   níže. Vizuálně: zem sheetu je **`Colors.stout`** — stejná zem jako obrazovka, ne `stout2`
+2. **Intent sheet** — modal s jedním záměrem (§8), přes sdílený `Modal`
+   (`src/components/shared/Modal.tsx`). Mechanika níže. Vizuálně: zem sheetu je **`Colors.stout`** — stejná zem jako obrazovka, ne `stout2`
    („sheet je obrazovka, ne popup“) — radius **28** na horních rozích, `paddingHorizontal:
    MockLayout.screenPad` (jedna šířka appky, ne soukromých 16), grabber `44 × 4` (`foam 0.22`).
 
@@ -802,13 +802,31 @@ Zbytek téhle sekce je mechanika intent sheetu. Modal, ne knihovna.
 
 ### 7.1 Co vlastní wrapper a co volající
 
-Mechaniku modalu vlastní `src/components/shared/BottomSheetModal.tsx` (API:
-`{ visible, onClose, children }`): `Modal` s `animationType="none"`, scrim `black 0.6` s prolnutím,
-kartu s příjezdem na springu, Android back gesture a dismiss target za kartou
-(`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát). **Nestav si vlastní
-`Modal`.**
+Každý modal v appce je `Modal` ze `src/components/shared/Modal.tsx`. Má stejné props jako
+`Modal` z React Native, jehož import ESLint (`no-restricted-imports`) mimo wrapper zablokuje.
+**Nestav si `Modal` z `react-native`.** Wrapper k tomu přidává:
 
-Volající dodává jen kartu:
+- všechny orientace, protože vnitřní displej iPhonu Duo zámek na výšku nedrží (telefony drží
+  výšku přes Info.plist),
+- na rozloženém Duu drží průhledný sheet mimo boční insety okna (sloupec s hodinami a lišta
+  tabů). Na knize zůstane v půlce, ze které se otevřel, a sheet z kořene appky v pravé; na stole
+  zůstane ve své půlce jen krátká vycentrovaná karta (`centered`), z kořene v horní (§17.6). Karta,
+  která se do půlky stolu nevejde, `centered` nedostane a má celé okno. Všechno mimo
+  rámeček ztmaví a ťuknutí tam sheet zavře. Neprůhledný modal je celá obrazovka, dostane celé okno
+  a boční insety si drží sám. Obsah, který se měří z okna, se měří z `useModalFrame()`. Insety má
+  sheet vždycky od okna, ne od půlky, a jen tu část, kterou rámeček nevynechá. Komponenta, která
+  `Modal` vykresluje, vidí insety své půlky, takže styl podle insetů patří dovnitř modalu
+  (`ModalInsetView`),
+- dokud je sheet otevřený (na iOS až do konce nativního zavření, kdy dialog spouští zvolenou
+  akci), drží svou půlku připojenou i po zavření telefonu a stránku pod ním
+  nechá na místě i po otevření, takže rozepsaný zápis nezmizí,
+- jantarové tlačítko uvnitř zůstane jantarové i v tiché pravé půlce, sheet je samostatné okno.
+
+Scrim (`black 0.6`, `animationType="fade"`), dismiss target za kartou
+(`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát) a Android back přes
+`onRequestClose` si sheet zatím staví sám. Jiný scrim než `black 0.6` předá wrapperu jako
+`scrimColor`, aby ztmavení mimo rámeček mělo stejnou barvu. `BottomSheetModal`, se kterým počítají
+§7.2 a §7.2b, v appce ještě není. Volající dodává kartu:
 
 | Rozhodnutí | Důvod |
 |---|---|
@@ -1505,7 +1523,8 @@ vlastní povrch, ne jako rozbalovací pole v liště — jeden záměr na povrch
 Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil) — patří do stacku
 vedle `/profile/edit` a `/settings`. To platí i pro detail hospody: od 28. 9. 2026 je to
 samostatná obrazovka `/pub` (viz „Schválená stránka hospody“ nahoře), mapu otevírá výřez
-na stránce. Intent sheet (§7) detail nikdy nenese.
+na stránce. Intent sheet (§7) detail nikdy nenese. Na otevřeném iPhonu Duo se hospoda, večer a
+profil kámoše otevírají do pravé půlky (§17.6).
 
 ### 17.5 Kompas v seznamu hospod
 
@@ -1515,6 +1534,43 @@ hospodu, ke které právě navádí. Zůstává tím, co uživatel v tabu Hospod
 Zdroje pravdy o poloze a nejbližší hospodě jsou **dva a mají dané role**: `useCompass` pro
 discovery (seznam hospod, kompasová buňka), `useNearbyPub` (`src/counter/useNearbyPub.ts`) pro
 autopick hospody při zápisu. Třetí nezakládej.
+
+### 17.6 Otevřený iPhone Duo: kniha
+
+Schválená varianta B „Kniha“ (mock `na-pivo-iphone-duo.html`, 23. 10. 2026). Platí jen na iOS
+a jen pro okno rozložené jako kniha (šířka aspoň 800 pt a výška aspoň 600 pt) nebo postavené na
+stole (šířka aspoň 650 pt a výška aspoň 800 pt), viz `src/layout/bookLayout.ts`. Zavřené Duo
+(466 × 678 pt), rozdělené okno na vnitřním displeji a všechny iPhony zůstávají v telefonním
+rozložení beze změny.
+
+- **Dělí se přesně v ohybu.** Ohyb je střed okna, iOS jeho polohu appce nedává. Levá půlka je
+  obrazovka z telefonu, pravá její dvojče: Kompas vlevo a Mapa vpravo, Počítat vlevo a Deník
+  vpravo. Přepínače „Kompas | Mapa“ a „Počítat | Deník“ na rozloženém okně nejsou a každá půlka má
+  svoje „…“.
+- **20 pt od ohybu nic, na co jde ťuknout** (`FOLD_MARGIN`). Půlky to dostanou jako inset na
+  straně ohybu. Mapa smí jít až k ohybu, její ovládání ne.
+- **Jedno jantarové tlačítko na okno.** Pravá půlka je tichá: `GlowButton` a ručně stavěná
+  jantarová CTA v ní kreslí sekundární pilulku `stout3` („Dopiš večer“, „Doveď mě tam“ na
+  stránce hospody, „Namířit kompas“ na mapě). Sheet je samostatné okno a jantar v něm smí být.
+- **Hospoda, večer a kámoš se otevřou do pravé půlky** tabu se šipkou zpět. Jde to jen přes
+  `openDetail` (`openPubPage`, `openEvening`, `openFriendProfile`) a href na tyhle stránky jinde
+  nestav. Když je před taby obrazovka na celé okno (žebříčky, tour, nastavení), detail se pushne
+  jako na telefonu.
+- **Parta a Profil** rozloží obsah do dvou sloupců rozdělených v ohybu (`TwoColumns`). Kámoš nebo
+  hospoda se otevře přes pravý sloupec.
+- **Sheety zůstávají ve své půlce, když je okno rozložené jako kniha** (§7.1). Sheet otevřený
+  z kořene appky jde do pravé. Na stole má spodní sheet celé okno. Krátká vycentrovaná karta
+  (dialog, přejmenování pití) zůstane ve své půlce a karta z kořene jde do horní; karty, které se
+  do půlky stolu nevejdou (vyvěšení a sdílení noci, výsledky soutěže, „Co je nového“), mají celé
+  okno. Ztmavení vždycky pokryje celé okno a sheet nezajede pod sloupec s hodinami ani pod lištu
+  tabů.
+- **Na stole** (vodorovný ohyb, spodní půlka leží) je primární obrazovka dole a dvojče nahoře, aby
+  ručička kompasu ležela v rovině stolu. Kompas má kartu na šířku: ciferník vlevo, vzdálenost a
+  hospoda vpravo, pod ní „Doveď mě tam“ a „Dej mi jinou“ vedle sebe. Počítadlo stejně: číslo
+  vlevo, rychlé akce, promile a patička vpravo, pod kartou „Ještě jedno“ a výzva vedle sebe.
+- **Otevření a zavření.** Po otevření je obrazovka, kterou jsi měl, vlevo a pravá půlka přibude.
+  Po zavření vidíš vždycky kompas nebo počítadlo; co bylo vpravo, počká na další otevření. Půlka
+  s otevřeným sheetem zůstane připojená, dokud sheet nezavřeš, takže se rozepsaný zápis neztratí.
 
 ---
 

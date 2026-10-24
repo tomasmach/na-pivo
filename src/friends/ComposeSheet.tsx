@@ -18,7 +18,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -34,6 +33,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { CheckIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';

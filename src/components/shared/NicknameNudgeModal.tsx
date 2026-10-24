@@ -13,7 +13,7 @@
 
 import { useRootNavigationState } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -22,6 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { t } from '@/i18n';
 import { NicknameField } from '@/profile/NicknameField';
@@ -175,6 +176,7 @@ export function NicknameNudgeModal() {
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
       visible={visible}
       transparent
       animationType="fade"

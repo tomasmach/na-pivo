@@ -13,6 +13,9 @@
  * Switching segments unmounts the inactive child — the counter's geolocation
  * subscription and history's minute-tick only run for the visible half — while
  * the running tally itself lives in the persisted store, so nothing is lost.
+ *
+ * On a wide window (the open iPhone Duo) the counter and the diary sit side by
+ * side instead, each with its own header and "…" door, and the segment goes.
  */
 
 import React, { memo, useCallback, useState } from 'react';
@@ -31,6 +34,8 @@ import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
 import CounterScreen from '@/counter/CounterScreen';
 import DiaryScreen from '@/diary/DiaryScreen';
 import { trackUiInteraction } from '@/data/uxTelemetry';
+import { useBookLayout, useOnBookOpen } from '@/layout/bookLayout';
+import { BookSpread } from '@/layout/BookSpread';
 
 type BeerTab = 'count' | 'diary';
 
@@ -87,6 +92,7 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 
 export default function BeerScreen() {
   const insets = useSafeAreaInsets();
+  const { wide } = useBookLayout();
   const [tab, setTab] = useState<BeerTab>('count');
   // A tour stop handing a pub to the counter must land on the counter, not the diary.
   useFocusEffect(
@@ -100,57 +106,76 @@ export default function BeerScreen() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [counterMoreOpen, setCounterMoreOpen] = useState(false);
   const [counterMoreReady, setCounterMoreReady] = useState(true);
+  // Folding the phone again lands on the counter, never on the diary. The open
+  // window gives each half its own "…", so the phone's doors close with it and
+  // do not reopen on the fold.
+  useOnBookOpen(() => {
+    setTab('count');
+    setStatsOpen(false);
+    setCounterMoreOpen(false);
+  });
 
   return (
     <View style={styles.root}>
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <View style={styles.segmentRow}>
-          <Segmented
-            tab={tab}
-            onChange={(next) => {
-              // The other half unmounts with it, sheets included: a door left
-              // open here would re-open on the way back.
-              setStatsOpen(false);
-              setCounterMoreOpen(false);
-              setTab(next);
-            }}
-          />
-          {/* One door for the whole tab, always in the same place: a row of its
-              own below the switch was pure dead space on the diary, and on the
-              counter it pushed the place chip around for one glyph. */}
-          {tab === 'diary' || counterMoreReady ? (
-            <Pressable
-              onPress={() => {
-                if (tab === 'diary') {
-                  trackUiInteraction('beer_stats_open');
-                  setStatsOpen(true);
-                } else {
-                  trackUiInteraction('beer_counter_more');
-                  setCounterMoreOpen(true);
-                }
+      {wide ? null : (
+        <View style={[styles.header, { paddingTop: insets.top }]}>
+          <View style={styles.segmentRow}>
+            <Segmented
+              tab={tab}
+              onChange={(next) => {
+                // The other half unmounts with it, sheets included: a door left
+                // open here would re-open on the way back.
+                setStatsOpen(false);
+                setCounterMoreOpen(false);
+                setTab(next);
               }}
-              style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={tab === 'diary' ? t.a11y.diaryStats : t.a11y.counterMore}
-              testID={tab === 'diary' ? 'diary-stats-open' : 'counter-more'}
-            >
-              <MenuIcon size={20} color={Colors.mutedText} />
-            </Pressable>
-          ) : null}
+            />
+            {/* One door for the whole tab, always in the same place: a row of its
+                own below the switch was pure dead space on the diary, and on the
+                counter it pushed the place chip around for one glyph. */}
+            {tab === 'diary' || counterMoreReady ? (
+              <Pressable
+                onPress={() => {
+                  if (tab === 'diary') {
+                    trackUiInteraction('beer_stats_open');
+                    setStatsOpen(true);
+                  } else {
+                    trackUiInteraction('beer_counter_more');
+                    setCounterMoreOpen(true);
+                  }
+                }}
+                style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={tab === 'diary' ? t.a11y.diaryStats : t.a11y.counterMore}
+                testID={tab === 'diary' ? 'diary-stats-open' : 'counter-more'}
+              >
+                <MenuIcon size={20} color={Colors.mutedText} />
+              </Pressable>
+            ) : null}
+          </View>
         </View>
-      </View>
+      )}
       <View style={styles.body}>
-        {tab === 'count' ? (
-          <CounterScreen
-            embedded
-            moreOpen={counterMoreOpen}
-            onMoreClose={() => setCounterMoreOpen(false)}
-            onMoreAvailability={setCounterMoreReady}
-          />
-        ) : (
-          <DiaryScreen embedded statsOpen={statsOpen} onStatsClose={() => setStatsOpen(false)} />
-        )}
+        <BookSpread
+          tab="stamgast"
+          primary={
+            <CounterScreen
+              embedded={!wide}
+              moreOpen={wide ? undefined : counterMoreOpen}
+              onMoreClose={() => setCounterMoreOpen(false)}
+              onMoreAvailability={setCounterMoreReady}
+            />
+          }
+          secondary={
+            <DiaryScreen
+              embedded={!wide}
+              statsOpen={wide ? undefined : statsOpen}
+              onStatsClose={() => setStatsOpen(false)}
+            />
+          }
+          phoneShows={tab === 'count' ? 'primary' : 'secondary'}
+        />
       </View>
     </View>
   );

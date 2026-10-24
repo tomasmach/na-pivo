@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal } from '@/components/shared/Modal';
 import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
 import { Avatar } from '@/profile/Avatar';
 import { useToursStore } from '@/stores/toursStore';

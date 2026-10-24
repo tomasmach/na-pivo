@@ -3,24 +3,27 @@ import {
   AccessibilityInfo,
   FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   useColorScheme,
   useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import MapView, {
   PROVIDER_GOOGLE,
+  type Details,
   type MapPressEvent,
   type Region,
 } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
+import { Modal } from '@/components/shared/Modal';
+import { useTone } from '@/layout/pane';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
@@ -103,7 +106,13 @@ type MapSelection =
   | { kind: 'live'; key: string; accountId: string | null }
   | { kind: 'city'; key: string; accountId: string | null };
 
+const TARGET_WIDTH = 160;
+const TARGET_LABEL_HEIGHT = 18;
+const TARGET_ANCHOR = { x: 0.5, y: 28 / (56 + TARGET_LABEL_HEIGHT) };
+
 let rememberedRegion: Region | null = null;
+/** Longer than the system's turn of the window, so the map reads its final frame. */
+const RESIZE_SETTLE_MS = 450;
 /** A fresher locate fix closer than this does not re-animate the map. */
 const LOCATE_FOLLOW_UP_M = 25;
 let rememberedLayer: Layer = 'all';
@@ -129,6 +138,8 @@ export function resetBeerMapLayerForAddedPub(): void {
 
 export interface BeerMapScreenProps {
   initialPub?: Pub | null;
+  /** The compass target beside the map, marked and named while nothing else is picked. */
+  highlightPubKey?: string | null;
   focusInitialPub?: boolean;
   onSearch?: () => void;
   /** Set when the map is opened over another screen, which it returns to. */
@@ -246,6 +257,7 @@ function PlaceCard({
   onClose,
 }: PlaceCardProps) {
   const { fontScale } = useWindowDimensions();
+  const quiet = useTone() === 'quiet';
   const stacked = fontScale > STACKED_ACTION_FONT_SCALE;
   const ratingText = rating
     ? rating.count
@@ -353,12 +365,16 @@ function PlaceCard({
 
         <Pressable
           onPress={action.onPress}
-          style={({ pressed }) => [styles.placeAction, pressed && styles.pressedSoft]}
+          style={({ pressed }) => [
+            styles.placeAction,
+            quiet && styles.placeActionQuiet,
+            pressed && styles.pressedSoft,
+          ]}
           accessibilityRole="button"
           accessibilityLabel={action.accessibilityLabel}
         >
           <Text
-            style={styles.placeActionLabel}
+            style={[styles.placeActionLabel, quiet && styles.placeActionLabelQuiet]}
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
@@ -607,6 +623,7 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
 
 export default function BeerMapScreen({
   initialPub,
+  highlightPubKey = null,
   focusInitialPub = false,
   onSearch,
   onBack,
@@ -950,13 +967,60 @@ export default function BeerMapScreen({
     ];
   }, [layer, region, selectedPub?.key, showCities, visiblePoints]);
 
+  // A map built again should open where the last one was. Google sometimes
+  // takes the first camera before the padding is in place, which lands it half
+  // the padding off; the first report shows it, and the view is set again.
+  const restoreTarget = useRef(!focusInitialPub && rememberedRegion ? initialRegion : null);
   const handleRegionChange = useCallback(
-    (next: Region) => {
+    (next: Region, details?: Details) => {
+      const target = restoreTarget.current;
+      restoreTarget.current = null;
+      if (
+        target &&
+        !details?.isGesture &&
+        (Math.abs(next.latitude - target.latitude) > target.latitudeDelta * 0.01 ||
+          Math.abs(next.longitude - target.longitude) > target.longitudeDelta * 0.01)
+      ) {
+        mapRef.current?.animateToRegion(target, 0);
+        return;
+      }
       setRegion(next);
       rememberedRegion = next;
       loadRegion(next);
     },
     [loadRegion],
+  );
+
+  // Google reports no camera change when the map only changes size (the open
+  // Duo turning or opening), so the pins would stay cut to the old shape until
+  // the next pan, and it can lose the marker bitmaps it froze. Once the new
+  // size has settled, the map reads its view again and redraws the markers.
+  const mapSize = useRef<{ width: number; height: number } | null>(null);
+  const [markerRedraw, setMarkerRedraw] = useState(0);
+  const resizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (resizeTimer.current) clearTimeout(resizeTimer.current);
+  }, []);
+  const handleMapLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      const previous = mapSize.current;
+      mapSize.current = { width, height };
+      if (!previous || (previous.width === width && previous.height === height)) return;
+      if (resizeTimer.current) clearTimeout(resizeTimer.current);
+      resizeTimer.current = setTimeout(() => {
+        setMarkerRedraw((count) => count + 1);
+        void mapRef.current?.getMapBoundaries().then(({ northEast, southWest }) => {
+          handleRegionChange({
+            latitude: (northEast.latitude + southWest.latitude) / 2,
+            longitude: (northEast.longitude + southWest.longitude) / 2,
+            latitudeDelta: northEast.latitude - southWest.latitude,
+            longitudeDelta: northEast.longitude - southWest.longitude,
+          });
+        }, () => undefined);
+      }, RESIZE_SETTLE_MS);
+    },
+    [handleRegionChange],
   );
 
   const clearSelection = useCallback(() => {
@@ -1425,14 +1489,15 @@ export default function BeerMapScreen({
   }, [activeFilterCount, onApplyFilters, setBeersOnly]);
 
   return (
-    <View style={styles.root}>
+    <View style={styles.root} onLayout={handleMapLayout}>
       <MapView
         key={mapColorScheme}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
-        // Keeps the Google logo and the camera center above the floating tab bar.
-        mapPadding={{ top: 0, right: 0, bottom: tabBarInset, left: 0 }}
+        // Keeps the Google logo and the camera center above the floating tab bar,
+        // and off the fold when the map is a half of the window.
+        mapPadding={{ top: 0, right: insets.right, bottom: tabBarInset, left: insets.left }}
         initialRegion={region}
         onRegionChangeComplete={handleRegionChange}
         onPress={handleMapPress}
@@ -1451,6 +1516,7 @@ export default function BeerMapScreen({
           ? visitedCities.map((city) => (
               <StaticMapMarker
                 key={`city:${city.key}:${city.name}:${city.visitCount}`}
+                redraw={markerRedraw}
                 stopPropagation
                 coordinate={{ latitude: city.lat, longitude: city.lng }}
                 onPress={() => {
@@ -1486,14 +1552,17 @@ export default function BeerMapScreen({
         {clusters.map((cluster) => {
           if (cluster.items.length === 1) {
             const point = cluster.items[0];
-            const selected = selectedPub?.key === point.key;
+            const target = !selectedPub && point.key === highlightPubKey;
+            const selected = selectedPub?.key === point.key || target;
             const beers = visibleBeers?.get(point.key) ?? 0;
             const favorite = isFavoritePoint(point);
             return (
               <StaticMapMarker
-                key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${favorite ? 'fav' : ''}:${selected ? 'selected' : 'idle'}`}
+                key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${favorite ? 'fav' : ''}:${selected ? 'selected' : 'idle'}:${target ? 'target' : ''}`}
+                redraw={markerRedraw}
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
+                anchor={target ? TARGET_ANCHOR : undefined}
                 onPress={() => selectPub(point)}
                 accessibilityLabel={[
                   t.a11y.mapPub(point.pub.name, point.visit?.visitCount ?? 0),
@@ -1501,12 +1570,21 @@ export default function BeerMapScreen({
                   beers ? t.map.beersLastWeek(beers) : null,
                 ].filter(Boolean).join(', ')}
               >
-                <PubMarker
-                  visited={Boolean(point.visit)}
-                  selected={selected}
-                  beers={beers}
-                  favorite={favorite}
-                />
+                {target ? (
+                  <View style={styles.targetMarker}>
+                    <PubMarker visited={Boolean(point.visit)} selected beers={beers} favorite={favorite} />
+                    <Text style={styles.targetLabel} numberOfLines={1} allowFontScaling={false}>
+                      {point.pub.name}
+                    </Text>
+                  </View>
+                ) : (
+                  <PubMarker
+                    visited={Boolean(point.visit)}
+                    selected={selected}
+                    beers={beers}
+                    favorite={favorite}
+                  />
+                )}
               </StaticMapMarker>
             );
           }
@@ -1517,6 +1595,7 @@ export default function BeerMapScreen({
           return (
             <StaticMapMarker
               key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}:${clusterBeers}`}
+              redraw={markerRedraw}
               stopPropagation
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
@@ -1537,6 +1616,7 @@ export default function BeerMapScreen({
         {layer !== 'visited' ? livePubs.map((live) => (
           <StaticMapMarker
             key={`live:${live.cacheKey}:${selectedLive?.cacheKey === live.cacheKey ? 'selected' : 'idle'}:${live.activities.length}:${friendName(live)}:${live.activities[0]?.account?.avatarUrl ?? ''}`}
+            redraw={markerRedraw}
             stopPropagation
             coordinate={{ latitude: live.lat, longitude: live.lng }}
             onPress={() => selectLive(live)}
@@ -1549,7 +1629,8 @@ export default function BeerMapScreen({
       </MapView>
 
       <View
-        style={[styles.topStack, { paddingTop: insets.top }]}
+        // Side insets keep the controls off the fold when the map is a half of the window.
+        style={[styles.topStack, { paddingTop: insets.top, left: insets.left, right: insets.right }]}
         pointerEvents="box-none"
       >
         <View style={styles.header}>
@@ -1633,7 +1714,7 @@ export default function BeerMapScreen({
       <View
         style={[
           styles.bottomStack,
-          { paddingBottom: bottomInset },
+          { paddingBottom: bottomInset, left: insets.left, right: insets.right },
         ]}
         pointerEvents="box-none"
       >
@@ -2074,6 +2155,19 @@ const styles = StyleSheet.create({
   },
 
   pinHit: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  // The pin keeps its 56 pt box on top so it still sits on the coordinate (TARGET_ANCHOR).
+  targetMarker: { width: TARGET_WIDTH, height: 56 + TARGET_LABEL_HEIGHT, alignItems: 'center' },
+  targetLabel: {
+    maxWidth: TARGET_WIDTH,
+    height: TARGET_LABEL_HEIGHT,
+    fontFamily: Fonts.ui.bold,
+    fontSize: 13,
+    lineHeight: TARGET_LABEL_HEIGHT,
+    color: Colors.foam,
+    textShadowColor: Colors.black,
+    textShadowRadius: 3,
+    textShadowOffset: { width: 0, height: 1 },
+  },
   // Symmetric so the pin stays on the coordinate; the badge needs the right half.
   pinHitWide: { width: 80 },
   pinBeersBadge: { top: 5, left: 47 },
@@ -2373,6 +2467,9 @@ const styles = StyleSheet.create({
     color: Colors.stout,
     includeFontPadding: false,
   },
+  // Beside the compass the amber belongs to "Doveď mě tam" on the left.
+  placeActionQuiet: { backgroundColor: Colors.stout3 },
+  placeActionLabelQuiet: { color: Colors.foam },
 
   // — Layer switch (§2.2: neutral track, never a second amber surface) —
   layerTrack: {

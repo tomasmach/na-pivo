@@ -3,7 +3,6 @@ import { useFonts } from 'expo-font';
 import { hideAsync, preventAutoHideAsync } from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, Linking, Platform } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect, useRef, useState } from 'react';
 
@@ -51,11 +50,6 @@ import {
   setTelemetrySession,
   trackClientEvent,
 } from '@/data/telemetryClient';
-import {
-  productScreenFromPathname,
-  trackScreenViewed,
-  type ProductScreenName,
-} from '@/data/productTelemetry';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { getCachedAuthenticationState } from '@/data/account';
 import { installBackendLocaleHeader } from '@/data/localeHeader';
@@ -84,6 +78,7 @@ import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboa
 import { NicknameNudgeModal } from '@/components/shared/NicknameNudgeModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
 import { AppDialogScreen } from '@/components/shared/AppDialog';
+import { WindowSafeAreaProvider } from '@/components/shared/Modal';
 import { RouteScreen } from '@/navigation/TabScreen';
 import { AppReviewPromptGate } from '@/reviews/AppReviewPromptGate';
 import { Toast } from '@/components/shared/Toast';
@@ -113,6 +108,10 @@ import {
 } from '@/liveActivity/liveBeerActivity';
 import { initializeHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransitSync';
+import { useBookLayout } from '@/layout/bookLayout';
+import { noteTopPathname, openDetail } from '@/layout/openDetail';
+import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
+import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -136,28 +135,6 @@ function OnboardingGate() {
       router.replace('/onboarding' as Href);
     }
   }, [decision, pathname, router]);
-
-  return null;
-}
-
-/**
- * Tracks coarse screen usage after account hydration. Dynamic route parameters
- * never leave the device; productTelemetry collapses them to fixed names first.
- */
-function ProductTelemetryTracker({ enabled }: { enabled: boolean }) {
-  const pathname = usePathname();
-  const previousPathnameRef = useRef<string | null>(null);
-  const previousScreenRef = useRef<ProductScreenName | undefined>(undefined);
-
-  useEffect(() => {
-    if (!enabled || previousPathnameRef.current === pathname) return;
-    previousPathnameRef.current = pathname;
-
-    const screen = productScreenFromPathname(pathname);
-    if (!screen) return;
-    trackScreenViewed(screen, previousScreenRef.current);
-    previousScreenRef.current = screen;
-  }, [enabled, pathname]);
 
   return null;
 }
@@ -245,8 +222,12 @@ export default function RootLayout() {
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   const [telemetryReady, setTelemetryReady] = useState(false);
+  // A wide window opens these in a tab's right half; when one still arrives as
+  // a route, it moves there without a slide.
+  const detailAnimation = useBookLayout().wide ? 'none' : undefined;
   useEffect(() => {
     pathnameRef.current = pathname;
+    noteTopPathname(pathname);
   }, [pathname]);
   // Hold the splash until the first-run decision resolves too, so a fresh
   // install fades straight into the onboarding instead of flashing the compass.
@@ -285,10 +266,7 @@ export default function RootLayout() {
     // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
     const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
     const openBeerOnTapPub = ({ key, name, lat, lng }: BeerOnTapPub) =>
-      router.push({
-        pathname: '/pub',
-        params: { key, name, lat: String(lat), lng: String(lng) },
-      } as unknown as Href);
+      openDetail(router, { kind: 'pub', params: { key, name, lat: String(lat), lng: String(lng) } });
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
@@ -522,7 +500,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.stout }}>
-      <SafeAreaProvider>
+      <WindowSafeAreaProvider>
         <StatusBar style="light" />
         <Stack
           screenLayout={({ route, children }) => (
@@ -624,14 +602,14 @@ export default function RootLayout() {
             name="evening"
             options={{
               presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
+              animation: detailAnimation ?? 'slide_from_bottom',
               gestureEnabled: false,
             }}
           />
           <Stack.Screen
             name="pub"
             options={{
-              animation: 'slide_from_right',
+              animation: detailAnimation ?? 'slide_from_right',
               gestureEnabled: true,
             }}
           />
@@ -741,7 +719,7 @@ export default function RootLayout() {
             options={{
               // A back-navigable "place" (friend profile), pushed like a detail
               // screen with the native right-edge back-swipe.
-              animation: 'slide_from_right',
+              animation: detailAnimation ?? 'slide_from_right',
               gestureEnabled: true,
             }}
           />
@@ -763,6 +741,7 @@ export default function RootLayout() {
           />
         </Stack>
         <OnboardingGate />
+        <PaneRouteMigrator />
         <WhatsNewModal />
         <ContestResultsModal />
         <PubReminderOnboardingModal />
@@ -778,7 +757,7 @@ export default function RootLayout() {
         />
         <BadgeHost />
         <Toast />
-      </SafeAreaProvider>
+      </WindowSafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

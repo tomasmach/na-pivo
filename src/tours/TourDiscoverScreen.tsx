@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputInstance } from 'react-native';
+import { ActivityIndicator, FlatList, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputInstance } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal } from '@/components/shared/Modal';
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
 import { checkLocationPermission, ensureLocationPermission } from '@/compass/permissions';
 import { searchPublicTours, type PublicTourHit, type TourStopsFilter } from '@/data/toursClient';

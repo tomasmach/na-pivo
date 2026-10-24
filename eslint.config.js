@@ -18,6 +18,21 @@ module.exports = defineConfig([
     },
   },
   {
+    // The shared Modal keeps sheets in their half on the open iPhone Duo and
+    // keeps a half with an open sheet mounted while the phone folds.
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/components/shared/Modal.tsx", "src/__mocks__/**", "**/__tests__/**"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        paths: [{
+          name: "react-native",
+          importNames: ["Modal"],
+          message: "Use Modal from '@/components/shared/Modal'.",
+        }],
+      }],
+    },
+  },
+  {
     // Node CLI scripts run under CommonJS, where __dirname/require exist.
     files: ["scripts/**/*.js"],
     languageOptions: {

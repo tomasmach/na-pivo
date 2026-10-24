@@ -5,6 +5,7 @@ import { clearLocalPrivateAccountData } from '../privateAccountData';
 import { pulledRecently, trackForegroundPull } from '../foregroundPulls';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
+import { useBookStore } from '@/stores/bookStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
@@ -133,6 +134,9 @@ it('clears local private stores and private sync queue storage', async () => {
     locationSet: true,
     loaded: true,
   });
+  // A friend's profile left open in a right half of the open iPhone Duo.
+  useBookStore.getState().show('parta', { kind: 'friend', id: 'acc-friend' });
+  useBookStore.getState().show('stamgast', { kind: 'evening', startedAt: '2026-06-14T19:00:00.000Z' });
 
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
@@ -167,6 +171,7 @@ it('clears local private stores and private sync queue storage', async () => {
     locationSet: false,
     loaded: false,
   });
+  expect(useBookStore.getState().pages).toEqual(useBookStore.getInitialState().pages);
   expect(useSettingsStore.getState().homePoint).toBeNull();
   expect(useSettingsStore.getState().navigationProvider).toBe('mapy');
 

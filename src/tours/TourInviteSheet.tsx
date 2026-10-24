@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal } from '@/components/shared/Modal';
 import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
 import { loadPartyFriends, type FriendProfile, type PartyFriends } from '@/data/friendsClient';
 import type { TourInviteRow } from '@/data/tourInvitesClient';

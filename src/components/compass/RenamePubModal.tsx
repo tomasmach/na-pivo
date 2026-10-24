@@ -6,7 +6,6 @@
 import React from 'react';
 import {
   KeyboardAvoidingView,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { Modal } from '@/components/shared/Modal';
 import { PencilIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -43,7 +43,7 @@ export function RenamePubModal({
   const canSubmit = trimmed.length > 0 && trimmed !== currentName.trim() && !submitting;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal scrimColor={styles.renameScrim.backgroundColor} visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <KeyboardAvoidingView
         behavior="padding"
         style={styles.renameOverlay}

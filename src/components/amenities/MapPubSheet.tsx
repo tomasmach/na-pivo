@@ -25,7 +25,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   Pressable,
@@ -44,6 +43,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 
+import { Modal } from '@/components/shared/Modal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';

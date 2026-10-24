@@ -32,6 +32,7 @@ import {
   fetchFriendsDashboard,
   type FriendsDashboard,
 } from '@/data/friendsClient';
+import { openFriendProfile as openFriendPage } from '@/layout/openDetail';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import {
   ChevronLeftIcon,
@@ -140,7 +141,7 @@ export default function ManagePartaScreen() {
   const openSafetyMenu = useFriendSafety(reload);
   const openFriendProfile = useCallback(
     (accountId: string) => {
-      if (accountId) router.push(`/parta/${accountId}` as Href);
+      if (accountId) openFriendPage(router, accountId);
     },
     [router],
   );

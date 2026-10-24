@@ -39,6 +39,7 @@ import { CounterCta } from '@/counter/CounterCta';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
+import { usePagerAnchor } from '@/layout/usePagerAnchor';
 
 interface Slide {
   key: string;
@@ -115,6 +116,7 @@ export default function OnboardingScreen() {
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
+  usePagerAnchor(listRef, indexRef, width);
   const finishedRef = useRef(false);
 
   useEffect(() => {

@@ -13,7 +13,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -24,6 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useRouter, type Href } from 'expo-router';
 
+import { Modal, useModalFrame } from '@/components/shared/Modal';
 import { BeerBubbles } from '@/components/celebration/BeerBubbles';
 import { SoftGlow } from '@/components/celebration/SoftGlow';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -55,7 +56,7 @@ export function ContestResultsModal() {
   const releaseSettled = useReleaseStore((s) => s.checkSettled);
   const releaseNote = useReleaseStore((s) => s.pendingNote);
   const router = useRouter();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth } = useModalFrame();
 
   // Launch gate: one cached snapshot fetch once the what's-new popup is out
   // of the way. Any surface's later fetch also feeds the store, so a failure
@@ -129,6 +130,7 @@ export function ContestResultsModal() {
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
       visible={visible}
       transparent
       animationType="fade"

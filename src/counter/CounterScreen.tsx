@@ -113,7 +113,7 @@ import {
   type BeerFormResult,
 } from '@/counter/BeerFormModal';
 import { eveningPriceLabel, sessionBreakdown } from '@/myBeers/eveningModel';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { MenuBeerActionsSheet, confirmRemoveFromMenu } from '@/counter/MenuBeerActionsSheet';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
@@ -128,6 +128,7 @@ import { AlcoholProfileSheet } from '@/counter/AlcoholProfileSheet';
 import type { BodyProfile } from '@/drinks/alcoholEstimate';
 import { CounterQuickActions } from '@/counter/CounterQuickActions';
 import { CounterCta } from '@/counter/CounterCta';
+import { useBookLayout } from '@/layout/bookLayout';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
@@ -358,6 +359,9 @@ function Tacek({
   onMoreClose,
 }: TacekProps) {
   const insets = useSafeAreaInsets();
+  const showAppDialog = useShowAppDialog();
+  // On a table the counter is the short bottom half, laid out like the compass there.
+  const tabletop = useBookLayout().mode === 'tabletop';
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
@@ -627,7 +631,7 @@ function Tacek({
         ],
       }),
     );
-  }, [openAlcoholSheet, setAlcoholEstimateHidden, setBodyProfile, switchAlcoholSheet]);
+  }, [openAlcoholSheet, setAlcoholEstimateHidden, setBodyProfile, showAppDialog, switchAlcoholSheet]);
 
   // ── Session state ───────────────────────────────────────────────────────────
 
@@ -1342,10 +1346,11 @@ function Tacek({
             setPickOpen(true);
           },
           () => setPickOpen(true),
+          showAppDialog,
         ),
       );
     },
-    [cell, pub, recordMenuWrite, runAfterSheetClose, showToast],
+    [cell, pub, recordMenuWrite, runAfterSheetClose, showAppDialog, showToast],
   );
 
   // ── Pick sheet ──────────────────────────────────────────────────────────────
@@ -1444,7 +1449,7 @@ function Tacek({
         { text: t.counter.cancel, style: 'cancel' },
       ],
     });
-  }, [handleScanMenu, onChangePlace, pub, showToast]);
+  }, [handleScanMenu, onChangePlace, pub, showAppDialog, showToast]);
 
   const runDrinkScan = useCallback(async (source: MenuPhotoSource) => {
     setScanSourceVisible(false);
@@ -1531,7 +1536,7 @@ function Tacek({
         { text: t.counter.cancel, style: 'cancel' },
       ],
     });
-  }, [openBackdateForm]);
+  }, [openBackdateForm, showAppDialog]);
 
   // ── Closing / resuming the evening ──────────────────────────────────────────
 
@@ -1558,7 +1563,7 @@ function Tacek({
         },
       ],
     });
-  }, [archiveCurrent, current, hapticEnabled, isThisSession, latestBeer, pub]);
+  }, [archiveCurrent, current, hapticEnabled, isThisSession, latestBeer, pub, showAppDialog]);
 
   const handleResume = useCallback(() => {
     if (!cell) return;
@@ -1774,6 +1779,16 @@ function Tacek({
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const primaryButton = (
+    <CounterCta
+      testID="counter-primary"
+      label={cta.label}
+      subLabel={cta.subLabel}
+      onPress={cta.onPress}
+      accessibilityLabel={cta.a11y}
+    />
+  );
+
   return (
     <View
       style={[
@@ -1812,6 +1827,7 @@ function Tacek({
       </View>
 
       <CoasterCard
+        sideways={tabletop}
         count={count}
         nounLabel={beerNoun(count)}
         spentLabel={spentLabel}
@@ -1842,15 +1858,19 @@ function Tacek({
         />
       </CoasterCard>
 
-      <NudgeSlot nudge={nudge} />
-
-      <CounterCta
-        testID="counter-primary"
-        label={cta.label}
-        subLabel={cta.subLabel}
-        onPress={cta.onPress}
-        accessibilityLabel={cta.a11y}
-      />
+      {tabletop ? (
+        <View style={styles.actionRow}>
+          <View style={styles.actionHalf}>{primaryButton}</View>
+          <View style={styles.actionHalf}>
+            <NudgeSlot nudge={nudge} />
+          </View>
+        </View>
+      ) : (
+        <>
+          <NudgeSlot nudge={nudge} />
+          {primaryButton}
+        </>
+      )}
 
       <DrinkPickSheet
         visible={pickOpen}
@@ -2157,6 +2177,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
   },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  actionHalf: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

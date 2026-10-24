@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, ModalInsetView, useModalFrame } from '@/components/shared/Modal';
 import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import { intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -30,8 +30,7 @@ const daysBetween = (from: string, to: string) => Math.round((utc(to).getTime() 
 export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   plan: TourPlan; visible: boolean; onChange: (patch: Schedule) => Promise<TourResult>; onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const { height, width } = useWindowDimensions();
+  const { height, width } = useModalFrame();
   const today = todayIn(plan.timezone);
   const last = lastDay(plan.timezone);
   const firstMonday = addDays(today, -weekday(today));
@@ -119,7 +118,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => { void close(); }}>
     <View style={styles.backdrop}>
       <Pressable style={StyleSheet.absoluteFill} onPress={() => { void close(); }} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
-      <View accessibilityViewIsModal style={[styles.card, { maxHeight: height - insets.top - Spacing.lg, paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
+      <ModalInsetView accessibilityViewIsModal style={(insets) => [styles.card, { maxHeight: height - insets.top - Spacing.lg, paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
           <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{t.tours.whenTitle}</Text>
@@ -192,7 +191,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
           <TourButton testID="tour-when-done" label={t.tours.whenDone} busy={closing} onPress={() => { void close(true); }} />
           {!!current.scheduledDate && <TourButton label={t.tours.whenClear} quiet disabled={closing} onPress={() => { setCustom(false); void write({ scheduledDate: null, scheduledTime: null }); void close(); }} />}
         </View>
-      </View>
+      </ModalInsetView>
     </View>
   </Modal>;
 }

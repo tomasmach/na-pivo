@@ -74,7 +74,7 @@ jest.mock('expo-router', () => {
     return null;
   };
   const router = { push: (...args: unknown[]) => mockPush(...args), replace: jest.fn() };
-  return { Stack, useRouter: () => router, usePathname: () => '/' };
+  return { Stack, useRouter: () => router, usePathname: () => '/', useRootNavigationState: () => undefined };
 });
 
 jest.mock('expo-font', () => ({
@@ -94,6 +94,7 @@ jest.mock('expo-splash-screen', () => mockResolved('preventAutoHideAsync', 'hide
 jest.mock('expo-status-bar', () => mockComponents('StatusBar'));
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 jest.mock('react-native-gesture-handler', () => ({
   GestureHandlerRootView: ({ children }: { children: React.ReactNode }) => children,

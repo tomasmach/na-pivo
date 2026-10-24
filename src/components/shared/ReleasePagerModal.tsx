@@ -12,7 +12,6 @@ import React, { useCallback, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -24,6 +23,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
+import { usePagerAnchor } from '@/layout/usePagerAnchor';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -220,7 +221,9 @@ export function ReleasePagerModal({
   onDismiss: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
+  // The open Duo's status column and tab rail sit over the window's side.
+  const width = windowWidth - insets.left - insets.right;
   const pager = PAGERS[version];
   const { slides, asksForReview } = pager;
   const lastIndex = slides.length - 1;
@@ -228,6 +231,7 @@ export function ReleasePagerModal({
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
+  usePagerAnchor(listRef, indexRef, width);
   const doneRef = useRef(false);
 
   const finish = useCallback(() => {
@@ -283,6 +287,8 @@ export function ReleasePagerModal({
           {
             paddingTop: insets.top + Spacing.sm,
             paddingBottom: Math.max(insets.bottom, Spacing.sm),
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
           },
         ]}
       >

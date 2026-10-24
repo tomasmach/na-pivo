@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -9,7 +9,9 @@ import Animated, {
 import { useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { BeerIcon } from '@/components/shared/IconGlyph';
+import { PaneContext, usePane, type PaneInfo } from '@/layout/pane';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -30,6 +32,8 @@ export interface AppDialogOptions {
   message?: string;
   buttons?: AppDialogButton[];
   cancelable?: boolean;
+  /** The half of a wide window the dialog was asked from; it opens there. Set by `useShowAppDialog`. */
+  pane?: PaneInfo | null;
 }
 
 type AppDialogPresenter = (options: AppDialogOptions) => void;
@@ -48,18 +52,38 @@ export function showAppDialog(options: AppDialogOptions): void {
   pendingDialog = options;
 }
 
+/** `showAppDialog` for a component inside a half: the dialog opens over the half it was asked from. */
+export function useShowAppDialog(): (options: AppDialogOptions) => void {
+  const pane = usePane();
+  return useCallback((options: AppDialogOptions) => showAppDialog(pane ? { ...options, pane } : options), [pane]);
+}
+
 export function AppDialogScreen({ children }: { children: React.ReactNode }) {
   const focused = useIsFocused();
   return <>{children}{focused ? <AppDialogHost /> : null}</>;
 }
 
+function isActionMenuDialog(dialog: AppDialogOptions): boolean {
+  return !dialog.message && (dialog.buttons?.length ?? 0) > 2;
+}
+
 export function AppDialogHost() {
   const [dialog, setDialog] = useState<AppDialogOptions | null>(null);
+  // Where the last dialog went; it stays there while it fades out.
+  const [placement, setPlacement] = useState<{ pane: PaneInfo | null; centered: boolean }>({
+    pane: null,
+    centered: true,
+  });
+  const hostPane = usePane();
   const insets = useSafeAreaInsets();
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    const ownPresenter: AppDialogPresenter = (options) => setDialog(normalizeDialog(options));
+    const ownPresenter: AppDialogPresenter = (options) => {
+      const next = normalizeDialog(options);
+      setDialog(next);
+      setPlacement({ pane: options.pane ?? null, centered: !isActionMenuDialog(next) });
+    };
     presenters.push(ownPresenter);
     if (pendingDialog) {
       const next = pendingDialog;
@@ -98,7 +122,7 @@ export function AppDialogHost() {
     () => buttons.filter((button) => button.style !== 'cancel'),
     [buttons],
   );
-  const isActionMenu = !!dialog && !dialog.message && buttons.length > 2;
+  const isActionMenu = !!dialog && isActionMenuDialog(dialog);
   const canCancel = dialog?.cancelable ?? true;
 
   // A button's onPress often presents another Modal (e.g. the backdate flow
@@ -239,32 +263,36 @@ export function AppDialogHost() {
   }, [actionButtons, buttons, cancelButton, close, dialog, isActionMenu]);
 
   return (
-    <Modal
-      visible={dialog !== null}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={closeFromBackdrop}
-      onDismiss={runPendingAction}
-    >
-      <Pressable
-        accessible={false}
-        style={[styles.backdrop, !isActionMenu && styles.centerBackdrop]}
-        onPress={closeFromBackdrop}
+    <PaneContext.Provider value={placement.pane ?? hostPane}>
+      <Modal
+        visible={dialog !== null}
+        transparent
+        centered={placement.centered}
+        scrimColor={styles.backdrop.backgroundColor}
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={closeFromBackdrop}
+        onDismiss={runPendingAction}
       >
-        <Animated.View
-          style={[
-            styles.card,
-            isActionMenu && styles.menuCard,
-            softDrop(),
-            cardAnim,
-            { marginBottom: isActionMenu ? Math.max(insets.bottom, Spacing.lg) : 0 },
-          ]}
+        <Pressable
+          accessible={false}
+          style={[styles.backdrop, !isActionMenu && styles.centerBackdrop]}
+          onPress={closeFromBackdrop}
         >
-          <Pressable accessible={false} onPress={(event) => event.stopPropagation()}>{content}</Pressable>
-        </Animated.View>
-      </Pressable>
-    </Modal>
+          <Animated.View
+            style={[
+              styles.card,
+              isActionMenu && styles.menuCard,
+              softDrop(),
+              cardAnim,
+              { marginBottom: isActionMenu ? Math.max(insets.bottom, Spacing.lg) : 0 },
+            ]}
+          >
+            <Pressable accessible={false} onPress={(event) => event.stopPropagation()}>{content}</Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+    </PaneContext.Provider>
   );
 }
 

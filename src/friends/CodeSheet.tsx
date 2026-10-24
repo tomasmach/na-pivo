@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { useRouter, type Href } from 'expo-router';
 
+import { Modal } from '@/components/shared/Modal';
 import { CopyIcon, LinkIcon, XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { fetchFriendInviteCode, type FriendInvite } from '@/data/friendsClient';

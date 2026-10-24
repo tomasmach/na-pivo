@@ -2,6 +2,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CompassIcon, MapIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
+import { useBookLayout } from '@/layout/bookLayout';
+import { usePane } from '@/layout/pane';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -27,6 +29,23 @@ export function ExploreSwitch({
   onSelectMap,
   variant = 'floating',
 }: ExploreSwitchProps) {
+  // The open Kompas tab shows the compass and the map side by side: nothing to
+  // switch. The compass keeps its name in the header; the map beside it needs
+  // none. Any other map (a pub page over another tab or over the whole window)
+  // keeps its way to the compass.
+  const { wide } = useBookLayout();
+  const pane = usePane();
+  if (wide && pane?.tab === 'kompas') {
+    if (variant !== 'flat') return null;
+    return (
+      <View style={styles.title} accessibilityRole="header">
+        <CompassIcon size={18} color={Colors.amber} />
+        <Text style={styles.titleLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {t.map.compass}
+        </Text>
+      </View>
+    );
+  }
   return (
     <View
       style={[styles.container, variant === 'flat' && styles.containerFlat]}
@@ -148,5 +167,17 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.76,
     transform: [{ scale: 0.98 }],
+  },
+  title: {
+    height: 44,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleLabel: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 17,
+    color: Colors.foam,
   },
 });

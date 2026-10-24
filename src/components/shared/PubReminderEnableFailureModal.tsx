@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -8,6 +8,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { BellRingIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { t } from '@/i18n';
@@ -58,6 +59,7 @@ export function PubReminderEnableFailureModal() {
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
       visible
       transparent
       animationType="fade"

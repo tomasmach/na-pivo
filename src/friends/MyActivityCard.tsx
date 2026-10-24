@@ -32,7 +32,7 @@ import {
 } from 'react-native';
 
 import { BeerBubbles } from '@/components/celebration/BeerBubbles';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import {
   BellRingIcon,
   ClockIcon,
@@ -69,6 +69,7 @@ interface MyActivityCardProps {
 }
 
 function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCardProps) {
+  const showAppDialog = useShowAppDialog();
   const now = useNowTick();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
@@ -158,7 +159,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
         },
       ],
     });
-  }, [confirmEnd]);
+  }, [confirmEnd, showAppDialog]);
 
   // Expiry: hide a genuinely-passed activity outright; an unparseable timestamp
   // keeps the card but simply drops the countdown label.

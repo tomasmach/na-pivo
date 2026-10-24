@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -8,9 +7,9 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
+import { Modal, ModalInsetView } from '@/components/shared/Modal';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
@@ -104,7 +103,6 @@ export function BeerCheckInSheet({
   onClose,
   onSubmitted,
 }: BeerCheckInSheetProps) {
-  const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   // Modals host their own window, so KeyboardAvoidingView is unreliable here —
   // lift the sheet above the keyboard manually (same trick as BeerFormModal).
@@ -244,11 +242,11 @@ export function BeerCheckInSheet({
   }, [brewery, canSubmit, cleanName, note, onClose, onSubmitted, pub, pubKey, rating, showToast, style, tags, visibility, visitClientId]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal scrimColor={styles.backdrop.backgroundColor} visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
-        <View
-          style={[
+        <ModalInsetView
+          style={(insets) => [
             styles.sheet,
             {
               paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
@@ -433,7 +431,7 @@ export function BeerCheckInSheet({
               <Text style={styles.submitText}>{t.beerCheckins.submit}</Text>
             </Pressable>
           </KeyboardAwareScrollView>
-        </View>
+        </ModalInsetView>
       </View>
     </Modal>
   );

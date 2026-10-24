@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { CheckIcon, KeyRoundIcon, XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';

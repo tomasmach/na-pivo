@@ -9,6 +9,7 @@ import {
 
 const DeviceInsetsContext = createContext<EdgeInsets | null>(null);
 const TabBarInsetContext = createContext<number | null>(null);
+const ScreenMarginsContext = createContext<{ left: number; right: number }>({ left: 0, right: 0 });
 
 /** Wraps the tab navigator to remember the device insets above the tabs. */
 export function TabsInsetsRoot({ children }: PropsWithChildren) {
@@ -30,9 +31,12 @@ function SideInsets({
 }: PropsWithChildren<{ insets: EdgeInsets; left: number; right: number }>) {
   const { top, bottom } = insets;
   const inner = useMemo(() => ({ top, bottom, left: 0, right: 0 }), [top, bottom]);
+  const margins = useMemo(() => ({ left, right }), [left, right]);
   return (
     <SafeAreaInsetsContext.Provider value={inner}>
-      <View style={{ flex: 1, marginLeft: left, marginRight: right }}>{children}</View>
+      <ScreenMarginsContext.Provider value={margins}>
+        <View style={{ flex: 1, marginLeft: left, marginRight: right }}>{children}</View>
+      </ScreenMarginsContext.Provider>
     </SafeAreaInsetsContext.Provider>
   );
 }
@@ -62,6 +66,11 @@ export function TabScreen({ children }: PropsWithChildren) {
   );
 }
 
+/** Sets the tab bar inset for part of a tab, e.g. 0 for the upper half of an open iPhone Duo. */
+export function TabBarInsetOverride({ value, children }: PropsWithChildren<{ value: number }>) {
+  return <TabBarInsetContext.Provider value={value}>{children}</TabBarInsetContext.Provider>;
+}
+
 export function RouteScreen({ children }: PropsWithChildren) {
   const insets = useSafeAreaInsets();
   return (
@@ -69,6 +78,15 @@ export function RouteScreen({ children }: PropsWithChildren) {
       {children}
     </SideInsets>
   );
+}
+
+/**
+ * The side insets the screen is narrowed by. When they swap sides after a turn
+ * the screen moves but keeps its size, so its views get no `onLayout`; a view
+ * that measures where it sits in the window has to measure again.
+ */
+export function useScreenMargins(): { left: number; right: number } {
+  return useContext(ScreenMarginsContext);
 }
 
 /** How much of the screen's bottom edge the tab bar covers; 0 outside tabs. */

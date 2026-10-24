@@ -19,7 +19,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -28,6 +27,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   EyeOffIcon,
@@ -181,7 +181,7 @@ export function BeerPhotoComposeSheet({
   }, [pickedUri, caption, pub, visibility, enterContest, onSaved]);
 
   return (
-    <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal scrimColor={styles.backdrop.backgroundColor} visible transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View
           style={[

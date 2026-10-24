@@ -3,7 +3,7 @@
 import React from 'react';
 
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { showAppDialog, type AppDialogOptions } from '@/components/shared/AppDialog';
 import { BellRingIcon, PencilIcon, Trash2Icon } from '@/components/shared/IconGlyph';
 import { toggleBeerWatch } from '@/beerWatch/toggleBeerWatch';
 import type { CommunityBeer } from '@/data/communityHours';
@@ -91,8 +91,9 @@ export function confirmRemoveFromMenu(
   beer: CommunityBeer,
   onConfirm: () => void,
   onKeep?: () => void,
+  show: (options: AppDialogOptions) => void = showAppDialog,
 ): void {
-  showAppDialog({
+  show({
     title: t.counter.removeFromMenuTitle,
     message: t.counter.removeFromMenuBody(menuBeerLabel(beer)),
     buttons: [

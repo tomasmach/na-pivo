@@ -1,5 +1,6 @@
 import React, { memo, ReactNode } from 'react';
 import { ActivityIndicator, Pressable, Text, View, StyleSheet, ViewStyle } from 'react-native';
+import { useTone } from '@/layout/pane';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -41,7 +42,9 @@ export const GlowButton = memo(function GlowButton({
   loading = false,
   disabled = false,
 }: GlowButtonProps) {
-  const isPrimary = variant === 'primary';
+  // The right half of a wide window leaves the amber to the left one.
+  const tone = useTone();
+  const isPrimary = variant === 'primary' && tone !== 'quiet';
   const glowStyle = resolveGlowStyle(glow);
 
   return (

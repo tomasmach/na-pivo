@@ -1,7 +1,8 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { BeerIcon, CircleDotIcon, GlassWaterIcon, WineIcon, XIcon } from '@/components/shared/IconGlyph';
 import type { ScannedDrink } from '@/data/menuScanClient';
 import { formatVolume, t } from '@/i18n';
@@ -28,7 +29,7 @@ function TypeIcon({ drink }: { drink: ScannedDrink }) {
 export function ScannedDrinkPicker({ visible, drinks, priceCurrency, onClose, onSelect }: Props) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal scrimColor={styles.backdrop.backgroundColor} visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
         <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>

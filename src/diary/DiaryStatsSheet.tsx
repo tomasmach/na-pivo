@@ -14,9 +14,10 @@
  */
 
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
