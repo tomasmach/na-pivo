@@ -30,6 +30,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 jest.mock('expo-router', () => ({
   useFocusEffect: jest.fn(),
+  useIsFocused: jest.fn(() => true),
   useLocalSearchParams: jest.fn(() => ({})),
   useRouter: jest.fn(() => ({
     push: jest.fn(),

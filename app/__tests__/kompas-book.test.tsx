@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { Platform, useWindowDimensions } from 'react-native';
 
 import { t } from '@/i18n';
@@ -24,6 +24,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 jest.mock('expo-router', () => ({
   useFocusEffect: jest.fn(),
+  useIsFocused: jest.fn(() => true),
   useLocalSearchParams: jest.fn(() => ({})),
   useRouter: jest.fn(() => ({ push: jest.fn() })),
 }));
@@ -120,6 +121,7 @@ describe('Kompas on the open iPhone Duo', () => {
     jest.clearAllMocks();
     Platform.OS = 'ios';
     (useLocalSearchParams as jest.Mock).mockReturnValue({});
+    (useIsFocused as jest.Mock).mockReturnValue(true);
     (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), setParams: jest.fn() });
     act(() => {
       useSettingsStore.setState({ hidePubNames: false, homePoint: null, mapWithoutLocation: false });
@@ -178,6 +180,33 @@ describe('Kompas on the open iPhone Duo', () => {
     expect(JSON.stringify(renderer.toJSON())).toContain(t.permissions.title);
     expect(labelled(renderer, t.map.openWithoutLocation)).toBe(0);
     expect(mounted(renderer, BeerMapScreenMock)).toBe(true);
+  });
+
+  it('opens the map beside the compass only once the tab is seen after unfolding', () => {
+    // Folded on Štamgast, then opened: Kompas is a hidden tab.
+    (useIsFocused as jest.Mock).mockReturnValue(false);
+    setWindow(466, 678);
+    const renderer = render();
+    setWindow(951, 669);
+    act(() => renderer.update(<CompassTab />));
+    expect(mounted(renderer, CompassCardMock)).toBe(true);
+    expect(mounted(renderer, BeerMapScreenMock)).toBe(false);
+
+    (useIsFocused as jest.Mock).mockReturnValue(true);
+    act(() => renderer.update(<CompassTab />));
+    const map = renderer.root.findByType(BeerMapScreenMock);
+
+    // Leaving the tab keeps it: the map is not built again on every visit.
+    (useIsFocused as jest.Mock).mockReturnValue(false);
+    act(() => renderer.update(<CompassTab />));
+    expect(renderer.root.findByType(BeerMapScreenMock)).toBe(map);
+
+    // Folding and opening again on another tab starts over.
+    setWindow(466, 678);
+    act(() => renderer.update(<CompassTab />));
+    setWindow(951, 669);
+    act(() => renderer.update(<CompassTab />));
+    expect(mounted(renderer, BeerMapScreenMock)).toBe(false);
   });
 
   it('lands on the compass, not the map, when the phone folds', () => {

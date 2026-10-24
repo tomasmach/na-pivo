@@ -18,7 +18,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import {
   useAnimatedReaction,
   useSharedValue,
@@ -489,6 +489,13 @@ function CompassScreen() {
   // A wide window shows the map beside the compass, so only a phone switches.
   const { mode: bookMode, wide } = useBookLayout();
   const mapVisible = !wide && (mapOpen || mapWithoutLocation);
+  // Google's map takes its first camera from its first layout, which a hidden
+  // tab never gets; meanwhile it would report its default view of the world
+  // as where the map was. So the map beside the compass waits for the tab to
+  // be seen once after the window opens, and then stays.
+  const focused = useIsFocused();
+  const [mapSeen, setMapSeen] = useState(false);
+  if (mapSeen !== (wide && (focused || mapSeen))) setMapSeen(wide && (focused || mapSeen));
   // Folding the phone again lands on the compass, never on the map.
   useOnBookOpen(() => {
     setMapOpen(false);
@@ -861,7 +868,7 @@ function CompassScreen() {
     <BookSpread
       tab="kompas"
       primary={compass}
-      secondary={map}
+      secondary={wide && !focused && !mapSeen ? null : map}
       phoneShows={mapVisible ? 'secondary' : 'primary'}
     />
   );
