@@ -10,7 +10,7 @@
  * NicknameField.
  */
 
-import { useSegments } from 'expo-router';
+import { useRootNavigationState } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -43,6 +43,14 @@ import { softDrop } from '@/theme/shadows';
 // iOS silently drops a Modal presented while another modal is still
 // mid-dismissal, and the dropped host then swallows every touch.
 const PRESENT_SETTLE_MS = 600;
+
+// The root navigator wraps the app's Stack in its single `__root` route. A tab
+// route pushed above a full-screen one inherits its modal presentation, so the
+// focused route alone does not prove that nothing covers the tabs.
+function rootHoldsOnlyTabs(rootState: ReturnType<typeof useRootNavigationState> | undefined) {
+  const stack = rootState?.routes.length === 1 ? rootState.routes[0].state : undefined;
+  return !!stack?.routes.length && stack.routes.every((route) => route.name === '(tabs)');
+}
 
 export function NicknameNudgeModal() {
   const insets = useSafeAreaInsets();
@@ -86,37 +94,40 @@ export function NicknameNudgeModal() {
   }, [releaseSettled, releaseNote]);
 
   // A full-screen route such as auth or profile/privacy takes the root view off
-  // the window. If the nudge presents or hides then, or while that route is
-  // still dismissing, iOS never presents it but its host stays above the app.
-  const onTabs = useSegments()[0] === '(tabs)';
+  // the window. If the nudge presents then, or while that route is still
+  // dismissing, iOS never presents it but its host stays above the app.
+  const onlyTabs = rootHoldsOnlyTabs(useRootNavigationState());
   const [tabsSettled, setTabsSettled] = useState(false);
   useEffect(() => {
-    if (!onTabs) return;
+    if (!onlyTabs) return;
     const timer = setTimeout(() => setTabsSettled(true), PRESENT_SETTLE_MS);
     return () => {
       clearTimeout(timer);
       setTabsSettled(false);
     };
-  }, [onTabs]);
+  }, [onlyTabs]);
+
+  const mutexHolder = useLaunchModalMutex((s) => s.holder);
+  // Once presented, a route change must not hide the nudge: that would hand the
+  // launch slot to the next popup before iOS has dismissed this one.
+  const presented = mutexHolder === 'nickname-nudge';
 
   // `needsNickname` keeps this quiet for anonymous sessions, signed-out users,
   // accounts that already have a handle, and while the profile hasn't loaded.
   const wantVisible =
     eligible &&
-    onTabs &&
-    tabsSettled &&
+    (presented || (onlyTabs && tabsSettled)) &&
     needsNickname &&
     releaseNote === null &&
     !firstLaunchSession;
 
-  const mutexHolder = useLaunchModalMutex((s) => s.holder);
   useEffect(() => {
     const mutex = useLaunchModalMutex.getState();
     if (wantVisible) mutex.claim('nickname-nudge');
     else mutex.release('nickname-nudge');
   }, [wantVisible, mutexHolder]);
   useEffect(() => () => useLaunchModalMutex.getState().release('nickname-nudge'), []);
-  const visible = wantVisible && mutexHolder === 'nickname-nudge';
+  const visible = wantVisible && presented;
 
   const progress = useSharedValue(0);
   useEffect(() => {

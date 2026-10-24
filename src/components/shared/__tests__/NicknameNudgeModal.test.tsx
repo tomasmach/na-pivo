@@ -12,13 +12,15 @@ import { useReleaseStore } from '@/stores/releaseStore';
 
 import { NicknameNudgeModal } from '../NicknameNudgeModal';
 
-let mockSegments: string[] = ['(tabs)'];
+type MockRootState = { routes: { name: string; state?: { routes: { name: string }[] } }[] };
+
+let mockRootState: MockRootState;
 const mockModalVisibility: boolean[] = [];
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
-jest.mock('expo-router', () => ({ useSegments: () => mockSegments }));
+jest.mock('expo-router', () => ({ useRootNavigationState: () => mockRootState }));
 jest.mock('react-native', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
@@ -46,8 +48,13 @@ jest.mock('@/profile/NicknameField', () => ({ NicknameField: () => null }));
 
 const modalVisible = () => mockModalVisibility[mockModalVisibility.length - 1];
 
-function navigate(segments: string[]) {
-  mockSegments = segments;
+// The root navigator holds a single `__root` route wrapping the app's Stack.
+function rootStack(...routes: string[]): MockRootState {
+  return { routes: [{ name: '__root', state: { routes: routes.map((name) => ({ name })) } }] };
+}
+
+function navigate(...routes: string[]) {
+  mockRootState = rootStack(...routes);
   screen.rerender(<NicknameNudgeModal />);
 }
 
@@ -71,7 +78,7 @@ describe('NicknameNudgeModal', () => {
     jest.useFakeTimers();
     await AsyncStorage.clear();
     mockModalVisibility.length = 0;
-    mockSegments = ['(tabs)'];
+    mockRootState = rootStack('(tabs)');
     useLaunchModalMutex.setState({ holder: null });
     useReleaseStore.setState({ checkSettled: true, pendingNote: null });
     useOnboardingStore.setState({ firstLaunchSession: false });
@@ -83,7 +90,7 @@ describe('NicknameNudgeModal', () => {
   });
 
   it('stays hidden while registration and the privacy screen cover the tabs', async () => {
-    mockSegments = ['auth'];
+    mockRootState = rootStack('(tabs)', 'auth/index');
     render(<NicknameNudgeModal />);
     await advance(600);
 
@@ -91,24 +98,25 @@ describe('NicknameNudgeModal', () => {
     signIn(null);
     await advance(600);
     signIn('pivar');
-    navigate(['profile', 'privacy']);
+    navigate('(tabs)', 'profile/privacy');
     await advance(600);
-    navigate(['(tabs)']);
+    // profile/privacy leaves with router.replace('/(tabs)').
+    navigate('(tabs)', '(tabs)');
     await advance(1200);
 
     expect(mockModalVisibility).not.toContain(true);
   });
 
   it('appears on the tabs after the settle delay when the nickname is still missing', async () => {
-    mockSegments = ['auth'];
+    mockRootState = rootStack('(tabs)', 'auth/index');
     render(<NicknameNudgeModal />);
     await advance(600);
     signIn(null);
-    navigate(['profile', 'privacy']);
+    navigate('(tabs)', 'profile/privacy');
     await advance(600);
     expect(modalVisible()).toBe(false);
 
-    navigate(['(tabs)']);
+    navigate('(tabs)', '(tabs)');
     await advance(599);
     expect(modalVisible()).toBe(false);
     await advance(1);
@@ -120,18 +128,37 @@ describe('NicknameNudgeModal', () => {
     expect(await AsyncStorage.getItem(NICKNAME_NUDGE_SEEN_VERSION_KEY)).toBe('1.1.5');
   });
 
-  it('hides as soon as a full-screen route covers the tabs', async () => {
+  it('stays hidden while a tab route is pushed above a full-screen route', async () => {
+    mockRootState = { routes: [{ name: '__root' }] };
+    signIn(null);
+    render(<NicknameNudgeModal />);
+    await advance(1200);
+    navigate('(tabs)', 'profile/privacy');
+    await advance(600);
+
+    // A notification tap pushes /beer while profile/privacy is still up.
+    navigate('(tabs)', 'profile/privacy', '(tabs)');
+    await advance(1200);
+    expect(mockModalVisibility).not.toContain(true);
+
+    navigate('(tabs)');
+    await advance(600);
+    expect(modalVisible()).toBe(true);
+  });
+
+  it('keeps showing and holds the launch slot when a route opens above it', async () => {
     signIn(null);
     render(<NicknameNudgeModal />);
     await advance(600);
     expect(modalVisible()).toBe(true);
 
-    navigate(['settings']);
-    expect(modalVisible()).toBe(false);
-
-    navigate(['(tabs)']);
-    expect(modalVisible()).toBe(false);
-    await advance(600);
+    navigate('(tabs)', 'settings');
     expect(modalVisible()).toBe(true);
+    expect(useLaunchModalMutex.getState().holder).toBe('nickname-nudge');
+
+    fireEvent.press(screen.getByLabelText(t.nicknameNudge.skip));
+    await advance(0);
+    expect(modalVisible()).toBe(false);
+    expect(useLaunchModalMutex.getState().holder).toBeNull();
   });
 });
