@@ -1,5 +1,6 @@
 /**
- * Friend profile — pushed route `/parta/<id>` (Parta 3.0 §F1).
+ * Friend profile — pushed route `/parta/<id>` on a phone, the right half of a
+ * wide window otherwise (Parta 3.0 §F1).
  *
  * A back-navigable "place" (matches /profile/edit, /settings) backed by
  * `GET /v1/friends/<id>`. It surfaces the shared history that makes the party
@@ -11,9 +12,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/components/shared/Modal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 import { GlowButton } from '@/components/shared/GlowButton';
 import { showAppDialog } from '@/components/shared/AppDialog';
@@ -43,6 +45,8 @@ import { BadgeCell, BadgeGrid } from '@/profile/BadgeRows';
 import { badgeStates, PUBLIC_BADGE_KEYS } from '@/profile/badgeModel';
 import { badgeAmount } from '@/profile/badgeText';
 import { focusPubFromActivity } from '@/friends/focusPubHandoff';
+import { useDetailNav, useDetailParams } from '@/layout/detail';
+import { useTabBarInset } from '@/navigation/TabScreen';
 import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
@@ -106,7 +110,10 @@ export default function FriendProfileScreen() {
   const showToast = useToastStore((s) => s.show);
   const reportProfileContent = useAccountStore((s) => s.reportProfileContent);
 
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const pane = useDetailNav();
+  // In a tab's right half the tab bar covers the bottom edge, not just the home indicator.
+  const tabBarInset = useTabBarInset();
+  const params = useDetailParams<{ id?: string | string[] }>();
   const accountId = useMemo(() => {
     const raw = params.id;
     const value = Array.isArray(raw) ? raw[0] : raw;
@@ -155,9 +162,10 @@ export default function FriendProfileScreen() {
   }, [load]);
 
   const goBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
+    if (pane) pane.back();
+    else if (router.canGoBack()) router.back();
     else router.replace('/friends' as Href);
-  }, [router]);
+  }, [pane, router]);
 
   const name = nameOf(detail?.profile);
 
@@ -165,10 +173,10 @@ export default function FriendProfileScreen() {
   const compassTarget = detail?.liveActivity ?? detail?.plan ?? null;
   const handleShowOnCompass = useCallback(() => {
     if (!compassTarget) return;
-    if (focusPubFromActivity(compassTarget)) {
-      router.push({ pathname: '/', params: { view: 'compass' } });
-    }
-  }, [compassTarget, router]);
+    if (!focusPubFromActivity(compassTarget)) return;
+    if (pane) pane.showCompass();
+    else router.push({ pathname: '/', params: { view: 'compass' } });
+  }, [compassTarget, pane, router]);
 
   const doReport = useCallback(() => {
     void reportProfileContent({ targetAccountId: accountId, reason: 'other', comment: name }).then(
@@ -357,7 +365,7 @@ export default function FriendProfileScreen() {
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xl }]}
+          contentContainerStyle={[styles.content, { paddingBottom: (tabBarInset || insets.bottom) + Spacing.xl }]}
           showsVerticalScrollIndicator={false}
         >
           {/* Identity hero */}

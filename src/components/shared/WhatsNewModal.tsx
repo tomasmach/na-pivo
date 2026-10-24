@@ -13,7 +13,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { Modal, View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import Animated, {
   Easing,
   Extrapolation,
@@ -26,6 +26,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { Modal } from '@/components/shared/Modal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';

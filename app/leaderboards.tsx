@@ -24,6 +24,7 @@ import {
 } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { openFriendProfile } from '@/layout/openDetail';
 import { ChevronDownIcon, ChevronLeftIcon, GlobeIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import { MoreSheet } from '@/components/shared/MoreSheet';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
@@ -177,7 +178,7 @@ export default function LeaderboardsScreen() {
 
   const openProfile = useCallback(
     (accountId: string) => {
-      router.push({ pathname: '/parta/[id]', params: { id: accountId } } as Href);
+      openFriendProfile(router, accountId);
     },
     [router],
   );

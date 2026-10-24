@@ -15,6 +15,7 @@ import React, { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
+import { openFriendProfile } from '@/layout/openDetail';
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import type { BeerCheckIn } from '@/data/beerCheckinsClient';
 import type { PartaFeedSitting } from '@/data/partaFeedClient';
@@ -57,7 +58,7 @@ function SittingRowComponent({
 
   const open = useCallback(() => {
     if (sitting.mine) router.push('/profile' as Href);
-    else if (account.id) router.push(`/parta/${account.id}` as Href);
+    else if (account.id) openFriendProfile(router, account.id);
   }, [account.id, router, sitting.mine]);
 
   const handleLongPress = useCallback(() => {

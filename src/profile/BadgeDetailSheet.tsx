@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   runOnJS,
@@ -18,6 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { CheckIcon, EyeIcon, EyeOffIcon, XIcon } from '@/components/shared/IconGlyph';
 import { intlLocale, t } from '@/i18n';
 import { BadgeMedal, medalLook } from '@/profile/BadgeMedal';

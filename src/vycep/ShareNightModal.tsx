@@ -11,13 +11,11 @@
 
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   Pressable,
   Share,
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
   type ViewInstance,
 } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
@@ -32,6 +30,7 @@ import Svg, {
   Stop,
 } from 'react-native-svg';
 
+import { Modal, useModalFrame } from '@/components/shared/Modal';
 import { CopyIcon, Share2Icon, XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { formatEveningDate } from '@/myBeers/eveningModel';
@@ -66,7 +65,7 @@ function ShareNightModalBase({
   mode = 'recap',
 }: ShareNightModalProps) {
   const showToast = useToastStore((s) => s.show);
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useModalFrame();
   const cardRef = useRef<ViewInstance>(null);
   const [busy, setBusy] = useState(false);
 

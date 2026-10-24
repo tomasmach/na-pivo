@@ -5,9 +5,10 @@
  */
 
 import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { InfoIcon, XIcon } from '@/components/shared/IconGlyph';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';

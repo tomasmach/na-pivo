@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Keyboard, Modal, PanResponder, Pressable, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
+import { AccessibilityInfo, Keyboard, PanResponder, Pressable, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { usePreventRemove, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
+import { Modal } from '@/components/shared/Modal';
 import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, GripVerticalIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog, AppDialogHost } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';

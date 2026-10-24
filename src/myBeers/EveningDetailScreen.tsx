@@ -8,7 +8,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -16,8 +15,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 
+import { Modal } from '@/components/shared/Modal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -81,6 +81,8 @@ import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { useDetailNav, useDetailParams } from '@/layout/detail';
+import { useTone } from '@/layout/pane';
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
@@ -114,7 +116,10 @@ export default function EveningDetailScreen() {
   const insets = useSafeAreaInsets();
   const now = new Date();
 
-  const params = useLocalSearchParams<{ startedAt?: string }>();
+  // Set when the evening sits in the Štamgast tab's right half instead of on the stack.
+  const pane = useDetailNav();
+  const quiet = useTone() === 'quiet';
+  const params = useDetailParams<{ startedAt?: string }>();
   const startedAt = typeof params.startedAt === 'string' ? params.startedAt : '';
 
   const current = useTallyStore((s) => s.current);
@@ -355,7 +360,7 @@ export default function EveningDetailScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => (pane ? pane.back() : router.back())}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={t.a11y.backButton}
@@ -423,12 +428,18 @@ export default function EveningDetailScreen() {
               <Pressable
                 onPress={openAddDrink}
                 testID="evening-add-drink"
-                style={({ pressed }) => [styles.addDrinkButton, pressed && styles.iconButtonPressed]}
+                style={({ pressed }) => [
+                  styles.addDrinkButton,
+                  quiet && styles.quietFill,
+                  pressed && styles.iconButtonPressed,
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel={t.a11y.myBeersAddDrinkToEvening}
               >
-                <PlusIcon size={15} color={Colors.stout} />
-                <Text style={styles.addDrinkButtonText}>{t.myBeers.addDrinkToEvening}</Text>
+                <PlusIcon size={15} color={quiet ? Colors.foam : Colors.stout} />
+                <Text style={[styles.addDrinkButtonText, quiet && styles.quietText]}>
+                  {t.myBeers.addDrinkToEvening}
+                </Text>
               </Pressable>
             </View>
             {drinkActionGroups.map((group, index) => {
@@ -527,10 +538,17 @@ export default function EveningDetailScreen() {
                   testID="night-publish-open"
                   accessibilityRole="button"
                   accessibilityLabel={t.a11y.publishNightButton}
-                  style={({ pressed }) => [styles.vycepPrimary, pressed && styles.iconButtonPressed]}
+                  style={({ pressed }) => [
+                    styles.vycepPrimary,
+                    quiet && styles.quietFill,
+                    pressed && styles.iconButtonPressed,
+                  ]}
                 >
-                  <HandPlatterIcon size={16} color={Colors.stout} />
-                  <Text style={styles.vycepPrimaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  <HandPlatterIcon size={16} color={quiet ? Colors.foam : Colors.stout} />
+                  <Text
+                    style={[styles.vycepPrimaryText, quiet && styles.quietText]}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
                     {publishedRecord ? t.vycep.updateCta : t.vycep.publishEntryTitle}
                   </Text>
                 </Pressable>
@@ -811,6 +829,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.stout,
   },
+  // Beside the counter the amber belongs to "Ještě jedno" on the left.
+  quietFill: { backgroundColor: Colors.stout3 },
+  quietText: { color: Colors.foam },
   drinkRow: {
     flexDirection: 'row',
     alignItems: 'center',

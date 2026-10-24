@@ -19,7 +19,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -39,6 +38,8 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
+import { openFriendProfile } from '@/layout/openDetail';
+import { Modal } from '@/components/shared/Modal';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
@@ -581,7 +582,7 @@ export default function PhotoContestScreen() {
         router.push('/profile' as Href);
         return;
       }
-      router.push({ pathname: '/parta/[id]', params: { id: entry.account.id } } as Href);
+      openFriendProfile(router, entry.account.id);
     },
     [router],
   );

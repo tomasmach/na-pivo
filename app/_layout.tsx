@@ -112,6 +112,9 @@ import {
 } from '@/liveActivity/liveBeerActivity';
 import { initializeHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransitSync';
+import { useBookLayout } from '@/layout/bookLayout';
+import { noteTopPathname, openDetail } from '@/layout/openDetail';
+import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -244,8 +247,12 @@ export default function RootLayout() {
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   const [telemetryReady, setTelemetryReady] = useState(false);
+  // A wide window opens these in a tab's right half; when one still arrives as
+  // a route, it moves there without a slide.
+  const detailAnimation = useBookLayout().wide ? 'none' : undefined;
   useEffect(() => {
     pathnameRef.current = pathname;
+    noteTopPathname(pathname);
   }, [pathname]);
   // Hold the splash until the first-run decision resolves too, so a fresh
   // install fades straight into the onboarding instead of flashing the compass.
@@ -284,10 +291,7 @@ export default function RootLayout() {
     // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
     const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
     const openBeerOnTapPub = ({ key, name, lat, lng }: BeerOnTapPub) =>
-      router.push({
-        pathname: '/pub',
-        params: { key, name, lat: String(lat), lng: String(lng) },
-      } as unknown as Href);
+      openDetail(router, { kind: 'pub', params: { key, name, lat: String(lat), lng: String(lng) } });
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
@@ -618,14 +622,14 @@ export default function RootLayout() {
             name="evening"
             options={{
               presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
+              animation: detailAnimation ?? 'slide_from_bottom',
               gestureEnabled: false,
             }}
           />
           <Stack.Screen
             name="pub"
             options={{
-              animation: 'slide_from_right',
+              animation: detailAnimation ?? 'slide_from_right',
               gestureEnabled: true,
             }}
           />
@@ -735,7 +739,7 @@ export default function RootLayout() {
             options={{
               // A back-navigable "place" (friend profile), pushed like a detail
               // screen with the native right-edge back-swipe.
-              animation: 'slide_from_right',
+              animation: detailAnimation ?? 'slide_from_right',
               gestureEnabled: true,
             }}
           />
@@ -757,6 +761,7 @@ export default function RootLayout() {
           />
         </Stack>
         <OnboardingGate />
+        <PaneRouteMigrator />
         <WhatsNewModal />
         <ContestResultsModal />
         <PubReminderOnboardingModal />

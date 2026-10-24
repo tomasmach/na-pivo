@@ -1,10 +1,11 @@
-import ProfileScreen from '@/profile/ProfileScreen';
+import { BookSpread } from '@/layout/BookSpread';
 import { TabScreen } from '@/navigation/TabScreen';
+import ProfileScreen from '@/profile/ProfileScreen';
 
 export default function ProfileTab() {
   return (
     <TabScreen>
-      <ProfileScreen />
+      <BookSpread tab="profil" primary={<ProfileScreen />} />
     </TabScreen>
   );
 }

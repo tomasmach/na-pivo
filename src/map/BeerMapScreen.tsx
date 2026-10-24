@@ -3,7 +3,6 @@ import {
   AccessibilityInfo,
   FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -21,6 +20,8 @@ import MapView, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
+import { Modal } from '@/components/shared/Modal';
+import { useTone } from '@/layout/pane';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
@@ -103,6 +104,10 @@ type MapSelection =
   | { kind: 'live'; key: string; accountId: string | null }
   | { kind: 'city'; key: string; accountId: string | null };
 
+const TARGET_WIDTH = 160;
+const TARGET_LABEL_HEIGHT = 18;
+const TARGET_ANCHOR = { x: 0.5, y: 28 / (56 + TARGET_LABEL_HEIGHT) };
+
 let rememberedRegion: Region | null = null;
 /** A fresher locate fix closer than this does not re-animate the map. */
 const LOCATE_FOLLOW_UP_M = 25;
@@ -129,6 +134,8 @@ export function resetBeerMapLayerForAddedPub(): void {
 
 export interface BeerMapScreenProps {
   initialPub?: Pub | null;
+  /** The compass target beside the map, marked and named while nothing else is picked. */
+  highlightPubKey?: string | null;
   focusInitialPub?: boolean;
   onSearch?: () => void;
   /** Set when the map is opened over another screen, which it returns to. */
@@ -246,6 +253,7 @@ function PlaceCard({
   onClose,
 }: PlaceCardProps) {
   const { fontScale } = useWindowDimensions();
+  const quiet = useTone() === 'quiet';
   const stacked = fontScale > STACKED_ACTION_FONT_SCALE;
   const ratingText = rating
     ? rating.count
@@ -353,12 +361,16 @@ function PlaceCard({
 
         <Pressable
           onPress={action.onPress}
-          style={({ pressed }) => [styles.placeAction, pressed && styles.pressedSoft]}
+          style={({ pressed }) => [
+            styles.placeAction,
+            quiet && styles.placeActionQuiet,
+            pressed && styles.pressedSoft,
+          ]}
           accessibilityRole="button"
           accessibilityLabel={action.accessibilityLabel}
         >
           <Text
-            style={styles.placeActionLabel}
+            style={[styles.placeActionLabel, quiet && styles.placeActionLabelQuiet]}
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
@@ -607,6 +619,7 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
 
 export default function BeerMapScreen({
   initialPub,
+  highlightPubKey = null,
   focusInitialPub = false,
   onSearch,
   onBack,
@@ -1486,14 +1499,16 @@ export default function BeerMapScreen({
         {clusters.map((cluster) => {
           if (cluster.items.length === 1) {
             const point = cluster.items[0];
-            const selected = selectedPub?.key === point.key;
+            const target = !selectedPub && point.key === highlightPubKey;
+            const selected = selectedPub?.key === point.key || target;
             const beers = visibleBeers?.get(point.key) ?? 0;
             const favorite = isFavoritePoint(point);
             return (
               <StaticMapMarker
-                key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${favorite ? 'fav' : ''}:${selected ? 'selected' : 'idle'}`}
+                key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${favorite ? 'fav' : ''}:${selected ? 'selected' : 'idle'}:${target ? 'target' : ''}`}
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
+                anchor={target ? TARGET_ANCHOR : undefined}
                 onPress={() => selectPub(point)}
                 accessibilityLabel={[
                   t.a11y.mapPub(point.pub.name, point.visit?.visitCount ?? 0),
@@ -1501,12 +1516,21 @@ export default function BeerMapScreen({
                   beers ? t.map.beersLastWeek(beers) : null,
                 ].filter(Boolean).join(', ')}
               >
-                <PubMarker
-                  visited={Boolean(point.visit)}
-                  selected={selected}
-                  beers={beers}
-                  favorite={favorite}
-                />
+                {target ? (
+                  <View style={styles.targetMarker}>
+                    <PubMarker visited={Boolean(point.visit)} selected beers={beers} favorite={favorite} />
+                    <Text style={styles.targetLabel} numberOfLines={1} allowFontScaling={false}>
+                      {point.pub.name}
+                    </Text>
+                  </View>
+                ) : (
+                  <PubMarker
+                    visited={Boolean(point.visit)}
+                    selected={selected}
+                    beers={beers}
+                    favorite={favorite}
+                  />
+                )}
               </StaticMapMarker>
             );
           }
@@ -1549,7 +1573,8 @@ export default function BeerMapScreen({
       </MapView>
 
       <View
-        style={[styles.topStack, { paddingTop: insets.top }]}
+        // Side insets keep the controls off the fold when the map is a half of the window.
+        style={[styles.topStack, { paddingTop: insets.top, left: insets.left, right: insets.right }]}
         pointerEvents="box-none"
       >
         <View style={styles.header}>
@@ -1633,7 +1658,7 @@ export default function BeerMapScreen({
       <View
         style={[
           styles.bottomStack,
-          { paddingBottom: bottomInset },
+          { paddingBottom: bottomInset, left: insets.left, right: insets.right },
         ]}
         pointerEvents="box-none"
       >
@@ -2074,6 +2099,19 @@ const styles = StyleSheet.create({
   },
 
   pinHit: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  // The pin keeps its 56 pt box on top so it still sits on the coordinate (TARGET_ANCHOR).
+  targetMarker: { width: TARGET_WIDTH, height: 56 + TARGET_LABEL_HEIGHT, alignItems: 'center' },
+  targetLabel: {
+    maxWidth: TARGET_WIDTH,
+    height: TARGET_LABEL_HEIGHT,
+    fontFamily: Fonts.ui.bold,
+    fontSize: 13,
+    lineHeight: TARGET_LABEL_HEIGHT,
+    color: Colors.foam,
+    textShadowColor: Colors.black,
+    textShadowRadius: 3,
+    textShadowOffset: { width: 0, height: 1 },
+  },
   // Symmetric so the pin stays on the coordinate; the badge needs the right half.
   pinHitWide: { width: 80 },
   pinBeersBadge: { top: 5, left: 47 },
@@ -2373,6 +2411,9 @@ const styles = StyleSheet.create({
     color: Colors.stout,
     includeFontPadding: false,
   },
+  // Beside the compass the amber belongs to "Doveď mě tam" on the left.
+  placeActionQuiet: { backgroundColor: Colors.stout3 },
+  placeActionLabelQuiet: { color: Colors.foam },
 
   // — Layer switch (§2.2: neutral track, never a second amber surface) —
   layerTrack: {

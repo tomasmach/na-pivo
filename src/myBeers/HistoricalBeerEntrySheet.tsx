@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { BeerIcon, LockKeyholeIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
 import { type BeerCheckInInput, type BeerCheckInVisibility } from '@/data/beerCheckinsClient';

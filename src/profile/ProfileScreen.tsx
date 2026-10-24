@@ -66,6 +66,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat } from '@/utils/intlFormat';
 import { useBottomInset, useFirstFocus } from '@/navigation/TabScreen';
+import { TwoColumns } from '@/layout/TwoColumns';
 
 // The QR code pulls in ~450 KB of SVG/CSS parsing; load it when the sheet opens.
 const CodeSheet = lazy(() => import('@/friends/CodeSheet'));
@@ -355,271 +356,280 @@ export default function ProfileScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.identityRow}>
-          {isSignedIn ? (
-            <Pressable
-              onPress={() => {
-                trackUiInteraction('profile_edit_open');
-                router.push('/profile/edit' as Href);
-              }}
-              style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={t.a11y.profileIdentity}
-            >
-              {identity}
-            </Pressable>
-          ) : (
-            <View style={styles.identity}>{identity}</View>
-          )}
-          <RoundButton
-            testID="profile-settings"
-            label={t.a11y.profileSettings}
-            onPress={() => {
-              trackUiInteraction('profile_settings_open');
-              router.push('/settings' as Href);
-            }}
-          >
-            <SettingsIcon size={20} color={Colors.foam} />
-          </RoundButton>
-        </View>
+        <TwoColumns
+          first={
+            <>
+              <View style={styles.identityRow}>
+                {isSignedIn ? (
+                  <Pressable
+                    onPress={() => {
+                      trackUiInteraction('profile_edit_open');
+                      router.push('/profile/edit' as Href);
+                    }}
+                    style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.a11y.profileIdentity}
+                  >
+                    {identity}
+                  </Pressable>
+                ) : (
+                  <View style={styles.identity}>{identity}</View>
+                )}
+                <RoundButton
+                  testID="profile-settings"
+                  label={t.a11y.profileSettings}
+                  onPress={() => {
+                    trackUiInteraction('profile_settings_open');
+                    router.push('/settings' as Href);
+                  }}
+                >
+                  <SettingsIcon size={20} color={Colors.foam} />
+                </RoundButton>
+              </View>
 
-        <View
-          accessible
-          accessibilityLabel={t.a11y.profileCard(
-            beersLabel,
-            level !== null && xpProgress ? t.profile.levelLine(level, xpProgress.title) : levelHint ?? '',
-          )}
-        >
-          <View style={styles.hero}>
-            <View style={styles.heroCount}>
-              <Text
-                style={styles.count}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.6}
-                maxFontSizeMultiplier={FontScaleCap.display}
+              <View
+                accessible
+                accessibilityLabel={t.a11y.profileCard(
+                  beersLabel,
+                  level !== null && xpProgress ? t.profile.levelLine(level, xpProgress.title) : levelHint ?? '',
+                )}
               >
-                {beersLabel}
-              </Text>
-              <Text style={styles.countLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                {beers > 0 ? t.profile.lifetimeLabel(beers) : t.profile.lifetimeEmpty}
-              </Text>
-            </View>
-            <LevelRing
-              level={level}
-              title={isSignedIn && xpProgress ? xpProgress.title : null}
-              progress={levelProgress}
-              size={72}
-            />
-          </View>
-          {levelHint ? (
-            <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {levelHint}
-            </Text>
-          ) : null}
-          {beers > 0 ? (
-            <View style={styles.stats}>
-              <Stat value={lifetime.pubs.toLocaleString(intlLocale)} label={t.profile.statPubsLabel(lifetime.pubs)} />
-              <Stat
-                value={lifetime.evenings.toLocaleString(intlLocale)}
-                label={t.profile.statEveningsLabel(lifetime.evenings)}
-                align={lifetime.spentCzk > 0 ? 'center' : 'right'}
-              />
-              {lifetime.spentCzk > 0 ? (
-                <Stat value={formatPrice(lifetime.spentCzk, priceCurrency)} label={t.profile.statSpentLabel} align="right" />
-              ) : null}
-            </View>
-          ) : null}
-          {facts ? (
-            <Text style={styles.facts} maxFontSizeMultiplier={FontScaleCap.body}>
-              {facts}
-            </Text>
-          ) : null}
-        </View>
-
-        <Pressable
-          onPress={primary.onPress}
-          style={({ pressed }) => [styles.primary, pressed && styles.primaryPressed]}
-          accessibilityRole="button"
-          accessibilityLabel={primary.label}
-        >
-          <Text style={styles.primaryLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-            {primary.label}
-          </Text>
-          {'sub' in primary ? (
-            <Text style={styles.primarySub} maxFontSizeMultiplier={FontScaleCap.body}>
-              {primary.sub}
-            </Text>
-          ) : null}
-        </Pressable>
-
-        {favorites.length > 0 ? (
-          <>
-            <Band />
-            <SectionTitle title={t.profile.favoritesTitle} aside={favorites.length.toLocaleString(intlLocale)} />
-            {shownFavorites.map((pub, index) => (
-              <ListRow
-                key={`${pub.lat},${pub.lng}`}
-                first={index === 0}
-                title={pub.name}
-                subtitle={pub.city}
-                onPress={() => openPubPage(router, pub)}
-              />
-            ))}
-            {favorites.length > FAVORITES_COLLAPSED ? (
-              <TextLink
-                label={allFavorites ? t.profile.favoritesShowLess : t.profile.favoritesShowAll(favorites.length)}
-                onPress={() => setAllFavorites((value) => !value)}
-              />
-            ) : null}
-          </>
-        ) : null}
-
-        {shelf && badges ? (
-          <>
-            <Band />
-            <SectionTitle title={t.badges.title} aside={t.badges.earnedOf(shelf.earned, badges.length)} />
-            {shelf.shown.length > 0 ? (
-              <Pressable
-                onPress={openBadges}
-                style={({ pressed }) => [styles.badges, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={`${t.a11y.profileBadges}: ${shelf.shown.map((state) => badgeName(state)).join(', ')}`}
-              >
-                {shelf.shown.map((state) => (
-                  <View key={state.key} style={styles.badge}>
-                    <BadgeMedal
-                      badge={state.key}
-                      look={medalLook(state)}
-                      size={56}
-                      dot={ownLedger && unopenedBadges.includes(state.key)}
-                    />
-                    <Text style={styles.badgeTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.display}>
-                      {badgeName(state)}
+                <View style={styles.hero}>
+                  <View style={styles.heroCount}>
+                    <Text
+                      style={styles.count}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.6}
+                      maxFontSizeMultiplier={FontScaleCap.display}
+                    >
+                      {beersLabel}
+                    </Text>
+                    <Text style={styles.countLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {beers > 0 ? t.profile.lifetimeLabel(beers) : t.profile.lifetimeEmpty}
                     </Text>
                   </View>
-                ))}
-                <View style={styles.badgesMore}>
-                  <ChevronRightIcon size={16} color={Colors.mutedText} />
+                  <LevelRing
+                    level={level}
+                    title={isSignedIn && xpProgress ? xpProgress.title : null}
+                    progress={levelProgress}
+                    size={72}
+                  />
                 </View>
-              </Pressable>
-            ) : null}
-            {shelf.goal && (shelf.shown.length > 0 || shelf.goal.value > 0) ? (
-              <BadgeGoalRow state={shelf.goal} first={shelf.shown.length === 0} prefixed onPress={openBadges} />
-            ) : shelf.shown.length === 0 ? (
-              <ListRow first title={t.badges.empty} onPress={openBadges} />
-            ) : null}
-          </>
-        ) : null}
-
-        <Band />
-        <SectionTitle
-          title={t.profile.photosTitle}
-          aside={photos.length > 0 ? photos.length.toLocaleString(intlLocale) : null}
-        />
-        {photos.length > 0 ? (
-          <>
-            <View style={styles.thumbs}>
-              {photos.slice(0, PHOTOS_SHOWN).map((photo) => {
-                const uri = photo.imageUrl ?? photo.localUri;
-                return (
-                  <Pressable
-                    key={photo.clientId}
-                    onPress={() =>
-                      router.push({ pathname: '/photo/[key]', params: { key: photo.clientId } } as Href)
-                    }
-                    style={({ pressed }) => [styles.thumb, pressed && styles.pressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.a11y.photoTile(photo.caption || photo.pubName || t.profile.photosTitle)}
-                  >
-                    {uri ? (
-                      <Image
-                        source={{ uri }}
-                        style={StyleSheet.absoluteFill}
-                        resizeMode="cover"
-                        resizeMethod="resize"
-                        accessibilityIgnoresInvertColors
-                      />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-              {Array.from({ length: Math.max(0, PHOTOS_SHOWN - photos.length) }).map((_, index) => (
-                <View key={index} style={styles.thumbSpacer} />
-              ))}
-            </View>
-            {failedPhoto ? (
-              <View style={styles.failedRow}>
-                <Text style={styles.failedText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.profile.photoFailed}
-                </Text>
-                <Pressable onPress={retryFailedPhoto} hitSlop={10} accessibilityRole="button">
-                  <Text style={styles.link} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.profile.photoRetry}
+                {levelHint ? (
+                  <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {levelHint}
                   </Text>
-                </Pressable>
+                ) : null}
+                {beers > 0 ? (
+                  <View style={styles.stats}>
+                    <Stat value={lifetime.pubs.toLocaleString(intlLocale)} label={t.profile.statPubsLabel(lifetime.pubs)} />
+                    <Stat
+                      value={lifetime.evenings.toLocaleString(intlLocale)}
+                      label={t.profile.statEveningsLabel(lifetime.evenings)}
+                      align={lifetime.spentCzk > 0 ? 'center' : 'right'}
+                    />
+                    {lifetime.spentCzk > 0 ? (
+                      <Stat value={formatPrice(lifetime.spentCzk, priceCurrency)} label={t.profile.statSpentLabel} align="right" />
+                    ) : null}
+                  </View>
+                ) : null}
+                {facts ? (
+                  <Text style={styles.facts} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {facts}
+                  </Text>
+                ) : null}
               </View>
-            ) : null}
-            <TextLink label={t.profile.photosAll} onPress={openPhotos} />
-          </>
-        ) : (
-          <>
-            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.profile.photosEmpty}
-            </Text>
-            <TextLink label={t.profile.photosAdd} onPress={openPhotos} divided={false} />
-          </>
-        )}
 
-        <Band />
-        <SectionTitle
-          title={t.profile.addedPubsTitle}
-          aside={addedPubs.length > 0 ? addedPubs.length.toLocaleString(intlLocale) : null}
-        />
-        {/* Always reachable: after a sign-in the list is only on the server until the screen loads it. */}
-        <ListRow
-          first
-          title={t.profile.myAddedPubs}
-          value={waitingPubs > 0 ? t.profile.addedPubsWaiting(waitingPubs) : null}
-          onPress={() => router.push('/my-added-pubs' as Href)}
-        />
-        <ListRow title={t.profile.addPub} onPress={() => router.push('/add-pub' as Href)} />
+              <Pressable
+                onPress={primary.onPress}
+                style={({ pressed }) => [styles.primary, pressed && styles.primaryPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={primary.label}
+              >
+                <Text style={styles.primaryLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {primary.label}
+                </Text>
+                {'sub' in primary ? (
+                  <Text style={styles.primarySub} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {primary.sub}
+                  </Text>
+                ) : null}
+              </Pressable>
 
-        <Band />
-        <SectionTitle title={t.profile.moreTitle} />
-        {!isSignedIn && beers === 0 ? (
-          <ListRow first title={t.profile.ctaSignUp} subtitle={t.profile.ctaSignUpSub} onPress={openSignUp} />
-        ) : null}
-        <ListRow
-          first={isSignedIn || beers > 0}
-          title={t.profile.partaRow}
-          value={
-            partaCount === null
-              ? null
-              : partaCount > 0
-                ? partaCount.toLocaleString(intlLocale)
-                : t.profile.partaEmpty
+              {favorites.length > 0 ? (
+                <>
+                  <Band />
+                  <SectionTitle title={t.profile.favoritesTitle} aside={favorites.length.toLocaleString(intlLocale)} />
+                  {shownFavorites.map((pub, index) => (
+                    <ListRow
+                      key={`${pub.lat},${pub.lng}`}
+                      first={index === 0}
+                      title={pub.name}
+                      subtitle={pub.city}
+                      onPress={() => openPubPage(router, pub)}
+                    />
+                  ))}
+                  {favorites.length > FAVORITES_COLLAPSED ? (
+                    <TextLink
+                      label={allFavorites ? t.profile.favoritesShowLess : t.profile.favoritesShowAll(favorites.length)}
+                      onPress={() => setAllFavorites((value) => !value)}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </>
           }
-          onPress={() => {
-            trackUiInteraction('profile_friends_manage_open');
-            router.push('/profile/parta' as Href);
-          }}
+          second={
+            <>
+              {shelf && badges ? (
+                <>
+                  <Band />
+                  <SectionTitle title={t.badges.title} aside={t.badges.earnedOf(shelf.earned, badges.length)} />
+                  {shelf.shown.length > 0 ? (
+                    <Pressable
+                      onPress={openBadges}
+                      style={({ pressed }) => [styles.badges, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t.a11y.profileBadges}: ${shelf.shown.map((state) => badgeName(state)).join(', ')}`}
+                    >
+                      {shelf.shown.map((state) => (
+                        <View key={state.key} style={styles.badge}>
+                          <BadgeMedal
+                            badge={state.key}
+                            look={medalLook(state)}
+                            size={56}
+                            dot={ownLedger && unopenedBadges.includes(state.key)}
+                          />
+                          <Text style={styles.badgeTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.display}>
+                            {badgeName(state)}
+                          </Text>
+                        </View>
+                      ))}
+                      <View style={styles.badgesMore}>
+                        <ChevronRightIcon size={16} color={Colors.mutedText} />
+                      </View>
+                    </Pressable>
+                  ) : null}
+                  {shelf.goal && (shelf.shown.length > 0 || shelf.goal.value > 0) ? (
+                    <BadgeGoalRow state={shelf.goal} first={shelf.shown.length === 0} prefixed onPress={openBadges} />
+                  ) : shelf.shown.length === 0 ? (
+                    <ListRow first title={t.badges.empty} onPress={openBadges} />
+                  ) : null}
+                </>
+              ) : null}
+
+              <Band />
+              <SectionTitle
+                title={t.profile.photosTitle}
+                aside={photos.length > 0 ? photos.length.toLocaleString(intlLocale) : null}
+              />
+              {photos.length > 0 ? (
+                <>
+                  <View style={styles.thumbs}>
+                    {photos.slice(0, PHOTOS_SHOWN).map((photo) => {
+                      const uri = photo.imageUrl ?? photo.localUri;
+                      return (
+                        <Pressable
+                          key={photo.clientId}
+                          onPress={() =>
+                            router.push({ pathname: '/photo/[key]', params: { key: photo.clientId } } as Href)
+                          }
+                          style={({ pressed }) => [styles.thumb, pressed && styles.pressed]}
+                          accessibilityRole="button"
+                          accessibilityLabel={t.a11y.photoTile(photo.caption || photo.pubName || t.profile.photosTitle)}
+                        >
+                          {uri ? (
+                            <Image
+                              source={{ uri }}
+                              style={StyleSheet.absoluteFill}
+                              resizeMode="cover"
+                              resizeMethod="resize"
+                              accessibilityIgnoresInvertColors
+                            />
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                    {Array.from({ length: Math.max(0, PHOTOS_SHOWN - photos.length) }).map((_, index) => (
+                      <View key={index} style={styles.thumbSpacer} />
+                    ))}
+                  </View>
+                  {failedPhoto ? (
+                    <View style={styles.failedRow}>
+                      <Text style={styles.failedText} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {t.profile.photoFailed}
+                      </Text>
+                      <Pressable onPress={retryFailedPhoto} hitSlop={10} accessibilityRole="button">
+                        <Text style={styles.link} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {t.profile.photoRetry}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  <TextLink label={t.profile.photosAll} onPress={openPhotos} />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.profile.photosEmpty}
+                  </Text>
+                  <TextLink label={t.profile.photosAdd} onPress={openPhotos} divided={false} />
+                </>
+              )}
+
+              <Band />
+              <SectionTitle
+                title={t.profile.addedPubsTitle}
+                aside={addedPubs.length > 0 ? addedPubs.length.toLocaleString(intlLocale) : null}
+              />
+              {/* Always reachable: after a sign-in the list is only on the server until the screen loads it. */}
+              <ListRow
+                first
+                title={t.profile.myAddedPubs}
+                value={waitingPubs > 0 ? t.profile.addedPubsWaiting(waitingPubs) : null}
+                onPress={() => router.push('/my-added-pubs' as Href)}
+              />
+              <ListRow title={t.profile.addPub} onPress={() => router.push('/add-pub' as Href)} />
+
+              <Band />
+              <SectionTitle title={t.profile.moreTitle} />
+              {!isSignedIn && beers === 0 ? (
+                <ListRow first title={t.profile.ctaSignUp} subtitle={t.profile.ctaSignUpSub} onPress={openSignUp} />
+              ) : null}
+              <ListRow
+                first={isSignedIn || beers > 0}
+                title={t.profile.partaRow}
+                value={
+                  partaCount === null
+                    ? null
+                    : partaCount > 0
+                      ? partaCount.toLocaleString(intlLocale)
+                      : t.profile.partaEmpty
+                }
+                onPress={() => {
+                  trackUiInteraction('profile_friends_manage_open');
+                  router.push('/profile/parta' as Href);
+                }}
+              />
+              <ListRow
+                testID="profile-beer-watches"
+                title={t.profile.beerWatchesRow}
+                value={beerWatchCount > 0 ? beerWatchCount.toLocaleString(intlLocale) : null}
+                onPress={() => router.push('/profile/beer-watches' as Href)}
+              />
+              <ListRow
+                title={t.profile.leaderboardsRow}
+                value={weeklyRank != null ? t.profile.weeklyRank(weeklyRank) : null}
+                onPress={() => {
+                  trackUiInteraction('profile_leaderboards_open');
+                  router.push({ pathname: '/leaderboards', params: { source: 'profile' } } as Href);
+                }}
+              />
+              {!shelf ? <ListRow title={t.badges.title} onPress={openBadges} /> : null}
+            </>
+          }
         />
-        <ListRow
-          testID="profile-beer-watches"
-          title={t.profile.beerWatchesRow}
-          value={beerWatchCount > 0 ? beerWatchCount.toLocaleString(intlLocale) : null}
-          onPress={() => router.push('/profile/beer-watches' as Href)}
-        />
-        <ListRow
-          title={t.profile.leaderboardsRow}
-          value={weeklyRank != null ? t.profile.weeklyRank(weeklyRank) : null}
-          onPress={() => {
-            trackUiInteraction('profile_leaderboards_open');
-            router.push({ pathname: '/leaderboards', params: { source: 'profile' } } as Href);
-          }}
-        />
-        {!shelf ? <ListRow title={t.badges.title} onPress={openBadges} /> : null}
       </ScrollView>
 
       {codeVisible ? (

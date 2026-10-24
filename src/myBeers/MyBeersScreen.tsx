@@ -15,6 +15,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
+import { openEvening } from '@/layout/openDetail';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -436,12 +437,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
                       session={session}
                       priceCurrency={priceCurrency}
                       now={now}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/evening',
-                          params: { startedAt: session.startedAt },
-                        })
-                      }
+                      onPress={() => openEvening(router, session.startedAt)}
                     />
                   </View>
                 ))}

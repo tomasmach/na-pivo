@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Modal } from '@/components/shared/Modal';
 import {
   FlagIcon,
   MapPinPlusIcon,

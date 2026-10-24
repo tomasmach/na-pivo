@@ -41,6 +41,11 @@ export function TabScreen({ children }: PropsWithChildren) {
   );
 }
 
+/** Sets the tab bar inset for part of a tab, e.g. 0 for the upper half of an open iPhone Duo. */
+export function TabBarInsetOverride({ value, children }: PropsWithChildren<{ value: number }>) {
+  return <TabBarInsetContext.Provider value={value}>{children}</TabBarInsetContext.Provider>;
+}
+
 /** How much of the screen's bottom edge the tab bar covers; 0 outside tabs. */
 export function useTabBarInset(): number {
   return useContext(TabBarInsetContext) ?? 0;

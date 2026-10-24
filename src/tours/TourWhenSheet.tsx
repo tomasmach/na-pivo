@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal, useModalFrame } from '@/components/shared/Modal';
 import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import { intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -31,7 +32,7 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   plan: TourPlan; visible: boolean; onChange: (patch: Schedule) => Promise<TourResult>; onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { height, width } = useWindowDimensions();
+  const { height, width } = useModalFrame();
   const today = todayIn(plan.timezone);
   const last = lastDay(plan.timezone);
   const firstMonday = addDays(today, -weekday(today));

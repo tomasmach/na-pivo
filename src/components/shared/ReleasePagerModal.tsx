@@ -12,7 +12,6 @@ import React, { useCallback, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -24,6 +23,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
+import { usePagerAnchor } from '@/layout/usePagerAnchor';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -228,6 +229,7 @@ export function ReleasePagerModal({
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
+  usePagerAnchor(listRef, indexRef, width);
   const doneRef = useRef(false);
 
   const finish = useCallback(() => {

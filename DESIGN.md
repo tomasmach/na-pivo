@@ -793,8 +793,8 @@ V appce existují **dva druhy spodních panelů** a nezaměňují se:
    0.26`). **Pan gesto je na madle, ne na celém sheetu**; tělo táhne jen pod `full`, na `full` jen
    dolů a jen když je list nahoře. Throw: `projected = translateY + velocityY * 0.12` → nejbližší
    detent, spring `{ damping: 22, stiffness: 190, mass: 0.7 }`.
-2. **Intent sheet** — modal s jedním záměrem (§8), přes `BottomSheetModal` wrapper. Mechanika
-   níže. Vizuálně: zem sheetu je **`Colors.stout`** — stejná zem jako obrazovka, ne `stout2`
+2. **Intent sheet** — modal s jedním záměrem (§8), přes sdílený `Modal`
+   (`src/components/shared/Modal.tsx`). Mechanika níže. Vizuálně: zem sheetu je **`Colors.stout`** — stejná zem jako obrazovka, ne `stout2`
    („sheet je obrazovka, ne popup“) — radius **28** na horních rozích, `paddingHorizontal:
    MockLayout.screenPad` (jedna šířka appky, ne soukromých 16), grabber `44 × 4` (`foam 0.22`).
 
@@ -802,13 +802,22 @@ Zbytek téhle sekce je mechanika intent sheetu. Modal, ne knihovna.
 
 ### 7.1 Co vlastní wrapper a co volající
 
-Mechaniku modalu vlastní `src/components/shared/BottomSheetModal.tsx` (API:
-`{ visible, onClose, children }`): `Modal` s `animationType="none"`, scrim `black 0.6` s prolnutím,
-kartu s příjezdem na springu, Android back gesture a dismiss target za kartou
-(`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát). **Nestav si vlastní
-`Modal`.**
+Každý modal v appce je `Modal` ze `src/components/shared/Modal.tsx`. Má stejné props jako
+`Modal` z React Native, jehož import ESLint (`no-restricted-imports`) mimo wrapper zablokuje.
+**Nestav si `Modal` z `react-native`.** Wrapper k tomu přidává:
 
-Volající dodává jen kartu:
+- všechny orientace, protože vnitřní displej iPhonu Duo zámek na výšku nedrží (telefony drží
+  výšku přes Info.plist),
+- na knižně otevřeném Duu drží průhledný sheet v půlce, ze které se otevřel, a sheet z kořene
+  appky v pravé; druhou půlku ztmaví a ťuknutí do ní sheet zavře (§17.6). Neprůhledný modal je
+  celá obrazovka a dostane celé okno. Obsah, který se měří z okna, se měří z `useModalFrame()`,
+- dokud je sheet otevřený, drží svou půlku připojenou i po zavření telefonu, takže rozepsaný
+  zápis nezmizí,
+- jantarové tlačítko uvnitř zůstane jantarové i v tiché pravé půlce, sheet je samostatné okno.
+
+Scrim (`black 0.6`, `animationType="fade"`), dismiss target za kartou
+(`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát) a Android back přes
+`onRequestClose` si sheet staví sám podle kostry v §7.2. Volající dodává kartu:
 
 | Rozhodnutí | Důvod |
 |---|---|
@@ -822,7 +831,7 @@ Volající dodává jen kartu:
 
 ```tsx
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -831,47 +840,61 @@ import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { cs } from '@/i18n/cs';
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { Modal } from '@/components/shared/Modal';
 import { CloseButton } from '@/components/shared/CloseButton';
 
 export function ExampleSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose}>
-      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-        {/* Plain View: the dismiss target is a sibling BEHIND the card (wrapper),
-            so the card does not need to swallow presses — and a no-op Pressable
-            would group the whole sheet into one unnamed control (§11). */}
-        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
-          <View style={styles.grabber} />
+    <Modal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.backdrop}>
+        {/* Dismiss target BEHIND the card, hidden from VoiceOver. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
+        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+          {/* Plain View: the dismiss target is a sibling BEHIND the card (wrapper),
+              so the card does not need to swallow presses — and a no-op Pressable
+              would group the whole sheet into one unnamed control (§11). */}
+          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+            <View style={styles.grabber} />
 
-          {/* 1 — fixed header */}
-          <View style={styles.header}>
-            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {/* cs.<screen>.sheetTitle */}
-            </Text>
-            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+            {/* 1 — fixed header */}
+            <View style={styles.header}>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {/* cs.<screen>.sheetTitle */}
+              </Text>
+              <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+            </View>
+
+            {/* 2 — the only scrolling part */}
+            <ScrollView
+              style={styles.list}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* rows */}
+            </ScrollView>
+
+            {/* 3 — pinned footer, OUTSIDE the ScrollView */}
+            <View style={styles.actions}>{/* primary/secondary actions */}</View>
           </View>
-
-          {/* 2 — the only scrolling part */}
-          <ScrollView
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* rows */}
-          </ScrollView>
-
-          {/* 3 — pinned footer, OUTSIDE the ScrollView */}
-          <View style={styles.actions}>{/* primary/secondary actions */}</View>
         </View>
       </View>
-    </BottomSheetModal>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: withAlpha(Colors.black, 0.6),
+    justifyContent: 'flex-end',
+  },
   // Výškové meze patří SEM, ne na kartu — viz §7.5.
   cardWrap: {
     width: '100%',
@@ -920,8 +943,8 @@ const styles = StyleSheet.create({
 
 ### 7.2b Sheet vyjíždí zespoda (3.0)
 
-Použij `src/components/shared/BottomSheetModal.tsx`. Nestav si `Modal` s
-`animationType` sám.
+Cílový stav, zatím nepostavený: wrapper, který řídí oba pohyby níže sám. Do té doby
+sheety jedou `animationType="fade"` podle §7.2.
 
 Dřív tu stálo `animationType="fade"` s odůvodněním, že `"slide"` koliduje
 s vlastním polohováním karty a vzniká dvojitý pohyb. Je to napůl pravda:
@@ -1505,7 +1528,8 @@ vlastní povrch, ne jako rozbalovací pole v liště — jeden záměr na povrch
 Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil) — patří do stacku
 vedle `/profile/edit` a `/settings`. To platí i pro detail hospody: od 28. 9. 2026 je to
 samostatná obrazovka `/pub` (viz „Schválená stránka hospody“ nahoře), mapu otevírá výřez
-na stránce. Intent sheet (§7) detail nikdy nenese.
+na stránce. Intent sheet (§7) detail nikdy nenese. Na otevřeném iPhonu Duo se hospoda, večer a
+profil kámoše otevírají do pravé půlky (§17.6).
 
 ### 17.5 Kompas v seznamu hospod
 
@@ -1515,6 +1539,37 @@ hospodu, ke které právě navádí. Zůstává tím, co uživatel v tabu Hospod
 Zdroje pravdy o poloze a nejbližší hospodě jsou **dva a mají dané role**: `useCompass` pro
 discovery (seznam hospod, kompasová buňka), `useNearbyPub` (`src/counter/useNearbyPub.ts`) pro
 autopick hospody při zápisu. Třetí nezakládej.
+
+### 17.6 Otevřený iPhone Duo: kniha
+
+Schválená varianta B „Kniha“ (mock `na-pivo-iphone-duo.html`, 23. 10. 2026). Platí jen na iOS
+a jen pro okno rozložené jako kniha (šířka aspoň 800 pt a výška aspoň 600 pt) nebo postavené na
+stole (šířka aspoň 650 pt a výška aspoň 800 pt), viz `src/layout/bookLayout.ts`. Zavřené Duo
+(466 × 678 pt), rozdělené okno na vnitřním displeji a všechny iPhony zůstávají v telefonním
+rozložení beze změny.
+
+- **Dělí se přesně v ohybu.** Ohyb je střed okna, iOS jeho polohu appce nedává. Levá půlka je
+  obrazovka z telefonu, pravá její dvojče: Kompas vlevo a Mapa vpravo, Počítat vlevo a Deník
+  vpravo. Přepínače „Kompas | Mapa“ a „Počítat | Deník“ na rozloženém okně nejsou a každá půlka má
+  svoje „…“.
+- **20 pt od ohybu nic, na co jde ťuknout** (`FOLD_MARGIN`). Půlky to dostanou jako inset na
+  straně ohybu. Mapa smí jít až k ohybu, její ovládání ne.
+- **Jedno jantarové tlačítko na okno.** Pravá půlka je tichá: `GlowButton` a ručně stavěná
+  jantarová CTA v ní kreslí sekundární pilulku `stout3` („Dopiš večer“, „Doveď mě tam“ na
+  stránce hospody, „Namířit kompas“ na mapě). Sheet je samostatné okno a jantar v něm smí být.
+- **Hospoda, večer a kámoš se otevřou do pravé půlky** tabu se šipkou zpět. Jde to jen přes
+  `openDetail` (`openPubPage`, `openEvening`, `openFriendProfile`) a href na tyhle stránky jinde
+  nestav. Když je před taby obrazovka na celé okno (žebříčky, tour, nastavení), detail se pushne
+  jako na telefonu.
+- **Parta a Profil** rozloží obsah do dvou sloupců rozdělených v ohybu (`TwoColumns`). Kámoš nebo
+  hospoda se otevře přes pravý sloupec.
+- **Sheety zůstávají ve své půlce** (§7.1). Sheet otevřený z kořene appky jde do pravé.
+- **Na stole** (vodorovný ohyb, spodní půlka leží) je primární obrazovka dole a dvojče nahoře, aby
+  ručička kompasu ležela v rovině stolu. Kompas má kartu na šířku: ciferník vlevo, vzdálenost a
+  hospoda vpravo, pod ní „Doveď mě tam“ a „Dej mi jinou“ vedle sebe.
+- **Otevření a zavření.** Po otevření je obrazovka, kterou jsi měl, vlevo a pravá půlka přibude.
+  Po zavření vidíš vždycky kompas nebo počítadlo; co bylo vpravo, počká na další otevření. Půlka
+  s otevřeným sheetem zůstane připojená, dokud sheet nezavřeš, takže se rozepsaný zápis neztratí.
 
 ---
 

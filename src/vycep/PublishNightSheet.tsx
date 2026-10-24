@@ -10,8 +10,9 @@
  */
 
 import { memo, useCallback, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Modal } from '@/components/shared/Modal';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { HandPlatterIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
 import {

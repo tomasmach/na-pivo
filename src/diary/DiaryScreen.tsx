@@ -33,7 +33,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t, intlLocale, beerCountLabel, beerNoun, plural } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
-import { ChevronRightIcon, InfoIcon, MenuIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, ChevronRightIcon, InfoIcon, MenuIcon } from '@/components/shared/IconGlyph';
 
 import { NightCard } from '@/diary/NightCard';
 import { TallyCoaster } from '@/diary/TallyCoaster';
@@ -47,6 +47,7 @@ import { fetchMyBeerCheckIns, type BeerCheckIn, type BeerCheckInInput } from '@/
 import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { trackUiInteraction } from '@/data/uxTelemetry';
+import { openEvening as openEveningPage } from '@/layout/openDetail';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
 import {
@@ -428,7 +429,7 @@ export default function DiaryScreen({
         confirmAccessibilityLabel: t.diary.rejectedFix,
         onConfirm: () => {
           trackUiInteraction('diary_evening_open');
-          router.push({ pathname: '/evening', params: { startedAt: rejected.session.startedAt } });
+          openEveningPage(router, rejected.session.startedAt);
         },
       };
     }
@@ -453,7 +454,7 @@ export default function DiaryScreen({
   const openEvening = useCallback(
     (session: TallySession) => {
       trackUiInteraction('diary_evening_open');
-      router.push({ pathname: '/evening', params: { startedAt: session.startedAt } });
+      openEveningPage(router, session.startedAt);
     },
     [router],
   );
@@ -484,6 +485,13 @@ export default function DiaryScreen({
           control, so a whole 44pt row for one glyph would be dead space. */}
       {statsControlled ? null : (
         <View style={styles.header}>
+          {/* Standalone only beside the counter on a wide window, so it names itself. */}
+          <View style={styles.title} accessibilityRole="header">
+            <BeerIcon size={18} color={Colors.amber} />
+            <Text style={styles.titleLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.beer.segmentDiary}
+            </Text>
+          </View>
           <View style={styles.headerSpacer} />
           <Pressable
             onPress={() => setOwnStatsOpen(true)}
@@ -615,6 +623,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   headerSpacer: { flex: 1, minWidth: Spacing.sm },
+  title: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  titleLabel: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 17,
+    color: Colors.foam,
+  },
   moreButton: {
     width: 40,
     height: 40,

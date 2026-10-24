@@ -15,8 +15,9 @@
 
 import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 
+import { openFriendProfile } from '@/layout/openDetail';
 import { CompassIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import type { FriendPresence, FriendProfile, FriendPubActivity } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
@@ -63,7 +64,7 @@ function FriendActiveCard({ activity, presence, onResponded, stale = false }: Fr
 
   const openSafetyMenu = useFriendSafety(handleResponded);
   const openProfile = useCallback(() => {
-    if (account.id) router.push(`/parta/${account.id}` as Href);
+    if (account.id) openFriendProfile(router, account.id);
   }, [account.id, router]);
   const handleLongPress = useCallback(() => {
     openSafetyMenu(account);

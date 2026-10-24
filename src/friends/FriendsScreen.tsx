@@ -46,7 +46,6 @@ import {
 import {
   ActivityIndicator,
   AppState,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -61,6 +60,8 @@ import {
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { openFriendProfile as openFriendPage } from '@/layout/openDetail';
+import { Modal } from '@/components/shared/Modal';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
 import {
@@ -146,6 +147,7 @@ import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
 import { TourGlanceLine } from '@/tours/TourGlanceLine';
 import { useBottomInset, useFirstFocus } from '@/navigation/TabScreen';
+import { TwoColumns } from '@/layout/TwoColumns';
 import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
 import { PresenceList } from './PresenceList';
@@ -704,7 +706,7 @@ export default function FriendsScreen() {
     (accountId: string) => {
       if (accountId) {
         trackUiInteraction('friends_profile_open');
-        router.push(`/parta/${accountId}` as Href);
+        openFriendPage(router, accountId);
       }
     },
     [router],
@@ -1322,221 +1324,230 @@ export default function FriendsScreen() {
           }
           showsVerticalScrollIndicator={false}
         >
-          <View style={feed.length === 0 && !hasSitting ? styles.cardGrow : undefined}>
-            <PartyCard
-              count={sittingCount}
-              countLabel={
-                sittingCount > 0
-                  ? t.friends.tableCaptionSitting
-                  : t.friends.tableCaptionQuiet
-              }
-              headline={headline}
-              factStrong={
-                (d?.streak.currentWeeks ?? 0) > 0
-                  ? t.friends.streakWeeks(d?.streak.currentWeeks ?? 0)
-                  : t.friends.noStreak
-              }
-              // The risk outranks the rank: it expires this week, the rank does not.
-              factMuted={streakAtRisk ? t.friends.streakRiskFact : rankLine}
-              // The door is the screen's action, not a second way into the
-              // roster — the card itself already opens that when anyone is
-              // sitting, and the numeral plus the table say how many.
-              linkLabel={cta.label}
-              onLinkPress={cta.onPress}
-              // The drawing carries the same fact as the numeral above it:
-              // seats taken are people actually sitting, not RSVPs on a plan.
-              going={sittingCount}
-              maybe={maybeCount}
-              mine={d?.myPresence != null || d?.myActiveActivity != null}
-              onPress={
-                sittingCount > 0 || maybeCount > 0 ? () => setRosterVisible(true) : null
-              }
-              accessibilityLabel={t.a11y.partaCard(String(sittingCount), headline)}
-              rail={<><DoorRail tiles={railTiles} /><TourGlanceLine /></>}
-              topRow={chromeRow}
-            />
-          </View>
-
-          {/* 1. Kdo kde sedí — the block the whole rebuild is about. */}
-          <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.friends.presenceHeader}
-          </Text>
-
-          {hasSitting ? (
-            // The layout anchor sits on the block, not on a card inside it: a
-            // push hand-off scrolls to an offset measured against the scroll
-            // view, and only a direct child of the content view has one.
-            <View style={styles.block} onLayout={onActiveLayout}>
-              {/* Broadcast first: those rows are an invitation, not just a fact. */}
-              {(d?.activeFriends ?? []).map((activity) => (
-                <FriendActiveCard
-                  key={`live:${activity.id}`}
-                  activity={activity}
-                  presence={d?.presence.find((row) => row.account.id === activity.account.id)}
-                  onResponded={reload}
-                  stale={loadError}
-                />
-              ))}
-              <PresenceList
-                presence={quietPresence}
-                myPresence={myQuietPresence}
-                stale={loadError}
-                sharedCacheKey={sharedTable?.cacheKey ?? null}
-                onOpenProfile={openFriendProfile}
-                onChanged={reload}
-                onAddFromTable={hasIdentity ? openAddFromTable : undefined}
-              />
-            </View>
-          ) : loading && !d ? null : (
-            <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.friends.presenceEmpty}
-            </Text>
-          )}
-
-          {requests.length > 0 ? (
-            <View style={[styles.card, styles.spaced]} onLayout={onRequestsLayout}>
-              {requests.map((request, index) => renderRequestRow(request, index === 0))}
-            </View>
-          ) : null}
-
-          {plans.length > 0 ? (
-            <View style={[styles.block, styles.spaced]}>
-              {plans.map(({ activity, mine }) => (
-                <PlanCard
-                  key={`plan:${mine ? 'mine' : 'friend'}:${activity.id}`}
-                  activity={activity}
-                  mine={mine}
-                  onResponded={reload}
-                  onCanceled={reload}
-                />
-              ))}
-            </View>
-          ) : null}
-
-          {/* 2. Čerstvě cvaknuto — between the people and what they drank. */}
-          {opened ? <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} /> : null}
-
-          {/* 3. Žebříček party — who out-drank and out-sat whom, last 30 days. */}
-          <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.friends.leaderboardHeader}
-          </Text>
-
-          {partyBoard.length > 1 && boardHasBeers ? (
-            <View style={styles.boardSwitch}>
-              <SegmentedControl
-                options={[t.friends.leaderboardMetricBeers, t.friends.leaderboardMetricVisits]}
-                value={activeBoardMetric}
-                onChange={setBoardMetric}
-                accessibilityLabel={t.a11y.partyLeaderboardMetric}
-              />
-            </View>
-          ) : null}
-
-          {rankedBoard.length > 1 ? (
-            <>
-              <View style={styles.card}>
-                {visibleBoard.map((entry, index) => (
-                  <LeaderboardRow
-                    key={entry.account.id || `rank-${index}`}
-                    entry={entry}
-                    rank={index + 1}
-                    value={entry.value}
-                    caption={boardCaption(entry.value)}
-                    divided={index > 0}
-                    onPress={
-                      entry.isMe || !entry.account.id
-                        ? undefined
-                        : () => openFriendProfile(entry.account.id)
+          <TwoColumns
+            first={
+              <>
+                <View style={feed.length === 0 && !hasSitting ? styles.cardGrow : undefined}>
+                  <PartyCard
+                    count={sittingCount}
+                    countLabel={
+                      sittingCount > 0
+                        ? t.friends.tableCaptionSitting
+                        : t.friends.tableCaptionQuiet
                     }
+                    headline={headline}
+                    factStrong={
+                      (d?.streak.currentWeeks ?? 0) > 0
+                        ? t.friends.streakWeeks(d?.streak.currentWeeks ?? 0)
+                        : t.friends.noStreak
+                    }
+                    // The risk outranks the rank: it expires this week, the rank does not.
+                    factMuted={streakAtRisk ? t.friends.streakRiskFact : rankLine}
+                    // The door is the screen's action, not a second way into the
+                    // roster — the card itself already opens that when anyone is
+                    // sitting, and the numeral plus the table say how many.
+                    linkLabel={cta.label}
+                    onLinkPress={cta.onPress}
+                    // The drawing carries the same fact as the numeral above it:
+                    // seats taken are people actually sitting, not RSVPs on a plan.
+                    going={sittingCount}
+                    maybe={maybeCount}
+                    mine={d?.myPresence != null || d?.myActiveActivity != null}
+                    onPress={
+                      sittingCount > 0 || maybeCount > 0 ? () => setRosterVisible(true) : null
+                    }
+                    accessibilityLabel={t.a11y.partaCard(String(sittingCount), headline)}
+                    rail={<><DoorRail tiles={railTiles} /><TourGlanceLine /></>}
+                    topRow={chromeRow}
                   />
-                ))}
-                {myBoardPinned && myBoardIndex >= 0 ? (
-                  <>
-                    <Text
-                      style={styles.boardDots}
-                      allowFontScaling={false}
-                      accessibilityElementsHidden
-                      importantForAccessibility="no"
-                    >
-                      …
-                    </Text>
-                    <LeaderboardRow
-                      key="me-pinned"
-                      entry={rankedBoard[myBoardIndex]}
-                      rank={myBoardIndex + 1}
-                      value={rankedBoard[myBoardIndex].value}
-                      caption={boardCaption(rankedBoard[myBoardIndex].value)}
+                </View>
+
+                {/* 1. Kdo kde sedí — the block the whole rebuild is about. */}
+                <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.friends.presenceHeader}
+                </Text>
+
+                {hasSitting ? (
+                  // The layout anchor sits on the block, not on a card inside it: a
+                  // push hand-off scrolls to an offset measured against the scroll
+                  // view, and only a direct child of the content view has one.
+                  <View style={styles.block} onLayout={onActiveLayout}>
+                    {/* Broadcast first: those rows are an invitation, not just a fact. */}
+                    {(d?.activeFriends ?? []).map((activity) => (
+                      <FriendActiveCard
+                        key={`live:${activity.id}`}
+                        activity={activity}
+                        presence={d?.presence.find((row) => row.account.id === activity.account.id)}
+                        onResponded={reload}
+                        stale={loadError}
+                      />
+                    ))}
+                    <PresenceList
+                      presence={quietPresence}
+                      myPresence={myQuietPresence}
+                      stale={loadError}
+                      sharedCacheKey={sharedTable?.cacheKey ?? null}
+                      onOpenProfile={openFriendProfile}
+                      onChanged={reload}
+                      onAddFromTable={hasIdentity ? openAddFromTable : undefined}
                     />
-                  </>
+                  </View>
+                ) : loading && !d ? null : (
+                  <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.friends.presenceEmpty}
+                  </Text>
+                )}
+
+                {requests.length > 0 ? (
+                  <View style={[styles.card, styles.spaced]} onLayout={onRequestsLayout}>
+                    {requests.map((request, index) => renderRequestRow(request, index === 0))}
+                  </View>
                 ) : null}
-              </View>
 
-              {!showAllBoard && hiddenBoardCount > 0 ? (
-                <Pressable
-                  onPress={() => setShowAllBoard(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.friends.leaderboardMore(hiddenBoardCount)}
-                  style={({ pressed }) => [styles.moreFeedButton, pressed && styles.dim]}
-                >
-                  <Text style={styles.moreFeedLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.friends.leaderboardMore(hiddenBoardCount)}
+                {plans.length > 0 ? (
+                  <View style={[styles.block, styles.spaced]}>
+                    {plans.map(({ activity, mine }) => (
+                      <PlanCard
+                        key={`plan:${mine ? 'mine' : 'friend'}:${activity.id}`}
+                        activity={activity}
+                        mine={mine}
+                        onResponded={reload}
+                        onCanceled={reload}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </>
+            }
+            second={
+              <>
+                {/* 2. Čerstvě cvaknuto — between the people and what they drank. */}
+                {opened ? <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} /> : null}
+
+                {/* 3. Žebříček party — who out-drank and out-sat whom, last 30 days. */}
+                <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.friends.leaderboardHeader}
+                </Text>
+
+                {partyBoard.length > 1 && boardHasBeers ? (
+                  <View style={styles.boardSwitch}>
+                    <SegmentedControl
+                      options={[t.friends.leaderboardMetricBeers, t.friends.leaderboardMetricVisits]}
+                      value={activeBoardMetric}
+                      onChange={setBoardMetric}
+                      accessibilityLabel={t.a11y.partyLeaderboardMetric}
+                    />
+                  </View>
+                ) : null}
+
+                {rankedBoard.length > 1 ? (
+                  <>
+                    <View style={styles.card}>
+                      {visibleBoard.map((entry, index) => (
+                        <LeaderboardRow
+                          key={entry.account.id || `rank-${index}`}
+                          entry={entry}
+                          rank={index + 1}
+                          value={entry.value}
+                          caption={boardCaption(entry.value)}
+                          divided={index > 0}
+                          onPress={
+                            entry.isMe || !entry.account.id
+                              ? undefined
+                              : () => openFriendProfile(entry.account.id)
+                          }
+                        />
+                      ))}
+                      {myBoardPinned && myBoardIndex >= 0 ? (
+                        <>
+                          <Text
+                            style={styles.boardDots}
+                            allowFontScaling={false}
+                            accessibilityElementsHidden
+                            importantForAccessibility="no"
+                          >
+                            …
+                          </Text>
+                          <LeaderboardRow
+                            key="me-pinned"
+                            entry={rankedBoard[myBoardIndex]}
+                            rank={myBoardIndex + 1}
+                            value={rankedBoard[myBoardIndex].value}
+                            caption={boardCaption(rankedBoard[myBoardIndex].value)}
+                          />
+                        </>
+                      ) : null}
+                    </View>
+
+                    {!showAllBoard && hiddenBoardCount > 0 ? (
+                      <Pressable
+                        onPress={() => setShowAllBoard(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.friends.leaderboardMore(hiddenBoardCount)}
+                        style={({ pressed }) => [styles.moreFeedButton, pressed && styles.dim]}
+                      >
+                        <Text style={styles.moreFeedLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {t.friends.leaderboardMore(hiddenBoardCount)}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </>
+                ) : loading && !d ? null : (
+                  <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.friends[partyLeaderboardEmptyMessage(partyBoard.length, friendCount)]}
                   </Text>
-                </Pressable>
-              ) : null}
-            </>
-          ) : loading && !d ? null : (
-            <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.friends[partyLeaderboardEmptyMessage(partyBoard.length, friendCount)]}
-            </Text>
-          )}
+                )}
 
-          {/* 4. Co se pilo — automatic, chronological, one row per evening. */}
-          <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.friends.sittingsHeader}
-          </Text>
+                {/* 4. Co se pilo — automatic, chronological, one row per evening. */}
+                <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.friends.sittingsHeader}
+                </Text>
 
-          {feed.length > 0 ? (
-            <>
-              <View style={styles.card}>
-                {feed.map((row, index) => (
-                  <SittingRow
-                    key={row.sitting.id}
-                    sitting={row.sitting}
-                    checkIns={row.checkIns}
-                    first={index === 0}
-                    onLongPress={handleSittingLongPress}
-                    onChanged={reload}
-                  />
-                ))}
-              </View>
-              {feedCursor ? (
-                <Pressable
-                  onPress={loadMoreSittings}
-                  disabled={feedLoadingMore}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.friends.sittingsMore}
-                  style={({ pressed }) => [
-                    styles.moreFeedButton,
-                    (pressed || feedLoadingMore) && styles.dim,
-                  ]}
-                >
-                  <Text
-                    style={styles.moreFeedLabel}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {feedLoadingMore ? t.friends.sittingsLoading : t.friends.sittingsMore}
+                {feed.length > 0 ? (
+                  <>
+                    <View style={styles.card}>
+                      {feed.map((row, index) => (
+                        <SittingRow
+                          key={row.sitting.id}
+                          sitting={row.sitting}
+                          checkIns={row.checkIns}
+                          first={index === 0}
+                          onLongPress={handleSittingLongPress}
+                          onChanged={reload}
+                        />
+                      ))}
+                    </View>
+                    {feedCursor ? (
+                      <Pressable
+                        onPress={loadMoreSittings}
+                        disabled={feedLoadingMore}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.friends.sittingsMore}
+                        style={({ pressed }) => [
+                          styles.moreFeedButton,
+                          (pressed || feedLoadingMore) && styles.dim,
+                        ]}
+                      >
+                        <Text
+                          style={styles.moreFeedLabel}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {feedLoadingMore ? t.friends.sittingsLoading : t.friends.sittingsMore}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </>
+                ) : loading && !d ? null : (
+                  <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.friends.sittingsEmpty}
                   </Text>
-                </Pressable>
-              ) : null}
-            </>
-          ) : loading && !d ? null : (
-            <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.friends.sittingsEmpty}
-            </Text>
-          )}
+                )}
 
-          {/* 5. Co spolu podniknout. */}
-          <PartaPlans />
+                {/* 5. Co spolu podniknout. */}
+                <PartaPlans />
+              </>
+            }
+          />
         </ScrollView>
         {nudgeKind ? <ScrollFade height={16} /> : null}
       </View>
@@ -1551,7 +1562,8 @@ export default function FriendsScreen() {
           What is left here is only what the card's door cannot do: accept a
           request, retry offline, join a live table, opt into push. If a nudge's
           action IS the card's door, it does not belong in this slot. */}
-      <NudgeSlot nudge={nudge} collapseWhenEmpty />
+      {/* On a book-shaped window the strip stays in the left column, off the fold. */}
+      <TwoColumns first={<NudgeSlot nudge={nudge} collapseWhenEmpty />} second={null} />
 
       <MoreSheet
         visible={moreVisible}

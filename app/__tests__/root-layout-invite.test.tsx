@@ -74,7 +74,7 @@ jest.mock('expo-router', () => {
     return null;
   };
   const router = { push: (...args: unknown[]) => mockPush(...args), replace: jest.fn() };
-  return { Stack, useRouter: () => router, usePathname: () => '/' };
+  return { Stack, useRouter: () => router, usePathname: () => '/', useRootNavigationState: () => undefined };
 });
 
 jest.mock('expo-font', () => ({

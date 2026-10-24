@@ -12,9 +12,10 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, Image, Modal, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
 import { fetchPartaPhotoFeed, type PartaFeedPhoto } from '@/data/beerPhotosClient';
 import { t } from '@/i18n';

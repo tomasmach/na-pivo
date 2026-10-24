@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { checkLocationPermission } from '@/compass/permissions';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { MapPinPlusIcon, XIcon } from '@/components/shared/IconGlyph';

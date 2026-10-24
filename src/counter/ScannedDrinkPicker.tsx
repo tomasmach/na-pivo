@@ -1,7 +1,8 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { BeerIcon, CircleDotIcon, GlassWaterIcon, WineIcon, XIcon } from '@/components/shared/IconGlyph';
 import type { ScannedDrink } from '@/data/menuScanClient';
 import { formatVolume, t } from '@/i18n';
