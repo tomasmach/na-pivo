@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import * as beerPhotosClient from '../beerPhotosClient';
 import { clearLocalPrivateAccountData } from '../privateAccountData';
 import { pulledRecently, trackForegroundPull } from '../foregroundPulls';
+import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
@@ -234,4 +236,35 @@ it('forgets recent server pulls so a re-login restores the wiped data', async ()
   await clearLocalPrivateAccountData();
 
   expect(pulledRecently('ratings', 'acc-1')).toBe(false);
+});
+
+it('drops a photo list that was still loading for the outgoing account', async () => {
+  let answer!: (photos: beerPhotosClient.BeerPhoto[]) => void;
+  const fetchPhotos = jest
+    .spyOn(beerPhotosClient, 'fetchMyBeerPhotos')
+    .mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+  const loading = loadBeerPhotos();
+
+  await clearLocalPrivateAccountData();
+  answer([
+    {
+      id: 'photo-a',
+      clientId: 'client-a',
+      imageUrl: 'https://api.test/media/a.jpg',
+      caption: 'Účet A',
+      pubCacheKey: '',
+      pubName: '',
+      pubCity: '',
+      visibility: 'private',
+      takenAt: '2026-07-01T19:00:00.000Z',
+      createdAt: '2026-07-01T19:00:05.000Z',
+      inContest: false,
+    },
+  ]);
+  await loading;
+
+  expect(fetchPhotos).toHaveBeenCalledTimes(1);
+  expect(useBeerPhotosStore.getState().photos).toEqual([]);
+  expect((await AsyncStorage.getItem('na-pivo-beer-photos')) ?? '').not.toContain('client-a');
+  fetchPhotos.mockRestore();
 });
