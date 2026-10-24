@@ -14,7 +14,6 @@ import { flushDeleteDrinksQueue, getQueuedDeleteIds } from './deleteDrinksQueue'
 import { flushUpdateDrinksQueue, getQueuedUpdateIds } from './updateDrinksQueue';
 import { fetchVisits, type WireVisit } from './visitsClient';
 import { flushVisitsQueue, getQueuedVisitDeleteIds } from './visitsQueue';
-import { haversineMeters } from '@/compass/distance';
 import {
   contextFromPubKey,
   contextPubKey,
@@ -180,10 +179,11 @@ export function deriveReconciledDiaryStats(
   }
 
   for (const session of localSessions) {
+    // An evening restored from the server is already counted by the snapshot.
+    if (sessionIsRestoredOnly(session)) continue;
     const atPub = !isContextPubKey(session.pubKey);
     if (atPub) pubKeys.add(session.pubKey);
-    // The server has no visit for this restored evening; restoring must not add one.
-    if (atPub && !remoteVisitIds.has(session.clientId) && !sessionIsRestoredOnly(session)) {
+    if (atPub && !remoteVisitIds.has(session.clientId)) {
       visitsPerPub.set(session.pubKey, (visitsPerPub.get(session.pubKey) ?? 0) + 1);
     }
     for (const drink of session.drinks) {
@@ -253,37 +253,17 @@ function latestStart<T extends { startMs: number }>(items: T[]): T | null {
   return items.reduce<T | null>((best, item) => (!best || item.startMs > best.startMs ? item : best), null);
 }
 
-/**
- * Pub merges are reviewed by hand, so the backend has no distance rule; its
- * catalogue matcher counts pins under 100 m apart as the same location.
- */
-const SAME_PUB_RADIUS_M = 100;
-
-function samePlace(drink: WireDrink, visit: WireVisit): boolean {
-  const { lat, lng } = drink;
-  return (
-    typeof lat === 'number' &&
-    typeof lng === 'number' &&
-    typeof visit.lat === 'number' &&
-    typeof visit.lng === 'number' &&
-    haversineMeters({ lat, lng }, visit) <= SAME_PUB_RADIUS_M
-  );
-}
-
-/**
- * The visit a pub drink was poured in. The pub-visits read returns repaired pub
- * identities and the drinks read does not, so a drink whose pub has no visit
- * that day may belong to a same-day visit of the repaired pub at the same place.
- */
+/** The visit at the drink's own pub that the drink was poured in. */
 function visitOfDrink(windows: VisitWindow[], drink: WireDrink, atMs: number, day: string): VisitWindow | null {
-  const sameDay = windows.filter((window) => window.day === day);
-  const containing = sameDay.filter(
-    (window) => window.startMs <= atMs && (window.endMs === null || atMs <= window.endMs),
+  return latestStart(
+    windows.filter(
+      (window) =>
+        window.day === day &&
+        window.visit.cache_key === drink.cache_key &&
+        window.startMs <= atMs &&
+        (window.endMs === null || atMs <= window.endMs),
+    ),
   );
-  const samePub = containing.filter((window) => window.visit.cache_key === drink.cache_key);
-  if (samePub.length > 0) return latestStart(samePub);
-  if (sameDay.some((window) => window.visit.cache_key === drink.cache_key)) return null;
-  return latestStart(containing.filter((window) => samePlace(drink, window.visit)));
 }
 
 function sessionFromVisit(visit: WireVisit, startMs: number): TallySession {
@@ -333,8 +313,6 @@ function addToDraft(draft: Draft, drink: TallyDrink): void {
   if (Date.parse(drink.at) < Date.parse(draft.session.startedAt)) draft.session.startedAt = drink.at;
 }
 
-/** The evening at the same place on the same drinking day, preferring the one
- *  that started last before the drink. */
 function sameNightDraft(drafts: Draft[], pubKey: string, day: string, atMs: number): Draft | null {
   const candidates = drafts
     .map((draft) => ({ draft, startMs: epochMs(draft.session.startedAt) }))

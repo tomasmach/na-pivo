@@ -405,18 +405,21 @@ describe('restoring the account history into the diary', () => {
     expect(useTallyStore.getState().history).toEqual([]);
   });
 
-  it('files a drink under a same-day visit whose pub identity the server repaired', () => {
-    // The canonical pub's pin sits about 50 m from the duplicate the drink was logged at.
-    const repaired = { ...visit('v1', PUB_B, at(10, 18), at(10, 21)), lat: 50.0004, lng: 14.0003 };
-    const history = mergeServerDiaryHistory(
-      { drinks: [pubDrink('d1', at(10, 19), 'u2fkbnzz')], visits: [repaired] },
-      null,
-      [],
-    );
+  it('keeps a drink at its own pub when only a pub 40 m away has a visit that night', () => {
+    const drink = { ...pubDrink('d1', at(10, 20)), lat: 50.08804, lng: 14.42076 };
+    const nextDoor = {
+      ...visit('v1', PUB_B, at(10, 19), at(10, 22)),
+      name: 'U Souseda',
+      external_id: 'next-door',
+      lat: 50.0884,
+      lng: 14.42076,
+    };
 
-    expect(history).toEqual([
-      expect.objectContaining({ clientId: 'v1', pubKey: PUB_B, drinks: [expect.objectContaining({ id: 'd1' })] }),
-    ]);
+    const history = mergeServerDiaryHistory({ drinks: [drink], visits: [nextDoor] }, null, []);
+
+    expect(ids(history)).toEqual([['d1', ['d1']]]);
+    expect(history?.[0]).toMatchObject({ pubKey: PUB_A, pubName: 'Hospoda' });
+    expect(history?.[0]).not.toHaveProperty('pubExternalId');
   });
 
   it('keeps a drink at its own pub when the overlapping visit is somewhere else', () => {
@@ -480,5 +483,11 @@ describe('restoring the account history into the diary', () => {
       history.every((session) => session.drinks.every((drink) => drink.restored && drink.syncStatus === 'sent')),
     ).toBe(true);
     expect(deriveReconciledDiaryStats(snapshot, history)).toEqual(deriveReconciledDiaryStats(snapshot, []));
+
+    const suspect = { ...pubDrink('suspect', at(12, 20), 'u2fkbnzz'), is_suspect: true };
+    const withSuspect = { ...snapshot, drinks: [...snapshot.drinks, suspect] };
+    expect(deriveReconciledDiaryStats(withSuspect, mergeServerDiaryHistory(withSuspect, null, [])!)).toEqual(
+      deriveReconciledDiaryStats(withSuspect, []),
+    );
   });
 });
