@@ -43,7 +43,7 @@ export function RenamePubModal({
   const canSubmit = trimmed.length > 0 && trimmed !== currentName.trim() && !submitting;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal scrimColor={styles.renameScrim.backgroundColor} visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <KeyboardAvoidingView
         behavior="padding"
         style={styles.renameOverlay}

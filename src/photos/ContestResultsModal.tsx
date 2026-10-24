@@ -56,7 +56,7 @@ export function ContestResultsModal() {
   const releaseSettled = useReleaseStore((s) => s.checkSettled);
   const releaseNote = useReleaseStore((s) => s.pendingNote);
   const router = useRouter();
-  const { width: screenWidth } = useModalFrame();
+  const { width: screenWidth } = useModalFrame({ centered: true });
 
   // Launch gate: one cached snapshot fetch once the what's-new popup is out
   // of the way. Any surface's later fetch also feeds the store, so a failure
@@ -130,6 +130,8 @@ export function ContestResultsModal() {
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
+      centered
       visible={visible}
       transparent
       animationType="fade"

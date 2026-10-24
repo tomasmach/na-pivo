@@ -15,7 +15,10 @@ jest.mock('@/components/shared/MoreSheet', () => ({
     return null;
   },
 }));
-jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
+jest.mock('@/components/shared/AppDialog', () => {
+  const showAppDialog = jest.fn();
+  return { showAppDialog, useShowAppDialog: () => showAppDialog };
+});
 jest.mock('@/components/shared/IconGlyph', () => ({
   BellRingIcon: () => null,
   PencilIcon: () => null,

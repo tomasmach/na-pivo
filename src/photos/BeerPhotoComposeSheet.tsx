@@ -181,7 +181,7 @@ export function BeerPhotoComposeSheet({
   }, [pickedUri, caption, pub, visibility, enterContest, onSaved]);
 
   return (
-    <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal scrimColor={styles.backdrop.backgroundColor} visible transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View
           style={[

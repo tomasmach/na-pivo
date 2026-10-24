@@ -13,7 +13,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Modal } from '@/components/shared/Modal';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { HandPlatterIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
 import {
   isRetriableNightError,
@@ -49,6 +49,7 @@ function PublishNightSheetBase({
   onClose,
   onPublished,
 }: PublishNightSheetProps) {
+  const showAppDialog = useShowAppDialog();
   const showToast = useToastStore((s) => s.show);
   const profile = useAccountStore((s) => s.profile);
   const publishedRecord = useVycepStore((s) => s.published[night.clientKey]);
@@ -136,12 +137,15 @@ function PublishNightSheetBase({
     onClose,
     onPublished,
     profile?.nickname,
+    showAppDialog,
     showToast,
     visibility,
   ]);
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
+      centered
       visible={visible}
       transparent
       animationType="fade"

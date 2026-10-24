@@ -19,7 +19,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { openFriendProfile } from '@/layout/openDetail';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { ClockIcon, CompassIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
 import {
   endFriendPubActivity,
@@ -67,6 +67,7 @@ function planTimeLabel(iso: string): string {
 }
 
 function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps) {
+  const showAppDialog = useShowAppDialog();
   const showToast = useToastStore((s) => s.show);
   const router = useRouter();
   const { account, responses } = activity;
@@ -124,7 +125,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
         { text: t.friends.planCancel, style: 'destructive', onPress: confirmCancel },
       ],
     });
-  }, [confirmCancel]);
+  }, [confirmCancel, showAppDialog]);
 
   if (cancelling) return null;
 

@@ -14,7 +14,10 @@ jest.mock('@/data/friendsSnapshot', () => ({ loadFriendsDashboardSnapshot: async
 jest.mock('@/stores/accountStore', () => ({ useAccountStore: () => 'test-account' }));
 jest.mock('@/stores/toastStore', () => ({ useToastStore: () => jest.fn() }));
 jest.mock('@/friends/friendSafety', () => ({ useFriendSafety: () => jest.fn() }));
-jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
+jest.mock('@/components/shared/AppDialog', () => {
+  const showAppDialog = jest.fn();
+  return { showAppDialog, useShowAppDialog: () => showAppDialog };
+});
 jest.mock('@/components/shared/IconGlyph', () => ({
   ChevronLeftIcon: () => null, ChevronRightIcon: () => null, UserPlusIcon: () => null,
 }));

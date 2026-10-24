@@ -206,6 +206,7 @@ export function PubReminderOnboardingModal() {
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
       visible={visible}
       transparent
       animationType="fade"

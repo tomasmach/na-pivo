@@ -41,7 +41,7 @@ import { pubInfoFromPub, usePubInfoFacts } from '@/components/amenities/pubInfoC
 import { submitPubRename } from '@/components/amenities/pubRename';
 import { RenamePubModal } from '@/components/compass/RenamePubModal';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { Band, PAGE_PAD, RoundButton, SectionTitle } from '@/components/shared/FlatPage';
 import {
   BeerIcon,
@@ -267,6 +267,7 @@ function useInitialPub(
 }
 
 export default function PubPageScreen() {
+  const showAppDialog = useShowAppDialog();
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -723,10 +724,10 @@ export default function PubPageScreen() {
           });
           recordTapsWrite(pub.id, next, nextHistory);
           showToast(t.counter.removedFromMenuToast);
-        }),
+        }, undefined, showAppDialog),
       );
     },
-    [afterSheet, key, pub, recordTapsWrite, showToast],
+    [afterSheet, key, pub, recordTapsWrite, showAppDialog, showToast],
   );
 
   const startRename = useCallback(() => {
@@ -809,7 +810,7 @@ export default function PubPageScreen() {
         }),
       );
     },
-    [afterSheet, pub, submitReport],
+    [afterSheet, pub, showAppDialog, submitReport],
   );
 
   const addPubNear = useCallback(() => {

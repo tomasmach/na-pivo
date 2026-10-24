@@ -139,6 +139,7 @@ export function NicknameNudgeModal() {
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
       visible={visible}
       transparent
       animationType="fade"

@@ -29,7 +29,7 @@ function TypeIcon({ drink }: { drink: ScannedDrink }) {
 export function ScannedDrinkPicker({ visible, drinks, priceCurrency, onClose, onSelect }: Props) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal scrimColor={styles.backdrop.backgroundColor} visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
         <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>

@@ -89,6 +89,8 @@ function WhatsNewCard({
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
+      centered
       visible={note !== null}
       transparent
       animationType="fade"

@@ -39,7 +39,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
 import { openFriendProfile } from '@/layout/openDetail';
-import { Modal } from '@/components/shared/Modal';
+import { Modal, useModalFrame } from '@/components/shared/Modal';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
@@ -332,7 +332,9 @@ function WinnerTile({ winner, lead }: { winner: PhotoContestWinner; lead: boolea
 
 export default function PhotoContestScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { height: screenHeight } = useWindowDimensions();
+  // The viewer lays out in its modal's frame: on an open Duo that is the right half.
+  const { width: screenWidth } = useModalFrame();
   const router = useRouter();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
@@ -919,6 +921,7 @@ export default function PhotoContestScreen() {
       )}
 
       <Modal
+        scrimColor={styles.viewerBackdrop.backgroundColor}
         visible={viewerEntry != null}
         transparent
         animationType="fade"

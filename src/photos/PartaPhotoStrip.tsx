@@ -160,6 +160,7 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
 
       {/* Fullscreen read-only viewer (friend-profile gallery idiom). */}
       <Modal
+        scrimColor={styles.viewerBackdrop.backgroundColor}
         visible={viewer != null}
         transparent
         animationType="fade"

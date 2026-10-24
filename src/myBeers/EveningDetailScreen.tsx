@@ -80,7 +80,7 @@ import {
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { useDetailNav, useDetailParams } from '@/layout/detail';
 import { usePane, useTone } from '@/layout/pane';
@@ -113,6 +113,7 @@ function latestDrinkAt(session: TallySession): string {
 }
 
 export default function EveningDetailScreen() {
+  const showAppDialog = useShowAppDialog();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const now = new Date();
@@ -681,7 +682,7 @@ function EditDrinkNameModal({
   onSave: (group: DrinkActionGroup, beerName: string) => void;
 }) {
   return (
-    <Modal visible={!!group} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
+    <Modal scrimColor={styles.modalBackdrop.backgroundColor} centered visible={!!group} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       <KeyboardAvoidingView
         style={styles.modalBackdrop}
         behavior="padding"

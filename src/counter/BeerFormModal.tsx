@@ -168,6 +168,7 @@ export function BeerFormModal({
 }: BeerFormModalProps) {
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
       visible={visible}
       transparent
       animationType="fade"

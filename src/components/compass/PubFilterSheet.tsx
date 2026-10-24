@@ -249,6 +249,7 @@ export function PubFilterSheet({
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
       visible={visible}
       transparent
       presentationStyle="overFullScreen"

@@ -59,6 +59,7 @@ export function PubReminderEnableFailureModal() {
 
   return (
     <Modal
+      scrimColor={styles.backdrop.backgroundColor}
       visible
       transparent
       animationType="fade"

@@ -123,7 +123,10 @@ export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPick
           <View style={styles.pinDot} />
         </View>
 
-        <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]} pointerEvents="box-none">
+        <View
+          style={[styles.header, { paddingTop: insets.top + Spacing.sm, left: insets.left, right: insets.right }]}
+          pointerEvents="box-none"
+        >
           <Pressable
             onPress={onCancel}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
@@ -143,7 +146,12 @@ export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPick
           <View style={styles.balanceSpacer} />
         </View>
 
-        <View style={[styles.bottom, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
+        <View
+          style={[
+            styles.bottom,
+            { paddingBottom: Math.max(insets.bottom, Spacing.sm), left: insets.left, right: insets.right },
+          ]}
+        >
           <GlowButton
             testID="map-pin-confirm"
             label={t.map.pinConfirm}

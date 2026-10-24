@@ -62,7 +62,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { openFriendProfile as openFriendPage } from '@/layout/openDetail';
 import { Modal } from '@/components/shared/Modal';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
 import {
   CheckIcon,
@@ -399,6 +399,7 @@ function RosterSheet({
 }
 
 export default function FriendsScreen() {
+  const showAppDialog = useShowAppDialog();
   const insets = useSafeAreaInsets();
   const nudgeInset = useBottomInset(Spacing.md);
   const streamEndInset = useBottomInset(Spacing.xl);
@@ -793,7 +794,7 @@ export default function FriendsScreen() {
         },
       ],
     });
-  }, [d?.myActiveActivity, reload, showToast]);
+  }, [d?.myActiveActivity, reload, showAppDialog, showToast]);
 
   const handleEnablePush = useCallback(() => {
     trackUiInteraction('friends_push_enable');

@@ -68,10 +68,10 @@ jest.mock('@/theme/fonts', () => ({
 }));
 
 jest.mock('@/components/shared/GlowButton', () => ({ GlowButton: jest.fn(() => null) }));
-jest.mock('@/components/shared/AppDialog', () => ({
-  AppDialogHost: jest.fn(() => null),
-  showAppDialog: jest.fn(),
-}));
+jest.mock('@/components/shared/AppDialog', () => {
+  const showAppDialog = jest.fn();
+  return { AppDialogHost: jest.fn(() => null), showAppDialog, useShowAppDialog: () => showAppDialog };
+});
 // The modals wrap RN Modal/TextInput (not in the lean react-native test mock);
 // they aren't under test here, so stub them out.
 jest.mock('@/counter/BeerFormModal', () => ({ BeerFormModal: jest.fn(() => null) }));

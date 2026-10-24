@@ -52,6 +52,8 @@ const sheet = (props: Partial<React.ComponentProps<typeof Modal>> = {}) => (
   </Modal>
 );
 
+const NO_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+
 describe('Modal', () => {
   beforeEach(() => {
     setWindow(402, 874);
@@ -149,13 +151,18 @@ describe('Modal', () => {
     }
 
     /** A sheet opened from a half whose insets were changed the way BookSpread changes them. */
-    function openFrom(pane: PaneInfo, halfInsets: EdgeInsets): EdgeInsets {
+    function openFrom(
+      pane: PaneInfo | null,
+      halfInsets: EdgeInsets,
+      props: Partial<React.ComponentProps<typeof Modal>> = {},
+      window: EdgeInsets = WINDOW,
+    ) {
       const renderer = render(
-        <SafeAreaInsetsContext.Provider value={WINDOW}>
+        <SafeAreaInsetsContext.Provider value={window}>
           <WindowSafeAreaProvider>
             <SafeAreaInsetsContext.Provider value={halfInsets}>
               <PaneContext.Provider value={pane}>
-                <Modal visible transparent>
+                <Modal visible transparent onRequestClose={jest.fn()} {...props}>
                   <Probe />
                 </Modal>
               </PaneContext.Provider>
@@ -163,24 +170,87 @@ describe('Modal', () => {
           </WindowSafeAreaProvider>
         </SafeAreaInsetsContext.Provider>,
       );
-      return renderer.root.findByType('Probe').props.insets;
+      return renderer;
     }
+    const insetsOf = (renderer: any): EdgeInsets => renderer.root.findByType('Probe').props.insets;
 
-    it('gives a full-window sheet on a table the window insets, so it clears the status bar', () => {
+    it('gives a bottom sheet on a table the window, without its sides, so it clears the status bar', () => {
       setWindow(669, 951);
       // The bottom half's top edge is the fold, so its top inset is the fold margin.
-      expect(openFrom({ tab: 'stamgast', side: 'primary' }, { ...WINDOW, top: 20 })).toEqual(WINDOW);
-      expect(openFrom({ tab: 'kompas', side: 'secondary' }, { ...WINDOW, bottom: 20 })).toEqual(WINDOW);
+      const fromBottom = openFrom({ tab: 'stamgast', side: 'primary' }, { ...WINDOW, top: 20 });
+      expect(insetsOf(fromBottom)).toEqual({ ...WINDOW, left: 0, right: 0 });
+      expect(placed(fromBottom)[0]).toMatchObject({ left: 59, top: 0, width: 669 - 59 - 30, height: 951 });
+      const fromTop = openFrom({ tab: 'kompas', side: 'secondary' }, { ...WINDOW, bottom: 20 });
+      expect(insetsOf(fromTop)).toEqual({ ...WINDOW, left: 0, right: 0 });
     });
 
-    it('drops only the fold side for a sheet kept to one half of the book', () => {
+    it('drops the sides for a sheet kept to one half of the book', () => {
       setWindow(951, 669);
-      expect(openFrom({ tab: 'kompas', side: 'primary' }, { ...WINDOW, right: 20 })).toEqual({ ...WINDOW, right: 0 });
-      expect(openFrom({ tab: 'kompas', side: 'secondary' }, { ...WINDOW, left: 20 })).toEqual({ ...WINDOW, left: 0 });
+      expect(insetsOf(openFrom({ tab: 'kompas', side: 'primary' }, { ...WINDOW, right: 20 }))).toEqual({
+        ...WINDOW,
+        left: 0,
+        right: 0,
+      });
+      expect(insetsOf(openFrom({ tab: 'kompas', side: 'secondary' }, { ...WINDOW, left: 20 }))).toEqual({
+        ...WINDOW,
+        left: 0,
+        right: 0,
+      });
+    });
+
+    it('keeps a sheet in the right half of the book off the status column and dims it in the sheet colour', () => {
+      // The open Duo on its side: the clock, the camera and the tab rail take the right edge.
+      setWindow(951, 669);
+      const BOOK: EdgeInsets = { top: 0, right: 84, bottom: 20, left: 0 };
+      const scrim = 'rgba(0, 0, 0, 0.85)';
+      const renderer = openFrom(null, BOOK, { scrimColor: scrim }, BOOK);
+      const [frame, ...pieces] = placed(renderer);
+      expect(frame).toMatchObject({ left: 951 / 2 + 20, width: 951 - 84 - (951 / 2 + 20) });
+      expect(pieces).toEqual([
+        expect.objectContaining({ left: 0, width: 951 / 2 + 20, backgroundColor: scrim }),
+        expect.objectContaining({ left: 951 - 84, right: 0, backgroundColor: scrim }),
+      ]);
+      expect(insetsOf(renderer)).toEqual({ top: 0, right: 0, bottom: 20, left: 0 });
+    });
+
+    it('keeps a centred card in its half of the table and dims the whole window', () => {
+      setWindow(669, 951);
+      const TABLE: EdgeInsets = { top: 82, right: 0, bottom: 20, left: 0 };
+      const fold = 951 / 2;
+
+      const fromBottom = openFrom({ tab: 'stamgast', side: 'primary' }, { ...TABLE, top: 20 }, { centered: true }, TABLE);
+      const [lower, ...aboveAndBelow] = placed(fromBottom);
+      expect(lower).toMatchObject({ top: fold + 20, height: 951 - 20 - (fold + 20), left: 0, width: 669 });
+      expect(aboveAndBelow).toEqual([
+        expect.objectContaining({ top: 0, height: fold + 20 }),
+        expect.objectContaining({ top: 951 - 20, bottom: 0 }),
+      ]);
+      expect(insetsOf(fromBottom)).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
+
+      // A card from the root takes the upper half, below the status bar.
+      const fromRoot = openFrom(null, TABLE, { centered: true }, TABLE);
+      const [upper] = placed(fromRoot);
+      expect(upper).toMatchObject({ top: 82, height: fold - 20 - 82 });
+      expect(insetsOf(fromRoot)).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
+
+      // A full-screen page keeps the window.
+      expect(placed(openFrom(null, TABLE, { centered: true, transparent: false }, TABLE))).toEqual([]);
+    });
+
+    it('closes from the dimmed half of the table but not from the strip along the fold', () => {
+      setWindow(669, 951);
+      const onRequestClose = jest.fn();
+      const renderer = openFrom({ tab: 'kompas', side: 'primary' }, NO_INSETS, { centered: true, onRequestClose }, NO_INSETS);
+      const [upperHalf, homeIndicator] = renderer.root.findAllByType(Pressable);
+      expect(StyleSheet.flatten(upperHalf.props.style)).toMatchObject({ marginBottom: 40 });
+      expect(homeIndicator).toBeUndefined();
+      act(() => upperHalf.props.onPress());
+      expect(onRequestClose).toHaveBeenCalledTimes(1);
     });
 
     it('keeps the window insets on a phone', () => {
-      expect(openFrom({ tab: 'kompas', side: 'primary' }, WINDOW)).toEqual(WINDOW);
+      expect(insetsOf(openFrom({ tab: 'kompas', side: 'primary' }, WINDOW))).toEqual(WINDOW);
+      expect(insetsOf(openFrom(null, WINDOW, { centered: true }))).toEqual(WINDOW);
     });
   });
 });

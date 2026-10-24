@@ -113,7 +113,7 @@ import {
   type BeerFormResult,
 } from '@/counter/BeerFormModal';
 import { eveningPriceLabel, sessionBreakdown } from '@/myBeers/eveningModel';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { MenuBeerActionsSheet, confirmRemoveFromMenu } from '@/counter/MenuBeerActionsSheet';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
@@ -358,6 +358,7 @@ function Tacek({
   onMoreClose,
 }: TacekProps) {
   const insets = useSafeAreaInsets();
+  const showAppDialog = useShowAppDialog();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
@@ -627,7 +628,7 @@ function Tacek({
         ],
       }),
     );
-  }, [openAlcoholSheet, setAlcoholEstimateHidden, setBodyProfile, switchAlcoholSheet]);
+  }, [openAlcoholSheet, setAlcoholEstimateHidden, setBodyProfile, showAppDialog, switchAlcoholSheet]);
 
   // ── Session state ───────────────────────────────────────────────────────────
 
@@ -1342,10 +1343,11 @@ function Tacek({
             setPickOpen(true);
           },
           () => setPickOpen(true),
+          showAppDialog,
         ),
       );
     },
-    [cell, pub, recordMenuWrite, runAfterSheetClose, showToast],
+    [cell, pub, recordMenuWrite, runAfterSheetClose, showAppDialog, showToast],
   );
 
   // ── Pick sheet ──────────────────────────────────────────────────────────────
@@ -1444,7 +1446,7 @@ function Tacek({
         { text: t.counter.cancel, style: 'cancel' },
       ],
     });
-  }, [handleScanMenu, onChangePlace, pub, showToast]);
+  }, [handleScanMenu, onChangePlace, pub, showAppDialog, showToast]);
 
   const runDrinkScan = useCallback(async (source: MenuPhotoSource) => {
     setScanSourceVisible(false);
@@ -1531,7 +1533,7 @@ function Tacek({
         { text: t.counter.cancel, style: 'cancel' },
       ],
     });
-  }, [openBackdateForm]);
+  }, [openBackdateForm, showAppDialog]);
 
   // ── Closing / resuming the evening ──────────────────────────────────────────
 
@@ -1558,7 +1560,7 @@ function Tacek({
         },
       ],
     });
-  }, [archiveCurrent, current, hapticEnabled, isThisSession, latestBeer, pub]);
+  }, [archiveCurrent, current, hapticEnabled, isThisSession, latestBeer, pub, showAppDialog]);
 
   const handleResume = useCallback(() => {
     if (!cell) return;

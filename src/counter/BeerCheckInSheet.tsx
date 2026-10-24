@@ -244,7 +244,7 @@ export function BeerCheckInSheet({
   }, [brewery, canSubmit, cleanName, note, onClose, onSubmitted, pub, pubKey, rating, showToast, style, tags, visibility, visitClientId]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal scrimColor={styles.backdrop.backgroundColor} visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
         <View

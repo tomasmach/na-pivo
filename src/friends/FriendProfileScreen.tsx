@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
 import { GlowButton } from '@/components/shared/GlowButton';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -104,6 +104,7 @@ function StatTile({ value, label, flame }: StatTileProps) {
 }
 
 export default function FriendProfileScreen() {
+  const showAppDialog = useShowAppDialog();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const reduceMotion = useReduceMotion();
@@ -220,7 +221,7 @@ export default function FriendProfileScreen() {
         { text: t.profile.report.confirmSubmit, style: 'destructive', onPress: doReport },
       ],
     });
-  }, [doReport, name]);
+  }, [doReport, name, showAppDialog]);
 
   const confirmBlock = useCallback(() => {
     showAppDialog({
@@ -231,7 +232,7 @@ export default function FriendProfileScreen() {
         { text: t.friends.blockConfirm, style: 'destructive', onPress: doBlock },
       ],
     });
-  }, [doBlock, name]);
+  }, [doBlock, name, showAppDialog]);
 
   const confirmRemove = useCallback(() => {
     showAppDialog({
@@ -242,7 +243,7 @@ export default function FriendProfileScreen() {
         { text: t.friends.removeConfirm, style: 'destructive', onPress: doRemove },
       ],
     });
-  }, [doRemove, name]);
+  }, [doRemove, name, showAppDialog]);
 
   const isFriend = detail?.friendshipStatus === 'accepted';
 
@@ -259,7 +260,7 @@ export default function FriendProfileScreen() {
         { text: t.common.cancel, style: 'cancel' },
       ],
     });
-  }, [confirmBlock, confirmRemove, confirmReport, isFriend]);
+  }, [confirmBlock, confirmRemove, confirmReport, isFriend, showAppDialog]);
 
   // — Party CTA on a public (non-friend) profile — reached from Žebříčky.
   const [requestBusy, setRequestBusy] = useState(false);
@@ -603,6 +604,7 @@ export default function FriendProfileScreen() {
       {/* Fullscreen photo viewer — read-only (no actions apply to a friend's
           photo), so a plain modal beats reusing the own-photo detail route. */}
       <Modal
+        scrimColor={styles.viewerBackdrop.backgroundColor}
         visible={viewerPhoto != null}
         transparent
         animationType="fade"

@@ -274,7 +274,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   const maxHeight = windowHeight - insets.top - sheetBottomOffset - Spacing.md;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal scrimColor={styles.backdrop.backgroundColor} visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
         <View style={[styles.sheet, { marginBottom: sheetBottomOffset, paddingBottom: bottomPad, maxHeight }]}>

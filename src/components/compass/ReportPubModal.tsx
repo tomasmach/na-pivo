@@ -39,6 +39,7 @@ export function ReportPubModal({
 
   return (
     <Modal
+      scrimColor={styles.scrim.backgroundColor}
       visible={visible}
       transparent
       animationType="fade"

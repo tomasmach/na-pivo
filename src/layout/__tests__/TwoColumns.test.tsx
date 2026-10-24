@@ -21,7 +21,7 @@ function setWindow(width: number, height: number) {
 
 /** Shows what a column sees: its half, and where a sheet opened from it goes. */
 function Probe({ name }: { name: string }) {
-  return React.createElement('Probe', { name, pane: usePane(), sheetOnLeft: useModalFrame().left });
+  return React.createElement('Probe', { name, pane: usePane(), sheetOnLeft: useModalFrame().x === 0 });
 }
 
 const seen = (renderer: any, name: string) => {

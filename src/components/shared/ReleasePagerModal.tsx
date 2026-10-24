@@ -221,7 +221,9 @@ export function ReleasePagerModal({
   onDismiss: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
+  // The open Duo's status column and tab rail sit over the window's side.
+  const width = windowWidth - insets.left - insets.right;
   const pager = PAGERS[version];
   const { slides, asksForReview } = pager;
   const lastIndex = slides.length - 1;
@@ -285,6 +287,8 @@ export function ReleasePagerModal({
           {
             paddingTop: insets.top + Spacing.sm,
             paddingBottom: Math.max(insets.bottom, Spacing.sm),
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
           },
         ]}
       >
