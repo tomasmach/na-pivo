@@ -55,6 +55,7 @@ import { pubCount } from '@/tours/TourChrome';
 import { useToursStore } from '@/stores/toursStore';
 import { t, intlLocale } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
+import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -190,6 +191,7 @@ export default function FriendProfileScreen() {
 
   const doBlock = useCallback(() => {
     void blockFriend(accountId).then((res) => {
+      if (res.ok) usePartaSignalStore.getState().requestRefresh();
       if (!mountedRef.current) return;
       if (res.ok) {
         showToast(t.friends.blocked);
@@ -202,6 +204,7 @@ export default function FriendProfileScreen() {
 
   const doRemove = useCallback(() => {
     void removeFriend(accountId).then((res) => {
+      if (res.ok) usePartaSignalStore.getState().requestRefresh();
       if (!mountedRef.current) return;
       if (res.ok) {
         showToast(t.friends.friendRemoved);
@@ -601,8 +604,8 @@ export default function FriendProfileScreen() {
         </ScrollView>
       )}
 
-      {/* Fullscreen photo viewer — read-only (no actions apply to a friend's
-          photo), so a plain modal beats reusing the own-photo detail route. */}
+      {/* Photo viewer: read-only (no actions apply to a friend's photo), so a
+          plain modal beats reusing the own-photo detail route. */}
       <Modal
         scrimColor={styles.viewerBackdrop.backgroundColor}
         visible={viewerPhoto != null}
