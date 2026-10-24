@@ -1,15 +1,21 @@
 import React from 'react';
-import { useWindowDimensions } from 'react-native';
+import { StyleSheet, useWindowDimensions } from 'react-native';
 
 import { useModalFrame } from '@/components/shared/Modal';
 import { PaneContext, usePane, type PaneInfo } from '@/layout/pane';
 import { TwoColumns } from '@/layout/TwoColumns';
+import { TabScreen } from '@/navigation/TabScreen';
 import { useBookStore } from '@/stores/bookStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const RAIL_RIGHT = { top: 0, right: 84, bottom: 20, left: 0 };
+let mockInsets = RAIL_RIGHT;
+
+jest.mock('expo-router', () => ({ useFocusEffect: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaInsetsContext: jest.requireActual<typeof import('react')>('react').createContext(null),
+  useSafeAreaInsets: () => mockInsets,
 }));
 
 const TestRenderer = require('react-test-renderer');
@@ -68,6 +74,37 @@ describe('TwoColumns', () => {
     const renderer = render();
     expect(seen(renderer, 'first')).toEqual({ pane: PARTA, sheetOnLeft: true });
     expect(seen(renderer, 'second')).toEqual({ pane: { tab: 'parta', side: 'secondary' }, sheetOnLeft: false });
+  });
+
+  it('measures again when the side rail swaps sides, which moves the columns without resizing them', () => {
+    setWindow(951, 669);
+    let columnsX = 0;
+    const tab = () => (
+      <TabScreen>
+        <PaneContext.Provider value={PARTA}>
+          <TwoColumns first={<Probe name="first" />} second={<Probe name="second" />} />
+        </PaneContext.Provider>
+      </TabScreen>
+    );
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(tab(), {
+        createNodeMock: () => ({ measureInWindow: (done: (x: number) => void) => done(columnsX) }),
+      });
+    });
+    mounted.push(renderer);
+    const firstColumn = () =>
+      StyleSheet.flatten(renderer.root.find((node: any) => node.type === 'View' && node.props.onLayout).children[0].props.style);
+    expect(firstColumn()).toMatchObject({ width: 951 / 2 - 20 });
+
+    columnsX = 84;
+    mockInsets = { ...RAIL_RIGHT, right: 0, left: 84 };
+    try {
+      act(() => renderer.update(tab()));
+    } finally {
+      mockInsets = RAIL_RIGHT;
+    }
+    expect(firstColumn()).toMatchObject({ width: 951 / 2 - 20 - 84 });
   });
 
   it('keeps one column on a phone and on a table', () => {

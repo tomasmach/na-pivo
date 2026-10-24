@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewInstance, type ViewStyle } from 'react-native';
 import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FOLD_MARGIN, useBookLayout, type BookMode } from '@/layout/bookLayout';
 import { PaneContext, ToneContext, type BookTab, type PaneInfo, type PaneSide } from '@/layout/pane';
 import { RightPage } from '@/layout/RightPage';
-import { TabBarInsetOverride, useTabBarInset } from '@/navigation/TabScreen';
+import { TabBarInsetOverride, useScreenMargins, useTabBarInset } from '@/navigation/TabScreen';
 import { useBookStore } from '@/stores/bookStore';
 
 interface Frame {
@@ -94,6 +94,8 @@ export function BookSpread({ tab, primary, secondary, phoneShows = 'primary' }: 
       );
     });
   }, []);
+  const margins = useScreenMargins();
+  useEffect(measure, [margins, measure]);
   const primaryInfo = useMemo<PaneInfo>(() => ({ tab, side: 'primary' }), [tab]);
   const secondaryInfo = useMemo<PaneInfo>(() => ({ tab, side: 'secondary' }), [tab]);
   const primaryModals = useBookStore((state) => state.openModals[`${tab}:primary`] ?? 0);

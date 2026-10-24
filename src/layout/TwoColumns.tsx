@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, View, type ViewInstance } from 'react-native';
 
 import { FOLD_MARGIN, useBookLayout } from '@/layout/bookLayout';
 import { PaneContext, usePane, type PaneInfo } from '@/layout/pane';
+import { useScreenMargins } from '@/navigation/TabScreen';
 import { useBookStore } from '@/stores/bookStore';
 
 /**
@@ -22,6 +23,8 @@ export function TwoColumns({ first, second }: { first: ReactNode; second: ReactN
   const measure = useCallback(() => {
     ref.current?.measureInWindow((x) => setLeft((current) => (current === x ? current : x)));
   }, []);
+  const margins = useScreenMargins();
+  useEffect(measure, [margins, measure]);
   const book = mode === 'book';
   const rightHalf = useMemo<PaneInfo | null>(() => (pane ? { tab: pane.tab, side: 'secondary' } : null), [pane]);
   const covered = useBookStore((state) => book && pane !== null && state.pages[pane.tab].length > 0);

@@ -4,9 +4,13 @@ import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { Modal } from '@/components/shared/Modal';
 import { BookSpread } from '@/layout/BookSpread';
+import { TabScreen } from '@/navigation/TabScreen';
 import { useBookStore } from '@/stores/bookStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const RAIL_RIGHT = { top: 0, right: 84, bottom: 20, left: 0 };
+let mockInsets = RAIL_RIGHT;
 
 jest.mock('expo-router', () => ({ useFocusEffect: jest.fn(), useRouter: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => {
@@ -14,7 +18,7 @@ jest.mock('react-native-safe-area-context', () => {
   return {
     SafeAreaInsetsContext: createContext(null),
     // The open Duo on its side: the status column on the right.
-    useSafeAreaInsets: () => ({ top: 0, right: 84, bottom: 20, left: 0 }),
+    useSafeAreaInsets: () => mockInsets,
   };
 });
 // The pages have their own tests; here only the half under them matters.
@@ -142,6 +146,35 @@ describe('BookSpread', () => {
     act(() => root.props.onLayout());
     const right = root.children[1].findAll((node: any) => node.type === 'View')[0];
     expect(StyleSheet.flatten(right.props.style)).toEqual({ width: 951 - 84 - 951 / 2 });
+  });
+
+  it('measures again when the side rail swaps sides, which moves the spread without resizing it', () => {
+    setWindow(951, 669);
+    let spreadX = 0;
+    const tab = () => <TabScreen>{spread('primary', false)}</TabScreen>;
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(tab(), {
+        createNodeMock: () => ({
+          measureInWindow: (done: (x: number, y: number, width: number, height: number) => void) =>
+            done(spreadX, 0, 951 - 84, 669),
+        }),
+      });
+    });
+    mounted.push(renderer);
+    const leftHalf = () =>
+      StyleSheet.flatten(renderer.root.find((node: any) => node.type === 'View' && node.props.onLayout).children[0].props.style);
+    expect(leftHalf()).toEqual({ width: 951 / 2 });
+
+    // Turned the other way: the rail is on the left now, and only the screen's margin changed.
+    spreadX = 84;
+    mockInsets = { ...RAIL_RIGHT, right: 0, left: 84 };
+    try {
+      act(() => renderer.update(tab()));
+    } finally {
+      mockInsets = RAIL_RIGHT;
+    }
+    expect(leftHalf()).toEqual({ width: 951 / 2 - 84 });
   });
 
   it('moves the fold margin to the fold side only of a half that has a twin', () => {
