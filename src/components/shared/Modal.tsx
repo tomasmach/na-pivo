@@ -3,8 +3,8 @@
  *
  * - Every orientation is allowed, because the Duo's inner display ignores the
  *   portrait lock. Phones stay portrait through the Info.plist.
- * - On a wide window a transparent sheet keeps off the window's side insets
- *   (the status column and the tab rail). On a book-shaped window it also stays
+ * - A transparent sheet keeps off the window's side insets (the Duo's status
+ *   column and tab rail, also when folded). On a book-shaped window it also stays
  *   in the half it was opened from (a sheet hosted at the root takes the right
  *   half); on a table a centred card stays in its half (from the root, the
  *   upper one) and a bottom sheet keeps the window. Everything outside the
@@ -110,7 +110,7 @@ export function useModalFrame({ transparent = true, centered = false }: FrameOpt
   const { mode, foldX, foldY } = useBookLayout();
   const window = useWindowDimensions();
   const insets = useContext(WindowInsetsContext) ?? NO_INSETS;
-  if (mode === 'phone' || !transparent) return { x: 0, y: 0, width: window.width, height: window.height };
+  if (!transparent) return { x: 0, y: 0, width: window.width, height: window.height };
 
   const primary = pane?.side === 'primary';
   let left = insets.left;
@@ -120,7 +120,7 @@ export function useModalFrame({ transparent = true, centered = false }: FrameOpt
   if (mode === 'book') {
     if (primary) right = Math.min(right, foldX - FOLD_MARGIN);
     else left = Math.max(left, foldX + FOLD_MARGIN);
-  } else if (centered) {
+  } else if (mode === 'tabletop' && centered) {
     // Its half, clear of the status bar above and the home indicator below.
     if (primary) {
       top = foldY + FOLD_MARGIN;

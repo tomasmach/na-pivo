@@ -248,9 +248,22 @@ describe('Modal', () => {
       expect(onRequestClose).toHaveBeenCalledTimes(1);
     });
 
-    it('keeps the window insets on a phone', () => {
-      expect(insetsOf(openFrom({ tab: 'kompas', side: 'primary' }, WINDOW))).toEqual(WINDOW);
-      expect(insetsOf(openFrom(null, WINDOW, { centered: true }))).toEqual(WINDOW);
+    it('keeps the window and its insets on an upright phone', () => {
+      const PHONE: EdgeInsets = { top: 62, right: 0, bottom: 34, left: 0 };
+      const renderer = openFrom({ tab: 'kompas', side: 'primary' }, PHONE, {}, PHONE);
+      expect(placed(renderer)).toEqual([]);
+      expect(insetsOf(renderer)).toEqual(PHONE);
+      expect(insetsOf(openFrom(null, PHONE, { centered: true }, PHONE))).toEqual(PHONE);
+    });
+
+    it('keeps a sheet on the folded Duo off the camera column and dims the column', () => {
+      setWindow(466, 678);
+      const FOLDED: EdgeInsets = { top: 0, right: 84, bottom: 34, left: 0 };
+      const renderer = openFrom({ tab: 'stamgast', side: 'primary' }, FOLDED, {}, FOLDED);
+      const [frame, column] = placed(renderer);
+      expect(frame).toMatchObject({ left: 0, top: 0, width: 466 - 84, height: 678 });
+      expect(column).toMatchObject({ left: 466 - 84, right: 0 });
+      expect(insetsOf(renderer)).toEqual({ top: 0, right: 0, bottom: 34, left: 0 });
     });
   });
 });
