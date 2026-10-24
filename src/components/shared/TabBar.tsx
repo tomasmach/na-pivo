@@ -40,7 +40,7 @@ import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry
  * The narrow slice of expo-router's bottom-tab `tabBar` callback props this
  * component actually reads. Declared locally because the full `BottomTabBarProps`
  * lives in the vendored react-navigation types that aren't resolvable as a
- * standalone package — and we only need `state` + `navigation`.
+ * standalone package — and we only need the state, the emitter and navigateToTab.
  */
 interface TabBarRoute {
   key: string;
@@ -59,7 +59,6 @@ export interface TabBarProps {
   navigateToTab: (routeKey: string) => void;
 }
 
-/** Maps a route name to its icon + label + a11y label. */
 const TAB_META: Record<
   string,
   {

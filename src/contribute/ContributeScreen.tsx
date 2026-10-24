@@ -447,7 +447,7 @@ export default function ContributeScreen() {
       setScanSourceVisible(true);
     });
     return () => cancelIdleCallback(id);
-    // One-shot after the route transition and the previous modal settle.
+    // One-shot on mount, once the JS thread is idle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

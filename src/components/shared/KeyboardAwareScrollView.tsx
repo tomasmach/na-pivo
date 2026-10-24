@@ -27,9 +27,7 @@ interface KeyboardAwareScrollViewProps extends ScrollViewProps {
 function focusedTextInputHandle(): number | null {
   const input = TextInput.State.currentlyFocusedInput();
   if (!input) return null;
-  // React Native's public TextInput state returns a Fabric host instance while
-  // findNodeHandle still exposes its legacy component-shaped TypeScript input.
-  return findNodeHandle(input as unknown as Parameters<typeof findNodeHandle>[0]) ?? null;
+  return findNodeHandle(input) ?? null;
 }
 
 /**
