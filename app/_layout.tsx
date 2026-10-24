@@ -3,7 +3,6 @@ import { useFonts } from 'expo-font';
 import { hideAsync, preventAutoHideAsync } from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, Linking, Platform } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect, useRef, useState } from 'react';
 
@@ -51,11 +50,6 @@ import {
   setTelemetrySession,
   trackClientEvent,
 } from '@/data/telemetryClient';
-import {
-  productScreenFromPathname,
-  trackScreenViewed,
-  type ProductScreenName,
-} from '@/data/productTelemetry';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { getCachedAuthenticationState } from '@/data/account';
 import { installBackendLocaleHeader } from '@/data/localeHeader';
@@ -84,6 +78,7 @@ import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboa
 import { NicknameNudgeModal } from '@/components/shared/NicknameNudgeModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
 import { AppDialogScreen } from '@/components/shared/AppDialog';
+import { WindowSafeAreaProvider } from '@/components/shared/Modal';
 import { AppReviewPromptGate } from '@/reviews/AppReviewPromptGate';
 import { Toast } from '@/components/shared/Toast';
 import { BadgeHost } from '@/profile/BadgeHost';
@@ -115,6 +110,7 @@ import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransit
 import { useBookLayout } from '@/layout/bookLayout';
 import { noteTopPathname, openDetail } from '@/layout/openDetail';
 import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
+import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -138,28 +134,6 @@ function OnboardingGate() {
       router.replace('/onboarding' as Href);
     }
   }, [decision, pathname, router]);
-
-  return null;
-}
-
-/**
- * Tracks coarse screen usage after account hydration. Dynamic route parameters
- * never leave the device; productTelemetry collapses them to fixed names first.
- */
-function ProductTelemetryTracker({ enabled }: { enabled: boolean }) {
-  const pathname = usePathname();
-  const previousPathnameRef = useRef<string | null>(null);
-  const previousScreenRef = useRef<ProductScreenName | undefined>(undefined);
-
-  useEffect(() => {
-    if (!enabled || previousPathnameRef.current === pathname) return;
-    previousPathnameRef.current = pathname;
-
-    const screen = productScreenFromPathname(pathname);
-    if (!screen) return;
-    trackScreenViewed(screen, previousScreenRef.current);
-    previousScreenRef.current = screen;
-  }, [enabled, pathname]);
 
   return null;
 }
@@ -525,7 +499,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.stout }}>
-      <SafeAreaProvider>
+      <WindowSafeAreaProvider>
         <StatusBar style="light" />
         <Stack
           screenLayout={({ children }) => <AppDialogScreen>{children}</AppDialogScreen>}
@@ -777,7 +751,7 @@ export default function RootLayout() {
         />
         <BadgeHost />
         <Toast />
-      </SafeAreaProvider>
+      </WindowSafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

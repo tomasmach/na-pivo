@@ -1,7 +1,4 @@
-import { trackScreenViewed } from '@/data/productTelemetry';
-import { useBookStore, type PageEntry } from '@/stores/bookStore';
-
-jest.mock('@/data/productTelemetry', () => ({ trackScreenViewed: jest.fn() }));
+import { OUTSIDE_TABS, selectAnySheetOpen, useBookStore, type PageEntry } from '@/stores/bookStore';
 
 const pub: PageEntry = {
   kind: 'pub',
@@ -13,10 +10,7 @@ const friend: PageEntry = { kind: 'friend', id: 'acc-1' };
 const reset = () => useBookStore.setState(useBookStore.getInitialState(), true);
 
 describe('bookStore', () => {
-  beforeEach(() => {
-    reset();
-    jest.clearAllMocks();
-  });
+  beforeEach(reset);
 
   it('keeps a separate right-half stack per tab', () => {
     const book = useBookStore.getState();
@@ -50,7 +44,7 @@ describe('bookStore', () => {
     expect(useBookStore.getState().pages.parta).toEqual([]);
   });
 
-  it('clear empties one tab and setPages restores routes without counting a view', () => {
+  it('clear empties one tab, clearAll every tab, setPages restores routes', () => {
     const book = useBookStore.getState();
     book.show('kompas', pub);
     book.show('profil', friend);
@@ -58,22 +52,14 @@ describe('bookStore', () => {
     expect(useBookStore.getState().pages.kompas).toEqual([]);
     expect(useBookStore.getState().pages.profil).toEqual([friend]);
 
-    jest.clearAllMocks();
     book.setPages('kompas', [pub, friend]);
     expect(useBookStore.getState().pages.kompas).toEqual([pub, friend]);
-    expect(trackScreenViewed).not.toHaveBeenCalled();
-  });
 
-  it('counts a page view like the pushed route would', () => {
-    const book = useBookStore.getState();
-    book.show('kompas', pub);
-    book.push('kompas', friend);
-    book.replace('kompas', evening);
-    expect((trackScreenViewed as jest.Mock).mock.calls).toEqual([
-      ['pub_page'],
-      ['friend_profile'],
-      ['evening_detail'],
-    ]);
+    book.modalOpened('profil:secondary');
+    book.clearAll();
+    expect(useBookStore.getState().pages).toEqual(useBookStore.getInitialState().pages);
+    // An open sheet is still open: its count belongs to the component, not to the account.
+    expect(useBookStore.getState().openModals['profil:secondary']).toBe(1);
   });
 
   it('counts open sheets per half and never below zero', () => {
@@ -87,5 +73,17 @@ describe('bookStore', () => {
     book.modalClosed('stamgast:secondary');
     book.modalClosed('stamgast:secondary');
     expect(useBookStore.getState().openModals['stamgast:secondary']).toBe(0);
+  });
+
+  it('knows when any sheet is open, in a tab or outside the tabs', () => {
+    const book = useBookStore.getState();
+    expect(selectAnySheetOpen(useBookStore.getState())).toBe(false);
+    book.modalOpened(OUTSIDE_TABS);
+    expect(selectAnySheetOpen(useBookStore.getState())).toBe(true);
+    book.modalClosed(OUTSIDE_TABS);
+    book.modalOpened('kompas:primary');
+    expect(selectAnySheetOpen(useBookStore.getState())).toBe(true);
+    book.modalClosed('kompas:primary');
+    expect(selectAnySheetOpen(useBookStore.getState())).toBe(false);
   });
 });

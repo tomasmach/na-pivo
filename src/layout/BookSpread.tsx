@@ -67,12 +67,14 @@ interface BookSpreadProps {
   phoneShows?: PaneSide;
 }
 
+const NOTHING_KEPT: Record<PaneSide, boolean> = { primary: false, secondary: false };
+
 /**
  * A tab screen as one or two halves split on the fold. The element tree is the
  * same in every mode, so folding or unfolding never remounts a half that stays
  * on screen. A phone shows one half and unmounts the other, as before; a half
- * with a sheet still open stays mounted off screen until the sheet closes, so
- * folding never throws away a draft.
+ * folded away with a sheet still open stays mounted off screen until that sheet
+ * closes, so folding never throws away a draft.
  */
 export function BookSpread({ tab, primary, secondary, phoneShows = 'primary' }: BookSpreadProps) {
   const { mode, foldX, foldY } = useBookLayout();
@@ -93,6 +95,19 @@ export function BookSpread({ tab, primary, secondary, phoneShows = 'primary' }: 
   const secondaryInfo = useMemo<PaneInfo>(() => ({ tab, side: 'secondary' }), [tab]);
   const primaryModals = useBookStore((state) => state.openModals[`${tab}:primary`] ?? 0);
   const secondaryModals = useBookStore((state) => state.openModals[`${tab}:secondary`] ?? 0);
+  const pageOpen = useBookStore((state) => state.pages[tab].length > 0);
+
+  // Only the fold keeps a hidden half alive; on a phone a half leaves with its sheets, as before.
+  const [wasWide, setWasWide] = useState(wide);
+  const [foldedWithSheet, setFoldedWithSheet] = useState(NOTHING_KEPT);
+  const keepPrimary = foldedWithSheet.primary && primaryModals > 0;
+  const keepSecondary = foldedWithSheet.secondary && secondaryModals > 0;
+  if (wasWide !== wide) {
+    setWasWide(wide);
+    setFoldedWithSheet(wide ? NOTHING_KEPT : { primary: primaryModals > 0, secondary: secondaryModals > 0 });
+  } else if (foldedWithSheet.primary !== keepPrimary || foldedWithSheet.secondary !== keepSecondary) {
+    setFoldedWithSheet({ primary: keepPrimary, secondary: keepSecondary });
+  }
 
   // The fold relative to this view: the system tab rail may sit on either side.
   const foldInX = foldX - (frame?.x ?? 0);
@@ -116,13 +131,15 @@ export function BookSpread({ tab, primary, secondary, phoneShows = 'primary' }: 
     primaryStyle = styles.fill;
     secondaryStyle = hasSecondary ? { height: foldInY } : [styles.overlay, { left: 0, height: foldInY }];
   } else {
-    showPrimary = phoneShows === 'primary' || primaryModals > 0;
-    showSecondary = phoneShows === 'secondary' ? hasSecondary : secondaryModals > 0;
+    showPrimary = phoneShows === 'primary' || keepPrimary;
+    showSecondary = phoneShows === 'secondary' ? hasSecondary : keepSecondary;
     primaryStyle = phoneShows === 'primary' ? styles.fill : showPrimary ? offscreen : styles.hidden;
     secondaryStyle = phoneShows === 'secondary' ? styles.fill : showSecondary ? offscreen : styles.hidden;
   }
   // A phone pushes pages as routes; the right half only lingers off screen for an open sheet.
   const showRightPage = wide || (showSecondary && phoneShows === 'primary');
+  // A page covers what the half shows underneath, so VoiceOver must not reach it.
+  const covered = wide && pageOpen;
 
   return (
     <View
@@ -140,7 +157,16 @@ export function BookSpread({ tab, primary, secondary, phoneShows = 'primary' }: 
         style={secondaryStyle}
         pointerEvents={hasSecondary ? 'auto' : 'box-none'}
       >
-        {showSecondary && hasSecondary ? secondary : null}
+        {hasSecondary ? (
+          <View
+            style={styles.fill}
+            accessibilityElementsHidden={covered}
+            importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
+            collapsable={false}
+          >
+            {showSecondary ? secondary : null}
+          </View>
+        ) : null}
         {showRightPage ? <RightPage tab={tab} /> : null}
       </Pane>
     </View>

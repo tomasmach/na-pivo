@@ -810,14 +810,16 @@ Každý modal v appce je `Modal` ze `src/components/shared/Modal.tsx`. Má stejn
   výšku přes Info.plist),
 - na knižně otevřeném Duu drží průhledný sheet v půlce, ze které se otevřel, a sheet z kořene
   appky v pravé; druhou půlku ztmaví a ťuknutí do ní sheet zavře (§17.6). Neprůhledný modal je
-  celá obrazovka a dostane celé okno. Obsah, který se měří z okna, se měří z `useModalFrame()`,
-- dokud je sheet otevřený, drží svou půlku připojenou i po zavření telefonu, takže rozepsaný
-  zápis nezmizí,
+  celá obrazovka a dostane celé okno. Obsah, který se měří z okna, se měří z `useModalFrame()`.
+  Insety má sheet vždycky od okna, ne od půlky, a na straně ohybu nulové,
+- dokud je sheet otevřený, drží svou půlku připojenou i po zavření telefonu a stránku pod ním
+  nechá na místě i po otevření, takže rozepsaný zápis nezmizí,
 - jantarové tlačítko uvnitř zůstane jantarové i v tiché pravé půlce, sheet je samostatné okno.
 
 Scrim (`black 0.6`, `animationType="fade"`), dismiss target za kartou
 (`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát) a Android back přes
-`onRequestClose` si sheet staví sám podle kostry v §7.2. Volající dodává kartu:
+`onRequestClose` si sheet zatím staví sám; `BottomSheetModal`, se kterým počítají §7.2 a §7.2b,
+v appce ještě není. Volající dodává kartu:
 
 | Rozhodnutí | Důvod |
 |---|---|
@@ -831,7 +833,7 @@ Scrim (`black 0.6`, `animationType="fade"`), dismiss target za kartou
 
 ```tsx
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -840,61 +842,47 @@ import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { cs } from '@/i18n/cs';
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 
 export function ExampleSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        {/* Dismiss target BEHIND the card, hidden from VoiceOver. */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          {/* Plain View: the dismiss target is a sibling BEHIND the card (wrapper),
-              so the card does not need to swallow presses — and a no-op Pressable
-              would group the whole sheet into one unnamed control (§11). */}
-          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
-            <View style={styles.grabber} />
+    <BottomSheetModal visible={visible} onClose={onClose}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        {/* Plain View: the dismiss target is a sibling BEHIND the card (wrapper),
+            so the card does not need to swallow presses — and a no-op Pressable
+            would group the whole sheet into one unnamed control (§11). */}
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
 
-            {/* 1 — fixed header */}
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {/* cs.<screen>.sheetTitle */}
-              </Text>
-              <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
-            </View>
-
-            {/* 2 — the only scrolling part */}
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {/* rows */}
-            </ScrollView>
-
-            {/* 3 — pinned footer, OUTSIDE the ScrollView */}
-            <View style={styles.actions}>{/* primary/secondary actions */}</View>
+          {/* 1 — fixed header */}
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {/* cs.<screen>.sheetTitle */}
+            </Text>
+            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
           </View>
+
+          {/* 2 — the only scrolling part */}
+          <ScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* rows */}
+          </ScrollView>
+
+          {/* 3 — pinned footer, OUTSIDE the ScrollView */}
+          <View style={styles.actions}>{/* primary/secondary actions */}</View>
         </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   // Výškové meze patří SEM, ne na kartu — viz §7.5.
   cardWrap: {
     width: '100%',
@@ -943,8 +931,8 @@ const styles = StyleSheet.create({
 
 ### 7.2b Sheet vyjíždí zespoda (3.0)
 
-Cílový stav, zatím nepostavený: wrapper, který řídí oba pohyby níže sám. Do té doby
-sheety jedou `animationType="fade"` podle §7.2.
+Použij `src/components/shared/BottomSheetModal.tsx`. Nestav si `Modal` s
+`animationType` sám.
 
 Dřív tu stálo `animationType="fade"` s odůvodněním, že `"slide"` koliduje
 s vlastním polohováním karty a vzniká dvojitý pohyb. Je to napůl pravda:
@@ -1563,7 +1551,8 @@ rozložení beze změny.
   jako na telefonu.
 - **Parta a Profil** rozloží obsah do dvou sloupců rozdělených v ohybu (`TwoColumns`). Kámoš nebo
   hospoda se otevře přes pravý sloupec.
-- **Sheety zůstávají ve své půlce** (§7.1). Sheet otevřený z kořene appky jde do pravé.
+- **Sheety zůstávají ve své půlce, když je okno rozložené jako kniha** (§7.1). Sheet otevřený
+  z kořene appky jde do pravé. Na stole má sheet celé okno.
 - **Na stole** (vodorovný ohyb, spodní půlka leží) je primární obrazovka dole a dvojče nahoře, aby
   ručička kompasu ležela v rovině stolu. Kompas má kartu na šířku: ciferník vlevo, vzdálenost a
   hospoda vpravo, pod ní „Doveď mě tam“ a „Dej mi jinou“ vedle sebe.

@@ -1,16 +1,14 @@
-import { lazy, Suspense, useMemo } from 'react';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
+import FriendProfileScreen from '@/friends/FriendProfileScreen';
 import { DetailContext, type DetailContextValue, type PaneNav } from '@/layout/detail';
 import type { BookTab } from '@/layout/pane';
+import EveningDetailScreen from '@/myBeers/EveningDetailScreen';
+import PubPageScreen from '@/pubPage/PubPageScreen';
 import { useBookStore, type PageEntry } from '@/stores/bookStore';
 import { Colors } from '@/theme/colors';
-
-// Loaded on first use, so a tab does not pull every detail screen in with it.
-const PubPageScreen = lazy(() => import('@/pubPage/PubPageScreen'));
-const EveningDetailScreen = lazy(() => import('@/myBeers/EveningDetailScreen'));
-const FriendProfileScreen = lazy(() => import('@/friends/FriendProfileScreen'));
 
 function paramsFor(entry: PageEntry): Record<string, string> {
   if (entry.kind === 'pub') return { ...entry.params };
@@ -54,15 +52,13 @@ export function RightPage({ tab }: { tab: BookTab }) {
   return (
     <View style={styles.page} collapsable={false}>
       <DetailContext.Provider key={`${entries.length}:${identity(top)}`} value={value}>
-        <Suspense fallback={null}>
-          {top.kind === 'pub' ? (
-            <PubPageScreen />
-          ) : top.kind === 'evening' ? (
-            <EveningDetailScreen />
-          ) : (
-            <FriendProfileScreen />
-          )}
-        </Suspense>
+        {top.kind === 'pub' ? (
+          <PubPageScreen />
+        ) : top.kind === 'evening' ? (
+          <EveningDetailScreen />
+        ) : (
+          <FriendProfileScreen />
+        )}
       </DetailContext.Provider>
     </View>
   );

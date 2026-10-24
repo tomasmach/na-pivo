@@ -1,13 +1,18 @@
 import { Dimensions } from 'react-native';
 
-import { hrefFor, noteTopPathname, openDetail, openEvening, openFriendProfile } from '@/layout/openDetail';
+import {
+  hrefFor,
+  noteTopPathname,
+  openDetail,
+  openEvening,
+  openFriendProfile,
+  pagePathname,
+} from '@/layout/openDetail';
 import { openPubPage } from '@/pubPage/openPubPage';
 import { useBookStore, type PageEntry } from '@/stores/bookStore';
 import type { Pub } from '@/data/pubs';
 import { geohash8 } from '@/data/geohash';
 import { pubPageRef } from '@/stores/pubPageStore';
-
-jest.mock('@/data/productTelemetry', () => ({ trackScreenViewed: jest.fn() }));
 
 const dimensions = Dimensions.get as jest.Mock;
 
@@ -123,6 +128,19 @@ describe.each([
     expect(useBookStore.getState().pages.parta).toEqual([pubEntry]);
   });
 
+  it('pushes the result over search opened from a full-window page, as on a phone', () => {
+    // Leaderboards, a pub on the whole window, its map, then search.
+    noteTopPathname('/');
+    noteTopPathname('/leaderboards');
+    noteTopPathname('/pub');
+    noteTopPathname('/pub-search');
+    const router = makeRouter();
+    openDetail(router, pubEntry);
+    expect(router.back).not.toHaveBeenCalled();
+    expect(router.push).toHaveBeenCalledTimes(1);
+    expect(useBookStore.getState().pages).toEqual(useBookStore.getInitialState().pages);
+  });
+
   it.each(['/leaderboards', '/tours/abc', '/profile/parta', '/pub'])(
     'pushes over a full-window screen (%s) exactly as on a phone',
     (pathname) => {
@@ -135,10 +153,16 @@ describe.each([
   );
 });
 
-describe('hrefFor', () => {
+describe('hrefFor and pagePathname', () => {
   it('builds every page kind', () => {
     expect(hrefFor({ kind: 'friend', id: 'acc-2' })).toBe('/parta/acc-2');
     expect(hrefFor({ kind: 'evening', startedAt: 's' })).toEqual({ pathname: '/evening', params: { startedAt: 's' } });
     expect(hrefFor(pubEntry)).toEqual({ pathname: '/pub', params: pubEntry.kind === 'pub' ? pubEntry.params : {} });
+  });
+
+  it('names a page by the route it stands for', () => {
+    expect(pagePathname({ kind: 'friend', id: 'acc-2' })).toBe('/parta/acc-2');
+    expect(pagePathname({ kind: 'evening', startedAt: 's' })).toBe('/evening');
+    expect(pagePathname(pubEntry)).toBe('/pub');
   });
 });

@@ -27,6 +27,8 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: jest.fn(() => ({})),
   useRouter: jest.fn(() => ({ push: jest.fn() })),
 }));
+// The right-half pages have their own tests and pull in every detail screen.
+jest.mock('@/layout/RightPage', () => ({ RightPage: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaInsetsContext: jest.requireActual<typeof import('react')>('react').createContext(null),
   useSafeAreaInsets: jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 })),
@@ -35,7 +37,6 @@ jest.mock('react-native-reanimated', () => ({
   useAnimatedReaction: jest.fn(),
   useSharedValue: jest.fn((value) => ({ value })),
 }));
-jest.mock('@/data/productTelemetry', () => ({ trackScreenViewed: jest.fn() }));
 jest.mock('@/components/compass/CompassContainer', () => ({ CompassContainer: jest.fn(() => null) }));
 jest.mock('@/components/compass/PubFilterSheet', () => ({ PubFilterSheet: jest.fn(() => null) }));
 jest.mock('@/components/compass/ReportPubModal', () => ({ ReportPubModal: jest.fn(() => null) }));

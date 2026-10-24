@@ -8,7 +8,6 @@
 
 import { create } from 'zustand';
 
-import { trackScreenViewed, type ProductScreenName } from '@/data/productTelemetry';
 import type { BookTab } from '@/layout/pane';
 
 /** The pub page's route params, in the order its openers pass them. */
@@ -29,15 +28,16 @@ type Pages = Record<BookTab, PageEntry[]>;
 
 const EMPTY_PAGES: Pages = { kompas: [], stamgast: [], parta: [], profil: [] };
 
-const SCREEN_BY_KIND: Record<PageEntry['kind'], ProductScreenName> = {
-  pub: 'pub_page',
-  evening: 'evening_detail',
-  friend: 'friend_profile',
-};
+/** Sheets open outside a tab: on a pushed route or hosted at the root. */
+export const OUTSIDE_TABS = 'outside';
 
 interface BookState {
   pages: Pages;
-  /** Visible sheets per `${tab}:${side}`; a half with a sheet open stays mounted while folded. */
+  /**
+   * Visible sheets per `${tab}:${side}`, or `OUTSIDE_TABS`. A half with a sheet
+   * open stays mounted while folded, and pushed routes wait for their sheets
+   * before they move into a right half.
+   */
   openModals: Record<string, number>;
   /** Opens a page from the tab itself, replacing whatever the right half showed. */
   show: (tab: BookTab, entry: PageEntry) => void;
@@ -46,33 +46,24 @@ interface BookState {
   replace: (tab: BookTab, entry: PageEntry) => void;
   back: (tab: BookTab) => void;
   clear: (tab: BookTab) => void;
+  /** Empties every right half: the pages belong to the account that opened them. */
+  clearAll: () => void;
   /** Moves pushed routes into the right half when the window becomes wide. */
   setPages: (tab: BookTab, entries: PageEntry[]) => void;
   modalOpened: (key: string) => void;
   modalClosed: (key: string) => void;
 }
 
-function track(entry: PageEntry): void {
-  trackScreenViewed(SCREEN_BY_KIND[entry.kind]);
-}
-
 export const useBookStore = create<BookState>((set) => ({
   pages: EMPTY_PAGES,
   openModals: {},
-  show: (tab, entry) => {
-    track(entry);
-    set((state) => ({ pages: { ...state.pages, [tab]: [entry] } }));
-  },
-  push: (tab, entry) => {
-    track(entry);
-    set((state) => ({ pages: { ...state.pages, [tab]: [...state.pages[tab], entry] } }));
-  },
-  replace: (tab, entry) => {
-    track(entry);
-    set((state) => ({ pages: { ...state.pages, [tab]: [...state.pages[tab].slice(0, -1), entry] } }));
-  },
+  show: (tab, entry) => set((state) => ({ pages: { ...state.pages, [tab]: [entry] } })),
+  push: (tab, entry) => set((state) => ({ pages: { ...state.pages, [tab]: [...state.pages[tab], entry] } })),
+  replace: (tab, entry) =>
+    set((state) => ({ pages: { ...state.pages, [tab]: [...state.pages[tab].slice(0, -1), entry] } })),
   back: (tab) => set((state) => ({ pages: { ...state.pages, [tab]: state.pages[tab].slice(0, -1) } })),
   clear: (tab) => set((state) => ({ pages: { ...state.pages, [tab]: [] } })),
+  clearAll: () => set({ pages: EMPTY_PAGES }),
   setPages: (tab, entries) => set((state) => ({ pages: { ...state.pages, [tab]: entries } })),
   modalOpened: (key) =>
     set((state) => ({ openModals: { ...state.openModals, [key]: (state.openModals[key] ?? 0) + 1 } })),
@@ -81,3 +72,8 @@ export const useBookStore = create<BookState>((set) => ({
       openModals: { ...state.openModals, [key]: Math.max(0, (state.openModals[key] ?? 0) - 1) },
     })),
 }));
+
+/** True while any sheet is open, in a tab or outside one. */
+export function selectAnySheetOpen(state: Pick<BookState, 'openModals'>): boolean {
+  return Object.values(state.openModals).some((count) => count > 0);
+}

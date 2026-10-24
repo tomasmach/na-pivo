@@ -95,8 +95,6 @@ export default function BeerScreen() {
   const insets = useSafeAreaInsets();
   const { wide } = useBookLayout();
   const [tab, setTab] = useState<BeerTab>('count');
-  // Folding the phone again lands on the counter, never on the diary.
-  useOnBookOpen(() => setTab('count'));
   // A tour stop handing a pub to the counter must land on the counter, not the diary.
   useFocusEffect(
     useCallback(() => {
@@ -109,6 +107,14 @@ export default function BeerScreen() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [counterMoreOpen, setCounterMoreOpen] = useState(false);
   const [counterMoreReady, setCounterMoreReady] = useState(true);
+  // Folding the phone again lands on the counter, never on the diary. The open
+  // window gives each half its own "…", so the phone's doors close with it and
+  // do not reopen on the fold.
+  useOnBookOpen(() => {
+    setTab('count');
+    setStatsOpen(false);
+    setCounterMoreOpen(false);
+  });
 
   useEffect(() => {
     // A deep link can mount this child before RootLayout's async initialization.

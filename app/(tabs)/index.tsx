@@ -101,6 +101,7 @@ const ARROW_SPRING_CONFIG = {
   mass: 1,
   overshootClamping: true,
 } as const;
+const FOLD_SIDE_SLOP = { top: 8, bottom: 8, left: 8, right: 0 } as const;
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 
@@ -995,7 +996,8 @@ function CompassScreen() {
               onLongPress={handleDevArrival}
               delayLongPress={800}
               style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
-              hitSlop={8}
+              // Beside the fold the glyph already sits a fold margin from it; the slop must not cross that.
+              hitSlop={bookMode === 'book' ? FOLD_SIDE_SLOP : 8}
               accessibilityRole="button"
               accessibilityLabel={t.a11y.compassMore}
             >

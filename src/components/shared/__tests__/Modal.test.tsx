@@ -1,13 +1,23 @@
 import React from 'react';
 import { Modal as RNModal, Pressable, StyleSheet, Text, useWindowDimensions } from 'react-native';
+import { SafeAreaInsetsContext, useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { Modal, WindowSafeAreaProvider } from '@/components/shared/Modal';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { PaneContext, ToneContext, type PaneInfo } from '@/layout/pane';
-import { useBookStore } from '@/stores/bookStore';
+import { OUTSIDE_TABS, useBookStore } from '@/stores/bookStore';
 import { Colors } from '@/theme/colors';
 
-jest.mock('@/data/productTelemetry', () => ({ trackScreenViewed: jest.fn() }));
+// The native provider is out of reach in Jest; the context and the hook are what matter here.
+jest.mock('react-native-safe-area-context', () => {
+  const { createContext, useContext } = jest.requireActual<typeof import('react')>('react');
+  const SafeAreaInsetsContext = createContext(null);
+  return {
+    SafeAreaInsetsContext,
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+    useSafeAreaInsets: () => useContext(SafeAreaInsetsContext),
+  };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -107,9 +117,11 @@ describe('Modal', () => {
     expect(useBookStore.getState().openModals['stamgast:secondary']).toBe(0);
   });
 
-  it('does not count a sheet hosted at the root', () => {
-    render(sheet());
-    expect(useBookStore.getState().openModals).toEqual({});
+  it('counts a sheet outside the tabs on its own', () => {
+    const renderer = render(sheet());
+    expect(useBookStore.getState().openModals).toEqual({ [OUTSIDE_TABS]: 1 });
+    act(() => renderer.unmount());
+    expect(useBookStore.getState().openModals).toEqual({ [OUTSIDE_TABS]: 0 });
   });
 
   it('lets a sheet opened from the quiet half have its own amber button', () => {
@@ -127,5 +139,48 @@ describe('Modal', () => {
       ).backgroundColor;
     expect(background('outside')).toBe(Colors.stout3);
     expect(background('inside')).toBe(Colors.amber);
+  });
+
+  describe('insets', () => {
+    // The window on its side has the island on the left and the home indicator below.
+    const WINDOW: EdgeInsets = { top: 24, right: 30, bottom: 20, left: 59 };
+    function Probe() {
+      return React.createElement('Probe', { insets: useSafeAreaInsets() });
+    }
+
+    /** A sheet opened from a half whose insets were changed the way BookSpread changes them. */
+    function openFrom(pane: PaneInfo, halfInsets: EdgeInsets): EdgeInsets {
+      const renderer = render(
+        <SafeAreaInsetsContext.Provider value={WINDOW}>
+          <WindowSafeAreaProvider>
+            <SafeAreaInsetsContext.Provider value={halfInsets}>
+              <PaneContext.Provider value={pane}>
+                <Modal visible transparent>
+                  <Probe />
+                </Modal>
+              </PaneContext.Provider>
+            </SafeAreaInsetsContext.Provider>
+          </WindowSafeAreaProvider>
+        </SafeAreaInsetsContext.Provider>,
+      );
+      return renderer.root.findByType('Probe').props.insets;
+    }
+
+    it('gives a full-window sheet on a table the window insets, so it clears the status bar', () => {
+      setWindow(669, 951);
+      // The bottom half's top edge is the fold, so its top inset is the fold margin.
+      expect(openFrom({ tab: 'stamgast', side: 'primary' }, { ...WINDOW, top: 20 })).toEqual(WINDOW);
+      expect(openFrom({ tab: 'kompas', side: 'secondary' }, { ...WINDOW, bottom: 20 })).toEqual(WINDOW);
+    });
+
+    it('drops only the fold side for a sheet kept to one half of the book', () => {
+      setWindow(951, 669);
+      expect(openFrom({ tab: 'kompas', side: 'primary' }, { ...WINDOW, right: 20 })).toEqual({ ...WINDOW, right: 0 });
+      expect(openFrom({ tab: 'kompas', side: 'secondary' }, { ...WINDOW, left: 20 })).toEqual({ ...WINDOW, left: 0 });
+    });
+
+    it('keeps the window insets on a phone', () => {
+      expect(openFrom({ tab: 'kompas', side: 'primary' }, WINDOW)).toEqual(WINDOW);
+    });
   });
 });

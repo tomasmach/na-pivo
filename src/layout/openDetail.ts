@@ -20,14 +20,15 @@ const TAB_ROOTS: Readonly<Record<string, BookTab>> = {
   '/profile': 'profil',
 };
 
+const SEARCH = '/pub-search';
+
 let topPathname = '/';
-let lastTab: BookTab = 'kompas';
+let underSearch = '/';
 
 /** Fed by the root layout so helpers outside React know what is on screen. */
 export function noteTopPathname(pathname: string): void {
+  if (pathname === SEARCH && topPathname !== SEARCH) underSearch = topPathname;
   topPathname = pathname;
-  const tab = TAB_ROOTS[pathname];
-  if (tab) lastTab = tab;
 }
 
 /** The tab whose root is on screen, or null under a pushed route. */
@@ -46,6 +47,12 @@ export function hrefFor(entry: PageEntry): Href {
   }
 }
 
+/** The route a right-half page stands for, so it counts as that screen. */
+export function pagePathname(entry: PageEntry): string {
+  if (entry.kind === 'friend') return `/parta/${entry.id}`;
+  return entry.kind === 'pub' ? '/pub' : '/evening';
+}
+
 export function openDetail(router: Router, entry: PageEntry, options: { replace?: boolean } = {}): void {
   if (currentBookMode() !== 'phone') {
     const book = useBookStore.getState();
@@ -55,10 +62,11 @@ export function openDetail(router: Router, entry: PageEntry, options: { replace?
       else book.show(tab, entry);
       return;
     }
-    // Search is a doorway: close it and show the result beside the tab it came from.
-    if (topPathname === '/pub-search') {
+    // Search over a tab is a doorway: close it and show the result beside that tab.
+    const searchedTab = topPathname === SEARCH ? TAB_ROOTS[underSearch] : undefined;
+    if (searchedTab) {
       router.back();
-      book.show(lastTab, entry);
+      book.show(searchedTab, entry);
       return;
     }
   }

@@ -36,6 +36,8 @@ jest.mock('expo-router', () => ({
   })),
 }));
 
+// The right-half pages have their own tests and pull in every detail screen.
+jest.mock('@/layout/RightPage', () => ({ RightPage: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaInsetsContext: jest.requireActual<typeof import('react')>('react').createContext(null),
   useSafeAreaInsets: jest.fn(() => ({

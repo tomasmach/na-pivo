@@ -23,6 +23,7 @@ import {
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
+import { useBookStore } from '@/stores/bookStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { releaseToursToDevice } from '@/stores/toursStore';
 
@@ -229,6 +230,9 @@ export const useAccountStore = create<AccountState>((set, get) => {
   const syncSession = async () => {
     const session = await ensureAccount();
     setTelemetrySession(session);
+    const previousAccountId = get().session?.accountId;
+    // Pages in the right halves of the open iPhone Duo belong to the outgoing account.
+    if (previousAccountId && previousAccountId !== session?.accountId) useBookStore.getState().clearAll();
     set((state) => ({
       session,
       status: session ? 'ready' : 'idle',

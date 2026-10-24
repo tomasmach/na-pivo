@@ -14,11 +14,12 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: jest.fn(() => ({})),
   useRouter: jest.fn(() => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() })),
 }));
+// The right-half pages have their own tests and pull in every detail screen.
+jest.mock('@/layout/RightPage', () => ({ RightPage: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaInsetsContext: jest.requireActual<typeof import('react')>('react').createContext(null),
   useSafeAreaInsets: jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 })),
 }));
-jest.mock('@/data/productTelemetry', () => ({ trackScreenViewed: jest.fn() }));
 jest.mock('@/data/uxTelemetry', () => ({ trackUiInteraction: jest.fn() }));
 jest.mock('@/liveActivity/liveBeerActivity', () => ({
   reconcileLiveBeerActivityAndAutoArchive: jest.fn(async () => undefined),
@@ -154,5 +155,21 @@ describe('Štamgast on the open iPhone Duo', () => {
     expect(counterShown(renderer)).toBe(false);
     expect(diaryShown(renderer)).toBe(true);
     expect(finishButtonColor(renderer)).toBe(Colors.amber);
+  });
+
+  it('closes the phone\'s "…" when the phone opens, so folding does not bring it back', () => {
+    setWindow(402, 874);
+    const renderer = render();
+    act(() => renderer.root.findAllByProps({ testID: 'counter-more' })[0].props.onPress());
+    expect(CounterScreen.mock.calls.at(-1)?.[0].moreOpen).toBe(true);
+
+    setWindow(951, 669);
+    act(() => renderer.update(<BeerScreen />));
+    // The open window gives the counter its own door.
+    expect(CounterScreen.mock.calls.at(-1)?.[0].moreOpen).toBeUndefined();
+
+    setWindow(466, 678);
+    act(() => renderer.update(<BeerScreen />));
+    expect(CounterScreen.mock.calls.at(-1)?.[0].moreOpen).toBe(false);
   });
 });

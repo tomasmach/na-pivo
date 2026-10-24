@@ -172,8 +172,7 @@ export function CompassCard({
     [onDialSize, sideways],
   );
 
-  // Beside the dial the numeral shares a short card with the pub, so it takes the smallest step.
-  const numeralSize = distanceValue === null ? 0 : sideways ? 34 : distanceFontSize(distanceValue);
+  const numeralSize = distanceValue === null ? 0 : distanceFontSize(distanceValue);
   const hasFooter = pubName !== null || hidden;
 
   const readout =
