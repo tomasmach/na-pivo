@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Modal as RNModal, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { useRootNavigationState, useRouter } from 'expo-router';
 
@@ -163,40 +163,33 @@ describe('AppDialog action after the native dismissal', () => {
   it('keeps the page under a confirmation until its action ran, when the phone opens under it', () => {
     const tabs = { name: '(tabs)', state: { index: 1, routes: [{ name: 'index' }, { name: 'beer' }] } };
     const evening = { name: 'evening', params: { startedAt: 's1' } };
-    let closeEvening = () => undefined as void;
-    const router = { dismissAll: jest.fn(() => closeEvening()), replace: jest.fn() };
+    const onPress = jest.fn();
+    // Moving the evening into the right half closes the route that hosts the dialog.
+    const router = { dismissAll: jest.fn(() => expect(onPress).toHaveBeenCalledTimes(1)), replace: jest.fn() };
     (useRouter as jest.Mock).mockReturnValue(router);
     (useRootNavigationState as jest.Mock).mockReturnValue({ routes: [{ name: '__root', state: { routes: [tabs, evening] } }] });
-    const onPress = jest.fn();
-
-    function App() {
-      const [eveningShown, setEveningShown] = useState(true);
-      closeEvening = () => setEveningShown(false);
-      return (
-        <>
-          {eveningShown ? <AppDialogHost /> : null}
-          <PaneRouteMigrator />
-        </>
-      );
-    }
+    const app = (
+      <>
+        <AppDialogHost />
+        <PaneRouteMigrator />
+      </>
+    );
 
     setWindow(402, 874);
     let renderer: any;
     act(() => {
-      renderer = TestRenderer.create(<App />);
+      renderer = TestRenderer.create(app);
     });
     mounted.push(renderer);
     act(() => showAppDialog({ title: 'Smazat večer?', buttons: [{ text: 'Smazat', onPress }] }));
 
     setWindow(951, 669);
-    act(() => renderer.update(<App />));
+    act(() => renderer.update(app));
     confirm(renderer);
     expect(router.dismissAll).not.toHaveBeenCalled();
-    expect(renderer.root.findAllByType(AppDialogHost)).toHaveLength(1);
 
     nativeDismiss(renderer);
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(router.dismissAll).toHaveBeenCalledTimes(1);
-    expect(renderer.root.findAllByType(AppDialogHost)).toHaveLength(0);
   });
 });
