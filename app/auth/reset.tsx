@@ -75,7 +75,9 @@ export default function ResetPasswordScreen() {
       const result = await resetPassword({ token, password });
       if (result.ok) {
         showToast(t.account.resetDoneToast);
-        router.replace('/(tabs)');
+        // Close the auth modals over the existing tabs instead of stacking a
+        // second tab bar on top of them.
+        router.dismissTo('/(tabs)');
         return;
       }
       setError(result.detail || t.account.errorGeneric);
