@@ -11,9 +11,12 @@ import { usePartaSignalStore } from '@/stores/partaSignalStore';
 // iOS would inset only the first scroll view of each tab. Screens pad for the
 // bar themselves via useBottomInset(); Android keeps its own wrapper, which
 // ends the screen above the bar.
+// The app is dark only, but follows the system appearance; in light mode iOS
+// would draw the bar as light glass under amber labels. This darkens just the bar.
 const SCREEN = {
   contentStyle: { backgroundColor: Colors.stout },
   disableAutomaticContentInsets: Platform.OS === 'ios',
+  unstable_nativeProps: { ios: { experimental_userInterfaceStyle: 'dark' as const } },
 };
 
 // iOS always draws the badge text white, which amber cannot carry.
@@ -44,6 +47,7 @@ export default function TabsLayout() {
         shadowColor={Colors.border}
         disableTransparentOnScrollEdge
         indicatorColor={Colors.stout3}
+        labelVisibilityMode="labeled"
         badgeBackgroundColor={BADGE_BACKGROUND}
         badgeTextColor={Colors.stout}
         screenListeners={({ navigation, route }) => ({
