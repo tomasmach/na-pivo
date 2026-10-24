@@ -22,7 +22,7 @@ import { decodeGeohash8 } from './geohash';
 import { enqueueVisitOp, flushVisitsQueue } from './visitsQueue';
 import type { VisitEntry } from './visitsClient';
 import { useAccountStore } from '@/stores/accountStore';
-import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import { sessionIsRestoredOnly, useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
 import { cancelQueuedPubBroadcasts } from './friendsQueue';
 
@@ -117,6 +117,7 @@ export async function seedVisitsFromHistory(): Promise<void> {
 
   const enqueueOps: Promise<void>[] = [];
   for (const session of sessions) {
+    if (sessionIsRestoredOnly(session)) continue;
     const entry = buildVisitEntry(session);
     if (entry) enqueueOps.push(enqueueVisitOp({ op: 'upsert', clientId: entry.client_id, entry }));
   }

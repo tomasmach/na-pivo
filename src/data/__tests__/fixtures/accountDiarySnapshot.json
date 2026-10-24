@@ -1,0 +1,120 @@
+{
+  "drinks": [
+    {
+      "client_id": "c24cbf20-a9d7-4ef0-9cdd-2d5812f36761",
+      "evening_client_id": null,
+      "cache_key": null,
+      "name": "",
+      "lat": null,
+      "lng": null,
+      "city": "",
+      "external_id": "",
+      "place_context": "private",
+      "drink_type": "beer",
+      "beer": {
+        "name": "Bernard 12°",
+        "price_czk": null,
+        "volume_ml": 500,
+        "serving_type": "bottle"
+      },
+      "drank_at": "2026-10-17T23:30:00+00:00",
+      "is_suspect": false
+    },
+    {
+      "client_id": "fc307176-4272-4eec-b24f-40283b68c3f5",
+      "evening_client_id": null,
+      "cache_key": null,
+      "name": "",
+      "lat": null,
+      "lng": null,
+      "city": "",
+      "external_id": "",
+      "place_context": "private",
+      "drink_type": "beer",
+      "beer": {
+        "name": "Bernard 12°",
+        "price_czk": null,
+        "volume_ml": 500,
+        "serving_type": "bottle"
+      },
+      "drank_at": "2026-10-17T21:00:00+00:00",
+      "is_suspect": false
+    },
+    {
+      "client_id": "2dd8454f-c3ad-4421-ae1e-f3508e747ce9",
+      "evening_client_id": null,
+      "cache_key": "u2fkbnhz",
+      "name": "U Restore testu",
+      "lat": 50.08804,
+      "lng": 14.42076,
+      "city": "Praha",
+      "external_id": "",
+      "place_context": "pub",
+      "drink_type": "soft_drink",
+      "beer": {
+        "name": "Kofola",
+        "price_czk": 45,
+        "volume_ml": 500,
+        "serving_type": "unknown"
+      },
+      "drank_at": "2026-10-17T19:30:00+00:00",
+      "is_suspect": false
+    },
+    {
+      "client_id": "7fa35365-c662-4763-94bd-4d1a8d2a0aec",
+      "evening_client_id": null,
+      "cache_key": "u2fkbnhz",
+      "name": "U Restore testu",
+      "lat": 50.08804,
+      "lng": 14.42076,
+      "city": "Praha",
+      "external_id": "",
+      "place_context": "pub",
+      "drink_type": "beer",
+      "beer": {
+        "name": "Velkopopovický Kozel 11°",
+        "price_czk": 52,
+        "volume_ml": 500,
+        "serving_type": "unknown"
+      },
+      "drank_at": "2026-10-17T17:10:00+00:00",
+      "is_suspect": false
+    },
+    {
+      "client_id": "80bfedd1-fb29-4338-b956-523cc6ce63d1",
+      "evening_client_id": null,
+      "cache_key": "u2fkbnhz",
+      "name": "U Restore testu",
+      "lat": 50.08804,
+      "lng": 14.42076,
+      "city": "Praha",
+      "external_id": "",
+      "place_context": "pub",
+      "drink_type": "beer",
+      "beer": {
+        "name": "Pilsner Urquell",
+        "price_czk": 59,
+        "volume_ml": 500,
+        "serving_type": "unknown"
+      },
+      "drank_at": "2026-10-17T16:00:00+00:00",
+      "is_suspect": false
+    }
+  ],
+  "visits": [
+    {
+      "client_id": "185afc5a-187a-42b2-82f4-22fb477f44d2",
+      "cache_key": "u2fkbnhz",
+      "name": "U Restore testu",
+      "lat": 50.08804,
+      "lng": 14.42076,
+      "city": "Praha",
+      "external_id": "",
+      "started_at": "2026-10-17T16:00:00+00:00",
+      "ended_at": "2026-10-17T19:30:00+00:00",
+      "closed_at": "2026-10-17T19:45:00+00:00",
+      "updated_at": "2026-10-17T19:45:00+00:00",
+      "party_code": null
+    }
+  ]
+}

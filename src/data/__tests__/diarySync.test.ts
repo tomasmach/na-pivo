@@ -1,16 +1,20 @@
 import {
   deriveReconciledDiaryStats,
+  mergeServerDiaryHistory,
   reconcileDiarySnapshot,
+  restoreAccountDiary,
   type DiarySnapshot,
 } from '../diarySync';
-import { fetchDrinks } from '../drinksClient';
+import { fetchDrinks, type WireDrink } from '../drinksClient';
 import { flushDrinksQueue } from '../drinksQueue';
 import { flushDeleteDrinksQueue, getQueuedDeleteIds } from '../deleteDrinksQueue';
 import { flushUpdateDrinksQueue, getQueuedUpdateIds } from '../updateDrinksQueue';
-import { fetchVisits } from '../visitsClient';
+import { fetchVisits, type WireVisit } from '../visitsClient';
 import { flushVisitsQueue, getQueuedVisitDeleteIds } from '../visitsQueue';
+import capturedSnapshot from './fixtures/accountDiarySnapshot.json';
+import { t } from '@/i18n';
 import { useCommunityStore } from '@/stores/communityStore';
-import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import { drinkingDayKey, useTallyStore, type TallySession } from '@/stores/tallyStore';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -92,7 +96,7 @@ function localSession(clientId: string, pubKey: string, drinkIds: string[]): Tal
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useTallyStore.setState({ current: null, history: [] });
+  useTallyStore.setState({ current: null, history: [], restoredAccountId: null });
   useCommunityStore.setState({ overrides: {} });
 });
 
@@ -249,5 +253,241 @@ it('uses only the server snapshot on a fresh install with no local history', () 
     distinctPubs: 1,
     maxVisitsToOnePub: 1,
     totalSpentCzk: 120,
+  });
+});
+
+describe('restoring the account history into the diary', () => {
+  /** Device-local time in July 2026, so drinking days do not depend on the TZ. */
+  const at = (day: number, hour: number, minute = 0) =>
+    new Date(2026, 6, day, hour, minute).toISOString();
+
+  function pubDrink(clientId: string, drankAt: string, cacheKey = PUB_A): WireDrink {
+    return { ...remoteDrink(clientId, cacheKey), drank_at: drankAt };
+  }
+
+  function homeDrink(clientId: string, drankAt: string): WireDrink {
+    return { ...remoteDrink(clientId, null), drank_at: drankAt };
+  }
+
+  function visit(
+    clientId: string,
+    cacheKey: string,
+    startedAt: string,
+    endedAt: string | null,
+    closedAt: string | null = endedAt,
+  ): WireVisit {
+    return {
+      ...remoteVisit(clientId, cacheKey),
+      started_at: startedAt,
+      ended_at: endedAt,
+      closed_at: closedAt,
+      updated_at: closedAt ?? endedAt ?? startedAt,
+    };
+  }
+
+  const ids = (sessions: TallySession[] | null) =>
+    sessions?.map((session) => [session.clientId, session.drinks.map((drink) => drink.id)]);
+
+  it('files pub drinks under the visit they were poured in', () => {
+    const visits = [
+      visit('v1', PUB_A, at(10, 18), at(10, 20), at(10, 20, 15)),
+      visit('v2', PUB_B, at(10, 21), at(10, 22), null),
+    ];
+    const drinks = [pubDrink('d3', at(10, 22), PUB_B), pubDrink('d2', at(10, 20)), pubDrink('d1', at(10, 18))];
+
+    const history = mergeServerDiaryHistory({ drinks, visits }, null, []);
+
+    expect(ids(history)).toEqual([
+      ['v2', ['d3']],
+      ['v1', ['d1', 'd2']],
+    ]);
+    expect(history?.[1]).toEqual({
+      clientId: 'v1',
+      pubKey: PUB_A,
+      pubName: 'Hospoda',
+      startedAt: at(10, 18),
+      archivedReason: 'manual',
+      closedAt: at(10, 20, 15),
+      visitUpdatedAt: at(10, 20, 15),
+      drinks: [
+        { id: 'd1', beerName: 'Plzeň', priceCzk: 60, volumeMl: 500, at: at(10, 18), syncStatus: 'sent', restored: true },
+        { id: 'd2', beerName: 'Plzeň', priceCzk: 60, volumeMl: 500, at: at(10, 20), syncStatus: 'sent', restored: true },
+      ],
+    });
+    // A visit still open on the server can be resumed like a timed-out evening.
+    expect(history?.[0]).toMatchObject({ pubKey: PUB_B, archivedReason: 'timeout' });
+    expect(history?.[0]).not.toHaveProperty('closedAt');
+  });
+
+  it('groups drinks outside a pub by place and drinking day across midnight', () => {
+    const drinks = [
+      homeDrink('late', at(11, 1, 30)),
+      homeDrink('first', at(10, 23)),
+      homeDrink('next-day', at(11, 18)),
+      homeDrink('broken', 'not a date'),
+    ];
+
+    const history = mergeServerDiaryHistory({ drinks, visits: [] }, null, []);
+
+    expect(ids(history)).toEqual([
+      ['next-day', ['next-day']],
+      ['first', ['first', 'late']],
+    ]);
+    expect(history?.[1]).toMatchObject({
+      pubKey: 'ctx:private',
+      pubName: t.counter.outsideLabel('private'),
+      placeContext: 'private',
+      startedAt: at(10, 23),
+      archivedReason: 'manual',
+    });
+  });
+
+  it('skips drinks the diary already has and adds the rest to the same local evening', () => {
+    const local = localSession('v1', PUB_A, ['d1']);
+    const added = { ...remoteDrink('d2', PUB_A), drank_at: '2026-07-19T19:00:00Z' };
+
+    const history = mergeServerDiaryHistory(
+      { drinks: [remoteDrink('d1', PUB_A), added], visits: [remoteVisit('v1', PUB_A)] },
+      null,
+      [local],
+    );
+
+    expect(ids(history)).toEqual([['v1', ['d1', 'd2']]]);
+    expect(history?.[0].drinks[0]).toBe(local.drinks[0]);
+    expect(history?.[0].drinks[1]).toMatchObject({ restored: true, syncStatus: 'sent' });
+  });
+
+  it('leaves the live evening alone', () => {
+    const current = localSession('live', PUB_A, ['c1']);
+    useTallyStore.setState({ current, history: [] });
+
+    restoreAccountDiary(
+      {
+        drinks: [remoteDrink('c1', PUB_A), { ...remoteDrink('c2', PUB_A), drank_at: '2026-07-19T19:00:00Z' }],
+        visits: [remoteVisit('live', PUB_A)],
+      },
+      'account-1',
+    );
+
+    expect(useTallyStore.getState().current).toBe(current);
+    expect(useTallyStore.getState().history).toEqual([]);
+  });
+
+  it('fills only free history slots and never evicts a local evening', () => {
+    const local = Array.from({ length: 45 }, (_, index) => ({
+      ...localSession(`local-${index}`, PUB_A, [`l${index}`]),
+      startedAt: new Date(2026, 0, 45 - index, 18).toISOString(),
+    }));
+    const server = Array.from({ length: 20 }, (_, index) =>
+      homeDrink(`s${index}`, new Date(2026, 2, 1 + index, 20).toISOString()),
+    );
+
+    const history = mergeServerDiaryHistory({ drinks: server, visits: [] }, null, local);
+
+    expect(history).toHaveLength(50);
+    expect(history?.slice(0, 5).map((session) => session.clientId)).toEqual(['s19', 's18', 's17', 's16', 's15']);
+    expect(history?.slice(5)).toEqual(local);
+  });
+
+  it('changes nothing the second time and restores only once per account', () => {
+    const snapshot = {
+      drinks: [pubDrink('d1', at(10, 18)), homeDrink('h1', at(10, 23))],
+      visits: [visit('v1', PUB_A, at(10, 18), at(10, 20))],
+    };
+    const first = mergeServerDiaryHistory(snapshot, null, []);
+    expect(mergeServerDiaryHistory(snapshot, null, first!)).toBeNull();
+
+    restoreAccountDiary(snapshot, 'account-1');
+    expect(useTallyStore.getState()).toMatchObject({ history: first, restoredAccountId: 'account-1' });
+    // The user deleted the restored evenings; the next pull must not bring them back.
+    useTallyStore.setState({ history: [] });
+    restoreAccountDiary(snapshot, 'account-1');
+    expect(useTallyStore.getState().history).toEqual([]);
+  });
+
+  it('keeps a drink at its own pub when only a pub 40 m away has a visit that night', () => {
+    const drink = { ...pubDrink('d1', at(10, 20)), lat: 50.08804, lng: 14.42076 };
+    const nextDoor = {
+      ...visit('v1', PUB_B, at(10, 19), at(10, 22)),
+      name: 'U Souseda',
+      external_id: 'next-door',
+      lat: 50.0884,
+      lng: 14.42076,
+    };
+
+    const history = mergeServerDiaryHistory({ drinks: [drink], visits: [nextDoor] }, null, []);
+
+    expect(ids(history)).toEqual([['d1', ['d1']]]);
+    expect(history?.[0]).toMatchObject({ pubKey: PUB_A, pubName: 'Hospoda' });
+    expect(history?.[0]).not.toHaveProperty('pubExternalId');
+  });
+
+  it('keeps a drink at its own pub when the overlapping visit is somewhere else', () => {
+    const brno = { ...visit('v1', 'u2ezcgsw', at(10, 18), at(10, 22)), lat: 49.1951, lng: 16.6068 };
+    const history = mergeServerDiaryHistory({ drinks: [pubDrink('d1', at(10, 20))], visits: [brno] }, null, []);
+
+    expect(ids(history)).toEqual([['d1', ['d1']]]);
+    expect(history?.[0]).toMatchObject({ pubKey: PUB_A, pubName: 'Hospoda' });
+
+    const withoutPlace = { ...pubDrink('d2', at(10, 20), 'u2fkbnzz'), lat: null, lng: null };
+    const nearby = visit('v2', PUB_B, at(10, 18), at(10, 22));
+    expect(ids(mergeServerDiaryHistory({ drinks: [withoutPlace], visits: [nearby] }, null, []))).toEqual([
+      ['d2', ['d2']],
+    ]);
+  });
+
+  it('keeps a drink at its own pub when that pub has another visit the same day', () => {
+    const history = mergeServerDiaryHistory(
+      {
+        drinks: [pubDrink('d1', at(10, 18)), pubDrink('d2', at(10, 21, 30))],
+        visits: [visit('v1', PUB_A, at(10, 18), at(10, 18)), visit('v2', PUB_B, at(10, 21), at(10, 23))],
+      },
+      null,
+      [],
+    );
+
+    expect(ids(history)).toEqual([['v1', ['d1', 'd2']]]);
+  });
+
+  it('restores a payload captured from the backend after logout and login', () => {
+    const snapshot = capturedSnapshot as unknown as DiarySnapshot;
+    const [pubVisit] = snapshot.visits;
+
+    const history = mergeServerDiaryHistory(snapshot, null, [])!;
+
+    const pubEvening = history.find((session) => session.clientId === pubVisit.client_id);
+    expect(pubEvening).toMatchObject({
+      pubKey: pubVisit.cache_key,
+      pubName: 'U Restore testu',
+      pubCity: 'Praha',
+      startedAt: '2026-10-17T16:00:00.000Z',
+      archivedReason: 'manual',
+      closedAt: '2026-10-17T19:45:00.000Z',
+    });
+    expect(pubEvening?.drinks.map((drink) => [drink.beerName, drink.drinkType])).toEqual([
+      ['Pilsner Urquell', undefined],
+      ['Velkopopovický Kozel 11°', undefined],
+      ['Kofola', 'soft_drink'],
+    ]);
+
+    const homeDrinks = snapshot.drinks.filter((drink) => drink.place_context === 'private');
+    const homeEvenings = history.filter((session) => session.pubKey === 'ctx:private');
+    expect(homeEvenings.flatMap((session) => session.drinks.map((drink) => drink.id)).sort()).toEqual(
+      homeDrinks.map((drink) => drink.client_id).sort(),
+    );
+    expect(homeEvenings).toHaveLength(
+      new Set(homeDrinks.map((drink) => drinkingDayKey(new Date(drink.drank_at)))).size,
+    );
+    expect(history.flatMap((session) => session.drinks)).toHaveLength(snapshot.drinks.length);
+    expect(
+      history.every((session) => session.drinks.every((drink) => drink.restored && drink.syncStatus === 'sent')),
+    ).toBe(true);
+    expect(deriveReconciledDiaryStats(snapshot, history)).toEqual(deriveReconciledDiaryStats(snapshot, []));
+
+    const suspect = { ...pubDrink('suspect', at(12, 20), 'u2fkbnzz'), is_suspect: true };
+    const withSuspect = { ...snapshot, drinks: [...snapshot.drinks, suspect] };
+    expect(deriveReconciledDiaryStats(withSuspect, mergeServerDiaryHistory(withSuspect, null, [])!)).toEqual(
+      deriveReconciledDiaryStats(withSuspect, []),
+    );
   });
 });

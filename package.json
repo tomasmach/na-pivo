@@ -35,7 +35,7 @@
     "ios:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo run:ios",
     "android": "expo run:android",
     "android:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo run:android",
-    "audit:ci": "audit-ci --config audit-ci.jsonc",
+    "audit:ci": "audit-ci --config audit-ci.jsonc && node scripts/check-zod-audit-exception.js",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
     "lint": "expo lint",
