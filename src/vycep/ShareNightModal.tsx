@@ -9,7 +9,7 @@
  * same PNG to the system share sheet (messengers, photo library).
  */
 
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import {
   Pressable,
   Share,
@@ -18,6 +18,7 @@ import {
   View,
   type ViewInstance,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
@@ -56,6 +57,12 @@ interface ShareNightModalProps {
   onClose: () => void;
   /** 'recap' (default) brags about a finished night; 'live' invites people. */
   mode?: StickerMode;
+}
+
+/** Below the status bar, which is 82 tall on a Duo on a table; an open Duo has none above the window. */
+function Backdrop({ children }: PropsWithChildren) {
+  const { top } = useSafeAreaInsets();
+  return <View style={[styles.backdrop, { paddingTop: Math.max(64, top + 2) }]}>{children}</View>;
 }
 
 function ShareNightModalBase({
@@ -149,7 +156,7 @@ function ShareNightModalBase({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={styles.backdrop}>
+      <Backdrop>
         <View style={styles.topRow}>
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
             {t.vycep.storyModalTitle}
@@ -246,7 +253,7 @@ function ShareNightModalBase({
             </Text>
           </Pressable>
         </View>
-      </View>
+      </Backdrop>
     </Modal>
   );
 }
@@ -257,7 +264,6 @@ const styles = StyleSheet.create({
     // Fully opaque: the screen behind showing through made the transparent
     // sticker preview read as broken layout instead of an overlay.
     backgroundColor: Colors.deep,
-    paddingTop: 64,
     paddingBottom: 40,
   },
   topRow: {
