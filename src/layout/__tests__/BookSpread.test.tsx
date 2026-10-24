@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text, useWindowDimensions } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { Modal } from '@/components/shared/Modal';
 import { BookSpread } from '@/layout/BookSpread';
@@ -12,7 +13,8 @@ jest.mock('react-native-safe-area-context', () => {
   const { createContext } = jest.requireActual<typeof import('react')>('react');
   return {
     SafeAreaInsetsContext: createContext(null),
-    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+    // The open Duo on its side: the status column on the right.
+    useSafeAreaInsets: () => ({ top: 0, right: 84, bottom: 20, left: 0 }),
   };
 });
 // The pages have their own tests; here only the half under them matters.
@@ -122,6 +124,25 @@ describe('BookSpread', () => {
 
     act(() => useBookStore.getState().back('stamgast'));
     expect(underPage(renderer).accessibilityElementsHidden).toBe(false);
+  });
+
+  it('moves the fold margin to the fold side only of a half that has a twin', () => {
+    function Probe({ name }: { name: string }) {
+      return React.createElement('Probe', { name, insets: React.useContext(SafeAreaInsetsContext) });
+    }
+    const insetsOf = (renderer: any, name: string) =>
+      renderer.root.find((node: any) => node.type === 'Probe' && node.props.name === name).props.insets;
+    setWindow(951, 669);
+
+    const halves = render(
+      <BookSpread tab="stamgast" primary={<Probe name="counter" />} secondary={<Probe name="diary" />} />,
+    );
+    expect(insetsOf(halves, 'counter')).toEqual({ top: 0, right: 20, bottom: 20, left: 0 });
+    expect(insetsOf(halves, 'diary')).toEqual({ top: 0, right: 84, bottom: 20, left: 20 });
+
+    // Parta spans the window: its right edge is the window's, not the fold.
+    const whole = render(<BookSpread tab="parta" primary={<Probe name="parta" />} />);
+    expect(insetsOf(whole, 'parta')).toEqual({ top: 0, right: 84, bottom: 20, left: 0 });
   });
 
   it('never hides the phone screen for a page kept from the open window', () => {

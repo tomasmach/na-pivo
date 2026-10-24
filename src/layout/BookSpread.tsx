@@ -18,19 +18,22 @@ interface Frame {
 interface PaneProps {
   info: PaneInfo;
   mode: BookMode;
+  /** False for a primary that spans the window: then no side of it is the fold. */
+  split: boolean;
   style: StyleProp<ViewStyle>;
   pointerEvents?: 'box-none' | 'auto';
   children: ReactNode;
 }
 
 /** One half. Its insets end at the fold, and the right half speaks quietly. */
-function Pane({ info, mode, style, pointerEvents, children }: PaneProps) {
+function Pane({ info, mode, split, style, pointerEvents, children }: PaneProps) {
   const insets = useSafeAreaInsets();
   const tabBarInset = useTabBarInset();
   // The upper half on a table ends at the fold, not at the tab bar: what covers
   // its bottom edge is the fold margin.
   const upperHalf = mode === 'tabletop' && info.side === 'secondary';
   const paneInsets = useMemo(() => {
+    if (!split) return insets;
     if (mode === 'book') {
       return info.side === 'primary'
         ? { ...insets, right: FOLD_MARGIN }
@@ -42,7 +45,7 @@ function Pane({ info, mode, style, pointerEvents, children }: PaneProps) {
         : { ...insets, bottom: FOLD_MARGIN };
     }
     return insets;
-  }, [info.side, insets, mode]);
+  }, [info.side, insets, mode, split]);
   const tone = mode !== 'phone' && info.side === 'secondary' ? 'quiet' : 'primary';
   return (
     <View style={style} pointerEvents={pointerEvents} collapsable={false}>
@@ -148,12 +151,13 @@ export function BookSpread({ tab, primary, secondary, phoneShows = 'primary' }: 
       style={[styles.root, mode === 'book' && styles.row, mode === 'tabletop' && styles.columnReverse]}
       collapsable={false}
     >
-      <Pane info={primaryInfo} mode={mode} style={primaryStyle}>
+      <Pane info={primaryInfo} mode={mode} split={hasSecondary} style={primaryStyle}>
         {showPrimary ? primary : null}
       </Pane>
       <Pane
         info={secondaryInfo}
         mode={mode}
+        split
         style={secondaryStyle}
         pointerEvents={hasSecondary ? 'auto' : 'box-none'}
       >
