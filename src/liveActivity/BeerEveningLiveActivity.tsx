@@ -142,7 +142,7 @@ const BeerEveningLiveActivity = (
   const departsAtMs = props.homeTransitDepartsAtMs;
   // The system redraws a stale activity at the departure even while the app
   // sleeps; a later update knows it from the clock.
-  const isStale = (environment as { isStale?: boolean }).isStale === true;
+  const isStale = environment.isStale === true;
   const transitMissed =
     !!props.homeTransitMissedLabel &&
     (isStale || typeof departsAtMs !== 'number' || departsAtMs <= Date.now());
