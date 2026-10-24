@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, useWindowDimensions } from 'react-native';
+import { Modal as RNModal, StyleSheet, useWindowDimensions } from 'react-native';
 
 import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
@@ -140,6 +140,8 @@ describe('Štamgast on the open iPhone Duo', () => {
     expect(renderer.root.findAllByProps({ testID: 'counter-segment' }).length).toBeGreaterThan(0);
 
     act(() => HistoricalBeerEntrySheet.mock.calls.at(-1)?.[0].onClose());
+    // iOS lets go of the half once the sheet has finished sliding away.
+    act(() => renderer.root.findByType(RNModal).props.onDismiss());
     expect(text(renderer)).not.toContain('draft sheet');
     expect(diaryShown(renderer)).toBe(false);
   });
