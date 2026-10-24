@@ -1555,9 +1555,11 @@ rozložení beze změny.
 - **Parta a Profil** rozloží obsah do dvou sloupců rozdělených v ohybu (`TwoColumns`). Kámoš nebo
   hospoda se otevře přes pravý sloupec.
 - **Sheety zůstávají ve své půlce, když je okno rozložené jako kniha** (§7.1). Sheet otevřený
-  z kořene appky jde do pravé. Na stole má spodní sheet celé okno, vycentrovaná karta (dialog,
-  „Co je nového“, sdílení večera) zůstane ve své půlce a karta z kořene jde do horní. Ztmavení
-  vždycky pokryje celé okno a sheet nezajede pod sloupec s hodinami ani pod lištu tabů.
+  z kořene appky jde do pravé. Na stole má spodní sheet celé okno. Krátká vycentrovaná karta
+  (dialog, „Co je nového“, přejmenování pití) zůstane ve své půlce a karta z kořene jde do horní;
+  vysoké karty (vyvěšení a sdílení noci, výsledky soutěže) se do půlky stolu nevejdou a mají celé
+  okno. Ztmavení vždycky pokryje celé okno a sheet nezajede pod sloupec s hodinami ani pod lištu
+  tabů.
 - **Na stole** (vodorovný ohyb, spodní půlka leží) je primární obrazovka dole a dvojče nahoře, aby
   ručička kompasu ležela v rovině stolu. Kompas má kartu na šířku: ciferník vlevo, vzdálenost a
   hospoda vpravo, pod ní „Doveď mě tam“ a „Dej mi jinou“ vedle sebe. Počítadlo stejně: číslo

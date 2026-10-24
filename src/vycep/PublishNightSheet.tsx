@@ -145,7 +145,6 @@ function PublishNightSheetBase({
   return (
     <Modal
       scrimColor={styles.backdrop.backgroundColor}
-      centered
       visible={visible}
       transparent
       animationType="fade"

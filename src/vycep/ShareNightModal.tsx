@@ -65,7 +65,7 @@ function ShareNightModalBase({
   mode = 'recap',
 }: ShareNightModalProps) {
   const showToast = useToastStore((s) => s.show);
-  const { width: windowWidth, height: windowHeight } = useModalFrame({ centered: true });
+  const { width: windowWidth, height: windowHeight } = useModalFrame();
   const cardRef = useRef<ViewInstance>(null);
   const [busy, setBusy] = useState(false);
 
@@ -143,7 +143,6 @@ function ShareNightModalBase({
   return (
     <Modal
       scrimColor={styles.backdrop.backgroundColor}
-      centered
       visible={visible}
       transparent
       animationType="fade"
