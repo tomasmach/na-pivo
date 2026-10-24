@@ -1078,6 +1078,7 @@ export default function FriendsScreen() {
         kind: 'rapid',
         text: t.friends.nudgeRequest(friendDisplayName(request.requester)),
         confirmLabel: t.friends.nudgeRequestAccept,
+        confirmAccessibilityLabel: t.friends.nudgeRequestAccept,
         onConfirm: () => void respond(request.id, 'accept'),
       };
     }
