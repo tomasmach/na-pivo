@@ -9,7 +9,6 @@ const TAB_TELEMETRY_TARGETS: Record<string, UiInteractionTarget> = {
   profile: 'tab_profile',
 };
 
-/** Every tap on the bar gets the haptic; only a switch to another tab is counted. */
 export function handleTabPress(routeName: string, alreadyFocused: boolean): void {
   if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
   if (alreadyFocused) return;

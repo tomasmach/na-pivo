@@ -62,7 +62,6 @@ export function TabScreen({ children }: PropsWithChildren) {
   );
 }
 
-/** Wraps a route outside the tabs. */
 export function RouteScreen({ children }: PropsWithChildren) {
   const insets = useSafeAreaInsets();
   return (
