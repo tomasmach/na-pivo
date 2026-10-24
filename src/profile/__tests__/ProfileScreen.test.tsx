@@ -29,6 +29,12 @@ jest.mock('expo-router', () => ({
   useFocusEffect: jest.fn(),
 }));
 
+// The photos wait for the first focus, which the mocked useFocusEffect never fires.
+jest.mock('@/navigation/TabScreen', () => ({
+  ...jest.requireActual('@/navigation/TabScreen'),
+  useFirstFocus: () => true,
+}));
+
 jest.mock('@/components/shared/IconGlyph', () => {
   const Icon = () => null;
   return new Proxy({}, { get: (_target, key) => (key === '__esModule' ? false : Icon) });
