@@ -102,8 +102,7 @@ describe('NicknameNudgeModal', () => {
     signIn('pivar');
     navigate('(tabs)', 'profile/privacy');
     await advance(600);
-    // profile/privacy leaves with router.replace('/(tabs)').
-    navigate('(tabs)', '(tabs)');
+    navigate('(tabs)');
     await advance(1200);
 
     expect(mockModalVisibility).not.toContain(true);
@@ -118,7 +117,7 @@ describe('NicknameNudgeModal', () => {
     await advance(600);
     expect(modalVisible()).toBe(false);
 
-    navigate('(tabs)', '(tabs)');
+    navigate('(tabs)');
     await advance(599);
     expect(modalVisible()).toBe(false);
     await advance(1);

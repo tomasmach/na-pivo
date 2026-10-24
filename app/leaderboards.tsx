@@ -304,18 +304,18 @@ export default function LeaderboardsScreen() {
     if (category === 'beers' || category === 'venues') {
       return {
         label: t.leaderboards.ctaBeers,
-        onPress: () => router.replace('/(tabs)/beer' as Href),
+        onPress: () => router.dismissTo('/(tabs)/beer' as Href),
       };
     }
     if (category === 'pubs') {
       return {
         label: t.leaderboards.ctaPubs,
-        onPress: () => router.replace('/(tabs)' as Href),
+        onPress: () => router.dismissTo('/(tabs)' as Href),
       };
     }
     return {
       label: t.leaderboards.ctaMapper,
-      onPress: () => router.replace('/(tabs)' as Href),
+      onPress: () => router.dismissTo('/(tabs)' as Href),
     };
   }, [category, hasNickname, isGhost, openVisibility, retry, router, state]);
 

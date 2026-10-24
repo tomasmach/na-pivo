@@ -130,7 +130,7 @@ export default function OnboardingScreen() {
       finishedRef.current = true;
       useOnboardingStore.getState().complete();
       void trackClientEvent({ event, context: { slide: indexRef.current + 1 } });
-      router.replace('/(tabs)' as Href);
+      router.dismissTo('/(tabs)' as Href);
     },
     [router],
   );
@@ -144,7 +144,7 @@ export default function OnboardingScreen() {
     void trackClientEvent({ event: 'onboarding_auth_opened' });
     // Land on the tabs first so closing the auth modal has a place to go back
     // to; a new registration replaces auth with the privacy choice.
-    router.replace('/(tabs)' as Href);
+    router.dismissTo('/(tabs)' as Href);
     router.push('/auth' as Href);
   }, [router]);
 

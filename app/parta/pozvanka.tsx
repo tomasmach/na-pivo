@@ -84,7 +84,7 @@ function InviteClaim({ code }: { code: string }) {
   }, [code, myId]);
 
   const goToParta = useCallback(() => {
-    router.replace('/friends' as Href);
+    router.dismissTo('/friends' as Href);
   }, [router]);
 
   const handleClaim = useCallback(() => {

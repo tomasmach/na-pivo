@@ -71,7 +71,6 @@ export function TabBarInsetOverride({ value, children }: PropsWithChildren<{ val
   return <TabBarInsetContext.Provider value={value}>{children}</TabBarInsetContext.Provider>;
 }
 
-/** Wraps a route outside the tabs. */
 export function RouteScreen({ children }: PropsWithChildren) {
   const insets = useSafeAreaInsets();
   return (

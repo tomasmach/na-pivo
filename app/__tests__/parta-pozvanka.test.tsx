@@ -8,10 +8,11 @@ import React from 'react';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let mockParams: { code: string } = { code: 'AAAA' };
+const mockRouter = { replace: jest.fn(), dismissTo: jest.fn() };
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
-  useRouter: () => ({ replace: jest.fn() }),
+  useRouter: () => mockRouter,
 }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -36,6 +37,7 @@ jest.mock('@/stores/toastStore', () => ({
 }));
 
 import { resolveInviteCode } from '@/data/friendsClient';
+import { t } from '@/i18n';
 import InviteClaimScreen from '../parta/pozvanka';
 
 const TestRenderer = require('react-test-renderer');
@@ -69,4 +71,23 @@ it('shows the second invite as loading instead of the first inviter', async () =
 
   expect(resolveInviteCode).toHaveBeenLastCalledWith('BBBB');
   expect(texts(renderer!.root)).not.toContain('@alice');
+});
+
+it('returns to the existing Parta tab instead of stacking a second tab bar', async () => {
+  mockParams = { code: 'CCCC' };
+  (resolveInviteCode as jest.Mock).mockResolvedValue({
+    valid: true,
+    inviter: { id: 'bob-id', nickname: 'bob', displayName: 'Bob', avatarUrl: null },
+  });
+  let renderer: { root: any } | undefined;
+  await act(async () => {
+    renderer = TestRenderer.create(<InviteClaimScreen />);
+  });
+  const back = renderer!.root.find(
+    (node: { props: Record<string, unknown> }) =>
+      node.props.accessibilityLabel === t.friends.claimBack && typeof node.props.onPress === 'function',
+  );
+  await act(async () => back.props.onPress());
+  expect(mockRouter.dismissTo).toHaveBeenLastCalledWith('/friends');
+  expect(mockRouter.replace).not.toHaveBeenCalled();
 });
