@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type PropsWithChildren } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type PropsWithChildren } from 'react';
 import { Platform, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -18,26 +18,57 @@ export function TabsInsetsRoot({ children }: PropsWithChildren) {
 }
 
 /**
+ * Screens do not pad their sides, so a screen is narrowed by its side insets:
+ * the iPhone Duo's camera and status bar column and its side tab rail.
+ * Descendants see no side insets, so nothing pads twice.
+ */
+function SideInsets({
+  insets,
+  left,
+  right,
+  children,
+}: PropsWithChildren<{ insets: EdgeInsets; left: number; right: number }>) {
+  const { top, bottom } = insets;
+  const inner = useMemo(() => ({ top, bottom, left: 0, right: 0 }), [top, bottom]);
+  return (
+    <SafeAreaInsetsContext.Provider value={inner}>
+      <View style={{ flex: 1, marginLeft: left, marginRight: right }}>{children}</View>
+    </SafeAreaInsetsContext.Provider>
+  );
+}
+
+/**
  * Wraps one tab screen. On iOS every tab gets a safe area that includes the
  * system tab bar, and every sheet or modal opened from the screen would inherit
- * it. Descendants keep the device insets; the bar is read via useBottomInset().
- * On Android the tabs already end the screen above the bar.
+ * it. Descendants keep the device's top and bottom insets; the bar is read via
+ * useBottomInset(). On Android the tabs already end the screen above the bar.
  *
- * The folded iPhone Duo puts the bar in a side rail, which comes as a left or
- * right inset. Screens do not pad their sides from insets, so the whole tab is
- * narrowed by the rail instead; modals cover the rail and keep the full width.
+ * A tab that is not on screen reports no insets until it is shown, so the
+ * device insets count on the sides too.
  */
 export function TabScreen({ children }: PropsWithChildren) {
   const tabInsets = useSafeAreaInsets();
   const deviceInsets = useContext(DeviceInsetsContext) ?? tabInsets;
-  const railLeft = Math.max(0, tabInsets.left - deviceInsets.left);
-  const railRight = Math.max(0, tabInsets.right - deviceInsets.right);
   return (
     <TabBarInsetContext.Provider value={Platform.OS === 'ios' ? tabInsets.bottom : 0}>
-      <SafeAreaInsetsContext.Provider value={deviceInsets}>
-        <View style={{ flex: 1, marginLeft: railLeft, marginRight: railRight }}>{children}</View>
-      </SafeAreaInsetsContext.Provider>
+      <SideInsets
+        insets={deviceInsets}
+        left={Math.max(tabInsets.left, deviceInsets.left)}
+        right={Math.max(tabInsets.right, deviceInsets.right)}
+      >
+        {children}
+      </SideInsets>
     </TabBarInsetContext.Provider>
+  );
+}
+
+/** Wraps a route outside the tabs. */
+export function RouteScreen({ children }: PropsWithChildren) {
+  const insets = useSafeAreaInsets();
+  return (
+    <SideInsets insets={insets} left={insets.left} right={insets.right}>
+      {children}
+    </SideInsets>
   );
 }
 
