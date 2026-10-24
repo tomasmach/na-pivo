@@ -26,6 +26,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { getLastKnownSessionAccountId, getSessionAccountId } from '@/data/account';
 import {
   fetchMyBeerPhotos,
   type BeerPhoto,
@@ -200,6 +201,22 @@ export const useBeerPhotosStore = create<BeerPhotosState>()(
  */
 let rehydratedOnce = false;
 
+/** Bumped by every account-boundary wipe; a load that straddles one is dropped. */
+let boundaryGeneration = 0;
+
+/**
+ * Wipe the diary at an account boundary (logout, deletion, reset sign-in) and
+ * void every load already under way, so the outgoing account's photos never
+ * land under the next one.
+ */
+export function clearBeerPhotosForAccountBoundary(): void {
+  boundaryGeneration += 1;
+  // clearStorage also voids a hydration still reading the outgoing account's
+  // blob; without it that read would write the old photos back into memory.
+  useBeerPhotosStore.persist.clearStorage();
+  useBeerPhotosStore.setState({ photos: [] });
+}
+
 /**
  * Bootstrap the diary: wait for the persisted state to hydrate (so pending
  * photos are visible immediately — first call only), then reconcile with the
@@ -207,6 +224,7 @@ let rehydratedOnce = false;
  * throws.
  */
 export async function loadBeerPhotos(signal?: AbortSignal): Promise<void> {
+  const generation = boundaryGeneration;
   if (!rehydratedOnce) {
     rehydratedOnce = true;
     try {
@@ -215,6 +233,13 @@ export async function loadBeerPhotos(signal?: AbortSignal): Promise<void> {
       // A failed rehydrate only loses the cached view; the fetch below still runs.
     }
   }
+  const accountId = await getSessionAccountId();
   const photos = await fetchMyBeerPhotos(signal);
-  if (photos) useBeerPhotosStore.getState().setServerPhotos(photos);
+  if (!photos) return;
+  // Signing in to another account replaces the session without a wipe, so the
+  // list may belong to the previous one. E-mail registration keeps the account
+  // and only rotates its token, so its list stays. The check stays synchronous:
+  // an upload finishing during an await here would be dropped by this older list.
+  if (generation !== boundaryGeneration || getLastKnownSessionAccountId() !== accountId) return;
+  useBeerPhotosStore.getState().setServerPhotos(photos);
 }
