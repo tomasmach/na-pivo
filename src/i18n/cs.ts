@@ -3393,15 +3393,15 @@ export const cs = {
     leaderboardsOpen: 'Otevřít žebříčky',
 
     // — Tabs —
-    tabCompass: 'Záložka Kompas',
-    tabBeer: 'Záložka Štamgast',
-    tabFriends: 'Záložka Parta',
+    tabCompass: 'Kompas',
+    tabBeer: 'Štamgast',
+    tabFriends: 'Parta',
     beerSegmentCount: 'Přepnout na počítání piv',
     beerSegmentStats: 'Přepnout na statistiky výkonu',
     beerSegmentHistory: 'Přepnout na historii večerů',
     counterDone: 'Dopito, zavřít tenhle večer',
     counterResume: 'Pokračovat v předchozím večeru',
-    tabProfile: 'Záložka Profil',
+    tabProfile: 'Profil',
 
     // — Counter —
     counterCloseModal: 'Zavřít',

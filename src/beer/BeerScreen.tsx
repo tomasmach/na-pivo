@@ -15,7 +15,7 @@
  * the running tally itself lives in the persisted store, so nothing is lost.
  */
 
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,7 +28,6 @@ import { fireLightImpactHaptic } from '@/utils/haptics';
 import { MenuIcon } from '@/components/shared/IconGlyph';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
-import { reconcileLiveBeerActivityAndAutoArchive } from '@/liveActivity/liveBeerActivity';
 import CounterScreen from '@/counter/CounterScreen';
 import DiaryScreen from '@/diary/DiaryScreen';
 import { trackUiInteraction } from '@/data/uxTelemetry';
@@ -101,12 +100,6 @@ export default function BeerScreen() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [counterMoreOpen, setCounterMoreOpen] = useState(false);
   const [counterMoreReady, setCounterMoreReady] = useState(true);
-
-  useEffect(() => {
-    // A deep link can mount this child before RootLayout's async initialization.
-    // Hydrate and commit native additions before deciding that an evening is idle.
-    void reconcileLiveBeerActivityAndAutoArchive();
-  }, []);
 
   return (
     <View style={styles.root}>

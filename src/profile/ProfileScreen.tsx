@@ -65,6 +65,7 @@ import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat } from '@/utils/intlFormat';
+import { useBottomInset, useFirstFocus } from '@/navigation/TabScreen';
 
 // The QR code pulls in ~450 KB of SVG/CSS parsing; load it when the sheet opens.
 const CodeSheet = lazy(() => import('@/friends/CodeSheet'));
@@ -73,9 +74,16 @@ const FAVORITES_COLLAPSED = 5;
 const BADGES_SHOWN = 4;
 const PHOTOS_SHOWN = 3;
 
+/** The tab outlives logout and sign-in; a new account gets a fresh screen. */
 export default function ProfileScreen() {
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  return <AccountProfileScreen key={accountId ?? ''} />;
+}
+
+function AccountProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset(Spacing.xl);
 
   const isSignedIn = useAccountStore(selectIsSignedIn);
   const profile = useAccountStore((state) => state.profile);
@@ -98,7 +106,8 @@ export default function ProfileScreen() {
   const reportedIds = usePubStore((state) => state.reportedPubIds);
   const beerWatchCount = useBeerWatchStore((state) => state.watches.length);
 
-  const remoteStats = useMyStats();
+  const opened = useFirstFocus();
+  const remoteStats = useMyStats(opened);
   const [codeVisible, setCodeVisible] = useState(false);
   const [allFavorites, setAllFavorites] = useState(false);
   const [partaCount, setPartaCount] = useState<number | null>(null);
@@ -127,10 +136,11 @@ export default function ProfileScreen() {
 
   // The tab outlives logout and sign-in, so the photos follow the account.
   useEffect(() => {
+    if (!opened) return;
     const controller = new AbortController();
     void loadBeerPhotos(controller.signal);
     return () => controller.abort();
-  }, [accountId]);
+  }, [opened, accountId]);
 
   const sessions = useMemo(
     () => allSessionsNewestFirst(current, history),
@@ -346,8 +356,13 @@ export default function ProfileScreen() {
   );
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    // Not collapsable, so the scroll view stays first in the native tree, where
+    // a second tap on the tab looks for it to scroll back to the top.
+    <View style={[styles.root, { paddingTop: insets.top }]} collapsable={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.identityRow}>
           {isSignedIn ? (
             <Pressable
@@ -659,7 +674,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: PAGE_PAD,
-    paddingBottom: Spacing.xl,
   },
   pressed: {
     opacity: 0.65,

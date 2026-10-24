@@ -25,7 +25,7 @@ export default function LegacyTableInviteScreen() {
       </Text>
       <GlowButton
         label={t.friends.claimBack}
-        onPress={() => router.replace('/friends')}
+        onPress={() => router.dismissTo('/friends')}
         variant="secondary"
         glow="none"
       />

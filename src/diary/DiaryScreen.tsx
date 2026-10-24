@@ -78,6 +78,7 @@ import {
 import { useMyStats } from '@/stats/useMyStats';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import type { PriceCurrency } from '@/utils/currency';
+import { useBottomInset } from '@/navigation/TabScreen';
 
 /** "4,2 km" — the walked-distance figure inherited from the profile's old grid. */
 function formatWalkedKm(metres: number): string {
@@ -192,6 +193,7 @@ export default function DiaryScreen({
 }: DiaryScreenProps = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset(Spacing.md);
 
   // Keep the relative date labels honest while the screen is open — the same
   // one-minute tick both predecessors used.
@@ -474,7 +476,7 @@ export default function DiaryScreen({
     <View
       style={[
         styles.root,
-        { paddingTop: topInset, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+        { paddingTop: topInset, paddingBottom: bottomInset },
       ]}
     >
       {/* Embedded in the Štamgast tab the "…" door sits next to the segmented

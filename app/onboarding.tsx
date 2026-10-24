@@ -108,7 +108,9 @@ function OnboardingSlide({ item, width }: { item: Slide; width: number }) {
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const windowWidth = useWindowDimensions().width;
+  // A page fills the pager, which is narrower than the window beside the iPhone Duo's camera column.
+  const [width, setWidth] = useState(windowWidth);
 
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
@@ -126,7 +128,7 @@ export default function OnboardingScreen() {
       finishedRef.current = true;
       useOnboardingStore.getState().complete();
       void trackClientEvent({ event, context: { slide: indexRef.current + 1 } });
-      router.replace('/(tabs)' as Href);
+      router.dismissTo('/(tabs)' as Href);
     },
     [router],
   );
@@ -140,7 +142,7 @@ export default function OnboardingScreen() {
     void trackClientEvent({ event: 'onboarding_auth_opened' });
     // Land on the tabs first so closing the auth modal has a place to go back
     // to; a new registration replaces auth with the privacy choice.
-    router.replace('/(tabs)' as Href);
+    router.dismissTo('/(tabs)' as Href);
     router.push('/auth' as Href);
   }, [router]);
 
@@ -202,6 +204,7 @@ export default function OnboardingScreen() {
       <FlatList
         ref={listRef}
         style={styles.pager}
+        onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)}
         data={SLIDES}
         keyExtractor={(item) => item.key}
         renderItem={renderSlide}

@@ -145,6 +145,7 @@ import MyActivityCard from './MyActivityCard';
 import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
 import { TourGlanceLine } from '@/tours/TourGlanceLine';
+import { useBottomInset, useFirstFocus } from '@/navigation/TabScreen';
 import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
 import { PresenceList } from './PresenceList';
@@ -395,8 +396,20 @@ function RosterSheet({
   );
 }
 
+/**
+ * The tab mounts with the app and outlives logout and sign-in, so everything
+ * this screen holds belongs to one account: a new account gets a fresh screen.
+ */
 export default function FriendsScreen() {
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  return <AccountFriendsScreen key={accountId ?? ''} />;
+}
+
+function AccountFriendsScreen() {
   const insets = useSafeAreaInsets();
+  const nudgeInset = useBottomInset(Spacing.md);
+  const streamEndInset = useBottomInset(Spacing.xl);
+  const opened = useFirstFocus();
   const router = useRouter();
   const showToast = useToastStore((state) => state.show);
 
@@ -1072,9 +1085,23 @@ export default function FriendsScreen() {
   const streakAtRisk =
     (d?.streak.currentWeeks ?? 0) > 0 && d?.streak.thisWeekLit === false;
 
+  // Picked from data alone: the layout asks whether a nudge is pinned during
+  // render, and the nudge itself holds handlers that count as ref access there.
+  const nudgeKind = d?.incomingRequests[0]
+    ? 'request'
+    : loadError
+      ? 'offline'
+      : d?.myActiveActivity
+        ? 'broadcasting'
+        : !friendPushEnabled && !friendPushPrompted && pushAudience
+          ? 'push'
+          : contestResultsUnseen && lastResults
+            ? 'contest'
+            : null;
+
   const nudge = useMemo<Nudge | null>(() => {
     const request = d?.incomingRequests[0];
-    if (request) {
+    if (nudgeKind === 'request' && request) {
       return {
         kind: 'rapid',
         text: t.friends.nudgeRequest(friendDisplayName(request.requester)),
@@ -1082,7 +1109,7 @@ export default function FriendsScreen() {
         onConfirm: () => void respond(request.id, 'accept'),
       };
     }
-    if (loadError) {
+    if (nudgeKind === 'offline') {
       return {
         kind: 'counted',
         text: t.friends.nudgeOffline,
@@ -1096,7 +1123,7 @@ export default function FriendsScreen() {
     // strip was printing the same sentence a thumb-width below the card that
     // already said it — and printing it truncated, because a "Jdu" pill and a
     // pub name do not fit on one row (§0.3, one path to one thing).
-    if (d?.myActiveActivity) {
+    if (nudgeKind === 'broadcasting') {
       return {
         kind: 'counted',
         text: t.friends.nudgeBroadcasting,
@@ -1104,7 +1131,7 @@ export default function FriendsScreen() {
         onUndo: handleEndBroadcast,
       };
     }
-    if (!friendPushEnabled && !friendPushPrompted && pushAudience) {
+    if (nudgeKind === 'push') {
       return {
         kind: 'checkin',
         text: t.friends.nudgePush,
@@ -1113,7 +1140,7 @@ export default function FriendsScreen() {
         onDismiss: dismissPush,
       };
     }
-    if (contestResultsUnseen && lastResults) {
+    if (nudgeKind === 'contest' && lastResults) {
       return {
         kind: 'checkin',
         text: t.friends.nudgeContest,
@@ -1128,19 +1155,14 @@ export default function FriendsScreen() {
     // fact instead, next to the streak it is about.
     return null;
   }, [
-    contestResultsUnseen,
     d?.incomingRequests,
-    d?.myActiveActivity,
     dismissPush,
-    friendPushEnabled,
-    friendPushPrompted,
     handleEnablePush,
     handleEndBroadcast,
     lastResults,
     load,
-    loadError,
     markContestResultsSeen,
-    pushAudience,
+    nudgeKind,
     respond,
     router,
   ]);
@@ -1285,17 +1307,13 @@ export default function FriendsScreen() {
   const requests = d?.incomingRequests ?? [];
 
   return (
+    // Not collapsable, so the scroll view stays first in the native tree, where
+    // a second tap on the tab looks for it to scroll back to the top. A pinned
+    // nudge sits above the tab bar and the stream ends above it; without one the
+    // stream runs under the bar, like Profil.
     <View
-      style={[
-        styles.root,
-        {
-          paddingTop: insets.top,
-          // The tab bar under this screen already pads for the home indicator,
-          // so `insets.bottom` here would be that gap charged twice — 26pt of
-          // stout between the pill and the bar. Just the block gap.
-          paddingBottom: Spacing.sm,
-        },
-      ]}
+      style={[styles.root, { paddingTop: insets.top, paddingBottom: nudgeKind ? nudgeInset : 0 }]}
+      collapsable={false}
     >
       {/* The stream and the fade that ends it share one box, so the fade is
           never an out-of-bounds child (Android clips those). */}
@@ -1303,7 +1321,7 @@ export default function FriendsScreen() {
         <ScrollView
           ref={scrollRef}
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, !nudgeKind && { paddingBottom: streamEndInset }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -1405,7 +1423,7 @@ export default function FriendsScreen() {
           ) : null}
 
           {/* 2. Čerstvě cvaknuto — between the people and what they drank. */}
-          <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
+          {opened ? <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} /> : null}
 
           {/* 3. Žebříček party — who out-drank and out-sat whom, last 30 days. */}
           <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -1529,7 +1547,7 @@ export default function FriendsScreen() {
           {/* 5. Co spolu podniknout. */}
           <PartaPlans />
         </ScrollView>
-        <ScrollFade height={16} />
+        {nudgeKind ? <ScrollFade height={16} /> : null}
       </View>
 
       {/* Nothing is pinned here but the nudge, and the nudge collapses when

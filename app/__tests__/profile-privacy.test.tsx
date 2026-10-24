@@ -3,8 +3,9 @@ import React from 'react';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mockReplace = jest.fn();
+const mockDismissTo = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: jest.fn(() => ({ replace: mockReplace })),
+  useRouter: jest.fn(() => ({ replace: mockReplace, dismissTo: mockDismissTo })),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -107,7 +108,8 @@ describe('ProfilePrivacyScreen', () => {
     });
 
     expect(updateProfile).not.toHaveBeenCalled();
-    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockDismissTo).toHaveBeenCalledWith('/(tabs)');
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('saves a private choice before entering the app', async () => {
@@ -119,7 +121,8 @@ describe('ProfilePrivacyScreen', () => {
     });
 
     expect(updateProfile).toHaveBeenCalledWith({ isPublic: false });
-    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockDismissTo).toHaveBeenCalledWith('/(tabs)');
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('offers an explicit exit after a failed save instead of trapping the user', async () => {
@@ -135,7 +138,7 @@ describe('ProfilePrivacyScreen', () => {
       await primaryProps().onPress();
     });
 
-    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockDismissTo).not.toHaveBeenCalled();
     const continueWithoutChange = renderer!.root.findAll(
       (node: { props: Record<string, unknown> }) =>
         node.props.accessibilityRole === 'button' &&
@@ -147,6 +150,7 @@ describe('ProfilePrivacyScreen', () => {
       await Promise.resolve();
     });
 
-    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockDismissTo).toHaveBeenCalledWith('/(tabs)');
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 });

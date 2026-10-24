@@ -4,7 +4,7 @@
  * again after a drink is removed. Returns null until/unless they arrive — the
  * screen always renders from local data and only overlays these durable numbers
  * when present. Never throws; offline / no account simply leaves the local view
- * in place.
+ * in place. `enabled` holds the fetch back until the caller is first on screen.
  */
 
 import { useEffect, useState } from 'react';
@@ -13,7 +13,7 @@ import { getConfirmedDeleteIds, getQueuedDeleteIds } from '@/data/deleteDrinksQu
 import { fetchMyStats, type RemoteStats } from '@/data/statsClient';
 import { useAccountStore } from '@/stores/accountStore';
 
-export function useMyStats(): RemoteStats | null {
+export function useMyStats(enabled = true): RemoteStats | null {
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const removedDrinkIds = useAccountStore((state) => state.removedDrinkIds);
   const [snapshot, setSnapshot] = useState<{
@@ -23,6 +23,7 @@ export function useMyStats(): RemoteStats | null {
   } | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     const controller = new AbortController();
     void (async () => {
@@ -39,7 +40,7 @@ export function useMyStats(): RemoteStats | null {
       active = false;
       controller.abort();
     };
-  }, [accountId, removedDrinkIds]);
+  }, [accountId, enabled, removedDrinkIds]);
 
   // Stats read before the latest removal still count that drink.
   return snapshot?.accountId === accountId && snapshot.removedDrinkIds === removedDrinkIds

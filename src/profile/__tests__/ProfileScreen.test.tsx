@@ -23,10 +23,22 @@ jest.mock('react-native-reanimated', () => ({
   withSpring: jest.fn((value) => value),
 }));
 
-jest.mock('expo-router', () => ({
-  useRouter: jest.fn(() => ({ push: jest.fn(), navigate: jest.fn() })),
-  // Friends, added pubs and the weekly rank load on focus; not under test.
-  useFocusEffect: jest.fn(),
+let mockFocused = false;
+jest.mock('expo-router', () => {
+  const { useEffect } = jest.requireActual<typeof import('react')>('react');
+  return {
+    useRouter: jest.fn(() => ({ push: jest.fn(), navigate: jest.fn() })),
+    useFocusEffect: (effect: () => void | (() => void)) => {
+      useEffect(() => (mockFocused ? effect() : undefined), [effect, mockFocused]);
+    },
+  };
+});
+jest.mock('@/data/leaderboardsClient', () => ({ fetchLeaderboard: jest.fn(async () => null) }));
+
+// The photos wait for the first focus, which the mocked useFocusEffect fires only when asked.
+jest.mock('@/navigation/TabScreen', () => ({
+  ...jest.requireActual('@/navigation/TabScreen'),
+  useFirstFocus: () => true,
 }));
 
 jest.mock('@/components/shared/IconGlyph', () => {
@@ -51,6 +63,12 @@ import type { BeerPhoto } from '@/data/beerPhotosClient';
 import type { AccountSession } from '@/data/account';
 import ProfileScreen from '@/profile/ProfileScreen';
 import { useAccountStore } from '@/stores/accountStore';
+import {
+  clearFriendsDashboardSnapshot,
+  saveFriendsDashboardSnapshot,
+  snapshotGeneration,
+} from '@/data/friendsSnapshot';
+import type { FriendsDashboard } from '@/data/friendsClient';
 import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 
 const TestRenderer = require('react-test-renderer');
@@ -106,10 +124,11 @@ function shownCaptions(root: { findAll: (match: (node: any) => boolean) => any[]
 }
 
 describe('ProfileScreen beer photos', () => {
-  let renderer: { unmount: () => void; root: any } | undefined;
+  let renderer: { unmount: () => void; update: (element: React.ReactElement) => void; root: any } | undefined;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFocused = false;
     mockFetchMyBeerPhotos.mockImplementation(async () => {
       const accountId = useAccountStore.getState().session?.accountId ?? '';
       return photosByAccount[accountId] ?? [];
@@ -158,5 +177,26 @@ describe('ProfileScreen beer photos', () => {
     await switchSession(session('account-b', true));
 
     expect(shownCaptions(root)).toEqual(['Béčko na Letné']);
+  });
+
+  it('forgets the previous account Parta count after logout', async () => {
+    const friends = [{ id: 'f-1' }, { id: 'f-2' }, { id: 'f-3' }];
+    await saveFriendsDashboardSnapshot({ friends } as unknown as FriendsDashboard, snapshotGeneration());
+    mockFocused = true;
+    const root = await renderProfile();
+    const partaValue = () =>
+      root.find((node: any) => node.props?.title === t.profile.partaRow).props.value;
+    expect(partaValue()).toBe('3');
+
+    // Logout runs on /account above the tabs, so Profile is refocused afterwards.
+    mockFocused = false;
+    await act(async () => renderer!.update(<ProfileScreen />));
+    await clearFriendsDashboardSnapshot();
+    await logOut();
+    mockFocused = true;
+    await act(async () => renderer!.update(<ProfileScreen />));
+    await settle();
+
+    expect(partaValue()).toBeNull();
   });
 });

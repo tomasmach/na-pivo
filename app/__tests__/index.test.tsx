@@ -37,6 +37,7 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
+  SafeAreaInsetsContext: jest.requireActual<typeof import('react')>('react').createContext(null),
   useSafeAreaInsets: jest.fn(() => ({
     top: 0,
     right: 0,
