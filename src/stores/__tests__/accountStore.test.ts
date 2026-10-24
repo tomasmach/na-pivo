@@ -18,6 +18,8 @@ import type { AccountMapper, AccountProfile, AuthResult } from '@/data/auth';
 import { ensureAccount, fetchAccountPreferences, setAnonymousSessionEvictionListener } from '@/data/account';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
+import { beginTourAccountChange, endTourAccountChange } from '@/data/toursBoundary';
+import { useTallyStore } from '@/stores/tallyStore';
 
 jest.mock('@/data/auth');
 jest.mock('@/data/account', () => ({
@@ -35,8 +37,12 @@ jest.mock('@/data/telemetryClient', () => ({
   trackApiFailure: jest.fn(),
 }));
 jest.mock('@/data/diarySync', () => ({
+  ...jest.requireActual('@/data/diarySync'),
   reconcileDiarySnapshot: jest.fn(async () => null),
 }));
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 const mockSetHidePubNames = jest.fn();
 jest.mock('@/stores/settingsStore', () => ({
   useSettingsStore: {
@@ -116,6 +122,7 @@ beforeEach(() => {
     removedDrinkIds: new Set(),
     removedVisitIds: new Set(),
   });
+  useTallyStore.setState({ current: null, history: [], restoredAccountId: null });
   mockEnsureAccount.mockResolvedValue({
     deviceId: 'd',
     accountId: 'a',
@@ -445,6 +452,105 @@ describe('login', () => {
       profile,
       diarySnapshot,
     });
+  });
+});
+
+describe('restoring the diary after sign-in', () => {
+  function serverDrink(clientId: string, drankAt: string): DiarySnapshot['drinks'][number] {
+    return {
+      client_id: clientId,
+      cache_key: 'u2fkbnhz',
+      name: 'U Restore testu',
+      lat: 50.08804,
+      lng: 14.42076,
+      city: 'Praha',
+      external_id: '',
+      place_context: 'pub',
+      drink_type: 'beer',
+      beer: { name: 'Pilsner Urquell', price_czk: 59, volume_ml: 500, serving_type: 'unknown' },
+      drank_at: drankAt,
+      is_suspect: false,
+    };
+  }
+
+  function serverDiary(): DiarySnapshot {
+    return {
+      drinks: [serverDrink('kept', '2026-10-17T16:00:00Z'), serverDrink('gone', '2026-10-17T17:00:00Z')],
+      visits: [
+        {
+          client_id: 'visit-1',
+          cache_key: 'u2fkbnhz',
+          name: 'U Restore testu',
+          lat: 50.08804,
+          lng: 14.42076,
+          city: 'Praha',
+          external_id: '',
+          started_at: '2026-10-17T16:00:00Z',
+          ended_at: '2026-10-17T17:00:00Z',
+          closed_at: '2026-10-17T17:30:00Z',
+          updated_at: '2026-10-17T17:30:00Z',
+        },
+      ],
+    };
+  }
+
+  const restoredDrinkIds = () =>
+    useTallyStore.getState().history.flatMap((session) => session.drinks.map((drink) => drink.id));
+
+  it('brings the account evenings back once per account', async () => {
+    mockedAuth.loginEmail.mockResolvedValue(okResult());
+    mockReconcileDiarySnapshot.mockResolvedValue(serverDiary());
+
+    await useAccountStore.getState().login({ email: 'jan@example.com', password: 'pw' });
+
+    expect(useTallyStore.getState().history.map((session) => session.clientId)).toEqual(['visit-1']);
+    expect(restoredDrinkIds()).toEqual(['kept', 'gone']);
+    expect(useTallyStore.getState().restoredAccountId).toBe('a');
+
+    // The user deleted the evening; a later pull must not bring it back.
+    useTallyStore.setState({ history: [] });
+    await useAccountStore.getState().refreshDiarySnapshot();
+    expect(useTallyStore.getState().history).toEqual([]);
+  });
+
+  it('leaves the diary alone when a login or logout runs during the read', async () => {
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true } });
+    mockReconcileDiarySnapshot.mockImplementationOnce(async () => {
+      beginTourAccountChange();
+      endTourAccountChange();
+      return serverDiary();
+    });
+
+    await useAccountStore.getState().refreshDiarySnapshot();
+
+    expect(useTallyStore.getState()).toMatchObject({ history: [], restoredAccountId: null });
+  });
+
+  it('leaves the diary alone when the account changes during the read', async () => {
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true } });
+    mockReconcileDiarySnapshot.mockImplementationOnce(async () => {
+      useAccountStore.setState({ session: { deviceId: 'd', accountId: 'b', token: 'other', authenticated: true } });
+      return serverDiary();
+    });
+
+    await useAccountStore.getState().refreshDiarySnapshot();
+
+    expect(useTallyStore.getState()).toMatchObject({ history: [], restoredAccountId: null });
+  });
+
+  it('does not bring back a drink removed while the read runs', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      diarySnapshot: { accountId: 'a', data: { drinks: [], visits: [] } },
+    });
+    mockReconcileDiarySnapshot.mockImplementationOnce(async () => {
+      useAccountStore.getState().forgetDiaryDrink('gone');
+      return serverDiary();
+    });
+
+    await useAccountStore.getState().refreshDiarySnapshot();
+
+    expect(restoredDrinkIds()).toEqual(['kept']);
   });
 });
 

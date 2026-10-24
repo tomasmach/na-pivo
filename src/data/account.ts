@@ -823,6 +823,17 @@ export async function getSessionToken(): Promise<string | null> {
   return cached.account?.token ?? null;
 }
 
+/** Current account id, or null when there is no cached session. */
+export async function getSessionAccountId(): Promise<string | null> {
+  const cached = await readCachedAccount();
+  return cached.account?.accountId ?? null;
+}
+
+/** Account id from the latest session read or write, without waiting for secure storage. */
+export function getLastKnownSessionAccountId(): string | null {
+  return lastKnownAccount?.accountId ?? null;
+}
+
 /**
  * Persist a signed-in session: the server-issued token + account id, flagged
  * ``authenticated`` so ensureAccount() stops treating it as a device-bound

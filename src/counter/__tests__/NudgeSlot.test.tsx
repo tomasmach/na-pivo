@@ -95,9 +95,26 @@ describe('NudgeSlot — rapid nudge', () => {
     expect(textOf(renderer)).toContain('To bylo rychlé, fakt další?');
     expect(textOf(renderer)).toContain('Jo, dej to tam');
 
-    const confirm = pressableWithLabel(renderer, copy.a11y.counterRapidConfirm);
+    // A strip that is not the counter's must not announce "log another beer".
+    const confirm = pressableWithLabel(renderer, 'Jo, dej to tam');
     act(() => confirm.props.onPress());
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the screen reader hear more than the visible pill label', () => {
+    const renderer = render(
+      React.createElement(NudgeSlot, {
+        nudge: {
+          kind: 'rapid',
+          text: 'To bylo rychlé, fakt další?',
+          confirmLabel: 'Jo',
+          confirmAccessibilityLabel: copy.a11y.counterRapidConfirm,
+          onConfirm: jest.fn(),
+        },
+      }),
+    );
+
+    expect(pressableWithLabel(renderer, copy.a11y.counterRapidConfirm)).toBeDefined();
   });
 });
 
