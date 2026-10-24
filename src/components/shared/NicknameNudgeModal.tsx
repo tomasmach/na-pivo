@@ -4,11 +4,13 @@
  * Registration now requires picking a handle, but accounts created before that
  * change may still have none. This modal appears once per app version, only
  * AFTER the what's-new popup is dismissed (gated on releaseStore.checkSettled +
- * pendingNote, same as the pub-reminder onboarding), never during the first
- * launch session, and never blocks anything — the user can dismiss it and keep
- * using the app. The nickname can be saved right here via NicknameField.
+ * pendingNote, same as the pub-reminder onboarding), only over the tabs, never
+ * during the first launch session, and never blocks anything — the user can
+ * dismiss it and keep using the app. The nickname can be saved right here via
+ * NicknameField.
  */
 
+import { useSegments } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -37,6 +39,10 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
+
+// iOS silently drops a Modal presented while another modal is still
+// mid-dismissal, and the dropped host then swallows every touch.
+const PRESENT_SETTLE_MS = 600;
 
 export function NicknameNudgeModal() {
   const insets = useSafeAreaInsets();
@@ -67,11 +73,9 @@ export function NicknameNudgeModal() {
       if (cancelled) return;
       setVersion(currentVersion);
       if (!shouldShowNicknameNudge({ currentVersion, seenVersion })) return;
-      // Present a beat later: iOS silently drops a Modal presented while the
-      // what's-new modal is still mid-dismissal, wedging the UI.
       showTimer = setTimeout(() => {
         if (!cancelled) setEligible(true);
-      }, 600);
+      }, PRESENT_SETTLE_MS);
     }
 
     void checkVisibility();
@@ -81,10 +85,29 @@ export function NicknameNudgeModal() {
     };
   }, [releaseSettled, releaseNote]);
 
+  // A full-screen route such as auth or profile/privacy takes the root view off
+  // the window. If the nudge presents or hides then, or while that route is
+  // still dismissing, iOS never presents it but its host stays above the app.
+  const onTabs = useSegments()[0] === '(tabs)';
+  const [tabsSettled, setTabsSettled] = useState(false);
+  useEffect(() => {
+    if (!onTabs) return;
+    const timer = setTimeout(() => setTabsSettled(true), PRESENT_SETTLE_MS);
+    return () => {
+      clearTimeout(timer);
+      setTabsSettled(false);
+    };
+  }, [onTabs]);
+
   // `needsNickname` keeps this quiet for anonymous sessions, signed-out users,
   // accounts that already have a handle, and while the profile hasn't loaded.
   const wantVisible =
-    eligible && needsNickname && releaseNote === null && !firstLaunchSession;
+    eligible &&
+    onTabs &&
+    tabsSettled &&
+    needsNickname &&
+    releaseNote === null &&
+    !firstLaunchSession;
 
   const mutexHolder = useLaunchModalMutex((s) => s.holder);
   useEffect(() => {
