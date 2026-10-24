@@ -810,11 +810,15 @@ Každý modal v appce je `Modal` ze `src/components/shared/Modal.tsx`. Má stejn
   výšku přes Info.plist),
 - na rozloženém Duu drží průhledný sheet mimo boční insety okna (sloupec s hodinami a lišta
   tabů). Na knize zůstane v půlce, ze které se otevřel, a sheet z kořene appky v pravé; na stole
-  zůstane ve své půlce jen vycentrovaná karta (`centered`), z kořene v horní (§17.6). Všechno mimo
+  zůstane ve své půlce jen krátká vycentrovaná karta (`centered`), z kořene v horní (§17.6). Karta,
+  která se do půlky stolu nevejde, `centered` nedostane a má celé okno. Všechno mimo
   rámeček ztmaví a ťuknutí tam sheet zavře. Neprůhledný modal je celá obrazovka, dostane celé okno
   a boční insety si drží sám. Obsah, který se měří z okna, se měří z `useModalFrame()`. Insety má
-  sheet vždycky od okna, ne od půlky, a jen tu část, kterou rámeček nevynechá,
-- dokud je sheet otevřený, drží svou půlku připojenou i po zavření telefonu a stránku pod ním
+  sheet vždycky od okna, ne od půlky, a jen tu část, kterou rámeček nevynechá. Komponenta, která
+  `Modal` vykresluje, vidí insety své půlky, takže styl podle insetů patří dovnitř modalu
+  (`ModalInsetView`),
+- dokud je sheet otevřený (na iOS až do konce nativního zavření, kdy dialog spouští zvolenou
+  akci), drží svou půlku připojenou i po zavření telefonu a stránku pod ním
   nechá na místě i po otevření, takže rozepsaný zápis nezmizí,
 - jantarové tlačítko uvnitř zůstane jantarové i v tiché pravé půlce, sheet je samostatné okno.
 
@@ -1556,8 +1560,8 @@ rozložení beze změny.
   hospoda se otevře přes pravý sloupec.
 - **Sheety zůstávají ve své půlce, když je okno rozložené jako kniha** (§7.1). Sheet otevřený
   z kořene appky jde do pravé. Na stole má spodní sheet celé okno. Krátká vycentrovaná karta
-  (dialog, „Co je nového“, přejmenování pití) zůstane ve své půlce a karta z kořene jde do horní;
-  vysoké karty (vyvěšení a sdílení noci, výsledky soutěže) se do půlky stolu nevejdou a mají celé
+  (dialog, přejmenování pití) zůstane ve své půlce a karta z kořene jde do horní; karty, které se
+  do půlky stolu nevejdou (vyvěšení a sdílení noci, výsledky soutěže, „Co je nového“), mají celé
   okno. Ztmavení vždycky pokryje celé okno a sheet nezajede pod sloupec s hodinami ani pod lištu
   tabů.
 - **Na stole** (vodorovný ohyb, spodní půlka leží) je primární obrazovka dole a dvojče nahoře, aby
