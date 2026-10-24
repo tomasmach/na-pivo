@@ -110,12 +110,14 @@ describe('estimateAlcohol', () => {
 
   it('lists only the drinks since the level was last at zero', () => {
     const yesterday = { ...beer('y', '19:39', 'Primátor 11°'), at: at('19:39', 16) };
-    const tonight = ['20:04', '20:04', '20:42', '21:16', '23:11'].map((time, i) => beer(`t${i}`, time, 'Radegast 10°'));
+    const tonight = ['20:03', '20:04', '20:42', '21:16', '23:11'].map((time, i) => beer(`t${i}`, time, 'Radegast 10°'));
+    // Logged mid-minute, between two steps of the simulation.
+    tonight[0].at = new Date(Date.parse(at('20:03')) + 30_000).toISOString();
     const now = Date.parse(at('23:30'));
     const estimate = estimateAlcohol([yesterday, ...tonight], PROFILE, now)!;
 
     expect(estimate.drinks.map((drink) => drink.id)).toEqual(tonight.map((drink) => drink.id));
-    expect(estimate.now).toBe(estimateAlcohol(tonight, PROFILE, now)!.now);
+    expect(estimate.now).toBeCloseTo(estimateAlcohol(tonight, PROFILE, now)!.now, 1);
     expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('07:30', 18)))!.drinks).toHaveLength(EVENING.length);
   });
 
