@@ -40,26 +40,25 @@ import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry
  * The narrow slice of expo-router's bottom-tab `tabBar` callback props this
  * component actually reads. Declared locally because the full `BottomTabBarProps`
  * lives in the vendored react-navigation types that aren't resolvable as a
- * standalone package — and we only need `state` + `navigation`.
+ * standalone package — and we only need the state, the emitter and navigateToTab.
  */
 interface TabBarRoute {
   key: string;
   name: string;
 }
-interface TabBarNavigation {
+interface TabBarEmitter {
   emit: (event: {
     type: 'tabPress';
     target: string;
     canPreventDefault: true;
   }) => { defaultPrevented: boolean };
-  navigate: (name: string) => void;
 }
 export interface TabBarProps {
   state: { index: number; routes: TabBarRoute[] };
-  navigation: TabBarNavigation;
+  emitter: TabBarEmitter;
+  navigateToTab: (routeKey: string) => void;
 }
 
-/** Maps a route name to its icon + label + a11y label. */
 const TAB_META: Record<
   string,
   {
@@ -193,7 +192,7 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
   );
 });
 
-export function TabBar({ state, navigation }: TabBarProps) {
+export function TabBar({ state, emitter, navigateToTab }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const pendingRequests = usePartaSignalStore((s) => s.pendingRequests);
@@ -216,7 +215,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
           if (hapticEnabled) {
             fireLightImpactHaptic();
           }
-          const event = navigation.emit({
+          const event = emitter.emit({
             type: 'tabPress',
             target: route.key,
             canPreventDefault: true,
@@ -224,7 +223,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
           if (!focused && !event.defaultPrevented) {
             const meta = TAB_META[route.name];
             if (meta) trackUiInteraction(meta.telemetryTarget, 'select');
-            navigation.navigate(route.name);
+            navigateToTab(route.key);
           }
         };
 

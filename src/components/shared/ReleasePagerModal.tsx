@@ -20,7 +20,7 @@ import {
   useWindowDimensions,
   type LayoutChangeEvent,
   type ListRenderItemInfo,
-  type ViewToken,
+  type ListViewToken,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -252,7 +252,7 @@ export function ReleasePagerModal({
   const [viewabilityConfig] = useState(() => ({ itemVisiblePercentThreshold: 60 }));
   const [onViewableItemsChanged] = useState(
     () =>
-      ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      ({ viewableItems }: { viewableItems: ListViewToken[] }) => {
         const first = viewableItems[0];
         if (first?.index != null) {
           indexRef.current = first.index;

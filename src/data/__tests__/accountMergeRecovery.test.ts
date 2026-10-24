@@ -43,7 +43,7 @@ it.each([KEY, LEGACY_KEY])('retains the source after a lost 2.0 claim, replays p
   expect((await ensureAccount())?.accountId).toBe('a');
   expect(JSON.parse((await AsyncStorage.getItem('na-pivo-drinks-queue'))!)).toHaveLength(1);
   expect(jest.mocked(fetch).mock.calls.every(([url]) => String(url).endsWith('/v1/drinks'))).toBe(true);
-  global.fetch = jest.fn(async (url, init) => {
+  global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     if (String(url).endsWith('/v1/auth/login')) {
       expect(JSON.parse(init!.body as string).merge_operation_id).toBe(intent.operationId);
       return response(200, target);
@@ -89,7 +89,7 @@ it.each([
   () => signInWithApple(),
 ])('persists a fresh operation before auth and reuses it after response loss (%#)', async (signIn) => {
   let operationId: string | undefined;
-  global.fetch = jest.fn(async (_url, init) => {
+  global.fetch = jest.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(init!.body as string);
     const marker = JSON.parse((await AsyncStorage.getItem(KEY))!);
     expect(body.merge_operation_id).toBe(marker.operationId);

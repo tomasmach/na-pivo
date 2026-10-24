@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, BackHandler, Pressable, ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { useLocalSearchParams, useRouter, useIsFocused, type Href } from 'expo-router';
-import { usePreventRemove } from 'expo-router/react-navigation';
+import { AccessibilityInfo, AppState, BackHandler, Pressable, ScrollView, Share, StyleSheet, View, useWindowDimensions, type ScrollViewInstance } from 'react-native';
+import { useLocalSearchParams, usePreventRemove, useRouter, useIsFocused, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
 import * as Clipboard from 'expo-clipboard';
@@ -78,7 +77,7 @@ function TourDetail({ id, initialRun }: { id: string; initialRun?: string }) {
   const [region, setRegion] = useState<Region>();
   const [notice, setNotice] = useState<string | null>(null); const [undo, setUndo] = useState<{ id: string; status: 'visited' | 'skipped' | null } | null>(null);
   const [acting, setActing] = useState(false); const actionLock = useRef(false);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   // Back on the run, see who joined or left meanwhile.
   useEffect(() => { if (focused && useToursStore.getState().activeRun?.crew) void useToursStore.getState().refreshCrew(); }, [focused]);

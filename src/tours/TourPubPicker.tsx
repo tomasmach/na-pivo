@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -74,7 +74,7 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
     return allowed.map((pub) => ({ pub, meters: haversineMeters(center, pub) }))
       .sort((a, b) => a.meters - b.meters).slice(0, NEARBY_LIMIT).map(({ pub }) => pub);
   }, [allowed, browsing, region.latitude, region.longitude]);
-  const list = useRef<ScrollView>(null);
+  const list = useRef<ScrollViewInstance>(null);
   // A moved map reorders the list, so show its new nearest pubs from the top.
   useEffect(() => {
     if (browsing) list.current?.scrollTo({ y: 0, animated: false });
@@ -91,7 +91,7 @@ function TourPubPickerContent({ stops, scheduledDate, timezone = 'Europe/Prague'
   const [areaSearch, setAreaSearch] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const strip = useRef<ScrollView>(null);
+  const strip = useRef<ScrollViewInstance>(null);
   // Nearby rows reorder around each new stop; a second tap landing on the new top row must not add it by accident.
   const settling = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chipLock = useRef(false);

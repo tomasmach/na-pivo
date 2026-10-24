@@ -42,7 +42,7 @@ import {
 } from '../../modules/beer-live-activity';
 
 type IosLiveActivityInstance = {
-  update(props: BeerEveningLiveActivityProps): Promise<void>;
+  update(props: BeerEveningLiveActivityProps, staleDate?: Date): Promise<void>;
   end(
     dismissalPolicy?: 'default' | 'immediate',
     props?: BeerEveningLiveActivityProps,
@@ -51,7 +51,7 @@ type IosLiveActivityInstance = {
 };
 
 interface IosLiveActivityFactory {
-  start(props: BeerEveningLiveActivityProps, url?: string): IosLiveActivityInstance;
+  start(props: BeerEveningLiveActivityProps, url?: string, staleDate?: Date): IosLiveActivityInstance;
   getInstances(): IosLiveActivityInstance[];
 }
 
@@ -124,14 +124,15 @@ async function syncIos(props: BeerEveningLiveActivityProps | null): Promise<void
     return;
   }
 
+  const staleDate = props.staleDateMs === undefined ? undefined : new Date(props.staleDateMs);
   if (instances.length === 0) {
-    factory.start(props, COUNTER_DEEP_LINK);
+    factory.start(props, COUNTER_DEEP_LINK, staleDate);
     return;
   }
 
   // There should only ever be one beer evening. Recover defensively from a
   // previous start race by keeping the first instance and removing duplicates.
-  await instances[0].update(props);
+  await instances[0].update(props, staleDate);
   await Promise.all(instances.slice(1).map((instance) => instance.end('immediate')));
 }
 

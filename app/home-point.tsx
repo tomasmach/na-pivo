@@ -3,11 +3,11 @@ import {
   ActivityIndicator,
   Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type ScrollViewInstance,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
@@ -70,7 +70,7 @@ export default function HomePointScreen() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const searchAbortRef = useRef<AbortController | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const resetScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(

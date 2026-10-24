@@ -56,6 +56,7 @@ import {
   type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
+  type ScrollViewInstance,
 } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -449,7 +450,7 @@ export default function FriendsScreen() {
   const loadAbortRef = useRef<AbortController | null>(null);
   const settingsOverrideRef = useRef<FriendsDashboard['settings'] | null>(null);
   const sheetActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const requestsYRef = useRef(0);
   const activeYRef = useRef(0);
   const endingBroadcastRef = useRef(false);

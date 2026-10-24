@@ -16,8 +16,7 @@ const mockStore = {
   saveDraft: jest.fn(async () => ({ ok: true, id: '11111111-1111-4111-8111-111111111111' })),
 };
 jest.mock('@/stores/toursStore', () => ({ useToursStore: Object.assign((select?: (s: typeof mockStore) => unknown) => (select ? select(mockStore) : mockStore), { getState: () => mockStore }) }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn(), replace: jest.fn(), canGoBack: () => true }), useNavigation: () => ({ dispatch: jest.fn() }) }));
-jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: jest.fn() }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn(), replace: jest.fn(), canGoBack: () => true }), usePreventRemove: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn(), AppDialogHost: () => null }));
 jest.mock('@/components/shared/KeyboardAwareScrollView', () => {

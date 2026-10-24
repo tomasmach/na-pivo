@@ -311,7 +311,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
   // open — tick once a minute, the same pattern the counter uses.
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000);
+    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000) as number | NodeJS.Timeout;
     if (typeof timer === 'object' && 'unref' in timer && typeof timer.unref === 'function') {
       timer.unref();
     }

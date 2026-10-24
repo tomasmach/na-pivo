@@ -4,13 +4,13 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
   useWindowDimensions,
   type KeyboardEvent,
+  type ScrollViewInstance,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -93,7 +93,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   const showToast = useToastStore((s) => s.show);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const initialDate = new Date();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   const [dateText, setDateText] = useState(() => formatHistoricalDate(initialDate));
   const [startTimeText, setStartTimeText] = useState(() => formatHistoricalTime(initialDate));

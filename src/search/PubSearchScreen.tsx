@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View, type TextInputInstance } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRightIcon, ClockIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
@@ -34,7 +34,7 @@ export default function PubSearchScreen() {
 function SearchContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const resolveController = useRef<AbortController | null>(null);
   const reportedIds = usePubStore((state) => state.reportedPubIds);
   const reportedKeys = usePubStore((state) => state.reportedCacheKeys);
