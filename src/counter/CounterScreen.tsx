@@ -128,6 +128,7 @@ import { AlcoholProfileSheet } from '@/counter/AlcoholProfileSheet';
 import type { BodyProfile } from '@/drinks/alcoholEstimate';
 import { CounterQuickActions } from '@/counter/CounterQuickActions';
 import { CounterCta } from '@/counter/CounterCta';
+import { useBookLayout } from '@/layout/bookLayout';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
@@ -359,6 +360,8 @@ function Tacek({
 }: TacekProps) {
   const insets = useSafeAreaInsets();
   const showAppDialog = useShowAppDialog();
+  // On a table the counter is the short bottom half, laid out like the compass there.
+  const tabletop = useBookLayout().mode === 'tabletop';
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
@@ -1775,6 +1778,16 @@ function Tacek({
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const primaryButton = (
+    <CounterCta
+      testID="counter-primary"
+      label={cta.label}
+      subLabel={cta.subLabel}
+      onPress={cta.onPress}
+      accessibilityLabel={cta.a11y}
+    />
+  );
+
   return (
     <View
       style={[
@@ -1813,6 +1826,7 @@ function Tacek({
       </View>
 
       <CoasterCard
+        sideways={tabletop}
         count={count}
         nounLabel={beerNoun(count)}
         spentLabel={spentLabel}
@@ -1843,15 +1857,19 @@ function Tacek({
         />
       </CoasterCard>
 
-      <NudgeSlot nudge={nudge} />
-
-      <CounterCta
-        testID="counter-primary"
-        label={cta.label}
-        subLabel={cta.subLabel}
-        onPress={cta.onPress}
-        accessibilityLabel={cta.a11y}
-      />
+      {tabletop ? (
+        <View style={styles.actionRow}>
+          <View style={styles.actionHalf}>{primaryButton}</View>
+          <View style={styles.actionHalf}>
+            <NudgeSlot nudge={nudge} />
+          </View>
+        </View>
+      ) : (
+        <>
+          <NudgeSlot nudge={nudge} />
+          {primaryButton}
+        </>
+      )}
 
       <DrinkPickSheet
         visible={pickOpen}
@@ -2158,6 +2176,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
   },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  actionHalf: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

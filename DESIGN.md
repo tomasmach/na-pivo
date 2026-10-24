@@ -1560,7 +1560,8 @@ rozložení beze změny.
   vždycky pokryje celé okno a sheet nezajede pod sloupec s hodinami ani pod lištu tabů.
 - **Na stole** (vodorovný ohyb, spodní půlka leží) je primární obrazovka dole a dvojče nahoře, aby
   ručička kompasu ležela v rovině stolu. Kompas má kartu na šířku: ciferník vlevo, vzdálenost a
-  hospoda vpravo, pod ní „Doveď mě tam“ a „Dej mi jinou“ vedle sebe.
+  hospoda vpravo, pod ní „Doveď mě tam“ a „Dej mi jinou“ vedle sebe. Počítadlo stejně: číslo
+  vlevo, rychlé akce, promile a patička vpravo, pod kartou „Ještě jedno“ a výzva vedle sebe.
 - **Otevření a zavření.** Po otevření je obrazovka, kterou jsi měl, vlevo a pravá půlka přibude.
   Po zavření vidíš vždycky kompas nebo počítadlo; co bylo vpravo, počká na další otevření. Půlka
   s otevřeným sheetem zůstane připojená, dokud sheet nezavřeš, takže se rozepsaný zápis neztratí.
