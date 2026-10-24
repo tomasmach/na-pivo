@@ -24,7 +24,16 @@
  * window changes size under it.
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type PropsWithChildren,
+  type ReactNode,
+} from 'react';
 import {
   Modal as RNModal,
   PixelRatio,
@@ -35,6 +44,8 @@ import {
   useWindowDimensions,
   type ColorValue,
   type ModalProps as RNModalProps,
+  type StyleProp,
+  type ViewProps,
   type ViewStyle,
 } from 'react-native';
 import {
@@ -89,6 +100,18 @@ export function WindowSafeAreaProvider({ children }: PropsWithChildren) {
 function SheetContext({ insets, children }: PropsWithChildren<{ insets: EdgeInsets | null }>) {
   const content = <ToneContext.Provider value="primary">{children}</ToneContext.Provider>;
   return insets ? <SafeAreaInsetsContext.Provider value={insets}>{content}</SafeAreaInsetsContext.Provider> : content;
+}
+
+/**
+ * A view inside a `Modal` styled by the modal's insets. The component that
+ * renders the `Modal` sees the insets of its half instead: on a table the lower
+ * half starts at the fold margin, while a sheet from it reaches the status bar.
+ */
+export function ModalInsetView({
+  style,
+  ...rest
+}: Omit<ViewProps, 'style'> & { style: (insets: EdgeInsets) => StyleProp<ViewStyle>; children?: ReactNode }) {
+  return <View {...rest} style={style(useSafeAreaInsets())} />;
 }
 
 /** Where a modal lays out, in window coordinates. */

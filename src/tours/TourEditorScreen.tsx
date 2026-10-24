@@ -3,7 +3,7 @@ import { AccessibilityInfo, Keyboard, PanResponder, Pressable, StyleSheet, TextI
 import { usePreventRemove, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Region } from 'react-native-maps';
-import { Modal } from '@/components/shared/Modal';
+import { Modal, ModalInsetView } from '@/components/shared/Modal';
 import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, GripVerticalIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog, AppDialogHost } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -199,10 +199,10 @@ function TourEditor() {
         return result.ok;
       }} />}
     <Modal visible={largeMap} animationType="slide" onRequestClose={() => setLargeMap(false)}>
-      <View style={[ui.screen, { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}><TourHeader title={t.tours.map} onBack={() => setLargeMap(false)} />
+      <ModalInsetView style={(insets) => [ui.screen, { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}><TourHeader title={t.tours.map} onBack={() => setLargeMap(false)} />
         <View style={ui.grow} onLayout={(event) => setMapHeight(event.nativeEvent.layout.height)}><TourMap key={draft.stops.map((s) => s.id).sort().join()} stops={draft.stops} selectedId={selected} onSelect={setSelected} height={mapHeight} region={region} onRegionChange={setRegion} /></View>
         <TourButton label={t.tours.back} onPress={() => setLargeMap(false)} secondary /><AppDialogHost />
-      </View>
+      </ModalInsetView>
     </Modal>
   </View>;
 }
