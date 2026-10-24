@@ -11,7 +11,9 @@
   // zod (memory exhaustion on oversized constrained collections) is patched only
   // in zod 4, while @expo/cli depends on zod 3 to validate project config and
   // dev-tools plugin output. The app never imports zod, so it stays out of the
-  // bundle. The entry covers only the @expo/cli path, so a new runtime path to
-  // zod still fails the audit. Remove it once @expo/cli ships a patched zod.
+  // bundle. The entry covers only the @expo/cli path, and
+  // scripts/check-zod-audit-exception.js fails the audit when a vulnerable zod
+  // shows up anywhere else in production. Remove both once @expo/cli ships a
+  // patched zod.
   "allowlist": ["GHSA-86w9-cpqp-85rv", "GHSA-vfj7-8cjw-p6xm", "GHSA-mrhx-c7xc-m3w5|expo>@expo/cli>zod"]
 }
