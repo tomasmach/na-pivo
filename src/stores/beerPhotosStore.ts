@@ -26,7 +26,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { getSessionAccountId } from '@/data/account';
+import { getLastKnownSessionAccountId, getSessionAccountId } from '@/data/account';
 import {
   fetchMyBeerPhotos,
   type BeerPhoto,
@@ -238,8 +238,8 @@ export async function loadBeerPhotos(signal?: AbortSignal): Promise<void> {
   if (!photos) return;
   // Signing in to another account replaces the session without a wipe, so the
   // list may belong to the previous one. E-mail registration keeps the account
-  // and only rotates its token, so its list stays.
-  const accountIdNow = await getSessionAccountId();
-  if (generation !== boundaryGeneration || accountIdNow !== accountId) return;
+  // and only rotates its token, so its list stays. The check stays synchronous:
+  // an upload finishing during an await here would be dropped by this older list.
+  if (generation !== boundaryGeneration || getLastKnownSessionAccountId() !== accountId) return;
   useBeerPhotosStore.getState().setServerPhotos(photos);
 }

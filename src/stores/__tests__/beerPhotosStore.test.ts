@@ -20,6 +20,7 @@ jest.mock('@/data/beerPhotosClient', () => ({
 let mockSession: { accountId: string; token: string } | null = null;
 jest.mock('@/data/account', () => ({
   getSessionAccountId: async () => mockSession?.accountId ?? null,
+  getLastKnownSessionAccountId: () => mockSession?.accountId ?? null,
 }));
 
 import {
@@ -246,6 +247,32 @@ describe('loadBeerPhotos', () => {
     await loadBeerPhotos();
 
     expect(useBeerPhotosStore.getState().photos.map((p) => p.clientId)).toEqual(['a-1']);
+  });
+
+  it('keeps a photo whose upload lands just after the server list arrives', async () => {
+    const account = jest.requireMock<{ getSessionAccountId: () => Promise<string | null> }>(
+      '@/data/account',
+    );
+    // A SecureStore read takes a turn of the event loop.
+    const slowSessionRead = jest
+      .spyOn(account, 'getSessionAccountId')
+      .mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(mockSession?.accountId ?? null), 0)),
+      );
+    useBeerPhotosStore.getState().addPendingPhoto(pendingInput('c1'));
+    fetchMyBeerPhotos.mockImplementationOnce(async () => {
+      // The server built this list before the queued upload of c1 reached it.
+      setTimeout(() => useBeerPhotosStore.getState().markSynced('c1', serverPhoto('c1')), 0);
+      return [];
+    });
+
+    await loadBeerPhotos();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    slowSessionRead.mockRestore();
+
+    expect(useBeerPhotosStore.getState().photos).toEqual([
+      expect.objectContaining({ clientId: 'c1', syncState: 'synced' }),
+    ]);
   });
 
   it('rehydrates the persisted snapshot only once per process', async () => {
