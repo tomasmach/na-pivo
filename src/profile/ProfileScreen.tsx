@@ -74,7 +74,13 @@ const FAVORITES_COLLAPSED = 5;
 const BADGES_SHOWN = 4;
 const PHOTOS_SHOWN = 3;
 
+/** The tab outlives logout and sign-in; a new account gets a fresh screen. */
 export default function ProfileScreen() {
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  return <AccountProfileScreen key={accountId ?? ''} />;
+}
+
+function AccountProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const bottomInset = useBottomInset(Spacing.xl);
