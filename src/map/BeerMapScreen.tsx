@@ -9,11 +9,13 @@ import {
   useColorScheme,
   useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import MapView, {
   PROVIDER_GOOGLE,
+  type Details,
   type MapPressEvent,
   type Region,
 } from 'react-native-maps';
@@ -109,6 +111,8 @@ const TARGET_LABEL_HEIGHT = 18;
 const TARGET_ANCHOR = { x: 0.5, y: 28 / (56 + TARGET_LABEL_HEIGHT) };
 
 let rememberedRegion: Region | null = null;
+/** Longer than the system's turn of the window, so the map reads its final frame. */
+const RESIZE_SETTLE_MS = 450;
 /** A fresher locate fix closer than this does not re-animate the map. */
 const LOCATE_FOLLOW_UP_M = 25;
 let rememberedLayer: Layer = 'all';
@@ -963,13 +967,60 @@ export default function BeerMapScreen({
     ];
   }, [layer, region, selectedPub?.key, showCities, visiblePoints]);
 
+  // A map built again should open where the last one was. Google sometimes
+  // takes the first camera before the padding is in place, which lands it half
+  // the padding off; the first report shows it, and the view is set again.
+  const restoreTarget = useRef(!focusInitialPub && rememberedRegion ? initialRegion : null);
   const handleRegionChange = useCallback(
-    (next: Region) => {
+    (next: Region, details?: Details) => {
+      const target = restoreTarget.current;
+      restoreTarget.current = null;
+      if (
+        target &&
+        !details?.isGesture &&
+        (Math.abs(next.latitude - target.latitude) > target.latitudeDelta * 0.01 ||
+          Math.abs(next.longitude - target.longitude) > target.longitudeDelta * 0.01)
+      ) {
+        mapRef.current?.animateToRegion(target, 0);
+        return;
+      }
       setRegion(next);
       rememberedRegion = next;
       loadRegion(next);
     },
     [loadRegion],
+  );
+
+  // Google reports no camera change when the map only changes size (the open
+  // Duo turning or opening), so the pins would stay cut to the old shape until
+  // the next pan, and it can lose the marker bitmaps it froze. Once the new
+  // size has settled, the map reads its view again and redraws the markers.
+  const mapSize = useRef<{ width: number; height: number } | null>(null);
+  const [markerRedraw, setMarkerRedraw] = useState(0);
+  const resizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (resizeTimer.current) clearTimeout(resizeTimer.current);
+  }, []);
+  const handleMapLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      const previous = mapSize.current;
+      mapSize.current = { width, height };
+      if (!previous || (previous.width === width && previous.height === height)) return;
+      if (resizeTimer.current) clearTimeout(resizeTimer.current);
+      resizeTimer.current = setTimeout(() => {
+        setMarkerRedraw((count) => count + 1);
+        void mapRef.current?.getMapBoundaries().then(({ northEast, southWest }) => {
+          handleRegionChange({
+            latitude: (northEast.latitude + southWest.latitude) / 2,
+            longitude: (northEast.longitude + southWest.longitude) / 2,
+            latitudeDelta: northEast.latitude - southWest.latitude,
+            longitudeDelta: northEast.longitude - southWest.longitude,
+          });
+        }, () => undefined);
+      }, RESIZE_SETTLE_MS);
+    },
+    [handleRegionChange],
   );
 
   const clearSelection = useCallback(() => {
@@ -1438,14 +1489,15 @@ export default function BeerMapScreen({
   }, [activeFilterCount, onApplyFilters, setBeersOnly]);
 
   return (
-    <View style={styles.root}>
+    <View style={styles.root} onLayout={handleMapLayout}>
       <MapView
         key={mapColorScheme}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
-        // Keeps the Google logo and the camera center above the floating tab bar.
-        mapPadding={{ top: 0, right: 0, bottom: tabBarInset, left: 0 }}
+        // Keeps the Google logo and the camera center above the floating tab bar,
+        // and off the fold when the map is a half of the window.
+        mapPadding={{ top: 0, right: insets.right, bottom: tabBarInset, left: insets.left }}
         initialRegion={region}
         onRegionChangeComplete={handleRegionChange}
         onPress={handleMapPress}
@@ -1464,6 +1516,7 @@ export default function BeerMapScreen({
           ? visitedCities.map((city) => (
               <StaticMapMarker
                 key={`city:${city.key}:${city.name}:${city.visitCount}`}
+                redraw={markerRedraw}
                 stopPropagation
                 coordinate={{ latitude: city.lat, longitude: city.lng }}
                 onPress={() => {
@@ -1506,6 +1559,7 @@ export default function BeerMapScreen({
             return (
               <StaticMapMarker
                 key={`${point.key}:${point.visit?.visitCount ?? 0}:${beers}:${favorite ? 'fav' : ''}:${selected ? 'selected' : 'idle'}:${target ? 'target' : ''}`}
+                redraw={markerRedraw}
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 anchor={target ? TARGET_ANCHOR : undefined}
@@ -1541,6 +1595,7 @@ export default function BeerMapScreen({
           return (
             <StaticMapMarker
               key={`cluster:${cluster.id}:${cluster.items.length}:${cluster.items.some((item) => item.visit != null)}:${clusterBeers}`}
+              redraw={markerRedraw}
               stopPropagation
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
@@ -1561,6 +1616,7 @@ export default function BeerMapScreen({
         {layer !== 'visited' ? livePubs.map((live) => (
           <StaticMapMarker
             key={`live:${live.cacheKey}:${selectedLive?.cacheKey === live.cacheKey ? 'selected' : 'idle'}:${live.activities.length}:${friendName(live)}:${live.activities[0]?.account?.avatarUrl ?? ''}`}
+            redraw={markerRedraw}
             stopPropagation
             coordinate={{ latitude: live.lat, longitude: live.lng }}
             onPress={() => selectLive(live)}
