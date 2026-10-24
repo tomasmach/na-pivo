@@ -6,6 +6,7 @@ import type { AccountProfile } from '@/data/auth';
 import { t } from '@/i18n';
 import { NICKNAME_NUDGE_SEEN_VERSION_KEY } from '@/profile/nicknameNudge';
 import { useAccountStore } from '@/stores/accountStore';
+import { useBadgeStore } from '@/stores/badgeStore';
 import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useReleaseStore } from '@/stores/releaseStore';
@@ -83,6 +84,7 @@ describe('NicknameNudgeModal', () => {
     useReleaseStore.setState({ checkSettled: true, pendingNote: null });
     useOnboardingStore.setState({ firstLaunchSession: false });
     useAccountStore.setState({ session: null, profile: null });
+    useBadgeStore.setState({ sheet: null, sheetOpen: false });
   });
 
   afterEach(() => {
@@ -143,6 +145,25 @@ describe('NicknameNudgeModal', () => {
 
     navigate('(tabs)');
     await advance(600);
+    expect(modalVisible()).toBe(true);
+  });
+
+  it('waits for the medal sheet opened from a toast to close', async () => {
+    signIn(null);
+    mockRootState = rootStack('(tabs)', 'pub');
+    render(<NicknameNudgeModal />);
+    await advance(1200);
+
+    navigate('(tabs)');
+    await advance(300);
+    await act(async () => useBadgeStore.getState().open('pubs'));
+    await advance(1200);
+    expect(mockModalVisibility).not.toContain(true);
+
+    await act(async () => useBadgeStore.getState().close());
+    await advance(599);
+    expect(modalVisible()).toBe(false);
+    await advance(1);
     expect(modalVisible()).toBe(true);
   });
 

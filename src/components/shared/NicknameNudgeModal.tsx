@@ -4,9 +4,10 @@
  * Registration now requires picking a handle, but accounts created before that
  * change may still have none. This modal appears once per app version, only
  * AFTER the what's-new popup is dismissed (gated on releaseStore.checkSettled +
- * pendingNote, same as the pub-reminder onboarding), only over the tabs, never
- * during the first launch session, and never blocks anything — the user can
- * dismiss it and keep using the app. The nickname can be saved right here via
+ * pendingNote, same as the pub-reminder onboarding), never during the first
+ * launch session, and never blocks anything — the user can dismiss it and keep
+ * using the app. It starts only while nothing covers the tabs and stays when a
+ * route then opens above it. The nickname can be saved right here via
  * NicknameField.
  */
 
@@ -31,6 +32,7 @@ import {
 } from '@/profile/nicknameNudge';
 import { getCurrentAppVersion } from '@/data/releaseNotesClient';
 import { selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
+import { useBadgeStore } from '@/stores/badgeStore';
 import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useReleaseStore } from '@/stores/releaseStore';
@@ -95,28 +97,29 @@ export function NicknameNudgeModal() {
 
   // A full-screen route such as auth or profile/privacy takes the root view off
   // the window. If the nudge presents then, or while that route is still
-  // dismissing, iOS never presents it but its host stays above the app.
-  const onlyTabs = rootHoldsOnlyTabs(useRootNavigationState());
+  // dismissing, iOS never presents it but its host stays above the app. The
+  // medal sheet is an RN Modal outside the launch mutex, and presenting over it
+  // wedges iOS the same way.
+  const medalSheetOpen = useBadgeStore((s) => s.sheetOpen);
+  const tabsUncovered = rootHoldsOnlyTabs(useRootNavigationState()) && !medalSheetOpen;
   const [tabsSettled, setTabsSettled] = useState(false);
   useEffect(() => {
-    if (!onlyTabs) return;
+    if (!tabsUncovered) return;
     const timer = setTimeout(() => setTabsSettled(true), PRESENT_SETTLE_MS);
     return () => {
       clearTimeout(timer);
       setTabsSettled(false);
     };
-  }, [onlyTabs]);
+  }, [tabsUncovered]);
 
   const mutexHolder = useLaunchModalMutex((s) => s.holder);
   // Once presented, a route change must not hide the nudge: that would hand the
   // launch slot to the next popup before iOS has dismissed this one.
   const presented = mutexHolder === 'nickname-nudge';
 
-  // `needsNickname` keeps this quiet for anonymous sessions, signed-out users,
-  // accounts that already have a handle, and while the profile hasn't loaded.
   const wantVisible =
     eligible &&
-    (presented || (onlyTabs && tabsSettled)) &&
+    (presented || (tabsUncovered && tabsSettled)) &&
     needsNickname &&
     releaseNote === null &&
     !firstLaunchSession;
