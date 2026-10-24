@@ -157,7 +157,6 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   clearBeerPhotosForAccountBoundary();
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
-  // A friend's profile or an evening left in a right half of the open iPhone Duo.
   useBookStore.getState().clearAll();
   useBeerWatchStore.getState().reset();
   // The cached boards carry the outgoing account's own rank.

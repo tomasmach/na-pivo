@@ -30,9 +30,6 @@ const pubEntry: PageEntry = {
   params: { key: 'u2fkbnpq', name: 'U Zlatého tygra', lat: '50.0868', lng: '14.4196' },
 };
 
-/** JSON keeps key order, so equal strings mean the router gets the very same href. */
-const bytes = (value: unknown) => JSON.stringify(value);
-
 describe('openDetail on a phone', () => {
   beforeEach(() => {
     setWindow(402, 874);
@@ -45,12 +42,10 @@ describe('openDetail on a phone', () => {
     openPubPage(router as never, pub);
     // The href openPubPage built before it went through openDetail.
     const key = geohash8(pub.lat, pub.lng);
-    expect(bytes(router.push.mock.calls[0][0])).toBe(
-      bytes({
-        pathname: '/pub',
-        params: { key, ref: pubPageRef(pub), name: pub.name, lat: String(pub.lat), lng: String(pub.lng) },
-      }),
-    );
+    expect(router.push.mock.calls[0][0]).toEqual({
+      pathname: '/pub',
+      params: { key, ref: pubPageRef(pub), name: pub.name, lat: String(pub.lat), lng: String(pub.lng) },
+    });
   });
 
   it('replaces instead of pushing when asked to', () => {
@@ -63,18 +58,20 @@ describe('openDetail on a phone', () => {
   it('pushes the beer-on-tap pub page without a hand-off ref, as the push handler did', () => {
     const router = makeRouter();
     openDetail(router, pubEntry);
-    expect(bytes(router.push.mock.calls[0][0])).toBe(
-      bytes({ pathname: '/pub', params: { key: 'u2fkbnpq', name: 'U Zlatého tygra', lat: '50.0868', lng: '14.4196' } }),
-    );
+    expect(router.push.mock.calls[0][0]).toEqual({
+      pathname: '/pub',
+      params: { key: 'u2fkbnpq', name: 'U Zlatého tygra', lat: '50.0868', lng: '14.4196' },
+    });
   });
 
   it('pushes the evening and the friend profile hrefs the screens used', () => {
     const router = makeRouter();
     openEvening(router, '2026-10-22T19:40:00.000Z');
     openFriendProfile(router, 'acc-1');
-    expect(bytes(router.push.mock.calls[0][0])).toBe(
-      bytes({ pathname: '/evening', params: { startedAt: '2026-10-22T19:40:00.000Z' } }),
-    );
+    expect(router.push.mock.calls[0][0]).toEqual({
+      pathname: '/evening',
+      params: { startedAt: '2026-10-22T19:40:00.000Z' },
+    });
     expect(router.push.mock.calls[1][0]).toBe('/parta/acc-1');
   });
 
