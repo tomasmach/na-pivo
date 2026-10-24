@@ -17,6 +17,11 @@ jest.mock('@/data/beerPhotosClient', () => ({
   fetchMyBeerPhotos: (...args: unknown[]) => fetchMyBeerPhotos(...(args as [])),
 }));
 
+const getSessionToken = jest.fn(async (): Promise<string | null> => 'token-a');
+jest.mock('@/data/account', () => ({
+  getSessionToken: () => getSessionToken(),
+}));
+
 import {
   loadBeerPhotos,
   useBeerPhotosStore,
@@ -216,6 +221,15 @@ describe('loadBeerPhotos', () => {
     await loadBeerPhotos();
 
     expect(useBeerPhotosStore.getState().photos.map((p) => p.clientId)).toEqual(['c1']);
+  });
+
+  it('drops a list fetched for the session a sign-in has since replaced', async () => {
+    getSessionToken.mockResolvedValueOnce('token-anonymous').mockResolvedValueOnce('token-a');
+    fetchMyBeerPhotos.mockResolvedValueOnce([serverPhoto('anonymous-1')]);
+
+    await loadBeerPhotos();
+
+    expect(useBeerPhotosStore.getState().photos).toEqual([]);
   });
 
   it('rehydrates the persisted snapshot only once per process', async () => {
