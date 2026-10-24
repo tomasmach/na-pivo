@@ -47,6 +47,11 @@ export const Dimensions = {
   })),
 };
 
+export const PixelRatio = {
+  get: () => 3,
+  roundToNearestPixel: (value: number) => Math.round(value * 3) / 3,
+};
+
 export const useWindowDimensions = jest.fn(() => ({
   width: 390,
   height: 844,

@@ -38,6 +38,9 @@ function render(element: React.ReactElement, pane: PaneInfo | null = null) {
   return renderer;
 }
 
+/** A length on the 3x pixel grid, where the frame's edges land. */
+const px = (value: number) => Math.round(value * 3) / 3;
+
 /** Host views laid out absolutely with a left edge: the frame and the scrim. */
 function placed(renderer: any) {
   return renderer.root
@@ -83,8 +86,8 @@ describe('Modal', () => {
     const onRequestClose = jest.fn();
     const renderer = render(sheet({ onRequestClose }), { tab: 'kompas', side: 'primary' });
     const [frame, scrim] = placed(renderer);
-    expect(frame).toMatchObject({ left: 0, width: 951 / 2 - 20 });
-    expect(scrim).toMatchObject({ left: 951 / 2 - 20, right: 0 });
+    expect(frame).toMatchObject({ left: 0, width: px(951 / 2 - 20) });
+    expect(scrim).toMatchObject({ left: px(951 / 2 - 20), right: 0 });
 
     act(() => renderer.root.findByType(Pressable).props.onPress());
     expect(onRequestClose).toHaveBeenCalledTimes(1);
@@ -94,8 +97,8 @@ describe('Modal', () => {
     setWindow(951, 669);
     for (const pane of [{ tab: 'stamgast', side: 'secondary' } as const, null]) {
       const [frame, scrim] = placed(render(sheet(), pane));
-      expect(frame).toMatchObject({ left: 951 / 2 + 20, width: 951 / 2 - 20 });
-      expect(scrim).toMatchObject({ left: 0, width: 951 / 2 + 20 });
+      expect(frame).toMatchObject({ left: px(951 / 2 + 20), width: 951 - px(951 / 2 + 20) });
+      expect(scrim).toMatchObject({ left: 0, width: px(951 / 2 + 20) });
     }
   });
 
@@ -205,9 +208,9 @@ describe('Modal', () => {
       const scrim = 'rgba(0, 0, 0, 0.85)';
       const renderer = openFrom(null, BOOK, { scrimColor: scrim }, BOOK);
       const [frame, ...pieces] = placed(renderer);
-      expect(frame).toMatchObject({ left: 951 / 2 + 20, width: 951 - 84 - (951 / 2 + 20) });
+      expect(frame).toMatchObject({ left: px(951 / 2 + 20), width: 951 - 84 - px(951 / 2 + 20) });
       expect(pieces).toEqual([
-        expect.objectContaining({ left: 0, width: 951 / 2 + 20, backgroundColor: scrim }),
+        expect.objectContaining({ left: 0, width: px(951 / 2 + 20), backgroundColor: scrim }),
         expect.objectContaining({ left: 951 - 84, right: 0, backgroundColor: scrim }),
       ]);
       expect(insetsOf(renderer)).toEqual({ top: 0, right: 0, bottom: 20, left: 0 });
@@ -220,9 +223,9 @@ describe('Modal', () => {
 
       const fromBottom = openFrom({ tab: 'stamgast', side: 'primary' }, { ...TABLE, top: 20 }, { centered: true }, TABLE);
       const [lower, ...aboveAndBelow] = placed(fromBottom);
-      expect(lower).toMatchObject({ top: fold + 20, height: 951 - 20 - (fold + 20), left: 0, width: 669 });
+      expect(lower).toMatchObject({ top: px(fold + 20), height: 951 - 20 - px(fold + 20), left: 0, width: 669 });
       expect(aboveAndBelow).toEqual([
-        expect.objectContaining({ top: 0, height: fold + 20 }),
+        expect.objectContaining({ top: 0, height: px(fold + 20) }),
         expect.objectContaining({ top: 951 - 20, bottom: 0 }),
       ]);
       expect(insetsOf(fromBottom)).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
@@ -230,7 +233,7 @@ describe('Modal', () => {
       // A card from the root takes the upper half, below the status bar.
       const fromRoot = openFrom(null, TABLE, { centered: true }, TABLE);
       const [upper] = placed(fromRoot);
-      expect(upper).toMatchObject({ top: 82, height: fold - 20 - 82 });
+      expect(upper).toMatchObject({ top: 82, height: px(fold - 20) - 82 });
       expect(insetsOf(fromRoot)).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
 
       // A full-screen page keeps the window.

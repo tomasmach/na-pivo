@@ -25,6 +25,7 @@
 import { createContext, useContext, useEffect, useMemo, type PropsWithChildren } from 'react';
 import {
   Modal as RNModal,
+  PixelRatio,
   Pressable,
   StyleSheet,
   View,
@@ -130,7 +131,16 @@ export function useModalFrame({ transparent = true, centered = false }: FrameOpt
       bottom = foldY - FOLD_MARGIN;
     }
   }
-  return { x: left, y: top, width: right - left, height: bottom - top };
+  // Whole pixels: on a half pixel Yoga can round the frame and the scrim beside
+  // it apart, leaving a bright hairline between them.
+  const x = PixelRatio.roundToNearestPixel(left);
+  const y = PixelRatio.roundToNearestPixel(top);
+  return {
+    x,
+    y,
+    width: PixelRatio.roundToNearestPixel(right) - x,
+    height: PixelRatio.roundToNearestPixel(bottom) - y,
+  };
 }
 
 /** The part of each window inset that still falls inside the frame. */

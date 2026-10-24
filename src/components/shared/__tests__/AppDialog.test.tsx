@@ -82,6 +82,9 @@ const tapAsk = (renderer: any) => act(() => renderer.root.findByProps({ testID: 
 const confirm = (renderer: any) =>
   act(() => renderer.root.findByProps({ testID: 'app-dialog-primary' }).props.onPress());
 
+/** A length on the 3x pixel grid, where the frame's edges land. */
+const px = (value: number) => Math.round(value * 3) / 3;
+
 /** The modal's frame: the first host view laid out absolutely with a left edge. */
 function frameOf(renderer: any) {
   return renderer.root
@@ -100,13 +103,13 @@ describe('AppDialog on an open iPhone Duo', () => {
     const renderer = render(DOPITO);
 
     tapAsk(renderer);
-    expect(frameOf(renderer)).toMatchObject({ left: 0, width: 951 / 2 - 20 });
+    expect(frameOf(renderer)).toMatchObject({ left: 0, width: px(951 / 2 - 20) });
     // It belongs to the counter's half, so folding keeps that half mounted.
     expect(useBookStore.getState().openModals['stamgast:primary']).toBe(1);
 
     confirm(renderer);
     act(() => showAppDialog(DOPITO));
-    expect(frameOf(renderer)).toMatchObject({ left: 951 / 2 + 20 });
+    expect(frameOf(renderer)).toMatchObject({ left: px(951 / 2 + 20) });
   });
 
   it('keeps a centred dialog in its half of the table and lets an action menu take the window', () => {
@@ -114,7 +117,7 @@ describe('AppDialog on an open iPhone Duo', () => {
     const renderer = render(DOPITO);
 
     tapAsk(renderer);
-    expect(frameOf(renderer)).toMatchObject({ top: 951 / 2 + 20 });
+    expect(frameOf(renderer)).toMatchObject({ top: px(951 / 2 + 20) });
 
     confirm(renderer);
     const menu = render(CAMERA_MENU);
