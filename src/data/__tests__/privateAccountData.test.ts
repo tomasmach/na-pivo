@@ -87,6 +87,7 @@ it('clears local private stores and private sync queue storage', async () => {
   useTallyStore.setState({
     current: session(),
     history: [session({ clientId: 'visit-2' })],
+    restoredAccountId: 'account-1',
   });
   usePubRatingsStore.setState({
     ratings: {
@@ -150,6 +151,7 @@ it('clears local private stores and private sync queue storage', async () => {
 
   expect(useTallyStore.getState().current).toBeNull();
   expect(useTallyStore.getState().history).toEqual([]);
+  expect(useTallyStore.getState().restoredAccountId).toBeNull();
   expect(useCommunityStore.getState().overrides).toEqual({});
   expect(usePubRatingsStore.getState().ratings).toEqual({});
   expect(usePubAmenitiesStore.getState().votes).toEqual({});

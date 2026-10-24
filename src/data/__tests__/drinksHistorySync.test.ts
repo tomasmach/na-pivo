@@ -165,6 +165,25 @@ describe('seedDrinksFromHistory', () => {
     expect(await AsyncStorage.getItem(DRINKS_HISTORY_SEEDED_KEY)).not.toBeNull();
   });
 
+  it('never sends drinks restored from the server', async () => {
+    const restored = { restored: true, syncStatus: 'sent' } as const;
+    useTallyStore.setState({
+      current: null,
+      history: [
+        session({ drinks: [drink(1, restored), drink(2)] }),
+        session({ clientId: 'restored-evening', drinks: [drink(3, restored)] }),
+      ],
+    });
+
+    await seedDrinksFromHistory();
+
+    expect(mockEnsureBatch).toHaveBeenCalledTimes(1);
+    expect(
+      mockEnsureBatch.mock.calls[0][0].map((entry: { client_id: string }) => entry.client_id),
+    ).toEqual([drink(2).id]);
+    expect(await AsyncStorage.getItem(DRINKS_HISTORY_SEEDED_KEY)).not.toBeNull();
+  });
+
   it('cancels a scheduled follow-up wave at an account boundary', async () => {
     jest.useFakeTimers({ now: new Date('2026-07-24T12:00:00.000Z') });
     useTallyStore.setState({
