@@ -143,6 +143,20 @@ describe('seedVisitsFromHistory', () => {
     expect(await AsyncStorage.getItem('na-pivo-visits-seeded')).toBe('1');
   });
 
+  it('skips evenings restored from the server but sends one with a local drink', async () => {
+    const restored = { restored: true, syncStatus: 'sent' } as const;
+    const restoredOnly = session({ clientId: 'restored' });
+    restoredOnly.drinks = restoredOnly.drinks.map((drink) => ({ ...drink, ...restored }));
+    const mixed = session({ clientId: 'mixed' });
+    mixed.drinks = [{ ...mixed.drinks[0], ...restored }, mixed.drinks[1]];
+    useTallyStore.setState({ current: null, history: [restoredOnly, mixed] });
+
+    await seedVisitsFromHistory();
+
+    const ids = enqueueVisitOp.mock.calls.map((c) => (c[0] as unknown as { clientId: string }).clientId);
+    expect(ids).toEqual(['mixed']);
+  });
+
   it('does not re-seed once the guard is set', async () => {
     await AsyncStorage.setItem('na-pivo-visits-seeded', '1');
     useTallyStore.setState({ current: null, history: [session({ clientId: 'h1' })] });

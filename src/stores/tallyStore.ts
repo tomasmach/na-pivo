@@ -36,7 +36,7 @@ import {
  *  "drinking day" rolls at 04:00 local rather than at midnight. */
 const DAY_CUTOFF_HOURS = 4;
 /** Keep at most this many finished sessions in history. */
-const MAX_HISTORY = 50;
+export const MAX_HISTORY = 50;
 /** Idle window after which a still-open session auto-completes into history. A
  *  session left untouched this long (since its last counted beer) is treated as
  *  "the evening is over" — we archive it so the counter starts clean. Measured
@@ -70,6 +70,9 @@ export interface TallyDrink {
   /** Wire path of the first field the server refused (e.g. `beer.volume_ml`),
    *  kept only while rejected. Read it through rejectedFieldOf(). */
   rejectedField?: string;
+  /** Copied from the account's server history after sign-in. The server
+   *  already has it, so history uploads must never send it again. */
+  restored?: true;
 }
 
 /** One sitting at one place on one drinking day. Usually a pub; an outside
@@ -141,6 +144,9 @@ export interface RemovedDrinkResult {
 interface TallyState {
   current: TallySession | null;
   history: TallySession[];
+  /** The account whose server history this diary already took over. Wiping the
+   *  private data resets it, so the next sign-in restores the diary again. */
+  restoredAccountId: string | null;
   /**
    * Count one beer at `pub`. Starts a new session when there is none, when the
    * pub changed, or when the drinking day rolled over (04:00 cutoff) — archiving
@@ -259,7 +265,7 @@ export function isPastEveningBackdate(at: string, now: Date = new Date()): boole
 /** Order evenings newest-first by start time. Backdated drinks can insert an
  *  older evening into history, so the newest-first invariant must be re-sorted
  *  rather than assumed from front-insertion. */
-function sortSessionsNewestFirst(sessions: TallySession[]): TallySession[] {
+export function sortSessionsNewestFirst(sessions: TallySession[]): TallySession[] {
   return sessions.slice().sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
 }
 
@@ -353,6 +359,7 @@ export const useTallyStore = create<TallyState>()(
     (set, get) => ({
       current: null,
       history: [],
+      restoredAccountId: null,
 
       addDrink: (pub, beer) =>
         set((state) => {
@@ -769,7 +776,11 @@ export const useTallyStore = create<TallyState>()(
       name: 'na-pivo-tally',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ current: state.current, history: state.history }),
+      partialize: (state) => ({
+        current: state.current,
+        history: state.history,
+        restoredAccountId: state.restoredAccountId,
+      }),
       migrate: migrateTally,
     },
   ),
@@ -778,6 +789,12 @@ export const useTallyStore = create<TallyState>()(
 /** Number of beer-category drinks. Legacy rows without a type are beer. */
 export function sessionCount(session: TallySession | null): number {
   return session?.drinks.filter((drink) => normalizeDrinkType(drink.drinkType) === 'beer').length ?? 0;
+}
+
+/** True for an evening made only of drinks restored from the server, which
+ *  the server already has in full. */
+export function sessionIsRestoredOnly(session: TallySession): boolean {
+  return session.drinks.length > 0 && session.drinks.every((drink) => drink.restored === true);
 }
 
 /** All logged items, used for session lifecycle rather than beer stats. */

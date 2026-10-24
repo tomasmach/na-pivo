@@ -126,6 +126,7 @@ function snapshotHistoricalEntries(): DrinkEntry[] | null {
 
   for (const session of sessions) {
     for (const drink of session.drinks) {
+      if (drink.restored === true) continue;
       const entry = buildHistoricalDrinkEntry(session, drink);
       // A malformed legacy row cannot be silently skipped and then hidden by
       // the guard. Leave the seed retryable in case a later migration repairs it.
