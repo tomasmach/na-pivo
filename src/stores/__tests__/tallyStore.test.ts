@@ -721,3 +721,47 @@ describe('migrateTally — v0 → v1 backfills clientId', () => {
     expect(migrated.history).toEqual([]);
   });
 });
+
+describe('evenings restored from the server', () => {
+  function restoredEvening(): TallySession {
+    return {
+      clientId: 'server-visit',
+      pubKey: 'aaaaaaaa',
+      pubName: 'U Zlatého tygra',
+      startedAt: '2026-07-10T16:00:00.000Z',
+      archivedReason: 'manual',
+      drinks: [
+        { id: 'server-1', beerName: 'Plzen', at: '2026-07-10T16:00:00.000Z', syncStatus: 'sent', restored: true },
+        { id: 'server-2', beerName: 'Kozel', at: '2026-07-10T17:00:00.000Z', syncStatus: 'sent', restored: true },
+      ],
+    };
+  }
+
+  it('loads a diary saved before the restore marker existed and persists the marker', async () => {
+    const saved: TallySession = { ...restoredEvening(), drinks: [{ id: 'local-1', beerName: 'Plzeň', at: 't' }] };
+    useTallyStore.setState({ restoredAccountId: null });
+    await AsyncStorage.setItem('na-pivo-tally', JSON.stringify({ state: { current: null, history: [saved] }, version: 1 }));
+
+    await useTallyStore.persist.rehydrate();
+    expect(useTallyStore.getState()).toMatchObject({ current: null, history: [saved], restoredAccountId: null });
+
+    useTallyStore.setState({ restoredAccountId: 'account-1' });
+    const persisted = JSON.parse((await AsyncStorage.getItem('na-pivo-tally')) as string);
+    expect(persisted.state.restoredAccountId).toBe('account-1');
+  });
+
+  it('renames and removes a restored drink by its server id', () => {
+    const { startedAt } = restoredEvening();
+    useTallyStore.setState({ current: null, history: [restoredEvening()] });
+
+    expect(useTallyStore.getState().updateDrinkNameInSession(startedAt, 'server-2', 'Kozel 11')).toBe(true);
+    expect(useTallyStore.getState().removeDrinkFromSession(startedAt, 'server-1')).toEqual({
+      drinkId: 'server-1',
+      sessionClientId: 'server-visit',
+      remainingDrinks: 1,
+    });
+    expect(useTallyStore.getState().history[0].drinks).toEqual([
+      { id: 'server-2', beerName: 'Kozel 11', at: '2026-07-10T17:00:00.000Z', syncStatus: 'sent', restored: true },
+    ]);
+  });
+});
