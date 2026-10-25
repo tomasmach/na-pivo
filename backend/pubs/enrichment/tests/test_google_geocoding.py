@@ -117,6 +117,40 @@ def test_geocoder_skips_centroid_and_returns_later_precise_result() -> None:
     assert candidate.lng == pytest.approx(14.42)
 
 
+def _premise_only_result(premise: str, route: str) -> dict:
+    # Shape of Google's real answers for "Masarykovo náměstí 1, Jihlava" and
+    # for a point at a named fountain in Olomouc.
+    result = _result(result_type="premise")
+    result["addressComponents"] = [
+        {"longText": premise, "types": ["premise"]},
+        {"longText": route, "types": ["route"]},
+        {"longText": "Jihlava 1", "types": ["postal_town"]},
+    ]
+    return result
+
+
+def test_address_keeps_conscription_number_when_google_has_no_street_number() -> None:
+    session = _FakeSession(
+        _response({"results": [_premise_only_result("1", "Masarykovo náměstí")]})
+    )
+
+    candidate = _source(session).geocode_address(address="Masarykovo náměstí 1", city="Jihlava")
+
+    assert candidate is not None
+    assert candidate.address == "Masarykovo náměstí 1"
+
+
+def test_precise_lookup_skips_named_building_without_house_number() -> None:
+    fountain = _premise_only_result("Kašna Hygie", "Divadelní")
+    numbered = _premise_only_result("9", "Horní náměstí")
+    session = _FakeSession(_response({"results": [fountain, numbered]}))
+
+    candidate = _source(session).reverse_geocode(lat=49.5938, lng=17.2509, require_precise=True)
+
+    assert candidate is not None
+    assert candidate.address == "Horní náměstí 9"
+
+
 def test_place_id_lookup_accepts_known_place_without_address_precision() -> None:
     session = _FakeSession(
         _response(

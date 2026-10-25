@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { openFriendProfile } from '@/layout/openDetail';
 import { ChevronRightIcon, EllipsisIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { fetchSharedTour, fetchTourRunPreview, type PublicTourInfo, type TourRunPreview } from '@/data/toursClient';
@@ -45,7 +46,7 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
   const [answering, setAnswering] = useState(false); const answerLock = useRef(false);
   // Whose invite this is: another account on the same screen (logout, switch) must never see or answer it.
   const inviteeId = useAccountStore((s) => s.session?.accountId ?? null);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   const listY = useRef(0);
   const rowY = useRef<Record<string, number>>({});
   function select(id: string) {
@@ -152,7 +153,7 @@ function TourInvite({ token, runId }: { token: string; runId?: string }) {
         <View>
           <Text maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{plan.title}</Text><TourText style={styles.meta}>{meta}</TourText>
           <Pressable accessibilityRole="button" accessibilityLabel={t.tours.authorA11y(publicInfo.author.nickname)} style={({ pressed }) => [styles.author, pressed && styles.pressed]}
-            onPress={() => router.push(`/parta/${publicInfo.author.id}` as Href)}>
+            onPress={() => openFriendProfile(router, publicInfo.author.id)}>
             <Avatar uri={publicInfo.author.avatarUrl} nickname={publicInfo.author.nickname} displayName={publicInfo.author.displayName} size={32} />
             <View style={ui.grow}>
               <Text maxFontSizeMultiplier={FontScaleCap.heading} numberOfLines={1} style={styles.nickname}>@{publicInfo.author.nickname}</Text>

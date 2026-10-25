@@ -58,7 +58,7 @@ tags: [critical, full, identity]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /profile
-- assertVisible: "Vytvořit účet"
+- assertVisible: "Zatím bez účtu"
 - runFlow:
     file: ../../maestro/route.yaml
     env:

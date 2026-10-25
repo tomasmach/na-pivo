@@ -10,8 +10,8 @@
  * It is NOT a full-screen gradient (see the anti-pattern list in
  * docs/design-system.md) — it is 28pt of the page's own background colour.
  */
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { Colors } from '@/theme/colors';
@@ -24,9 +24,16 @@ const FADE_HEIGHT = 28;
  * small enough that the cut edge is barely visible anyway.
  */
 export function ScrollFade({ height = FADE_HEIGHT }: { height?: number } = {}) {
+  // iOS keeps the gradient at its first width when the view later resizes (the
+  // open iPhone Duo turning on a table), so a new width draws a new one.
+  const [width, setWidth] = useState(0);
+  const handleLayout = (event: LayoutChangeEvent) => {
+    const next = Math.round(event.nativeEvent.layout.width);
+    setWidth((current) => (current === next ? current : next));
+  };
   return (
-    <View style={[styles.fade, { height }]} pointerEvents="none">
-      <Svg width="100%" height="100%">
+    <View style={[styles.fade, { height }]} pointerEvents="none" onLayout={handleLayout}>
+      <Svg key={width} width="100%" height="100%">
         <Defs>
           <LinearGradient id="scrollFade" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={Colors.stout} stopOpacity={0} />

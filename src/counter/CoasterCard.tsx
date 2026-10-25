@@ -92,6 +92,13 @@ export interface CoasterCardProps {
    * rail. The card owns their vertical rhythm and nothing else about them.
    */
   children?: React.ReactNode;
+  /** The alcohol estimate band, ruled off above and directly above the footer. */
+  estimate?: React.ReactNode;
+  /**
+   * The short bottom half of a phone lying open on a table: the numeral on the
+   * left, the rows and the footer beside it instead of under it.
+   */
+  sideways?: boolean;
 }
 
 export function CoasterCard({
@@ -103,6 +110,8 @@ export function CoasterCard({
   onOpenReceipt,
   accessibilityLabel,
   children,
+  estimate,
+  sideways = false,
 }: CoasterCardProps) {
   const reducedMotion = useReducedMotion();
   const countScale = useSharedValue(1);
@@ -154,6 +163,83 @@ export function CoasterCard({
   const interactive = count > 0;
   const hasFooter = showReceipt && (spentLabel !== null || sinceLabel !== null || count > 0);
 
+  const numeral = (
+    <Pressable
+      style={sideways ? styles.sideBody : styles.body}
+      onLayout={handleBodyLayout}
+      onPress={interactive ? onOpenReceipt : undefined}
+      disabled={!interactive}
+      accessibilityRole={interactive ? 'button' : 'text'}
+      accessibilityLabel={accessibilityLabel}
+    >
+      {/* Sits behind the numeral and is invisible at rest, so it costs the
+          layout nothing and the reader never meets it. */}
+      <Animated.View
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[styles.bloom, bloomAnimatedStyle]}
+      >
+        <SoftGlow size={Math.round(numeralSize * BLOOM_SCALE)} color={Colors.glow} opacity={0.42} />
+      </Animated.View>
+      <Animated.View style={countAnimatedStyle}>
+        <Text
+          style={[
+            styles.count,
+            // The line box must clear the extrabold glyph's overshoot, or iOS
+            // shaves the top off the digits. 1.24 leaves real headroom; the
+            // noun's negative margin closes the gap it creates below.
+            { fontSize: numeralSize, lineHeight: numeralSize * 1.24 },
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          maxFontSizeMultiplier={FontScaleCap.display}
+        >
+          {count}
+        </Text>
+      </Animated.View>
+      <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        {(count > 0 ? nounLabel : t.counter.coasterEmpty).toUpperCase()}
+      </Text>
+    </Pressable>
+  );
+
+  const footer = hasFooter ? (
+    <View
+      style={[
+        styles.footer,
+        estimate ? styles.footerAfterEstimate : null,
+        sideways && !estimate ? styles.footerSideways : null,
+      ]}
+    >
+      <View style={styles.facts}>
+        {spentLabel !== null ? (
+          <Text style={styles.fact} maxFontSizeMultiplier={FontScaleCap.body}>
+            {spentLabel}
+          </Text>
+        ) : null}
+        {sinceLabel !== null ? (
+          <Text style={styles.factMuted} maxFontSizeMultiplier={FontScaleCap.body}>
+            {sinceLabel}
+          </Text>
+        ) : null}
+      </View>
+      <Pressable
+        onPress={onOpenReceipt}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={t.a11y.counterReceiptChip}
+        style={({ pressed }) => [styles.receiptLink, pressed && styles.pressed]}
+      >
+        <Text style={styles.receiptLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+          {t.counter.receiptChip}
+        </Text>
+        <ChevronRightIcon size={15} color={Colors.amber} />
+      </Pressable>
+    </View>
+  ) : null;
+
   return (
     <Pressable
       testID="counter-count"
@@ -161,80 +247,23 @@ export function CoasterCard({
       disabled={!interactive}
       accessible={false}
       focusable={false}
-      style={({ pressed }) => [styles.card, interactive && pressed && styles.pressed]}
+      style={({ pressed }) => [styles.card, sideways && styles.cardSideways, interactive && pressed && styles.pressed]}
     >
       <CardSheen />
-
-      <Pressable
-        style={styles.body}
-        onLayout={handleBodyLayout}
-        onPress={interactive ? onOpenReceipt : undefined}
-        disabled={!interactive}
-        accessibilityRole={interactive ? 'button' : 'text'}
-        accessibilityLabel={accessibilityLabel}
-      >
-        {/* Sits behind the numeral and is invisible at rest, so it costs the
-            layout nothing and the reader never meets it. */}
-        <Animated.View
-          pointerEvents="none"
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          style={[styles.bloom, bloomAnimatedStyle]}
-        >
-          <SoftGlow size={Math.round(numeralSize * BLOOM_SCALE)} color={Colors.glow} opacity={0.42} />
-        </Animated.View>
-        <Animated.View style={countAnimatedStyle}>
-          <Text
-            style={[
-              styles.count,
-              // The line box must clear the extrabold glyph's overshoot, or iOS
-              // shaves the top off the digits. 1.24 leaves real headroom; the
-              // noun's negative margin closes the gap it creates below.
-              { fontSize: numeralSize, lineHeight: numeralSize * 1.24 },
-            ]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-            maxFontSizeMultiplier={FontScaleCap.display}
-          >
-            {count}
-          </Text>
-        </Animated.View>
-        <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {(count > 0 ? nounLabel : t.counter.coasterEmpty).toUpperCase()}
-        </Text>
-      </Pressable>
-
-      {children}
-
-      {hasFooter ? (
-        <View style={styles.footer}>
-          <View style={styles.facts}>
-            {spentLabel !== null ? (
-              <Text style={styles.fact} maxFontSizeMultiplier={FontScaleCap.body}>
-                {spentLabel}
-              </Text>
-            ) : null}
-            {sinceLabel !== null ? (
-              <Text style={styles.factMuted} maxFontSizeMultiplier={FontScaleCap.body}>
-                {sinceLabel}
-              </Text>
-            ) : null}
-          </View>
-          <Pressable
-            onPress={onOpenReceipt}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={t.a11y.counterReceiptChip}
-            style={({ pressed }) => [styles.receiptLink, pressed && styles.pressed]}
-          >
-            <Text style={styles.receiptLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.counter.receiptChip}
-            </Text>
-            <ChevronRightIcon size={15} color={Colors.amber} />
-          </Pressable>
+      {numeral}
+      {sideways ? (
+        <View style={styles.sideRows}>
+          {children}
+          {estimate}
+          {footer}
         </View>
-      ) : null}
+      ) : (
+        <>
+          {children}
+          {estimate}
+          {footer}
+        </>
+      )}
     </Pressable>
   );
 }
@@ -254,6 +283,23 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardSideways: {
+    flexDirection: 'row',
+    gap: 22,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  sideBody: {
+    width: '34%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The rows keep their own spacing; centred so a short evening does not hang from the top.
+  sideRows: {
+    flex: 1,
+    minWidth: 0,
     justifyContent: 'center',
   },
   bloom: {
@@ -286,6 +332,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   footer: CardSurface.footer,
+  // The estimate band already ends in its own breathing room; another 20 would
+  // push its text off the middle between the two hairlines.
+  footerAfterEstimate: {
+    marginTop: 0,
+  },
+  footerSideways: {
+    marginTop: 8,
+  },
   facts: {
     flexDirection: 'row',
     alignItems: 'center',

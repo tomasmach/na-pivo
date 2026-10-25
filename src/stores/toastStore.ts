@@ -19,6 +19,11 @@ import { create } from 'zustand';
 export interface ToastOptions {
   /** Leading IconGlyph element. When omitted the toast renders the default 🍺. */
   icon?: ReactNode;
+  /** Quiet second line under the message. */
+  subtitle?: string;
+  /** Makes the toast a door: tapping it runs this instead of only dismissing. */
+  onPress?: () => void;
+  durationMs?: number;
 }
 
 interface ToastState {
@@ -26,15 +31,41 @@ interface ToastState {
   token: number;
   /** Leading icon for the current toast, or null for the default beer emoji. */
   icon: ReactNode | null;
+  subtitle: string | null;
+  onPress: (() => void) | null;
+  durationMs: number | null;
   show: (message: string, options?: ToastOptions) => void;
   hide: () => void;
+}
+
+/** Runs `show` once no toast is on screen, so a waiting one never replaces another. */
+export function whenToastIsFree(show: () => void): void {
+  if (!useToastStore.getState().message) {
+    show();
+    return;
+  }
+  const stop = useToastStore.subscribe((state) => {
+    if (state.message) return;
+    stop();
+    show();
+  });
 }
 
 export const useToastStore = create<ToastState>((set) => ({
   message: null,
   token: 0,
   icon: null,
+  subtitle: null,
+  onPress: null,
+  durationMs: null,
   show: (message, options) =>
-    set((s) => ({ message, icon: options?.icon ?? null, token: s.token + 1 })),
-  hide: () => set({ message: null, icon: null }),
+    set((s) => ({
+      message,
+      icon: options?.icon ?? null,
+      subtitle: options?.subtitle ?? null,
+      onPress: options?.onPress ?? null,
+      durationMs: options?.durationMs ?? null,
+      token: s.token + 1,
+    })),
+  hide: () => set({ message: null, icon: null, subtitle: null, onPress: null, durationMs: null }),
 }));

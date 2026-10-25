@@ -10,8 +10,6 @@ import * as auth from '@/data/auth';
 import { trackForegroundPull } from '@/data/foregroundPulls';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import {
-  EMPTY_ACHIEVEMENTS,
-  type AccountAchievements,
   type AccountMapper,
   type AccountPivar,
   type AccountProfile,
@@ -24,7 +22,9 @@ import {
   type NicknameAvailability,
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
-import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
+import { reconcileDiarySnapshot, restoreAccountDiary, type DiarySnapshot } from '@/data/diarySync';
+import { tourBoundary } from '@/data/toursBoundary';
+import { useBookStore } from '@/stores/bookStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { releaseToursToDevice } from '@/stores/toursStore';
 
@@ -97,24 +97,6 @@ function pivarFromSnapshot(
   };
 }
 
-function achievementsFromMapper(
-  current: AccountAchievements | undefined,
-  mapper: AccountMapper,
-): AccountAchievements {
-  return {
-    ...EMPTY_ACHIEVEMENTS,
-    ...current,
-    firstMap: (current?.firstMap ?? false) || mapper.firstMapperCount >= 1,
-    explorer: (current?.explorer ?? false) || mapper.distinctMappedPubs >= 10,
-    cartographer: (current?.cartographer ?? false) || mapper.distinctMappedPubs >= 25,
-    completionist: (current?.completionist ?? false) || mapper.completedPubsCount >= 1,
-    factMachine: (current?.factMachine ?? false) || mapper.amenityVotesCount >= 100,
-    // Server-only badge (photo-contest win) — no local unlock rule; carry it
-    // through so a mapper snapshot never clobbers it back to false.
-    fotoPivar: current?.fotoPivar ?? false,
-  };
-}
-
 interface AccountState {
   session: AccountSession | null;
   status: AccountStatus;
@@ -139,6 +121,11 @@ interface AccountState {
   resumeSession: () => Promise<SessionResumeResult>;
   /** Re-fetch GET /v1/account/me into `profile`. */
   refreshProfile: () => Promise<void>;
+  /**
+   * Re-fetch only the badge values into the current profile. Settings and the
+   * rest stay as they are, so a slow answer cannot undo a change made meanwhile.
+   */
+  refreshBadges: () => Promise<void>;
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
   /** Resolves true when the server snapshot was fetched. */
   refreshDiarySnapshot: () => Promise<boolean>;
@@ -227,10 +214,26 @@ export const useAccountStore = create<AccountState>((set, get) => {
     }
   };
 
+  // Profile answers arrive late and out of order. Every read and write takes a
+  // ticket, and an answer to a read older than the last write (a newer read,
+  // a sign-in, a logout or a deletion) is dropped. The store keeps the old
+  // session while syncSession runs, so the token alone cannot tell.
+  let profileTickets = 0;
+  let writtenTicket = 0;
+  const takeProfileTicket = () => ++profileTickets;
+  const claimProfileWrite = (ticket: number) => {
+    if (ticket < writtenTicket) return false;
+    writtenTicket = ticket;
+    return true;
+  };
+
   /** Re-read the (possibly rotated) session token into the store. */
   const syncSession = async () => {
     const session = await ensureAccount();
     setTelemetrySession(session);
+    const previousAccountId = get().session?.accountId;
+    // Pages in the right halves of the open iPhone Duo belong to the outgoing account.
+    if (previousAccountId && previousAccountId !== session?.accountId) useBookStore.getState().clearAll();
     set((state) => ({
       session,
       status: session ? 'ready' : 'idle',
@@ -242,10 +245,17 @@ export const useAccountStore = create<AccountState>((set, get) => {
   const refreshDiarySnapshot = async (): Promise<boolean> => {
     const accountId = get().session?.accountId;
     if (!accountId) return false;
+    const boundary = tourBoundary();
     const data = await reconcileDiarySnapshot();
     if (data && get().session?.accountId === accountId) {
       const { removedDrinkIds, removedVisitIds } = get();
-      set({ diarySnapshot: { accountId, data: withoutRemoved(data, removedDrinkIds, removedVisitIds) } });
+      const snapshot = withoutRemoved(data, removedDrinkIds, removedVisitIds);
+      set({ diarySnapshot: { accountId, data: snapshot } });
+      // A login or logout around the read may have swapped the local diary.
+      const after = tourBoundary();
+      if (!boundary.changing && !after.changing && after.generation === boundary.generation) {
+        restoreAccountDiary(snapshot, accountId);
+      }
     }
     return data != null;
   };
@@ -253,6 +263,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
   /** After a session-changing auth call: persist the new token + profile. */
   const applyAuthResult = async (result: AuthResult): Promise<AuthResult> => {
     if (result.ok) {
+      claimProfileWrite(takeProfileTicket());
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
       await syncSession();
@@ -266,6 +277,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
    *  + settings. Mirrors applyAuthResult without the session re-sync. */
   const applyProfileResult = (result: AuthResult): AuthResult => {
     if (result.ok) {
+      claimProfileWrite(takeProfileTicket());
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
     }
@@ -293,12 +305,15 @@ export const useAccountStore = create<AccountState>((set, get) => {
             state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
         }));
         if (session) {
+          const ticket = takeProfileTicket();
           const [profile] = await Promise.all([
             auth.fetchAccountProfile(),
             // A successful launch pull lets the first foreground skip it.
             trackForegroundPull('diary', refreshDiarySnapshot, () => get().session?.accountId ?? null),
           ]);
+          if (get().session?.token !== session.token) return;
           if (profile) {
+            if (!claimProfileWrite(ticket)) return;
             set({ profile });
             applyAccountSettings(profile.settings);
           } else {
@@ -328,10 +343,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
       if (!session) return 'unavailable';
       if (!session.authenticated) return 'anonymous';
 
+      const ticket = takeProfileTicket();
       const validation = await auth.validateAccountSession(session);
       // Ignore a response for a session that was replaced while validation was
       // in flight (for example by a manual login opened from another screen).
-      if (get().session?.token !== session.token) return 'unavailable';
+      if (get().session?.token !== session.token || !claimProfileWrite(ticket)) return 'unavailable';
 
       if (validation.status === 'invalid') {
         // Keep the credential and all account-local state intact. The auth
@@ -350,11 +366,24 @@ export const useAccountStore = create<AccountState>((set, get) => {
     },
 
     refreshProfile: async () => {
+      const token = get().session?.token;
+      const ticket = takeProfileTicket();
       const profile = await auth.fetchAccountProfile();
-      if (profile) {
+      if (get().session?.token !== token) return;
+      if (profile && claimProfileWrite(ticket)) {
         set({ profile });
         applyAccountSettings(profile.settings);
       }
+    },
+
+    refreshBadges: async () => {
+      const token = get().session?.token;
+      const ticket = takeProfileTicket();
+      const fresh = await auth.fetchAccountProfile();
+      if (!fresh?.badgeProgress || get().session?.token !== token) return;
+      const current = get().profile;
+      if (current?.id !== fresh.id || !claimProfileWrite(ticket)) return;
+      set({ profile: { ...current, badgeProgress: fresh.badgeProgress } });
     },
 
     refreshDiarySnapshot,
@@ -391,14 +420,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
     applyMapperSnapshot: (snapshot) => {
       const current = get().profile;
       if (!current) return;
-      const mapper = mapperFromSnapshot(current.mapper, snapshot);
-      set({
-        profile: {
-          ...current,
-          mapper,
-          achievements: achievementsFromMapper(current.achievements, mapper),
-        },
-      });
+      set({ profile: { ...current, mapper: mapperFromSnapshot(current.mapper, snapshot) } });
     },
 
     applyPivarSnapshot: (snapshot) => {
@@ -432,6 +454,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     logout: async (options) => {
       await auth.logout(options);
+      claimProfileWrite(takeProfileTicket());
       set({
         profile: null,
         diarySnapshot: null,
@@ -444,6 +467,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
     deleteAccount: async () => {
       const result = await auth.deleteAccount();
       if (result.ok) {
+        claimProfileWrite(takeProfileTicket());
         set({
           profile: null,
           diarySnapshot: null,
@@ -470,7 +494,9 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
 setAnonymousSessionEvictionListener(async (evictedAccountId) => {
   await releaseToursToDevice(evictedAccountId);
-  useAccountStore.setState({ session: null, status: 'idle' });
+  // The evicted account's profile and badges must not linger if the
+  // replacement's profile cannot be fetched.
+  useAccountStore.setState({ session: null, status: 'idle', profile: null });
   await useAccountStore.getState().initAccount();
 });
 

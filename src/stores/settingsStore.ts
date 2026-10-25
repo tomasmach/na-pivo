@@ -8,6 +8,7 @@ import {
   setCurrencyRate,
   type PriceCurrency,
 } from '@/utils/currency';
+import { isBodyProfile, type BodyProfile } from '@/drinks/alcoholEstimate';
 
 export type Mode = 'nearest' | 'surprise';
 export type NavigationProvider = 'google' | 'mapy';
@@ -63,6 +64,10 @@ interface SettingsState {
   friendPushOptedOut: boolean;
   surpriseSeed: number;
   lastSeenPartyStreak: number;
+  /** Body numbers for the blood alcohol estimate, null until the user enters them. */
+  bodyProfile: BodyProfile | null;
+  /** The user turned the estimate off, so the counter stops offering its setup. */
+  alcoholEstimateHidden: boolean;
   setMode: (m: Mode) => void;
   setMapWithoutLocation: (value: boolean) => void;
   setHomePoint: (point: HomePoint | null) => void;
@@ -89,6 +94,8 @@ interface SettingsState {
   setFriendPushOptedOut: (v: boolean) => void;
   bumpSurpriseSeed: () => void;
   setLastSeenPartyStreak: (v: number) => void;
+  setBodyProfile: (profile: BodyProfile | null) => void;
+  setAlcoholEstimateHidden: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -124,6 +131,8 @@ export const useSettingsStore = create<SettingsState>()(
       friendPushOptedOut: false,
       surpriseSeed: 1,
       lastSeenPartyStreak: 0,
+      bodyProfile: null,
+      alcoholEstimateHidden: false,
 
       setMode: (m) => set({ mode: m }),
       setMapWithoutLocation: (value) => set({ mapWithoutLocation: value }),
@@ -157,6 +166,8 @@ export const useSettingsStore = create<SettingsState>()(
       bumpSurpriseSeed: () =>
         set((state) => ({ surpriseSeed: state.surpriseSeed + 1 })),
       setLastSeenPartyStreak: (v) => set({ lastSeenPartyStreak: v }),
+      setBodyProfile: (profile) => set({ bodyProfile: profile }),
+      setAlcoholEstimateHidden: (v) => set({ alcoholEstimateHidden: v }),
     }),
     {
       name: 'na-pivo-settings',
@@ -189,7 +200,17 @@ export const useSettingsStore = create<SettingsState>()(
         friendPushOptedOut: state.friendPushOptedOut,
         surpriseSeed: state.surpriseSeed,
         lastSeenPartyStreak: state.lastSeenPartyStreak,
+        bodyProfile: state.bodyProfile,
+        alcoholEstimateHidden: state.alcoholEstimateHidden,
       }),
+      merge: (persisted, current) => {
+        const state = { ...current, ...(persisted as Partial<SettingsState>) };
+        return {
+          ...state,
+          bodyProfile: isBodyProfile(state.bodyProfile) ? state.bodyProfile : null,
+          alcoholEstimateHidden: state.alcoholEstimateHidden === true,
+        };
+      },
       onRehydrateStorage: () => (state) => {
         if (state?.priceCurrency && state.priceCurrencyRate > 0) {
           setCurrencyRate(state.priceCurrency, state.priceCurrencyRate);

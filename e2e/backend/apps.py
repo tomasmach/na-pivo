@@ -31,6 +31,12 @@ class LocalFixtures(AppConfig):
 
         emailer.send_email = capture_email
 
+        from pubs.api import views
+
+        from . import push_outbox
+
+        views._post_expo = push_outbox.messages.extend
+
         # Catch every Python network adapter, including unexpected new integrations.
         original_connect = socket.socket.connect
 

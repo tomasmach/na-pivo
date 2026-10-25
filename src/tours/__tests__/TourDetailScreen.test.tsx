@@ -54,8 +54,8 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: tourId }),
   useRouter: () => ({ replace: mockReplace, canGoBack: () => true, back: mockBack, push: mockPush, navigate: mockPush }),
   useIsFocused: () => true,
+  usePreventRemove: jest.fn(),
 }));
-jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));

@@ -21,9 +21,10 @@
  */
 
 import React from 'react';
-import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -35,6 +36,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   ClipboardListIcon,
+  GaugeIcon,
   HistoryIcon,
   Share2Icon,
   XIcon,
@@ -66,6 +68,8 @@ export interface CounterMoreSheetProps {
   /** AI menu scan. Pub only. */
   onScanMenu?: () => void;
   scanning?: boolean;
+  /** Blood alcohol estimate: its sheet, or the body numbers when not set up. */
+  onAlcoholEstimate: () => void;
 }
 
 export function CounterMoreSheet({
@@ -78,6 +82,7 @@ export function CounterMoreSheet({
   onBackdate,
   onScanMenu,
   scanning = false,
+  onAlcoholEstimate,
 }: CounterMoreSheetProps) {
   const insets = useSafeAreaInsets();
 
@@ -119,6 +124,7 @@ export function CounterMoreSheet({
           },
         ]
       : []),
+    { key: 'alcohol', label: t.alcohol.moreRow, Icon: GaugeIcon, onPress: onAlcoholEstimate },
   ];
 
   return (

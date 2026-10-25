@@ -1,40 +1,46 @@
 /**
- * Profile tab — one identity, one lifetime card, one nudge and one amber action.
- *
- * The profile is a fixed Tácek composition. Lifetime stats, mapping, photos,
- * recent evenings and secondary navigation still exist, but each now has one
- * named home instead of competing on this surface.
+ * Profile tab — who you are, your lifetime numbers and what you have collected:
+ * srdcovky, badges, photos and the pubs you added. Evening history and records
+ * stay in Deník; settings sit behind the gear in the header.
  */
 
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  MenuIcon,
-  ExternalLinkIcon,
-  SettingsIcon,
-  TrophyIcon,
-  UsersIcon,
-} from '@/components/shared/IconGlyph';
-import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
-import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
-import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
+  Band,
+  ListRow,
+  PAGE_PAD,
+  RoundButton,
+  SectionTitle,
+} from '@/components/shared/FlatPage';
+import { ChevronRightIcon, SettingsIcon } from '@/components/shared/IconGlyph';
 import { accountXpProgress } from '@/data/accountXp';
+import { loadAddedPubSubmissions, type AddedPubSubmission } from '@/data/addedPubsQueue';
 import { enqueueBeerPhoto } from '@/data/beerPhotosQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
+import { fetchLeaderboard } from '@/data/leaderboardsClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
-import { t, intlLocale, beerCountLabel } from '@/i18n';
+import { t, intlLocale } from '@/i18n';
+import { openPubPage } from '@/pubPage/openPubPage';
 import { Avatar } from '@/profile/Avatar';
+import { BadgeMedal, medalLook } from '@/profile/BadgeMedal';
+import { nearestGoals, type BadgeKey } from '@/profile/badgeModel';
+import { BadgeGoalRow } from '@/profile/BadgeRows';
+import { badgeName } from '@/profile/badgeText';
+import { useAccountBadges, useRefreshBadgesOnFocus } from '@/profile/useAccountBadges';
 import {
   dailyBeerAverage,
   earliestTimestamp,
   formatDailyBeerAverage,
 } from '@/profile/dailyBeerAverage';
-import { ProfileCard } from '@/profile/ProfileCard';
+import { LevelRing } from '@/profile/LevelRing';
+import { favoriteBeerName, savedFavoritePubs } from '@/profile/profileModel';
+import { useMyStats } from '@/stats/useMyStats';
 import {
   selectAvatarUrl,
   selectIsPublic,
@@ -43,35 +49,49 @@ import {
   useAccountStore,
 } from '@/stores/accountStore';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { useBadgeStore } from '@/stores/badgeStore';
+import { useBeerWatchStore } from '@/stores/beerWatchStore';
+import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
+import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   allSessionsNewestFirst,
   sessionCount,
   sessionTotalCzk,
   useTallyStore,
-  type TallySession,
 } from '@/stores/tallyStore';
-import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { Colors, withAlpha } from '@/theme/colors';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { formatPrice } from '@/utils/currency';
+import { dateTimeFormat } from '@/utils/intlFormat';
+import { useBottomInset, useFirstFocus } from '@/navigation/TabScreen';
+import { TwoColumns } from '@/layout/TwoColumns';
 
 // The QR code pulls in ~450 KB of SVG/CSS parsing; load it when the sheet opens.
 const CodeSheet = lazy(() => import('@/friends/CodeSheet'));
 
-function lifetimeBeerCount(sessions: TallySession[]): number {
-  return sessions.reduce((total, session) => total + sessionCount(session), 0);
+const FAVORITES_COLLAPSED = 5;
+const BADGES_SHOWN = 4;
+const PHOTOS_SHOWN = 3;
+
+/** The tab outlives logout and sign-in; a new account gets a fresh screen. */
+export default function ProfileScreen() {
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  return <AccountProfileScreen key={accountId ?? ''} />;
 }
 
-export default function ProfileScreen() {
+function AccountProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset(Spacing.xl);
 
   const isSignedIn = useAccountStore(selectIsSignedIn);
   const profile = useAccountStore((state) => state.profile);
   const nickname = useAccountStore(selectNickname);
   const avatarUrl = useAccountStore(selectAvatarUrl);
   const isPublic = useAccountStore(selectIsPublic);
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const diarySnapshot = useAccountStore((state) => {
     const snapshot = state.diarySnapshot;
     if (!snapshot || snapshot.accountId !== state.session?.accountId) return null;
@@ -82,35 +102,55 @@ export default function ProfileScreen() {
   const history = useTallyStore((state) => state.history);
   const photos = useBeerPhotosStore((state) => state.photos);
   const priceCurrency = useSettingsStore((state) => state.priceCurrency);
+  const favoriteMap = usePubFavoritesStore((state) => state.favorites);
+  const reportedKeys = usePubStore((state) => state.reportedCacheKeys);
+  const reportedIds = usePubStore((state) => state.reportedPubIds);
+  const beerWatchCount = useBeerWatchStore((state) => state.watches.length);
 
+  const opened = useFirstFocus();
+  const remoteStats = useMyStats(opened);
   const [codeVisible, setCodeVisible] = useState(false);
-  const [moreVisible, setMoreVisible] = useState(false);
-  const [partaCount, setPartaCount] = useState(0);
-  const [dismissedNudge, setDismissedNudge] = useState<string | null>(null);
+  const [allFavorites, setAllFavorites] = useState(false);
+  const [partaCount, setPartaCount] = useState<number | null>(null);
+  const [addedPubs, setAddedPubs] = useState<AddedPubSubmission[]>([]);
+  const [weeklyRank, setWeeklyRank] = useState<number | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    void loadFriendsDashboardSnapshot().then((snapshot) => {
-      if (alive && snapshot) setPartaCount(snapshot.dashboard.friends.length);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  // Refreshed on every visit: the friend list, added pubs and rank change on
+  // other screens while this tab stays mounted.
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      void loadFriendsDashboardSnapshot().then((snapshot) => {
+        if (alive && snapshot) setPartaCount(snapshot.dashboard.friends.length);
+      });
+      void loadAddedPubSubmissions().then((submissions) => {
+        if (alive) setAddedPubs(submissions);
+      });
+      void fetchLeaderboard('beers', 'week').then((board) => {
+        if (alive) setWeeklyRank(board?.me.rank ?? null);
+      });
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
 
-  // This bootstrap used to happen when the photo strip was mounted directly on
-  // the profile. Keep it here so a failed upload can still own the first nudge.
+  // The tab outlives logout and sign-in, so the photos follow the account.
   useEffect(() => {
+    if (!opened) return;
     const controller = new AbortController();
     void loadBeerPhotos(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [opened, accountId]);
 
   const sessions = useMemo(
     () => allSessionsNewestFirst(current, history),
     [current, history],
   );
-  const localBeers = useMemo(() => lifetimeBeerCount(sessions), [sessions]);
+  const localBeers = useMemo(
+    () => sessions.reduce((total, session) => total + sessionCount(session), 0),
+    [sessions],
+  );
   const reconciledStats = useMemo(
     () => (diarySnapshot ? deriveReconciledDiaryStats(diarySnapshot, sessions) : null),
     [diarySnapshot, sessions],
@@ -122,9 +162,8 @@ export default function ProfileScreen() {
     beers = Math.max(profile.stats.totalBeers, localBeers);
   }
 
-  // The lifetime trio in the card. Local sessions are the floor; the reconciled
-  // account snapshot wins for pubs and money once it's there, because it also
-  // knows the evenings this phone never had.
+  // Local sessions are the floor; the server knows evenings this phone never had,
+  // so its numbers win once they are larger, as in Deník.
   const lifetime = useMemo(() => {
     const evenings = sessions.filter((session) => session.drinks.length > 0).length;
     const localPubs = new Set(
@@ -134,22 +173,19 @@ export default function ProfileScreen() {
     ).size;
     const localSpent = sessions.reduce((total, session) => total + sessionTotalCzk(session), 0);
     return {
-      evenings,
+      evenings: Math.max(remoteStats?.totalEvenings ?? 0, evenings),
       pubs: Math.max(reconciledStats?.distinctPubs ?? 0, localPubs),
       spentCzk: Math.max(reconciledStats?.totalSpentCzk ?? 0, localSpent),
     };
-  }, [reconciledStats, sessions]);
-  const now = useMemo(() => new Date(), []);
+  }, [reconciledStats, remoteStats, sessions]);
+
   // The server snapshot holds the whole drink history; scan it only when the
   // snapshot changes, not on every local drink.
   const remoteFirstBeerAt = useMemo(
     () =>
       earliestTimestamp(
         (diarySnapshot?.drinks ?? [])
-          .filter(
-            (drink) =>
-              !drink.is_suspect && normalizeDrinkType(drink.drink_type) === 'beer',
-          )
+          .filter((drink) => !drink.is_suspect && normalizeDrinkType(drink.drink_type) === 'beer')
           .map((drink) => drink.drank_at),
       ),
     [diarySnapshot],
@@ -169,16 +205,28 @@ export default function ProfileScreen() {
       ]),
     [diarySnapshot, isSignedIn, profile?.stats?.firstBeerAt, remoteFirstBeerAt, sessions],
   );
-  const averageBeersPerDay = formatDailyBeerAverage(
-    dailyBeerAverage(beers, firstBeerAt, now),
+  const now = useMemo(() => new Date(), []);
+  const average = dailyBeerAverage(beers, firstBeerAt, now);
+  const favoriteBeer = useMemo(
+    () => favoriteBeerName(diarySnapshot?.drinks ?? null, sessions),
+    [diarySnapshot, sessions],
   );
+  const facts =
+    beers > 0
+      ? [
+          average != null
+            ? t.profile.factDailyAverage(formatDailyBeerAverage(average), Math.round(average * 10) / 10)
+            : null,
+          firstBeerAt ? t.profile.factSince(dateTimeFormat({ day: 'numeric', month: 'numeric', year: 'numeric' }).format(new Date(firstBeerAt))) : null,
+          favoriteBeer ? t.profile.factFavoriteBeer(favoriteBeer) : null,
+        ].filter(Boolean).join(' · ')
+      : '';
 
   const xpProgress = useMemo(
     () => accountXpProgress(profile?.mapper, profile?.pivar),
     [profile?.mapper, profile?.pivar],
   );
   const level = isSignedIn && xpProgress ? xpProgress.level : null;
-  const levelTitle = isSignedIn && xpProgress ? xpProgress.title : t.profile.levelRingCaption;
   // Null = full ring: a maxed rung has nothing left to fill, and a rung with a
   // zero-XP span cannot be divided.
   const levelProgress =
@@ -190,34 +238,55 @@ export default function ProfileScreen() {
     : xpProgress
       ? xpProgress.xpForNextLevel == null
         ? t.profile.levelMaxed
-        : t.profile.levelToNext(
-            Math.max(0, xpProgress.xpForNextLevel - xpProgress.xpIntoLevel),
-          )
+        : t.profile.levelToNext(Math.max(0, xpProgress.xpForNextLevel - xpProgress.xpIntoLevel))
       : null;
 
   const displayName = profile?.displayName?.trim() || '';
+  const missingNickname = isSignedIn && !nickname?.trim();
   const identityNick = isSignedIn
     ? nickname?.trim()
       ? `@${nickname.trim()}`
-      : t.profile.noDisplayName
+      : displayName || t.profile.noDisplayName
     : t.profile.noAccountNick;
-  const visibility = isPublic
-    ? t.profile.visibilityPublic
-    : t.profile.visibilityPrivate;
   const identityCaption = isSignedIn
-    ? [displayName, visibility].filter(Boolean).join(' · ')
+    ? [displayName, isPublic ? t.profile.visibilityPublic : t.profile.visibilityPrivate]
+        .filter(Boolean)
+        .join(' · ')
     : t.profile.noAccountCaption;
 
-  const lastEvening = useMemo(
-    () => sessions.find((session) => session.drinks.length > 0) ?? null,
-    [sessions],
+  const favorites = useMemo(
+    () => savedFavoritePubs(favoriteMap, reportedKeys, reportedIds),
+    [favoriteMap, reportedIds, reportedKeys],
   );
+  const shownFavorites = allFavorites ? favorites : favorites.slice(0, FAVORITES_COLLAPSED);
+
+  useRefreshBadgesOnFocus();
+  const badges = useAccountBadges();
+  const ownLedger = useBadgeStore((s) => s.accountId != null && s.accountId === profile?.id);
+  const recentBadges = useBadgeStore((s) => s.recent);
+  const unopenedBadges = useBadgeStore((s) => s.unopened);
+  const shelf = useMemo(() => {
+    if (!badges) return null;
+    const recent: readonly BadgeKey[] = ownLedger ? recentBadges : [];
+    const rank = (key: BadgeKey) => {
+      const index = recent.indexOf(key);
+      return index === -1 ? recent.length : index;
+    };
+    const earned = badges.filter((state) => state.tier > 0);
+    return {
+      earned: earned.length,
+      shown: [...earned]
+        .sort((a, b) => rank(a.key) - rank(b.key) || b.tier - a.tier)
+        .slice(0, BADGES_SHOWN),
+      goal: nearestGoals(badges, 1)[0] ?? null,
+    };
+  }, [badges, ownLedger, recentBadges]);
+
   const failedPhoto = useMemo(
     () => photos.find((photo) => photo.syncState === 'failed') ?? null,
     [photos],
   );
-
-  const openFailedPhoto = useCallback(() => {
+  const retryFailedPhoto = useCallback(() => {
     if (!failedPhoto) return;
     if (failedPhoto.localUri && failedPhoto.failureCode !== 'photo_limit_reached') {
       void enqueueBeerPhoto({
@@ -232,271 +301,344 @@ export default function ProfileScreen() {
       });
       return;
     }
-    router.push({
-      pathname: '/photo/[key]',
-      params: { key: failedPhoto.clientId },
-    } as Href);
+    router.push({ pathname: '/photo/[key]', params: { key: failedPhoto.clientId } } as Href);
   }, [failedPhoto, router]);
 
-  // Exactly one nudge, selected in one place and in product priority order.
-  const nudge: Nudge | null = useMemo(() => {
-    if (failedPhoto) {
-      return {
-        kind: 'counted',
-        text: t.profile.nudgePhotoFailed,
-        undoLabel: t.profile.nudgePhotoRetry,
-        onUndo: openFailedPhoto,
-      };
-    }
-    if (isSignedIn && !nickname?.trim()) {
-      return {
-        kind: 'counted',
-        text: t.profile.nudgeNickname,
-        undoLabel: t.profile.nudgeNicknameFix,
-        onUndo: () => router.push('/profile/edit' as Href),
-      };
-    }
-    if (lastEvening) {
-      const key = `evening:${lastEvening.startedAt}`;
-      if (dismissedNudge === key) return null;
-      return {
-        kind: 'checkin',
-        text: t.profile.nudgeLastNight(
-          lastEvening.pubName,
-          beerCountLabel(sessionCount(lastEvening)),
-        ),
-        ctaLabel: t.profile.nudgeLastNightOpen,
-        onPress: () =>
-          router.push({
-            pathname: '/evening',
-            params: { startedAt: lastEvening.startedAt },
-          }),
-        onDismiss: () => setDismissedNudge(key),
-      };
-    }
-    if (beers === 0) {
-      if (dismissedNudge === 'empty') return null;
-      return {
-        kind: 'checkin',
-        text: t.profile.nudgeEmpty,
-        ctaLabel: t.profile.nudgeEmptyCta,
-        onPress: () => router.navigate('/beer' as Href),
-        onDismiss: () => setDismissedNudge('empty'),
-      };
-    }
-    return null;
-  }, [
-    beers,
-    dismissedNudge,
-    failedPhoto,
-    isSignedIn,
-    lastEvening,
-    nickname,
-    openFailedPhoto,
-    router,
-  ]);
-
-  const moreRows = useMemo<MoreRow[]>(
-    () => [
-      {
-        key: 'settings',
-        label: t.profile.moreSettings,
-        icon: SettingsIcon,
-        onPress: () => {
-          trackUiInteraction('profile_settings_open');
-          setMoreVisible(false);
-          router.push('/settings' as Href);
-        },
-      },
-      {
-        key: 'leaderboards',
-        label: t.profile.moreLeaderboards,
-        icon: TrophyIcon,
-        onPress: () => {
-          trackUiInteraction('profile_leaderboards_open');
-          setMoreVisible(false);
-          router.push({
-            pathname: '/leaderboards',
-            params: { source: 'profile' },
-          } as Href);
-        },
-      },
-      {
-        key: 'parta',
-        label: t.profile.moreParta,
-        value:
-          partaCount > 0
-            ? t.profile.morePartaCount(partaCount.toLocaleString(intlLocale))
-            : t.profile.morePartaEmpty,
-        icon: UsersIcon,
-        onPress: () => {
-          trackUiInteraction('profile_friends_manage_open');
-          setMoreVisible(false);
-          router.push('/profile/parta' as Href);
-        },
-      },
-      {
-        key: 'follow',
-        label: t.profile.moreFollow,
-        icon: ExternalLinkIcon,
-        onPress: () => {
-          setMoreVisible(false);
-          router.push('/about' as Href);
-        },
-      },
-    ],
-    [partaCount, router],
-  );
-
+  const waitingPubs = addedPubs.filter((submission) => submission.syncState !== 'synced').length;
   const beersLabel = beers.toLocaleString(intlLocale);
-  const identityContent = (
+
+  const openPhotos = () => {
+    trackUiInteraction('profile_photos_open');
+    router.push('/profile/photos' as Href);
+  };
+  const openBadges = () => {
+    trackUiInteraction('profile_badges_open');
+    router.push('/profile/badges' as Href);
+  };
+  const openSignUp = () => {
+    trackUiInteraction('profile_signup_open');
+    router.push('/auth' as Href);
+  };
+
+  const primary = isSignedIn
+    ? {
+        label: t.profile.ctaCode,
+        onPress: () => {
+          trackUiInteraction('profile_code_open');
+          setCodeVisible(true);
+        },
+      }
+    : beers === 0
+      ? { label: t.profile.ctaFirstBeer, onPress: () => router.navigate('/beer' as Href) }
+      : { label: t.profile.ctaSignUp, sub: t.profile.ctaSignUpSub, onPress: openSignUp };
+
+  const identity = (
     <>
       <Avatar
         uri={isSignedIn ? avatarUrl : null}
         nickname={isSignedIn ? nickname : null}
         displayName={isSignedIn ? displayName : null}
-        size={40}
+        size={56}
         border="quiet"
       />
       <View style={styles.identityText}>
-        <Text
-          style={styles.identityNick}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
+        <Text style={styles.nick} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {identityNick}
         </Text>
         <Text
-          style={styles.identityCaption}
+          style={[styles.caption, missingNickname && styles.captionAction]}
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
-          {identityCaption}
+          {missingNickname ? t.profile.nicknameMissing : identityCaption}
         </Text>
       </View>
     </>
   );
 
   return (
-    <View
-      style={[
-        styles.root,
-        {
-          paddingTop: insets.top,
-          paddingBottom: Math.max(insets.bottom, Spacing.sm),
-        },
-      ]}
-    >
-      <View style={styles.identityRow}>
-        {isSignedIn ? (
-          <Pressable
-            onPress={() => {
-              trackUiInteraction('profile_edit_open');
-              router.push('/profile/edit' as Href);
-            }}
-            style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={t.a11y.profileIdentity}
-          >
-            {identityContent}
-          </Pressable>
-        ) : (
-          <View style={styles.identity}>{identityContent}</View>
-        )}
+    // Not collapsable, so the scroll view stays first in the native tree, where
+    // a second tap on the tab looks for it to scroll back to the top.
+    <View style={[styles.root, { paddingTop: insets.top }]} collapsable={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <TwoColumns
+          first={
+            <>
+              <View style={styles.identityRow}>
+                {isSignedIn ? (
+                  <Pressable
+                    onPress={() => {
+                      trackUiInteraction('profile_edit_open');
+                      router.push('/profile/edit' as Href);
+                    }}
+                    style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.a11y.profileIdentity}
+                  >
+                    {identity}
+                  </Pressable>
+                ) : (
+                  <View style={styles.identity}>{identity}</View>
+                )}
+                <RoundButton
+                  testID="profile-settings"
+                  label={t.a11y.profileSettings}
+                  onPress={() => {
+                    trackUiInteraction('profile_settings_open');
+                    router.push('/settings' as Href);
+                  }}
+                >
+                  <SettingsIcon size={20} color={Colors.foam} />
+                </RoundButton>
+              </View>
 
-        <Pressable
-          onPress={() => {
-            trackUiInteraction('profile_more_open');
-            setMoreVisible(true);
-          }}
-          style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={t.a11y.profileMore}
-        >
-          <MenuIcon size={20} color={Colors.mutedText} />
-        </Pressable>
-      </View>
+              <View
+                accessible
+                accessibilityLabel={t.a11y.profileCard(
+                  beersLabel,
+                  level !== null && xpProgress ? t.profile.levelLine(level, xpProgress.title) : levelHint ?? '',
+                )}
+              >
+                <View style={styles.hero}>
+                  <View style={styles.heroCount}>
+                    <Text
+                      style={styles.count}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.6}
+                      maxFontSizeMultiplier={FontScaleCap.display}
+                    >
+                      {beersLabel}
+                    </Text>
+                    <Text style={styles.countLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {beers > 0 ? t.profile.lifetimeLabel(beers) : t.profile.lifetimeEmpty}
+                    </Text>
+                  </View>
+                  <LevelRing
+                    level={level}
+                    title={isSignedIn && xpProgress ? xpProgress.title : null}
+                    progress={levelProgress}
+                    size={72}
+                  />
+                </View>
+                {levelHint ? (
+                  <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {levelHint}
+                  </Text>
+                ) : null}
+                {beers > 0 ? (
+                  <View style={styles.stats}>
+                    <Stat value={lifetime.pubs.toLocaleString(intlLocale)} label={t.profile.statPubsLabel(lifetime.pubs)} />
+                    <Stat
+                      value={lifetime.evenings.toLocaleString(intlLocale)}
+                      label={t.profile.statEveningsLabel(lifetime.evenings)}
+                      align={lifetime.spentCzk > 0 ? 'center' : 'right'}
+                    />
+                    {lifetime.spentCzk > 0 ? (
+                      <Stat value={formatPrice(lifetime.spentCzk, priceCurrency)} label={t.profile.statSpentLabel} align="right" />
+                    ) : null}
+                  </View>
+                ) : null}
+                {facts ? (
+                  <Text style={styles.facts} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {facts}
+                  </Text>
+                ) : null}
+              </View>
 
-      <ProfileCard
-        beersLabel={beersLabel}
-        caption={
-          beers > 0
-            ? t.profile.lifetimeCaption
-            : t.profile.lifetimeCaptionEmpty
-        }
-        level={level}
-        levelTitle={levelTitle}
-        levelProgress={levelProgress}
-        levelHint={levelHint}
-        stats={[
-          {
-            key: 'pubs',
-            value: lifetime.pubs.toLocaleString(intlLocale),
-            label: t.profile.cardStatPubs,
-          },
-          {
-            key: 'evenings',
-            value: lifetime.evenings.toLocaleString(intlLocale),
-            label: t.profile.cardStatEvenings,
-          },
-          {
-            key: 'spent',
-            value: formatPrice(lifetime.spentCzk, priceCurrency),
-            label: t.profile.cardStatSpent,
-          },
-          {
-            key: 'daily-average',
-            value: averageBeersPerDay,
-            label: t.profile.cardStatDailyAverage,
-          },
-        ]}
-        linkLabel={t.profile.badgesLink}
-        onPressLink={() => {
-          trackUiInteraction('profile_badges_open');
-          router.push('/profile/badges' as Href);
-        }}
-        accessibilityLabel={t.a11y.profileCard(
-          beersLabel,
-          level !== null && xpProgress
-            ? t.profile.levelLine(level, xpProgress.title)
-            : levelHint ?? '',
-        )}
-      />
+              <Pressable
+                onPress={primary.onPress}
+                style={({ pressed }) => [styles.primary, pressed && styles.primaryPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={primary.label}
+              >
+                <Text style={styles.primaryLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {primary.label}
+                </Text>
+                {'sub' in primary ? (
+                  <Text style={styles.primarySub} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {primary.sub}
+                  </Text>
+                ) : null}
+              </Pressable>
 
-      <NudgeSlot nudge={nudge} />
-
-      <CounterCta
-        label={isSignedIn ? t.profile.ctaCode : t.profile.ctaSignUp}
-        subLabel={isSignedIn ? t.profile.ctaCodeSub : t.profile.ctaSignUpSub}
-        onPress={() => {
-          if (isSignedIn) {
-            trackUiInteraction('profile_code_open');
-            setCodeVisible(true);
-          } else {
-            trackUiInteraction('profile_signup_open');
-            router.push('/auth' as Href);
+              {favorites.length > 0 ? (
+                <>
+                  <Band />
+                  <SectionTitle title={t.profile.favoritesTitle} aside={favorites.length.toLocaleString(intlLocale)} />
+                  {shownFavorites.map((pub, index) => (
+                    <ListRow
+                      key={`${pub.lat},${pub.lng}`}
+                      first={index === 0}
+                      title={pub.name}
+                      subtitle={pub.city}
+                      onPress={() => openPubPage(router, pub)}
+                    />
+                  ))}
+                  {favorites.length > FAVORITES_COLLAPSED ? (
+                    <TextLink
+                      label={allFavorites ? t.profile.favoritesShowLess : t.profile.favoritesShowAll(favorites.length)}
+                      onPress={() => setAllFavorites((value) => !value)}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </>
           }
-        }}
-        accessibilityLabel={
-          isSignedIn ? t.profile.ctaCode : t.a11y.profileSignUp
-        }
-      />
+          second={
+            <>
+              {shelf && badges ? (
+                <>
+                  <Band />
+                  <SectionTitle title={t.badges.title} aside={t.badges.earnedOf(shelf.earned, badges.length)} />
+                  {shelf.shown.length > 0 ? (
+                    <Pressable
+                      onPress={openBadges}
+                      style={({ pressed }) => [styles.badges, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t.a11y.profileBadges}: ${shelf.shown.map((state) => badgeName(state)).join(', ')}`}
+                    >
+                      {shelf.shown.map((state) => (
+                        <View key={state.key} style={styles.badge}>
+                          <BadgeMedal
+                            badge={state.key}
+                            look={medalLook(state)}
+                            size={56}
+                            dot={ownLedger && unopenedBadges.includes(state.key)}
+                          />
+                          <Text style={styles.badgeTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.display}>
+                            {badgeName(state)}
+                          </Text>
+                        </View>
+                      ))}
+                      <View style={styles.badgesMore}>
+                        <ChevronRightIcon size={16} color={Colors.mutedText} />
+                      </View>
+                    </Pressable>
+                  ) : null}
+                  {shelf.goal && (shelf.shown.length > 0 || shelf.goal.value > 0) ? (
+                    <BadgeGoalRow state={shelf.goal} first={shelf.shown.length === 0} prefixed onPress={openBadges} />
+                  ) : shelf.shown.length === 0 ? (
+                    <ListRow first title={t.badges.empty} onPress={openBadges} />
+                  ) : null}
+                </>
+              ) : null}
 
-      <CounterSecondary
-        label={t.profile.secondaryPhotos}
-        onPress={() => {
-          trackUiInteraction('profile_photos_open');
-          router.push('/profile/photos' as Href);
-        }}
-      />
+              <Band />
+              <SectionTitle
+                title={t.profile.photosTitle}
+                aside={photos.length > 0 ? photos.length.toLocaleString(intlLocale) : null}
+              />
+              {photos.length > 0 ? (
+                <>
+                  <View style={styles.thumbs}>
+                    {photos.slice(0, PHOTOS_SHOWN).map((photo) => {
+                      const uri = photo.imageUrl ?? photo.localUri;
+                      return (
+                        <Pressable
+                          key={photo.clientId}
+                          onPress={() =>
+                            router.push({ pathname: '/photo/[key]', params: { key: photo.clientId } } as Href)
+                          }
+                          style={({ pressed }) => [styles.thumb, pressed && styles.pressed]}
+                          accessibilityRole="button"
+                          accessibilityLabel={t.a11y.photoTile(photo.caption || photo.pubName || t.profile.photosTitle)}
+                        >
+                          {uri ? (
+                            <Image
+                              source={{ uri }}
+                              style={StyleSheet.absoluteFill}
+                              resizeMode="cover"
+                              resizeMethod="resize"
+                              accessibilityIgnoresInvertColors
+                            />
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                    {Array.from({ length: Math.max(0, PHOTOS_SHOWN - photos.length) }).map((_, index) => (
+                      <View key={index} style={styles.thumbSpacer} />
+                    ))}
+                  </View>
+                  {failedPhoto ? (
+                    <View style={styles.failedRow}>
+                      <Text style={styles.failedText} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {t.profile.photoFailed}
+                      </Text>
+                      <Pressable onPress={retryFailedPhoto} hitSlop={10} accessibilityRole="button">
+                        <Text style={styles.link} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {t.profile.photoRetry}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  <TextLink label={t.profile.photosAll} onPress={openPhotos} />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.profile.photosEmpty}
+                  </Text>
+                  <TextLink label={t.profile.photosAdd} onPress={openPhotos} divided={false} />
+                </>
+              )}
 
-      <MoreSheet
-        visible={moreVisible}
-        title={t.profile.moreTitle}
-        rows={moreRows}
-        onClose={() => setMoreVisible(false)}
-      />
+              <Band />
+              <SectionTitle
+                title={t.profile.addedPubsTitle}
+                aside={addedPubs.length > 0 ? addedPubs.length.toLocaleString(intlLocale) : null}
+              />
+              {/* Always reachable: after a sign-in the list is only on the server until the screen loads it. */}
+              <ListRow
+                first
+                title={t.profile.myAddedPubs}
+                value={waitingPubs > 0 ? t.profile.addedPubsWaiting(waitingPubs) : null}
+                onPress={() => router.push('/my-added-pubs' as Href)}
+              />
+              <ListRow title={t.profile.addPub} onPress={() => router.push('/add-pub' as Href)} />
+
+              <Band />
+              <SectionTitle title={t.profile.moreTitle} />
+              {!isSignedIn && beers === 0 ? (
+                <ListRow first title={t.profile.ctaSignUp} subtitle={t.profile.ctaSignUpSub} onPress={openSignUp} />
+              ) : null}
+              <ListRow
+                first={isSignedIn || beers > 0}
+                title={t.profile.partaRow}
+                value={
+                  partaCount === null
+                    ? null
+                    : partaCount > 0
+                      ? partaCount.toLocaleString(intlLocale)
+                      : t.profile.partaEmpty
+                }
+                onPress={() => {
+                  trackUiInteraction('profile_friends_manage_open');
+                  router.push('/profile/parta' as Href);
+                }}
+              />
+              <ListRow
+                testID="profile-beer-watches"
+                title={t.profile.beerWatchesRow}
+                value={beerWatchCount > 0 ? beerWatchCount.toLocaleString(intlLocale) : null}
+                onPress={() => router.push('/profile/beer-watches' as Href)}
+              />
+              <ListRow
+                title={t.profile.leaderboardsRow}
+                value={weeklyRank != null ? t.profile.weeklyRank(weeklyRank) : null}
+                onPress={() => {
+                  trackUiInteraction('profile_leaderboards_open');
+                  router.push({ pathname: '/leaderboards', params: { source: 'profile' } } as Href);
+                }}
+              />
+              {!shelf ? <ListRow title={t.badges.title} onPress={openBadges} /> : null}
+            </>
+          }
+        />
+      </ScrollView>
 
       {codeVisible ? (
         <Suspense fallback={null}>
@@ -507,16 +649,48 @@ export default function ProfileScreen() {
   );
 }
 
+function Stat({ value, label, align = 'left' }: { value: string; label: string; align?: 'left' | 'center' | 'right' }) {
+  const alignItems = align === 'left' ? 'flex-start' : align === 'center' ? 'center' : 'flex-end';
+  return (
+    <View style={[styles.stat, { alignItems }]}>
+      <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={FontScaleCap.body}>
+        {value}
+      </Text>
+      <Text style={styles.statLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function TextLink({ label, onPress, divided = true }: { label: string; onPress: () => void; divided?: boolean }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.linkRow, divided && styles.linkRowDivided, pressed && styles.pressed]}
+      accessibilityRole="button"
+    >
+      <Text style={styles.link} maxFontSizeMultiplier={FontScaleCap.body}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
-    paddingHorizontal: 24,
-    gap: 12,
+  },
+  content: {
+    paddingHorizontal: PAGE_PAD,
+  },
+  pressed: {
+    opacity: 0.65,
   },
   identityRow: {
-    minHeight: 40,
-    marginBottom: 4,
+    minHeight: 64,
+    marginTop: Spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -524,7 +698,7 @@ const styles = StyleSheet.create({
   identity: {
     flex: 1,
     minWidth: 0,
-    minHeight: 44,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -532,30 +706,166 @@ const styles = StyleSheet.create({
   identityText: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 3,
   },
-  identityNick: {
-    flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 18,
+  nick: {
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.3,
     color: Colors.foam,
-    includeFontPadding: false,
   },
-  identityCaption: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+  caption: {
+    fontSize: 15,
+    color: Colors.mutedText,
+  },
+  captionAction: {
+    fontWeight: '700',
+    color: Colors.amber,
+  },
+  hero: {
+    marginTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  heroCount: {
+    flex: 1,
+    minWidth: 0,
+  },
+  count: {
+    fontSize: 72,
+    lineHeight: 80,
+    fontWeight: '800',
+    letterSpacing: -2.5,
+    color: Colors.amber,
+    fontVariant: ['tabular-nums'],
+  },
+  countLabel: {
+    fontSize: 15,
+    color: Colors.mutedText,
+  },
+  hint: {
+    marginTop: 10,
+    fontSize: 14,
+    color: Colors.mutedText,
+  },
+  stats: {
+    marginTop: 18,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  stat: {
+    flex: 1,
+    minWidth: 0,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.foam,
+    fontVariant: ['tabular-nums'],
+  },
+  statLabel: {
+    marginTop: 2,
     fontSize: 13,
     color: Colors.mutedText,
-    includeFontPadding: false,
   },
-  moreButton: {
-    width: 44,
-    height: 44,
+  facts: {
+    marginTop: Spacing.md,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.mutedText,
+  },
+  primary: {
+    marginTop: Spacing.lg,
+    minHeight: 48,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
     borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressed: {
-    opacity: 0.7,
+  primaryPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.97 }],
+  },
+  primaryLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.stout,
+  },
+  primarySub: {
+    marginTop: 2,
+    fontSize: 13,
+    color: withAlpha(Colors.stout, 0.75),
+  },
+  badges: {
+    minHeight: 60,
+    paddingTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  badge: {
+    width: 80,
+    alignItems: 'center',
+    gap: 6,
+  },
+  badgeTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.foamMuted,
+    textAlign: 'center',
+  },
+  badgesMore: {
+    flex: 1,
+    height: 56,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  thumbs: {
+    paddingTop: Spacing.sm,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  thumb: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: Colors.stout3,
+  },
+  thumbSpacer: {
+    flex: 1,
+  },
+  failedRow: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  failedText: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.foamMuted,
+  },
+  empty: {
+    marginTop: Spacing.xs,
+    fontSize: 15,
+    color: Colors.mutedText,
+  },
+  linkRow: {
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  linkRowDivided: {
+    marginTop: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  link: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.amber,
   },
 });

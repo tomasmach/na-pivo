@@ -1,21 +1,19 @@
-/**
- * What you can do with one beer on a pub's menu: fix its price or take it off
- * the menu. The counter opens it from "Co si dáš?" (the ⋯ button or a long
- * press) and the pub page from a "Na čepu" row, so both places offer the same
- * two doors. The price form stays about the price; deleting lives only here.
- */
+/** Deleting a menu beer lives only here so the price form stays about the price. */
 
 import React from 'react';
 
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
-import { showAppDialog } from '@/components/shared/AppDialog';
-import { PencilIcon, Trash2Icon } from '@/components/shared/IconGlyph';
+import { showAppDialog, type AppDialogOptions } from '@/components/shared/AppDialog';
+import { BellRingIcon, PencilIcon, Trash2Icon } from '@/components/shared/IconGlyph';
+import { toggleBeerWatch } from '@/beerWatch/toggleBeerWatch';
 import type { CommunityBeer } from '@/data/communityHours';
 import { formatVolume, t } from '@/i18n';
+import { findBeerWatch, useBeerWatchStore } from '@/stores/beerWatchStore';
 
 export function MenuBeerActionsSheet({
   visible,
   beer,
+  canEdit = true,
   canRemove,
   onClose,
   onEditPrice,
@@ -24,6 +22,8 @@ export function MenuBeerActionsSheet({
   visible: boolean;
   /** Kept by the parent after closing, so the title does not blank mid-fade. */
   beer: CommunityBeer | null;
+  /** The price can only be fixed on a menu a write can start from. */
+  canEdit?: boolean;
   /** Only a beer the shared menu really holds can come off it. */
   canRemove: boolean;
   onClose: () => void;
@@ -31,13 +31,30 @@ export function MenuBeerActionsSheet({
   /** Asks first: see confirmRemoveFromMenu. */
   onRemove: (beer: CommunityBeer) => void;
 }) {
+  const watches = useBeerWatchStore((s) => s.watches);
+  const watched = !!beer && findBeerWatch(watches, beer.name) !== null;
   const rows: MoreRow[] = beer
     ? [
+        ...(canEdit
+          ? [
+              {
+                key: 'edit-price',
+                label: t.counter.menuBeerEditPrice,
+                icon: PencilIcon,
+                onPress: () => onEditPrice(beer),
+              },
+            ]
+          : []),
         {
-          key: 'edit-price',
-          label: t.counter.menuBeerEditPrice,
-          icon: PencilIcon,
-          onPress: () => onEditPrice(beer),
+          key: 'watch',
+          label: watched ? t.beerWatch.sheetUnwatch : t.beerWatch.sheetWatch,
+          icon: BellRingIcon,
+          testID: 'menu-beer-watch',
+          accessibilityHint: watched ? undefined : t.beerWatch.watchHint,
+          onPress: () => {
+            onClose();
+            void toggleBeerWatch(beer.name);
+          },
         },
         ...(canRemove
           ? [
@@ -74,8 +91,9 @@ export function confirmRemoveFromMenu(
   beer: CommunityBeer,
   onConfirm: () => void,
   onKeep?: () => void,
+  show: (options: AppDialogOptions) => void = showAppDialog,
 ): void {
-  showAppDialog({
+  show({
     title: t.counter.removeFromMenuTitle,
     message: t.counter.removeFromMenuBody(menuBeerLabel(beer)),
     buttons: [

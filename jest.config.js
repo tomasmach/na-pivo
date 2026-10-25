@@ -17,6 +17,9 @@ module.exports = {
             '@/*': ['src/*'],
             // moduleResolution "node" ignores package exports; point per-icon imports at their types.
             'lucide-react-native/icons/*': ['node_modules/lucide-react-native/dist/types/icons/*'],
+            // react-native 0.88 publishes its types only through package exports.
+            'react-native': ['node_modules/react-native/types_generated/index.d.ts'],
+            'expo-router/native-tabs': ['node_modules/expo-router/build/native-tabs/index.d.ts'],
           },
           types: ['jest', 'node'],
         },

@@ -32,6 +32,8 @@ export const Colors = {
   // Amber accent
   amber: '#E8A317',
   amberLight: '#F5B642',
+  // Carries white text at 4.7:1, where amber manages 2.2:1 (iOS tab badge).
+  amberDeep: '#9A6A0C',
   glow: '#FF7A1A',
   neon: '#FFD27A',
 

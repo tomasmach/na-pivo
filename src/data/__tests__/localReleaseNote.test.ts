@@ -17,6 +17,12 @@ describe('bundled release pagers', () => {
             slide3Title: locale === 'cs' ? 'Parta u stolu' : 'Your crew at the table',
             slide4Title: locale === 'cs' ? 'Poslední spoj domů' : 'Last ride home',
           },
+          v221: {
+            slide1Title: locale === 'cs' ? 'Odhad promile' : 'Blood alcohol estimate',
+            slide2Title: locale === 'cs' ? 'Hlídej si svoje pivo' : 'Watch your beer',
+            slide3Title: locale === 'cs' ? 'Z odznaků jsou medaile' : 'Badges are now medals',
+            slide4Title: locale === 'cs' ? 'Profil na jedné stránce' : 'Your profile on one page',
+          },
         },
       },
     }));
@@ -31,6 +37,8 @@ describe('bundled release pagers', () => {
     ['en', '2.1.1', 3],
     ['cs', '2.2.0', 4],
     ['en', '2.2.0', 4],
+    ['cs', '2.2.1', 4],
+    ['en', '2.2.1', 4],
   ] as const)('bundles %s %s with a readable summary', async (locale, version, cards) => {
     const note = await noteIn(locale, version);
     expect(note).toMatchObject({ version, pager: true });
@@ -45,6 +53,6 @@ describe('bundled release pagers', () => {
   });
 
   it('leaves other versions to the backend', async () => {
-    expect(await noteIn('cs', '2.2.1')).toBeNull();
+    expect(await noteIn('cs', '2.2.2')).toBeNull();
   });
 });

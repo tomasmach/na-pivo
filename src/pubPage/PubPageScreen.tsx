@@ -29,7 +29,6 @@ import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
 import {
   useFocusEffect,
-  useLocalSearchParams,
   useNavigation,
   useRouter,
   type Href,
@@ -42,7 +41,8 @@ import { pubInfoFromPub, usePubInfoFacts } from '@/components/amenities/pubInfoC
 import { submitPubRename } from '@/components/amenities/pubRename';
 import { RenamePubModal } from '@/components/compass/RenamePubModal';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
+import { Band, PAGE_PAD, RoundButton, SectionTitle } from '@/components/shared/FlatPage';
 import {
   BeerIcon,
   ClockIcon,
@@ -93,6 +93,7 @@ import { formatVolume, intlLocale, t } from '@/i18n';
 import BeerMapScreen from '@/map/BeerMapScreen';
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { MenuBeerActionsSheet, confirmRemoveFromMenu } from '@/counter/MenuBeerActionsSheet';
+import { helpedCountFor, useBeerWatchStore } from '@/stores/beerWatchStore';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import {
   isBeerListOverrideCurrent,
@@ -109,14 +110,17 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Radius, Spacing } from '@/theme/layout';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
 import { priceAgeLabel } from '@/utils/priceAge';
 import { pubHoursLine, type PubHoursTone } from '@/utils/pubHoursLine';
 
-import { openPubPage } from './openPubPage';
+import { openPubPage, pubPageParams } from './openPubPage';
+import { useDetailNav, useDetailParams } from '@/layout/detail';
+import { useTone } from '@/layout/pane';
+import { useBottomInset } from '@/navigation/TabScreen';
 import {
   calendarDaysBetween,
   confirmedAmenityKeys,
@@ -136,7 +140,6 @@ import {
 } from './pubPageModel';
 import { usePubVisitSummary } from './usePubVisitSummary';
 
-const PAGE_PAD = 20;
 const BAR_BUTTON = 48;
 const TAPS_COLLAPSED = 5;
 const POSITION_MAX_AGE_MS = 5 * 60 * 1000;
@@ -264,11 +267,17 @@ function useInitialPub(
 }
 
 export default function PubPageScreen() {
+  const showAppDialog = useShowAppDialog();
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-  const params = useLocalSearchParams<{
+  // Set when the page sits in a tab's right half instead of on the stack.
+  const pane = useDetailNav();
+  const quiet = useTone() === 'quiet';
+  // Clears the tab bar when the page sits in a tab's right half; the home indicator otherwise.
+  const barBottom = useBottomInset(Spacing.sm);
+  const params = useDetailParams<{
     key?: string;
     ref?: string;
     name?: string;
@@ -347,7 +356,8 @@ export default function PubPageScreen() {
       const fresh = getAllLoadedPubs().find((item) => item.userAddedClientId === ownClientId);
       if (!fresh) return;
       if (geohash8(fresh.lat, fresh.lng) !== key) {
-        openPubPage(router, fresh, { replace: true });
+        if (pane) pane.replace({ kind: 'pub', params: pubPageParams(fresh) });
+        else openPubPage(router, fresh, { replace: true });
         return;
       }
       setPub((current) =>
@@ -364,13 +374,15 @@ export default function PubPageScreen() {
           : current,
       );
     });
-  }, [key, ownClientId, router]);
+  }, [key, ownClientId, pane, router]);
 
   // The map covers the page; an edge swipe or Android back must close it, not
   // pop the page.
   useEffect(() => {
+    // In a right half the navigation belongs to the tab, not to this page.
+    if (pane) return;
     navigation.setOptions({ gestureEnabled: !mapOpen });
-  }, [mapOpen, navigation]);
+  }, [mapOpen, navigation, pane]);
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -542,6 +554,16 @@ export default function PubPageScreen() {
   useEffect(() => {
     liveTapsRef.current = { key, pubId: tapsPubId, menu: editableTaps, historical: historicalTaps };
   }, [editableTaps, historicalTaps, key, tapsPubId]);
+  // Only a beer of the menu a write would start from can be changed.
+  const actionBeerEditable =
+    !!actionBeer && !!editableTaps?.some((b) => isSameBeerIdentity(b, actionBeer));
+  const beerHelped = useBeerWatchStore((s) => s.helped);
+  // After a login the launch pull belongs to the previous account.
+  useEffect(() => {
+    if (useAccountStore.getState().session && !useBeerWatchStore.getState().loaded) {
+      void useBeerWatchStore.getState().refresh();
+    }
+  }, []);
   /** The pub a beer's options were opened for: a write never lands elsewhere. */
   const tapsTargetRef = useRef<{ key: string | undefined; pubId: string | null } | null>(null);
 
@@ -568,9 +590,21 @@ export default function PubPageScreen() {
 
   // ── Actions ──
   const goBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
+    if (pane) pane.back();
+    else if (router.canGoBack()) router.back();
     else router.replace('/');
-  }, [router]);
+  }, [pane, router]);
+
+  const showCompass = useCallback(() => {
+    if (pane) {
+      pane.showCompass();
+      return;
+    }
+    router.dismissTo({
+      pathname: '/',
+      params: { view: 'compass' },
+    } as unknown as Href);
+  }, [pane, router]);
 
   const navigateToPub = useCallback(() => {
     if (!pub) return;
@@ -585,11 +619,8 @@ export default function PubPageScreen() {
       name: pub.name,
       cacheKey: key,
     });
-    router.dismissTo({
-      pathname: '/',
-      params: { view: 'compass' },
-    } as unknown as Href);
-  }, [key, pub, router]);
+    showCompass();
+  }, [key, pub, showCompass]);
 
   const suggestEvent = useCallback(() => {
     if (!info) return;
@@ -693,10 +724,10 @@ export default function PubPageScreen() {
           });
           recordTapsWrite(pub.id, next, nextHistory);
           showToast(t.counter.removedFromMenuToast);
-        }),
+        }, undefined, showAppDialog),
       );
     },
-    [afterSheet, key, pub, recordTapsWrite, showToast],
+    [afterSheet, key, pub, recordTapsWrite, showAppDialog, showToast],
   );
 
   const startRename = useCallback(() => {
@@ -779,7 +810,7 @@ export default function PubPageScreen() {
         }),
       );
     },
-    [afterSheet, pub, submitReport],
+    [afterSheet, pub, showAppDialog, submitReport],
   );
 
   const addPubNear = useCallback(() => {
@@ -850,12 +881,15 @@ export default function PubPageScreen() {
       // The same cell can hold a neighbour; only this very pub just closes the map.
       const samePub = pubPageRef(target) === ref || (Boolean(pub?.id) && target.id === pub?.id);
       if (samePub) setMapOpen(false);
+      else if (pane) pane.push({ kind: 'pub', params: pubPageParams(target) });
       else openPubPage(router, target);
     },
-    [pub?.id, ref, router],
+    [pane, pub?.id, ref, router],
   );
 
-  const barHeight = Spacing.md + BAR_BUTTON + Math.max(insets.bottom, Spacing.sm);
+  const barHeight = Spacing.md + BAR_BUTTON + barBottom;
+  // In the right half of a wide window the left inset is the fold margin.
+  const navInsets = { paddingLeft: Math.max(16, insets.left), paddingRight: Math.max(16, insets.right) };
   // The big map covers the page; screen readers must not reach what is under it.
   const hiddenUnderMap = {
     accessibilityElementsHidden: mapOpen,
@@ -865,7 +899,7 @@ export default function PubPageScreen() {
   if (!pub) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
-        <View style={styles.nav}>
+        <View style={[styles.nav, navInsets]}>
           <RoundButton onPress={goBack} label={t.pubDetail.backA11y}>
             <ChevronLeftIcon size={24} color={Colors.foam} />
           </RoundButton>
@@ -910,7 +944,7 @@ export default function PubPageScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={[styles.nav, showTitle && styles.navDivided]} {...hiddenUnderMap}>
+      <View style={[styles.nav, navInsets, showTitle && styles.navDivided]} {...hiddenUnderMap}>
         <RoundButton onPress={goBack} label={t.pubDetail.backA11y}>
           <ChevronLeftIcon size={24} color={Colors.foam} />
         </RoundButton>
@@ -1053,19 +1087,17 @@ export default function PubPageScreen() {
               }
             />
             {shownTaps.map((beer, index) => {
-              // Only a beer of the menu a write would start from can be changed.
-              const editable = !!editableTaps?.some((b) => isSameBeerIdentity(b, beer));
+              const helpedCount = helpedCountFor(beerHelped, key, beer.name);
               return (
                 <Pressable
                   key={`${beer.name}-${index}`}
                   onPress={() => openBeerActions(beer)}
-                  disabled={!editable}
                   style={({ pressed }) => [
                     styles.row,
                     index === 0 && styles.rowFirst,
                     pressed && styles.pressed,
                   ]}
-                  accessibilityRole={editable ? 'button' : undefined}
+                  accessibilityRole="button"
                   accessibilityLabel={[
                     beer.name,
                     typeof beer.volumeMl === 'number' ? formatVolume(beer.volumeMl) : null,
@@ -1073,7 +1105,7 @@ export default function PubPageScreen() {
                   ]
                     .filter(Boolean)
                     .join(', ')}
-                  accessibilityHint={editable ? t.a11y.counterBeerOptions(beer.name) : undefined}
+                  accessibilityHint={t.a11y.counterBeerOptions(beer.name)}
                 >
                   <View style={styles.rowText}>
                     <Text style={styles.rowTitle} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -1084,13 +1116,22 @@ export default function PubPageScreen() {
                         {formatVolume(beer.volumeMl)}
                       </Text>
                     ) : null}
+                    {helpedCount > 0 ? (
+                      <Text
+                        testID="menu-beer-helped"
+                        style={styles.rowSub}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {t.beerWatch.helped(helpedCount)}
+                      </Text>
+                    ) : null}
                   </View>
                   {typeof beer.priceCzk === 'number' ? (
                     <Text style={styles.rowValue} maxFontSizeMultiplier={FontScaleCap.body}>
                       {formatPrice(beer.priceCzk, priceCurrency)}
                     </Text>
                   ) : null}
-                  {editable ? <EllipsisIcon size={20} color={Colors.mutedText} /> : null}
+                  <EllipsisIcon size={20} color={Colors.mutedText} />
                 </Pressable>
               );
             })}
@@ -1218,17 +1259,17 @@ export default function PubPageScreen() {
       </ScrollView>
 
       <View
-        style={[styles.bar, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}
+        style={[styles.bar, { paddingBottom: barBottom }]}
         {...hiddenUnderMap}
       >
         <Pressable
           onPress={navigateToPub}
-          style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+          style={({ pressed }) => [styles.cta, quiet && styles.ctaQuiet, pressed && styles.ctaPressed]}
           accessibilityRole="button"
           accessibilityLabel={t.compass.navigateCta}
         >
           <Text
-            style={styles.ctaLabel}
+            style={[styles.ctaLabel, quiet && styles.ctaLabelQuiet]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.8}
@@ -1257,12 +1298,7 @@ export default function PubPageScreen() {
             filters={mapFilters}
             onApplyFilters={setMapFilters}
             onSearch={() => router.push('/pub-search' as Href)}
-            onShowCompass={() =>
-              router.dismissTo({
-                pathname: '/',
-                params: { view: 'compass' },
-              } as unknown as Href)
-            }
+            onShowCompass={showCompass}
           />
         </View>
       ) : null}
@@ -1287,7 +1323,8 @@ export default function PubPageScreen() {
       <MenuBeerActionsSheet
         visible={beerActionsOpen}
         beer={actionBeer}
-        canRemove={!!actionBeer && !!editableTaps?.some((b) => isSameBeerIdentity(b, actionBeer))}
+        canEdit={actionBeerEditable}
+        canRemove={actionBeerEditable}
         onClose={() => setBeerActionsOpen(false)}
         onEditPrice={editBeerPrice}
         onRemove={removeBeer}
@@ -1330,59 +1367,6 @@ export default function PubPageScreen() {
 }
 
 // ─── Pieces ─────────────────────────────────────────────────────────────────
-
-function RoundButton({
-  onPress,
-  label,
-  selected,
-  children,
-}: {
-  onPress: () => void;
-  label: string;
-  selected?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={selected === undefined ? undefined : { selected }}
-    >
-      {children}
-    </Pressable>
-  );
-}
-
-/** The dark gap between sections; runs edge to edge (DESIGN.md §5.2). */
-function Band() {
-  return <View style={styles.band} />;
-}
-
-function SectionTitle({ title, aside }: { title: string; aside?: string | null }) {
-  return (
-    <View style={styles.sectionHead}>
-      <Text
-        style={styles.sectionTitle}
-        accessibilityRole="header"
-        maxFontSizeMultiplier={FontScaleCap.heading}
-      >
-        {title}
-      </Text>
-      {aside ? (
-        <Text
-          style={styles.sectionAside}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {aside}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
 
 function ReasonRow({
   icon,
@@ -1557,14 +1541,6 @@ const styles = StyleSheet.create({
   hidden: {
     opacity: 0,
   },
-  roundButton: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   pressed: {
     opacity: 0.65,
   },
@@ -1671,31 +1647,6 @@ const styles = StyleSheet.create({
   reasonSub: {
     marginTop: 2,
     fontSize: 14,
-    color: Colors.mutedText,
-  },
-  band: {
-    height: 10,
-    marginTop: Spacing.lg,
-    marginHorizontal: -PAGE_PAD,
-    backgroundColor: Colors.deep,
-  },
-  sectionHead: {
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.xs,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-    color: Colors.foam,
-  },
-  sectionAside: {
-    flexShrink: 1,
-    fontSize: 13,
     color: Colors.mutedText,
   },
   row: {
@@ -1837,6 +1788,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.stout,
   },
+  // In a right half the amber belongs to the left one.
+  ctaQuiet: { backgroundColor: Colors.stout3 },
+  ctaLabelQuiet: { color: Colors.foam },
   mapLayer: {
     ...StyleSheet.absoluteFill,
     backgroundColor: Colors.stout,

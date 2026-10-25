@@ -10,7 +10,7 @@
 
 import { useCallback } from 'react';
 
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { blockFriend, type FriendProfile } from '@/data/friendsClient';
 import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
@@ -31,6 +31,7 @@ function nameOf(profile: FriendProfile | null | undefined): string {
 export function useFriendSafety(onChanged?: () => void) {
   const showToast = useToastStore((s) => s.show);
   const reportProfileContent = useAccountStore((s) => s.reportProfileContent);
+  const showAppDialog = useShowAppDialog();
 
   return useCallback(
     (profile: FriendProfile) => {
@@ -93,6 +94,6 @@ export function useFriendSafety(onChanged?: () => void) {
         ],
       });
     },
-    [onChanged, reportProfileContent, showToast],
+    [onChanged, reportProfileContent, showAppDialog, showToast],
   );
 }

@@ -33,7 +33,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t, intlLocale, beerCountLabel, beerNoun, plural } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
-import { ChevronRightIcon, InfoIcon, MenuIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, ChevronRightIcon, InfoIcon, MenuIcon } from '@/components/shared/IconGlyph';
 
 import { NightCard } from '@/diary/NightCard';
 import { TallyCoaster } from '@/diary/TallyCoaster';
@@ -47,6 +47,7 @@ import { fetchMyBeerCheckIns, type BeerCheckIn, type BeerCheckInInput } from '@/
 import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { trackUiInteraction } from '@/data/uxTelemetry';
+import { openEvening as openEveningPage } from '@/layout/openDetail';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
 import {
@@ -78,6 +79,7 @@ import {
 import { useMyStats } from '@/stats/useMyStats';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import type { PriceCurrency } from '@/utils/currency';
+import { useBottomInset } from '@/navigation/TabScreen';
 
 /** "4,2 km" — the walked-distance figure inherited from the profile's old grid. */
 function formatWalkedKm(metres: number): string {
@@ -192,12 +194,13 @@ export default function DiaryScreen({
 }: DiaryScreenProps = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset(Spacing.md);
 
   // Keep the relative date labels honest while the screen is open — the same
   // one-minute tick both predecessors used.
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000);
+    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000) as number | NodeJS.Timeout;
     if (typeof timer === 'object' && 'unref' in timer && typeof timer.unref === 'function') {
       timer.unref();
     }
@@ -423,10 +426,9 @@ export default function DiaryScreen({
         icon: InfoIcon,
         text: t.diary.rejected(rejected.count),
         confirmLabel: t.diary.rejectedFix,
-        confirmAccessibilityLabel: t.diary.rejectedFix,
         onConfirm: () => {
           trackUiInteraction('diary_evening_open');
-          router.push({ pathname: '/evening', params: { startedAt: rejected.session.startedAt } });
+          openEveningPage(router, rejected.session.startedAt);
         },
       };
     }
@@ -451,7 +453,7 @@ export default function DiaryScreen({
   const openEvening = useCallback(
     (session: TallySession) => {
       trackUiInteraction('diary_evening_open');
-      router.push({ pathname: '/evening', params: { startedAt: session.startedAt } });
+      openEveningPage(router, session.startedAt);
     },
     [router],
   );
@@ -475,13 +477,20 @@ export default function DiaryScreen({
     <View
       style={[
         styles.root,
-        { paddingTop: topInset, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+        { paddingTop: topInset, paddingBottom: bottomInset },
       ]}
     >
       {/* Embedded in the Štamgast tab the "…" door sits next to the segmented
           control, so a whole 44pt row for one glyph would be dead space. */}
       {statsControlled ? null : (
         <View style={styles.header}>
+          {/* Standalone only beside the counter on a wide window, so it names itself. */}
+          <View style={styles.title} accessibilityRole="header">
+            <BeerIcon size={18} color={Colors.amber} />
+            <Text style={styles.titleLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.beer.segmentDiary}
+            </Text>
+          </View>
           <View style={styles.headerSpacer} />
           <Pressable
             onPress={() => setOwnStatsOpen(true)}
@@ -613,6 +622,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   headerSpacer: { flex: 1, minWidth: Spacing.sm },
+  title: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  titleLabel: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 17,
+    color: Colors.foam,
+  },
   moreButton: {
     width: 40,
     height: 40,

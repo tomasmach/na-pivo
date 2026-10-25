@@ -49,7 +49,7 @@ tags: [full]
             notifications: deny
       - evalScript: ${output.local.request('/app/open', {})}
       - extendedWaitUntil:
-          visible: {id: tab-index}
+          visible: {text: 'Kompas'}
           timeout: 60000
 - runFlow:
     file: ../../maestro/route.yaml

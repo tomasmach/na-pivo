@@ -21,7 +21,6 @@
 
 import React from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -31,6 +30,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -43,14 +43,16 @@ export interface MoreRow {
   label: string;
   /** Quiet right-hand text, e.g. "2 aktivní". */
   value?: string | null;
-  /** Leading icon — the parent passes it in from IconGlyph. */
-  icon: React.ComponentType<{ size?: number; color: string }>;
+  /** Leading icon — the parent passes it in from IconGlyph. A value picker has none. */
+  icon?: React.ComponentType<{ size?: number; color: string }>;
   /** Ticked mode (Nejbližší / Překvap mě). */
   selected?: boolean;
   disabled?: boolean;
   onPress: () => void;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
   accessibilityRole?: AccessibilityRole;
+  testID?: string;
 }
 
 export interface MoreSheetProps {
@@ -122,6 +124,7 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                 return (
                   <Pressable
                     key={row.key}
+                    testID={row.testID}
                     onPress={row.onPress}
                     disabled={row.disabled}
                     style={({ pressed }) => [
@@ -131,6 +134,7 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                     ]}
                     accessibilityRole={row.accessibilityRole ?? 'button'}
                     accessibilityLabel={row.accessibilityLabel ?? row.label}
+                    accessibilityHint={row.accessibilityHint}
                     accessibilityState={{
                       ...(row.selected != null && row.accessibilityRole === 'radio'
                         ? { checked: row.selected }
@@ -140,9 +144,11 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                       ...(row.disabled != null ? { disabled: row.disabled } : {}),
                     }}
                   >
-                    <View style={styles.rowIcon}>
-                      <Icon size={18} color={Colors.amber} />
-                    </View>
+                    {Icon ? (
+                      <View style={styles.rowIcon}>
+                        <Icon size={18} color={Colors.amber} />
+                      </View>
+                    ) : null}
                     <Text
                       style={styles.rowLabel}
                       numberOfLines={1}

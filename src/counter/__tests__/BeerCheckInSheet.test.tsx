@@ -1,15 +1,25 @@
 import React from 'react';
+import { StyleSheet, useWindowDimensions } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 
+import { WindowSafeAreaProvider } from '@/components/shared/Modal';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
+import { PaneContext } from '@/layout/pane';
 import { t as strings } from '@/i18n';
 import type { Pub } from '@/data/pubs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 })),
-}));
+jest.mock('react-native-safe-area-context', () => {
+  const { createContext, useContext } = jest.requireActual<typeof import('react')>('react');
+  const SafeAreaInsetsContext = createContext(null);
+  return {
+    SafeAreaInsetsContext,
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+    useSafeAreaInsets: () => useContext(SafeAreaInsetsContext) ?? { top: 0, right: 0, bottom: 0, left: 0 },
+  };
+});
 
 jest.mock('react-native-reanimated', () => ({
   __esModule: true,
@@ -229,5 +239,29 @@ describe('BeerCheckInSheet — memory strip', () => {
     await act(async () => {
       resolve(null);
     });
+  });
+});
+
+describe('BeerCheckInSheet on an iPhone Duo on a table', () => {
+  afterEach(() => (useWindowDimensions as jest.Mock).mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 }));
+
+  it('stops below the status bar, though the counter it opens from starts at the fold', () => {
+    (useWindowDimensions as jest.Mock).mockReturnValue({ width: 669, height: 951, scale: 3, fontScale: 1 });
+    const TABLE = { top: 82, right: 0, bottom: 20, left: 0 };
+    const screen = render(
+      <SafeAreaInsetsContext.Provider value={TABLE}>
+        <WindowSafeAreaProvider>
+          <SafeAreaInsetsContext.Provider value={{ ...TABLE, top: 20 }}>
+            <PaneContext.Provider value={{ tab: 'stamgast', side: 'primary' }}>
+              <BeerCheckInSheet visible beerName="Radegast 12" pub={PUB} pubKey="pk" onClose={jest.fn()} onSubmitted={jest.fn()} />
+            </PaneContext.Provider>
+          </SafeAreaInsetsContext.Provider>
+        </WindowSafeAreaProvider>
+      </SafeAreaInsetsContext.Provider>,
+    );
+    const sheet = screen.UNSAFE_root.findAll(
+      (node) => typeof node.type === 'string' && StyleSheet.flatten(node.props.style)?.maxHeight !== undefined,
+    )[0];
+    expect(StyleSheet.flatten(sheet.props.style)).toMatchObject({ maxHeight: 951 - 82 - 20, paddingBottom: 20 });
   });
 });

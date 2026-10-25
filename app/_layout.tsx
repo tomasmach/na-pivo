@@ -1,9 +1,8 @@
 import { Stack, useRouter, usePathname, type Href } from 'expo-router';
 import { useFonts } from 'expo-font';
-import * as SplashScreen from 'expo-splash-screen';
+import { hideAsync, preventAutoHideAsync } from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, Linking, Platform } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect, useRef, useState } from 'react';
 
@@ -51,11 +50,6 @@ import {
   setTelemetrySession,
   trackClientEvent,
 } from '@/data/telemetryClient';
-import {
-  productScreenFromPathname,
-  trackScreenViewed,
-  type ProductScreenName,
-} from '@/data/productTelemetry';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { getCachedAuthenticationState } from '@/data/account';
 import { installBackendLocaleHeader } from '@/data/localeHeader';
@@ -70,6 +64,13 @@ import {
   ensureFriendPushRegisteredIfGranted,
   subscribeTourInviteTap,
 } from '@/notifications/friendPush';
+import {
+  consumeInitialBeerOnTapTap,
+  subscribeBeerOnTapTap,
+  type BeerOnTapPub,
+} from '@/notifications/beerWatchPush';
+import { syncBeerWatchLocation } from '@/beerWatch/beerWatchLocation';
+import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { ContestResultsModal } from '@/photos/ContestResultsModal';
@@ -77,8 +78,11 @@ import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboa
 import { NicknameNudgeModal } from '@/components/shared/NicknameNudgeModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
 import { AppDialogScreen } from '@/components/shared/AppDialog';
+import { WindowSafeAreaProvider } from '@/components/shared/Modal';
+import { RouteScreen } from '@/navigation/TabScreen';
 import { AppReviewPromptGate } from '@/reviews/AppReviewPromptGate';
 import { Toast } from '@/components/shared/Toast';
+import { BadgeHost } from '@/profile/BadgeHost';
 import {
   cancelPendingPubReminder,
   consumeInitialPubReminderTap,
@@ -104,6 +108,10 @@ import {
 } from '@/liveActivity/liveBeerActivity';
 import { initializeHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransitSync';
+import { useBookLayout } from '@/layout/bookLayout';
+import { noteTopPathname, openDetail } from '@/layout/openDetail';
+import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
+import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -127,28 +135,6 @@ function OnboardingGate() {
       router.replace('/onboarding' as Href);
     }
   }, [decision, pathname, router]);
-
-  return null;
-}
-
-/**
- * Tracks coarse screen usage after account hydration. Dynamic route parameters
- * never leave the device; productTelemetry collapses them to fixed names first.
- */
-function ProductTelemetryTracker({ enabled }: { enabled: boolean }) {
-  const pathname = usePathname();
-  const previousPathnameRef = useRef<string | null>(null);
-  const previousScreenRef = useRef<ProductScreenName | undefined>(undefined);
-
-  useEffect(() => {
-    if (!enabled || previousPathnameRef.current === pathname) return;
-    previousPathnameRef.current = pathname;
-
-    const screen = productScreenFromPathname(pathname);
-    if (!screen) return;
-    trackScreenViewed(screen, previousScreenRef.current);
-    previousScreenRef.current = screen;
-  }, [enabled, pathname]);
 
   return null;
 }
@@ -180,6 +166,14 @@ function trackPull(name: ForegroundPull, run: () => Promise<boolean>): Promise<b
   return trackForegroundPull(name, run, currentAccountId);
 }
 
+function refreshBeerWatches(pullFromServer: boolean): void {
+  if (!currentAccountId()) return;
+  const pulled = pullFromServer
+    ? trackPull('beerWatches', () => useBeerWatchStore.getState().refresh())
+    : Promise.resolve(true);
+  void pulled.then(() => syncBeerWatchLocation());
+}
+
 function restoreAndFlushAddedPubsQueue(pullOwnAddedPubs = true): void {
   void restoreQueuedAddedPubs()
     .then((restoredCount) => {
@@ -200,7 +194,7 @@ function restoreAndFlushAddedPubsQueue(pullOwnAddedPubs = true): void {
 // Every backend request carries Accept-Language from the first render on.
 installBackendLocaleHeader();
 
-SplashScreen.preventAutoHideAsync().catch(() => {
+preventAutoHideAsync().catch(() => {
   // ignore — splash may already be hidden
 });
 
@@ -213,14 +207,27 @@ const onboardingDecisionPromise = useOnboardingStore
   .getState()
   .decide(getCachedAuthenticationState);
 
+// Expo Router opens the invite screen itself (+native-intent). This only
+// stashes the launch code, and the launch claim waits until it is stored.
+const launchInviteStashed = Linking.getInitialURL()
+  .then(async (url) => {
+    const code = parseInviteCodeFromUrl(url);
+    if (code) await stashPendingInviteCode(code);
+  })
+  .catch(() => undefined);
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   const [telemetryReady, setTelemetryReady] = useState(false);
+  // A wide window opens these in a tab's right half; when one still arrives as
+  // a route, it moves there without a slide.
+  const detailAnimation = useBookLayout().wide ? 'none' : undefined;
   useEffect(() => {
     pathnameRef.current = pathname;
+    noteTopPathname(pathname);
   }, [pathname]);
   // Hold the splash until the first-run decision resolves too, so a fresh
   // install fades straight into the onboarding instead of flashing the compass.
@@ -229,7 +236,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if ((fontsLoaded || fontError) && onboardingDecided) {
-      SplashScreen.hideAsync().catch(() => undefined);
+      hideAsync().catch(() => undefined);
     }
   }, [fontsLoaded, fontError, onboardingDecided]);
 
@@ -258,38 +265,36 @@ export default function RootLayout() {
       router.push((planId ? { pathname: '/tours/[id]', params: { id: planId } } : '/tours') as Href);
     // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
     const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
+    const openBeerOnTapPub = ({ key, name, lat, lng }: BeerOnTapPub) =>
+      openDetail(router, { kind: 'pub', params: { key, name, lat: String(lat), lng: String(lng) } });
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
       void consumeInitialTourReminderTap(navigateToTour);
       void consumeInitialTourInviteTap(openTourInvite);
+      void consumeInitialBeerOnTapTap(openBeerOnTapPub);
     }
     const pubSubscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
     const beerCountSubscription = subscribeBeerCountReminderTap(navigateToCounter);
     const tourSubscription = subscribeTourReminderTap(navigateToTour);
     const tourInviteSubscription = subscribeTourInviteTap(openTourInvite);
+    const beerOnTapSubscription = subscribeBeerOnTapTap(openBeerOnTapPub);
     return () => {
       pubSubscription.remove();
       beerCountSubscription.remove();
       tourSubscription.remove();
       tourInviteSubscription.remove();
+      beerOnTapSubscription.remove();
     };
   }, [fontsLoaded, fontError, router]);
 
   useEffect(() => {
-    const handleInviteUrl = (url: string | null) => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
       const code = parseInviteCodeFromUrl(url);
-      if (!code) return;
-      void stashPendingInviteCode(code);
-      router.push({ pathname: '/parta/pozvanka', params: { code } } as Href);
-    };
-
-    Linking.getInitialURL()
-      .then(handleInviteUrl)
-      .catch(() => undefined);
-    const subscription = Linking.addEventListener('url', ({ url }) => handleInviteUrl(url));
+      if (code) void stashPendingInviteCode(code);
+    });
     return () => subscription.remove();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     let hadActiveCounterSession = (useTallyStore.getState().current?.drinks.length ?? 0) > 0;
@@ -336,9 +341,10 @@ export default function RootLayout() {
         void trackClientEvent({ event: 'app_open', severity: 'info' });
         // A Parta invite deep link tapped before the account existed was stashed;
         // now that an account is ready, claim it (fires a Parta refresh on success).
-        void consumeAndClaimPendingInviteCode();
+        void launchInviteStashed.then(() => consumeAndClaimPendingInviteCode());
         // Light up the Parta tab badge without waiting for the first Parta visit.
         seedPartaBadge();
+        refreshBeerWatches(true);
         // Existing installs may hold local diary drinks from before /v1/drinks
         // sync existed. Seed only after account initialization has settled so
         // the private history cannot race a session rotation.
@@ -450,6 +456,7 @@ export default function RootLayout() {
         void flushVisitsQueue();
         void flushFriendsQueue();
         void ensureFriendPushRegisteredIfGranted();
+        refreshBeerWatches(pull('beerWatches'));
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
         void flushNightsQueue();
@@ -493,10 +500,15 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.stout }}>
-      <SafeAreaProvider>
+      <WindowSafeAreaProvider>
         <StatusBar style="light" />
         <Stack
-          screenLayout={({ children }) => <AppDialogScreen>{children}</AppDialogScreen>}
+          screenLayout={({ route, children }) => (
+            <AppDialogScreen>
+              {/* The tabs narrow each tab themselves, leaving the system tab bar where it is. */}
+              {route.name === '(tabs)' ? children : <RouteScreen>{children}</RouteScreen>}
+            </AppDialogScreen>
+          )}
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: Colors.stout },
@@ -590,14 +602,14 @@ export default function RootLayout() {
             name="evening"
             options={{
               presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
+              animation: detailAnimation ?? 'slide_from_bottom',
               gestureEnabled: false,
             }}
           />
           <Stack.Screen
             name="pub"
             options={{
-              animation: 'slide_from_right',
+              animation: detailAnimation ?? 'slide_from_right',
               gestureEnabled: true,
             }}
           />
@@ -673,6 +685,13 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="profile/beer-watches"
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
             name="profile/badges"
             options={{
               animation: 'slide_from_right',
@@ -700,7 +719,7 @@ export default function RootLayout() {
             options={{
               // A back-navigable "place" (friend profile), pushed like a detail
               // screen with the native right-edge back-swipe.
-              animation: 'slide_from_right',
+              animation: detailAnimation ?? 'slide_from_right',
               gestureEnabled: true,
             }}
           />
@@ -722,6 +741,7 @@ export default function RootLayout() {
           />
         </Stack>
         <OnboardingGate />
+        <PaneRouteMigrator />
         <WhatsNewModal />
         <ContestResultsModal />
         <PubReminderOnboardingModal />
@@ -735,8 +755,9 @@ export default function RootLayout() {
             !(onboardingDecision === 'show' && pathname !== '/onboarding')
           }
         />
+        <BadgeHost />
         <Toast />
-      </SafeAreaProvider>
+      </WindowSafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

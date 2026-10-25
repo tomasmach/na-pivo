@@ -12,7 +12,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { CameraIcon, InfoIcon } from '@/components/shared/IconGlyph';
 import { openSystemSettings } from '@/compass/permissions';
 import { pickAndPrepareBeerPhoto, type BeerPhotoSource } from '@/data/beerPhotoPicker';
@@ -46,6 +46,7 @@ export function BeerPhotoCaptureFlow({
   initialContestEntry = false,
   onContestEntered,
 }: BeerPhotoCaptureFlowProps) {
+  const showAppDialog = useShowAppDialog();
   const showToast = useToastStore((s) => s.show);
   const [composeUri, setComposeUri] = useState<string | null>(null);
   // Synchronous double-fire guard — the sheet rows stay tappable through the
@@ -90,7 +91,7 @@ export function BeerPhotoCaptureFlow({
         pickInFlightRef.current = false;
       }
     },
-    [showToast],
+    [showAppDialog, showToast],
   );
 
   useEffect(() => {

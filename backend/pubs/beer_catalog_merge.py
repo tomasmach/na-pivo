@@ -10,6 +10,8 @@ from pubs.models import (
     BeerCheckIn,
     BeerProduct,
     BeerProductMergeAudit,
+    BeerTapEvent,
+    BeerWatch,
     DrinkLog,
     PubBeerProduct,
     PubCommunityData,
@@ -173,6 +175,26 @@ def merge_beer_products(*, source_key: str, target_key: str, actor: str = "") ->
             link.save()
         pub_links += 1
 
+    BeerWatch.objects.filter(
+        product=source,
+        account_id__in=BeerWatch.objects.filter(product=target).values("account_id"),
+    ).delete()
+    watches = BeerWatch.objects.filter(product=source).update(product=target)
+
+    tap_events = 0
+    for event in BeerTapEvent.objects.filter(product=source):
+        existing_event = BeerTapEvent.objects.filter(
+            cache_key=event.cache_key, product=target
+        ).first()
+        if existing_event is None:
+            event.product = target
+            event.save(update_fields=["product"])
+        else:
+            # A push row already owns its (account, day) slot, so it can move freely.
+            event.pushes.update(event=existing_event)
+            event.delete()
+        tap_events += 1
+
     community_rows, community_items = _rewrite_menu_rows(
         PubCommunityData, candidates, target.name
     )
@@ -191,6 +213,8 @@ def merge_beer_products(*, source_key: str, target_key: str, actor: str = "") ->
             "drink_logs": drinks,
             "beer_checkins": checkins,
             "pub_product_links": pub_links,
+            "beer_watches": watches,
+            "beer_tap_events": tap_events,
             "community_menu_rows": community_rows,
             "community_menu_items": community_items,
             "external_menu_rows": external_rows,

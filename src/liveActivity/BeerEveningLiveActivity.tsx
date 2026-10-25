@@ -87,7 +87,7 @@ export interface BeerEveningLiveActivityProps {
   homeTransitA11yLabel?: string;
   /** Replaces the ride once it left: "Už jedeš nočkou". */
   homeTransitMissedLabel?: string;
-  /** Read natively by the patched expo-widgets as the ActivityKit stale date. */
+  /** Sent to ActivityKit as the stale date, so the lock screen redraws once the ride left. */
   staleDateMs?: number;
 }
 
@@ -142,7 +142,7 @@ const BeerEveningLiveActivity = (
   const departsAtMs = props.homeTransitDepartsAtMs;
   // The system redraws a stale activity at the departure even while the app
   // sleeps; a later update knows it from the clock.
-  const isStale = (environment as { isStale?: boolean }).isStale === true;
+  const isStale = environment.isStale === true;
   const transitMissed =
     !!props.homeTransitMissedLabel &&
     (isStale || typeof departsAtMs !== 'number' || departsAtMs <= Date.now());

@@ -28,9 +28,12 @@ import {
   Trash2Icon,
 } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { ToggleRow } from '@/components/shared/FlatPage';
 import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
+import { updateAccountPreferences } from '@/data/account';
 import { isAppleSignInSupported } from '@/data/socialAuth';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { AuthProvider } from '@/data/auth';
 import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
@@ -40,6 +43,7 @@ import {
   selectNickname,
   useAccountStore,
 } from '@/stores/accountStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -78,6 +82,14 @@ export default function AccountScreen() {
   );
 
   const [busy, setBusy] = useState<string | null>(null);
+  const marketingEmailsEnabled = useSettingsStore((state) => state.marketingEmailsEnabled);
+  const setMarketingEmailsEnabled = useSettingsStore((state) => state.setMarketingEmailsEnabled);
+  const toggleMarketingEmails = useCallback(() => {
+    const next = !marketingEmailsEnabled;
+    trackUiInteraction('settings_marketing_emails', next ? 'toggle_on' : 'toggle_off');
+    setMarketingEmailsEnabled(next);
+    void updateAccountPreferences({ marketingEmailsEnabled: next });
+  }, [marketingEmailsEnabled, setMarketingEmailsEnabled]);
   const [methodsOpen, setMethodsOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -531,6 +543,17 @@ export default function AccountScreen() {
         </View>
       </View>
 
+      <View style={styles.preferenceCard}>
+        <ToggleRow
+          first
+          title={t.settings.marketingEmails.title}
+          subtitle={t.settings.marketingEmails.subtitle}
+          value={marketingEmailsEnabled}
+          onToggle={toggleMarketingEmails}
+          toggleLabel={`${t.settings.marketingEmails.title}: ${marketingEmailsEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
+        />
+      </View>
+
       <NudgeSlot nudge={nudge} />
 
       <CounterCta
@@ -636,6 +659,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 8,
+  },
+  preferenceCard: {
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingHorizontal: Spacing.lg,
   },
   cardBody: {
     flex: 1,

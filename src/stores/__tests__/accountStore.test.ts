@@ -14,10 +14,13 @@ import {
   selectNeedsNickname,
 } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
-import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
+import type { AccountMapper, AccountProfile, AuthResult } from '@/data/auth';
 import { ensureAccount, fetchAccountPreferences, setAnonymousSessionEvictionListener } from '@/data/account';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
+import { beginTourAccountChange, endTourAccountChange } from '@/data/toursBoundary';
+import { useBookStore } from '@/stores/bookStore';
+import { useTallyStore } from '@/stores/tallyStore';
 
 jest.mock('@/data/auth');
 jest.mock('@/data/account', () => ({
@@ -35,8 +38,12 @@ jest.mock('@/data/telemetryClient', () => ({
   trackApiFailure: jest.fn(),
 }));
 jest.mock('@/data/diarySync', () => ({
+  ...jest.requireActual('@/data/diarySync'),
   reconcileDiarySnapshot: jest.fn(async () => null),
 }));
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 const mockSetHidePubNames = jest.fn();
 jest.mock('@/stores/settingsStore', () => ({
   useSettingsStore: {
@@ -116,6 +123,7 @@ beforeEach(() => {
     removedDrinkIds: new Set(),
     removedVisitIds: new Set(),
   });
+  useTallyStore.setState({ current: null, history: [], restoredAccountId: null });
   mockEnsureAccount.mockResolvedValue({
     deviceId: 'd',
     accountId: 'a',
@@ -169,6 +177,7 @@ describe('initAccount', () => {
     useAccountStore.setState({
       session: { deviceId: 'old-d', accountId: 'old-a', token: 'dead', authenticated: false },
       status: 'ready',
+      profile: signedInProfile({ id: 'old-a', isAnonymous: true }),
     });
     mockEnsureAccount.mockResolvedValueOnce({
       deviceId: 'new-d',
@@ -189,6 +198,8 @@ describe('initAccount', () => {
       },
       status: 'ready',
     });
+    // The replacement's profile did not load, so nothing of the old one may show.
+    expect(useAccountStore.getState().profile).toBeNull();
   });
 
   it('reports init exceptions with only the error class', async () => {
@@ -224,6 +235,21 @@ describe('resumeSession', () => {
       authenticated: true,
     });
     expect(useAccountStore.getState()).toMatchObject({ status: 'ready', profile: refreshed });
+  });
+
+  it('drops a profile that arrives after the account changed', async () => {
+    const before = { deviceId: 'd', accountId: 'a', token: 'old', authenticated: true };
+    const after = { deviceId: 'd', accountId: 'b', token: 'new', authenticated: false };
+    useAccountStore.setState({ session: before, profile: null });
+    let answer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+
+    const refresh = useAccountStore.getState().refreshProfile();
+    useAccountStore.setState({ session: after });
+    answer(signedInProfile({ id: 'a' }));
+    await refresh;
+
+    expect(useAccountStore.getState().profile).toBeNull();
   });
 
   it('rehydrates credentials that became available again before validating them', async () => {
@@ -413,6 +439,28 @@ describe('login', () => {
     expect(mockEnsureAccount).not.toHaveBeenCalled();
   });
 
+  it('empties the right halves when the sign-in switches accounts', async () => {
+    // An anonymous device signs in to an existing account (the anonymous one is claimed).
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'anon', token: 't0', authenticated: false } });
+    useBookStore.getState().show('kompas', { kind: 'friend', id: 'acc-friend' });
+    mockedAuth.loginEmail.mockResolvedValue(okResult());
+
+    await useAccountStore.getState().login({ email: 'jan@example.com', password: 'pw' });
+
+    expect(useBookStore.getState().pages.kompas).toEqual([]);
+  });
+
+  it('keeps the right halves when the account stays the same', async () => {
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 't0', authenticated: false } });
+    useBookStore.getState().show('kompas', { kind: 'friend', id: 'acc-friend' });
+    mockedAuth.loginEmail.mockResolvedValue(okResult());
+
+    await useAccountStore.getState().login({ email: 'jan@example.com', password: 'pw' });
+
+    expect(useBookStore.getState().pages.kompas).toEqual([{ kind: 'friend', id: 'acc-friend' }]);
+    useBookStore.getState().clearAll();
+  });
+
   it('returns a session waiting for recovery to ready after successful login', async () => {
     const profile = signedInProfile();
     const diarySnapshot = { accountId: 'a', data: { drinks: [], visits: [] } };
@@ -427,6 +475,105 @@ describe('login', () => {
       profile,
       diarySnapshot,
     });
+  });
+});
+
+describe('restoring the diary after sign-in', () => {
+  function serverDrink(clientId: string, drankAt: string): DiarySnapshot['drinks'][number] {
+    return {
+      client_id: clientId,
+      cache_key: 'u2fkbnhz',
+      name: 'U Restore testu',
+      lat: 50.08804,
+      lng: 14.42076,
+      city: 'Praha',
+      external_id: '',
+      place_context: 'pub',
+      drink_type: 'beer',
+      beer: { name: 'Pilsner Urquell', price_czk: 59, volume_ml: 500, serving_type: 'unknown' },
+      drank_at: drankAt,
+      is_suspect: false,
+    };
+  }
+
+  function serverDiary(): DiarySnapshot {
+    return {
+      drinks: [serverDrink('kept', '2026-10-17T16:00:00Z'), serverDrink('gone', '2026-10-17T17:00:00Z')],
+      visits: [
+        {
+          client_id: 'visit-1',
+          cache_key: 'u2fkbnhz',
+          name: 'U Restore testu',
+          lat: 50.08804,
+          lng: 14.42076,
+          city: 'Praha',
+          external_id: '',
+          started_at: '2026-10-17T16:00:00Z',
+          ended_at: '2026-10-17T17:00:00Z',
+          closed_at: '2026-10-17T17:30:00Z',
+          updated_at: '2026-10-17T17:30:00Z',
+        },
+      ],
+    };
+  }
+
+  const restoredDrinkIds = () =>
+    useTallyStore.getState().history.flatMap((session) => session.drinks.map((drink) => drink.id));
+
+  it('brings the account evenings back once per account', async () => {
+    mockedAuth.loginEmail.mockResolvedValue(okResult());
+    mockReconcileDiarySnapshot.mockResolvedValue(serverDiary());
+
+    await useAccountStore.getState().login({ email: 'jan@example.com', password: 'pw' });
+
+    expect(useTallyStore.getState().history.map((session) => session.clientId)).toEqual(['visit-1']);
+    expect(restoredDrinkIds()).toEqual(['kept', 'gone']);
+    expect(useTallyStore.getState().restoredAccountId).toBe('a');
+
+    // The user deleted the evening; a later pull must not bring it back.
+    useTallyStore.setState({ history: [] });
+    await useAccountStore.getState().refreshDiarySnapshot();
+    expect(useTallyStore.getState().history).toEqual([]);
+  });
+
+  it('leaves the diary alone when a login or logout runs during the read', async () => {
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true } });
+    mockReconcileDiarySnapshot.mockImplementationOnce(async () => {
+      beginTourAccountChange();
+      endTourAccountChange();
+      return serverDiary();
+    });
+
+    await useAccountStore.getState().refreshDiarySnapshot();
+
+    expect(useTallyStore.getState()).toMatchObject({ history: [], restoredAccountId: null });
+  });
+
+  it('leaves the diary alone when the account changes during the read', async () => {
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true } });
+    mockReconcileDiarySnapshot.mockImplementationOnce(async () => {
+      useAccountStore.setState({ session: { deviceId: 'd', accountId: 'b', token: 'other', authenticated: true } });
+      return serverDiary();
+    });
+
+    await useAccountStore.getState().refreshDiarySnapshot();
+
+    expect(useTallyStore.getState()).toMatchObject({ history: [], restoredAccountId: null });
+  });
+
+  it('does not bring back a drink removed while the read runs', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      diarySnapshot: { accountId: 'a', data: { drinks: [], visits: [] } },
+    });
+    mockReconcileDiarySnapshot.mockImplementationOnce(async () => {
+      useAccountStore.getState().forgetDiaryDrink('gone');
+      return serverDiary();
+    });
+
+    await useAccountStore.getState().refreshDiarySnapshot();
+
+    expect(restoredDrinkIds()).toEqual(['kept']);
   });
 });
 
@@ -484,7 +631,104 @@ describe('unlink', () => {
 // ---------------------------------------------------------------------------
 // logout — clears profile + reverts (via auth.logout)
 // ---------------------------------------------------------------------------
+describe('refreshBadges', () => {
+  it('keeps newer badge values when an older answer comes last', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: signedInProfile(),
+    });
+    let olderAnswer: (profile: AccountProfile) => void = () => undefined;
+    const withBeers = (beers: number) =>
+      signedInProfile({ badgeProgress: { beers } as AccountProfile['badgeProgress'] });
+    mockedAuth.fetchAccountProfile
+      .mockReturnValueOnce(new Promise((resolve) => (olderAnswer = resolve)))
+      .mockResolvedValueOnce(withBeers(10));
+
+    const older = useAccountStore.getState().refreshBadges();
+    await useAccountStore.getState().refreshBadges();
+    olderAnswer(withBeers(1));
+    await older;
+
+    expect(useAccountStore.getState().profile?.badgeProgress?.beers).toBe(10);
+  });
+
+  it('takes only the badge values, so a slow answer cannot undo a settings change', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: signedInProfile({ nickname: 'local', settings: { hidePubNames: false } }),
+    });
+    mockedAuth.fetchAccountProfile.mockResolvedValueOnce(
+      signedInProfile({ nickname: 'server', settings: { hidePubNames: true }, badgeProgress: { beers: 3 } as AccountProfile['badgeProgress'] }),
+    );
+
+    await useAccountStore.getState().refreshBadges();
+
+    expect(useAccountStore.getState().profile).toMatchObject({ nickname: 'local', badgeProgress: { beers: 3 } });
+    expect(mockSetHidePubNames).not.toHaveBeenCalled();
+  });
+});
+
 describe('logout', () => {
+  it('keeps a newer profile when an older read answers last', async () => {
+    useAccountStore.setState({ session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true }, profile: null });
+    let olderAnswer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile
+      .mockReturnValueOnce(new Promise((resolve) => (olderAnswer = resolve)))
+      .mockResolvedValueOnce(signedInProfile({ nickname: 'newer' }));
+
+    const older = useAccountStore.getState().refreshProfile();
+    await useAccountStore.getState().refreshProfile();
+    olderAnswer(signedInProfile({ nickname: 'older' }));
+    await older;
+
+    expect(useAccountStore.getState().profile?.nickname).toBe('newer');
+  });
+
+  it('keeps a late anonymous profile from replacing the account just signed in to', async () => {
+    const anonymous = { deviceId: 'd', accountId: 'a', token: 'anon', authenticated: false };
+    useAccountStore.setState({ session: anonymous, profile: signedInProfile({ id: 'a', isAnonymous: true }) });
+    let lateAnswer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(new Promise((resolve) => (lateAnswer = resolve)));
+    let newSession: (session: typeof anonymous) => void = () => undefined;
+    mockEnsureAccount.mockReturnValueOnce(new Promise((resolve) => (newSession = resolve)));
+    mockedAuth.loginEmail.mockResolvedValue({ ok: true, profile: signedInProfile({ id: 'b' }) } as AuthResult);
+
+    const late = useAccountStore.getState().refreshProfile();
+    const login = useAccountStore.getState().login({ email: 'jan@example.com', password: 'x' });
+    await Promise.resolve();
+    await Promise.resolve();
+    lateAnswer(signedInProfile({ id: 'a', isAnonymous: true }));
+    await late;
+    newSession({ deviceId: 'd', accountId: 'b', token: 'signed', authenticated: true });
+    await login;
+
+    expect(useAccountStore.getState().profile?.id).toBe('b');
+  });
+
+  it('keeps the old account out when its late profile lands while the new session loads', async () => {
+    const before = { deviceId: 'd', accountId: 'a', token: 'old', authenticated: true };
+    useAccountStore.setState({ session: before, profile: signedInProfile({ id: 'a' }) });
+    let lateAnswer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile
+      .mockReturnValueOnce(new Promise((resolve) => (lateAnswer = resolve)))
+      .mockResolvedValueOnce(null);
+    let newSession: (session: typeof before) => void = () => undefined;
+    mockEnsureAccount.mockReturnValueOnce(new Promise((resolve) => (newSession = resolve)));
+    mockedAuth.logout.mockResolvedValue({ ok: true });
+
+    const late = useAccountStore.getState().refreshProfile();
+    const logout = useAccountStore.getState().logout();
+    await Promise.resolve();
+    await Promise.resolve();
+    lateAnswer(signedInProfile({ id: 'a' }));
+    await late;
+    newSession({ deviceId: 'd', accountId: 'b', token: 'anon', authenticated: false });
+    await logout;
+
+    expect(useAccountStore.getState().session?.accountId).toBe('b');
+    expect(useAccountStore.getState().profile).toBeNull();
+  });
+
   it('clears the profile and re-syncs the anonymous session', async () => {
     useAccountStore.setState({ profile: signedInProfile(), removedDrinkIds: new Set(['old-drink']) });
     mockedAuth.logout.mockResolvedValue({ ok: true });
@@ -671,8 +915,6 @@ describe('applyMapperSnapshot', () => {
       ],
       xpRules: { firstFact: 15, firstMapperBonus: 25, confirm: 5, pubCompleteBonus: 30 },
     });
-    expect(patched?.achievements?.firstMap).toBe(true);
-    expect(patched?.achievements?.explorer).toBe(false);
   });
 
   it('treats a null xpForNextLevel snapshot as max level', () => {
@@ -704,46 +946,6 @@ describe('applyMapperSnapshot', () => {
     });
 
     expect(useAccountStore.getState().profile?.mapper?.xpForNextLevel).toBe(250);
-  });
-
-  it('updates Mapér achievements from snapshot counters without clearing old badges', () => {
-    useAccountStore.setState({
-      profile: signedInProfile({
-        achievements: {
-          ...EMPTY_ACHIEVEMENTS,
-          firstTen: true,
-          regular: false,
-          reviewer: true,
-        },
-        mapper: fullMapper({ distinctMappedPubs: 9, amenityVotesCount: 99, completedPubsCount: 0 }),
-      }),
-    });
-
-    useAccountStore.getState().applyMapperSnapshot({
-      xp: 500,
-      level: 4,
-      title: 'Znalec',
-      xpIntoLevel: 100,
-      xpForNextLevel: 500,
-      distinctMappedPubs: 25,
-      amenityVotesCount: 100,
-      firstMapperCount: 1,
-      completedPubsCount: 1,
-    });
-
-    expect(useAccountStore.getState().profile?.achievements).toEqual({
-      ...EMPTY_ACHIEVEMENTS,
-      firstTen: true,
-      regular: false,
-      reviewer: true,
-      firstMap: true,
-      explorer: true,
-      cartographer: true,
-      completionist: true,
-      factMachine: true,
-      // Server-only badge: a mapper snapshot must carry it through unchanged.
-      fotoPivar: false,
-    });
   });
 });
 

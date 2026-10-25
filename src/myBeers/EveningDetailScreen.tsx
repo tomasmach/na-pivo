@@ -8,7 +8,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -16,8 +15,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 
+import { Modal } from '@/components/shared/Modal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -55,6 +55,7 @@ import {
   normalizePlaceContext,
 } from '@/drinks/drinkTypes';
 import { useAccountStore } from '@/stores/accountStore';
+import { useBookStore } from '@/stores/bookStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
@@ -79,8 +80,10 @@ import {
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { useDetailNav, useDetailParams } from '@/layout/detail';
+import { usePane, useTone } from '@/layout/pane';
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
@@ -110,11 +113,20 @@ function latestDrinkAt(session: TallySession): string {
 }
 
 export default function EveningDetailScreen() {
+  const showAppDialog = useShowAppDialog();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const now = new Date();
 
-  const params = useLocalSearchParams<{ startedAt?: string }>();
+  // Set when the evening sits in the Štamgast tab's right half instead of on the stack.
+  const pane = useDetailNav();
+  const half = usePane();
+  const quiet = useTone() === 'quiet';
+  // Over the diary's own half the back button says where it goes.
+  const backToDiary = useBookStore(
+    (state) => pane !== null && half?.tab === 'stamgast' && state.pages.stamgast.length === 1,
+  );
+  const params = useDetailParams<{ startedAt?: string }>();
   const startedAt = typeof params.startedAt === 'string' ? params.startedAt : '';
 
   const current = useTallyStore((s) => s.current);
@@ -355,13 +367,24 @@ export default function EveningDetailScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => router.back()}
-          style={styles.backButton}
+          onPress={() => (pane ? pane.back() : router.back())}
+          style={backToDiary ? styles.backWithLabel : styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={t.a11y.backButton}
           hitSlop={4}
         >
-          <ChevronLeftIcon size={22} color={Colors.foam} />
+          {backToDiary ? (
+            <>
+              <View style={styles.backButton}>
+                <ChevronLeftIcon size={22} color={Colors.foam} />
+              </View>
+              <Text style={styles.backLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.beer.segmentDiary}
+              </Text>
+            </>
+          ) : (
+            <ChevronLeftIcon size={22} color={Colors.foam} />
+          )}
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>
           {session ? eveningDateLabel(session.startedAt, now) : t.myBeers.title}
@@ -423,12 +446,18 @@ export default function EveningDetailScreen() {
               <Pressable
                 onPress={openAddDrink}
                 testID="evening-add-drink"
-                style={({ pressed }) => [styles.addDrinkButton, pressed && styles.iconButtonPressed]}
+                style={({ pressed }) => [
+                  styles.addDrinkButton,
+                  quiet && styles.quietFill,
+                  pressed && styles.iconButtonPressed,
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel={t.a11y.myBeersAddDrinkToEvening}
               >
-                <PlusIcon size={15} color={Colors.stout} />
-                <Text style={styles.addDrinkButtonText}>{t.myBeers.addDrinkToEvening}</Text>
+                <PlusIcon size={15} color={quiet ? Colors.foam : Colors.stout} />
+                <Text style={[styles.addDrinkButtonText, quiet && styles.quietText]}>
+                  {t.myBeers.addDrinkToEvening}
+                </Text>
               </Pressable>
             </View>
             {drinkActionGroups.map((group, index) => {
@@ -527,10 +556,17 @@ export default function EveningDetailScreen() {
                   testID="night-publish-open"
                   accessibilityRole="button"
                   accessibilityLabel={t.a11y.publishNightButton}
-                  style={({ pressed }) => [styles.vycepPrimary, pressed && styles.iconButtonPressed]}
+                  style={({ pressed }) => [
+                    styles.vycepPrimary,
+                    quiet && styles.quietFill,
+                    pressed && styles.iconButtonPressed,
+                  ]}
                 >
-                  <HandPlatterIcon size={16} color={Colors.stout} />
-                  <Text style={styles.vycepPrimaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  <HandPlatterIcon size={16} color={quiet ? Colors.foam : Colors.stout} />
+                  <Text
+                    style={[styles.vycepPrimaryText, quiet && styles.quietText]}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
                     {publishedRecord ? t.vycep.updateCta : t.vycep.publishEntryTitle}
                   </Text>
                 </Pressable>
@@ -646,7 +682,7 @@ function EditDrinkNameModal({
   onSave: (group: DrinkActionGroup, beerName: string) => void;
 }) {
   return (
-    <Modal visible={!!group} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
+    <Modal scrimColor={styles.modalBackdrop.backgroundColor} centered visible={!!group} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       <KeyboardAvoidingView
         style={styles.modalBackdrop}
         behavior="padding"
@@ -742,6 +778,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  backWithLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foamMuted,
+  },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -811,6 +857,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.stout,
   },
+  // Beside the counter the amber belongs to "Ještě jedno" on the left.
+  quietFill: { backgroundColor: Colors.stout3 },
+  quietText: { color: Colors.foam },
   drinkRow: {
     flexDirection: 'row',
     alignItems: 'center',

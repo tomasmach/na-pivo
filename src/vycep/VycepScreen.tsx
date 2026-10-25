@@ -281,7 +281,7 @@ export default function VycepScreen() {
       <GhostCard height={150} />
       <GhostCard height={150} />
     </View>
-  ) : hideEmptyState ? null : (
+  ) : hideEmptyState ? undefined : (
     <View style={styles.empty}>
       <TallyCoaster marks={0} nights={0} width={96} />
       <Text
@@ -358,7 +358,7 @@ export default function VycepScreen() {
             <View style={styles.footerLoading}>
               <GhostCard height={96} />
             </View>
-          ) : null
+          ) : undefined
         }
       />
 

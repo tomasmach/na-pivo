@@ -125,6 +125,11 @@ export interface CompassCardProps {
   /** Footer tap: opens the pub info, or reveals the name while hidden. */
   onPressFooter: () => void;
   accessibilityLabel: string;
+  /**
+   * The short bottom half of a phone lying open on a table: the dial on the
+   * left, the readout and the pub beside it instead of under it.
+   */
+  sideways?: boolean;
 }
 
 export function CompassCard({
@@ -142,6 +147,7 @@ export function CompassCard({
   reserveFooter = false,
   onPressFooter,
   accessibilityLabel,
+  sideways = false,
 }: CompassCardProps) {
   // Last size handed to the parent. A ref, not state: re-reporting the same
   // number would bounce layout -> setState -> layout forever.
@@ -155,163 +161,191 @@ export function CompassCard({
     (event: LayoutChangeEvent) => {
       const { width, height } = event.nativeEvent.layout;
       const available = Math.min(width, height) * DIAL_BLEED;
-      const next = Math.round(Math.max(DIAL_MIN, Math.min(DIAL_MAX, available)));
+      // Sideways the slot is the card's whole height, so a floor would only push
+      // the ring past the card's edge when a nudge squeezes it.
+      const floor = sideways ? 0 : DIAL_MIN;
+      const next = Math.round(Math.max(floor, Math.min(DIAL_MAX, available)));
       if (next === lastDialSizeRef.current) return;
       lastDialSizeRef.current = next;
       onDialSize(next);
     },
-    [onDialSize],
+    [onDialSize, sideways],
   );
 
   const numeralSize = distanceValue === null ? 0 : distanceFontSize(distanceValue);
   const hasFooter = pubName !== null || hidden;
+
+  const readout =
+    distanceValue !== null ? (
+      <View style={styles.readout}>
+        <Text
+          style={[
+            styles.distance,
+            // The line box must clear the extrabold glyph's overshoot, or
+            // iOS shaves the top off the digits. 1.14 is the least that still
+            // does at this size; the unit's negative margin closes the rest.
+            { fontSize: numeralSize, lineHeight: numeralSize * 1.14 },
+            sideways && styles.alignLeft,
+          ]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.display}
+        >
+          {distanceValue}
+        </Text>
+        <Text
+          style={[styles.unit, sideways && styles.alignLeft]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {distanceUnit}
+        </Text>
+      </View>
+    ) : null;
+
+  const footer = hasFooter ? (
+      <Pressable
+        onPress={onPressFooter}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={({ pressed }) => [styles.footer, sideways && styles.footerSideways, pressed && styles.pressed]}
+      >
+        {hidden ? (
+          <Text
+            style={styles.revealHint}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {t.compass.revealHint}
+          </Text>
+        ) : (
+          <>
+            {/* The door shares a row with the NAME only, so the hours and the
+                beer get the card's full width. They used to end at the door's
+                left edge, which is what truncated "Velkopopovický Kozel Černý"
+                with half the footer sitting empty beside it. Without
+                minWidth/flexShrink a long name pushes the door off the card
+                instead of truncating. Test case: "Restaurace U Zlatého Tygra
+                na Starém Městě". */}
+            <View style={styles.footerText}>
+              <View style={styles.nameRow}>
+                <Text
+                  style={styles.pubName}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {pubName}
+                </Text>
+                {showDetailLink ? (
+                  <View style={styles.detailDoor}>
+                    <ChevronRightIcon size={16} color={Colors.amber} />
+                  </View>
+                ) : null}
+              </View>
+              {/* Fixed-height slot: the hours arrive from the network a moment
+                  after the name, and the dial must not resize when they land. */}
+              <View style={[styles.metaSlot, sideways && styles.metaSlotSideways]}>
+                {hoursLabel !== null ? (
+                  <View style={styles.hoursRow}>
+                    {/* The one dot in the app that is allowed to be decoration-
+                        shaped, because it carries real state: open, closed or
+                        unknown. */}
+                    <View
+                      style={[styles.hoursDot, { backgroundColor: hoursColor(hoursTone) }]}
+                    />
+                    <Text
+                      style={[styles.hours, { color: hoursColor(hoursTone) }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {hoursLabel}
+                    </Text>
+                  </View>
+                ) : null}
+                {beerLine !== null ? (
+                  <View style={styles.beerRow}>
+                    {beerMenuRotates ? (
+                      <RefreshCwIcon size={12} color={Colors.amber} />
+                    ) : null}
+                    <Text
+                      style={[styles.meta, beerMenuRotates && styles.rotatingMeta]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {beerMenuRotates ? `${t.counter.rotatingMenuBadge} · ${beerLine}` : beerLine}
+                    </Text>
+                  </View>
+                ) : beerMenuRotates ? (
+                  <View style={styles.beerRow}>
+                    <RefreshCwIcon size={12} color={Colors.amber} />
+                    <Text
+                      style={[styles.meta, styles.rotatingMeta]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {t.counter.rotatingMenuBadge}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          </>
+        )}
+      </Pressable>
+    ) : reserveFooter ? (
+      <View
+        style={[styles.footer, sideways && styles.footerSideways]}
+        pointerEvents="none"
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+      >
+        <View style={styles.footerText}>
+          <View style={styles.namePlaceholder} />
+          <View style={styles.metaSlot} />
+        </View>
+      </View>
+    ) : null;
+
+  // The dial hangs in an absolute layer inside the slot. In the flow it would
+  // feed its own height back into the slot it was measured from: slot -> bigger
+  // dial -> bigger slot -> bigger dial, until the clamp stopped it with the ring
+  // hanging over the card's edge. Out of the flow, the slot's height depends
+  // only on what is left over.
+  const dialLayer = (
+    <View style={styles.dialLayer} pointerEvents="none">
+      {dial}
+    </View>
+  );
+
+  if (sideways) {
+    return (
+      <View style={[styles.card, styles.cardSideways]}>
+        <CardSheen />
+        <View style={styles.sideDial} onLayout={handleDialSlotLayout}>
+          {dialLayer}
+        </View>
+        <View style={styles.sideInfo}>
+          {readout}
+          {footer}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.card}>
       <CardSheen />
 
       <View style={styles.body}>
-        {/* The dial hangs in an absolute layer inside the slot. In the flow it
-            would feed its own height back into the slot it was measured from:
-            slot -> bigger dial -> bigger slot -> bigger dial, until the clamp
-            stopped it with the ring hanging over the card's edge. Out of the
-            flow, the slot's height depends only on what is left over. */}
         <View style={styles.dialSlot} onLayout={handleDialSlotLayout}>
-          <View style={styles.dialLayer} pointerEvents="none">
-            {dial}
-          </View>
+          {dialLayer}
         </View>
 
-        {distanceValue !== null ? (
-          <View style={styles.readout}>
-            <Text
-              style={[
-                styles.distance,
-                // The line box must clear the extrabold glyph's overshoot, or
-                // iOS shaves the top off the digits. 1.14 is the least that still
-                // does at this size; the unit's negative margin closes the rest.
-                { fontSize: numeralSize, lineHeight: numeralSize * 1.14 },
-              ]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.display}
-            >
-              {distanceValue}
-            </Text>
-            <Text
-              style={styles.unit}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {distanceUnit}
-            </Text>
-          </View>
-        ) : null}
+        {readout}
       </View>
 
-      {hasFooter ? (
-        <Pressable
-          onPress={onPressFooter}
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
-          style={({ pressed }) => [styles.footer, pressed && styles.pressed]}
-        >
-          {hidden ? (
-            <Text
-              style={styles.revealHint}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {t.compass.revealHint}
-            </Text>
-          ) : (
-            <>
-              {/* The door shares a row with the NAME only, so the hours and the
-                  beer get the card's full width. They used to end at the door's
-                  left edge, which is what truncated "Velkopopovický Kozel Černý"
-                  with half the footer sitting empty beside it. Without
-                  minWidth/flexShrink a long name pushes the door off the card
-                  instead of truncating. Test case: "Restaurace U Zlatého Tygra
-                  na Starém Městě". */}
-              <View style={styles.footerText}>
-                <View style={styles.nameRow}>
-                  <Text
-                    style={styles.pubName}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.heading}
-                  >
-                    {pubName}
-                  </Text>
-                  {showDetailLink ? (
-                    <View style={styles.detailDoor}>
-                      <ChevronRightIcon size={16} color={Colors.amber} />
-                    </View>
-                  ) : null}
-                </View>
-                {/* Fixed-height slot: the hours arrive from the network a moment
-                    after the name, and the dial must not resize when they land. */}
-                <View style={styles.metaSlot}>
-                  {hoursLabel !== null ? (
-                    <View style={styles.hoursRow}>
-                      {/* The one dot in the app that is allowed to be decoration-
-                          shaped, because it carries real state: open, closed or
-                          unknown. */}
-                      <View
-                        style={[styles.hoursDot, { backgroundColor: hoursColor(hoursTone) }]}
-                      />
-                      <Text
-                        style={[styles.hours, { color: hoursColor(hoursTone) }]}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {hoursLabel}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {beerLine !== null ? (
-                    <View style={styles.beerRow}>
-                      {beerMenuRotates ? (
-                        <RefreshCwIcon size={12} color={Colors.amber} />
-                      ) : null}
-                      <Text
-                        style={[styles.meta, beerMenuRotates && styles.rotatingMeta]}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {beerMenuRotates ? `${t.counter.rotatingMenuBadge} · ${beerLine}` : beerLine}
-                      </Text>
-                    </View>
-                  ) : beerMenuRotates ? (
-                    <View style={styles.beerRow}>
-                      <RefreshCwIcon size={12} color={Colors.amber} />
-                      <Text
-                        style={[styles.meta, styles.rotatingMeta]}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {t.counter.rotatingMenuBadge}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-            </>
-          )}
-        </Pressable>
-      ) : reserveFooter ? (
-        <View
-          style={styles.footer}
-          pointerEvents="none"
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-        >
-          <View style={styles.footerText}>
-            <View style={styles.namePlaceholder} />
-            <View style={styles.metaSlot} />
-          </View>
-        </View>
-      ) : null}
+      {footer}
     </View>
   );
 }
@@ -323,6 +357,36 @@ const styles = StyleSheet.create({
   card: {
     ...CardSurface.card,
     flex: 1,
+  },
+  cardSideways: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 22,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  // A square as tall as the card allows; the dial is measured from it as usual.
+  sideDial: {
+    alignSelf: 'stretch',
+    aspectRatio: 1,
+    maxWidth: 190,
+    overflow: 'hidden',
+  },
+  sideInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  alignLeft: {
+    textAlign: 'left',
+  },
+  // The dial is sized from the card's height here, not from what is under it,
+  // so the meta lines need no reserved room.
+  metaSlotSideways: { minHeight: 0 },
+  footerSideways: {
+    marginTop: 8,
+    paddingTop: 0,
+    paddingBottom: 0,
+    borderTopWidth: 0,
   },
   pressed: {
     opacity: 0.85,

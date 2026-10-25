@@ -17,23 +17,23 @@ tags: [full, identity]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /profile/badges
-- assertVisible: "Prvních 10 piv, zamčeno, Napočítej 10 piv"
+- assertVisible: "Poutník, zamčeno, Ještě 5 hospod"
 - scrollUntilVisible:
-    element: { text: "FotoPivař, splněno" }
+    element: { text: "FotoPivař I, získáno, Ještě 2 vyhraná kola" }
     direction: DOWN
     timeout: 15000
-- assertVisible: "FotoPivař, splněno"
+- assertVisible: "FotoPivař I, získáno, Ještě 2 vyhraná kola"
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:
       ROUTE: /profile/badges
-- assertVisible: "Prvních 10 piv, zamčeno, Napočítej 10 piv"
+- assertVisible: "Poutník, zamčeno, Ještě 5 hospod"
 - scrollUntilVisible:
-    element: { text: "FotoPivař, splněno" }
+    element: { text: "FotoPivař I, získáno, Ještě 2 vyhraná kola" }
     direction: DOWN
     timeout: 15000
-- assertVisible: "FotoPivař, splněno"
+- assertVisible: "FotoPivař I, získáno, Ještě 2 vyhraná kola"
 - runFlow:
     file: ../../maestro/route.yaml
     env:

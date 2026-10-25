@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
 import { checkLocationPermission } from '@/compass/permissions';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { MapPinPlusIcon, XIcon } from '@/components/shared/IconGlyph';
@@ -122,7 +123,10 @@ export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPick
           <View style={styles.pinDot} />
         </View>
 
-        <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]} pointerEvents="box-none">
+        <View
+          style={[styles.header, { paddingTop: insets.top + Spacing.sm, left: insets.left, right: insets.right }]}
+          pointerEvents="box-none"
+        >
           <Pressable
             onPress={onCancel}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
@@ -142,7 +146,12 @@ export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPick
           <View style={styles.balanceSpacer} />
         </View>
 
-        <View style={[styles.bottom, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
+        <View
+          style={[
+            styles.bottom,
+            { paddingBottom: Math.max(insets.bottom, Spacing.sm), left: insets.left, right: insets.right },
+          ]}
+        >
           <GlowButton
             testID="map-pin-confirm"
             label={t.map.pinConfirm}

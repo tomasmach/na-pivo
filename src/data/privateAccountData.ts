@@ -18,6 +18,7 @@ import { clearFeedbackQueue } from './feedbackQueue';
 import { clearFriendsQueue } from './friendsQueue';
 import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
 import { resetForegroundPulls } from './foregroundPulls';
+import { clearLeaderboardsCache } from './leaderboardsClient';
 import { clearNightsQueue } from './nightsQueue';
 import { clearTourRunQueue } from './tourRunQueue';
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
@@ -30,7 +31,10 @@ import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
 import { clearVisitsSnapshot } from './visitsSnapshot';
-import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { BADGE_STORAGE_KEY, useBadgeStore } from '@/stores/badgeStore';
+import { clearBeerPhotosForAccountBoundary } from '@/stores/beerPhotosStore';
+import { useBeerWatchStore } from '@/stores/beerWatchStore';
+import { useBookStore } from '@/stores/bookStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
@@ -83,6 +87,8 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-pub-reminder-state',
   'na-pivo-pub-reminder-geofences',
   'na-pivo-handled-notification-responses-v1',
+  'na-pivo-beer-watch-location-v1',
+  BADGE_STORAGE_KEY,
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
@@ -94,6 +100,7 @@ const PRIVATE_SETTINGS_DEFAULTS = {
   homePoint: null,
   marketingEmailsEnabled: false,
   lastSeenPartyStreak: 0,
+  bodyProfile: null,
   pendingAccountPreferences: {},
   pendingAccountPreferencesOwnerId: null,
 };
@@ -132,7 +139,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // The wiped ratings, votes and own pubs must come back on the next foreground
   // even when the same account signs in again within the pull interval.
   resetForegroundPulls();
-  useTallyStore.setState({ current: null, history: [] });
+  useTallyStore.setState({ current: null, history: [], restoredAccountId: null });
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });
   });
@@ -147,11 +154,17 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   useCommunityStore.setState({ overrides: {} });
   // Photo diary is private data: wipe the store, the durable local JPEGs, and
   // (below) the pending-upload queue before the session boundary moves.
-  useBeerPhotosStore.setState({ photos: [] });
+  clearBeerPhotosForAccountBoundary();
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
+  useBookStore.getState().clearAll();
+  useBeerWatchStore.getState().reset();
+  // The cached boards carry the outgoing account's own rank.
+  clearLeaderboardsCache();
   // Výčep publication ledger is tied to the outgoing account's nights.
   useVycepStore.setState({ published: {} });
+  // Seen levels and unopened medals describe the outgoing account.
+  useBadgeStore.getState().reset();
   usePubStore.setState({
     revealedPub: null,
     reportedPubIds: [],

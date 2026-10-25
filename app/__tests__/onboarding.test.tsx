@@ -16,9 +16,10 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 const mockReplace = jest.fn();
+const mockDismissTo = jest.fn();
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: jest.fn(() => ({ replace: mockReplace, push: mockPush })),
+  useRouter: jest.fn(() => ({ replace: mockReplace, dismissTo: mockDismissTo, push: mockPush })),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -118,7 +119,8 @@ describe('OnboardingScreen', () => {
 
     expect(useOnboardingStore.getState().completed).toBe(true);
     expect(useOnboardingStore.getState().pendingShow).toBe(false);
-    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockDismissTo).toHaveBeenCalledWith('/(tabs)');
+    expect(mockReplace).not.toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalledWith('/auth');
     expect(mockTrack).toHaveBeenCalledWith({
       event: 'onboarding_completed',
@@ -142,7 +144,8 @@ describe('OnboardingScreen', () => {
     });
 
     expect(useOnboardingStore.getState().completed).toBe(true);
-    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockDismissTo).toHaveBeenCalledWith('/(tabs)');
+    expect(mockReplace).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockTrack).toHaveBeenCalledWith({
       event: 'onboarding_completed',
@@ -163,7 +166,8 @@ describe('OnboardingScreen', () => {
     });
 
     expect(useOnboardingStore.getState().completed).toBe(true);
-    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockDismissTo).toHaveBeenCalledWith('/(tabs)');
+    expect(mockReplace).not.toHaveBeenCalled();
     expect(mockTrack).toHaveBeenCalledWith({
       event: 'onboarding_skipped',
       context: { slide: 1 },
@@ -181,7 +185,7 @@ describe('OnboardingScreen', () => {
       await Promise.resolve();
     });
 
-    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockDismissTo).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 });

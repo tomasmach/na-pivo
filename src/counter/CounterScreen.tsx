@@ -113,7 +113,7 @@ import {
   type BeerFormResult,
 } from '@/counter/BeerFormModal';
 import { eveningPriceLabel, sessionBreakdown } from '@/myBeers/eveningModel';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { MenuBeerActionsSheet, confirmRemoveFromMenu } from '@/counter/MenuBeerActionsSheet';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
@@ -123,8 +123,12 @@ import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { CounterMoreSheet } from '@/counter/CounterMoreSheet';
 import { PlaceChip, type PlaceChipKind } from '@/counter/PlaceChip';
 import { CoasterCard } from '@/counter/CoasterCard';
+import { AlcoholEstimateRow, AlcoholEstimateSheet } from '@/counter/AlcoholEstimateSheet';
+import { AlcoholProfileSheet } from '@/counter/AlcoholProfileSheet';
+import type { BodyProfile } from '@/drinks/alcoholEstimate';
 import { CounterQuickActions } from '@/counter/CounterQuickActions';
 import { CounterCta } from '@/counter/CounterCta';
+import { useBookLayout } from '@/layout/bookLayout';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
@@ -134,6 +138,7 @@ import { useToursStore } from '@/stores/toursStore';
 import { tourStopAtPub } from '@/tours/counterLink';
 import { runGlance } from '@/tours/glance';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
+import { useBottomInset } from '@/navigation/TabScreen';
 
 // ─── Timings ──────────────────────────────────────────────────────────────────
 
@@ -221,6 +226,13 @@ function isSameMenuPub(target: MenuTarget | null, live: MenuTarget): boolean {
   return !!target && target.cell === live.cell && target.pubId === live.pubId;
 }
 
+/** The outside place of the evening still being counted, if it has one. */
+function liveOutsideContext(): OutsidePlaceContext | null {
+  const current = useTallyStore.getState().current;
+  if (!current || current.drinks.length === 0) return null;
+  return contextFromPubKey(current.pubKey);
+}
+
 /** "Pilsner Urquell · 0,5 l" — the CTA's sub-line and the receipt's meta. */
 function beerLine(beer: { name: string; volumeMl?: number; servingType?: ServingType }): string {
   const serving =
@@ -257,12 +269,13 @@ function PermissionGate({
   embedded: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
   return (
     <View
       style={[
         styles.root,
         styles.gate,
-        { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom },
+        { paddingTop: embedded ? 0 : insets.top, paddingBottom: bottomInset },
       ]}
     >
       <View style={styles.gateIcon}>
@@ -346,11 +359,15 @@ function Tacek({
   onMoreClose,
 }: TacekProps) {
   const insets = useSafeAreaInsets();
+  const showAppDialog = useShowAppDialog();
+  // On a table the counter is the short bottom half, laid out like the compass there.
+  const tabletop = useBookLayout().mode === 'tabletop';
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
   const topInset = embedded ? 0 : insets.top;
+  const bottomInset = useBottomInset(Spacing.md);
 
   const pub = place?.kind === 'pub' ? place.pub : null;
   const outsideContext = place?.kind === 'outside' ? place.context : null;
@@ -394,6 +411,7 @@ function Tacek({
   const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
   const [stickerOpen, setStickerOpen] = useState(false);
   const [checkInSheetOpen, setCheckInSheetOpen] = useState(false);
+  const [alcoholSheet, setAlcoholSheet] = useState<'estimate' | 'profile' | null>(null);
 
   // — Beer form —
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
@@ -564,6 +582,57 @@ function Tacek({
     [closeMore],
   );
 
+  const bodyProfile = useSettingsStore((s) => s.bodyProfile);
+  const setBodyProfile = useSettingsStore((s) => s.setBodyProfile);
+  const alcoholEstimateHidden = useSettingsStore((s) => s.alcoholEstimateHidden);
+  const setAlcoholEstimateHidden = useSettingsStore((s) => s.setAlcoholEstimateHidden);
+  const alcoholTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (alcoholTimer.current) clearTimeout(alcoholTimer.current);
+  }, []);
+  const openAlcoholSheet = useCallback((next: 'estimate' | 'profile' | null) => {
+    if (alcoholTimer.current) clearTimeout(alcoholTimer.current);
+    alcoholTimer.current = null;
+    setAlcoholSheet(next);
+  }, []);
+  /** iOS will not present a modal while another one is still leaving. */
+  const switchAlcoholSheet = useCallback((next: 'estimate' | 'profile' | null, then?: () => void) => {
+    setAlcoholSheet(null);
+    if (alcoholTimer.current) clearTimeout(alcoholTimer.current);
+    alcoholTimer.current = setTimeout(() => {
+      alcoholTimer.current = null;
+      setAlcoholSheet(next);
+      then?.();
+    }, SHEET_DISMISS_MS);
+  }, []);
+  const handleAlcoholProfileSave = useCallback(
+    (profile: BodyProfile) => {
+      setBodyProfile(profile);
+      setAlcoholEstimateHidden(false);
+      switchAlcoholSheet('estimate');
+    },
+    [setAlcoholEstimateHidden, setBodyProfile, switchAlcoholSheet],
+  );
+  const handleAlcoholTurnOff = useCallback(() => {
+    switchAlcoholSheet(null, () =>
+      showAppDialog({
+        title: t.alcohol.turnOffTitle,
+        message: t.alcohol.turnOffMessage,
+        buttons: [
+          { text: t.counter.cancel, style: 'cancel', onPress: () => openAlcoholSheet('estimate') },
+          {
+            text: t.alcohol.turnOffConfirm,
+            style: 'destructive',
+            onPress: () => {
+              setBodyProfile(null);
+              setAlcoholEstimateHidden(true);
+            },
+          },
+        ],
+      }),
+    );
+  }, [openAlcoholSheet, setAlcoholEstimateHidden, setBodyProfile, showAppDialog, switchAlcoholSheet]);
+
   // ── Session state ───────────────────────────────────────────────────────────
 
   const isThisSession = cell !== null && current?.pubKey === cell;
@@ -588,7 +657,7 @@ function Tacek({
 
   useEffect(() => {
     if (!latestDrinkAt) return undefined;
-    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000);
+    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000) as number | NodeJS.Timeout;
     if (typeof timer === 'object' && 'unref' in timer && typeof timer.unref === 'function') {
       timer.unref();
     }
@@ -1277,10 +1346,11 @@ function Tacek({
             setPickOpen(true);
           },
           () => setPickOpen(true),
+          showAppDialog,
         ),
       );
     },
-    [cell, pub, recordMenuWrite, runAfterSheetClose, showToast],
+    [cell, pub, recordMenuWrite, runAfterSheetClose, showAppDialog, showToast],
   );
 
   // ── Pick sheet ──────────────────────────────────────────────────────────────
@@ -1379,7 +1449,7 @@ function Tacek({
         { text: t.counter.cancel, style: 'cancel' },
       ],
     });
-  }, [handleScanMenu, onChangePlace, pub, showToast]);
+  }, [handleScanMenu, onChangePlace, pub, showAppDialog, showToast]);
 
   const runDrinkScan = useCallback(async (source: MenuPhotoSource) => {
     setScanSourceVisible(false);
@@ -1466,7 +1536,7 @@ function Tacek({
         { text: t.counter.cancel, style: 'cancel' },
       ],
     });
-  }, [openBackdateForm]);
+  }, [openBackdateForm, showAppDialog]);
 
   // ── Closing / resuming the evening ──────────────────────────────────────────
 
@@ -1493,7 +1563,7 @@ function Tacek({
         },
       ],
     });
-  }, [archiveCurrent, current, hapticEnabled, isThisSession, latestBeer, pub]);
+  }, [archiveCurrent, current, hapticEnabled, isThisSession, latestBeer, pub, showAppDialog]);
 
   const handleResume = useCallback(() => {
     if (!cell) return;
@@ -1648,6 +1718,7 @@ function Tacek({
             ? t.counter.rapidInlineJustNow
             : t.counter.rapidInline(pendingRapid.minutes),
         confirmLabel: t.counter.rapidInlineConfirm,
+        confirmAccessibilityLabel: t.a11y.counterRapidConfirm,
         onConfirm: confirmRapid,
       };
     }
@@ -1708,12 +1779,22 @@ function Tacek({
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const primaryButton = (
+    <CounterCta
+      testID="counter-primary"
+      label={cta.label}
+      subLabel={cta.subLabel}
+      onPress={cta.onPress}
+      accessibilityLabel={cta.a11y}
+    />
+  );
+
   return (
     <View
       style={[
         styles.root,
         styles.surface,
-        { paddingTop: topInset, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+        { paddingTop: topInset, paddingBottom: bottomInset },
       ]}
     >
       <View style={styles.header}>
@@ -1746,6 +1827,7 @@ function Tacek({
       </View>
 
       <CoasterCard
+        sideways={tabletop}
         count={count}
         nounLabel={beerNoun(count)}
         spentLabel={spentLabel}
@@ -1756,6 +1838,11 @@ function Tacek({
           count > 0
             ? t.a11y.counterCoaster(beerCountLabel(count), spentLabel ?? undefined)
             : t.a11y.counterCoasterEmpty
+        }
+        estimate={
+          bodyProfile || !alcoholEstimateHidden ? (
+            <AlcoholEstimateRow onPress={() => openAlcoholSheet(bodyProfile ? 'estimate' : 'profile')} />
+          ) : undefined
         }
       >
         {/* The room the drawn mug used to take, spent on the two shortcuts
@@ -1771,15 +1858,19 @@ function Tacek({
         />
       </CoasterCard>
 
-      <NudgeSlot nudge={nudge} />
-
-      <CounterCta
-        testID="counter-primary"
-        label={cta.label}
-        subLabel={cta.subLabel}
-        onPress={cta.onPress}
-        accessibilityLabel={cta.a11y}
-      />
+      {tabletop ? (
+        <View style={styles.actionRow}>
+          <View style={styles.actionHalf}>{primaryButton}</View>
+          <View style={styles.actionHalf}>
+            <NudgeSlot nudge={nudge} />
+          </View>
+        </View>
+      ) : (
+        <>
+          <NudgeSlot nudge={nudge} />
+          {primaryButton}
+        </>
+      )}
 
       <DrinkPickSheet
         visible={pickOpen}
@@ -1824,6 +1915,22 @@ function Tacek({
         onBackdate={() => runAfterSheetClose(handleBackdatePress)}
         onScanMenu={pub ? () => runAfterSheetClose(() => setScanSourceVisible(true)) : undefined}
         scanning={scanningDrinks}
+        onAlcoholEstimate={() => runAfterSheetClose(() => openAlcoholSheet(bodyProfile ? 'estimate' : 'profile'))}
+      />
+
+      <AlcoholEstimateSheet
+        visible={alcoholSheet === 'estimate'}
+        profile={bodyProfile}
+        onEdit={() => switchAlcoholSheet('profile')}
+        onTurnOff={handleAlcoholTurnOff}
+        onClose={() => setAlcoholSheet(null)}
+      />
+
+      <AlcoholProfileSheet
+        visible={alcoholSheet === 'profile'}
+        profile={bodyProfile}
+        onSave={handleAlcoholProfileSave}
+        onClose={() => setAlcoholSheet(null)}
       />
 
       <BeerFormModal
@@ -1940,12 +2047,19 @@ export default function CounterScreen({
   }, [pickerOpen, setPicking]);
   // "Mimo hospodu" mode, restored from a live outside session so returning to
   // the tab mid-evening lands back in it (useNearbyPub ignores ctx sessions).
-  const [outsideContext, setOutsideContext] = useState<OutsidePlaceContext | null>(() => {
-    const current = useTallyStore.getState().current;
-    if (!current || current.drinks.length === 0) return null;
-    return contextFromPubKey(current.pubKey);
-  });
-  const hadActiveSessionOnOpen = useRef((useTallyStore.getState().current?.drinks.length ?? 0) > 0);
+  const [outsideContext, setOutsideContext] = useState(liveOutsideContext);
+
+  // The tab mounts with the app, before the tally may have loaded. The counter
+  // counts as opened the first time it is on screen, so restore and track then.
+  const openedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (openedRef.current) return;
+      openedRef.current = true;
+      setOutsideContext(liveOutsideContext());
+      void trackCounterTabOpened((useTallyStore.getState().current?.drinks.length ?? 0) > 0);
+    }, []),
+  );
 
   const [handedOff, setHandedOff] = useState(false);
   // A tour stop asked to log a beer here: open on that pub, as a manual pick.
@@ -1960,10 +2074,6 @@ export default function CounterScreen({
       selectPub(pub);
     }, [selectPub]),
   );
-
-  useEffect(() => {
-    void trackCounterTabOpened(hadActiveSessionOnOpen.current);
-  }, []);
 
   // Active pub: ONLY an explicit selection (auto-pick within 120 m, a pinned
   // session, or a manual pick). We never silently attribute drinks to a pub the
@@ -2067,6 +2177,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
   },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  actionHalf: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

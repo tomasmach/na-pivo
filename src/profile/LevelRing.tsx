@@ -1,12 +1,6 @@
 /**
  * LevelRing — the career, read plainly: which rung you are on, how far into it.
  *
- * It replaced a drawn stack of beer mats. The stack looked like a pile of
- * pancakes, and worse, it encoded the ladder twice: once as an unreadable
- * height and once as the sentence in the footer. A ring shows the one thing the
- * sentence cannot — how much of this level is already behind you — and it shows
- * the level number itself, which is what people actually talk about.
- *
  * Design rules this file enforces:
  * - Vector, colours from tokens only.
  * - The arc is amber as a THIN stroke, never a filled amber plane: the screen's
@@ -24,16 +18,16 @@ import Svg, { Circle } from 'react-native-svg';
 
 import { LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 
 const STROKE = 6;
 /** Below a full turn the arc needs a visible start, so it never reads as empty. */
-const MIN_ARC = 0.04;
+const MIN_ARC = 0.08;
 
 export interface LevelRingProps {
   /** Rung number, or null when there is no account and so no level. */
   level: number | null;
-  /** The rung's name ("Výčepní"), uppercased here. Null draws no caption. */
+  /** The rung's name ("Výčepní"). Null draws no caption. */
   title: string | null;
   /** 0..1 through the current rung. Null (or a maxed level) draws a full ring. */
   progress: number | null;
@@ -105,7 +99,7 @@ export const LevelRing = memo(function LevelRing({
 
       {title !== null ? (
         <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {title.toUpperCase()}
+          {title}
         </Text>
       ) : null}
     </View>
@@ -127,17 +121,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   level: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.foam,
-    includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   title: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 11,
-    letterSpacing: 1.6,
+    fontSize: 13,
+    fontWeight: '600',
     color: Colors.foamMuted,
-    includeFontPadding: false,
     textAlign: 'center',
   },
 });

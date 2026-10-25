@@ -1,6 +1,6 @@
 """Guards for the Postgres connection pool.
 
-The test suite runs on SQLite, so nothing else here exercises the production
+The test suite runs on SQLite locally, and nothing else here exercises the production
 database configuration. These tests read it out of a real settings import and
 then build the pool Django would build: without a pool (or with persistent
 connections back on) every ASGI request opens its own Postgres connection and

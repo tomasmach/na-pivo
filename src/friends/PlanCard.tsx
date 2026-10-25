@@ -16,9 +16,10 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { openFriendProfile } from '@/layout/openDetail';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { ClockIcon, CompassIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
 import {
   endFriendPubActivity,
@@ -66,13 +67,14 @@ function planTimeLabel(iso: string): string {
 }
 
 function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps) {
+  const showAppDialog = useShowAppDialog();
   const showToast = useToastStore((s) => s.show);
   const router = useRouter();
   const { account, responses } = activity;
 
   const openSafetyMenu = useFriendSafety(onResponded);
   const openProfile = useCallback(() => {
-    if (account.id) router.push(`/parta/${account.id}` as Href);
+    if (account.id) openFriendProfile(router, account.id);
   }, [account.id, router]);
   const handleLongPress = useCallback(() => {
     openSafetyMenu(account);
@@ -123,7 +125,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
         { text: t.friends.planCancel, style: 'destructive', onPress: confirmCancel },
       ],
     });
-  }, [confirmCancel]);
+  }, [confirmCancel, showAppDialog]);
 
   if (cancelling) return null;
 

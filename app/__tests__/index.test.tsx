@@ -30,13 +30,17 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 jest.mock('expo-router', () => ({
   useFocusEffect: jest.fn(),
+  useIsFocused: jest.fn(() => true),
   useLocalSearchParams: jest.fn(() => ({})),
   useRouter: jest.fn(() => ({
     push: jest.fn(),
   })),
 }));
 
+// The right-half pages have their own tests and pull in every detail screen.
+jest.mock('@/layout/RightPage', () => ({ RightPage: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
+  SafeAreaInsetsContext: jest.requireActual<typeof import('react')>('react').createContext(null),
   useSafeAreaInsets: jest.fn(() => ({
     top: 0,
     right: 0,

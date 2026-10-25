@@ -1567,3 +1567,17 @@ msgstr "Know where %(beer)s is on tap?"
 
 msgid "Zapiš lístek té hospody v Na pivo."
 msgstr "Log that pub's menu in Na pivo."
+
+msgid "Na čepu poblíž"
+msgstr "On tap nearby"
+
+msgid "před chvílí"
+msgstr "just now"
+
+#, python-format
+msgid "před %(hours)s h"
+msgstr "%(hours)s h ago"
+
+#, python-format
+msgid "%(beer)s je na čepu %(pub)s, %(distance)s km, doplnil někdo z komunity %(age)s"
+msgstr "%(beer)s is on tap at %(pub)s, %(distance)s km away, added by someone from the community %(age)s"

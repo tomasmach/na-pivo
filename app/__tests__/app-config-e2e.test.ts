@@ -1,6 +1,6 @@
 import buildAppConfig from '../../app.config';
 
-jest.mock('expo/config-plugins.js', () => ({ withInfoPlist: (config: unknown) => config }));
+jest.mock('expo/config-plugins', () => ({ withInfoPlist: (config: unknown) => config }));
 
 const original = process.env;
 afterEach(() => { process.env = original; });

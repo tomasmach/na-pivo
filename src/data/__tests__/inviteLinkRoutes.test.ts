@@ -18,10 +18,12 @@ describe('restored app invitation routes', () => {
     'napivo://parta/pozvanka?code=Ab3xK9_pQ2sT',
     'napivo:///parta/pozvanka?code=Ab3xK9_pQ2sT',
     'https://na-pivo.cz/p/Ab3xK9_pQ2sT',
-  ])('preserves friend invitation codes: %s', (path) => {
+  ])('opens friend invitations on the invite screen: %s', (path) => {
     expect(parseInviteCodeFromUrl(path)).toBe('Ab3xK9_pQ2sT');
     expect(isLegacyTableInviteUrl(path)).toBe(false);
-    expect(redirectSystemPath({ path, initial: false })).toBe(path);
+    for (const initial of [true, false]) {
+      expect(redirectSystemPath({ path, initial })).toBe('/parta/pozvanka?code=Ab3xK9_pQ2sT');
+    }
   });
 
   it.each([

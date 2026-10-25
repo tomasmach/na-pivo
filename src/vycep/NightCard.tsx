@@ -9,7 +9,7 @@
 import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { MenuIcon } from '@/components/shared/IconGlyph';
 import { reportProfileContent } from '@/data/auth';
 import {
@@ -52,6 +52,7 @@ function authorLabel(night: PublishedNight): string {
 }
 
 function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
+  const showAppDialog = useShowAppDialog();
   const showToast = useToastStore((s) => s.show);
   const markUnpublished = useVycepStore((s) => s.markUnpublished);
   const now = useMemo(() => new Date(), []);
@@ -118,7 +119,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
         },
       ],
     });
-  }, [markUnpublished, night.clientId, onRemoved, showToast]);
+  }, [markUnpublished, night.clientId, onRemoved, showAppDialog, showToast]);
 
   const handleReport = useCallback(() => {
     showAppDialog({
@@ -141,7 +142,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
         },
       ],
     });
-  }, [night.author.id, night.id, showToast]);
+  }, [night.author.id, night.id, showAppDialog, showToast]);
 
   const openMenu = useCallback(() => {
     if (night.isMine) handleUnpublish();

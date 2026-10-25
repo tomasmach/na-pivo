@@ -74,8 +74,10 @@ export default function ProfilePrivacyScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  // Back to the tabs already under this modal; replace would stack a second
+  // tab bar on top, which iOS lays out broken until a restart.
   const finish = useCallback(() => {
-    router.replace('/(tabs)' as Href);
+    router.dismissTo('/(tabs)' as Href);
   }, [router]);
 
   const select = useCallback((next: boolean) => {

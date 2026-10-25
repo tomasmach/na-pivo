@@ -12,6 +12,7 @@ import {
 } from '../drinksQueue';
 import { submitDrink, type DrinkEntry } from '../drinksClient';
 import { t } from '@/i18n';
+import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 
@@ -83,6 +84,7 @@ beforeEach(async () => {
   useTallyStore.setState({ current: null, history: [] });
   useToastStore.getState().hide();
   (submitDrink as jest.Mock).mockResolvedValue('ok');
+  useAccountStore.setState({ refreshBadges: jest.fn(async () => undefined) });
   await AsyncStorage.clear();
 });
 
@@ -160,6 +162,24 @@ describe('flushDrinksQueue', () => {
     (submitDrink as jest.Mock).mockResolvedValue('ok');
     await flushDrinksQueue();
     await expect(readQueue()).resolves.toEqual([]);
+  });
+
+  it('refetches the profile once after delivering drinks, so new badges show up', async () => {
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([entry({ client_id: 'a' }), entry({ client_id: 'b' })]),
+    );
+
+    await flushDrinksQueue();
+
+    expect(useAccountStore.getState().refreshBadges).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refetch the profile when no drink reached the server', async () => {
+    (submitDrink as jest.Mock).mockResolvedValue('retry');
+    await enqueueDrink(entry());
+
+    expect(useAccountStore.getState().refreshBadges).not.toHaveBeenCalled();
   });
 
   it('keeps only the drinks that still need retrying', async () => {
@@ -422,6 +442,7 @@ describe('flushDrinksQueue', () => {
     expect(submitDrink).toHaveBeenCalledTimes(1);
     expect((submitDrink as jest.Mock).mock.calls[0][0]).toMatchObject({ client_id: 'a' });
     expect(await readQueue()).toEqual([]);
+    expect(useAccountStore.getState().refreshBadges).not.toHaveBeenCalled();
   });
 
   it('does nothing on an empty queue', async () => {

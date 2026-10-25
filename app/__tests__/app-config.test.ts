@@ -9,7 +9,7 @@ import path from 'node:path';
 
 import buildAppConfig from '../../app.config';
 
-jest.mock('expo/config-plugins.js', () => ({
+jest.mock('expo/config-plugins', () => ({
   withInfoPlist: (config: unknown) => config,
 }));
 

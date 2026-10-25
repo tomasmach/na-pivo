@@ -93,8 +93,8 @@ Soubory: `src/mocks/mockTheme.ts` (jediný zdroj `MockType` / `MockColors` /
 `MockLayout`), `src/party/LivePartyMockScreen.tsx`, `src/pubs/PubListMockScreen.tsx`,
 `src/pubs/PlacesSheet.tsx`, `src/mocks/StatGrid.tsx`, `src/mocks/SectionBreak.tsx`,
 `src/mocks/Leaderboard.tsx`, `src/mocks/LivePartyBar.tsx`,
-`src/components/shared/TabBar.tsx`, `src/profile/ProfileMockScreen.tsx`,
-`src/feed/FeedScreen.tsx`.
+`src/profile/ProfileMockScreen.tsx`, `src/feed/FeedScreen.tsx`. Tab bar je systémový
+a etalon nemá (§17).
 
 Starý etalon 2.x (`src/counter/*`, `CardSurface`, `DoorRail`) zůstává v kódu,
 dokud ho 3.0 obrazovky nenahradí, ale **nové UI se z něj nekopíruje**. Konkrétně
@@ -132,15 +132,17 @@ věc produktu. Přestal ale být celou appkou.
 
 ## Navigace
 
-Pět tabů, Party uprostřed:
+Čtyři taby v systémovém tab baru:
 
 | tab | co tam je |
 |---|---|
-| **Kocoviny** | Parta: automatická historie večerů; Svět: veřejně zveřejněné večery |
-| **Hospody** | kompas v hlavě seznamu, hledání, filtry, detail hospody |
-| **Party** | běžící večer: piva, lidi, hry, fotky, vlákno |
-| **Komunita** | žebříčky, výzvy, akce |
-| **Profil** | statistiky, rekordy, aktivita, účet a nastavení |
+| **Kompas** | kompas a mapa, hledání, filtry, cesta k hospodě |
+| **Štamgast** | počítadlo piv a deník večerů za jedním přepínačem |
+| **Parta** | kamarádi, kdo kde sedí, co se pilo, žebříček party |
+| **Profil** | statistiky, odznaky, fotky, účet a nastavení |
+
+Jantarový disk Party uprostřed baru z plánu 3.0 systémový tab bar neumí, takže Party (route
+`beer`, dnes Štamgast) zůstává běžným tabem.
 
 Pravidla tab baru, rout a deep-linků: §17.
 
@@ -182,8 +184,8 @@ Pravidla, která jsou produktová, ne matematická:
 2. **Remíza je remíza.** MVP je `null`, když se o špičku dělí dva.
 3. **Prázdná hodina dostane sloupec.** Jinak se večer nakreslí klidnější, než byl.
 4. **Vyrovnat rekord není překonat rekord.**
-5. **Promile a čas do řízení se neobjevují nikdy**
-   (`docs/decisions/no-bac-or-driving-estimates.md`).
+5. **Promile jen jako odhad, nikdy jako rada k řízení**
+   (`docs/decisions/alcohol-estimate.md`).
 6. **Útrata je moje vlastní.** Cenu nese jen pivo, které zapsal můj telefon, takže
    sečíst jde jenom moje útrata (`nightSpend`). Celková útrata stolu by byla tiše
    špatně: cena je nepovinná a kdo nesdílí pití, nemá ve večeru řádky. Do
@@ -353,6 +355,7 @@ dekorace, ne animace a rozhodně ne emoji v chromu.
 | `Colors.border` | `#3A322A` | Jazyk 2.x. Nové UI odděluje hairliny z pěny (§2.2), ne plným okrajem. |
 | `Colors.amber` | `#E8A317` | Akcent. Primární tlačítko, aktivní stav, akcentované akce a ikony. Číslice jsou pěna (§3.2). |
 | `Colors.amberLight` | `#F5B642` | Jen uvnitř ilustrací (horní stop gradientu piva). |
+| `Colors.amberDeep` | `#9A6A0C` | Jen podklad odznaku tab baru na iOS, který text odznaku kreslí vždy bíle. Bílá na něm má 4,7 : 1, na `amber` 2,2 : 1. |
 | `Colors.glow` | `#FF7A1A` | Jazyk 2.x (`amberGlow*`). **V novém UI se nepoužívá vůbec** (§6.1). |
 | `Colors.neon` | `#FFD27A` | Rezerva pro zvýrazněné stavy. Na etalonu se nepoužívá. |
 | `Colors.foam` | `#FBF3E0` | Primární text a světlé hairliny (s alfou). |
@@ -389,8 +392,11 @@ přes něj, nikdy ručně `'#FBF3E01A'` a nikdy `opacity` na kontejneru s textem
 
 **Plná jantarová plocha smí být v obsahu obrazovky nejvýš jednou** (čtecí obrazovka nemusí mít CTA). Patří primárnímu tlačítku
 (`backgroundColor: Colors.amber`). Druhá plná jantarová plocha v obsahu je bug. **Chrome se počítá
-zvlášť:** jantarový disk Party v tab baru (§17.2) a `+1` CTA v live baru (§20.5) jsou trvalé
-kotvy chromu a s obsahem nesoupeří — právě proto v obsahu platí pravidlo o to přísněji.
+zvlášť:** jantarová aktivní položka a odznak Party v tab baru (§17.2) a `+1` CTA v live baru
+(§20.5) jsou trvalé kotvy chromu a s obsahem nesoupeří — právě proto v obsahu platí pravidlo o to přísněji.
+
+**Medaile odznaků** do 64 pt jsou ilustrace, ne plocha, i když jsou jantarové (§9). Medaile 128 pt
+smí být na obrazovce jedna, v detailu odznaku.
 
 **Jantar jako text/ikona** patří aktivnímu stavu, akcentovaným akcím („Zkusit znovu“, „Obnovit“)
 a aktivnímu kusu baseline. Hlavní číslice jsou **pěna**, ne jantar (§3.2). Malé stavové prvky —
@@ -494,8 +500,8 @@ tam, kde je počet piv celá odpověď a kolem něj není co číst — idle Ve�
 
 **Negativní tracking roste s velikostí:** −0.2 u titulků sekcí a zvýrazněných názvů, přes
 −0.4/−0.5 u titulků obrazovek a −0.7 u displejových stupňů, po −1 u počítadla. Běžný body text jede bez
-trackingu. Jediný **pozitivní** tracking mají verzálkové mikro-labely (+0.2 label tab baru a `PR`;
-caption typu „ODEHRÁNO“ až +1.2).
+trackingu. Jediný **pozitivní** tracking mají verzálkové mikro-labely (+0.2 `PR`; caption typu
+„ODEHRÁNO“ až +1.2). Label tab baru je systémový a tracking nemá.
 
 **Verzálkové mikro-kickery jsou zakázané.** Nadpis sekce je 18pt bold v sentence case
 (`MockType.titleS`), ne 11pt verzálky s prostrkáním — přesně ty dělaly z mocků „starou appku“
@@ -587,11 +593,20 @@ screen: { paddingHorizontal: MockLayout.screenPad },   // 20
   nebo 24 „protože je to sheet“ neexistuje.
 - **Nad headerem nic navíc: `paddingTop: insets.top`.** Status bar je na telefonu s ostrovem sám o
   sobě ~60 pt hnědého čela; každý přidaný bod se pak čte jako prázdné čelo, ne jako vzduch.
-- **Spodní okap scrollovatelné obrazovky s tab barem: `paddingBottom: insets.bottom + TAB_CHROME`**
-  (`TAB_CHROME = 132`, `src/components/shared/TabBar.tsx`). Bar je absolutně pozicovaný a scénu
-  neinsetuje, takže rezervu si přidává každá obrazovka sama — a rezervuje se vždycky vyšší hodnota
-  (bar + safe area + live pilulka), protože obsah, který se vejde jen když nikdo nepije, není
-  layout, ale náhoda. Obrazovky bez tab baru: `paddingBottom: Math.max(insets.bottom, Spacing.sm)`.
+- **Spodní okap obrazovky v tabu: `useBottomInset(gap)`** (`src/navigation/TabScreen.tsx`).
+  Systémový tab bar na iOS plave nad scénou a scéna pod ním pokračuje, takže okraj si přidává
+  každá obrazovka sama. Pevný layout: `paddingBottom: useBottomInset(Spacing.md)`, takže spodní
+  CTA končí 14 pt nad barem. Scroll:
+  `contentContainerStyle.paddingBottom: useBottomInset(Spacing.xl)`, obsah pak zajíždí pod sklo
+  a poslední řádek doskroluje nad bar. Když pod scrollem visí pevný prvek (nudge v Partě), platí
+  pro něj pravidlo pevného layoutu a scroll končí nad ním. Hook vrací na iOS výšku baru i s home
+  indicatorem plus `gap`, na Androidu jen `gap` (tab tam scénu ukončí nad barem sám) a mimo taby
+  `Math.max(insets.bottom, gap)`, což je pravidlo obrazovek bez tab baru.
+- **Boční lišta tab baru (zavřený iPhone Duo) obrazovku zúží.** `TabScreen` odečte boční inset,
+  který lišta přidá, takže obrazovky si boky z insetů nepočítají.
+- **`useSafeAreaInsets()` uvnitř tabu vrací insety zařízení, ne baru.** Sheet nebo modal otevřený
+  z tabu bar překryje, takže s ním počítat nesmí. Kdo potřebuje bar, čte `useBottomInset` nebo
+  `useTabBarInset` (výška, kterou bar zakrývá; mimo taby 0).
 - **Nadpis → jeho obsah: `MockLayout.controlGap` (24).** Sekce → sekce: `MockLayout.sectionGap`
   (32), nebo `SectionBreak` (§5.2).
 
@@ -778,8 +793,8 @@ V appce existují **dva druhy spodních panelů** a nezaměňují se:
    0.26`). **Pan gesto je na madle, ne na celém sheetu**; tělo táhne jen pod `full`, na `full` jen
    dolů a jen když je list nahoře. Throw: `projected = translateY + velocityY * 0.12` → nejbližší
    detent, spring `{ damping: 22, stiffness: 190, mass: 0.7 }`.
-2. **Intent sheet** — modal s jedním záměrem (§8), přes `BottomSheetModal` wrapper. Mechanika
-   níže. Vizuálně: zem sheetu je **`Colors.stout`** — stejná zem jako obrazovka, ne `stout2`
+2. **Intent sheet** — modal s jedním záměrem (§8), přes sdílený `Modal`
+   (`src/components/shared/Modal.tsx`). Mechanika níže. Vizuálně: zem sheetu je **`Colors.stout`** — stejná zem jako obrazovka, ne `stout2`
    („sheet je obrazovka, ne popup“) — radius **28** na horních rozích, `paddingHorizontal:
    MockLayout.screenPad` (jedna šířka appky, ne soukromých 16), grabber `44 × 4` (`foam 0.22`).
 
@@ -787,13 +802,31 @@ Zbytek téhle sekce je mechanika intent sheetu. Modal, ne knihovna.
 
 ### 7.1 Co vlastní wrapper a co volající
 
-Mechaniku modalu vlastní `src/components/shared/BottomSheetModal.tsx` (API:
-`{ visible, onClose, children }`): `Modal` s `animationType="none"`, scrim `black 0.6` s prolnutím,
-kartu s příjezdem na springu, Android back gesture a dismiss target za kartou
-(`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát). **Nestav si vlastní
-`Modal`.**
+Každý modal v appce je `Modal` ze `src/components/shared/Modal.tsx`. Má stejné props jako
+`Modal` z React Native, jehož import ESLint (`no-restricted-imports`) mimo wrapper zablokuje.
+**Nestav si `Modal` z `react-native`.** Wrapper k tomu přidává:
 
-Volající dodává jen kartu:
+- všechny orientace, protože vnitřní displej iPhonu Duo zámek na výšku nedrží (telefony drží
+  výšku přes Info.plist),
+- na rozloženém Duu drží průhledný sheet mimo boční insety okna (sloupec s hodinami a lišta
+  tabů). Na knize zůstane v půlce, ze které se otevřel, a sheet z kořene appky v pravé; na stole
+  zůstane ve své půlce jen krátká vycentrovaná karta (`centered`), z kořene v horní (§17.6). Karta,
+  která se do půlky stolu nevejde, `centered` nedostane a má celé okno. Všechno mimo
+  rámeček ztmaví a ťuknutí tam sheet zavře. Neprůhledný modal je celá obrazovka, dostane celé okno
+  a boční insety si drží sám. Obsah, který se měří z okna, se měří z `useModalFrame()`. Insety má
+  sheet vždycky od okna, ne od půlky, a jen tu část, kterou rámeček nevynechá. Komponenta, která
+  `Modal` vykresluje, vidí insety své půlky, takže styl podle insetů patří dovnitř modalu
+  (`ModalInsetView`),
+- dokud je sheet otevřený (na iOS až do konce nativního zavření, kdy dialog spouští zvolenou
+  akci), drží svou půlku připojenou i po zavření telefonu a stránku pod ním
+  nechá na místě i po otevření, takže rozepsaný zápis nezmizí,
+- jantarové tlačítko uvnitř zůstane jantarové i v tiché pravé půlce, sheet je samostatné okno.
+
+Scrim (`black 0.6`, `animationType="fade"`), dismiss target za kartou
+(`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát) a Android back přes
+`onRequestClose` si sheet zatím staví sám. Jiný scrim než `black 0.6` předá wrapperu jako
+`scrimColor`, aby ztmavení mimo rámeček mělo stejnou barvu. `BottomSheetModal`, se kterým počítají
+§7.2 a §7.2b, v appce ještě není. Volající dodává kartu:
 
 | Rozhodnutí | Důvod |
 |---|---|
@@ -1134,6 +1167,28 @@ hex uvnitř SVG, **reaguje na data, ne na čas**, komponenta je `memo`, pevný `
 odvozená od šířky konstantním poměrem, prázdný stav je vidět (`foam` na 4–8 %) a dekorativní
 kresba je pro čtečku skrytá (`accessibilityElementsHidden`).
 
+### Medaile odznaků (21. 10. 2026)
+
+Varianta B „Ražba“. Odznak je jedna medaile (`src/profile/BadgeMedal.tsx`) ve `viewBox`
+100 × 100, kreslená jen kruhy, cestami a elipsami. Rodina s úrovněmi roste o kus ražby:
+**I** holá mince (jádro r 28,4), **II** obruba s 16 nýty (r 34,4), **III** korunka jako na pivním
+uzávěru (21 zubů), **IV** korunka s věncem. Nejvyšší úroveň rodiny má vždycky věnec, i když má
+rodina jen tři úrovně. Úroveň čteš z obrysu, takže drží i v šedi a pro barvoslepé. Barva ji jen
+podtrhuje a bere se z tokenů: I `mutedText`, II `foamMuted`, III `amber`, IV `amber` s věncem
+v `neon`. Objemové odznaky (Čárkař, lahváče, plechovky) zůstávají cínové na všech úrovních a nikdy
+nejsou cíl ani odpočet. Jednorázové chvíle jsou čtvercové plakety, sbírky (Celý týden, Kolo roku)
+kulaté medaile, na kterých se sloty plní jantarem. Zamčená medaile je slepá ražba: tvar a motiv
+v pěně na 6–34 %, složené do plné barvy přes zem, aby se vrstvy nesčítaly. Další úroveň v řádku
+„Na řadě“ je o stupeň jasnější (motiv 50 %, obrys 30 %), protože je to to, co se nahání. Tajná je
+čárkovaná plaketa s otazníkem; neobjevená tajná jednoho tématu sdílí jednu buňku („2 přijdou
+samy“). Neotevřená nová medaile má jantarovou tečku 6/100 vpravo nahoře.
+
+Sbírka má pevnou hlavičku se zpětným tlačítkem, nahoře „Na řadě“ (tři nejbližší úrovně podle
+podílu hotového), pod pásem šest témat v mřížce po čtyřech: medaile 64 pt, název s úrovní 13/600
+(strop písma 1,1) a jedno číslo 12 pt. Profil ukazuje
+poslední čtyři medaile 56 pt a jeden řádek „Na řadě“. Detail je intent sheet podle §7 (zem `stout`,
+madlo 44 × 4) s medailí 128 pt.
+
 ---
 
 ## 10. Pohyb
@@ -1142,8 +1197,8 @@ kresba je pro čtečku skrytá (`accessibilityElementsHidden`).
 nesnáší a byly kvůli tomu už jednou odstraněny. Dekorativní pohyb na jádrových obrazovkách je
 zakázaný. Povolený pohyb má přesně tři kategorie, všechny stavové, ne ambientní: **reakce na tap**
 (pop níže), **příchod nového datového záznamu** (nový řádek threadu, §20.3) a **stavové smyčky
-vázané na skutečný stav** — prstenec Party ikony při běžícím večeru (§20.6) a loading skeleton
-během reálného síťového čekání (§20.11), které skončí, jakmile stav skončí.
+vázané na skutečný stav** — loading skeleton během reálného síťového čekání (§20.11), který
+skončí, jakmile stav skončí. V chrome smyčka neběží žádná (§20.6).
 
 Povolený je **jeden pop jako reakce na akci uživatele**:
 
@@ -1174,6 +1229,20 @@ Pravidla:
   pevnou výšku — obsah se mění, výška ne, takže nic pod nimi neposkočí.
 - Stisk se řeší stylem, ne animací: `pressed && { opacity: 0.65–0.9 }` (§6.2), u jantarové CTA
   navíc `transform: [{ scale: 0.97 }]`.
+
+**Výjimka: ražba medaile (21. 10. 2026).** Když se medaile od posledního otevření zvedla o úroveň,
+její detail ji jednou vyrazí: 350 ms po otevření se zamáčkne na 0,9 (120 ms, ease-in quad),
+kresba se naráz vymění na novou úroveň s haptikou Heavy, vyskočí na 1,08 (180 ms, ease-out cubic)
+a usadí se springem (damping 14, stiffness 220) s haptikou Success. Obě kresby leží přes sebe
+a vymění se na UI vlákně, takže úder nečeká na JS. Spouští ji otevření detailu,
+nikdy počítadlo, a podruhé se už neopakuje. Při omezeném pohybu je nová kresba hned na místě
+a haptika zůstává. Pop 130/180 ms by úder nenesl, proto je pomalejší.
+
+**Toast s medailí.** Novou medaili ohlásí stávající `Toast` nahoře přes celou šířku (okraj 12 pt):
+medaile 44 pt místo ikony, druhý řádek s dosaženou hodnotou, okraj `amber` 0,5, šipka a 4 s místo
+2,4 s. Čtečka obrazovky ho slyší hned při zobrazení. Ťuknutí otevře detail (víc medailí
+najednou otevře sbírku). Počítadlo se nehne; pivo odchází až po okně „Vrátit“, takže se toast
+s „Vrátit“ nepotká.
 
 ---
 
@@ -1242,9 +1311,9 @@ Projdi před každým commitem obrazovky. Všech dvanáct.
    clamp), ne naopak?
 3. **Dva `flex: 1`** — je na každé úrovni maximálně jeden dýchající prvek? Ostatní pevné nebo
    `flexShrink: 1`?
-4. **Obsah za tab barem** — má scrollovatelná tab obrazovka `paddingBottom: insets.bottom +
-   TAB_CHROME` a obrazovka bez tab baru `Math.max(insets.bottom, Spacing.sm)` (§4)? Je CTA celé
-   nad spodní hranou i na telefonu s home indicatorem?
+4. **Obsah za tab barem** — bere tab obrazovka spodní okraj z `useBottomInset` (§4), ne
+   z `insets.bottom`? Je CTA celé nad barem a doskroluje poslední řádek nad něj? Obrazovka bez
+   tab baru má `Math.max(insets.bottom, Spacing.sm)`.
 5. **Sheet nesahající na spodní hranu** — má `cardWrap` `marginBottom: -insets.bottom` a karta
    `paddingBottom: insets.bottom + Spacing.lg`? Není mezi kartou a hranou displeje proužek?
 6. **Patka překrývající obsah** — je patka sheetu **mimo** `ScrollView` a má `ScrollView`
@@ -1276,7 +1345,7 @@ Konkrétní věci, které už jednou byly a byly zabity. Nedělej je znovu.
    tom je, ne aby si vybral časové okno.
 2. **Tři žluté plochy v obsahu.** Jantarový segment + jantarový blok + jantarové tlačítko = tři
    bloky, které soupeří. **Jedna plná jantarová plocha v obsahu obrazovky** (§2.2); trvalé kotvy
-   chromu (disk Party, `+1` v live baru) se počítají zvlášť.
+   chromu (odznak Party v tab baru, `+1` v live baru) se počítají zvlášť.
 3. **Rozmazaný glow na pozadí.** Radiální jantarové halo za obsahem, „ambient light“, plošné
    gradienty přes celou obrazovku. `Colors.glow` je legacy 2.x — nové UI nemá glow vůbec (§6.1).
 4. **Tři cesty ke stejné věci.** Přidat pivo šlo z CTA, z pilulky pod ním i z overflow menu — a nikdo
@@ -1317,7 +1386,7 @@ Do 3.0 byla appka plochá: každý povrch byl plný `stout` / `stout2` / `stout3
 
 | Povrch | Materiál |
 |---|---|
-| Tab bar | sklo |
+| Tab bar | systémový; na iOS 26 sklo, které kreslí iOS (§17) |
 | Header obrazovky (včetně search pole vpravo nahoře) | sklo |
 | Bottom sheet — grabber a patka s akcí | sklo |
 | Plovoucí lišta nad obsahem (např. filtry v seznamu hospod) | sklo |
@@ -1344,9 +1413,9 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 )}
 ```
 
-`expo-glass-effect` přímo importuje šest produkčních souborů (`TabBar`, `GlassIconButton`, …),
-ale v `package.json` zatím chybí — funguje jako tranzitivní závislost Expo 56. Je to dluh: přímý
-import chce přímou dependency (Část III).
+Tab bar fallback řeší systém: na iOS 18 a starším a na Androidu má plný `Colors.stout2`
+(`backgroundColor` v `NativeTabs`). `expo-glass-effect` dnes žádný soubor neimportuje a
+v `package.json` není; první vlastní sklo ho přidá jako přímou závislost.
 
 Android sklo nemá vůbec. Tam platí fallback větev vždycky.
 
@@ -1366,8 +1435,8 @@ referenční appka sáhla po sytém akcentu (červená u Packety), sahá Na pivo
 ### 16.1 Co gradient smí
 
 - Shader hlavičky obrazovky (`GradientBand` + `HEADER_GRADIENT` / `LIVE_GRADIENT`).
-- Podklad chromu **pod** sklem, aby nebyl plochý obdélník — povolený pattern; kanonický `TabBar`
-  ho zatím nemá, takže ho nezaváděj bez schváleného mocku.
+- Podklad chromu **pod** sklem, aby nebyl plochý obdélník. Pod tab barem ne: ten je systémový
+  a podklad si kreslí sám. Jinde ho nezaváděj bez schváleného mocku.
 - Uvnitř ilustrací, kde už dnes je (`TallyCoaster`, `PartyTable` — 2.x obrazovky).
 
 ### 16.2 Co gradient nesmí
@@ -1404,38 +1473,45 @@ Rozpad 60 / 30 / 10 z §2.2 platí beze změny — gradient je pořád těch 60 
 
 ## 17. Navigace (3.0)
 
-### 17.1 Pět tabů
+### 17.1 Čtyři taby v systémovém baru
 
-| Tab | Co v něm je |
-|---|---|
-| **Kocoviny** | Kronika parties. Co zažili ostatní. Route zůstává `friends`. |
-| **Hospody** | Objevování. Kompas, mapa, seznam, filtry, detail. Route je group `(pubs)`, URL `/`. |
-| **Party** | Střed. Živý večer, nebo jeho založení. Route zůstává `beer`. |
-| **Komunita** | Žebříčky, výzvy, akce. Route `community`. |
-| **Profil** | Vlastní historie, statistiky, odznaky — a **nastavení**. |
+| Tab | Route | Co v něm je |
+|---|---|---|
+| **Kompas** | `index`, URL `/` | Kompas a mapa, hledání, filtry. |
+| **Štamgast** | `beer` | Počítadlo a deník za přepínačem. |
+| **Parta** | `friends` | Kamarádi, kdo kde sedí, co se pilo. |
+| **Profil** | `profile` | Statistiky, odznaky, fotky, účet a **nastavení**. |
 
-Labely se změnily, **route názvy ne**. `napivo://beer`, `/friends` a `/profile` jsou deep-link cíle
-a jsou pojmenované v telemetrii a `appReviewPolicy` — přejmenovat složku znamená rozbít vydané
-appky. Když se mění název v UI, mění se jen `TAB_META`.
+Tab bar je systémový: `NativeTabs` z `expo-router/native-tabs` v `app/(tabs)/_layout.tsx`. Na
+iPhonu s iOS 26 je to plovoucí skleněná pilulka, na skládacím iPhonu Duo ho iOS na zavřeném
+displeji přesune do svislé lišty u pravého okraje a na iOS 18 a starším a na Androidu je to plný
+bar `Colors.stout2`. Vlastní JS bar nestavíme, protože ten by systém přesunout nemohl.
+
+Route názvy jsou deep-link cíle (`napivo://beer`, `/friends`, `/profile`) a v telemetrii mají
+jména `tab_compass`, `tab_beer`, `tab_friends`, `tab_profile` (whitelist v
+`src/data/uxTelemetry.ts` a v backendu). Přejmenovat složku znamená rozbít vydané appky. Když se
+mění název v UI, mění se jen `Label` v layoutu.
 
 Nastavení nemá vlastní vstupní bod v chromu. Žije v Profilu (§0.4: okrajové akce do jednoho místa).
 
-### 17.2 Party je střed a jediný důraz
+### 17.2 Barvy, odznak a chování
 
-Party je prostřední položka a **jediná** v baru, která nese jantar — a nese ho jako **plný jantarový
-disk se stout glyfem**, ne jako obarvená ikona. Rozdíl je záměr: ostatní čtyři taby jsou místa, kam
-jdeš, Party je akce, kterou spustíš, a control, co něco spouští, má vypadat jako tlačítko.
-
-Ikona a label mají v `TabBar.tsx` **oddělené barvy**: uvnitř disku je glyf `Colors.stout` (na jantaru
-by jantarová ikona zmizela), zatímco label pod ním zůstává jantarový jako u aktivního tabu.
-
-Ostatní čtyři drží původní pravidlo: aktivní je jantarová ikona i label, neaktivní `mutedText`,
-a **žádný glow nikde** — glow v novém UI neexistuje vůbec (§6.1) a velká jantarová plocha patří
-obsahu obrazovky, ne baru, který je na každé z nich. Bar nemá horní hairline; sklo se od obsahu
-odděluje samo (§15.1).
-
-Party tab **nenaviguje** — pushuje `/party-live` jako fullscreen modal, takže se zavírá stejným
-gestem obráceně. Na té route se tab bar celý skrývá.
+- Aktivní položka je jantarová (`tintColor`), neaktivní `mutedText`. iOS 26 neaktivní barvu
+  ignoruje a kreslí ji systémově. Label je Baloo 2 Bold 12 jako dřív, jen bez trackingu, který
+  systémový bar nenastaví. Glow v baru není (§6.1).
+- **Parta nese odznak** z `usePartaSignalStore`: počet čekajících žádostí o přátelství
+  (od deseti „9+“), jinak prázdný odznak, když je v partě nepřečtená novinka nebo někdo live.
+  Text odznaku kreslí iOS vždy bíle, takže podklad je tam `Colors.amberDeep` (4,7 : 1).
+  Android barvu textu nastavit umí, tam je odznak `Colors.amber` se `stout` textem. Červený
+  systémový odznak nepoužíváme (§2.1). Počet je i v accessibility labelu („Parta, 3 novinky“);
+  ostatní taby mají label jen názvem, roli „tab“ VoiceOver přečte sám.
+- Každé ťuknutí na tab dá lehkou haptiku (pokud ji uživatel nevypnul). Telemetrie `tab_* select`
+  jde jen při přepnutí na jiný tab, přechod z kódu ani deep link ji nepošle.
+- Druhé ťuknutí na otevřený tab odroluje nahoru, když je scroll první v nativním stromu
+  obrazovky. Kořen takové obrazovky má `collapsable={false}` (Profil, Parta).
+- Všechny taby se připojí hned se startem appky. Serverová data, která obrazovka stahuje při
+  připojení, čekají na první zobrazení (`useFirstFocus`), aby start appky nestahoval cizí taby.
+- Bar se nikde neskrývá.
 
 ### 17.3 Search
 
@@ -1447,7 +1523,8 @@ vlastní povrch, ne jako rozbalovací pole v liště — jeden záměr na povrch
 Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil) — patří do stacku
 vedle `/profile/edit` a `/settings`. To platí i pro detail hospody: od 28. 9. 2026 je to
 samostatná obrazovka `/pub` (viz „Schválená stránka hospody“ nahoře), mapu otevírá výřez
-na stránce. Intent sheet (§7) detail nikdy nenese.
+na stránce. Intent sheet (§7) detail nikdy nenese. Na otevřeném iPhonu Duo se hospoda, večer a
+profil kámoše otevírají do pravé půlky (§17.6).
 
 ### 17.5 Kompas v seznamu hospod
 
@@ -1457,6 +1534,43 @@ hospodu, ke které právě navádí. Zůstává tím, co uživatel v tabu Hospod
 Zdroje pravdy o poloze a nejbližší hospodě jsou **dva a mají dané role**: `useCompass` pro
 discovery (seznam hospod, kompasová buňka), `useNearbyPub` (`src/counter/useNearbyPub.ts`) pro
 autopick hospody při zápisu. Třetí nezakládej.
+
+### 17.6 Otevřený iPhone Duo: kniha
+
+Schválená varianta B „Kniha“ (mock `na-pivo-iphone-duo.html`, 23. 10. 2026). Platí jen na iOS
+a jen pro okno rozložené jako kniha (šířka aspoň 800 pt a výška aspoň 600 pt) nebo postavené na
+stole (šířka aspoň 650 pt a výška aspoň 800 pt), viz `src/layout/bookLayout.ts`. Zavřené Duo
+(466 × 678 pt), rozdělené okno na vnitřním displeji a všechny iPhony zůstávají v telefonním
+rozložení beze změny.
+
+- **Dělí se přesně v ohybu.** Ohyb je střed okna, iOS jeho polohu appce nedává. Levá půlka je
+  obrazovka z telefonu, pravá její dvojče: Kompas vlevo a Mapa vpravo, Počítat vlevo a Deník
+  vpravo. Přepínače „Kompas | Mapa“ a „Počítat | Deník“ na rozloženém okně nejsou a každá půlka má
+  svoje „…“.
+- **20 pt od ohybu nic, na co jde ťuknout** (`FOLD_MARGIN`). Půlky to dostanou jako inset na
+  straně ohybu. Mapa smí jít až k ohybu, její ovládání ne.
+- **Jedno jantarové tlačítko na okno.** Pravá půlka je tichá: `GlowButton` a ručně stavěná
+  jantarová CTA v ní kreslí sekundární pilulku `stout3` („Dopiš večer“, „Doveď mě tam“ na
+  stránce hospody, „Namířit kompas“ na mapě). Sheet je samostatné okno a jantar v něm smí být.
+- **Hospoda, večer a kámoš se otevřou do pravé půlky** tabu se šipkou zpět. Jde to jen přes
+  `openDetail` (`openPubPage`, `openEvening`, `openFriendProfile`) a href na tyhle stránky jinde
+  nestav. Když je před taby obrazovka na celé okno (žebříčky, tour, nastavení), detail se pushne
+  jako na telefonu.
+- **Parta a Profil** rozloží obsah do dvou sloupců rozdělených v ohybu (`TwoColumns`). Kámoš nebo
+  hospoda se otevře přes pravý sloupec.
+- **Sheety zůstávají ve své půlce, když je okno rozložené jako kniha** (§7.1). Sheet otevřený
+  z kořene appky jde do pravé. Na stole má spodní sheet celé okno. Krátká vycentrovaná karta
+  (dialog, přejmenování pití) zůstane ve své půlce a karta z kořene jde do horní; karty, které se
+  do půlky stolu nevejdou (vyvěšení a sdílení noci, výsledky soutěže, „Co je nového“), mají celé
+  okno. Ztmavení vždycky pokryje celé okno a sheet nezajede pod sloupec s hodinami ani pod lištu
+  tabů.
+- **Na stole** (vodorovný ohyb, spodní půlka leží) je primární obrazovka dole a dvojče nahoře, aby
+  ručička kompasu ležela v rovině stolu. Kompas má kartu na šířku: ciferník vlevo, vzdálenost a
+  hospoda vpravo, pod ní „Doveď mě tam“ a „Dej mi jinou“ vedle sebe. Počítadlo stejně: číslo
+  vlevo, rychlé akce, promile a patička vpravo, pod kartou „Ještě jedno“ a výzva vedle sebe.
+- **Otevření a zavření.** Po otevření je obrazovka, kterou jsi měl, vlevo a pravá půlka přibude.
+  Po zavření vidíš vždycky kompas nebo počítadlo; co bylo vpravo, počká na další otevření. Půlka
+  s otevřeným sheetem zůstane připojená, dokud sheet nezavřeš, takže se rozepsaný zápis neztratí.
 
 ---
 
@@ -1508,6 +1622,12 @@ nevykreslí.
 ## 19. Ikonografie
 
 Používáme Lucide (dnes 80+ glyfů). Vlastní sada by byla samostatné rozhodnutí.
+
+**Tab bar nese Lucide jako obrázky.** Systémový bar komponentu nevykreslí, takže glyfy
+`compass`, `beer`, `users` a `user` leží v `assets/images/tabs/` jako PNG šablony
+(@1x/@2x/@3x, 24 pt, tah 2, bílá na průhledné). Barvu aktivní a neaktivní položky jim dává bar.
+Nový glyf do baru se vyrenderuje ze SVG Lucide stejně; SF Symbols ani Material Symbols ne,
+protože plné systémové glyfy vedle tenkých Lucide působí jako cizí sada.
 
 **Ikona musí něco rozlišovat.** Tři výzvy se stejnou jiskřičkou jsou dekorace na
 místě myšlenky — každá výzva má glyf podle toho, co je (špendlík / hodiny /
@@ -1612,24 +1732,16 @@ počet piv. Zelená tečka je pryč — stavová kontrolka se musí naučit, kde
 tikající čas říká „běží to“ slovy, která už čteš. Plurály česky (1 pivo, 3 piva,
 7 piv); špatný plurál je na takhle malém pruhu první, čeho si všimneš.
 
-Ikona Party v tab baru dostane při běžícím večeru **prstenec** a popisek
-„Večer“. Ne jinou ikonu a ne jinou barvu — je to pořád stejné místo, jen jsi
-v něm.
+Tab bar běžící večer neukazuje. Systémový bar neumí prstenec ani pohyb kolem
+ikony a jiná ikona nebo barva by z místa udělala jiné místo. Běžící večer patří
+live baru.
 
-### 20.6 Jedna smyčka v celé app
+### 20.6 Žádná smyčka v chrome
 
-Tab bar je na každé obrazovce, takže cokoliv, co v něm běží ve smyčce, běží
-pořád. §10 to zakazuje a ten zákaz platí dál — **s jednou výjimkou**: prstenec
-kolem Party ikony při běžícím večeru.
-
-Proč zrovna tenhle: běžící večer je jediná věc v appce, která se **opravdu děje**,
-zatímco se díváš na něco jiného. Statický prstenec říká „je zapnutý režim“,
-pulzující říká „běží to“. „Kamarád je live“ tuhle výjimku nedostane — to je cizí
-novinka a ta počká na pohled.
-
-Podmínky: **2,4 s na cyklus**, tam a zpět (skok zpátky na malý je bliknutí a
-blikající tab bar je alarm), hýbe se **jen prstenec, nikdy glyf**, a při reduced
-motion se nehýbe nic.
+Tab bar je na každé obrazovce, takže cokoliv, co by v něm běželo ve smyčce,
+běželo by pořád. §10 to zakazuje bez výjimky. Dřívější výjimka pro pulzující
+prstenec kolem ikony běžícího večera padla se systémovým tab barem: ten pohyb
+kolem ikony neumí a odznak Party je statický.
 
 ### 20.7 Velká čísla se neklikají
 
@@ -2139,8 +2251,8 @@ Zbývající dev-dluh mocků a kódu vůči dokumentu (opravuje se v kódu, ne v
 
 - **Světlý režim.** Odložený vědomě — zdvojil by práci na každé obrazovce.
 - **Grafy v běžícím večeru.** Patří do recapu (§20.2).
-- **Cokoliv, co počítá promile nebo čas do řízení.** Rozhodnuto
-  a nediskutovatelné (`docs/decisions/no-bac-or-driving-estimates.md`).
+- **Cokoliv, co radí, kdy jde řídit.** Odhad promile smí jen jako odhad
+  (`docs/decisions/alcohol-estimate.md`).
 - **Veřejný žebříček podle vypitých piv.** Hra na pití nemá vítěze. Celostátní
   žebříčky měří objevené hospody a Mapér XP, nikdy litry.
 - **Podium nad partou.** Jedno pořadí od prvního k poslednímu je přesně ta

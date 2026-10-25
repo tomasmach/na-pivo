@@ -1,7 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import * as beerPhotosClient from '../beerPhotosClient';
 import { clearLocalPrivateAccountData } from '../privateAccountData';
 import { pulledRecently, trackForegroundPull } from '../foregroundPulls';
+import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { useBeerWatchStore } from '@/stores/beerWatchStore';
+import { useBookStore } from '@/stores/bookStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
@@ -46,6 +50,7 @@ const PRIVATE_KEYS = [
   'na-pivo-pub-amenities-queue',
   'na-pivo-community',
   'na-pivo-pub',
+  'na-pivo-beer-watch-location-v1',
 ];
 
 function session(overrides: Partial<TallySession> = {}): TallySession {
@@ -85,6 +90,7 @@ it('clears local private stores and private sync queue storage', async () => {
   useTallyStore.setState({
     current: session(),
     history: [session({ clientId: 'visit-2' })],
+    restoredAccountId: 'account-1',
   });
   usePubRatingsStore.setState({
     ratings: {
@@ -121,6 +127,17 @@ it('clears local private stores and private sync queue storage', async () => {
     reportedCacheKeys: ['u2fkbn1x'],
   });
 
+  useBeerWatchStore.setState({
+    watches: [{ productKey: 'unetice-12', name: 'Únětická 12°', aliases: [] }],
+    helped: [{ cacheKey: 'u2fkbn1x', productName: 'Únětická 12°', helpedCount: 2 }],
+    radiusM: 10000,
+    locationSet: true,
+    loaded: true,
+  });
+  // A friend's profile left open in a right half of the open iPhone Duo.
+  useBookStore.getState().show('parta', { kind: 'friend', id: 'acc-friend' });
+  useBookStore.getState().show('stamgast', { kind: 'evening', startedAt: '2026-06-14T19:00:00.000Z' });
+
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
   }
@@ -140,12 +157,21 @@ it('clears local private stores and private sync queue storage', async () => {
 
   expect(useTallyStore.getState().current).toBeNull();
   expect(useTallyStore.getState().history).toEqual([]);
+  expect(useTallyStore.getState().restoredAccountId).toBeNull();
   expect(useCommunityStore.getState().overrides).toEqual({});
   expect(usePubRatingsStore.getState().ratings).toEqual({});
   expect(usePubAmenitiesStore.getState().votes).toEqual({});
   expect(usePubStore.getState().revealedPub).toBeNull();
   expect(usePubStore.getState().reportedPubIds).toEqual([]);
   expect(usePubStore.getState().reportedCacheKeys).toEqual([]);
+  expect(useBeerWatchStore.getState()).toMatchObject({
+    watches: [],
+    helped: [],
+    radiusM: 3000,
+    locationSet: false,
+    loaded: false,
+  });
+  expect(useBookStore.getState().pages).toEqual(useBookStore.getInitialState().pages);
   expect(useSettingsStore.getState().homePoint).toBeNull();
   expect(useSettingsStore.getState().navigationProvider).toBe('mapy');
 
@@ -185,10 +211,12 @@ it('removes retired 2.0 private data and settings while retaining public caches 
   await AsyncStorage.setItem('na-pivo-pubs-snapshot', 'public-pubs');
   useSettingsStore.setState({
     marketingEmailsEnabled: true, lastSeenPartyStreak: 12, navigationProvider: 'mapy', hapticEnabled: false,
+    bodyProfile: { sex: 'male', age: 32, heightCm: 182, weightKg: 84 },
   });
   await AsyncStorage.setItem('na-pivo-settings', JSON.stringify({ version: 1, state: {
     navigationProvider: 'mapy', hapticEnabled: false,
     homePoint: { lat: 50, lng: 14 }, marketingEmailsEnabled: true, lastSeenPartyStreak: 12,
+    bodyProfile: { sex: 'male', age: 32, heightCm: 182, weightKg: 84 },
     pendingAccountPreferences: { home_point: { lat: 50, lng: 14 } },
     pendingAccountPreferencesOwnerId: 'old-account',
   } }));
@@ -198,11 +226,11 @@ it('removes retired 2.0 private data and settings while retaining public caches 
   for (const key of retiredKeys) expect(await AsyncStorage.getItem(key)).toBeNull();
   expect(await AsyncStorage.getItem('na-pivo-pubs-snapshot')).toBe('public-pubs');
   expect(useSettingsStore.getState()).toMatchObject({
-    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0,
+    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0, bodyProfile: null,
   });
   const settings = JSON.parse((await AsyncStorage.getItem('na-pivo-settings'))!);
   expect(settings.state).toMatchObject({
-    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0,
+    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0, bodyProfile: null,
     pendingAccountPreferences: {}, pendingAccountPreferencesOwnerId: null,
     navigationProvider: 'mapy',
   });
@@ -215,4 +243,35 @@ it('forgets recent server pulls so a re-login restores the wiped data', async ()
   await clearLocalPrivateAccountData();
 
   expect(pulledRecently('ratings', 'acc-1')).toBe(false);
+});
+
+it('drops a photo list that was still loading for the outgoing account', async () => {
+  let answer!: (photos: beerPhotosClient.BeerPhoto[]) => void;
+  const fetchPhotos = jest
+    .spyOn(beerPhotosClient, 'fetchMyBeerPhotos')
+    .mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+  const loading = loadBeerPhotos();
+
+  await clearLocalPrivateAccountData();
+  answer([
+    {
+      id: 'photo-a',
+      clientId: 'client-a',
+      imageUrl: 'https://api.test/media/a.jpg',
+      caption: 'Účet A',
+      pubCacheKey: '',
+      pubName: '',
+      pubCity: '',
+      visibility: 'private',
+      takenAt: '2026-07-01T19:00:00.000Z',
+      createdAt: '2026-07-01T19:00:05.000Z',
+      inContest: false,
+    },
+  ]);
+  await loading;
+
+  expect(fetchPhotos).toHaveBeenCalledTimes(1);
+  expect(useBeerPhotosStore.getState().photos).toEqual([]);
+  expect((await AsyncStorage.getItem('na-pivo-beer-photos')) ?? '').not.toContain('client-a');
+  fetchPhotos.mockRestore();
 });

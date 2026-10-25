@@ -68,13 +68,14 @@ jest.mock('@/theme/fonts', () => ({
 }));
 
 jest.mock('@/components/shared/GlowButton', () => ({ GlowButton: jest.fn(() => null) }));
-jest.mock('@/components/shared/AppDialog', () => ({
-  AppDialogHost: jest.fn(() => null),
-  showAppDialog: jest.fn(),
-}));
+jest.mock('@/components/shared/AppDialog', () => {
+  const showAppDialog = jest.fn();
+  return { AppDialogHost: jest.fn(() => null), showAppDialog, useShowAppDialog: () => showAppDialog };
+});
 // The modals wrap RN Modal/TextInput (not in the lean react-native test mock);
 // they aren't under test here, so stub them out.
 jest.mock('@/counter/BeerFormModal', () => ({ BeerFormModal: jest.fn(() => null) }));
+jest.mock('@/beerWatch/toggleBeerWatch', () => ({ toggleBeerWatch: jest.fn() }));
 jest.mock('@/counter/BeerCheckInSheet', () => ({ BeerCheckInSheet: jest.fn(() => null) }));
 jest.mock('@/counter/PubPickerModal', () => ({ PubPickerModal: jest.fn(() => null) }));
 jest.mock('@/components/contribute/ScanMenuSheet', () => ({ ScanMenuSheet: jest.fn(() => null) }));
@@ -93,7 +94,7 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/components/shared/IconGlyph', () => {
   const names = [
-    'BeerIcon', 'BeerOffIcon', 'CompassIcon', 'Undo2Icon', 'LockKeyholeIcon', 'EyeIcon',
+    'GaugeIcon', 'BeerIcon', 'BeerOffIcon', 'CompassIcon', 'Undo2Icon', 'LockKeyholeIcon', 'EyeIcon',
     'EyeOffIcon', 'MapPinIcon', 'ExternalLinkIcon', 'RefreshCwIcon', 'SettingsIcon',
     'BellRingIcon', 'Volume2Icon', 'InfoIcon', 'ShieldIcon', 'ChevronLeftIcon',
     'ChevronRightIcon', 'ChevronDownIcon', 'HeartIcon', 'FlagIcon', 'MessageSquareIcon',

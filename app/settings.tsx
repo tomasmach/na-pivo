@@ -1,54 +1,29 @@
 /**
- * Nastavení in the Tácek composition.
- *
- * The screen has two quiet cards and one amber account door. Search radius,
- * filters and notification preferences stay directly editable; one-off doors
- * live in the shared "Co ještě?" sheet. Store writes, server preference sync
- * and notification permission flows are unchanged.
+ * Nastavení — one flat page grouped by what you want to change: your account,
+ * what the compass finds, when I get in touch, how the phone behaves and the
+ * app itself. Store writes, server preference sync and the notification
+ * permission flows are the same as before the regrouping.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  AppState,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  type AccessibilityActionEvent,
-  type LayoutChangeEvent,
-} from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
+import React, { useCallback, useEffect, useState } from 'react';
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  MenuIcon,
-  HouseIcon,
-  InfoIcon,
-  MapIcon,
-  MapPinIcon,
-  MessageSquareIcon,
-  PlusIcon,
-  ShieldIcon,
-  StarIcon,
-  ChevronLeftIcon,
-} from '@/components/shared/IconGlyph';
-import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
-import { CounterCta } from '@/counter/CounterCta';
+  Band,
+  ListRow,
+  PAGE_PAD,
+  RoundButton,
+  SectionTitle,
+  ToggleRow,
+} from '@/components/shared/FlatPage';
+import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
+import { MoreSheet } from '@/components/shared/MoreSheet';
 import { updateAccountPreferences } from '@/data/account';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { locale, SUPPORTED_LOCALES, t, intlLocale, type Locale } from '@/i18n';
+import { locale, SUPPORTED_LOCALES, t, type Locale } from '@/i18n';
 import { switchLocale } from '@/i18n/switchLocale';
-import { palette, PALETTES, type Palette } from '@/theme/palette';
-import { switchPalette } from '@/theme/switchPalette';
-import { useToastStore } from '@/stores/toastStore';
 import {
   disableBeerCountReminderNotifications,
   enableBeerCountReminderNotifications,
@@ -64,7 +39,9 @@ import {
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
 import { askTourReminderPermission, notificationPermissionStatus } from '@/notifications/tourReminder';
+import { Avatar } from '@/profile/Avatar';
 import {
+  selectAvatarUrl,
   selectIsSignedIn,
   selectNickname,
   useAccountStore,
@@ -73,422 +50,91 @@ import {
   BEER_COUNT_REMINDER_INTERVAL_OPTIONS,
   useSettingsStore,
   type BeerCountReminderIntervalMinutes,
+  type NavigationProvider,
 } from '@/stores/settingsStore';
+import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
+import { FontScaleCap } from '@/theme/fonts';
+import { Spacing } from '@/theme/layout';
+import { palette, PALETTES, type Palette } from '@/theme/palette';
+import { switchPalette } from '@/theme/switchPalette';
 import { getAppVersionLabel } from '@/utils/appVersion';
+import { numberFormat } from '@/utils/intlFormat';
 
-const SLIDER_POSITIONS: (number | null)[] = [0.5, 1, 1.5, 2, 2.5, 5, 10, null];
-const SLIDER_STEPS = SLIDER_POSITIONS.length - 1;
-const TRACK_HEIGHT = 14;
-const THUMB_SIZE = 28;
+const DISTANCE_OPTIONS: (number | null)[] = [0.5, 1, 1.5, 2, 2.5, 5, 10, null];
 
-function positionIndexForKm(km: number | null): number {
-  if (km === null) return SLIDER_POSITIONS.length - 1;
-  const index = SLIDER_POSITIONS.indexOf(km);
-  return index === -1 ? SLIDER_POSITIONS.length - 1 : index;
+function distanceLabel(km: number | null): string {
+  if (km === null) return t.settings.distance.unlimited;
+  if (km < 1) return t.settings.distance.meters(Math.round(km * 1000));
+  return `${numberFormat({ maximumFractionDigits: 1 }).format(km)} ${t.settings.distance.kmShort}`;
 }
 
-function formatCzKm(km: number): string {
-  return km.toString().replace('.', ',').replace(/,0$/, '');
+function onOff(title: string, value: boolean): string {
+  return `${title}: ${value ? t.a11y.toggleOn : t.a11y.toggleOff}`;
 }
 
-function distanceReadout(km: number | null): { value: string; unit: string } {
-  if (km === null) {
-    return { value: '∞', unit: t.settings.distance.unlimitedUnit };
-  }
-  if (km === 0.5) {
-    return { value: '500', unit: t.compass.distanceUnitMeters };
-  }
-  const singularForm = km === 1 || km === 1.5 || km === 2.5;
-  return {
-    value: formatCzKm(km),
-    unit: t.compass.distanceUnitKm(singularForm ? 1 : km),
-  };
-}
-
-function numeralFontSize(value: string): number {
-  const digits = value.match(/\d/g)?.length ?? 1;
-  if (digits <= 1) return 88;
-  if (digits === 2) return 72;
-  return 56;
-}
-
-interface ToggleProps {
-  testID?: string;
-  value: boolean;
-  onToggle: () => void;
-  accessibilityLabel: string;
-}
-
-function Toggle({ value, onToggle, accessibilityLabel, testID }: ToggleProps) {
-  const offset = useSharedValue(value ? 24 : 2);
-
-  useEffect(() => {
-    offset.value = withSpring(value ? 24 : 2, {
-      mass: 0.6,
-      damping: 14,
-      stiffness: 200,
-    });
-  }, [offset, value]);
-
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: offset.value }],
-  }));
-
-  return (
-    <Pressable
-      testID={testID}
-      onPress={onToggle}
-      style={[styles.toggle, value ? styles.toggleOn : styles.toggleOff]}
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
-      accessibilityLabel={accessibilityLabel}
-      hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
-    >
-      <Animated.View
-        style={[
-          styles.toggleThumb,
-          value ? styles.toggleThumbOn : styles.toggleThumbOff,
-          softDrop(),
-          thumbStyle,
-        ]}
-      />
-    </Pressable>
-  );
-}
-
-interface DistanceSliderProps {
-  positionIndex: number;
-  valueLabel: string;
-  onSnap: (index: number) => void;
-}
-
-function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderProps) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const snapIndex = useSharedValue(positionIndex);
-
-  const commitSnap = useCallback(
-    (index: number) => {
-      onSnap(index);
-    },
-    [onSnap],
-  );
-
-  const snapFromX = useCallback(
-    (x: number) => {
-      if (trackWidth === 0) return;
-      const fraction = Math.max(0, Math.min(1, x / trackWidth));
-      commitSnap(Math.round(fraction * SLIDER_STEPS));
-    },
-    [commitSnap, trackWidth],
-  );
-
-  const pan = Gesture.Pan()
-    .onUpdate((event) => {
-      if (trackWidth === 0) return;
-      const fraction = Math.max(0, Math.min(1, event.x / trackWidth));
-      const next = Math.round(fraction * SLIDER_STEPS);
-      if (next === snapIndex.value) return;
-      snapIndex.value = next;
-      runOnJS(commitSnap)(next);
-    })
-    .onEnd((event) => {
-      if (trackWidth === 0) return;
-      const fraction = Math.max(0, Math.min(1, event.x / trackWidth));
-      const next = Math.round(fraction * SLIDER_STEPS);
-      snapIndex.value = next;
-      runOnJS(commitSnap)(next);
-    });
-
-  const fillStyle = useAnimatedStyle(() => {
-    const fraction = SLIDER_STEPS > 0 ? snapIndex.value / SLIDER_STEPS : 0;
-    return { width: fraction * (trackWidth - THUMB_SIZE) + THUMB_SIZE / 2 };
-  });
-
-  const thumbStyle = useAnimatedStyle(() => {
-    const fraction = SLIDER_STEPS > 0 ? snapIndex.value / SLIDER_STEPS : 0;
-    return { transform: [{ translateX: fraction * (trackWidth - THUMB_SIZE) }] };
-  });
-
-  useEffect(() => {
-    snapIndex.value = positionIndex;
-  }, [positionIndex, snapIndex]);
-
-  const handleAccessibilityAction = useCallback(
-    (event: AccessibilityActionEvent) => {
-      const delta = event.nativeEvent.actionName === 'increment' ? 1 : -1;
-      const next = Math.max(0, Math.min(SLIDER_STEPS, positionIndex + delta));
-      if (next !== positionIndex) commitSnap(next);
-    },
-    [commitSnap, positionIndex],
-  );
-
-  const handleLayout = useCallback((event: LayoutChangeEvent) => {
-    setTrackWidth(event.nativeEvent.layout.width);
-  }, []);
-
-  return (
-    <View style={styles.sliderWrapper}>
-      <GestureDetector gesture={pan}>
-        <View
-          style={styles.sliderTouchArea}
-          onLayout={handleLayout}
-          accessibilityRole="adjustable"
-          accessibilityLabel={t.settings.distance.accessibilityLabel}
-          accessibilityValue={{
-            min: 0,
-            max: SLIDER_STEPS,
-            now: positionIndex,
-            text: valueLabel,
-          }}
-          accessibilityActions={[
-            { name: 'increment', label: t.settings.distance.increase },
-            { name: 'decrement', label: t.settings.distance.decrease },
-          ]}
-          onAccessibilityAction={handleAccessibilityAction}
-          onTouchEnd={(event) => snapFromX(event.nativeEvent.locationX)}
-        >
-          <View style={styles.track}>
-            <Animated.View style={[styles.trackFill, fillStyle]} />
-            <Animated.View style={[styles.thumb, softDrop(), thumbStyle]} />
-          </View>
-        </View>
-      </GestureDetector>
-      <View style={styles.rangeLabels}>
-        <Text style={styles.rangeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.settings.distance.rangeMin}
-        </Text>
-        <Text style={styles.rangeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.settings.distance.rangeMax}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-interface PreferenceRowProps {
-  testID?: string;
-  title: string;
-  subtitle: string;
-  value: boolean;
-  onToggle: () => void;
-  toggleLabel: string;
-  divider?: boolean;
-  edgeToEdge?: boolean;
-}
-
-function PreferenceRow({
-  testID,
+/** Two or three choices in one row. Each option keeps its own testID. */
+function Segment<T extends string>({
   title,
-  subtitle,
+  options,
   value,
-  onToggle,
-  toggleLabel,
-  divider = false,
-  edgeToEdge = true,
-}: PreferenceRowProps) {
-  return (
-    <View
-      style={[
-        styles.preferenceRow,
-        edgeToEdge && styles.preferenceRowEdge,
-        divider && styles.rowDivider,
-      ]}
-    >
-      <View style={styles.preferenceText}>
-        <Text
-          style={styles.preferenceTitle}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {title}
-        </Text>
-        <Text
-          style={styles.preferenceSubtitle}
-          numberOfLines={2}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {subtitle}
-        </Text>
-      </View>
-      <Toggle testID={testID} value={value} onToggle={onToggle} accessibilityLabel={toggleLabel} />
-    </View>
-  );
-}
-
-function BeerCountReminderRow({
-  enabled,
-  intervalMinutes,
-  onToggle,
-  onIntervalChange,
+  onChange,
+  first = false,
 }: {
-  enabled: boolean;
-  intervalMinutes: BeerCountReminderIntervalMinutes;
-  onToggle: () => void;
-  onIntervalChange: (minutes: BeerCountReminderIntervalMinutes) => void;
+  title: string;
+  options: { value: T; label: string; accessibilityLabel: string; testID: string }[];
+  value: T;
+  onChange: (next: T) => void;
+  first?: boolean;
 }) {
   return (
-    <View style={[styles.beerCountReminder, styles.rowDivider]}>
-      <PreferenceRow
-        title={t.settings.beerCountReminder.title}
-        subtitle={t.settings.beerCountReminder.subtitle}
-        value={enabled}
-        onToggle={onToggle}
-        toggleLabel={`${t.settings.beerCountReminder.title}: ${enabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-        edgeToEdge={false}
-      />
-      {enabled ? (
-        <View style={styles.reminderIntervalRow}>
-          <Text
-            style={styles.reminderIntervalLabel}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {t.settings.beerCountReminder.intervalLabel}
-          </Text>
-          <View style={styles.reminderIntervalOptions}>
-            {BEER_COUNT_REMINDER_INTERVAL_OPTIONS.map((minutes) => {
-              const selected = intervalMinutes === minutes;
-              return (
-                <Pressable
-                  key={minutes}
-                  onPress={() => onIntervalChange(minutes)}
-                  style={[
-                    styles.reminderIntervalOption,
-                    selected && styles.reminderIntervalOptionSelected,
-                  ]}
-                  hitSlop={{ top: 8, bottom: 8 }}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={t.settings.beerCountReminder.intervalOption(minutes)}
-                >
-                  <Text
-                    style={[
-                      styles.reminderIntervalOptionText,
-                      selected && styles.reminderIntervalOptionTextSelected,
-                    ]}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {t.settings.beerCountReminder.intervalShort(minutes)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-/** Two-way language switch. Picking the other language restarts the JS bundle. */
-function LanguageRow() {
-  const showToast = useToastStore((state) => state.show);
-  const pick = useCallback(
-    async (code: Locale) => {
-      if (!(await switchLocale(code))) showToast(t.account.errorGeneric);
-    },
-    [showToast],
-  );
-  return (
-    <View style={styles.languageRow}>
-      {SUPPORTED_LOCALES.map((code: Locale) => {
-        const selected = code === locale;
-        return (
-          <Pressable
-            key={code}
-            onPress={() => void pick(code)}
-            style={[styles.languageOption, selected && styles.languageOptionSelected]}
-            accessibilityRole="radio"
-            accessibilityState={{ selected }}
-            accessibilityLabel={t.settings.language.option(t.settings.language[code])}
-            testID={`settings-language-${code}`}
-          >
-            <Text
-              style={[styles.languageOptionText, selected && styles.languageOptionTextSelected]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {t.settings.language[code]}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-/** Gray or the unmaintained brown. Picking the other one restarts the JS bundle. */
-function AppearanceRow() {
-  const showToast = useToastStore((state) => state.show);
-  const pick = useCallback(
-    async (next: Palette) => {
-      if (!(await switchPalette(next))) showToast(t.account.errorGeneric);
-    },
-    [showToast],
-  );
-  return (
-    <View>
-      <View style={styles.languageRow}>
-        {PALETTES.map((option: Palette) => {
-          const selected = option === palette;
+    <View style={[styles.segmentRow, !first && styles.rowDivided]}>
+      <Text style={styles.segmentTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+        {title}
+      </Text>
+      <View style={styles.segmentTrack} accessibilityRole="radiogroup">
+        {options.map((option) => {
+          const selected = option.value === value;
           return (
             <Pressable
-              key={option}
-              onPress={() => void pick(option)}
-              style={[styles.languageOption, selected && styles.languageOptionSelected]}
+              key={option.value}
+              testID={option.testID}
+              onPress={() => onChange(option.value)}
+              style={[styles.segmentOption, selected && styles.segmentOptionSelected]}
+              hitSlop={{ top: 8, bottom: 8 }}
               accessibilityRole="radio"
               accessibilityState={{ selected }}
-              accessibilityLabel={t.settings.appearance.a11y[option]}
-              testID={`settings-palette-${option}`}
+              accessibilityLabel={option.accessibilityLabel}
             >
               <Text
-                style={[styles.languageOptionText, selected && styles.languageOptionTextSelected]}
+                style={[styles.segmentLabel, selected && styles.segmentLabelSelected]}
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {t.settings.appearance[option]}
+                {option.label}
               </Text>
             </Pressable>
           );
         })}
       </View>
-      <Text style={styles.appearanceNote} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.settings.appearance.brownNote}
-      </Text>
     </View>
-  );
-}
-
-function SectionLabel({ children, spaced = false }: { children: string; spaced?: boolean }) {
-  return (
-    <Text
-      style={[styles.sectionLabel, spaced && styles.sectionLabelSpaced]}
-      maxFontSizeMultiplier={FontScaleCap.body}
-    >
-      {children}
-    </Text>
   );
 }
 
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const showToast = useToastStore((state) => state.show);
 
   const maxDistanceKm = useSettingsStore((state) => state.maxDistanceKm);
   const homePoint = useSettingsStore((state) => state.homePoint);
   const navigationProvider = useSettingsStore((state) => state.navigationProvider);
-  const priceCurrency = useSettingsStore((state) => state.priceCurrency);
   const hapticEnabled = useSettingsStore((state) => state.hapticEnabled);
   const soundEnabled = useSettingsStore((state) => state.soundEnabled);
   const waterNudgeEnabled = useSettingsStore((state) => state.waterNudgeEnabled);
   const hideClosedPubs = useSettingsStore((state) => state.hideClosedPubs);
   const preferRatedPubs = useSettingsStore((state) => state.preferRatedPubs);
   const hidePubNames = useSettingsStore((state) => state.hidePubNames);
-  const marketingEmailsEnabled = useSettingsStore((state) => state.marketingEmailsEnabled);
   const pubReminderEnabled = useSettingsStore((state) => state.pubReminderEnabled);
   const tourRemindersPreferred = useSettingsStore((state) => state.tourRemindersEnabled);
   // On only when reminders can really come: a fresh install that was never asked shows off, and a tap asks.
@@ -516,9 +162,6 @@ export default function SettingsScreen() {
   const setHideClosedPubs = useSettingsStore((state) => state.setHideClosedPubs);
   const setPreferRatedPubs = useSettingsStore((state) => state.setPreferRatedPubs);
   const setHidePubNames = useSettingsStore((state) => state.setHidePubNames);
-  const setMarketingEmailsEnabled = useSettingsStore(
-    (state) => state.setMarketingEmailsEnabled,
-  );
   const setPubReminderEnabled = useSettingsStore((state) => state.setPubReminderEnabled);
   const setBeerCountReminderIntervalMinutes = useSettingsStore(
     (state) => state.setBeerCountReminderIntervalMinutes,
@@ -526,26 +169,32 @@ export default function SettingsScreen() {
 
   const isSignedIn = useAccountStore(selectIsSignedIn);
   const nickname = useAccountStore(selectNickname);
+  const avatarUrl = useAccountStore(selectAvatarUrl);
   const profile = useAccountStore((state) => state.profile);
 
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [picker, setPicker] = useState<'distance' | 'interval' | null>(null);
   const [pubReminderBusy, setPubReminderBusy] = useState(false);
   const [beerCountReminderBusy, setBeerCountReminderBusy] = useState(false);
   const [homeTransitReminderBusy, setHomeTransitReminderBusy] = useState(false);
 
-  const sliderIndex = positionIndexForKm(maxDistanceKm);
-  const readout = distanceReadout(maxDistanceKm);
-  const numeralSize = numeralFontSize(readout.value);
   const appVersionLabel = getAppVersionLabel();
 
-  const handleSliderSnap = useCallback(
-    (index: number) => {
-      const next = SLIDER_POSITIONS[index] ?? null;
+  const pickDistance = useCallback(
+    (next: number | null) => {
+      setPicker(null);
       trackUiInteraction('settings_distance_change', 'select');
       setMaxDistanceKm(next);
       void updateAccountPreferences({ maxDistanceKm: next });
     },
     [setMaxDistanceKm],
+  );
+
+  const pickNavigation = useCallback(
+    (next: NavigationProvider) => {
+      trackUiInteraction(next === 'google' ? 'settings_navigation_google' : 'settings_navigation_mapy', 'select');
+      setNavigationProvider(next);
+    },
+    [setNavigationProvider],
   );
 
   const toggleHaptic = useCallback(() => {
@@ -587,13 +236,6 @@ export default function SettingsScreen() {
     setHidePubNames(next);
     void updateAccountPreferences({ hidePubNames: next });
   }, [hidePubNames, setHidePubNames]);
-
-  const toggleMarketingEmails = useCallback(() => {
-    const next = !marketingEmailsEnabled;
-    trackUiInteraction('settings_marketing_emails', next ? 'toggle_on' : 'toggle_off');
-    setMarketingEmailsEnabled(next);
-    void updateAccountPreferences({ marketingEmailsEnabled: next });
-  }, [marketingEmailsEnabled, setMarketingEmailsEnabled]);
 
   const togglePubReminders = useCallback(async () => {
     if (pubReminderBusy) return;
@@ -672,314 +314,282 @@ export default function SettingsScreen() {
     if (answer === 'denied') showPubReminderEnableFailure('notifications-denied');
   }, [tourRemindersEnabled]);
 
-  const changeBeerCountReminderInterval = useCallback(
+  const pickInterval = useCallback(
     (minutes: BeerCountReminderIntervalMinutes) => {
+      setPicker(null);
       setBeerCountReminderIntervalMinutes(minutes);
       void reschedulePendingBeerCountReminder();
     },
     [setBeerCountReminderIntervalMinutes],
   );
 
-  const openFromMore = useCallback(
-    (href: Href) => {
-      setMoreOpen(false);
-      router.push(href);
+  const pickLocale = useCallback(
+    async (code: Locale) => {
+      if (code === locale) return;
+      if (!(await switchLocale(code))) showToast(t.account.errorGeneric);
     },
-    [router],
+    [showToast],
   );
 
-  const moreRows = useMemo<MoreRow[]>(
-    () => [
-      {
-        key: 'home',
-        label: t.settings.more.homePoint,
-        value: homePoint ? t.settings.more.configured : t.settings.more.notConfigured,
-        icon: HouseIcon,
-        onPress: () => openFromMore('/home-point' as Href),
-      },
-      {
-        key: 'google',
-        label: t.settings.more.navigateGoogle,
-        icon: MapPinIcon,
-        selected: navigationProvider === 'google',
-        accessibilityRole: 'radio',
-        onPress: () => {
-          trackUiInteraction('settings_navigation_google', 'select');
-          setNavigationProvider('google');
-          setMoreOpen(false);
-        },
-      },
-      {
-        key: 'mapy',
-        label: t.settings.more.navigateMapy,
-        icon: MapIcon,
-        selected: navigationProvider === 'mapy',
-        accessibilityRole: 'radio',
-        onPress: () => {
-          trackUiInteraction('settings_navigation_mapy', 'select');
-          setNavigationProvider('mapy');
-          setMoreOpen(false);
-        },
-      },
-      {
-        key: 'add-pub',
-        label: t.settings.addPub,
-        icon: PlusIcon,
-        onPress: () => openFromMore('/add-pub' as Href),
-      },
-      {
-        key: 'my-pubs',
-        label: t.settings.more.myAddedPubs,
-        icon: StarIcon,
-        onPress: () => openFromMore('/my-added-pubs' as Href),
-      },
-      {
-        key: 'feedback',
-        label: t.settings.feedback,
-        icon: MessageSquareIcon,
-        onPress: () => openFromMore('/report' as Href),
-      },
-      {
-        key: 'about',
-        label: t.settings.about.title,
-        value: appVersionLabel || null,
-        icon: InfoIcon,
-        onPress: () => openFromMore('/about' as Href),
-      },
-      {
-        key: 'privacy',
-        label: t.settings.privacy,
-        icon: ShieldIcon,
-        onPress: () => openFromMore('/privacy' as Href),
-      },
-    ],
-    [
-      appVersionLabel,
-      homePoint,
-      navigationProvider,
-      openFromMore,
-      setNavigationProvider,
-    ],
+  const pickPalette = useCallback(
+    async (next: Palette) => {
+      if (next === palette) return;
+      if (!(await switchPalette(next))) showToast(t.account.errorGeneric);
+    },
+    [showToast],
   );
 
   const displayName = profile?.displayName?.trim() || '';
   const email = profile?.email?.trim() || '';
-  const accountSubLabel = isSignedIn
-    ? nickname
-      ? `@${nickname}${profile?.emailVerified ? ` · ${t.settings.accountCard.verifiedInline}` : ''}`
-      : email || displayName || t.profile.manageAccount
-    : t.settings.accountCard.ctaSignedOutSubtitle;
+  const accountTitle = nickname ? `@${nickname}` : displayName || email || t.settings.accountCard.ctaSignedIn;
+  const accountSubtitle = [
+    nickname ? displayName : null,
+    profile?.emailVerified ? t.settings.accountCard.verifiedInline : null,
+  ].filter(Boolean).join(' · ');
 
   return (
-    <View
-      style={[
-        styles.root,
-        { paddingBottom: Math.max(insets.bottom, Spacing.sm) },
-      ]}
-    >
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
-        >
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={styles.nav}>
+        <RoundButton label={t.a11y.backButton} onPress={() => router.back()}>
           <ChevronLeftIcon size={22} color={Colors.foam} />
-        </Pressable>
-        <Text
-          style={styles.headerTitle}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
+        </RoundButton>
+        <Text style={styles.navTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {t.settings.title}
         </Text>
-        <Pressable
-          onPress={() => {
-            trackUiInteraction('settings_more_open');
-            setMoreOpen(true);
-          }}
-          style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={t.settings.more.accessibilityLabel}
-        >
-          <MenuIcon size={20} color={Colors.mutedText} />
-        </Pressable>
+        <View style={styles.navSpacer} />
       </View>
 
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom, Spacing.sm) + Spacing.lg },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <SectionLabel>{t.settings.compassSection}</SectionLabel>
-        <View style={styles.distanceCard}>
-          <Text
-            style={[
-              styles.distanceNumber,
-              { fontSize: numeralSize, lineHeight: numeralSize * 1.24 },
-            ]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.display}
-          >
-            {readout.value}
-          </Text>
-          <Text
-            style={styles.distanceUnit}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {readout.unit}
-          </Text>
-
-          <DistanceSlider
-            positionIndex={sliderIndex}
-            valueLabel={`${readout.value} ${readout.unit.toLocaleLowerCase(intlLocale)}`}
-            onSnap={handleSliderSnap}
+        {isSignedIn ? (
+          <ListRow
+            first
+            title={accountTitle}
+            subtitle={accountSubtitle || null}
+            leading={
+              <Avatar
+                uri={avatarUrl}
+                nickname={nickname}
+                displayName={displayName}
+                size={44}
+                border="quiet"
+              />
+            }
+            onPress={() => {
+              trackUiInteraction('settings_account_open');
+              router.push('/account' as Href);
+            }}
           />
+        ) : (
+          <ListRow
+            first
+            title={t.settings.accountCard.signedOutTitle}
+            subtitle={t.settings.accountCard.ctaSignedOutSubtitle}
+            onPress={() => {
+              trackUiInteraction('settings_account_open');
+              router.push('/auth' as Href);
+            }}
+          />
+        )}
 
-          <View style={styles.distancePreferences}>
-            <PreferenceRow
-              title={t.settings.hideClosed.title}
-              subtitle={t.settings.hideClosed.subtitle}
-              value={hideClosedPubs}
-              onToggle={toggleHideClosed}
-              toggleLabel={`${t.settings.hideClosed.title}: ${hideClosedPubs ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            />
-            <PreferenceRow
-              title={t.settings.preferRated.title}
-              subtitle={t.settings.preferRated.subtitle}
-              value={preferRatedPubs}
-              onToggle={togglePreferRated}
-              toggleLabel={`${t.settings.preferRated.title}: ${preferRatedPubs ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-              divider
-            />
-            <PreferenceRow
-              title={t.settings.hidePubNames.title}
-              testID="settings-hide-names"
-              subtitle={t.settings.hidePubNames.subtitle}
-              value={hidePubNames}
-              onToggle={toggleHidePubNames}
-              toggleLabel={`${t.settings.hidePubNames.title}: ${hidePubNames ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-              divider
+        <Band />
+        <SectionTitle title={t.settings.compassSection} />
+        <ListRow
+          first
+          testID="settings-distance"
+          title={t.settings.distance.title}
+          value={distanceLabel(maxDistanceKm)}
+          onPress={() => setPicker('distance')}
+        />
+        <ToggleRow
+          title={t.settings.hideClosed.title}
+          subtitle={t.settings.hideClosed.subtitle}
+          value={hideClosedPubs}
+          onToggle={toggleHideClosed}
+          toggleLabel={onOff(t.settings.hideClosed.title, hideClosedPubs)}
+        />
+        <ToggleRow
+          title={t.settings.preferRated.title}
+          subtitle={t.settings.preferRated.subtitle}
+          value={preferRatedPubs}
+          onToggle={togglePreferRated}
+          toggleLabel={onOff(t.settings.preferRated.title, preferRatedPubs)}
+        />
+        <ToggleRow
+          testID="settings-hide-names"
+          title={t.settings.hidePubNames.title}
+          subtitle={t.settings.hidePubNames.subtitle}
+          value={hidePubNames}
+          onToggle={toggleHidePubNames}
+          toggleLabel={onOff(t.settings.hidePubNames.title, hidePubNames)}
+        />
+        <Segment
+          title={t.settings.navigation.title}
+          value={navigationProvider}
+          onChange={pickNavigation}
+          options={[
+            {
+              value: 'google',
+              label: t.settings.navigation.google,
+              accessibilityLabel: t.settings.navigation.a11y(t.settings.navigation.google),
+              testID: 'settings-navigation-google',
+            },
+            {
+              value: 'mapy',
+              label: t.settings.navigation.mapy,
+              accessibilityLabel: t.settings.navigation.a11y(t.settings.navigation.mapy),
+              testID: 'settings-navigation-mapy',
+            },
+          ]}
+        />
+        <ListRow
+          title={t.settings.homePoint.title}
+          value={homePoint ? t.settings.homePoint.configured : t.settings.homePoint.notConfigured}
+          onPress={() => router.push('/home-point' as Href)}
+        />
+
+        <Band />
+        <SectionTitle title={t.settings.notificationsSection} />
+        <ToggleRow
+          first
+          title={t.settings.pubReminders.title}
+          subtitle={t.settings.pubReminders.subtitle}
+          value={pubReminderEnabled}
+          onToggle={() => void togglePubReminders()}
+          toggleLabel={onOff(t.settings.pubReminders.title, pubReminderEnabled)}
+        />
+        <ToggleRow
+          title={t.settings.beerCountReminder.title}
+          subtitle={t.settings.beerCountReminder.subtitle}
+          value={beerCountReminderEnabled}
+          onToggle={() => void toggleBeerCountReminder()}
+          toggleLabel={onOff(t.settings.beerCountReminder.title, beerCountReminderEnabled)}
+        />
+        {beerCountReminderEnabled ? (
+          <View style={styles.childRow}>
+            <ListRow
+              title={t.settings.beerCountReminder.intervalTitle}
+              value={t.settings.beerCountReminder.intervalShort(beerCountReminderIntervalMinutes)}
+              onPress={() => setPicker('interval')}
             />
           </View>
-        </View>
+        ) : null}
+        <ToggleRow
+          testID="settings-home-transit-reminder"
+          title={t.settings.homeTransitReminder.title}
+          subtitle={t.settings.homeTransitReminder.subtitle}
+          value={homeTransitReminderEnabled}
+          onToggle={() => void toggleHomeTransitReminder()}
+          toggleLabel={onOff(t.settings.homeTransitReminder.title, homeTransitReminderEnabled)}
+        />
+        <ToggleRow
+          title={t.tourReminders.settingsTitle}
+          subtitle={t.tourReminders.settingsSubtitle}
+          value={tourRemindersEnabled}
+          onToggle={() => void toggleTourReminders()}
+          toggleLabel={onOff(t.tourReminders.settingsTitle, tourRemindersEnabled)}
+        />
+        <ToggleRow
+          testID="settings-water"
+          title={t.settings.waterNudge.title}
+          subtitle={t.settings.waterNudge.subtitle}
+          value={waterNudgeEnabled}
+          onToggle={toggleWaterNudge}
+          toggleLabel={onOff(t.settings.waterNudge.title, waterNudgeEnabled)}
+        />
 
-        <SectionLabel spaced>{t.settings.notificationsSection}</SectionLabel>
-        <View style={styles.notificationsCard}>
-          <PreferenceRow
-            title={t.settings.pubReminders.title}
-            subtitle={t.settings.pubReminders.subtitle}
-            value={pubReminderEnabled}
-            onToggle={() => void togglePubReminders()}
-            toggleLabel={`${t.settings.pubReminders.title}: ${pubReminderEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-          />
-          <BeerCountReminderRow
-            enabled={beerCountReminderEnabled}
-            intervalMinutes={beerCountReminderIntervalMinutes}
-            onToggle={() => void toggleBeerCountReminder()}
-            onIntervalChange={changeBeerCountReminderInterval}
-          />
-          <PreferenceRow
-            title={t.settings.homeTransitReminder.title}
-            testID="settings-home-transit-reminder"
-            subtitle={t.settings.homeTransitReminder.subtitle}
-            value={homeTransitReminderEnabled}
-            onToggle={() => void toggleHomeTransitReminder()}
-            toggleLabel={`${t.settings.homeTransitReminder.title}: ${homeTransitReminderEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={t.tourReminders.settingsTitle}
-            subtitle={t.tourReminders.settingsSubtitle}
-            value={tourRemindersEnabled}
-            onToggle={() => void toggleTourReminders()}
-            toggleLabel={`${t.tourReminders.settingsTitle}: ${tourRemindersEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={t.settings.haptics.title}
-            testID="settings-haptics"
-            subtitle={t.settings.haptics.subtitle}
-            value={hapticEnabled}
-            onToggle={toggleHaptic}
-            toggleLabel={`${t.settings.haptics.title}: ${hapticEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={t.settings.sound.title}
-            subtitle={t.settings.sound.subtitle}
-            value={soundEnabled}
-            onToggle={toggleSound}
-            toggleLabel={`${t.settings.sound.title}: ${soundEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={t.settings.waterNudge.title}
-            testID="settings-water"
-            subtitle={t.settings.waterNudge.subtitle}
-            value={waterNudgeEnabled}
-            onToggle={toggleWaterNudge}
-            toggleLabel={`${t.settings.waterNudge.title}: ${waterNudgeEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={t.settings.marketingEmails.title}
-            subtitle={t.settings.marketingEmails.subtitle}
-            value={marketingEmailsEnabled}
-            onToggle={toggleMarketingEmails}
-            toggleLabel={`${t.settings.marketingEmails.title}: ${marketingEmailsEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-        </View>
+        <Band />
+        <SectionTitle title={t.settings.phoneSection} />
+        <ToggleRow
+          first
+          testID="settings-haptics"
+          title={t.settings.haptics.title}
+          subtitle={t.settings.haptics.subtitle}
+          value={hapticEnabled}
+          onToggle={toggleHaptic}
+          toggleLabel={onOff(t.settings.haptics.title, hapticEnabled)}
+        />
+        <ToggleRow
+          title={t.settings.sound.title}
+          subtitle={t.settings.sound.subtitle}
+          value={soundEnabled}
+          onToggle={toggleSound}
+          toggleLabel={onOff(t.settings.sound.title, soundEnabled)}
+        />
+        <Segment
+          title={t.settings.languageSection}
+          value={locale}
+          onChange={(code) => void pickLocale(code)}
+          options={SUPPORTED_LOCALES.map((code: Locale) => ({
+            value: code,
+            label: t.settings.language[code],
+            accessibilityLabel: t.settings.language.option(t.settings.language[code]),
+            testID: `settings-language-${code}`,
+          }))}
+        />
+        <Segment
+          title={t.settings.appearanceSection}
+          value={palette}
+          onChange={(next) => void pickPalette(next)}
+          options={PALETTES.map((option: Palette) => ({
+            value: option,
+            label: t.settings.appearance[option],
+            accessibilityLabel: t.settings.appearance.a11y[option],
+            testID: `settings-palette-${option}`,
+          }))}
+        />
+        <Text style={styles.note} maxFontSizeMultiplier={FontScaleCap.body}>
+          {t.settings.appearance.brownNote}
+        </Text>
 
-        <SectionLabel spaced>{t.settings.appearanceSection}</SectionLabel>
-        <View style={styles.notificationsCard}>
-          <AppearanceRow />
-        </View>
-
-        <SectionLabel spaced>{t.settings.languageSection}</SectionLabel>
-        <View style={styles.notificationsCard}>
-          <LanguageRow />
-        </View>
+        <Band />
+        <SectionTitle title={t.settings.appSection} />
+        <ListRow first title={t.settings.feedback} onPress={() => router.push('/report' as Href)} />
+        <ListRow
+          title={t.settings.aboutRow}
+          value={appVersionLabel || null}
+          onPress={() => router.push('/about' as Href)}
+        />
 
         <View style={styles.footer}>
-          <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
+          <Text style={styles.footerText} maxFontSizeMultiplier={FontScaleCap.body}>
             {t.settings.locationPrivacy}
           </Text>
-          <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.settings.currency.footer(priceCurrency)}
-          </Text>
-          <Text style={styles.footerTagline} maxFontSizeMultiplier={FontScaleCap.body}>
+          <Text style={styles.footerText} maxFontSizeMultiplier={FontScaleCap.body}>
             {t.settings.footer}
           </Text>
         </View>
       </ScrollView>
 
-      <CounterCta
-        label={
-          isSignedIn
-            ? t.settings.accountCard.ctaSignedIn
-            : t.settings.accountCard.signedOutTitle
-        }
-        subLabel={accountSubLabel}
-        onPress={() => {
-          trackUiInteraction('settings_account_open');
-          router.push((isSignedIn ? '/account' : '/auth') as Href);
-        }}
-        accessibilityLabel={
-          isSignedIn ? t.a11y.profileManageAccount : t.a11y.profileSignUp
-        }
-      />
-
       <MoreSheet
-        visible={moreOpen}
-        title={t.settings.more.title}
-        rows={moreRows}
-        onClose={() => setMoreOpen(false)}
+        visible={picker === 'distance'}
+        title={t.settings.distance.sheetTitle}
+        onClose={() => setPicker(null)}
+        rows={DISTANCE_OPTIONS.map((km) => ({
+          key: String(km),
+          label: distanceLabel(km),
+          selected: km === maxDistanceKm,
+          accessibilityRole: 'radio',
+          onPress: () => pickDistance(km),
+        }))}
+      />
+      <MoreSheet
+        visible={picker === 'interval'}
+        title={t.settings.beerCountReminder.intervalTitle}
+        onClose={() => setPicker(null)}
+        rows={BEER_COUNT_REMINDER_INTERVAL_OPTIONS.map((minutes) => ({
+          key: String(minutes),
+          label: t.settings.beerCountReminder.intervalShort(minutes),
+          accessibilityLabel: t.settings.beerCountReminder.intervalOption(minutes),
+          selected: minutes === beerCountReminderIntervalMinutes,
+          accessibilityRole: 'radio',
+          onPress: () => pickInterval(minutes),
+        }))}
       />
     </View>
   );
@@ -989,287 +599,90 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
-    paddingHorizontal: 24,
-    gap: 12,
   },
-  header: {
-    minHeight: 44,
-    marginBottom: 8,
+  nav: {
+    height: 52,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.sm,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
+  navTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
+    fontSize: 17,
+    fontWeight: '700',
     color: Colors.foam,
-    includeFontPadding: false,
   },
-  moreButton: {
+  navSpacer: {
     width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  pressed: { opacity: 0.6 },
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 12 },
-  sectionLabel: {
-    marginBottom: 8,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    color: Colors.mutedText,
-    includeFontPadding: false,
+  content: {
+    paddingHorizontal: PAGE_PAD,
   },
-  sectionLabelSpaced: { marginTop: 24 },
-  distanceCard: {
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 4,
-  },
-  distanceNumber: {
-    alignSelf: 'stretch',
-    fontFamily: Fonts.display.extrabold,
-    color: Colors.amber,
-    includeFontPadding: false,
-    fontVariant: ['tabular-nums'],
-    textAlign: 'center',
-  },
-  distanceUnit: {
-    marginTop: -8,
-    fontFamily: Fonts.display.bold,
-    fontSize: 13,
-    letterSpacing: 3,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-    textAlign: 'center',
-  },
-  sliderWrapper: { marginTop: 20 },
-  sliderTouchArea: {
-    height: 44,
-    justifyContent: 'center',
-  },
-  track: {
-    height: TRACK_HEIGHT,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: 'visible',
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  trackFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-  },
-  thumb: {
-    position: 'absolute',
-    top: -(THUMB_SIZE / 2 - TRACK_HEIGHT / 2),
-    left: 0,
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.foam,
-    borderWidth: 3,
-    borderColor: Colors.amber,
-  },
-  rangeLabels: {
-    marginTop: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  rangeLabel: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 12,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-  },
-  distancePreferences: {
-    marginTop: 20,
-    paddingTop: 12,
+  rowDivided: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  notificationsCard: {
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingVertical: 4,
+  childRow: {
+    paddingLeft: Spacing.md,
   },
-  preferenceRow: {
-    minHeight: 58,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+  segmentRow: {
+    minHeight: 60,
+    paddingVertical: Spacing.sm + 2,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  preferenceRowEdge: { marginHorizontal: -24 },
-  beerCountReminder: { marginHorizontal: -24 },
-  rowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-  },
-  preferenceText: {
+  segmentTitle: {
     flex: 1,
     minWidth: 0,
-  },
-  preferenceTitle: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
+    fontSize: 16,
+    fontWeight: '500',
     color: Colors.foam,
-    includeFontPadding: false,
   },
-  preferenceSubtitle: {
-    marginTop: 2,
-    fontFamily: Fonts.ui.regular,
-    fontSize: 12,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-  },
-  toggle: {
-    width: 50,
-    height: 30,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    justifyContent: 'center',
-  },
-  toggleOn: {
-    backgroundColor: withAlpha(Colors.amber, 0.32),
-    borderColor: withAlpha(Colors.amber, 0.45),
-  },
-  toggleOff: {
+  segmentTrack: {
+    flexDirection: 'row',
+    padding: 2,
+    gap: 2,
+    borderRadius: 9,
     backgroundColor: Colors.stout3,
-    borderColor: withAlpha(Colors.foam, 0.08),
   },
-  toggleThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: Radius.pill,
-  },
-  toggleThumbOn: { backgroundColor: Colors.foam },
-  toggleThumbOff: { backgroundColor: Colors.mutedText },
-  reminderIntervalRow: {
-    minHeight: 44,
-    paddingLeft: 24,
-    paddingRight: 24,
-    paddingBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  reminderIntervalLabel: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 11,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-  },
-  reminderIntervalOptions: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 4,
-  },
-  reminderIntervalOption: {
-    minWidth: 45,
-    height: 28,
-    paddingHorizontal: 7,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.08),
-    backgroundColor: 'transparent',
+  segmentOption: {
+    minWidth: 72,
+    height: 32,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  reminderIntervalOptionSelected: {
-    backgroundColor: withAlpha(Colors.foam, 0.1),
-    borderColor: withAlpha(Colors.foam, 0.18),
+  segmentOptionSelected: {
+    backgroundColor: withAlpha(Colors.foam, 0.14),
   },
-  reminderIntervalOptionText: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 11,
+  segmentLabel: {
+    fontSize: 13,
+    fontWeight: '500',
     color: Colors.mutedText,
-    includeFontPadding: false,
   },
-  reminderIntervalOptionTextSelected: { color: Colors.foam },
-  languageRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 12,
+  segmentLabelSelected: {
+    fontWeight: '600',
+    color: Colors.foam,
   },
-  languageOption: {
-    flex: 1,
-    height: 40,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.08),
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  languageOptionSelected: {
-    backgroundColor: withAlpha(Colors.foam, 0.1),
-    borderColor: withAlpha(Colors.foam, 0.18),
-  },
-  languageOptionText: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 14,
+  note: {
+    paddingBottom: Spacing.sm,
+    fontSize: 13,
+    lineHeight: 18,
     color: Colors.mutedText,
-    includeFontPadding: false,
-  },
-  languageOptionTextSelected: { color: Colors.foam },
-  appearanceNote: {
-    paddingBottom: 12,
-    fontFamily: Fonts.ui.regular,
-    fontSize: 12,
-    lineHeight: 17,
-    color: Colors.mutedText,
-    includeFontPadding: false,
   },
   footer: {
+    marginTop: Spacing.xl,
     alignItems: 'center',
-    marginTop: 24,
-    gap: 4,
+    gap: Spacing.xs,
   },
-  footerPromise: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 12,
-    lineHeight: 17,
+  footerText: {
+    fontSize: 13,
+    lineHeight: 18,
     color: Colors.mutedText,
     textAlign: 'center',
-    includeFontPadding: false,
-  },
-  footerTagline: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    color: Colors.mutedText,
-    textAlign: 'center',
-    includeFontPadding: false,
   },
 });

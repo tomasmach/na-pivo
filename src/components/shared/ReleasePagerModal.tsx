@@ -12,7 +12,6 @@ import React, { useCallback, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -20,10 +19,12 @@ import {
   useWindowDimensions,
   type LayoutChangeEvent,
   type ListRenderItemInfo,
-  type ViewToken,
+  type ListViewToken,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Modal } from '@/components/shared/Modal';
+import { usePagerAnchor } from '@/layout/usePagerAnchor';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -42,6 +43,7 @@ interface Slide {
 const apology = t.whatsNew.apology;
 const fixed211 = t.whatsNew.fixed211;
 const v220 = t.whatsNew.v220;
+const v221 = t.whatsNew.v221;
 
 const APOLOGY_SLIDES: Slide[] = [
   {
@@ -122,6 +124,37 @@ const V220_SLIDES: Slide[] = [
   },
 ];
 
+const V221_SLIDES: Slide[] = [
+  {
+    key: 'alcohol-estimate',
+    title: v221.slide1Title,
+    body: v221.slide1Body,
+    next: v221.slide1Next,
+    image: require('../../../assets/images/whats-new/alcohol-estimate-221.png'),
+  },
+  {
+    key: 'beer-watch',
+    title: v221.slide2Title,
+    body: v221.slide2Body,
+    next: v221.slide2Next,
+    image: require('../../../assets/images/whats-new/beer-watch-221.png'),
+  },
+  {
+    key: 'medals',
+    title: v221.slide3Title,
+    body: v221.slide3Body,
+    next: v221.slide3Next,
+    image: require('../../../assets/images/whats-new/medals-221.png'),
+  },
+  {
+    key: 'profile',
+    title: v221.slide4Title,
+    body: v221.slide4Body,
+    next: v221.slide4Done,
+    image: require('../../../assets/images/whats-new/profile-221.png'),
+  },
+];
+
 interface Pager {
   slides: Slide[];
   skip: string;
@@ -144,6 +177,7 @@ const PAGERS: Record<string, Pager> = {
     asksForReview: false,
   },
   '2.2.0': { slides: V220_SLIDES, skip: v220.skip, done: v220.slide4Done, asksForReview: false },
+  '2.2.1': { slides: V221_SLIDES, skip: v221.skip, done: v221.slide4Done, asksForReview: false },
 };
 
 function PagerSlide({ item, width }: { item: Slide; width: number }) {
@@ -187,7 +221,9 @@ export function ReleasePagerModal({
   onDismiss: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
+  // The open Duo's status column and tab rail sit over the window's side.
+  const width = windowWidth - insets.left - insets.right;
   const pager = PAGERS[version];
   const { slides, asksForReview } = pager;
   const lastIndex = slides.length - 1;
@@ -195,6 +231,7 @@ export function ReleasePagerModal({
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
+  usePagerAnchor(listRef, indexRef, width);
   const doneRef = useRef(false);
 
   const finish = useCallback(() => {
@@ -219,7 +256,7 @@ export function ReleasePagerModal({
   const [viewabilityConfig] = useState(() => ({ itemVisiblePercentThreshold: 60 }));
   const [onViewableItemsChanged] = useState(
     () =>
-      ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      ({ viewableItems }: { viewableItems: ListViewToken[] }) => {
         const first = viewableItems[0];
         if (first?.index != null) {
           indexRef.current = first.index;
@@ -250,6 +287,8 @@ export function ReleasePagerModal({
           {
             paddingTop: insets.top + Spacing.sm,
             paddingBottom: Math.max(insets.bottom, Spacing.sm),
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
           },
         ]}
       >

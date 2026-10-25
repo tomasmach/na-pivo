@@ -205,11 +205,6 @@ describe('registerEmail', () => {
           total_spent_czk: 720,
           max_visits_to_one_pub: 5,
         },
-        achievements: {
-          first_ten: true,
-          regular: true,
-          reviewer: false,
-        },
         usage: { walked_distance_m: 1234 },
       }),
     );
@@ -251,28 +246,6 @@ describe('registerEmail', () => {
         ratingsCount: 3,
         totalSpentCzk: 720,
         maxVisitsToOnePub: 5,
-      },
-      achievements: {
-        firstTen: true,
-        regular: true,
-        reviewer: false,
-        firstMap: false,
-        explorer: false,
-        cartographer: false,
-        completionist: false,
-        factMachine: false,
-        fotoPivar: false,
-        chatar: false,
-        podSirakem: false,
-        lahvacovyFilozof: false,
-        plechovkac: false,
-        firstBeer: false,
-        century: false,
-        pilgrim: false,
-        stamgast: false,
-        nightOwl: false,
-        taster: false,
-        partyAnimal: false,
       },
       usage: { walkedDistanceM: 1234 },
     });
@@ -896,29 +869,12 @@ describe('fetchAccountProfile legacy settings', () => {
   });
 });
 
-describe('fetchAccountProfile — Mapér block + new badges', () => {
-  it('parses the mapper block (xp key, levels, xp_rules) and the 5 new badges', async () => {
+describe('fetchAccountProfile — Mapér block', () => {
+  it('parses the mapper block (xp key, levels, xp_rules)', async () => {
     installFetch(
       fetchResolving(200, {
         id: 'acc',
         is_anonymous: false,
-        achievements: {
-          first_ten: true,
-          regular: false,
-          reviewer: false,
-          first_map: true,
-          explorer: true,
-          cartographer: false,
-          completionist: true,
-          fact_machine: false,
-          first_beer: true,
-          century: false,
-          pilgrim: false,
-          stamgast: true,
-          night_owl: true,
-          taster: false,
-          party_animal: false,
-        },
         mapper: {
           xp: 285,
           level: 3,
@@ -943,28 +899,6 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
 
     const profile = await auth.fetchAccountProfile();
     expect(profile).not.toBeNull();
-    expect(profile?.achievements).toEqual({
-      firstTen: true,
-      regular: false,
-      reviewer: false,
-      firstMap: true,
-      explorer: true,
-      cartographer: false,
-      completionist: true,
-      factMachine: false,
-      fotoPivar: false,
-      chatar: false,
-      podSirakem: false,
-      lahvacovyFilozof: false,
-      plechovkac: false,
-      firstBeer: true,
-      century: false,
-      pilgrim: false,
-      stamgast: true,
-      nightOwl: true,
-      taster: false,
-      partyAnimal: false,
-    });
     expect(profile?.mapper).toEqual({
       xp: 285,
       level: 3,
@@ -986,39 +920,15 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
     });
   });
 
-  it('tolerates an absent mapper block and missing new-badge fields', async () => {
+  it('tolerates an absent mapper block', async () => {
     installFetch(
       fetchResolving(200, {
         id: 'acc',
         is_anonymous: false,
-        achievements: { first_ten: true },
       }),
     );
 
     const profile = await auth.fetchAccountProfile();
-    // The old badges keep working; the new ones default to false; mapper is absent.
-    expect(profile?.achievements).toEqual({
-      firstTen: true,
-      regular: false,
-      reviewer: false,
-      firstMap: false,
-      explorer: false,
-      cartographer: false,
-      completionist: false,
-      factMachine: false,
-      fotoPivar: false,
-      chatar: false,
-      podSirakem: false,
-      lahvacovyFilozof: false,
-      plechovkac: false,
-      firstBeer: false,
-      century: false,
-      pilgrim: false,
-      stamgast: false,
-      nightOwl: false,
-      taster: false,
-      partyAnimal: false,
-    });
     expect(profile?.mapper).toBeUndefined();
   });
 });

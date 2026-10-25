@@ -25,7 +25,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   Pressable,
@@ -33,6 +32,7 @@ import {
   StyleSheet,
   TextInput,
   KeyboardAvoidingView,
+  type ScrollViewInstance,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -43,6 +43,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 
+import { Modal } from '@/components/shared/Modal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
@@ -218,7 +219,7 @@ export function MapPubSheet({
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
-  const bodyRef = useRef<ScrollView>(null);
+  const bodyRef = useRef<ScrollViewInstance>(null);
 
   // Reset to "loading" during render when the pub changes, so a previous pub's
   // data never bleeds into a new open (the React-recommended alternative to a

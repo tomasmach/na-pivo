@@ -26,7 +26,7 @@ import {
   useWindowDimensions,
   type LayoutChangeEvent,
   type ListRenderItemInfo,
-  type ViewToken,
+  type ListViewToken,
 } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +39,7 @@ import { CounterCta } from '@/counter/CounterCta';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
+import { usePagerAnchor } from '@/layout/usePagerAnchor';
 
 interface Slide {
   key: string;
@@ -108,11 +109,14 @@ function OnboardingSlide({ item, width }: { item: Slide; width: number }) {
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const windowWidth = useWindowDimensions().width;
+  // A page fills the pager, which is narrower than the window beside the iPhone Duo's camera column.
+  const [width, setWidth] = useState(windowWidth);
 
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
+  usePagerAnchor(listRef, indexRef, width);
   const finishedRef = useRef(false);
 
   useEffect(() => {
@@ -126,7 +130,7 @@ export default function OnboardingScreen() {
       finishedRef.current = true;
       useOnboardingStore.getState().complete();
       void trackClientEvent({ event, context: { slide: indexRef.current + 1 } });
-      router.replace('/(tabs)' as Href);
+      router.dismissTo('/(tabs)' as Href);
     },
     [router],
   );
@@ -140,7 +144,7 @@ export default function OnboardingScreen() {
     void trackClientEvent({ event: 'onboarding_auth_opened' });
     // Land on the tabs first so closing the auth modal has a place to go back
     // to; a new registration replaces auth with the privacy choice.
-    router.replace('/(tabs)' as Href);
+    router.dismissTo('/(tabs)' as Href);
     router.push('/auth' as Href);
   }, [router]);
 
@@ -157,7 +161,7 @@ export default function OnboardingScreen() {
   const [viewabilityConfig] = useState(() => ({ itemVisiblePercentThreshold: 60 }));
   const [onViewableItemsChanged] = useState(
     () =>
-      ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      ({ viewableItems }: { viewableItems: ListViewToken[] }) => {
         const first = viewableItems[0];
         if (first?.index != null) {
           indexRef.current = first.index;
@@ -202,6 +206,7 @@ export default function OnboardingScreen() {
       <FlatList
         ref={listRef}
         style={styles.pager}
+        onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)}
         data={SLIDES}
         keyExtractor={(item) => item.key}
         renderItem={renderSlide}

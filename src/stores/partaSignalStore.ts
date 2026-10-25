@@ -2,8 +2,8 @@
  * Lightweight, in-memory Parta signal bus (Parta 3.0 §D1).
  *
  * Two consumers read this store WITHOUT touching the heavier friends dashboard:
- *   - TabBar renders the amber badge/dot from `pendingRequests` / `unread` /
- *     `liveNow` (a numeric pill for pending requests, else an ambient dot).
+ *   - The tab layout badges Parta from `pendingRequests` / `unread` /
+ *     `liveNow` (a count for pending requests, else an empty badge).
  *   - FriendsScreen consumes `pendingRefresh` (+ optional `focusTarget`) to force
  *     a reload when a push tap or invite claim needs fresh data.
  *
