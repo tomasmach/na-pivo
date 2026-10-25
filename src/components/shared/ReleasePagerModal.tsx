@@ -177,7 +177,7 @@ const PAGERS: Record<string, Pager> = {
     asksForReview: false,
   },
   '2.2.0': { slides: V220_SLIDES, skip: v220.skip, done: v220.slide4Done, asksForReview: false },
-  '2.2.1': { slides: V221_SLIDES, skip: v221.skip, done: v221.slide4Done, asksForReview: false },
+  '2.3.0': { slides: V221_SLIDES, skip: v221.skip, done: v221.slide4Done, asksForReview: false },
 };
 
 function PagerSlide({ item, width }: { item: Slide; width: number }) {

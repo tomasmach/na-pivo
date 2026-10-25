@@ -37,8 +37,8 @@ describe('bundled release pagers', () => {
     ['en', '2.1.1', 3],
     ['cs', '2.2.0', 4],
     ['en', '2.2.0', 4],
-    ['cs', '2.2.1', 4],
-    ['en', '2.2.1', 4],
+    ['cs', '2.3.0', 4],
+    ['en', '2.3.0', 4],
   ] as const)('bundles %s %s with a readable summary', async (locale, version, cards) => {
     const note = await noteIn(locale, version);
     expect(note).toMatchObject({ version, pager: true });
