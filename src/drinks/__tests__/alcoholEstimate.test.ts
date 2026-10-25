@@ -139,6 +139,17 @@ describe('estimateAlcohol', () => {
     expect(withPils.drinks.map((drink) => drink.id)).toEqual(['r', 'p']);
   });
 
+  it('keeps a drink listed while any run still counts it', () => {
+    const huge: BodyProfile = { sex: 'male', age: 32, heightCm: 182, weightKg: 173 };
+    const radler: EstimateDrink = { ...beer('r', '20:00', 'Radler'), volumeMl: 300 };
+    const pils = { ...beer('p', '20:44'), at: new Date(Date.parse(at('20:44')) + 30_000).toISOString() };
+
+    expect(estimateAlcohol([radler, pils], huge, Date.parse(pils.at))!.drinks.map((drink) => drink.id)).toEqual([
+      'r',
+      'p',
+    ]);
+  });
+
   it('ignores drinks timed in the future', () => {
     expect(estimateAlcohol([beer('f', '23:00')], PROFILE, Date.parse(at('21:00')))).toBeNull();
   });

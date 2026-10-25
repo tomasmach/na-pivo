@@ -203,14 +203,17 @@ export function estimateAlcohol(
   if (zeroAtMs <= nowMs) return null;
 
   const mid = simulate(doses, MID, nowMs);
+  const low = simulate(doses, LOW, nowMs);
+  // Minute steps can leave a lower run a hair above the cautious one, so the earliest bout start wins.
+  const lastZeroMs = Math.min(cautious.lastZeroMs, mid.lastZeroMs, low.lastZeroMs);
   const absorbing = nowMs < doses[doses.length - 1].startMs + ABSORPTION_MIN * STEP_MS;
   return {
     now: mid.at,
-    low: simulate(doses, LOW, nowMs).at,
+    low: low.at,
     high: cautious.at,
     zeroAt: new Date(zeroAtMs),
     absorbing,
     rising: absorbing && mid.peak > mid.at ? { promile: mid.peak, at: new Date(mid.peakAt) } : null,
-    drinks: counted.filter((drink) => Date.parse(drink.at) > cautious.lastZeroMs),
+    drinks: counted.filter((drink) => Date.parse(drink.at) > lastZeroMs),
   };
 }
