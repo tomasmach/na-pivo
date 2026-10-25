@@ -119,6 +119,8 @@ interface Dose {
 
 interface Run {
   at: number;
+  /** The last time the level was at zero with nothing left to absorb; drinks after it make the current bout. */
+  lastZeroMs: number;
   peak: number;
   peakAt: number;
   zeroAt: number;
@@ -133,20 +135,27 @@ function simulate(doses: Dose[], scenario: Scenario, untilMs: number): Run {
   let at = 0;
   let peak = 0;
   let peakAt = untilMs;
+  let lastZeroMs = -Infinity;
   for (let ms = firstMs; ; ms += STEP_MS) {
     let absorbed = 0;
+    let starting = false;
+    let carried = false;
     for (const dose of doses) {
       if (ms >= dose.startMs && ms < dose.startMs + ABSORPTION_MIN * STEP_MS) {
         absorbed += (dose.promile * scenario.alcohol) / ABSORPTION_MIN;
+        if (ms - dose.startMs < STEP_MS) starting = true;
+        else carried = true;
       }
     }
+    // A weak drink can absorb slower than the level falls, so zero alone does not end a bout.
+    if (starting && !carried && level <= 0) lastZeroMs = ms - STEP_MS;
     level = Math.max(0, level + absorbed - (level > 0 ? eliminationPerStep : 0));
     if (ms <= untilMs) at = level;
     else if (level > peak) {
       peak = level;
       peakAt = ms;
     }
-    if (ms >= lastAbsorbedMs && level <= 0) return { at, peak, peakAt, zeroAt: ms };
+    if (ms >= lastAbsorbedMs && level <= 0) return { at, lastZeroMs, peak, peakAt, zeroAt: ms };
   }
 }
 
@@ -161,7 +170,7 @@ export interface AlcoholEstimate {
   absorbing: boolean;
   /** While absorbing and still rising: the middle guess's coming peak. */
   rising: { promile: number; at: Date } | null;
-  /** The drinks that went into the guess, alcoholic only. */
+  /** The alcoholic drinks since the level was last at zero; older ones are long gone. */
   drinks: EstimateDrink[];
 }
 
@@ -194,14 +203,17 @@ export function estimateAlcohol(
   if (zeroAtMs <= nowMs) return null;
 
   const mid = simulate(doses, MID, nowMs);
+  const low = simulate(doses, LOW, nowMs);
+  // Minute steps can leave a lower run a hair above the cautious one, so the earliest bout start wins.
+  const lastZeroMs = Math.min(cautious.lastZeroMs, mid.lastZeroMs, low.lastZeroMs);
   const absorbing = nowMs < doses[doses.length - 1].startMs + ABSORPTION_MIN * STEP_MS;
   return {
     now: mid.at,
-    low: simulate(doses, LOW, nowMs).at,
+    low: low.at,
     high: cautious.at,
     zeroAt: new Date(zeroAtMs),
     absorbing,
     rising: absorbing && mid.peak > mid.at ? { promile: mid.peak, at: new Date(mid.peakAt) } : null,
-    drinks: counted,
+    drinks: counted.filter((drink) => Date.parse(drink.at) > lastZeroMs),
   };
 }

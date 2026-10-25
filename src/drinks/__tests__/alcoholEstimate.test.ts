@@ -108,6 +108,48 @@ describe('estimateAlcohol', () => {
     expect(absorbed.rising).toBeNull();
   });
 
+  it('lists only the drinks since the level was last at zero', () => {
+    const yesterday = { ...beer('y', '19:39', 'Primátor 11°'), at: at('19:39', 16) };
+    const tonight = ['20:03', '20:04', '20:42', '21:16', '23:11'].map((time, i) => beer(`t${i}`, time, 'Radegast 10°'));
+    // Logged mid-minute, between two steps of the simulation.
+    tonight[0].at = new Date(Date.parse(at('20:03')) + 30_000).toISOString();
+    const now = Date.parse(at('23:30'));
+    const estimate = estimateAlcohol([yesterday, ...tonight], PROFILE, now)!;
+
+    expect(estimate.drinks.map((drink) => drink.id)).toEqual(tonight.map((drink) => drink.id));
+    expect(estimate.now).toBeCloseTo(estimateAlcohol(tonight, PROFILE, now)!.now, 1);
+    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('07:30', 18)))!.drinks).toHaveLength(EVENING.length);
+  });
+
+  it('drops yesterday from the list the moment a new drink lands mid-minute', () => {
+    const yesterday = { ...beer('old', '20:00'), at: at('20:00', 16) };
+    const fresh = { ...beer('new', '20:00'), at: new Date(Date.parse(at('20:00')) + 30_000).toISOString() };
+
+    expect(estimateAlcohol([yesterday, fresh], PROFILE, Date.parse(fresh.at))!.drinks.map((drink) => drink.id)).toEqual([
+      'new',
+    ]);
+  });
+
+  it('keeps a weak drink listed while it is still being absorbed', () => {
+    const big: BodyProfile = { sex: 'male', age: 32, heightCm: 182, weightKg: 170 };
+    const radler: EstimateDrink = { ...beer('r', '20:00', 'Radler'), volumeMl: 300 };
+
+    expect(estimateAlcohol([radler], big, Date.parse(at('20:20')))!.drinks.map((drink) => drink.id)).toEqual(['r']);
+    const withPils = estimateAlcohol([radler, beer('p', '20:20')], big, Date.parse(at('20:30')))!;
+    expect(withPils.drinks.map((drink) => drink.id)).toEqual(['r', 'p']);
+  });
+
+  it('keeps a drink listed while any run still counts it', () => {
+    const huge: BodyProfile = { sex: 'male', age: 32, heightCm: 182, weightKg: 173 };
+    const radler: EstimateDrink = { ...beer('r', '20:00', 'Radler'), volumeMl: 300 };
+    const pils = { ...beer('p', '20:44'), at: new Date(Date.parse(at('20:44')) + 30_000).toISOString() };
+
+    expect(estimateAlcohol([radler, pils], huge, Date.parse(pils.at))!.drinks.map((drink) => drink.id)).toEqual([
+      'r',
+      'p',
+    ]);
+  });
+
   it('ignores drinks timed in the future', () => {
     expect(estimateAlcohol([beer('f', '23:00')], PROFILE, Date.parse(at('21:00')))).toBeNull();
   });
