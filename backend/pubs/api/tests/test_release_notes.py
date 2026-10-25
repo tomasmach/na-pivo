@@ -220,3 +220,11 @@ def test_note_without_items_still_serializes(client):
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["items"] == []
+
+
+@pytest.mark.django_db
+def test_version_with_ota_pager_asks_the_store_build_to_retry(client):
+    # Not 404: the 2.3.0 store build would mark the note seen before its OTA pager lands.
+    resp = client.get("/v1/release-notes", {"version": "2.3.0"})
+
+    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
