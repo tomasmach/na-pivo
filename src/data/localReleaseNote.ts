@@ -1,7 +1,7 @@
 /**
  * Release notes that ship inside the app instead of coming from the backend.
  *
- * 2.1.0's Czech apology, 2.1.1's fixes and the features of 2.2.0 and 2.2.1
+ * 2.1.0's Czech apology, 2.1.1's fixes and the features of 2.2.0 and 2.3.0
  * must reach people who update even offline, so they are bundled as
  * full-screen pagers.
  * releaseStore still owns who sees them: fresh installs record the baseline
@@ -21,7 +21,7 @@ export function localReleaseNote(version: string): ReleaseNote | null {
     const copy = t.whatsNew.fixed211;
     return pagerNote(version, [copy.slide1Title, copy.slide2Title, copy.slide3Title]);
   }
-  if (version === '2.2.0' || version === '2.2.1') {
+  if (version === '2.2.0' || version === '2.3.0') {
     const copy = version === '2.2.0' ? t.whatsNew.v220 : t.whatsNew.v221;
     return pagerNote(version, [
       copy.slide1Title,
