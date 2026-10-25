@@ -119,7 +119,7 @@ interface Dose {
 
 interface Run {
   at: number;
-  /** The last minute up to `untilMs` the level was at zero right before a dose started absorbing. */
+  /** The last time the level was at zero with nothing left to absorb; drinks after it make the current bout. */
   lastZeroMs: number;
   peak: number;
   peakAt: number;
@@ -138,12 +138,17 @@ function simulate(doses: Dose[], scenario: Scenario, untilMs: number): Run {
   let lastZeroMs = -Infinity;
   for (let ms = firstMs; ; ms += STEP_MS) {
     let absorbed = 0;
+    let starting = false;
+    let carried = false;
     for (const dose of doses) {
       if (ms >= dose.startMs && ms < dose.startMs + ABSORPTION_MIN * STEP_MS) {
         absorbed += (dose.promile * scenario.alcohol) / ABSORPTION_MIN;
+        if (ms - dose.startMs < STEP_MS) starting = true;
+        else carried = true;
       }
     }
-    if (absorbed > 0 && level <= 0 && ms <= untilMs) lastZeroMs = ms - STEP_MS;
+    // A weak drink can absorb slower than the level falls, so zero alone does not end a bout.
+    if (starting && !carried && level <= 0) lastZeroMs = ms - STEP_MS;
     level = Math.max(0, level + absorbed - (level > 0 ? eliminationPerStep : 0));
     if (ms <= untilMs) at = level;
     else if (level > peak) {

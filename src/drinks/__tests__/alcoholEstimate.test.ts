@@ -121,6 +121,24 @@ describe('estimateAlcohol', () => {
     expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('07:30', 18)))!.drinks).toHaveLength(EVENING.length);
   });
 
+  it('drops yesterday from the list the moment a new drink lands mid-minute', () => {
+    const yesterday = { ...beer('old', '20:00'), at: at('20:00', 16) };
+    const fresh = { ...beer('new', '20:00'), at: new Date(Date.parse(at('20:00')) + 30_000).toISOString() };
+
+    expect(estimateAlcohol([yesterday, fresh], PROFILE, Date.parse(fresh.at))!.drinks.map((drink) => drink.id)).toEqual([
+      'new',
+    ]);
+  });
+
+  it('keeps a weak drink listed while it is still being absorbed', () => {
+    const big: BodyProfile = { sex: 'male', age: 32, heightCm: 182, weightKg: 170 };
+    const radler: EstimateDrink = { ...beer('r', '20:00', 'Radler'), volumeMl: 300 };
+
+    expect(estimateAlcohol([radler], big, Date.parse(at('20:20')))!.drinks.map((drink) => drink.id)).toEqual(['r']);
+    const withPils = estimateAlcohol([radler, beer('p', '20:20')], big, Date.parse(at('20:30')))!;
+    expect(withPils.drinks.map((drink) => drink.id)).toEqual(['r', 'p']);
+  });
+
   it('ignores drinks timed in the future', () => {
     expect(estimateAlcohol([beer('f', '23:00')], PROFILE, Date.parse(at('21:00')))).toBeNull();
   });
