@@ -27,22 +27,22 @@ const BOARD: PubBoard = {
 };
 
 describe('PubBoardContent', () => {
-  it('puts the winner in the card and opens any pub', () => {
+  it('puts the winner in the card and opens any pub', async () => {
     const onOpen = jest.fn();
-    const screen = render(
+    const screen = await render(
       <PubBoardContent state="loaded" board={BOARD} period="week" reduceMotion onOpen={onOpen} />,
     );
 
     expect(screen.getByText('Pegas')).toBeTruthy();
     expect(screen.getByText(t.leaderboards.venuesSubtitle('week'))).toBeTruthy();
-    fireEvent.press(screen.getByText('Lokál U Caipla'));
+    await fireEvent.press(screen.getByText('Lokál U Caipla'));
     expect(onOpen).toHaveBeenCalledWith(BOARD.entries[1]);
-    fireEvent.press(screen.getByText('Pegas'));
+    await fireEvent.press(screen.getByText('Pegas'));
     expect(onOpen).toHaveBeenCalledWith(BOARD.entries[0]);
   });
 
-  it('explains the rules when no pub made the board', () => {
-    const screen = render(
+  it('explains the rules when no pub made the board', async () => {
+    const screen = await render(
       <PubBoardContent
         state="loaded"
         board={{ ...BOARD, entries: [], totalRanked: 0 }}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppState, Pressable } from 'react-native';
+import { AppState } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import type { FriendTable, FriendTablePerson } from '@/data/friendsClient';
@@ -58,8 +58,8 @@ async function flush() {
   });
 }
 
-function setup(autoStart = false, onRequest = jest.fn().mockResolvedValue(true)) {
-  const screen = render(<TableAdd autoStart={autoStart} requestingKey={null} onRequest={onRequest} />);
+async function setup(autoStart = false, onRequest = jest.fn().mockResolvedValue(true)) {
+  const screen = await render(<TableAdd autoStart={autoStart} requestingKey={null} onRequest={onRequest} />);
   return { screen, onRequest };
 }
 
@@ -75,14 +75,14 @@ describe('TableAdd', () => {
   });
 
   it('only probes on mount and waits for the explicit tap', async () => {
-    const { screen } = setup(false);
+    const { screen } = await setup(false);
     await flush();
     expect(fetchFriendTable).toHaveBeenCalledTimes(1);
     expect(openFriendTable).not.toHaveBeenCalled();
     expect(screen.getByText(t.friends.tableExplainer)).toBeTruthy();
 
     jest.mocked(openFriendTable).mockResolvedValue(visible([]));
-    fireEvent.press(screen.getByLabelText(t.friends.tableEntry));
+    await fireEvent.press(screen.getByLabelText(t.friends.tableEntry));
     await flush();
     expect(openFriendTable).toHaveBeenCalledTimes(1);
     expect(screen.getByText(t.friends.tableVisibleFor(8))).toBeTruthy();
@@ -97,8 +97,8 @@ describe('TableAdd', () => {
       }),
     );
     jest.mocked(openFriendTable).mockResolvedValue(visible([]));
-    const { screen } = setup(false);
-    fireEvent.press(screen.getByLabelText(t.friends.tableEntry));
+    const { screen } = await setup(false);
+    await fireEvent.press(screen.getByLabelText(t.friends.tableEntry));
     await flush();
     expect(screen.getByText(t.friends.tableWaiting)).toBeTruthy();
 
@@ -111,17 +111,17 @@ describe('TableAdd', () => {
     jest
       .mocked(openFriendTable)
       .mockResolvedValue(visible([person('bara', 'none'), person('pepa', 'incoming'), person('jana', 'outgoing')]));
-    const { screen } = setup(true);
+    const { screen } = await setup(true);
     await flush();
 
     expect(screen.getByLabelText(t.friends.tableAddA11y('@bara'))).toBeTruthy();
     expect(screen.getByLabelText(t.friends.tableAcceptA11y('@pepa'))).toBeTruthy();
     expect(screen.getAllByText(t.friends.tableSent)).toHaveLength(1);
     // Rows themselves are not pressable: a profile push would close the sheet.
-    expect(screen.UNSAFE_getAllByType(Pressable)).toHaveLength(2);
+    expect(screen.container.queryAll((node) => node.type === 'Pressable')).toHaveLength(2);
 
     jest.mocked(closeFriendTable).mockClear();
-    screen.unmount();
+    await await screen.unmount();
     expect(closeFriendTable).not.toHaveBeenCalled();
     jest.runOnlyPendingTimers();
     expect(closeFriendTable).toHaveBeenCalledTimes(1);
@@ -129,9 +129,9 @@ describe('TableAdd', () => {
 
   it('aborts an opt-in still in flight when the sheet closes', async () => {
     jest.mocked(openFriendTable).mockReturnValue(new Promise<FriendTable>(() => {}));
-    const { screen } = setup(true);
+    const { screen } = await setup(true);
     const signal = jest.mocked(openFriendTable).mock.calls[0][0] as AbortSignal;
-    screen.unmount();
+    await await screen.unmount();
     expect(signal.aborted).toBe(false);
     jest.runOnlyPendingTimers();
 
@@ -142,16 +142,16 @@ describe('TableAdd', () => {
   it('stops showing the list once my window has passed without a connection', async () => {
     jest.mocked(openFriendTable).mockResolvedValue(visible([person('bara', 'none')]));
     jest.mocked(fetchFriendTable).mockResolvedValue(null);
-    const { screen } = setup(true);
+    const { screen } = await setup(true);
     await flush();
 
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(TABLE_POLL_MS);
     });
     await flush();
     expect(screen.getByLabelText(t.friends.tableAddA11y('@bara'))).toBeTruthy();
 
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(8 * 60_000);
     });
     await flush();
@@ -163,19 +163,19 @@ describe('TableAdd', () => {
   it('polls every 5 s only in the foreground and says so when the window ends', async () => {
     jest.mocked(openFriendTable).mockResolvedValue(visible([person('bara', 'none')]));
     jest.mocked(fetchFriendTable).mockResolvedValue(visible([person('bara', 'none')]));
-    const { screen } = setup(true);
+    const { screen } = await setup(true);
     await flush();
     expect(TABLE_POLL_MS).toBe(5_000);
 
     (AppState as { currentState: string }).currentState = 'background';
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(TABLE_POLL_MS);
     });
     expect(fetchFriendTable).not.toHaveBeenCalled();
 
     (AppState as { currentState: string }).currentState = 'active';
     jest.mocked(fetchFriendTable).mockResolvedValue(hidden);
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(TABLE_POLL_MS);
     });
     await flush();
@@ -183,7 +183,7 @@ describe('TableAdd', () => {
     expect(screen.getByText(t.friends.tableHiddenAgain)).toBeTruthy();
     expect(screen.getByLabelText(t.friends.tableEntry)).toBeTruthy();
 
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(TABLE_POLL_MS * 3);
     });
     expect(fetchFriendTable).toHaveBeenCalledTimes(1);
@@ -192,10 +192,10 @@ describe('TableAdd', () => {
   it('marks a tapped person as sent and refreshes at once', async () => {
     jest.mocked(openFriendTable).mockResolvedValue(visible([person('bara', 'none')]));
     jest.mocked(fetchFriendTable).mockResolvedValue(visible([person('bara', 'outgoing')]));
-    const { screen, onRequest } = setup(true);
+    const { screen, onRequest } = await setup(true);
     await flush();
 
-    fireEvent.press(screen.getByLabelText(t.friends.tableAddA11y('@bara')));
+    await fireEvent.press(screen.getByLabelText(t.friends.tableAddA11y('@bara')));
     await flush();
     expect(onRequest).toHaveBeenCalledWith(expect.objectContaining({ id: 'bara' }));
     expect(fetchFriendTable).toHaveBeenCalledTimes(1);
@@ -204,7 +204,7 @@ describe('TableAdd', () => {
 
   it('shows how long until too_soon opens and keeps the row disabled', async () => {
     jest.mocked(fetchFriendTable).mockResolvedValue(refused('too_soon', inMinutes(6.5)));
-    const { screen } = setup(false);
+    const { screen } = await setup(false);
     await flush();
     expect(screen.getByText(t.friends.tableTooSoonIn(7))).toBeTruthy();
     expect(screen.getByLabelText(t.friends.tableEntry).props.accessibilityState).toEqual({ disabled: true });
@@ -212,7 +212,7 @@ describe('TableAdd', () => {
 
   it('unlocks too_soon once its time has passed', async () => {
     jest.mocked(fetchFriendTable).mockResolvedValue(refused('too_soon', inMinutes(-1)));
-    const { screen } = setup(false);
+    const { screen } = await setup(false);
     await flush();
     expect(screen.getByText(t.friends.tableExplainer)).toBeTruthy();
     expect(screen.getByLabelText(t.friends.tableEntry).props.accessibilityState).toEqual({ disabled: false });
@@ -224,7 +224,7 @@ describe('TableAdd', () => {
     ['private', t.friends.tablePrivate],
   ] as const)('explains the %s refusal and stays disabled', async (reason, line) => {
     jest.mocked(openFriendTable).mockResolvedValue(refused(reason));
-    const { screen } = setup(true);
+    const { screen } = await setup(true);
     await flush();
     expect(screen.getByText(line)).toBeTruthy();
     expect(screen.getByLabelText(t.friends.tableEntry).props.accessibilityState).toEqual({ disabled: true });
@@ -232,7 +232,7 @@ describe('TableAdd', () => {
 
   it('shows one offline line when the table does not load', async () => {
     jest.mocked(openFriendTable).mockResolvedValue(null);
-    const { screen } = setup(true);
+    const { screen } = await setup(true);
     await flush();
     expect(screen.getByText(t.friends.tableOffline)).toBeTruthy();
   });

@@ -33,8 +33,8 @@ beforeEach(() => {
   mockAccount.session = { accountId: 'me' };
 });
 
-it('explains the feature with a plan action and account restore when there is nothing yet', () => {
-  const screen = render(<ToursScreen />);
+it('explains the feature with a plan action and account restore when there is nothing yet', async () => {
+  const screen = await render(<ToursScreen />);
   expect(screen.getByText(t.tours.emptyTitle)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.create)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.restore)).toBeTruthy();
@@ -43,19 +43,19 @@ it('explains the feature with a plan action and account restore when there is no
   expect(screen.getByLabelText(t.tours.discoverOpen)).toBeTruthy();
 });
 
-it('puts the running tour first and opens past runs in their history view', () => {
+it('puts the running tour first and opens past runs in their history view', async () => {
   const walked = plan('11111111-1111-4111-8111-111111111111', 'Pátek');
   mockStore.plans = [walked, plan('22222222-2222-4222-8222-222222222222', 'Sobota')];
   mockStore.activeRun = { id: 'run', planId: walked.id, snapshot: walked, startedAt: new Date().toISOString(), endedAt: null, statuses: { s1: 'visited' } };
   mockStore.runs = [{ id: 'old-run', planId: walked.id, snapshot: walked, startedAt: '2026-09-12T18:00:00Z', endedAt: '2026-09-12T23:00:00Z', statuses: { s1: 'visited', s2: 'visited' } }];
-  const screen = render(<ToursScreen />);
+  const screen = await render(<ToursScreen />);
 
   expect(screen.getByLabelText(new RegExp(`^${t.tours.active}\\. Pátek\\. ${t.tours.runOf(1, 2)}`))).toBeTruthy();
   expect(screen.getByText('Sobota')).toBeTruthy();
   expect(screen.getByLabelText(t.tours.continueRun)).toBeTruthy();
   expect(screen.queryByLabelText(t.tours.restore)).toBeNull();
 
-  fireEvent.press(screen.getByLabelText(new RegExp(`^Pátek\\. .*${t.tours.runOf(2, 2)}`)));
+  await fireEvent.press(screen.getByLabelText(new RegExp(`^Pátek\\. .*${t.tours.runOf(2, 2)}`)));
   expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/tours/[id]', params: { id: walked.id, run: 'old-run' } });
 });
 
@@ -71,13 +71,13 @@ it('lists invites to friends\' tours on top and opens the invite, even when the 
   ] });
   mockStore.plans = [{ ...plan('copy', 'Uložená'), source: { tourId: 'saved', revision: 1, token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaa' } },
     { ...plan('old', 'Starý odkaz'), source: { tourId: 'moved', revision: 1, token: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbb' } }];
-  const screen = render(<ToursScreen />);
+  const screen = await render(<ToursScreen />);
   await waitFor(() => expect(screen.getByText('Pátek po hospodách')).toBeTruthy());
   expect(screen.getByText(t.tourInvites.inboxTitle)).toBeTruthy();
   expect(screen.getAllByText('Uložená')).toHaveLength(1);
   expect(screen.getByText('Nový odkaz')).toBeTruthy();
   expect(screen.getByText(/pá 2\. 10\. · 19:00 · U Bulínů/)).toBeTruthy();
-  fireEvent.press(screen.getByText('Pátek po hospodách'));
+  await fireEvent.press(screen.getByText('Pátek po hospodách'));
   expect(mockPush).toHaveBeenCalledWith('/t/invite-token-for-tours-list-test');
 });
 
@@ -87,10 +87,10 @@ it('forgets the previous account\'s invites when the account changes', async () 
     .mockResolvedValueOnce({ ok: true, value: [{ planId: 'p-1', status: 'invited', inviter, token: 'invite-token-for-tours-list-test', title: 'Cizí pozvánka',
       scheduledDate: null, scheduledTime: null, firstPub: '' }] })
     .mockResolvedValueOnce({ ok: false, error: 'network', status: 0, retry: true });
-  const screen = render(<ToursScreen />);
+  const screen = await render(<ToursScreen />);
   await waitFor(() => expect(screen.getByText('Cizí pozvánka')).toBeTruthy());
   mockAccount.session = { accountId: 'someone-else' };
-  screen.rerender(<ToursScreen />);
+  await await screen.rerender(<ToursScreen />);
   expect(screen.queryByText('Cizí pozvánka')).toBeNull();
   await waitFor(() => expect(fetchOpenTourInvites).toHaveBeenCalledTimes(2));
   expect(screen.queryByText('Cizí pozvánka')).toBeNull();

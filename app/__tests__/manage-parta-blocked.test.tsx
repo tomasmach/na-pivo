@@ -53,11 +53,11 @@ describe('Správa party blocked list', () => {
     const { showAppDialog } = jest.requireMock('@/components/shared/AppDialog') as {
       showAppDialog: jest.Mock;
     };
-    const screen = render(<ManagePartaScreen />);
+    const screen = await render(<ManagePartaScreen />);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
     expect(screen.getByText('@pepa')).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('Odblokovat @pepa?'));
+    await fireEvent.press(screen.getByLabelText('Odblokovat @pepa?'));
     expect(mockUnblockFriend).not.toHaveBeenCalled();
 
     const { buttons } = showAppDialog.mock.calls[0][0] as { buttons: DialogButton[] };
@@ -73,10 +73,10 @@ describe('Správa party blocked list', () => {
     const { showAppDialog } = jest.requireMock('@/components/shared/AppDialog') as {
       showAppDialog: jest.Mock;
     };
-    const screen = render(<ManagePartaScreen />);
+    const screen = await render(<ManagePartaScreen />);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
-    fireEvent.press(screen.getByLabelText('Odblokovat @pepa?'));
+    await fireEvent.press(screen.getByLabelText('Odblokovat @pepa?'));
     const { buttons } = showAppDialog.mock.calls[0][0] as { buttons: DialogButton[] };
     await act(async () => { buttons.find((b) => b.text === 'Odblokovat')?.onPress?.(); });
 

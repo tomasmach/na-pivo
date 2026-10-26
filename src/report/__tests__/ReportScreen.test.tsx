@@ -58,12 +58,12 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   XIcon: () => null,
 }));
 
-it('shows the attachment source dialog above the full-screen feedback route', () => {
+it('shows the attachment source dialog above the full-screen feedback route', async () => {
   mockFocused = true;
   const route = () => <AppDialogScreen><ReportScreen /></AppDialogScreen>;
-  const screen = render(route());
+  const screen = await render(route());
 
-  fireEvent.press(screen.getByLabelText(t.report.attachmentAdd));
+  await fireEvent.press(screen.getByLabelText(t.report.attachmentAdd));
 
   expect(screen.getByText(t.report.attachmentCamera)).toBeTruthy();
   expect(screen.getByText(t.report.attachmentLibrary)).toBeTruthy();
@@ -71,11 +71,11 @@ it('shows the attachment source dialog above the full-screen feedback route', ()
   // A stacked route takes focus; the old dialog must not appear underneath it
   // or reappear when the user returns to this screen.
   mockFocused = false;
-  screen.rerender(route());
+  await await screen.rerender(route());
   expect(screen.queryByText(t.report.attachmentCamera)).toBeNull();
   mockFocused = true;
-  screen.rerender(route());
+  await await screen.rerender(route());
   expect(screen.queryByText(t.report.attachmentCamera)).toBeNull();
-  fireEvent.press(screen.getByLabelText(t.report.attachmentAdd));
+  await fireEvent.press(screen.getByLabelText(t.report.attachmentAdd));
   expect(screen.getByText(t.report.attachmentCamera)).toBeTruthy();
 });

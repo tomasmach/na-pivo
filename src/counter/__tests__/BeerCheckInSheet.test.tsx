@@ -102,8 +102,8 @@ const PUB: Pub = { name: 'Lokál Dlouhá', city: 'Praha' } as unknown as Pub;
 
 const t = strings.beerCheckins;
 
-function renderSheet(visible = true) {
-  return render(
+async function renderSheet(visible = true) {
+  return await render(
     <BeerCheckInSheet
       visible={visible}
       beerName="Radegast 12"
@@ -132,11 +132,11 @@ describe('BeerCheckInSheet - canonical beer suggestion', () => {
         brandName: 'Radegast',
       },
     ]);
-    const screen = renderSheet();
+    const screen = await renderSheet();
 
     const label = t.useSuggestion('Radegast Ryzí hořká 12°');
     await waitFor(() => expect(screen.getByLabelText(label)).toBeTruthy());
-    fireEvent.press(screen.getByLabelText(label));
+    await fireEvent.press(screen.getByLabelText(label));
 
     expect(screen.getByDisplayValue('Radegast Ryzí hořká 12°')).toBeTruthy();
     expect(screen.getByDisplayValue('Radegast')).toBeTruthy();
@@ -145,26 +145,26 @@ describe('BeerCheckInSheet - canonical beer suggestion', () => {
 
 describe('BeerCheckInSheet — verdict tags', () => {
   it('toggles a tag on and off', async () => {
-    const screen = renderSheet();
+    const screen = await renderSheet();
     await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
 
-    fireEvent.press(screen.getByLabelText(t.tagAddA11y('Má říz')));
+    await fireEvent.press(screen.getByLabelText(t.tagAddA11y('Má říz')));
     // Now selected → label flips to the remove variant.
     expect(screen.queryByLabelText(t.tagRemoveA11y('Má říz'))).toBeTruthy();
 
-    fireEvent.press(screen.getByLabelText(t.tagRemoveA11y('Má říz')));
+    await fireEvent.press(screen.getByLabelText(t.tagRemoveA11y('Má říz')));
     expect(screen.queryByLabelText(t.tagAddA11y('Má říz'))).toBeTruthy();
   });
 
   it('caps selection at three — the fourth tap is a silent no-op with a haptic tick', async () => {
-    const screen = renderSheet();
+    const screen = await renderSheet();
     await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
 
-    fireEvent.press(screen.getByLabelText(t.tagAddA11y('Má říz')));
-    fireEvent.press(screen.getByLabelText(t.tagAddA11y('Pěna jak smetana')));
-    fireEvent.press(screen.getByLabelText(t.tagAddA11y('Jde samo')));
+    await fireEvent.press(screen.getByLabelText(t.tagAddA11y('Má říz')));
+    await fireEvent.press(screen.getByLabelText(t.tagAddA11y('Pěna jak smetana')));
+    await fireEvent.press(screen.getByLabelText(t.tagAddA11y('Jde samo')));
     // Fourth tap should not select.
-    fireEvent.press(screen.getByLabelText(t.tagAddA11y('Vodový')));
+    await fireEvent.press(screen.getByLabelText(t.tagAddA11y('Vodový')));
 
     expect(screen.queryByLabelText(t.tagAddA11y('Vodový'))).toBeTruthy();
     expect(screen.queryByLabelText(t.tagRemoveA11y('Vodový'))).toBeNull();
@@ -172,12 +172,12 @@ describe('BeerCheckInSheet — verdict tags', () => {
   });
 
   it('carries the selected tags into the queued payload', async () => {
-    const screen = renderSheet();
+    const screen = await renderSheet();
     await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
 
-    fireEvent.press(screen.getByLabelText(t.tagAddA11y('Má říz')));
-    fireEvent.press(screen.getByLabelText(t.tagAddA11y('Ještě jedno')));
-    fireEvent.press(screen.getByText(t.submit));
+    await fireEvent.press(screen.getByLabelText(t.tagAddA11y('Má říz')));
+    await fireEvent.press(screen.getByLabelText(t.tagAddA11y('Ještě jedno')));
+    await fireEvent.press(screen.getByText(t.submit));
 
     await waitFor(() => expect(enqueueBeerCheckInOp).toHaveBeenCalled());
     const op = enqueueBeerCheckInOp.mock.calls[0][0] as unknown as { payload: { tags: string[] } };
@@ -198,7 +198,7 @@ describe('BeerCheckInSheet — memory strip', () => {
       myAverageRating: 4.2,
       topTags: ['crisp'],
     });
-    const screen = renderSheet();
+    const screen = await renderSheet();
     await waitFor(() => expect(screen.queryByText(t.memoryKnownLead)).toBeTruthy());
     expect(screen.queryByText(t.memoryFirstTime)).toBeNull();
   });
@@ -215,14 +215,14 @@ describe('BeerCheckInSheet — memory strip', () => {
       myAverageRating: null,
       topTags: [],
     });
-    const screen = renderSheet();
+    const screen = await renderSheet();
     await waitFor(() => expect(screen.queryByText(t.memoryFirstTime)).toBeTruthy());
     expect(screen.queryByText(t.memoryKnownLead)).toBeNull();
   });
 
   it('renders nothing on failure / offline (fetch resolves null)', async () => {
     fetchBeerMemory.mockResolvedValue(null);
-    const screen = renderSheet();
+    const screen = await renderSheet();
     await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
     expect(screen.queryByText(t.memoryKnownLead)).toBeNull();
     expect(screen.queryByText(t.memoryFirstTime)).toBeNull();
@@ -231,7 +231,7 @@ describe('BeerCheckInSheet — memory strip', () => {
   it('shows neither variant while the lookup is still pending (skeleton state)', async () => {
     let resolve!: (value: null) => void;
     fetchBeerMemory.mockReturnValue(new Promise<null>((r) => (resolve = r)));
-    const screen = renderSheet();
+    const screen = await renderSheet();
     // Lookup fired but unresolved → skeleton branch, no known / first-time text.
     await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
     expect(screen.queryByText(t.memoryKnownLead)).toBeNull();
@@ -245,10 +245,10 @@ describe('BeerCheckInSheet — memory strip', () => {
 describe('BeerCheckInSheet on an iPhone Duo on a table', () => {
   afterEach(() => (useWindowDimensions as jest.Mock).mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 }));
 
-  it('stops below the status bar, though the counter it opens from starts at the fold', () => {
+  it('stops below the status bar, though the counter it opens from starts at the fold', async () => {
     (useWindowDimensions as jest.Mock).mockReturnValue({ width: 669, height: 951, scale: 3, fontScale: 1 });
     const TABLE = { top: 82, right: 0, bottom: 20, left: 0 };
-    const screen = render(
+    const screen = await render(
       <SafeAreaInsetsContext.Provider value={TABLE}>
         <WindowSafeAreaProvider>
           <SafeAreaInsetsContext.Provider value={{ ...TABLE, top: 20 }}>
@@ -259,8 +259,8 @@ describe('BeerCheckInSheet on an iPhone Duo on a table', () => {
         </WindowSafeAreaProvider>
       </SafeAreaInsetsContext.Provider>,
     );
-    const sheet = screen.UNSAFE_root.findAll(
-      (node) => typeof node.type === 'string' && StyleSheet.flatten(node.props.style)?.maxHeight !== undefined,
+    const sheet = screen.container.queryAll(
+      (node) => StyleSheet.flatten(node.props.style)?.maxHeight !== undefined,
     )[0];
     expect(StyleSheet.flatten(sheet.props.style)).toMatchObject({ maxHeight: 951 - 82 - 20, paddingBottom: 20 });
   });

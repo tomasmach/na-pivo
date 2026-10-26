@@ -131,37 +131,37 @@ beforeEach(() => {
 it('marks the next stop, navigates to the following one, and restores the first with undo', async () => {
   const first = mockStore.activeRun!.snapshot.stops[0];
   const second = mockStore.activeRun!.snapshot.stops[1];
-  const screen = render(<TourDetailScreen />);
+  const screen = await render(<TourDetailScreen />);
   expect(screen.getByLabelText(`1. ${first.name}. ${t.tours.nextStop} · Praha`)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.navigate)).toBeTruthy();
 
-  fireEvent.press(screen.getByLabelText(`1. ${first.name}. ${t.tours.nextStop} · Praha`));
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.markVisited)); });
-  screen.rerender(<TourDetailScreen />);
+  await fireEvent.press(screen.getByLabelText(`1. ${first.name}. ${t.tours.nextStop} · Praha`));
+  await act(async () => { await fireEvent.press(screen.getByLabelText(t.tours.markVisited)); });
+  await await screen.rerender(<TourDetailScreen />);
   expect(mockStore.markStop).toHaveBeenLastCalledWith(first.id, 'visited');
   // The pub the group sits in stays visible instead of jumping straight to the next one.
   expect(screen.getByLabelText(`1. ${first.name}. ${t.tours.youAreHere}`)).toBeTruthy();
   expect(screen.getByLabelText(`2. ${second.name}. ${t.tours.nextStop} · Praha`)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.logBeerAt(2))).toBeTruthy();
-  fireEvent.press(screen.getByLabelText(t.tours.navigateMinutes(17)));
+  await fireEvent.press(screen.getByLabelText(t.tours.navigateMinutes(17)));
   expect(openPubInMaps).toHaveBeenLastCalledWith({ lat: second.lat, lng: second.lon, name: second.name });
 
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.undo)); });
-  screen.rerender(<TourDetailScreen />);
+  await act(async () => { await fireEvent.press(screen.getByLabelText(t.tours.undo)); });
+  await await screen.rerender(<TourDetailScreen />);
   expect(mockStore.markStop).toHaveBeenLastCalledWith(first.id, null);
   expect(screen.getByLabelText(`1. ${first.name}. ${t.tours.nextStop} · Praha`)).toBeTruthy();
   expect(screen.getByLabelText(`2. ${second.name}. Praha`)).toBeTruthy();
   expect(screen.queryByLabelText(t.tours.undo)).toBeNull();
 });
 
-it('shows the historical snapshot without active-run actions and returns to the active run', () => {
+it('shows the historical snapshot without active-run actions and returns to the active run', async () => {
   const snapshot = plan('Minulý večer', 'Historická');
   mockStore.runs = [{
     id: 'past-run', planId: tourId, snapshot, startedAt: '2026-09-10T17:00:00Z',
     endedAt: '2026-09-10T21:00:00Z', statuses: { [snapshot.stops[0].id]: 'visited' },
   }];
-  const screen = render(<TourDetailScreen />);
-  fireEvent.press(screen.getByLabelText(new RegExp(`^${t.tours.pastRun}\\.`)));
+  const screen = await render(<TourDetailScreen />);
+  await fireEvent.press(screen.getByLabelText(new RegExp(`^${t.tours.pastRun}\\.`)));
 
   expect(screen.getByText(snapshot.title)).toBeTruthy();
   expect(screen.getByLabelText(`1. ${snapshot.stops[0].name}. ${t.tours.visited}`)).toBeTruthy();
@@ -171,7 +171,7 @@ it('shows the historical snapshot without active-run actions and returns to the 
   expect(screen.queryByLabelText(t.tours.navigate)).toBeNull();
   expect(screen.getByLabelText(t.tours.repeat)).toBeTruthy();
 
-  fireEvent.press(screen.getByLabelText(t.tours.back));
+  await fireEvent.press(screen.getByLabelText(t.tours.back));
   expect(screen.getByText(mockStore.activeRun!.snapshot.title)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.logBeerAt(1))).toBeTruthy();
   expect(mockBack).not.toHaveBeenCalled();
@@ -182,26 +182,26 @@ it('copies the history being displayed from both copy actions', async () => {
     id: 'past-run', planId: tourId, snapshot: plan('Minulý večer', 'Historická'),
     startedAt: '2026-09-10T17:00:00Z', endedAt: '2026-09-10T21:00:00Z', statuses: {},
   }];
-  const screen = render(<TourDetailScreen />);
-  fireEvent.press(screen.getByLabelText(new RegExp(`^${t.tours.pastRun}\\.`)));
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.repeat)); });
+  const screen = await render(<TourDetailScreen />);
+  await fireEvent.press(screen.getByLabelText(new RegExp(`^${t.tours.pastRun}\\.`)));
+  await act(async () => { await fireEvent.press(screen.getByLabelText(t.tours.repeat)); });
   expect(mockStore.copyPlan).toHaveBeenLastCalledWith(tourId, 'past-run');
   expect(mockReplace).toHaveBeenCalledWith({ pathname: '/tours/[id]', params: { id: 'copied-plan' } });
-  fireEvent.press(screen.getByLabelText(t.tours.more));
+  await fireEvent.press(screen.getByLabelText(t.tours.more));
   const dialog = jest.mocked(showAppDialog).mock.calls[0][0];
   await act(async () => { dialog.buttons!.find((button) => button.text === t.tours.repeat)!.onPress!(); });
   expect(mockStore.copyPlan).toHaveBeenCalledTimes(2);
   expect(mockStore.copyPlan).toHaveBeenLastCalledWith(tourId, 'past-run');
 });
 
-it('shows only plan content in share mode, including the illustration and stop detail', () => {
+it('shows only plan content in share mode, including the illustration and stop detail', async () => {
   // Use the same stop IDs so accidentally leaked run states cannot hide behind different IDs.
   mockStore.plans[0].stops = mockStore.activeRun!.snapshot.stops;
   mockStore.activeRun!.statuses = { [mockStore.plans[0].stops[0].id]: 'visited', [mockStore.plans[0].stops[1].id]: 'skipped' };
-  const screen = render(<TourDetailScreen />);
-  fireEvent.press(screen.getByLabelText(t.tours.more));
+  const screen = await render(<TourDetailScreen />);
+  await fireEvent.press(screen.getByLabelText(t.tours.more));
   const dialog = jest.mocked(showAppDialog).mock.calls[0][0];
-  act(() => { dialog.buttons!.find((button) => button.text === t.tourInvites.linkMenu)!.onPress!(); });
+  await act(() => { dialog.buttons!.find((button) => button.text === t.tourInvites.linkMenu)!.onPress!(); });
 
   expect(screen.getByText(mockStore.plans[0].title)).toBeTruthy();
   expect(screen.queryByText(mockStore.activeRun!.snapshot.title)).toBeNull();
@@ -217,24 +217,24 @@ it('shows only plan content in share mode, including the illustration and stop d
   expect(screen.getByLabelText(t.tours.createLink)).toBeTruthy();
 
   const first = mockStore.plans[0].stops[0];
-  fireEvent.press(screen.getByLabelText(`1. ${first.name}. ${t.tours.firstStop} · ${first.address}`));
+  await fireEvent.press(screen.getByLabelText(`1. ${first.name}. ${t.tours.firstStop} · ${first.address}`));
   expect(screen.queryByLabelText(t.tours.markVisited)).toBeNull();
   expect(screen.queryByLabelText(t.tours.undoMark)).toBeNull();
   expect(screen.queryByLabelText(t.tours.skip)).toBeNull();
 });
 
 it('opens the full map, selects a stop, and restores the main controls on close', async () => {
-  const screen = render(<TourDetailScreen />);
+  const screen = await render(<TourDetailScreen />);
   expect(screen.queryByTestId('full-tour-map')).toBeNull();
-  fireEvent.press(screen.getByLabelText(t.tours.openMap));
+  await fireEvent.press(screen.getByLabelText(t.tours.openMap));
   expect(screen.getByTestId('full-tour-map')).toBeTruthy();
   expect(screen.queryByLabelText(t.tours.logBeerAt(1))).toBeNull();
 
   const second = mockStore.activeRun!.snapshot.stops[1];
-  fireEvent.press(screen.getByLabelText(`Map: ${second.name}`));
+  await fireEvent.press(screen.getByLabelText(`Map: ${second.name}`));
   expect(screen.getByText(`2. ${second.name}`)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.fullPubDetail)).toBeTruthy();
-  fireEvent.press(screen.getByLabelText(t.tours.back));
+  await fireEvent.press(screen.getByLabelText(t.tours.back));
   await waitFor(() => expect(screen.queryByTestId('full-tour-map')).toBeNull());
   expect(screen.getByLabelText(t.tours.logBeerAt(1))).toBeTruthy();
   expect(screen.getByLabelText(t.tours.openMap)).toBeTruthy();
@@ -250,7 +250,7 @@ it('shows walking legs, meetup-day hours, taps and a closed stop in a plan', asy
     [first.id, { communityHours: week, openingHours: null, beers: [{ name: 'Pilsner Urquell' }] }],
     [second.id, { communityHours: { ...week, fr: [] }, openingHours: null, beers: [] }],
   ]) as never);
-  const screen = render(<TourDetailScreen />);
+  const screen = await render(<TourDetailScreen />);
 
   expect(screen.getByText(t.tours.walkLeg('1,4 km', 17))).toBeTruthy();
   expect(await screen.findByText(`${t.tours.onDay[4]} 15:00–23:00`)).toBeTruthy();
@@ -260,9 +260,9 @@ it('shows walking legs, meetup-day hours, taps and a closed stop in a plan', asy
   expect(jest.mocked(fetchPubHours).mock.calls[0][2]).toEqual({ syncBudget: 0 });
 });
 
-it('offers adding a meetup to an undated plan', () => {
+it('offers adding a meetup to an undated plan', async () => {
   mockStore.activeRun = null;
-  const screen = render(<TourDetailScreen />);
+  const screen = await render(<TourDetailScreen />);
   expect(screen.getByLabelText(t.tours.addMeetup)).toBeTruthy();
   expect(screen.queryByText(new RegExp(t.tours.optional))).toBeNull();
 });
@@ -271,22 +271,22 @@ it('keeps the group at the last visited pub when the stop after it is skipped', 
   const stop = (n: number) => ({ id: `Běh-${n}`, pubId: `běh-pub-${n}`, cacheKey: null, name: `Běh hospoda ${n}`, address: 'Praha', lat: 50 + n / 100, lon: 14 });
   const snapshot = { ...plan('Tři hospody', 'Běh'), stops: [stop(1), stop(2), stop(3)] };
   mockStore.activeRun = { ...mockStore.activeRun!, snapshot, statuses: { 'Běh-1': 'visited', 'Běh-2': 'skipped' } };
-  const screen = render(<TourDetailScreen />);
+  const screen = await render(<TourDetailScreen />);
   expect(screen.getByLabelText(`1. Běh hospoda 1. ${t.tours.youAreHere}`)).toBeTruthy();
   expect(screen.getByLabelText(t.tours.logBeerAt(3))).toBeTruthy();
   // 1 → 3 is about 2.2 km of air distance, not the 2 → 3 leg.
   expect(screen.getByLabelText(t.tours.navigateMinutes(35))).toBeTruthy();
 });
 
-it('hands the next stop to the counter and shows beers counted at visited stops', () => {
+it('hands the next stop to the counter and shows beers counted at visited stops', async () => {
   const [first, second] = mockStore.activeRun!.snapshot.stops;
   mockStore.activeRun!.statuses = { [first.id]: 'visited' };
   mockTally.current = { pubKey: 'u2fkbnjj', drinks: [{ at: '2026-09-18T17:30:00Z' }, { at: '2026-09-18T18:10:00Z' }, { at: '2026-09-17T18:10:00Z' }] };
   first.cacheKey = 'u2fkbnjj';
-  const screen = render(<TourDetailScreen />);
+  const screen = await render(<TourDetailScreen />);
   // Two beers since the run started at 17:00; yesterday's beer does not count.
   expect(screen.getByLabelText(`1. ${first.name}. ${t.tours.youAreHere} · 2 piva`)).toBeTruthy();
-  fireEvent.press(screen.getByLabelText(t.tours.logBeerAt(2)));
+  await fireEvent.press(screen.getByLabelText(t.tours.logBeerAt(2)));
   expect(useCounterHandoffStore.getState().pub).toEqual({ id: second.pubId, name: second.name, lat: second.lat, lng: second.lon, address: 'Praha' });
   expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/beer');
   mockTally.current = null;
@@ -295,22 +295,22 @@ it('hands the next stop to the counter and shows beers counted at visited stops'
 
 it('offers pinging friends on a run without a crew, but not in invisible mode or without friends', async () => {
   mockFriends.current = null;
-  const screen = render(<TourDetailScreen />);
+  const screen = await render(<TourDetailScreen />);
   await act(async () => undefined);
   expect(screen.queryByText(/crew-row/)).toBeNull();
   mockFriends.current = { ghost: false, friends: [{ id: 'eva' }] };
-  const withFriends = render(<TourDetailScreen />);
+  const withFriends = await render(<TourDetailScreen />);
   expect(await withFriends.findByText('crew-row ping:true')).toBeTruthy();
   // Tapping the row opens the sheet to pick who; sending there goes to Eva and the row learns it went out.
   const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
-  fireEvent.press(withFriends.getByText('crew-row ping:true'));
+  await fireEvent.press(withFriends.getByText('crew-row ping:true'));
   const sheet = PingSheet.mock.calls.at(-1)[0];
   expect(sheet.friends).toEqual([{ id: 'eva' }]);
   const { sendPing } = jest.requireMock('../crewPing');
   await act(async () => { expect(await sheet.onSend(['eva'])).toBeNull(); });
   expect(sendPing).toHaveBeenCalledWith('Probíhající večer', expect.objectContaining({ heading: true }), ['eva']);
   mockFriends.current = { ghost: true, friends: [{ id: 'eva' }] };
-  const ghost = render(<TourDetailScreen />);
+  const ghost = await render(<TourDetailScreen />);
   await act(async () => undefined);
   expect(ghost.queryByText(/crew-row/)).toBeNull();
 });
@@ -320,8 +320,8 @@ it('pings everyone away from the table and then stops offering the same pub', as
   mockStore.activeRun = { ...mockStore.activeRun!, crew: { runId: 'r', publicId: 'p', token: 't', organizer: false, closed: true,
     members: [{ id: 'me', nickname: 'vojta', displayName: '', avatarUrl: null, left: false, completed: false }, { id: 'pepa', nickname: 'pepa', displayName: '', avatarUrl: null, left: false, completed: false }] } };
   mockFriends.current = { ghost: false, friends: [{ id: 'pepa' }, { id: 'eva' }] };
-  const screen = render(<TourDetailScreen />);
-  fireEvent.press(await screen.findByText('crew-row ping:true'));
+  const screen = await render(<TourDetailScreen />);
+  await fireEvent.press(await screen.findByText('crew-row ping:true'));
   const PingSheet = jest.requireMock('@/friends/PingSheet').default as jest.Mock;
   const sheet = PingSheet.mock.calls.at(-1)[0];
   // Pepa walks along: not offered, and "Celá parta" means everyone but him.

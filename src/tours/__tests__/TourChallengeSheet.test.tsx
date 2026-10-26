@@ -15,13 +15,13 @@ const stop: TourStop = { id: '00000000-0000-4000-8000-000000000001', pubId: '1',
 it('says why it cannot save yet, then saves the cleaned line and closes', async () => {
   const onSave = jest.fn(async () => true);
   const onClose = jest.fn();
-  const screen = render(<TourChallengeSheet stop={stop} onSave={onSave} onClose={onClose} />);
+  const screen = await render(<TourChallengeSheet stop={stop} onSave={onSave} onClose={onClose} />);
   expect(screen.getByText('Napiš výzvu')).toBeTruthy();
-  fireEvent.press(screen.getByTestId('tour-challenge-save'));
+  await fireEvent.press(screen.getByTestId('tour-challenge-save'));
   expect(onSave).not.toHaveBeenCalled();
-  fireEvent.changeText(screen.getByTestId('tour-challenge'), ' Objednej si pivo,\n které nikdo neměl ');
+  await fireEvent.changeText(screen.getByTestId('tour-challenge'), ' Objednej si pivo,\n které nikdo neměl ');
   expect(screen.getByText('Uložit výzvu')).toBeTruthy();
-  await act(async () => { fireEvent.press(screen.getByTestId('tour-challenge-save')); });
+  await act(async () => { await fireEvent.press(screen.getByTestId('tour-challenge-save')); });
   expect(onSave).toHaveBeenCalledWith('Objednej si pivo, které nikdo neměl');
   expect(onClose).toHaveBeenCalled();
 });
@@ -29,12 +29,12 @@ it('says why it cannot save yet, then saves the cleaned line and closes', async 
 it('turns clearing an existing challenge into an explicit removal and stays open when saving fails', async () => {
   const onSave = jest.fn(async () => false);
   const onClose = jest.fn();
-  const screen = render(<TourChallengeSheet stop={{ ...stop, challenge: 'Najdi pípu' }} error="storage_failed" onSave={onSave} onClose={onClose} />);
-  fireEvent.changeText(screen.getByTestId('tour-challenge'), '');
+  const screen = await render(<TourChallengeSheet stop={{ ...stop, challenge: 'Najdi pípu' }} error="storage_failed" onSave={onSave} onClose={onClose} />);
+  await fireEvent.changeText(screen.getByTestId('tour-challenge'), '');
   expect(screen.getByText('Odebrat výzvu')).toBeTruthy();
   // An error from before the sheet opened is not this save's.
   expect(screen.queryByText(t.tours.errors.storage)).toBeNull();
-  await act(async () => { fireEvent.press(screen.getByTestId('tour-challenge-save')); });
+  await act(async () => { await fireEvent.press(screen.getByTestId('tour-challenge-save')); });
   expect(onSave).toHaveBeenCalledWith('');
   expect(onClose).not.toHaveBeenCalled();
   expect(screen.getByText(t.tours.errors.storage)).toBeTruthy();

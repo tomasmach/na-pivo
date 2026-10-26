@@ -1,5 +1,4 @@
 import React from 'react';
-import { View } from 'react-native';
 import { render as renderScreen } from '@testing-library/react-native';
 import { SafeAreaInsetsContext, useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-context';
 import { RouteScreen, TabScreen, TabsInsetsRoot, useBottomInset } from '@/navigation/TabScreen';
@@ -21,16 +20,16 @@ function Probe() {
   return null;
 }
 
-function render(element: React.ReactElement) {
-  const { UNSAFE_root, unmount } = renderScreen(element);
-  const { marginLeft, marginRight } = UNSAFE_root.findByType(View).props.style;
-  unmount();
+async function render(element: React.ReactElement) {
+  const { container, unmount } = await renderScreen(element);
+  const { marginLeft, marginRight } = container.queryAll((node) => node.type === 'View')[0].props.style;
+  await unmount();
   return { marginLeft, marginRight, ...seen.mock.lastCall?.[0] };
 }
 
 /** A tab under the tab navigator: the device insets above it, the tab's own around it. */
-function renderTab(device: EdgeInsets, tab: EdgeInsets) {
-  return render(
+async function renderTab(device: EdgeInsets, tab: EdgeInsets) {
+  return await render(
     <SafeAreaInsetsContext.Provider value={device}>
       <TabsInsetsRoot>
         <SafeAreaInsetsContext.Provider value={tab}>
@@ -44,8 +43,8 @@ function renderTab(device: EdgeInsets, tab: EdgeInsets) {
 }
 
 describe('TabScreen', () => {
-  it('leaves an iPhone tab full width and pads only for the tab bar', () => {
-    expect(renderTab(edges(62, 0, 34, 0), edges(62, 0, 83, 0))).toEqual({
+  it('leaves an iPhone tab full width and pads only for the tab bar', async () => {
+    expect(await renderTab(edges(62, 0, 34, 0), edges(62, 0, 83, 0))).toEqual({
       marginLeft: 0,
       marginRight: 0,
       insets: edges(62, 0, 34, 0),
@@ -53,27 +52,27 @@ describe('TabScreen', () => {
     });
   });
 
-  it('narrows the folded iPhone Duo tab by the column the rail shares with the camera', () => {
-    expect(renderTab(edges(0, 84, 20, 0), edges(0, 84, 20, 0))).toMatchObject({
+  it('narrows the folded iPhone Duo tab by the column the rail shares with the camera', async () => {
+    expect(await renderTab(edges(0, 84, 20, 0), edges(0, 84, 20, 0))).toMatchObject({
       marginLeft: 0,
       marginRight: 84,
       insets: edges(0, 0, 20, 0),
     });
   });
 
-  it('takes the wider side when the rail reaches past the device inset', () => {
-    expect(renderTab(edges(0, 84, 20, 0), edges(0, 88, 20, 0)).marginRight).toBe(88);
+  it('takes the wider side when the rail reaches past the device inset', async () => {
+    expect((await renderTab(edges(0, 84, 20, 0), edges(0, 88, 20, 0))).marginRight).toBe(88);
   });
 
-  it('keeps the device side inset for a tab that has not been shown yet', () => {
-    expect(renderTab(edges(0, 0, 20, 84), NONE)).toMatchObject({ marginLeft: 84, marginRight: 0 });
+  it('keeps the device side inset for a tab that has not been shown yet', async () => {
+    expect(await renderTab(edges(0, 0, 20, 84), NONE)).toMatchObject({ marginLeft: 84, marginRight: 0 });
   });
 });
 
 describe('RouteScreen', () => {
-  it('narrows a route by the side insets and hands the rest down', () => {
+  it('narrows a route by the side insets and hands the rest down', async () => {
     expect(
-      render(
+      await render(
         <SafeAreaInsetsContext.Provider value={edges(0, 84, 20, 0)}>
           <RouteScreen>
             <Probe />

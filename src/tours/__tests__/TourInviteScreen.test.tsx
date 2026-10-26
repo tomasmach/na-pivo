@@ -87,17 +87,17 @@ it('lets an invited friend say Jdu, saving the tour first, and change their mind
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
   jest.mocked(fetchMyTourInvite).mockResolvedValue({ ok: true, value: { planId: plan.id, status: 'invited', inviter } });
   jest.mocked(answerTourInvite).mockImplementation(async (_id, status) => ({ ok: true, value: { planId: plan.id, status, inviter } }));
-  const screen = render(<TourInviteScreen />);
+  const screen = await render(<TourInviteScreen />);
   await waitFor(() => expect(screen.getByText(t.tourInvites.invitedBy('@janek'))).toBeTruthy());
   expect(fetchMyTourInvite).toHaveBeenCalledWith(plan.id);
 
-  fireEvent.press(screen.getByLabelText(t.tourInvites.going));
+  await fireEvent.press(screen.getByLabelText(t.tourInvites.going));
   await waitFor(() => expect(screen.getByText(t.tourInvites.answeredGoing)).toBeTruthy());
   expect(mockStore.importShared).toHaveBeenCalledWith(token, false);
   expect(jest.mocked(mockStore.importShared).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(answerTourInvite).mock.invocationCallOrder[0]);
   expect(answerTourInvite).toHaveBeenLastCalledWith(plan.id, 'going');
 
-  fireEvent.press(screen.getByLabelText(t.tourInvites.changeToNotGoing));
+  await fireEvent.press(screen.getByLabelText(t.tourInvites.changeToNotGoing));
   await waitFor(() => expect(screen.getByText(t.tourInvites.answeredDeclined)).toBeTruthy());
   expect(answerTourInvite).toHaveBeenLastCalledWith(plan.id, 'declined');
   expect(screen.getByLabelText(t.tourInvites.changeToGoing)).toBeTruthy();
@@ -109,10 +109,10 @@ it('drops the previous account\'s invite and its answer buttons when the account
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
   jest.mocked(fetchMyTourInvite).mockResolvedValueOnce({ ok: true, value: { planId: plan.id, status: 'invited', inviter } })
     .mockResolvedValueOnce({ ok: false, error: 'not_found', status: 404, retry: false });
-  const screen = render(<TourInviteScreen />);
+  const screen = await render(<TourInviteScreen />);
   await waitFor(() => expect(screen.getByLabelText(t.tourInvites.going)).toBeTruthy());
   mockAccount.session = { accountId: 'someone-else' };
-  screen.rerender(<TourInviteScreen />);
+  await await screen.rerender(<TourInviteScreen />);
   expect(screen.queryByLabelText(t.tourInvites.going)).toBeNull();
   await waitFor(() => expect(fetchMyTourInvite).toHaveBeenCalledTimes(2));
   expect(screen.queryByText(t.tourInvites.invitedBy('@janek'))).toBeNull();
@@ -121,7 +121,7 @@ it('drops the previous account\'s invite and its answer buttons when the account
 
 it('does not ask about an invite without an account on the phone', async () => {
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
-  const screen = render(<TourInviteScreen />);
+  const screen = await render(<TourInviteScreen />);
   await waitFor(() => expect(screen.getByLabelText(t.tours.import)).toBeTruthy());
   expect(fetchMyTourInvite).not.toHaveBeenCalled();
 });
@@ -130,7 +130,7 @@ it('renders a cold invite while a saved own tour has no source and the network i
   let resolve!: (result: TourResponse) => void;
   jest.mocked(fetchSharedTour).mockReturnValue(new Promise((done) => { resolve = done; }));
 
-  const screen = render(<TourInviteScreen />);
+  const screen = await render(<TourInviteScreen />);
   expect(screen.getByText(t.tours.loading)).toBeTruthy();
   expect(screen.queryByText(t.tours.import)).toBeNull();
   expect(mockStore.hydrate).toHaveBeenCalledTimes(1);
@@ -139,7 +139,7 @@ it('renders a cold invite while a saved own tour has no source and the network i
   expect(screen.queryByText(t.tours.loading)).toBeNull();
   expect(screen.getByText(plan.title)).toBeTruthy();
   expect(screen.queryByText(t.tours.importUpdate)).toBeNull();
-  fireEvent.press(screen.getByLabelText(t.tours.import));
+  await fireEvent.press(screen.getByLabelText(t.tours.import));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith({ pathname: '/tours/[id]', params: { id: 'saved-copy' } }));
   expect(mockStore.importShared).toHaveBeenCalledWith(token, false);
 });
@@ -153,10 +153,10 @@ it.each([
     source: { tourId: plan.id, revision, token },
   }];
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
-  const screen = render(<TourInviteScreen />);
+  const screen = await render(<TourInviteScreen />);
   const action = await screen.findByLabelText(update ? t.tours.update : t.tours.openSaved);
   expect(!!screen.queryByText(t.tours.importUpdate)).toBe(update);
-  fireEvent.press(action);
+  await fireEvent.press(action);
   await waitFor(() => expect(mockStore.importShared).toHaveBeenCalledWith(token, update));
 });
 
@@ -167,8 +167,8 @@ it('gives a copy saved from an older link the new one when the friend says Jdu a
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan });
   jest.mocked(fetchMyTourInvite).mockResolvedValue({ ok: true, value: { planId: plan.id, status: 'declined', inviter } });
   jest.mocked(answerTourInvite).mockImplementation(async (_id, status) => ({ ok: true, value: { planId: plan.id, status, inviter } }));
-  const screen = render(<TourInviteScreen />);
-  fireEvent.press(await screen.findByLabelText(t.tourInvites.changeToGoing));
+  const screen = await render(<TourInviteScreen />);
+  await fireEvent.press(await screen.findByLabelText(t.tourInvites.changeToGoing));
   await waitFor(() => expect(answerTourInvite).toHaveBeenLastCalledWith(plan.id, 'going'));
   expect(mockStore.importShared).toHaveBeenCalledWith(token, false);
 });
@@ -177,13 +177,13 @@ it('shows a public tour with its author and saves it as an own plan', async () =
   const publicInfo = { id: '33333333-3333-4333-8333-333333333333', peopleCount: 0, city: 'Praha', walkM: 1200,
     author: { id: 'author-id', nickname: 'pivni_vlk', displayName: 'Pavel V.', avatarUrl: null } };
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan, public: publicInfo });
-  const screen = render(<TourInviteScreen />);
+  const screen = await render(<TourInviteScreen />);
   expect(await screen.findByText(t.tours.publicTour)).toBeTruthy();
   expect(screen.getByText('@pivni_vlk')).toBeTruthy();
   expect(screen.getByText('Praha · 2 hospody, asi 1,2 km pěšky')).toBeTruthy();
-  fireEvent.press(screen.getByLabelText(t.tours.authorA11y('pivni_vlk')));
+  await fireEvent.press(screen.getByLabelText(t.tours.authorA11y('pivni_vlk')));
   expect(mockPush).toHaveBeenCalledWith('/parta/author-id');
-  fireEvent.press(screen.getByLabelText(t.tours.import));
+  await fireEvent.press(screen.getByLabelText(t.tours.import));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith({ pathname: '/tours/[id]', params: { id: 'public-copy' } }));
   expect(mockStore.savePublic).toHaveBeenCalledWith(token);
   expect(mockStore.importShared).not.toHaveBeenCalled();
@@ -195,7 +195,7 @@ it('does not show a public tour this phone reported', async () => {
   mockStore.hiddenPublic = [publicInfo.id];
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan, public: publicInfo });
   try {
-    const screen = render(<TourInviteScreen />);
+    const screen = await render(<TourInviteScreen />);
     expect(await screen.findByText(t.tours.reported)).toBeTruthy();
     expect(screen.queryByText(plan.title)).toBeNull();
   } finally {
@@ -211,24 +211,24 @@ it('joins the party behind a scanned code, or sends a friend without an account 
   jest.mocked(fetchSharedTour).mockResolvedValue({ ok: true, tour: plan, public: publicInfo });
   jest.mocked(fetchTourRunPreview).mockResolvedValue({ organizer: { id: 'o', nickname: 'vojta', displayName: '', avatarUrl: null }, going: 3, members: [] });
   try {
-    const screen = render(<TourInviteScreen />);
+    const screen = await render(<TourInviteScreen />);
     expect(await screen.findByText(t.tours.crewAlreadyGoing('vojta', 2))).toBeTruthy();
     // Who invites replaces how many walked it before.
     expect(screen.queryByText(t.tours.peopleCount(3))).toBeNull();
-    await act(async () => { fireEvent.press(screen.getByTestId('tour-crew-join')); });
+    await act(async () => { await fireEvent.press(screen.getByTestId('tour-crew-join')); });
     expect(mockStore.joinCrew).toHaveBeenCalledWith(token, runId, expect.objectContaining({ tour: expect.anything(), public: expect.anything() }));
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/tours/[id]', params: { id: 'crew-copy' } });
 
     mockAccount.nickname = null;
-    screen.rerender(<TourInviteScreen />);
+    await await screen.rerender(<TourInviteScreen />);
     expect(screen.getByText(t.tours.pickNickname)).toBeTruthy();
-    await act(async () => { fireEvent.press(screen.getByTestId('tour-crew-join')); });
+    await act(async () => { await fireEvent.press(screen.getByTestId('tour-crew-join')); });
     expect(mockPush).toHaveBeenCalledWith('/profile/edit');
 
     mockAccount.signedIn = false;
-    screen.rerender(<TourInviteScreen />);
+    await await screen.rerender(<TourInviteScreen />);
     expect(screen.getByText(t.tours.crewSignInJoin)).toBeTruthy();
-    await act(async () => { fireEvent.press(screen.getByTestId('tour-crew-join')); });
+    await act(async () => { await fireEvent.press(screen.getByTestId('tour-crew-join')); });
     expect(mockPush).toHaveBeenCalledWith('/auth');
   } finally {
     delete mockParams.r;
