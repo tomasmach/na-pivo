@@ -251,6 +251,7 @@ export default function HomePointScreen() {
             onPress={handleMapPress}
             showsUserLocation={false}
             showsMyLocationButton={false}
+            userInterfaceStyle="dark"
             accessibilityLabel={t.homePoint.mapA11y}
           >
             {draftPoint ? <Marker coordinate={{ latitude: draftPoint.lat, longitude: draftPoint.lng }} /> : null}
