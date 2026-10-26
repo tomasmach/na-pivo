@@ -18,7 +18,7 @@
 
 import { t } from '@/i18n';
 
-import { ensureAccount, type AccountSession } from './account';
+import { ensureAccount, getLastKnownSessionAccountId, type AccountSession } from './account';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import { resolveBeerPhotoUrl } from './beerPhotosClient';
@@ -211,6 +211,8 @@ export function parsePhotoContestWinner(raw: RawWinner): PhotoContestWinner {
 interface RequestOk {
   ok: true;
   data: Record<string, unknown>;
+  /** The account whose bearer made the request. */
+  accountId: string;
 }
 
 type RequestResult = RequestOk | { ok: false; result: FriendActionError };
@@ -263,7 +265,7 @@ async function requestJson(
       return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
-    return { ok: true, data };
+    return { ok: true, data, accountId: session.accountId };
   } catch (err) {
     const isAbort = err instanceof Error && err.name === 'AbortError';
     if (!options.signal?.aborted && !isAbort) {
@@ -282,15 +284,17 @@ async function requestJson(
  * refreshes it, so the teaser is at most TTL-stale.
  */
 const TEASER_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
-let teaserCache: { at: number; snapshot: PhotoContestSnapshot } | null = null;
-/** Bumped on clear, so a request still in flight for the outgoing account never lands. */
-let teaserGeneration = 0;
+let teaserCache: { at: number; accountId: string; snapshot: PhotoContestSnapshot } | null = null;
 
 /** The snapshot for lightweight teaser surfaces: cached, TTL-bounded. */
 export async function fetchPhotoContestTeaser(
   signal?: AbortSignal,
 ): Promise<PhotoContestSnapshot | null> {
-  if (teaserCache && Date.now() - teaserCache.at < TEASER_SNAPSHOT_TTL_MS) {
+  if (
+    teaserCache &&
+    teaserCache.accountId === getLastKnownSessionAccountId() &&
+    Date.now() - teaserCache.at < TEASER_SNAPSHOT_TTL_MS
+  ) {
     return teaserCache.snapshot;
   }
   return fetchPhotoContest(signal);
@@ -299,16 +303,17 @@ export async function fetchPhotoContestTeaser(
 /** The cached snapshot carries the signed-in account's own entry and vote. */
 export function clearPhotoContestTeaserCache(): void {
   teaserCache = null;
-  teaserGeneration += 1;
 }
 
-/** GET /v1/photo-contest — the whole round snapshot. null on any failure. */
+/**
+ * GET /v1/photo-contest — the whole round snapshot. null on any failure, and
+ * when the session moved to another account while the request was in flight.
+ */
 export async function fetchPhotoContest(
   signal?: AbortSignal,
 ): Promise<PhotoContestSnapshot | null> {
-  const generation = teaserGeneration;
   const res = await requestJson('/v1/photo-contest', { signal });
-  if (!res.ok || generation !== teaserGeneration) return null;
+  if (!res.ok || res.accountId !== getLastKnownSessionAccountId()) return null;
   const d = res.data;
   const rawLast = d.last_results as
     | { contest?: RawContest; winners?: RawWinner[]; my_result?: RawMyResult | null }
@@ -335,7 +340,7 @@ export async function fetchPhotoContest(
           }
         : null,
   };
-  teaserCache = { at: Date.now(), snapshot };
+  teaserCache = { at: Date.now(), accountId: res.accountId, snapshot };
   return snapshot;
 }
 

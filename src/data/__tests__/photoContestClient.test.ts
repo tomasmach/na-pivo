@@ -10,7 +10,6 @@
  */
 
 import {
-  clearPhotoContestTeaserCache,
   clearPhotoContestVote,
   enterPhotoContest,
   fetchPhotoContest,
@@ -33,7 +32,9 @@ jest.mock('@/data/account', () => ({
     authenticated: false,
   })),
   clearCachedAnonymousAccount: jest.fn(),
+  getLastKnownSessionAccountId: jest.fn(() => mockCurrentAccountId),
 }));
+let mockCurrentAccountId = 'a';
 
 jest.mock('@/data/telemetryClient', () => ({ trackApiFailure: jest.fn() }));
 
@@ -205,14 +206,17 @@ describe('fetchPhotoContest', () => {
     expect(await fetchPhotoContest()).toBeNull();
   });
 
-  it('drops a response that was in flight when the cache was cleared for another account', async () => {
-    const spy = fetchResolving(200, { contest: WIRE_CONTEST, entries: [], my_entry_id: 'mine' });
-    const inFlight = fetchPhotoContest();
-    clearPhotoContestTeaserCache();
-    expect(await inFlight).toBeNull();
+  it('never hands one account the snapshot fetched with another account', async () => {
+    fetchResolving(200, { contest: WIRE_CONTEST, entries: [], my_entry_id: 'mine' });
+    expect(await fetchPhotoContestTeaser()).not.toBeNull();
 
-    await fetchPhotoContestTeaser();
-    expect(spy).toHaveBeenCalledTimes(2);
+    // Signed in to account b: a's cached snapshot is skipped, and the answer
+    // to a's bearer (still the one the request went out with) is dropped.
+    mockCurrentAccountId = 'b';
+    const spy = fetchResolving(200, { contest: WIRE_CONTEST, entries: [], my_entry_id: 'mine' });
+    expect(await fetchPhotoContestTeaser()).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(1);
+    mockCurrentAccountId = 'a';
   });
 });
 
