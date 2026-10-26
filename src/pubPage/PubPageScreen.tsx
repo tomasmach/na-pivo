@@ -20,7 +20,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useColorScheme,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -271,7 +270,6 @@ export default function PubPageScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
   // Set when the page sits in a tab's right half instead of on the stack.
   const pane = useDetailNav();
   const quiet = useTone() === 'quiet';
@@ -1021,7 +1019,7 @@ export default function PubPageScreen() {
               showsPointsOfInterests={false}
               showsCompass={false}
               customMapStyle={PREVIEW_MAP_STYLE}
-              userInterfaceStyle={colorScheme === 'dark' ? 'dark' : 'light'}
+              userInterfaceStyle="dark"
               loadingBackgroundColor={Colors.stout2}
               loadingIndicatorColor={Colors.amber}
             />

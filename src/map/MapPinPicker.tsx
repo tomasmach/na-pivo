@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,7 +42,6 @@ interface MapPinPickerProps {
  */
 export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPickerProps) {
   const insets = useSafeAreaInsets();
-  const mapColorScheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const mapRef = useRef<MapView>(null);
   const initialRegion: Region = start
     ? { latitude: start.lat, longitude: start.lng, latitudeDelta: STREET_DELTA, longitudeDelta: STREET_DELTA }
@@ -95,7 +94,6 @@ export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPick
       <View style={styles.root}>
         {visible ? (
           <MapView
-            key={mapColorScheme}
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
             style={StyleSheet.absoluteFill}
@@ -104,11 +102,11 @@ export function MapPinPicker({ visible, start, onCancel, onConfirm }: MapPinPick
             onPanDrag={() => { moved.current = true; }}
             showsUserLocation={locationGranted}
             mapType="standard"
-            userInterfaceStyle={mapColorScheme}
+            userInterfaceStyle="dark"
             showsMyLocationButton={false}
             showsCompass={false}
             toolbarEnabled={false}
-            loadingBackgroundColor={mapColorScheme === 'dark' ? Colors.stout : Colors.foam}
+            loadingBackgroundColor={Colors.stout}
             loadingIndicatorColor={Colors.amber}
           />
         ) : null}
