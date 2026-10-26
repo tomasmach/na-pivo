@@ -1,0 +1,35 @@
+{% load i18n %}<div class="results" id="vysledky" data-pins="{{ pins_json }}" aria-live="polite">
+  <div class="count">
+    <span><b>{{ count_label }}</b>{% if radius %} {% blocktranslate %}do {{ radius }} km{% endblocktranslate %}{% endif %}{% if area_url %} <a class="chip on area" href="{{ action }}{{ area_url }}">{% translate "ve výřezu mapy" %} <span aria-hidden="true">×</span></a>{% endif %}</span>
+    {% if rows %}<select name="razeni" form="finder" aria-label="{% translate "Řazení" %}">{% for option in sort_options %}<option value="{{ option.value }}"{% if option.on %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>{% endif %}
+  </div>
+  {% if rows %}
+  <ul class="rows">
+    {% for row in rows %}
+    <li class="row" data-key="{{ row.cache_key }}">
+      <a class="name" href="{{ row.url }}">{{ row.name }}</a>
+      {% if row.price %}<span class="price">{{ row.price }} {% translate "Kč" %}<small>{{ row.price_note }}</small></span>{% endif %}
+      <span class="meta">{{ row.meta }}</span>
+      <span class="taps">{{ row.taps }}</span>
+      {% if row.event %}<span class="event">{{ row.event }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if more_url %}<a class="quiet more" href="{{ action }}{{ more_url }}" data-more>{% translate "Ukázat další hospody" %}</a>{% endif %}
+  {% else %}
+  <div class="nothing">
+    {% if has_filters or area %}
+    <h2>{% translate "Žádná hospoda nemá všechno najednou" %}</h2>
+    {% if relax %}<p>{% translate "Zkus jeden filtr vypnout:" %}</p>
+    <div class="chips">{% for item in relax %}<a class="chip" href="{{ action }}{{ item.url }}">{{ item.label }}</a>{% endfor %}</div>{% endif %}
+    <a class="quiet clear" href="{{ clear_url }}">{% translate "Zrušit filtry" %}</a>
+    {% elif near %}
+    <h2>{% translate "Tady zatím nic" %}</h2>
+    <p>{% translate "Kolem tebe zatím nikdo žádnou hospodu nezapsal. Zkus město." %}</p>
+    {% else %}
+    <h2>{% translate "Nic jsem nenašel" %}</h2>
+    <p>{% translate "Zkus jiný název nebo město." %}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#231407">
+<meta name="theme-color" content="#15120F">
 <title>{{ page_title }} | Na pivo</title>
 {% if description %}<meta name="description" content="{{ description }}">{% endif %}
 {% if not missing %}
@@ -47,16 +47,16 @@
 
   :root {
     color-scheme: dark;
-    --ground: #231407;
-    --stout-3: #3a2515;
-    --ink: #1f1308;
-    --ink-deep: #0d0703;
+    --ground: #15120F;
+    --stout-3: #262019;
+    --ink: #15120F;
+    --ink-deep: #0E0C0A;
     --amber: #e8a317;
     --amber-light: #f5b642;
     --foam: #fbf3e0;
     --foam-muted: #e8dcc0;
-    --muted: #a8896a;
-    --paper-muted: #6b5440;
+    --muted: #958E85;
+    --paper-muted: #6E675F;
     --hair: rgb(251 243 224 / 0.1);
     --track: rgb(251 243 224 / 0.07);
     --display: "Baloo 2", ui-rounded, system-ui, sans-serif;
@@ -75,12 +75,6 @@
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .wrap { max-width: calc(1080px + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); overflow-x: clip; }
 
-  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 14px; }
-  .wordmark { display: inline-flex; min-height: 48px; align-items: center; gap: 10px; color: var(--foam); font: 800 24px/1 var(--display); text-decoration: none; }
-  .wordmark img { width: 36px; height: 36px; border-radius: 50%; }
-  .lang { display: inline-flex; min-height: 44px; align-items: center; margin-right: -12px; padding: 0 12px; border-radius: 10px; color: var(--foam-muted); font-size: 16px; font-weight: 600; text-decoration: none; }
-  @media (hover: hover) { .lang:hover { color: var(--foam); background: var(--stout-3); } }
-  .lang:active { background: var(--stout-3); }
 
   .hero { display: grid; gap: clamp(36px, 5vw, 56px); padding-top: clamp(28px, 5vw, 56px); }
   .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; color: var(--muted); font-size: 16px; }
@@ -267,13 +261,11 @@
     *, *::before, *::after { transition-duration: 0ms !important; transition-delay: 0ms !important; }
   }
 </style>
+{% include "pubs/web/_chrome.html" %}
 </head>
 <body>
+{% include "pubs/web/_header.html" %}
 <div class="wrap">
-<header class="top">
-  <a class="wordmark" href="{{ home_url }}"><img src="{{ asset.icon_144_png }}" alt="" width="36" height="36">Na pivo</a>
-  {% if LANGUAGE_CODE == "cs" %}<a class="lang" href="{{ switch_url }}" hreflang="en" lang="en">English</a>{% else %}<a class="lang" href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>{% endif %}
-</header>
 
 <main>
   <section class="hero" aria-labelledby="page-title">
@@ -346,7 +338,7 @@
     <ol class="strips" role="list" data-rows>
       {% for pub in listed %}<li class="strip{% if not pub.fresh %} is-old{% endif %}{% if pub.first_old %} has-head{% endif %}" data-find="{{ pub.name }} {{ pub.city }}" data-median="{{ pub.per_half_litre }}"{% if not pub.fresh %} data-old{% endif %}>
         {% if pub.first_old %}<span class="old-head" data-old-head>{% translate "Zápisy starší než 3 měsíce" %}</span>{% endif %}
-        <span class="who"><span class="name"><a href="{{ pub.map_url }}">{{ pub.name }}<span class="sr-only">, {% translate "na mapě" %}</span></a></span>{% if pub.city %}<span class="sub">{{ pub.city }}</span>{% endif %}{% if pub.rotates %}<span class="note">{% translate "pípy se tu střídají" %}</span>{% endif %}</span>
+        <span class="who"><span class="name">{% if pub.url %}<a href="{{ pub.url }}">{{ pub.name }}</a>{% else %}<a href="{{ pub.map_url }}">{{ pub.name }}<span class="sr-only">, {% translate "na mapě" %}</span></a>{% endif %}</span>{% if pub.city %}<span class="sub">{{ pub.city }}</span>{% endif %}{% if pub.rotates %}<span class="note">{% translate "pípy se tu střídají" %}</span>{% endif %}</span>
         <span class="when"><span class="when-word" aria-hidden="true">{% translate "potvrzeno" %} </span><span class="sr-only">{% translate "naposledy potvrzeno" %} </span><time datetime="{{ pub.confirmed }}">{{ pub.date }}</time>{% if not pub.fresh %}<span class="sr-only">, {% translate "starší než 3 měsíce" %}</span>{% endif %}</span>
         <span class="cost">{% if pub.price_czk %}<span class="median">{{ pub.price_czk }} {% translate "Kč" %}</span>{% if pub.litres and pub.volume_ml != 500 %}<span class="glass">{% blocktranslate with litres=pub.litres %}za {{ litres }} l{% endblocktranslate %}</span>{% endif %}{% else %}<span class="none">{% translate "cena chybí" %}</span>{% endif %}</span>
       </li>{% endfor %}
@@ -431,6 +423,7 @@
     <a href="{{ prices_url }}">{% translate "Ceny piva" %}</a>
     <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
     <a href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a>
+    {% if LANGUAGE_CODE == "cs" %}<a href="{{ switch_url }}" hreflang="en" lang="en">English</a>{% else %}<a href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>{% endif %}
   </nav>
 </footer>
 </div>

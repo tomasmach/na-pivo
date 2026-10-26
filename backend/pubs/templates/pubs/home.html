@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#231407">
+<meta name="theme-color" content="#15120F">
 <title>{% translate "Na pivo: aplikace s kompasem na hospodu a pivním deníčkem" %}</title>
 <meta name="description" content="{% translate "Kompas ukáže nejbližší hospodu, na počítadle čárkuješ piva a parta hned ví, kde sedíš. Zdarma a bez reklam." %}">
 <link rel="canonical" href="{{ canonical_url }}">
@@ -42,21 +42,21 @@
     font-display: swap;
   }
 
-  /* Values from DESIGN.md and src/theme/colors.ts. The ground is the brown the linocut prints are pulled on,
+  /* Values from DESIGN.md and src/theme/colors.ts. The linocut prints are pulled on the same gray ground,
      so every print bleeds into the page without an edge. */
   :root {
     color-scheme: dark;
-    --ground: #231407;
-    --stout: #1f1308;
-    --stout-3: #3a2515;
-    --ink: #1f1308;
-    --ink-deep: #0d0703;
+    --ground: #15120F;
+    --stout: #15120F;
+    --stout-3: #262019;
+    --ink: #15120F;
+    --ink-deep: #0E0C0A;
     --amber: #e8a317;
     --amber-light: #f5b642;
     --foam: #fbf3e0;
     --foam-muted: #e8dcc0;
-    --muted: #a8896a;
-    --paper-muted: #6b5440;
+    --muted: #958E85;
+    --paper-muted: #6E675F;
     --hair: rgb(251 243 224 / 0.1);
     --display: "Baloo 2", ui-rounded, system-ui, sans-serif;
     --text: "Bricolage Grotesque", system-ui, sans-serif;
@@ -91,38 +91,44 @@
   }
   .skip-link:focus { top: 16px; }
 
-  .top {
-    position: absolute;
-    inset: 0 0 auto;
-    z-index: 5;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px var(--gutter);
+
+
+  /* The guide on top: search, prices by city, what is on soon. The app's story follows below it. */
+  .guide { max-width: 1200px; margin: 0 auto; padding: 64px var(--gutter) 56px; }
+  .guide h1 { font-size: clamp(42px, 6vw, 72px); line-height: 1; letter-spacing: -0.02em; }
+  .guide-search { display: flex; gap: 10px; flex-wrap: wrap; max-width: 680px; margin-top: 28px; }
+  .guide-field { flex: 1 1 300px; display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 16px; border-radius: 14px; background: var(--stout-3); color: var(--foam-muted); }
+  .guide-field:focus-within { box-shadow: 0 0 0 2px var(--foam); }
+  .guide-field input { flex: 1; min-width: 0; height: 54px; border: 0; background: transparent; color: var(--foam); font: 400 17px/1 var(--text); outline: none; }
+  .guide-field input::placeholder { color: rgb(251 243 224 / 0.55); }
+  .guide-go { min-height: 56px; padding: 0 24px; border: 0; border-radius: 14px; background: var(--amber); color: var(--ink); font: 700 16px/1 var(--text); cursor: pointer; }
+  .guide-go:hover { background: var(--amber-light); }
+  .guide-near { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; padding: 0 4px; border: 0; background: none; color: var(--foam-muted); font: 600 15px/1 var(--text); cursor: pointer; }
+  .guide-near:hover { color: var(--foam); }
+  .guide-error { margin-top: 8px; color: var(--foam-muted); font-size: 15px; }
+  .guide-prices { margin-top: 44px; }
+  .guide-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 10px; }
+  .guide h2 { font: 700 19px/1.3 var(--text); }
+  .guide-head span { color: var(--muted); font-size: 14px; }
+  .guide-cities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; }
+  .guide-cities a { display: grid; grid-template-columns: 1fr auto; padding: 13px 0; border-top: 1px solid var(--hair); color: var(--foam); text-decoration: none; }
+  .guide-cities b { font-weight: 700; font-size: 16.5px; }
+  .guide-cities span { grid-column: 1; color: var(--muted); font-size: 14px; }
+  .guide-cities em { grid-row: 1 / span 2; grid-column: 2; align-self: center; font: 800 24px/1 var(--display); font-style: normal; }
+  .guide-cities a:hover b { text-decoration: underline; text-decoration-color: rgb(251 243 224 / 0.16); text-underline-offset: 3px; }
+  .guide-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: 6px; color: var(--foam-muted); font-weight: 600; font-size: 15px; text-decoration: underline; text-decoration-color: rgb(251 243 224 / 0.16); text-underline-offset: 4px; }
+  .guide-soon { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; margin-top: 40px; }
+  .guide-soon h2 { margin-bottom: 8px; }
+  .guide-item { display: block; padding: 11px 0; border-top: 1px solid var(--hair); color: var(--foam); text-decoration: none; font-size: 16px; }
+  .guide-item span { display: block; color: var(--muted); font-size: 14px; }
+  .slip-link { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  .guide-item:hover { text-decoration: underline; text-decoration-color: rgb(251 243 224 / 0.16); text-underline-offset: 3px; }
+  @media (max-width: 760px) {
+    .guide { padding-top: 32px; }
+    .guide-cities, .guide-soon { grid-template-columns: 1fr; }
+    .guide-soon { gap: 28px; }
+    .guide-go { flex: 1 1 100%; }
   }
-  .wordmark {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-    gap: 10px;
-    color: var(--foam);
-    font: 800 24px/1 var(--display);
-    text-decoration: none;
-  }
-  .wordmark img { width: 36px; height: 36px; border-radius: 50%; }
-  .site-nav { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: var(--ground); }
-  .site-nav a {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-    padding: 0 12px;
-    border-radius: 10px;
-    color: var(--foam-muted);
-    font-size: 16px;
-    font-weight: 600;
-    text-decoration: none;
-  }
-  .site-nav a:hover { color: var(--foam); background: var(--stout-3); }
 
   /* Buttons are printed blocks: an ink outline and a hard ink offset like a stamp. Pressed, they sink into it.
      Both stores get the same amber block; the visitor's platform goes first. */
@@ -155,7 +161,7 @@
     position: absolute;
     inset: 0;
     z-index: 1;
-    background: linear-gradient(90deg, rgb(35 20 7 / 0.9) 0%, rgb(35 20 7 / 0.72) 34%, rgb(35 20 7 / 0) 52%);
+    background: linear-gradient(90deg, rgb(21 18 15 / 0.9) 0%, rgb(21 18 15 / 0.72) 34%, rgb(21 18 15 / 0) 52%);
     pointer-events: none;
   }
   .table { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -185,11 +191,11 @@
     gap: 28px;
     min-height: inherit;
     max-width: calc(700px + var(--gutter));
-    padding: 120px var(--gutter) 96px;
+    padding: 72px var(--gutter) 96px;
     pointer-events: none;
   }
   .hero-copy > * { pointer-events: auto; }
-  .hero h1 { font-size: clamp(60px, 7.2vw, 112px); line-height: 0.92; letter-spacing: -0.04em; }
+  .hero h2 { font-size: clamp(60px, 7.2vw, 112px); line-height: 0.92; letter-spacing: -0.04em; }
   .lede { max-width: 22em; color: var(--foam-muted); font-size: 21px; line-height: 1.5; }
 
   .coaster-hit {
@@ -242,7 +248,7 @@
   .undo:hover { transform: translate(-1px, -1px); box-shadow: 3px 4px 0 var(--ink-deep); }
   .undo:active { transform: translate(2px, 3px); box-shadow: 0 0 0 var(--ink-deep); }
   .undo:focus-visible { outline-color: var(--ink); }
-  .undo:disabled { border-color: rgb(31 19 8 / 0.25); color: rgb(31 19 8 / 0.4); box-shadow: none; transform: none; cursor: default; }
+  .undo:disabled { border-color: rgb(21 18 15 / 0.25); color: rgb(21 18 15 / 0.4); box-shadow: none; transform: none; cursor: default; }
 
   /* Prints: the illustration is the section, the text sits in its calm area. */
   .print { position: relative; }
@@ -313,23 +319,11 @@
   .slip:nth-child(5) { background-image: url("{{ asset.slip_5_webp }}"); rotate: -3deg; translate: 10px 8px; z-index: 5; }
   .slip h3 { font-size: clamp(19px, 1.85vw, 30px); line-height: 1.05; }
   .slip p { margin-top: 0.4em; color: var(--paper-muted); font-size: clamp(14px, 1.2vw, 18px); line-height: 1.35; }
-  /* A rubber stamp for what is coming in the next update. */
-  .stamp {
-    position: absolute;
-    top: 14%;
-    right: 9%;
-    padding: 2px 10px;
-    border: 3px solid var(--amber);
-    border-radius: 8px;
-    color: #b87e0c;
-    font: 800 15px/1.4 var(--display);
-    rotate: 8deg;
-  }
-  .slip--soon h3 { padding-right: 64px; }
 
   /* The bill lies on the table after the round. */
   .bill-table {
     position: relative;
+    overflow-x: clip;
     display: grid;
     place-items: center;
     min-height: clamp(760px, 66vw, 1000px);
@@ -359,7 +353,7 @@
   .bill dl { margin: 28px 0 0; }
   .bill .row { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; }
   .bill dt { display: flex; flex: 1; gap: 8px; }
-  .bill dt::after { content: ""; flex: 1; transform: translateY(-4px); border-bottom: 2px dotted rgb(31 19 8 / 0.35); }
+  .bill dt::after { content: ""; flex: 1; transform: translateY(-4px); border-bottom: 2px dotted rgb(21 18 15 / 0.35); }
   .bill dd { flex: none; margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
   .bill .total { margin-top: 14px; padding-top: 14px; border-top: 2px solid var(--ink); font-size: 20px; }
   .bill .sign { margin-top: 28px; font: 800 24px/1.2 var(--display); }
@@ -423,8 +417,7 @@
 
   /* home.js uses the same query; keep them in sync. */
   @media (max-width: 1180px), (max-aspect-ratio: 23/20) {
-    .site-nav a:not([hreflang]) { display: none; }
-    .hero { display: flex; flex-direction: column; min-height: 0; padding-top: 84px; }
+    .hero { display: flex; flex-direction: column; min-height: 0; padding-top: 0; }
     .hero::before { content: none; }
     .table {
       position: relative;
@@ -441,10 +434,10 @@
   /* Landscape tablets and small laptops: the cropped coaster sits beside the copy. */
   @media (min-width: 901px) and (max-width: 1180px) and (min-aspect-ratio: 23/20) {
     .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; min-height: max(620px, 100svh); padding-top: 0; }
-    .hero-copy { grid-column: 1; grid-row: 1; order: 0; min-height: 0; padding: 110px 0 72px var(--gutter); }
+    .hero-copy { grid-column: 1; grid-row: 1; order: 0; min-height: 0; padding: 72px 0 72px var(--gutter); }
     .table { grid-column: 2; grid-row: 1; height: 100%; -webkit-mask-image: none; mask-image: none; }
     .tally { position: absolute; right: var(--gutter); bottom: 40px; margin: 0; }
-    .hero h1 { font-size: clamp(52px, 6.4vw, 76px); }
+    .hero h2 { font-size: clamp(52px, 6.4vw, 76px); }
     .store { flex: 0 1 auto; }
   }
 
@@ -458,25 +451,36 @@
     *, *::before, *::after { transition-duration: 0ms !important; transition-delay: 0ms !important; animation: none !important; }
   }
 </style>
+{% include "pubs/web/_chrome.html" %}
 </head>
 <body>
 <a class="skip-link" href="#obsah">{% translate "Přeskočit na obsah" %}</a>
 
-<header class="top">
-  <a class="wordmark" href="{% if LANGUAGE_CODE == 'en' %}/en{% else %}/{% endif %}"><img src="{{ asset.icon_144_png }}" alt="" width="36" height="36">Na pivo</a>
-  <nav class="site-nav" aria-label="{% translate "Hlavní navigace" %}">
-    <a href="#kompas">{% translate "Co umí" %}</a>
-    <a href="{{ prices_url }}">{% translate "Ceny piva" %}</a>
-    <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
-    {% if LANGUAGE_CODE == "en" %}
-      <a href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>
-    {% else %}
-      <a href="{{ switch_url }}" hreflang="en" lang="en">English</a>
-    {% endif %}
-  </nav>
-</header>
+{% include "pubs/web/_header.html" %}
 
 <main id="obsah">
+  <section class="guide" aria-labelledby="guide-title">
+    <h1 id="guide-title">{% translate "Kam dneska na pivo?" %}</h1>
+    <form class="guide-search" method="get" action="{{ guide.pubs_url }}" role="search">
+      <label class="guide-field"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="sr-only">{% translate "Město nebo hospoda" %}</span><input type="search" name="q" placeholder="{% translate "Město nebo hospoda" %}" autocomplete="off" enterkeyhint="search"></label>
+      <button class="guide-go" type="submit">{% translate "Najít hospody" %}</button>
+    </form>
+    <button class="guide-near" type="button" data-locate data-url="{{ guide.pubs_url }}" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>{% translate "Hospody kolem mě" %}</button>
+    <p class="guide-error" data-geo-error role="status" hidden>{% translate "Prohlížeč nepovolil polohu. Napiš město nebo hospodu a najdu ji." %}</p>
+    {% if guide.cities %}
+    <div class="guide-prices">
+      <div class="guide-head"><h2>{% translate "Kolik stojí pivo ve městech" %}</h2>{% if guide.day %}<span>{% blocktranslate with day=guide.day|date:"j. n." %}obvyklá cena nejlevnějšího piva, stav k {{ day }}{% endblocktranslate %}</span>{% endif %}</div>
+      <div class="guide-cities">{% for city in guide.cities %}<a href="{{ city.url }}"><b>{{ city.name }}</b><span>{{ city.count }}</span><em>{{ city.median }} {% translate "Kč" %}</em></a>{% endfor %}</div>
+      <a class="guide-more" href="{{ prices_url }}">{% blocktranslate count count=guide.all_cities %}Ceny v {{ count }} městě{% plural %}Ceny ve všech {{ count }} městech{% endblocktranslate %}</a>
+    </div>
+    {% endif %}
+    {% if guide.events or guide.tours %}
+    <div class="guide-soon">
+      {% if guide.events %}<div><h2>{% translate "Brzy v hospodách" %}</h2>{% for event in guide.events %}<a class="guide-item" href="{% if event.url %}{{ event.url }}{% else %}{{ guide.events_url }}{% endif %}">{{ event.title }}<span>{{ event.when }} · {{ event.where }}</span></a>{% endfor %}<a class="guide-more" href="{{ guide.events_url }}">{% translate "Všechny akce" %}</a></div>{% endif %}
+      {% if guide.tours %}<div><h2>{% translate "Pivní trasy" %}</h2>{% for tour in guide.tours %}<a class="guide-item" href="{{ tour.url }}">{{ tour.title }}<span>{{ tour.where }}</span></a>{% endfor %}<a class="guide-more" href="{{ guide.tours_url }}">{% translate "Všechny trasy" %}</a></div>{% endif %}
+    </div>
+    {% endif %}
+  </section>
   <section class="hero" aria-labelledby="hero-title">
     <svg class="table" data-table viewBox="0 0 1536 1024" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
       <defs>
@@ -503,7 +507,7 @@
     </svg>
 
     <div class="hero-copy">
-      <h1 id="hero-title">{% translate "Čárkuj piva jak na tácku." %}</h1>
+      <h2 id="hero-title">{% translate "Čárkuj piva jak na tácku." %}</h2>
       <p class="lede">{% blocktranslate trimmed %}Každé pivo je jedno ťuknutí. Počítadlo hlídá počet i útratu, zapíše se i bez signálu a ráno z něj máš deník celého večera.{% endblocktranslate %}</p>
       {% include "pubs/_store_buttons.html" %}
     </div>
@@ -527,8 +531,8 @@
             <path data-route fill="none" d="M300 485 L346 475 L381 467 L417 460 L452 448 L482 427 L508 399 L536 375 L569 360 L605 350 L640 346 L676 348 L710 355 L743 364 L776 372 L809 377 L843 379 L879 380 L915 379 L952 376 L989 365 L1022 337 L1046 305 L1074 279 L1105 261 L1135 244 L1164 224 L1200 192"/>
             <g class="walker" data-walker transform="translate(300 485)">
               <g class="dot">
-                <circle r="20" fill="#e8a317" stroke="#0d0703" stroke-width="6"/>
-                <circle r="7" fill="#0d0703"/>
+                <circle r="20" fill="#e8a317" stroke="#0E0C0A" stroke-width="6"/>
+                <circle r="7" fill="#0E0C0A"/>
               </g>
             </g>
           </svg>
@@ -570,10 +574,9 @@
           <h3>{% translate "Stoupej po levelech" %}</h3>
           <p>{% translate "Za piva sbíráš XP jako Pivař, za zmapované hospody jako Mapér." %}</p>
         </article>
-        <article class="slip slip--soon">
+        <article class="slip">
           <h3>Tour de pub</h3>
-          <p>{% translate "Naplánuj tah po hospodách a pošli partě odkaz." %}</p>
-          <span class="stamp">{% translate "Brzy" %}</span>
+          <p>{% translate "Naplánuj tah po hospodách a pošli partě odkaz." %} <a class="slip-link" href="{{ guide.tours_url }}">{% translate "Trasy ostatních" %}</a></p>
         </article>
       </div>
     </div>
@@ -616,6 +619,7 @@
     <a href="{{ delete_account_url }}">{% translate "Smazání účtu" %}</a>
     <a href="https://www.instagram.com/jsem_mach/">Instagram</a>
     <a href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a>
+    {% if LANGUAGE_CODE == "en" %}<a href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>{% else %}<a href="{{ switch_url }}" hreflang="en" lang="en">English</a>{% endif %}
   </nav>
 </footer>
 
@@ -631,5 +635,7 @@
   })();
 </script>
 <script src="{{ asset.home_js }}" defer></script>
+<script src="{{ asset.web_js }}" defer></script>
+<script src="{{ asset.web_search_js }}" type="module"></script>
 </body>
 </html>

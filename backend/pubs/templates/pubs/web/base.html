@@ -1,0 +1,46 @@
+<!doctype html>
+{% load i18n %}
+<html class="no-js" lang="{{ LANGUAGE_CODE }}" data-lib="{{ asset.maplibre_gl_mjs }}" data-css="{{ asset.maplibre_gl_css }}" data-style="{{ asset.map_style_json }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15120F">
+<title>{{ page_title }}</title>
+{% if description %}<meta name="description" content="{{ description }}">{% endif %}
+{% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
+{% if not indexable %}<meta name="robots" content="noindex">{% endif %}
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="{{ asset.baloo2_extrabold_woff2 }}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{{ asset.bricolage_grotesque_woff2 }}" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Na pivo">
+<meta property="og:locale" content="{{ og_locale }}">
+<meta property="og:title" content="{{ og_title|default:page_title }}">
+{% if description %}<meta property="og:description" content="{{ description }}">{% endif %}
+{% if canonical_url %}<meta property="og:url" content="{{ canonical_url }}">{% endif %}
+<meta property="og:image" content="{{ og_image_url }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="apple-itunes-app" content="app-id=6773790025{% if app_argument %}, app-argument={{ app_argument }}{% endif %}">
+{{ structured_data }}
+{% include "pubs/web/_style.html" %}
+{% block head %}{% endblock %}
+</head>
+<body>
+<a class="skip" href="#obsah">{% translate "Přeskočit na obsah" %}</a>
+{% include "pubs/web/_header.html" %}
+<main id="obsah">
+{% block content %}{% endblock %}
+</main>
+<footer class="foot">
+  <p>{% translate "Na pivo dělá Tomáš Mach. Údaje na webu zapsali lidé v aplikaci." %}</p>
+  <nav aria-label="{% translate "Dokumenty a kontakt" %}">
+    <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
+    <a href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a>
+    {% if switch_url %}<a href="{{ switch_url }}" hreflang="{% if LANGUAGE_CODE == "cs" %}en{% else %}cs{% endif %}">{% if LANGUAGE_CODE == "cs" %}English{% else %}Česky{% endif %}</a>{% endif %}
+  </nav>
+</footer>
+<script src="{{ asset.web_js }}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

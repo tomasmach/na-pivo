@@ -1,0 +1,11 @@
+{% load i18n %}<header class="topbar">
+  <a class="mark" href="{{ nav.home }}"><img src="{{ asset.icon_144_png }}" alt="" width="28" height="28">Na pivo</a>
+  <nav aria-label="{% translate "Hlavní" %}">
+    <a href="{{ nav.pubs }}"{% if section == "pubs" %} aria-current="page"{% endif %}>{% translate "Hospody" %}</a>
+    <a href="{{ nav.beers }}"{% if section == "beers" %} aria-current="page"{% endif %}>{% translate "Piva" %}</a>
+    <a href="{{ nav.prices }}"{% if section == "prices" %} aria-current="page"{% endif %}>{% translate "Ceny" %}</a>
+    <a href="{{ nav.events }}"{% if section == "events" %} aria-current="page"{% endif %}>{% translate "Akce" %}</a>
+    <a href="{{ nav.tours }}"{% if section == "tours" %} aria-current="page"{% endif %}>{% translate "Trasy" %}</a>
+  </nav>
+  <a class="get" href="{{ app_store_url }}" data-ios="{{ app_store_url }}" data-android="{{ play_store_url }}">{% translate "Stáhnout appku" %}</a>
+</header>

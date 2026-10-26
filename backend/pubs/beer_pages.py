@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import statistics
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -99,7 +100,7 @@ def _confirmations(
     names: dict[str, list[str]],
     on_tap: dict[tuple[str, str], list[dict]],
     since: datetime,
-    product_of,
+    key_of,
 ) -> dict[tuple[str, str], datetime]:
     """When someone last wrote each beer at each pub, if since ``since``.
 
@@ -118,10 +119,10 @@ def _confirmations(
     confirmed: dict[tuple[str, str], datetime] = {}
 
     def confirm(cache_key: str, name: str, beer_name, at: datetime, served=None) -> None:
-        product = product_of(beer_name)
-        if product is None or not any(names_match(name, known) for known in names[cache_key]):
+        beer_key = key_of(beer_name)
+        if beer_key is None or not any(names_match(name, known) for known in names[cache_key]):
             return
-        key = (cache_key, product.key)
+        key = (cache_key, beer_key)
         if served is not None and not any(
             (_price(beer), beer.get("volume_ml")) == served for beer in on_tap.get(key, [])
         ):
@@ -178,29 +179,26 @@ def _summary(pubs: list[dict]) -> dict:
     return summary
 
 
-def build_beer_pages(now: datetime | None = None) -> dict:
-    """Every catalogue beer with enough fresh pubs, its brand, and the list of them all.
+@dataclass
+class ConfirmedMenus:
+    """Community menus of Czech pubs and when someone last confirmed each beer on them."""
 
-    A pub is listed under a beer while the beer is on its current community menu
-    and someone wrote it there within WINDOW_DAYS. Only pubs that confirmed it
-    within FRESH_DAYS count towards MIN_PUBS; the older ones stay listed with
-    their date, last.
-    """
+    menus: dict[str, PubCommunityData]
+    # Cell of a duplicate merged into another pub -> the pub's cell, and the duplicate's old names.
+    targets: dict[str, str]
+    alias_names: dict[str, list[str]]
+    on_tap: dict[tuple[str, str], list[dict]]
+    confirmed: dict[tuple[str, str], datetime]
+    # Beers written within WINDOW_DAYS, keyed by (menu cell, beer key).
+    listed: list[tuple[str, str]]
+    excluded: set[str]
+    places: dict[str, dict]
 
-    now = now or timezone.now()
+
+def confirmed_menus(now: datetime, key_of) -> ConfirmedMenus:
+    """The menus behind the public pages, each beer keyed by ``key_of(beer name)``; None skips the beer."""
+
     since = now - timedelta(days=WINDOW_DAYS)
-    fresh_since = now - timedelta(days=FRESH_DAYS)
-    match_cache = BeerCatalogMatchCache()
-    products: dict[str, BeerProduct] = {}
-
-    def product_of(name) -> BeerProduct | None:
-        # The exact spelling rules every menu write uses, so a page shows one beer, not a guess.
-        match = match_beer(str(name or ""), fuzzy=False, match_cache=match_cache)
-        if match is None or match.product is None:
-            return None
-        products.setdefault(match.product.key, match.product)
-        return match.product
-
     # A duplicate merged into another pub is that pub: it counts once, with its newest write.
     # Its old menu stands in only while the pub has no menu of its own, and writes under the
     # duplicate's old name still count for the pub.
@@ -230,12 +228,12 @@ def build_beer_pages(now: datetime | None = None) -> dict:
     on_tap: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for menu in menus.values():
         for beer in menu.beers if isinstance(menu.beers, list) else []:
-            if isinstance(beer, dict) and (product := product_of(beer.get("name"))):
-                on_tap[(menu.cache_key, product.key)].append(beer)
+            if isinstance(beer, dict) and (beer_key := key_of(beer.get("name"))):
+                on_tap[(menu.cache_key, beer_key)].append(beer)
     names = {
         key: [menu.name, *alias_names.get(key, []), *merged_names.get(key, [])] for key, menu in menus.items()
     }
-    confirmed = _confirmations(menus, names, on_tap, since, product_of)
+    confirmed = _confirmations(menus, names, on_tap, since, key_of)
 
     listed = [pair for pair in on_tap if pair in confirmed]
     excluded = _globally_reported_pub_cache_keys(
@@ -243,9 +241,38 @@ def build_beer_pages(now: datetime | None = None) -> dict:
     )
     places = _places(sorted({targets.get(cache_key, cache_key) for cache_key, _ in listed}))
 
+    return ConfirmedMenus(menus, targets, alias_names, on_tap, confirmed, listed, excluded, places)
+
+
+def build_beer_pages(now: datetime | None = None) -> dict:
+    """Every catalogue beer with enough fresh pubs, its brand, and the list of them all.
+
+    A pub is listed under a beer while the beer is on its current community menu
+    and someone wrote it there within WINDOW_DAYS. Only pubs that confirmed it
+    within FRESH_DAYS count towards MIN_PUBS; the older ones stay listed with
+    their date, last.
+    """
+
+    now = now or timezone.now()
+    fresh_since = now - timedelta(days=FRESH_DAYS)
+    match_cache = BeerCatalogMatchCache()
+    products: dict[str, BeerProduct] = {}
+
+    def product_key_of(name) -> str | None:
+        # The exact spelling rules every menu write uses, so a page shows one beer, not a guess.
+        match = match_beer(str(name or ""), fuzzy=False, match_cache=match_cache)
+        if match is None or match.product is None:
+            return None
+        products.setdefault(match.product.key, match.product)
+        return match.product.key
+
+    menus = confirmed_menus(now, product_key_of)
+    targets, alias_names, places, confirmed = menus.targets, menus.alias_names, menus.places, menus.confirmed
+    on_tap, excluded, listed = menus.on_tap, menus.excluded, menus.listed
+
     by_product: dict[str, dict[str, dict]] = defaultdict(dict)
     for cache_key, product_key in sorted(listed, key=lambda pair: confirmed[pair]):
-        menu = menus[cache_key]
+        menu = menus.menus[cache_key]
         pub_key = targets.get(cache_key, cache_key)
         place = places.get(pub_key)
         if cache_key in excluded or pub_key in excluded or place is None:
@@ -257,6 +284,7 @@ def build_beer_pages(now: datetime | None = None) -> dict:
         price, volume = _serving(on_tap[(cache_key, product_key)])
         city = place["city"] or menu.city or ""
         by_product[product_key][pub_key] = {
+            "pub_key": pub_key,
             "name": place["name"],
             "city": prague_district(city) or city_name(city),
             # The pub's own place, which the app's map already shows everyone.

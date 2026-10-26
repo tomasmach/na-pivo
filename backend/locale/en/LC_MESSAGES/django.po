@@ -1581,3 +1581,407 @@ msgstr "%(hours)s h ago"
 #, python-format
 msgid "%(beer)s je na čepu %(pub)s, %(distance)s km, doplnil někdo z komunity %(age)s"
 msgstr "%(beer)s is on tap at %(pub)s, %(distance)s km away, added by someone from the community %(age)s"
+
+msgid "Hospody na mapě"
+msgstr "Pubs on the map"
+
+msgid "Kam dneska na pivo?"
+msgstr "Where to for a beer tonight?"
+
+msgid "Město nebo hospoda"
+msgstr "Town or pub"
+
+msgid "Najít hospody"
+msgstr "Find pubs"
+
+msgid "Hospody kolem mě"
+msgstr "Pubs near me"
+
+msgid "Prohlížeč nepovolil polohu. Napiš město nebo hospodu a najdu ji."
+msgstr "Your browser did not allow location. Type a town or a pub and I will find it."
+
+msgid "Kolik stojí pivo ve městech"
+msgstr "What beer costs in each town"
+
+msgid "obvyklá cena nejlevnějšího piva, stav k %(day)s"
+msgstr "usual price of the cheapest beer, as of %(day)s"
+
+msgid "Ceny v %(count)s městě"
+msgid_plural "Ceny ve všech %(count)s městech"
+msgstr[0] "Prices in %(count)s town"
+msgstr[1] "Prices in all %(count)s towns"
+
+msgid "Brzy v hospodách"
+msgstr "Coming up in pubs"
+
+msgid "Všechny akce"
+msgstr "All events"
+
+msgid "Pivní trasy"
+msgstr "Pub routes"
+
+msgid "Všechny trasy"
+msgstr "All routes"
+
+msgid "Trasy ostatních"
+msgstr "Other people's routes"
+
+msgid "Hlavní"
+msgstr "Main"
+
+msgid "Ceny"
+msgstr "Prices"
+
+msgid "Akce"
+msgstr "Events"
+
+msgid "Trasy"
+msgstr "Routes"
+
+msgid "Stáhnout appku"
+msgstr "Get the app"
+
+msgid "do %(radius)s km"
+msgstr "within %(radius)s km"
+
+msgid "ve výřezu mapy"
+msgstr "in the map view"
+
+msgid "Řazení"
+msgstr "Sort"
+
+msgid "Ukázat další hospody"
+msgstr "Show more pubs"
+
+msgid "Žádná hospoda nemá všechno najednou"
+msgstr "No pub has all of it at once"
+
+msgid "Zkus jeden filtr vypnout:"
+msgstr "Try turning one filter off:"
+
+msgid "Zrušit filtry"
+msgstr "Clear filters"
+
+msgid "Tady zatím nic"
+msgstr "Nothing here yet"
+
+msgid "Kolem tebe zatím nikdo žádnou hospodu nezapsal. Zkus město."
+msgstr "Nobody has written up a pub around you yet. Try a town."
+
+msgid "Nic jsem nenašel"
+msgstr "I found nothing"
+
+msgid "Zkus jiný název nebo město."
+msgstr "Try another name or town."
+
+msgid "Na pivo dělá Tomáš Mach. Údaje na webu zapsali lidé v aplikaci."
+msgstr "Na pivo is made by Tomáš Mach. People wrote everything on this site in the app."
+
+msgid "Akce, které lidi nahlásili v Na pivo a já jsem je ověřil. Skončené samy zmizí."
+msgstr "Events people reported in Na pivo and I checked. They disappear once they are over."
+
+msgid "Všude"
+msgstr "Everywhere"
+
+msgid "do %(time)s"
+msgstr "until %(time)s"
+
+msgid "Zatím tu žádná akce není"
+msgstr "No events here yet"
+
+msgid "Víš o kvízu, sudu nebo muzice v hospodě? Nahlas ji v Na pivo na stránce hospody. Po ověření se objeví tady."
+msgstr "Know about a quiz, a keg or live music in a pub? Report it in Na pivo on the pub's page. Once checked, it shows up here."
+
+msgid "Stáhnout Na pivo"
+msgstr "Get Na pivo"
+
+msgid "aktualizováno %(confirmed)s"
+msgstr "updated %(confirmed)s"
+
+msgid "Mapa potřebuje JavaScript."
+msgstr "The map needs JavaScript."
+
+msgid "Navigovat"
+msgstr "Directions"
+
+msgid "Na čepu"
+msgstr "On tap"
+
+msgid "Lístek je z %(confirmed)s, možná se mezitím změnil."
+msgstr "The menu is from %(confirmed)s and may have changed since."
+
+msgid "Obvyklá cena ve městě je %(median)s Kč. Je to medián nejlevnějšího piva od 0,4 l z hospod, kde ho někdo zapsal za poslední rok."
+msgstr "The usual price in town is %(median)s CZK. It is the median of the cheapest beer from 0.4 l in pubs where someone wrote it down in the last year."
+
+msgid "Otevírací doba"
+msgstr "Opening hours"
+
+msgid "Podle lidí z Na pivo. Když nesedí, oprav ji v aplikaci."
+msgstr "Written by Na pivo people. If they are wrong, fix them in the app."
+
+msgid "Vybavení"
+msgstr "Amenities"
+
+msgid "Ano"
+msgstr "Yes"
+
+msgid "Ne"
+msgstr "No"
+
+msgid "Zbytek zatím nikdo nezmapoval."
+msgstr "Nobody has mapped the rest yet."
+
+msgid "Tuhle hospodu zatím nikdo nezmapoval."
+msgstr "Nobody has mapped this pub yet."
+
+msgid "Zmapuj ji v Na pivo, až v ní budeš sedět."
+msgstr "Map it in Na pivo next time you sit there."
+
+msgid "Doveď mě tam"
+msgstr "Take me there"
+
+msgid "Kompas v Na pivo ukáže směr k hospodě a funguje i bez signálu."
+msgstr "The compass in Na pivo points the way to the pub and works without signal."
+
+msgid "Namiř na kód telefonem a otevři si hospodu v mobilu."
+msgstr "Point your phone at the code to open the pub on it."
+
+msgid "Hospody, které lidi zapsali v Na pivo: co čepují, za kolik a jaké mají vybavení."
+msgstr "Pubs people wrote up in Na pivo: what they pour, for how much, and what they have."
+
+msgid "Kolem mě"
+msgstr "Near me"
+
+msgid "Cena u města je obvyklá cena nejlevnějšího piva od 0,4 l."
+msgstr "The price next to a town is the usual price of the cheapest beer from 0.4 l."
+
+msgid "%(city)s, podle hlasů lidí z Na pivo."
+msgstr "%(city)s, going by the votes of Na pivo people."
+
+msgid "Hospody a co čepují. Nejlevnější pivo tu obvykle stojí %(median)s Kč."
+msgstr "Pubs and what they pour. The cheapest beer here usually costs %(median)s CZK."
+
+msgid "Hospoda nebo město"
+msgstr "Pub or town"
+
+msgid "Znovu najít polohu"
+msgstr "Find my location again"
+
+msgid "Zrušit filtr %(label)s"
+msgstr "Remove the %(label)s filter"
+
+msgid "Jakékoli pivo"
+msgstr "Any beer"
+
+msgid "Nejvyšší cena"
+msgstr "Highest price"
+
+msgid "Jakákoli cena"
+msgstr "Any price"
+
+msgid "Do %(price)s Kč"
+msgstr "Up to %(price)s CZK"
+
+msgid "Další"
+msgstr "More"
+
+msgid "Použít filtry"
+msgstr "Apply filters"
+
+msgid "Podle vybavení"
+msgstr "By amenity"
+
+msgid "Otevřít hospodu"
+msgstr "Open the pub"
+
+msgid "Hledat v této oblasti"
+msgstr "Search this area"
+
+msgid "Seznam"
+msgstr "List"
+
+msgid "Mapa"
+msgstr "Map"
+
+msgid "Projít trasu v Na pivo"
+msgstr "Walk the route in Na pivo"
+
+msgid "Trasy po hospodách, které lidi sestavili v Na pivo. Na webu si je prohlédneš, projdeš je s aplikací."
+msgstr "Pub routes people put together in Na pivo. Look at them here, walk them with the app."
+
+msgid "Zatím tu žádná trasa není"
+msgstr "No routes here yet"
+
+msgid "Sestav trasu v Na pivo pod Tour de pub a zveřejni ji. Objeví se tady."
+msgstr "Put a route together under Tour de pub in Na pivo and publish it. It shows up here."
+
+msgid "Dnes"
+msgstr "Today"
+
+msgid "Zítra"
+msgstr "Tomorrow"
+
+msgid "zavřeno"
+msgstr "closed"
+
+msgid "Otevřeno do %(time)s"
+msgstr "Open until %(time)s"
+
+msgid "Otevírá v %(time)s"
+msgstr "Opens at %(time)s"
+
+msgid "Dnes zavřeno"
+msgstr "Closed today"
+
+msgid "QR kód s odkazem na tuto stránku"
+msgstr "QR code linking to this page"
+
+msgid "zapsáno %(date)s"
+msgstr "written down %(date)s"
+
+msgid "zapsáno %(date)s, možná už nečepují"
+msgstr "written down %(date)s, may be gone"
+
+msgid "%(beer)s za %(price)s Kč"
+msgstr "%(beer)s for %(price)s CZK"
+
+msgid "o %(count)s Kč levněji, než je ve městě obvyklé"
+msgstr "%(count)s CZK below the usual price in town"
+
+msgid "nejlevnější pivo na lístku, %(litres)s"
+msgstr "the cheapest beer on the menu, %(litres)s"
+
+msgid "od %(time)s"
+msgstr "from %(time)s"
+
+msgid "ano podle %(people)s"
+msgstr "yes, say %(people)s"
+
+msgid "člověka"
+msgstr "person"
+
+msgid "lidí"
+msgstr "people"
+
+msgid "%(pub)s, %(city)s: co čepují a za kolik"
+msgstr "%(pub)s, %(city)s: what is on tap and for how much"
+
+msgid "Na čepu: %(beers)s. Ceny, akce a vybavení podle lidí z Na pivo."
+msgstr "On tap: %(beers)s. Prices, events and amenities from Na pivo people."
+
+msgid "Akce v hospodách: %(city)s"
+msgstr "Events in pubs: %(city)s"
+
+msgid "Akce v hospodách"
+msgstr "Events in pubs"
+
+msgid "Kvízy, sudy, degustace a muzika v hospodách na příštích 30 dní."
+msgstr "Quizzes, kegs, tastings and music in pubs over the next 30 days."
+
+msgid "Pivní trasy: %(city)s"
+msgstr "Pub routes: %(city)s"
+
+msgid "Trasy po hospodách, které lidi sestavili v Na pivo. Projdeš je s aplikací v ruce."
+msgstr "Pub routes people put together in Na pivo. Walk them with the app in your hand."
+
+msgid "prošel %(count)s člověk"
+msgstr "walked by %(count)s person"
+
+msgid "prošli %(count)s lidé"
+msgstr "walked by %(count)s people"
+
+msgid "prošlo %(count)s lidí"
+msgstr "walked by %(count)s people"
+
+msgid "prošel ji %(count)s člověk"
+msgstr "walked by %(count)s person"
+
+msgid "prošli ji %(count)s lidé"
+msgstr "walked by %(count)s people"
+
+msgid "prošlo ji %(count)s lidí"
+msgstr "walked by %(count)s people"
+
+msgid "%(meters)s m pěšky"
+msgstr "%(meters)s m on foot"
+
+msgid "%(km)s km pěšky"
+msgstr "%(km)s km on foot"
+
+msgid "o %(distance)s dál"
+msgstr "%(distance)s further"
+
+msgid "začátek"
+msgstr "start"
+
+msgid "%(title)s: pivní trasa, %(city)s | Na pivo"
+msgstr "%(title)s: pub route, %(city)s | Na pivo"
+
+msgid "%(stops)s, %(walk)s. Trasu sestavil člověk z Na pivo."
+msgstr "%(stops)s, %(walk)s. Put together by a Na pivo user."
+
+msgid "hospody se zahrádkou"
+msgstr "pubs with a beer garden"
+
+msgid "hospody se šipkami"
+msgstr "pubs with darts"
+
+msgid "hospody, kde zaplatíš kartou"
+msgstr "pubs that take cards"
+
+msgid "bezbariérové hospody"
+msgstr "step-free pubs"
+
+msgid "hospody s tankovým pivem"
+msgstr "pubs with tank beer"
+
+msgid "hospody s kulečníkem"
+msgstr "pubs with pool"
+
+msgid "hospody se stolním fotbalem"
+msgstr "pubs with table football"
+
+msgid "hospody, kde běží sport"
+msgstr "pubs showing sport"
+
+msgid "hospody s Wi-Fi"
+msgstr "pubs with Wi-Fi"
+
+msgid "hospody s parkováním"
+msgstr "pubs with parking"
+
+msgid "kuřácké hospody"
+msgstr "smoking pubs"
+
+msgid "Bez filtru %(filter)s: %(count)s"
+msgstr "Without %(filter)s: %(count)s"
+
+msgid "Bez cenového limitu: %(count)s"
+msgstr "Without the price limit: %(count)s"
+
+msgid "S jakýmkoli pivem: %(count)s"
+msgstr "With any beer: %(count)s"
+
+msgid "Hospody kolem tebe"
+msgstr "Pubs around you"
+
+msgid "Hospody: „%(text)s“"
+msgstr "Pubs: “%(text)s”"
+
+msgid "Kam na pivo"
+msgstr "Where to for a beer"
+
+msgid "Hospody %(city)s: ceny piva a co čepují | Na pivo"
+msgstr "Pubs in %(city)s: beer prices and what is on tap | Na pivo"
+
+msgid "%(pubs)s s cenami piva, co čepují a jaké mají vybavení. Podle lidí z Na pivo."
+msgstr "%(pubs)s with beer prices, what they pour and what they have. From Na pivo people."
+
+msgid "Najdi hospodu podle města, piva, ceny a vybavení. Podle lidí z Na pivo."
+msgstr "Find a pub by town, beer, price and amenities. From Na pivo people."
+
+msgid "Nejbližší"
+msgstr "Closest"
+
+msgid "Nejčerstvější"
+msgstr "Most recent"

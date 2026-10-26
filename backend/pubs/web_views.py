@@ -33,9 +33,11 @@ from pubs.home_views import (
 )
 from pubs.home_views import PATHS as HOME_PATHS
 from pubs.i18n import current_locale
-from pubs.models import BeerBrand, BeerPage, BeerProduct, PubPriceSnapshot
+from pubs.models import BeerBrand, BeerPage, BeerProduct, PubPriceSnapshot, WebPub
 from pubs.price_map import PATHS as PRICE_PATHS
 from pubs.price_map import city_slug, headline_prices
+from pubs.web_guide import pub_urls, sitemap_pages
+from pubs.web_paths import PUBS_PATHS, nav_paths
 
 # og:locale wants a full territory tag; the app only ever speaks these two.
 _OG_LOCALES = {"cs": "cs_CZ", "en": "en_US"}
@@ -415,6 +417,7 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
         else:
             headline = [(label, stats, city_urls.get(label)) for label, stats in headline_prices(data)]
             cheapest = data.get("cheapest", [])
+        urls = pub_urls((pub.get("pub_key") for pub in cheapest), lang)
         (cities, districts), axis = _on_axis(
             [
                 [] if area else [
@@ -429,6 +432,13 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
             "pubs/beer_prices.html",
             {
                 "LANGUAGE_CODE": lang,
+                "nav": nav_paths(lang),
+                "section": "prices",
+                "city_pubs_url": (
+                    f"{PUBS_PATHS[lang]}/{city}"
+                    if area and WebPub.objects.filter(listed=True, city_slug=city).exists()
+                    else ""
+                ),
                 **_texts(snapshot, country, area),
                 "structured_data": _prices_structured_data(origin, lang, snapshot, area, f"{origin}{paths[lang]}"),
                 "og_locale": _OG_LOCALES[lang],
@@ -455,7 +465,10 @@ def beer_prices(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpR
                 "districts": districts,
                 "axis": axis,
                 "folded_rows": _FOLDED_ROWS,
-                "cheapest": [{**pub, "litres": pub["volume_ml"] / 1000} for pub in cheapest],
+                "cheapest": [
+                    {**pub, "litres": pub["volume_ml"] / 1000, "url": urls.get(pub.get("pub_key"), "")}
+                    for pub in cheapest
+                ],
                 "asset": _LANDING_URLS,
                 "app_store_url": app_store_url("city-prices" if city else "prices"),
                 "play_store_url": play_store_url("city-prices" if city else "prices"),
@@ -621,6 +634,7 @@ def beer_pages(request: HttpRequest, lang: str = "cs", kind: str = BeerPage.Kind
         data = page.data if page else {}
         today = page.day if page else timezone.localdate()
         first_old = next((index for index, pub in enumerate(data.get("listed", [])) if not pub["fresh"]), None)
+        urls = pub_urls((pub.get("pub_key") for pub in data.get("listed", [])), lang)
         listed = [
             {
                 **pub,
@@ -628,6 +642,7 @@ def beer_pages(request: HttpRequest, lang: str = "cs", kind: str = BeerPage.Kind
                 "litres": pub["volume_ml"] / 1000 if pub["volume_ml"] else None,
                 # Sorted per half litre, so 41 Kč for 0,3 l is not the cheapest.
                 "per_half_litre": round(pub["price_czk"] * 500 / (pub["volume_ml"] or 500)) if pub["price_czk"] else "",
+                "url": urls.get(pub.get("pub_key"), ""),
                 "map_url": f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
                 "first_old": index == first_old,
             }
@@ -646,6 +661,8 @@ def beer_pages(request: HttpRequest, lang: str = "cs", kind: str = BeerPage.Kind
             "pubs/beers.html",
             {
                 "LANGUAGE_CODE": lang,
+                "nav": nav_paths(lang),
+                "section": "beers",
                 **_beer_texts(kind, page, key),
                 "kind": kind,
                 "page": data,
@@ -742,6 +759,7 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
         pages.append({"urls": {lang: f"{origin}{path}/{slug}" for lang, path in PRICE_PATHS.items()}, "lastmod": day})
     for kind, key, beer_day in BeerPage.objects.order_by("kind", "key").values_list("kind", "key", "day"):
         pages.append({"urls": {lang: f"{origin}{page_path(kind, key, lang)}" for lang in BEER_PATHS}, "lastmod": beer_day})
+    pages += sitemap_pages(origin)
     response = render(
         request, "pubs/sitemap.xml", {"pages": pages}, content_type="application/xml; charset=utf-8"
     )

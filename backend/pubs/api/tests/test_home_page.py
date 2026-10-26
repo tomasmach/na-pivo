@@ -10,6 +10,9 @@ from PIL import Image
 
 from pubs.home_views import APP_STORE_URL, PLAY_STORE_URL
 
+# The home page lists prices, events and routes from the database.
+pytestmark = pytest.mark.django_db
+
 
 def test_home_is_czech_with_store_links_and_alternates(client, settings):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
@@ -158,6 +161,10 @@ def test_sitemap_lists_both_languages_of_every_page(client, settings):
         "https://na-pivo.cz/en",
         "https://na-pivo.cz/ceny",
         "https://na-pivo.cz/en/prices",
+        "https://na-pivo.cz/hospody",
+        "https://na-pivo.cz/en/pubs",
+        "https://na-pivo.cz/akce",
+        "https://na-pivo.cz/en/events",
     }
     alternates = {
         link.get("hreflang"): link.get("href")

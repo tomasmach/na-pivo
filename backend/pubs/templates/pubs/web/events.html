@@ -1,0 +1,59 @@
+{% extends "pubs/web/base.html" %}
+{% load i18n %}
+{% block head %}
+<style>
+  .events-page { max-width: 860px; }
+  .events-page .chips { margin-top: 18px; }
+  .day { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 30px 0 4px; padding-bottom: 8px; border-bottom: 1px solid var(--hair-strong); }
+  .day h2 { font-size: 18px; }
+  .day span { color: var(--muted); font-size: 13.5px; }
+  .listing { list-style: none; margin: 0; padding: 0; }
+  .listing li { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 4px 16px; padding: 13px 0; border-bottom: 1px solid var(--hair); align-items: baseline; }
+  .listing .time { font: 800 20px/1 var(--display); }
+  .listing .title { font-weight: 700; }
+  .listing .where { display: block; color: var(--muted); font-size: 14px; font-weight: 400; }
+  .listing .where a { color: var(--foam-muted); }
+  .listing .detail { display: block; color: var(--foam-muted); font-size: 14px; font-weight: 400; margin-top: 2px; }
+  .listing .until { color: var(--muted); font-size: 13.5px; white-space: nowrap; }
+  .empty { margin-top: 28px; padding: 22px; border-radius: 16px; background: var(--raised); max-width: 560px; }
+  .empty h2 { margin-bottom: 6px; }
+  .empty p { color: var(--foam-muted); margin-bottom: 14px; }
+  @media (max-width: 560px) {
+    .listing li { grid-template-columns: 58px minmax(0, 1fr); }
+    .listing .until { grid-column: 2; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page events-page">
+  <h1>{{ h1 }}</h1>
+  <p class="lede">{% translate "Akce, které lidi nahlásili v Na pivo a já jsem je ověřil. Skončené samy zmizí." %}</p>
+  {% if cities %}
+  <nav class="chips" aria-label="{% translate "Města" %}">
+    <a class="chip{% if not city %} on{% endif %}" href="{{ all_url }}"{% if not city %} aria-current="page"{% endif %}>{% translate "Všude" %}</a>
+    {% for item in cities %}<a class="chip{% if item.slug == city %} on{% endif %}" href="{{ item.url }}"{% if item.slug == city %} aria-current="page"{% endif %}>{{ item.name }}</a>{% endfor %}
+  </nav>
+  {% endif %}
+  {% for day in days %}
+  <div class="day"><h2>{{ day.label }}</h2></div>
+  <ul class="listing">
+    {% for event in day.events %}
+    <li>
+      <span class="time">{{ event.time }}</span>
+      <span class="title">{{ event.title }}
+        <span class="where">{% if event.pub_url %}<a href="{{ event.pub_url }}">{{ event.pub_name }}</a>{% else %}{{ event.pub_name }}{% endif %}{% if not city %}, {{ event.city }}{% endif %}</span>
+        {% if event.details %}<span class="detail">{{ event.details }}</span>{% endif %}
+      </span>
+      <span class="until">{% blocktranslate with time=event.until %}do {{ time }}{% endblocktranslate %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% empty %}
+  <div class="empty">
+    <h2>{% translate "Zatím tu žádná akce není" %}</h2>
+    <p>{% translate "Víš o kvízu, sudu nebo muzice v hospodě? Nahlas ji v Na pivo na stránce hospody. Po ověření se objeví tady." %}</p>
+    <a class="quiet" href="{{ app_store_url }}" data-ios="{{ app_store_url }}" data-android="{{ play_store_url }}">{% translate "Stáhnout Na pivo" %}</a>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

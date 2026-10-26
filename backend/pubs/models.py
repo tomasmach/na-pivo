@@ -3445,6 +3445,52 @@ class BeerPage(models.Model):
         return f"Beer page {self.kind} {self.key} ({self.day})"
 
 
+class WebPub(models.Model):
+    """One pub with its own page on na-pivo.cz, rebuilt by the daily run.
+
+    A pub is listed while someone confirmed a beer on its menu within a year. A pub
+    that loses that keeps its row unlisted, so its address points at the same pub
+    when it comes back. The ``|key|`` strings let search filter with a plain LIKE on
+    SQLite and PostgreSQL alike.
+    """
+
+    cache_key = models.CharField(max_length=12, unique=True)
+    slug = models.SlugField(max_length=120)
+    name = models.CharField(max_length=255)
+    city = models.CharField(max_length=128, blank=True)
+    city_slug = models.SlugField(max_length=128, blank=True)
+    # "Praha 2" for a Prague pub, empty elsewhere.
+    district = models.CharField(max_length=128, blank=True)
+    lat = models.FloatField()
+    lng = models.FloatField()
+    listed = models.BooleanField(default=True)
+    day = models.DateField()
+    confirmed = models.DateField(null=True)
+    # The cheapest glass from 0.4 l, the price the search compares.
+    price_czk = models.PositiveSmallIntegerField(null=True)
+    price_volume_ml = models.PositiveSmallIntegerField(null=True)
+    price_beer = models.CharField(max_length=255, blank=True)
+    beers = models.JSONField(default=list)
+    beer_keys = models.TextField(blank=True)
+    amenities = models.JSONField(default=dict)
+    amenity_keys = models.TextField(blank=True)
+    hours = models.JSONField(null=True)
+    # Name and city without accents, so "u lipy" finds "U Lípy".
+    search_text = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["city_slug", "slug"], name="unique_web_pub_slug"),
+        ]
+        indexes = [
+            models.Index(fields=["listed", "city_slug"]),
+            models.Index(fields=["listed", "lat", "lng"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} [{self.cache_key}]"
+
+
 class BeerBrand(models.Model):
     """
     Canonical beer brand used for suggestions and brand-level pub filtering.

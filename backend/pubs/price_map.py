@@ -49,10 +49,10 @@ PATHS = {"cs": "/ceny", "en": "/en/prices"}
 _PRAGUE_NUMBERED = re.compile(r"Praha\s*[-–]?\s*(\d{1,2})\b")
 
 _FONTS = Path(__file__).resolve().parent / "fonts"
-_GROUND = (35, 20, 7)
+_GROUND = (21, 18, 15)
 _FOAM = (251, 243, 224)
 _FOAM_MUTED = (232, 220, 192)
-_MUTED = (168, 137, 106)
+_MUTED = (149, 142, 133)
 # Foam at 12 % over the ground, the hairline the web pages use.
 _HAIR = tuple(round(g + (f - g) * 0.12) for g, f in zip(_GROUND, _FOAM, strict=True))
 
@@ -208,6 +208,7 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
             if in_city and city_slug(city_name(city)) != city_slug(in_city):
                 continue
             picked.append({
+                "pub_key": row.pub_key,
                 "name": place["name"],
                 # The same city names the tables use.
                 "city": prague_district(city) or city_name(city),

@@ -1,0 +1,42 @@
+{% extends "pubs/web/base.html" %}
+{% load i18n %}
+{% block head %}
+<style>
+  .tours-page { max-width: 860px; }
+  .tours-page .chips { margin-top: 18px; }
+  .tours-page .rows { margin-top: 18px; }
+  .row .people { grid-column: 2; grid-row: 1 / span 2; text-align: right; color: var(--muted); font-size: 13.5px; white-space: nowrap; }
+  .empty { margin-top: 28px; padding: 22px; border-radius: 16px; background: var(--raised); max-width: 560px; }
+  .empty h2 { margin-bottom: 6px; }
+  .empty p { color: var(--foam-muted); margin-bottom: 14px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page tours-page">
+  <h1>{{ h1 }}</h1>
+  <p class="lede">{% translate "Trasy po hospodách, které lidi sestavili v Na pivo. Na webu si je prohlédneš, projdeš je s aplikací." %}</p>
+  {% if cities|length > 1 %}
+  <nav class="chips" aria-label="{% translate "Města" %}">
+    <a class="chip{% if not city %} on{% endif %}" href="{{ all_url }}"{% if not city %} aria-current="page"{% endif %}>{% translate "Všude" %}</a>
+    {% for item in cities %}<a class="chip{% if item.slug == city %} on{% endif %}" href="{{ item.url }}"{% if item.slug == city %} aria-current="page"{% endif %}>{{ item.name }}</a>{% endfor %}
+  </nav>
+  {% endif %}
+  {% if tours %}
+  <ul class="rows">
+    {% for tour in tours %}
+    <li class="row">
+      <a class="name" href="{{ tour.url }}">{{ tour.title }}</a>
+      {% if tour.people %}<span class="people">{{ tour.people }}</span>{% endif %}
+      <span class="meta">{{ tour.city }} · {{ tour.stops }} · {{ tour.walk }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">
+    <h2>{% translate "Zatím tu žádná trasa není" %}</h2>
+    <p>{% translate "Sestav trasu v Na pivo pod Tour de pub a zveřejni ji. Objeví se tady." %}</p>
+    <a class="quiet" href="{{ app_store_url }}" data-ios="{{ app_store_url }}" data-android="{{ play_store_url }}">{% translate "Stáhnout Na pivo" %}</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

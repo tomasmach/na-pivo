@@ -1,0 +1,45 @@
+{% extends "pubs/web/base.html" %}
+{% load i18n %}
+{% block head %}
+<style>
+  .tour { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 40px; align-items: start; }
+  .tour .status { color: var(--foam-muted); margin-top: 10px; }
+  .stops { list-style: none; margin: 22px 0 24px; padding: 0; counter-reset: stop; }
+  .stops li { counter-increment: stop; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--hair); }
+  .stops li:first-child { border-top: 0; }
+  .stops li::before { content: counter(stop); grid-row: 1 / span 2; width: 30px; height: 30px; border-radius: 50%; background: var(--field); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+  .stops .name { font-weight: 700; text-decoration: none; }
+  .stops a.name:hover { text-decoration: underline; text-decoration-color: var(--hair-strong); text-underline-offset: 3px; }
+  .stops .meta { grid-column: 2; color: var(--muted); font-size: 14px; }
+  .stops .price { grid-column: 3; grid-row: 1 / span 2; font: 800 19px/1 var(--display); }
+  /* MapLibre makes its own box relative, so the sticky part is a wrapper around it. */
+  .mapside { position: sticky; top: 84px; }
+  .tourmap { height: min(70vh, 560px); border-radius: 16px; overflow: hidden; background: var(--raised); }
+  @media (max-width: 900px) {
+    .tour { grid-template-columns: 1fr; }
+    .mapside { position: static; order: -1; }
+    .tourmap { height: 280px; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page tour">
+  <article>
+    <nav class="crumb" aria-label="{% translate "Kde jsi" %}"><a href="{{ nav.tours }}">{% translate "Trasy" %}</a>{% if city %}<span aria-hidden="true">/</span><a href="{{ city_url }}">{{ city }}</a>{% endif %}</nav>
+    <h1>{{ h1 }}</h1>
+    <p class="status">{{ summary }}{% if people %} · {{ people }}{% endif %}</p>
+    <ol class="stops">
+      {% for stop in stops %}
+      <li>
+        {% if stop.url %}<a class="name" href="{{ stop.url }}">{{ stop.name }}</a>{% else %}<span class="name">{{ stop.name }}</span>{% endif %}
+        <span class="meta">{{ stop.step }}</span>
+        {% if stop.price %}<span class="price">{{ stop.price }} {% translate "Kč" %}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    <a class="btn" href="{{ walk_url }}" data-open-app="{{ app_argument }}" data-android="{{ play_store_url }}">{% translate "Projít trasu v Na pivo" %}</a>
+  </article>
+  <div class="mapside"><div class="tourmap" data-map='{{ map_pins_json }}' data-line="1" data-interactive="1" data-zoom="14"></div></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ asset.web_map_js }}" type="module"></script>{% endblock %}

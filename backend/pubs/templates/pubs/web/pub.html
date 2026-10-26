@@ -1,0 +1,139 @@
+{% extends "pubs/web/base.html" %}
+{% load i18n %}
+{% block head %}
+<style>
+  .pub { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 48px; align-items: start; }
+  .pub .status { color: var(--foam-muted); margin-top: 10px; }
+  .pubmap { position: relative; height: 180px; margin: 22px 0 8px; border-radius: 16px; overflow: hidden; background: var(--raised); }
+  .pubmap .navigate { position: absolute; right: 12px; top: 12px; z-index: 2; }
+  .pubmap .fallback { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
+  .reasons { list-style: none; margin: 14px 0 0; padding: 0; }
+  .reasons li { display: flex; gap: 14px; align-items: center; padding: 9px 0; }
+  .reasons .icon { flex: none; width: 36px; height: 36px; border-radius: 50%; background: rgb(251 243 224 / 0.07); display: grid; place-items: center; color: var(--foam-muted); }
+  .reasons b { display: block; font-weight: 700; }
+  .reasons span span { color: var(--muted); font-size: 14px; }
+  section h2 { margin-bottom: 8px; }
+  .stale { margin: 0 0 8px; }
+  .taps { list-style: none; margin: 0; padding: 0; max-width: 560px; }
+  .tap { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 11px 0; border-top: 1px solid var(--hair); }
+  .tap:first-child { border-top: 0; }
+  .tap b { display: block; font-weight: 600; font-size: 16px; }
+  .tap b a { text-decoration: none; }
+  .tap b a:hover { text-decoration: underline; text-decoration-color: var(--hair-strong); text-underline-offset: 3px; }
+  .tap small { display: block; color: var(--muted); font-size: 13.5px; }
+  .tap.old b { color: var(--foam-muted); }
+  .tap .price { font: 800 21px/1 var(--display); text-align: right; white-space: nowrap; }
+  .tap .price small { font: 500 12.5px/1.5 var(--text); }
+  .events { list-style: none; margin: 0; padding: 0; max-width: 640px; }
+  .events li { display: grid; grid-template-columns: 130px 1fr; gap: 12px; padding: 11px 0; border-top: 1px solid var(--hair); }
+  .events li:first-child { border-top: 0; }
+  .events .when { color: var(--foam-muted); font-weight: 600; font-size: 14.5px; }
+  .events .what span { display: block; color: var(--muted); font-size: 14px; }
+  .hours { display: grid; grid-template-columns: max-content 1fr; gap: 6px 22px; max-width: 360px; margin: 0; }
+  .hours dt { color: var(--muted); }
+  .hours dd { margin: 0; }
+  .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; max-width: 640px; margin: 0; }
+  .facts div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--hair); }
+  .facts dd { margin: 0; font-weight: 600; }
+  .facts dd.no { color: var(--muted); font-weight: 400; }
+  aside.go { position: sticky; top: 84px; background: var(--raised); border-radius: 16px; padding: 20px; }
+  aside.go h2 { font-size: 18px; margin-bottom: 6px; }
+  aside.go p { color: var(--foam-muted); font-size: 14.5px; }
+  .qr { margin: 16px 0 12px; display: grid; place-items: center; }
+  .qr svg { width: 100%; max-width: 170px; height: auto; }
+  aside.go .small { color: var(--muted); font-size: 13.5px; margin-bottom: 14px; }
+  .stores { display: flex; flex-wrap: wrap; gap: 8px; }
+  .dock { display: none; }
+  @media (max-width: 900px) {
+    .pub { grid-template-columns: 1fr; }
+    aside.go { display: none; }
+    .pubmap { height: 130px; }
+    .dock { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 12px var(--gutter) max(14px, env(safe-area-inset-bottom)); background: rgb(21 18 15 / 0.96); border-top: 1px solid var(--hair); }
+    .dock .btn { flex: 1; }
+    .foot { padding-bottom: 110px; }
+    .events li { grid-template-columns: 1fr; gap: 2px; }
+  }
+  @media (max-width: 520px) {
+    .facts { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page pub">
+  <article>
+    <nav class="crumb" aria-label="{% translate "Kde jsi" %}"><a href="{{ nav.pubs }}">{% translate "Hospody" %}</a><span aria-hidden="true">/</span><a href="{{ city_url }}">{{ pub.city }}</a></nav>
+    <h1>{{ pub.name }}</h1>
+    <p class="status">{% if status %}<span class="open">{{ status }}</span> · {% endif %}{{ place }}{% if confirmed %} · {% blocktranslate %}aktualizováno {{ confirmed }}{% endblocktranslate %}{% endif %}</p>
+    <div class="pubmap" data-map='{{ map_pins_json }}' data-zoom="16">
+      <noscript><span class="fallback">{% translate "Mapa potřebuje JavaScript." %}</span></noscript>
+      <a class="quiet navigate" href="{{ navigate_url }}" rel="noopener">{% translate "Navigovat" %}</a>
+    </div>
+    {% if reasons %}
+    <ul class="reasons">
+      {% for reason in reasons %}
+      <li><span class="icon">{% include "pubs/web/_icon.html" with name=reason.icon %}</span><span><b>{{ reason.title }}</b><span>{{ reason.detail }}</span></span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <div class="band"></div>
+    <section aria-labelledby="na-cepu">
+      <h2 id="na-cepu">{% translate "Na čepu" %}</h2>
+      {% if all_old %}<p class="note stale">{% blocktranslate %}Lístek je z {{ confirmed }}, možná se mezitím změnil.{% endblocktranslate %}</p>{% endif %}
+      <ul class="taps">
+        {% for beer in beers %}
+        <li class="tap{% if not beer.fresh %} old{% endif %}">
+          <span><b>{% if beer.url %}<a href="{{ beer.url }}">{{ beer.name }}</a>{% else %}{{ beer.name }}{% endif %}</b>{% if not all_old %}<small>{{ beer.confirmed_label }}</small>{% endif %}</span>
+          {% if beer.price_czk %}<span class="price">{{ beer.price_czk }} {% translate "Kč" %}<small>{{ beer.litres }}</small></span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% if median %}<p class="note">{% blocktranslate %}Obvyklá cena ve městě je {{ median }} Kč. Je to medián nejlevnějšího piva od 0,4 l z hospod, kde ho někdo zapsal za poslední rok.{% endblocktranslate %}</p>{% endif %}
+    </section>
+
+    {% if events %}
+    <div class="band"></div>
+    <section aria-labelledby="akce">
+      <h2 id="akce">{% translate "Akce" %}</h2>
+      <ul class="events">
+        {% for event in events %}
+        <li><span class="when">{{ event.day }}, {{ event.time }}</span><span class="what">{{ event.title }}{% if event.details %}<span>{{ event.details }}</span>{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if hours %}
+    <div class="band"></div>
+    <section aria-labelledby="oteviraci-doba">
+      <h2 id="oteviraci-doba">{% translate "Otevírací doba" %}</h2>
+      <dl class="hours">
+        {% for row in hours %}<dt>{{ row.days }}</dt><dd>{{ row.spans }}</dd>{% endfor %}
+      </dl>
+      <p class="note">{% translate "Podle lidí z Na pivo. Když nesedí, oprav ji v aplikaci." %}</p>
+    </section>
+    {% endif %}
+
+    <div class="band"></div>
+    <section aria-labelledby="vybaveni">
+      <h2 id="vybaveni">{% translate "Vybavení" %}</h2>
+      {% if facts %}
+      <dl class="facts">
+        {% for fact in facts %}<div><dt>{{ fact.label }}</dt><dd{% if not fact.yes %} class="no"{% endif %}>{% if fact.yes %}{% translate "Ano" %}{% else %}{% translate "Ne" %}{% endif %}</dd></div>{% endfor %}
+      </dl>
+      {% endif %}
+      {% if unknown_facts %}<p class="note">{% if facts %}{% translate "Zbytek zatím nikdo nezmapoval." %}{% else %}{% translate "Tuhle hospodu zatím nikdo nezmapoval." %}{% endif %} {% translate "Zmapuj ji v Na pivo, až v ní budeš sedět." %}</p>{% endif %}
+    </section>
+  </article>
+
+  <aside class="go" aria-labelledby="dovedme">
+    <h2 id="dovedme">{% translate "Doveď mě tam" %}</h2>
+    <p>{% translate "Kompas v Na pivo ukáže směr k hospodě a funguje i bez signálu." %}</p>
+    <div class="qr">{{ qr }}</div>
+    <p class="small">{% translate "Namiř na kód telefonem a otevři si hospodu v mobilu." %}</p>
+    <div class="stores"><a class="quiet" href="{{ app_store_url }}">App Store</a><a class="quiet" href="{{ play_store_url }}">Google Play</a></div>
+  </aside>
+</div>
+<div class="dock"><a class="btn" href="{{ app_store_url }}" data-open-app="{{ app_argument }}" data-ios="{{ app_store_url }}" data-android="{{ play_store_url }}">{% translate "Otevřít v Na pivo" %}</a></div>
+{% endblock %}
+{% block scripts %}<script src="{{ asset.web_map_js }}" type="module"></script>{% endblock %}

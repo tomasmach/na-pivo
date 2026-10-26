@@ -8,6 +8,7 @@ from django.views.generic import RedirectView
 
 from pubs.home_views import home, landing_asset
 from pubs.models import BeerPage
+from pubs.web_guide import events_page, pub_page, pubs_page, tour_page, tours_page
 from pubs.web_views import (
     android_asset_statements,
     apple_app_site_association,
@@ -52,6 +53,24 @@ urlpatterns = [
     path("en/beer/brand/<slug:key>/og.png", beer_pages_og_image, {"lang": "en", "kind": BeerPage.Kind.BRAND}, name="beer-brand-og-image-en"),
     path("en/beer/<slug:key>", beer_pages, {"lang": "en", "kind": BeerPage.Kind.BEER}, name="beer-en"),
     path("en/beer/<slug:key>/og.png", beer_pages_og_image, {"lang": "en", "kind": BeerPage.Kind.BEER}, name="beer-og-image-en"),
+    path("hospody", pubs_page, name="web-pubs"),
+    path("hospody/<slug:city>", pubs_page, name="web-pubs-city"),
+    path("hospody/<slug:city>/<slug:guide>", pubs_page, name="web-pubs-guide"),
+    path("en/pubs", pubs_page, {"lang": "en"}, name="web-pubs-en"),
+    path("en/pubs/<slug:city>", pubs_page, {"lang": "en"}, name="web-pubs-city-en"),
+    path("en/pubs/<slug:city>/<slug:guide>", pubs_page, {"lang": "en"}, name="web-pubs-guide-en"),
+    path("hospoda/<slug:city>/<slug:slug>", pub_page, name="web-pub"),
+    path("en/pub/<slug:city>/<slug:slug>", pub_page, {"lang": "en"}, name="web-pub-en"),
+    path("akce", events_page, name="web-events"),
+    path("akce/<slug:city>", events_page, name="web-events-city"),
+    path("en/events", events_page, {"lang": "en"}, name="web-events-en"),
+    path("en/events/<slug:city>", events_page, {"lang": "en"}, name="web-events-city-en"),
+    path("trasy", tours_page, name="web-tours"),
+    path("trasy/mesto/<slug:city>", tours_page, name="web-tours-city"),
+    path("trasy/<uuid:public_id>", tour_page, name="web-tour"),
+    path("en/routes", tours_page, {"lang": "en"}, name="web-tours-en"),
+    path("en/routes/city/<slug:city>", tours_page, {"lang": "en"}, name="web-tours-city-en"),
+    path("en/routes/<uuid:public_id>", tour_page, {"lang": "en"}, name="web-tour-en"),
     path("t/<slug:token>", tour_invite_landing, name="tour-invite-landing"),
     path("p/<slug:code>", invite_landing, name="friend-invite-landing"),
     path("party/<slug:code>", party_invite_landing, name="party-invite-landing"),

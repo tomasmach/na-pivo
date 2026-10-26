@@ -168,6 +168,7 @@ def test_spellings_of_one_beer_are_one_page_with_prices_cities_and_dates():
     beer = build_beer_pages()["beers"]["testovar-11"]
 
     assert beer["listed"][0] == {
+        "pub_key": PubCommunityData.objects.get(name="U Kalicha").cache_key,
         "name": "U Kalicha",
         "city": "Praha 2",
         "price_czk": 52,
@@ -284,7 +285,8 @@ def test_beer_page_shows_pubs_prices_and_dates_without_anyone_who_wrote_them(cli
     html = response.content.decode()
     assert "<title>Testovar 11°: kde se čepuje a za kolik | Na pivo</title>" in html
     assert '<h1 id="page-title">Kde se čepuje Testovar 11°</h1>' in html
-    assert re.search(r'<a href="https://www\.google\.com/maps/search/\?api=1&amp;query=[\d.]+,[\d.]+">U Lípy<', html)
+    # A pub with its own page links there; the beer page no longer sends people to a map.
+    assert '<a href="/hospoda/praha/u-lipy">U Lípy<' in html
     assert "pípy se tu střídají" in html and "cena chybí" in html and "za 0,3 l" in html
     # The pub not confirmed for four months comes last, under its own heading.
     old = html.index("Zápisy starší než 3 měsíce")

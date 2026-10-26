@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#231407">
+<meta name="theme-color" content="#15120F">
 <title>{{ page_title }} | Na pivo</title>
 <meta name="description" content="{{ description }}">
 <link rel="canonical" href="{{ canonical_url }}">
@@ -45,16 +45,16 @@
 
   :root {
     color-scheme: dark;
-    --ground: #231407;
-    --stout-3: #3a2515;
-    --ink: #1f1308;
-    --ink-deep: #0d0703;
+    --ground: #15120F;
+    --stout-3: #262019;
+    --ink: #15120F;
+    --ink-deep: #0E0C0A;
     --amber: #e8a317;
     --amber-light: #f5b642;
     --foam: #fbf3e0;
     --foam-muted: #e8dcc0;
-    --muted: #a8896a;
-    --paper-muted: #6b5440;
+    --muted: #958E85;
+    --paper-muted: #6E675F;
     --hair: rgb(251 243 224 / 0.1);
     --track: rgb(251 243 224 / 0.07);
     --display: "Baloo 2", ui-rounded, system-ui, sans-serif;
@@ -75,12 +75,6 @@
   /* Tilted and tossed paper may reach past the gutter; it must never make the page scroll sideways. */
   .wrap { max-width: calc(1080px + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); overflow-x: clip; }
 
-  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 14px; }
-  .wordmark { display: inline-flex; min-height: 48px; align-items: center; gap: 10px; color: var(--foam); font: 800 24px/1 var(--display); text-decoration: none; }
-  .wordmark img { width: 36px; height: 36px; border-radius: 50%; }
-  .lang { display: inline-flex; min-height: 44px; align-items: center; margin-right: -12px; padding: 0 12px; border-radius: 10px; color: var(--foam-muted); font-size: 16px; font-weight: 600; text-decoration: none; }
-  @media (hover: hover) { .lang:hover { color: var(--foam); background: var(--stout-3); } }
-  .lang:active { background: var(--stout-3); }
 
   /* Hero: the medians are beer mats on the table, the same cream rounds as on the home page prints. */
   .hero { display: grid; gap: clamp(36px, 5vw, 56px); padding-top: clamp(28px, 5vw, 56px); }
@@ -259,6 +253,7 @@
   .areas.is-live .more { display: inline-flex; }
   .areas .more[hidden] { display: none; }
   .method { max-width: 40em; margin-top: 36px; color: var(--muted); font-size: 15px; }
+  .links { display: flex; flex-wrap: wrap; gap: 10px; }
   .all-cities { margin-top: 28px; }
 
   .notice { margin-top: 48px; padding: 28px 0; border-block: 1px solid var(--hair); }
@@ -283,7 +278,7 @@
   .cheapest li::before { content: counter(pub) "."; grid-row: 1; color: var(--paper-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
   .cheapest .pub, .cheapest .cost { display: contents; }
   .cheapest strong { display: flex; grid-row: 1; grid-column: 2; gap: 8px; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
-  .cheapest strong::after { content: ""; flex: 1 0 14px; translate: 0 -5px; border-bottom: 2px dotted rgb(31 19 8 / 0.35); }
+  .cheapest strong::after { content: ""; flex: 1 0 14px; translate: 0 -5px; border-bottom: 2px dotted rgb(21 18 15 / 0.35); }
   .cheapest .price { grid-row: 1; grid-column: 3; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
   .cheapest .city, .cheapest .stale { grid-column: 2; color: var(--paper-muted); font-size: 15px; line-height: 1.35; }
   .cheapest .volume { grid-row: 2; grid-column: 3; color: var(--paper-muted); font-size: 15px; text-align: right; }
@@ -337,13 +332,11 @@
     *, *::before, *::after { transition-duration: 0ms !important; transition-delay: 0ms !important; }
   }
 </style>
+{% include "pubs/web/_chrome.html" %}
 </head>
 <body>
+{% include "pubs/web/_header.html" %}
 <div class="wrap">
-<header class="top">
-  <a class="wordmark" href="{{ home_url }}"><img src="{{ asset.icon_144_png }}" alt="" width="36" height="36">Na pivo</a>
-  {% if LANGUAGE_CODE == "cs" %}<a class="lang" href="{{ switch_url }}" hreflang="en" lang="en">English</a>{% else %}<a class="lang" href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>{% endif %}
-</header>
 
 <main>
   <section class="hero" aria-labelledby="page-title">
@@ -406,7 +399,7 @@
   {% endif %}
 
   {% if not throttled %}<p class="method">{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod." %}</p>{% endif %}
-  {% if area %}<a class="all-cities" href="{{ prices_url }}">{% translate "Ceny v dalších městech" %}</a>{% endif %}
+  {% if area %}<div class="links">{% if city_pubs_url %}<a class="all-cities" href="{{ city_pubs_url }}">{% translate "Hospody na mapě" %}</a>{% endif %}<a class="all-cities" href="{{ prices_url }}">{% translate "Ceny v dalších městech" %}</a></div>{% endif %}
 
   <div class="after" data-reveal>
     {% if cheapest and not throttled %}
@@ -414,7 +407,7 @@
       {# A small city lists all its pubs, so the list can't promise they are all cheap. #}
       <h2 id="cheapest-title">{% if area %}{% translate "Hospody od nejlevnější" %}{% else %}{% translate "Nejlevnější hospody" %}{% endif %}</h2>
       <ol class="cheapest" role="list">
-        {% for pub in cheapest %}<li><span class="pub"><strong>{{ pub.name }}</strong>{% if pub.city and pub.city != area.name %}<span class="city">{{ pub.city }}</span>{% endif %}{% if pub.stale %}<span class="stale">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</span><span class="cost"><span class="price">{{ pub.price_czk }} {% translate "Kč" %}</span><span class="volume">{{ pub.litres }} l</span></span></li>{% endfor %}
+        {% for pub in cheapest %}<li><span class="pub"><strong>{% if pub.url %}<a href="{{ pub.url }}">{{ pub.name }}</a>{% else %}{{ pub.name }}{% endif %}</strong>{% if pub.city and pub.city != area.name %}<span class="city">{{ pub.city }}</span>{% endif %}{% if pub.stale %}<span class="stale">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</span><span class="cost"><span class="price">{{ pub.price_czk }} {% translate "Kč" %}</span><span class="volume">{{ pub.litres }} l</span></span></li>{% endfor %}
       </ol>
     </section>
     {% endif %}
@@ -433,6 +426,7 @@
     <a href="{{ beers_url }}">{% translate "Kde se čepuje které pivo" %}</a>
     <a href="{{ privacy_url }}">{% translate "Soukromí" %}</a>
     <a href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a>
+    {% if LANGUAGE_CODE == "cs" %}<a href="{{ switch_url }}" hreflang="en" lang="en">English</a>{% else %}<a href="{{ switch_url }}" hreflang="cs" lang="cs">Česky</a>{% endif %}
   </nav>
 </footer>
 </div>

@@ -28,10 +28,15 @@ from django.utils.translation import gettext
 
 from pubs.beer_pages import PATHS as BEER_PATHS
 from pubs.price_map import PATHS as PRICE_PATHS
+from pubs.web_paths import HOME_PATHS as PATHS
+from pubs.web_paths import nav_paths
 
 _LANDING_ROOT = Path(__file__).resolve().parent / "static" / "pubs" / "landing"
 _CONTENT_TYPES = {
     ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json",
     ".webp": "image/webp",
     ".png": "image/png",
     ".woff2": "font/woff2",
@@ -43,8 +48,12 @@ _LANDING_FILES: dict[str, Path] = {
     for path in sorted(_LANDING_ROOT.iterdir())
     if path.is_file() and path.suffix in _CONTENT_TYPES
 }
-# Scripts are read once; a complete response lets the gzip middleware compress them.
-_SCRIPTS = {name: path.read_bytes() for name, path in _LANDING_FILES.items() if path.suffix == ".js"}
+# Text files are read once; a complete response lets the gzip middleware compress them.
+_SCRIPTS = {
+    name: path.read_bytes()
+    for name, path in _LANDING_FILES.items()
+    if path.suffix in {".js", ".mjs", ".css", ".json"}
+}
 # Content hash in the URL lets browsers keep a file for a year and still pick up a new deploy.
 _LANDING_URLS: dict[str, str] = {
     name.replace(".", "_").replace("-", "_"): (
@@ -57,7 +66,6 @@ APP_STORE_URL = "https://apps.apple.com/cz/app/id6773790025"
 PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo"
 _LEGAL_ROOT = "https://tomasmach.github.io/na-pivo"
 _OG_LOCALES = {"cs": "cs_CZ", "en": "en_US"}
-PATHS = {"cs": "/", "en": "/en"}
 AUTHOR = {"@type": "Person", "name": "Tomáš Mach", "url": "https://www.instagram.com/jsem_mach/"}
 # Keeps "</script>" inside a value from ending the block early.
 _LD_ESCAPES = {ord("<"): "\\u003c", ord(">"): "\\u003e", ord("&"): "\\u0026"}
@@ -145,6 +153,8 @@ def _home_structured_data(origin: str, lang: str) -> SafeString:
 def home(request: HttpRequest, lang: str = "cs") -> HttpResponse:
     """Render the home page. ``/`` is always Czech and ``/en`` always English."""
 
+    from pubs.web_guide import home_guide
+
     origin = settings.PUBLIC_WEB_ORIGIN
     legal = _LEGAL_ROOT if lang == "cs" else f"{_LEGAL_ROOT}/en"
     with translation.override(lang):
@@ -153,6 +163,8 @@ def home(request: HttpRequest, lang: str = "cs") -> HttpResponse:
             "pubs/home.html",
             {
                 "LANGUAGE_CODE": lang,
+                "nav": nav_paths(lang),
+                "guide": home_guide(lang),
                 "og_locale": _OG_LOCALES[lang],
                 "canonical_url": f"{origin}{PATHS[lang]}",
                 "cs_url": f"{origin}{PATHS['cs']}",

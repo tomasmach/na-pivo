@@ -13,7 +13,7 @@ Celá appka leží na zemi stránky hospody. Stouty mají znovu hodnoty z §2.1:
 Jantar, pěna i texty zůstávají. Samostatný `Colors.canvas` zanikl, jeho
 obrazovky leží na `Colors.stout`. Ikona appky, splash a Live Activity mají
 pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
-`Colors.deep` (`#0E0C0A`). Hnědý zůstává jen web na na-pivo.cz. Jantar s nízkou alfou na
+`Colors.deep` (`#0E0C0A`). Od 26. 10. 2026 je šedý i web na na-pivo.cz. Jantar s nízkou alfou na
 šedé zemi vypadá olivově hnědě, proto klidové plochy nesou neutrální pěnu:
 sekundární tlačítko je `stout3` bez okraje (§6.2), medailonek pod ikonou
 `foam` 0,07. Jantarový nádech zůstává jen vybraným a varovným stavům.
@@ -27,6 +27,25 @@ restartuje appku. Mění stouty, `deep`, Live Activity a na iOS i ikonu
 nemění, protože jeho alias nemá filtr `napivo://`. Splash zůstává šedý.
 Ilustrace mají průhledné pozadí a zrno z pěny s alfou ~3 %, takže sedí na
 obou zemích. Nové UI se navrhuje a ověřuje jen v šedé.
+
+## Web na-pivo.cz (26. 10. 2026)
+
+Web leží na stejné šedé zemi jako appka: `#15120F` zem, `#1C1815` karta a chip,
+`#262019` pole a tichá pilulka, `#0E0C0A` pás mezi sekcemi, pěna `#FBF3E0`,
+`#E8DCC0` a `#958E85` na text. Jantar `#E8A317` má jen hlavní akce stránky
+a vybraný stav (zapnutý filtr, vybraný špendlík). Písmo zůstává webové: Baloo 2
+na nadpisy a ceny, Bricolage Grotesque na text. Linorytové ilustrace jsou
+převedené na šedou zem, jantar a pěna v nich zůstaly.
+
+Hledání hospod je varianta A: filtry a seznam vlevo, mapa vpravo, na telefonu
+seznam a plovoucí tlačítko Mapa. Mapa je vlastní styl v `map-style.json`
+(OpenFreeMap přebarvený do těchto barev). Špendlík je tichá pilulka s cenou,
+vybraný je jantarový; při malém přiblížení se špendlíky zmenší na tečky.
+Stránka hospody drží strukturu schválené stránky hospody z appky níž: název,
+jeden stavový řádek, výřez mapy, nejvýš tři důvody jít a sekce oddělené
+tmavým pásem. Na desktopu je hlavní akcí QR kód, na telefonu jantarová lišta
+„Doveď mě tam“. Hlavička se sdílí přes `pubs/web/_header.html` na všech
+stránkách webu.
 
 ## Schválená obnova plochých seznamů (22. 9. 2026)
 
