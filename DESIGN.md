@@ -17,6 +17,8 @@ pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
 šedé zemi vypadá olivově hnědě, proto klidové plochy nesou neutrální pěnu:
 sekundární tlačítko je `stout3` bez okraje (§6.2), medailonek pod ikonou
 `foam` 0,07. Jantarový nádech zůstává jen vybraným a varovným stavům.
+Terciární text `mutedText` je na šedé zemi neutrální `#958E85` se stejným
+kontrastem jako hnědá hlína `#A8896A`, kterou si nechává hnědá paleta.
 
 Hnědá zůstává jako neudržovaná volba v Nastavení → Vzhled
 (`src/theme/palette.ts`). Čte se synchronně při startu jako jazyk a přepnutí
@@ -30,7 +32,7 @@ obou zemích. Nové UI se navrhuje a ověřuje jen v šedé.
 
 Varianta C pro **Moje přidané hospody** vrací na této obrazovce plochý seznam:
 `Colors.stout` (`#15120F`), systémové písmo bez `fontFamily`, stávající `amber`
-(`#E8A317`), `foam` (`#FBF3E0`) a `mutedText` (`#A8896A`).
+(`#E8A317`), `foam` (`#FBF3E0`) a `mutedText`.
 Toto rozhodnutí neobnovuje celé téma ani historickou architekturu 3.0.
 
 Seznam má okraj 20 bodů, záhlaví 52 bodů s titulkem 18/700, názvy 16/600,
@@ -360,10 +362,10 @@ dekorace, ne animace a rozhodně ne emoji v chromu.
 | `Colors.neon` | `#FFD27A` | Rezerva pro zvýrazněné stavy. Na etalonu se nepoužívá. |
 | `Colors.foam` | `#FBF3E0` | Primární text a světlé hairliny (s alfou). |
 | `Colors.foamMuted` | `#E8DCC0` | Sekundární text, popisek pod číslem, ikona zavírání. |
-| `Colors.mutedText` | `#A8896A` | Terciární text, meta řádky, neaktivní stav, „…“ ikona. |
+| `Colors.mutedText` | `#958E85` | Terciární text, meta řádky, neaktivní stav, „…“ ikona. Hnědá paleta má `#A8896A`. |
 | `Colors.success` | `#7DD66B` | Potvrzení. Používej střídmě; jantar většinou stačí. |
 | `Colors.open` | `#F0BE5C` | Otevřeno (otevírací doba) — text i stavová tečka. |
-| `Colors.closed` | `#A8896A` | Zavřeno. Nikdy červená — nemáme na uživatele křičet. |
+| `Colors.closed` | = `mutedText` | Zavřeno. Nikdy červená — nemáme na uživatele křičet. |
 | `Colors.black` | `#000000` | Jen backdrop (`withAlpha(Colors.black, 0.6)`) a `softDrop()`. |
 | `Colors.white` | `#FFFFFF` | Nepoužívat na text. Text je `foam`. |
 

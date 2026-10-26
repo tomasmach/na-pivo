@@ -16,6 +16,8 @@ const GROUNDS = {
     border: '#3A322A',
     // Below the ground: bands between sections, scrims under sheets.
     deep: '#0E0C0A',
+    // Same contrast as the brown clay, without its tint.
+    mutedText: '#958E85',
   },
   brown: {
     stout: '#1F1308',
@@ -23,6 +25,7 @@ const GROUNDS = {
     stout3: '#3A2515',
     border: '#5A3A20',
     deep: '#0F0A05',
+    mutedText: '#A8896A',
   },
 } as const;
 
@@ -40,14 +43,13 @@ export const Colors = {
   // Text — foam / muted
   foam: '#FBF3E0',
   foamMuted: '#E8DCC0',
-  mutedText: '#A8896A',
 
   // Status
   success: '#7DD66B',
 
   // Opening-hours status — hours-forward & warm, on the stout/amber palette
   open: '#F0BE5C', // warm foam-amber tone that sits beside the amber accent
-  closed: '#A8896A', // muted clay/foam tone — calm, never an alarming red
+  closed: GROUNDS[palette].mutedText, // calm, never an alarming red
 
   // Pure
   black: '#000000',
