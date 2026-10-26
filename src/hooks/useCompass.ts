@@ -129,6 +129,8 @@ function hasMovedEnoughForRetarget(current: TargetPosition, previous: TargetPosi
 
 export interface UseCompassResult {
   arrowRotation: SharedValue<number | null>;
+  /** Where the phone points, in degrees from north; null without a heading. */
+  heading: SharedValue<number | null>;
   distanceMeters: number | null;
   distanceFormatted: string | null;
   pub: Pub | null;
@@ -1227,6 +1229,7 @@ export function useCompass(
 
   return {
     arrowRotation,
+    heading: smoothedHeading,
     distanceMeters,
     distanceFormatted,
     pub: filterLookupPending ? null : enrichedPub,

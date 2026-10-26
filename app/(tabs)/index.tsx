@@ -78,7 +78,8 @@ import { openPubPage } from '@/pubPage/openPubPage';
 import { trackRepeatedUiInteraction, trackUiInteraction } from '@/data/uxTelemetry';
 import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useToastStore } from '@/stores/toastStore';
-import BeerMapScreen from '@/map/BeerMapScreen';
+import BeerMapScreen, { type MapCompass } from '@/map/BeerMapScreen';
+import { MapTargetCard } from '@/compassui/MapTargetCard';
 import { PubSearchButton } from '@/search/PubSearchButton';
 
 import { Colors } from '@/theme/colors';
@@ -87,7 +88,7 @@ import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { TabScreen, useBottomInset } from '@/navigation/TabScreen';
 import { useBookLayout, useOnBookOpen } from '@/layout/bookLayout';
 import { BookSpread } from '@/layout/BookSpread';
-import { amberGlowStrong } from '@/theme/shadows';
+import { amberGlowStrong, softDrop } from '@/theme/shadows';
 import { formatVolume, t } from '@/i18n';
 
 // Android's heading samples arrive as discrete jumps (see the rotation
@@ -102,6 +103,7 @@ const ARROW_SPRING_CONFIG = {
   overshootClamping: true,
 } as const;
 const FOLD_SIDE_SLOP = { top: 8, bottom: 8, left: 8, right: 0 } as const;
+const MAP_DIAL_SIZE = 48;
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 
@@ -160,6 +162,29 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
 }
 
 /**
+ * The compass header's way to the map. A phone's map is its home, so the door
+ * back is a plain glyph; a wide window keeps the switch, which there only names
+ * the compass because the map is already beside it.
+ */
+function MapDoor({ onPress }: { onPress: () => void }) {
+  const { wide } = useBookLayout();
+  if (wide) {
+    return <ExploreSwitch activeView="compass" variant="flat" onSelectCompass={() => undefined} onSelectMap={onPress} />;
+  }
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={t.a11y.mapSwitchToMap}
+    >
+      <MapIcon size={22} color={Colors.foamMuted} />
+    </Pressable>
+  );
+}
+
+/**
  * Reads the insets of the half it is rendered in. The states built inline in
  * CompassScreen sit inside the spread, but CompassScreen itself sits above it.
  */
@@ -199,12 +224,7 @@ function LoadingScreen({ rotation, onShowMap }: LoadingScreenProps) {
       ]}
     >
       <View style={[styles.headerRow, { marginRight: Math.max(-12, insets.right - 24) }]}>
-        <ExploreSwitch
-          activeView="compass"
-          variant="flat"
-          onSelectCompass={() => undefined}
-          onSelectMap={onShowMap}
-        />
+        <MapDoor onPress={onShowMap} />
         <View style={styles.headerSpacer} />
         <PubSearchButton />
       </View>
@@ -483,12 +503,11 @@ function CompassScreen() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
-  const [mapOpen, setMapOpen] = useState(false);
-  const mapWithoutLocation = useSettingsStore((state) => state.mapWithoutLocation === true);
-  const setMapWithoutLocation = useSettingsStore((state) => state.setMapWithoutLocation);
-  // A wide window shows the map beside the compass, so only a phone switches.
+  // A phone opens on the map with the compass in its corner; a wide window
+  // shows the two side by side.
+  const [compassOpen, setCompassOpen] = useState(false);
   const { mode: bookMode, wide } = useBookLayout();
-  const mapVisible = !wide && (mapOpen || mapWithoutLocation);
+  const mapVisible = !wide && !compassOpen;
   // Google's map takes its first camera from its first layout, which a hidden
   // tab never gets; meanwhile it would report its default view of the world
   // as where the map was. So the map beside the compass waits for the tab to
@@ -496,17 +515,13 @@ function CompassScreen() {
   const focused = useIsFocused();
   const [mapSeen, setMapSeen] = useState(false);
   if (mapSeen !== (wide && (focused || mapSeen))) setMapSeen(wide && (focused || mapSeen));
-  // Folding the phone again lands on the compass, never on the map.
-  useOnBookOpen(() => {
-    setMapOpen(false);
-    setMapWithoutLocation(false);
-  });
+  // Folding the phone again lands on the map, the phone's home.
+  useOnBookOpen(() => setCompassOpen(false));
   useFocusEffect(useCallback(() => {
     if (view !== 'compass') return;
-    setMapOpen(false);
-    setMapWithoutLocation(false);
+    setCompassOpen(true);
     router.setParams({ view: undefined });
-  }, [router, setMapWithoutLocation, view]));
+  }, [router, view]));
   const [moreOpen, setMoreOpen] = useState(false);
   // The dial is sized from the card, never the other way round (§5.3).
   const [dialSize, setDialSize] = useState(260);
@@ -514,6 +529,7 @@ function CompassScreen() {
 
   const {
     arrowRotation,
+    heading,
     distanceFormatted,
     pub,
     revealed,
@@ -541,7 +557,7 @@ function CompassScreen() {
     pubFilters.amenityKeys,
     pubFilters.priceMinCzk,
     pubFilters.priceMaxCzk,
-    !mapVisible,
+    true,
     pubFilters.includeOtherPlaces === true,
   );
   const activeFilterCount = activePubSearchFilterCount(pubFilters);
@@ -648,14 +664,12 @@ function CompassScreen() {
     : null;
   const handleShowMap = useCallback(() => {
     trackUiInteraction('compass_map_open');
-    if (permissionState !== 'granted') setMapWithoutLocation(true);
-    setMapOpen(true);
-  }, [permissionState, setMapWithoutLocation]);
+    setCompassOpen(false);
+  }, []);
   const handleShowCompass = useCallback(() => {
     trackUiInteraction('compass_return');
-    setMapOpen(false);
-    setMapWithoutLocation(false);
-  }, [setMapWithoutLocation]);
+    setCompassOpen(true);
+  }, []);
 
   const handleAddPub = useCallback(() => {
     trackUiInteraction('compass_add_pub_open');
@@ -675,12 +689,14 @@ function CompassScreen() {
     router.push('/celebration');
   }, [pub, router]);
 
+  // Navigates to the pub the needle points at, a picked or a friend's one included.
   const handleOpenMaps = useCallback(() => {
-    if (pub) {
+    const destination = focusedPub ?? pub;
+    if (destination) {
       trackUiInteraction('compass_directions_open');
-      openPubInMaps(pub);
+      openPubInMaps(destination);
     }
-  }, [pub]);
+  }, [focusedPub, pub]);
   const handleNavigateHome = useCallback(() => {
     if (homePoint) void openHomeInMaps(homePoint);
   }, [homePoint]);
@@ -798,18 +814,9 @@ function CompassScreen() {
     return null;
   }, [activeFilterCount, focusedPub, hasMagnetometer, headingAccuracy, router, tourNextName, tourPlanId]);
 
-  // Everything that used to live in the header and the bottom bar — minus the
-  // map, which is now a visible half of the header. One door per place.
-  const moreRows: MoreRow[] = useMemo(() => {
-    const rows: MoreRow[] = [
-      {
-        key: 'filters',
-        label: t.compass.moreFilters,
-        value: activeFilterCount > 0 ? t.compass.moreFiltersActive(activeFilterCount) : null,
-        icon: ListFilterIcon,
-        onPress: () => { setMoreOpen(false); handleOpenFilter(); },
-      },
-    ];
+  // The way home and the search mode, in the compass's "…" and the home map's.
+  const compassChoiceRows: MoreRow[] = useMemo(() => {
+    const rows: MoreRow[] = [];
     if (homePoint) {
       rows.push({ key: 'home', label: t.compass.moreHome, icon: HouseIcon, onPress: () => { setMoreOpen(false); handleNavigateHome(); } });
     }
@@ -829,6 +836,22 @@ function CompassScreen() {
         onPress: () => { setMoreOpen(false); handleModeChange('surprise'); },
       },
     );
+    return rows;
+  }, [handleModeChange, handleNavigateHome, homePoint, mode]);
+
+  // Everything that used to live in the header and the bottom bar — minus the
+  // map, which has its own door in the header. One door per place.
+  const moreRows: MoreRow[] = useMemo(() => {
+    const rows: MoreRow[] = [
+      {
+        key: 'filters',
+        label: t.compass.moreFilters,
+        value: activeFilterCount > 0 ? t.compass.moreFiltersActive(activeFilterCount) : null,
+        icon: ListFilterIcon,
+        onPress: () => { setMoreOpen(false); handleOpenFilter(); },
+      },
+      ...compassChoiceRows,
+    ];
     rows.push({
       key: 'add-pub',
       label: t.compass.moreAddPub,
@@ -841,27 +864,107 @@ function CompassScreen() {
     return rows;
   }, [
     activeFilterCount,
+    compassChoiceRows,
     focusedPub,
     handleAddPub,
-    handleModeChange,
-    handleNavigateHome,
     handleOpenFilter,
     handleReport,
-    homePoint,
-    mode,
     targetPub,
   ]);
 
   // The map is the compass's twin: the other half of a wide window, or the
   // whole screen once a phone switches to it. Beside the compass it marks the
   // target, unless the target's name is still a secret.
+  const cardAccessibilityLabel = showPubDetails
+    ? t.a11y.compassCard(
+        targetPub?.name ?? '',
+        distanceFormatted ?? '',
+        [
+          hours.label,
+          pub?.beerMenuRotates ? t.counter.rotatingMenuBadge : null,
+          beerLine,
+        ].filter(Boolean).join(' · '),
+      )
+    : t.a11y.compassCardHidden;
+  const handleAnother = useCallback(() => {
+    if (focusedPub) {
+      trackUiInteraction('compass_focus_clear');
+      clearFocusedPub();
+    } else if (mode === 'surprise') {
+      trackRepeatedUiInteraction('compass_reroll');
+      reroll();
+    } else {
+      trackRepeatedUiInteraction('compass_skip');
+      skip();
+    }
+  }, [clearFocusedPub, focusedPub, mode, reroll, skip]);
+  const anotherLabel = focusedPub ? t.compass.backToNearest : t.compass.anotherPub;
+  const anotherAccessibilityLabel = focusedPub ? t.a11y.compassBackToNearest : t.a11y.compassAnother;
+
+  // On a phone the map is home and the compass lives in it: the dial in the
+  // corner, the beam and the line on the map, the target in the card.
+  const hasTarget = permissionState === 'granted' && !isLoading && targetPub !== null;
+  const compassOnMap: MapCompass | undefined = wide
+    ? undefined
+    : {
+        dial: (
+          <Pressable
+            onPress={handleShowCompass}
+            style={({ pressed }) => [styles.mapDial, pressed && styles.pressedSoft]}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t.a11y.mapSwitchCompass}
+          >
+            <CompassContainer rotation={rotation} size={MAP_DIAL_SIZE} />
+          </Pressable>
+        ),
+        card: hasTarget ? (
+          <MapTargetCard
+            distance={distanceFormatted}
+            pubName={showPubDetails ? (targetPub?.name ?? null) : null}
+            hoursLabel={showPubDetails ? hours.label : null}
+            hoursTone={hours.tone}
+            beerLine={showPubDetails ? beerLine : null}
+            showDetailLink={showPubDetails && !focusedPub}
+            onPressPub={handleCardFooterPress}
+            pubAccessibilityLabel={cardAccessibilityLabel}
+            primary={{
+              label: t.compass.navigateCta,
+              onPress: handleOpenMaps,
+              accessibilityLabel: t.a11y.compassNavigate(targetPub?.name ?? ''),
+            }}
+            secondary={{ label: anotherLabel, onPress: handleAnother, accessibilityLabel: anotherAccessibilityLabel }}
+          />
+        ) : null,
+        route:
+          hasTarget && targetPub && currentPosition
+            ? {
+                from: { lat: currentPosition.lat, lng: currentPosition.lng },
+                to: { lat: targetPub.lat, lng: targetPub.lng },
+                secret: !showPubDetails,
+              }
+            : null,
+        heading,
+        moreRows: compassChoiceRows,
+        // The map shows active filters as its own chip, and the card already
+        // says where the needle points.
+        nudge: activeFilterCount > 0 || focusedPub ? null : compassNudge,
+      };
+  const highlightKey = !showPubDetails
+    ? null
+    : focusedPub
+      ? focusedPub.cacheKey
+      : pub
+        ? geohash8(pub.lat, pub.lng)
+        : null;
   const map = (
     <BeerMapScreen
-      initialPub={wide && !showPubDetails ? null : pub}
-      highlightPubKey={wide && showPubDetails && pub && !focusedPub ? geohash8(pub.lat, pub.lng) : null}
+      initialPub={wide && showPubDetails ? pub : null}
+      highlightPubKey={highlightKey}
       filters={pubFilters}
       onApplyFilters={handleApplyFilter}
       onShowCompass={handleShowCompass}
+      compass={compassOnMap}
     />
   );
   const spread = (compass: ReactNode) => (
@@ -901,12 +1004,7 @@ function CompassScreen() {
             {/* Nothing within reach is exactly when the map earns its place, so the
                 switch stays in the header here too. */}
             <View style={[styles.headerRow, styles.headerRowEmpty, { paddingRight: Math.max(12, paneInsets.right) }]}>
-              <ExploreSwitch
-                activeView="compass"
-                variant="flat"
-                onSelectCompass={() => undefined}
-                onSelectMap={handleShowMap}
-              />
+              <MapDoor onPress={handleShowMap} />
               <View style={styles.headerSpacer} />
               <PubSearchButton />
             </View>
@@ -949,29 +1047,8 @@ function CompassScreen() {
       accessibilityLabel={t.a11y.compassNavigate(targetPub?.name ?? '')}
     />
   );
-  const anotherButton = focusedPub ? (
-    <CounterSecondary
-      label={t.compass.backToNearest}
-      onPress={() => {
-        trackUiInteraction('compass_focus_clear');
-        clearFocusedPub();
-      }}
-      accessibilityLabel={t.a11y.compassBackToNearest}
-    />
-  ) : (
-    <CounterSecondary
-      label={t.compass.anotherPub}
-      onPress={() => {
-        if (mode === 'surprise') {
-          trackRepeatedUiInteraction('compass_reroll');
-          reroll();
-        } else {
-          trackRepeatedUiInteraction('compass_skip');
-          skip();
-        }
-      }}
-      accessibilityLabel={t.a11y.compassAnother}
-    />
+  const anotherButton = (
+    <CounterSecondary label={anotherLabel} onPress={handleAnother} accessibilityLabel={anotherAccessibilityLabel} />
   );
   return spread(
     <InPane>
@@ -987,12 +1064,7 @@ function CompassScreen() {
           {/* The map is not a menu item. It is the compass's twin, so it lives where
               you cannot miss it: half of the screen's title. */}
           <View style={[styles.headerRow, { marginRight: Math.max(-12, paneInsets.right - 24) }]}>
-            <ExploreSwitch
-              activeView="compass"
-              variant="flat"
-              onSelectCompass={() => undefined}
-              onSelectMap={handleShowMap}
-            />
+            <MapDoor onPress={handleShowMap} />
             <View style={styles.headerSpacer} />
             <PubSearchButton />
             <Pressable
@@ -1026,19 +1098,7 @@ function CompassScreen() {
             showDetailLink={showPubDetails && !focusedPub && targetPub !== null}
             onPressFooter={handleCardFooterPress}
             sideways={tabletop}
-            accessibilityLabel={
-              showPubDetails
-                ? t.a11y.compassCard(
-                    targetPub?.name ?? '',
-                    distanceFormatted ?? '',
-                    [
-                      hours.label,
-                      pub?.beerMenuRotates ? t.counter.rotatingMenuBadge : null,
-                      beerLine,
-                    ].filter(Boolean).join(' · '),
-                  )
-                : t.a11y.compassCardHidden
-            }
+            accessibilityLabel={cardAccessibilityLabel}
           />
 
           {/* Collapsed when empty, unlike the counter's. The compass screen has no
@@ -1139,6 +1199,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressedSoft: { opacity: 0.6 },
+  mapDial: {
+    width: MAP_DIAL_SIZE,
+    height: MAP_DIAL_SIZE,
+    borderRadius: Radius.pill,
+    ...softDrop(),
+  },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',

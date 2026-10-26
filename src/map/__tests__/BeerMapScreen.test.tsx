@@ -11,6 +11,8 @@ import { fetchPubHours } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import { fetchPubBeersLastWeek } from '@/data/pubBeersClient';
 import { useBeerMap } from '../useBeerMap';
+import { useFocusedPubStore } from '@/stores/focusedPubStore';
+import type { MapCompass } from '../BeerMapScreen';
 
 const mockPubStoreState = {
   reportedPubIds: [] as string[],
@@ -52,6 +54,7 @@ jest.mock('react-native-maps', () => ({
     useImperativeHandle(ref, () => ({
       animateCamera: mockAnimateCamera,
       animateToRegion: mockAnimateToRegion,
+      fitToCoordinates: jest.fn(),
     }));
     return (
       <Pressable
@@ -63,6 +66,7 @@ jest.mock('react-native-maps', () => ({
       </Pressable>
     );
   }),
+  Polyline: () => null,
   Marker: ({ children, onPress, accessibilityLabel, tracksViewChanges }: {
     children?: React.ReactNode;
     onPress?: () => void;
@@ -87,6 +91,7 @@ const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 jest.mock('../useBeerMap', () => ({ useBeerMap: jest.fn() }));
+jest.mock('../HeadingCone', () => ({ HeadingCone: () => null }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn() }));
 jest.mock('@/data/pubReportQueue', () => ({ enqueuePubReport: jest.fn(async () => true) }));
 jest.mock('@/stores/pubStore', () => ({
@@ -757,6 +762,62 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(mockedFetchPubHours).toHaveBeenCalledWith([found], expect.anything());
   });
 
+
+  describe('as the home map with the compass in it', () => {
+    function compassOnMap(): MapCompass {
+      return {
+        dial: <Text>dial</Text>,
+        card: <Text>target card</Text>,
+        route: { from: { lat: 50.08, lng: 14.42 }, to: { lat: 50.0876, lng: 14.4214 }, secret: false },
+        heading: { value: null } as MapCompass['heading'],
+        moreRows: [],
+        nudge: null,
+      };
+    }
+
+    afterEach(() => {
+      act(() => useFocusedPubStore.setState({ pub: null }));
+    });
+
+    it('puts the compass target where the layers were and lets it be put away', () => {
+      const screen = render(
+        <BeerMapScreen
+          filters={EMPTY_PUB_SEARCH_FILTERS}
+          onApplyFilters={jest.fn()}
+          onShowCompass={jest.fn()}
+          compass={compassOnMap()}
+        />,
+      );
+      expect(screen.getByText('dial')).toBeTruthy();
+      expect(screen.getByText('target card')).toBeTruthy();
+      expect(screen.queryByLabelText(t.map.layerAll)).toBeNull();
+
+      fireEvent.press(screen.getByLabelText(t.a11y.mapTargetHide));
+      expect(screen.queryByText('target card')).toBeNull();
+      expect(screen.getByLabelText(t.map.layerAll)).toBeTruthy();
+
+      fireEvent.press(screen.getByLabelText(t.a11y.mapTargetShow));
+      expect(screen.getByText('target card')).toBeTruthy();
+    });
+
+    it('aims the compass at a picked pub without leaving the map', () => {
+      const onShowCompass = jest.fn();
+      const screen = render(
+        <BeerMapScreen
+          filters={EMPTY_PUB_SEARCH_FILTERS}
+          onApplyFilters={jest.fn()}
+          onShowCompass={onShowCompass}
+          compass={compassOnMap()}
+        />,
+      );
+      fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+      fireEvent.press(screen.getByLabelText(t.map.aimCompass));
+
+      expect(onShowCompass).not.toHaveBeenCalled();
+      expect(useFocusedPubStore.getState().pub).toMatchObject({ name: 'U Testu' });
+      expect(screen.getByText('target card')).toBeTruthy();
+    });
+  });
 });
 
 describe('BeerMapScreen last-week beers', () => {

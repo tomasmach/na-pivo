@@ -124,7 +124,7 @@ describe('Kompas on the open iPhone Duo', () => {
     (useIsFocused as jest.Mock).mockReturnValue(true);
     (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), setParams: jest.fn() });
     act(() => {
-      useSettingsStore.setState({ hidePubNames: false, homePoint: null, mapWithoutLocation: false });
+      useSettingsStore.setState({ hidePubNames: false, homePoint: null });
     });
     useCompass.mockReturnValue(compassState());
   });
@@ -209,10 +209,7 @@ describe('Kompas on the open iPhone Duo', () => {
     expect(mounted(renderer, BeerMapScreenMock)).toBe(false);
   });
 
-  it('lands on the compass, not the map, when the phone folds', () => {
-    act(() => {
-      useSettingsStore.setState({ mapWithoutLocation: true });
-    });
+  it('lands on the map when the phone folds', () => {
     useCompass.mockReturnValue(compassState({ permissionState: 'denied' }));
     setWindow(951, 669);
     const renderer = render();
@@ -220,22 +217,21 @@ describe('Kompas on the open iPhone Duo', () => {
 
     setWindow(466, 678);
     act(() => renderer.update(<CompassTab />));
-    expect(mounted(renderer, BeerMapScreenMock)).toBe(false);
-    expect(JSON.stringify(renderer.toJSON())).toContain(t.permissions.title);
-    // The phone gets its door to the map back.
-    expect(labelled(renderer, t.map.openWithoutLocation)).toBe(1);
+    expect(mounted(renderer, BeerMapScreenMock)).toBe(true);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain(t.permissions.title);
   });
 
-  it('keeps the phone exactly as it was: compass or map, never both', () => {
+  it('keeps the phone to one half: the map with the compass in it, or the full compass', () => {
     setWindow(402, 874);
     const renderer = render();
+    expect(mounted(renderer, BeerMapScreenMock)).toBe(true);
+    expect(mounted(renderer, CompassCardMock)).toBe(false);
+    expect(lastProps(BeerMapScreenMock)).toMatchObject({ initialPub: null });
+    expect(lastProps(BeerMapScreenMock).compass).toBeDefined();
+
+    act(() => lastProps(BeerMapScreenMock).onShowCompass());
     expect(mounted(renderer, CompassCardMock)).toBe(true);
     expect(mounted(renderer, BeerMapScreenMock)).toBe(false);
     expect(labelled(renderer, t.a11y.mapSwitchToMap)).toBe(1);
-
-    act(() => renderer.root.findAllByProps({ accessibilityLabel: t.a11y.mapSwitchToMap })[0].props.onPress());
-    expect(mounted(renderer, BeerMapScreenMock)).toBe(true);
-    expect(mounted(renderer, CompassCardMock)).toBe(false);
-    expect(lastProps(BeerMapScreenMock)).toMatchObject({ initialPub: PUB, highlightPubKey: null });
   });
 });
