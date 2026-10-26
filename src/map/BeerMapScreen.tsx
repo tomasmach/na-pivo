@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   FlatList,
   Image,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -13,6 +14,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import MapView, {
+  Polyline,
   PROVIDER_GOOGLE,
   type Details,
   type MapPressEvent,
@@ -20,6 +22,7 @@ import MapView, {
 } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import type { SharedValue } from 'react-native-reanimated';
 
 import { Modal } from '@/components/shared/Modal';
 import { useTone } from '@/layout/pane';
@@ -85,6 +88,7 @@ import {
   type VisitedCitySummary,
 } from './mapModel';
 import { useBeerMap } from './useBeerMap';
+import { HeadingCone } from './HeadingCone';
 import { StaticMapMarker, useMarkerSnapshotRefresh } from './StaticMapMarker';
 import { openPubPage } from '@/pubPage/openPubPage';
 import { useBottomInset, useTabBarInset } from '@/navigation/TabScreen';
@@ -135,6 +139,27 @@ export function resetBeerMapLayerForAddedPub(): void {
   setRememberedLayer('all');
 }
 
+interface MapPoint {
+  lat: number;
+  lng: number;
+}
+
+/** The compass living inside the phone's home map instead of beside it. */
+export interface MapCompass {
+  /** Takes the Kompas/Mapa switch's place and opens the full compass. */
+  dial: ReactNode;
+  /** The target card, or null while there is no target to show. */
+  card: ReactNode | null;
+  /** A secret target gets no line and no highlight; a line would point at its pin. */
+  route: { from: MapPoint; to: MapPoint; secret: boolean } | null;
+  heading: SharedValue<number | null>;
+  /** Compass choices the map's "…" sheet carries too: mode and the way home. */
+  moreRows: MoreRow[];
+  nudge: Nudge | null;
+  /** What the put-away card says on its handle, e.g. "323 m · U Zlatého tygra". */
+  peek: string | null;
+}
+
 export interface BeerMapScreenProps {
   initialPub?: Pub | null;
   /** The compass target beside the map, marked and named while nothing else is picked. */
@@ -148,6 +173,7 @@ export interface BeerMapScreenProps {
   filters: PubSearchFilters;
   onApplyFilters: (filters: PubSearchFilters) => void;
   onShowCompass: () => void;
+  compass?: MapCompass;
 }
 
 function friendName(live: LivePubSummary): string {
@@ -630,6 +656,7 @@ export default function BeerMapScreen({
   filters,
   onApplyFilters,
   onShowCompass,
+  compass,
 }: BeerMapScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -697,6 +724,8 @@ export default function BeerMapScreen({
   const [beersOnlyChoice, setBeersOnlyChoice] = useState(rememberedBeersOnly);
   const [listOpen, setListOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [targetHidden, setTargetHidden] = useState(false);
+  const [bottomHeight, setBottomHeight] = useState(0);
   const [detailsByPubKey, setDetailsByPubKey] = useState<Record<string, PubHoursResult>>({});
   const [loadingDetailKey, setLoadingDetailKey] = useState<string | null>(null);
   const [timedOutDetailKey, setTimedOutDetailKey] = useState<string | null>(null);
@@ -1131,13 +1160,76 @@ export default function BeerMapScreen({
     setSelection(null);
   }, []);
 
+  const hostsCompass = compass !== undefined;
   const aimCompass = useCallback(
     (target: FocusedPub) => {
       trackUiInteraction('map_aim_compass');
       useFocusedPubStore.getState().setFocusedPub(target);
-      onShowCompass();
+      if (!hostsCompass) {
+        onShowCompass();
+        return;
+      }
+      clearSelection();
+      setTargetHidden(false);
     },
-    [onShowCompass],
+    [clearSelection, hostsCompass, onShowCompass],
+  );
+
+  // The first view on the home map shows the person and their target together.
+  // It is a square around the person, so a secret target's direction stays a secret.
+  const route = compass?.route ?? null;
+  const routeFramed = useRef(Boolean(!focusInitialPub && rememberedRegion));
+  useEffect(() => {
+    if (!route || routeFramed.current || bottomHeight === 0) return;
+    routeFramed.current = true;
+    didAutoLocate.current = true;
+    const reach = Math.min(Math.max(haversineMeters(route.from, route.to) * 1.25, 350), 15000);
+    const dLat = reach / 111_320;
+    const dLng = dLat / Math.max(Math.cos((route.from.lat * Math.PI) / 180), 0.2);
+    const { lat, lng } = route.from;
+    mapRef.current?.fitToCoordinates(
+      [
+        { latitude: lat + dLat, longitude: lng },
+        { latitude: lat - dLat, longitude: lng },
+        { latitude: lat, longitude: lng + dLng },
+        { latitude: lat, longitude: lng - dLng },
+      ],
+      {
+        edgePadding: { top: insets.top + 56, right: 16, bottom: Math.max(0, bottomHeight - tabBarInset), left: 16 },
+        animated: !reduceMotion,
+      },
+    );
+  }, [bottomHeight, insets.top, reduceMotion, route, tabBarInset]);
+  const routeLine = useMemo(
+    () =>
+      route && !route.secret
+        ? [
+            { latitude: route.from.lat, longitude: route.from.lng },
+            { latitude: route.to.lat, longitude: route.to.lng },
+          ]
+        : null,
+    [route],
+  );
+
+  const cardPan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dy > 24) setTargetHidden(true);
+        },
+      }),
+    [],
+  );
+  const handlePan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => gesture.dy < -8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dy < -24) setTargetHidden(false);
+        },
+      }),
+    [],
   );
 
   const locate = useCallback(() => {
@@ -1289,6 +1381,7 @@ export default function BeerMapScreen({
     viewportHeadline,
   ]);
 
+  const compassNudge = compass?.nudge ?? null;
   const nudge = useMemo<Nudge | null>(() => {
     if (stale) {
       return {
@@ -1319,8 +1412,8 @@ export default function BeerMapScreen({
     if (permissionState !== 'granted') {
       return { kind: 'dopito', label: t.map.permissionHint, onPress: locate };
     }
-    return null;
-  }, [layer, loadingPubs, locate, permissionState, refresh, region.latitudeDelta, stale]);
+    return compassNudge;
+  }, [compassNudge, layer, loadingPubs, locate, permissionState, refresh, region.latitudeDelta, stale]);
 
   const primaryAction = useMemo(() => {
     if (cardState.kind === 'pub' && selectedPub) {
@@ -1377,6 +1470,7 @@ export default function BeerMapScreen({
     }, SHEET_DISMISS_MS);
   }, []);
 
+  const compassMoreRows = compass?.moreRows;
   const moreRows = useMemo<MoreRow[]>(() => {
     const rows: MoreRow[] = [
       {
@@ -1389,6 +1483,8 @@ export default function BeerMapScreen({
         icon: ListFilterIcon,
         onPress: () => runAfterMoreClose(() => setFilterSheetOpen(true)),
       },
+      // Their own onPress closes the compass's sheet, not this one.
+      ...(compassMoreRows ?? []).map((row) => ({ ...row, onPress: () => runAfterMoreClose(row.onPress) })),
       {
         key: 'beers',
         label: t.map.moreBeers,
@@ -1460,6 +1556,7 @@ export default function BeerMapScreen({
       : rows;
   }, [
     activeFilterCount,
+    compassMoreRows,
     openSelectedPubReport,
     onBack,
     refresh,
@@ -1623,6 +1720,20 @@ export default function BeerMapScreen({
             <LiveMarker live={live} selected={selectedLive?.cacheKey === live.cacheKey} />
           </StaticMapMarker>
         )) : null}
+
+        {routeLine ? (
+          <Polyline
+            coordinates={routeLine}
+            strokeColor={withAlpha(Colors.foam, 0.9)}
+            strokeWidth={4}
+            lineDashPattern={[2, 9]}
+            lineCap="round"
+            zIndex={1}
+          />
+        ) : null}
+        {compass && route ? (
+          <HeadingCone latitude={route.from.lat} longitude={route.from.lng} heading={compass.heading} />
+        ) : null}
       </MapView>
 
       <View
@@ -1642,11 +1753,13 @@ export default function BeerMapScreen({
               <ChevronLeftIcon size={22} color={Colors.foamMuted} />
             </Pressable>
           ) : null}
-          <ExploreSwitch
-            activeView="map"
-            onSelectCompass={onShowCompass}
-            onSelectMap={() => undefined}
-          />
+          {compass ? compass.dial : (
+            <ExploreSwitch
+              activeView="map"
+              onSelectCompass={onShowCompass}
+              onSelectMap={() => undefined}
+            />
+          )}
           <View style={styles.headerSpacer} />
           <View style={styles.moreButton}>
             <PubSearchButton onPress={onSearch} />
@@ -1714,6 +1827,7 @@ export default function BeerMapScreen({
           { paddingBottom: bottomInset, left: insets.left, right: insets.right },
         ]}
         pointerEvents="box-none"
+        onLayout={(event) => setBottomHeight(Math.round(event.nativeEvent.layout.height))}
       >
         <Pressable
           onPress={locate}
@@ -1724,9 +1838,43 @@ export default function BeerMapScreen({
         >
           <LocateFixedIcon size={20} color={Colors.amber} />
         </Pressable>
-        {/* One row at the bottom, never two: the layers when nothing is picked,
-            the selection once something is. Tapping the empty map goes back. */}
-        {cardState.kind === 'idle' ? (
+        {/* One row at the bottom, never two: the compass target, or the layers
+            once it is swiped away, or the selection once something is picked.
+            Tapping the empty map goes back. */}
+        {cardState.kind === 'idle' && compass?.card && !targetHidden ? (
+          <View style={styles.targetCard} {...cardPan.panHandlers}>
+            <Pressable
+              onPress={() => setTargetHidden(true)}
+              style={styles.grabberHit}
+              hitSlop={{ top: 6, bottom: 6, left: 40, right: 40 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.mapTargetHide}
+            >
+              <View style={styles.grabber} />
+            </Pressable>
+            {compass.card}
+          </View>
+        ) : cardState.kind === 'idle' ? (
+          <>
+          {compass?.card ? (
+            <View style={styles.targetHandleRow} {...handlePan.panHandlers}>
+              <Pressable
+                onPress={() => setTargetHidden(false)}
+                style={({ pressed }) => [styles.targetHandle, pressed && styles.pressedSoft]}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel={t.a11y.mapTargetShow}
+              >
+                {compass.peek ? (
+                  <Text style={styles.targetHandleLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {compass.peek}
+                  </Text>
+                ) : (
+                  <View style={styles.grabber} />
+                )}
+              </Pressable>
+            </View>
+          ) : null}
           <View style={styles.dock}>
             <LayerSwitch
               layer={layer}
@@ -1745,6 +1893,7 @@ export default function BeerMapScreen({
               <LayoutListIcon size={20} color={Colors.foamMuted} />
             </Pressable>
           </View>
+          </>
         ) : (
           <PlaceCard
             title={cardState.title}
@@ -2066,6 +2215,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.sm,
   },
   headerSpacer: {
     flex: 1,
@@ -2344,6 +2494,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+  },
+  targetCard: {
+    ...CardSurface.card,
+    paddingHorizontal: 18,
+    paddingTop: 0,
+    paddingBottom: 16,
+  },
+  grabberHit: {
+    alignSelf: 'center',
+    height: 32,
+    justifyContent: 'center',
+  },
+  grabber: {
+    width: 36,
+    height: 5,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.foam, 0.24),
+  },
+  targetHandleRow: {
+    alignItems: 'center',
+  },
+  targetHandle: {
+    maxWidth: '100%',
+    minWidth: 64,
+    height: 40,
+    paddingHorizontal: 16,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.16),
+    ...softDrop(),
+  },
+  targetHandleLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foam,
+    includeFontPadding: false,
   },
   dockListButton: {
     width: 48,

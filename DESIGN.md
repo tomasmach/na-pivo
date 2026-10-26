@@ -6,6 +6,19 @@
 > Produktová část I a mockový jazyk 3.0 jsou reference pro případný návrat některé
 > funkce, ne zadání.
 
+## Kompas v mapě (26. 10. 2026)
+
+Varianta A z návrhu „Kompas a mapa na první obrazovce“: tab Kompas se na
+telefonu otevírá na mapě. Kompas v ní zůstává jako živý ciferník 80 bodů vlevo
+nahoře na místě přepínače „Kompas | Mapa“, jantarová výseč z tvé polohy ukazuje,
+kam míří telefon, a tečkovaná čára vede k cíli. Dole je karta cílové hospody
+(název, otevírací doba, pivo, vzdálenost, „Doveď mě tam“ a „Dej mi jinou“). Kartu
+jde stáhnout dolů; pak je tam zase přepínač vrstev a nad ním pilulka
+„323 m · U Zlatého tygra“, která kartu vrací. Klepnutí na ciferník otevře kompas
+přes celou obrazovku, z jehož hlavičky vede zpátky jantarová ikona mapy. Tajná
+hospoda nemá na mapě zvýrazněný pin ani čáru, protože čára by mířila přímo na
+její pin. Rozložené okno drží kompas a mapu vedle sebe beze změny.
+
 ## Šedá zem pro celou appku (8. 10. 2026)
 
 Celá appka leží na zemi stránky hospody. Stouty mají znovu hodnoty z §2.1:
@@ -308,8 +321,8 @@ funkci, jen přestal ukazovat všechno naráz. Postup je vždycky stejný:
 3. **Jedna cesta k jedné věci.** Tři způsoby, jak udělat totéž, byly hlavní problém starého
    počítadla. Když najdeš duplicitní cestu, **zruš ji** — nezachovávej ji „pro jistotu“.
 4. **Okrajové akce do jednoho `…` sheetu.** Ne do headeru, ne do karty, ne do plovoucí pilulky.
-   **Rovnocenný povrch ale okrajová akce není.** Mapa je dvojče kompasu, ne položka menu — proto
-   sedí v headeru jako polovina titulku (`ExploreSwitch`, `variant="flat"`) a v `…` sheetu už
+   **Rovnocenný povrch ale okrajová akce není.** Mapa je dvojče kompasu, ne položka menu — na
+   telefonu je to domov tabu s ciferníkem v rohu, z kompasu se k ní vrací tlačítko v hlavičce a v `…` sheetu už
    není. Když povrch pustíš do headeru, **musíš** jeho řádek ze sheetu smazat (§14.4).
 5. **Zruš dekoraci, která nic neříká.** Rozmazané záře na pozadí, jantarové kickery nad každou
    sekcí, rámečky kolem rámečků, emoji v chromu, ikona u každého řádku.

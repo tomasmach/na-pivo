@@ -2752,6 +2752,8 @@ export const en: Strings = {
     mapSwitchCompassSelected: 'Compass is selected',
     mapSwitchMap: 'Map is selected',
     mapSwitchToMap: 'Switch to the map',
+    mapTargetHide: 'Hide the pub card',
+    mapTargetShow: 'Show the pub card',
     openBeerMap: 'Open the beer map',
     mapLocate: 'Find me on the map',
     mapList: 'Show places as a list',

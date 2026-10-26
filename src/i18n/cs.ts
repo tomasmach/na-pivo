@@ -3365,6 +3365,8 @@ export const cs = {
     mapSwitchCompassSelected: 'Kompas je vybraný',
     mapSwitchMap: 'Mapa je vybraná',
     mapSwitchToMap: 'Přepnout na mapu',
+    mapTargetHide: 'Schovat kartu hospody',
+    mapTargetShow: 'Ukázat kartu hospody',
     openBeerMap: 'Otevřít pivní mapu',
     mapLocate: 'Najít mě na mapě',
     mapList: 'Zobrazit podniky jako seznam',
