@@ -614,6 +614,8 @@ _CLIENT_EVENT_INTERACTION_TARGETS = {
     "parta_reaction_add",
     "photo_contest_enter",
     "photo_contest_vote",
+    "counter_contest_nudge_open",
+    "counter_contest_nudge_dismiss",
     "night_publish",
     "night_unpublish",
     "night_react",

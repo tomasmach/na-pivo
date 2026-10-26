@@ -48,6 +48,7 @@ import {
   WineIcon,
   CircleDotIcon,
   MapIcon,
+  TrophyIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -71,6 +72,13 @@ import { dropQueuedTourPings, enqueueFriendOp, isRetriableFriendError } from '@/
 import PingSheet from '@/friends/PingSheet';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
+import { isContestLastDay } from '@/photos/contestCountdown';
+import {
+  fetchPhotoContest,
+  fetchPhotoContestTeaser,
+  type PhotoContestSnapshot,
+} from '@/data/photoContestClient';
+import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { ShareNightModal } from '@/vycep/ShareNightModal';
 import type { NightSummary } from '@/vycep/nightModel';
 import { trackClientEvent } from '@/data/telemetryClient';
@@ -81,7 +89,7 @@ import {
   isBeerMenuTypeOverrideCurrent,
   useCommunityStore,
 } from '@/stores/communityStore';
-import { useAccountStore } from '@/stores/accountStore';
+import { selectIsSignedIn, selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { formatPrice, pricePlaceholder } from '@/utils/currency';
@@ -441,6 +449,27 @@ function Tacek({
   const [checkInVisitClientId, setCheckInVisitClientId] = useState<string | null>(null);
   /** Session clientId whose "Dopito?" nudge was already shown and answered. */
   const [dopitoNudgedFor, setDopitoNudgedFor] = useState<string | null>(null);
+
+  // — FotoPivař —
+  const [contestSnapshot, setContestSnapshot] = useState<PhotoContestSnapshot | null>(null);
+  const [contestCaptureOpen, setContestCaptureOpen] = useState(false);
+  /** Round a photo was sent into from here; the snapshot learns of it only once it uploads. */
+  const [contestRequestedFor, setContestRequestedFor] = useState<string | null>(null);
+  const contestDismissal = useContestResultsStore((s) => s.counterNudgeDismissal);
+  const refreshContest = useCallback((fresh: boolean) => {
+    void (fresh ? fetchPhotoContest() : fetchPhotoContestTeaser()).then((snapshot) => {
+      if (snapshot) setContestSnapshot(snapshot);
+    });
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      refreshContest(false);
+    }, [refreshContest]),
+  );
+  // A fresh pub beer is when the offer shows, so the snapshot must be current then.
+  useEffect(() => {
+    if (checkInBeerName) refreshContest(false);
+  }, [checkInBeerName, refreshContest]);
 
   // — Menu / scan —
   const [backendMenu, setBackendMenu] = useState<{
@@ -1709,6 +1738,43 @@ function Tacek({
     nowMs - Date.parse(latestDrinkAt) > DOPITO_IDLE_MS &&
     dopitoNudgedFor !== (current?.clientId ?? null);
 
+  const contest = contestSnapshot?.contest ?? null;
+  const contestOpen = !!contest && contest.status === 'open' && Date.parse(contest.periodEnd) > nowMs;
+  const myContestEntry = contestSnapshot?.entries.find((entry) => entry.isMine) ?? null;
+  const contestEntered =
+    !!contestSnapshot?.myEntryId || !!myContestEntry || (!!contest && contestRequestedFor === contest.id);
+  const contestLastDay = !!contest && isContestLastDay(contest.periodEnd, new Date(nowMs));
+  const contestNudgeDismissed =
+    !!contest &&
+    contestDismissal?.contestId === contest.id &&
+    (contestDismissal.onLastDay || !contestLastDay);
+  const offerContest =
+    !!checkInBeerName && !!pub && count > 0 && contestOpen && !contestEntered && !contestNudgeDismissed;
+
+  const openContestCapture = useCallback(() => {
+    trackUiInteraction('counter_contest_nudge_open');
+    // The server refuses entries without a nickname; say so before the photo, not after it.
+    const account = useAccountStore.getState();
+    if (!selectIsSignedIn(account) || selectNeedsNickname(account)) {
+      showToast(t.photoContest.errorNicknameRequired);
+      return;
+    }
+    setContestCaptureOpen(true);
+  }, [showToast]);
+  const dismissContestNudge = useCallback(() => {
+    if (!contest) return;
+    trackUiInteraction('counter_contest_nudge_dismiss');
+    useContestResultsStore.getState().dismissCounterNudge({ contestId: contest.id, onLastDay: contestLastDay });
+    // The rating offer it stood in for waits for the next beer.
+    setCheckInBeerName(null);
+  }, [contest, contestLastDay]);
+  const handlePhotoSaved = useCallback(
+    ({ contestRequested }: { contestRequested: boolean }) => {
+      if (contestRequested && contest) setContestRequestedFor(contest.id);
+    },
+    [contest],
+  );
+
   const nudge = useMemo<Nudge | null>(() => {
     if (pendingRapid) {
       return {
@@ -1739,6 +1805,17 @@ function Tacek({
     if (dopitoVisible) {
       return { kind: 'dopito', label: t.counter.dopitoNudge, onPress: handleDone };
     }
+    if (offerContest) {
+      return {
+        kind: 'checkin',
+        icon: TrophyIcon,
+        text: contestLastDay ? t.counter.contestNudgeLastDay : t.counter.contestNudge,
+        ctaLabel: t.counter.contestNudgeCta,
+        onPress: openContestCapture,
+        onDismiss: dismissContestNudge,
+        dismissAccessibilityLabel: t.a11y.counterContestDismiss,
+      };
+    }
     if (checkInBeerName && pub) {
       return {
         kind: 'checkin',
@@ -1758,6 +1835,18 @@ function Tacek({
         onConfirm: () => router.push({ pathname: '/tours/[id]', params: { id: tour.planId } } as Href),
       };
     }
+    if (count > 0 && contestOpen && myContestEntry) {
+      return {
+        kind: 'checkin',
+        icon: TrophyIcon,
+        text:
+          myContestEntry.votes > 0
+            ? t.counter.contestVotes(t.photoContest.votesCount(myContestEntry.votes))
+            : t.counter.contestVotesNone,
+        ctaLabel: t.counter.contestVotesCta,
+        onPress: () => router.push('/photo-contest' as Href),
+      };
+    }
     if (count > 0) {
       return { kind: 'rank', node: <WeeklyRankChip sessionBeerCount={count} /> };
     }
@@ -1768,10 +1857,16 @@ function Tacek({
     router,
     checkInBeerName,
     confirmRapid,
+    contestLastDay,
+    contestOpen,
     count,
+    dismissContestNudge,
     dopitoVisible,
     handleDone,
     lastCounted,
+    myContestEntry,
+    offerContest,
+    openContestCapture,
     pendingRapid,
     pub,
     removeDrinkById,
@@ -1965,7 +2060,20 @@ function Tacek({
         onClose={() => setScannedDrinks([])}
         onSelect={handleSelectScannedDrink}
       />
-      <BeerPhotoCaptureFlow open={photoCaptureOpen} onClose={() => setPhotoCaptureOpen(false)} />
+      <BeerPhotoCaptureFlow
+        open={photoCaptureOpen}
+        onClose={() => setPhotoCaptureOpen(false)}
+        onSaved={handlePhotoSaved}
+        onContestEntered={() => refreshContest(true)}
+      />
+      <BeerPhotoCaptureFlow
+        open={contestCaptureOpen}
+        onClose={() => setContestCaptureOpen(false)}
+        directSource="camera"
+        initialContestEntry
+        onSaved={handlePhotoSaved}
+        onContestEntered={() => refreshContest(true)}
+      />
       {/* A sheet opened for another place never shows: the ping names one pub. */}
       {pub && pingParty && pingParty.key === pingKey ? (
         <PingSheet

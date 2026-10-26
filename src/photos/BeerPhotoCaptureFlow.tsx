@@ -29,7 +29,7 @@ interface BeerPhotoCaptureFlowProps {
   /** Fired when the source sheet dismisses (cancel or pick). */
   onClose: () => void;
   /** Optional extra hook after a photo is saved to the diary. */
-  onSaved?: () => void;
+  onSaved?: (result: { contestRequested: boolean }) => void;
   /** Launch this source immediately instead of showing the source sheet. */
   directSource?: BeerPhotoSource;
   /** Preselect the FotoPivař opt-in in the compose sheet. */
@@ -124,7 +124,7 @@ export function BeerPhotoCaptureFlow({
               icon: <CameraIcon size={18} color={Colors.amber} />,
               },
             );
-            onSaved?.();
+            onSaved?.({ contestRequested });
             if (!contestRequested) return;
             void completion.then(() => {
               const photo = useBeerPhotosStore

@@ -31,3 +31,12 @@ export function contestCountdownLabel(periodEndIso: string, now: Date = new Date
   if (dayDiff <= 0) return t.photoContest.endsToday;
   return t.photoContest.endsInDays(dayDiff);
 }
+
+/**
+ * True during the round's final 24 hours. Rounds end shortly after midnight,
+ * so a calendar-day check would call only that last hour the final day.
+ */
+export function isContestLastDay(periodEndIso: string, now: Date = new Date()): boolean {
+  const left = Date.parse(periodEndIso) - now.getTime();
+  return Number.isFinite(left) && left > 0 && left <= DAY_MS;
+}

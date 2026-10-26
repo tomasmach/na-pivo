@@ -7,6 +7,7 @@ import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useBookStore } from '@/stores/bookStore';
 import { useCommunityStore } from '@/stores/communityStore';
+import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -87,6 +88,10 @@ beforeEach(async () => {
 });
 
 it('clears local private stores and private sync queue storage', async () => {
+  useContestResultsStore.setState({
+    lastSeenResultsContestId: 'round-0',
+    counterNudgeDismissal: { contestId: 'round-1', onLastDay: false },
+  });
   useTallyStore.setState({
     current: session(),
     history: [session({ clientId: 'visit-2' })],
@@ -174,6 +179,10 @@ it('clears local private stores and private sync queue storage', async () => {
   expect(useBookStore.getState().pages).toEqual(useBookStore.getInitialState().pages);
   expect(useSettingsStore.getState().homePoint).toBeNull();
   expect(useSettingsStore.getState().navigationProvider).toBe('mapy');
+  expect(useContestResultsStore.getState()).toMatchObject({
+    lastSeenResultsContestId: null,
+    counterNudgeDismissal: null,
+  });
 
   const settings = JSON.parse(
     await AsyncStorage.getItem('na-pivo-settings') as string,

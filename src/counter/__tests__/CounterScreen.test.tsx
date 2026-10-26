@@ -83,7 +83,13 @@ jest.mock('@/counter/ScannedDrinkPicker', () => ({ ScannedDrinkPicker: jest.fn((
 jest.mock('@/vycep/ShareNightModal', () => ({ ShareNightModal: jest.fn(() => null) }));
 // Photo capture flow — pure UI with its own coverage; it drags in
 // expo-location via compass/permissions, which this suite doesn't stub.
-jest.mock('@/photos/BeerPhotoCaptureFlow', () => ({ BeerPhotoCaptureFlow: () => null }));
+jest.mock('@/photos/BeerPhotoCaptureFlow', () => ({ BeerPhotoCaptureFlow: jest.fn(() => null) }));
+const mockFetchPhotoContestTeaser = jest.fn();
+const mockFetchPhotoContest = jest.fn();
+jest.mock('@/data/photoContestClient', () => ({
+  fetchPhotoContestTeaser: () => mockFetchPhotoContestTeaser(),
+  fetchPhotoContest: () => mockFetchPhotoContest(),
+}));
 
 const mockRouterPush = jest.fn();
 jest.mock('expo-router', () => ({
@@ -198,6 +204,8 @@ import { CounterMoreSheet } from '@/counter/CounterMoreSheet';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
+import { useContestResultsStore } from '@/stores/contestResultsStore';
+import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 
 const { default: CounterScreen, groupMenuBeers, UNDO_WINDOW_MS } = require('../CounterScreen');
 const TestRenderer = require('react-test-renderer');
@@ -327,6 +335,9 @@ beforeEach(() => {
   useTallyStore.setState({ current: null, history: [] });
   useCommunityStore.setState({ overrides: {} });
   useSettingsStore.setState({ priceCurrency: 'CZK', waterNudgeEnabled: false });
+  mockFetchPhotoContestTeaser.mockResolvedValue(null);
+  mockFetchPhotoContest.mockResolvedValue(null);
+  useContestResultsStore.setState({ counterNudgeDismissal: null });
 });
 
 afterEach(() => {
@@ -606,6 +617,133 @@ describe('CounterScreen pinging the party', () => {
       jest.advanceTimersByTime(1000);
     });
     expect(mockShareFriendPubActivity).toHaveBeenCalledWith(expect.objectContaining({ name: PUB.name }), '', expect.any(String), undefined, expect.any(String));
+  });
+});
+
+// ─── FotoPivař offer ─────────────────────────────────────────────────────────
+
+describe('CounterScreen FotoPivař offer', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+
+  function contestSnapshot(over: Record<string, unknown> = {}, endsInMs = 3 * 24 * HOUR_MS) {
+    return {
+      contest: {
+        id: 'round-1',
+        periodStart: new Date(Date.now() - 24 * HOUR_MS).toISOString(),
+        periodEnd: new Date(Date.now() + endsInMs).toISOString(),
+        status: 'open',
+      },
+      entries: [],
+      myEntryId: null,
+      myVoteEntryId: null,
+      lastResults: null,
+      ...over,
+    };
+  }
+
+  async function countFirstBeer(renderer: any) {
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+    await act(async () => {
+      jest.advanceTimersByTime(UNDO_WINDOW_MS);
+    });
+  }
+
+  function contestFlowProps() {
+    return (BeerPhotoCaptureFlow as unknown as jest.Mock).mock.calls
+      .map((call) => call[0])
+      .filter((props) => props.initialContestEntry)
+      .at(-1);
+  }
+
+  function signIn(nickname: string | null) {
+    useAccountStore.setState({
+      session: { authenticated: true },
+      profile: { nickname },
+    } as never);
+  }
+
+  afterEach(() => {
+    useAccountStore.setState({ session: null, profile: null } as never);
+  });
+
+  it('takes the slot after a pub beer and opens the camera with the contest preselected', async () => {
+    signIn('pepa');
+    mockFetchPhotoContestTeaser.mockResolvedValue(contestSnapshot());
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+
+    expect(surfaceText(renderer)).toContain(copy.counter.contestNudge);
+    expect(surfaceText(renderer)).not.toContain(copy.counter.checkinNudge);
+    act(() => surface(renderer, copy.counter.contestNudgeCta).props.onPress());
+    expect(contestFlowProps()).toMatchObject({ open: true, directSource: 'camera', initialContestEntry: true });
+
+    act(() => contestFlowProps().onSaved({ contestRequested: true }));
+    expect(surfaceText(renderer)).not.toContain(copy.counter.contestNudge);
+    expect(surfaceText(renderer)).toContain(copy.counter.checkinNudge);
+  });
+
+  it('without a nickname it explains the rule instead of opening the camera', async () => {
+    const showToast = jest.fn();
+    useToastStore.setState({ show: showToast });
+    signIn(null);
+    mockFetchPhotoContestTeaser.mockResolvedValue(contestSnapshot());
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+
+    act(() => surface(renderer, copy.counter.contestNudgeCta).props.onPress());
+    expect(showToast).toHaveBeenCalledWith(copy.photoContest.errorNicknameRequired);
+    expect(contestFlowProps()).toMatchObject({ open: false });
+  });
+
+  it('× silences it for the round and leaves the rating offer for the next beer', async () => {
+    mockFetchPhotoContestTeaser.mockResolvedValue(contestSnapshot());
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+
+    act(() => surface(renderer, copy.a11y.counterContestDismiss).props.onPress());
+    expect(useContestResultsStore.getState().counterNudgeDismissal).toEqual({ contestId: 'round-1', onLastDay: false });
+    expect(surfaceText(renderer)).not.toContain(copy.counter.contestNudge);
+    expect(surfaceText(renderer)).not.toContain(copy.counter.checkinNudge);
+  });
+
+  it('a round dismissed earlier stays quiet before its last day', async () => {
+    useContestResultsStore.setState({ counterNudgeDismissal: { contestId: 'round-1', onLastDay: false } });
+    mockFetchPhotoContestTeaser.mockResolvedValue(contestSnapshot());
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+    expect(surfaceText(renderer)).not.toContain(copy.counter.contestNudge);
+    expect(surfaceText(renderer)).toContain(copy.counter.checkinNudge);
+  });
+
+  it('comes back once in the last 24 hours of a round dismissed earlier', async () => {
+    useContestResultsStore.setState({ counterNudgeDismissal: { contestId: 'round-1', onLastDay: false } });
+    mockFetchPhotoContestTeaser.mockResolvedValue(contestSnapshot({}, 5 * HOUR_MS));
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+    expect(surfaceText(renderer)).toContain(copy.counter.contestNudgeLastDay);
+    act(() => surface(renderer, copy.a11y.counterContestDismiss).props.onPress());
+    expect(useContestResultsStore.getState().counterNudgeDismissal).toEqual({ contestId: 'round-1', onLastDay: true });
+  });
+
+  it('with a photo already in the round it shows its votes instead of the offer', async () => {
+    mockFetchPhotoContestTeaser.mockResolvedValue(
+      contestSnapshot({ myEntryId: 'entry-1', entries: [{ id: 'entry-1', isMine: true, votes: 7 }] }),
+    );
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+
+    expect(surfaceText(renderer)).not.toContain(copy.counter.contestNudge);
+    act(() => surface(renderer, copy.a11y.counterCheckinDismiss).props.onPress());
+    expect(surfaceText(renderer)).toContain(copy.counter.contestVotes(copy.photoContest.votesCount(7)));
+    act(() => surface(renderer, copy.counter.contestVotesCta).props.onPress());
+    expect(mockRouterPush).toHaveBeenCalledWith('/photo-contest');
   });
 });
 

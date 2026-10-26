@@ -294,6 +294,11 @@ export async function fetchPhotoContestTeaser(
   return fetchPhotoContest(signal);
 }
 
+/** The cached snapshot carries the signed-in account's own entry and vote. */
+export function clearPhotoContestTeaserCache(): void {
+  teaserCache = null;
+}
+
 /** GET /v1/photo-contest — the whole round snapshot. null on any failure. */
 export async function fetchPhotoContest(
   signal?: AbortSignal,

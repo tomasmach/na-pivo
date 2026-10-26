@@ -20,6 +20,7 @@ import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
 import { resetForegroundPulls } from './foregroundPulls';
 import { clearLeaderboardsCache } from './leaderboardsClient';
 import { clearNightsQueue } from './nightsQueue';
+import { clearPhotoContestTeaserCache } from './photoContestClient';
 import { clearTourRunQueue } from './tourRunQueue';
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
@@ -36,6 +37,7 @@ import { clearBeerPhotosForAccountBoundary } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useBookStore } from '@/stores/bookStore';
 import { useCommunityStore } from '@/stores/communityStore';
+import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
@@ -161,6 +163,13 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   useBeerWatchStore.getState().reset();
   // The cached boards carry the outgoing account's own rank.
   clearLeaderboardsCache();
+  // So do the contest snapshot (own entry and votes) and the counter nudge state.
+  clearPhotoContestTeaserCache();
+  useContestResultsStore.setState({
+    lastSeenResultsContestId: null,
+    pendingResult: null,
+    counterNudgeDismissal: null,
+  });
   // Výčep publication ledger is tied to the outgoing account's nights.
   useVycepStore.setState({ published: {} });
   // Seen levels and unopened medals describe the outgoing account.
