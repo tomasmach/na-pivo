@@ -817,6 +817,31 @@ describe('BeerMapScreen opening-hours loading', () => {
       expect(screen.queryByText('route line')).toBeNull();
     });
 
+    it('closes its own sheet before a compass choice runs', () => {
+      jest.useFakeTimers();
+      try {
+        const surprise = jest.fn();
+        const compass = compassOnMap();
+        compass.moreRows = [{ key: 'surprise', label: t.compass.moreModeSurprise, icon: () => null, onPress: surprise }];
+        const screen = render(
+          <BeerMapScreen
+            filters={EMPTY_PUB_SEARCH_FILTERS}
+            onApplyFilters={jest.fn()}
+            onShowCompass={jest.fn()}
+            compass={compass}
+          />,
+        );
+        fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+        fireEvent.press(screen.getByLabelText(t.compass.moreModeSurprise));
+        act(() => { jest.runOnlyPendingTimers(); });
+
+        expect(surprise).toHaveBeenCalledTimes(1);
+        expect(screen.queryByLabelText(t.compass.moreModeSurprise)).toBeNull();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('aims the compass at a picked pub without leaving the map', () => {
       const onShowCompass = jest.fn();
       const screen = render(

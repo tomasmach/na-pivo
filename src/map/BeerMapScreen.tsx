@@ -1483,7 +1483,8 @@ export default function BeerMapScreen({
         icon: ListFilterIcon,
         onPress: () => runAfterMoreClose(() => setFilterSheetOpen(true)),
       },
-      ...(compassMoreRows ?? []),
+      // Their own onPress closes the compass's sheet, not this one.
+      ...(compassMoreRows ?? []).map((row) => ({ ...row, onPress: () => runAfterMoreClose(row.onPress) })),
       {
         key: 'beers',
         label: t.map.moreBeers,
