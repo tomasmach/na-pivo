@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppState,
   BackHandler,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -1004,7 +1005,6 @@ export default function PubPageScreen() {
             <MapView
               provider={PROVIDER_GOOGLE}
               style={StyleSheet.absoluteFill}
-              liteMode
               initialRegion={{
                 latitude: pub.lat,
                 longitude: pub.lng,
@@ -1018,7 +1018,8 @@ export default function PubPageScreen() {
               toolbarEnabled={false}
               showsPointsOfInterests={false}
               showsCompass={false}
-              customMapStyle={PREVIEW_MAP_STYLE}
+              // Android draws a lite-mode or JSON-styled map light whatever the color scheme.
+              customMapStyle={Platform.OS === 'ios' ? PREVIEW_MAP_STYLE : undefined}
               userInterfaceStyle="dark"
               loadingBackgroundColor={Colors.stout2}
               loadingIndicatorColor={Colors.amber}
