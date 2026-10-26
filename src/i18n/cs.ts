@@ -1782,6 +1782,12 @@ export const cs = {
     blockConfirm: 'Zablokovat',
     blockAction: 'Zablokovat',
     blocked: 'Zablokováno.',
+    blockedUndoHint: 'Odblokuješ ve Správě party.',
+    blockedHeader: 'Zablokovaní',
+    unblockAction: 'Odblokovat',
+    unblockTitle: (name: string) => `Odblokovat ${name}?`,
+    unblockBody: 'Zase tě uvidí a může tě pozvat. Do party se tím nevrátí.',
+    unblocked: 'Odblokováno.',
     reportAction: 'Nahlásit',
     reportDone: 'Díky, mrknu na to.',
     // Row long-press action sheet title.

@@ -29,7 +29,10 @@ import { useRouter, type Href } from 'expo-router';
 
 import {
   cancelFriendRequest,
+  fetchBlockedAccounts,
   fetchFriendsDashboard,
+  unblockFriend,
+  type FriendProfile,
   type FriendsDashboard,
 } from '@/data/friendsClient';
 import { openFriendProfile as openFriendPage } from '@/layout/openDetail';
@@ -52,6 +55,8 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
 
 import { AddFriendTools } from '@/friends/AddFriendTools';
+import { BlockedAccounts } from '@/friends/BlockedAccounts';
+import { friendDisplayName } from '@/friends/FriendMini';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { FriendListRow } from '@/friends/FriendListRow';
 import { useFriendSafety } from '@/friends/friendSafety';
@@ -69,6 +74,7 @@ export default function ManagePartaScreen() {
   const showToast = useToastStore((s) => s.show);
 
   const [dashboard, setDashboard] = useState<FriendsDashboard | null>(null);
+  const [blocked, setBlocked] = useState<FriendProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -98,9 +104,13 @@ export default function ManagePartaScreen() {
       const controller = new AbortController();
       loadAbortRef.current = controller;
       if (mode === 'refresh') setRefreshing(true);
-      const next = await fetchFriendsDashboard(controller.signal);
+      const [next, nextBlocked] = await Promise.all([
+        fetchFriendsDashboard(controller.signal),
+        fetchBlockedAccounts(controller.signal),
+      ]);
       if (!mountedRef.current) return;
       if (gen === loadGenRef.current) {
+        if (nextBlocked) setBlocked(nextBlocked);
         if (next) {
           setDashboard(next);
           setLoadError(false);
@@ -171,6 +181,33 @@ export default function ManagePartaScreen() {
       });
     },
     [reload, showToast],
+  );
+
+  const confirmUnblock = useCallback(
+    (account: FriendProfile) => {
+      showAppDialog({
+        title: t.friends.unblockTitle(friendDisplayName(account)),
+        message: t.friends.unblockBody,
+        buttons: [
+          { text: t.common.cancel, style: 'cancel' },
+          {
+            text: t.friends.unblockAction,
+            onPress: () => {
+              void unblockFriend(account.id).then((result) => {
+                if (!mountedRef.current) return;
+                if (result.ok) {
+                  setBlocked((prev) => prev.filter((a) => a.id !== account.id));
+                  showToast(t.friends.unblocked);
+                } else {
+                  showToast(result.detail);
+                }
+              });
+            },
+          },
+        ],
+      });
+    },
+    [showToast],
   );
 
   const goBack = useCallback(() => {
@@ -298,6 +335,12 @@ export default function ManagePartaScreen() {
                 </Text>
                 <ChevronRightIcon size={16} color={Colors.mutedText} />
               </Pressable>
+            </View>
+          ) : null}
+
+          {blocked.length > 0 ? (
+            <View style={styles.section}>
+              <BlockedAccounts accounts={blocked} onUnblock={confirmUnblock} />
             </View>
           ) : null}
         </KeyboardAwareScrollView>

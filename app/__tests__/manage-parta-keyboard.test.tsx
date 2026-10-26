@@ -9,7 +9,10 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock('@/utils/useKeyboardHeight', () => ({ useKeyboardHeight: () => 200 }));
-jest.mock('@/data/friendsClient', () => ({ fetchFriendsDashboard: async () => null }));
+jest.mock('@/data/friendsClient', () => ({
+  fetchFriendsDashboard: async () => null,
+  fetchBlockedAccounts: async () => null,
+}));
 jest.mock('@/data/friendsSnapshot', () => ({ loadFriendsDashboardSnapshot: async () => null }));
 jest.mock('@/stores/accountStore', () => ({ useAccountStore: () => 'test-account' }));
 jest.mock('@/stores/toastStore', () => ({ useToastStore: () => jest.fn() }));

@@ -1145,6 +1145,14 @@ export async function blockFriend(accountId: string): Promise<FriendActionResult
   return res.ok ? { ok: true } : res.result;
 }
 
+/** Accounts I blocked; null when the list could not load. */
+export async function fetchBlockedAccounts(signal?: AbortSignal): Promise<FriendProfile[] | null> {
+  const res = await requestJson('/v1/friends/blocks', { signal });
+  if (!res.ok) return null;
+  const raw = res.data.blocked;
+  return Array.isArray(raw) ? (raw as RawFriendProfile[]).map(parseProfile) : [];
+}
+
 /** Lift a block (§G2). Does not auto-refriend. Idempotent. */
 export async function unblockFriend(accountId: string): Promise<FriendActionResult> {
   const res = await requestJson(`/v1/friends/blocks/${encodeURIComponent(accountId)}`, {
