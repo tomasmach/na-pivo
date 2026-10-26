@@ -66,7 +66,7 @@ jest.mock('react-native-maps', () => ({
       </Pressable>
     );
   }),
-  Polyline: () => null,
+  Polyline: () => <Text>route line</Text>,
   Marker: ({ children, onPress, accessibilityLabel, tracksViewChanges }: {
     children?: React.ReactNode;
     onPress?: () => void;
@@ -800,6 +800,21 @@ describe('BeerMapScreen opening-hours loading', () => {
 
       fireEvent.press(screen.getByLabelText(t.a11y.mapTargetShow));
       expect(screen.getByText('target card')).toBeTruthy();
+    });
+
+    it('draws the line to the target unless the target is a secret', () => {
+      const props = {
+        filters: EMPTY_PUB_SEARCH_FILTERS,
+        onApplyFilters: jest.fn(),
+        onShowCompass: jest.fn(),
+      };
+      const screen = render(<BeerMapScreen {...props} compass={compassOnMap()} />);
+      expect(screen.getByText('route line')).toBeTruthy();
+
+      const secret = compassOnMap();
+      secret.route = { ...secret.route!, secret: true };
+      screen.rerender(<BeerMapScreen {...props} compass={secret} />);
+      expect(screen.queryByText('route line')).toBeNull();
     });
 
     it('aims the compass at a picked pub without leaving the map', () => {
