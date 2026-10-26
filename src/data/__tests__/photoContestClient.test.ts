@@ -10,9 +10,11 @@
  */
 
 import {
+  clearPhotoContestTeaserCache,
   clearPhotoContestVote,
   enterPhotoContest,
   fetchPhotoContest,
+  fetchPhotoContestTeaser,
   votePhotoContest,
   withdrawPhotoContestEntry,
 } from '@/data/photoContestClient';
@@ -201,6 +203,16 @@ describe('fetchPhotoContest', () => {
 
     mockGetBackendEndpoint.mockReturnValue(null);
     expect(await fetchPhotoContest()).toBeNull();
+  });
+
+  it('drops a response that was in flight when the cache was cleared for another account', async () => {
+    const spy = fetchResolving(200, { contest: WIRE_CONTEST, entries: [], my_entry_id: 'mine' });
+    const inFlight = fetchPhotoContest();
+    clearPhotoContestTeaserCache();
+    expect(await inFlight).toBeNull();
+
+    await fetchPhotoContestTeaser();
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });
 

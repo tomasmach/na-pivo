@@ -283,6 +283,8 @@ async function requestJson(
  */
 const TEASER_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 let teaserCache: { at: number; snapshot: PhotoContestSnapshot } | null = null;
+/** Bumped on clear, so a request still in flight for the outgoing account never lands. */
+let teaserGeneration = 0;
 
 /** The snapshot for lightweight teaser surfaces: cached, TTL-bounded. */
 export async function fetchPhotoContestTeaser(
@@ -297,14 +299,16 @@ export async function fetchPhotoContestTeaser(
 /** The cached snapshot carries the signed-in account's own entry and vote. */
 export function clearPhotoContestTeaserCache(): void {
   teaserCache = null;
+  teaserGeneration += 1;
 }
 
 /** GET /v1/photo-contest — the whole round snapshot. null on any failure. */
 export async function fetchPhotoContest(
   signal?: AbortSignal,
 ): Promise<PhotoContestSnapshot | null> {
+  const generation = teaserGeneration;
   const res = await requestJson('/v1/photo-contest', { signal });
-  if (!res.ok) return null;
+  if (!res.ok || generation !== teaserGeneration) return null;
   const d = res.data;
   const rawLast = d.last_results as
     | { contest?: RawContest; winners?: RawWinner[]; my_result?: RawMyResult | null }

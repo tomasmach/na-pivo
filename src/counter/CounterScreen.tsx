@@ -451,14 +451,18 @@ function Tacek({
   const [dopitoNudgedFor, setDopitoNudgedFor] = useState<string | null>(null);
 
   // — FotoPivař —
-  const [contestSnapshot, setContestSnapshot] = useState<PhotoContestSnapshot | null>(null);
-  const [contestCaptureOpen, setContestCaptureOpen] = useState(false);
+  // Both are tagged with the account they belong to: the tab outlives a logout,
+  // and the next account must never see the previous one's entry or votes.
+  const accountId = useAccountStore((s) => s.session?.accountId ?? null);
+  const [contestState, setContestState] = useState<{ accountId: string | null; snapshot: PhotoContestSnapshot } | null>(null);
   /** Round a photo was sent into from here; the snapshot learns of it only once it uploads. */
-  const [contestRequestedFor, setContestRequestedFor] = useState<string | null>(null);
+  const [contestRequest, setContestRequest] = useState<{ accountId: string | null; contestId: string } | null>(null);
+  const contestSnapshot = contestState?.accountId === accountId ? contestState.snapshot : null;
+  const [contestCaptureOpen, setContestCaptureOpen] = useState(false);
   const contestDismissal = useContestResultsStore((s) => s.counterNudgeDismissal);
   const refreshContest = useCallback((fresh: boolean) => {
     void (fresh ? fetchPhotoContest() : fetchPhotoContestTeaser()).then((snapshot) => {
-      if (snapshot) setContestSnapshot(snapshot);
+      if (snapshot) setContestState({ accountId: useAccountStore.getState().session?.accountId ?? null, snapshot });
     });
   }, []);
   useFocusEffect(
@@ -1742,7 +1746,9 @@ function Tacek({
   const contestOpen = !!contest && contest.status === 'open' && Date.parse(contest.periodEnd) > nowMs;
   const myContestEntry = contestSnapshot?.entries.find((entry) => entry.isMine) ?? null;
   const contestEntered =
-    !!contestSnapshot?.myEntryId || !!myContestEntry || (!!contest && contestRequestedFor === contest.id);
+    !!contestSnapshot?.myEntryId ||
+    !!myContestEntry ||
+    (!!contest && contestRequest?.contestId === contest.id && contestRequest.accountId === accountId);
   const contestLastDay = !!contest && isContestLastDay(contest.periodEnd, new Date(nowMs));
   const contestNudgeDismissed =
     !!contest &&
@@ -1770,9 +1776,12 @@ function Tacek({
   }, [contest, contestLastDay]);
   const handlePhotoSaved = useCallback(
     ({ contestRequested }: { contestRequested: boolean }) => {
-      if (contestRequested && contest) setContestRequestedFor(contest.id);
+      if (!contestRequested || !contest) return;
+      setContestRequest({ accountId, contestId: contest.id });
+      // The photo took this beer's offer; the rating comes back with the next one.
+      setCheckInBeerName(null);
     },
-    [contest],
+    [accountId, contest],
   );
 
   const nudge = useMemo<Nudge | null>(() => {

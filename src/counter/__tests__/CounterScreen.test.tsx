@@ -681,7 +681,24 @@ describe('CounterScreen FotoPivař offer', () => {
 
     act(() => contestFlowProps().onSaved({ contestRequested: true }));
     expect(surfaceText(renderer)).not.toContain(copy.counter.contestNudge);
-    expect(surfaceText(renderer)).toContain(copy.counter.checkinNudge);
+    expect(surfaceText(renderer)).not.toContain(copy.counter.checkinNudge);
+  });
+
+  it('never shows the previous account its votes after the session changes', async () => {
+    useAccountStore.setState({ session: { accountId: 'account-a', authenticated: true }, profile: { nickname: 'pepa' } } as never);
+    mockFetchPhotoContestTeaser.mockResolvedValue(
+      contestSnapshot({ myEntryId: 'entry-1', entries: [{ id: 'entry-1', isMine: true, votes: 7 }] }),
+    );
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+    act(() => surface(renderer, copy.a11y.counterCheckinDismiss).props.onPress());
+    expect(surfaceText(renderer)).toContain(copy.counter.contestVotes(copy.photoContest.votesCount(7)));
+
+    act(() => {
+      useAccountStore.setState({ session: { accountId: 'account-b', authenticated: false }, profile: null } as never);
+    });
+    expect(surfaceText(renderer)).not.toContain(copy.counter.contestVotes(copy.photoContest.votesCount(7)));
   });
 
   it('without a nickname it explains the rule instead of opening the camera', async () => {
