@@ -25,7 +25,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
 import {
   cancelFriendRequest,
@@ -139,10 +139,17 @@ export default function ManagePartaScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    const kickoff = setTimeout(() => void load('initial'), 0);
-    return () => clearTimeout(kickoff);
-  }, [load]);
+  // Refetch on every focus: a block from the pushed friend profile must show up here on return.
+  const loadedOnceRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      const kickoff = setTimeout(() => {
+        void load(loadedOnceRef.current ? 'silent' : 'initial');
+        loadedOnceRef.current = true;
+      }, 0);
+      return () => clearTimeout(kickoff);
+    }, [load]),
+  );
 
   const reload = useCallback(() => {
     void load();
