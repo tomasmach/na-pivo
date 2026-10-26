@@ -17,10 +17,29 @@ const createComponent = (name: string) => {
   return Component;
 };
 
+// test-renderer hands refs a host instance without native methods, so `ref.current?.scrollTo()` would throw.
+const createImperativeComponent = (name: string, methods: string[]) => {
+  const Component = ({
+    children,
+    ref,
+    ...props
+  }: {
+    children?: React.ReactNode;
+    ref?: React.Ref<unknown>;
+    [key: string]: unknown;
+  }) => {
+    React.useImperativeHandle(ref, () => Object.fromEntries(methods.map((method) => [method, () => {}])), []);
+    return React.createElement(name, props, children);
+  };
+  Component.displayName = name;
+  return Component;
+};
+const SCROLL_METHODS = ['scrollTo', 'scrollToEnd', 'scrollToOffset', 'scrollToIndex', 'flashScrollIndicators'];
+
 export const View = createComponent('View');
 export const Text = createComponent('Text');
 export const Pressable = createComponent('Pressable');
-export const ScrollView = createComponent('ScrollView');
+export const ScrollView = createImperativeComponent('ScrollView', SCROLL_METHODS);
 export const ActivityIndicator = createComponent('ActivityIndicator');
 
 export const StyleSheet = {
@@ -95,8 +114,8 @@ export const AccessibilityInfo = {
 };
 
 export const KeyboardAvoidingView = createComponent('KeyboardAvoidingView');
-export const TextInput = createComponent('TextInput');
-export const FlatList = createComponent('FlatList');
+export const TextInput = createImperativeComponent('TextInput', ['focus', 'blur', 'clear', 'isFocused']);
+export const FlatList = createImperativeComponent('FlatList', SCROLL_METHODS);
 export const Image = createComponent('Image');
 
 /** Minimal Animated stand-in: value/interpolate return inert objects, the
@@ -112,8 +131,8 @@ export const Animated = {
   event: jest.fn(() => jest.fn()),
   View: createComponent('AnimatedView'),
   Text: createComponent('AnimatedText'),
-  ScrollView: createComponent('AnimatedScrollView'),
-  FlatList: createComponent('AnimatedFlatList'),
+  ScrollView: createImperativeComponent('AnimatedScrollView', SCROLL_METHODS),
+  FlatList: createImperativeComponent('AnimatedFlatList', SCROLL_METHODS),
   createAnimatedComponent: <T,>(component: T): T => component,
 };
 // Modal renders its children inline in tests (visibility is a prop, not gated).

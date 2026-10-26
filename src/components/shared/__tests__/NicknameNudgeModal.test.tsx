@@ -54,9 +54,9 @@ function rootStack(...routes: string[]): MockRootState {
   return { routes: [{ name: '__root', state: { routes: routes.map((name) => ({ name })) } }] };
 }
 
-function navigate(...routes: string[]) {
+async function navigate(...routes: string[]) {
   mockRootState = rootStack(...routes);
-  screen.rerender(<NicknameNudgeModal />);
+  await screen.rerender(<NicknameNudgeModal />);
 }
 
 async function advance(ms: number) {
@@ -65,8 +65,8 @@ async function advance(ms: number) {
   });
 }
 
-function signIn(nickname: string | null) {
-  act(() => {
+async function signIn(nickname: string | null) {
+  await act(() => {
     useAccountStore.setState({
       session: { deviceId: 'device', accountId: 'account', token: 'token', authenticated: true },
       profile: { nickname } as AccountProfile,
@@ -93,16 +93,16 @@ describe('NicknameNudgeModal', () => {
 
   it('stays hidden while registration and the privacy screen cover the tabs', async () => {
     mockRootState = rootStack('(tabs)', 'auth/index');
-    render(<NicknameNudgeModal />);
+    await render(<NicknameNudgeModal />);
     await advance(600);
 
     // register() signs the session in before the nickname PATCH returns.
-    signIn(null);
+    await signIn(null);
     await advance(600);
-    signIn('pivar');
-    navigate('(tabs)', 'profile/privacy');
+    await signIn('pivar');
+    await navigate('(tabs)', 'profile/privacy');
     await advance(600);
-    navigate('(tabs)');
+    await navigate('(tabs)');
     await advance(1200);
 
     expect(mockModalVisibility).not.toContain(true);
@@ -110,20 +110,20 @@ describe('NicknameNudgeModal', () => {
 
   it('appears on the tabs after the settle delay when the nickname is still missing', async () => {
     mockRootState = rootStack('(tabs)', 'auth/index');
-    render(<NicknameNudgeModal />);
+    await render(<NicknameNudgeModal />);
     await advance(600);
-    signIn(null);
-    navigate('(tabs)', 'profile/privacy');
+    await signIn(null);
+    await navigate('(tabs)', 'profile/privacy');
     await advance(600);
     expect(modalVisible()).toBe(false);
 
-    navigate('(tabs)');
+    await navigate('(tabs)');
     await advance(599);
     expect(modalVisible()).toBe(false);
     await advance(1);
     expect(modalVisible()).toBe(true);
 
-    fireEvent.press(screen.getByLabelText(t.nicknameNudge.skip));
+    await fireEvent.press(screen.getByLabelText(t.nicknameNudge.skip));
     await advance(0);
     expect(modalVisible()).toBe(false);
     expect(await AsyncStorage.getItem(NICKNAME_NUDGE_SEEN_VERSION_KEY)).toBe('1.1.5');
@@ -131,29 +131,29 @@ describe('NicknameNudgeModal', () => {
 
   it('stays hidden while a tab route is pushed above a full-screen route', async () => {
     mockRootState = { routes: [{ name: '__root' }] };
-    signIn(null);
-    render(<NicknameNudgeModal />);
+    await signIn(null);
+    await render(<NicknameNudgeModal />);
     await advance(1200);
-    navigate('(tabs)', 'profile/privacy');
+    await navigate('(tabs)', 'profile/privacy');
     await advance(600);
 
     // A notification tap pushes /beer while profile/privacy is still up.
-    navigate('(tabs)', 'profile/privacy', '(tabs)');
+    await navigate('(tabs)', 'profile/privacy', '(tabs)');
     await advance(1200);
     expect(mockModalVisibility).not.toContain(true);
 
-    navigate('(tabs)');
+    await navigate('(tabs)');
     await advance(600);
     expect(modalVisible()).toBe(true);
   });
 
   it('waits for the medal sheet opened from a toast to close', async () => {
-    signIn(null);
+    await signIn(null);
     mockRootState = rootStack('(tabs)', 'pub');
-    render(<NicknameNudgeModal />);
+    await render(<NicknameNudgeModal />);
     await advance(1200);
 
-    navigate('(tabs)');
+    await navigate('(tabs)');
     await advance(300);
     await act(async () => useBadgeStore.getState().open('pubs'));
     await advance(1200);
@@ -167,16 +167,16 @@ describe('NicknameNudgeModal', () => {
   });
 
   it('keeps showing and holds the launch slot when a route opens above it', async () => {
-    signIn(null);
-    render(<NicknameNudgeModal />);
+    await signIn(null);
+    await render(<NicknameNudgeModal />);
     await advance(600);
     expect(modalVisible()).toBe(true);
 
-    navigate('(tabs)', 'settings');
+    await navigate('(tabs)', 'settings');
     expect(modalVisible()).toBe(true);
     expect(useLaunchModalMutex.getState().holder).toBe('nickname-nudge');
 
-    fireEvent.press(screen.getByLabelText(t.nicknameNudge.skip));
+    await fireEvent.press(screen.getByLabelText(t.nicknameNudge.skip));
     await advance(0);
     expect(modalVisible()).toBe(false);
     expect(useLaunchModalMutex.getState().holder).toBeNull();

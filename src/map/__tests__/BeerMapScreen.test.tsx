@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle } from 'react';
-import { Pressable, ScrollView, Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { t } from '@/i18n';
@@ -279,24 +279,24 @@ describe('BeerMapScreen opening-hours loading', () => {
     jest.useRealTimers();
   });
 
-  it('stays dark whatever the system color scheme', () => {
+  it('stays dark whatever the system color scheme', async () => {
     const props = {
       filters: EMPTY_PUB_SEARCH_FILTERS,
       onApplyFilters: jest.fn(),
       onShowCompass: jest.fn(),
     };
-    const screen = render(<BeerMapScreen {...props} />);
+    const screen = await render(<BeerMapScreen {...props} />);
 
     expect(screen.getByLabelText(t.a11y.beerMap).props.accessibilityValue.text).toBe('dark');
 
     mockColorScheme = 'light';
-    screen.rerender(<BeerMapScreen {...props} />);
+    await await screen.rerender(<BeerMapScreen {...props} />);
 
     expect(screen.getByLabelText(t.a11y.beerMap).props.accessibilityValue.text).toBe('dark');
   });
 
   it('snapshots the entire pub marker after layout, including a newly selected marker', async () => {
-    const screen = render(<BeerMapScreen
+    const screen = await render(<BeerMapScreen
       filters={EMPTY_PUB_SEARCH_FILTERS}
       onApplyFilters={jest.fn()}
       onShowCompass={jest.fn()}
@@ -304,27 +304,27 @@ describe('BeerMapScreen opening-hours loading', () => {
     const marker = () => screen.getByLabelText(t.a11y.mapPub('U Testu', 0));
 
     // A slow first layout must not leave the initial, incomplete bitmap frozen.
-    act(() => jest.advanceTimersByTime(1000));
+    await act(() => jest.advanceTimersByTime(1000));
     expect(marker().props.accessibilityValue.text).toBe('tracking');
-    fireEvent(marker().findByProps({ collapsable: false }), 'layout');
-    act(() => jest.advanceTimersByTime(200));
+    await fireEvent(marker().queryAll((node) => node.props.collapsable === false)[0], 'layout');
+    await act(() => jest.advanceTimersByTime(200));
     expect(marker().props.accessibilityValue.text).toBe('frozen');
 
-    await act(async () => fireEvent.press(marker()));
+    await act(async () => await fireEvent.press(marker()));
     expect(marker().props.accessibilityValue.text).toBe('tracking');
-    fireEvent(marker().findByProps({ collapsable: false }), 'layout');
-    act(() => jest.advanceTimersByTime(200));
+    await fireEvent(marker().queryAll((node) => node.props.collapsable === false)[0], 'layout');
+    await act(() => jest.advanceTimersByTime(200));
     expect(marker().props.accessibilityValue.text).toBe('frozen');
   });
 
-  it('lets a cluster count render before freezing its complete marker', () => {
+  it('lets a cluster count render before freezing its complete marker', async () => {
     const data = mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS);
     mockedUseBeerMap.mockReturnValue({ ...data, pubs: [
       // Away from the pub the previous test selected: the selected pub keeps its own pin.
       { id: 'cluster-a', name: 'A', lat: 50.0896, lng: 14.4234 },
       { id: 'cluster-b', name: 'B', lat: 50.09, lng: 14.424 },
     ] });
-    const screen = render(<BeerMapScreen
+    const screen = await render(<BeerMapScreen
       filters={EMPTY_PUB_SEARCH_FILTERS}
       onApplyFilters={jest.fn()}
       onShowCompass={jest.fn()}
@@ -332,12 +332,12 @@ describe('BeerMapScreen opening-hours loading', () => {
     const marker = screen.getByLabelText(t.a11y.mapCluster(2));
     expect(screen.getByText('2')).toBeTruthy();
     expect(marker.props.accessibilityValue.text).toBe('tracking');
-    fireEvent(marker.findByProps({ collapsable: false }), 'layout');
-    act(() => jest.advanceTimersByTime(200));
+    await fireEvent(marker.queryAll((node) => node.props.collapsable === false)[0], 'layout');
+    await act(() => jest.advanceTimersByTime(200));
     expect(marker.props.accessibilityValue.text).toBe('frozen');
   });
 
-  it('recenters on the user without changing zoom or regrouping pub markers', () => {
+  it('recenters on the user without changing zoom or regrouping pub markers', async () => {
     mockedUseBeerMap.mockReturnValue({
       pubs: [{ id: 'pub-1', name: 'U Testu', lat: 50.0876, lng: 14.4214 }],
       nearbyPrices: [],
@@ -354,7 +354,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       refresh: jest.fn(),
       refreshPosition: jest.fn(async () => null),
     });
-    const screen = render(
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -371,7 +371,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       0,
     );
 
-    fireEvent.press(screen.getByLabelText(t.a11y.mapLocate));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapLocate));
 
     expect(mockAnimateToRegion).toHaveBeenLastCalledWith(
       {
@@ -391,7 +391,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       position: { lat: 50.0821, lng: 14.4213, accuracyMeters: 12 },
       refreshPosition,
     });
-    const screen = render(
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -400,7 +400,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     );
 
     await act(async () => {
-      fireEvent.press(screen.getByLabelText(t.a11y.mapLocate));
+      await fireEvent.press(screen.getByLabelText(t.a11y.mapLocate));
       await Promise.resolve();
     });
 
@@ -411,8 +411,8 @@ describe('BeerMapScreen opening-hours loading', () => {
     );
   });
 
-  it('centers a selected pub in the map viewport', () => {
-    const screen = render(
+  it('centers a selected pub in the map viewport', async () => {
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -420,7 +420,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
 
     expect(mockAnimateCamera).toHaveBeenLastCalledWith(
       {
@@ -433,9 +433,9 @@ describe('BeerMapScreen opening-hours loading', () => {
     );
   });
 
-  it('shows a friend avatar in the live map marker', () => {
+  it('shows a friend avatar in the live map marker', async () => {
     const activity = mockLiveMap('https://cdn.test/pepa.jpg');
-    const screen = render(
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -448,9 +448,9 @@ describe('BeerMapScreen opening-hours loading', () => {
     });
   });
 
-  it('keeps the friend initial when the live marker has no avatar', () => {
+  it('keeps the friend initial when the live marker has no avatar', async () => {
     mockLiveMap(null);
-    const screen = render(
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -463,7 +463,7 @@ describe('BeerMapScreen opening-hours loading', () => {
   });
 
   it('replaces a pending loader with the unknown state after three seconds', async () => {
-    const screen = render(
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -471,25 +471,25 @@ describe('BeerMapScreen opening-hours loading', () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
     await act(async () => undefined);
 
     expect(screen.getByText(t.compass.detailsLoading)).toBeTruthy();
 
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(2_999);
     });
     expect(screen.getByText(t.compass.detailsLoading)).toBeTruthy();
 
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(1);
     });
     expect(screen.queryByText(t.compass.detailsLoading)).toBeNull();
     expect(screen.getByText(t.compass.hoursUnknown)).toBeTruthy();
   });
 
-  it('renders the selected-pub dock as a fixed card, not a scroll view', () => {
-    const screen = render(
+  it('renders the selected-pub dock as a fixed card, not a scroll view', async () => {
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -497,14 +497,14 @@ describe('BeerMapScreen opening-hours loading', () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
 
-    expect(screen.UNSAFE_queryAllByType(ScrollView)).toHaveLength(0);
+    expect(screen.container.queryAll((node) => node.type === 'ScrollView')).toHaveLength(0);
   });
 
-  it('shows active filters as a chip that clears them', () => {
+  it('shows active filters as a chip that clears them', async () => {
     const onApplyFilters = jest.fn();
-    const screen = render(
+    const screen = await render(
       <BeerMapScreen
         filters={{ ...EMPTY_PUB_SEARCH_FILTERS, priceMaxCzk: 30 }}
         onApplyFilters={onApplyFilters}
@@ -516,12 +516,12 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(
       screen.getByLabelText(`${t.compass.moreFilters}, ${t.compass.moreFiltersActive(1)}`),
     ).toBeTruthy();
-    fireEvent.press(screen.getByLabelText(t.a11y.mapFiltersClear));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapFiltersClear));
     expect(onApplyFilters).toHaveBeenCalledWith(EMPTY_PUB_SEARCH_FILTERS);
   });
 
-  it('switches layers from the dock, and only from the dock', () => {
-    const screen = render(
+  it('switches layers from the dock, and only from the dock', async () => {
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -530,12 +530,12 @@ describe('BeerMapScreen opening-hours loading', () => {
     );
     // A selection takes the dock's place; the card's cross gives it back, and
     // so does the empty map.
-    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
     expect(screen.queryByLabelText(t.map.layerAll)).toBeNull();
-    fireEvent.press(screen.getByLabelText(t.a11y.mapSelectionClear));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapSelectionClear));
     expect(screen.getByLabelText(t.map.layerAll)).toBeTruthy();
-    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
-    fireEvent.press(screen.getByLabelText(t.a11y.beerMap));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+    await fireEvent.press(screen.getByLabelText(t.a11y.beerMap));
 
     // The switch is on the surface, all three slices at once.
     expect(screen.getByLabelText(t.map.layerAll)).toBeTruthy();
@@ -543,25 +543,25 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(screen.getByLabelText(t.map.layerFriends)).toBeTruthy();
 
     // And the overflow sheet no longer offers the same three as rows.
-    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
     expect(screen.queryAllByLabelText(t.map.layerVisited)).toHaveLength(1);
 
-    fireEvent.press(screen.getByLabelText(t.map.layerVisited));
+    await fireEvent.press(screen.getByLabelText(t.map.layerVisited));
     // "Moje stopy" is now the selected tab; the previous one became pressable.
     expect(
       screen.getByLabelText(t.map.layerVisited).props.accessibilityState,
     ).toMatchObject({ selected: true });
 
-    act(() => resetBeerMapLayerForAddedPub());
+    await act(() => resetBeerMapLayerForAddedPub());
     expect(screen.getByLabelText(t.map.layerAll).props.accessibilityState).toMatchObject({
       selected: true,
     });
   });
 
-  it('opens the pub leaderboard from the overflow sheet', () => {
+  it('opens the pub leaderboard from the overflow sheet', async () => {
     jest.useFakeTimers();
     try {
-      const screen = render(
+      const screen = await render(
         <BeerMapScreen
           filters={EMPTY_PUB_SEARCH_FILTERS}
           onApplyFilters={jest.fn()}
@@ -569,9 +569,9 @@ describe('BeerMapScreen opening-hours loading', () => {
         />,
       );
       mockPush.mockClear();
-      fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-      fireEvent.press(screen.getByLabelText(t.map.moreBoard));
-      act(() => { jest.runOnlyPendingTimers(); });
+      await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+      await fireEvent.press(screen.getByLabelText(t.map.moreBoard));
+      await act(() => { jest.runOnlyPendingTimers(); });
 
       expect(mockPush).toHaveBeenCalledWith({
         pathname: '/leaderboards',
@@ -582,10 +582,10 @@ describe('BeerMapScreen opening-hours loading', () => {
     }
   });
 
-  it('opens the same add-pub form as the compass, seeded with the map center', () => {
+  it('opens the same add-pub form as the compass, seeded with the map center', async () => {
     jest.useFakeTimers();
     try {
-      const screen = render(
+      const screen = await render(
         <BeerMapScreen
           filters={EMPTY_PUB_SEARCH_FILTERS}
           onApplyFilters={jest.fn()}
@@ -593,9 +593,9 @@ describe('BeerMapScreen opening-hours loading', () => {
         />,
       );
       mockPush.mockClear();
-      fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-      fireEvent.press(screen.getByLabelText(t.compass.moreAddPub));
-      act(() => { jest.runOnlyPendingTimers(); });
+      await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+      await fireEvent.press(screen.getByLabelText(t.compass.moreAddPub));
+      await act(() => { jest.runOnlyPendingTimers(); });
 
       expect(mockPush).toHaveBeenCalledTimes(1);
       const target = mockPush.mock.calls[0][0];
@@ -607,8 +607,8 @@ describe('BeerMapScreen opening-hours loading', () => {
     }
   });
 
-  it('asks for confirmation before reporting a pub from the overflow sheet', () => {
-    const screen = render(
+  it('asks for confirmation before reporting a pub from the overflow sheet', async () => {
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -616,16 +616,16 @@ describe('BeerMapScreen opening-hours loading', () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
-    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-    fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed('U Testu')));
-    act(() => {
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+    await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed('U Testu')));
+    await act(() => {
       jest.advanceTimersByTime(260);
     });
 
     expect(mockedEnqueuePubReport).not.toHaveBeenCalled();
 
-    fireEvent.press(screen.getByLabelText(t.compass.reportNotPub));
+    await fireEvent.press(screen.getByLabelText(t.compass.reportNotPub));
 
     expect(mockedEnqueuePubReport).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'pub-1', name: 'U Testu' }),
@@ -634,8 +634,8 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(screen.queryByLabelText(t.a11y.mapReportClosed('U Testu'))).toBeNull();
   });
 
-  it('sends a closed reason when a pub no longer operates', () => {
-    const screen = render(
+  it('sends a closed reason when a pub no longer operates', async () => {
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -643,34 +643,34 @@ describe('BeerMapScreen opening-hours loading', () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
-    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-    fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed('U Testu')));
-    act(() => {
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+    await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed('U Testu')));
+    await act(() => {
       jest.advanceTimersByTime(260);
     });
 
-    fireEvent.press(screen.getByLabelText(t.compass.reportClosed));
+    await fireEvent.press(screen.getByLabelText(t.compass.reportClosed));
 
     expect(mockedEnqueuePubReport).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'pub-1', name: 'U Testu' }),
       'closed',
     );
   });
-  it('focuses a search result outside the catalogue instead of the remembered map', () => {
+  it('focuses a search result outside the catalogue instead of the remembered map', async () => {
     const props = {
       filters: EMPTY_PUB_SEARCH_FILTERS,
       onApplyFilters: jest.fn(),
       onShowCompass: jest.fn(),
     };
-    const previous = render(<BeerMapScreen {...props} />);
-    fireEvent.press(previous.getByLabelText(t.a11y.beerMap));
-    fireEvent.press(previous.getByLabelText(t.map.layerFriends));
-    previous.unmount();
+    const previous = await render(<BeerMapScreen {...props} />);
+    await fireEvent.press(previous.getByLabelText(t.a11y.beerMap));
+    await fireEvent.press(previous.getByLabelText(t.map.layerFriends));
+    await previous.unmount();
 
     const found = { id: 'remote-1', name: 'Vzdálená hospoda', lat: 49.19, lng: 16.61 };
     const onSearch = jest.fn();
-    const screen = render(<BeerMapScreen
+    const screen = await render(<BeerMapScreen
       {...props}
       initialPub={found}
       focusInitialPub
@@ -682,52 +682,52 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(screen.getByLabelText(t.a11y.mapPub(found.name, 0))).toBeTruthy();
     expect(screen.getByText(found.name)).toBeTruthy();
     expect(mockedFetchPubHours).toHaveBeenCalledWith([found], expect.anything());
-    fireEvent.press(screen.getByLabelText(t.pubSearch.open));
+    await fireEvent.press(screen.getByLabelText(t.pubSearch.open));
     expect(onSearch).toHaveBeenCalledTimes(1);
-    fireEvent.press(screen.getByLabelText(t.map.aimCompass));
+    await fireEvent.press(screen.getByLabelText(t.map.aimCompass));
     expect(props.onShowCompass).toHaveBeenCalledTimes(1);
-    fireEvent.press(screen.getByLabelText(t.a11y.beerMap));
+    await fireEvent.press(screen.getByLabelText(t.a11y.beerMap));
     expect(screen.getByLabelText(t.map.layerAll).props.accessibilityState).toMatchObject({ selected: true });
   });
 
-  it('applies later map layers, filters and fresh catalogue data to a searched pub', () => {
+  it('applies later map layers, filters and fresh catalogue data to a searched pub', async () => {
     const found = { id: 'remote-2', name: 'Původní název', lat: 49.21, lng: 16.62 };
     const props = { initialPub: found, focusInitialPub: true, filters: EMPTY_PUB_SEARCH_FILTERS,
       onApplyFilters: jest.fn(), onShowCompass: jest.fn() };
-    const screen = render(<BeerMapScreen {...props} />);
+    const screen = await render(<BeerMapScreen {...props} />);
     expect(screen.getByLabelText(t.a11y.mapPub(found.name, 0))).toBeTruthy();
-    fireEvent.press(screen.getByLabelText(t.a11y.beerMap));
-    fireEvent.press(screen.getByLabelText(t.map.layerVisited));
+    await fireEvent.press(screen.getByLabelText(t.a11y.beerMap));
+    await fireEvent.press(screen.getByLabelText(t.map.layerVisited));
     expect(screen.queryByLabelText(t.a11y.mapPub(found.name, 0))).toBeNull();
-    fireEvent.press(screen.getByLabelText(t.map.layerAll));
-    screen.rerender(<BeerMapScreen {...props} filters={{ ...EMPTY_PUB_SEARCH_FILTERS, priceMaxCzk: 30 }} />);
+    await fireEvent.press(screen.getByLabelText(t.map.layerAll));
+    await await screen.rerender(<BeerMapScreen {...props} filters={{ ...EMPTY_PUB_SEARCH_FILTERS, priceMaxCzk: 30 }} />);
     expect(screen.queryByLabelText(t.a11y.mapPub(found.name, 0))).toBeNull();
     mockedUseBeerMap.mockReturnValue({ ...mockedUseBeerMap.mock.results.at(-1)!.value,
       pubs: [{ ...found, name: 'Nový název' }] });
-    screen.rerender(<BeerMapScreen {...props} />);
+    await await screen.rerender(<BeerMapScreen {...props} />);
     expect(screen.getByLabelText(t.a11y.mapPub('Nový název', 0))).toBeTruthy();
     expect(screen.queryByText(found.name)).toBeNull();
   });
 
-  it.each(['id', 'cell'])('keeps a reported search result hidden by its %s', (signal) => {
+  it.each(['id', 'cell'])('keeps a reported search result hidden by its %s', async (signal) => {
     const found = { id: 'remote-3', name: 'Zavřená hospoda', lat: 49.23, lng: 16.64 };
     const props = { initialPub: found, focusInitialPub: true, filters: EMPTY_PUB_SEARCH_FILTERS,
       onApplyFilters: jest.fn(), onShowCompass: jest.fn() };
-    const screen = render(<BeerMapScreen {...props} />);
+    const screen = await render(<BeerMapScreen {...props} />);
     expect(screen.getByLabelText(t.a11y.mapPub(found.name, 0))).toBeTruthy();
-    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-    fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed(found.name)));
-    act(() => jest.advanceTimersByTime(260));
-    fireEvent.press(screen.getByLabelText(t.compass.reportClosed));
+    await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed(found.name)));
+    await act(() => jest.advanceTimersByTime(260));
+    await fireEvent.press(screen.getByLabelText(t.compass.reportClosed));
     expect(screen.queryByLabelText(t.a11y.mapPub(found.name, 0))).toBeNull();
-    screen.unmount();
+    await await screen.unmount();
     if (signal === 'id') mockPubStoreState.reportedCacheKeys = [];
     else mockPubStoreState.reportedPubIds = [];
-    const reopened = render(<BeerMapScreen {...props} />);
+    const reopened = await render(<BeerMapScreen {...props} />);
     expect(reopened.queryByLabelText(t.a11y.mapPub(found.name, 0))).toBeNull();
   });
 
-  it('keeps the searched pub name instead of a historical visit at the same location', () => {
+  it('keeps the searched pub name instead of a historical visit at the same location', async () => {
     const found = { id: 'tygr-1', name: 'U Zlatého tygra', lat: 50.08759, lng: 14.42108 };
     mockedUseBeerMap.mockReturnValue({
       pubs: [], nearbyPrices: [], searchArea: null, visitedCities: [], livePubs: [], position: null,
@@ -736,26 +736,26 @@ describe('BeerMapScreen opening-hours loading', () => {
       visitedPubs: [{ cacheKey: geohash8(found.lat, found.lng), name: 'Bar Dawu',
         lat: found.lat, lng: found.lng, city: 'Praha', visitCount: 1, lastVisitedAt: '2026-09-18T12:00:00Z' }],
     });
-    const screen = render(<BeerMapScreen initialPub={found} focusInitialPub
+    const screen = await render(<BeerMapScreen initialPub={found} focusInitialPub
       filters={EMPTY_PUB_SEARCH_FILTERS} onApplyFilters={jest.fn()} onShowCompass={jest.fn()} />);
     expect(screen.getByText(found.name)).toBeTruthy();
     expect(screen.queryByText('Bar Dawu')).toBeNull();
     expect(mockedFetchPubHours).toHaveBeenCalledWith([found], expect.anything());
-    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-    fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed(found.name)));
-    act(() => jest.advanceTimersByTime(260));
-    fireEvent.press(screen.getByLabelText(t.compass.reportClosed));
+    await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed(found.name)));
+    await act(() => jest.advanceTimersByTime(260));
+    await fireEvent.press(screen.getByLabelText(t.compass.reportClosed));
     expect(screen.queryByLabelText(t.a11y.mapPub(found.name, 1))).toBeNull();
     expect(screen.queryByLabelText(t.a11y.mapPub('Bar Dawu', 1))).toBeNull();
   });
 
-  it('keeps a selected pub identity when another cached pub occupies the same map cell', () => {
+  it('keeps a selected pub identity when another cached pub occupies the same map cell', async () => {
     const found = { id: 'tygr-2', name: 'U Zlatého tygra', lat: 50.08759, lng: 14.42108 };
     const mapData = mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS);
     mockedUseBeerMap.mockReturnValue({ ...mapData,
       pubs: [{ ...found, id: 'old-dawu', name: 'Bar Dawu' }],
     });
-    const screen = render(<BeerMapScreen initialPub={found} focusInitialPub
+    const screen = await render(<BeerMapScreen initialPub={found} focusInitialPub
       filters={EMPTY_PUB_SEARCH_FILTERS} onApplyFilters={jest.fn()} onShowCompass={jest.fn()} />);
     expect(screen.getByText(found.name)).toBeTruthy();
     expect(screen.queryByText('Bar Dawu')).toBeNull();
@@ -776,12 +776,12 @@ describe('BeerMapScreen opening-hours loading', () => {
       };
     }
 
-    afterEach(() => {
-      act(() => useFocusedPubStore.setState({ pub: null }));
+    afterEach(async () => {
+      await act(() => useFocusedPubStore.setState({ pub: null }));
     });
 
-    it('puts the compass target where the layers were and lets it be put away', () => {
-      const screen = render(
+    it('puts the compass target where the layers were and lets it be put away', async () => {
+      const screen = await render(
         <BeerMapScreen
           filters={EMPTY_PUB_SEARCH_FILTERS}
           onApplyFilters={jest.fn()}
@@ -793,37 +793,37 @@ describe('BeerMapScreen opening-hours loading', () => {
       expect(screen.getByText('target card')).toBeTruthy();
       expect(screen.queryByLabelText(t.map.layerAll)).toBeNull();
 
-      fireEvent.press(screen.getByLabelText(t.a11y.mapTargetHide));
+      await fireEvent.press(screen.getByLabelText(t.a11y.mapTargetHide));
       expect(screen.queryByText('target card')).toBeNull();
       expect(screen.getByLabelText(t.map.layerAll)).toBeTruthy();
       expect(screen.getByText('323 m · U Testu')).toBeTruthy();
 
-      fireEvent.press(screen.getByLabelText(t.a11y.mapTargetShow));
+      await fireEvent.press(screen.getByLabelText(t.a11y.mapTargetShow));
       expect(screen.getByText('target card')).toBeTruthy();
     });
 
-    it('draws the line to the target unless the target is a secret', () => {
+    it('draws the line to the target unless the target is a secret', async () => {
       const props = {
         filters: EMPTY_PUB_SEARCH_FILTERS,
         onApplyFilters: jest.fn(),
         onShowCompass: jest.fn(),
       };
-      const screen = render(<BeerMapScreen {...props} compass={compassOnMap()} />);
+      const screen = await render(<BeerMapScreen {...props} compass={compassOnMap()} />);
       expect(screen.getByText('route line')).toBeTruthy();
 
       const secret = compassOnMap();
       secret.route = { ...secret.route!, secret: true };
-      screen.rerender(<BeerMapScreen {...props} compass={secret} />);
+      await await screen.rerender(<BeerMapScreen {...props} compass={secret} />);
       expect(screen.queryByText('route line')).toBeNull();
     });
 
-    it('closes its own sheet before a compass choice runs', () => {
+    it('closes its own sheet before a compass choice runs', async () => {
       jest.useFakeTimers();
       try {
         const surprise = jest.fn();
         const compass = compassOnMap();
         compass.moreRows = [{ key: 'surprise', label: t.compass.moreModeSurprise, icon: () => null, onPress: surprise }];
-        const screen = render(
+        const screen = await render(
           <BeerMapScreen
             filters={EMPTY_PUB_SEARCH_FILTERS}
             onApplyFilters={jest.fn()}
@@ -831,9 +831,9 @@ describe('BeerMapScreen opening-hours loading', () => {
             compass={compass}
           />,
         );
-        fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-        fireEvent.press(screen.getByLabelText(t.compass.moreModeSurprise));
-        act(() => { jest.runOnlyPendingTimers(); });
+        await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+        await fireEvent.press(screen.getByLabelText(t.compass.moreModeSurprise));
+        await act(() => { jest.runOnlyPendingTimers(); });
 
         expect(surprise).toHaveBeenCalledTimes(1);
         expect(screen.queryByLabelText(t.compass.moreModeSurprise)).toBeNull();
@@ -842,9 +842,9 @@ describe('BeerMapScreen opening-hours loading', () => {
       }
     });
 
-    it('aims the compass at a picked pub without leaving the map', () => {
+    it('aims the compass at a picked pub without leaving the map', async () => {
       const onShowCompass = jest.fn();
-      const screen = render(
+      const screen = await render(
         <BeerMapScreen
           filters={EMPTY_PUB_SEARCH_FILTERS}
           onApplyFilters={jest.fn()}
@@ -852,8 +852,8 @@ describe('BeerMapScreen opening-hours loading', () => {
           compass={compassOnMap()}
         />,
       );
-      fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
-      fireEvent.press(screen.getByLabelText(t.map.aimCompass));
+      await fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+      await fireEvent.press(screen.getByLabelText(t.map.aimCompass));
 
       expect(onShowCompass).not.toHaveBeenCalled();
       expect(useFocusedPubStore.getState().pub).toMatchObject({ name: 'U Testu' });
@@ -898,7 +898,7 @@ describe('BeerMapScreen last-week beers', () => {
   });
 
   async function renderMap() {
-    const screen = render(
+    const screen = await render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
         onApplyFilters={jest.fn()}
@@ -918,15 +918,15 @@ describe('BeerMapScreen last-week beers', () => {
     expect(screen.getByText('4')).toBeTruthy();
     expect(screen.getByLabelText(t.a11y.mapPub('U Prázdných', 0))).toBeTruthy();
 
-    await act(async () => fireEvent.press(screen.getByLabelText(busyLabel)));
+    await act(async () => await fireEvent.press(screen.getByLabelText(busyLabel)));
     expect(screen.getByText(t.map.beersLastWeek(4))).toBeTruthy();
   });
 
   it('can narrow the map to pubs where people drank and clear it from the chip', async () => {
     const screen = await renderMap();
 
-    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-    fireEvent.press(screen.getByText(t.map.moreBeersOnly));
+    await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    await fireEvent.press(screen.getByText(t.map.moreBeersOnly));
 
     expect(screen.getByLabelText(busyLabel)).toBeTruthy();
     expect(screen.queryByLabelText(t.a11y.mapPub('U Prázdných', 0))).toBeNull();
@@ -934,7 +934,7 @@ describe('BeerMapScreen last-week beers', () => {
       screen.getByLabelText(`${t.compass.moreFilters}, ${t.compass.moreFiltersActive(1)}`),
     ).toBeTruthy();
 
-    fireEvent.press(screen.getByLabelText(t.a11y.mapFiltersClear));
+    await fireEvent.press(screen.getByLabelText(t.a11y.mapFiltersClear));
     expect(screen.queryByLabelText(t.a11y.mapFiltersClear)).toBeNull();
     expect(screen.getByLabelText(t.a11y.mapPub('U Prázdných', 0))).toBeTruthy();
   });
@@ -942,10 +942,10 @@ describe('BeerMapScreen last-week beers', () => {
   it('drops the narrowed view when the counts are turned off', async () => {
     const screen = await renderMap();
 
-    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-    fireEvent.press(screen.getByText(t.map.moreBeersOnly));
-    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
-    fireEvent.press(screen.getByText(t.map.moreBeers));
+    await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    await fireEvent.press(screen.getByText(t.map.moreBeersOnly));
+    await fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    await fireEvent.press(screen.getByText(t.map.moreBeers));
 
     expect(mockSettingsState.setShowPubBeers).toHaveBeenCalledWith(false);
     expect(screen.queryByLabelText(t.a11y.mapFiltersClear)).toBeNull();
@@ -966,10 +966,10 @@ describe('BeerMapScreen last-week beers', () => {
       onApplyFilters: jest.fn(),
       onShowCompass: jest.fn(),
     };
-    const screen = render(<BeerMapScreen {...props} />);
+    const screen = await render(<BeerMapScreen {...props} />);
     const data = mockedUseBeerMap(EMPTY_PUB_SEARCH_FILTERS);
     mockedUseBeerMap.mockReturnValue({ ...data, pubs: [busy, quiet] });
-    screen.rerender(<BeerMapScreen {...props} />);
+    await await screen.rerender(<BeerMapScreen {...props} />);
 
     expect(fetchPubBeersLastWeek).toHaveBeenCalledTimes(1);
     const [signal] = (fetchPubBeersLastWeek as jest.Mock).mock.calls[0] as [AbortSignal];
@@ -996,7 +996,7 @@ describe('BeerMapScreen opened on one pub', () => {
       opened,
       { id: 'neighbour', name: 'Soused', lat: 50.09, lng: 14.424 },
     ] });
-    const screen = render(<BeerMapScreen
+    const screen = await render(<BeerMapScreen
       initialPub={opened}
       focusInitialPub
       filters={EMPTY_PUB_SEARCH_FILTERS}

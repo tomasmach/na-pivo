@@ -36,14 +36,16 @@ function sheet(onSend: jest.Mock, onClose = jest.fn(), extra: { friends?: Friend
 it('pings the whole party by default, once per double tap, and closes once it went out', async () => {
   const onSend = jest.fn(async () => null);
   const onClose = jest.fn();
-  const screen = sheet(onSend, onClose);
+  const screen = await sheet(onSend, onClose);
   expect(screen.getByText(t.friends.pingSheetDetail('U Pinkasů'))).toBeTruthy();
   expect(screen.getByText(t.friends.recipientAllSummary(4))).toBeTruthy();
   // A quick sheet: no heading kicker and no group naming that would need the keyboard.
   expect(screen.queryByText(t.friends.composeAudienceLabel)).toBeNull();
+  // Both taps land before the busy button re-renders; an awaited fireEvent would finish the first send in between.
   await act(async () => {
-    fireEvent.press(screen.getByText(t.friends.composeSubmitNow));
-    fireEvent.press(screen.getByText(t.friends.composeSubmitNow));
+    const { onPress } = screen.getByLabelText(t.friends.composeSubmitNow).props;
+    onPress();
+    onPress();
   });
   expect(onSend).toHaveBeenCalledTimes(1);
   expect(onSend).toHaveBeenCalledWith(undefined);
@@ -53,77 +55,77 @@ it('pings the whole party by default, once per double tap, and closes once it we
 it('sends only to the friends picked, and keeps the sheet open on a hard error', async () => {
   const onSend = jest.fn(async () => 'Nikdo z party.');
   const onClose = jest.fn();
-  const screen = sheet(onSend, onClose);
-  fireEvent.press(screen.getByLabelText(t.friends.recipientCustom));
+  const screen = await sheet(onSend, onClose);
+  await fireEvent.press(screen.getByLabelText(t.friends.recipientCustom));
   // Picking starts from nobody, so there is nothing to send yet.
   expect(screen.getByLabelText(t.friends.composeSubmitNow).props.accessibilityState).toEqual({ disabled: true });
-  fireEvent.press(screen.getByLabelText('eva'));
+  await fireEvent.press(screen.getByLabelText('eva'));
   expect(screen.getByText(t.friends.recipientCustomSummary(1))).toBeTruthy();
   expect(screen.queryByPlaceholderText(t.friends.recipientGroupPlaceholder)).toBeNull();
-  await act(async () => { fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
+  await act(async () => { await fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
   expect(onSend).toHaveBeenCalledWith(['eva']);
   expect(screen.getByText('Nikdo z party.')).toBeTruthy();
   expect(onClose).not.toHaveBeenCalled();
   // Nobody picked: nothing to send.
-  fireEvent.press(screen.getByLabelText('eva'));
+  await fireEvent.press(screen.getByLabelText('eva'));
   expect(screen.getByLabelText(t.friends.composeSubmitNow).props.accessibilityState).toEqual({ disabled: true });
 });
 
 it('offers saved groups and sends to their members still in the party', async () => {
   usePartyGroupsStore.setState({ groups: [{ id: 'g1', name: 'Pátek', memberIds: ['jana', 'gone'] }] as never });
   const onSend = jest.fn(async () => null);
-  const screen = sheet(onSend);
-  fireEvent.press(screen.getByLabelText('Pátek'));
-  await act(async () => { fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
+  const screen = await sheet(onSend);
+  await fireEvent.press(screen.getByLabelText('Pátek'));
+  await act(async () => { await fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
   expect(onSend).toHaveBeenCalledWith(['jana']);
 });
 
 it('says why nothing can go out in invisible mode or with an empty party, and holds while sending', async () => {
-  const ghost = sheet(jest.fn(), jest.fn(), { ghost: true });
+  const ghost = await sheet(jest.fn(), jest.fn(), { ghost: true });
   expect(ghost.getByText(t.friends.pingSheetGhost)).toBeTruthy();
   expect(ghost.getByLabelText(t.friends.composeSubmitNow).props.accessibilityState).toEqual({ disabled: true });
-  const empty = sheet(jest.fn(), jest.fn(), { friends: [] });
+  const empty = await sheet(jest.fn(), jest.fn(), { friends: [] });
   expect(empty.getByText(t.friends.recipientNoFriends)).toBeTruthy();
   expect(empty.getByLabelText(t.friends.composeSubmitNow).props.accessibilityState).toEqual({ disabled: true });
 
   let finish: (value: string | null) => void = () => undefined;
   const onClose = jest.fn();
-  const sending = sheet(jest.fn(() => new Promise<string | null>((resolve) => { finish = resolve; })), onClose);
-  fireEvent.press(sending.getByText(t.friends.composeSubmitNow));
-  fireEvent.press(sending.getByLabelText(t.friends.settingsClose));
+  const sending = await sheet(jest.fn(() => new Promise<string | null>((resolve) => { finish = resolve; })), onClose);
+  await fireEvent.press(sending.getByText(t.friends.composeSubmitNow));
+  await fireEvent.press(sending.getByLabelText(t.friends.settingsClose));
   expect(onClose).not.toHaveBeenCalled();
   await act(async () => { finish('Nikdo z party.'); });
   expect(sending.getByText('Nikdo z party.')).toBeTruthy();
 });
 
-it('saves a group in the full compose only once it has a name and someone in it', () => {
+it('saves a group in the full compose only once it has a name and someone in it', async () => {
   const Host = () => {
     const [value, setValue] = React.useState(EVERYONE);
     return <AudiencePicker friends={friends} value={value} onChange={setValue} />;
   };
-  const screen = render(<Host />);
-  fireEvent.press(screen.getByLabelText(t.friends.recipientCustom));
+  const screen = await render(<Host />);
+  await fireEvent.press(screen.getByLabelText(t.friends.recipientCustom));
   const save = () => screen.getByLabelText(t.friends.recipientGroupSave).props.accessibilityState;
-  fireEvent.press(screen.getByLabelText('eva'));
+  await fireEvent.press(screen.getByLabelText('eva'));
   expect(save()).toEqual({ disabled: true });
-  fireEvent.changeText(screen.getByPlaceholderText(t.friends.recipientGroupPlaceholder), 'Pátek');
+  await fireEvent.changeText(screen.getByPlaceholderText(t.friends.recipientGroupPlaceholder), 'Pátek');
   expect(save()).toEqual({ disabled: false });
 });
 
-it('never drops people from saved groups when shown only part of the party', () => {
+it('never drops people from saved groups when shown only part of the party', async () => {
   usePartyGroupsStore.setState({ groups: [{ id: 'g1', name: 'Kluci', memberIds: ['eva', 'pepa'], updatedAt: '' }, { id: 'g2', name: 'Jen Pepa', memberIds: ['pepa'], updatedAt: '' }] });
   // Pepa walks along, so the sheet lists everyone but him.
-  sheet(jest.fn(), jest.fn(), { friends: friends.filter((friend) => friend.id !== 'pepa') });
+  await sheet(jest.fn(), jest.fn(), { friends: friends.filter((friend) => friend.id !== 'pepa') });
   expect(usePartyGroupsStore.getState().groups.map((group) => group.memberIds)).toEqual([['eva', 'pepa'], ['pepa']]);
 });
 
 it('recovers from a send that throws, so the ping can be tried again', async () => {
   const onSend = jest.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(null);
   const onClose = jest.fn();
-  const screen = sheet(onSend, onClose);
-  await act(async () => { fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
+  const screen = await sheet(onSend, onClose);
+  await act(async () => { await fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
   expect(screen.getByText(t.friends.shareError)).toBeTruthy();
-  await act(async () => { fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
+  await act(async () => { await fireEvent.press(screen.getByText(t.friends.composeSubmitNow)); });
   expect(onSend).toHaveBeenCalledTimes(2);
   expect(onClose).toHaveBeenCalled();
 });

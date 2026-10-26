@@ -36,20 +36,20 @@ beforeEach(() => jest.clearAllMocks());
 
 it('lists what goes public and what stays private, and leaves once published', async () => {
   mockStore.publishPublic.mockResolvedValue({ ok: true });
-  const screen = render(<TourPublishScreen />);
+  const screen = await render(<TourPublishScreen />);
   for (const line of [t.tours.seenTitle(plan.title), t.tours.seenChallenges(1), t.tours.seenProfile, t.tours.hiddenMeetup, t.tours.hiddenPrivate])
     expect(screen.getByText(line)).toBeTruthy();
-  await act(async () => { fireEvent.press(screen.getByTestId('tour-publish')); });
+  await act(async () => { await fireEvent.press(screen.getByTestId('tour-publish')); });
   expect(mockStore.publishPublic).toHaveBeenCalledWith(plan.id);
   expect(mockBack).toHaveBeenCalled();
 });
 
 it('names the pub whose challenge was refused and offers to edit the tour', async () => {
   mockStore.publishPublic.mockResolvedValue({ ok: false, error: 'text_rejected', field: 'challenge', stop: 1 });
-  const screen = render(<TourPublishScreen />);
-  await act(async () => { fireEvent.press(screen.getByTestId('tour-publish')); });
+  const screen = await render(<TourPublishScreen />);
+  await act(async () => { await fireEvent.press(screen.getByTestId('tour-publish')); });
   expect(screen.getByText(t.tours.errors.publicChallenge('U Pinkasů'))).toBeTruthy();
-  await act(async () => { fireEvent.press(screen.getByTestId('tour-publish-fix')); });
+  await act(async () => { await fireEvent.press(screen.getByTestId('tour-publish-fix')); });
   expect(mockStore.beginDraft).toHaveBeenCalledWith(plan.id);
   expect(mockReplace).toHaveBeenCalledWith('/tours/edit');
   expect(mockBack).not.toHaveBeenCalled();
@@ -57,9 +57,9 @@ it('names the pub whose challenge was refused and offers to edit the tour', asyn
 
 it('sends a signed-out author to sign in', async () => {
   mockStore.publishPublic.mockResolvedValue({ ok: false, error: 'sign_in' });
-  const screen = render(<TourPublishScreen />);
-  await act(async () => { fireEvent.press(screen.getByTestId('tour-publish')); });
+  const screen = await render(<TourPublishScreen />);
+  await act(async () => { await fireEvent.press(screen.getByTestId('tour-publish')); });
   expect(screen.getByText(t.tours.errors.publicSignIn)).toBeTruthy();
-  fireEvent.press(screen.getByTestId('tour-publish-fix'));
+  await fireEvent.press(screen.getByTestId('tour-publish-fix'));
   expect(mockPush).toHaveBeenCalledWith('/auth');
 });

@@ -68,19 +68,19 @@ describe('KeyboardAwareScrollView', () => {
     jest.useRealTimers();
   });
 
-  it('ignores focus from a descendant that is not the focused TextInput', () => {
+  it('ignores focus from a descendant that is not the focused TextInput', async () => {
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
-    const screen = render(
+    const screen = await render(
       <KeyboardAwareScrollView>
         <Pressable testID="regular-control" />
       </KeyboardAwareScrollView>,
     );
 
-    fireEvent(screen.getByTestId('regular-control'), 'focus', {
+    await fireEvent(screen.getByTestId('regular-control'), 'focus', {
       target: 11,
       nativeEvent: { target: 11 },
     });
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(400);
     });
 
@@ -88,53 +88,53 @@ describe('KeyboardAwareScrollView', () => {
     expect(mockedScrollTo).not.toHaveBeenCalled();
   });
 
-  it('clamps the target offset to the maximum scrollable content offset', () => {
+  it('clamps the target offset to the maximum scrollable content offset', async () => {
     mockKeyboardHeight = 0;
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
     mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
       onSuccess(0, 650, 100, 50);
     });
-    const screen = render(
+    const screen = await render(
       <KeyboardAwareScrollView testID="scroll-view">
         <TextInput testID="field" />
       </KeyboardAwareScrollView>,
     );
 
-    fireEvent(screen.getByTestId('scroll-view'), 'layout', {
+    await fireEvent(screen.getByTestId('scroll-view'), 'layout', {
       nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
     });
-    fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 500);
-    fireEvent(screen.getByTestId('field'), 'focus', {
+    await fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 500);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
       target: 22,
       nativeEvent: { target: 22 },
     });
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(16);
     });
 
     expect(mockedScrollTo).toHaveBeenCalledWith({ y: 100, animated: true });
   });
 
-  it('uses the keyboard allowance to move a covered input fully above the keyboard', () => {
+  it('uses the keyboard allowance to move a covered input fully above the keyboard', async () => {
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
     mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
       onSuccess(0, 350, 100, 50);
     });
-    const screen = render(
+    const screen = await render(
       <KeyboardAwareScrollView testID="scroll-view">
         <TextInput testID="field" />
       </KeyboardAwareScrollView>,
     );
 
-    fireEvent(screen.getByTestId('scroll-view'), 'layout', {
+    await fireEvent(screen.getByTestId('scroll-view'), 'layout', {
       nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
     });
-    fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 500);
-    fireEvent(screen.getByTestId('field'), 'focus', {
+    await fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 500);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
       target: 22,
       nativeEvent: { target: 22 },
     });
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(16);
     });
 
@@ -142,12 +142,12 @@ describe('KeyboardAwareScrollView', () => {
     expect(mockedScrollTo).toHaveBeenCalledWith({ y: 220, animated: true });
   });
 
-  it('does not inject another keyboard inset when the parent already avoids it', () => {
+  it('does not inject another keyboard inset when the parent already avoids it', async () => {
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
     mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
       onSuccess(0, 350, 100, 50);
     });
-    const screen = render(
+    const screen = await render(
       <KeyboardAwareScrollView testID="scroll-view" keyboardAvoidedExternally>
         <TextInput testID="field" />
       </KeyboardAwareScrollView>,
@@ -157,15 +157,15 @@ describe('KeyboardAwareScrollView', () => {
     expect(scrollView.props.automaticallyAdjustKeyboardInsets).toBe(false);
     expect(scrollView.props.contentContainerStyle).toEqual([undefined, null]);
 
-    fireEvent(scrollView, 'layout', {
+    await fireEvent(scrollView, 'layout', {
       nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
     });
-    fireEvent(scrollView, 'contentSizeChange', 300, 500);
-    fireEvent(screen.getByTestId('field'), 'focus', {
+    await fireEvent(scrollView, 'contentSizeChange', 300, 500);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
       target: 22,
       nativeEvent: { target: 22 },
     });
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(16);
     });
 
@@ -174,64 +174,64 @@ describe('KeyboardAwareScrollView', () => {
     expect(mockedScrollTo).toHaveBeenCalledWith({ y: 20, animated: true });
   });
 
-  it('retries after the native keyboard animation so late layout changes are handled', () => {
+  it('retries after the native keyboard animation so late layout changes are handled', async () => {
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
     mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
       onSuccess(0, 350, 100, 50);
     });
-    const screen = render(
+    const screen = await render(
       <KeyboardAwareScrollView testID="scroll-view">
         <TextInput testID="field" />
       </KeyboardAwareScrollView>,
     );
 
-    fireEvent(screen.getByTestId('scroll-view'), 'layout', {
+    await fireEvent(screen.getByTestId('scroll-view'), 'layout', {
       nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
     });
-    fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 500);
-    fireEvent(screen.getByTestId('field'), 'focus', {
+    await fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 500);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
       target: 22,
       nativeEvent: { target: 22 },
     });
 
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(16);
     });
     expect(mockedMeasureLayout).toHaveBeenCalledTimes(1);
 
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(284);
     });
     expect(mockedMeasureLayout).toHaveBeenCalledTimes(2);
     expect(mockedScrollTo).toHaveBeenCalledTimes(2);
   });
 
-  it('cancels the delayed second scroll when it unmounts', () => {
+  it('cancels the delayed second scroll when it unmounts', async () => {
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
     mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
       onSuccess(0, 350, 100, 50);
     });
-    const screen = render(
+    const screen = await render(
       <KeyboardAwareScrollView testID="scroll-view">
         <TextInput testID="field" />
       </KeyboardAwareScrollView>,
     );
 
-    fireEvent(screen.getByTestId('scroll-view'), 'layout', {
+    await fireEvent(screen.getByTestId('scroll-view'), 'layout', {
       nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
     });
-    fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 800);
-    fireEvent(screen.getByTestId('field'), 'focus', {
+    await fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 800);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
       target: 22,
       nativeEvent: { target: 22 },
     });
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(16);
     });
     expect(mockedMeasureLayout).toHaveBeenCalledTimes(1);
 
-    screen.unmount();
-    act(() => {
+    await await screen.unmount();
+    await act(() => {
       jest.advanceTimersByTime(400);
     });
 

@@ -40,32 +40,32 @@ async function withDraft(patch: object, run: () => Promise<void> | void) {
 beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(new Date('2026-09-28T10:00:00Z')); mockStore.updateDraft.mockClear(); mockStore.saveDraft.mockClear(); jest.mocked(showAppDialog).mockClear(); });
 afterEach(() => { jest.useRealTimers(); });
 
-it('opens the pub picker first for a tour without pubs', () => {
-  const screen = render(<TourEditorScreen />);
+it('opens the pub picker first for a tour without pubs', async () => {
+  const screen = await render(<TourEditorScreen />);
   expect(screen.queryByTestId('tour-title')).toBeNull();
 });
 
-it('persists the typed title after a pause and on blur, not on every keystroke', () => withDraft({ stops: twoStops }, () => {
-  const screen = render(<TourEditorScreen />);
+it('persists the typed title after a pause and on blur, not on every keystroke', async () => withDraft({ stops: twoStops }, async () => {
+  const screen = await render(<TourEditorScreen />);
   const input = screen.getByTestId('tour-title');
-  fireEvent.changeText(input, 'P');
-  fireEvent.changeText(input, 'Pá');
-  fireEvent.changeText(input, 'Pátek');
+  await fireEvent.changeText(input, 'P');
+  await fireEvent.changeText(input, 'Pá');
+  await fireEvent.changeText(input, 'Pátek');
   expect(mockStore.updateDraft).not.toHaveBeenCalled();
-  act(() => { jest.advanceTimersByTime(300); });
+  await act(() => { jest.advanceTimersByTime(300); });
   expect(mockStore.updateDraft).toHaveBeenCalledTimes(1);
   expect(mockStore.updateDraft).toHaveBeenLastCalledWith({ title: 'Pátek' });
 
-  fireEvent.changeText(input, 'Pátek v Brně');
-  fireEvent(input, 'blur');
+  await fireEvent.changeText(input, 'Pátek v Brně');
+  await fireEvent(input, 'blur');
   expect(mockStore.updateDraft).toHaveBeenCalledTimes(2);
   expect(mockStore.updateDraft).toHaveBeenLastCalledWith({ title: 'Pátek v Brně' });
 }));
 
-it('does not lose a title typed just before leaving the editor', () => withDraft({ stops: twoStops }, () => {
-  const screen = render(<TourEditorScreen />);
-  fireEvent.changeText(screen.getByTestId('tour-title'), 'Rozepsaná');
-  screen.unmount();
+it('does not lose a title typed just before leaving the editor', async () => withDraft({ stops: twoStops }, async () => {
+  const screen = await render(<TourEditorScreen />);
+  await fireEvent.changeText(screen.getByTestId('tour-title'), 'Rozepsaná');
+  await await screen.unmount();
   expect(mockStore.updateDraft).toHaveBeenLastCalledWith({ title: 'Rozepsaná' });
 }));
 
@@ -74,13 +74,13 @@ it('adds a challenge from the stop menu through its own sheet', async () => {
   const draft = mockStore.draft;
   mockStore.draft = { ...draft, stops: [stop] as never[] };
   try {
-    const screen = render(<TourEditorScreen />);
-    fireEvent.press(screen.getByLabelText('1. U Tří růží. Husova 10'));
+    const screen = await render(<TourEditorScreen />);
+    await fireEvent.press(screen.getByLabelText('1. U Tří růží. Husova 10'));
     const { buttons } = jest.mocked(showAppDialog).mock.calls.at(-1)![0];
     expect(buttons![0].text).toBe('Přidat výzvu');
-    act(() => { buttons![0].onPress!(); });
-    fireEvent.changeText(screen.getByTestId('tour-challenge'), 'Najdi nejstarší pípu');
-    await act(async () => { fireEvent.press(screen.getByTestId('tour-challenge-save')); });
+    await act(() => { buttons![0].onPress!(); });
+    await fireEvent.changeText(screen.getByTestId('tour-challenge'), 'Najdi nejstarší pípu');
+    await act(async () => { await fireEvent.press(screen.getByTestId('tour-challenge-save')); });
     expect(mockStore.setChallenge).toHaveBeenCalledWith(stop.id, 'Najdi nejstarší pípu');
     expect(screen.queryByTestId('tour-challenge')).toBeNull();
   } finally {
@@ -93,15 +93,15 @@ it('drops the pending undo once a challenge is saved, so undo cannot erase it', 
   const draft = mockStore.draft;
   mockStore.draft = { ...draft, stops: stops as never[] };
   try {
-    const screen = render(<TourEditorScreen />);
-    fireEvent.press(screen.getByLabelText('1. Pub 1. Praha'));
+    const screen = await render(<TourEditorScreen />);
+    await fireEvent.press(screen.getByLabelText('1. Pub 1. Praha'));
     const remove = jest.mocked(showAppDialog).mock.calls.at(-1)![0].buttons!.find((b) => b.text === 'Odebrat zastávku')!;
     await act(async () => { remove.onPress!(); });
     expect(screen.getByText('Vrátit')).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('2. Pub 2. Praha'));
-    act(() => { jest.mocked(showAppDialog).mock.calls.at(-1)![0].buttons![0].onPress!(); });
-    fireEvent.changeText(screen.getByTestId('tour-challenge'), 'Najdi pípu');
-    await act(async () => { fireEvent.press(screen.getByTestId('tour-challenge-save')); });
+    await fireEvent.press(screen.getByLabelText('2. Pub 2. Praha'));
+    await act(() => { jest.mocked(showAppDialog).mock.calls.at(-1)![0].buttons![0].onPress!(); });
+    await fireEvent.changeText(screen.getByTestId('tour-challenge'), 'Najdi pípu');
+    await act(async () => { await fireEvent.press(screen.getByTestId('tour-challenge-save')); });
     expect(screen.queryByText('Vrátit')).toBeNull();
   } finally {
     mockStore.draft = draft;
@@ -110,37 +110,37 @@ it('drops the pending undo once a challenge is saved, so undo cannot erase it', 
 
 it('picks the meetup from the calendar and a time chip instead of typing it', async () => {
   await withDraft({ stops: twoStops }, async () => {
-    const screen = render(<TourEditorScreen />);
+    const screen = await render(<TourEditorScreen />);
     expect(screen.getByLabelText('Kdy: Bez termínu')).toBeTruthy();
-    fireEvent.press(screen.getByTestId('tour-when'));
-    await act(async () => { fireEvent.press(screen.getByLabelText('pátek 2. října')); });
+    await fireEvent.press(screen.getByTestId('tour-when'));
+    await act(async () => { await fireEvent.press(screen.getByLabelText('pátek 2. října')); });
     expect(mockStore.updateDraft).toHaveBeenLastCalledWith({ scheduledDate: '2026-10-02', scheduledTime: null });
   });
   await withDraft({ stops: twoStops, scheduledDate: '2026-10-02' }, async () => {
-    const screen = render(<TourEditorScreen />);
+    const screen = await render(<TourEditorScreen />);
     expect(screen.getByLabelText('Kdy: pá 2. 10.')).toBeTruthy();
-    fireEvent.press(screen.getByTestId('tour-when'));
-    await act(async () => { fireEvent.press(screen.getByLabelText('19:00')); });
+    await fireEvent.press(screen.getByTestId('tour-when'));
+    await act(async () => { await fireEvent.press(screen.getByLabelText('19:00')); });
     expect(mockStore.updateDraft).toHaveBeenLastCalledWith({ scheduledDate: '2026-10-02', scheduledTime: '19:00' });
   });
 });
 
 it('never offers a day in the past or more than 90 days ahead', async () => {
   jest.setSystemTime(new Date('2026-09-30T10:00:00Z'));
-  await withDraft({ stops: twoStops }, () => {
-    const screen = render(<TourEditorScreen />);
-    fireEvent.press(screen.getByTestId('tour-when'));
+  await withDraft({ stops: twoStops }, async () => {
+    const screen = await render(<TourEditorScreen />);
+    await fireEvent.press(screen.getByTestId('tour-when'));
     expect(screen.getByLabelText('pondělí 28. září, nejde vybrat').props.accessibilityState.disabled).toBe(true);
     expect(screen.getByLabelText('středa 30. září, dnes').props.accessibilityState.disabled).toBe(false);
-    for (let page = 0; page < 3; page++) fireEvent.press(screen.getByLabelText('Další týdny'));
+    for (let page = 0; page < 3; page++) await fireEvent.press(screen.getByLabelText('Další týdny'));
     expect(screen.getByLabelText('úterý 29. prosince').props.accessibilityState.disabled).toBe(false);
     expect(screen.getByLabelText('středa 30. prosince, nejde vybrat').props.accessibilityState.disabled).toBe(true);
   });
 });
 
 it('keeps saving off until the tour has two pubs, and says so', async () => {
-  await withDraft({ stops: twoStops.slice(0, 1) }, () => {
-    const screen = render(<TourEditorScreen />);
+  await withDraft({ stops: twoStops.slice(0, 1) }, async () => {
+    const screen = await render(<TourEditorScreen />);
     expect(screen.getByText('Přidej ještě aspoň jednu hospodu.')).toBeTruthy();
     expect(screen.getByTestId('tour-save').props.accessibilityState.disabled).toBe(true);
   });
@@ -148,9 +148,9 @@ it('keeps saving off until the tour has two pubs, and says so', async () => {
 
 it('names an untitled tour after its meetup day when saving', async () => {
   await withDraft({ stops: twoStops, scheduledDate: '2026-10-02' }, async () => {
-    const screen = render(<TourEditorScreen />);
+    const screen = await render(<TourEditorScreen />);
     expect(screen.getByTestId('tour-title').props.placeholder).toBe('Pátek po hospodách');
-    await act(async () => { fireEvent.press(screen.getByTestId('tour-save')); });
+    await act(async () => { await fireEvent.press(screen.getByTestId('tour-save')); });
     expect(mockStore.updateDraft).toHaveBeenCalledWith({ title: 'Pátek po hospodách' });
     expect(mockStore.saveDraft).toHaveBeenCalled();
   });
@@ -158,9 +158,9 @@ it('names an untitled tour after its meetup day when saving', async () => {
 
 it('asks for a new date instead of failing to save a tour whose day has passed', async () => {
   await withDraft({ stops: twoStops, title: 'Stará', scheduledDate: '2026-09-12', scheduledTime: '19:00' }, async () => {
-    const screen = render(<TourEditorScreen />);
+    const screen = await render(<TourEditorScreen />);
     expect(screen.getByLabelText('Kdy: 12. 9. už bylo')).toBeTruthy();
-    await act(async () => { fireEvent.press(screen.getByTestId('tour-save')); });
+    await act(async () => { await fireEvent.press(screen.getByTestId('tour-save')); });
     expect(mockStore.saveDraft).not.toHaveBeenCalled();
     const dialog = jest.mocked(showAppDialog).mock.calls.at(-1)![0];
     expect(dialog.title).toBe('Termín už proběhl');
@@ -172,16 +172,16 @@ it('asks for a new date instead of failing to save a tour whose day has passed',
 
 it('shows a failed meetup save once, then still lets the sheet close', async () => {
   await withDraft({ stops: twoStops }, async () => {
-    const screen = render(<TourEditorScreen />);
-    fireEvent.press(screen.getByTestId('tour-when'));
+    const screen = await render(<TourEditorScreen />);
+    await fireEvent.press(screen.getByTestId('tour-when'));
     mockStore.updateDraft.mockResolvedValueOnce({ ok: false, error: 'account_changed' } as never);
-    await act(async () => { fireEvent.press(screen.getByLabelText('pátek 2. října')); });
-    await act(async () => { fireEvent.press(screen.getByTestId('tour-when-done')); });
+    await act(async () => { await fireEvent.press(screen.getByLabelText('pátek 2. října')); });
+    await act(async () => { await fireEvent.press(screen.getByTestId('tour-when-done')); });
     expect(screen.getByText('Účet se změnil. Vrať se na Moje tour.')).toBeTruthy();
     // The test Modal renders inline, so read its visibility instead of its children.
-    const sheet = () => screen.UNSAFE_root.findAll((node) => (node.type as unknown) === 'Modal' && node.findAll((child) => child.props.testID === 'tour-when-done').length > 0)[0];
+    const sheet = () => screen.container.queryAll((node) => node.type === 'Modal' && node.queryAll((child) => child.props.testID === 'tour-when-done').length > 0)[0];
     expect(sheet().props.visible).toBe(true);
-    await act(async () => { fireEvent.press(screen.getByTestId('tour-when-done')); });
+    await act(async () => { await fireEvent.press(screen.getByTestId('tour-when-done')); });
     expect(sheet().props.visible).toBe(false);
   });
 });

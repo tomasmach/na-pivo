@@ -89,14 +89,14 @@ describe('Správa party with the Android keyboard open', () => {
   });
 
   it('keeps a visible nickname field in place after the parent shrinks for the keyboard', async () => {
-    const screen = render(<ManagePartaScreen />);
+    const screen = await render(<ManagePartaScreen />);
     await act(async () => { jest.advanceTimersByTime(1); });
     const scroll = screen.getByTestId('friends-scroll');
     // KeyboardAvoidingView has already reduced this viewport by 200 pixels.
-    fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 240 } } });
-    fireEvent(scroll, 'contentSizeChange', 320, 700);
-    fireEvent(screen.getByTestId('nickname-search'), 'focus', { target: 22, nativeEvent: { target: 22 } });
-    act(() => { jest.advanceTimersByTime(350); });
+    await fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 240 } } });
+    await fireEvent(scroll, 'contentSizeChange', 320, 700);
+    await fireEvent(screen.getByTestId('nickname-search'), 'focus', { target: 22, nativeEvent: { target: 22 } });
+    await act(() => { jest.advanceTimersByTime(350); });
 
     expect((jest.requireMock('react-native') as { __scrollTo: jest.Mock }).__scrollTo).not.toHaveBeenCalled();
     expect(scroll.props.automaticallyAdjustKeyboardInsets).toBe(false);

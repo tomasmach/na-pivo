@@ -35,7 +35,7 @@ const onToggle = jest.fn(async () => true);
 const onReplace = jest.fn();
 const onClose = jest.fn();
 const open = async (stops: TourStop[], replaceStop?: TourStop) => {
-  const screen = render(<TourPubPicker visible stops={stops} replaceStop={replaceStop} onToggle={onToggle} onReplace={onReplace} onClose={onClose} />);
+  const screen = await render(<TourPubPicker visible stops={stops} replaceStop={replaceStop} onToggle={onToggle} onReplace={onReplace} onClose={onClose} />);
   await act(async () => {});
   return screen;
 };
@@ -52,7 +52,7 @@ it('falls back to a fresh fix, but never moves the map once you started searchin
   jest.mocked(Location.getLastKnownPositionAsync).mockResolvedValueOnce(null);
   jest.mocked(Location.getCurrentPositionAsync).mockReturnValueOnce(new Promise((resolve) => { resolveFix = resolve; }));
   const screen = await open([]);
-  fireEvent.changeText(screen.getByLabelText(t.tours.searchPlaceholder), 'x');
+  await fireEvent.changeText(screen.getByLabelText(t.tours.searchPlaceholder), 'x');
   await act(async () => { resolveFix({ coords: { latitude: 50.087, longitude: 14.42 } } as Location.LocationObject); });
   expect(mockMap?.region).toEqual(DEFAULT_TOUR_REGION);
 });
@@ -95,7 +95,7 @@ const stopAt = (n: number, lat = 50.08, lon = 14.44): TourStop => ({ id: `000000
 it('adds a pub with one tap and stays open for the next one', async () => {
   jest.mocked(cachedTourPubs).mockResolvedValueOnce([pub('a', 'Kaštan', 50.08, 14.45)]);
   const screen = await open([]);
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.addPubA11y('Kaštan'))); });
+  await act(async () => { await fireEvent.press(screen.getByLabelText(t.tours.addPubA11y('Kaštan'))); });
   expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
   expect(onClose).not.toHaveBeenCalled();
   expect(screen.getByText(t.tours.needTwo)).toBeTruthy();
@@ -106,9 +106,9 @@ it('takes a pub back out with a second tap on its numbered row', async () => {
   jest.mocked(searchTourPubs).mockResolvedValue({ pubs: [pub('s1', 'Stop 1', added.lat, added.lon)], status: 'ok' });
   const screen = await open([added]);
   const input = screen.getByLabelText(t.tours.searchPlaceholder);
-  fireEvent.changeText(input, 'Stop');
-  await act(async () => { fireEvent(input, 'submitEditing'); });
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.removePubA11y('Stop 1', 1))); });
+  await fireEvent.changeText(input, 'Stop');
+  await act(async () => { await fireEvent(input, 'submitEditing'); });
+  await act(async () => { await fireEvent.press(screen.getByLabelText(t.tours.removePubA11y('Stop 1', 1))); });
   expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
 });
 
@@ -126,30 +126,30 @@ it('offers the nearest pubs from the last stop with walking minutes', async () =
 it('refuses a ninth pub and says why', async () => {
   jest.mocked(cachedTourPubs).mockResolvedValue([pub('x', 'Devátá', 50.081, 14.44)]);
   const screen = await open([1, 2, 3, 4, 5, 6, 7, 8].map((n) => stopAt(n, 50 + n / 100)));
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.addPubA11y('Devátá'))); });
+  await act(async () => { await fireEvent.press(screen.getByLabelText(t.tours.addPubA11y('Devátá'))); });
   expect(onToggle).not.toHaveBeenCalled();
   expect(screen.getByText(t.tours.pickerFull)).toBeTruthy();
 });
 
 it('removes a picked pub from the bar even when search no longer lists it', async () => {
   const screen = await open([stopAt(1), stopAt(2, 50.09)]);
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.removeChipA11y('Stop 2'))); });
+  await act(async () => { await fireEvent.press(screen.getByLabelText(t.tours.removeChipA11y('Stop 2'))); });
   expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({ id: 's2', name: 'Stop 2' }));
-  fireEvent.press(screen.getByTestId('tour-picker-done'));
+  await fireEvent.press(screen.getByTestId('tour-picker-done'));
   expect(onClose).toHaveBeenCalled();
 });
 
 it('removes one pub when the cross of a chip is tapped twice', async () => {
   const screen = await open([stopAt(1), stopAt(2, 50.09), stopAt(3, 50.1)]);
   const cross = screen.getByLabelText(t.tours.removeChipA11y('Stop 3'));
-  await act(async () => { fireEvent.press(cross); fireEvent.press(screen.getByLabelText(t.tours.removeChipA11y('Stop 2'))); });
+  await act(async () => { await fireEvent.press(cross); await fireEvent.press(screen.getByLabelText(t.tours.removeChipA11y('Stop 2'))); });
   expect(onToggle).toHaveBeenCalledTimes(1);
 });
 
 it('replaces a stop with a single tap', async () => {
   jest.mocked(cachedTourPubs).mockResolvedValueOnce([pub('a', 'Kaštan', 50.08, 14.45)]);
   const screen = await open([stopAt(1)], stopAt(1));
-  await act(async () => { fireEvent.press(screen.getByLabelText('Kaštan')); });
+  await act(async () => { await fireEvent.press(screen.getByLabelText('Kaštan')); });
   expect(onReplace).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
   expect(onToggle).not.toHaveBeenCalled();
 });
@@ -184,9 +184,9 @@ it('keeps a picked nearby pub in its place with its number, so the next tap take
   jest.mocked(cachedTourPubs).mockResolvedValue([pub('near', 'Hned vedle', 50.081, 14.44), pub('mid', 'Kousek dál', 50.086, 14.44)]);
   const first = stopAt(1);
   const screen = await open([first]);
-  await act(async () => { fireEvent.press(screen.getByLabelText(t.tours.addPubA11y('Hned vedle'))); });
+  await act(async () => { await fireEvent.press(screen.getByLabelText(t.tours.addPubA11y('Hned vedle'))); });
   const picked: TourStop = { id: '00000000-0000-4000-8000-000000000009', pubId: 'near', cacheKey: null, name: 'Hned vedle', address: 'Praha', lat: 50.081, lon: 14.44 };
-  screen.rerender(<TourPubPicker visible stops={[first, picked]} onToggle={onToggle} onReplace={onReplace} onClose={onClose} />);
+  await await screen.rerender(<TourPubPicker visible stops={[first, picked]} onToggle={onToggle} onReplace={onReplace} onClose={onClose} />);
   await act(async () => {});
   expect(screen.getByText(t.tours.nearStop(1))).toBeTruthy();
   expect(screen.getByLabelText(t.tours.removePubA11y('Hned vedle', 2))).toBeTruthy();

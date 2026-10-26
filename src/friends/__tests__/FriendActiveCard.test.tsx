@@ -30,18 +30,18 @@ const presence: FriendPresence = {
 };
 
 describe('live friend invite drink count', () => {
-  it('opens the explicit compass route after focusing a friend pub', () => {
+  it('opens the explicit compass route after focusing a friend pub', async () => {
     jest.mocked(focusPubFromActivity).mockReturnValue(true);
-    const screen = render(<FriendActiveCard activity={activity} onResponded={jest.fn()} />);
-    fireEvent.press(screen.getByLabelText(t.friends.showOnCompass));
+    const screen = await render(<FriendActiveCard activity={activity} onResponded={jest.fn()} />);
+    await fireEvent.press(screen.getByLabelText(t.friends.showOnCompass));
     expect(focusPubFromActivity).toHaveBeenCalledWith(activity);
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/', params: { view: 'compass' } });
   });
-  it('keeps the count when a sitting friend sends an invite and refreshes it', () => {
+  it('keeps the count when a sitting friend sends an invite and refreshes it', async () => {
     const props = { activity, presence, onResponded: jest.fn() };
-    const screen = render(<FriendActiveCard {...props} />);
+    const screen = await render(<FriendActiveCard {...props} />);
     expect(screen.getByText(t.friends.presenceBeers(4))).toBeTruthy();
-    screen.rerender(<FriendActiveCard {...{ ...props, presence: { ...presence, beers: 5 } }} />);
+    await await screen.rerender(<FriendActiveCard {...{ ...props, presence: { ...presence, beers: 5 } }} />);
     expect(screen.getByText(t.friends.presenceBeers(5))).toBeTruthy();
     expect(screen.queryByText(t.friends.presenceBeers(4))).toBeNull();
   });
@@ -50,9 +50,9 @@ describe('live friend invite drink count', () => {
     undefined,
     { ...presence, cacheKey: 'different-pub' },
     { ...presence, account: { ...account, id: 'other-friend' } },
-  ])('does not invent a count without a matching shared visit', (sharedPresence) => {
+  ])('does not invent a count without a matching shared visit', async (sharedPresence) => {
     const props = { activity, presence: sharedPresence, onResponded: jest.fn() };
-    const screen = render(<FriendActiveCard {...props} />);
+    const screen = await render(<FriendActiveCard {...props} />);
     expect(screen.queryByText(t.friends.presenceBeers(4))).toBeNull();
     expect(screen.queryByText(t.friends.presenceBeers(0))).toBeNull();
   });
