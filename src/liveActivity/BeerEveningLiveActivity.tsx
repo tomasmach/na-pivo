@@ -103,9 +103,11 @@ const BeerEveningLiveActivity = (
   const isDimmed = environment.isLuminanceReduced === true;
   const accent = isDimmed ? '#A98E58' : '#FFB84D';
   const primaryText = isDimmed ? '#CFC5B3' : '#FFF7E8';
-  const secondaryText = isDimmed ? '#817767' : '#C4AE8E';
   // Brown is the earlier palette, picked in settings; gray is the default.
   const brown = props.brownPalette === true;
+  const secondaryText = brown
+    ? isDimmed ? '#817767' : '#C4AE8E'
+    : isDimmed ? '#7C776F' : '#B8B1A8';
   const activityBackground = brown
     ? isDimmed ? '#080604' : '#150D06'
     : isDimmed ? '#090807' : '#15120F';
