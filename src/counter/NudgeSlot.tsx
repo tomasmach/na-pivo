@@ -1,9 +1,10 @@
 /**
  * NudgeSlot — block 3 of the Tácek counter layout: a fixed-height slot that
  * shows at most ONE nudge (undo strip, rapid confirm, dopito chip, check-in
- * offer, or weekly rank chip). The design rule it enforces: the slot is always
- * 52pt tall — occupied or empty — so the big CTA below it never jumps. The one
- * exception is `collapseWhenEmpty`, for screens that scroll (see below).
+ * offer, FotoPivař offer, or weekly rank chip). The design rule it enforces:
+ * the slot is always 52pt tall — occupied or empty — so the big CTA below it
+ * never jumps. The one exception is `collapseWhenEmpty`, for screens that
+ * scroll (see below).
  * Presentational only: props in, callbacks out; appearance is instant, no
  * animation.
  */
@@ -41,7 +42,17 @@ export type Nudge =
       actionAccessibilityLabel?: string;
     }
   | { kind: 'dopito'; label: string; onPress: () => void }
-  | { kind: 'checkin'; text: string; ctaLabel: string; onPress: () => void; onDismiss: () => void }
+  | {
+      kind: 'checkin';
+      text: string;
+      ctaLabel: string;
+      onPress: () => void;
+      /** Without it the strip has no ×. */
+      onDismiss?: () => void;
+      dismissAccessibilityLabel?: string;
+      /** Defaults to the beer glyph of the rating offer. */
+      icon?: React.ComponentType<IconProps>;
+    }
   | { kind: 'rank'; node: React.ReactNode };
 
 const SLOT_HEIGHT = 52;
@@ -142,9 +153,10 @@ function DopitoChip({ nudge }: { nudge: Extract<Nudge, { kind: 'dopito' }> }) {
 }
 
 function CheckinStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'checkin' }> }) {
+  const Icon = nudge.icon ?? BeerIcon;
   return (
     <View style={[styles.strip, styles.stripNeutralBorder]}>
-      <BeerIcon size={ICON_SIZE} color={Colors.amber} />
+      <Icon size={ICON_SIZE} color={Colors.amber} />
       <StripText text={nudge.text} />
       <Pressable
         onPress={nudge.onPress}
@@ -161,14 +173,16 @@ function CheckinStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'checkin' }> })
           {nudge.ctaLabel}
         </Text>
       </Pressable>
-      <Pressable
-        onPress={nudge.onDismiss}
-        style={({ pressed }) => [styles.dismissButton, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={t.a11y.counterCheckinDismiss}
-      >
-        <XIcon size={ICON_SIZE} color={Colors.mutedText} />
-      </Pressable>
+      {nudge.onDismiss ? (
+        <Pressable
+          onPress={nudge.onDismiss}
+          style={({ pressed }) => [styles.dismissButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={nudge.dismissAccessibilityLabel ?? t.a11y.counterCheckinDismiss}
+        >
+          <XIcon size={ICON_SIZE} color={Colors.mutedText} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

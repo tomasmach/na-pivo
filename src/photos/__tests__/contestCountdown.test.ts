@@ -1,4 +1,4 @@
-import { contestCountdownLabel } from '../contestCountdown';
+import { contestCountdownLabel, isContestLastDay } from '../contestCountdown';
 import { t } from '@/i18n';
 
 describe('contestCountdownLabel', () => {
@@ -42,5 +42,16 @@ describe('contestCountdownLabel', () => {
     expect(contestCountdownLabel(new Date(2026, 6, 23, 12, 0).toISOString(), now)).toBe(
       'Končí za 13 dní',
     );
+  });
+});
+
+describe('isContestLastDay', () => {
+  const now = new Date(2026, 6, 10, 18, 30);
+
+  it('is true only within the final 24 hours of a running round', () => {
+    expect(isContestLastDay(new Date(2026, 6, 11, 1, 0).toISOString(), now)).toBe(true);
+    expect(isContestLastDay(new Date(2026, 6, 11, 18, 31).toISOString(), now)).toBe(false);
+    expect(isContestLastDay(new Date(2026, 6, 10, 18, 29).toISOString(), now)).toBe(false);
+    expect(isContestLastDay('not-a-date', now)).toBe(false);
   });
 });

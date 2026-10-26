@@ -40,7 +40,10 @@ jest.mock('@/data/partaFeedClient', () => ({ fetchPartaFeed: jest.fn(async () =>
 jest.mock('@/data/leaderboardsClient', () => ({
   fetchLeaderboard: jest.fn(async () => null), clearLeaderboardsCache: jest.fn(),
 }));
-jest.mock('@/data/photoContestClient', () => ({ fetchPhotoContestTeaser: jest.fn(async () => null) }));
+jest.mock('@/data/photoContestClient', () => ({
+  fetchPhotoContestTeaser: jest.fn(async () => null),
+  clearPhotoContestTeaserCache: jest.fn(),
+}));
 jest.mock('@/notifications/friendPush', () => ({
   ensureFriendPushRegisteredIfGranted: jest.fn(), registerFriendPush: jest.fn(),
 }));
