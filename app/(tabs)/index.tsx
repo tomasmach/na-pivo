@@ -103,7 +103,7 @@ const ARROW_SPRING_CONFIG = {
   overshootClamping: true,
 } as const;
 const FOLD_SIDE_SLOP = { top: 8, bottom: 8, left: 8, right: 0 } as const;
-const MAP_DIAL_SIZE = 48;
+const MAP_DIAL_SIZE = 80;
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 

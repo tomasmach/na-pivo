@@ -9,7 +9,7 @@
 ## Kompas v mapě (26. 10. 2026)
 
 Varianta A z návrhu „Kompas a mapa na první obrazovce“: tab Kompas se na
-telefonu otevírá na mapě. Kompas v ní zůstává jako živý ciferník 48 bodů vlevo
+telefonu otevírá na mapě. Kompas v ní zůstává jako živý ciferník 80 bodů vlevo
 nahoře na místě přepínače „Kompas | Mapa“, jantarová výseč z tvé polohy ukazuje,
 kam míří telefon, a tečkovaná čára vede k cíli. Dole je karta cílové hospody
 (název, otevírací doba, pivo, vzdálenost, „Doveď mě tam“ a „Dej mi jinou“). Kartu
