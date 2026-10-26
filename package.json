@@ -129,6 +129,9 @@
       "@expo/plist": "0.8.1",
       "uuid": "11.1.1"
     },
-    "image-size": "2.0.4"
+    "image-size": "2.0.4",
+    "e2e": {
+      "@modelcontextprotocol/server": "2.3.1"
+    }
   }
 }

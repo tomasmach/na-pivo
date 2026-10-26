@@ -2,12 +2,10 @@
   "$schema": "https://github.com/IBM/audit-ci/raw/main/docs/schema.json",
   "high": true,
   "skip-dev": true,
-  // Neither advisory has a patched release (node-forge <= 1.4.0, braces <= 3.0.3).
-  // node-forge (RSA signature verification) is reached through @expo/cli and the
-  // expo-updates code-signing CLI commands. braces (stack exhaustion on nested
-  // patterns) is reached through micromatch in Metro. Both run only on dev/CI
-  // machines and never ship in the app bundle. Remove these entries once a
-  // patched release exists.
+  // node-forge <= 1.4.0 (RSA signature verification) has no patched release. It
+  // is reached through @expo/cli and the expo-updates code-signing CLI commands,
+  // runs only on dev/CI machines and never ships in the app bundle. Remove the
+  // entry once a patched release exists.
   // zod (memory exhaustion on oversized constrained collections) is patched only
   // in zod 4, while @expo/cli depends on zod 3 to validate project config and
   // dev-tools plugin output. The app never imports zod, so it stays out of the
@@ -15,5 +13,5 @@
   // scripts/check-zod-audit-exception.js fails the audit when a vulnerable zod
   // shows up anywhere else in production. Remove both once @expo/cli ships a
   // patched zod.
-  "allowlist": ["GHSA-86w9-cpqp-85rv", "GHSA-vfj7-8cjw-p6xm", "GHSA-mrhx-c7xc-m3w5|expo>@expo/cli>zod"]
+  "allowlist": ["GHSA-86w9-cpqp-85rv", "GHSA-mrhx-c7xc-m3w5|expo>@expo/cli>zod"]
 }
