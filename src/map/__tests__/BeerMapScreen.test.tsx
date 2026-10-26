@@ -274,7 +274,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     jest.useRealTimers();
   });
 
-  it('follows the system color scheme', () => {
+  it('stays dark whatever the system color scheme', () => {
     const props = {
       filters: EMPTY_PUB_SEARCH_FILTERS,
       onApplyFilters: jest.fn(),
@@ -287,7 +287,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     mockColorScheme = 'light';
     screen.rerender(<BeerMapScreen {...props} />);
 
-    expect(screen.getByLabelText(t.a11y.beerMap).props.accessibilityValue.text).toBe('light');
+    expect(screen.getByLabelText(t.a11y.beerMap).props.accessibilityValue.text).toBe('dark');
   });
 
   it('snapshots the entire pub marker after layout, including a newly selected marker', async () => {

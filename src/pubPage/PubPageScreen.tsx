@@ -16,11 +16,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppState,
   BackHandler,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  useColorScheme,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -271,7 +271,6 @@ export default function PubPageScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
   // Set when the page sits in a tab's right half instead of on the stack.
   const pane = useDetailNav();
   const quiet = useTone() === 'quiet';
@@ -1006,7 +1005,6 @@ export default function PubPageScreen() {
             <MapView
               provider={PROVIDER_GOOGLE}
               style={StyleSheet.absoluteFill}
-              liteMode
               initialRegion={{
                 latitude: pub.lat,
                 longitude: pub.lng,
@@ -1020,8 +1018,9 @@ export default function PubPageScreen() {
               toolbarEnabled={false}
               showsPointsOfInterests={false}
               showsCompass={false}
-              customMapStyle={PREVIEW_MAP_STYLE}
-              userInterfaceStyle={colorScheme === 'dark' ? 'dark' : 'light'}
+              // Android draws a lite-mode or JSON-styled map light whatever the color scheme.
+              customMapStyle={Platform.OS === 'ios' ? PREVIEW_MAP_STYLE : undefined}
+              userInterfaceStyle="dark"
               loadingBackgroundColor={Colors.stout2}
               loadingIndicatorColor={Colors.amber}
             />

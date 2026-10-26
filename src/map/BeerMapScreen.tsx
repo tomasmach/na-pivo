@@ -6,7 +6,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  useColorScheme,
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
@@ -637,8 +636,6 @@ export default function BeerMapScreen({
   // The gap under the bottom controls is where the Google logo sits.
   const bottomInset = useBottomInset(Spacing.xl);
   const tabBarInset = useTabBarInset();
-  const colorScheme = useColorScheme();
-  const mapColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
   const mapRef = useRef<MapView>(null);
   const reduceMotion = useReduceMotion();
   const hapticEnabled = useSettingsStore((state) => state.hapticEnabled);
@@ -1491,7 +1488,6 @@ export default function BeerMapScreen({
   return (
     <View style={styles.root} onLayout={handleMapLayout}>
       <MapView
-        key={mapColorScheme}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
@@ -1502,13 +1498,14 @@ export default function BeerMapScreen({
         onRegionChangeComplete={handleRegionChange}
         onPress={handleMapPress}
         mapType="standard"
-        userInterfaceStyle={mapColorScheme}
+        // The app is dark only, so a light map would be the one bright slab in it.
+        userInterfaceStyle="dark"
         showsUserLocation={permissionState === 'granted'}
         showsMyLocationButton={false}
         showsCompass={false}
         showsPointsOfInterests={false}
         toolbarEnabled={false}
-        loadingBackgroundColor={mapColorScheme === 'dark' ? Colors.stout : Colors.foam}
+        loadingBackgroundColor={Colors.stout}
         loadingIndicatorColor={Colors.amber}
         accessibilityLabel={t.a11y.beerMap}
       >
