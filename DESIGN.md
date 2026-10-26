@@ -13,11 +13,11 @@ telefonu otevírá na mapě. Kompas v ní zůstává jako živý ciferník 48 bo
 nahoře na místě přepínače „Kompas | Mapa“, jantarová výseč z tvé polohy ukazuje,
 kam míří telefon, a tečkovaná čára vede k cíli. Dole je karta cílové hospody
 (název, otevírací doba, pivo, vzdálenost, „Doveď mě tam“ a „Dej mi jinou“). Kartu
-jde stáhnout dolů; pak je tam zase přepínač vrstev a úchyt, kterým se karta
-vrací. Klepnutí na ciferník otevře kompas přes celou obrazovku, z jehož hlavičky
-vede zpátky kulaté tlačítko s mapou. Tajná hospoda nemá na mapě zvýrazněný pin
-a čára k ní končí po prvních nejvýš 150 metrech. Rozložené okno drží kompas a mapu
-vedle sebe beze změny.
+jde stáhnout dolů; pak je tam zase přepínač vrstev a nad ním pilulka
+„323 m · U Zlatého tygra“, která kartu vrací. Klepnutí na ciferník otevře kompas
+přes celou obrazovku, z jehož hlavičky vede zpátky jantarová ikona mapy. Tajná
+hospoda nemá na mapě zvýrazněný pin ani čáru, protože čára by mířila přímo na
+její pin. Rozložené okno drží kompas a mapu vedle sebe beze změny.
 
 ## Šedá zem pro celou appku (8. 10. 2026)
 

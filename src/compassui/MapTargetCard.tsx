@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
   revealHint: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
-    color: Colors.amber,
+    color: Colors.foam,
     includeFontPadding: false,
   },
   distance: {

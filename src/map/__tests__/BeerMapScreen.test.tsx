@@ -772,6 +772,7 @@ describe('BeerMapScreen opening-hours loading', () => {
         heading: { value: null } as MapCompass['heading'],
         moreRows: [],
         nudge: null,
+        peek: '323 m · U Testu',
       };
     }
 
@@ -795,6 +796,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       fireEvent.press(screen.getByLabelText(t.a11y.mapTargetHide));
       expect(screen.queryByText('target card')).toBeNull();
       expect(screen.getByLabelText(t.map.layerAll)).toBeTruthy();
+      expect(screen.getByText('323 m · U Testu')).toBeTruthy();
 
       fireEvent.press(screen.getByLabelText(t.a11y.mapTargetShow));
       expect(screen.getByText('target card')).toBeTruthy();

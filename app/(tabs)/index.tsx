@@ -179,7 +179,7 @@ function MapDoor({ onPress }: { onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={t.a11y.mapSwitchToMap}
     >
-      <MapIcon size={22} color={Colors.foamMuted} />
+      <MapIcon size={22} color={Colors.amber} />
     </Pressable>
   );
 }
@@ -949,6 +949,11 @@ function CompassScreen() {
         // The map shows active filters as its own chip, and the card already
         // says where the needle points.
         nudge: activeFilterCount > 0 || focusedPub ? null : compassNudge,
+        peek: distanceFormatted
+          ? showPubDetails && targetPub
+            ? `${distanceFormatted} · ${targetPub.name}`
+            : distanceFormatted
+          : null,
       };
   const highlightKey = !showPubDetails
     ? null

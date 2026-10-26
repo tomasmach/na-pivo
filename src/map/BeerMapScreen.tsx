@@ -150,16 +150,15 @@ export interface MapCompass {
   dial: ReactNode;
   /** The target card, or null while there is no target to show. */
   card: ReactNode | null;
-  /** A secret target gets only the first stretch of the line and no highlight. */
+  /** A secret target gets no line and no highlight; a line would point at its pin. */
   route: { from: MapPoint; to: MapPoint; secret: boolean } | null;
   heading: SharedValue<number | null>;
   /** Compass choices the map's "…" sheet carries too: mode and the way home. */
   moreRows: MoreRow[];
   nudge: Nudge | null;
+  /** What the put-away card says on its handle, e.g. "323 m · U Zlatého tygra". */
+  peek: string | null;
 }
-
-const SECRET_ROUTE_SHARE = 0.35;
-const SECRET_ROUTE_MAX_M = 150;
 
 export interface BeerMapScreenProps {
   initialPub?: Pub | null;
@@ -1201,19 +1200,16 @@ export default function BeerMapScreen({
       },
     );
   }, [bottomHeight, insets.top, reduceMotion, route, tabBarInset]);
-  const routeLine = useMemo(() => {
-    if (!route) return null;
-    const share = route.secret
-      ? Math.min(SECRET_ROUTE_SHARE, SECRET_ROUTE_MAX_M / Math.max(haversineMeters(route.from, route.to), 1))
-      : 1;
-    return [
-      { latitude: route.from.lat, longitude: route.from.lng },
-      {
-        latitude: route.from.lat + (route.to.lat - route.from.lat) * share,
-        longitude: route.from.lng + (route.to.lng - route.from.lng) * share,
-      },
-    ];
-  }, [route]);
+  const routeLine = useMemo(
+    () =>
+      route && !route.secret
+        ? [
+            { latitude: route.from.lat, longitude: route.from.lng },
+            { latitude: route.to.lat, longitude: route.to.lng },
+          ]
+        : null,
+    [route],
+  );
 
   const cardPan = useMemo(
     () =>
@@ -1849,7 +1845,7 @@ export default function BeerMapScreen({
             <Pressable
               onPress={() => setTargetHidden(true)}
               style={styles.grabberHit}
-              hitSlop={{ top: 8, bottom: 4, left: 40, right: 40 }}
+              hitSlop={{ top: 6, bottom: 6, left: 40, right: 40 }}
               accessibilityRole="button"
               accessibilityLabel={t.a11y.mapTargetHide}
             >
@@ -1864,11 +1860,17 @@ export default function BeerMapScreen({
               <Pressable
                 onPress={() => setTargetHidden(false)}
                 style={({ pressed }) => [styles.targetHandle, pressed && styles.pressedSoft]}
-                hitSlop={{ top: 12, bottom: 6, left: 24, right: 24 }}
+                hitSlop={4}
                 accessibilityRole="button"
                 accessibilityLabel={t.a11y.mapTargetShow}
               >
-                <View style={styles.grabber} />
+                {compass.peek ? (
+                  <Text style={styles.targetHandleLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {compass.peek}
+                  </Text>
+                ) : (
+                  <View style={styles.grabber} />
+                )}
               </Pressable>
             </View>
           ) : null}
@@ -2500,8 +2502,8 @@ const styles = StyleSheet.create({
   },
   grabberHit: {
     alignSelf: 'center',
-    paddingTop: 8,
-    paddingBottom: 6,
+    height: 32,
+    justifyContent: 'center',
   },
   grabber: {
     width: 36,
@@ -2513,8 +2515,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   targetHandle: {
-    width: 64,
-    height: 22,
+    maxWidth: '100%',
+    minWidth: 64,
+    height: 40,
+    paddingHorizontal: 16,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2522,6 +2526,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.16),
     ...softDrop(),
+  },
+  targetHandleLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foam,
+    includeFontPadding: false,
   },
   dockListButton: {
     width: 48,
