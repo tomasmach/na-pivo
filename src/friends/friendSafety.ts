@@ -73,7 +73,7 @@ export function useFriendSafety(onChanged?: () => void) {
               onPress: () => {
                 void blockFriend(profile.id).then((res) => {
                   if (res.ok) {
-                    showToast(t.friends.blocked);
+                    showToast(t.friends.blocked, { subtitle: t.friends.blockedUndoHint });
                     onChanged?.();
                   } else {
                     showToast(res.detail);

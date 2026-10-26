@@ -194,7 +194,7 @@ export default function FriendProfileScreen() {
       if (res.ok) usePartaSignalStore.getState().requestRefresh();
       if (!mountedRef.current) return;
       if (res.ok) {
-        showToast(t.friends.blocked);
+        showToast(t.friends.blocked, { subtitle: t.friends.blockedUndoHint });
         goBack();
       } else {
         showToast(res.detail);
