@@ -285,6 +285,11 @@ async function requestJson(
  */
 const TEASER_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 let teaserCache: { at: number; accountId: string; snapshot: PhotoContestSnapshot } | null = null;
+/**
+ * Bumped on clear. Logout clears before the session moves, so a request still
+ * in flight for the outgoing account must not land in that gap either.
+ */
+let teaserGeneration = 0;
 
 /** The snapshot for lightweight teaser surfaces: cached, TTL-bounded. */
 export async function fetchPhotoContestTeaser(
@@ -303,6 +308,7 @@ export async function fetchPhotoContestTeaser(
 /** The cached snapshot carries the signed-in account's own entry and vote. */
 export function clearPhotoContestTeaserCache(): void {
   teaserCache = null;
+  teaserGeneration += 1;
 }
 
 /**
@@ -312,8 +318,11 @@ export function clearPhotoContestTeaserCache(): void {
 export async function fetchPhotoContest(
   signal?: AbortSignal,
 ): Promise<PhotoContestSnapshot | null> {
+  const generation = teaserGeneration;
   const res = await requestJson('/v1/photo-contest', { signal });
-  if (!res.ok || res.accountId !== getLastKnownSessionAccountId()) return null;
+  if (!res.ok || generation !== teaserGeneration || res.accountId !== getLastKnownSessionAccountId()) {
+    return null;
+  }
   const d = res.data;
   const rawLast = d.last_results as
     | { contest?: RawContest; winners?: RawWinner[]; my_result?: RawMyResult | null }

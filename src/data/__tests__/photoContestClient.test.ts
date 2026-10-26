@@ -10,6 +10,7 @@
  */
 
 import {
+  clearPhotoContestTeaserCache,
   clearPhotoContestVote,
   enterPhotoContest,
   fetchPhotoContest,
@@ -217,6 +218,13 @@ describe('fetchPhotoContest', () => {
     expect(await fetchPhotoContestTeaser()).toBeNull();
     expect(spy).toHaveBeenCalledTimes(1);
     mockCurrentAccountId = 'a';
+  });
+
+  it('drops a response still in flight when logout clears the cache', async () => {
+    fetchResolving(200, { contest: WIRE_CONTEST, entries: [], my_entry_id: 'mine' });
+    const inFlight = fetchPhotoContest();
+    clearPhotoContestTeaserCache();
+    expect(await inFlight).toBeNull();
   });
 });
 
