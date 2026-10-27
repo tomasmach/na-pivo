@@ -7,6 +7,7 @@ import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
+import { GlassSurface } from '@/components/shared/Glass';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { PressScale, ScalePressable } from '@/components/shared/ScalePressable';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -21,12 +22,15 @@ export function RoundButton({
   label,
   selected,
   testID,
+  glass = false,
   children,
 }: {
   onPress: () => void;
   label: string;
   selected?: boolean;
   testID?: string;
+  /** Floats over scrolling content (DESIGN.md §15.1), so it takes the glass. */
+  glass?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -34,11 +38,17 @@ export function RoundButton({
       testID={testID}
       onPress={onPress}
       hitSlop={6}
-      style={styles.roundButton}
+      style={[styles.roundButton, glass && styles.roundOnGlass]}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={selected === undefined ? undefined : { selected }}
     >
+      {/* Behind the icon and inside the press, so the hit slop around the button stays whole. */}
+      {glass ? (
+        <View pointerEvents="none" style={styles.roundGlassLayer}>
+          <GlassSurface style={styles.roundGlass} />
+        </View>
+      ) : null}
       {children}
     </ScalePressable>
   );
@@ -197,6 +207,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  roundOnGlass: {
+    backgroundColor: 'transparent',
+  },
+  roundGlassLayer: {
+    ...StyleSheet.absoluteFill,
+  },
+  roundGlass: {
+    flex: 1,
+    borderRadius: Radius.pill,
+    overflow: 'hidden',
   },
   band: {
     height: 10,

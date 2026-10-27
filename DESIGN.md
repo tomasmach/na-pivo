@@ -64,8 +64,12 @@ vlastní obrazovku `/pub`, kterou otevírá kompas, karta na mapě, hledání,
 mapovací panel, protože tam jde o mapování.
 
 Obrazovka leží na `Colors.stout` se systémovým písmem jako Moje přidané
-hospody. Hlavička má kulatá tlačítka 44 bodů na `Colors.stout2` (zpět a „…“),
-název hospody se v ní objeví až po odscrollování. Název je 28/700, pod ním
+hospody. Hlavička má kulatá tlačítka 44 bodů (zpět, srdíčko a „…“), na iOS 26
+ze systémového skla, jinde na `Colors.stout2`. Od 27. 10. 2026 stránka zajíždí
+pod hlavičku i pod spodní lištu a u jejich hran se 28 bodů vytrácí do zemi
+(`EdgeFade`), takže se nic neuřízne o hranu. Velký název při scrollu zmizí a
+v hlavičce ho hned vystřídá malý; i krátká stránka jde odscrollovat dost na to,
+aby se název předal. Název je 28/700, pod ním
 jeden stavový řádek 15 bodů: otevírací doba barvou `open`/`closed`,
 vzdálenost a město. Následuje výřez mapy 112 bodů s radiusem 16 a pinem
 uprostřed, klepnutí otevře velkou mapu nad stránkou. Pod mapou jsou nejvýš tři
@@ -1463,8 +1467,10 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 ```
 
 Tab bar fallback řeší systém: na iOS 18 a starším a na Androidu má plný `Colors.stout2`
-(`backgroundColor` v `NativeTabs`). `expo-glass-effect` dnes žádný soubor neimportuje a
-v `package.json` není; první vlastní sklo ho přidá jako přímou závislost.
+(`backgroundColor` v `NativeTabs`). Vlastní sklo kreslí `GlassSurface`
+(`src/components/shared/Glass.tsx`) nad přímou závislostí `expo-glass-effect`; mimo iOS 26
+vrací plnou plochu, kterou prvek měl předtím. Rozmazání obsahu pod hlavičkou appka nemá,
+hranu řeší vytracení do zemi (§16.1).
 
 Android sklo nemá vůbec. Tam platí fallback větev vždycky.
 
@@ -1486,6 +1492,9 @@ referenční appka sáhla po sytém akcentu (červená u Packety), sahá Na pivo
 - Shader hlavičky obrazovky (`GradientBand` + `HEADER_GRADIENT` / `LIVE_GRADIENT`).
 - Podklad chromu **pod** sklem, aby nebyl plochý obdélník. Pod tab barem ne: ten je systémový
   a podklad si kreslí sám. Jinde ho nezaváděj bez schváleného mocku.
+- Vytracení obsahu u hrany pevné hlavičky nebo spodní lišty (`EdgeFade`): zem `stout`
+  z 94 % do průhledna na 28 bodech. Není to světlo ani barva, jen hrana, pod kterou obsah
+  zajíždí (stránka hospody).
 - Uvnitř ilustrací, kde už dnes je (`TallyCoaster`, `PartyTable` — 2.x obrazovky).
 
 ### 16.2 Co gradient nesmí

@@ -18,7 +18,6 @@ import {
   BackHandler,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -26,6 +25,13 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedRef,
+  useAnimatedStyle,
+  useScrollViewOffset,
+} from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 import {
   useFocusEffect,
@@ -42,6 +48,8 @@ import { submitPubRename } from '@/components/amenities/pubRename';
 import { RenamePubModal } from '@/components/compass/RenamePubModal';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { useShowAppDialog } from '@/components/shared/AppDialog';
+import { EdgeFade } from '@/components/shared/EdgeFade';
+import { GlassSurface } from '@/components/shared/Glass';
 import { Band, PAGE_PAD, RoundButton, SectionTitle } from '@/components/shared/FlatPage';
 import {
   BeerIcon,
@@ -145,7 +153,13 @@ const TAPS_COLLAPSED = 5;
 const POSITION_MAX_AGE_MS = 5 * 60 * 1000;
 // One modal leaves before the next arrives (DESIGN.md §7.4).
 const SHEET_DISMISS_MS = 260;
-const TITLE_AFTER_SCROLL = 56;
+const NAV_HEIGHT = 52;
+// The page scrolls under the header and the bar; this much of it fades out at their edges.
+const EDGE_FADE = 28;
+// The small title takes over the moment the big name has faded, so a short page that
+// scrolls only a little never shows both or neither; the status line follows later.
+const TITLE_AFTER_SCROLL = 26;
+const STATUS_GONE_AT = 56;
 const NOW_TICK_MS = 60 * 1000;
 const HOURS_RETRY_MS = 4000;
 const HOURS_RETRY_LIMIT = 4;
@@ -871,9 +885,24 @@ export default function PubPageScreen() {
   }, [afterSheet, editOwnedPub, pub?.userAddedClientId, startRename]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const next = event.nativeEvent.contentOffset.y > TITLE_AFTER_SCROLL;
+    const next = event.nativeEvent.contentOffset.y >= TITLE_AFTER_SCROLL;
     setShowTitle((current) => (current === next ? current : next));
   }, []);
+  // A short page must still scroll far enough to hand the name over to the header.
+  const [scrollHeight, setScrollHeight] = useState(0);
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const scrollY = useScrollViewOffset(scrollRef);
+  const nameFade = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, TITLE_AFTER_SCROLL], [1, 0], Extrapolation.CLAMP),
+  }));
+  const statusFade = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      scrollY.value,
+      [TITLE_AFTER_SCROLL, STATUS_GONE_AT],
+      [1, 0],
+      Extrapolation.CLAMP,
+    ),
+  }));
 
   const handleMapPub = useCallback(
     (target: Pub) => {
@@ -942,58 +971,38 @@ export default function PubPageScreen() {
         : null;
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={[styles.nav, navInsets, showTitle && styles.navDivided]} {...hiddenUnderMap}>
-        <RoundButton onPress={goBack} label={t.pubDetail.backA11y}>
-          <ChevronLeftIcon size={24} color={Colors.foam} />
-        </RoundButton>
-        <Text
-          style={[styles.navTitle, !showTitle && styles.hidden]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-          accessibilityElementsHidden={!showTitle}
-          importantForAccessibility={showTitle ? 'auto' : 'no-hide-descendants'}
-        >
-          {pub.name}
-        </Text>
-        <RoundButton
-          onPress={toggleFavorite}
-          label={isFavorite ? t.pubDetail.favoriteRemoveA11y : t.pubDetail.favoriteAddA11y}
-          selected={isFavorite}
-        >
-          {isFavorite ? (
-            <HeartFilledIcon size={22} color={Colors.amber} />
-          ) : (
-            <HeartIcon size={22} color={Colors.foam} />
-          )}
-        </RoundButton>
-        <RoundButton onPress={() => setMoreOpen(true)} label={t.pubDetail.moreA11y}>
-          <EllipsisIcon size={22} color={Colors.foam} />
-        </RoundButton>
-      </View>
-
-      <ScrollView
+    <View style={styles.root}>
+      <Animated.ScrollView
+        ref={scrollRef}
         {...hiddenUnderMap}
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: barHeight + Spacing.xl }]}
+        onLayout={(event) => setScrollHeight(event.nativeEvent.layout.height)}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + NAV_HEIGHT + Spacing.xs,
+            paddingBottom: barHeight + Spacing.xl,
+            minHeight: scrollHeight + TITLE_AFTER_SCROLL + Spacing.sm,
+          },
+        ]}
         onScroll={handleScroll}
         scrollEventThrottle={32}
         showsVerticalScrollIndicator={false}
       >
-        <Text
-          style={styles.name}
+        <Animated.Text
+          style={[styles.name, nameFade]}
           accessibilityRole="header"
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {pub.name}
-        </Text>
-        <Text style={styles.status} maxFontSizeMultiplier={FontScaleCap.body}>
+        </Animated.Text>
+        <Animated.Text style={[styles.status, statusFade]} maxFontSizeMultiplier={FontScaleCap.body}>
           {hours.label ? <Text style={{ color: toneColor(hours.tone) }}>{hours.label}</Text> : null}
           {[distance, pub.city]
             .filter(Boolean)
             .map((part, index) => `${index === 0 && !hours.label ? '' : ' · '}${part}`)
             .join('')}
-        </Text>
+        </Animated.Text>
 
         <Pressable
           onPress={() => setMapOpen(true)}
@@ -1255,12 +1264,58 @@ export default function PubPageScreen() {
           </View>
           <ChevronRightIcon size={18} color={Colors.mutedText} />
         </Pressable>
-      </ScrollView>
+      </Animated.ScrollView>
+
+      <View
+        style={[styles.navLayer, { paddingTop: insets.top }]}
+        pointerEvents="box-none"
+        {...hiddenUnderMap}
+      >
+        <EdgeFade
+          edge="top"
+          solid={(insets.top + NAV_HEIGHT) / (insets.top + NAV_HEIGHT + EDGE_FADE)}
+          style={[styles.navFade, { height: insets.top + NAV_HEIGHT + EDGE_FADE }]}
+        />
+        <View style={[styles.nav, navInsets]}>
+          <RoundButton onPress={goBack} label={t.pubDetail.backA11y} glass>
+            <ChevronLeftIcon size={24} color={Colors.foam} />
+          </RoundButton>
+          <Text
+            style={[styles.navTitle, !showTitle && styles.hidden]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+            accessibilityElementsHidden={!showTitle}
+            importantForAccessibility={showTitle ? 'auto' : 'no-hide-descendants'}
+          >
+            {pub.name}
+          </Text>
+          <RoundButton
+            onPress={toggleFavorite}
+            label={isFavorite ? t.pubDetail.favoriteRemoveA11y : t.pubDetail.favoriteAddA11y}
+            selected={isFavorite}
+            glass
+          >
+            {isFavorite ? (
+              <HeartFilledIcon size={22} color={Colors.amber} />
+            ) : (
+              <HeartIcon size={22} color={Colors.foam} />
+            )}
+          </RoundButton>
+          <RoundButton onPress={() => setMoreOpen(true)} label={t.pubDetail.moreA11y} glass>
+            <EllipsisIcon size={22} color={Colors.foam} />
+          </RoundButton>
+        </View>
+      </View>
 
       <View
         style={[styles.bar, { paddingBottom: barBottom }]}
         {...hiddenUnderMap}
       >
+        <EdgeFade
+          edge="bottom"
+          solid={barHeight / (barHeight + EDGE_FADE)}
+          style={styles.barFade}
+        />
         <Pressable
           onPress={navigateToPub}
           style={({ pressed }) => [styles.cta, quiet && styles.ctaQuiet, pressed && styles.ctaPressed]}
@@ -1277,14 +1332,16 @@ export default function PubPageScreen() {
             {t.compass.navigateCta}
           </Text>
         </Pressable>
-        <Pressable
-          onPress={aimCompass}
-          style={({ pressed }) => [styles.aim, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={t.pubDetail.aimA11y(pub.name)}
-        >
-          <CompassIcon size={22} color={Colors.amber} />
-        </Pressable>
+        <GlassSurface style={styles.aim} fallbackColor={Colors.stout3}>
+          <Pressable
+            onPress={aimCompass}
+            style={({ pressed }) => [styles.aimHit, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={t.pubDetail.aimA11y(pub.name)}
+          >
+            <CompassIcon size={22} color={Colors.amber} />
+          </Pressable>
+        </GlassSurface>
       </View>
 
       {mapOpen ? (
@@ -1519,16 +1576,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.stout,
   },
+  navLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  navFade: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
   nav: {
-    height: 52,
+    height: NAV_HEIGHT,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-  },
-  navDivided: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(Colors.foam, 0.1),
   },
   navTitle: {
     flex: 1,
@@ -1765,9 +1830,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: PAGE_PAD,
     flexDirection: 'row',
     gap: 10,
-    backgroundColor: Colors.stout,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.08),
+  },
+  barFade: {
+    position: 'absolute',
+    top: -EDGE_FADE,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   cta: {
     flex: 1,
@@ -1798,7 +1867,10 @@ const styles = StyleSheet.create({
     width: BAR_BUTTON,
     height: BAR_BUTTON,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
+    overflow: 'hidden',
+  },
+  aimHit: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
