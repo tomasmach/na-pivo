@@ -72,8 +72,15 @@ export function TabBarInsetOverride({ value, children }: PropsWithChildren<{ val
   return <TabBarInsetContext.Provider value={value}>{children}</TabBarInsetContext.Provider>;
 }
 
-function RouteInsets({ children }: PropsWithChildren) {
-  const insets = useSafeAreaInsets();
+/** A card's header keeps this far below the card's rounded top edge. */
+const CARD_TOP_GAP = 12;
+
+function RouteInsets({ minTop = 0, children }: PropsWithChildren<{ minTop?: number }>) {
+  const measured = useSafeAreaInsets();
+  const insets = useMemo(
+    () => ({ ...measured, top: Math.max(measured.top, minTop) }),
+    [measured, minTop],
+  );
   return (
     <SideInsets insets={insets} left={insets.left} right={insets.right}>
       {children}
@@ -89,7 +96,7 @@ export function RouteScreen({ children }: PropsWithChildren) {
   if (Platform.OS !== 'ios') return <RouteInsets>{children}</RouteInsets>;
   return (
     <SafeAreaProvider>
-      <RouteInsets>{children}</RouteInsets>
+      <RouteInsets minTop={CARD_TOP_GAP}>{children}</RouteInsets>
     </SafeAreaProvider>
   );
 }
