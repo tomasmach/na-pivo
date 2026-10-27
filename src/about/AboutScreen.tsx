@@ -31,7 +31,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
-import { ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
+import { ExternalLinkIcon, XIcon } from '@/components/shared/IconGlyph';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
   fetchAllReleaseNotes,
@@ -78,10 +78,10 @@ export default function AboutScreen() {
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={t.a11y.counterCloseModal}
           hitSlop={4}
         >
-          <ChevronLeftIcon size={22} color={Colors.foam} />
+          <XIcon size={22} color={Colors.foam} />
         </Pressable>
 
         <Text style={styles.headerTitle}>{t.settings.about.title}</Text>
