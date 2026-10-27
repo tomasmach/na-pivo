@@ -5,9 +5,9 @@ jest.mock('react-native-reanimated', () => ({
   default: { View: 'AnimatedView' },
   useSharedValue: jest.fn((value: unknown) => ({ value })),
   useAnimatedStyle: jest.fn((factory: () => unknown) => factory()),
-  useReducedMotion: jest.fn(() => true),
-  withSequence: jest.fn(),
   withTiming: jest.fn(),
+  Easing: { bezier: jest.fn(() => (t: number) => t) },
+  LinearTransition: { duration: () => ({ easing: () => ({}) }) },
 }));
 
 import { countNumeralSize } from '@/counter/CoasterCard';

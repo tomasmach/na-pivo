@@ -83,7 +83,7 @@ import { ShareNightModal } from '@/vycep/ShareNightModal';
 import type { NightSummary } from '@/vycep/nightModel';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
+import { fireSuccessHaptic, fireLightImpactHaptic, fireRigidImpactHaptic } from '@/utils/haptics';
 import {
   isBeerListOverrideCurrent,
   isBeerMenuTypeOverrideCurrent,
@@ -1031,7 +1031,8 @@ function Tacek({
         setLastCounted({ id, ordinal: liveCountAfter, isBeer: drinkType === 'beer', tourStop: tourStop?.number });
       }
 
-      if (hapticEnabled) fireSuccessHaptic();
+      // A crisp click, not the success pattern: this lands up to ten times a night.
+      if (hapticEnabled) fireRigidImpactHaptic();
 
       // Gentle water nudge every 4th beer in a row (4, 8, 12…). Local-only.
       const liveSession = useTallyStore.getState().current;
