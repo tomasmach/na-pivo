@@ -14,16 +14,20 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 const mockBack = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack }) }));
+const mockSetOptions = jest.fn();
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ back: mockBack }),
+  useNavigation: () => ({ setOptions: mockSetOptions }),
+}));
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 jest.mock('@/components/shared/IconGlyph', () => ({
-  ChevronLeftIcon: () => null,
   MapPinIcon: () => null,
   TargetIcon: () => null,
   Trash2Icon: () => null,
+  XIcon: () => null,
 }));
 jest.mock('@/components/shared/KeyboardAwareScrollView', () => {
   const RN = jest.requireActual('react-native');
@@ -79,11 +83,14 @@ describe('HomePointScreen', () => {
       renderer = TestRenderer.create(<HomePointScreen />);
     });
 
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: true });
     const map = renderer.root.findByProps({ testID: 'home-map' });
     act(() => {
       map.props.onPress({ nativeEvent: { coordinate: { latitude: 50.08, longitude: 14.42 } } });
     });
     expect(useSettingsStore.getState().homePoint).toBeNull();
+    // An unsaved point keeps the card from being pulled away.
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: false });
 
     const save = renderer.root.findByProps({ children: 'Uložit domov' }).parent;
     act(() => save.props.onPress());

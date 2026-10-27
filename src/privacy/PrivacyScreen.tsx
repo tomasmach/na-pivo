@@ -15,6 +15,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { XIcon } from '@/components/shared/IconGlyph';
 import { Colors } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { t } from '@/i18n';
@@ -35,10 +36,10 @@ export default function PrivacyScreen() {
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={t.a11y.counterCloseModal}
           hitSlop={8}
         >
-          <Text style={styles.backChevron}>‹</Text>
+          <XIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle}>{t.privacy.title}</Text>
         {/* Spacer to keep title centered */}
@@ -89,12 +90,6 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backChevron: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 32,
-    color: Colors.foam,
-    lineHeight: 36,
   },
   headerTitle: {
     fontFamily: Fonts.display.extrabold,

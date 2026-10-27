@@ -1,6 +1,7 @@
 import React from 'react';
 import TestRenderer, { act, type ReactTestRenderer } from 'react-test-renderer';
 
+import { t } from '@/i18n';
 import SuggestPubEventScreen from '../suggest-pub-event';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -8,10 +9,12 @@ import SuggestPubEventScreen from '../suggest-pub-event';
 const mockSubmitPubEventSuggestion = jest.fn();
 const mockGenerateUuidV4 = jest.fn(() => 'suggestion-draft-id');
 const mockBack = jest.fn();
+const mockSetOptions = jest.fn();
 const mockShowToast = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: mockBack }),
+  useNavigation: () => ({ setOptions: mockSetOptions }),
   useLocalSearchParams: () => ({
     name: 'Hospoda U Testu',
     city: 'Praha',
@@ -32,8 +35,8 @@ jest.mock('@/components/shared/KeyboardAwareScrollView', () => {
   };
 });
 jest.mock('@/components/shared/IconGlyph', () => ({
-  ChevronLeftIcon: () => null,
   ClockIcon: () => null,
+  XIcon: () => null,
 }));
 jest.mock('@/data/account', () => ({
   generateUuidV4: () => mockGenerateUuidV4(),
@@ -85,5 +88,14 @@ describe('SuggestPubEventScreen', () => {
     expect(mockSubmitPubEventSuggestion.mock.calls[1][0].clientId).toBe('suggestion-draft-id');
     expect(mockGenerateUuidV4).toHaveBeenCalledTimes(1);
     expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the card from being pulled away once something is typed', () => {
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: true });
+    const details = renderer!.root.findByProps({ placeholder: t.suggestPubEvent.detailsPlaceholder });
+    act(() => details.props.onChangeText('Kvíz od osmi'));
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: false });
+    act(() => details.props.onChangeText(''));
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: true });
   });
 });

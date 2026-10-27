@@ -18,7 +18,7 @@ import {
   SectionTitle,
   ToggleRow,
 } from '@/components/shared/FlatPage';
-import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
+import { XIcon } from '@/components/shared/IconGlyph';
 import { MoreSheet } from '@/components/shared/MoreSheet';
 import { updateAccountPreferences } from '@/data/account';
 import { trackUiInteraction } from '@/data/uxTelemetry';
@@ -350,8 +350,8 @@ export default function SettingsScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.nav}>
-        <RoundButton label={t.a11y.backButton} onPress={() => router.back()}>
-          <ChevronLeftIcon size={22} color={Colors.foam} />
+        <RoundButton label={t.a11y.counterCloseModal} onPress={() => router.back()}>
+          <XIcon size={22} color={Colors.foam} />
         </RoundButton>
         <Text style={styles.navTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {t.settings.title}

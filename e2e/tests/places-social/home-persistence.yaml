@@ -25,7 +25,7 @@ tags: [critical, full]
     commands:
       - evalScript: ${output.local.screenshot('places-android-home-after-map-tap')}
 - assertVisible: {id: home-save, enabled: true}
-- tapOn: Zpět
+- tapOn: Zavřít
 - runFlow:
     file: ../../maestro/route.yaml
     env:

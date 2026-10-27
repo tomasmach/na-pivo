@@ -14,11 +14,12 @@ import * as Location from 'expo-location';
 import MapView, { Marker, type MapPressEvent, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ChevronLeftIcon, MapPinIcon, TargetIcon, Trash2Icon } from '@/components/shared/IconGlyph';
+import { MapPinIcon, TargetIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { geocodePubLocation } from '@/data/mapyClient';
 import { t } from '@/i18n';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
 import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
@@ -85,6 +86,7 @@ export default function HomePointScreen() {
     () => draftPoint?.lat !== savedPoint?.lat || draftPoint?.lng !== savedPoint?.lng,
     [draftPoint, savedPoint],
   );
+  useKeepCardOpen(dirty || addressQuery.trim().length > 0);
 
   const handleMapPress = useCallback((event: MapPressEvent) => {
     const { latitude, longitude } = event.nativeEvent.coordinate;
@@ -182,8 +184,8 @@ export default function HomePointScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={() => router.back()} style={styles.headerButton} accessibilityRole="button" accessibilityLabel={t.a11y.back}>
-          <ChevronLeftIcon size={22} color={Colors.foam} />
+        <Pressable onPress={() => router.back()} style={styles.headerButton} accessibilityRole="button" accessibilityLabel={t.a11y.counterCloseModal}>
+          <XIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle}>Domovský bod</Text>
         <View style={styles.headerSpacer} />

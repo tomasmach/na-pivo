@@ -24,7 +24,8 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
-import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
+import { XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { useAccountStore } from '@/stores/accountStore';
@@ -49,6 +50,7 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  useKeepCardOpen(busy || code.trim().length > 0 || password.length > 0);
 
   const leave = useCallback(() => {
     if (router.canGoBack()) {
@@ -92,10 +94,10 @@ export default function ResetPasswordScreen() {
         onPress={leave}
         style={styles.backButton}
         accessibilityRole="button"
-        accessibilityLabel={t.a11y.backButton}
+        accessibilityLabel={t.a11y.counterCloseModal}
         hitSlop={4}
       >
-        <ChevronLeftIcon size={22} color={Colors.foam} />
+        <XIcon size={22} color={Colors.foam} />
       </Pressable>
       <Text style={styles.headerTitle}>{t.account.resetTitle}</Text>
       <View style={styles.headerSpacer} />

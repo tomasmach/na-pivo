@@ -22,10 +22,10 @@ import { LoginMethodsSheet } from '@/account/LoginMethodsSheet';
 import { PasswordSheet } from '@/account/PasswordSheet';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import {
-  ChevronLeftIcon,
   MenuIcon,
   MailIcon,
   Trash2Icon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { ToggleRow } from '@/components/shared/FlatPage';
@@ -398,9 +398,9 @@ export default function AccountScreen() {
           pressed && styles.pressed,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={t.a11y.backButton}
+        accessibilityLabel={t.a11y.counterCloseModal}
       >
-        <ChevronLeftIcon size={22} color={Colors.foam} />
+        <XIcon size={22} color={Colors.foam} />
       </Pressable>
       <Text
         style={styles.headerTitle}

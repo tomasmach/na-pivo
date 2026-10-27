@@ -25,13 +25,14 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
 import {
   CheckIcon,
-  ChevronLeftIcon,
   ChevronRightIcon,
   MapPinIcon,
   MapIcon,
   TargetIcon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -178,6 +179,7 @@ export default function AddPubScreen() {
     !loadingSubmission &&
     !submitted;
   const mapPinSelected = selectedLocation?.source === 'pin';
+  useKeepCardOpen(nameChanged || addressChanged || locationCorrectionSelected);
 
   const clearLookup = useCallback(() => {
     lookupRequest.current?.abort();
@@ -424,10 +426,10 @@ export default function AddPubScreen() {
           }}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={t.a11y.counterCloseModal}
           hitSlop={4}
         >
-          <ChevronLeftIcon size={22} color={Colors.foam} />
+          <XIcon size={22} color={Colors.foam} />
         </Pressable>
 
         <Text style={styles.headerTitle}>{isEditing ? t.addPub.editTitle : t.addPub.title}</Text>

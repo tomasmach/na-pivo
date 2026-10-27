@@ -25,7 +25,8 @@ import { Colors } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
-import { CameraIcon, ChevronLeftIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
+import { CameraIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -70,6 +71,7 @@ export default function ReportScreen() {
 
   const appVersionLabel = getAppVersionLabel();
   const canSubmit = message.trim().length > 0 && !submitting;
+  useKeepCardOpen(!submitted && (message.trim().length > 0 || contact.trim().length > 0 || attachmentUri !== null));
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -144,10 +146,10 @@ export default function ReportScreen() {
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={t.a11y.counterCloseModal}
           hitSlop={4}
         >
-          <ChevronLeftIcon size={22} color={Colors.foam} />
+          <XIcon size={22} color={Colors.foam} />
         </Pressable>
 
         <Text style={styles.headerTitle}>{t.report.title}</Text>

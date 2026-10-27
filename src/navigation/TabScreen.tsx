@@ -3,6 +3,7 @@ import { Platform, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import {
   SafeAreaInsetsContext,
+  SafeAreaProvider,
   useSafeAreaInsets,
   type EdgeInsets,
 } from 'react-native-safe-area-context';
@@ -71,12 +72,25 @@ export function TabBarInsetOverride({ value, children }: PropsWithChildren<{ val
   return <TabBarInsetContext.Provider value={value}>{children}</TabBarInsetContext.Provider>;
 }
 
-export function RouteScreen({ children }: PropsWithChildren) {
+function RouteInsets({ children }: PropsWithChildren) {
   const insets = useSafeAreaInsets();
   return (
     <SideInsets insets={insets} left={insets.left} right={insets.right}>
       {children}
     </SideInsets>
+  );
+}
+
+/**
+ * Wraps one route above the tabs. On iOS it measures its own insets: a card
+ * starts below the status bar, so the window's top inset would pad it twice.
+ */
+export function RouteScreen({ children }: PropsWithChildren) {
+  if (Platform.OS !== 'ios') return <RouteInsets>{children}</RouteInsets>;
+  return (
+    <SafeAreaProvider>
+      <RouteInsets>{children}</RouteInsets>
+    </SafeAreaProvider>
   );
 }
 

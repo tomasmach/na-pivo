@@ -23,7 +23,7 @@ tags: [full, identity]
     commands:
       - assertNotVisible: "Pokračovat přes Apple"
 - assertVisible: "Pokračovat přes Google"
-- tapOn: "Zpět"
+- tapOn: "Zavřít"
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml

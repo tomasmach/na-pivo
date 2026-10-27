@@ -13,9 +13,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import { ChevronLeftIcon, ClockIcon } from '@/components/shared/IconGlyph';
+import { ClockIcon, XIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
 import { submitPubEventSuggestion } from '@/data/pubEventsClient';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -114,6 +115,9 @@ export default function SuggestPubEventScreen() {
     startsAt != null &&
     endsAt != null &&
     endsAt.getTime() > startsAt.getTime();
+  useKeepCardOpen(
+    submitting || title.trim().length > 0 || details.trim().length > 0 || starts !== defaults.starts || ends !== defaults.ends,
+  );
 
   const handleSubmit = async () => {
     if (
@@ -165,9 +169,9 @@ export default function SuggestPubEventScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.vycepBack}
+          accessibilityLabel={t.a11y.counterCloseModal}
         >
-          <ChevronLeftIcon size={22} color={Colors.foam} />
+          <XIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle}>{t.suggestPubEvent.title}</Text>
         <View style={styles.headerSpacer} />

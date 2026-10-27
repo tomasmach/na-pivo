@@ -9,10 +9,12 @@ import ReportScreen from '../ReportScreen';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let mockFocused = true;
+const mockSetOptions = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn() }),
   useIsFocused: () => mockFocused,
+  useNavigation: () => ({ setOptions: mockSetOptions }),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -53,7 +55,6 @@ jest.mock('@/components/shared/GlowButton', () => ({
 jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: () => null,
   CameraIcon: () => null,
-  ChevronLeftIcon: () => null,
   ImagesIcon: () => null,
   XIcon: () => null,
 }));
@@ -78,4 +79,17 @@ it('shows the attachment source dialog above the full-screen feedback route', as
   expect(screen.queryByText(t.report.attachmentCamera)).toBeNull();
   await fireEvent.press(screen.getByLabelText(t.report.attachmentAdd));
   expect(screen.getByText(t.report.attachmentCamera)).toBeTruthy();
+});
+
+it('keeps the card from being pulled away while a message is written, until it is sent', async () => {
+  mockFocused = true;
+  const screen = await render(<ReportScreen />);
+  expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: true });
+
+  await fireEvent.changeText(screen.getByLabelText(t.report.messagePlaceholder), 'Kompas ukazuje jinam');
+  expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: false });
+
+  await fireEvent.press(screen.getByText(t.report.submit));
+  expect(await screen.findByText(t.report.successTitle)).toBeTruthy();
+  expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: true });
 });

@@ -6,6 +6,7 @@ const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ replace: mockReplace, dismissTo: mockDismissTo })),
+  useNavigation: () => ({ setOptions: jest.fn() }),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({

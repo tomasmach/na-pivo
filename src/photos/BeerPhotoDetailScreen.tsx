@@ -20,7 +20,6 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
-  ChevronLeftIcon,
   ChevronRightIcon,
   ClockIcon,
   EyeOffIcon,
@@ -30,6 +29,7 @@ import {
   Trash2Icon,
   TrophyIcon,
   UsersIcon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
 import { deleteBeerPhoto } from '@/data/beerPhotosClient';
 import {
@@ -209,10 +209,10 @@ export default function BeerPhotoDetailScreen() {
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={t.a11y.counterCloseModal}
           style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
         >
-          <ChevronLeftIcon size={26} color={Colors.foam} />
+          <XIcon size={24} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {t.photoDiary.detailTitle}

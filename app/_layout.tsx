@@ -224,7 +224,11 @@ export default function RootLayout() {
   const [telemetryReady, setTelemetryReady] = useState(false);
   // A wide window opens these in a tab's right half; when one still arrives as
   // a route, it moves there without a slide.
-  const detailAnimation = useBookLayout().wide ? 'none' : undefined;
+  const { wide } = useBookLayout();
+  const detailAnimation = wide ? 'none' : undefined;
+  // A card that pulls down to close (DESIGN.md §17.4). An open Duo would centre
+  // it in the window, so there it stays a full-window page (§17.6).
+  const sheet = { presentation: wide ? 'fullScreenModal' : 'modal', animation: 'slide_from_bottom' } as const;
   useEffect(() => {
     pathnameRef.current = pathname;
     noteTopPathname(pathname);
@@ -526,22 +530,8 @@ export default function RootLayout() {
               gestureEnabled: false,
             }}
           />
-          <Stack.Screen
-            name="settings"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="home-point"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_right',
-              gestureEnabled: false,
-            }}
-          />
+          <Stack.Screen name="settings" options={sheet} />
+          <Stack.Screen name="home-point" options={sheet} />
           <Stack.Screen
             name="celebration"
             options={{
@@ -550,61 +540,15 @@ export default function RootLayout() {
               gestureEnabled: false,
             }}
           />
-          <Stack.Screen
-            name="about"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="privacy"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="report"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="contribute"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="add-pub"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="suggest-pub-event"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
+          <Stack.Screen name="about" options={sheet} />
+          <Stack.Screen name="privacy" options={sheet} />
+          <Stack.Screen name="report" options={sheet} />
+          <Stack.Screen name="contribute" options={sheet} />
+          <Stack.Screen name="add-pub" options={sheet} />
+          <Stack.Screen name="suggest-pub-event" options={sheet} />
           <Stack.Screen
             name="evening"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: detailAnimation ?? 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
+            options={{ ...sheet, animation: detailAnimation ?? 'slide_from_bottom' }}
           />
           <Stack.Screen
             name="pub"
@@ -627,54 +571,12 @@ export default function RootLayout() {
               gestureEnabled: true,
             }}
           />
-          <Stack.Screen
-            name="auth/index"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="auth/reset"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="auth/verify"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="account"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="profile/privacy"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="profile/edit"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
+          <Stack.Screen name="auth/index" options={sheet} />
+          <Stack.Screen name="auth/reset" options={sheet} />
+          <Stack.Screen name="auth/verify" options={sheet} />
+          <Stack.Screen name="account" options={sheet} />
+          <Stack.Screen name="profile/privacy" options={sheet} />
+          <Stack.Screen name="profile/edit" options={sheet} />
           <Stack.Screen
             name="profile/parta"
             options={{
@@ -706,14 +608,7 @@ export default function RootLayout() {
               gestureEnabled: true,
             }}
           />
-          <Stack.Screen
-            name="parta/pozvanka"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
+          <Stack.Screen name="parta/pozvanka" options={sheet} />
           <Stack.Screen
             name="parta/[id]"
             options={{
@@ -723,22 +618,8 @@ export default function RootLayout() {
               gestureEnabled: true,
             }}
           />
-          <Stack.Screen
-            name="photo/[key]"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="photo-contest"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
+          <Stack.Screen name="photo/[key]" options={sheet} />
+          <Stack.Screen name="photo-contest" options={sheet} />
         </Stack>
         <OnboardingGate />
         <PaneRouteMigrator />

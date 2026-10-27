@@ -1,7 +1,7 @@
 /**
  * Transient toast/snackbar state — a lightweight confirmation that survives
  * navigation (the trigger screen may unmount right after firing it, e.g. a
- * fullScreenModal calling router.back()). Not persisted; lives only in memory.
+ * modal route calling router.back()). Not persisted; lives only in memory.
  *
  * `token` is bumped on every show() so the <Toast> re-animates even when the
  * same message is fired twice in a row.

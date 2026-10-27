@@ -7,7 +7,11 @@ jest.mock('expo-router', () => ({ useFocusEffect: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => {
   const { createContext, useContext } = jest.requireActual<typeof import('react')>('react');
   const SafeAreaInsetsContext = createContext(null);
-  return { SafeAreaInsetsContext, useSafeAreaInsets: () => useContext(SafeAreaInsetsContext) };
+  return {
+    SafeAreaInsetsContext,
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+    useSafeAreaInsets: () => useContext(SafeAreaInsetsContext),
+  };
 });
 
 const edges = (top: number, right: number, bottom: number, left: number): EdgeInsets => ({ top, right, bottom, left });
