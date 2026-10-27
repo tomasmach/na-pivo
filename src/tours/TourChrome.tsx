@@ -1,6 +1,7 @@
 import React, { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type TextProps } from 'react-native';
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/shared/IconGlyph';
+import { PressScale, ScalePressable } from '@/components/shared/ScalePressable';
 import { t, plural } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -21,13 +22,14 @@ export function TourChallengeText({ text, emphasized, lines, inter }: { text: st
 export function TourButton({ label, onPress, secondary, quiet, icon, disabled, busy, testID }: {
   label: string; onPress: () => void; secondary?: boolean; quiet?: boolean; icon?: ReactNode; disabled?: boolean; busy?: boolean; testID?: string;
 }) {
-  return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label}
+  return <ScalePressable testID={testID} accessibilityRole="button" accessibilityLabel={label}
     accessibilityState={{ disabled: !!disabled || !!busy, busy: !!busy }} disabled={disabled || busy}
-    onPress={onPress} style={({ pressed }) => [ui.button, secondary && ui.secondary, quiet && ui.quiet, (pressed || disabled || busy) && ui.dim]}>
+    pressScale={secondary || quiet ? PressScale.default : PressScale.primary}
+    onPress={onPress} style={[ui.button, secondary && ui.secondary, quiet && ui.quiet, (disabled || busy) && ui.dim]}>
     {busy ? <ActivityIndicator color={secondary || quiet ? Colors.foam : Colors.stout} /> : <>
       {icon}<TourText maxFontSizeMultiplier={FontScaleCap.heading} style={[ui.buttonText, (secondary || quiet) && ui.secondaryText, quiet && ui.quietText]}>{label}</TourText>
     </>}
-  </Pressable>;
+  </ScalePressable>;
 }
 export function TourHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: ReactNode }) {
   // The title keeps the same room on both sides as the wider of the back button and the right-hand icons.

@@ -25,7 +25,7 @@ jest.mock('@/liveActivity/liveBeerActivity', () => ({
   reconcileLiveBeerActivityAndAutoArchive: jest.fn(async () => undefined),
 }));
 jest.mock('@/components/shared/IconGlyph', () => new Proxy({}, { get: () => () => null }));
-jest.mock('@/utils/haptics', () => ({ fireLightImpactHaptic: jest.fn() }));
+jest.mock('@/utils/haptics', () => ({ fireSelectionHaptic: jest.fn() }));
 jest.mock('@/counter/NudgeSlot', () => ({ NudgeSlot: () => null }));
 jest.mock('@/stats/useMyStats', () => ({ useMyStats: () => null }));
 jest.mock('@/data/beerCheckinsClient', () => ({ fetchMyBeerCheckIns: jest.fn(async () => null) }));
@@ -85,7 +85,7 @@ const diaryShown = (renderer: any) => host(renderer, t.a11y.myBeersAddHistorical
 
 function finishButtonColor(renderer: any): string {
   const [button] = host(renderer, t.a11y.myBeersAddHistorical);
-  return StyleSheet.flatten(button.props.style({ pressed: false })).backgroundColor;
+  return StyleSheet.flatten(button.children.at(-1).props.style).backgroundColor;
 }
 
 describe('Štamgast on the open iPhone Duo', () => {

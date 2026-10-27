@@ -19,7 +19,7 @@ import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { fireLightImpactHaptic } from '@/utils/haptics';
+import { fireSelectionHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 export interface HourStepperProps {
@@ -48,7 +48,7 @@ const HourStepper = memo(function HourStepper({
 
   const step = useCallback(
     (delta: number) => {
-      if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
+      if (useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
       onChange(wrapHour(hour + delta));
     },
     [hour, onChange],

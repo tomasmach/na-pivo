@@ -20,7 +20,7 @@ import { MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
 import { fetchPartaPhotoFeed, type PartaFeedPhoto } from '@/data/beerPhotosClient';
 import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
-import { ScalePressable } from '@/photos/ScalePressable';
+import { ScalePressable } from '@/components/shared/ScalePressable';
 import { selectAvatarUrl, selectNickname, useAccountStore } from '@/stores/accountStore';
 import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { Colors, withAlpha } from '@/theme/colors';

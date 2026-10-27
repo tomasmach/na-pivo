@@ -25,7 +25,7 @@ import {
   ThumbsDownIcon,
   MessageSquareIcon,
 } from '@/components/shared/IconGlyph';
-import { fireLightImpactHaptic } from '@/utils/haptics';
+import { fireSelectionHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   usePubRatingsStore,
@@ -41,7 +41,7 @@ interface PubRatingControlProps {
 }
 
 function tap() {
-  if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
+  if (useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
 }
 
 export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {

@@ -2,7 +2,7 @@
  * BoardSegmented — the metric switch for the global leaderboards
  * (Pivaři · Objevitelé · Mapéři). Generalises the segmented track/thumb idiom
  * to N segments: one neutral foam-wash thumb sliding in a single 180 ms pass,
- * reduce-motion gated, light haptic per switch.
+ * reduce-motion gated, selection haptic per switch.
  *
  * The track sits on the bare screen background (`Colors.stout`), not inside a
  * card, so it is solid `stout3` rather than the foam-4 % wash used by the
@@ -24,7 +24,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { fireLightImpactHaptic } from '@/utils/haptics';
+import { fireSelectionHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 const SLIDE_MS = 180;
@@ -84,7 +84,7 @@ function BoardSegmentedBase({
   const lastValue = useRef(value);
   const handlePress = useCallback(
     (index: number) => {
-      if (index !== lastValue.current && hapticEnabled) fireLightImpactHaptic();
+      if (index !== lastValue.current && hapticEnabled) fireSelectionHaptic();
       lastValue.current = index;
       onChange(index);
     },

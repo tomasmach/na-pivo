@@ -1,5 +1,6 @@
 import React, { memo, ReactNode } from 'react';
-import { ActivityIndicator, Pressable, Text, View, StyleSheet, ViewStyle } from 'react-native';
+import { ActivityIndicator, Text, View, StyleSheet, ViewStyle } from 'react-native';
+import { PressScale, ScalePressable } from '@/components/shared/ScalePressable';
 import { useTone } from '@/layout/pane';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -48,8 +49,17 @@ export const GlowButton = memo(function GlowButton({
   const glowStyle = resolveGlowStyle(glow);
 
   return (
-    <View style={[styles.wrapper, { height }]}>
-      {/* Glow layer underneath */}
+    <ScalePressable
+      testID={testID}
+      onPress={onPress}
+      disabled={disabled || loading}
+      pressScale={isPrimary ? PressScale.primary : PressScale.default}
+      style={[styles.wrapper, { height }]}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
+    >
+      {/* The glow sits inside the pressable so it sinks with the button. */}
       {glow !== 'none' && isPrimary && (
         <View
           style={[
@@ -59,20 +69,13 @@ export const GlowButton = memo(function GlowButton({
           ]}
         />
       )}
-      <Pressable
-        testID={testID}
-        onPress={onPress}
-        disabled={disabled || loading}
-        style={({ pressed }) => [
+      <View
+        style={[
           styles.base,
           { height, borderRadius: Radius.pill },
           isPrimary ? styles.primaryBg : styles.secondaryBg,
-          pressed && styles.pressed,
           (disabled || loading) && styles.disabled,
         ]}
-        accessibilityLabel={accessibilityLabel ?? label}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: disabled || loading, busy: loading }}
       >
         <View style={styles.labelRow}>
           {loading ? (
@@ -100,8 +103,8 @@ export const GlowButton = memo(function GlowButton({
             {subLabel}
           </Text>
         ) : null}
-      </Pressable>
-    </View>
+      </View>
+    </ScalePressable>
   );
 });
 
@@ -160,10 +163,6 @@ const styles = StyleSheet.create({
   },
   iconSlot: {
     marginRight: 4,
-  },
-  pressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
   },
   disabled: {
     opacity: 0.7,

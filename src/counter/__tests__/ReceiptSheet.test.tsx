@@ -23,6 +23,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('react-native-reanimated', () => ({
+  ...jest.requireActual('react-native-reanimated'),
   __esModule: true,
   default: { View: 'AnimatedView', createAnimatedComponent: (c: unknown) => c },
   useSharedValue: jest.fn((value) => ({ value })),

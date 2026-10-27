@@ -6,7 +6,7 @@
  * (Poblíž / Nedávné) and KDY (Teď / Na čas) pickers. Unlike RsvpControl the
  * thumb is a NEUTRAL foam-wash — selecting a pub or a time is not a "live" state,
  * so it must not spend the reserved amber fill. Motion is reduce-motion gated
- * (the thumb snaps instead of sliding) and a light haptic fires on each switch.
+ * (the thumb snaps instead of sliding) and a selection haptic fires on each switch.
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
@@ -23,7 +23,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
-import { fireLightImpactHaptic } from '@/utils/haptics';
+import { fireSelectionHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 const SLIDE_MS = 180;
@@ -73,7 +73,7 @@ function SegmentedControlBase({
   const lastValue = useRef(value);
   const handlePress = useCallback(
     (index: 0 | 1) => {
-      if (index !== lastValue.current && hapticEnabled) fireLightImpactHaptic();
+      if (index !== lastValue.current && hapticEnabled) fireSelectionHaptic();
       lastValue.current = index;
       onChange(index);
     },
