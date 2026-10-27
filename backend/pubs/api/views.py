@@ -11462,9 +11462,6 @@ class PubLocationReverseGeocodeView(APIView):
         )
 
 
-OTA_PAGER_VERSIONS = frozenset({"2.3.0"})
-
-
 class ReleaseNotesView(APIView):
     """
     GET /v1/release-notes              → full published changelog (newest first)
@@ -11503,21 +11500,13 @@ class ReleaseNotesView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # The store build of 2.3.0 shipped without its pager, which comes by OTA. A 404
-        # would mark the note as seen on the first launch, before the OTA applies;
-        # any other failure makes that build retry on the next launch instead.
-        if version in OTA_PAGER_VERSIONS:
-            return Response(
-                {"detail": "This version's note ships inside the app."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
         note = (
             ReleaseNote.objects.filter(version=version, is_published=True)
             .prefetch_related("items")
             .first()
         )
         if note is None:
+            logger.info("release note missing: no published note for version %r", version[:32])
             return Response(
                 {"detail": "No release note for this version."},
                 status=status.HTTP_404_NOT_FOUND,
