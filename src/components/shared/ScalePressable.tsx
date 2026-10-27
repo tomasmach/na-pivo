@@ -23,7 +23,6 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -43,7 +42,7 @@ export const PressScale = {
   row: 0.985,
 } as const;
 
-const PRESS_IN = { duration: 70, easing: Easing.out(Easing.quad) };
+const PRESS_IN = { duration: 70 };
 const RELEASE_SPRING = { damping: 20, stiffness: 320, mass: 0.6 };
 const REDUCED_DIM = 0.7;
 

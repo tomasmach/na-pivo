@@ -7,7 +7,8 @@
  * never log two beers.
  */
 import React, { memo, useCallback, useEffect, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { PressScale, ScalePressable } from '@/components/shared/ScalePressable';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -44,16 +45,16 @@ export const CounterSecondary = memo(function CounterSecondary({
   accessibilityLabel,
 }: CounterSecondaryProps) {
   return (
-    <Pressable
+    <ScalePressable
       onPress={onPress}
-      style={({ pressed }) => [styles.secondary, pressed && styles.secondaryPressed]}
+      style={styles.secondary}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
     >
       <Text style={styles.secondaryLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
         {label}
       </Text>
-    </Pressable>
+    </ScalePressable>
   );
 });
 
@@ -84,15 +85,12 @@ export const CounterCta = memo(function CounterCta({
 
   return (
     <View style={styles.wrapper}>
-      <Pressable
+      <ScalePressable
         testID={testID}
         onPress={handlePress}
         disabled={disabled}
-        style={({ pressed }) => [
-          styles.button,
-          disabled ? styles.buttonDisabled : amberGlowStrong(22),
-          pressed && !disabled && styles.pressed,
-        ]}
+        pressScale={PressScale.primary}
+        style={[styles.button, disabled ? styles.buttonDisabled : amberGlowStrong(22)]}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         accessibilityState={{ disabled }}
@@ -118,7 +116,7 @@ export const CounterCta = memo(function CounterCta({
             {subLabel}
           </Text>
         )}
-      </Pressable>
+      </ScalePressable>
     </View>
   );
 });
@@ -147,10 +145,6 @@ const styles = StyleSheet.create({
     right: '12%',
     height: 1,
     backgroundColor: withAlpha(Colors.foam, 0.55),
-  },
-  pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.985 }],
   },
   label: {
     fontFamily: Fonts.display.extrabold,
@@ -183,9 +177,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-  },
-  secondaryPressed: {
-    opacity: 0.7,
   },
   secondaryLabel: {
     fontFamily: Fonts.ui.semibold,

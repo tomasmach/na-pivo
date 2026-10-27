@@ -1260,7 +1260,7 @@ Pravidla:
 - Stavové změny (sloty s proměnlivým obsahem) se přepínají **okamžitě, bez animace** a mají
   pevnou výšku — obsah se mění, výška ne, takže nic pod nimi neposkočí.
 - **Stisk je druhá povolená reakce na tap** (`ScalePressable`, §6.2). Při stisku se prvek
-  zmenší na `pressScale` za 70 ms (ease-out quad), po uvolnění se vrátí pružinou (damping 20,
+  zmenší na `pressScale` za 70 ms, po uvolnění se vrátí pružinou (damping 20,
   stiffness 320, mass 0,6). Hýbe se jen `transform`, `onPress` na animaci nečeká. Při omezeném
   pohybu se prvek nezmenší, jen ztlumí na 70 % klidové průhlednosti (80 ms tam, 120 ms zpět).
 - **Haptika podle významu** (vždy jen při zapnutém `hapticEnabled`): změna hodnoty v přepínači,
