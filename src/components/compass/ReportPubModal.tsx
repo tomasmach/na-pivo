@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import {
   FlagIcon,
   MapPinPlusIcon,
@@ -38,69 +38,54 @@ export function ReportPubModal({
   }, [onClose]);
 
   return (
-    <Modal
-      scrimColor={styles.scrim.backgroundColor}
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <View style={styles.overlay}>
-        <Pressable
-          style={styles.scrim}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={t.common.cancel}
-        />
-        <View style={styles.panel}>
-          <View style={styles.header}>
-            <View style={styles.iconWell}>
-              <FlagIcon size={18} color={Colors.amber} />
-            </View>
-            <View style={styles.titleWrap}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.compass.reportTitle}
-              </Text>
-              <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.compass.reportBody(pubName)}
-              </Text>
-            </View>
+    <BottomSheetModal visible={visible} onClose={onClose} scrimColor={SCRIM}>
+      <View style={styles.panel}>
+        <View style={styles.header}>
+          <View style={styles.iconWell}>
+            <FlagIcon size={18} color={Colors.amber} />
           </View>
-
-          <View style={styles.actions}>
-            <ActionButton
-              label={t.compass.reportAddMissing}
-              icon={<MapPinPlusIcon size={18} color={Colors.foam} />}
-              onPress={() => runAfterClose(onAddPub)}
-            />
-            <ActionButton
-              label={t.compass.reportRename}
-              icon={<PencilIcon size={18} color={Colors.foam} />}
-              onPress={() => runAfterClose(onRename)}
-            />
-            <ActionButton
-              label={t.compass.reportNotPub}
-              icon={<Trash2Icon size={18} color={Colors.amberLight} />}
-              onPress={() => runAfterClose(() => onReportReason('not_pub'))}
-              tone="danger"
-            />
-            <ActionButton
-              label={t.compass.reportClosed}
-              icon={<Trash2Icon size={18} color={Colors.amberLight} />}
-              onPress={() => runAfterClose(() => onReportReason('closed'))}
-              tone="danger"
-            />
-            <ActionButton
-              label={t.common.cancel}
-              icon={<XIcon size={18} color={Colors.mutedText} />}
-              onPress={onClose}
-              tone="ghost"
-            />
+          <View style={styles.titleWrap}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.compass.reportTitle}
+            </Text>
+            <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.compass.reportBody(pubName)}
+            </Text>
           </View>
         </View>
+
+        <View style={styles.actions}>
+          <ActionButton
+            label={t.compass.reportAddMissing}
+            icon={<MapPinPlusIcon size={18} color={Colors.foam} />}
+            onPress={() => runAfterClose(onAddPub)}
+          />
+          <ActionButton
+            label={t.compass.reportRename}
+            icon={<PencilIcon size={18} color={Colors.foam} />}
+            onPress={() => runAfterClose(onRename)}
+          />
+          <ActionButton
+            label={t.compass.reportNotPub}
+            icon={<Trash2Icon size={18} color={Colors.amberLight} />}
+            onPress={() => runAfterClose(() => onReportReason('not_pub'))}
+            tone="danger"
+          />
+          <ActionButton
+            label={t.compass.reportClosed}
+            icon={<Trash2Icon size={18} color={Colors.amberLight} />}
+            onPress={() => runAfterClose(() => onReportReason('closed'))}
+            tone="danger"
+          />
+          <ActionButton
+            label={t.common.cancel}
+            icon={<XIcon size={18} color={Colors.mutedText} />}
+            onPress={onClose}
+            tone="ghost"
+          />
+        </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
@@ -146,9 +131,9 @@ function ActionButton({
   );
 }
 
+const SCRIM = withAlpha(Colors.black, 0.68);
+
 const styles = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: 'flex-end' },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: withAlpha(Colors.black, 0.68) },
   panel: {
     marginHorizontal: 14,
     marginBottom: 18,

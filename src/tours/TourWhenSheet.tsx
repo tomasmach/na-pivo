@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Modal, ModalInsetView, useModalFrame } from '@/components/shared/Modal';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
+import { ModalInsetView, useModalFrame } from '@/components/shared/Modal';
 import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import { intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -115,89 +117,85 @@ export function TourWhenSheet({ plan, visible, onChange, onClose }: {
   const otherLabel = custom ? t.tours.whenQuickTimes : time && !PRESETS.includes(time) ? `${t.tours.whenOtherTime} · ${time}` : t.tours.whenOtherTime;
   const timeOff = (value: string) => earliest === null || minutesOf(value) < earliest;
 
-  return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => { void close(); }}>
-    <View style={styles.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={() => { void close(); }} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
-      <ModalInsetView accessibilityViewIsModal style={(insets) => [styles.card, { maxHeight: height - insets.top - Spacing.lg, paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
-        <View style={styles.grabber} />
-        <View style={styles.header}>
-          <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{t.tours.whenTitle}</Text>
-          <Pressable onPress={() => { void close(); }} style={({ pressed }) => [styles.icon, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={t.tours.close}>
-            <XIcon size={20} color={Colors.foamMuted} />
+  return <BottomSheetModal visible={visible} onClose={() => { void close(); }} underlayColor={styles.card.backgroundColor}>
+    <ModalInsetView accessibilityViewIsModal style={(insets) => [styles.card, { maxHeight: height - insets.top - Spacing.lg, paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
+      <View style={styles.grabber} />
+      <View style={styles.header}>
+        <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{t.tours.whenTitle}</Text>
+        <Pressable onPress={() => { void close(); }} style={({ pressed }) => [styles.icon, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={t.tours.close}>
+          <XIcon size={20} color={Colors.foamMuted} />
+        </Pressable>
+      </View>
+      <BottomSheetScrollView bounces={false} showsVerticalScrollIndicator={false} pointerEvents={closing ? 'none' : 'auto'}>
+        <View style={styles.monthRow}>
+          <Text style={styles.month} maxFontSizeMultiplier={FontScaleCap.heading} accessibilityLiveRegion="polite">{monthLabel}</Text>
+          <Pressable disabled={page === 0} onPress={() => setPage(Math.max(0, page - 1))} style={[styles.icon, page === 0 && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenEarlierWeeks} accessibilityState={{ disabled: page === 0 }}>
+            <ChevronLeftIcon size={22} color={Colors.amber} />
+          </Pressable>
+          <Pressable disabled={page === lastPage} onPress={() => setPage(Math.min(lastPage, page + 1))} style={[styles.icon, page === lastPage && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenLaterWeeks} accessibilityState={{ disabled: page === lastPage }}>
+            <ChevronRightIcon size={22} color={Colors.amber} />
           </Pressable>
         </View>
-        <ScrollView bounces={false} showsVerticalScrollIndicator={false} pointerEvents={closing ? 'none' : 'auto'}>
-          <View style={styles.monthRow}>
-            <Text style={styles.month} maxFontSizeMultiplier={FontScaleCap.heading} accessibilityLiveRegion="polite">{monthLabel}</Text>
-            <Pressable disabled={page === 0} onPress={() => setPage(Math.max(0, page - 1))} style={[styles.icon, page === 0 && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenEarlierWeeks} accessibilityState={{ disabled: page === 0 }}>
-              <ChevronLeftIcon size={22} color={Colors.amber} />
+        <View style={styles.grid} onLayout={(event) => setCellWidth(Math.floor(event.nativeEvent.layout.width / 7))} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+          {weekdays.map((label) => <Text key={label} allowFontScaling={false} style={[styles.weekday, { width: cellWidth }]}>{label}</Text>)}
+        </View>
+        <View style={styles.grid}>
+          {days.map((day) => {
+            // Late in the evening today has no meetup time left, so it is not offered either.
+            const off = day < today || day > last || (day === today && earliestMinutes(today, plan.timezone) === null);
+            const selected = day === date;
+            const isToday = day === today;
+            const monthStart = day.endsWith('-01');
+            return <Pressable key={day} disabled={off} onPress={() => pickDay(day)} style={[styles.cell, { width: cellWidth }]}
+              accessibilityRole="button" accessibilityState={{ selected, disabled: off }}
+              accessibilityLabel={[longDay.format(utc(day)), isToday ? t.tours.whenToday : null, off ? t.tours.whenUnavailable : null].filter(Boolean).join(', ')}>
+              <View style={[styles.day, selected && styles.daySelected]}>
+                {monthStart && <Text allowFontScaling={false} style={[styles.monthTag, selected && styles.onAmber, off && styles.offText]}>{shortMonth.format(utc(day))}</Text>}
+                <Text allowFontScaling={false} style={[styles.dayText, isToday && styles.today, selected && styles.onAmber, off && styles.offText]}>{Number(day.slice(8))}</Text>
+              </View>
+            </Pressable>;
+          })}
+        </View>
+        <View style={styles.timeHead}>
+          <TourText style={ui.section}>{t.tours.whenTime}</TourText>
+          {!!date && earliest !== null && <Pressable onPress={custom ? () => setCustom(false) : openCustom} style={ui.link} accessibilityRole="button" accessibilityLabel={otherLabel}>
+            <TourText style={ui.linkText}>{otherLabel}</TourText>
+          </Pressable>}
+        </View>
+        {!date && <TourText style={styles.hint}>{t.tours.whenPickDay}</TourText>}
+        {custom && time
+          ? <View style={styles.stepper}>
+            <Pressable onPress={() => step(-15)} disabled={earliest === null || minutesOf(time) <= earliest} style={({ pressed }) => [styles.stepButton, pressed && styles.pressed, (earliest === null || minutesOf(time) <= earliest) && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenTimeDown}>
+              <MinusIcon size={20} color={Colors.foamMuted} />
             </Pressable>
-            <Pressable disabled={page === lastPage} onPress={() => setPage(Math.min(lastPage, page + 1))} style={[styles.icon, page === lastPage && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenLaterWeeks} accessibilityState={{ disabled: page === lastPage }}>
-              <ChevronRightIcon size={22} color={Colors.amber} />
+            <Text allowFontScaling={false} style={styles.stepValue} accessibilityLiveRegion="polite">{time}</Text>
+            <Pressable onPress={() => step(15)} disabled={minutesOf(time) >= LAST_MINUTE} style={({ pressed }) => [styles.stepButton, pressed && styles.pressed, minutesOf(time) >= LAST_MINUTE && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenTimeUp}>
+              <PlusIcon size={20} color={Colors.foamMuted} />
             </Pressable>
           </View>
-          <View style={styles.grid} onLayout={(event) => setCellWidth(Math.floor(event.nativeEvent.layout.width / 7))} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-            {weekdays.map((label) => <Text key={label} allowFontScaling={false} style={[styles.weekday, { width: cellWidth }]}>{label}</Text>)}
-          </View>
-          <View style={styles.grid}>
-            {days.map((day) => {
-              // Late in the evening today has no meetup time left, so it is not offered either.
-              const off = day < today || day > last || (day === today && earliestMinutes(today, plan.timezone) === null);
-              const selected = day === date;
-              const isToday = day === today;
-              const monthStart = day.endsWith('-01');
-              return <Pressable key={day} disabled={off} onPress={() => pickDay(day)} style={[styles.cell, { width: cellWidth }]}
-                accessibilityRole="button" accessibilityState={{ selected, disabled: off }}
-                accessibilityLabel={[longDay.format(utc(day)), isToday ? t.tours.whenToday : null, off ? t.tours.whenUnavailable : null].filter(Boolean).join(', ')}>
-                <View style={[styles.day, selected && styles.daySelected]}>
-                  {monthStart && <Text allowFontScaling={false} style={[styles.monthTag, selected && styles.onAmber, off && styles.offText]}>{shortMonth.format(utc(day))}</Text>}
-                  <Text allowFontScaling={false} style={[styles.dayText, isToday && styles.today, selected && styles.onAmber, off && styles.offText]}>{Number(day.slice(8))}</Text>
-                </View>
+          : <View style={styles.chips}>
+            {PRESETS.map((value) => {
+              const off = !date || timeOff(value);
+              const active = value === time;
+              return <Pressable key={value} disabled={off} onPress={() => pickTime(active ? null : value)}
+                style={({ pressed }) => [styles.chip, active && styles.chipActive, off && styles.off, pressed && styles.pressed]}
+                accessibilityRole="button" accessibilityState={{ selected: active, disabled: off }} accessibilityLabel={value}>
+                <Text allowFontScaling={false} style={[styles.chipText, active && styles.chipTextActive]}>{value}</Text>
               </Pressable>;
             })}
-          </View>
-          <View style={styles.timeHead}>
-            <TourText style={ui.section}>{t.tours.whenTime}</TourText>
-            {!!date && earliest !== null && <Pressable onPress={custom ? () => setCustom(false) : openCustom} style={ui.link} accessibilityRole="button" accessibilityLabel={otherLabel}>
-              <TourText style={ui.linkText}>{otherLabel}</TourText>
-            </Pressable>}
-          </View>
-          {!date && <TourText style={styles.hint}>{t.tours.whenPickDay}</TourText>}
-          {custom && time
-            ? <View style={styles.stepper}>
-              <Pressable onPress={() => step(-15)} disabled={earliest === null || minutesOf(time) <= earliest} style={({ pressed }) => [styles.stepButton, pressed && styles.pressed, (earliest === null || minutesOf(time) <= earliest) && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenTimeDown}>
-                <MinusIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-              <Text allowFontScaling={false} style={styles.stepValue} accessibilityLiveRegion="polite">{time}</Text>
-              <Pressable onPress={() => step(15)} disabled={minutesOf(time) >= LAST_MINUTE} style={({ pressed }) => [styles.stepButton, pressed && styles.pressed, minutesOf(time) >= LAST_MINUTE && styles.off]} accessibilityRole="button" accessibilityLabel={t.tours.whenTimeUp}>
-                <PlusIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-            : <View style={styles.chips}>
-              {PRESETS.map((value) => {
-                const off = !date || timeOff(value);
-                const active = value === time;
-                return <Pressable key={value} disabled={off} onPress={() => pickTime(active ? null : value)}
-                  style={({ pressed }) => [styles.chip, active && styles.chipActive, off && styles.off, pressed && styles.pressed]}
-                  accessibilityRole="button" accessibilityState={{ selected: active, disabled: off }} accessibilityLabel={value}>
-                  <Text allowFontScaling={false} style={[styles.chipText, active && styles.chipTextActive]}>{value}</Text>
-                </Pressable>;
-              })}
-            </View>}
-          {dst && <TourText accessibilityRole="alert" style={styles.hint}>{t.tours.whenDst}</TourText>}
-          {!!failed && <TourText accessibilityRole="alert" style={styles.hint}>{tourError(failed)}</TourText>}
-        </ScrollView>
-        <View style={styles.footer}>
-          <TourButton testID="tour-when-done" label={t.tours.whenDone} busy={closing} onPress={() => { void close(true); }} />
-          {!!current.scheduledDate && <TourButton label={t.tours.whenClear} quiet disabled={closing} onPress={() => { setCustom(false); void write({ scheduledDate: null, scheduledTime: null }); void close(); }} />}
-        </View>
-      </ModalInsetView>
-    </View>
-  </Modal>;
+          </View>}
+        {dst && <TourText accessibilityRole="alert" style={styles.hint}>{t.tours.whenDst}</TourText>}
+        {!!failed && <TourText accessibilityRole="alert" style={styles.hint}>{tourError(failed)}</TourText>}
+      </BottomSheetScrollView>
+      <View style={styles.footer}>
+        <TourButton testID="tour-when-done" label={t.tours.whenDone} busy={closing} onPress={() => { void close(true); }} />
+        {!!current.scheduledDate && <TourButton label={t.tours.whenClear} quiet disabled={closing} onPress={() => { setCustom(false); void write({ scheduledDate: null, scheduledTime: null }); void close(); }} />}
+      </View>
+    </ModalInsetView>
+  </BottomSheetModal>;
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: withAlpha(Colors.black, 0.6) },
   card: { backgroundColor: Colors.stout, borderTopLeftRadius: Radius.cardLarge, borderTopRightRadius: Radius.cardLarge, paddingTop: Spacing.sm, paddingHorizontal: Spacing.lg },
   grabber: { alignSelf: 'center', width: 44, height: 4, borderRadius: Radius.pill, backgroundColor: withAlpha(Colors.foam, 0.22), marginBottom: Spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },

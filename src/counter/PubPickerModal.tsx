@@ -7,19 +7,13 @@
  * screen itself never shows a "detecting" or "no pub" full screen.
  */
 
-import React, { useEffect } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  useReducedMotion,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import React from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
-import { Colors, withAlpha } from '@/theme/colors';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
@@ -46,8 +40,6 @@ const OUTSIDE_ICONS: Record<OutsidePlaceContext, typeof HouseIcon> = {
   outdoors: TreePineIcon,
   other: MapPinIcon,
 };
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface PubPickerModalProps {
   visible: boolean;
@@ -76,195 +68,165 @@ export function PubPickerModal({
   onClose,
 }: PubPickerModalProps) {
   const insets = useSafeAreaInsets();
-  const reduceMotion = useReducedMotion();
   const genericOutsideSelected = contextPubKey('other') === selectedKey;
 
-  // One-shot slide-up on open; no motion at all under reduced motion.
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = reduceMotion
-        ? withTiming(1, { duration: 0 })
-        : withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 });
-    } else {
-      progress.value = 0;
-    }
-  }, [visible, reduceMotion, progress]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
-
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t.a11y.counterCloseModal}>
-        {/* The card swallows presses so a row tap never falls through to the backdrop. */}
-        <AnimatedPressable
-          style={[styles.card, cardAnim, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}
-          onPress={() => undefined}
-        >
-          <View style={styles.grabber} />
-          <View style={styles.header}>
-            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.counter.pickerTitle}
-            </Text>
-            <View style={styles.headerActions}>
-              {onSelectOutside ? (
-                <Pressable
-                  onPress={() => onSelectOutside('other')}
-                  style={({ pressed }) => [
-                    styles.outsideButton,
-                    genericOutsideSelected && styles.outsideButtonSelected,
-                    pressed && styles.rowPressed,
-                  ]}
-                  hitSlop={4}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: genericOutsideSelected }}
-                  accessibilityLabel={t.counter.outsideLabel('other')}
-                >
-                  <HouseIcon size={16} color={genericOutsideSelected ? Colors.stout : Colors.amber} />
-                  <Text
-                    style={[styles.outsideButtonText, genericOutsideSelected && styles.outsideButtonTextSelected]}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {t.counter.outsideLabel('other')}
-                  </Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={onClose}
-                style={styles.closeButton}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-          </View>
-
-          <ScrollView
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {candidates.length > 0 ? (
-              <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.counter.pickerNearbyHeader}
-              </Text>
-            ) : null}
-            {candidates.map((candidate) => {
-              const isSelected = candidate.pubKey === selectedKey;
-              const distance = formatDistanceCs(candidate.distanceMeters);
-              return (
-                <Pressable
-                  key={candidate.pubKey}
-                  onPress={() => onSelect(candidate.pub)}
-                  style={({ pressed }) => [
-                    styles.row,
-                    isSelected && styles.rowSelected,
-                    pressed && styles.rowPressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={t.a11y.counterPickPub(candidate.pub.name, distance)}
-                >
-                  <MapPinIcon size={18} color={isSelected ? Colors.stout : Colors.amber} />
-                  <Text
-                    style={[styles.rowName, isSelected && styles.rowNameSelected]}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {candidate.pub.name}
-                  </Text>
-                  <Text
-                    style={[styles.rowDistance, isSelected && styles.rowDistanceSelected]}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {distance}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            {onRetry ? (
-              <Pressable
-                onPress={onRetry}
-                style={({ pressed }) => [styles.quietRow, pressed && styles.rowPressed]}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.counterRetry}
-              >
-                <RefreshCwIcon size={18} color={Colors.foamMuted} />
-                <Text style={styles.quietRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.counter.retry}
-                </Text>
-              </Pressable>
-            ) : null}
-
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      {/* The card swallows presses so a row tap never falls through to the backdrop. */}
+      <Pressable
+        style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}
+        onPress={() => undefined}
+      >
+        <View style={styles.grabber} />
+        <View style={styles.header}>
+          <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {t.counter.pickerTitle}
+          </Text>
+          <View style={styles.headerActions}>
             {onSelectOutside ? (
-              <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.counter.pickerOutsideHeader}
-              </Text>
-            ) : null}
-            {onSelectOutside ? OUTSIDE_PLACE_CONTEXTS.filter((context) => context !== 'other').map((context) => {
-              const isSelected = contextPubKey(context) === selectedKey;
-              const Icon = OUTSIDE_ICONS[context];
-              const label = t.counter.outsideLabel(context);
-              return (
-                <Pressable
-                  key={context}
-                  onPress={() => onSelectOutside(context)}
-                  style={({ pressed }) => [
-                    styles.row,
-                    isSelected && styles.rowSelected,
-                    pressed && styles.rowPressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={label}
-                >
-                  <Icon size={18} color={isSelected ? Colors.stout : Colors.amber} />
-                  <Text
-                    style={[styles.rowName, isSelected && styles.rowNameSelected]}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            }) : null}
-
-            {onAddPub ? (
               <Pressable
-                onPress={onAddPub}
-                style={({ pressed }) => [styles.quietRow, pressed && styles.rowPressed]}
+                onPress={() => onSelectOutside('other')}
+                style={({ pressed }) => [
+                  styles.outsideButton,
+                  genericOutsideSelected && styles.outsideButtonSelected,
+                  pressed && styles.rowPressed,
+                ]}
+                hitSlop={4}
                 accessibilityRole="button"
-                accessibilityLabel={t.counter.noPubAddPub}
+                accessibilityState={{ selected: genericOutsideSelected }}
+                accessibilityLabel={t.counter.outsideLabel('other')}
               >
-                <MapPinPlusIcon size={18} color={Colors.foamMuted} />
-                <Text style={styles.quietRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.counter.noPubAddPub}
+                <HouseIcon size={16} color={genericOutsideSelected ? Colors.stout : Colors.amber} />
+                <Text
+                  style={[styles.outsideButtonText, genericOutsideSelected && styles.outsideButtonTextSelected]}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {t.counter.outsideLabel('other')}
                 </Text>
               </Pressable>
             ) : null}
-          </ScrollView>
-        </AnimatedPressable>
+            <Pressable
+              onPress={onClose}
+              style={styles.closeButton}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.counterCloseModal}
+            >
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+        </View>
+
+        <BottomSheetScrollView
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {candidates.length > 0 ? (
+            <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.counter.pickerNearbyHeader}
+            </Text>
+          ) : null}
+          {candidates.map((candidate) => {
+            const isSelected = candidate.pubKey === selectedKey;
+            const distance = formatDistanceCs(candidate.distanceMeters);
+            return (
+              <Pressable
+                key={candidate.pubKey}
+                onPress={() => onSelect(candidate.pub)}
+                style={({ pressed }) => [
+                  styles.row,
+                  isSelected && styles.rowSelected,
+                  pressed && styles.rowPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+                accessibilityLabel={t.a11y.counterPickPub(candidate.pub.name, distance)}
+              >
+                <MapPinIcon size={18} color={isSelected ? Colors.stout : Colors.amber} />
+                <Text
+                  style={[styles.rowName, isSelected && styles.rowNameSelected]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {candidate.pub.name}
+                </Text>
+                <Text
+                  style={[styles.rowDistance, isSelected && styles.rowDistanceSelected]}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {distance}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {onRetry ? (
+            <Pressable
+              onPress={onRetry}
+              style={({ pressed }) => [styles.quietRow, pressed && styles.rowPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.counterRetry}
+            >
+              <RefreshCwIcon size={18} color={Colors.foamMuted} />
+              <Text style={styles.quietRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.counter.retry}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {onSelectOutside ? (
+            <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.counter.pickerOutsideHeader}
+            </Text>
+          ) : null}
+          {onSelectOutside ? OUTSIDE_PLACE_CONTEXTS.filter((context) => context !== 'other').map((context) => {
+            const isSelected = contextPubKey(context) === selectedKey;
+            const Icon = OUTSIDE_ICONS[context];
+            const label = t.counter.outsideLabel(context);
+            return (
+              <Pressable
+                key={context}
+                onPress={() => onSelectOutside(context)}
+                style={({ pressed }) => [
+                  styles.row,
+                  isSelected && styles.rowSelected,
+                  pressed && styles.rowPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+                accessibilityLabel={label}
+              >
+                <Icon size={18} color={isSelected ? Colors.stout : Colors.amber} />
+                <Text
+                  style={[styles.rowName, isSelected && styles.rowNameSelected]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          }) : null}
+
+          {onAddPub ? (
+            <Pressable
+              onPress={onAddPub}
+              style={({ pressed }) => [styles.quietRow, pressed && styles.rowPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t.counter.noPubAddPub}
+            >
+              <MapPinPlusIcon size={18} color={Colors.foamMuted} />
+              <Text style={styles.quietRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.counter.noPubAddPub}
+              </Text>
+            </Pressable>
+          ) : null}
+        </BottomSheetScrollView>
       </Pressable>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   card: {
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,

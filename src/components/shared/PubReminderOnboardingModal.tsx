@@ -9,16 +9,11 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { BellRingIcon, ChevronLeftIcon, MapPinIcon, ShieldIcon } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -120,7 +115,6 @@ export function PubReminderOnboardingModal() {
   useEffect(() => () => useLaunchModalMutex.getState().release('pub-reminder'), []);
   const visible = wantVisible && mutexHolder === 'pub-reminder';
 
-  const progress = useSharedValue(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,22 +154,6 @@ export function PubReminderOnboardingModal() {
     };
   }, [releaseSettled, releaseNote]);
 
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = withSpring(1, { damping: 16, stiffness: 145, mass: 0.9 });
-    } else {
-      progress.value = withTiming(0, { duration: 140 });
-    }
-  }, [progress, visible]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [
-      { scale: 0.94 + progress.value * 0.06 },
-      { translateY: (1 - progress.value) * 18 },
-    ],
-  }));
 
   const closeAsSeen = useCallback(async () => {
     await markPubReminderOnboardingSeen(version);
@@ -205,17 +183,10 @@ export function PubReminderOnboardingModal() {
   }, [busy, setPubReminderEnabled, version]);
 
   return (
-    <Modal
-      scrimColor={styles.backdrop.backgroundColor}
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={() => void closeAsSeen()}
-    >
-      <View style={[styles.backdrop, { paddingTop: insets.top + Spacing.lg }]}>
-        <Animated.View style={[styles.sheet, softDrop(), cardAnim]}>
-          <ScrollView
+    <BottomSheetModal visible={visible} onClose={() => void closeAsSeen()} scrimColor={SCRIM}>
+      <View style={[styles.backdrop, { paddingTop: insets.top + Spacing.lg }]} pointerEvents="box-none">
+        <View style={[styles.sheet, softDrop()]}>
+          <BottomSheetScrollView
             bounces={false}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
@@ -320,18 +291,19 @@ export function PubReminderOnboardingModal() {
                 </View>
               </>
             )}
-          </ScrollView>
-        </Animated.View>
+          </BottomSheetScrollView>
+        </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
+
+const SCRIM = withAlpha(Colors.black, 0.82);
 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: withAlpha(Colors.black, 0.82),
   },
   sheet: {
     maxHeight: '92%',

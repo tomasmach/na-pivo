@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   runOnJS,
@@ -18,7 +18,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { CheckIcon, EyeIcon, EyeOffIcon, XIcon } from '@/components/shared/IconGlyph';
 import { intlLocale, t } from '@/i18n';
 import { BadgeMedal, medalLook } from '@/profile/BadgeMedal';
@@ -218,126 +219,106 @@ export function BadgeDetailSheet({
   const isPublic = PUBLIC_BADGE_KEYS.has(state.key);
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
         <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+          accessible={false}
+          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+          onPress={() => undefined}
+        >
+          <View style={styles.grabber} />
           <Pressable
-            accessible={false}
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
+            onPress={onClose}
+            hitSlop={6}
+            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={t.a11y.counterCloseModal}
           >
-            <View style={styles.grabber} />
-            <Pressable
-              onPress={onClose}
-              hitSlop={6}
-              style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={t.a11y.counterCloseModal}
-            >
-              <XIcon size={20} color={Colors.foamMuted} />
-            </Pressable>
-            <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-              <Animated.View style={[styles.medal, mint.style]}>
-                {minting ? (
-                  <Animated.View style={[styles.medalBefore, mint.before]}>
-                    <BadgeMedal badge={state.key} look={medalLook(state, state.tier - 1)} size={MEDAL_SIZE} />
-                  </Animated.View>
-                ) : null}
-                <Animated.View style={mint.after}>
-                  <BadgeMedal badge={state.key} look={medalLook(state)} size={MEDAL_SIZE} />
-                </Animated.View>
-              </Animated.View>
-              {minting ? (
-                <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.badges.newMedal}
-                </Text>
-              ) : null}
-              <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading}>
-                {badgeName(state)}
-              </Text>
-              <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                {subtitle(state)}
-              </Text>
-              {quip ? (
-                <Text style={styles.quip} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {quip}
-                </Text>
-              ) : null}
-
-              {still && state.next != null ? (
-                <View style={styles.progress}>
-                  <Text style={styles.progressLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.badges.toLevel(roman(state.tier + 1))}
-                  </Text>
-                  <View style={styles.progressLine}>
-                    <Text style={styles.progressStill} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {still}
-                    </Text>
-                    <Text style={styles.progressCount} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {`${state.value} / ${state.next}`}
-                    </Text>
-                  </View>
-                  <ProgressBar share={state.value / state.next} thick />
-                </View>
-              ) : state.kind === 'tiered' && state.next == null ? (
-                <Text style={styles.statusLine} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {t.badges.allLevels}
-                </Text>
-              ) : null}
-
-              {state.kind === 'slots' ? <Slots state={state} /> : null}
-              {state.kind === 'once' && !earned && state.holiday ? (
-                <Text style={styles.statusLine} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {t.badges.inDays(daysUntilHoliday(state.holiday, now))}
-                </Text>
-              ) : null}
-
-              {state.kind === 'tiered' ? (
-                <>
-                  <Levels state={state} />
-                  <Text style={styles.about} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.badges.about[state.key]}
-                  </Text>
-                </>
-              ) : null}
-
-              <View style={styles.privacy}>
-                {isPublic ? (
-                  <EyeIcon size={18} color={Colors.mutedText} />
-                ) : (
-                  <EyeOffIcon size={18} color={Colors.mutedText} />
-                )}
-                <Text style={styles.privacyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {isPublic ? t.badges.friendsSee : t.badges.onlyYou}
-                </Text>
-              </View>
-            </ScrollView>
+            <XIcon size={20} color={Colors.foamMuted} />
           </Pressable>
-        </View>
+          <BottomSheetScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <Animated.View style={[styles.medal, mint.style]}>
+              {minting ? (
+                <Animated.View style={[styles.medalBefore, mint.before]}>
+                  <BadgeMedal badge={state.key} look={medalLook(state, state.tier - 1)} size={MEDAL_SIZE} />
+                </Animated.View>
+              ) : null}
+              <Animated.View style={mint.after}>
+                <BadgeMedal badge={state.key} look={medalLook(state)} size={MEDAL_SIZE} />
+              </Animated.View>
+            </Animated.View>
+            {minting ? (
+              <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.badges.newMedal}
+              </Text>
+            ) : null}
+            <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading}>
+              {badgeName(state)}
+            </Text>
+            <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+              {subtitle(state)}
+            </Text>
+            {quip ? (
+              <Text style={styles.quip} maxFontSizeMultiplier={FontScaleCap.body}>
+                {quip}
+              </Text>
+            ) : null}
+
+            {still && state.next != null ? (
+              <View style={styles.progress}>
+                <Text style={styles.progressLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.badges.toLevel(roman(state.tier + 1))}
+                </Text>
+                <View style={styles.progressLine}>
+                  <Text style={styles.progressStill} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {still}
+                  </Text>
+                  <Text style={styles.progressCount} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {`${state.value} / ${state.next}`}
+                  </Text>
+                </View>
+                <ProgressBar share={state.value / state.next} thick />
+              </View>
+            ) : state.kind === 'tiered' && state.next == null ? (
+              <Text style={styles.statusLine} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.badges.allLevels}
+              </Text>
+            ) : null}
+
+            {state.kind === 'slots' ? <Slots state={state} /> : null}
+            {state.kind === 'once' && !earned && state.holiday ? (
+              <Text style={styles.statusLine} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.badges.inDays(daysUntilHoliday(state.holiday, now))}
+              </Text>
+            ) : null}
+
+            {state.kind === 'tiered' ? (
+              <>
+                <Levels state={state} />
+                <Text style={styles.about} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.badges.about[state.key]}
+                </Text>
+              </>
+            ) : null}
+
+            <View style={styles.privacy}>
+              {isPublic ? (
+                <EyeIcon size={18} color={Colors.mutedText} />
+              ) : (
+                <EyeOffIcon size={18} color={Colors.mutedText} />
+              )}
+              <Text style={styles.privacyText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {isPublic ? t.badges.friendsSee : t.badges.onlyYou}
+              </Text>
+            </View>
+          </BottomSheetScrollView>
+        </Pressable>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   cardWrap: {
     width: '100%',
     maxHeight: '92%',

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
-  FlatList,
   Image,
   PanResponder,
   Pressable,
@@ -24,7 +23,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import type { SharedValue } from 'react-native-reanimated';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetFlatList } from '@/components/shared/BottomSheetScrollView';
 import { useTone } from '@/layout/pane';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
@@ -1926,223 +1926,208 @@ export default function BeerMapScreen({
         )}
       </View>
 
-      <Modal
-        visible={listOpen}
-        transparent
-        statusBarTranslucent
-        presentationStyle="overFullScreen"
-        animationType="fade"
-        onRequestClose={() => setListOpen(false)}
-      >
-        <View style={styles.listBackdrop}>
+      <BottomSheetModal visible={listOpen} onClose={() => setListOpen(false)} underlayColor={styles.listCard.backgroundColor}>
+        <View
+          style={[styles.listCardWrap, { marginBottom: -insets.bottom }]}
+        >
           <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setListOpen(false)}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-          />
-          <View
-            style={[styles.listCardWrap, { marginBottom: -insets.bottom }]}
+            style={[
+              styles.listCard,
+              { paddingBottom: insets.bottom + Spacing.lg },
+            ]}
+            onPress={() => undefined}
+            accessible={false}
+            focusable={false}
           >
-            <Pressable
-              style={[
-                styles.listCard,
-                { paddingBottom: insets.bottom + Spacing.lg },
-              ]}
-              onPress={() => undefined}
-              accessible={false}
-              focusable={false}
-            >
-              <View style={styles.listGrabber} />
-              <View style={styles.listHeader}>
-                <Text
-                  style={styles.listTitle}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
-                >
-                  {layer === 'friends' ? t.map.layerFriends : viewportHeadline}
-                </Text>
+            <View style={styles.listGrabber} />
+            <View style={styles.listHeader}>
+              <Text
+                style={styles.listTitle}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.heading}
+              >
+                {layer === 'friends' ? t.map.layerFriends : viewportHeadline}
+              </Text>
+              <Pressable
+                onPress={() => setListOpen(false)}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && styles.pressedSoft,
+                ]}
+                accessibilityLabel={t.map.closeList}
+                accessibilityRole="button"
+              >
+                <XIcon size={20} color={Colors.foamMuted} />
+              </Pressable>
+            </View>
+            {layer !== 'friends' && viewportDetail ? (
+              <Text
+                style={styles.listSubtitle}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {viewportDetail}
+              </Text>
+            ) : null}
+            {layer !== 'friends' && hasFavorites ? (
+              <View style={styles.listChips}>
                 <Pressable
-                  onPress={() => setListOpen(false)}
+                  onPress={() => setFavoritesOnly(!favoritesFilter)}
                   style={({ pressed }) => [
-                    styles.closeButton,
+                    styles.listChip,
+                    favoritesFilter && styles.listChipActive,
                     pressed && styles.pressedSoft,
                   ]}
-                  accessibilityLabel={t.map.closeList}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: favoritesFilter }}
+                  accessibilityLabel={t.map.favoritesOnly}
                 >
-                  <XIcon size={20} color={Colors.foamMuted} />
+                  <HeartIcon size={15} color={favoritesFilter ? Colors.amber : Colors.mutedText} />
+                  <Text
+                    style={[styles.listChipText, favoritesFilter && styles.listChipTextActive]}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {t.map.favoritesOnly}
+                  </Text>
                 </Pressable>
               </View>
-              {layer !== 'friends' && viewportDetail ? (
-                <Text
-                  style={styles.listSubtitle}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {viewportDetail}
-                </Text>
-              ) : null}
-              {layer !== 'friends' && hasFavorites ? (
-                <View style={styles.listChips}>
+            ) : null}
+            {layer === 'friends' ? (
+              <BottomSheetFlatList
+                style={styles.list}
+                data={visibleLivePubs}
+                keyExtractor={(item) => item.cacheKey}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item, index }) => (
                   <Pressable
-                    onPress={() => setFavoritesOnly(!favoritesFilter)}
+                    onPress={() => {
+                      setListOpen(false);
+                      selectLive(item);
+                      const next = {
+                        latitude: item.lat,
+                        longitude: item.lng,
+                        latitudeDelta: 0.025,
+                        longitudeDelta: 0.025,
+                      };
+                      mapRef.current?.animateToRegion(
+                        next,
+                        reduceMotion ? 0 : 300,
+                      );
+                      handleRegionChange(next);
+                    }}
                     style={({ pressed }) => [
-                      styles.listChip,
-                      favoritesFilter && styles.listChipActive,
+                      styles.listRow,
+                      index > 0 && styles.listRowDivider,
                       pressed && styles.pressedSoft,
                     ]}
+                    accessibilityLabel={t.a11y.mapLive(
+                      friendName(item),
+                      item.name,
+                    )}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: favoritesFilter }}
-                    accessibilityLabel={t.map.favoritesOnly}
                   >
-                    <HeartIcon size={15} color={favoritesFilter ? Colors.amber : Colors.mutedText} />
-                    <Text
-                      style={[styles.listChipText, favoritesFilter && styles.listChipTextActive]}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {t.map.favoritesOnly}
-                    </Text>
+                    <View style={styles.listRowCopy}>
+                      <Text
+                        style={styles.listRowTitle}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {item.name}
+                      </Text>
+                      <Text
+                        style={styles.listRowMeta}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {t.map.friendIsHere(friendName(item))}
+                      </Text>
+                    </View>
+                    <ChevronRightIcon size={18} color={Colors.mutedText} />
                   </Pressable>
-                </View>
-              ) : null}
-              {layer === 'friends' ? (
-                <FlatList
-                  style={styles.list}
-                  data={visibleLivePubs}
-                  keyExtractor={(item) => item.cacheKey}
-                  contentContainerStyle={styles.listContent}
-                  showsVerticalScrollIndicator={false}
-                  renderItem={({ item, index }) => (
-                    <Pressable
-                      onPress={() => {
-                        setListOpen(false);
-                        selectLive(item);
-                        const next = {
-                          latitude: item.lat,
-                          longitude: item.lng,
-                          latitudeDelta: 0.025,
-                          longitudeDelta: 0.025,
-                        };
-                        mapRef.current?.animateToRegion(
-                          next,
-                          reduceMotion ? 0 : 300,
-                        );
-                        handleRegionChange(next);
-                      }}
-                      style={({ pressed }) => [
-                        styles.listRow,
-                        index > 0 && styles.listRowDivider,
-                        pressed && styles.pressedSoft,
-                      ]}
-                      accessibilityLabel={t.a11y.mapLive(
-                        friendName(item),
-                        item.name,
-                      )}
-                      accessibilityRole="button"
-                    >
-                      <View style={styles.listRowCopy}>
+                )}
+                ListEmptyComponent={
+                  <Text
+                    style={styles.emptyList}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {t.map.emptyList}
+                  </Text>
+                }
+              />
+            ) : (
+              <BottomSheetFlatList
+                style={styles.list}
+                data={listedPoints}
+                keyExtractor={(item) => item.key}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item, index }) => (
+                  <Pressable
+                    onPress={() => {
+                      setListOpen(false);
+                      selectPub(item);
+                      const next = {
+                        latitude: item.lat,
+                        longitude: item.lng,
+                        latitudeDelta: 0.025,
+                        longitudeDelta: 0.025,
+                      };
+                      mapRef.current?.animateToRegion(
+                        next,
+                        reduceMotion ? 0 : 300,
+                      );
+                      handleRegionChange(next);
+                    }}
+                    style={({ pressed }) => [
+                      styles.listRow,
+                      index > 0 && styles.listRowDivider,
+                      pressed && styles.pressedSoft,
+                    ]}
+                    accessibilityLabel={t.a11y.mapPub(
+                      item.pub.name,
+                      item.visit?.visitCount ?? 0,
+                    )}
+                    accessibilityRole="button"
+                  >
+                    <View style={styles.listRowCopy}>
+                      <View style={styles.listRowTitleLine}>
                         <Text
-                          style={styles.listRowTitle}
+                          style={[styles.listRowTitle, styles.listRowTitleShrink]}
                           numberOfLines={1}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          {item.name}
+                          {item.pub.name}
                         </Text>
-                        <Text
-                          style={styles.listRowMeta}
-                          numberOfLines={1}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                        >
-                          {t.map.friendIsHere(friendName(item))}
-                        </Text>
+                        {isFavoritePoint(item) ? (
+                          <HeartFilledIcon size={13} color={Colors.amber} />
+                        ) : null}
                       </View>
-                      <ChevronRightIcon size={18} color={Colors.mutedText} />
-                    </Pressable>
-                  )}
-                  ListEmptyComponent={
-                    <Text
-                      style={styles.emptyList}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {t.map.emptyList}
-                    </Text>
-                  }
-                />
-              ) : (
-                <FlatList
-                  style={styles.list}
-                  data={listedPoints}
-                  keyExtractor={(item) => item.key}
-                  contentContainerStyle={styles.listContent}
-                  showsVerticalScrollIndicator={false}
-                  renderItem={({ item, index }) => (
-                    <Pressable
-                      onPress={() => {
-                        setListOpen(false);
-                        selectPub(item);
-                        const next = {
-                          latitude: item.lat,
-                          longitude: item.lng,
-                          latitudeDelta: 0.025,
-                          longitudeDelta: 0.025,
-                        };
-                        mapRef.current?.animateToRegion(
-                          next,
-                          reduceMotion ? 0 : 300,
-                        );
-                        handleRegionChange(next);
-                      }}
-                      style={({ pressed }) => [
-                        styles.listRow,
-                        index > 0 && styles.listRowDivider,
-                        pressed && styles.pressedSoft,
-                      ]}
-                      accessibilityLabel={t.a11y.mapPub(
-                        item.pub.name,
-                        item.visit?.visitCount ?? 0,
-                      )}
-                      accessibilityRole="button"
-                    >
-                      <View style={styles.listRowCopy}>
-                        <View style={styles.listRowTitleLine}>
-                          <Text
-                            style={[styles.listRowTitle, styles.listRowTitleShrink]}
-                            numberOfLines={1}
-                            maxFontSizeMultiplier={FontScaleCap.body}
-                          >
-                            {item.pub.name}
-                          </Text>
-                          {isFavoritePoint(item) ? (
-                            <HeartFilledIcon size={13} color={Colors.amber} />
-                          ) : null}
-                        </View>
-                        <Text
-                          style={styles.listRowMeta}
-                          numberOfLines={1}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                        >
-                          {item.pub.city ||
-                            (item.visit ? t.map.visited : t.map.notVisited)}
-                        </Text>
-                      </View>
-                      <ChevronRightIcon size={18} color={Colors.mutedText} />
-                    </Pressable>
-                  )}
-                  ListEmptyComponent={
-                    <Text
-                      style={styles.emptyList}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {favoritesFilter ? t.map.emptyFavorites : t.map.emptyList}
-                    </Text>
-                  }
-                />
-              )}
-            </Pressable>
-          </View>
+                      <Text
+                        style={styles.listRowMeta}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {item.pub.city ||
+                          (item.visit ? t.map.visited : t.map.notVisited)}
+                      </Text>
+                    </View>
+                    <ChevronRightIcon size={18} color={Colors.mutedText} />
+                  </Pressable>
+                )}
+                ListEmptyComponent={
+                  <Text
+                    style={styles.emptyList}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {favoritesFilter ? t.map.emptyFavorites : t.map.emptyList}
+                  </Text>
+                }
+              />
+            )}
+          </Pressable>
         </View>
-      </Modal>
+      </BottomSheetModal>
 
       <MoreSheet
         visible={moreOpen}
@@ -2706,11 +2691,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  listBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: withAlpha(Colors.black, 0.6),
-  },
   listCardWrap: {
     width: '100%',
     minHeight: '56%',

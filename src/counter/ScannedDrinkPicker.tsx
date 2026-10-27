@@ -1,8 +1,9 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { BeerIcon, CircleDotIcon, GlassWaterIcon, WineIcon, XIcon } from '@/components/shared/IconGlyph';
 import type { ScannedDrink } from '@/data/menuScanClient';
 import { formatVolume, t } from '@/i18n';
@@ -29,59 +30,56 @@ function TypeIcon({ drink }: { drink: ScannedDrink }) {
 export function ScannedDrinkPicker({ visible, drinks, priceCurrency, onClose, onSelect }: Props) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal scrimColor={styles.backdrop.backgroundColor} visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
-        <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
-          <View style={styles.header}>
-            <View style={styles.headerText}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.counter.scanDrinksTitle}
-              </Text>
-              <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.counter.scanDrinksHint}
-              </Text>
-            </View>
-            <Pressable
-              onPress={onClose}
-              style={styles.close}
-              accessibilityRole="button"
-              accessibilityLabel={t.counter.cancel}
-            >
-              <XIcon size={18} color={Colors.mutedText} />
-            </Pressable>
+    <BottomSheetModal visible={visible} onClose={onClose} scrimColor={styles.backdrop.backgroundColor} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.counter.scanDrinksTitle}
+            </Text>
+            <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.counter.scanDrinksHint}
+            </Text>
           </View>
-          <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-            {drinks.map((drink, index) => {
-              const meta = [
-                t.counter.drinkTypeLabel(drink.drinkType),
-                typeof drink.priceCzk === 'number' ? formatPrice(drink.priceCzk, priceCurrency) : null,
-                typeof drink.volumeMl === 'number' ? formatVolume(drink.volumeMl) : null,
-              ].filter(Boolean).join(' · ');
-              return (
-                <Pressable
-                  key={`${drink.drinkType}|${drink.name}|${drink.volumeMl ?? ''}|${index}`}
-                  onPress={() => onSelect(drink)}
-                  style={({ pressed }) => [styles.row, index > 0 && styles.rowBorder, pressed && styles.rowPressed]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${drink.name}, ${meta}`}
-                >
-                  <View style={styles.icon}><TypeIcon drink={drink} /></View>
-                  <View style={styles.rowText}>
-                    <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {drink.name}
-                    </Text>
-                    <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {meta}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <Pressable
+            onPress={onClose}
+            style={styles.close}
+            accessibilityRole="button"
+            accessibilityLabel={t.counter.cancel}
+          >
+            <XIcon size={18} color={Colors.mutedText} />
+          </Pressable>
         </View>
+        <BottomSheetScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+          {drinks.map((drink, index) => {
+            const meta = [
+              t.counter.drinkTypeLabel(drink.drinkType),
+              typeof drink.priceCzk === 'number' ? formatPrice(drink.priceCzk, priceCurrency) : null,
+              typeof drink.volumeMl === 'number' ? formatVolume(drink.volumeMl) : null,
+            ].filter(Boolean).join(' · ');
+            return (
+              <Pressable
+                key={`${drink.drinkType}|${drink.name}|${drink.volumeMl ?? ''}|${index}`}
+                onPress={() => onSelect(drink)}
+                style={({ pressed }) => [styles.row, index > 0 && styles.rowBorder, pressed && styles.rowPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`${drink.name}, ${meta}`}
+              >
+                <View style={styles.icon}><TypeIcon drink={drink} /></View>
+                <View style={styles.rowText}>
+                  <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {drink.name}
+                  </Text>
+                  <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {meta}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </BottomSheetScrollView>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 

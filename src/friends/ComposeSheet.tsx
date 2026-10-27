@@ -25,15 +25,9 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { CheckIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
@@ -66,7 +60,6 @@ import AudiencePicker, { EVERYONE, audienceIds, type Audience } from './Audience
 import SegmentedControl from './SegmentedControl';
 import SkeletonBlock from './SkeletonBlock';
 
-const SLIDE_SPRING = { damping: 18, stiffness: 180, mass: 0.9 } as const;
 const MESSAGE_MAX = 80;
 const HOUR_PRESETS = [18, 19, 20, 21, 22] as const;
 const RECENT_LIMIT = 6;
@@ -223,27 +216,9 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
     [minHour],
   );
 
-  // ── Slide-up + owned slide-out. Shared value written ONLY in the effect. ──
+  // The parent unmounts the sheet, so it slides out first and hands over in `onClosed`.
   const [closing, setClosing] = useState(false);
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (closing) {
-      progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
-    } else {
-      progress.value = reduceMotion ? withTiming(1, { duration: 0 }) : withSpring(1, SLIDE_SPRING);
-    }
-  }, [closing, reduceMotion, progress]);
-
-  const requestClose = useCallback(() => {
-    if (closing) return;
-    setClosing(true);
-    setTimeout(onClose, reduceMotion ? 0 : 150);
-  }, [closing, onClose, reduceMotion]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
+  const requestClose = useCallback(() => setClosing(true), []);
 
   const isPlan = timeTab === 1;
   // A plan needs a strictly-future hour today (minutes clamped to :00). Kept pure
@@ -316,197 +291,186 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
   const showNearbyLoading = placeTab === 0 && permissionState === 'granted' && loading;
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={requestClose}>
-      <View style={styles.backdrop}>
+    <BottomSheetModal
+      visible={!closing}
+      onClose={requestClose}
+      onClosed={onClose}
+      underlayColor={styles.card.backgroundColor}
+      overlay={<Toast />}
+    >
+      <View
+        style={[
+          styles.card,
+          softDrop(),
+          {
+            paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
+            marginBottom: keyboardHeight,
+            maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
+          }, 
+        ]}
+      >
+        <View style={styles.handle} />
+
+        <View style={styles.headerRow}>
+          <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {t.friends.composeTitle}
+          </Text>
+        </View>
+
         <Pressable
-          style={StyleSheet.absoluteFill}
           onPress={requestClose}
+          hitSlop={12}
+          style={({ pressed }) => [styles.closeBtn, pressed && styles.dim]}
           accessibilityRole="button"
           accessibilityLabel={t.friends.settingsClose}
-        />
-
-        <Animated.View
-          style={[
-            styles.card,
-            softDrop(),
-            {
-              paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
-              marginBottom: keyboardHeight,
-              maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
-            },
-            cardAnim,
-          ]}
         >
-          <View style={styles.handle} />
+          <XIcon size={18} color={Colors.foamMuted} />
+        </Pressable>
 
-          <View style={styles.headerRow}>
-            <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.friends.composeTitle}
-            </Text>
+        <KeyboardAwareScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          {/* KOMU */}
+          <AudiencePicker friends={friends} value={audience} onChange={setAudience} />
+
+          {/* KDE */}
+          <View style={styles.sectionGap}>
+            <SectionHeader label={t.friends.composePubLabel} />
           </View>
-
-          <Pressable
-            onPress={requestClose}
-            hitSlop={12}
-            style={({ pressed }) => [styles.closeBtn, pressed && styles.dim]}
-            accessibilityRole="button"
-            accessibilityLabel={t.friends.settingsClose}
-          >
-            <XIcon size={18} color={Colors.foamMuted} />
-          </Pressable>
-
-          <KeyboardAwareScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-            {/* KOMU */}
-            <AudiencePicker friends={friends} value={audience} onChange={setAudience} />
-
-            {/* KDE */}
-            <View style={styles.sectionGap}>
-              <SectionHeader label={t.friends.composePubLabel} />
-            </View>
-            <SegmentedControl
-              options={[t.friends.composeNearby, t.friends.composeRecent]}
-              value={placeTab}
-              onChange={setPlaceTab}
-            />
-            <View style={styles.list}>
-              {placeTab === 0 && showNearbyPermPrompt ? (
-                <Pressable
-                  onPress={() => void requestPermission()}
-                  style={({ pressed }) => [styles.permRow, pressed && styles.dim]}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.friends.composeLocPermCta}
-                >
-                  <MapPinIcon size={18} color={Colors.amber} />
-                  <Text style={styles.permText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.friends.composeLocPermCta}
-                  </Text>
-                </Pressable>
-              ) : showNearbyLoading ? (
-                <View style={styles.skeletonList}>
-                  {[0, 1, 2].map((i) => (
-                    <SkeletonBlock key={i} width="100%" height={44} radius={Radius.medium} reduceMotion={reduceMotion} />
-                  ))}
-                </View>
-              ) : options.length === 0 ? (
-                <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {placeTab === 0 ? t.friends.composeNoNearby : t.friends.composeNoRecent}
+          <SegmentedControl
+            options={[t.friends.composeNearby, t.friends.composeRecent]}
+            value={placeTab}
+            onChange={setPlaceTab}
+          />
+          <View style={styles.list}>
+            {placeTab === 0 && showNearbyPermPrompt ? (
+              <Pressable
+                onPress={() => void requestPermission()}
+                style={({ pressed }) => [styles.permRow, pressed && styles.dim]}
+                accessibilityRole="button"
+                accessibilityLabel={t.friends.composeLocPermCta}
+              >
+                <MapPinIcon size={18} color={Colors.amber} />
+                <Text style={styles.permText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.friends.composeLocPermCta}
                 </Text>
-              ) : (
-                options.map((option) => (
-                  <PubRow
-                    key={option.key}
-                    option={option}
-                    selected={selectionKey === option.key}
-                    onSelect={() => selectPub(option)}
-                  />
-                ))
-              )}
-            </View>
-
-            {/* KDY */}
-            <View style={styles.sectionGap}>
-              <SectionHeader label={t.friends.composeTimeLabel} />
-              <SegmentedControl
-                options={[t.friends.composeNow, t.friends.composeLater]}
-                value={timeTab}
-                onChange={setTimeTab}
-              />
-              {isPlan ? (
-                <View style={styles.timePicker}>
-                  {availablePresets.length > 0 ? (
-                    <View style={styles.presetRow}>
-                      {availablePresets.map((h) => {
-                        const active = hour === h;
-                        return (
-                          <Pressable
-                            key={h}
-                            onPress={() => setHourClamped(h)}
-                            style={({ pressed }) => [
-                              styles.presetChip,
-                              active && styles.presetChipActive,
-                              pressed && styles.dim,
-                            ]}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: active }}
-                            accessibilityLabel={`${h}:00`}
-                          >
-                            <Text
-                              style={[styles.presetText, active && styles.presetTextActive]}
-                              allowFontScaling={false}
-                            >
-                              {`${h}:00`}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  ) : null}
-                  <View style={styles.stepperLine}>
-                    <HourStepper value={hour} onChange={setHourClamped} accessibilityLabel={t.friends.composeTimeLabel} />
-                  </View>
-                </View>
-              ) : null}
-            </View>
-
-            {/* VZKAZ */}
-            <View style={styles.sectionGap}>
-              <SectionHeader label={t.friends.composeMsgLabel} />
-              <TextInput
-                value={message}
-                onChangeText={setMessage}
-                placeholder={t.friends.composeMsgPlaceholder}
-                placeholderTextColor={Colors.mutedText}
-                style={styles.messageInput}
-                multiline
-                maxLength={MESSAGE_MAX}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              />
-            </View>
-          </KeyboardAwareScrollView>
-
-          {/* Sticky CTA */}
-          <View style={styles.footer}>
-            {/* An empty pick is already explained by the picker itself. */}
-            {!canSubmit && !submitting && hasRecipients ? (
-              <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.friends.composeNoPub}
+              </Pressable>
+            ) : showNearbyLoading ? (
+              <View style={styles.skeletonList}>
+                {[0, 1, 2].map((i) => (
+                  <SkeletonBlock key={i} width="100%" height={44} radius={Radius.medium} reduceMotion={reduceMotion} />
+                ))}
+              </View>
+            ) : options.length === 0 ? (
+              <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {placeTab === 0 ? t.friends.composeNoNearby : t.friends.composeNoRecent}
               </Text>
-            ) : null}
-            <Pressable
-              onPress={handleSubmit}
-              disabled={!canSubmit}
-              style={({ pressed }) => [
-                styles.submit,
-                !canSubmit && styles.submitDisabled,
-                pressed && canSubmit && styles.submitPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !canSubmit }}
-              accessibilityLabel={isPlan ? t.friends.composeSubmitPlan : t.friends.composeSubmitNow}
-            >
-              {submitting ? (
-                <ActivityIndicator color={Colors.stout} size="small" />
-              ) : (
-                <Text style={styles.submitLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {isPlan ? t.friends.composeSubmitPlan : t.friends.composeSubmitNow}
-                </Text>
-              )}
-            </Pressable>
+            ) : (
+              options.map((option) => (
+                <PubRow
+                  key={option.key}
+                  option={option}
+                  selected={selectionKey === option.key}
+                  onSelect={() => selectPub(option)}
+                />
+              ))
+            )}
           </View>
-        </Animated.View>
 
-        <Toast />
+          {/* KDY */}
+          <View style={styles.sectionGap}>
+            <SectionHeader label={t.friends.composeTimeLabel} />
+            <SegmentedControl
+              options={[t.friends.composeNow, t.friends.composeLater]}
+              value={timeTab}
+              onChange={setTimeTab}
+            />
+            {isPlan ? (
+              <View style={styles.timePicker}>
+                {availablePresets.length > 0 ? (
+                  <View style={styles.presetRow}>
+                    {availablePresets.map((h) => {
+                      const active = hour === h;
+                      return (
+                        <Pressable
+                          key={h}
+                          onPress={() => setHourClamped(h)}
+                          style={({ pressed }) => [
+                            styles.presetChip,
+                            active && styles.presetChipActive,
+                            pressed && styles.dim,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          accessibilityLabel={`${h}:00`}
+                        >
+                          <Text
+                            style={[styles.presetText, active && styles.presetTextActive]}
+                            allowFontScaling={false}
+                          >
+                            {`${h}:00`}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+                <View style={styles.stepperLine}>
+                  <HourStepper value={hour} onChange={setHourClamped} accessibilityLabel={t.friends.composeTimeLabel} />
+                </View>
+              </View>
+            ) : null}
+          </View>
+
+          {/* VZKAZ */}
+          <View style={styles.sectionGap}>
+            <SectionHeader label={t.friends.composeMsgLabel} />
+            <TextInput
+              value={message}
+              onChangeText={setMessage}
+              placeholder={t.friends.composeMsgPlaceholder}
+              placeholderTextColor={Colors.mutedText}
+              style={styles.messageInput}
+              multiline
+              maxLength={MESSAGE_MAX}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            />
+          </View>
+        </KeyboardAwareScrollView>
+
+        {/* Sticky CTA */}
+        <View style={styles.footer}>
+          {/* An empty pick is already explained by the picker itself. */}
+          {!canSubmit && !submitting && hasRecipients ? (
+            <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.friends.composeNoPub}
+            </Text>
+          ) : null}
+          <Pressable
+            onPress={handleSubmit}
+            disabled={!canSubmit}
+            style={({ pressed }) => [
+              styles.submit,
+              !canSubmit && styles.submitDisabled,
+              pressed && canSubmit && styles.submitPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canSubmit }}
+            accessibilityLabel={isPlan ? t.friends.composeSubmitPlan : t.friends.composeSubmitNow}
+          >
+            {submitting ? (
+              <ActivityIndicator color={Colors.stout} size="small" />
+            ) : (
+              <Text style={styles.submitLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {isPlan ? t.friends.composeSubmitPlan : t.friends.composeSubmitNow}
+              </Text>
+            )}
+          </Pressable>
+        </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   card: {
     maxHeight: '90%',
     backgroundColor: Colors.stout2,

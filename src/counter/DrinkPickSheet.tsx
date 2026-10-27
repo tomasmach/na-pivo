@@ -11,10 +11,11 @@
  */
 
 import React from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -135,116 +136,91 @@ export function DrinkPickSheet({
   const addBeerLabel = isEmpty ? t.counter.pickFirstBeer : t.counter.pickAddBeer;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      {/* The backdrop is a dismiss target, not an announced control: the real
-          close button carries the label so VoiceOver hears "Zavřít" once. */}
-      <View style={styles.backdrop}>
-        {/* The backdrop is a dismiss target behind the card, not its parent —
-            wrapping the card would stop it from sitting flush on the bottom
-            edge and would swallow the sheet's own gestures. */}
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        {/* The card swallows presses so a row tap never falls through to the backdrop. */}
         <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          {/* The card swallows presses so a row tap never falls through to the backdrop. */}
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-            accessible={false}
-            focusable={false}
-          >
-            <View style={styles.grabber} />
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.counter.pickTitle}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={styles.closeButton}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-
-            {isPub && beerMenuRotates ? (
-              <View style={styles.rotatingHint}>
-                <RefreshCwIcon size={13} color={Colors.amber} />
-                <Text style={styles.rotatingHintText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.counter.rotatingMenuHint}
-                </Text>
-              </View>
-            ) : null}
-
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
+          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+          onPress={() => undefined}
+          accessible={false}
+          focusable={false}
+        >
+          <View style={styles.grabber} />
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.counter.pickTitle}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={styles.closeButton}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.counterCloseModal}
             >
-              {isEmpty ? (
-                <Text style={styles.emptyCopy} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {isPub && beerMenuRotates
-                    ? t.counter.rotatingMenuBadge
-                    : isPub
-                      ? t.counter.pickEmptyPub
-                      : t.counter.pickEmptyOutside}
-                </Text>
-              ) : (
-                <>
-                  {tonightRows.length > 0 ? (
-                    <>
-                      {showCaptions ? (
-                        <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {t.counter.outsideMenuHeader}
-                        </Text>
-                      ) : null}
-                      {tonightRows.map((row, index) => renderRow(row, index === 0))}
-                    </>
-                  ) : null}
-                  {menuRows.length > 0 ? (
-                    <>
-                      {showCaptions ? (
-                        <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {t.counter.menuHeader}
-                        </Text>
-                      ) : null}
-                      {menuRows.map((row, index) => renderRow(row, index === 0))}
-                    </>
-                  ) : null}
-                </>
-              )}
-            </ScrollView>
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
 
-            {/* Pinned below the scroll area: the two ways to add something new
-                must never scroll off or get clipped by the card's max height. */}
-            <View style={styles.actions}>
-              {renderActionRow('add-beer', PlusIcon, addBeerLabel, onAddBeer, t.a11y.counterAddBeer)}
-              {renderActionRow('add-other', CupSodaIcon, t.counter.pickNonBeer, onAddOther, t.counter.pickNonBeer)}
+          {isPub && beerMenuRotates ? (
+            <View style={styles.rotatingHint}>
+              <RefreshCwIcon size={13} color={Colors.amber} />
+              <Text style={styles.rotatingHintText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.counter.rotatingMenuHint}
+              </Text>
             </View>
-          </Pressable>
-        </View>
+          ) : null}
+
+          <BottomSheetScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {isEmpty ? (
+              <Text style={styles.emptyCopy} maxFontSizeMultiplier={FontScaleCap.body}>
+                {isPub && beerMenuRotates
+                  ? t.counter.rotatingMenuBadge
+                  : isPub
+                    ? t.counter.pickEmptyPub
+                    : t.counter.pickEmptyOutside}
+              </Text>
+            ) : (
+              <>
+                {tonightRows.length > 0 ? (
+                  <>
+                    {showCaptions ? (
+                      <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {t.counter.outsideMenuHeader}
+                      </Text>
+                    ) : null}
+                    {tonightRows.map((row, index) => renderRow(row, index === 0))}
+                  </>
+                ) : null}
+                {menuRows.length > 0 ? (
+                  <>
+                    {showCaptions ? (
+                      <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {t.counter.menuHeader}
+                      </Text>
+                    ) : null}
+                    {menuRows.map((row, index) => renderRow(row, index === 0))}
+                  </>
+                ) : null}
+              </>
+            )}
+          </BottomSheetScrollView>
+
+          {/* Pinned below the scroll area: the two ways to add something new
+              must never scroll off or get clipped by the card's max height. */}
+          <View style={styles.actions}>
+            {renderActionRow('add-beer', PlusIcon, addBeerLabel, onAddBeer, t.a11y.counterAddBeer)}
+            {renderActionRow('add-other', CupSodaIcon, t.counter.pickNonBeer, onAddOther, t.counter.pickNonBeer)}
+          </View>
+        </Pressable>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   // The height bounds live HERE, not on the card: a percentage resolves
   // against the parent's height, and the card's parent (this) is auto-height,
   // so bounds written on the card are silently dropped — the card then grows

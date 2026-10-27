@@ -7,10 +7,11 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -85,113 +86,88 @@ export function ReceiptSheet({
   const hasItems = beerItems.length > 0 || otherItems.length > 0;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      {/* The backdrop is a dismiss target, not an announced control: the real
-          close button carries the label so VoiceOver hears "Zavřít" once. */}
-      <View style={styles.backdrop}>
-        {/* The backdrop is a dismiss target behind the card, not its parent —
-            wrapping the card would stop it from sitting flush on the bottom
-            edge and would swallow the sheet's own gestures. */}
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        {/* The card swallows presses so a row tap never falls through to the backdrop. */}
         <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          {/* The card swallows presses so a row tap never falls through to the backdrop. */}
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
-            <View style={styles.grabber} />
+          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+          onPress={() => undefined}
+        >
+          <View style={styles.grabber} />
 
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.counter.receiptTitle}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.pressedDim]}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-
-            {startedAtLabel != null && (
-              <Text style={styles.startedAt} maxFontSizeMultiplier={FontScaleCap.body}>
-                {startedAtLabel}
-              </Text>
-            )}
-
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.counter.receiptTitle}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.pressedDim]}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.counterCloseModal}
             >
-              {hasItems && (
-                <>
-                  {beerItems.map((item) => (
-                    <ReceiptRow key={item.key} item={item} onRemove={onRemove} />
-                  ))}
-                  {beerItems.length > 0 && otherItems.length > 0 && <View style={styles.hairline} />}
-                  {otherItems.map((item) => (
-                    <ReceiptRow key={item.key} item={item} onRemove={onRemove} />
-                  ))}
-                </>
-              )}
-            </ScrollView>
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
 
-            {/* The total and the close button are the bill's bottom line, so
-                they stay pinned: a long evening scrolls above them and neither
-                can be scrolled away or clipped by the card's max height. */}
-            {totalLabel != null && hasItems && (
-              <View style={styles.totalRow}>
-                <Text style={styles.totalText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {t.counter.receiptTotal}
-                </Text>
-                <Text style={styles.totalText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {totalLabel}
-                </Text>
-              </View>
+          {startedAtLabel != null && (
+            <Text style={styles.startedAt} maxFontSizeMultiplier={FontScaleCap.body}>
+              {startedAtLabel}
+            </Text>
+          )}
+
+          <BottomSheetScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {hasItems && (
+              <>
+                {beerItems.map((item) => (
+                  <ReceiptRow key={item.key} item={item} onRemove={onRemove} />
+                ))}
+                {beerItems.length > 0 && otherItems.length > 0 && <View style={styles.hairline} />}
+                {otherItems.map((item) => (
+                  <ReceiptRow key={item.key} item={item} onRemove={onRemove} />
+                ))}
+              </>
             )}
+          </BottomSheetScrollView>
 
-            <View style={styles.footer}>
-              <GlowButton
-                label={t.counter.receiptClose}
-                variant="secondary"
-                glow="none"
-                onPress={onDone}
-                accessibilityLabel={t.a11y.counterDone}
-              />
+          {/* The total and the close button are the bill's bottom line, so
+              they stay pinned: a long evening scrolls above them and neither
+              can be scrolled away or clipped by the card's max height. */}
+          {totalLabel != null && hasItems && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.counter.receiptTotal}
+              </Text>
+              <Text style={styles.totalText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {totalLabel}
+              </Text>
             </View>
-          </Pressable>
-        </View>
+          )}
+
+          <View style={styles.footer}>
+            <GlowButton
+              label={t.counter.receiptClose}
+              variant="secondary"
+              glow="none"
+              onPress={onDone}
+              accessibilityLabel={t.a11y.counterDone}
+            />
+          </View>
+        </Pressable>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   // The height bounds live HERE, not on the card: a percentage resolves
   // against the parent's height, and the card's parent (this) is auto-height,
   // so bounds written on the card are silently dropped — the card then grows
-  // past the screen and the ScrollView inside never scrolls. `backdrop` is
-  // flex: 1, so percentages resolve properly one level up. See §7.5.
+  // past the screen and the ScrollView inside never scrolls. The sheet around
+  // it is flex: 1, so percentages resolve properly one level up. See §7.5.
   cardWrap: {
     width: '100%',
     minHeight: '44%',

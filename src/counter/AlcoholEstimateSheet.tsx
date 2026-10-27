@@ -4,10 +4,11 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon, InfoIcon, XIcon } from '@/components/shared/IconGlyph';
 import { drinkAbv, drinkVolumeMl, type AlcoholEstimate, type BodyProfile } from '@/drinks/alcoholEstimate';
@@ -121,159 +122,144 @@ export function AlcoholEstimateSheet({ visible, profile, onEdit, onTurnOff, onCl
   const cautiousNow = estimate ? cautiousCeil(estimate.high) : 0;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
-            <View style={styles.grabber} />
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.alcohol.title}
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.alcohol.title}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.counterCloseModal}
+            >
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+
+          <BottomSheetScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            {estimate === null ? (
+              <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.alcohol.empty}
               </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
+            ) : (
+              <>
+                <View style={styles.hero} testID="alcohol-estimate-hero">
+                  <View style={styles.bigRow}>
+                    <Text style={styles.big} maxFontSizeMultiplier={FontScaleCap.display}>
+                      {morning ? formatClock(estimate.zeroAt) : formatPromile(estimate.now)}
+                    </Text>
+                    {morning ? null : (
+                      <Text style={styles.bigUnit} maxFontSizeMultiplier={FontScaleCap.display}>
+                        ‰
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.bigCaption} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {morning
+                      ? t.alcohol.morningCaption(formatZeroAt(estimate.zeroAt, nowMs))
+                      : t.alcohol.nowCaption(formatPromile(estimate.low), formatPromile(estimate.high))}
+                  </Text>
+                </View>
+
+                {estimate.rising ? (
+                  <View style={styles.row} testID="alcohol-estimate-rising">
+                    <View style={styles.rowText}>
+                      <Text style={styles.rowName} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {t.alcohol.risingTitle(formatPromile(estimate.rising.promile), formatClock(estimate.rising.at))}
+                      </Text>
+                      <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {t.alcohol.risingHint}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+
+                {morning && cautiousNow === 0 ? null : (
+                  <View style={styles.row}>
+                    <View style={styles.rowText}>
+                      <Text style={styles.rowName} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {morning
+                          ? t.alcohol.morningNow(formatPromile(cautiousNow))
+                          : t.alcohol.zeroTitle(formatZeroAt(estimate.zeroAt, nowMs))}
+                      </Text>
+                      <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {morning ? t.alcohol.morningHint : t.alcohol.zeroHint}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </>
+            )}
+
+            <View style={styles.warning}>
+              <InfoIcon size={18} color={Colors.foamMuted} />
+              <Text style={styles.warningText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.alcohol.warning}
+              </Text>
             </View>
 
-            <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-              {estimate === null ? (
-                <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.alcohol.empty}
+            {estimate !== null ? (
+              <>
+                <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {t.alcohol.drinksTitle}
                 </Text>
-              ) : (
-                <>
-                  <View style={styles.hero} testID="alcohol-estimate-hero">
-                    <View style={styles.bigRow}>
-                      <Text style={styles.big} maxFontSizeMultiplier={FontScaleCap.display}>
-                        {morning ? formatClock(estimate.zeroAt) : formatPromile(estimate.now)}
+                {drinkLines(estimate).map((line, index) => (
+                  <View key={line.key} style={[styles.row, index > 0 && styles.rowDivided]}>
+                    <View style={styles.rowText}>
+                      <Text style={styles.rowName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {t.alcohol.drinkRow(line.count, line.name)}
                       </Text>
-                      {morning ? null : (
-                        <Text style={styles.bigUnit} maxFontSizeMultiplier={FontScaleCap.display}>
-                          ‰
-                        </Text>
-                      )}
+                      <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {t.alcohol.drinkAbv(line.abv.toLocaleString(intlLocale, { maximumFractionDigits: 1 }))}
+                      </Text>
                     </View>
-                    <Text style={styles.bigCaption} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {morning
-                        ? t.alcohol.morningCaption(formatZeroAt(estimate.zeroAt, nowMs))
-                        : t.alcohol.nowCaption(formatPromile(estimate.low), formatPromile(estimate.high))}
-                    </Text>
                   </View>
+                ))}
+              </>
+            ) : null}
 
-                  {estimate.rising ? (
-                    <View style={styles.row} testID="alcohol-estimate-rising">
-                      <View style={styles.rowText}>
-                        <Text style={styles.rowName} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {t.alcohol.risingTitle(formatPromile(estimate.rising.promile), formatClock(estimate.rising.at))}
-                        </Text>
-                        <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {t.alcohol.risingHint}
-                        </Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {morning && cautiousNow === 0 ? null : (
-                    <View style={styles.row}>
-                      <View style={styles.rowText}>
-                        <Text style={styles.rowName} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {morning
-                            ? t.alcohol.morningNow(formatPromile(cautiousNow))
-                            : t.alcohol.zeroTitle(formatZeroAt(estimate.zeroAt, nowMs))}
-                        </Text>
-                        <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {morning ? t.alcohol.morningHint : t.alcohol.zeroHint}
-                        </Text>
-                      </View>
-                    </View>
+            {profile ? (
+              <View style={[styles.row, styles.rowDivided]}>
+                <Text style={[styles.rowName, styles.rowText]} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.alcohol.profileRow(
+                    profile.sex === 'male' ? t.alcohol.male : t.alcohol.female,
+                    profile.age,
+                    profile.heightCm,
+                    profile.weightKg,
                   )}
-                </>
-              )}
-
-              <View style={styles.warning}>
-                <InfoIcon size={18} color={Colors.foamMuted} />
-                <Text style={styles.warningText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.alcohol.warning}
                 </Text>
+                <Pressable
+                  testID="alcohol-estimate-edit"
+                  onPress={onEdit}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.door, pressed && styles.pressed]}
+                >
+                  <Text style={styles.doorLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.alcohol.edit}
+                  </Text>
+                </Pressable>
               </View>
+            ) : null}
 
-              {estimate !== null ? (
-                <>
-                  <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {t.alcohol.drinksTitle}
-                  </Text>
-                  {drinkLines(estimate).map((line, index) => (
-                    <View key={line.key} style={[styles.row, index > 0 && styles.rowDivided]}>
-                      <View style={styles.rowText}>
-                        <Text style={styles.rowName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {t.alcohol.drinkRow(line.count, line.name)}
-                        </Text>
-                        <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {t.alcohol.drinkAbv(line.abv.toLocaleString(intlLocale, { maximumFractionDigits: 1 }))}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-                </>
-              ) : null}
-
-              {profile ? (
-                <View style={[styles.row, styles.rowDivided]}>
-                  <Text style={[styles.rowName, styles.rowText]} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.alcohol.profileRow(
-                      profile.sex === 'male' ? t.alcohol.male : t.alcohol.female,
-                      profile.age,
-                      profile.heightCm,
-                      profile.weightKg,
-                    )}
-                  </Text>
-                  <Pressable
-                    testID="alcohol-estimate-edit"
-                    onPress={onEdit}
-                    hitSlop={10}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [styles.door, pressed && styles.pressed]}
-                  >
-                    <Text style={styles.doorLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {t.alcohol.edit}
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : null}
-
-              <Pressable
-                testID="alcohol-estimate-off"
-                onPress={onTurnOff}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.row, styles.rowDivided, pressed && styles.pressed]}
-              >
-                <Text style={styles.offLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.alcohol.turnOff}
-                </Text>
-              </Pressable>
-            </ScrollView>
-          </View>
+            <Pressable
+              testID="alcohol-estimate-off"
+              onPress={onTurnOff}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.row, styles.rowDivided, pressed && styles.pressed]}
+            >
+              <Text style={styles.offLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.alcohol.turnOff}
+              </Text>
+            </Pressable>
+          </BottomSheetScrollView>
         </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
@@ -309,11 +295,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.75,
-  },
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
   },
   // Bounds live on the wrapper so the ScrollView inside can actually scroll (§7.5).
   cardWrap: {

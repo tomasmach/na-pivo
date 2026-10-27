@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { PencilIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -43,12 +43,9 @@ export function RenamePubModal({
   const canSubmit = trimmed.length > 0 && trimmed !== currentName.trim() && !submitting;
 
   return (
-    <Modal scrimColor={styles.renameScrim.backgroundColor} visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={styles.renameOverlay}
-      >
-        <Pressable style={styles.renameScrim} onPress={onCancel} />
+    <BottomSheetModal visible={visible} onClose={onCancel} scrimColor={SCRIM}>
+      {/* Lifts the panel by the keyboard's height; it sits at the bottom, so its own height is the panel's. */}
+      <KeyboardAvoidingView behavior="padding">
         <View style={styles.renamePanel}>
           <View style={styles.renameIconWell}>
             <PencilIcon size={19} color={Colors.amber} />
@@ -103,19 +100,13 @@ export function RenamePubModal({
           </View>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
+const SCRIM = withAlpha(Colors.black, 0.58);
+
 const styles = StyleSheet.create({
-  renameOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  renameScrim: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: withAlpha(Colors.black, 0.58),
-  },
   renamePanel: {
     marginHorizontal: 14,
     marginBottom: 14,

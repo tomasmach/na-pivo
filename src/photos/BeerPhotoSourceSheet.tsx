@@ -7,24 +7,17 @@
  * the chosen source up.
  */
 
-import React, { memo, useEffect } from 'react';
+import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { BeerIcon, CameraIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
-import { useReduceMotion } from '@/utils/useReduceMotion';
 import { t } from '@/i18n';
 import type { BeerPhotoSource } from '@/data/beerPhotoPicker';
 
@@ -66,25 +59,6 @@ function OptionRow({ testID, icon, label, helper, onPress }: OptionRowProps) {
 
 function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceSheetProps) {
   const insets = useSafeAreaInsets();
-  const reduceMotion = useReduceMotion();
-
-  // Spring the card up over the scrim (Reanimated shared value — not React state).
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = reduceMotion
-        ? withTiming(1, { duration: 0 })
-        : withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 });
-    } else {
-      progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
-    }
-  }, [visible, reduceMotion, progress]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
 
   const pick = (source: BeerPhotoSource) => {
     fireLightImpactHaptic();
@@ -92,81 +66,64 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <Pressable accessible={false} style={styles.backdrop} onPress={onClose}>
-        {/* Stop backdrop dismissal when tapping inside the card */}
-        <Pressable accessible={false} focusable={false} onPress={() => undefined}>
-          <Animated.View
-            style={[
-              styles.card,
-              softDrop(),
-              { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
-              cardAnim,
-            ]}
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View
+        style={[
+          styles.card,
+          softDrop(),
+          { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
+        ]}
+      >
+        <View style={styles.handle} />
+
+        <View style={styles.titleRow}>
+          <View style={styles.titleTextWrap}>
+            <View style={styles.titleLine}>
+              <BeerIcon size={18} color={Colors.amber} />
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.photoDiary.sheetTitle}
+              </Text>
+            </View>
+            <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.photoDiary.sheetSubtitle}
+            </Text>
+          </View>
+          <Pressable
+            testID="photo-source-close"
+            onPress={onClose}
+            hitSlop={12}
+            style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t.a11y.photoViewerClose}
           >
-            <View style={styles.handle} />
+            <XIcon size={18} color={Colors.foamMuted} />
+          </Pressable>
+        </View>
 
-            <View style={styles.titleRow}>
-              <View style={styles.titleTextWrap}>
-                <View style={styles.titleLine}>
-                  <BeerIcon size={18} color={Colors.amber} />
-                  <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {t.photoDiary.sheetTitle}
-                  </Text>
-                </View>
-                <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.photoDiary.sheetSubtitle}
-                </Text>
-              </View>
-              <Pressable
-                testID="photo-source-close"
-                onPress={onClose}
-                hitSlop={12}
-                style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.photoViewerClose}
-              >
-                <XIcon size={18} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-
-            <View style={styles.options}>
-              <OptionRow
-                testID="photo-source-camera"
-                icon={<CameraIcon size={22} color={Colors.amber} />}
-                label={t.photoDiary.takePhoto}
-                helper={t.photoDiary.cameraHelper}
-                onPress={() => pick('camera')}
-              />
-              <OptionRow
-                testID="photo-source-library"
-                icon={<ImagesIcon size={22} color={Colors.amber} />}
-                label={t.photoDiary.pickFromLibrary}
-                helper={t.photoDiary.libraryHelper}
-                onPress={() => pick('library')}
-              />
-            </View>
-          </Animated.View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        <View style={styles.options}>
+          <OptionRow
+            testID="photo-source-camera"
+            icon={<CameraIcon size={22} color={Colors.amber} />}
+            label={t.photoDiary.takePhoto}
+            helper={t.photoDiary.cameraHelper}
+            onPress={() => pick('camera')}
+          />
+          <OptionRow
+            testID="photo-source-library"
+            icon={<ImagesIcon size={22} color={Colors.amber} />}
+            label={t.photoDiary.pickFromLibrary}
+            helper={t.photoDiary.libraryHelper}
+            onPress={() => pick('library')}
+          />
+        </View>
+      </View>
+    </BottomSheetModal>
   );
 }
 
 export const BeerPhotoSourceSheet = memo(BeerPhotoSourceSheetImpl);
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   card: {
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,

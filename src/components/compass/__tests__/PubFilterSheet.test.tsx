@@ -8,21 +8,6 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
-jest.mock('react-native-reanimated', () => {
-  const ReactModule = require('react');
-  return {
-    __esModule: true,
-    default: {
-      View: ({ children, ...props }: { children?: React.ReactNode }) =>
-        ReactModule.createElement('AnimatedView', props, children),
-    },
-    useSharedValue: (value: number) => ({ value }),
-    useAnimatedStyle: (factory: () => unknown) => factory(),
-    withSpring: (value: number) => value,
-    withTiming: (value: number) => value,
-  };
-});
-
 jest.mock('@/components/shared/IconGlyph', () => {
   const ReactModule = require('react');
   const icon = () => ReactModule.createElement('Icon');

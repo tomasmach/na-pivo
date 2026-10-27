@@ -1,9 +1,8 @@
 /**
  * CodeSheet — "Můj kód" growth sheet (Parta 3.0 §A3).
  *
- * A clone of the FriendSettingsSheet scaffold (transparent fade Modal +
- * absolute-fill backdrop + drag handle + absolute close + SLIDE_SPRING slide-up
- * + inside-Modal Toast). It shows my identity, a scannable QR of my public invite
+ * A clone of the FriendSettingsSheet scaffold (BottomSheetModal + drag handle +
+ * absolute close + inside-Modal Toast). It shows my identity, a scannable QR of my public invite
  * link (readable in a dark pub on a foam card), and share / copy actions so the
  * party can be grown at the table in under a minute.
  *
@@ -15,18 +14,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { useRouter, type Href } from 'expo-router';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { CopyIcon, LinkIcon, XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { fetchFriendInviteCode, type FriendInvite } from '@/data/friendsClient';
@@ -43,7 +37,6 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 
 import SkeletonBlock from './SkeletonBlock';
 
-const SLIDE_SPRING = { damping: 18, stiffness: 180, mass: 0.9 } as const;
 const QR_SIZE = 200;
 
 interface CodeSheetProps {
@@ -92,29 +85,9 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
     return () => clearTimeout(t);
   }, [load]);
 
-  // ── Card slide-up (clone of FriendSettingsSheet); own the slide-out too. ──
-  // The shared value is written ONLY inside the effect (keyed on `closing`), the
-  // pattern the compiler's immutability rule accepts.
+  // The parent unmounts the sheet, so it slides out first and hands over in `onClosed`.
   const [closing, setClosing] = useState(false);
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (closing) {
-      progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
-    } else {
-      progress.value = reduceMotion ? withTiming(1, { duration: 0 }) : withSpring(1, SLIDE_SPRING);
-    }
-  }, [closing, reduceMotion, progress]);
-
-  const requestClose = useCallback(() => {
-    if (closing) return;
-    setClosing(true);
-    setTimeout(onClose, reduceMotion ? 0 : 150);
-  }, [closing, onClose, reduceMotion]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
+  const requestClose = useCallback(() => setClosing(true), []);
 
   const link = invite?.webUrl || invite?.url || '';
 
@@ -134,149 +107,139 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
   }, [link, showToast]);
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={requestClose}>
-      <View style={styles.backdrop}>
+    <BottomSheetModal
+      visible={!closing}
+      onClose={requestClose}
+      onClosed={onClose}
+      underlayColor={styles.card.backgroundColor}
+      overlay={<Toast />}
+    >
+      <View
+        style={[styles.card, softDrop(), { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}
+      >
+        <View style={styles.handle} />
+
+        <View style={styles.headerRow}>
+          <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {t.friends.codeSheetTitle}
+          </Text>
+        </View>
+
         <Pressable
-          style={StyleSheet.absoluteFill}
           onPress={requestClose}
+          hitSlop={12}
+          style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedDim]}
           accessibilityRole="button"
           accessibilityLabel={t.friends.settingsClose}
-        />
-
-        <Animated.View
-          style={[styles.card, softDrop(), { paddingBottom: Math.max(insets.bottom, Spacing.md) }, cardAnim]}
         >
-          <View style={styles.handle} />
+          <XIcon size={18} color={Colors.foamMuted} />
+        </Pressable>
 
-          <View style={styles.headerRow}>
-            <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.friends.codeSheetTitle}
-            </Text>
+        <BottomSheetScrollView style={styles.body} showsVerticalScrollIndicator={false} bounces={false}>
+          {/* Identity */}
+          <View style={styles.identity}>
+            <Avatar
+              uri={profile?.avatarUrl}
+              nickname={profile?.nickname}
+              displayName={profile?.displayName}
+              size={76}
+            />
+            {nickname ? (
+              <Text style={styles.handleText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {`@${nickname}`}
+              </Text>
+            ) : (
+              <View style={styles.noNick}>
+                <Text style={styles.noNickText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.friends.codeNoNick}
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    requestClose();
+                    router.push('/profile/edit' as Href);
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.friends.codeNoNickCta}
+                >
+                  <Text style={styles.noNickCta} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.friends.codeNoNickCta}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+            {profile?.displayName ? (
+              <Text style={styles.displayName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {profile.displayName}
+              </Text>
+            ) : null}
           </View>
 
-          <Pressable
-            onPress={requestClose}
-            hitSlop={12}
-            style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedDim]}
-            accessibilityRole="button"
-            accessibilityLabel={t.friends.settingsClose}
-          >
-            <XIcon size={18} color={Colors.foamMuted} />
-          </Pressable>
-
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false} bounces={false}>
-            {/* Identity */}
-            <View style={styles.identity}>
-              <Avatar
-                uri={profile?.avatarUrl}
-                nickname={profile?.nickname}
-                displayName={profile?.displayName}
-                size={76}
-              />
-              {nickname ? (
-                <Text style={styles.handleText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {`@${nickname}`}
+          {/* QR on a foam card so it reads in a dark pub */}
+          <View style={styles.qrWrap}>
+            {loading ? (
+              <SkeletonBlock width={QR_SIZE} height={QR_SIZE} radius={Radius.small} reduceMotion={reduceMotion} />
+            ) : failed || !link ? (
+              <View style={styles.qrFallback}>
+                <Text style={styles.offlineText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.friends.codeOffline}
                 </Text>
-              ) : (
-                <View style={styles.noNick}>
-                  <Text style={styles.noNickText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.friends.codeNoNick}
+                <Pressable
+                  onPress={() => void load()}
+                  style={({ pressed }) => [styles.retryPill, pressed && styles.pressedDim]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.friends.retry}
+                >
+                  <Text style={styles.retryLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {t.friends.retry}
                   </Text>
-                  <Pressable
-                    onPress={() => {
-                      requestClose();
-                      router.push('/profile/edit' as Href);
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.friends.codeNoNickCta}
-                  >
-                    <Text style={styles.noNickCta} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {t.friends.codeNoNickCta}
-                    </Text>
-                  </Pressable>
-                </View>
-              )}
-              {profile?.displayName ? (
-                <Text style={styles.displayName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {profile.displayName}
-                </Text>
-              ) : null}
-            </View>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.qrCard}>
+                <QRCode value={link} size={QR_SIZE} color={Colors.stout} backgroundColor={Colors.foam} />
+              </View>
+            )}
+          </View>
 
-            {/* QR on a foam card so it reads in a dark pub */}
-            <View style={styles.qrWrap}>
-              {loading ? (
-                <SkeletonBlock width={QR_SIZE} height={QR_SIZE} radius={Radius.small} reduceMotion={reduceMotion} />
-              ) : failed || !link ? (
-                <View style={styles.qrFallback}>
-                  <Text style={styles.offlineText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.friends.codeOffline}
-                  </Text>
-                  <Pressable
-                    onPress={() => void load()}
-                    style={({ pressed }) => [styles.retryPill, pressed && styles.pressedDim]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.friends.retry}
-                  >
-                    <Text style={styles.retryLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {t.friends.retry}
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View style={styles.qrCard}>
-                  <QRCode value={link} size={QR_SIZE} color={Colors.stout} backgroundColor={Colors.foam} />
-                </View>
-              )}
-            </View>
+          <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.friends.codeSheetHint}
+          </Text>
 
-            <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.friends.codeSheetHint}
-            </Text>
-
-            {/* Actions */}
-            <View style={styles.actions}>
-              <Pressable
-                onPress={handleShare}
-                disabled={!link}
-                style={({ pressed }) => [styles.actionBtn, (pressed || !link) && styles.pressedDim]}
-                accessibilityRole="button"
-                accessibilityLabel={t.friends.codeShare}
-              >
-                <LinkIcon size={18} color={Colors.amber} />
-                <Text style={styles.actionLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.friends.codeShare}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={handleQuickSend}
-                disabled={!link}
-                style={({ pressed }) => [styles.actionBtn, (pressed || !link) && styles.pressedDim]}
-                accessibilityRole="button"
-                accessibilityLabel={t.friends.codeCopy}
-              >
-                <CopyIcon size={18} color={Colors.amber} />
-                <Text style={styles.actionLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.friends.codeCopy}
-                </Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </Animated.View>
-
-        <Toast />
+          {/* Actions */}
+          <View style={styles.actions}>
+            <Pressable
+              onPress={handleShare}
+              disabled={!link}
+              style={({ pressed }) => [styles.actionBtn, (pressed || !link) && styles.pressedDim]}
+              accessibilityRole="button"
+              accessibilityLabel={t.friends.codeShare}
+            >
+              <LinkIcon size={18} color={Colors.amber} />
+              <Text style={styles.actionLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.friends.codeShare}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={handleQuickSend}
+              disabled={!link}
+              style={({ pressed }) => [styles.actionBtn, (pressed || !link) && styles.pressedDim]}
+              accessibilityRole="button"
+              accessibilityLabel={t.friends.codeCopy}
+            >
+              <CopyIcon size={18} color={Colors.amber} />
+              <Text style={styles.actionLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.friends.codeCopy}
+              </Text>
+            </Pressable>
+          </View>
+        </BottomSheetScrollView>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   card: {
     maxHeight: '90%',
     backgroundColor: Colors.stout2,

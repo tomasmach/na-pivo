@@ -21,10 +21,11 @@
  */
 
 import React from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -128,76 +129,60 @@ export function CounterMoreSheet({
   ];
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      {/* The backdrop is a dismiss target, not an announced control: the real
-          close button carries the label so VoiceOver hears "Zavřít" once. */}
-      <Pressable style={styles.backdrop} onPress={onClose} accessible={false} importantForAccessibility="no">
-        {/* The card swallows backdrop taps so a row press never dismisses twice. */}
-        <Pressable
-          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-          onPress={() => undefined}
-          accessible={false}
-          focusable={false}
-        >
-          <View style={styles.grabber} />
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      {/* The card swallows backdrop taps so a row press never dismisses twice. */}
+      <Pressable
+        style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+        onPress={() => undefined}
+        accessible={false}
+        focusable={false}
+      >
+        <View style={styles.grabber} />
 
-          <View style={styles.header}>
-            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.counter.moreTitle}
-            </Text>
+        <View style={styles.header}>
+          <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {t.counter.moreTitle}
+          </Text>
+          <Pressable
+            onPress={onClose}
+            style={styles.closeButton}
+            accessibilityRole="button"
+            accessibilityLabel={t.a11y.counterCloseModal}
+          >
+            <XIcon size={20} color={Colors.foamMuted} />
+          </Pressable>
+        </View>
+
+        <BottomSheetScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+          {rows.map(({ key, label, Icon, onPress, disabled, a11yLabel }) => (
             <Pressable
-              onPress={onClose}
-              style={styles.closeButton}
+              key={key}
+              onPress={onPress}
+              disabled={disabled}
+              style={({ pressed }) => [styles.row, (pressed || disabled) && styles.rowPressed]}
               accessibilityRole="button"
-              accessibilityLabel={t.a11y.counterCloseModal}
+              accessibilityLabel={a11yLabel ?? label}
             >
-              <XIcon size={20} color={Colors.foamMuted} />
-            </Pressable>
-          </View>
-
-          <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
-            {rows.map(({ key, label, Icon, onPress, disabled, a11yLabel }) => (
-              <Pressable
-                key={key}
-                onPress={onPress}
-                disabled={disabled}
-                style={({ pressed }) => [styles.row, (pressed || disabled) && styles.rowPressed]}
-                accessibilityRole="button"
-                accessibilityLabel={a11yLabel ?? label}
+              <View style={styles.rowIcon}>
+                <Icon size={18} color={disabled ? Colors.mutedText : Colors.amber} />
+              </View>
+              <Text
+                style={[styles.rowLabel, disabled && styles.rowLabelDisabled]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
               >
-                <View style={styles.rowIcon}>
-                  <Icon size={18} color={disabled ? Colors.mutedText : Colors.amber} />
-                </View>
-                <Text
-                  style={[styles.rowLabel, disabled && styles.rowLabelDisabled]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {label}
-                </Text>
-                {disabled ? null : <ChevronRightIcon size={16} color={Colors.mutedText} />}
-              </Pressable>
-            ))}
-          </ScrollView>
-        </Pressable>
+                {label}
+              </Text>
+              {disabled ? null : <ChevronRightIcon size={16} color={Colors.mutedText} />}
+            </Pressable>
+          ))}
+        </BottomSheetScrollView>
       </Pressable>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   cardWrap: {
     width: '100%',
   },

@@ -17,7 +17,7 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 jest.mock('@/utils/useKeyboardHeight', () => ({ useKeyboardHeight: () => 0 }));
-jest.mock('@/utils/haptics', () => ({ fireLightImpactHaptic: jest.fn() }));
+jest.mock('@/utils/haptics', () => ({ fireLightImpactHaptic: jest.fn(), fireSoftImpactHaptic: jest.fn() }));
 jest.mock('@/data/beerSuggestionsClient', () => ({ suggestBeerBrands: jest.fn(async () => []) }));
 jest.mock('@/components/shared/GlowButton', () => {
   const ReactModule = require('react');

@@ -50,8 +50,8 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('react-native-reanimated', () => ({
+  ...jest.requireActual('@/__mocks__/react-native-reanimated'),
   useAnimatedReaction: jest.fn(),
-  useSharedValue: jest.fn((value) => ({ value })),
 }));
 
 jest.mock('@/components/compass/CompassContainer', () => ({

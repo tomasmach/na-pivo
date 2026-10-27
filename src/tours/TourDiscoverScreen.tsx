@@ -3,7 +3,7 @@ import { ActivityIndicator, FlatList, Keyboard, Pressable, ScrollView, StyleShee
 import * as Location from 'expo-location';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, SearchIcon, XIcon } from '@/components/shared/IconGlyph';
 import { checkLocationPermission, ensureLocationPermission } from '@/compass/permissions';
 import { searchPublicTours, type PublicTourHit, type TourStopsFilter } from '@/data/toursClient';
@@ -76,21 +76,18 @@ function Hit({ hit, first, onPress }: { hit: PublicTourHit; first: boolean; onPr
 function StopsSheet({ value, onPick, onClose }: { value: TourStopsFilter | null; onPick: (value: TourStopsFilter | null) => void; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const options: [TourStopsFilter | null, string][] = [[null, t.tours.discoverStopsAny], ...STOPS.map((stops) => [stops, t.tours.discoverStopsRange[stops]] as [TourStopsFilter, string])];
-  return <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-    <View style={styles.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]} accessibilityViewIsModal onAccessibilityEscape={onClose}>
-        <View style={styles.grabber} />
-        <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.sheetTitle}>{t.tours.discoverStopsTitle}</Text>
-        {/* A tap applies the choice and closes; there is nothing else to confirm. */}
-        {options.map(([option, label], index) => <Pressable key={label} onPress={() => onPick(option)} accessibilityRole="button" accessibilityState={{ selected: option === value }}
-          style={({ pressed }) => [styles.option, index === 0 && styles.first, pressed && styles.pressed]}>
-          <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.optionText}>{label}</Text>
-          {option === value && <CheckIcon size={18} color={Colors.amber} />}
-        </Pressable>)}
-      </View>
+  return <BottomSheetModal visible onClose={onClose} underlayColor={styles.sheet.backgroundColor}>
+    <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]} accessibilityViewIsModal onAccessibilityEscape={onClose}>
+      <View style={styles.grabber} />
+      <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.sheetTitle}>{t.tours.discoverStopsTitle}</Text>
+      {/* A tap applies the choice and closes; there is nothing else to confirm. */}
+      {options.map(([option, label], index) => <Pressable key={label} onPress={() => onPick(option)} accessibilityRole="button" accessibilityState={{ selected: option === value }}
+        style={({ pressed }) => [styles.option, index === 0 && styles.first, pressed && styles.pressed]}>
+        <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.optionText}>{label}</Text>
+        {option === value && <CheckIcon size={18} color={Colors.amber} />}
+      </Pressable>)}
     </View>
-  </Modal>;
+  </BottomSheetModal>;
 }
 
 function TextLink({ label, onPress }: { label: string; onPress: () => void }) {
@@ -279,7 +276,6 @@ const styles = StyleSheet.create({
   linkText: { fontSize: 14, fontWeight: '800', color: Colors.amber },
   more: { paddingVertical: Spacing.lg },
   pressed: { opacity: 0.65 },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: withAlpha(Colors.black, 0.6) },
   sheet: { backgroundColor: Colors.stout, borderTopLeftRadius: Radius.cardLarge, borderTopRightRadius: Radius.cardLarge, paddingTop: Spacing.sm, paddingHorizontal: Spacing.lg },
   grabber: { alignSelf: 'center', width: 44, height: 4, borderRadius: Radius.pill, backgroundColor: withAlpha(Colors.foam, 0.22), marginBottom: Spacing.md },
   sheetTitle: { fontSize: 21, lineHeight: 27, fontWeight: '700', letterSpacing: -0.4, color: Colors.foam, marginBottom: Spacing.sm },
