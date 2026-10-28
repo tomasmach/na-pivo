@@ -48,6 +48,7 @@ import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
 
 const MIN_PASSWORD = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -82,6 +83,8 @@ export default function AccountScreen() {
   );
 
   const [busy, setBusy] = useState<string | null>(null);
+  // A swipe mid-request would let the later router.back() close the screen under this card too.
+  useKeepCardOpen(busy !== null);
   const marketingEmailsEnabled = useSettingsStore((state) => state.marketingEmailsEnabled);
   const setMarketingEmailsEnabled = useSettingsStore((state) => state.setMarketingEmailsEnabled);
   const toggleMarketingEmails = useCallback(() => {
