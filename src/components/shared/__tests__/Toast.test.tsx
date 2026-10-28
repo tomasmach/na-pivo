@@ -6,7 +6,8 @@ import { useToastStore } from '@/stores/toastStore';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 type PanHandlers = {
-  onStart?: () => void;
+  onBegin?: () => void;
+  onFinalize?: () => void;
   onUpdate?: (event: { translationY: number }) => void;
   onEnd?: (event: { translationY: number; velocityY: number }) => void;
 };
@@ -15,7 +16,8 @@ const pan: PanHandlers = {};
 jest.mock('react-native-gesture-handler', () => {
   const chain = {
     activeOffsetY: () => chain,
-    onStart: (fn: PanHandlers['onStart']) => ((pan.onStart = fn), chain),
+    onBegin: (fn: PanHandlers['onBegin']) => ((pan.onBegin = fn), chain),
+    onFinalize: (fn: PanHandlers['onFinalize']) => ((pan.onFinalize = fn), chain),
     onUpdate: (fn: PanHandlers['onUpdate']) => ((pan.onUpdate = fn), chain),
     onEnd: (fn: PanHandlers['onEnd']) => ((pan.onEnd = fn), chain),
   };
@@ -52,10 +54,16 @@ jest.mock('@/components/shared/IconGlyph', () => ({ BeerIcon: () => null, Chevro
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
-function mount() {
+function mount(hosts = 1) {
   let renderer: { unmount: () => void } | undefined;
   act(() => {
-    renderer = TestRenderer.create(<Toast />);
+    renderer = TestRenderer.create(
+      <>
+        {Array.from({ length: hosts }, (_, index) => (
+          <Toast key={index} />
+        ))}
+      </>,
+    );
   });
   return renderer!;
 }
@@ -74,24 +82,25 @@ describe('Toast flick and hold', () => {
     act(() => useToastStore.getState().show('Čárka na tácku přibyla.'));
 
     act(() => {
-      pan.onStart?.();
+      pan.onBegin?.();
       pan.onUpdate?.({ translationY: -40 });
       pan.onEnd?.({ translationY: -40, velocityY: -200 });
+      pan.onFinalize?.();
     });
 
     expect(useToastStore.getState().message).toBeNull();
     act(() => renderer.unmount());
   });
 
-  it('stays up while held and times out again once let go', () => {
+  it('stays up under a finger that does not move and times out again once let go', () => {
     const renderer = mount();
     act(() => useToastStore.getState().show('Čárka na tácku přibyla.'));
 
-    act(() => pan.onStart?.());
+    act(() => pan.onBegin?.());
     act(() => jest.advanceTimersByTime(10_000));
     expect(useToastStore.getState().message).toBe('Čárka na tácku přibyla.');
 
-    act(() => pan.onEnd?.({ translationY: 4, velocityY: 0 }));
+    act(() => pan.onFinalize?.());
     expect(useToastStore.getState().message).toBe('Čárka na tácku přibyla.');
     act(() => jest.advanceTimersByTime(2_400));
     expect(useToastStore.getState().message).toBeNull();
@@ -101,11 +110,23 @@ describe('Toast flick and hold', () => {
   it('does not carry a hold over to the next toast', () => {
     const renderer = mount();
     act(() => useToastStore.getState().show('První'));
-    act(() => pan.onStart?.());
+    act(() => pan.onBegin?.());
     act(() => useToastStore.getState().show('Druhý'));
 
     act(() => jest.advanceTimersByTime(2_400));
     expect(useToastStore.getState().message).toBeNull();
+    act(() => renderer.unmount());
+  });
+
+  it('holds every toast host at once, so the root one does not hide a toast held in a sheet', () => {
+    const renderer = mount(2);
+    act(() => useToastStore.getState().show('Čárka na tácku přibyla.'));
+
+    act(() => pan.onBegin?.());
+    act(() => jest.advanceTimersByTime(10_000));
+    expect(useToastStore.getState().message).toBe('Čárka na tácku přibyla.');
+
+    act(() => pan.onFinalize?.());
     act(() => renderer.unmount());
   });
 });

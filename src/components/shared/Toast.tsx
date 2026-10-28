@@ -9,7 +9,7 @@
  * raised stout pill with an amber hairline, matching WhatsNewModal.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Text, Pressable, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -51,9 +51,9 @@ export function Toast() {
   const progress = useSharedValue(0);
   const drag = useSharedValue(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The toast a finger is holding; keyed by token so a new toast is never born held.
-  const [heldToken, setHeldToken] = useState<number | null>(null);
-  const held = heldToken !== null && heldToken === token;
+  // Keyed by token so a new toast is never born held.
+  const held = useToastStore((s) => s.heldToken !== null && s.heldToken === s.token);
+  const setHeldToken = useToastStore((s) => s.setHeldToken);
 
   // Plain handler (not memoized): the immutability rule forbids mutating a
   // shared value that was passed into a hook's dep array, so `progress` stays
@@ -68,9 +68,10 @@ export function Toast() {
     });
   };
 
+  // A finger resting on the toast holds it before any pan starts.
   const pan = Gesture.Pan()
     .activeOffsetY([-8, 8])
-    .onStart(() => {
+    .onBegin(() => {
       runOnJS(setHeldToken)(token);
     })
     .onUpdate((event) => {
@@ -84,8 +85,10 @@ export function Toast() {
         });
       } else {
         drag.value = withSpring(0, { damping: 20, stiffness: 260 });
-        runOnJS(setHeldToken)(null);
       }
+    })
+    .onFinalize(() => {
+      runOnJS(setHeldToken)(null);
     });
 
   useEffect(() => {
