@@ -4,12 +4,14 @@
  * via router.back() while this confirms "saved" on the screen underneath).
  *
  * Driven entirely by toastStore: it slides+fades in from the top, holds briefly,
- * then auto-dismisses. Tapping it dismisses early. Brass Taproom styling — a
+ * then auto-dismisses. Tapping it dismisses early, and so does a flick up, like
+ * a system notification; holding it keeps it up. Brass Taproom styling — a
  * raised stout pill with an amber hairline, matching WhatsNewModal.
  */
 
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Text, Pressable, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -29,6 +31,11 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 
 /** How long the toast stays fully visible before auto-dismissing. */
 const VISIBLE_MS = 2400;
+/** A flick up past this distance or speed sends the toast away. */
+const FLICK_DISTANCE = 24;
+const FLICK_VELOCITY = 500;
+/** Pulling the toast down only gives a little: it has nowhere to go. */
+const PULL_DOWN_RESISTANCE = 0.2;
 
 export function Toast() {
   const message = useToastStore((s) => s.message);
@@ -42,7 +49,11 @@ export function Toast() {
   const reduceMotion = useReduceMotion();
 
   const progress = useSharedValue(0);
+  const drag = useSharedValue(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keyed by token so a new toast is never born held.
+  const held = useToastStore((s) => s.heldToken !== null && s.heldToken === s.token);
+  const setHeldToken = useToastStore((s) => s.setHeldToken);
 
   // Plain handler (not memoized): the immutability rule forbids mutating a
   // shared value that was passed into a hook's dep array, so `progress` stays
@@ -57,30 +68,62 @@ export function Toast() {
     });
   };
 
+  // A finger resting on the toast holds it before any pan starts.
+  const pan = Gesture.Pan()
+    .activeOffsetY([-8, 8])
+    .onBegin(() => {
+      runOnJS(setHeldToken)(token);
+    })
+    .onUpdate((event) => {
+      drag.value =
+        event.translationY < 0 ? event.translationY : event.translationY * PULL_DOWN_RESISTANCE;
+    })
+    .onEnd((event) => {
+      if (event.translationY < -FLICK_DISTANCE || event.velocityY < -FLICK_VELOCITY) {
+        drag.value = withTiming(-160, { duration: reduceMotion ? 0 : 180 }, (finished) => {
+          if (finished) runOnJS(hide)();
+        });
+      } else {
+        drag.value = withSpring(0, { damping: 20, stiffness: 260 });
+      }
+    })
+    .onFinalize(() => {
+      runOnJS(setHeldToken)(null);
+    });
+
   useEffect(() => {
     if (!message) return;
+    drag.value = 0;
     // Spring in (or snap directly when the user asked for reduced motion), then
     // arm the auto-dismiss. Re-runs on every token bump.
     progress.value = reduceMotion
       ? withTiming(1, { duration: 0 })
       : withSpring(1, { damping: 18, stiffness: 180, mass: 0.8 });
+    // progress/drag are stable enough for this animation effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, message, reduceMotion]);
+
+  // Auto-dismiss, paused while a finger holds the toast.
+  useEffect(() => {
+    if (!message || held) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(dismiss, durationMs ?? VISIBLE_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-    // progress/dismiss are stable enough for this animation effect.
+    // dismiss is a plain handler; re-arming on its identity would restart the clock every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, message, reduceMotion]);
+  }, [token, message, held, durationMs]);
 
   const anim = useAnimatedStyle(() => ({
     opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * -24 }],
+    transform: [{ translateY: (1 - progress.value) * -24 + drag.value }],
   }));
 
   if (!message) return null;
 
   return (
+    <GestureDetector gesture={pan}>
     <Animated.View
       pointerEvents="box-none"
       style={[styles.wrap, subtitle ? styles.wrapWide : null, { top: insets.top + (subtitle ? 0 : Spacing.sm) }, anim]}
@@ -90,6 +133,8 @@ export function Toast() {
           onPress?.();
           dismiss();
         }}
+        // Lifting a finger that held the toast still is not a tap: it lets the toast time out.
+        onLongPress={() => undefined}
         style={[styles.toast, subtitle ? styles.toastTall : null, softDrop()]}
         accessibilityRole="button"
       >
@@ -116,6 +161,7 @@ export function Toast() {
         {onPress ? <ChevronRightIcon size={18} color={Colors.mutedText} /> : null}
       </Pressable>
     </Animated.View>
+    </GestureDetector>
   );
 }
 

@@ -34,8 +34,11 @@ interface ToastState {
   subtitle: string | null;
   onPress: (() => void) | null;
   durationMs: number | null;
+  /** The toast a finger is holding, so every toast host pauses its auto-dismiss together. */
+  heldToken: number | null;
   show: (message: string, options?: ToastOptions) => void;
   hide: () => void;
+  setHeldToken: (token: number | null) => void;
 }
 
 /** Runs `show` once no toast is on screen, so a waiting one never replaces another. */
@@ -58,6 +61,7 @@ export const useToastStore = create<ToastState>((set) => ({
   subtitle: null,
   onPress: null,
   durationMs: null,
+  heldToken: null,
   show: (message, options) =>
     set((s) => ({
       message,
@@ -68,4 +72,5 @@ export const useToastStore = create<ToastState>((set) => ({
       token: s.token + 1,
     })),
   hide: () => set({ message: null, icon: null, subtitle: null, onPress: null, durationMs: null }),
+  setHeldToken: (heldToken) => set({ heldToken }),
 }));
