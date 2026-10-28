@@ -12,27 +12,33 @@
  * were taking went to things that do something: a beer that isn't the last one,
  * mapping the pub, the parta, the boards.
  *
- * The one bit of motion here is the reaction to a beer landing: the numeral pops
- * once and an amber glow blooms behind it for the same 130/180 ms. Both are
- * one-shot, both skip when the count drops and when reduced motion is on.
+ * The one bit of motion here is the reaction to a beer landing: each digit that
+ * changed rolls up like the drum of a hand tally counter. It never runs on mount
+ * or when the count drops, and reduced motion swaps the digit in place.
  *
  * The numeral is sized from the measured card rather than from the fixed
  * four-step scale, so the display step is a floor here, not a ceiling: it grows
  * into whatever the rows below leave it, and never past `COUNT_MAX`.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type TextStyle,
+} from 'react-native';
 import Animated, {
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSequence,
+  Easing,
+  LinearTransition,
   withTiming,
+  type EntryExitAnimationFunction,
 } from 'react-native-reanimated';
 
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
-import { SoftGlow } from '@/components/celebration/SoftGlow';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
@@ -46,8 +52,16 @@ const COUNT_MIN = 44;
 const COUNT_FALLBACK = 88;
 /** Room the letterspaced noun needs under the numeral (its -8 overlap included). */
 const NOUN_ROOM = 14;
-/** Diameter of the one-shot glow behind the numeral, relative to the numeral. */
-const BLOOM_SCALE = 2.6;
+const ROLL_MS = 290;
+/**
+ * How much of the 1.24x line box a digit window shows, from its top. By the
+ * font's metrics Baloo's digits end near 0.73 of the size on iOS and 0.86 on
+ * Android, so 0.95 clears both and stops above the noun, which the -18 margin
+ * pulls up into the line box; a full-height window rolled digits across it.
+ */
+const ROLL_WINDOW = 0.95;
+/** Overshoots by a hair and settles, like a drum clicking into its detent. */
+const ROLL_EASING = Easing.bezier(0.3, 1.22, 0.55, 1);
 /**
  * Rough advance width of one Baloo 2 ExtraBold digit as a share of its size.
  * Keeps "128" inside the card instead of trusting `adjustsFontSizeToFit`, which
@@ -71,6 +85,99 @@ export function countNumeralSize(count: number, width: number, height: number): 
   const byWidth = width / (digits * DIGIT_ADVANCE);
 
   return Math.round(Math.max(COUNT_MIN, Math.min(COUNT_MAX, byHeight, byWidth)));
+}
+
+function rollIn(distance: number): EntryExitAnimationFunction {
+  return () => {
+    'worklet';
+    return {
+      initialValues: { transform: [{ translateY: distance }] },
+      animations: {
+        transform: [{ translateY: withTiming(0, { duration: ROLL_MS, easing: ROLL_EASING }) }],
+      },
+    };
+  };
+}
+
+function rollAway(distance: number): EntryExitAnimationFunction {
+  return () => {
+    'worklet';
+    return {
+      initialValues: { transform: [{ translateY: 0 }] },
+      animations: {
+        transform: [{ translateY: withTiming(-distance, { duration: ROLL_MS, easing: ROLL_EASING }) }],
+      },
+    };
+  };
+}
+
+/**
+ * One fixed-width window per digit, keyed from the right so 9 -> 10 rolls the
+ * units and brings the tens in from below. The digit that leaves is a copy that
+ * mounts already rolling up and then rests out of sight: exiting animations
+ * could not be switched off for a drop, and a drop must not roll.
+ */
+function RollingNumeral({
+  count,
+  size,
+  style,
+}: {
+  count: number;
+  size: number;
+  style: StyleProp<TextStyle>;
+}) {
+  const lineHeight = size * 1.24;
+  const travel = Math.round(size * ROLL_WINDOW);
+  const [roll, setRoll] = useState({ count, previous: String(count), rising: false, epoch: 0 });
+  if (count !== roll.count) {
+    setRoll({ count, previous: String(roll.count), rising: count > roll.count, epoch: roll.epoch + 1 });
+  }
+  const entering = useMemo(() => rollIn(travel), [travel]);
+  const leaving = useMemo(() => rollAway(travel), [travel]);
+  // 9 -> 10 adds a window and re-centres the row; let the old digit slide over with the roll.
+  const recentre = useMemo(() => LinearTransition.duration(ROLL_MS).easing(ROLL_EASING), []);
+  const digits = String(Math.max(0, Math.floor(count))).split('');
+  const previous = roll.previous.split('');
+  const digitBox = { width: Math.round(size * DIGIT_ADVANCE), height: travel };
+  const text = [style, styles.digit, { fontSize: size, lineHeight }];
+
+  return (
+    <View style={[styles.digits, { height: lineHeight }]}>
+      {digits.map((digit, index) => {
+        const place = digits.length - index;
+        const before = previous[previous.length - place];
+        const rolls = roll.rising && before !== digit;
+        return (
+          <Animated.View
+            key={place}
+            layout={roll.rising ? recentre : undefined}
+            style={[styles.digitWindow, digitBox]}
+          >
+            {rolls && before !== undefined ? (
+              <Animated.Text
+                key={`away-${roll.epoch}`}
+                entering={leaving}
+                style={[text, { transform: [{ translateY: -travel }] }]}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
+                {before}
+              </Animated.Text>
+            ) : null}
+            <Animated.Text
+              key={digit}
+              entering={rolls ? entering : undefined}
+              style={text}
+              numberOfLines={1}
+              allowFontScaling={false}
+            >
+              {digit}
+            </Animated.Text>
+          </Animated.View>
+        );
+      })}
+    </View>
+  );
 }
 
 export interface CoasterCardProps {
@@ -113,40 +220,6 @@ export function CoasterCard({
   estimate,
   sideways = false,
 }: CoasterCardProps) {
-  const reducedMotion = useReducedMotion();
-  const countScale = useSharedValue(1);
-  // Same one-shot as the numeral pop, one layer behind it: a glow blooms out of
-  // the digits and is gone again in under half a second (§10 — one pop per user
-  // action, 130/180 ms, nothing that repeats).
-  const bloom = useSharedValue(0);
-  const prevCountRef = useRef(count);
-
-  // The peak moment of the app: a beer just landed, so the number pops once.
-  // Never on mount, never on a decrease, nothing loops.
-  useEffect(() => {
-    const prev = prevCountRef.current;
-    prevCountRef.current = count;
-    if (count > prev && !reducedMotion) {
-      countScale.value = withSequence(
-        withTiming(1.12, { duration: 130 }),
-        withTiming(1, { duration: 180 }),
-      );
-      bloom.value = withSequence(
-        withTiming(1, { duration: 130 }),
-        withTiming(0, { duration: 180 }),
-      );
-    }
-  }, [count, reducedMotion, countScale, bloom]);
-
-  const countAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: countScale.value }],
-  }));
-
-  const bloomAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: bloom.value,
-    transform: [{ scale: 0.8 + bloom.value * 0.3 }],
-  }));
-
   // The numeral is sized from the card, never the other way round: on a short
   // phone it shrinks instead of spilling over the rounded corner.
   const [body, setBody] = useState({ width: 0, height: 0 });
@@ -172,33 +245,9 @@ export function CoasterCard({
       accessibilityRole={interactive ? 'button' : 'text'}
       accessibilityLabel={accessibilityLabel}
     >
-      {/* Sits behind the numeral and is invisible at rest, so it costs the
-          layout nothing and the reader never meets it. */}
-      <Animated.View
-        pointerEvents="none"
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        style={[styles.bloom, bloomAnimatedStyle]}
-      >
-        <SoftGlow size={Math.round(numeralSize * BLOOM_SCALE)} color={Colors.glow} opacity={0.42} />
-      </Animated.View>
-      <Animated.View style={countAnimatedStyle}>
-        <Text
-          style={[
-            styles.count,
-            // The line box must clear the extrabold glyph's overshoot, or iOS
-            // shaves the top off the digits. 1.24 leaves real headroom; the
-            // noun's negative margin closes the gap it creates below.
-            { fontSize: numeralSize, lineHeight: numeralSize * 1.24 },
-          ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
-          maxFontSizeMultiplier={FontScaleCap.display}
-        >
-          {count}
-        </Text>
-      </Animated.View>
+      {/* The line box must clear the extrabold glyph's overshoot, or iOS shaves
+          the top off the digits; the noun's negative margin closes the gap below. */}
+      <RollingNumeral count={count} size={numeralSize} style={styles.count} />
       <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
         {(count > 0 ? nounLabel : t.counter.coasterEmpty).toUpperCase()}
       </Text>
@@ -302,14 +351,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
     justifyContent: 'center',
   },
-  bloom: {
+  digits: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  digitWindow: {
+    overflow: 'hidden',
+  },
+  digit: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   count: {
     fontFamily: Fonts.display.extrabold,

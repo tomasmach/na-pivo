@@ -1253,6 +1253,16 @@ a vymění se na UI vlákně, takže úder nečeká na JS. Spouští ji otevřen
 nikdy počítadlo, a podruhé se už neopakuje. Při omezeném pohybu je nová kresba hned na místě
 a haptika zůstává. Pop 130/180 ms by úder nenesl, proto je pomalejší.
 
+**Výjimka: počítadlo (27. 10. 2026).** Číslo piv na počítadle neposkočí. Každá
+změněná číslice se protočí jako váleček ručního počítadla: stará odjede nahoru, nová
+přijede zespoda, obě spolu za 290 ms s lehkým přejetím (`Easing.bezier(0.3, 1.22,
+0.55, 1)`). Okno číslice má pevnou šířku 0,62 × velikost písma, takže číslo neuskočí
+do strany, a při 9 → 10 přijede desítka zespoda. Animace běží na UI vlákně jako
+vstupní a výstupní animace Reanimated. Nikdy při načtení obrazovky ani při ubrání
+piva, při omezeném pohybu se číslice vymění na místě. Záře za číslem zmizela. Zápis
+pití dává jedno krátké cvaknutí (Impact Rigid) místo dvojitého „hotovo“ (Success),
+protože přijde i desetkrát za večer; Success zůstává vzácnějším úspěchům.
+
 **Toast s medailí.** Novou medaili ohlásí stávající `Toast` nahoře přes celou šířku (okraj 12 pt):
 medaile 44 pt místo ikony, druhý řádek s dosaženou hodnotou, okraj `amber` 0,5, šipka a 4 s místo
 2,4 s. Čtečka obrazovky ho slyší hned při zobrazení. Ťuknutí otevře detail (víc medailí

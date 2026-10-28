@@ -39,6 +39,8 @@ jest.mock('react-native-reanimated', () => ({
   withSpring: jest.fn((value) => value),
   withSequence: jest.fn((value) => value),
   withTiming: jest.fn((value) => value),
+  Easing: { bezier: jest.fn(() => (t: number) => t) },
+  LinearTransition: { duration: () => ({ easing: () => ({}) }) },
 }));
 
 // The public "Zmapuj hospodu" sheet is its own feature (store/icons tested
@@ -47,7 +49,7 @@ jest.mock('@/components/amenities/MapPubSheet', () => ({ MapPubSheet: () => null
 
 jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success' },
-  ImpactFeedbackStyle: { Light: 'light' },
+  ImpactFeedbackStyle: { Light: 'light', Rigid: 'rigid' },
   notificationAsync: jest.fn(async () => undefined),
   impactAsync: jest.fn(async () => undefined),
 }));
@@ -769,10 +771,19 @@ describe('CounterScreen FotoPivař offer', () => {
 describe('CounterScreen counting', () => {
   it('the first beer of an evening lands in the tally with delivery deferred', async () => {
     useNearbyPub.mockReturnValue(nearbyState());
+    const haptics = jest.requireActual('@/utils/haptics');
+    const rigid = jest.spyOn(haptics, 'fireRigidImpactHaptic');
+    const success = jest.spyOn(haptics, 'fireSuccessHaptic');
     const renderer = render();
 
     act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
     await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+
+    // A beer is the most frequent action, so it clicks instead of firing the success pattern.
+    expect(rigid).toHaveBeenCalledTimes(1);
+    expect(success).not.toHaveBeenCalled();
+    rigid.mockRestore();
+    success.mockRestore();
 
     const current = useTallyStore.getState().current;
     expect(current?.pubKey).toBe(CELL);
