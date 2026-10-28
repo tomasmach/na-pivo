@@ -46,6 +46,7 @@ module.exports = {
     '^expo-file-system$': '<rootDir>/src/__mocks__/expo-file-system.ts',
     '^expo-clipboard$': '<rootDir>/src/__mocks__/expo-clipboard.ts',
     '^expo-sharing$': '<rootDir>/src/__mocks__/expo-sharing.ts',
+    '^expo-glass-effect$': '<rootDir>/src/__mocks__/expo-glass-effect.ts',
     '^react-native-view-shot$': '<rootDir>/src/__mocks__/react-native-view-shot.ts',
     '^react-native$': '<rootDir>/src/__mocks__/react-native.ts',
     '^react-native-svg$': '<rootDir>/src/__mocks__/react-native-svg.ts',
