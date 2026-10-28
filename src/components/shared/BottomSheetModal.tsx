@@ -21,6 +21,7 @@
 
 import { cloneElement, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import {
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -62,7 +63,6 @@ const LANDING_MS = 260;
 const LEAVE_MS = 200;
 /** How long a drag that closed the sheet waits for its host to agree before the card returns. */
 const DECLINE_MS = 120;
-const FLICK_SPRING = { mass: 1, stiffness: 300, damping: 34, overshootClamping: true };
 
 const DRAG_SLOP = 6;
 const CLOSE_FRACTION = 0.25;
@@ -73,7 +73,10 @@ export interface BottomSheetModalProps {
   visible: boolean;
   /** A tap on the dimming, Android back, the VoiceOver escape and a drag past the threshold all ask here. */
   onClose: () => void;
-  /** After the card has left and the modal is gone. A sheet its parent unmounts on close hands that over here. */
+  /**
+   * After the card has left and the modal is gone; on iOS after the native dismissal, so a
+   * host that unmounts here still holds its iPhone Duo half until then.
+   */
   onClosed?: () => void;
   scrimColor?: ColorValue;
   /** The card's colour, for a card flush with the bottom edge: it fills the strip a pull up uncovers. */
@@ -108,6 +111,8 @@ export function BottomSheetModal({
 
   const offset = useSharedValue(windowHeight);
   const fade = useSharedValue(0);
+  // A drag the gesture system cancels while the sheet is leaving must not pull the card back.
+  const closing = useSharedValue(false);
   const landing = useSharedValue(0);
   const travel = useSharedValue(0);
   const dragFrom = useSharedValue(0);
@@ -155,10 +160,11 @@ export function BottomSheetModal({
     // Reopened while leaving, the card turns back from where it is.
     if (!current.leaving) offset.set(Math.max(current.sheetHeight - current.cardTop, 1));
     current.leaving = false;
+    closing.set(false);
     offset.set(withSpring(0, OPEN_SPRING));
     fade.set(withTiming(1, { duration: FADE_IN_MS }));
     land();
-  }, [fade, land, offset]);
+  }, [closing, fade, land, offset]);
 
   const finishClose = useCallback(() => {
     const current = state.current;
@@ -168,32 +174,36 @@ export function BottomSheetModal({
     current.leaving = false;
     offset.set(windowHeight);
     setShown(false);
-    onClosed?.();
+    if (Platform.OS !== 'ios') onClosed?.();
   }, [offset, onClosed, windowHeight]);
 
   const close = useCallback(() => {
     const current = state.current;
     current.pending = false;
     cancelAnimation(landing);
-    const velocity = current.flick;
+    const flicked = current.flick > 0;
     current.flick = 0;
     if (current.sheetHeight <= 0 || current.cardTop < 0) {
       setTimeout(finishClose, 0);
       return;
     }
     current.leaving = true;
+    closing.set(true);
     const distance = Math.max(current.sheetHeight - current.cardTop, 1);
     const done = (finished?: boolean) => {
       'worklet';
       if (finished) runOnJS(finishClose)();
     };
     fade.set(withTiming(0, { duration: LEAVE_MS }));
+    // A flicked card is already moving, so it eases out; both stay inside the 260 ms of §7.4.
     offset.set(
-      velocity > 0
-        ? withSpring(distance, { ...FLICK_SPRING, velocity }, done)
-        : withTiming(distance, { duration: LEAVE_MS, easing: Easing.in(Easing.cubic) }, done),
+      withTiming(
+        distance,
+        { duration: LEAVE_MS, easing: flicked ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic) },
+        done,
+      ),
     );
-  }, [fade, finishClose, landing, offset]);
+  }, [closing, fade, finishClose, landing, offset]);
 
   const settle = useCallback(
     (velocity: number) => {
@@ -211,7 +221,7 @@ export function BottomSheetModal({
     if (was === visible) return;
     if (reduceMotion) {
       if (visible) softTap();
-      else onClosed?.();
+      else if (Platform.OS !== 'ios') onClosed?.();
     } else if (visible) {
       current.pending = true;
       open();
@@ -306,6 +316,7 @@ export function BottomSheetModal({
     },
     onDeactivate: (event) => {
       'worklet';
+      if (closing.get()) return;
       if (offset.get() > travel.get() * CLOSE_FRACTION || event.velocityY > CLOSE_VELOCITY) {
         runOnJS(dismissByDrag)(Math.max(event.velocityY, 0));
       } else {
@@ -329,6 +340,7 @@ export function BottomSheetModal({
       presentationStyle="overFullScreen"
       scrimColor={scrimColor}
       onRequestClose={onClose}
+      onDismiss={Platform.OS === 'ios' ? onClosed : undefined}
     >
       <GestureHandlerRootView style={styles.fill}>
         <Animated.View style={[styles.scrim, { backgroundColor: scrimColor }, !reduceMotion && scrimMotion]}>

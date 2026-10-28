@@ -43,7 +43,7 @@ jest.mock('react-native-reanimated', () => {
     withTiming: jest.fn((value: number, _config: object, callback?: (finished: boolean) => void) => settle(value, callback)),
     cancelAnimation: jest.fn(),
     runOnJS: (fn: (...args: unknown[]) => void) => fn,
-    Easing: { in: (easing: unknown) => easing, cubic: 'cubic' },
+    Easing: { in: (easing: unknown) => easing, out: (easing: unknown) => easing, cubic: 'cubic' },
   };
 });
 
@@ -174,7 +174,33 @@ describe('BottomSheetModal', () => {
     act(finishAnimations);
     expect(offset(renderer)).toBeGreaterThanOrEqual(TRAVEL);
     expect(modal(renderer).props.visible).toBe(false);
+    // On iOS the hand-over waits for the native dismissal, which keeps the Duo half held until then.
+    expect(onClosed).not.toHaveBeenCalled();
+    act(() => modal(renderer).props.onDismiss());
     expect(onClosed).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps leaving when the host closes it under a finger', () => {
+    const onClose = jest.fn();
+    const renderer = open({ onClose });
+    const pan = gesture(renderer);
+    act(() => {
+      pan.onTouchesDown({ allTouches: [{ absoluteX: 100, absoluteY: 300 }] });
+      pan.onTouchesMove({ handlerTag: 7, state: 2, numberOfTouches: 1, allTouches: [{ absoluteX: 100, absoluteY: 310 }] });
+      pan.onActivate();
+      pan.onUpdate({ translationY: 40 });
+    });
+
+    update(renderer, { visible: false, onClose });
+    withSpring.mockClear();
+    // Turning the gesture off cancels it. Neither a spring back nor a second close may take
+    // over the leaving card, or the modal would never unmount on a device.
+    act(() => pan.onDeactivate({ velocityY: 0 }));
+    expect(withSpring).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    act(finishAnimations);
+    expect(offset(renderer)).toBeGreaterThanOrEqual(TRAVEL);
+    expect(modal(renderer).props.visible).toBe(false);
   });
 
   it('closes through onClose when pulled past a quarter of the card', () => {
@@ -251,6 +277,7 @@ describe('BottomSheetModal', () => {
 
     update(renderer, { visible: false, onClosed });
     expect(modal(renderer).props.visible).toBe(false);
+    act(() => modal(renderer).props.onDismiss());
     expect(onClosed).toHaveBeenCalledTimes(1);
   });
 
