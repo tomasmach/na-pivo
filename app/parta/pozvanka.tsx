@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 
 import { GlowButton } from '@/components/shared/GlowButton';
-import { ChevronLeftIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import { UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { claimInviteCode } from '@/data/friendInviteLink';
 import { resolveInviteCode, type FriendProfile } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
@@ -121,10 +121,10 @@ function InviteClaim({ code }: { code: string }) {
           onPress={goToParta}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel={t.friends.claimBack}
+          accessibilityLabel={t.a11y.counterCloseModal}
           style={({ pressed }) => [styles.backBtn, pressed && styles.dim]}
         >
-          <ChevronLeftIcon size={26} color={Colors.foam} />
+          <XIcon size={24} color={Colors.foam} />
         </Pressable>
       </View>
 

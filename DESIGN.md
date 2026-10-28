@@ -1545,11 +1545,28 @@ vlastní povrch, ne jako rozbalovací pole v liště — jeden záměr na povrch
 
 ### 17.4 List → detail
 
-Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil) — patří do stacku
-vedle `/profile/edit` a `/settings`. To platí i pro detail hospody: od 28. 9. 2026 je to
+Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil), která přijede zprava
+a zavře se tahem od levého okraje. To platí i pro detail hospody: od 28. 9. 2026 je to
 samostatná obrazovka `/pub` (viz „Schválená stránka hospody“ nahoře), mapu otevírá výřez
 na stránce. Intent sheet (§7) detail nikdy nenese. Na otevřeném iPhonu Duo se hospoda, večer a
 profil kámoše otevírají do pravé půlky (§17.6).
+
+**Obrazovky, které přijedou zespoda, jsou karta (27. 10. 2026).** Nastavení, Domovský bod, O appce,
+Soukromí, Napiš mi, Doplnit info, Přidat hospodu, Navrhnout akci, detail večera, přihlášení,
+obnova hesla, ověření e-mailu, Účet, volba soukromí po registraci, Úprava profilu, pozvánka do
+party, fotka a FotoPivař. V `app/_layout.tsx` mají společné `sheet`.
+
+- Na iPhonu jsou systémová karta (`presentation: 'modal'`). Obrazovka pod ní se zasune o kousek
+  dozadu a kartu jde stáhnout prstem dolů. Domovský bod se otevírá z Nastavení jako druhá karta
+  nad ní.
+- Hlavička má vlevo křížek „Zavřít“ (`XIcon`), protože obrazovka přijela zespoda. Šipka zpět
+  zůstává pushnutým routám a detailu v pravé půlce Duo.
+- Formulář s neuloženou změnou nebo s rozběhlým ukládáním stáhnout nejde, karta se vrátí na
+  místo (`useKeepCardOpen`). Zavře ho křížek, stejně jako dřív.
+- Na Androidu jsou přes celý displej a zavírá je systémové zpět.
+- Na otevřeném iPhonu Duo zůstávají přes celé okno. Na širokém okně iOS kartu ukazuje jako menší
+  obdélník uprostřed, který by ležel přes ohyb (§17.6).
+- Onboarding a oslava příchodu jsou jednosměrné, zůstávají přes celý displej a stáhnout nejdou.
 
 ### 17.5 Kompas v seznamu hospod
 

@@ -7,7 +7,11 @@ jest.mock('expo-router', () => ({ useFocusEffect: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => {
   const { createContext, useContext } = jest.requireActual<typeof import('react')>('react');
   const SafeAreaInsetsContext = createContext(null);
-  return { SafeAreaInsetsContext, useSafeAreaInsets: () => useContext(SafeAreaInsetsContext) };
+  return {
+    SafeAreaInsetsContext,
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+    useSafeAreaInsets: () => useContext(SafeAreaInsetsContext),
+  };
 });
 
 const edges = (top: number, right: number, bottom: number, left: number): EdgeInsets => ({ top, right, bottom, left });
@@ -73,12 +77,24 @@ describe('RouteScreen', () => {
   it('narrows a route by the side insets and hands the rest down', async () => {
     expect(
       await render(
-        <SafeAreaInsetsContext.Provider value={edges(0, 84, 20, 0)}>
+        <SafeAreaInsetsContext.Provider value={edges(59, 84, 20, 0)}>
           <RouteScreen>
             <Probe />
           </RouteScreen>
         </SafeAreaInsetsContext.Provider>,
       ),
-    ).toEqual({ marginLeft: 0, marginRight: 84, insets: edges(0, 0, 20, 0), bottomInset: 20 });
+    ).toEqual({ marginLeft: 0, marginRight: 84, insets: edges(59, 0, 20, 0), bottomInset: 20 });
+  });
+
+  it('keeps a card header clear of the card edge, which has no top inset', async () => {
+    expect(
+      await render(
+        <SafeAreaInsetsContext.Provider value={edges(0, 0, 34, 0)}>
+          <RouteScreen>
+            <Probe />
+          </RouteScreen>
+        </SafeAreaInsetsContext.Provider>,
+      ),
+    ).toEqual({ marginLeft: 0, marginRight: 0, insets: edges(12, 0, 34, 0), bottomInset: 34 });
   });
 });

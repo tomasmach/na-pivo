@@ -28,7 +28,6 @@ import {
 import {
   CameraIcon,
   CheckIcon,
-  ChevronLeftIcon,
   ChevronRightIcon,
   ClockIcon,
   CompassIcon,
@@ -39,6 +38,7 @@ import {
   SearchIcon,
   SparklesIcon,
   Trash2Icon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
 import {
   CounterCta,
@@ -69,6 +69,7 @@ import { geohash8 } from '@/data/geohash';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { scanMenuPhoto } from '@/data/menuScanClient';
 import { formatVolume, t } from '@/i18n';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
 import { useAccountStore } from '@/stores/accountStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -419,6 +420,7 @@ export default function ContributeScreen() {
   const [scanSourceVisible, setScanSourceVisible] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const beersRef = useRef(beers);
+  useKeepCardOpen(hoursTouched || beersTouched);
 
   useEffect(() => {
     beersRef.current = beers;
@@ -982,9 +984,9 @@ export default function ContributeScreen() {
             ]}
             hitSlop={2}
             accessibilityRole="button"
-            accessibilityLabel={t.a11y.backButton}
+            accessibilityLabel={t.a11y.counterCloseModal}
           >
-            <ChevronLeftIcon size={22} color={Colors.foam} />
+            <XIcon size={22} color={Colors.foam} />
           </Pressable>
           <Text
             style={styles.headerTitle}

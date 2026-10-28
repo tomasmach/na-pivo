@@ -69,13 +69,13 @@ tags: [full, identity]
     file: ../../maestro/route.yaml
     env:
       ROUTE: /settings
-- assertVisible: "Back"
+- assertVisible: "Close"
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:
       ROUTE: /settings
-- assertVisible: "Back"
+- assertVisible: "Close"
 - scrollUntilVisible:
     element: { id: settings-water }
     direction: DOWN
@@ -101,14 +101,14 @@ tags: [full, identity]
     env:
       ROUTE: /settings
 - extendedWaitUntil:
-    visible: "Zpět"
+    visible: "Zavřít"
     timeout: 20000
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:
       ROUTE: /settings
-- assertVisible: "Zpět"
+- assertVisible: "Zavřít"
 - runFlow:
     file: ../../maestro/route.yaml
     env:

@@ -32,7 +32,8 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
-import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
+import { XIcon } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -159,6 +160,7 @@ export default function AuthScreen() {
 
   const [resetOpen, setResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
+  useKeepCardOpen(busy !== null || [email, password, nickname, resetEmail].some((value) => value.trim().length > 0));
 
   const appleSupported = useMemo(() => isAppleSignInSupported(), []);
   const googleConfigured = useMemo(() => isGoogleSignInConfigured(), []);
@@ -324,10 +326,10 @@ export default function AuthScreen() {
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={t.a11y.counterCloseModal}
           hitSlop={4}
         >
-          <ChevronLeftIcon size={22} color={Colors.foam} />
+          <XIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle}>{t.account.authTitle}</Text>
         <View style={styles.headerSpacer} />

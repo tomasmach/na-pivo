@@ -3,6 +3,7 @@ import { Platform, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import {
   SafeAreaInsetsContext,
+  SafeAreaProvider,
   useSafeAreaInsets,
   type EdgeInsets,
 } from 'react-native-safe-area-context';
@@ -71,12 +72,32 @@ export function TabBarInsetOverride({ value, children }: PropsWithChildren<{ val
   return <TabBarInsetContext.Provider value={value}>{children}</TabBarInsetContext.Provider>;
 }
 
-export function RouteScreen({ children }: PropsWithChildren) {
-  const insets = useSafeAreaInsets();
+/** A card's header keeps this far below the card's rounded top edge. */
+const CARD_TOP_GAP = 12;
+
+function RouteInsets({ minTop = 0, children }: PropsWithChildren<{ minTop?: number }>) {
+  const measured = useSafeAreaInsets();
+  const insets = useMemo(
+    () => ({ ...measured, top: Math.max(measured.top, minTop) }),
+    [measured, minTop],
+  );
   return (
     <SideInsets insets={insets} left={insets.left} right={insets.right}>
       {children}
     </SideInsets>
+  );
+}
+
+/**
+ * Wraps one route above the tabs. On iOS it measures its own insets: a card
+ * starts below the status bar, so the window's top inset would pad it twice.
+ */
+export function RouteScreen({ children }: PropsWithChildren) {
+  if (Platform.OS !== 'ios') return <RouteInsets>{children}</RouteInsets>;
+  return (
+    <SafeAreaProvider>
+      <RouteInsets minTop={CARD_TOP_GAP}>{children}</RouteInsets>
+    </SafeAreaProvider>
   );
 }
 

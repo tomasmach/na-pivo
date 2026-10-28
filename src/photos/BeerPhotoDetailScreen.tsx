@@ -20,7 +20,6 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
-  ChevronLeftIcon,
   ChevronRightIcon,
   ClockIcon,
   EyeOffIcon,
@@ -30,6 +29,7 @@ import {
   Trash2Icon,
   TrophyIcon,
   UsersIcon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
 import { deleteBeerPhoto } from '@/data/beerPhotosClient';
 import {
@@ -44,6 +44,7 @@ import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
 
 /** "9. července 2026" — the long Czech date for the meta row. */
 function longDate(iso: string): string {
@@ -102,6 +103,8 @@ export default function BeerPhotoDetailScreen() {
   );
 
   const [busy, setBusy] = useState(false);
+  // A swipe mid-delete would let the later goBack() close the photo list under this card too.
+  useKeepCardOpen(busy);
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -209,10 +212,10 @@ export default function BeerPhotoDetailScreen() {
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={t.a11y.counterCloseModal}
           style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
         >
-          <ChevronLeftIcon size={26} color={Colors.foam} />
+          <XIcon size={24} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {t.photoDiary.detailTitle}

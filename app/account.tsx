@@ -22,10 +22,10 @@ import { LoginMethodsSheet } from '@/account/LoginMethodsSheet';
 import { PasswordSheet } from '@/account/PasswordSheet';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import {
-  ChevronLeftIcon,
   MenuIcon,
   MailIcon,
   Trash2Icon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { ToggleRow } from '@/components/shared/FlatPage';
@@ -48,6 +48,7 @@ import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
 
 const MIN_PASSWORD = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -82,6 +83,8 @@ export default function AccountScreen() {
   );
 
   const [busy, setBusy] = useState<string | null>(null);
+  // A swipe mid-request would let the later router.back() close the screen under this card too.
+  useKeepCardOpen(busy !== null);
   const marketingEmailsEnabled = useSettingsStore((state) => state.marketingEmailsEnabled);
   const setMarketingEmailsEnabled = useSettingsStore((state) => state.setMarketingEmailsEnabled);
   const toggleMarketingEmails = useCallback(() => {
@@ -398,9 +401,9 @@ export default function AccountScreen() {
           pressed && styles.pressed,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={t.a11y.backButton}
+        accessibilityLabel={t.a11y.counterCloseModal}
       >
-        <ChevronLeftIcon size={22} color={Colors.foam} />
+        <XIcon size={22} color={Colors.foam} />
       </Pressable>
       <Text
         style={styles.headerTitle}

@@ -33,6 +33,7 @@ jest.mock('expo-router', () => ({
     push: mockPush,
   })),
   useLocalSearchParams: jest.fn(() => mockSearchParams),
+  useNavigation: () => ({ setOptions: jest.fn() }),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -79,11 +80,11 @@ jest.mock('@/components/shared/GlowButton', () => {
 
 jest.mock('@/components/shared/IconGlyph', () => ({
   CheckIcon: jest.fn(() => null),
-  ChevronLeftIcon: jest.fn(() => null),
   ChevronRightIcon: jest.fn(() => null),
   MapIcon: jest.fn(() => null),
   MapPinIcon: jest.fn(() => null),
   TargetIcon: jest.fn(() => null),
+  XIcon: jest.fn(() => null),
 }));
 
 jest.mock('@/theme/fonts', () => ({

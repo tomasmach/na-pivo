@@ -370,7 +370,7 @@ export default function EveningDetailScreen() {
           onPress={() => (pane ? pane.back() : router.back())}
           style={backToDiary ? styles.backWithLabel : styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={pane ? t.a11y.backButton : t.a11y.counterCloseModal}
           hitSlop={4}
         >
           {backToDiary ? (
@@ -382,8 +382,10 @@ export default function EveningDetailScreen() {
                 {t.beer.segmentDiary}
               </Text>
             </>
-          ) : (
+          ) : pane ? (
             <ChevronLeftIcon size={22} color={Colors.foam} />
+          ) : (
+            <XIcon size={22} color={Colors.foam} />
           )}
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>

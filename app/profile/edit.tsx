@@ -1,8 +1,8 @@
 /**
  * Edit profile (route `/profile/edit`) — a single scrollable form (not a wizard)
  * that lets a signed-in user change their avatar, nickname, real name, and
- * visibility in one place. Presented as a fullScreenModal sliding up from the
- * bottom.
+ * visibility in one place. Presented as a card that pulls down to close, except
+ * while it holds unsaved changes.
  *
  * Cards:
  *   1. Avatar — current image + "Změnit fotku" (pick → upload) + "Odebrat fotku".
@@ -35,7 +35,8 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
-import { ChevronLeftIcon, Trash2Icon, PencilIcon } from '@/components/shared/IconGlyph';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
+import { Trash2Icon, PencilIcon, XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { Avatar } from '@/profile/Avatar';
@@ -78,6 +79,13 @@ export default function ProfileEditScreen() {
   // Permission permanently denied (canAskAgain=false) → offer Settings, not re-prompt.
   const [permissionBlocked, setPermissionBlocked] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const trimmedNickname = nicknameInput.trim();
+  const trimmedName = displayName.trim();
+  const nicknameChanged = trimmedNickname !== (initialNickname ?? '');
+  const nameChanged = trimmedName !== (profile?.displayName ?? '').trim();
+  const visibilityChanged = isPublic !== initialIsPublic;
+  useKeepCardOpen(saving || nicknameChanged || nameChanged || visibilityChanged);
 
   // ── Avatar ──
   const handlePickAvatar = useCallback(async () => {
@@ -124,12 +132,6 @@ export default function ProfileEditScreen() {
   const handleSave = useCallback(async () => {
     if (saving) return;
 
-    const trimmedNickname = nicknameInput.trim();
-    const trimmedName = displayName.trim();
-    const nicknameChanged = trimmedNickname !== (initialNickname ?? '');
-    const nameChanged = trimmedName !== (profile?.displayName ?? '').trim();
-    const visibilityChanged = isPublic !== initialIsPublic;
-
     // A changed nickname must be submit-ready (valid + available).
     if (nicknameChanged && !nicknameReady) {
       setNicknameError(t.profile.form.nicknameInvalid);
@@ -174,13 +176,13 @@ export default function ProfileEditScreen() {
     }
   }, [
     saving,
-    nicknameInput,
-    displayName,
+    trimmedNickname,
+    trimmedName,
+    nicknameChanged,
+    nameChanged,
+    visibilityChanged,
     isPublic,
     nicknameReady,
-    initialNickname,
-    initialIsPublic,
-    profile?.displayName,
     updateProfile,
     showToast,
     router,
@@ -197,7 +199,7 @@ export default function ProfileEditScreen() {
           accessibilityLabel={t.a11y.profileClose}
           hitSlop={4}
         >
-          <ChevronLeftIcon size={22} color={Colors.foam} />
+          <XIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle}>{t.profile.edit.title}</Text>
         <View style={styles.headerSpacer} />

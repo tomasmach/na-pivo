@@ -13,14 +13,15 @@ const mockRouter = { replace: jest.fn(), dismissTo: jest.fn() };
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
   useRouter: () => mockRouter,
+  useNavigation: () => ({ setOptions: jest.fn() }),
 }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 jest.mock('@/components/shared/GlowButton', () => ({ GlowButton: () => null }));
 jest.mock('@/components/shared/IconGlyph', () => ({
-  ChevronLeftIcon: () => null,
   UsersIcon: () => null,
+  XIcon: () => null,
 }));
 jest.mock('@/profile/Avatar', () => ({ Avatar: () => null }));
 jest.mock('@/theme/fonts', () => ({
@@ -85,7 +86,7 @@ it('returns to the existing Parta tab instead of stacking a second tab bar', asy
   });
   const back = renderer!.root.find(
     (node: { props: Record<string, unknown> }) =>
-      node.props.accessibilityLabel === t.friends.claimBack && typeof node.props.onPress === 'function',
+      node.props.accessibilityLabel === t.a11y.counterCloseModal && typeof node.props.onPress === 'function',
   );
   await act(async () => back.props.onPress());
   expect(mockRouter.dismissTo).toHaveBeenLastCalledWith('/friends');

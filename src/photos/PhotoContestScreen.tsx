@@ -45,7 +45,6 @@ import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BeerIcon,
   CameraIcon,
-  ChevronLeftIcon,
   MenuIcon,
   MapPinIcon,
   TrophyIcon,
@@ -682,10 +681,10 @@ export default function PhotoContestScreen() {
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={t.a11y.counterCloseModal}
           style={({ pressed }) => [styles.headerBtn, pressed && styles.pressedDim]}
         >
-          <ChevronLeftIcon size={26} color={Colors.foam} />
+          <XIcon size={24} color={Colors.foam} />
         </Pressable>
         <View style={styles.headerTitleRow}>
           <TrophyIcon size={18} color={Colors.amber} />

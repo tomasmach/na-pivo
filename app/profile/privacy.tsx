@@ -19,6 +19,7 @@ import {
   ShieldIcon,
 } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
+import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
 import { useAccountStore, selectIsPublic } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -73,6 +74,7 @@ export default function ProfilePrivacyScreen() {
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useKeepCardOpen(busy || isPublic !== initialIsPublic);
 
   // Back to the tabs already under this modal; replace would stack a second
   // tab bar on top, which iOS lays out broken until a restart.
