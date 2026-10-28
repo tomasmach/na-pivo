@@ -27,7 +27,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { t } from '@/i18n';
-import { fireLightImpactHaptic } from '@/utils/haptics';
+import { fireSelectionHaptic } from '@/utils/haptics';
 import { MenuIcon } from '@/components/shared/IconGlyph';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
@@ -49,7 +49,7 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 
   const press = (next: BeerTab) => {
     if (next === tab) return;
-    if (hapticEnabled) fireLightImpactHaptic();
+    if (hapticEnabled) fireSelectionHaptic();
     trackUiInteraction(
       next === 'count' ? 'beer_counter_segment' : 'beer_diary_segment',
       'select',

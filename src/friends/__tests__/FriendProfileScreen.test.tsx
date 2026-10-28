@@ -20,14 +20,6 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('@/components/shared/AppDialog', () => ({
   useShowAppDialog: () => (options: (typeof dialogs)[number]) => dialogs.push(options),
 }));
-jest.mock('react-native-reanimated', () => ({
-  __esModule: true,
-  default: { View: 'AnimatedView' },
-  useSharedValue: (value: number) => ({ value }),
-  useAnimatedStyle: (factory: () => unknown) => factory(),
-  withSpring: (value: number) => value,
-  withTiming: (value: number) => value,
-}));
 jest.mock('@/components/shared/IconGlyph', () => new Proxy({}, { get: () => () => null }));
 jest.mock('@/friends/SkeletonBlock', () => () => null);
 jest.mock('@/navigation/TabScreen', () => ({ useTabBarInset: () => 0 }));

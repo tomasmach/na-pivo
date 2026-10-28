@@ -9,7 +9,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { fireLightImpactHaptic } from '@/utils/haptics';
+import { fireSelectionHaptic } from '@/utils/haptics';
 import { TourButton, TourText, tourError, ui } from './TourChrome';
 import { validSchedule, type TourError, type TourPlan, type TourResult } from './model';
 import { addDays, earliestMinutes, lastDay, minutesOf, timeOf, todayIn, weekday } from './when';
@@ -20,7 +20,7 @@ const PRESETS = ['18:00', '19:00', '20:00', '21:00'];
 const LAST_MINUTE = 23 * 60 + 45;
 
 function haptic() {
-  if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
+  if (useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
 }
 const utc = (iso: string) => new Date(`${iso}T12:00:00Z`);
 const daysBetween = (from: string, to: string) => Math.round((utc(to).getTime() - utc(from).getTime()) / 86400000);

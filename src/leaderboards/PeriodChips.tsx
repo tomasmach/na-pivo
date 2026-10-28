@@ -16,7 +16,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
-import { fireLightImpactHaptic } from '@/utils/haptics';
+import { fireSelectionHaptic } from '@/utils/haptics';
 
 export interface PeriodChipsProps {
   options: readonly { key: LeaderboardPeriod; label: string }[];
@@ -38,7 +38,7 @@ function PeriodChipsBase({
 
   const handlePress = useCallback(
     (period: LeaderboardPeriod) => {
-      if (period !== value && hapticEnabled) fireLightImpactHaptic();
+      if (period !== value && hapticEnabled) fireSelectionHaptic();
       onChange(period);
     },
     [hapticEnabled, onChange, value],

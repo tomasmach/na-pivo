@@ -16,6 +16,10 @@ export function fireSuccessHaptic(): void {
   fireHaptic(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
 }
 
+export function fireSelectionHaptic(): void {
+  fireHaptic(() => Haptics.selectionAsync());
+}
+
 export function fireLightImpactHaptic(): void {
   fireHaptic(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
 }

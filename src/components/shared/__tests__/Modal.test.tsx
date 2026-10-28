@@ -144,7 +144,9 @@ describe('Modal', () => {
     );
     const background = (label: string) =>
       StyleSheet.flatten(
-        renderer.root.findByProps({ accessibilityLabel: label }).props.style({ pressed: false }),
+        renderer.root
+          .find((node: any) => typeof node.type === 'string' && node.props.accessibilityLabel === label)
+          .children.at(-1).props.style,
       ).backgroundColor;
     expect(background('outside')).toBe(Colors.stout3);
     expect(background('inside')).toBe(Colors.amber);

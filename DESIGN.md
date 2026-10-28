@@ -747,13 +747,13 @@ button: {
   justifyContent: 'center',
   paddingHorizontal: Spacing.lg,
 },
-pressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
 label: {
   ...MockType.buttonLabel,               // 16 / 700, systémové písmo
   color: Colors.stout,
 },
 ```
 
+- **Stisk:** `ScalePressable` s `pressScale={PressScale.primary}` (0,955). Pružení popisuje §10.
 - **Žádný glow, žádný `topLight`.** `amberGlow*` je jazyk 2.x — v žádném etalonním souboru se
   nevyskytuje. Tlačítko je plná jantarová pilulka a to stačí.
 - Výšky: **48** na obrazovce, **56** v sheetu, **60** dělená primární kapsle večera („+1 pivo“ +
@@ -783,9 +783,19 @@ Jantarový 6% outline (`CounterSecondary`, `GlowButton`) je jazyk 2.x. Další t
 (48 × 48, sklo, fallback `stout3`), **plovoucí pilulka v chromu** (výška 40, `stout @ 0.92`,
 hairline `foam 0.14`), **textový odkaz** (14/800 `Colors.amber`).
 
-**Pressed slovník:** default `opacity: 0.65`; tělo plovoucího baru `0.85`; jantarová CTA
-`0.9 + scale 0.97`. Pro nový kód jsou tohle defaulty — nevymýšlej další hodnoty; drobné odchylky
-ve starším kódu (0.62, 0.7) se srovnávají při dalším zásahu.
+**Stisk.** Tlačítka, pilulky, kulatá tlačítka, karty a řádky stavíš na
+`ScalePressable` (`@/components/shared/ScalePressable`), ne na holém `Pressable` se stylem
+`pressed`. Stisk se zmáčkne hned a pružinou se vrátí (§10). Hloubku volíš z `PressScale`:
+
+| Prvek | `pressScale` |
+|---|---|
+| jantarové primární tlačítko | `PressScale.primary` 0,955 |
+| sekundární pilulka, kulaté tlačítko, karta, dlaždice | `PressScale.default` 0,97 |
+| řádek přes celou šířku (`ListRow`) | `PressScale.row` 0,985, aby neuskakoval okraj |
+
+Nevymýšlej další hodnoty. Dim `opacity` při stisku zůstává jen u ikon bez plochy, segmentů
+a čipů; ve starším kódu se srovnává při dalším zásahu. Vzhled `disabled` dej do `style`
+(`opacity`), `ScalePressable` ho drží jako klidovou hodnotu.
 
 ### 6.3 Pravidlo jedné akce
 
@@ -1218,7 +1228,7 @@ madlo 44 × 4) s medailí 128 pt.
 **Žádné smyčkové animace.** Ani bublinky, ani pulzující glow, ani dýchající ikony. Autor je
 nesnáší a byly kvůli tomu už jednou odstraněny. Dekorativní pohyb na jádrových obrazovkách je
 zakázaný. Povolený pohyb má přesně tři kategorie, všechny stavové, ne ambientní: **reakce na tap**
-(pop níže), **příchod nového datového záznamu** (nový řádek threadu, §20.3) a **stavové smyčky
+(pop a stisk níže), **příchod nového datového záznamu** (nový řádek threadu, §20.3) a **stavové smyčky
 vázané na skutečný stav** — loading skeleton během reálného síťového čekání (§20.11), který
 skončí, jakmile stav skončí. V chrome smyčka neběží žádná (§20.6).
 
@@ -1249,8 +1259,13 @@ Pravidla:
 - Trvání drž na `130 / 180 ms`. Nic pomalejšího; nic, co se opakuje.
 - Stavové změny (sloty s proměnlivým obsahem) se přepínají **okamžitě, bez animace** a mají
   pevnou výšku — obsah se mění, výška ne, takže nic pod nimi neposkočí.
-- Stisk se řeší stylem, ne animací: `pressed && { opacity: 0.65–0.9 }` (§6.2), u jantarové CTA
-  navíc `transform: [{ scale: 0.97 }]`.
+- **Stisk je druhá povolená reakce na tap** (`ScalePressable`, §6.2). Při stisku se prvek
+  zmenší na `pressScale` za 70 ms, po uvolnění se vrátí pružinou (damping 20,
+  stiffness 320, mass 0,6). Hýbe se jen `transform`, `onPress` na animaci nečeká. Při omezeném
+  pohybu se prvek nezmenší, jen ztlumí na 70 % klidové průhlednosti (80 ms tam, 120 ms zpět).
+- **Haptika podle významu** (vždy jen při zapnutém `hapticEnabled`): změna hodnoty v přepínači,
+  segmentu, čipu nebo krokovači dá `fireSelectionHaptic` (systémový „výběr“). Ťuknutí na tab
+  a akce, které něco provedou, zůstávají `fireLightImpactHaptic`, úspěch `fireSuccessHaptic`.
 
 **Výjimka: ražba medaile (21. 10. 2026).** Když se medaile od posledního otevření zvedla o úroveň,
 její detail ji jednou vyrazí: 350 ms po otevření se zamáčkne na 0,9 (120 ms, ease-in quad),
@@ -1301,6 +1316,8 @@ const VERTICAL_SLOP = (44 - CHIP_HEIGHT) / 2;   // = 3
 - **Ozdobné vrstvy vypni:** backdrop `accessibilityElementsHidden` + `importantForAccessibility="no"`,
   dekorativní `View` navíc `pointerEvents="none"`.
 - **Segmenty:** `accessibilityRole="tab"` + `accessibilityState={{ selected }}`.
+- **Omezit pohyb:** stisk se nezmenšuje, jen ztlumí, a haptika zůstává (§10). `ScalePressable`
+  to řeší sám a předává všechny `accessibility*` props, `testID`, `hitSlop` i `disabled`.
 - **Každý `<Text>` má `maxFontSizeMultiplier`, nebo — u číslic v pevných buňkách — explicitní
   `allowFontScaling={false}`** (viz §3.3).
 - **Dlouhé názvy hospod:** `numberOfLines={1}` na `<Text>` **a** `flexShrink: 1` na něm nebo na jeho

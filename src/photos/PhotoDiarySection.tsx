@@ -26,7 +26,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
-import { ScalePressable } from '@/photos/ScalePressable';
+import { ScalePressable } from '@/components/shared/ScalePressable';
 import { loadBeerPhotos, useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';

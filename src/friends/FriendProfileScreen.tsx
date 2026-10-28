@@ -40,7 +40,7 @@ import {
   type FriendProfile,
   type FriendProfileDetail,
 } from '@/data/friendsClient';
-import { ScalePressable } from '@/photos/ScalePressable';
+import { ScalePressable } from '@/components/shared/ScalePressable';
 import { BadgeCell, BadgeGrid } from '@/profile/BadgeRows';
 import { badgeStates, PUBLIC_BADGE_KEYS } from '@/profile/badgeModel';
 import { badgeAmount } from '@/profile/badgeText';

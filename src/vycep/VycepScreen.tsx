@@ -38,7 +38,7 @@ import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { fireLightImpactHaptic } from '@/utils/haptics';
+import { fireSelectionHaptic } from '@/utils/haptics';
 import { NightCard } from '@/vycep/NightCard';
 import { PublishNightSheet } from '@/vycep/PublishNightSheet';
 import {
@@ -64,7 +64,7 @@ const ScopeSegment = memo(function ScopeSegment({
   const handlePress = useCallback(
     (next: 0 | 1) => {
       if (next === value) return;
-      if (hapticEnabled) fireLightImpactHaptic();
+      if (hapticEnabled) fireSelectionHaptic();
       onChange(next);
     },
     [hapticEnabled, onChange, value],

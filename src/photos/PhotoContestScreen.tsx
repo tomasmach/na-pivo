@@ -67,7 +67,7 @@ import SkeletonBlock from '@/friends/SkeletonBlock';
 import { t } from '@/i18n';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { contestCountdownLabel } from '@/photos/contestCountdown';
-import { ScalePressable } from '@/photos/ScalePressable';
+import { ScalePressable } from '@/components/shared/ScalePressable';
 import { Avatar } from '@/profile/Avatar';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useContestResultsStore } from '@/stores/contestResultsStore';

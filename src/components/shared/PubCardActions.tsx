@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { PressScale, ScalePressable } from '@/components/shared/ScalePressable';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -21,10 +22,11 @@ interface PubCardActionsProps {
 export function PubCardActions({ primary, secondary, tertiary }: PubCardActionsProps) {
   return (
     <View style={styles.footer}>
-      <Pressable
+      <ScalePressable
         onPress={primary.onPress}
         hitSlop={8}
-        style={({ pressed }) => [styles.action, styles.primaryAction, pressed && styles.pressed]}
+        pressScale={PressScale.primary}
+        style={[styles.action, styles.primaryAction]}
         accessibilityLabel={primary.accessibilityLabel ?? primary.label}
         accessibilityRole="button"
       >
@@ -38,12 +40,12 @@ export function PubCardActions({ primary, secondary, tertiary }: PubCardActionsP
         >
           {primary.label}
         </Text>
-      </Pressable>
+      </ScalePressable>
 
-      <Pressable
+      <ScalePressable
         onPress={secondary.onPress}
         hitSlop={8}
-        style={({ pressed }) => [styles.action, styles.secondaryAction, pressed && styles.pressed]}
+        style={[styles.action, styles.secondaryAction]}
         accessibilityLabel={secondary.accessibilityLabel ?? secondary.label}
         accessibilityRole="button"
       >
@@ -57,18 +59,18 @@ export function PubCardActions({ primary, secondary, tertiary }: PubCardActionsP
         >
           {secondary.label}
         </Text>
-      </Pressable>
+      </ScalePressable>
 
       {tertiary ? (
-        <Pressable
+        <ScalePressable
           onPress={tertiary.onPress}
           hitSlop={8}
-          style={({ pressed }) => [styles.action, styles.tertiaryAction, pressed && styles.pressed]}
+          style={[styles.action, styles.tertiaryAction]}
           accessibilityLabel={tertiary.accessibilityLabel ?? tertiary.label}
           accessibilityRole="button"
         >
           {tertiary.icon}
-        </Pressable>
+        </ScalePressable>
       ) : null}
     </View>
   );
@@ -116,10 +118,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.14),
     backgroundColor: withAlpha(Colors.foam, 0.04),
-  },
-  pressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.98 }],
   },
   primaryText: {
     flexShrink: 1,

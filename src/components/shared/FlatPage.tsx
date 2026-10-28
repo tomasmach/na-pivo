@@ -8,6 +8,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
+import { PressScale, ScalePressable } from '@/components/shared/ScalePressable';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -29,17 +30,17 @@ export function RoundButton({
   children: React.ReactNode;
 }) {
   return (
-    <Pressable
+    <ScalePressable
       testID={testID}
       onPress={onPress}
       hitSlop={6}
-      style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
+      style={styles.roundButton}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={selected === undefined ? undefined : { selected }}
     >
       {children}
-    </Pressable>
+    </ScalePressable>
   );
 }
 
@@ -86,10 +87,11 @@ export function ListRow({
   testID?: string;
 }) {
   return (
-    <Pressable
+    <ScalePressable
       testID={testID}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, !first && styles.rowDivided, pressed && styles.pressed]}
+      pressScale={PressScale.row}
+      style={[styles.row, !first && styles.rowDivided]}
       accessibilityRole="button"
       accessibilityLabel={[title, subtitle, value].filter(Boolean).join(', ')}
     >
@@ -110,7 +112,7 @@ export function ListRow({
         </Text>
       ) : null}
       <ChevronRightIcon size={16} color={Colors.mutedText} />
-    </Pressable>
+    </ScalePressable>
   );
 }
 
@@ -195,9 +197,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  pressed: {
-    opacity: 0.65,
   },
   band: {
     height: 10,
