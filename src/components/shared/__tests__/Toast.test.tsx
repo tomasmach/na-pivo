@@ -107,6 +107,19 @@ describe('Toast flick and hold', () => {
     act(() => renderer.unmount());
   });
 
+  it('lets a long hold go without treating the release as a tap', () => {
+    let renderer: { root: { findByProps: (props: object) => { props: Record<string, unknown> } }; unmount: () => void } | undefined;
+    act(() => {
+      renderer = TestRenderer.create(<Toast />);
+    });
+    act(() => useToastStore.getState().show('Čárka na tácku přibyla.'));
+
+    const pressable = renderer!.root.findByProps({ accessibilityRole: 'button' });
+    act(() => (pressable.props.onLongPress as () => void)());
+    expect(useToastStore.getState().message).toBe('Čárka na tácku přibyla.');
+    act(() => renderer!.unmount());
+  });
+
   it('does not carry a hold over to the next toast', () => {
     const renderer = mount();
     act(() => useToastStore.getState().show('První'));

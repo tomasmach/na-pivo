@@ -133,6 +133,8 @@ export function Toast() {
           onPress?.();
           dismiss();
         }}
+        // Lifting a finger that held the toast still is not a tap: it lets the toast time out.
+        onLongPress={() => undefined}
         style={[styles.toast, subtitle ? styles.toastTall : null, softDrop()]}
         accessibilityRole="button"
       >
