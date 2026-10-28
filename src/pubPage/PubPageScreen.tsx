@@ -1282,6 +1282,8 @@ export default function PubPageScreen() {
           </RoundButton>
           <Text
             style={[styles.navTitle, !showTitle && styles.hidden]}
+            // Once the big name has faded, this is the page's heading for screen readers.
+            accessibilityRole="header"
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
             accessibilityElementsHidden={!showTitle}
