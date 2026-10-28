@@ -8,13 +8,13 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { InfoIcon, XIcon } from '@/components/shared/IconGlyph';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { BODY_LIMITS, isBodyValueValid, type BodyProfile, type BodySex } from '@/drinks/alcoholEstimate';
 import { t } from '@/i18n';
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
@@ -99,145 +99,125 @@ export function AlcoholProfileSheet({ visible, profile, onSave, onClose }: Alcoh
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
-            <View style={styles.grabber} />
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.alcohol.title}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.alcohol.title}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.counterCloseModal}
+            >
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+
+          <KeyboardAwareScrollView
+            style={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.lead} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.alcohol.setupLead}
+            </Text>
+
+            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.alcohol.sexLabel}
+            </Text>
+            <View style={styles.sexGroup} accessibilityRole="radiogroup">
+              {(['male', 'female'] as const).map((option) => {
+                const selected = sex === option;
+                return (
+                  <Pressable
+                    key={option}
+                    testID={`alcohol-sex-${option}`}
+                    onPress={() => setSex(option)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    style={[styles.sexPill, selected && styles.sexPillSelected]}
+                  >
+                    <Text
+                      style={[styles.sexLabel, selected && styles.sexLabelSelected]}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {option === 'male' ? t.alcohol.male : t.alcohol.female}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            <KeyboardAwareScrollView
-              style={styles.scroll}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.lead} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.alcohol.setupLead}
-              </Text>
-
-              <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.alcohol.sexLabel}
-              </Text>
-              <View style={styles.sexGroup} accessibilityRole="radiogroup">
-                {(['male', 'female'] as const).map((option) => {
-                  const selected = sex === option;
-                  return (
-                    <Pressable
-                      key={option}
-                      testID={`alcohol-sex-${option}`}
-                      onPress={() => setSex(option)}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected }}
-                      style={[styles.sexPill, selected && styles.sexPillSelected]}
-                    >
-                      <Text
-                        style={[styles.sexLabel, selected && styles.sexLabelSelected]}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {option === 'male' ? t.alcohol.male : t.alcohol.female}
+            <View style={styles.fields}>
+              {FIELDS.map((field) => {
+                const showError = touched[field.key] && invalid(field.key);
+                const { min, max } = BODY_LIMITS[field.key];
+                return (
+                  <View key={field.key} style={styles.field}>
+                    <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {field.label()}
+                    </Text>
+                    <View style={[styles.inputRow, showError && styles.inputRowError]}>
+                      <TextInput
+                        testID={`alcohol-${field.key}`}
+                        style={styles.input}
+                        value={draft[field.key]}
+                        onChangeText={(text) =>
+                          setDraft((d) => ({ ...d, [field.key]: text.replace(/[^0-9]/g, '').slice(0, 3) }))
+                        }
+                        onBlur={() => setTouched((s) => ({ ...s, [field.key]: true }))}
+                        keyboardType="number-pad"
+                        maxLength={3}
+                        accessibilityLabel={field.label()}
+                        maxFontSizeMultiplier={FontScaleCap.heading}
+                      />
+                      <Text style={styles.unit} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {field.unit()}
                       </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <View style={styles.fields}>
-                {FIELDS.map((field) => {
-                  const showError = touched[field.key] && invalid(field.key);
-                  const { min, max } = BODY_LIMITS[field.key];
-                  return (
-                    <View key={field.key} style={styles.field}>
-                      <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {field.label()}
-                      </Text>
-                      <View style={[styles.inputRow, showError && styles.inputRowError]}>
-                        <TextInput
-                          testID={`alcohol-${field.key}`}
-                          style={styles.input}
-                          value={draft[field.key]}
-                          onChangeText={(text) =>
-                            setDraft((d) => ({ ...d, [field.key]: text.replace(/[^0-9]/g, '').slice(0, 3) }))
-                          }
-                          onBlur={() => setTouched((s) => ({ ...s, [field.key]: true }))}
-                          keyboardType="number-pad"
-                          maxLength={3}
-                          accessibilityLabel={field.label()}
-                          maxFontSizeMultiplier={FontScaleCap.heading}
-                        />
-                        <Text style={styles.unit} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {field.unit()}
-                        </Text>
-                      </View>
-                      {showError ? (
-                        <Text style={styles.error} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {t.alcohol.outOfRange(min, max)}
-                        </Text>
-                      ) : null}
                     </View>
-                  );
-                })}
-              </View>
+                    {showError ? (
+                      <Text style={styles.error} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {t.alcohol.outOfRange(min, max)}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
 
-              <Text style={styles.note} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.alcohol.privacyNote}
+            <Text style={styles.note} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.alcohol.privacyNote}
+            </Text>
+
+            <View style={styles.warning}>
+              <InfoIcon size={18} color={Colors.foamMuted} />
+              <Text style={styles.warningText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.alcohol.setupWarning}
               </Text>
+            </View>
 
-              <View style={styles.warning}>
-                <InfoIcon size={18} color={Colors.foamMuted} />
-                <Text style={styles.warningText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.alcohol.setupWarning}
-                </Text>
-              </View>
-
-              <View style={styles.footer}>
-                <GlowButton
-                  testID="alcohol-profile-save"
-                  label={blocker ?? t.alcohol.save}
-                  glow="none"
-                  disabled={blocker !== undefined}
-                  onPress={save}
-                />
-              </View>
-            </KeyboardAwareScrollView>
-          </View>
+            <View style={styles.footer}>
+              <GlowButton
+                testID="alcohol-profile-save"
+                label={blocker ?? t.alcohol.save}
+                glow="none"
+                disabled={blocker !== undefined}
+                onPress={save}
+              />
+            </View>
+          </KeyboardAwareScrollView>
         </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   cardWrap: {
     width: '100%',
     maxHeight: '92%',

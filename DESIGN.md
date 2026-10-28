@@ -837,25 +837,23 @@ Každý modal v appce je `Modal` ze `src/components/shared/Modal.tsx`. Má stejn
   nechá na místě i po otevření, takže rozepsaný zápis nezmizí,
 - jantarové tlačítko uvnitř zůstane jantarové i v tiché pravé půlce, sheet je samostatné okno.
 
-Scrim (`black 0.6`, `animationType="fade"`), dismiss target za kartou
-(`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát) a Android back přes
-`onRequestClose` si sheet zatím staví sám. Jiný scrim než `black 0.6` předá wrapperu jako
-`scrimColor`, aby ztmavení mimo rámeček mělo stejnou barvu. `BottomSheetModal`, se kterým počítají
-§7.2 a §7.2b, v appce ještě není. Volající dodává kartu:
+Spodní panel dostane ztmavení, dismiss target za kartou, pohyb, tah prstem, Android back
+a VoiceOver escape z `BottomSheetModal` (§7.2b). Jiný scrim než `black 0.6` mu předá jako
+`scrimColor`. Volající dodává kartu:
 
 | Rozhodnutí | Důvod |
 |---|---|
 | `cardWrap` má `maxHeight: '92%'` (strop), **žádnou výchozí `minHeight`**, a `marginBottom: -insets.bottom` | Krátký sheet končí hned pod posledním řádkem, inputem nebo tlačítkem. Nevzniká prázdná „brada“, akce zůstávají u palce a dlouhý obsah přesto nezakryje celou obrazovku. |
 | Karta má `paddingBottom: insets.bottom + Spacing.lg` | Obsah se nedostane pod home indicator. Jde vždycky spolu s `marginBottom` výše. |
 | Sloupec **pevná hlavička → `ScrollView` s `flexGrow: 0`, `flexShrink: 1` → pevná patka MIMO scroll** | Krátký obsah určí výšku sheetu; dlouhý se u stropu zmenší a scrolluje. Patka (akce, součet) neodscrolluje ani se nenechá ustřihnout. |
-| Karta je obyčejný `View` | Dismiss target je sourozenec **za** kartou (ve wrapperu), takže karta nemusí nic polykat — a no-op `Pressable` by celý sheet seskupil do jednoho nepojmenovaného ovladače (§11). |
+| Karta je obyčejný `View`, jediné dítě `BottomSheetModal` | Dismiss target je sourozenec **za** kartou (ve wrapperu), takže karta nemusí nic polykat — a no-op `Pressable` by celý sheet seskupil do jednoho nepojmenovaného ovladače (§11). Wrapper kartě přidá `onLayout` a z její horní hrany počítá dráhu; vlastní komponenta karty ho musí předat svému kořenovému `View`. |
 | Grabber `44 × 4`, `foam 0.22` | Vizuální afordance „tohle je sheet“. (`PlacesSheet` má vlastní `40 × 5`, `foam 0.26`.) |
 
 ### 7.2 Kostra k překopírování
 
 ```tsx
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -865,13 +863,14 @@ import { softDrop } from '@/theme/shadows';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { cs } from '@/i18n/cs';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { CloseButton } from '@/components/shared/CloseButton';
 
 export function ExampleSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose}>
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={Colors.stout}>
       <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
         {/* Plain View: the dismiss target is a sibling BEHIND the card (wrapper),
             so the card does not need to swallow presses — and a no-op Pressable
@@ -888,13 +887,13 @@ export function ExampleSheet({ visible, onClose }: { visible: boolean; onClose: 
           </View>
 
           {/* 2 — the only scrolling part */}
-          <ScrollView
+          <BottomSheetScrollView
             style={styles.list}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
           >
             {/* rows */}
-          </ScrollView>
+          </BottomSheetScrollView>
 
           {/* 3 — pinned footer, OUTSIDE the ScrollView */}
           <View style={styles.actions}>{/* primary/secondary actions */}</View>
@@ -953,32 +952,45 @@ const styles = StyleSheet.create({
 
 ### 7.2b Sheet vyjíždí zespoda (3.0)
 
-Použij `src/components/shared/BottomSheetModal.tsx`. Nestav si `Modal` s
-`animationType` sám.
+Každý spodní panel je `src/components/shared/BottomSheetModal.tsx`. Nestav si `Modal`
+s `animationType` sám. Vycentrované dialogy (`AppDialog`, karty uprostřed obrazovky)
+a neprůhledné stránky přes celé okno zůstávají na `Modal` s `animationType="fade"`
+nebo `"slide"`.
 
-Dřív tu stálo `animationType="fade"` s odůvodněním, že `"slide"` koliduje
-s vlastním polohováním karty a vzniká dvojitý pohyb. Je to napůl pravda:
-`slide` na `transparent` modalu posune **celý modal včetně backdropu**, takže
-tmavý závoj vyjede zespoda místo aby prolnul. To nečte jako karta přijíždějící
-přes obrazovku, ale jako jeden velký kus tmavého papíru.
+Sheet jsou **dva pohyby najednou a nejsou stejné**:
 
-Řešení není vybrat jednu ze dvou vestavěných animací. Sheet jsou **dva pohyby
-najednou a nejsou stejné**:
-
-| Vrstva | Pohyb | Proč |
+| Vrstva | Pohyb | Hodnoty |
 |---|---|---|
-| závoj | prolnutí | je to stav obrazovky za ním, ne předmět |
-| karta | posun zespoda, spring | je to objekt, který přijíždí, a má hmotu |
+| závoj | prolnutí | 220 ms při otevření, 200 ms při zavření |
+| karta | posun zespoda, pružina s lehkým dojezdem | tuhost 260, tlumení 26, hmota 1; zavření 200 ms ease-in |
 
-Takže `Modal` neanimuje nic (`animationType="none"`) a obojí řídí wrapper. Při
-zavírání běží ty samé dva pohyby pozpátku a `Modal` se odmontuje až na konci —
-`visible={false}` hned by kartu nechal zmizet místo odejít.
+`Modal` neanimuje nic (`animationType="none"`) a obojí řídí wrapper. Karta jede
+o vzdálenost od své horní hrany ke spodnímu okraji. Při zavírání běží ty samé dva
+pohyby pozpátku a `Modal` se odmontuje až na konci; zavření se vejde do 260 ms,
+na které čeká sheet za sheetem (§7.4). Panel, který rodič při zavření odmontuje,
+nastaví `visible={false}` a rodiči předá zavření až v `onClosed`.
 
-Wrapper taky drží Android back gesture, aby zavřel sheet a ne obrazovku za ním.
+**Tah prstem.** Kartu jde stáhnout dolů kdekoli. Puštěná pod čtvrtinou dráhy a
+pomaleji než 900 pt/s se vrátí pružinou. Přes čtvrtinu nebo rychlým švihnutím se
+zavře přes `onClose`, stejně jako křížkem; když hostitel panel nezavře (třeba se
+nejdřív ptá na rozepsaný text), karta se vrátí. Nahoru jde karta jen o čtvrtinu dráhy
+prstu a mezeru pod ní zakryje `underlayColor`, barva karty. Plovoucí karta s okrajem
+dole ho nedostává. Svislý `ScrollView` v panelu je `BottomSheetScrollView`
+(`FlatList` je `BottomSheetFlatList`, `KeyboardAwareScrollView` to umí sám): tah
+dolů posouvá obsah, dokud není nahoře, a teprve pak táhne kartu; tah nahoru
+posouvá obsah, kdykoli je co posouvat.
 
-> **Migrace.** Ve 3.0 na něm jedou sheety v `src/party/`. Zbytek appky
-> (~27 míst) pořád fade a je to **vědomý dluh**, ne opomenutí — projede se to
-> najednou, ne po jednom, aby appka nebyla půl na půl.
+**Haptika.** Impact Soft, když karta po otevření dosedne (zhruba po 260 ms, kdy
+pružina poprvé dojede na místo) a když se zavře tahem. Jen se zapnutou haptikou
+v Nastavení.
+
+**Omezit pohyb.** Jen prolnutí celého panelu (`animationType="fade"`), bez pružiny
+a bez tahu.
+
+**Zavírání.** Ťuknutí na závoj, Android back i VoiceOver escape (dvouprstové Z) volají
+`onClose`, takže zavřou panel, ne obrazovku pod ním.
+
+`PlacesSheet` na mapě zůstává vlastní komponentou.
 
 ### 7.2c Zavírací tlačítko
 
@@ -1048,11 +1060,6 @@ const runAfterSheetClose = useCallback((action: () => void) => {
 ```
 
 Timer vždycky uklízej v `useEffect` cleanupu.
-
-> **Známá odchylka:** `CounterMoreSheet.tsx` používá zjednodušenou variantu, kde je backdrop rodičem
-> karty. Funguje to, protože jde o krátký neskrolující seznam bez patky. **Pro nové sheety použij
-> kanonickou variantu výše.** Kdykoli sheet obsahuje `ScrollView` nebo pevnou patku, je varianta
-> s rodičovským backdropem chyba.
 
 ### 7.5 Krátký sheet obepíná obsah, dlouhý má strop na `cardWrap`
 

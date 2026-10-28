@@ -36,14 +36,6 @@ jest.mock('react-native', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('react-native-reanimated', () => ({
-  __esModule: true,
-  default: { View: 'AnimatedView' },
-  useSharedValue: (value: number) => ({ value }),
-  useAnimatedStyle: (factory: () => unknown) => factory(),
-  withSpring: (value: number) => value,
-  withTiming: (value: number) => value,
-}));
 jest.mock('@/components/shared/GlowButton', () => ({ GlowButton: () => null }));
 jest.mock('@/profile/NicknameField', () => ({ NicknameField: () => null }));
 

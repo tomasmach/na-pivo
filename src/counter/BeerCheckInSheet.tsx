@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
-import { Modal, ModalInsetView } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { ModalInsetView } from '@/components/shared/Modal';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
@@ -242,198 +243,195 @@ export function BeerCheckInSheet({
   }, [brewery, canSubmit, cleanName, note, onClose, onSubmitted, pub, pubKey, rating, showToast, style, tags, visibility, visitClientId]);
 
   return (
-    <Modal scrimColor={styles.backdrop.backgroundColor} visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
-        <ModalInsetView
-          style={(insets) => [
-            styles.sheet,
-            {
-              paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
-              marginBottom: keyboardHeight,
-              maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
-            },
-          ]}
-        >
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.beerCheckins.sheetTitle}
+    <BottomSheetModal visible={visible} onClose={onClose} scrimColor={styles.backdrop.backgroundColor} underlayColor={styles.sheet.backgroundColor}>
+      <ModalInsetView
+        style={(insets) => [
+          styles.sheet,
+          {
+            paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
+            marginBottom: keyboardHeight,
+            maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
+          },
+        ]}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.beerCheckins.sheetTitle}
+            </Text>
+            <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              {pub.name}
+            </Text>
+          </View>
+          <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityRole="button">
+            <XIcon size={18} color={Colors.foamMuted} />
+          </Pressable>
+        </View>
+
+        <KeyboardAwareScrollView showsVerticalScrollIndicator={false}>
+          {memoryLoading ? (
+            <View style={styles.memoryStrip}>
+              <SkeletonBlock width="55%" height={13} reduceMotion={reduceMotion} />
+              <SkeletonBlock width="80%" height={12} reduceMotion={reduceMotion} />
+            </View>
+          ) : memory && memory.myCount > 0 ? (
+            <View style={styles.memoryStrip}>
+              <Text style={styles.memoryLead} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.beerCheckins.memoryKnownLead}
               </Text>
-              <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {pub.name}
+              <Text style={styles.memoryMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.beerCheckins.memoryKnown({
+                  count: memory.myCount,
+                  lastDate: shortDate(memory.lastCheckedInAt ?? ''),
+                  lastPub: memory.lastPubName,
+                  lastRating: memory.lastRating,
+                })}
+              </Text>
+              <BeerTagChips tags={memory.topTags} />
+            </View>
+          ) : memory ? (
+            <View style={styles.memoryStrip}>
+              <Text style={styles.memoryFirst} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.beerCheckins.memoryFirstTime}
               </Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityRole="button">
-              <XIcon size={18} color={Colors.foamMuted} />
-            </Pressable>
-          </View>
+          ) : null}
 
-          <KeyboardAwareScrollView showsVerticalScrollIndicator={false}>
-            {memoryLoading ? (
-              <View style={styles.memoryStrip}>
-                <SkeletonBlock width="55%" height={13} reduceMotion={reduceMotion} />
-                <SkeletonBlock width="80%" height={12} reduceMotion={reduceMotion} />
-              </View>
-            ) : memory && memory.myCount > 0 ? (
-              <View style={styles.memoryStrip}>
-                <Text style={styles.memoryLead} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.beerCheckins.memoryKnownLead}
-                </Text>
-                <Text style={styles.memoryMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.beerCheckins.memoryKnown({
-                    count: memory.myCount,
-                    lastDate: shortDate(memory.lastCheckedInAt ?? ''),
-                    lastPub: memory.lastPubName,
-                    lastRating: memory.lastRating,
-                  })}
-                </Text>
-                <BeerTagChips tags={memory.topTags} />
-              </View>
-            ) : memory ? (
-              <View style={styles.memoryStrip}>
-                <Text style={styles.memoryFirst} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.beerCheckins.memoryFirstTime}
-                </Text>
-              </View>
-            ) : null}
-
-            <Text style={styles.label}>{t.beerCheckins.beerLabel}</Text>
-            <TextInput
-              value={name}
-              onChangeText={(value) => {
-                pickedSuggestionRef.current = '';
-                setName(value);
-              }}
-              placeholder={t.beerCheckins.beerPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={styles.input}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-            {suggestions.length > 0 ? (
-              <View style={styles.suggestionsBox}>
-                {suggestions.map((suggestion, index) => (
-                  <Pressable
-                    key={suggestion.slug}
-                    onPress={() => selectSuggestion(suggestion)}
-                    style={[styles.suggestionRow, index > 0 && styles.suggestionDivider]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.beerCheckins.useSuggestion(suggestion.name)}
+          <Text style={styles.label}>{t.beerCheckins.beerLabel}</Text>
+          <TextInput
+            value={name}
+            onChangeText={(value) => {
+              pickedSuggestionRef.current = '';
+              setName(value);
+            }}
+            placeholder={t.beerCheckins.beerPlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            style={styles.input}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          />
+          {suggestions.length > 0 ? (
+            <View style={styles.suggestionsBox}>
+              {suggestions.map((suggestion, index) => (
+                <Pressable
+                  key={suggestion.slug}
+                  onPress={() => selectSuggestion(suggestion)}
+                  style={[styles.suggestionRow, index > 0 && styles.suggestionDivider]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.beerCheckins.useSuggestion(suggestion.name)}
+                >
+                  <Text
+                    style={styles.suggestionName}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
                   >
+                    {suggestion.name}
+                  </Text>
+                  {suggestion.brandName && suggestion.brandName !== suggestion.name ? (
                     <Text
-                      style={styles.suggestionName}
+                      style={styles.suggestionBrand}
                       numberOfLines={1}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {suggestion.name}
+                      {suggestion.brandName}
                     </Text>
-                    {suggestion.brandName && suggestion.brandName !== suggestion.name ? (
-                      <Text
-                        style={styles.suggestionBrand}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {suggestion.brandName}
-                      </Text>
-                    ) : null}
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-
-            <View style={styles.twoCols}>
-              <View style={styles.col}>
-                <Text style={styles.label}>{t.beerCheckins.breweryLabel}</Text>
-                <TextInput
-                  value={brewery}
-                  onChangeText={(value) => {
-                    pickedSuggestionRef.current = '';
-                    setBrewery(value);
-                  }}
-                  placeholder={t.beerCheckins.optionalPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={styles.input}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
-              <View style={styles.col}>
-                <Text style={styles.label}>{t.beerCheckins.styleLabel}</Text>
-                <TextInput
-                  value={style}
-                  onChangeText={setStyle}
-                  placeholder={t.beerCheckins.optionalPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={styles.input}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.label}>{t.beerCheckins.ratingLabel}</Text>
-            <View style={styles.ratingRow}>
-              {ratingValues.map((value) => (
-                <RatingChip
-                  key={value}
-                  value={value}
-                  active={rating === value}
-                  onPress={() => setRating((current) => (current === value ? null : value))}
-                />
+                  ) : null}
+                </Pressable>
               ))}
             </View>
+          ) : null}
 
-            <Text style={styles.label}>{t.beerCheckins.tagsLabel}</Text>
-            <View style={styles.ratingRow}>
-              {BEER_TAGS.map((tag) => (
-                <TagChip key={tag} tag={tag} active={tags.includes(tag)} onPress={() => toggleTag(tag)} />
-              ))}
+          <View style={styles.twoCols}>
+            <View style={styles.col}>
+              <Text style={styles.label}>{t.beerCheckins.breweryLabel}</Text>
+              <TextInput
+                value={brewery}
+                onChangeText={(value) => {
+                  pickedSuggestionRef.current = '';
+                  setBrewery(value);
+                }}
+                placeholder={t.beerCheckins.optionalPlaceholder}
+                placeholderTextColor={Colors.mutedText}
+                style={styles.input}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
             </View>
-
-            <Text style={styles.label}>{t.beerCheckins.noteLabel}</Text>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder={t.beerCheckins.notePlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={[styles.input, styles.noteInput]}
-              multiline
-              maxLength={1000}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            <Text style={styles.label}>{t.beerCheckins.visibilityLabel}</Text>
-            <View style={styles.visibilityRow}>
-              <Pressable
-                onPress={() => setVisibility('private')}
-                style={[styles.visibilityButton, visibility === 'private' && styles.visibilityButtonActive]}
-              >
-                <LockKeyholeIcon size={16} color={visibility === 'private' ? Colors.stout : Colors.mutedText} />
-                <Text style={[styles.visibilityText, visibility === 'private' && styles.visibilityTextActive]}>
-                  {t.beerCheckins.visibilityPrivate}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setVisibility('friends')}
-                style={[styles.visibilityButton, visibility === 'friends' && styles.visibilityButtonActive]}
-              >
-                <UsersIcon size={16} color={visibility === 'friends' ? Colors.stout : Colors.mutedText} />
-                <Text style={[styles.visibilityText, visibility === 'friends' && styles.visibilityTextActive]}>
-                  {t.beerCheckins.visibilityFriends}
-                </Text>
-              </Pressable>
+            <View style={styles.col}>
+              <Text style={styles.label}>{t.beerCheckins.styleLabel}</Text>
+              <TextInput
+                value={style}
+                onChangeText={setStyle}
+                placeholder={t.beerCheckins.optionalPlaceholder}
+                placeholderTextColor={Colors.mutedText}
+                style={styles.input}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
             </View>
+          </View>
 
+          <Text style={styles.label}>{t.beerCheckins.ratingLabel}</Text>
+          <View style={styles.ratingRow}>
+            {ratingValues.map((value) => (
+              <RatingChip
+                key={value}
+                value={value}
+                active={rating === value}
+                onPress={() => setRating((current) => (current === value ? null : value))}
+              />
+            ))}
+          </View>
+
+          <Text style={styles.label}>{t.beerCheckins.tagsLabel}</Text>
+          <View style={styles.ratingRow}>
+            {BEER_TAGS.map((tag) => (
+              <TagChip key={tag} tag={tag} active={tags.includes(tag)} onPress={() => toggleTag(tag)} />
+            ))}
+          </View>
+
+          <Text style={styles.label}>{t.beerCheckins.noteLabel}</Text>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder={t.beerCheckins.notePlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            style={[styles.input, styles.noteInput]}
+            multiline
+            maxLength={1000}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          />
+
+          <Text style={styles.label}>{t.beerCheckins.visibilityLabel}</Text>
+          <View style={styles.visibilityRow}>
             <Pressable
-              onPress={submit}
-              disabled={!canSubmit}
-              style={({ pressed }) => [styles.submit, (pressed || !canSubmit) && styles.dim]}
-              accessibilityRole="button"
+              onPress={() => setVisibility('private')}
+              style={[styles.visibilityButton, visibility === 'private' && styles.visibilityButtonActive]}
             >
-              <Text style={styles.submitText}>{t.beerCheckins.submit}</Text>
+              <LockKeyholeIcon size={16} color={visibility === 'private' ? Colors.stout : Colors.mutedText} />
+              <Text style={[styles.visibilityText, visibility === 'private' && styles.visibilityTextActive]}>
+                {t.beerCheckins.visibilityPrivate}
+              </Text>
             </Pressable>
-          </KeyboardAwareScrollView>
-        </ModalInsetView>
-      </View>
-    </Modal>
+            <Pressable
+              onPress={() => setVisibility('friends')}
+              style={[styles.visibilityButton, visibility === 'friends' && styles.visibilityButtonActive]}
+            >
+              <UsersIcon size={16} color={visibility === 'friends' ? Colors.stout : Colors.mutedText} />
+              <Text style={[styles.visibilityText, visibility === 'friends' && styles.visibilityTextActive]}>
+                {t.beerCheckins.visibilityFriends}
+              </Text>
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={submit}
+            disabled={!canSubmit}
+            style={({ pressed }) => [styles.submit, (pressed || !canSubmit) && styles.dim]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.submitText}>{t.beerCheckins.submit}</Text>
+          </Pressable>
+        </KeyboardAwareScrollView>
+      </ModalInsetView>
+    </BottomSheetModal>
   );
 }
 

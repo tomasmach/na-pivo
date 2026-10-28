@@ -10,15 +10,9 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import {
   AccessibilityIcon,
   BeerIcon,
@@ -69,6 +63,7 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 type Glyph = ComponentType<{ size?: number; color: string }>;
 
 const SUGGESTION_DEBOUNCE_MS = 250;
+const SCRIM = withAlpha(Colors.black, 0.64);
 
 const AMENITY_ICONS: Record<AmenityKey, Glyph> = {
   payment_card: CreditCardIcon,
@@ -121,21 +116,6 @@ export function PubFilterSheet({
   const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const [suggestionsQuery, setSuggestionsQuery] = useState('');
   const [limitReached, setLimitReached] = useState(false);
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 });
-    } else {
-      progress.value = withTiming(0, { duration: 140 });
-    }
-  }, [progress, value, visible]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
   const searching = query.trim().length >= 2;
   const normalizedQuery = query.trim();
   const visibleSuggestions = suggestionsQuery === normalizedQuery ? suggestions : [];
@@ -248,28 +228,19 @@ export function PubFilterSheet({
     draft.priceMaxCzk !== null;
 
   return (
-    <Modal
-      scrimColor={styles.backdrop.backgroundColor}
+    <BottomSheetModal
       visible={visible}
-      transparent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      statusBarTranslucent
+      onClose={onClose}
+      scrimColor={SCRIM}
+      underlayColor={styles.card.backgroundColor}
       navigationBarTranslucent
-      onRequestClose={onClose}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
+        style={styles.keyboard}
+        pointerEvents="box-none"
       >
-        {/* Keep the dismiss target behind the sheet. A Pressable ancestor competes
-            with the ScrollView's pan gesture and makes scrolling feel sticky. */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessible={false}
-        />
-        <Animated.View style={[styles.card, cardAnim]}>
+        <View style={styles.card}>
           <View style={styles.handle} />
           <View style={styles.titleRow}>
             <View style={styles.titleTextWrap}>
@@ -477,9 +448,9 @@ export function PubFilterSheet({
               </Text>
             </Pressable>
           </View>
-        </Animated.View>
+        </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
@@ -799,7 +770,7 @@ function AmenityChip({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: withAlpha(Colors.black, 0.64), justifyContent: 'flex-end' },
+  keyboard: { flex: 1, justifyContent: 'flex-end' },
   card: {
     height: '88%',
     backgroundColor: Colors.stout2,

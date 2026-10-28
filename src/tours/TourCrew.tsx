@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
 import { Avatar } from '@/profile/Avatar';
 import { useToursStore } from '@/stores/toursStore';
@@ -88,36 +88,33 @@ export function TourCrewSheet({ run, pingView, onPing, onClose }: { run: TourRun
   // The roster refreshes when the sheet opens, not every few seconds.
   useEffect(() => { if (joined) void useToursStore.getState().refreshCrew(); }, [joined]);
   const members = joined ? going(crew) : [];
-  return <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-    <View style={styles.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
-      <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
-        <View style={styles.grabber} />
-        <View style={styles.header}>
-          <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{t.tours.crewInvite}</Text>
-          <Pressable onPress={onClose} style={styles.close} accessibilityRole="button" accessibilityLabel={t.tours.close}>
-            <XIcon size={20} color={Colors.foamMuted} />
-          </Pressable>
-        </View>
-        {qr && <>
-          <View style={styles.qr} accessible accessibilityRole="image" accessibilityLabel={t.tours.crewQrA11y}>
-            <QRCode value={crewLink(qr)} size={QR_SIZE} color={Colors.stout} backgroundColor={Colors.foam} />
-          </View>
-          <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.note}>{t.tours.crewSheetNote}</Text>
-        </>}
-        {members.length > 0 && <View style={[styles.row, styles.roster]}>
-          <Coins members={members} ground={Colors.stout} />
-          <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={2} style={styles.names}>{members.map((member) => member.nickname).join(', ')}</Text>
-        </View>}
-        {pingView && <>
-          <View style={styles.divider}>
-            <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.sub}>{t.tours.crewPingAway}</Text>
-          </View>
-          <CrewPing view={pingView} onPing={onPing} />
-        </>}
+  return <BottomSheetModal visible onClose={onClose} underlayColor={styles.card.backgroundColor}>
+    <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.sm }]}>
+      <View style={styles.grabber} />
+      <View style={styles.header}>
+        <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{t.tours.crewInvite}</Text>
+        <Pressable onPress={onClose} style={styles.close} accessibilityRole="button" accessibilityLabel={t.tours.close}>
+          <XIcon size={20} color={Colors.foamMuted} />
+        </Pressable>
       </View>
+      {qr && <>
+        <View style={styles.qr} accessible accessibilityRole="image" accessibilityLabel={t.tours.crewQrA11y}>
+          <QRCode value={crewLink(qr)} size={QR_SIZE} color={Colors.stout} backgroundColor={Colors.foam} />
+        </View>
+        <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.note}>{t.tours.crewSheetNote}</Text>
+      </>}
+      {members.length > 0 && <View style={[styles.row, styles.roster]}>
+        <Coins members={members} ground={Colors.stout} />
+        <Text maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={2} style={styles.names}>{members.map((member) => member.nickname).join(', ')}</Text>
+      </View>}
+      {pingView && <>
+        <View style={styles.divider}>
+          <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.sub}>{t.tours.crewPingAway}</Text>
+        </View>
+        <CrewPing view={pingView} onPing={onPing} />
+      </>}
     </View>
-  </Modal>;
+  </BottomSheetModal>;
 }
 
 const styles = StyleSheet.create({
@@ -129,7 +126,6 @@ const styles = StyleSheet.create({
   linkText: { fontSize: 14, lineHeight: 20, fontWeight: '600', color: Colors.amber },
   caption: { fontSize: 12, lineHeight: 18, color: Colors.foamMuted },
   pressed: { opacity: 0.65 },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: withAlpha(Colors.black, 0.6) },
   card: { backgroundColor: Colors.stout, borderTopLeftRadius: Radius.cardLarge, borderTopRightRadius: Radius.cardLarge, paddingTop: Spacing.sm, paddingHorizontal: Spacing.lg, gap: Spacing.md },
   grabber: { alignSelf: 'center', width: 44, height: 4, borderRadius: Radius.pill, backgroundColor: withAlpha(Colors.foam, 0.22) },
   header: { flexDirection: 'row', alignItems: 'center' },

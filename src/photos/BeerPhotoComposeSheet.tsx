@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   EyeOffIcon,
@@ -101,6 +101,9 @@ export function BeerPhotoComposeSheet({
   const showToast = useToastStore((s) => s.show);
 
   const [caption, setCaption] = useState('');
+  // The parent unmounts the sheet, so it slides out first and hands over in `onClosed`.
+  const [closing, setClosing] = useState(false);
+  const requestClose = useCallback(() => setClosing(true), []);
   const [manualPub, setManualPub] = useState<PhotoPubTag | null>(null);
   // Once the user clears the tag, no auto-suggestion may sneak back in.
   const [pubCleared, setPubCleared] = useState(false);
@@ -181,196 +184,198 @@ export function BeerPhotoComposeSheet({
   }, [pickedUri, caption, pub, visibility, enterContest, onSaved]);
 
   return (
-    <Modal scrimColor={styles.backdrop.backgroundColor} visible transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View
-          style={[
-            styles.card,
-            {
-              paddingBottom:
-                keyboardHeight > 0 ? keyboardHeight + Spacing.md : Math.max(insets.bottom, Spacing.lg),
-            },
-          ]}
+    <BottomSheetModal
+      visible={!closing}
+      onClose={requestClose}
+      onClosed={onClose}
+      scrimColor={SCRIM}
+      underlayColor={styles.card.backgroundColor}
+      overlay={
+        <PubPickerModal
+          visible={pickerVisible}
+          candidates={nearby.candidates}
+          selectedKey={pub?.pubKey ?? null}
+          onSelect={handleSelectPub}
+          onClose={() => setPickerVisible(false)}
+        />
+      }
+    >
+      <View
+        style={[
+          styles.card,
+          {
+            paddingBottom:
+              keyboardHeight > 0 ? keyboardHeight + Spacing.md : Math.max(insets.bottom, Spacing.lg),
+          },
+        ]}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {t.photoDiary.composeTitle}
+          </Text>
+          <Pressable
+            onPress={requestClose}
+            style={styles.closeButton}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={t.a11y.photoViewerClose}
+          >
+            <XIcon size={20} color={Colors.foamMuted} />
+          </Pressable>
+        </View>
+
+        <KeyboardAwareScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.content}
         >
-          <View style={styles.header}>
-            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.photoDiary.composeTitle}
-            </Text>
+          {/* Preview */}
+          <Image
+            source={{ uri: pickedUri }}
+            style={styles.preview}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+          />
+
+          {/* Caption */}
+          <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.photoDiary.captionLabel}
+          </Text>
+          <TextInput
+            testID="photo-caption"
+            value={caption}
+            onChangeText={setCaption}
+            placeholder={t.photoDiary.captionPlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            style={styles.captionInput}
+            multiline
+            maxLength={CAPTION_MAX}
+            accessibilityLabel={t.a11y.photoCaptionInput}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          />
+
+          {/* Pub tag */}
+          <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.photoDiary.pubLabel}
+          </Text>
+          <View style={styles.pubRow}>
             <Pressable
-              onPress={onClose}
-              style={styles.closeButton}
-              hitSlop={8}
+              onPress={openPubPicker}
+              style={({ pressed }) => [styles.pubRowMain, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={t.a11y.photoViewerClose}
+              accessibilityLabel={t.a11y.photoPickPub}
             >
-              <XIcon size={20} color={Colors.foamMuted} />
+              <MapPinIcon size={17} color={pub ? Colors.amber : Colors.mutedText} />
+              <Text
+                style={[styles.pubName, !pub && styles.pubNameEmpty]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {pub ? [pub.name, pub.city].filter(Boolean).join(' · ') : t.photoDiary.pubNone}
+              </Text>
+            </Pressable>
+            {pub ? (
+              <Pressable
+                onPress={clearPub}
+                style={({ pressed }) => [styles.pubClear, pressed && styles.pressed]}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t.a11y.photoClearPub}
+              >
+                <XIcon size={16} color={Colors.mutedText} />
+              </Pressable>
+            ) : null}
+          </View>
+
+          {/* Visibility */}
+          <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.photoDiary.visibilityLabel}
+          </Text>
+          <View style={styles.segment}>
+            <Pressable
+              onPress={() => setVisibility('private')}
+              style={[styles.segmentOption, visibility === 'private' && styles.segmentActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: visibility === 'private' }}
+              accessibilityLabel={t.a11y.photoVisibility(t.photoDiary.visibilityPrivate)}
+            >
+              <EyeOffIcon
+                size={15}
+                color={visibility === 'private' ? Colors.stout : Colors.mutedText}
+              />
+              <Text
+                style={[styles.segmentText, visibility === 'private' && styles.segmentTextActive]}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {t.photoDiary.visibilityPrivate}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setVisibility('friends')}
+              style={[styles.segmentOption, visibility === 'friends' && styles.segmentActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: visibility === 'friends' }}
+              accessibilityLabel={t.a11y.photoVisibility(t.photoDiary.visibilityFriends)}
+            >
+              <UsersIcon
+                size={15}
+                color={visibility === 'friends' ? Colors.stout : Colors.mutedText}
+              />
+              <Text
+                style={[styles.segmentText, visibility === 'friends' && styles.segmentTextActive]}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {t.photoDiary.visibilityFriends}
+              </Text>
             </Pressable>
           </View>
 
-          <KeyboardAwareScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.content}
+          {/* FotoPivař is an explicit public opt-in, independent of the diary
+              visibility above. The full row is tappable for pub-table use. */}
+          <Pressable
+            onPress={() => setEnterContest((value) => !value)}
+            style={({ pressed }) => [
+              styles.contestToggle,
+              enterContest && styles.contestToggleActive,
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: enterContest }}
+            accessibilityLabel={t.a11y.photoContestToggle}
           >
-            {/* Preview */}
-            <Image
-              source={{ uri: pickedUri }}
-              style={styles.preview}
-              resizeMode="cover"
-              accessibilityIgnoresInvertColors
+            <View style={[styles.contestIconWell, enterContest && styles.contestIconWellActive]}>
+              <TrophyIcon size={19} color={enterContest ? Colors.stout : Colors.amber} />
+            </View>
+            <View style={styles.contestToggleCopy}>
+              <Text style={styles.contestToggleTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.photoDiary.addToContest}
+              </Text>
+              <Text style={styles.contestToggleHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.photoDiary.addToContestHint}
+              </Text>
+            </View>
+            <View style={[styles.toggleTrack, enterContest && styles.toggleTrackActive]}>
+              <View style={[styles.toggleThumb, enterContest && styles.toggleThumbActive]} />
+            </View>
+          </Pressable>
+
+          <View style={styles.saveWrap}>
+            <GlowButton
+              label={enterContest ? t.photoDiary.saveAndEnterContest : t.photoDiary.save}
+              onPress={() => void handleSave()}
+              glow="soft"
+              height={56}
             />
-
-            {/* Caption */}
-            <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.photoDiary.captionLabel}
-            </Text>
-            <TextInput
-              testID="photo-caption"
-              value={caption}
-              onChangeText={setCaption}
-              placeholder={t.photoDiary.captionPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={styles.captionInput}
-              multiline
-              maxLength={CAPTION_MAX}
-              accessibilityLabel={t.a11y.photoCaptionInput}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            {/* Pub tag */}
-            <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.photoDiary.pubLabel}
-            </Text>
-            <View style={styles.pubRow}>
-              <Pressable
-                onPress={openPubPicker}
-                style={({ pressed }) => [styles.pubRowMain, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.photoPickPub}
-              >
-                <MapPinIcon size={17} color={pub ? Colors.amber : Colors.mutedText} />
-                <Text
-                  style={[styles.pubName, !pub && styles.pubNameEmpty]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {pub ? [pub.name, pub.city].filter(Boolean).join(' · ') : t.photoDiary.pubNone}
-                </Text>
-              </Pressable>
-              {pub ? (
-                <Pressable
-                  onPress={clearPub}
-                  style={({ pressed }) => [styles.pubClear, pressed && styles.pressed]}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.a11y.photoClearPub}
-                >
-                  <XIcon size={16} color={Colors.mutedText} />
-                </Pressable>
-              ) : null}
-            </View>
-
-            {/* Visibility */}
-            <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.photoDiary.visibilityLabel}
-            </Text>
-            <View style={styles.segment}>
-              <Pressable
-                onPress={() => setVisibility('private')}
-                style={[styles.segmentOption, visibility === 'private' && styles.segmentActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: visibility === 'private' }}
-                accessibilityLabel={t.a11y.photoVisibility(t.photoDiary.visibilityPrivate)}
-              >
-                <EyeOffIcon
-                  size={15}
-                  color={visibility === 'private' ? Colors.stout : Colors.mutedText}
-                />
-                <Text
-                  style={[styles.segmentText, visibility === 'private' && styles.segmentTextActive]}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {t.photoDiary.visibilityPrivate}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setVisibility('friends')}
-                style={[styles.segmentOption, visibility === 'friends' && styles.segmentActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: visibility === 'friends' }}
-                accessibilityLabel={t.a11y.photoVisibility(t.photoDiary.visibilityFriends)}
-              >
-                <UsersIcon
-                  size={15}
-                  color={visibility === 'friends' ? Colors.stout : Colors.mutedText}
-                />
-                <Text
-                  style={[styles.segmentText, visibility === 'friends' && styles.segmentTextActive]}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {t.photoDiary.visibilityFriends}
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* FotoPivař is an explicit public opt-in, independent of the diary
-                visibility above. The full row is tappable for pub-table use. */}
-            <Pressable
-              onPress={() => setEnterContest((value) => !value)}
-              style={({ pressed }) => [
-                styles.contestToggle,
-                enterContest && styles.contestToggleActive,
-                pressed && styles.pressed,
-              ]}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: enterContest }}
-              accessibilityLabel={t.a11y.photoContestToggle}
-            >
-              <View style={[styles.contestIconWell, enterContest && styles.contestIconWellActive]}>
-                <TrophyIcon size={19} color={enterContest ? Colors.stout : Colors.amber} />
-              </View>
-              <View style={styles.contestToggleCopy}>
-                <Text style={styles.contestToggleTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {t.photoDiary.addToContest}
-                </Text>
-                <Text style={styles.contestToggleHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.photoDiary.addToContestHint}
-                </Text>
-              </View>
-              <View style={[styles.toggleTrack, enterContest && styles.toggleTrackActive]}>
-                <View style={[styles.toggleThumb, enterContest && styles.toggleThumbActive]} />
-              </View>
-            </Pressable>
-
-            <View style={styles.saveWrap}>
-              <GlowButton
-                label={enterContest ? t.photoDiary.saveAndEnterContest : t.photoDiary.save}
-                onPress={() => void handleSave()}
-                glow="soft"
-                height={56}
-              />
-            </View>
-          </KeyboardAwareScrollView>
-        </View>
+          </View>
+        </KeyboardAwareScrollView>
       </View>
-
-      <PubPickerModal
-        visible={pickerVisible}
-        candidates={nearby.candidates}
-        selectedKey={pub?.pubKey ?? null}
-        onSelect={handleSelectPub}
-        onClose={() => setPickerVisible(false)}
-      />
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
+const SCRIM = withAlpha(Colors.black, 0.7);
+
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.7),
-    justifyContent: 'flex-end',
-  },
   card: {
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,

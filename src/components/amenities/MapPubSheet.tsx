@@ -28,22 +28,16 @@ import {
   View,
   Text,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   KeyboardAvoidingView,
   type ScrollViewInstance,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
@@ -492,24 +486,6 @@ export function MapPubSheet({
     ],
   );
 
-  // ── Shared sheet slide-up animation. ──
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (showSheet) {
-      progress.value = 0;
-      progress.value = reduceMotion
-        ? withTiming(1, { duration: 0 })
-        : withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 });
-    } else {
-      progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
-    }
-  }, [showSheet, reduceMotion, progress]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
-
   // ── Otevíračka / piva: deep-link into the contribute editor ──
   // Don't close the sheet — focus-gated visibility (showSheet) hides the Modal
   // while the editor is up and restores it on return, so the user comes back to
@@ -576,271 +552,258 @@ export function MapPubSheet({
   const canRename = renameTrimmed.length > 0 && renameTrimmed !== displayName.trim() && !renameSubmitting;
 
   return (
-    <Modal
+    <BottomSheetModal
       visible={showSheet}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={renameOpen ? handleRenameCancel : onClose}
+      onClose={renameOpen ? handleRenameCancel : onClose}
+      underlayColor={styles.card.backgroundColor}
+      overlay={
+        <>
+          {/* Rename editor as an in-modal overlay, NOT a second sibling <Modal>:
+              iOS can only present one modal view controller at a time, so a second
+              Modal opened while this one is up never appears (the tap on "Název
+              hospody" looked like a no-op). */}
+          {renameOpen && (
+            <KeyboardAvoidingView
+              behavior="padding"
+              style={styles.renameOverlay}
+            >
+              <Pressable style={styles.renameScrim} onPress={handleRenameCancel} />
+              <View style={styles.renamePanel}>
+                <View style={styles.renameIconWell}>
+                  <PencilIcon size={19} color={Colors.amber} />
+                </View>
+                <Text style={styles.renameTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {t.compass.renameTitle}
+                </Text>
+                <Text style={styles.renameBody} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.compass.renameBody(displayName)}
+                </Text>
+                <TextInput
+                  value={renameDraft}
+                  onChangeText={setRenameDraft}
+                  style={styles.renameInput}
+                  placeholder={t.compass.renamePlaceholder}
+                  placeholderTextColor={Colors.mutedText}
+                  maxLength={200}
+                  autoFocus
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    if (canRename) handleRenameSubmit();
+                  }}
+                />
+                <View style={styles.renameActions}>
+                  <Pressable
+                    onPress={handleRenameCancel}
+                    style={({ pressed }) => [styles.renameSecondaryButton, pressed && { opacity: 0.72 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.common.cancel}
+                  >
+                    <Text style={styles.renameSecondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {t.common.cancel}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleRenameSubmit}
+                    disabled={!canRename}
+                    style={({ pressed }) => [
+                      styles.renamePrimaryButton,
+                      !canRename && styles.renamePrimaryDisabled,
+                      pressed && canRename && { opacity: 0.86, transform: [{ scale: 0.98 }] },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.compass.renameSave}
+                  >
+                    <Text style={styles.renamePrimaryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {renameSubmitting ? t.compass.renameSaving : t.compass.renameSave}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          )}
+          {/* Toast host INSIDE the modal. The root <Toast> in _layout sits below
+              this Modal's native window on iOS, so XP/level-up toasts fired from
+              the sheet would surface behind it; this in-sheet instance reads the
+              same store and renders above the card (box-none, so it never blocks
+              taps). The root instance keeps serving every other screen. */}
+          <Toast />
+        </>
+      }
     >
-      <View style={styles.backdrop}>
-        {/* Backdrop sits BEHIND the card as an absolute-fill sibling, so tapping
-            outside dismisses while taps on the card are absorbed by its own views.
-            The card must NOT be wrapped in a Pressable — a Pressable ancestor would
-            steal the vertical pan gesture and the amenity ScrollView could not scroll. */}
+      <View
+        style={[
+          styles.card,
+          softDrop(),
+          { paddingBottom: Math.max(insets.bottom, Spacing.md) },
+        ]}
+      >
+        <View style={styles.handle} />
+
+        {/* Header: title block + completeness ring + absolute close. */}
+        <View style={styles.headerRow}>
+          <View style={styles.titleWrap}>
+            <Text
+              style={styles.title}
+              numberOfLines={2}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
+              {displayName}
+            </Text>
+            {/* The header answers "what is this pub?", not "fill it in":
+                you open this from two kilometres away, where today's hours
+                and what they pour are the only facts that matter. The
+                mapping pitch moved down to the mapping section. */}
+            {hoursLabel ? (
+              <View style={styles.hoursRow}>
+                <View
+                  style={[styles.hoursDot, { backgroundColor: hoursColor(hoursTone) }]}
+                />
+                <Text
+                  style={[styles.hours, { color: hoursColor(hoursTone) }]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {hoursLabel}
+                </Text>
+              </View>
+            ) : null}
+            {beerLine ? (
+              <Text
+                style={styles.subtitle}
+                numberOfLines={2}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {beerLine}
+              </Text>
+            ) : null}
+          </View>
+          <CompletenessRing pct={completeness.pct} reduceMotion={reduceMotion} />
+        </View>
+
         <Pressable
-          style={StyleSheet.absoluteFill}
           onPress={onClose}
+          hitSlop={12}
+          style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
           accessibilityRole="button"
           accessibilityLabel={t.mapPub.closeA11y}
-        />
-        <Animated.View
-            style={[
-              styles.card,
-              softDrop(),
-              { paddingBottom: Math.max(insets.bottom, Spacing.md) },
-              cardAnim,
-            ]}
-          >
-            <View style={styles.handle} />
+        >
+          <XIcon size={18} color={Colors.foamMuted} />
+        </Pressable>
 
-            {/* Header: title block + completeness ring + absolute close. */}
-            <View style={styles.headerRow}>
-              <View style={styles.titleWrap}>
-                <Text
-                  style={styles.title}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
-                >
-                  {displayName}
-                </Text>
-                {/* The header answers "what is this pub?", not "fill it in":
-                    you open this from two kilometres away, where today's hours
-                    and what they pour are the only facts that matter. The
-                    mapping pitch moved down to the mapping section. */}
-                {hoursLabel ? (
-                  <View style={styles.hoursRow}>
-                    <View
-                      style={[styles.hoursDot, { backgroundColor: hoursColor(hoursTone) }]}
-                    />
-                    <Text
-                      style={[styles.hours, { color: hoursColor(hoursTone) }]}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {hoursLabel}
-                    </Text>
-                  </View>
-                ) : null}
-                {beerLine ? (
-                  <Text
-                    style={styles.subtitle}
-                    numberOfLines={2}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {beerLine}
-                  </Text>
-                ) : null}
-              </View>
-              <CompletenessRing pct={completeness.pct} reduceMotion={reduceMotion} />
-            </View>
+        {onNavigate || onShowMap ? <View style={styles.searchActions}>
+          {info?.address || info?.city ? <Text style={styles.subtitle}>{[info.address, info.city].filter(Boolean).join(', ')}</Text> : null}
+          {onNavigate ? <CounterCta onPress={onNavigate} label={t.compass.navigateCta} accessibilityLabel={t.compass.navigateCta} /> : null}
+          {onShowMap ? <CounterSecondary onPress={onShowMap} label={t.pubSearch.showMap} /> : null}
+        </View> : null}
 
-            <Pressable
-              onPress={onClose}
-              hitSlop={12}
-              style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
-              accessibilityRole="button"
-              accessibilityLabel={t.mapPub.closeA11y}
-            >
-              <XIcon size={18} color={Colors.foamMuted} />
-            </Pressable>
-
-            {onNavigate || onShowMap ? <View style={styles.searchActions}>
-              {info?.address || info?.city ? <Text style={styles.subtitle}>{[info.address, info.city].filter(Boolean).join(', ')}</Text> : null}
-              {onNavigate ? <CounterCta onPress={onNavigate} label={t.compass.navigateCta} accessibilityLabel={t.compass.navigateCta} /> : null}
-              {onShowMap ? <CounterSecondary onPress={onShowMap} label={t.pubSearch.showMap} /> : null}
-            </View> : null}
-
-            <ScrollView
-              ref={bodyRef}
-              style={styles.body}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-              overScrollMode="never"
-              automaticallyAdjustContentInsets={false}
-              contentInsetAdjustmentBehavior="never"
-            >
-              {/* Two editable facts as tiles: state is read from the icon
-                  (amber + check when filled, muted + plus when empty) and the
-                  mini-week / recency line, not from a sentence. */}
-              {facts && (
-                <View style={styles.tiles}>
-                  <FactTile
-                    icon={
-                      <ClockIcon
-                        size={22}
-                        color={facts.hasHours ? Colors.amber : Colors.mutedText}
-                      />
-                    }
-                    label={t.mapPub.tileHours}
-                    filled={facts.hasHours}
-                    weekly={weeklyHours}
-                    value={null}
-                    recency={hoursMappedAge ? t.mapPub.tileMapped(hoursMappedAge) : null}
-                    emptyLabel={t.mapPub.tileHoursEmpty}
-                    onPress={() => openContribute('hours')}
+        <BottomSheetScrollView
+          ref={bodyRef}
+          style={styles.body}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          overScrollMode="never"
+          automaticallyAdjustContentInsets={false}
+          contentInsetAdjustmentBehavior="never"
+        >
+          {/* Two editable facts as tiles: state is read from the icon
+              (amber + check when filled, muted + plus when empty) and the
+              mini-week / recency line, not from a sentence. */}
+          {facts && (
+            <View style={styles.tiles}>
+              <FactTile
+                icon={
+                  <ClockIcon
+                    size={22}
+                    color={facts.hasHours ? Colors.amber : Colors.mutedText}
                   />
-                  <FactTile
-                    icon={
-                      <BeerIcon
-                        size={22}
-                        color={facts.hasBeers ? Colors.amber : Colors.mutedText}
-                      />
-                    }
-                    label={t.mapPub.tileBeers}
-                    filled={facts.hasBeers}
-                    weekly={null}
-                    value={
-                      facts.hasBeers
-                        ? facts.beerMenuRotates
-                          ? t.mapPub.factBeersRotating(
-                              facts.beerCount > 0
-                                ? t.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
-                                : null,
-                            )
-                          : t.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
-                        : null
-                    }
-                    recency={beersMappedAge ? t.mapPub.tileMapped(beersMappedAge) : null}
-                    emptyLabel={t.mapPub.tileBeersEmpty}
-                    onPress={() => openContribute('beers')}
-                  />
-                </View>
-              )}
-
-              {showEvents ? (
-                <PubEventsSection
-                  visible={showSheet}
-                  pubKey={pubKey}
-                  pubName={displayName}
-                  info={info}
-                />
-              ) : null}
-
-              {/* Amenities: one flat list under a single header. The four-line
-                  mapping intro collapsed into the ring (progress) + one public
-                  chip; each row carries its own confidence, not a poll ratio. */}
-              <View style={styles.sectionHead}>
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.mapPub.amenitiesSection}
-                </Text>
-                <View style={styles.publicPill}>
-                  <GlobeIcon size={12} color={Colors.amberLight} />
-                  <Text
-                    style={styles.publicPillText}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {backendConfigured ? t.mapPub.publicChip : t.mapPub.offlineChip}
-                  </Text>
-                </View>
-              </View>
-
-              {rows.map((row) => (
-                <AmenityRowView
-                  key={row.amenityKey}
-                  row={row}
-                  aggregatesResolved={aggregatesResolved}
-                  onVote={onVote}
-                />
-              ))}
-
-              {(info || onReport) && (
-                <PubDetailActions
-                  showRename={Boolean(info)}
-                  showEditAdded={Boolean(info?.userAddedClientId)}
-                  showReport={Boolean(onReport)}
-                  onRename={handleRenamePress}
-                  onEditAdded={handleEditAddedPub}
-                  onReport={onReport}
-                />
-              )}
-            </ScrollView>
-          </Animated.View>
-
-        {/* Rename editor as an in-modal overlay, NOT a second sibling <Modal>:
-            iOS can only present one modal view controller at a time, so a second
-            Modal opened while this one is up never appears (the tap on "Název
-            hospody" looked like a no-op). */}
-        {renameOpen && (
-          <KeyboardAvoidingView
-            behavior="padding"
-            style={styles.renameOverlay}
-          >
-            <Pressable style={styles.renameScrim} onPress={handleRenameCancel} />
-            <View style={styles.renamePanel}>
-              <View style={styles.renameIconWell}>
-                <PencilIcon size={19} color={Colors.amber} />
-              </View>
-              <Text style={styles.renameTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.compass.renameTitle}
-              </Text>
-              <Text style={styles.renameBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.compass.renameBody(displayName)}
-              </Text>
-              <TextInput
-                value={renameDraft}
-                onChangeText={setRenameDraft}
-                style={styles.renameInput}
-                placeholder={t.compass.renamePlaceholder}
-                placeholderTextColor={Colors.mutedText}
-                maxLength={200}
-                autoFocus
-                autoCorrect={false}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  if (canRename) handleRenameSubmit();
-                }}
+                }
+                label={t.mapPub.tileHours}
+                filled={facts.hasHours}
+                weekly={weeklyHours}
+                value={null}
+                recency={hoursMappedAge ? t.mapPub.tileMapped(hoursMappedAge) : null}
+                emptyLabel={t.mapPub.tileHoursEmpty}
+                onPress={() => openContribute('hours')}
               />
-              <View style={styles.renameActions}>
-                <Pressable
-                  onPress={handleRenameCancel}
-                  style={({ pressed }) => [styles.renameSecondaryButton, pressed && { opacity: 0.72 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.common.cancel}
-                >
-                  <Text style={styles.renameSecondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.common.cancel}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={handleRenameSubmit}
-                  disabled={!canRename}
-                  style={({ pressed }) => [
-                    styles.renamePrimaryButton,
-                    !canRename && styles.renamePrimaryDisabled,
-                    pressed && canRename && { opacity: 0.86, transform: [{ scale: 0.98 }] },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.compass.renameSave}
-                >
-                  <Text style={styles.renamePrimaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {renameSubmitting ? t.compass.renameSaving : t.compass.renameSave}
-                  </Text>
-                </Pressable>
-              </View>
+              <FactTile
+                icon={
+                  <BeerIcon
+                    size={22}
+                    color={facts.hasBeers ? Colors.amber : Colors.mutedText}
+                  />
+                }
+                label={t.mapPub.tileBeers}
+                filled={facts.hasBeers}
+                weekly={null}
+                value={
+                  facts.hasBeers
+                    ? facts.beerMenuRotates
+                      ? t.mapPub.factBeersRotating(
+                          facts.beerCount > 0
+                            ? t.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
+                            : null,
+                        )
+                      : t.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
+                    : null
+                }
+                recency={beersMappedAge ? t.mapPub.tileMapped(beersMappedAge) : null}
+                emptyLabel={t.mapPub.tileBeersEmpty}
+                onPress={() => openContribute('beers')}
+              />
             </View>
-          </KeyboardAvoidingView>
-            )}
+          )}
 
-        {/* Toast host INSIDE the modal. The root <Toast> in _layout sits below
-            this Modal's native window on iOS, so XP/level-up toasts fired from
-            the sheet would surface behind it; this in-sheet instance reads the
-            same store and renders above the card (box-none, so it never blocks
-            taps). The root instance keeps serving every other screen. */}
-        <Toast />
+          {showEvents ? (
+            <PubEventsSection
+              visible={showSheet}
+              pubKey={pubKey}
+              pubName={displayName}
+              info={info}
+            />
+          ) : null}
+
+          {/* Amenities: one flat list under a single header. The four-line
+              mapping intro collapsed into the ring (progress) + one public
+              chip; each row carries its own confidence, not a poll ratio. */}
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.mapPub.amenitiesSection}
+            </Text>
+            <View style={styles.publicPill}>
+              <GlobeIcon size={12} color={Colors.amberLight} />
+              <Text
+                style={styles.publicPillText}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {backendConfigured ? t.mapPub.publicChip : t.mapPub.offlineChip}
+              </Text>
+            </View>
+          </View>
+
+          {rows.map((row) => (
+            <AmenityRowView
+              key={row.amenityKey}
+              row={row}
+              aggregatesResolved={aggregatesResolved}
+              onVote={onVote}
+            />
+          ))}
+
+          {(info || onReport) && (
+            <PubDetailActions
+              showRename={Boolean(info)}
+              showEditAdded={Boolean(info?.userAddedClientId)}
+              showReport={Boolean(onReport)}
+              onRename={handleRenamePress}
+              onEditAdded={handleEditAddedPub}
+              onReport={onReport}
+            />
+          )}
+        </BottomSheetScrollView>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
@@ -1228,11 +1191,6 @@ function mergeAggregate(
 
 const styles = StyleSheet.create({
   searchActions: { gap: Spacing.sm, paddingTop: Spacing.sm },
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   card: {
     maxHeight: '90%',
     backgroundColor: Colors.stout2,

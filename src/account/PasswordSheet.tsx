@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
@@ -47,113 +47,93 @@ export function PasswordSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
+      >
+        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+          <Pressable
+            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+            onPress={() => undefined}
+          >
+            <View style={styles.grabber} />
 
-        <KeyboardAvoidingView
-          style={styles.keyboardWrap}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          pointerEvents="box-none"
-        >
-          <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-            <Pressable
-              style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-              onPress={() => undefined}
-            >
-              <View style={styles.grabber} />
+            <View style={styles.header}>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.account.setPasswordHeader}
+              </Text>
+              <Pressable
+                onPress={onClose}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={t.a11y.counterCloseModal}
+              >
+                <XIcon size={20} color={Colors.foamMuted} />
+              </Pressable>
+            </View>
 
-              <View style={styles.header}>
-                <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {t.account.setPasswordHeader}
-                </Text>
-                <Pressable
-                  onPress={onClose}
-                  style={({ pressed }) => [
-                    styles.closeButton,
-                    pressed && styles.pressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.a11y.counterCloseModal}
-                >
-                  <XIcon size={20} color={Colors.foamMuted} />
-                </Pressable>
-              </View>
-
-              <View style={styles.body}>
-                {!hasProfileEmail ? (
-                  <TextInput
-                    style={styles.input}
-                    value={email}
-                    onChangeText={onChangeEmail}
-                    placeholder={t.account.emailPlaceholder}
-                    placeholderTextColor={Colors.mutedText}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                    autoComplete="email"
-                    textContentType="emailAddress"
-                    accessibilityLabel={t.a11y.authEmailInput}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  />
-                ) : null}
-
+            <View style={styles.body}>
+              {!hasProfileEmail ? (
                 <TextInput
                   style={styles.input}
-                  value={password}
-                  onChangeText={onChangePassword}
-                  placeholder={t.account.passwordPlaceholder}
+                  value={email}
+                  onChangeText={onChangeEmail}
+                  placeholder={t.account.emailPlaceholder}
                   placeholderTextColor={Colors.mutedText}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  secureTextEntry
-                  autoComplete="new-password"
-                  textContentType="newPassword"
-                  accessibilityLabel={t.a11y.authNewPasswordInput}
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  accessibilityLabel={t.a11y.authEmailInput}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 />
+              ) : null}
 
-                {error ? (
-                  <Text style={styles.error} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {error}
-                  </Text>
-                ) : null}
-              </View>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={onChangePassword}
+                placeholder={t.account.passwordPlaceholder}
+                placeholderTextColor={Colors.mutedText}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                autoComplete="new-password"
+                textContentType="newPassword"
+                accessibilityLabel={t.a11y.authNewPasswordInput}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
 
-              <View style={styles.footer}>
-                <GlowButton
-                  label={busy ? t.account.loading : t.account.setPasswordSave}
-                  onPress={onSave}
-                  glow="none"
-                  height={52}
-                  accessibilityLabel={t.a11y.accountSetPassword}
-                />
-              </View>
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
+              {error ? (
+                <Text style={styles.error} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {error}
+                </Text>
+              ) : null}
+            </View>
+
+            <View style={styles.footer}>
+              <GlowButton
+                label={busy ? t.account.loading : t.account.setPasswordSave}
+                onPress={onSave}
+                glow="none"
+                height={52}
+                accessibilityLabel={t.a11y.accountSetPassword}
+              />
+            </View>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-  },
   keyboardWrap: {
     flex: 1,
     justifyContent: 'flex-end',

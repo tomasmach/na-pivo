@@ -1,8 +1,9 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import type { CommunityBeer } from '@/data/communityClient';
 import { normalizeBeerName } from '@/data/communityHours';
@@ -33,113 +34,93 @@ export function HistoricalBeersSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
         <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
-            <View style={styles.grabber} />
-            <View style={styles.header}>
-              <View style={styles.headerCopy}>
-                <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {t.contribute.historicalBeersHeader}
-                </Text>
-                <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.contribute.historicalBeersHint}
-                </Text>
-              </View>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={t.contribute.closeSheet}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
+          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+          onPress={() => undefined}
+        >
+          <View style={styles.grabber} />
+          <View style={styles.header}>
+            <View style={styles.headerCopy}>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.contribute.historicalBeersHeader}
+              </Text>
+              <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.contribute.historicalBeersHint}
+              </Text>
             </View>
-
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t.contribute.closeSheet}
             >
-              {beers.map((beer, index) => {
-                const meta = [
-                  beer.volumeMl ? formatVolume(beer.volumeMl) : null,
-                  typeof beer.priceCzk === 'number'
-                    ? formatPrice(beer.priceCzk, priceCurrency)
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ');
-                return (
-                  <Pressable
-                    key={`${normalizeBeerName(beer.name)}:${beer.volumeMl ?? ''}`}
-                    onPress={() => onRestore(beer)}
-                    disabled={!canRestore}
-                    style={({ pressed }) => [
-                      styles.row,
-                      index > 0 && styles.rowDivider,
-                      pressed && styles.pressed,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: !canRestore }}
-                    accessibilityLabel={t.a11y.contributeRestoreHistoricalBeer(beer.name)}
-                  >
-                    <View style={styles.rowCopy}>
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+
+          <BottomSheetScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {beers.map((beer, index) => {
+              const meta = [
+                beer.volumeMl ? formatVolume(beer.volumeMl) : null,
+                typeof beer.priceCzk === 'number'
+                  ? formatPrice(beer.priceCzk, priceCurrency)
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <Pressable
+                  key={`${normalizeBeerName(beer.name)}:${beer.volumeMl ?? ''}`}
+                  onPress={() => onRestore(beer)}
+                  disabled={!canRestore}
+                  style={({ pressed }) => [
+                    styles.row,
+                    index > 0 && styles.rowDivider,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !canRestore }}
+                  accessibilityLabel={t.a11y.contributeRestoreHistoricalBeer(beer.name)}
+                >
+                  <View style={styles.rowCopy}>
+                    <Text
+                      style={styles.rowName}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {beer.name}
+                    </Text>
+                    {meta ? (
                       <Text
-                        style={styles.rowName}
+                        style={styles.rowMeta}
                         numberOfLines={1}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       >
-                        {beer.name}
+                        {meta}
                       </Text>
-                      {meta ? (
-                        <Text
-                          style={styles.rowMeta}
-                          numberOfLines={1}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                        >
-                          {meta}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <PlusIcon
-                      size={16}
-                      color={canRestore ? Colors.amber : Colors.mutedText}
-                    />
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </Pressable>
-        </View>
+                    ) : null}
+                  </View>
+                  <PlusIcon
+                    size={16}
+                    color={canRestore ? Colors.amber : Colors.mutedText}
+                  />
+                </Pressable>
+              );
+            })}
+          </BottomSheetScrollView>
+        </Pressable>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   cardWrap: {
     width: '100%',
     minHeight: '44%',

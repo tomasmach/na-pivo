@@ -25,10 +25,11 @@ import {
   Platform,
   Keyboard,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
@@ -166,17 +167,19 @@ export function BeerFormModal({
   requireChange = false,
   autoFocusName = true,
 }: BeerFormModalProps) {
+  // The body stays while the sheet slides away, then goes, so the next open starts fresh.
+  const [mounted, setMounted] = useState(visible);
+  if (visible && !mounted) setMounted(true);
+
   return (
-    <Modal
-      scrimColor={styles.backdrop.backgroundColor}
+    <BottomSheetModal
       visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      onRequestClose={onCancel}
+      onClose={onCancel}
+      onClosed={() => setMounted(false)}
+      scrimColor={SCRIM}
+      underlayColor={styles.card.backgroundColor}
     >
-      {visible ? (
+      {mounted ? (
         <BeerFormBody
           key={formKey ?? 0}
           mode={mode}
@@ -196,12 +199,16 @@ export function BeerFormModal({
           requireChange={requireChange}
           autoFocusName={autoFocusName}
         />
-      ) : null}
-    </Modal>
+      ) : (
+        <View />
+      )}
+    </BottomSheetModal>
   );
 }
 
 interface BeerFormBodyProps {
+  /** The sheet measures the card through it. */
+  onLayout?: (event: LayoutChangeEvent) => void;
   mode: BeerFormMode;
   beer?: CommunityBeer | null;
   initialDrinkType: DrinkType;
@@ -221,6 +228,7 @@ interface BeerFormBodyProps {
 }
 
 function BeerFormBody({
+  onLayout,
   mode,
   beer,
   initialDrinkType,
@@ -422,354 +430,343 @@ function BeerFormBody({
     windowHeight - insets.top - Math.max(keyboardHeight, 0) - Spacing.lg;
 
   return (
-    <View style={styles.backdrop}>
+    <View style={[styles.cardWrap, { marginBottom: sheetBottomOffset, maxHeight }]} onLayout={onLayout}>
       <Pressable
-        style={StyleSheet.absoluteFill}
-        onPress={onCancel}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
-      />
-      <View style={[styles.cardWrap, { marginBottom: sheetBottomOffset, maxHeight }]}>
-        <Pressable
-          style={[styles.card, { paddingBottom: bottomPad }]}
-          onPress={() => undefined}
-          accessible={false}
-          focusable={false}
-        >
-          <View style={styles.grabber} />
-          <View style={styles.header}>
-            <Text
-              style={styles.title}
-              numberOfLines={2}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {title}
-            </Text>
-            <Pressable
-              onPress={onCancel}
-              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={t.counter.cancel}
-            >
-              <XIcon size={20} color={Colors.foamMuted} />
-            </Pressable>
-          </View>
+        style={[styles.card, { paddingBottom: bottomPad }]}
+        onPress={() => undefined}
+        accessible={false}
+        focusable={false}
+      >
+        <View style={styles.grabber} />
+        <View style={styles.header}>
+          <Text
+            style={styles.title}
+            numberOfLines={2}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {title}
+          </Text>
+          <Pressable
+            onPress={onCancel}
+            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={t.counter.cancel}
+          >
+            <XIcon size={20} color={Colors.foamMuted} />
+          </Pressable>
+        </View>
 
-          {notice ? (
-            <View style={styles.notice}>
-              <View style={styles.noticeIcon}>
-                <InfoIcon size={14} color={Colors.amber} />
-              </View>
-              <Text style={styles.noticeText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {notice}
-              </Text>
+        {notice ? (
+          <View style={styles.notice}>
+            <View style={styles.noticeIcon}>
+              <InfoIcon size={14} color={Colors.amber} />
+            </View>
+            <Text style={styles.noticeText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {notice}
+            </Text>
+          </View>
+        ) : null}
+
+        <KeyboardAwareScrollView
+          style={[styles.list, contentHeight > 0 ? { height: contentHeight } : null]}
+          keyboardAvoidedExternally
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.cardContent}
+          onContentSizeChange={(_width, height) => setContentHeight(height)}
+          bounces={false}
+        >
+          {mode === 'add' ? (
+            <View style={styles.typeGroup}>
+              {(['beer', 'wine', 'soft_drink', 'shot'] as const).map((type) => {
+                const selected = drinkType === type;
+                return (
+                  <Pressable
+                    key={type}
+                    onPress={() => selectDrinkType(type)}
+                    style={[styles.typePill, selected && styles.typePillSelected]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={t.counter.drinkTypeLabel(type)}
+                  >
+                    <Text
+                      style={[styles.typePillText, selected && styles.typePillTextSelected]}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {t.counter.drinkTypeLabel(type)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           ) : null}
 
-          <KeyboardAwareScrollView
-            style={[styles.list, contentHeight > 0 ? { height: contentHeight } : null]}
-            keyboardAvoidedExternally
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.cardContent}
-            onContentSizeChange={(_width, height) => setContentHeight(height)}
-            bounces={false}
-          >
-            {mode === 'add' ? (
-              <View style={styles.typeGroup}>
-                {(['beer', 'wine', 'soft_drink', 'shot'] as const).map((type) => {
-                  const selected = drinkType === type;
+          {nameLocked && beer?.name ? (
+            <Text
+              style={styles.lockedName}
+              numberOfLines={2}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
+              {beer.name}
+            </Text>
+          ) : (
+            <TextInput
+              style={styles.nameInput}
+              testID="beer-form-name"
+              value={name}
+              onChangeText={onChangeName}
+              placeholder={t.counter.drinkNamePlaceholder(drinkType)}
+              placeholderTextColor={Colors.mutedText}
+              maxLength={80}
+              autoFocus={autoFocusName}
+              accessibilityLabel={t.counter.drinkNamePlaceholder(drinkType)}
+            />
+          )}
+
+          {!nameLocked && (suggestions.length > 0 || suggestionsLoading) ? (
+            <View style={styles.suggestionsBox}>
+              {suggestions.map((suggestion, index) => (
+                <Pressable
+                  key={suggestion.slug}
+                  onPress={() => selectSuggestion(suggestion)}
+                  style={[styles.suggestionRow, index > 0 && styles.suggestionRowDivider]}
+                  accessibilityRole="button"
+                  accessibilityLabel={suggestion.name}
+                >
+                  <Text
+                    style={styles.suggestionText}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {suggestion.name}
+                  </Text>
+                </Pressable>
+              ))}
+              {suggestionsLoading && suggestions.length === 0 ? (
+                <Text style={styles.suggestionsLoading} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.contribute.beerSuggestionsLoading}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
+          {!nameLocked && drinkType === 'beer' && onScanMenu ? (
+            <Pressable
+              onPress={() => {
+                fireLightImpactHaptic();
+                Keyboard.dismiss();
+                onScanMenu();
+              }}
+              style={({ pressed }) => [
+                styles.scanShortcut,
+                pressed && styles.scanShortcutPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={t.counter.scanMenuShortcut}
+            >
+              <CameraIcon size={16} color={Colors.amber} />
+              <Text style={styles.scanShortcutText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.counter.scanMenuShortcut}
+              </Text>
+              <BetaBadge tone="muted" />
+            </Pressable>
+          ) : null}
+
+          {outside && drinkType === 'beer' ? (
+            <>
+              <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.counter.servingLabel}
+              </Text>
+              <View style={styles.volumeGroup}>
+                {OUTSIDE_SERVING_TYPES.map((value) => {
+                  const isSelected = servingType === value;
                   return (
                     <Pressable
-                      key={type}
-                      onPress={() => selectDrinkType(type)}
-                      style={[styles.typePill, selected && styles.typePillSelected]}
+                      key={value}
+                      onPress={() => setServingType(value)}
+                      style={[styles.volumePill, isSelected && styles.volumePillSelected]}
+                      hitSlop={4}
                       accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={t.counter.drinkTypeLabel(type)}
+                      accessibilityState={{ selected: isSelected }}
+                      accessibilityLabel={t.counter.servingTypeLabel(value)}
                     >
                       <Text
-                        style={[styles.typePillText, selected && styles.typePillTextSelected]}
+                        style={[
+                          styles.volumePillText,
+                          isSelected && styles.volumePillTextSelected,
+                        ]}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       >
-                        {t.counter.drinkTypeLabel(type)}
+                        {t.counter.servingTypeLabel(value)}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-            ) : null}
+            </>
+          ) : null}
 
-            {nameLocked && beer?.name ? (
-              <Text
-                style={styles.lockedName}
-                numberOfLines={2}
-                maxFontSizeMultiplier={FontScaleCap.heading}
-              >
-                {beer.name}
-              </Text>
-            ) : (
-              <TextInput
-                style={styles.nameInput}
-                testID="beer-form-name"
-                value={name}
-                onChangeText={onChangeName}
-                placeholder={t.counter.drinkNamePlaceholder(drinkType)}
-                placeholderTextColor={Colors.mutedText}
-                maxLength={80}
-                autoFocus={autoFocusName}
-                accessibilityLabel={t.counter.drinkNamePlaceholder(drinkType)}
-              />
-            )}
-
-            {!nameLocked && (suggestions.length > 0 || suggestionsLoading) ? (
-              <View style={styles.suggestionsBox}>
-                {suggestions.map((suggestion, index) => (
-                  <Pressable
-                    key={suggestion.slug}
-                    onPress={() => selectSuggestion(suggestion)}
-                    style={[styles.suggestionRow, index > 0 && styles.suggestionRowDivider]}
-                    accessibilityRole="button"
-                    accessibilityLabel={suggestion.name}
-                  >
-                    <Text
-                      style={styles.suggestionText}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {suggestion.name}
-                    </Text>
-                  </Pressable>
-                ))}
-                {suggestionsLoading && suggestions.length === 0 ? (
-                  <Text style={styles.suggestionsLoading} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.contribute.beerSuggestionsLoading}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-
-            {!nameLocked && drinkType === 'beer' && onScanMenu ? (
-              <Pressable
-                onPress={() => {
-                  fireLightImpactHaptic();
-                  Keyboard.dismiss();
-                  onScanMenu();
-                }}
-                style={({ pressed }) => [
-                  styles.scanShortcut,
-                  pressed && styles.scanShortcutPressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={t.counter.scanMenuShortcut}
-              >
-                <CameraIcon size={16} color={Colors.amber} />
-                <Text style={styles.scanShortcutText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.counter.scanMenuShortcut}
-                </Text>
-                <BetaBadge tone="muted" />
-              </Pressable>
-            ) : null}
-
-            {outside && drinkType === 'beer' ? (
-              <>
-                <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.counter.servingLabel}
-                </Text>
-                <View style={styles.volumeGroup}>
-                  {OUTSIDE_SERVING_TYPES.map((value) => {
-                    const isSelected = servingType === value;
-                    return (
-                      <Pressable
-                        key={value}
-                        onPress={() => setServingType(value)}
-                        style={[styles.volumePill, isSelected && styles.volumePillSelected]}
-                        hitSlop={4}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isSelected }}
-                        accessibilityLabel={t.counter.servingTypeLabel(value)}
-                      >
-                        <Text
-                          style={[
-                            styles.volumePillText,
-                            isSelected && styles.volumePillTextSelected,
-                          ]}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                        >
-                          {t.counter.servingTypeLabel(value)}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </>
-            ) : null}
-
-            <View style={styles.priceRow}>
-              <TextInput
-                style={styles.priceInput}
-                testID="beer-form-price"
-                value={priceText}
-                onChangeText={(value) =>
-                  setPriceText(sanitizePriceInput(value, priceCurrency))
-                }
-                placeholder={placeholder}
-                placeholderTextColor={Colors.mutedText}
-                keyboardType={
-                  currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'
-                }
-                maxLength={currencyFractionDigits(priceCurrency) > 0 ? 10 : 7}
-                autoFocus={nameLocked}
-                accessibilityLabel={placeholder}
-                maxFontSizeMultiplier={FontScaleCap.heading}
-              />
-              <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {currencySuffix(priceCurrency)}
-              </Text>
-            </View>
-
-            <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.counter.priceLabel}
+          <View style={styles.priceRow}>
+            <TextInput
+              style={styles.priceInput}
+              testID="beer-form-price"
+              value={priceText}
+              onChangeText={(value) =>
+                setPriceText(sanitizePriceInput(value, priceCurrency))
+              }
+              placeholder={placeholder}
+              placeholderTextColor={Colors.mutedText}
+              keyboardType={
+                currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'
+              }
+              maxLength={currencyFractionDigits(priceCurrency) > 0 ? 10 : 7}
+              autoFocus={nameLocked}
+              accessibilityLabel={placeholder}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            />
+            <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {currencySuffix(priceCurrency)}
             </Text>
-            <View style={styles.volumeGroup}>
-              {initialPresets.map((value) => {
-                const isSelected = !customActive && selectedPreset === value;
-                return (
-                  <Pressable
-                    key={value}
-                    onPress={() => selectPreset(value)}
-                    style={[styles.volumePill, isSelected && styles.volumePillSelected]}
-                    hitSlop={4}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                    accessibilityLabel={formatVolume(value)}
-                  >
-                    <Text
-                      style={[
-                        styles.volumePillText,
-                        isSelected && styles.volumePillTextSelected,
-                      ]}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {formatVolume(value)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              <Pressable
-                onPress={selectCustom}
-                style={[styles.volumePill, customActive && styles.volumePillSelected]}
-                hitSlop={4}
-                accessibilityRole="button"
-                accessibilityState={{ selected: customActive }}
-                accessibilityLabel={t.counter.volumeOther}
-              >
-                <Text
-                  style={[
-                    styles.volumePillText,
-                    customActive && styles.volumePillTextSelected,
-                  ]}
-                  maxFontSizeMultiplier={FontScaleCap.body}
+          </View>
+
+          <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.counter.priceLabel}
+          </Text>
+          <View style={styles.volumeGroup}>
+            {initialPresets.map((value) => {
+              const isSelected = !customActive && selectedPreset === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => selectPreset(value)}
+                  style={[styles.volumePill, isSelected && styles.volumePillSelected]}
+                  hitSlop={4}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  accessibilityLabel={formatVolume(value)}
                 >
-                  {t.counter.volumeOther}
-                </Text>
-              </Pressable>
-            </View>
-
-            {customActive && !menuMode ? (
-              <View style={styles.customRow}>
-                <TextInput
-                  style={styles.customInput}
-                  value={customMl}
-                  onChangeText={(value) =>
-                    setCustomMl(value.replace(/[^0-9]/g, '').slice(0, 4))
-                  }
-                  placeholder={t.counter.volumeCustomPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  autoFocus
-                  accessibilityLabel={t.counter.volumeCustomPlaceholder}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
-                />
-                <Text style={styles.customSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {t.counter.volumeUnitMl}
-                </Text>
-              </View>
-            ) : null}
-          </KeyboardAwareScrollView>
-
-          <View style={styles.actions}>
-            <View style={styles.submitWrap}>
-              <GlowButton
-                label={submitLabel}
-                testID="beer-form-submit"
-                onPress={handleSubmit}
-                glow={canSubmit ? 'soft' : 'none'}
-                accessibilityLabel={submitLabel}
-              />
-              {!canSubmit ? (
-                <View style={styles.submitDisabledOverlay} pointerEvents="auto" />
-              ) : null}
-            </View>
-
-            {(menuMode && canAddSmallVariant) || onRemove ? (
-              <View style={styles.menuActions}>
-                {canAddSmallVariant && onAddSmallVariant ? (
-                  <Pressable
-                    onPress={onAddSmallVariant}
-                    style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.contribute.addSmallBeer}
+                  <Text
+                    style={[
+                      styles.volumePillText,
+                      isSelected && styles.volumePillTextSelected,
+                    ]}
+                    maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    <PlusIcon size={16} color={Colors.amber} />
-                    <Text style={styles.menuActionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {t.contribute.addSmallBeer}
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {onRemove ? (
-                  <Pressable
-                    onPress={onRemove}
-                    style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.a11y.contributeRemoveBeer}
-                  >
-                    <Trash2Icon size={16} color={Colors.mutedText} />
-                    <Text
-                      style={styles.menuActionMuted}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {t.contribute.removeBeer}
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
-
+                    {formatVolume(value)}
+                  </Text>
+                </Pressable>
+              );
+            })}
             <Pressable
-              onPress={onCancel}
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+              onPress={selectCustom}
+              style={[styles.volumePill, customActive && styles.volumePillSelected]}
+              hitSlop={4}
               accessibilityRole="button"
-              accessibilityLabel={t.counter.cancel}
+              accessibilityState={{ selected: customActive }}
+              accessibilityLabel={t.counter.volumeOther}
             >
-              <Text style={styles.cancelText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.counter.cancel}
+              <Text
+                style={[
+                  styles.volumePillText,
+                  customActive && styles.volumePillTextSelected,
+                ]}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {t.counter.volumeOther}
               </Text>
             </Pressable>
           </View>
-        </Pressable>
-      </View>
+
+          {customActive && !menuMode ? (
+            <View style={styles.customRow}>
+              <TextInput
+                style={styles.customInput}
+                value={customMl}
+                onChangeText={(value) =>
+                  setCustomMl(value.replace(/[^0-9]/g, '').slice(0, 4))
+                }
+                placeholder={t.counter.volumeCustomPlaceholder}
+                placeholderTextColor={Colors.mutedText}
+                keyboardType="number-pad"
+                maxLength={4}
+                autoFocus
+                accessibilityLabel={t.counter.volumeCustomPlaceholder}
+                maxFontSizeMultiplier={FontScaleCap.heading}
+              />
+              <Text style={styles.customSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.counter.volumeUnitMl}
+              </Text>
+            </View>
+          ) : null}
+        </KeyboardAwareScrollView>
+
+        <View style={styles.actions}>
+          <View style={styles.submitWrap}>
+            <GlowButton
+              label={submitLabel}
+              testID="beer-form-submit"
+              onPress={handleSubmit}
+              glow={canSubmit ? 'soft' : 'none'}
+              accessibilityLabel={submitLabel}
+            />
+            {!canSubmit ? (
+              <View style={styles.submitDisabledOverlay} pointerEvents="auto" />
+            ) : null}
+          </View>
+
+          {(menuMode && canAddSmallVariant) || onRemove ? (
+            <View style={styles.menuActions}>
+              {canAddSmallVariant && onAddSmallVariant ? (
+                <Pressable
+                  onPress={onAddSmallVariant}
+                  style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.contribute.addSmallBeer}
+                >
+                  <PlusIcon size={16} color={Colors.amber} />
+                  <Text style={styles.menuActionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.contribute.addSmallBeer}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {onRemove ? (
+                <Pressable
+                  onPress={onRemove}
+                  style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.a11y.contributeRemoveBeer}
+                >
+                  <Trash2Icon size={16} color={Colors.mutedText} />
+                  <Text
+                    style={styles.menuActionMuted}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {t.contribute.removeBeer}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
+          <Pressable
+            onPress={onCancel}
+            style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={t.counter.cancel}
+          >
+            <Text style={styles.cancelText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.counter.cancel}
+            </Text>
+          </Pressable>
+        </View>
+      </Pressable>
     </View>
   );
 }
 
+const SCRIM = withAlpha(Colors.black, 0.7);
+
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.7),
-    justifyContent: 'flex-end',
-  },
   cardWrap: {
     width: '100%',
     minHeight: '56%',

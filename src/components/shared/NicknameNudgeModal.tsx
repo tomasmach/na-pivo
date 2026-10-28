@@ -14,15 +14,9 @@
 import { useRootNavigationState } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { t } from '@/i18n';
 import { NicknameField } from '@/profile/NicknameField';
@@ -133,24 +127,6 @@ export function NicknameNudgeModal() {
   useEffect(() => () => useLaunchModalMutex.getState().release('nickname-nudge'), []);
   const visible = wantVisible && presented;
 
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = withSpring(1, { damping: 16, stiffness: 145, mass: 0.9 });
-    } else {
-      progress.value = withTiming(0, { duration: 140 });
-    }
-  }, [progress, visible]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [
-      { scale: 0.94 + progress.value * 0.06 },
-      { translateY: (1 - progress.value) * 18 },
-    ],
-  }));
-
   const dismiss = useCallback(() => {
     void markNicknameNudgeSeen(version);
     setEligible(false);
@@ -175,17 +151,10 @@ export function NicknameNudgeModal() {
   }, [busy, ready, nickname, updateProfile, version, showToast]);
 
   return (
-    <Modal
-      scrimColor={styles.backdrop.backgroundColor}
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={dismiss}
-    >
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
-        <View style={[styles.backdrop, { paddingTop: insets.top + Spacing.lg }]}>
-          <Animated.View style={[styles.sheet, softDrop(), cardAnim]}>
+    <BottomSheetModal visible={visible} onClose={dismiss} scrimColor={SCRIM}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" pointerEvents="box-none">
+        <View style={[styles.backdrop, { paddingTop: insets.top + Spacing.lg }]} pointerEvents="box-none">
+          <View style={[styles.sheet, softDrop()]}>
             <View style={styles.eyebrowPill}>
               <Text style={styles.at} maxFontSizeMultiplier={FontScaleCap.body}>
                 @
@@ -235,12 +204,14 @@ export function NicknameNudgeModal() {
                 </Text>
               </Pressable>
             </View>
-          </Animated.View>
+          </View>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheetModal>
   );
 }
+
+const SCRIM = withAlpha(Colors.black, 0.82);
 
 const styles = StyleSheet.create({
   flex: {
@@ -249,7 +220,6 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: withAlpha(Colors.black, 0.82),
   },
   sheet: {
     marginHorizontal: Spacing.md,

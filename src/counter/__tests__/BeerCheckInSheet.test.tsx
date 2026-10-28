@@ -29,6 +29,7 @@ jest.mock('react-native-reanimated', () => ({
   withRepeat: jest.fn((value) => value),
   withTiming: jest.fn((value) => value),
   cancelAnimation: jest.fn(),
+  useReducedMotion: jest.fn(() => true),
 }));
 
 const impactAsync = jest.fn(async () => undefined);

@@ -12,6 +12,9 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 
+import { ScrollView as GestureScrollView } from 'react-native-gesture-handler';
+
+import { useBottomSheetScroll } from '@/components/shared/BottomSheetScrollView';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { Spacing } from '@/theme/layout';
 
@@ -175,14 +178,23 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
     [onContentSizeChange],
   );
 
+  const { waitFor, ...sheetScroll } = useBottomSheetScroll({
+    horizontal: props.horizontal,
+    onScroll: handleScroll,
+    onLayout: handleLayout,
+    onContentSizeChange: handleContentSizeChange,
+  });
+
+  const Scroll = waitFor ? GestureScrollView : ScrollView;
   return (
-    <ScrollView
+    <Scroll
       ref={scrollRef}
       {...props}
+      {...(waitFor ? { requireToFail: waitFor } : null)}
       onFocus={handleFocus}
-      onContentSizeChange={handleContentSizeChange}
-      onLayout={handleLayout}
-      onScroll={handleScroll}
+      onContentSizeChange={sheetScroll.onContentSizeChange}
+      onLayout={sheetScroll.onLayout}
+      onScroll={sheetScroll.onScroll}
       scrollEventThrottle={scrollEventThrottle}
       automaticallyAdjustKeyboardInsets={
         automaticallyAdjustKeyboardInsets ?? !keyboardAvoidedExternally

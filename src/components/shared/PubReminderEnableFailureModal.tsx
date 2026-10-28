@@ -1,14 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { BellRingIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { t } from '@/i18n';
@@ -31,26 +25,15 @@ export function PubReminderEnableFailureModal() {
   const reason = usePubReminderEnableFailureStore((s) => s.reason);
   const hide = usePubReminderEnableFailureStore((s) => s.hide);
   const insets = useSafeAreaInsets();
-  const progress = useSharedValue(0);
   const canOpenSettings = Platform.OS === 'ios' || Platform.OS === 'android';
 
-  useEffect(() => {
-    progress.value = reason
-      ? withSpring(1, { damping: 16, stiffness: 150, mass: 0.9 })
-      : withTiming(0, { duration: 140 });
-  }, [progress, reason]);
 
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [
-      { scale: 0.94 + progress.value * 0.06 },
-      { translateY: (1 - progress.value) * 18 },
-    ],
-  }));
+  // The card keeps its text while it slides away after `hide`.
+  const [shownReason, setShownReason] = useState(reason);
+  if (reason && reason !== shownReason) setShownReason(reason);
+  if (!shownReason) return null;
 
-  if (!reason) return null;
-
-  const copy = t.settings.pubReminders.denied[reason];
+  const copy = t.settings.pubReminders.denied[shownReason];
 
   const openSettings = () => {
     hide();
@@ -58,19 +41,12 @@ export function PubReminderEnableFailureModal() {
   };
 
   return (
-    <Modal
-      scrimColor={styles.backdrop.backgroundColor}
-      visible
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={hide}
-    >
-      <View style={[styles.backdrop, { paddingTop: insets.top + Spacing.lg }]}>
-        <Animated.View style={[styles.card, softDrop(), cardAnim]}>
+    <BottomSheetModal visible={!!reason} onClose={hide} onClosed={() => setShownReason(null)} scrimColor={SCRIM}>
+      <View style={[styles.backdrop, { paddingTop: insets.top + Spacing.lg }]} pointerEvents="box-none">
+        <View style={[styles.card, softDrop()]}>
           <View style={styles.headerRow}>
             <View style={styles.iconWell}>
-              <FailureIcon reason={reason} />
+              <FailureIcon reason={shownReason} />
             </View>
             <View style={styles.headerText}>
               <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -107,17 +83,18 @@ export function PubReminderEnableFailureModal() {
               </Text>
             </Pressable>
           </View>
-        </Animated.View>
+        </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
+
+const SCRIM = withAlpha(Colors.black, 0.82);
 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: withAlpha(Colors.black, 0.82),
   },
   card: {
     marginHorizontal: Spacing.md,

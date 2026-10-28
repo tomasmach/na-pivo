@@ -1,11 +1,8 @@
 /**
  * FriendSettingsSheet — the "Nastavení party" bottom sheet (spec §14).
  *
- * A direct clone of MapPubSheet's scaffold: a transparent fade Modal with an
- * absolute-fill backdrop Pressable for tap-to-dismiss, a drag handle, an
- * absolute close button, and a Reanimated `progress` shared value that springs
- * the card up on open (slide preset) / times it down on close (140ms) /
- * snaps instantly under reduce-motion. On top of that it renders two settings
+ * A direct clone of MapPubSheet's scaffold: a BottomSheetModal with a drag
+ * handle and an absolute close button. On top of that it renders two settings
  * rows on the bare stout ground (HairlineRow, no cards):
  *
  *   1. Neviditelný režim (ghost mode) — a Toggle that suppresses my broadcast.
@@ -21,16 +18,11 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { updateFriendSettings, type FriendSocialSettings } from '@/data/friendsClient';
@@ -42,14 +34,12 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { useReduceMotion } from '@/utils/useReduceMotion';
 
 import HairlineRow from './HairlineRow';
 import HourStepper from './HourStepper';
 import Toggle from './Toggle';
 
 /** Slide preset shared across the redesign (matches MapPubSheet / Reveal). */
-const SLIDE_SPRING = { damping: 18, stiffness: 180, mass: 0.9 } as const;
 /** Coalesce a burst of stepper taps into one PATCH. */
 const HOUR_DEBOUNCE_MS = 500;
 
@@ -78,7 +68,6 @@ function FriendSettingsSheet({
   onSaved,
 }: FriendSettingsSheetProps): React.ReactElement {
   const insets = useSafeAreaInsets();
-  const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
   const friendPushEnabled = useSettingsStore((s) => s.friendPushEnabled);
   const [pushBusy, setPushBusy] = useState(false);
@@ -254,243 +243,205 @@ function FriendSettingsSheet({
     [],
   );
 
-  // ── Card slide-up (clone of MapPubSheet). ──
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = reduceMotion
-        ? withTiming(1, { duration: 0 })
-        : withSpring(1, SLIDE_SPRING);
-    } else {
-      progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
-    }
-  }, [visible, reduceMotion, progress]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
-
   const quietOn = draft.quietHoursEnabled;
 
   return (
-    <Modal
+    <BottomSheetModal
       visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
+      onClose={onClose}
+      overlay={
+        // Toast host INSIDE the Modal: the root <Toast> sits below this native
+        // window on iOS, so an error fired here would surface behind the card.
+        <Toast />
+      }
     >
-      <View style={styles.backdrop}>
-        {/* Backdrop sits BEHIND the card as an absolute-fill sibling so an outside
-            tap dismisses while taps on the card are absorbed by its own views.
-            The card must NOT be wrapped in a Pressable (it would steal the pan). */}
+      <View
+        style={[
+          styles.card,
+          softDrop(),
+          // Float the card above the home indicator so its border reads as a
+          // fully closed panel, never a line running off the screen bottom.
+          { marginBottom: Math.max(insets.bottom, Spacing.md) },
+        ]}
+      >
+        <View style={styles.handle} />
+
+        <View style={styles.headerRow}>
+          <Text
+            style={styles.title}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {t.friends.settingsTitle}
+          </Text>
+        </View>
+
         <Pressable
-          style={StyleSheet.absoluteFill}
+          testID="friend-settings-close"
           onPress={onClose}
+          hitSlop={12}
+          style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedDim]}
           accessibilityRole="button"
           accessibilityLabel={t.friends.settingsClose}
-        />
-
-        <Animated.View
-          style={[
-            styles.card,
-            softDrop(),
-            // Float the card above the home indicator so its border reads as a
-            // fully closed panel, never a line running off the screen bottom.
-            { marginBottom: Math.max(insets.bottom, Spacing.md) },
-            cardAnim,
-          ]}
         >
-          <View style={styles.handle} />
+          <XIcon size={18} color={Colors.foamMuted} />
+        </Pressable>
 
-          <View style={styles.headerRow}>
-            <Text
-              style={styles.title}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {t.friends.settingsTitle}
-            </Text>
-          </View>
-
-          <Pressable
-            testID="friend-settings-close"
-            onPress={onClose}
-            hitSlop={12}
-            style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedDim]}
-            accessibilityRole="button"
-            accessibilityLabel={t.friends.settingsClose}
-          >
-            <XIcon size={18} color={Colors.foamMuted} />
-          </Pressable>
-
-          <ScrollView
-            style={styles.body}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-          >
-            {/* Neviditelný režim */}
-            <HairlineRow first>
-              <View style={styles.settingRow}>
-                <View style={styles.settingText}>
-                  <Text
-                    style={styles.settingTitle}
-                    maxFontSizeMultiplier={FontScaleCap.heading}
-                  >
-                    {t.friends.ghostTitle}
-                  </Text>
-                  <Text
-                    style={styles.settingSubtitle}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {t.friends.ghostSubtitle}
-                  </Text>
-                </View>
-                <Toggle
-                  testID="friend-settings-ghost"
-                  value={draft.ghostMode}
-                  onToggle={handleGhostToggle}
-                  accessibilityLabel={t.friends.ghostTitle}
-                />
+        <BottomSheetScrollView
+          style={styles.body}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          {/* Neviditelný režim */}
+          <HairlineRow first>
+            <View style={styles.settingRow}>
+              <View style={styles.settingText}>
+                <Text
+                  style={styles.settingTitle}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {t.friends.ghostTitle}
+                </Text>
+                <Text
+                  style={styles.settingSubtitle}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {t.friends.ghostSubtitle}
+                </Text>
               </View>
-            </HairlineRow>
+              <Toggle
+                testID="friend-settings-ghost"
+                value={draft.ghostMode}
+                onToggle={handleGhostToggle}
+                accessibilityLabel={t.friends.ghostTitle}
+              />
+            </View>
+          </HairlineRow>
 
-            {/* Ukazovat partě, kde sedím — the switch behind the whole "kdo kde
-                sedí" block. Disabled and forced off while ghost mode is on, so
-                the sheet never claims the party can see something it cannot. */}
-            <HairlineRow>
-              <View style={styles.settingRow}>
-                <View style={styles.settingText}>
-                  <Text
-                    style={styles.settingTitle}
-                    maxFontSizeMultiplier={FontScaleCap.heading}
-                  >
-                    {t.friends.shareDrinksTitle}
-                  </Text>
-                  <Text
-                    style={styles.settingSubtitle}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {t.friends.shareDrinksSubtitle}
-                  </Text>
-                </View>
-                <Toggle
-                  testID="friend-settings-sharing"
-                  value={draft.shareDrinksWithParta && !draft.ghostMode}
-                  onToggle={handleShareDrinksToggle}
-                  disabled={draft.ghostMode}
-                  accessibilityLabel={t.friends.shareDrinksTitle}
-                />
+          {/* Ukazovat partě, kde sedím — the switch behind the whole "kdo kde
+              sedí" block. Disabled and forced off while ghost mode is on, so
+              the sheet never claims the party can see something it cannot. */}
+          <HairlineRow>
+            <View style={styles.settingRow}>
+              <View style={styles.settingText}>
+                <Text
+                  style={styles.settingTitle}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {t.friends.shareDrinksTitle}
+                </Text>
+                <Text
+                  style={styles.settingSubtitle}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {t.friends.shareDrinksSubtitle}
+                </Text>
               </View>
-            </HairlineRow>
+              <Toggle
+                testID="friend-settings-sharing"
+                value={draft.shareDrinksWithParta && !draft.ghostMode}
+                onToggle={handleShareDrinksToggle}
+                disabled={draft.ghostMode}
+                accessibilityLabel={t.friends.shareDrinksTitle}
+              />
+            </View>
+          </HairlineRow>
 
-            {/* Klid v noci */}
-            <HairlineRow>
-              <View style={styles.settingRow}>
-                <View style={styles.settingText}>
-                  <Text
-                    style={styles.settingTitle}
-                    maxFontSizeMultiplier={FontScaleCap.heading}
-                  >
-                    {t.friends.quietTitle}
-                  </Text>
-                  <Text
-                    style={styles.settingSubtitle}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {t.friends.quietSubtitle}
-                  </Text>
-                </View>
-                <Toggle
-                  value={draft.quietHoursEnabled}
-                  onToggle={handleQuietToggle}
-                  accessibilityLabel={t.friends.quietTitle}
-                />
+          {/* Klid v noci */}
+          <HairlineRow>
+            <View style={styles.settingRow}>
+              <View style={styles.settingText}>
+                <Text
+                  style={styles.settingTitle}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {t.friends.quietTitle}
+                </Text>
+                <Text
+                  style={styles.settingSubtitle}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {t.friends.quietSubtitle}
+                </Text>
               </View>
+              <Toggle
+                value={draft.quietHoursEnabled}
+                onToggle={handleQuietToggle}
+                accessibilityLabel={t.friends.quietTitle}
+              />
+            </View>
 
-              {quietOn && (
-                <View style={styles.quietRange}>
+            {quietOn && (
+              <View style={styles.quietRange}>
+                <Text
+                  style={styles.quietSummary}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {t.friends.quietRange(draft.quietHoursStart, draft.quietHoursEnd)}
+                </Text>
+
+                <View style={styles.stepperLine}>
                   <Text
-                    style={styles.quietSummary}
+                    style={styles.stepperCaption}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {t.friends.quietRange(draft.quietHoursStart, draft.quietHoursEnd)}
+                    {t.contribute.from}
                   </Text>
-
-                  <View style={styles.stepperLine}>
-                    <Text
-                      style={styles.stepperCaption}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {t.contribute.from}
-                    </Text>
-                    <HourStepper
-                      value={draft.quietHoursStart}
-                      onChange={handleStartChange}
-                      accessibilityLabel={t.contribute.from}
-                    />
-                  </View>
-
-                  <View style={styles.stepperLine}>
-                    <Text
-                      style={styles.stepperCaption}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {t.contribute.to}
-                    </Text>
-                    <HourStepper
-                      value={draft.quietHoursEnd}
-                      onChange={handleEndChange}
-                      accessibilityLabel={t.contribute.to}
-                    />
-                  </View>
+                  <HourStepper
+                    value={draft.quietHoursStart}
+                    onChange={handleStartChange}
+                    accessibilityLabel={t.contribute.from}
+                  />
                 </View>
-              )}
-            </HairlineRow>
 
-            {/* Upozornění na partu (§E3) */}
-            <HairlineRow>
-              <View style={styles.settingRow}>
-                <View style={styles.settingText}>
+                <View style={styles.stepperLine}>
                   <Text
-                    style={styles.settingTitle}
-                    maxFontSizeMultiplier={FontScaleCap.heading}
-                  >
-                    {t.friends.pushToggleTitle}
-                  </Text>
-                  <Text
-                    style={styles.settingSubtitle}
+                    style={styles.stepperCaption}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {t.friends.pushToggleSub}
+                    {t.contribute.to}
                   </Text>
+                  <HourStepper
+                    value={draft.quietHoursEnd}
+                    onChange={handleEndChange}
+                    accessibilityLabel={t.contribute.to}
+                  />
                 </View>
-                <Toggle
-                  value={friendPushEnabled}
-                  onToggle={handlePushToggle}
-                  accessibilityLabel={t.friends.pushToggleTitle}
-                />
               </View>
-            </HairlineRow>
-          </ScrollView>
-        </Animated.View>
+            )}
+          </HairlineRow>
 
-        {/* Toast host INSIDE the Modal: the root <Toast> sits below this native
-            window on iOS, so an error fired here would surface behind the card. */}
-        <Toast />
+          {/* Upozornění na partu (§E3) */}
+          <HairlineRow>
+            <View style={styles.settingRow}>
+              <View style={styles.settingText}>
+                <Text
+                  style={styles.settingTitle}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {t.friends.pushToggleTitle}
+                </Text>
+                <Text
+                  style={styles.settingSubtitle}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {t.friends.pushToggleSub}
+                </Text>
+              </View>
+              <Toggle
+                value={friendPushEnabled}
+                onToggle={handlePushToggle}
+                accessibilityLabel={t.friends.pushToggleTitle}
+              />
+            </View>
+          </HairlineRow>
+        </BottomSheetScrollView>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   card: {
     maxHeight: '90%',
     marginHorizontal: Spacing.sm,

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
 import { loadPartyFriends, type FriendProfile, type PartyFriends } from '@/data/friendsClient';
 import type { TourInviteRow } from '@/data/tourInvitesClient';
@@ -29,24 +30,21 @@ function Sheet({ title, onClose, children, footer, closeDisabled }: {
 }) {
   const insets = useSafeAreaInsets();
   const close = () => { if (!closeDisabled) onClose(); };
-  return <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
-    <View style={styles.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
-      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
-          <View style={styles.grabber} />
-          <View style={styles.header}>
-            <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{title}</Text>
-            <Pressable onPress={close} style={styles.close} accessibilityRole="button" accessibilityLabel={t.tours.close}>
-              <XIcon size={20} color={Colors.foamMuted} />
-            </Pressable>
-          </View>
-          {children}
-          {footer}
+  return <BottomSheetModal visible onClose={close} underlayColor={styles.card.backgroundColor}>
+    <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+      <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+        <View style={styles.grabber} />
+        <View style={styles.header}>
+          <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{title}</Text>
+          <Pressable onPress={close} style={styles.close} accessibilityRole="button" accessibilityLabel={t.tours.close}>
+            <XIcon size={20} color={Colors.foamMuted} />
+          </Pressable>
         </View>
+        {children}
+        {footer}
       </View>
     </View>
-  </Modal>;
+  </BottomSheetModal>;
 }
 
 /** The real name under a nickname, unless it only repeats the nickname. */
@@ -132,10 +130,10 @@ export function TourInviteSheet({ plan, roster, onClose, onSent }: {
   </View>}>
     <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.detail}>{inviteDetail(plan)}</Text>
     {note ? <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.note}>{note}</Text>
-      : <ScrollView style={[styles.list, styles.pickList]} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+      : <BottomSheetScrollView style={[styles.list, styles.pickList]} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
         {friends.map((friend) => <FriendRow key={friend.id} friend={friend} state={stateOf(friend.id)} checked={chosen.includes(friend.id)}
           onToggle={() => setPicked((current) => current.includes(friend.id) ? current.filter((id) => id !== friend.id) : [...current, friend.id])} />)}
-      </ScrollView>}
+      </BottomSheetScrollView>}
   </Sheet>;
 }
 
@@ -170,7 +168,7 @@ export function TourInviteRosterSheet({ roster, onClose }: { roster: TourInviteR
   const groups = ([['going', t.tourInvites.rosterGoing], ['declined', t.tourInvites.rosterDeclined], ['invited', t.tourInvites.rosterWaiting]] as const)
     .map(([status, title]) => ({ status, title, rows: byStatus(roster, status) })).filter((group) => group.rows.length > 0);
   return <Sheet title={t.tourInvites.rosterOpen} onClose={onClose}>
-    <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+    <BottomSheetScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
       {groups.map((group, index) => <View key={group.status} style={index > 0 && styles.group}>
         <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.groupTitle}>{`${group.title} · ${group.rows.length}`}</Text>
         {group.rows.map((row) => <View key={row.friend.id} style={styles.rosterItem}>
@@ -181,12 +179,11 @@ export function TourInviteRosterSheet({ roster, onClose }: { roster: TourInviteR
           </View>
         </View>)}
       </View>)}
-    </ScrollView>
+    </BottomSheetScrollView>
   </Sheet>;
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: withAlpha(Colors.black, 0.6) },
   cardWrap: { width: '100%', maxHeight: '92%' },
   card: { flexShrink: 1, backgroundColor: Colors.stout, borderTopLeftRadius: Radius.cardLarge, borderTopRightRadius: Radius.cardLarge,
     paddingTop: Spacing.sm, paddingHorizontal: 20, ...softDrop() },

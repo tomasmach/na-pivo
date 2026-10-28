@@ -6,9 +6,10 @@
  * The host sends; the sheet only collects the audience and shows a hard error.
  */
 import { useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { XIcon } from '@/components/shared/IconGlyph';
 import type { FriendProfile } from '@/data/friendsClient';
@@ -63,35 +64,31 @@ export default function PingSheet({ title, detail, friends, ghost = false, onSen
   }
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
-            <View style={styles.grabber} />
-            <View style={styles.header}>
-              <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{title}</Text>
-              <Pressable onPress={close} style={styles.close} accessibilityRole="button" accessibilityLabel={t.friends.settingsClose}>
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-            <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.detail}>{ghost ? t.friends.pingSheetGhost : detail}</Text>
-            <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {ghost ? null : <AudiencePicker friends={friends} value={audience} onChange={setAudience} header={false} canSaveGroup={false} />}
-            </ScrollView>
-            <View style={styles.actions}>
-              {error ? <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.error} accessibilityLiveRegion="polite">{error}</Text> : null}
-              <GlowButton label={t.friends.composeSubmitNow} onPress={() => { void send(); }} variant="primary" glow="none" loading={busy} disabled={busy || blocked} />
-            </View>
+    <BottomSheetModal visible onClose={close} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
+          <View style={styles.header}>
+            <Text accessibilityRole="header" maxFontSizeMultiplier={FontScaleCap.heading} style={styles.title}>{title}</Text>
+            <Pressable onPress={close} style={styles.close} accessibilityRole="button" accessibilityLabel={t.friends.settingsClose}>
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+          <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.detail}>{ghost ? t.friends.pingSheetGhost : detail}</Text>
+          <BottomSheetScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {ghost ? null : <AudiencePicker friends={friends} value={audience} onChange={setAudience} header={false} canSaveGroup={false} />}
+          </BottomSheetScrollView>
+          <View style={styles.actions}>
+            {error ? <Text maxFontSizeMultiplier={FontScaleCap.body} style={styles.error} accessibilityLiveRegion="polite">{error}</Text> : null}
+            <GlowButton label={t.friends.composeSubmitNow} onPress={() => { void send(); }} variant="primary" glow="none" loading={busy} disabled={busy || blocked} />
           </View>
         </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: withAlpha(Colors.black, 0.6) },
   cardWrap: { width: '100%', maxHeight: '92%' },
   card: {
     flexShrink: 1,

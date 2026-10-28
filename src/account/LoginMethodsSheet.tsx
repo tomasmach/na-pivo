@@ -2,14 +2,14 @@ import React from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { CheckIcon, KeyRoundIcon, XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
@@ -134,105 +134,84 @@ export function LoginMethodsSheet({
   const hasApple = providers.includes('apple');
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
         <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
+          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+          onPress={() => undefined}
+        >
+          <View style={styles.grabber} />
 
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
-            <View style={styles.grabber} />
-
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.account.ctaMethods}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  pressed && styles.rowPressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.account.ctaMethods}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [
+                styles.closeButton,
+                pressed && styles.rowPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.counterCloseModal}
             >
-              <MethodRow
-                provider="email"
-                name={t.account.methodEmail}
-                icon={KeyRoundIcon}
-                linked={hasEmail}
-                canUnlink={canUnlink}
-                busy={busy === 'unlink_email' || busy === 'setPassword'}
-                blocked={busy !== null}
-                onPress={hasEmail ? () => onUnlink('email') : onSetPassword}
-              />
-              <View style={styles.divider} />
-              <MethodRow
-                provider="google"
-                name={t.account.methodGoogle}
-                icon={GoogleIcon}
-                linked={hasGoogle}
-                canUnlink={canUnlink}
-                busy={busy === 'link_google' || busy === 'unlink_google'}
-                blocked={busy !== null}
-                onPress={
-                  hasGoogle ? () => onUnlink('google') : () => onLink('google')
-                }
-              />
-              {appleSupported ? (
-                <>
-                  <View style={styles.divider} />
-                  <MethodRow
-                    provider="apple"
-                    name={t.account.methodApple}
-                    icon={AppleIcon}
-                    linked={hasApple}
-                    canUnlink={canUnlink}
-                    busy={busy === 'link_apple' || busy === 'unlink_apple'}
-                    blocked={busy !== null}
-                    onPress={
-                      hasApple ? () => onUnlink('apple') : () => onLink('apple')
-                    }
-                  />
-                </>
-              ) : null}
-            </ScrollView>
-          </Pressable>
-        </View>
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+
+          <BottomSheetScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <MethodRow
+              provider="email"
+              name={t.account.methodEmail}
+              icon={KeyRoundIcon}
+              linked={hasEmail}
+              canUnlink={canUnlink}
+              busy={busy === 'unlink_email' || busy === 'setPassword'}
+              blocked={busy !== null}
+              onPress={hasEmail ? () => onUnlink('email') : onSetPassword}
+            />
+            <View style={styles.divider} />
+            <MethodRow
+              provider="google"
+              name={t.account.methodGoogle}
+              icon={GoogleIcon}
+              linked={hasGoogle}
+              canUnlink={canUnlink}
+              busy={busy === 'link_google' || busy === 'unlink_google'}
+              blocked={busy !== null}
+              onPress={
+                hasGoogle ? () => onUnlink('google') : () => onLink('google')
+              }
+            />
+            {appleSupported ? (
+              <>
+                <View style={styles.divider} />
+                <MethodRow
+                  provider="apple"
+                  name={t.account.methodApple}
+                  icon={AppleIcon}
+                  linked={hasApple}
+                  canUnlink={canUnlink}
+                  busy={busy === 'link_apple' || busy === 'unlink_apple'}
+                  blocked={busy !== null}
+                  onPress={
+                    hasApple ? () => onUnlink('apple') : () => onLink('apple')
+                  }
+                />
+              </>
+            ) : null}
+          </BottomSheetScrollView>
+        </Pressable>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   cardWrap: {
     width: '100%',
     minHeight: '44%',

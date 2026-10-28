@@ -12,7 +12,8 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 
-import { Modal, ModalInsetView } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { ModalInsetView } from '@/components/shared/Modal';
 import { BeerIcon, LockKeyholeIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
 import { type BeerCheckInInput, type BeerCheckInVisibility } from '@/data/beerCheckinsClient';
@@ -270,259 +271,256 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   const sheetBottomOffset = keyboardHeight > 0 ? keyboardHeight : 0;
 
   return (
-    <Modal scrimColor={styles.backdrop.backgroundColor} visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
-        <ModalInsetView
-          style={(insets) => [
-            styles.sheet,
-            {
-              marginBottom: sheetBottomOffset,
-              paddingBottom: keyboardHeight > 0 ? Spacing.sm : Math.max(insets.bottom, Spacing.md),
-              maxHeight: windowHeight - insets.top - sheetBottomOffset - Spacing.md,
-            },
-          ]}
+    <BottomSheetModal visible={visible} onClose={onClose} scrimColor={styles.backdrop.backgroundColor} underlayColor={styles.sheet.backgroundColor}>
+      <ModalInsetView
+        style={(insets) => [
+          styles.sheet,
+          {
+            marginBottom: sheetBottomOffset,
+            paddingBottom: keyboardHeight > 0 ? Spacing.sm : Math.max(insets.bottom, Spacing.md),
+            maxHeight: windowHeight - insets.top - sheetBottomOffset - Spacing.md,
+          },
+        ]}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.myBeers.historicalTitle}
+            </Text>
+            <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.myBeers.historicalSubtitle}
+            </Text>
+            <Text style={styles.hint} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.myBeers.historicalRequiredHint}
+            </Text>
+          </View>
+          <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityRole="button">
+            <XIcon size={18} color={Colors.foamMuted} />
+          </Pressable>
+        </View>
+
+        <KeyboardAwareScrollView
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+          bounces={false}
         >
-          <View style={styles.header}>
-            <View style={styles.headerText}>
-              <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.myBeers.historicalTitle}
-              </Text>
-              <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.myBeers.historicalSubtitle}
-              </Text>
-              <Text style={styles.hint} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.myBeers.historicalRequiredHint}
-              </Text>
-            </View>
-            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityRole="button">
-              <XIcon size={18} color={Colors.foamMuted} />
+          <View style={styles.sectionLabelRow}>
+            <Text style={styles.label}>{t.myBeers.historicalBeersLabel}</Text>
+            <Pressable
+              onPress={addBeerLine}
+              disabled={beerLines.length >= MAX_BEER_LINES}
+              style={[styles.addBeerButton, beerLines.length >= MAX_BEER_LINES && styles.dim]}
+              accessibilityRole="button"
+            >
+              <PlusIcon size={15} color={Colors.stout} />
+              <Text style={styles.addBeerText}>{t.myBeers.historicalAddBeer}</Text>
             </Pressable>
           </View>
-
-          <KeyboardAwareScrollView
-            ref={scrollRef}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.scrollContent}
-            bounces={false}
-          >
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.label}>{t.myBeers.historicalBeersLabel}</Text>
-              <Pressable
-                onPress={addBeerLine}
-                disabled={beerLines.length >= MAX_BEER_LINES}
-                style={[styles.addBeerButton, beerLines.length >= MAX_BEER_LINES && styles.dim]}
-                accessibilityRole="button"
-              >
-                <PlusIcon size={15} color={Colors.stout} />
-                <Text style={styles.addBeerText}>{t.myBeers.historicalAddBeer}</Text>
-              </Pressable>
-            </View>
-            <View style={styles.beerLines}>
-              {beerLines.map((line, index) => {
-                const parsed = parsedBeerLines[index];
-                return (
-                  <View key={line.id} style={styles.beerLine}>
-                    <View style={styles.beerLineTop}>
+          <View style={styles.beerLines}>
+            {beerLines.map((line, index) => {
+              const parsed = parsedBeerLines[index];
+              return (
+                <View key={line.id} style={styles.beerLine}>
+                  <View style={styles.beerLineTop}>
+                    <TextInput
+                      value={line.beerName}
+                      onFocus={() => setActiveBeerLineId(line.id)}
+                      onChangeText={(value) => onChangeBeerName(line.id, value)}
+                      placeholder={index === 0 ? t.beerCheckins.beerPlaceholder : t.myBeers.historicalNextBeerPlaceholder}
+                      placeholderTextColor={Colors.mutedText}
+                      style={[styles.input, styles.beerNameInput]}
+                      maxLength={80}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    />
+                    {beerLines.length > 1 ? (
+                      <Pressable
+                        onPress={() => removeBeerLine(line.id)}
+                        style={styles.removeBeerButton}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.a11y.myBeersRemoveHistoricalBeer(line.beerName || `${index + 1}`)}
+                      >
+                        <XIcon size={16} color={Colors.mutedText} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {line.suggestions.length > 0 ? (
+                    <View style={styles.suggestionsBox}>
+                      {line.suggestions.map((suggestion, suggestionIndex) => (
+                        <Pressable
+                          key={suggestion.slug}
+                          onPress={() => selectSuggestion(line.id, suggestion)}
+                          style={[styles.suggestionRow, suggestionIndex > 0 && styles.suggestionRowDivider]}
+                          accessibilityRole="button"
+                          accessibilityLabel={suggestion.name}
+                        >
+                          <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                            {suggestion.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                  <View style={styles.lineMetaRow}>
+                    <View style={styles.countCol}>
+                      <Text style={styles.miniLabel}>{t.myBeers.historicalQuantityLabel}</Text>
                       <TextInput
-                        value={line.beerName}
-                        onFocus={() => setActiveBeerLineId(line.id)}
-                        onChangeText={(value) => onChangeBeerName(line.id, value)}
-                        placeholder={index === 0 ? t.beerCheckins.beerPlaceholder : t.myBeers.historicalNextBeerPlaceholder}
+                        value={line.quantityText}
+                        onChangeText={(value) =>
+                          updateBeerLine(line.id, { quantityText: value.replace(/\D/g, '').slice(0, 2) })
+                        }
+                        placeholder="1"
                         placeholderTextColor={Colors.mutedText}
-                        style={[styles.input, styles.beerNameInput]}
-                        maxLength={80}
+                        style={[styles.input, styles.compactInput, !parsed.quantityValid && styles.inputError]}
+                        keyboardType="number-pad"
                         maxFontSizeMultiplier={FontScaleCap.body}
                       />
-                      {beerLines.length > 1 ? (
-                        <Pressable
-                          onPress={() => removeBeerLine(line.id)}
-                          style={styles.removeBeerButton}
-                          hitSlop={8}
-                          accessibilityRole="button"
-                          accessibilityLabel={t.a11y.myBeersRemoveHistoricalBeer(line.beerName || `${index + 1}`)}
-                        >
-                          <XIcon size={16} color={Colors.mutedText} />
-                        </Pressable>
-                      ) : null}
                     </View>
-                    {line.suggestions.length > 0 ? (
-                      <View style={styles.suggestionsBox}>
-                        {line.suggestions.map((suggestion, suggestionIndex) => (
-                          <Pressable
-                            key={suggestion.slug}
-                            onPress={() => selectSuggestion(line.id, suggestion)}
-                            style={[styles.suggestionRow, suggestionIndex > 0 && styles.suggestionRowDivider]}
-                            accessibilityRole="button"
-                            accessibilityLabel={suggestion.name}
-                          >
-                            <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                              {suggestion.name}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    ) : null}
-                    <View style={styles.lineMetaRow}>
-                      <View style={styles.countCol}>
-                        <Text style={styles.miniLabel}>{t.myBeers.historicalQuantityLabel}</Text>
+                    <View style={styles.priceCol}>
+                      <Text style={styles.miniLabel}>{t.myBeers.historicalPriceLabel}</Text>
+                      <View style={[styles.priceInputWrap, styles.compactPriceInputWrap, !parsed.priceValid && styles.inputError]}>
                         <TextInput
-                          value={line.quantityText}
+                          value={line.priceText}
                           onChangeText={(value) =>
-                            updateBeerLine(line.id, { quantityText: value.replace(/\D/g, '').slice(0, 2) })
+                            updateBeerLine(line.id, { priceText: sanitizePriceInput(value, priceCurrency) })
                           }
-                          placeholder="1"
+                          placeholder={t.myBeers.historicalPricePlaceholder}
                           placeholderTextColor={Colors.mutedText}
-                          style={[styles.input, styles.compactInput, !parsed.quantityValid && styles.inputError]}
-                          keyboardType="number-pad"
+                          style={styles.priceInput}
+                          keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         />
-                      </View>
-                      <View style={styles.priceCol}>
-                        <Text style={styles.miniLabel}>{t.myBeers.historicalPriceLabel}</Text>
-                        <View style={[styles.priceInputWrap, styles.compactPriceInputWrap, !parsed.priceValid && styles.inputError]}>
-                          <TextInput
-                            value={line.priceText}
-                            onChangeText={(value) =>
-                              updateBeerLine(line.id, { priceText: sanitizePriceInput(value, priceCurrency) })
-                            }
-                            placeholder={t.myBeers.historicalPricePlaceholder}
-                            placeholderTextColor={Colors.mutedText}
-                            style={styles.priceInput}
-                            keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
-                            maxFontSizeMultiplier={FontScaleCap.body}
-                          />
-                          <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.body}>
-                            {currencySuffix(priceCurrency)}
-                          </Text>
-                        </View>
+                        <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {currencySuffix(priceCurrency)}
+                        </Text>
                       </View>
                     </View>
                   </View>
-                );
-              })}
+                </View>
+              );
+            })}
+          </View>
+
+          <Text style={styles.label}>{t.myBeers.historicalPubLabel}</Text>
+          <TextInput
+            value={pubName}
+            onChangeText={setPubName}
+            placeholder={t.myBeers.historicalPubPlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            style={styles.input}
+            maxLength={120}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          />
+
+          <View style={styles.dateTimeRow}>
+            <View style={styles.dateCol}>
+              <Text style={styles.label}>{t.myBeers.historicalDateLabel}</Text>
+              <TextInput
+                value={dateText}
+                onChangeText={(value) => {
+                  setDateError(false);
+                  setDateText(value);
+                }}
+                placeholder={t.myBeers.historicalDatePlaceholder}
+                placeholderTextColor={Colors.mutedText}
+                style={[styles.input, dateError && styles.inputError]}
+                keyboardType="numbers-and-punctuation"
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
             </View>
-
-            <Text style={styles.label}>{t.myBeers.historicalPubLabel}</Text>
-            <TextInput
-              value={pubName}
-              onChangeText={setPubName}
-              placeholder={t.myBeers.historicalPubPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={styles.input}
-              maxLength={120}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            <View style={styles.dateTimeRow}>
-              <View style={styles.dateCol}>
-                <Text style={styles.label}>{t.myBeers.historicalDateLabel}</Text>
-                <TextInput
-                  value={dateText}
-                  onChangeText={(value) => {
-                    setDateError(false);
-                    setDateText(value);
-                  }}
-                  placeholder={t.myBeers.historicalDatePlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={[styles.input, dateError && styles.inputError]}
-                  keyboardType="numbers-and-punctuation"
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
-              <View style={styles.timeCol}>
-                <Text style={styles.label}>{t.myBeers.historicalTimeFromLabel}</Text>
-                <TextInput
-                  value={startTimeText}
-                  onChangeText={(value) => {
-                    setDateError(false);
-                    setStartTimeText(value);
-                  }}
-                  placeholder={t.myBeers.historicalTimePlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={[styles.input, dateError && styles.inputError]}
-                  keyboardType="numbers-and-punctuation"
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
-              <View style={styles.timeCol}>
-                <Text style={styles.label}>{t.myBeers.historicalTimeToLabel}</Text>
-                <TextInput
-                  value={endTimeText}
-                  onChangeText={(value) => {
-                    setDateError(false);
-                    setEndTimeText(value);
-                  }}
-                  placeholder={t.myBeers.historicalTimeToPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={[styles.input, styles.timeInput, dateError && styles.inputError]}
-                  keyboardType="numbers-and-punctuation"
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
+            <View style={styles.timeCol}>
+              <Text style={styles.label}>{t.myBeers.historicalTimeFromLabel}</Text>
+              <TextInput
+                value={startTimeText}
+                onChangeText={(value) => {
+                  setDateError(false);
+                  setStartTimeText(value);
+                }}
+                placeholder={t.myBeers.historicalTimePlaceholder}
+                placeholderTextColor={Colors.mutedText}
+                style={[styles.input, dateError && styles.inputError]}
+                keyboardType="numbers-and-punctuation"
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
             </View>
-            {dateError ? (
-              <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.myBeers.historicalDateError}
-              </Text>
-            ) : null}
-
-            <Text style={styles.label}>{t.beerCheckins.noteLabel}</Text>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder={t.beerCheckins.notePlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={[styles.input, styles.noteInput]}
-              multiline
-              maxLength={1000}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            <Text style={styles.label}>{t.beerCheckins.visibilityLabel}</Text>
-            <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {visibility === 'friends'
-                ? t.myBeers.historicalVisibilityFriendsHint
-                : t.myBeers.historicalVisibilityPrivateHint}
+            <View style={styles.timeCol}>
+              <Text style={styles.label}>{t.myBeers.historicalTimeToLabel}</Text>
+              <TextInput
+                value={endTimeText}
+                onChangeText={(value) => {
+                  setDateError(false);
+                  setEndTimeText(value);
+                }}
+                placeholder={t.myBeers.historicalTimeToPlaceholder}
+                placeholderTextColor={Colors.mutedText}
+                style={[styles.input, styles.timeInput, dateError && styles.inputError]}
+                keyboardType="numbers-and-punctuation"
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
+            </View>
+          </View>
+          {dateError ? (
+            <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.myBeers.historicalDateError}
             </Text>
-            <View style={styles.visibilityRow}>
-              <Pressable
-                onPress={() => setVisibility('private')}
-                style={[styles.visibilityButton, visibility === 'private' && styles.visibilityButtonActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: visibility === 'private' }}
-              >
-                <LockKeyholeIcon size={16} color={visibility === 'private' ? Colors.stout : Colors.mutedText} />
-                <Text style={[styles.visibilityText, visibility === 'private' && styles.visibilityTextActive]}>
-                  {t.beerCheckins.visibilityPrivate}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setVisibility('friends')}
-                style={[styles.visibilityButton, visibility === 'friends' && styles.visibilityButtonActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: visibility === 'friends' }}
-              >
-                <UsersIcon size={16} color={visibility === 'friends' ? Colors.stout : Colors.mutedText} />
-                <Text style={[styles.visibilityText, visibility === 'friends' && styles.visibilityTextActive]}>
-                  {t.beerCheckins.visibilityFriends}
-                </Text>
-              </Pressable>
-            </View>
+          ) : null}
 
+          <Text style={styles.label}>{t.beerCheckins.noteLabel}</Text>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder={t.beerCheckins.notePlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            style={[styles.input, styles.noteInput]}
+            multiline
+            maxLength={1000}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          />
+
+          <Text style={styles.label}>{t.beerCheckins.visibilityLabel}</Text>
+          <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
+            {visibility === 'friends'
+              ? t.myBeers.historicalVisibilityFriendsHint
+              : t.myBeers.historicalVisibilityPrivateHint}
+          </Text>
+          <View style={styles.visibilityRow}>
             <Pressable
-              onPress={submit}
-              disabled={!canSubmit}
-              style={({ pressed }) => [styles.submit, (pressed || !canSubmit) && styles.dim]}
+              onPress={() => setVisibility('private')}
+              style={[styles.visibilityButton, visibility === 'private' && styles.visibilityButtonActive]}
               accessibilityRole="button"
+              accessibilityState={{ selected: visibility === 'private' }}
             >
-              <Text style={styles.submitText}>{t.myBeers.historicalSubmit}</Text>
+              <LockKeyholeIcon size={16} color={visibility === 'private' ? Colors.stout : Colors.mutedText} />
+              <Text style={[styles.visibilityText, visibility === 'private' && styles.visibilityTextActive]}>
+                {t.beerCheckins.visibilityPrivate}
+              </Text>
             </Pressable>
-          </KeyboardAwareScrollView>
-        </ModalInsetView>
-      </View>
-    </Modal>
+            <Pressable
+              onPress={() => setVisibility('friends')}
+              style={[styles.visibilityButton, visibility === 'friends' && styles.visibilityButtonActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: visibility === 'friends' }}
+            >
+              <UsersIcon size={16} color={visibility === 'friends' ? Colors.stout : Colors.mutedText} />
+              <Text style={[styles.visibilityText, visibility === 'friends' && styles.visibilityTextActive]}>
+                {t.beerCheckins.visibilityFriends}
+              </Text>
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={submit}
+            disabled={!canSubmit}
+            style={({ pressed }) => [styles.submit, (pressed || !canSubmit) && styles.dim]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.submitText}>{t.myBeers.historicalSubmit}</Text>
+          </Pressable>
+        </KeyboardAwareScrollView>
+      </ModalInsetView>
+    </BottomSheetModal>
   );
 }
 

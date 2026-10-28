@@ -14,10 +14,11 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -105,102 +106,78 @@ export function DiaryStatsSheet({
     ) : null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
-        {/* The backdrop is a dismiss target behind the card, not its parent —
-            wrapping the card would stop it from sitting flush on the bottom
-            edge and would swallow the sheet's own gestures. It stays out of the
-            a11y tree so VoiceOver hears "Zavřít" once, from the real button. */}
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        {/* The card swallows presses so a tap inside never falls through. */}
         <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          {/* The card swallows presses so a tap inside never falls through. */}
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
-            <View style={styles.grabber} />
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.diary.statsTitle}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={styles.closeButton}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.diaryStatsClose}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
+          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+          onPress={() => undefined}
+        >
+          <View style={styles.grabber} />
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.diary.statsTitle}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={styles.closeButton}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.diaryStatsClose}
             >
-              {/* Same numeral + wide caption pair as the night card, so the
-                  sheet reads as the same family rather than a second system. */}
-              <View
-                style={styles.total}
-                testID="diary-stats-total-beers"
-                accessible
-                accessibilityRole="text"
-                accessibilityLabel={t.diary.nightMeta([totalBeers, t.diary.statsTotalCaption])}
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+
+          <BottomSheetScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Same numeral + wide caption pair as the night card, so the
+                sheet reads as the same family rather than a second system. */}
+            <View
+              style={styles.total}
+              testID="diary-stats-total-beers"
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={t.diary.nightMeta([totalBeers, t.diary.statsTotalCaption])}
+            >
+              <Text
+                style={styles.totalCount}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.display}
               >
-                <Text
-                  style={styles.totalCount}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.display}
-                >
-                  {totalBeers}
-                </Text>
-                <Text
-                  style={styles.totalCaption}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {t.diary.statsTotalCaption}
-                </Text>
-              </View>
-
-              {rows.map((row, index) => renderRow(row, index === 0))}
-              {renderSection(t.diary.statsRecordsCaption, records)}
-              {renderSection(t.diary.statsPubsCaption, topPubs)}
-              {renderSection(t.diary.statsYearsCaption, years)}
-            </ScrollView>
-
-            {/* Pinned below the scroll area: the footnote explains what the
-                numbers do and do not count, so it must never scroll off. */}
-            <View style={styles.footer}>
-              <Text style={styles.footerCopy} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.diary.statsFooter}
+                {totalBeers}
+              </Text>
+              <Text
+                style={styles.totalCaption}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {t.diary.statsTotalCaption}
               </Text>
             </View>
-          </Pressable>
-        </View>
+
+            {rows.map((row, index) => renderRow(row, index === 0))}
+            {renderSection(t.diary.statsRecordsCaption, records)}
+            {renderSection(t.diary.statsPubsCaption, topPubs)}
+            {renderSection(t.diary.statsYearsCaption, years)}
+          </BottomSheetScrollView>
+
+          {/* Pinned below the scroll area: the footnote explains what the
+              numbers do and do not count, so it must never scroll off. */}
+          <View style={styles.footer}>
+            <Text style={styles.footerCopy} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.diary.statsFooter}
+            </Text>
+          </View>
+        </Pressable>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   // The height bounds live HERE, not on the card, and that difference matters:
   // a percentage resolves against the parent's height, and `cardWrap` has an
   // auto height, so `maxHeight: '92%'` written on the card resolves against

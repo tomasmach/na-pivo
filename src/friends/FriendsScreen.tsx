@@ -61,7 +61,8 @@ import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { openFriendProfile as openFriendPage } from '@/layout/openDetail';
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { useShowAppDialog } from '@/components/shared/AppDialog';
 import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
 import {
@@ -236,55 +237,40 @@ function SheetScaffold({
       {children}
     </KeyboardAwareScrollView>
   ) : (
-    <ScrollView
+    <BottomSheetScrollView
       style={styles.sheetList}
       contentContainerStyle={styles.sheetListContent}
       showsVerticalScrollIndicator={false}
     >
       {children}
-    </ScrollView>
+    </BottomSheetScrollView>
   );
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.sheetBackdrop}>
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.sheetCard.backgroundColor}>
+      <View style={[styles.sheetCardWrap, { marginBottom: -insets.bottom }]}>
         <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.sheetCardWrap, { marginBottom: -insets.bottom }]}>
-          <Pressable
-            style={[styles.sheetCard, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
-            <View style={styles.sheetGrabber} />
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {title}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.sheetClose, pressed && styles.dim]}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-            {content}
-          </Pressable>
-        </View>
+          style={[styles.sheetCard, { paddingBottom: insets.bottom + Spacing.lg }]}
+          onPress={() => undefined}
+        >
+          <View style={styles.sheetGrabber} />
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {title}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.sheetClose, pressed && styles.dim]}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.counterCloseModal}
+            >
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+          {content}
+        </Pressable>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
@@ -1769,11 +1755,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.foam, 0.08),
-  },
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
   },
   sheetCardWrap: {
     width: '100%',

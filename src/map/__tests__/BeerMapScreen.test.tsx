@@ -118,8 +118,10 @@ const mockSettingsState = {
   setShowPubBeers: jest.fn(),
 };
 jest.mock('@/stores/settingsStore', () => ({
-  useSettingsStore: (selector: (state: typeof mockSettingsState) => unknown) =>
-    selector(mockSettingsState),
+  useSettingsStore: Object.assign(
+    (selector: (state: typeof mockSettingsState) => unknown) => selector(mockSettingsState),
+    { getState: () => mockSettingsState },
+  ),
 }));
 jest.mock('@/data/pubBeersClient', () => ({
   fetchPubBeersLastWeek: jest.fn(async () => null),

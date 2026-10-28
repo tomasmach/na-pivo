@@ -22,7 +22,6 @@
 import React from 'react';
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -30,7 +29,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Modal } from '@/components/shared/Modal';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -68,123 +68,99 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
-        {/* Dismiss target behind the card, never its parent — as a parent it
-            would keep the card off the bottom edge and eat its own gestures.
-            Hidden from screen readers so "Zavřít" is announced once, by the
-            real close button. */}
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={styles.card.backgroundColor}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        {/* Swallows presses so a row tap never falls through to the backdrop. */}
         <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          {/* Swallows presses so a row tap never falls through to the backdrop. */}
-          <Pressable
-            accessible={false}
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
-            <View style={styles.grabber} />
+          accessible={false}
+          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+          onPress={() => undefined}
+        >
+          <View style={styles.grabber} />
 
-            <View style={styles.header}>
-              <Text
-                style={styles.title}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.heading}
-              >
-                {title ?? t.compass.moreTitle}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.rowPressed]}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
+          <View style={styles.header}>
+            <Text
+              style={styles.title}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {rows.map((row, index) => {
-                const Icon = row.icon;
-                return (
-                  <Pressable
-                    key={row.key}
-                    testID={row.testID}
-                    onPress={row.onPress}
-                    disabled={row.disabled}
-                    style={({ pressed }) => [
-                      styles.row,
-                      index > 0 && styles.rowDivider,
-                      pressed && styles.rowPressed,
-                    ]}
-                    accessibilityRole={row.accessibilityRole ?? 'button'}
-                    accessibilityLabel={row.accessibilityLabel ?? row.label}
-                    accessibilityHint={row.accessibilityHint}
-                    accessibilityState={{
-                      ...(row.selected != null && row.accessibilityRole === 'radio'
-                        ? { checked: row.selected }
-                        : row.selected != null
-                          ? { selected: row.selected }
-                          : {}),
-                      ...(row.disabled != null ? { disabled: row.disabled } : {}),
-                    }}
+              {title ?? t.compass.moreTitle}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.rowPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t.a11y.counterCloseModal}
+            >
+              <XIcon size={20} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+
+          <BottomSheetScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {rows.map((row, index) => {
+              const Icon = row.icon;
+              return (
+                <Pressable
+                  key={row.key}
+                  testID={row.testID}
+                  onPress={row.onPress}
+                  disabled={row.disabled}
+                  style={({ pressed }) => [
+                    styles.row,
+                    index > 0 && styles.rowDivider,
+                    pressed && styles.rowPressed,
+                  ]}
+                  accessibilityRole={row.accessibilityRole ?? 'button'}
+                  accessibilityLabel={row.accessibilityLabel ?? row.label}
+                  accessibilityHint={row.accessibilityHint}
+                  accessibilityState={{
+                    ...(row.selected != null && row.accessibilityRole === 'radio'
+                      ? { checked: row.selected }
+                      : row.selected != null
+                        ? { selected: row.selected }
+                        : {}),
+                    ...(row.disabled != null ? { disabled: row.disabled } : {}),
+                  }}
+                >
+                  {Icon ? (
+                    <View style={styles.rowIcon}>
+                      <Icon size={18} color={Colors.amber} />
+                    </View>
+                  ) : null}
+                  <Text
+                    style={styles.rowLabel}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {Icon ? (
-                      <View style={styles.rowIcon}>
-                        <Icon size={18} color={Colors.amber} />
-                      </View>
-                    ) : null}
+                    {row.label}
+                  </Text>
+                  {/* A ticked mode outranks its value: the two never show at once. */}
+                  {row.selected ? (
+                    <CheckIcon size={18} color={Colors.amber} />
+                  ) : row.value ? (
                     <Text
-                      style={styles.rowLabel}
+                      style={styles.rowValue}
                       numberOfLines={1}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {row.label}
+                      {row.value}
                     </Text>
-                    {/* A ticked mode outranks its value: the two never show at once. */}
-                    {row.selected ? (
-                      <CheckIcon size={18} color={Colors.amber} />
-                    ) : row.value ? (
-                      <Text
-                        style={styles.rowValue}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {row.value}
-                      </Text>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </Pressable>
-        </View>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </BottomSheetScrollView>
+        </Pressable>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   // The height bounds live here, not on the card (§7.5): the card's parent must
   // have a resolved height or Yoga drops the percentages and the list stops
   // scrolling without a single warning.
