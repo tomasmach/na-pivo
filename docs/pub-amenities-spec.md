@@ -32,6 +32,7 @@ The single consolidated table below lists every seeded row, grouped by section. 
 
 | amenity_key | section | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter | is_active | order | status |
 |---|---|---|---|---|---|---|---|---|
+| `practical_vape_friendly` | practical | E-cigarety a IQOS povoleny | E-cig / IQOS | **NEW** `WindIcon` (lucide `Wind`; lucide has no vape glyph and `Cigarette` would read as smoking) | yes | true | 5 | active — added by `0159`, pinned to the top of the sheet |
 | `payment_card` | payment | Platba kartou (`ano` = platí kartou, `ne` = jen hotovost) | Karta | **NEW** `CreditCardIcon` (lucide `CreditCard`) | yes | true | 10 | active |
 | ~~`payment_cash_only`~~ | ~~payment~~ | ~~Jen hotovost~~ | ~~Hotovost~~ | ~~`BanknoteIcon`~~ | ~~yes~~ | **false** | ~~20~~ | inactive — deactivated by `0040` (exact inverse of `payment_card`) |
 | `seating_garden` | seating | Zahrádka / terasa | Zahrádka | `TreePineIcon` (exists) | yes | true | 30 | active |
@@ -47,7 +48,6 @@ The single consolidated table below lists every seeded row, grouped by section. 
 | ~~`atmosphere_smoking`~~ | ~~atmosphere~~ | ~~Kuřárna / kouření povoleno~~ | ~~Kouření~~ | ~~`CigaretteIcon`~~ | ~~yes~~ | **false** | ~~130~~ | inactive — deactivated by `0041` (low-signal / sensitive venue attribute) |
 | `practical_wifi` | practical | Wi-Fi | Wi-Fi | `WifiIcon` (exists) | yes | true | 140 | active |
 | `practical_parking` | practical | Parkování | Parkování | **NEW** `SquareParkingIcon` (lucide `SquareParking`) | yes | true | 150 | active |
-| `practical_vape_friendly` | practical | E-cigarety a IQOS povoleny | E-cig / IQOS | **NEW** `WindIcon` (lucide `Wind`; lucide has no vape glyph and `Cigarette` would read as smoking) | yes | true | 155 | active — added by `0159` |
 | ~~`practical_food`~~ | ~~practical~~ | ~~Kuchyně / dá se najíst~~ | ~~Kuchyně~~ | ~~`UtensilsIcon`~~ | ~~yes~~ | **false** | ~~160~~ | inactive — deactivated by `0040` (assumed for a pub, low signal) |
 | `practical_outdoor_tap` | practical | Venkovní výčep | Výčep | **NEW glyph required before activation** (NOT `BeerIcon` reuse) | no | **false** | 170 | inactive — reserved (seeded `active=False`) |
 | `practical_tank_beer` | practical | Tankové pivo | Tank | `BeerIcon` (exists) | yes | **false** | 180 | inactive — reserved (seeded `active=False`) |

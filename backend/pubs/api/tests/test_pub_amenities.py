@@ -126,7 +126,7 @@ def test_kinds_returns_only_active_ordered_with_wire_names(client):
     # Canonical wire field names. The _cs pair released apps read never moves;
     # label_en/short_label_en and the request-language label/short_label pair are
     # additive for the clients that speak English.
-    first = body["kinds"][0]
+    first = next(k for k in body["kinds"] if k["key"] == "payment_card")
     assert set(first.keys()) == {
         "key",
         "group",

@@ -81,10 +81,12 @@ export interface ReservedAmenityDef {
 
 /**
  * The 12 ACTIVE amenities, ordered and grouped by section. The order values match
- * the backend seed (10, 30, ... 155). Section order: payment, seating, games,
+ * the backend seed (5, 10, ... 150). Section order: payment, seating, games,
  * atmosphere, practical.
  */
 export const AMENITIES: readonly AmenityDef[] = [
+  // — practical, pinned to the top —
+  { key: 'practical_vape_friendly', group: 'practical', label: t.mapPub.amenities.practical_vape_friendly.label, shortLabel: t.mapPub.amenities.practical_vape_friendly.short, icon: 'WindIcon', mapFilterable: true, order: 5 },
   // — payment —
   { key: 'payment_card', group: 'payment', label: t.mapPub.amenities.payment_card.label, shortLabel: t.mapPub.amenities.payment_card.short, icon: 'CreditCardIcon', mapFilterable: true, order: 10 },
   // — seating —
@@ -101,7 +103,6 @@ export const AMENITIES: readonly AmenityDef[] = [
   // — practical —
   { key: 'practical_wifi', group: 'practical', label: t.mapPub.amenities.practical_wifi.label, shortLabel: t.mapPub.amenities.practical_wifi.short, icon: 'WifiIcon', mapFilterable: true, order: 140 },
   { key: 'practical_parking', group: 'practical', label: t.mapPub.amenities.practical_parking.label, shortLabel: t.mapPub.amenities.practical_parking.short, icon: 'SquareParkingIcon', mapFilterable: true, order: 150 },
-  { key: 'practical_vape_friendly', group: 'practical', label: t.mapPub.amenities.practical_vape_friendly.label, shortLabel: t.mapPub.amenities.practical_vape_friendly.short, icon: 'WindIcon', mapFilterable: true, order: 155 },
 ];
 
 /**

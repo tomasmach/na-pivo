@@ -10,6 +10,7 @@ import {
 
 /** Source of truth cross-check — must match the backend seed (spec §2 table). */
 const EXPECTED: { key: AmenityKey; group: string; icon: string; order: number }[] = [
+  { key: 'practical_vape_friendly', group: 'practical', icon: 'WindIcon', order: 5 },
   { key: 'payment_card', group: 'payment', icon: 'CreditCardIcon', order: 10 },
   { key: 'seating_garden', group: 'seating', icon: 'TreePineIcon', order: 30 },
   { key: 'seating_barrier_free', group: 'seating', icon: 'AccessibilityIcon', order: 40 },
@@ -21,7 +22,6 @@ const EXPECTED: { key: AmenityKey; group: string; icon: string; order: number }[
   { key: 'atmosphere_sports_tv', group: 'atmosphere', icon: 'TvIcon', order: 110 },
   { key: 'practical_wifi', group: 'practical', icon: 'WifiIcon', order: 140 },
   { key: 'practical_parking', group: 'practical', icon: 'SquareParkingIcon', order: 150 },
-  { key: 'practical_vape_friendly', group: 'practical', icon: 'WindIcon', order: 155 },
 ];
 
 describe('amenity catalogue integrity', () => {
