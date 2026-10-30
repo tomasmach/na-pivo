@@ -236,6 +236,10 @@ export const en: Strings = {
         label: 'Parking',
         short: 'Parking',
       },
+      practical_vape_friendly: {
+        label: 'E-cigarettes and IQOS allowed',
+        short: 'E-cig / IQOS',
+      },
     },
     xpFirstMapper: (xp: number) => `First mapper! +${xp} XP`,
     xpSession: (n: number, xp: number) => `Mapped ${n} things · +${xp} XP`,

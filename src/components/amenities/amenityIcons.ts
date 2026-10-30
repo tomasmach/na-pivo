@@ -21,6 +21,7 @@ import {
   TvIcon,
   WifiIcon,
   SquareParkingIcon,
+  WindIcon,
   BeerIcon,
   MapPinnedIcon,
 } from '@/components/shared/IconGlyph';
@@ -42,6 +43,7 @@ const ICON_BY_NAME: Record<string, ComponentType<IconProps>> = {
   TvIcon,
   WifiIcon,
   SquareParkingIcon,
+  WindIcon,
   BeerIcon,
 };
 

@@ -23,7 +23,7 @@ import { t } from '@/i18n';
  * Stable, group-prefixed wire slug. NEVER rename — persisted, sent over the wire,
  * future map-filter key. Add only.
  *
- * The 11 active keys. The two reserved keys (`practical_outdoor_tap`,
+ * The 12 active keys. The two reserved keys (`practical_outdoor_tap`,
  * `practical_tank_beer`) are intentionally NOT part of the active union — they are
  * defined in RESERVED_AMENITY_KEYS below with is_active=false and are never
  * rendered in v1.
@@ -39,7 +39,8 @@ export type AmenityKey =
   | 'atmosphere_live_music'
   | 'atmosphere_sports_tv'
   | 'practical_wifi'
-  | 'practical_parking';
+  | 'practical_parking'
+  | 'practical_vape_friendly';
 
 /** The five amenity groups, in sheet + GET /kinds display order. */
 export type AmenityGroup = 'payment' | 'seating' | 'games' | 'atmosphere' | 'practical';
@@ -79,8 +80,8 @@ export interface ReservedAmenityDef {
 }
 
 /**
- * The 11 ACTIVE amenities, ordered and grouped by section. The order values match
- * the backend seed (10, 30, ... 150). Section order: payment, seating, games,
+ * The 12 ACTIVE amenities, ordered and grouped by section. The order values match
+ * the backend seed (10, 30, ... 155). Section order: payment, seating, games,
  * atmosphere, practical.
  */
 export const AMENITIES: readonly AmenityDef[] = [
@@ -100,6 +101,7 @@ export const AMENITIES: readonly AmenityDef[] = [
   // — practical —
   { key: 'practical_wifi', group: 'practical', label: t.mapPub.amenities.practical_wifi.label, shortLabel: t.mapPub.amenities.practical_wifi.short, icon: 'WifiIcon', mapFilterable: true, order: 140 },
   { key: 'practical_parking', group: 'practical', label: t.mapPub.amenities.practical_parking.label, shortLabel: t.mapPub.amenities.practical_parking.short, icon: 'SquareParkingIcon', mapFilterable: true, order: 150 },
+  { key: 'practical_vape_friendly', group: 'practical', label: t.mapPub.amenities.practical_vape_friendly.label, shortLabel: t.mapPub.amenities.practical_vape_friendly.short, icon: 'WindIcon', mapFilterable: true, order: 155 },
 ];
 
 /**

@@ -28,6 +28,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     TreePineIcon: icon,
     TvIcon: icon,
     WifiIcon: icon,
+    WindIcon: icon,
     XIcon: icon,
   };
 });

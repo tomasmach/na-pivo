@@ -21,11 +21,12 @@ const EXPECTED: { key: AmenityKey; group: string; icon: string; order: number }[
   { key: 'atmosphere_sports_tv', group: 'atmosphere', icon: 'TvIcon', order: 110 },
   { key: 'practical_wifi', group: 'practical', icon: 'WifiIcon', order: 140 },
   { key: 'practical_parking', group: 'practical', icon: 'SquareParkingIcon', order: 150 },
+  { key: 'practical_vape_friendly', group: 'practical', icon: 'WindIcon', order: 155 },
 ];
 
 describe('amenity catalogue integrity', () => {
-  it('ships exactly 11 active amenities', () => {
-    expect(AMENITIES).toHaveLength(11);
+  it('ships exactly 12 active amenities', () => {
+    expect(AMENITIES).toHaveLength(12);
   });
 
   it('matches the canonical key/group/icon/order table from the spec', () => {

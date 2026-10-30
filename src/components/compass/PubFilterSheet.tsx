@@ -30,6 +30,7 @@ import {
   TreePineIcon,
   TvIcon,
   WifiIcon,
+  WindIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import {
@@ -77,6 +78,7 @@ const AMENITY_ICONS: Record<AmenityKey, Glyph> = {
   atmosphere_sports_tv: TvIcon,
   practical_wifi: WifiIcon,
   practical_parking: SquareParkingIcon,
+  practical_vape_friendly: WindIcon,
 };
 
 const SECTION_ORDER = ['fun', 'practical', 'seating'] as const;
