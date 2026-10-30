@@ -32,10 +32,10 @@ The single consolidated table below lists every seeded row, grouped by section. 
 
 | amenity_key | section | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter | is_active | order | status |
 |---|---|---|---|---|---|---|---|---|
-| `practical_vape_friendly` | practical | E-cigarety a IQOS povoleny | E-cig / IQOS | **NEW** `WindIcon` (lucide `Wind`; lucide has no vape glyph and `Cigarette` would read as smoking) | yes | true | 5 | active — added by `0159`, pinned to the top of the sheet |
 | `payment_card` | payment | Platba kartou (`ano` = platí kartou, `ne` = jen hotovost) | Karta | **NEW** `CreditCardIcon` (lucide `CreditCard`) | yes | true | 10 | active |
 | ~~`payment_cash_only`~~ | ~~payment~~ | ~~Jen hotovost~~ | ~~Hotovost~~ | ~~`BanknoteIcon`~~ | ~~yes~~ | **false** | ~~20~~ | inactive — deactivated by `0040` (exact inverse of `payment_card`) |
 | `seating_garden` | seating | Zahrádka / terasa | Zahrádka | `TreePineIcon` (exists) | yes | true | 30 | active |
+| `practical_vape_friendly` | practical | E-cigarety a IQOS povoleny | E-cig / IQOS | **NEW** `WindIcon` (lucide `Wind`; lucide has no vape glyph and `Cigarette` would read as smoking) | yes | true | 35 | active — added by `0159`, third in the sheet |
 | `seating_barrier_free` | seating | Bezbariérový přístup | Bezbariér | **NEW** `AccessibilityIcon` (lucide `Accessibility`) | yes | true | 40 | active |
 | ~~`seating_kids_corner`~~ | ~~seating~~ | ~~Dětský koutek~~ | ~~Děti~~ | ~~`BabyIcon`~~ | ~~yes~~ | **false** | ~~50~~ | inactive — deactivated by `0040` (unnecessary) |
 | `game_darts` | games | Šipky | Šipky | **NEW** `TargetIcon` (lucide `Target`) | yes | true | 60 | active |

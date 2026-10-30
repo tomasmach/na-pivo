@@ -16,7 +16,7 @@ def add_vape_friendly(apps, schema_editor):
             "icon": "WindIcon",
             "filter_candidate": True,
             "active": True,
-            "rank": 5,
+            "rank": 35,
         },
     )
 
