@@ -23,7 +23,7 @@ import { t } from '@/i18n';
  * Stable, group-prefixed wire slug. NEVER rename — persisted, sent over the wire,
  * future map-filter key. Add only.
  *
- * The 11 active keys. The two reserved keys (`practical_outdoor_tap`,
+ * The 12 active keys. The two reserved keys (`practical_outdoor_tap`,
  * `practical_tank_beer`) are intentionally NOT part of the active union — they are
  * defined in RESERVED_AMENITY_KEYS below with is_active=false and are never
  * rendered in v1.
@@ -39,7 +39,8 @@ export type AmenityKey =
   | 'atmosphere_live_music'
   | 'atmosphere_sports_tv'
   | 'practical_wifi'
-  | 'practical_parking';
+  | 'practical_parking'
+  | 'practical_vape_friendly';
 
 /** The five amenity groups, in sheet + GET /kinds display order. */
 export type AmenityGroup = 'payment' | 'seating' | 'games' | 'atmosphere' | 'practical';
@@ -79,7 +80,7 @@ export interface ReservedAmenityDef {
 }
 
 /**
- * The 11 ACTIVE amenities, ordered and grouped by section. The order values match
+ * The 12 ACTIVE amenities, ordered and grouped by section. The order values match
  * the backend seed (10, 30, ... 150). Section order: payment, seating, games,
  * atmosphere, practical.
  */
@@ -88,6 +89,7 @@ export const AMENITIES: readonly AmenityDef[] = [
   { key: 'payment_card', group: 'payment', label: t.mapPub.amenities.payment_card.label, shortLabel: t.mapPub.amenities.payment_card.short, icon: 'CreditCardIcon', mapFilterable: true, order: 10 },
   // — seating —
   { key: 'seating_garden', group: 'seating', label: t.mapPub.amenities.seating_garden.label, shortLabel: t.mapPub.amenities.seating_garden.short, icon: 'TreePineIcon', mapFilterable: true, order: 30 },
+  { key: 'practical_vape_friendly', group: 'practical', label: t.mapPub.amenities.practical_vape_friendly.label, shortLabel: t.mapPub.amenities.practical_vape_friendly.short, icon: 'WindIcon', mapFilterable: true, order: 35 },
   { key: 'seating_barrier_free', group: 'seating', label: t.mapPub.amenities.seating_barrier_free.label, shortLabel: t.mapPub.amenities.seating_barrier_free.short, icon: 'AccessibilityIcon', mapFilterable: true, order: 40 },
   // — games —
   { key: 'game_darts', group: 'games', label: t.mapPub.amenities.game_darts.label, shortLabel: t.mapPub.amenities.game_darts.short, icon: 'TargetIcon', mapFilterable: true, order: 60 },

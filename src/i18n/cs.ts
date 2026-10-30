@@ -257,6 +257,7 @@ export const cs = {
       atmosphere_sports_tv: { label: 'Sport v televizi', short: 'Sport v TV' },
       practical_wifi: { label: 'Wi-Fi', short: 'Wi-Fi' },
       practical_parking: { label: 'Parkování', short: 'Parkování' },
+      practical_vape_friendly: { label: 'E-cigarety a IQOS povoleny', short: 'E-cig / IQOS' },
     },
 
     // XP toasts
