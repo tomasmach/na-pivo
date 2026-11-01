@@ -359,6 +359,25 @@ export function SpendlikScreen() {
     setCenter(nearRegion(position));
   }, [position]);
 
+  // The recent fix may be missing or stale, so the button asks for a fresh one then.
+  const locate = async () => {
+    let here = position;
+    if (!here) {
+      if ((await ensureLocationPermission({ openSettingsIfDenied: true })) !== 'granted') {
+        toast({ kind: 'error', title: L().addNoPosition, icon: 'locate-fixed' });
+        return;
+      }
+      try {
+        const fix = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        here = { lat: fix.coords.latitude, lng: fix.coords.longitude };
+      } catch {
+        toast({ kind: 'error', title: L().addNoPosition, icon: 'locate-fixed' });
+        return;
+      }
+    }
+    mapRef.current?.animateToRegion(nearRegion(here), 400);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <MapView
@@ -390,7 +409,7 @@ export function SpendlikScreen() {
         </Glass>
       </View>
       <View style={{ position: 'absolute', right: SCREEN_X - 4, bottom: insets.bottom + 88 }}>
-        <GlassButton icon="locate-fixed" label={L().myLocation} onPress={() => position && mapRef.current?.animateToRegion(nearRegion(position), 400)} />
+        <GlassButton icon="locate-fixed" label={L().myLocation} onPress={() => void locate()} />
       </View>
       <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4 }}>
         <ButtonPair
