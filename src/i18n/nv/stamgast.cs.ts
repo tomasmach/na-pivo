@@ -159,7 +159,7 @@ export const stamgastCs = {
   recordNewPubs: 'nových hospod',
   nights: 'Večery',
   today: 'Dnes',
-  dash: '—',
+  dash: '-',
 
   // Evening detail
   eveningTitle: (weekday: string, day: number, month: number) => `${weekday} ${day}. ${month}.`,
@@ -307,5 +307,5 @@ export const stamgastCs = {
   photoFriends: 'Uvidí tvoje parta',
   photoPublic: 'Uvidí všichni, fotka bude soutěžit ve FotoPivaři',
   photoNeedNickname: 'Do FotoPivaře potřebuješ přezdívku.',
-  photoNone: '—',
+  photoNone: '-',
 };
