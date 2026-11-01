@@ -51,7 +51,9 @@ export function useParamPub(): { key: string; pub: Pub | null } {
     const loaded = getAllLoadedPubs().find(
       (p) =>
         (remembered?.id && p.id === remembered.id) ||
-        (geohash8(p.lat, p.lng) === key && isSamePubRecord({ name: p.name, externalId: p.id }, { id: remembered?.id ?? '', name: remembered?.name ?? name })),
+        (geohash8(p.lat, p.lng) === key &&
+          // A bare cell link names no pub, so the pub in that cell is the one.
+          (!(remembered?.name ?? name) || isSamePubRecord({ name: p.name, externalId: p.id }, { id: remembered?.id ?? '', name: remembered?.name ?? name }))),
     );
     if (remembered) return withCatalogDetails(remembered, loaded);
     if (loaded) return loaded;
