@@ -169,6 +169,16 @@ export interface MyPresence extends FriendPresence {
   visibleToParta: boolean;
 }
 
+/**
+ * A friend at a home evening right now. Outsiders get no host and no place;
+ * `activityId` is set only when I am invited to that evening.
+ */
+export interface FriendHomePresence {
+  account: FriendProfile;
+  since: string;
+  activityId: string | null;
+}
+
 export interface FriendsDashboard {
   friends: FriendProfile[];
   friendStats: Record<string, FriendStats>;
@@ -184,6 +194,8 @@ export interface FriendsDashboard {
   presence: FriendPresence[];
   /** Where the server thinks I am sitting, or null. */
   myPresence: MyPresence | null;
+  /** Friends at somebody's home now. Missing in snapshots saved by older builds. */
+  homePresence?: FriendHomePresence[];
   /** Account ids I've blocked, for client-side filtering. */
   blockedIds: string[];
   settings: FriendSocialSettings;
@@ -204,6 +216,7 @@ export interface FriendsLiveSlice {
   myPlan: FriendPubActivity | null;
   presence: FriendPresence[];
   myPresence: MyPresence | null;
+  homePresence: FriendHomePresence[];
   incomingCount: number;
   unreadCount: number;
   serverTime: string | null;
@@ -244,6 +257,8 @@ export interface RecentTogether {
   pubName: string;
   cacheKey: string;
   at: string;
+  /** My beers that evening there. Null on older backends. */
+  beers: number | null;
 }
 
 /**
@@ -302,7 +317,7 @@ export interface FriendActionError {
 
 export type FriendActionResult = { ok: true } | FriendActionError;
 
-interface RawFriendProfile {
+export interface RawFriendProfile {
   id?: string;
   nickname?: string | null;
   display_name?: string;
@@ -331,7 +346,7 @@ interface RawActivityReactions {
   cheers?: number;
 }
 
-interface RawFriendActivity {
+export interface RawFriendActivity {
   id?: string;
   account?: RawFriendProfile;
   cache_key?: string;
@@ -422,6 +437,7 @@ interface RawRecentTogether {
   pub_name?: string;
   cache_key?: string;
   at?: string;
+  beers?: number;
 }
 
 interface RawPublicProfileStats {
@@ -466,7 +482,7 @@ async function handleUnauthorized(session: AccountSession, endpoint: string): Pr
   await clearCachedAnonymousAccount(session, { source: 'friends_request', endpoint });
 }
 
-function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
+export function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
   return {
     id: raw?.id ?? '',
     nickname: typeof raw?.nickname === 'string' && raw.nickname.length > 0 ? raw.nickname : null,
@@ -530,7 +546,7 @@ function parseReactions(raw: RawActivityReactions | undefined): FriendPubActivit
   return { cheers: typeof raw?.cheers === 'number' ? raw.cheers : 0 };
 }
 
-function parseActivity(raw: RawFriendActivity): FriendPubActivity {
+export function parseActivity(raw: RawFriendActivity): FriendPubActivity {
   return {
     id: raw.id ?? '',
     account: parseProfile(raw.account),
@@ -596,6 +612,20 @@ function parseMyPresence(raw: unknown): MyPresence | null {
   return { ...parsePresence(row), visibleToParta: row.visible_to_parta !== false };
 }
 
+function parseHomePresence(raw: unknown): FriendHomePresence[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    const row = item as { account?: RawFriendProfile; since?: unknown; activity_id?: unknown };
+    const account = parseProfile(row?.account);
+    if (!account.id) return [];
+    return [{
+      account,
+      since: typeof row.since === 'string' ? row.since : '',
+      activityId: typeof row.activity_id === 'string' ? row.activity_id : null,
+    }];
+  });
+}
+
 function parseLeaderboardEntry(raw: RawLeaderboardEntry): LeaderboardEntry {
   return {
     account: parseProfile(raw.account),
@@ -650,6 +680,7 @@ function parseRecentTogether(raw: RawRecentTogether): RecentTogether {
     pubName: raw.pub_name ?? '',
     cacheKey: raw.cache_key ?? '',
     at: raw.at ?? '',
+    beers: typeof raw.beers === 'number' ? raw.beers : null,
   };
 }
 
@@ -729,7 +760,7 @@ function extractError(data: unknown, status: number): FriendActionError {
   return { ok: false, code: `http_${status}`, detail: t.clientErrors.save };
 }
 
-async function requestJson(
+export async function requestJson(
   path: string,
   options: { method?: string; body?: unknown; signal?: AbortSignal; session?: AccountSession } = {},
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: FriendActionError }> {
@@ -842,6 +873,7 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
     myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
     presence: parsePresenceList(res.data.presence),
     myPresence: parseMyPresence(res.data.my_presence),
+    homePresence: parseHomePresence(res.data.home_presence),
     blockedIds: Array.isArray(res.data.blocked_ids)
       ? (res.data.blocked_ids as unknown[]).filter((id): id is string => typeof id === 'string')
       : [],
@@ -880,6 +912,7 @@ export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiv
         myPlan: dashboard.myPlan,
         presence: dashboard.presence,
         myPresence: dashboard.myPresence,
+        homePresence: dashboard.homePresence ?? [],
         incomingCount: dashboard.incomingRequests.length,
         unreadCount: dashboard.unreadCount,
         serverTime: null,
@@ -900,6 +933,7 @@ export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiv
     myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
     presence: parsePresenceList(res.data.presence),
     myPresence: parseMyPresence(res.data.my_presence),
+    homePresence: parseHomePresence(res.data.home_presence),
     incomingCount: typeof res.data.incoming_count === 'number' ? res.data.incoming_count : 0,
     unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
     serverTime: typeof res.data.server_time === 'string' ? res.data.server_time : null,

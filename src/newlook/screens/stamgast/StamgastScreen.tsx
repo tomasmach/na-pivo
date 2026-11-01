@@ -31,11 +31,11 @@ import { formatPrice } from '@/utils/currency';
 import { BottomFade, LevelAvatar, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, Press, Segmented, Stack, T, Tile } from '../../components/ui';
-import { useMock } from '../../mock/store';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import { toast } from '../../ui/store';
 import { TourRunContent } from '../tour/TourScreens';
 import { logDrink, useCounterNudges } from './counterActions';
+import { FriendEveningCard, leaveFriendHome, useFriendHomeEvening } from '../parta/FriendEveningCard';
 import { DiaryView } from './DiaryView';
 import { durationLabel, servingLine } from './stamgastFormat';
 import { currentCountPlace, useCountPlace, useCountPlaceHost, useNvPlaceStore } from './placeStore';
@@ -191,8 +191,12 @@ function CounterView() {
   const now = useNowTick();
   const nudges = useCounterNudges();
   const { run } = useTourGlance();
-  // The friend's-home evening belongs to the parta area; it still reads the mock.
-  const st = { atFriend: useMock((m) => m.atFriend) };
+  const friendHome = useFriendHomeEvening();
+  const atFriend = !!friendHome && place?.kind === 'outside';
+  useEffect(() => {
+    const st = useNvPlaceStore.getState();
+    if (friendHome && !st.picked && !st.outside) st.setOutside('private');
+  }, [friendHome]);
 
   const key = place ? placeKey(place) : null;
   const session = key && current?.pubKey === key ? current : null;
@@ -237,14 +241,15 @@ function CounterView() {
     }
     const day = drinkingDayKey(new Date(live.startedAt));
     useTallyStore.getState().archiveCurrent('manual');
+    leaveFriendHome();
     useCounterNudges.getState().set({ stickerFor: null, tourBanner: null, newBeer: null });
     void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
     router.push({ pathname: '/nv/uctenka', params: { day } });
   };
 
   const promile = profile ? (estimate ? copy.estimateValue(formatPromile(estimate.now)) : copy.estimateValue(formatPromile(0))) : copy.estimateSetup;
-  const placeName = st.atFriend
-    ? copy.friendHome
+  const placeName = atFriend && friendHome
+    ? t.nv.parta.homePlace(friendHome.hostName)
     : place?.kind === 'outside'
       ? t.counter.outsideLabel(place.context)
       : place?.pub.name ?? copy.placeUnknown;
@@ -267,7 +272,7 @@ function CounterView() {
             onPress={() => router.push('/nv/zmenit-misto')}
             style={[s.row, { height: 34, borderRadius: 17, paddingHorizontal: 14, gap: 6, backgroundColor: '#FFFFFF14' }]}
           >
-            <Icon name={st.atFriend || place?.kind === 'outside' ? 'house' : 'map-pin'} size={15} color={C.yellow} />
+            <Icon name={atFriend || place?.kind === 'outside' ? 'house' : 'map-pin'} size={15} color={C.yellow} />
             <T s={14} w={700} numberOfLines={1} style={{ maxWidth: 260 }}>
               {placeName}
             </T>
@@ -281,10 +286,10 @@ function CounterView() {
             </D>
           </Animated.View>
           <T s={17} w={600} c={C.text2}>
-            {st.atFriend ? copy.atFriend(count) : copy.tonight(count)}
+            {atFriend ? copy.atFriend(count) : copy.tonight(count)}
           </T>
           <View style={[s.row, { gap: 28, paddingTop: 8 }]}>
-            {st.atFriend ? null : <Stat value={formatPrice(spent, priceCurrency)} label={copy.statSpent} />}
+            {atFriend ? null : <Stat value={formatPrice(spent, priceCurrency)} label={copy.statSpent} />}
             <Stat value={durationLabel(sittingMinutes)} label={copy.statTable} />
             <Stat value={promile} label={profile ? copy.statEstimate : copy.statEstimateSetup} color={profile ? C.white : C.yellow} onPress={() => router.push('/nv/odhad')} />
           </View>
@@ -341,8 +346,8 @@ function CounterView() {
             </Press>
           </View>
         ) : null}
-        {st.atFriend ? <FriendEveningCard /> : null}
-        {session && count > 0 && !st.atFriend ? <TransitCard session={session} /> : null}
+        {atFriend ? <FriendEveningCard /> : null}
+        {session && count > 0 && !atFriend ? <TransitCard session={session} /> : null}
         <View style={{ backgroundColor: C.card, borderRadius: 24, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.row, { height: 50, justifyContent: 'space-between' }]}>
             <T s={16} w={700}>
@@ -421,34 +426,6 @@ function CounterView() {
       ) : null}
       <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 12 }}>
         <Button height={60} label={ctaLabel} sub={ctaSub} onPress={oneMore} />
-      </View>
-    </View>
-  );
-}
-
-function FriendEveningCard() {
-  return (
-    <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12 }}>
-      <View style={[s.row, { gap: 8 }]}>
-        <Icon name="house" size={18} color={C.yellow} />
-        <T s={17} w={700} style={s.fill}>
-          Večer u Kláry
-        </T>
-        <T s={13} w={600} c={C.muted}>
-          od 19:00
-        </T>
-      </View>
-      <View style={[s.row, { gap: 12 }]}>
-        <Stack initials={['K', 'J', 'T']} />
-        <T s={14} c={C.text2} style={s.fill}>
-          Jsi tu s Klárou a Jirkou. Petra a Marek dorazí.
-        </T>
-      </View>
-      <View style={[s.row, { gap: 8, borderTopWidth: 1, borderTopColor: C.hairline, paddingTop: 10 }]}>
-        <Icon name="lock" size={13} color={C.muted} />
-        <T s={12} c={C.muted}>
-          Zbytek party vidí jen „U někoho doma“.
-        </T>
       </View>
     </View>
   );

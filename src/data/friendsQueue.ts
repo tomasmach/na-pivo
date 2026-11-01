@@ -36,6 +36,7 @@ import {
   type FriendActionResult,
   type TourPing,
 } from './friendsClient';
+import { checkInAtHome, createPartaPlan, leaveHome, type PlaceKind } from './partaPlansClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
@@ -60,6 +61,9 @@ interface ActivityPayload {
   startedAt?: string;
   /** Set when the broadcast comes from a Tour de pub run. Missing on legacy ops. */
   tour?: TourPing;
+  /** New-look plan: a pub, home or custom place. Missing on legacy ops. For a
+   *  home or custom place `pub` only carries the title and 0/0 coordinates. */
+  place?: { kind: PlaceKind; address: string };
 }
 
 /** One pending Parta write, keyed (and deduped) by {@link dedupKey}. */
@@ -70,7 +74,9 @@ export type FriendQueueItem =
   | { op: 'cheer-clear'; activityId: string }
   | { op: 'activity'; clientId: string; payload: ActivityPayload }
   | { op: 'end'; clientId: string; activityId?: string }
-  | { op: 'request'; key: string; inviteCode?: string; accountId?: string; nickname?: string };
+  | { op: 'request'; key: string; inviteCode?: string; accountId?: string; nickname?: string }
+  | { op: 'home-checkin'; activityId: string; clientId: string }
+  | { op: 'home-leave'; activityId: string };
 
 /**
  * Composite dedup key: the SAME key means last-write-wins. `act:<clientId>` is
@@ -90,8 +96,13 @@ function dedupKey(item: FriendQueueItem): string {
       return `act:${item.clientId}`;
     case 'request':
       return `req:${item.key}`;
+    case 'home-checkin':
+    case 'home-leave':
+      return `home:${item.activityId}`;
   }
 }
+
+const PLACE_KINDS: readonly PlaceKind[] = ['pub', 'home', 'custom'];
 
 function isPub(value: unknown): value is Pub {
   const p = value as Pub;
@@ -122,8 +133,14 @@ function isQueueItem(value: unknown): value is FriendQueueItem {
         ((i as { payload?: ActivityPayload }).payload?.recipientIds === undefined ||
           Array.isArray((i as { payload?: ActivityPayload }).payload?.recipientIds)) &&
         (i.payload.tour === undefined ||
-          (typeof i.payload.tour?.title === 'string' && typeof i.payload.tour.heading === 'boolean'))
+          (typeof i.payload.tour?.title === 'string' && typeof i.payload.tour.heading === 'boolean')) &&
+        (i.payload.place === undefined ||
+          (PLACE_KINDS.includes(i.payload.place?.kind) && typeof i.payload.place.address === 'string'))
       );
+    case 'home-checkin':
+      return typeof i.activityId === 'string' && typeof i.clientId === 'string';
+    case 'home-leave':
+      return typeof i.activityId === 'string';
     case 'end':
       return typeof i.clientId === 'string';
     case 'request':
@@ -196,8 +213,20 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
       return classify(await clearActivityReaction(item.activityId));
     case 'activity': {
       if (isFinishedBroadcast(item)) return 'ok';
-      const { pub, message, scheduledFor } = item.payload;
-      const result = scheduledFor
+      const { pub, message, scheduledFor, place } = item.payload;
+      const result = place
+        ? await createPartaPlan({
+            clientId: item.clientId,
+            placeKind: place.kind,
+            name: pub.name,
+            ...(place.kind === 'pub' ? { lat: pub.lat, lng: pub.lng, externalId: pub.id || '' } : {}),
+            city: pub.city ?? '',
+            address: place.address,
+            message: message ?? '',
+            scheduledFor: scheduledFor ?? null,
+            recipientIds: item.payload.recipientIds,
+          })
+        : scheduledFor
         ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
         : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour);
       const verdict = classify(result);
@@ -217,6 +246,10 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
           nickname: item.nickname,
         }),
       );
+    case 'home-checkin':
+      return classify(await checkInAtHome(item.activityId, item.clientId));
+    case 'home-leave':
+      return classify(await leaveHome(item.activityId));
   }
 }
 

@@ -6,7 +6,11 @@
     "NSMotionUsageDescription": "Pomocí senzorů otáčíme šipku, když se otočíš.",
     "NSMicrophoneUsageDescription": "Mikrofon se použije jen pro zvukové funkce aplikace a nikdy bez tvého souhlasu.",
     "NSPhotoLibraryUsageDescription": "Otevřu ti galerii, ať si vybereš profilovku, fotku pivního menu nebo fotku piva do deníčku.",
-    "NSCameraUsageDescription": "Foťák potřebuju, abych ti z menu přečetl piva a abys mohl vyfotit pivo do deníčku."
+    "NSCameraUsageDescription": "Foťák potřebuju, abych ti z menu přečetl piva a abys mohl vyfotit pivo do deníčku.",
+    "NSCalendarsUsageDescription": "Na pivo ti do kalendáře přidá jen pozvánku od party, kterou potvrdíš.",
+    "NSCalendarsWriteOnlyAccessUsageDescription": "Na pivo ti do kalendáře přidá jen pozvánku od party, kterou potvrdíš.",
+    "NSRemindersUsageDescription": "Na pivo připomínky nepoužívá.",
+    "NSRemindersFullAccessUsageDescription": "Na pivo připomínky nepoužívá."
   },
   "android": {
     "app_name": "Na pivo"

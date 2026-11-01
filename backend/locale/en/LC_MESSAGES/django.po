@@ -1640,3 +1640,78 @@ msgstr "Directions"
 
 msgid "Napiš, o jaké pivo jde."
 msgstr "Say which beer you mean."
+
+msgid "Tenhle plán už neplatí."
+msgstr "This plan is no longer on."
+
+msgid "Máš naplánováno dost. Nějaký plán nejdřív zruš."
+msgstr "You have plenty planned. Cancel one of your plans first."
+
+msgid "Změna plánu"
+msgstr "Plan changed"
+
+#, python-format
+msgid "%(name)s mění plán: %(place)s, %(day)s v %(time)s."
+msgstr "%(name)s changed the plan: %(place)s, %(day)s at %(time)s."
+
+#, python-format
+msgid "%(name)s zve na pivo: %(place)s, %(day)s v %(time)s. Přidáš se?"
+msgstr "%(name)s invites you for a beer: %(place)s, %(day)s at %(time)s. Coming?"
+
+msgid "Plán se ruší"
+msgstr "Plan called off"
+
+#, python-format
+msgid "%(name)s ruší %(place)s, %(day)s v %(time)s."
+msgstr "%(name)s called off %(place)s, %(day)s at %(time)s."
+
+msgid "Jsi neviditelný, nikomu nic nepípne."
+msgstr "You are invisible, so nobody gets a ping."
+
+msgid "Připomenutí šlo před chvílí. Dej jim chvíli."
+msgstr "You sent a reminder a moment ago. Give them a while."
+
+msgid "Dorazíš?"
+msgstr "Coming?"
+
+#, python-format
+msgid "%(name)s se ptá: %(place)s, %(day)s v %(time)s."
+msgstr "%(name)s is asking: %(place)s, %(day)s at %(time)s."
+
+msgid "Tohle je tvůj večer, jsi tu doma."
+msgstr "This is your evening, you are the host."
+
+msgid "Na tenhle večer je ještě brzo."
+msgstr "It is too early for this evening."
+
+msgid "Cinknutí šlo před chvílí. Zkus to za půl hodiny."
+msgstr "You pinged a moment ago. Try again in half an hour."
+
+#, python-format
+msgid "%(name)s ti cinká"
+msgstr "%(name)s is pinging you"
+
+msgid "Chybíš u stolu. Dáš si jedno?"
+msgstr "We miss you at the table. Up for one?"
+
+msgid "Profil nenalezen | Na pivo"
+msgstr "Profile not found | Na pivo"
+
+#, python-format
+msgid "@%(nick)s na Na pivo"
+msgstr "@%(nick)s on Na pivo"
+
+msgid "Tenhle profil tu není."
+msgstr "This profile is not here."
+
+msgid "Buď je soukromý, nebo neexistuje."
+msgstr "It is either private or does not exist."
+
+msgid "piv celkem"
+msgstr "beers in total"
+
+msgid "level Mapéra"
+msgstr "Mapper level"
+
+msgid "Jen čísla z večerů zveřejněných pro všechny."
+msgstr "Only numbers from evenings shared publicly."

@@ -1361,6 +1361,25 @@ class FriendPubActivity(models.Model):
         blank=True,
         help_text="When the afternoon plan reminder was pushed, so it fires once.",
     )
+    # Plans v2 (new look). Empty place_kind marks a row from a released client:
+    # one plan at a time, always a pub. Newer clients send pub/home/custom.
+    place_kind = models.CharField(
+        max_length=8,
+        blank=True,
+        default="",
+        help_text="'' legacy pub row; pub / home / custom from the new look.",
+    )
+    address = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Free-text address of a home or custom place. Only invitees ever read it.",
+    )
+    last_reminded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the host last nudged the silent invitees, for the cooldown.",
+    )
     started_at = models.DateTimeField()
     expires_at = models.DateTimeField(db_index=True)
     active = models.BooleanField(default=True, db_index=True)
@@ -1443,6 +1462,8 @@ class FriendNotification(models.Model):
         FRIEND_PLAN = "friend_plan", "Friend plan"
         # A friend invited me to their tour de pub.
         FRIEND_TOUR_INVITE = "friend_tour_invite", "Friend tour invite"
+        # A friend nudged me directly, without a pub ("cinknutí").
+        FRIEND_PING = "friend_ping", "Friend ping"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     recipient = models.ForeignKey(
@@ -1602,6 +1623,44 @@ class FriendActivityReaction(models.Model):
 
     def __str__(self) -> str:
         return f"FriendActivityReaction({self.account_id} -> {self.activity_id}: {self.kind})"
+
+
+class FriendHomeCheckin(models.Model):
+    """A guest who arrived at a friend's home evening ("Jsem u Kláry").
+
+    The evening is the host's ``FriendPubActivity`` with ``place_kind=home``.
+    Stores only that the guest is there, never where: the address lives on the
+    activity and is read by invitees only. Leaving keeps the row with
+    ``left_at`` so an offline retry of the arrival cannot silently undo it.
+    """
+
+    activity = models.ForeignKey(
+        "pubs.FriendPubActivity",
+        on_delete=models.CASCADE,
+        related_name="home_checkins",
+    )
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="home_checkins",
+    )
+    client_id = models.UUIDField(help_text="Client idempotency key of the arrival.")
+    joined_at = models.DateTimeField(default=timezone.now)
+    left_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Friend home check-in"
+        verbose_name_plural = "Friend home check-ins"
+        ordering = ["joined_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "account"], name="unique_home_checkin_per_account"
+            )
+        ]
+        indexes = [models.Index(fields=["account", "left_at"])]
+
+    def __str__(self) -> str:
+        return f"FriendHomeCheckin({self.account_id} @ {self.activity_id})"
 
 
 class PartyEvening(models.Model):
