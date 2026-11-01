@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 
 import { checkLocationPermission } from '@/compass/permissions';
 import { pubInfoFromPub, usePubInfoFacts } from '@/components/amenities/pubInfoContext';
+import { computeOpenState } from '@/data/communityHours';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
 import { fetchPubHours } from '@/data/hoursClient';
 import { fetchPubAmenities, type WireAmenityAggregate, type WireAmenityCompleteness } from '@/data/pubAmenitiesClient';
@@ -18,6 +19,8 @@ import { usePubVisitSummary } from '@/pubPage/usePubVisitSummary';
 import { isBeerListOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
 import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubPageStore } from '@/stores/pubPageStore';
+
+import { hoursNow } from './format';
 
 const CELL = /^[0123456789bcdefghjkmnpqrstuvwxyz]{8}$/;
 const POSITION_MAX_AGE_MS = 5 * 60 * 1000;
@@ -197,10 +200,20 @@ export function usePubDetails(initial: Pub | null, key: string) {
     () => (pub ? currentTaps(override, isBeerListOverrideCurrent(override, pub.beersUpdatedAt), pub.beers) : []),
     [override, pub],
   );
+  // The page asks the server once, so hours filled in here show from the local edit until the next visit.
+  const hours = useMemo(() => {
+    const local = override?.hours;
+    const serverAt = pub?.hoursUpdatedAt ? Date.parse(pub.hoursUpdatedAt) : 0;
+    if (local && !(override.updatedAt <= serverAt)) {
+      const open = computeOpenState(local, now);
+      return hoursNow({ hoursStatus: 'ok', isOpenNow: open.isOpenNow, nextChange: open.nextChange });
+    }
+    return hoursNow(pub ?? {});
+  }, [now, override, pub]);
   const shownEvents = useMemo(
     () => visibleEvents(pub ? events.filter((event) => isEventOfPub(event, pub)) : events, now).map(inPubTime),
     [events, now, pub],
   );
 
-  return { pub, hoursLoaded, taps, events: shownEvents, beersLastWeek, mappedPercent, visit, aggregates, identityKey, now };
+  return { pub, hoursLoaded, hours, taps, events: shownEvents, beersLastWeek, mappedPercent, visit, aggregates, identityKey, now };
 }

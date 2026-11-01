@@ -21,7 +21,7 @@ import { Icon } from '../../components/Icon';
 import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../components/ui';
 import { toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
-import { distanceLabel, hoursNow } from './format';
+import { distanceLabel } from './format';
 import { GRAY_MAP } from './NvMap';
 import { nvPubParams, showOnKompas, useKompasState } from './state';
 import { usePubDetails, useParamPub, useRecentPosition } from './usePubPage';
@@ -126,7 +126,7 @@ export function PubScreen() {
 
   const fav = Boolean(favoriteKey);
   const distance = position ? haversineMeters(position, pub) : null;
-  const hours = hoursNow(pub);
+  const hours = details.hours;
   const params = nvPubParams(pub);
   const area = pub.city || pub.address || '';
   const toggleFavorite = () => {
