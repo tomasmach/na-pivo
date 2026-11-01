@@ -1,27 +1,46 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
+
+import { fetchFriendsLive } from '@/data/friendsClient';
+import { t } from '@/i18n';
+import { buildLivePubs } from '@/map/mapModel';
 
 import { Sheet } from '../../components/overlays';
 import { Icon, type IconName } from '../../components/Icon';
 import { Card, Press, Row, T, Toggle } from '../../components/ui';
-import { FRIENDS } from '../../mock/data';
-import { useMock } from '../../mock/store';
 import { C, s, shadow } from '../../theme';
+import { useKompasState, type MapView } from './state';
 
-const VIEWS: { key: 'okoli' | 'stopy' | 'parta'; label: string; icon: IconName }[] = [
-  { key: 'okoli', label: 'V okolí', icon: 'map-pin' },
-  { key: 'stopy', label: 'Moje stopy', icon: 'footprints' },
-  { key: 'parta', label: 'Parta teď', icon: 'users' },
+const VIEWS: { key: MapView; label: () => string; icon: IconName }[] = [
+  { key: 'okoli', label: () => t.nv.kompas.viewNearby, icon: 'map-pin' },
+  { key: 'stopy', label: () => t.nv.kompas.viewTraces, icon: 'footprints' },
+  { key: 'parta', label: () => t.nv.kompas.viewParty, icon: 'users' },
 ];
 
+/** How many friends sit at a pub right now, or null before the answer comes. */
+function useLiveFriendCount(): number | null {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchFriendsLive(controller.signal).then((live) => {
+      if (controller.signal.aborted || !live) return;
+      const people = new Set(buildLivePubs(live.activeFriends).flatMap((pub) => pub.activities.map((a) => a.account.id)));
+      setCount(people.size);
+    });
+    return () => controller.abort();
+  }, []);
+  return count;
+}
+
 export function VrstvySheet() {
-  const st = useMock();
-  const live = FRIENDS.filter((f) => f.live).length + 1;
+  const L = t.nv.kompas;
+  const st = useKompasState();
+  const live = useLiveFriendCount();
   return (
-    <Sheet title="Mapa ukazuje" scroll={false}>
+    <Sheet title={L.layersTitle} scroll={false}>
       <View style={{ gap: 12 }}>
         <T s={15} w={700} c={C.muted}>
-          Pohled
+          {L.viewGroup}
         </T>
         <View style={[s.row, { gap: 8 }]}>
           {VIEWS.map((v) => {
@@ -45,9 +64,9 @@ export function VrstvySheet() {
               >
                 <Icon name={v.icon} size={22} color={on ? C.yellow : C.white} />
                 <T s={15} w={700} c={on ? C.yellow : C.white}>
-                  {v.label}
+                  {v.label()}
                 </T>
-                {v.key === 'parta' ? (
+                {v.key === 'parta' && live ? (
                   <View style={[{ position: 'absolute', right: 12, top: 12, width: 22, height: 22, borderRadius: 11, backgroundColor: C.yellow }, s.center]}>
                     <T s={12} w={800} c={C.black}>
                       {live}
@@ -61,13 +80,13 @@ export function VrstvySheet() {
       </View>
       <View style={{ gap: 12 }}>
         <T s={15} w={700} c={C.muted}>
-          Na pinech
+          {L.pinsGroup}
         </T>
         <View style={[s.row, { height: 42, borderRadius: 21, padding: 3, backgroundColor: '#FFFFFF12' }]}>
           {(
             [
-              ['price', 'Cena piva', 'banknote'],
-              ['count', 'Počty piv za týden', 'beer'],
+              ['price', L.pinPrice, 'banknote'],
+              ['count', L.pinCount, 'beer'],
             ] as const
           ).map(([k, label, icon]) => {
             const on = st.pinMode === k;
@@ -87,7 +106,7 @@ export function VrstvySheet() {
           })}
         </View>
         <Card>
-          <Row last title="Jen kde se minulý týden pilo" trailing={<Toggle value={st.onlyDrunk} onChange={(v) => st.set({ onlyDrunk: v })} />} />
+          <Row last title={L.onlyDrunk} trailing={<Toggle value={st.onlyDrunk} onChange={(v) => st.set({ onlyDrunk: v })} />} />
         </Card>
       </View>
     </Sheet>
