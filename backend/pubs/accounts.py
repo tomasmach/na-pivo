@@ -1750,6 +1750,8 @@ def _merge_beer_photo_tree(
             "pub_cache_key",
             "pub_name",
             "pub_city",
+            "beer_name",
+            "beer_key",
         ):
             if not getattr(target_photo, field_name) and getattr(source_photo, field_name):
                 setattr(target_photo, field_name, getattr(source_photo, field_name))

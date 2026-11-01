@@ -12057,6 +12057,8 @@ def _export_account_data(account: Account) -> dict:
             "quiet_hours_start": account.quiet_hours_start,
             "quiet_hours_end": account.quiet_hours_end,
             "excluded_from_leaderboards": account.excluded_from_leaderboards,
+            "share_default": account.share_default,
+            "night_autopublish": account.night_autopublish,
         },
         "auth_sessions": [
             {
@@ -12250,6 +12252,7 @@ def _export_account_data(account: Account) -> dict:
                 "pub_cache_key": photo.pub_cache_key or None,
                 "pub_name": photo.pub_name or None,
                 "pub_city": photo.pub_city or None,
+                "beer_name": photo.beer_name or None,
                 "visibility": photo.visibility,
                 "taken_at": _iso(photo.taken_at),
                 "created_at": _iso(photo.created_at),
