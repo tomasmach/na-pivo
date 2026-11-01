@@ -231,7 +231,6 @@ export const stamgastEn: typeof stamgastCs = {
   spentPrivate: 'Spent, only you see it',
   cheers: 'Cheers, see you next time.',
   howWasIt: 'How was it?',
-  ratingPublic: 'everyone will see it',
   ratedSub: (n: number, pub: string) => `${n}× · ${pub}`,
   sticker: 'Story sticker',
   receiptMissing: "This evening isn't in your diary.",

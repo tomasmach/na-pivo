@@ -247,7 +247,6 @@ export const stamgastCs = {
   spentPrivate: 'Útrata, vidíš jen ty',
   cheers: 'Na zdraví a zas příště.',
   howWasIt: 'Jak chutnalo?',
-  ratingPublic: 'uvidí všichni',
   ratedSub: (n: number, pub: string) => `${n}× · ${pub}`,
   sticker: 'Nálepka na story',
   receiptMissing: 'Tenhle večer v deníku nemám.',
