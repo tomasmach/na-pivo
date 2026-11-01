@@ -151,7 +151,7 @@ export function KamosScreen() {
             ] as const
           ).map(([l, n, c]) => (
             <View key={`${l}-${c}`} style={[s.row, { gap: 12 }]}>
-              <T s={14} w={600} style={{ width: 48 }} numberOfLines={1}>
+              <T s={14} w={600} style={{ width: 104 }} numberOfLines={1}>
                 {l}
               </T>
               <View style={[s.fill, { height: 8, borderRadius: 4, backgroundColor: C.control }]}>
