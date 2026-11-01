@@ -93,8 +93,9 @@ export function useCountPlaceHost(): void {
         useNvPlaceStore.getState().pickPub(handoff);
         return;
       }
+      // An evening already running outside a pub comes back, unless a pub was picked since.
       const outside = liveOutsideContext();
-      if (outside) useNvPlaceStore.getState().setOutside(outside);
+      if (outside && !useNvPlaceStore.getState().picked) useNvPlaceStore.getState().setOutside(outside);
     }, []),
   );
 }

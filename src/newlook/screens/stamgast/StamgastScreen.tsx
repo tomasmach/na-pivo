@@ -230,11 +230,12 @@ function CounterView() {
   };
 
   const finish = () => {
-    if (!session || session.drinks.length === 0) {
+    const live = useTallyStore.getState().current;
+    if (!live || live.drinks.length === 0) {
       toast({ kind: 'info', title: copy.nothingYet, icon: 'beer' });
       return;
     }
-    const day = drinkingDayKey(new Date(session.startedAt));
+    const day = drinkingDayKey(new Date(live.startedAt));
     useTallyStore.getState().archiveCurrent('manual');
     useCounterNudges.getState().set({ stickerFor: null, tourBanner: null, newBeer: null });
     void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
