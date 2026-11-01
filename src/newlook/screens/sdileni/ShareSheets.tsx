@@ -15,7 +15,7 @@ import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, Press, Row, T, Tile, Toggle } from '../../components/ui';
 import { C, s } from '../../theme';
 import { clockTime, durationLabel, shortDay, useTonightOrLast } from '../vycep/nightData';
-import { pubShareUrl } from './pubShareUrl';
+import { buildPubShareUrl } from '@/data/pubShareLink';
 import { StickerCedule, StickerJduNaPivo, StickerKdoJde, StickerTacek, StickerUctenka, StickerVelkeCislo } from './Stickers';
 import { useStickerShare } from './useStickerShare';
 
@@ -105,7 +105,7 @@ export function SdiletHospoduSheet() {
           flex
           disabled={busy || pub.lat === null || pub.lng === null}
           onPress={() => {
-            if (pub.lat !== null && pub.lng !== null) copyLink(pubShareUrl({ name: pub.name, lat: pub.lat, lng: pub.lng }));
+            if (pub.lat !== null && pub.lng !== null) copyLink(buildPubShareUrl({ name: pub.name, lat: pub.lat, lng: pub.lng }));
           }}
         />
         <Button label={t.nv.sdileni.saveSticker} icon="download" kind="raised" flex disabled={busy} onPress={shareImage} />

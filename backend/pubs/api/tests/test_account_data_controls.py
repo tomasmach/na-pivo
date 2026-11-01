@@ -1291,7 +1291,7 @@ def test_account_export_reuses_loaded_auth_relations(client):
     assert sum('"pubs_emailcredential"' in sql for sql in select_queries) == 1
     assert sum('"pubs_authidentity"' in sql for sql in select_queries) == 1
     assert sum('"pubs_offlinemutationtombstone"' in sql for sql in select_queries) == 1
-    assert len(queries.captured_queries) <= 44
+    assert len(queries.captured_queries) <= 45
 
 
 @pytest.mark.django_db

@@ -43,7 +43,6 @@ const SHEETS = [
   'tour-pozvat',
   'nalepky',
   'sdileni-souhlas',
-  'mock',
 ];
 
 export default function NewLookLayout() {

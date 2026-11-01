@@ -1,20 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Image, Keyboard, Linking, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Keyboard, Linking, View } from 'react-native';
 import * as Location from 'expo-location';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ensureLocationPermission } from '@/compass/permissions';
-import { placeKey } from '@/counter/countDrink';
 import { formatClock } from '@/counter/useAlcoholEstimate';
-import { generateUuidV4 } from '@/data/account';
-import { pickAndPrepareBeerPhoto } from '@/data/beerPhotoPicker';
-import { enqueueBeerPhoto, persistBeerPhotoLocally } from '@/data/beerPhotosQueue';
 import { useNowTick } from '@/friends/useNowTick';
 import { intlLocale, t } from '@/i18n';
 import { enablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
-import { selectIsSignedIn, selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
 import { useHomeTransitStore } from '@/stores/homeTransitStore';
 import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
 import { sessionCount, sessionTotalCzk, useTallyStore } from '@/stores/tallyStore';
@@ -27,13 +22,10 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, Card, D, Dot, IconButton, Kicker, Press, Row, T, Tile } from '../../components/ui';
-import { photo } from '../../mock/data';
-import { useMock } from '../../mock/store';
-import { C, SCREEN_X, font, s } from '../../theme';
-import { dialog, toast } from '../../ui/store';
+import { Button, D, Kicker, Press, Row, T, Tile } from '../../components/ui';
+import { C, s } from '../../theme';
+import { toast } from '../../ui/store';
 import { GRAY_MAP } from '../kompas/NvMap';
-import { useCountPlace } from './placeStore';
 
 const CZECHIA: Region = { latitude: 49.8175, longitude: 15.473, latitudeDelta: 4.5, longitudeDelta: 4.5 };
 const STREET_DELTA = 0.014;
@@ -174,13 +166,6 @@ export function DomovskyBodScreen() {
   );
 }
 
-const WATCH_INFO: Record<string, { name: string; where?: string }> = {
-  unetice: { name: 'Únětické 12°', where: 'na čepu U Pinkasů · 1,8 km' },
-  raptor: { name: 'Matuška Raptor 15°', where: 'na čepu Pivovarský klub · 3,4 km' },
-  samuraj: { name: 'Kocour Samuraj 12°' },
-  bernard: { name: 'Bernard Černý 12°' },
-};
-
 /** "Až sedneš do hospody, cinknu ti." The offer, then what the phone will ask for. */
 export function PripominkySheet() {
   const router = useRouter();
@@ -249,14 +234,6 @@ export function PripominkySheet() {
     </Sheet>
   );
 }
-
-const ALBUM: { month: string; photos: { n: number; state?: 'upload' | 'failed' }[] }[] = [
-  {
-    month: 'Říjen 2026',
-    photos: [{ n: 1, state: 'upload' }, { n: 2, state: 'failed' }, { n: 3 }, { n: 4 }, { n: 5 }, { n: 6 }],
-  },
-  { month: 'Září 2026', photos: [{ n: 7 }, { n: 9 }, { n: 10 }, { n: 13 }, { n: 12 }] },
-];
 
 /** What the app shows outside itself: lock screen, Live Activity and notifications, from the live evening. */
 export function NotifPreviewScreen() {

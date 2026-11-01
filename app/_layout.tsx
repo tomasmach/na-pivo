@@ -111,16 +111,16 @@ import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransit
 import { useBookLayout } from '@/layout/bookLayout';
 import { noteTopPathname, openDetail } from '@/layout/openDetail';
 import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
+import { NEW_LOOK } from '@/newlook/flag';
 import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
 
-// The clickable mock of the redesign (app/nv) replaces the start screen.
-const NEW_LOOK = process.env.EXPO_PUBLIC_NEW_LOOK === '1';
-
+/** In the new look every route outside app/nv falls back to its start, so a deep link into /nv survives a cold start. */
 function NewLookGate() {
   const router = useRouter();
+  const pathname = usePathname();
   useEffect(() => {
-    if (NEW_LOOK) router.replace('/nv' as Href);
-  }, [router]);
+    if (NEW_LOOK && !pathname.startsWith('/nv')) router.replace('/nv' as Href);
+  }, [pathname, router]);
   return null;
 }
 
@@ -137,8 +137,19 @@ function OnboardingGate() {
   const decision = useOnboardingStore((s) => s.decision);
 
   useEffect(() => {
+    if (NEW_LOOK) {
+      if (
+        decision === 'show' &&
+        pathname.startsWith('/nv') &&
+        pathname !== '/nv/onboarding' &&
+        !pathname.startsWith('/nv/pozvanka-do-party') &&
+        !pathname.startsWith('/nv/tour-verejna')
+      ) {
+        router.replace('/nv/onboarding' as Href);
+      }
+      return;
+    }
     if (
-      !NEW_LOOK &&
       decision === 'show' &&
       pathname !== '/onboarding' &&
       !pathname.startsWith('/parta/pozvanka') &&
@@ -270,19 +281,24 @@ export default function RootLayout() {
   useEffect(() => {
     // Tapping a "nejsi v hospodě?" reminder jumps straight to the beer counter.
     // Handle both a running app (listener) and a cold start from the tap.
-    const navigateToCounter = () => router.push('/beer' as Href);
+    const navigateToCounter = () => router.push((NEW_LOOK ? '/nv/stamgast' : '/beer') as Href);
     // A friend push tap forces a Parta refresh (and scroll to its payload row).
     const navigateToFriends = (payload?: FriendTapPayload) => {
       usePartaSignalStore.getState().requestRefresh(payload ?? undefined);
-      router.push('/friends' as Href);
+      router.push((NEW_LOOK ? '/nv/parta' : '/friends') as Href);
     };
     // A tour reminder opens its plan; a plan deleted since falls back to the list.
-    const navigateToTour = (planId: string | null) =>
-      router.push((planId ? { pathname: '/tours/[id]', params: { id: planId } } : '/tours') as Href);
+    const navigateToTour = (planId: string | null) => {
+      if (NEW_LOOK) router.push((planId ? { pathname: '/nv/tour-pruchod', params: { id: planId } } : '/nv/tour') as Href);
+      else router.push((planId ? { pathname: '/tours/[id]', params: { id: planId } } : '/tours') as Href);
+    };
     // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
-    const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
-    const openBeerOnTapPub = ({ key, name, lat, lng }: BeerOnTapPub) =>
-      openDetail(router, { kind: 'pub', params: { key, name, lat: String(lat), lng: String(lng) } });
+    const openTourInvite = (token: string) =>
+      router.push((NEW_LOOK ? { pathname: '/nv/tour-verejna', params: { token } } : `/t/${token}`) as Href);
+    const openBeerOnTapPub = ({ key, name, lat, lng }: BeerOnTapPub) => {
+      if (NEW_LOOK) router.push({ pathname: '/nv/hospoda/[id]', params: { id: key, name, lat: String(lat), lng: String(lng) } } as Href);
+      else openDetail(router, { kind: 'pub', params: { key, name, lat: String(lat), lng: String(lng) } });
+    };
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
@@ -440,7 +456,8 @@ export default function RootLayout() {
         // offline/server failure keeps the previous state intact.
         void useAccountStore.getState().resumeSession().then((result) => {
           if (result === 'invalid') {
-            if (!pathnameRef.current.startsWith('/auth')) router.push('/auth' as Href);
+            const authPath = NEW_LOOK ? '/nv/prihlaseni' : '/auth';
+            if (!pathnameRef.current.startsWith(authPath)) router.push(authPath as Href);
             return;
           }
           // Retry a deferred history seed only after resume has settled.

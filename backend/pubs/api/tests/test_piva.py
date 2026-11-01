@@ -277,7 +277,7 @@ def test_beer_detail_keeps_old_fields_and_adds_global_numbers(client):
     assert body["pubs_pouring"] == 1
     assert body["nearest_pub"]["name"] == PUB["name"]
     assert body["nearest_pub"]["distance_m"] < 50
-    assert body["photo_count"] is None
+    assert body["photo_count"] == 0
 
     missing = client.get("/v1/beers/detail", {"product": "no-such-beer"}, **_auth(token))
     assert missing.status_code == 400
@@ -455,3 +455,58 @@ def test_beer_watch_list_says_where_the_beer_pours_within_radius(client):
     nearest = state["watches"][0]["nearest"]
     assert nearest["pub_name"] == PUB["name"]
     assert nearest["distance_m"] <= 3000
+
+
+@pytest.mark.django_db
+def test_beer_detail_and_reviews_show_only_photos_the_viewer_may_see(client, tmp_path, settings):
+    import io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    settings.MEDIA_ROOT = str(tmp_path / "media")
+    product = _products(1)[0]
+    viewer_token, _ = _register(client, "divak")
+    author_token, _ = _register(client, "fotograf")
+
+    def upload(visibility: str) -> None:
+        buf = io.BytesIO()
+        Image.new("RGB", (300, 200), (200, 150, 40)).save(buf, format="JPEG")
+        resp = client.post(
+            "/v1/beer-photos",
+            data={
+                "client_id": str(uuid.uuid4()),
+                "caption": "",
+                "visibility": visibility,
+                "beer_name": product.name,
+                "image": SimpleUploadedFile("beer.jpg", buf.getvalue(), content_type="image/jpeg"),
+            },
+            format="multipart",
+            **_auth(author_token),
+        )
+        assert resp.status_code == 201, resp.content
+
+    review = _checkin(
+        client, author_token, product, rating="4", visibility="public", note="Hezká pěna."
+    ).json()
+
+    upload("private")
+    detail = client.get("/v1/beers/detail", {"product": product.key}, **_auth(viewer_token)).json()
+    assert detail["photo_count"] == 0
+    reviews = client.get(
+        "/v1/beers/reviews", {"product": product.key}, **_auth(viewer_token)
+    ).json()
+    assert reviews["items"][0]["photo_url"] is None
+    with_photo = client.get(
+        "/v1/beers/reviews", {"product": product.key, "filter": "photo"}, **_auth(viewer_token)
+    ).json()
+    assert with_photo["total"] == 0
+
+    upload("public")
+    detail = client.get("/v1/beers/detail", {"product": product.key}, **_auth(viewer_token)).json()
+    assert detail["photo_count"] == 1
+    with_photo = client.get(
+        "/v1/beers/reviews", {"product": product.key, "filter": "photo"}, **_auth(viewer_token)
+    ).json()
+    assert [item["id"] for item in with_photo["items"]] == [review["id"]]
+    assert with_photo["items"][0]["photo_url"].startswith("http")

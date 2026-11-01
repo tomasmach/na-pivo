@@ -30,10 +30,11 @@ import { formatPrice } from '@/utils/currency';
 
 import { BottomFade, LevelAvatar, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
-import { Button, D, Press, Segmented, Stack, T, Tile } from '../../components/ui';
+import { Button, D, Press, Segmented, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import { toast } from '../../ui/store';
 import { TourRunContent } from '../tour/TourScreens';
+import { useTourSegment } from '../tour/tourSegment';
 import { logDrink, useCounterNudges } from './counterActions';
 import { FriendEveningCard, leaveFriendHome, useFriendHomeEvening } from '../parta/FriendEveningCard';
 import { DiaryView } from './DiaryView';
@@ -58,6 +59,12 @@ export function StamgastScreen() {
   const { glance } = useTourGlance();
   const tourActive = !!glance;
   const [stored, setStored] = useState<Mode>('pocitat');
+  const tourRequested = useTourSegment((st) => st.requested);
+  const [seenTourRequest, setSeenTourRequest] = useState(0);
+  if (tourRequested !== seenTourRequest) {
+    setSeenTourRequest(tourRequested);
+    setStored('tour');
+  }
   const mode = stored === 'tour' && !tourActive ? 'pocitat' : stored;
   const copy = t.nv.stamgast;
   const options: { key: Mode; label: string }[] = [
@@ -411,7 +418,7 @@ function CounterView() {
               onPress={() => {
                 const beer = nudges.newBeer;
                 nudges.set({ newBeer: null });
-                if (beer) router.push({ pathname: '/nv/hodnoceni', params: { id: beer.name, name: beer.name, pub: beer.pubName } });
+                if (beer) router.push({ pathname: '/nv/hodnoceni', params: { id: '-', name: beer.name, pub: beer.pubName } });
               }}
               style={[s.row, { height: 40, borderRadius: 20, paddingHorizontal: 14, gap: 6, backgroundColor: C.control }]}
             >

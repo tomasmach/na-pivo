@@ -317,7 +317,10 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
         </View>
       ) : null}
       {beer.photoCount ? (
-        <Press onPress={() => router.push('/nv/pivni-fotky')} style={[s.row, { justifyContent: 'space-between' }]}>
+        <Press
+          onPress={() =>
+            router.push({ pathname: '/nv/pivni-fotky', params: beer.productKey ? { beer: beer.productKey } : { name: beer.beerName } })
+          } style={[s.row, { justifyContent: 'space-between' }]}>
           <T s={17} w={700}>
             {b.photos}
           </T>

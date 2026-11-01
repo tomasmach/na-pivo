@@ -65,7 +65,6 @@ export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: (
     <Press
       haptic
       onPress={onPress ?? (() => router.push('/nv/profil'))}
-      onLongPress={() => router.push('/nv/mock')}
       accessibilityRole="button"
       accessibilityLabel={t.nv.profil.chrome.avatarA11y(me.xp?.level ?? null)}
       style={{ width: size, height: size }}

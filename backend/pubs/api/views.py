@@ -8745,7 +8745,9 @@ class BeerDetailView(APIView):
                     many=True,
                     context=_beer_checkin_context(request),
                 ).data,
-                **piva_views.beer_global_detail(product, *piva_views._location(request)),
+                **piva_views.beer_global_detail(
+                    product, *piva_views._location(request), viewer=request.user
+                ),
             },
             status=status.HTTP_200_OK,
         )

@@ -230,7 +230,7 @@ export function PubScreen() {
         <Section title={L().onTap} meta={verified}>
           {details.taps.length ? (
             details.taps.map((tap, i) => (
-              <Press key={`${tap.name}-${tap.volumeMl ?? ''}`} onPress={() => router.push({ pathname: '/nv/pivo/[id]', params: { id: tap.name, beer: tap.name } })}>
+              <Press key={`${tap.name}-${tap.volumeMl ?? ''}`} onPress={() => router.push({ pathname: '/nv/pivo/[id]', params: { id: '-', name: tap.name } })}>
                 <Line
                   title={tap.name}
                   sub={tap.volumeMl ? formatVolume(tap.volumeMl) : undefined}

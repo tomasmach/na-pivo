@@ -13,6 +13,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from pubs.beer_catalog import BeerCatalogMatchCache, match_beer_identity, suggest_beers
+from pubs.beer_photo_gallery import visible_beer_photo_count, visible_beer_photos
 from pubs.beer_ranking import (
     STYLES,
     is_early,
@@ -21,7 +22,7 @@ from pubs.beer_ranking import (
     star_shares,
     tag_shares,
 )
-from pubs.models import Account, BeerCheckIn, BeerProduct, BeerRanking, DrinkLog
+from pubs.models import Account, BeerCheckIn, BeerPhoto, BeerProduct, BeerRanking, DrinkLog
 
 from .authentication import AccountTokenAuthentication
 
@@ -58,16 +59,47 @@ def _location(request: Request) -> tuple[float | None, float | None]:
     return lat, lng
 
 
-def beer_photo_count(product: BeerProduct | None) -> int | None:
-    """Photos of this beer for the beer page. None until beer photos carry the beer they show."""
+def beer_photo_count(product: BeerProduct | None, viewer: Account) -> int | None:
+    """Photos of this beer the viewer may see, for the beer page."""
 
-    return None
+    if product is None:
+        return None
+    return visible_beer_photo_count(viewer, beer=product.key)
 
 
 def review_photos(checkins: list[BeerCheckIn], request: Request) -> dict[int, str]:
-    """Photo URL per check-in id for reviews. Empty until beer photos carry the beer they show."""
+    """The author's latest photo of the same beer per review, only if the viewer may see it."""
 
-    return {}
+    from pubs.api.views import _accepted_friend_ids, _blocked_account_ids
+
+    if not checkins:
+        return {}
+    viewer = request.user
+    photos = (
+        visible_beer_photos(
+            viewer,
+            friend_ids=set(_accepted_friend_ids(viewer)),
+            blocked_ids=_blocked_account_ids(viewer),
+        )
+        .filter(
+            account_id__in={row.account_id for row in checkins},
+            beer_key__in={row.beer_key for row in checkins},
+        )
+        .order_by("-created_at")
+    )
+    latest: dict[tuple[int, str], BeerPhoto] = {}
+    for photo in photos[:500]:
+        latest.setdefault((photo.account_id, photo.beer_key), photo)
+    urls: dict[int, str] = {}
+    for row in checkins:
+        photo = latest.get((row.account_id, row.beer_key))
+        if photo is None:
+            continue
+        try:
+            urls[row.pk] = request.build_absolute_uri(photo.image.url)
+        except ValueError:
+            continue
+    return urls
 
 
 def resolve_product(
@@ -81,7 +113,9 @@ def resolve_product(
     return match.product if match is not None else None
 
 
-def beer_global_detail(product: BeerProduct | None, lat: float | None, lng: float | None) -> dict:
+def beer_global_detail(
+    product: BeerProduct | None, lat: float | None, lng: float | None, viewer: Account
+) -> dict:
     """The additive, everyone-wide part of GET /v1/beers/detail."""
 
     row = BeerRanking.objects.filter(product=product).first() if product is not None else None
@@ -102,7 +136,7 @@ def beer_global_detail(product: BeerProduct | None, lat: float | None, lng: floa
         "drunk_week": row.drunk_week if row is not None else 0,
         "pubs_pouring": pubs["count"] if pubs else 0,
         "nearest_pub": pubs["nearest"] if pubs else None,
-        "photo_count": beer_photo_count(product),
+        "photo_count": beer_photo_count(product, viewer),
     }
 
 

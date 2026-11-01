@@ -166,7 +166,7 @@ export function UctenkaScreen() {
                   </View>
                   <Press
                     haptic
-                    onPress={() => router.push({ pathname: '/nv/hodnoceni', params: { id: beer.name, name: beer.name, pub: pubName } })}
+                    onPress={() => router.push({ pathname: '/nv/hodnoceni', params: { id: '-', name: beer.name, pub: pubName } })}
                     style={[s.row, { height: 38, borderRadius: 19, paddingHorizontal: 12, gap: 6, backgroundColor: C.control }]}
                   >
                     <Icon name="star" size={16} color={C.yellow} />

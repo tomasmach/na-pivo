@@ -86,7 +86,8 @@ export type FriendNotificationKind =
   | 'friend_at_pub'
   | 'friend_rsvp'
   | 'friend_cheers'
-  | 'friend_plan';
+  | 'friend_plan'
+  | 'friend_ping';
 
 export interface FriendNotification {
   id: string;

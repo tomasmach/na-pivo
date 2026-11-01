@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Image, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { countDrink, placeKey, type CountPlace } from '@/counter/countDrink';
@@ -15,12 +15,10 @@ import { useTallyStore } from '@/stores/tallyStore';
 import { formatPrice } from '@/utils/currency';
 
 import { BackHeader, Screen } from '../../components/chrome';
-import { Field, FieldLabel, Input } from '../../components/forms';
+import { Field, Input } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, Segmented, T } from '../../components/ui';
-import { beerById, photo } from '../../mock/data';
-import { useMock } from '../../mock/store';
 import { C, font, s } from '../../theme';
 import { toast } from '../../ui/store';
 import { beerTally, dateOfDay, dayKeyOf, dayString, hourlyTempo, minutesBetween, nightsOf } from './eveningData';
@@ -619,5 +617,3 @@ export function OdhadSheet() {
   );
 }
 
-const TAGS = ['Má říz', 'Pěna jak smetana', 'Jde samo', 'Vodový', 'Zvětralý', 'Předražený', 'Ještě jedno', 'Už nikdy'];
-const VERDICT = ['', 'Nic moc', 'Ujde', 'Dobrý', 'Moc dobrý', 'Pecka'];
