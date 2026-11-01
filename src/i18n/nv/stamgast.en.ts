@@ -17,9 +17,8 @@ export const stamgastEn: typeof stamgastCs = {
   undo: 'Undo',
 
   placeUnknown: 'Where are you sitting?',
-  friendHome: "At Klara's place",
   tonight: (n: number) => `${englishPlural(n, BEER)} tonight`,
-  atFriend: (n: number) => `${englishPlural(n, BEER)} at Klara's`,
+  atFriend: (n: number, host: string) => `${englishPlural(n, BEER)} at ${host}’s`,
   tonightA11y: (n: number) => `${n} ${englishPlural(n, BEER)} tonight`,
   statSpent: 'spent',
   statTable: 'at the table',
@@ -148,7 +147,7 @@ export const stamgastEn: typeof stamgastCs = {
 
   eveningTitle: (weekday: string, day: number, month: number) => `${weekday} ${day}/${month}`,
   eveningMissing: "This evening isn't in your diary.",
-  statBeers: 'beers',
+  statBeers: (n: number) => englishPlural(n, BEER),
   durationShort: (h: number, m: number) => `${h} h ${m} m`,
   tempo: 'Pace by the hour',
   tempoPeak: (n: number, hour: number) => `${n} ${englishPlural(n, BEER)} at ${hour}:00`,

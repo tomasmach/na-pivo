@@ -98,7 +98,7 @@ export const pivaCs = {
 
   rating: {
     verdict: ['', 'Nic moc', 'Ujde', 'Dobrý', 'Moc dobrý', 'Pecka'],
-    starsA11y: (n: number) => `${n} hvězd`,
+    starsA11y: (n: number) => `${n} ${czechPlural(n, { one: 'hvězda', few: 'hvězdy', many: 'hvězd' })}`,
     save: 'Uložit hodnocení',
     saved: 'Hodnocení uložené',
     tagsLabel: 'Štítky',

@@ -351,7 +351,7 @@ export function EveningDetailScreen() {
       <View style={[s.row, { justifyContent: 'space-between' }]}>
         {(
           [
-            [String(night.beers), copy.statBeers, C.yellow],
+            [String(night.beers), copy.statBeers(night.beers), C.yellow],
             [night.priced ? formatPrice(night.spentCzk, currency) : copy.dash, copy.statSpent, C.white],
             [copy.durationShort(Math.floor(minutes / 60), minutes % 60), copy.statTable, C.white],
           ] as const

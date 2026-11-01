@@ -21,9 +21,8 @@ export const stamgastCs = {
 
   // Counter
   placeUnknown: 'Kde sedíš?',
-  friendHome: 'U Kláry doma',
   tonight: (n: number) => `${czechPlural(n, PIVO)} dnes večer`,
-  atFriend: (n: number) => `${czechPlural(n, PIVO)} u Kláry`,
+  atFriend: (n: number, host: string) => `${czechPlural(n, PIVO)} u ${host}`,
   tonightA11y: (n: number) => `${n} ${czechPlural(n, PIVO)} dnes večer`,
   statSpent: 'útrata',
   statTable: 'u stolu',
@@ -161,7 +160,7 @@ export const stamgastCs = {
   // Evening detail
   eveningTitle: (weekday: string, day: number, month: number) => `${weekday} ${day}. ${month}.`,
   eveningMissing: 'Tenhle večer v deníku nemám.',
-  statBeers: 'piv',
+  statBeers: (n: number) => czechPlural(n, PIVO),
   durationShort: (h: number, m: number) => `${h} h ${m} m`,
   tempo: 'Tempo po hodinách',
   tempoPeak: (n: number, hour: number) => `${n} ${czechPlural(n, PIVO)} ve ${hour}:00`,

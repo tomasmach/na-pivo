@@ -272,7 +272,7 @@ function CounterView() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_X, paddingTop: 20, gap: 20, paddingBottom: tabSpace + 100 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_X, paddingTop: 20, gap: 20, paddingBottom: tabSpace + (nudges.newBeer ? 180 : 100) }}>
         <View style={{ alignItems: 'center' }}>
           <Press
             haptic
@@ -293,7 +293,7 @@ function CounterView() {
             </D>
           </Animated.View>
           <T s={17} w={600} c={C.text2}>
-            {atFriend ? copy.atFriend(count) : copy.tonight(count)}
+            {atFriend && friendHome ? copy.atFriend(count, friendHome.hostName) : copy.tonight(count)}
           </T>
           <View style={[s.row, { gap: 28, paddingTop: 8 }]}>
             {atFriend ? null : <Stat value={formatPrice(spent, priceCurrency)} label={copy.statSpent} />}
