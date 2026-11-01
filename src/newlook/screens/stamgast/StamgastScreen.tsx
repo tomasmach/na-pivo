@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatClock, formatPromile, useAlcoholEstimate } from '@/counter/useAlcoholEstimate';
 import { placeKey, removeCountedDrink, type CountableDrink } from '@/counter/countDrink';
 import { trackClientEvent } from '@/data/telemetryClient';
-import { normalizeDrinkType, type ServingType } from '@/drinks/drinkTypes';
+import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useNowTick } from '@/friends/useNowTick';
 import { beerCountLabel, formatVolume, t } from '@/i18n';
 import { useHomeTransitStore } from '@/stores/homeTransitStore';
@@ -37,6 +37,7 @@ import { toast } from '../../ui/store';
 import { TourRunContent } from '../tour/TourScreens';
 import { logDrink, useCounterNudges } from './counterActions';
 import { DiaryView } from './DiaryView';
+import { durationLabel, servingLine } from './stamgastFormat';
 import { currentCountPlace, useCountPlace, useCountPlaceHost, useNvPlaceStore } from './placeStore';
 
 type Mode = 'pocitat' | 'denik' | 'tour';
@@ -73,7 +74,7 @@ export function StamgastScreen() {
       {mode === 'pocitat' ? (
         <CounterView />
       ) : mode === 'denik' ? (
-        <DiaryView />
+        <DiaryView onToday={() => setStored('pocitat')} />
       ) : (
         <TourTab tabSpace={tabSpace} />
       )}
@@ -175,25 +176,6 @@ function QuickAction({ icon, label, onPress }: { icon: IconName; label: string; 
       </T>
     </Press>
   );
-}
-
-export function durationLabel(minutes: number): string {
-  const copy = t.nv.stamgast;
-  return minutes >= 60 ? copy.durationHm(Math.floor(minutes / 60), minutes % 60) : copy.durationM(minutes);
-}
-
-/** "čepované · 0,5 l", "lahváč · 0,5 l" or just the volume of a non-beer. */
-export function servingLine(drink: Pick<TallyDrink, 'drinkType' | 'servingType' | 'volumeMl'>, inPub: boolean): string {
-  const serving: ServingType | undefined = drink.servingType;
-  const kind =
-    normalizeDrinkType(drink.drinkType) !== 'beer'
-      ? null
-      : serving && serving !== 'unknown' && serving !== 'draft'
-        ? t.counter.servingTypeLabel(serving).toLowerCase()
-        : inPub || serving === 'draft'
-          ? t.nv.stamgast.draft
-          : null;
-  return [kind, drink.volumeMl ? formatVolume(drink.volumeMl) : null].filter(Boolean).join(' · ');
 }
 
 function CounterView() {

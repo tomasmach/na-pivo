@@ -22,16 +22,15 @@ export function usePubMenu(pub: Pub | null): PubMenu {
   const cell = pub ? geohash8(pub.lat, pub.lng) : null;
   const override = useCommunityStore((s) => (cell ? s.overrides[cell] : undefined));
   const [answer, setAnswer] = useState<{ pubId: string; beers: CommunityBeer[]; historicalBeers: CommunityBeer[]; updatedAt: string | null } | null>(null);
-  const [loadingFor, setLoadingFor] = useState<string | null>(null);
+  const [doneFor, setDoneFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!pub) return undefined;
     const controller = new AbortController();
-    setLoadingFor(pub.id);
     void fetchPubHours([pub], controller.signal).then((results) => {
       if (controller.signal.aborted) return;
       const result = results.get(pub.id);
-      setLoadingFor(null);
+      setDoneFor(pub.id);
       if (result) {
         setAnswer({ pubId: pub.id, beers: result.beers, historicalBeers: result.historicalBeers, updatedAt: result.beersUpdatedAt });
       }
@@ -43,7 +42,7 @@ export function usePubMenu(pub: Pub | null): PubMenu {
   const overrideCurrent = isBeerListOverrideCurrent(override, server?.updatedAt ?? pub?.beersUpdatedAt);
   const beers = overrideCurrent && override?.beers ? override.beers : server?.beers.length ? server.beers : (pub?.beers ?? []);
   const historicalBeers = overrideCurrent && override?.historicalBeers ? override.historicalBeers : (server?.historicalBeers ?? pub?.historicalBeers ?? []);
-  return { beers, historicalBeers, fresh: !!server, loading: !!pub && loadingFor === pub.id };
+  return { beers, historicalBeers, fresh: !!server, loading: !!pub && doneFor !== pub.id };
 }
 
 /** Add beers to a pub's menu for everyone: shown here at once, queued for the server. */

@@ -26,6 +26,7 @@ import { logDrink } from './counterActions';
 import { beerTally, drinkTally } from './eveningData';
 import { useBackfillPick, useCountPlace, useNvPlaceStore } from './placeStore';
 import { addBeersToMenu, usePubMenu } from './pubMenu';
+import { distanceLabel } from './stamgastFormat';
 
 type Kind = 'pivo' | 'vino' | 'nealko' | 'panak';
 type HomeServing = 'lahvac' | 'plech' | 'jinak';
@@ -46,11 +47,6 @@ type Option = {
   sizes: CommunityBeer[];
   servingType?: ServingType;
 };
-
-export function distanceLabel(meters: number): string {
-  if (meters < 1000) return `${Math.max(10, Math.round(meters / 10) * 10)} m`;
-  return `${(meters / 1000).toLocaleString(intlLocale, { maximumFractionDigits: 1 })} km`;
-}
 
 function useAllSessions() {
   const current = useTallyStore((st) => st.current);
@@ -417,7 +413,7 @@ export function PridatPivoSheet() {
   const sessions = useAllSessions();
   const [q, setQ] = useState('');
   const [near, setNear] = useState<{ state: 'loading' | 'failed' | 'ok'; beers: NearbyBeer[] }>({ state: 'loading', beers: [] });
-  const [found, setFound] = useState<BeerBrandSuggestion[]>([]);
+  const [found, setFound] = useState<{ query: string; list: BeerBrandSuggestion[] }>({ query: '', list: [] });
 
   useEffect(() => {
     if (!pub) return undefined;
@@ -430,15 +426,12 @@ export function PridatPivoSheet() {
 
   useEffect(() => {
     const query = q.trim();
-    if (query.length < 2) {
-      setFound([]);
-      return undefined;
-    }
+    if (query.length < 2) return undefined;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       const area = pub ? { lat: pub.lat, lng: pub.lng, radiusKm: 3 } : null;
       void suggestBeerBrands(query, controller.signal, 6, '', area).then((list) => {
-        if (!controller.signal.aborted) setFound(list);
+        if (!controller.signal.aborted) setFound({ query, list });
       });
     }, 250);
     return () => {
@@ -483,7 +476,7 @@ export function PridatPivoSheet() {
       {q.trim().length >= 2 ? (
         <View style={{ gap: 4 }}>
           <Kicker>{copy.fromCatalogue}</Kicker>
-          {found.map((b) => (
+          {(found.query === q.trim() ? found.list : []).map((b) => (
             <Row key={`${b.kind ?? 'x'}:${b.slug}`} leading={tile} title={b.name} titleWeight={700} sub={b.brandName && b.brandName !== b.name ? b.brandName : undefined} trailing={plusIcon} onPress={() => pick(b.name)} />
           ))}
           <Row last leading={tile} title={copy.addTyped(q.trim())} titleWeight={700} trailing={plusIcon} onPress={() => pick(q.trim())} />
