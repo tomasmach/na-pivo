@@ -3,12 +3,14 @@ import { Image, View, type ScrollViewProps, type StyleProp, type ViewStyle } fro
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { t } from '@/i18n';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
+import { useKeyboardLift } from '../motion';
 import { useMe, useUnopenedBadges } from '../screens/profil/profilModel';
 import { useProfilWatchers } from '../screens/profil/useProfilWatchers';
 import { C, SCREEN_X, TAB_BAR_HEIGHT, s, shadow } from '../theme';
@@ -29,7 +31,7 @@ export function Glass({
 }) {
   if (glassAvailable) {
     return (
-      <GlassView style={[style, shadow.glass]} glassEffectStyle="regular" tintColor={tint ?? '#1A1A1A80'} isInteractive>
+      <GlassView style={[style, shadow.glass]} glassEffectStyle="regular" tintColor={tint ?? '#1A1A1A80'}>
         {children}
       </GlassView>
     );
@@ -199,13 +201,22 @@ export function Screen({
   const tabSpace = useTabBarSpace();
   const bottomBase = tab ? tabSpace : Math.max(insets.bottom, 16);
   const [footerH, setFooterH] = useState(52);
-  const keyboard = useKeyboardHeight();
+  const keyboard = useKeyboardLift();
+  const footerBottom = bottomBase + (tab ? 14 : 0);
+  const footerLift = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(0, keyboard.value + 12 - footerBottom) }],
+  }));
+  // With the keyboard up the scroll area stops where the lifted footer starts, so the
+  // focused field scrolls above the footer, not under it. The strip it gives up sits
+  // under the resting footer and its fade, so the switch is never visible.
+  const keyboardUp = useKeyboardHeight() > 0;
+  const footerRoom = footer && keyboardUp ? footerH + 24 : 0;
   const footerSpace = footer ? footerH + 32 : 0;
   const content = (
     <View style={[{ paddingHorizontal: SCREEN_X, gap, paddingTop: padTop }, contentStyle]}>{children}</View>
   );
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingBottom: footerRoom }}>
       <View style={{ paddingTop: insets.top + 8 }}>
         {header ? <View style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>{header}</View> : null}
       </View>
@@ -223,12 +234,12 @@ export function Screen({
       )}
       <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} />
       {footer ? (
-        <View
+        <Animated.View
           onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
-          style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: keyboard > 0 ? keyboard + 12 : bottomBase + (tab ? 14 : 0) }}
+          style={[{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: footerBottom }, footerLift]}
         >
           {footer}
-        </View>
+        </Animated.View>
       ) : null}
     </View>
   );

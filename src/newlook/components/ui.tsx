@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Pressable,
+  StyleSheet,
   Text,
   View,
   type PressableProps,
@@ -9,10 +10,12 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { fireSelectionHaptic } from '@/utils/haptics';
 
+import { DURATION, fadeInTiming, layoutMove } from '../motion';
 import { C, display, font, s, shadow, type Weight } from '../theme';
 import { Icon, type IconName } from './Icon';
 
@@ -34,20 +37,43 @@ export function D({ s: size = 44, c = C.white, lh = 1.05, style, ...rest }: TPro
   return <Text maxFontSizeMultiplier={1.1} {...rest} style={[display(size, c, lh), style]} />;
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const PRESS_IN = fadeInTiming(DURATION.press);
+const PRESS_OUT = fadeInTiming(DURATION.base);
+
+/** Dims and shrinks a touch on the UI thread while held; scale never moves layout. */
 export function Press({
   style,
   haptic = false,
   onPress,
+  onPressIn,
+  onPressOut,
   ...rest
 }: Omit<PressableProps, 'style'> & { style?: StyleProp<ViewStyle>; haptic?: boolean }) {
+  const pressed = useSharedValue(0);
+  const reduced = useReducedMotion();
+  const flatOpacity = StyleSheet.flatten(style)?.opacity;
+  const restOpacity = typeof flatOpacity === 'number' ? flatOpacity : 1;
+  const pressStyle = useAnimatedStyle(() => ({
+    opacity: restOpacity * (1 - 0.15 * pressed.value),
+    transform: [{ scale: reduced ? 1 : 1 - 0.03 * pressed.value }],
+  }));
   return (
-    <Pressable
+    <AnimatedPressable
       {...rest}
+      onPressIn={(e) => {
+        pressed.value = withTiming(1, PRESS_IN);
+        onPressIn?.(e);
+      }}
+      onPressOut={(e) => {
+        pressed.value = withTiming(0, PRESS_OUT);
+        onPressOut?.(e);
+      }}
       onPress={(e) => {
         if (haptic) fireSelectionHaptic();
         onPress?.(e);
       }}
-      style={({ pressed }) => [style, pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] }]}
+      style={[style, pressStyle]}
     />
   );
 }
@@ -388,7 +414,7 @@ export function Toggle({ value, onChange }: { value: boolean; onChange: (v: bool
         alignItems: value ? 'flex-end' : 'flex-start',
       }}
     >
-      <View style={{ width: 27, height: 27, borderRadius: 14, backgroundColor: value ? C.black : '#FFFFFF' }} />
+      <Animated.View layout={layoutMove} style={{ width: 27, height: 27, borderRadius: 14, backgroundColor: value ? C.black : '#FFFFFF' }} />
     </Press>
   );
 }

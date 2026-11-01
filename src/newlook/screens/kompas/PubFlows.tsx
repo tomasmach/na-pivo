@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import Animated, { ZoomIn } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +27,7 @@ import { Field, Input, PageTitle, Stepper, Ticket } from '../../components/forms
 import { Icon } from '../../components/Icon';
 import { Button, Card, D, IconButton, Kicker, Person, Row, Segmented, T, Toggle } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
+import { riseIn } from '../../motion';
 import { C, s } from '../../theme';
 import { useParamPub } from './usePubPage';
 
@@ -428,7 +429,7 @@ export function PrichodScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) + 4, paddingHorizontal: 12, gap: 20 }}>
       <Animated.View
-        entering={ZoomIn.springify().damping(16)}
+        entering={riseIn}
         style={{ flex: 1, backgroundColor: C.yellow, borderRadius: 32, paddingTop: 24, paddingHorizontal: 24, paddingBottom: 28, justifyContent: 'space-between' }}
       >
         <View style={{ gap: 6 }}>
