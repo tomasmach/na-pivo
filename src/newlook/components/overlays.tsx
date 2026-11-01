@@ -12,7 +12,7 @@ import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
 import { useNvUi, type Toast } from '../ui/store';
 import { C, SCREEN_X, s, shadow } from '../theme';
-import { useTabBarSpace } from './chrome';
+import { useRevealFocusedInput, useTabBarSpace } from './chrome';
 import { Icon, type IconName } from './Icon';
 import { Button, D, IconButton, T } from './ui';
 
@@ -176,6 +176,7 @@ export function Sheet({
   const close = onClose ?? (() => nvBack(router));
   const [footerH, setFooterH] = useState(52);
   const keyboard = useKeyboardHeight();
+  const { ref: revealRef, onLayout: revealLayout, onScroll: revealScroll } = useRevealFocusedInput(keyboard > 0);
   const footerBottom = Math.max(insets.bottom - 6, 16);
   const body = (
     <View style={[{ gap: 20, paddingTop: 14, paddingHorizontal: SCREEN_X, paddingBottom: footer ? (keyboard > 0 ? 8 : footerH + 40) : insets.bottom + 24 }, contentStyle]}>
@@ -215,6 +216,9 @@ export function Sheet({
         ) : null}
         {scroll ? (
           <KeyboardAwareScrollView
+            ref={revealRef}
+            onLayout={revealLayout}
+            onScroll={revealScroll}
             keyboardAvoidedExternally
             showsVerticalScrollIndicator={false}
             bounces={false}

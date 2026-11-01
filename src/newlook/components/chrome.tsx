@@ -6,6 +6,8 @@ import {
   UIManager,
   View,
   type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type ScrollViewInstance,
   type ScrollViewProps,
   type StyleProp,
@@ -213,20 +215,7 @@ export function Screen({
   const keyboard = useKeyboardHeight();
   // With the keyboard up the footer sits in the layout above it, so a focused field scrolls clear of both.
   const lifted = !!footer && keyboard > 0;
-  const scrollRef = useRef<ScrollViewInstance>(null);
-  const scrollY = useRef(0);
-  // The scroll view shrinks after the keyboard is up, so the focused field is revealed once it has.
-  const revealFocused = (e: LayoutChangeEvent) => {
-    scrollProps?.onLayout?.(e);
-    const viewport = e.nativeEvent.layout.height;
-    const input = TextInput.State.currentlyFocusedInput();
-    const field = input ? findNodeHandle(input) : null;
-    const scroll = scrollRef.current ? findNodeHandle(scrollRef.current) : null;
-    if (!lifted || !field || !scroll) return;
-    UIManager.measureLayout(field, scroll, () => undefined, (_x, y, _w, h) => {
-      if (y + h > viewport - 16) scrollRef.current?.scrollTo({ y: scrollY.current + y + h - viewport + 16, animated: true });
-    });
-  };
+  const { ref: revealRef, onLayout: revealLayout, onScroll: revealScroll } = useRevealFocusedInput(lifted);
   const footerSpace = footer && !lifted ? footerH + 32 : 0;
   const content = (
     <View style={[{ paddingHorizontal: SCREEN_X, gap, paddingTop: padTop }, contentStyle]}>{children}</View>
@@ -239,10 +228,13 @@ export function Screen({
       {scroll ? (
         <KeyboardAwareScrollView
           {...scrollProps}
-          ref={scrollRef}
-          onLayout={revealFocused}
+          ref={revealRef}
+          onLayout={(e) => {
+            scrollProps?.onLayout?.(e);
+            revealLayout(e);
+          }}
           onScroll={(e) => {
-            scrollY.current = e.nativeEvent.contentOffset.y;
+            revealScroll(e);
             scrollProps?.onScroll?.(e);
           }}
           keyboardAvoidedExternally={!!footer}
@@ -286,4 +278,27 @@ export function BottomFade({ height }: { height: number }) {
       }}
     />
   );
+}
+
+/**
+ * A scroll view that shrinks once the keyboard is up reveals the focused field
+ * after its new size is known; the focus-time scroll still saw the old size.
+ */
+export function useRevealFocusedInput(active: boolean) {
+  const ref = useRef<ScrollViewInstance>(null);
+  const scrollY = useRef(0);
+  const onLayout = (e: LayoutChangeEvent) => {
+    const viewport = e.nativeEvent.layout.height;
+    const input = TextInput.State.currentlyFocusedInput();
+    const field = input ? findNodeHandle(input) : null;
+    const scroll = ref.current ? findNodeHandle(ref.current) : null;
+    if (!active || !field || !scroll) return;
+    UIManager.measureLayout(field, scroll, () => undefined, (_x, y, _w, h) => {
+      if (y + h > viewport - 16) ref.current?.scrollTo({ y: scrollY.current + y + h - viewport + 16, animated: true });
+    });
+  };
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollY.current = e.nativeEvent.contentOffset.y;
+  };
+  return { ref, onLayout, onScroll };
 }
