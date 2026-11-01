@@ -29,11 +29,7 @@ import {
 import { TallyCoaster } from '@/diary/TallyCoaster';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
-import {
-  allSessionsNewestFirst,
-  drinkingDayKey,
-  useTallyStore,
-} from '@/stores/tallyStore';
+import { useTallyStore } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -41,11 +37,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { fireSelectionHaptic } from '@/utils/haptics';
 import { NightCard } from '@/vycep/NightCard';
 import { PublishNightSheet } from '@/vycep/PublishNightSheet';
-import {
-  buildNightSummary,
-  sessionsOfNight,
-  type NightSummary,
-} from '@/vycep/nightModel';
+import { latestUnpublishedNight as findLatestUnpublishedNight, type NightSummary } from '@/vycep/nightModel';
 
 const SCOPES: readonly [NightsFeedScope, NightsFeedScope] = ['friends', 'global'];
 
@@ -228,26 +220,10 @@ export default function VycepScreen() {
     );
   }, []);
 
-  const latestUnpublishedNight = useMemo(() => {
-    const seenDays = new Set<string>();
-    const summaries: NightSummary[] = [];
-
-    for (const session of allSessionsNewestFirst(current, history)) {
-      if (session.drinks.length === 0) continue;
-      const dayKey = drinkingDayKey(new Date(session.startedAt));
-      if (seenDays.has(dayKey)) continue;
-      seenDays.add(dayKey);
-      const summary = buildNightSummary(
-        sessionsOfNight(current, history, dayKey),
-      );
-      if (summary) summaries.push(summary);
-    }
-
-    summaries.sort(
-      (a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt),
-    );
-    return summaries.find((summary) => !published[summary.clientKey]) ?? null;
-  }, [current, history, published]);
+  const latestUnpublishedNight = useMemo(
+    () => findLatestUnpublishedNight(current, history, published),
+    [current, history, published],
+  );
 
   const handleCta = useCallback(() => {
     if (latestUnpublishedNight) {

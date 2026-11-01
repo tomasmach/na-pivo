@@ -8,7 +8,9 @@
  * the story card and tests can share them.
  */
 
+import type { NightPublishPayload, NightVisibility } from '@/data/nightsClient';
 import {
+  allSessionsNewestFirst,
   drinkingDayKey,
   sessionDrinkTypeCounts,
   type TallySession,
@@ -136,4 +138,57 @@ export function tallyGroups(count: number, maxMarks = 25): { groups: number[]; o
 export function nightHours(durationMinutes?: number): number {
   if (!durationMinutes || durationMinutes < 30) return 0;
   return Math.max(1, Math.round(durationMinutes / 60));
+}
+
+/** Every night with drinks, newest first. */
+export function nightSummariesNewestFirst(
+  current: TallySession | null,
+  history: TallySession[],
+): NightSummary[] {
+  const seenDays = new Set<string>();
+  const summaries: NightSummary[] = [];
+  for (const session of allSessionsNewestFirst(current, history)) {
+    if (session.drinks.length === 0) continue;
+    const dayKey = drinkingDayKey(new Date(session.startedAt));
+    if (seenDays.has(dayKey)) continue;
+    seenDays.add(dayKey);
+    const summary = buildNightSummary(sessionsOfNight(current, history, dayKey));
+    if (summary) summaries.push(summary);
+  }
+  return summaries.sort((a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt));
+}
+
+/** The newest night that is not hung on the Výčep yet. */
+export function latestUnpublishedNight(
+  current: TallySession | null,
+  history: TallySession[],
+  published: Record<string, unknown>,
+): NightSummary | null {
+  return (
+    nightSummariesNewestFirst(current, history).find((summary) => !published[summary.clientKey]) ??
+    null
+  );
+}
+
+/** The wire payload that hangs one night on the Výčep. */
+export function nightPublishPayload(
+  night: NightSummary,
+  visibility: NightVisibility,
+  now: Date = new Date(),
+): NightPublishPayload {
+  return {
+    clientId: night.clientKey,
+    drinkingDay: night.drinkingDay,
+    startedAt: night.startedAt,
+    endedAt: night.endedAt,
+    beerCount: night.beerCount,
+    wineCount: night.wineCount,
+    softDrinkCount: night.softDrinkCount,
+    shotCount: night.shotCount,
+    pubNames: night.pubNames,
+    ...(night.city ? { city: night.city } : {}),
+    ...(night.durationMinutes !== undefined ? { durationMinutes: night.durationMinutes } : {}),
+    visibility,
+    updatedAt: now.toISOString(),
+  };
 }

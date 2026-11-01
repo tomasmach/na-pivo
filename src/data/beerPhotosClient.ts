@@ -28,7 +28,7 @@ const REQUEST_TIMEOUT_MS = 9000;
 /** Upload budget — wider than the shared API timeout (uploads are slower). */
 const UPLOAD_TIMEOUT_MS = 30000;
 
-export type BeerPhotoVisibility = 'private' | 'friends';
+export type BeerPhotoVisibility = 'private' | 'friends' | 'public';
 
 /** One diary photo, camelCased off the wire. `imageUrl` is resolved to absolute. */
 export interface BeerPhoto {
@@ -43,6 +43,8 @@ export interface BeerPhoto {
   takenAt: string;
   createdAt: string;
   inContest: boolean;
+  /** Beer tagged on the photo (additive `beer_name`); empty when untagged. */
+  beerName?: string;
 }
 
 /** The multipart form fields that accompany the JPEG on POST /v1/beer-photos. */
@@ -55,6 +57,8 @@ export interface BeerPhotoUploadFields {
   visibility: BeerPhotoVisibility;
   /** ISO-8601 timestamp of when the photo was taken. */
   takenAt: string;
+  /** Optional beer tag; older backends ignore it. */
+  beerName?: string;
 }
 
 /**
@@ -81,10 +85,11 @@ interface RawBeerPhoto {
   taken_at?: string;
   created_at?: string;
   in_contest?: boolean;
+  beer_name?: string | null;
 }
 
 export function parseBeerPhotoVisibility(value: unknown): BeerPhotoVisibility {
-  return value === 'friends' ? 'friends' : 'private';
+  return value === 'friends' || value === 'public' ? value : 'private';
 }
 
 /**
@@ -115,6 +120,7 @@ export function beerPhotoFromWire(raw: RawBeerPhoto): BeerPhoto {
     takenAt: raw.taken_at ?? '',
     createdAt: raw.created_at ?? '',
     inContest: raw.in_contest === true,
+    beerName: typeof raw.beer_name === 'string' ? raw.beer_name : '',
   };
 }
 
@@ -150,6 +156,7 @@ export async function uploadBeerPhoto(
         pub_city: fields.pubCity ?? '',
         visibility: fields.visibility,
         taken_at: fields.takenAt,
+        ...(fields.beerName ? { beer_name: fields.beerName } : {}),
       },
       signal: abort.signal,
     });
@@ -300,20 +307,50 @@ export async function fetchPartaPhotoFeed(signal?: AbortSignal): Promise<PartaFe
   const res = await requestJson('/v1/friends/beer-photos/feed', { signal });
   if (!res.ok) return null;
   if (!Array.isArray(res.data.photos)) return [];
-  return (res.data.photos as (RawBeerPhoto & { account?: RawBeerPhotoAuthor })[]).map((raw) => {
-    const account = raw.account ?? {};
-    return {
-      ...beerPhotoFromWire(raw),
-      account: {
-        nickname:
-          typeof account.nickname === 'string' && account.nickname.length > 0
-            ? account.nickname
-            : null,
-        displayName: account.display_name ?? '',
-        avatarUrl: resolveBeerPhotoUrl(account.avatar_url) || null,
-      },
-    };
-  });
+  return (res.data.photos as RawAuthoredPhoto[]).map(authoredPhotoFromWire);
+}
+
+type RawAuthoredPhoto = RawBeerPhoto & { account?: RawBeerPhotoAuthor };
+
+function authoredPhotoFromWire(raw: RawAuthoredPhoto): PartaFeedPhoto {
+  const account = raw.account ?? {};
+  return {
+    ...beerPhotoFromWire(raw),
+    account: {
+      nickname:
+        typeof account.nickname === 'string' && account.nickname.length > 0
+          ? account.nickname
+          : null,
+      displayName: account.display_name ?? '',
+      avatarUrl: resolveBeerPhotoUrl(account.avatar_url) || null,
+    },
+  };
+}
+
+/**
+ * GET /v1/beers/photos: photos of one beer I may see (mine, my parta's and
+ * public ones), newest first. null on any failure.
+ */
+export async function fetchBeerPhotos(
+  beer: { key?: string; name?: string },
+  signal?: AbortSignal,
+): Promise<{ photos: PartaFeedPhoto[]; total: number } | null> {
+  const query = [
+    beer.key ? `beer=${encodeURIComponent(beer.key)}` : '',
+    beer.name ? `beer_name=${encodeURIComponent(beer.name)}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  if (!query) return null;
+  const res = await requestJson(`/v1/beers/photos?${query}`, { signal });
+  if (!res.ok) return null;
+  const photos = Array.isArray(res.data.photos)
+    ? (res.data.photos as RawAuthoredPhoto[]).map(authoredPhotoFromWire)
+    : [];
+  return {
+    photos,
+    total: typeof res.data.total === 'number' ? res.data.total : photos.length,
+  };
 }
 
 /**

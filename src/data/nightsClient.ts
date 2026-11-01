@@ -2,6 +2,7 @@ import { ensureAccount, type AccountSession } from './account';
 import { t } from '@/i18n';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
+import { resolveBeerPhotoUrl } from './beerPhotosClient';
 import { trackApiFailure } from './telemetryClient';
 
 const REQUEST_TIMEOUT_MS = 9000;
@@ -35,6 +36,8 @@ export interface PublishedNight {
   rounds: number;
   myRound: boolean;
   isMine: boolean;
+  /** First photo the author attached to the night, when the viewer may see it. */
+  heroPhotoUrl: string | null;
 }
 
 export interface NightPublishPayload {
@@ -95,6 +98,16 @@ interface RawPublishedNight {
   rounds?: number | string | null;
   my_round?: boolean | null;
   is_mine?: boolean | null;
+  hero_photos?: unknown;
+}
+
+function firstHeroPhotoUrl(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  for (const photo of value) {
+    const url = resolveBeerPhotoUrl((photo as { image_url?: unknown } | null)?.image_url);
+    if (url) return url;
+  }
+  return null;
 }
 
 interface RequestOk {
@@ -155,6 +168,7 @@ export function parsePublishedNight(raw: RawPublishedNight): PublishedNight {
     rounds: parseCount(raw.rounds),
     myRound: raw.my_round === true,
     isMine: raw.is_mine === true,
+    heroPhotoUrl: firstHeroPhotoUrl(raw.hero_photos),
   };
 }
 
@@ -317,4 +331,37 @@ export function isRetriableNightError(result: NightActionError): boolean {
   if (status === 401 || status === 429) return true;
   if (status >= 400 && status < 500) return false;
   return true;
+}
+
+export interface NightsSummaryLeader {
+  kind: 'city' | 'account';
+  name: string;
+  isMe: boolean;
+}
+
+export type NightsSummaryResult =
+  | { ok: true; nights: number; beers: number; leader: NightsSummaryLeader | null }
+  | NightActionError;
+
+/** GET /v1/nights/summary: the "last 7 days" aggregate of one feed scope. */
+export async function fetchNightsSummary(
+  scope: NightsFeedScope,
+  days = 7,
+): Promise<NightsSummaryResult> {
+  const res = await requestJson(`/v1/nights/summary?scope=${scope}&days=${days}`);
+  if (!res.ok) return res.result;
+  const leader = rawObject(res.data.leader) as Record<string, unknown>;
+  return {
+    ok: true,
+    nights: parseCount(res.data.nights),
+    beers: parseCount(res.data.beers),
+    leader:
+      typeof leader.name === 'string' && leader.name
+        ? {
+            kind: leader.kind === 'account' ? 'account' : 'city',
+            name: leader.name,
+            isMe: leader.is_me === true,
+          }
+        : null,
+  };
 }

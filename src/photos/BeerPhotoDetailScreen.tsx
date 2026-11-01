@@ -313,14 +313,14 @@ export default function BeerPhotoDetailScreen() {
             ) : null}
             <MetaRow
               icon={
-                photo.visibility === 'friends' ? (
+                photo.visibility !== 'private' ? (
                   <UsersIcon size={16} color={Colors.mutedText} />
                 ) : (
                   <EyeOffIcon size={16} color={Colors.mutedText} />
                 )
               }
               text={
-                photo.visibility === 'friends'
+                photo.visibility !== 'private'
                   ? t.photoDiary.visibilityFriends
                   : t.photoDiary.visibilityPrivate
               }
