@@ -229,6 +229,18 @@ export interface InviteResolveResult {
   valid: boolean;
   expired: boolean;
   inviter: FriendProfile | null;
+  /** Only for a public inviter, and only what their public profile shows. Absent on older backends. */
+  publicStats?: InvitePublicStats | null;
+  /** Friends we already share; absent on older backends. */
+  mutualFriends?: { count: number; profiles: FriendProfile[] };
+}
+
+export interface InvitePublicStats {
+  totalBeers: number;
+  distinctPubs: number;
+  mapperLevel: number;
+  mapperTitle: string;
+  badgeProgress: BadgeProgress;
 }
 
 export interface FriendProfileStats {
@@ -460,6 +472,14 @@ interface RawInviteResolve {
   valid?: boolean;
   expired?: boolean;
   inviter?: RawFriendProfile | null;
+  public_stats?: {
+    total_beers?: unknown;
+    distinct_pubs?: unknown;
+    mapper_level?: unknown;
+    mapper_title?: unknown;
+    badge_progress?: RawBadgeProgress;
+  } | null;
+  mutual_friends?: { count?: unknown; profiles?: RawFriendProfile[] } | null;
 }
 
 async function handleUnauthorized(session: AccountSession, endpoint: string): Promise<void> {
@@ -1069,10 +1089,30 @@ export async function resolveInviteCode(
     return { valid: false, expired, inviter: null };
   }
   const raw = res.data as RawInviteResolve;
+  const stats = raw.public_stats;
+  const mutual = raw.mutual_friends;
+  const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
   return {
     valid: raw.valid !== false,
     expired: raw.expired === true,
     inviter: raw.inviter ? parseProfile(raw.inviter) : null,
+    publicStats: stats
+      ? {
+          totalBeers: num(stats.total_beers),
+          distinctPubs: num(stats.distinct_pubs),
+          mapperLevel: num(stats.mapper_level),
+          mapperTitle: typeof stats.mapper_title === 'string' ? stats.mapper_title : '',
+          badgeProgress: parseBadgeProgress(stats.badge_progress ?? {}),
+        }
+      : null,
+    ...(mutual
+      ? {
+          mutualFriends: {
+            count: num(mutual.count),
+            profiles: Array.isArray(mutual.profiles) ? mutual.profiles.map(parseProfile) : [],
+          },
+        }
+      : {}),
   };
 }
 

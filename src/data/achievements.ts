@@ -30,6 +30,8 @@ export interface BadgeProgress {
   christmasEves: number;
   newYearsEves: number;
   beerDayFridays: number;
+  /** Drinking days spent with a friend; 0 from backends that predate it. */
+  partyEvenings: number;
 }
 
 export type RawBadgeProgress = Record<string, unknown>;
@@ -71,5 +73,6 @@ export function parseBadgeProgress(raw: RawBadgeProgress): BadgeProgress {
     christmasEves: count(raw.christmas_eves),
     newYearsEves: count(raw.new_years_eves),
     beerDayFridays: count(raw.beer_day_fridays),
+    partyEvenings: count(raw.party_evenings),
   };
 }
