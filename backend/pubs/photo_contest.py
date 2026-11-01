@@ -22,7 +22,8 @@ from django.db import transaction
 from django.db.models import Count, F
 from django.utils import timezone
 
-from pubs.models import AccountUsageStats, PhotoContest, PhotoContestEntry
+from pubs.models import AccountUsageStats, PhotoContest, PhotoContestEntry, XpEvent
+from pubs.xp_events import record_xp_event
 
 logger = logging.getLogger("pubs.photo_contest")
 
@@ -140,6 +141,9 @@ def close_due_contests(now: datetime | None = None) -> list[PhotoContest]:
                     inc["photo_contest_wins_count"] = F("photo_contest_wins_count") + 1
                 stats, _ = AccountUsageStats.objects.get_or_create(account_id=entry.account_id)
                 AccountUsageStats.objects.filter(pk=stats.pk).update(**inc)
+                record_xp_event(
+                    entry.account_id, reason=XpEvent.Reason.CONTEST, amount=_rank_xp(rank)
+                )
 
             contest.status = PhotoContest.Status.CLOSED
             contest.closed_at = now

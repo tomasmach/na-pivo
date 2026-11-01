@@ -5428,3 +5428,34 @@ class TransitServiceDate(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["feed", "date"], name="transit_service_date")]
+
+
+class XpEvent(models.Model):
+    """One XP award, kept so the app can say what moved the account up a level.
+
+    Written next to every Pivař and Mapér XP increment. The counters on
+    AccountUsageStats stay the source of truth; this log only explains them.
+    Rows older than ``pubs.xp_events.XP_EVENT_RETENTION`` are pruned when the
+    owner reads them.
+    """
+
+    class Reason(models.TextChoices):
+        DRINK = "drink", "Drink"
+        PHOTO = "photo", "Photo"
+        CHECKIN = "checkin", "Check-in"
+        MAPPING = "mapping", "Mapping"
+        COMMUNITY = "community", "Hours or menu"
+        CONTEST = "contest", "Photo contest"
+
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="xp_events")
+    reason = models.CharField(max_length=16, choices=Reason.choices)
+    amount = models.PositiveIntegerField()
+    cache_key = models.CharField(max_length=12, blank=True, default="")
+    pub_name = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        indexes = [models.Index(fields=["account", "-created_at"], name="xp_event_account_recent")]
+
+    def __str__(self) -> str:
+        return f"XpEvent({self.reason} +{self.amount})"

@@ -135,6 +135,7 @@ from pubs.models import (
     PubVisit,
     PushDevice,
     UserAddedPub,
+    XpEvent,
     account_deletion_fingerprint_candidates,
     account_merge_fingerprint,
     account_merge_fingerprint_matches,
@@ -2658,6 +2659,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     ClientEvent.objects.filter(account=source).update(account=target)
     ContentReport.objects.filter(reporter=source).update(reporter=target)
     ContentReport.objects.filter(target_account=source).update(target_account=target)
+    XpEvent.objects.filter(account=source).update(account=target)
     _merge_usage_stats(source, target)
 
     # Future Account-owned models must be added above. Failing the transaction

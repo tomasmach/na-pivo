@@ -1291,7 +1291,7 @@ def test_account_export_reuses_loaded_auth_relations(client):
     assert sum('"pubs_emailcredential"' in sql for sql in select_queries) == 1
     assert sum('"pubs_authidentity"' in sql for sql in select_queries) == 1
     assert sum('"pubs_offlinemutationtombstone"' in sql for sql in select_queries) == 1
-    assert len(queries.captured_queries) <= 43
+    assert len(queries.captured_queries) <= 44
 
 
 @pytest.mark.django_db
@@ -2071,6 +2071,7 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
         "beer_watches": "beer_watch.watches[*].product_key",
         "beer_watch_pushes": "beer_watch.pushes[*].local_date",
         "beer_tap_events": "beer_watch.contributed_events[*].helped_count",
+        "xp_events": "xp_events[*].reason",
     }
 
     # Reverse accessors deliberately absent from the export, each with a
