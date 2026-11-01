@@ -50,7 +50,7 @@ export function Input({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         {...rest}
-        style={[font(15, 600), { flex: 1, padding: 0, textAlignVertical: multiline ? 'top' : 'center' }]}
+        style={[font(15, 600), { flex: 1, padding: 0, textAlignVertical: multiline ? 'top' : 'center' }, multiline && { alignSelf: 'stretch' }]}
       />
     </View>
   );
