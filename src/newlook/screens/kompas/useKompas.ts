@@ -184,7 +184,7 @@ export function useKompas() {
     target && target.kind !== 'pub'
       ? 'normal'
       : compass.permissionState !== 'granted' && !position
-        ? compass.permissionState === 'undetermined' ? 'loading' : 'location'
+        ? 'location'
         : compass.searchFailed && !target
           ? 'error'
           : compass.isLoading && !target

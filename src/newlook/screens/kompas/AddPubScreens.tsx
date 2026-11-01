@@ -399,7 +399,10 @@ export function SpendlikScreen() {
           onLeft={() => router.back()}
           onRight={() => {
             // A zoomed-out country view is not an aimed pin.
-            if (!center || center.latitudeDelta > 0.05) return;
+            if (!center || center.latitudeDelta > 0.05) {
+              toast({ kind: 'info', title: L().pinHint, icon: 'map-pin' });
+              return;
+            }
             useKompasState.getState().set({ pin: { lat: center.latitude, lng: center.longitude } });
             router.back();
             toast({ kind: 'saved', title: L().pinOk, icon: 'map-pin' });
