@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { placeKey, type CountPlace } from '@/counter/countDrink';
@@ -285,7 +286,7 @@ export function ZapisSheet() {
       },
       menu.beers,
     );
-    router.back();
+    nvBack(router);
   };
 
   const rows: (Option | null)[][] = [];
@@ -454,7 +455,7 @@ export function PridatPivoSheet() {
   return (
     <Sheet top={140} closeIcon={false} scroll>
       <View style={[s.row, { gap: 12, marginTop: -4 }]}>
-        <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => router.back()} label={copy.back} />
+        <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={copy.back} />
         <D s={30}>{copy.addBeer}</D>
       </View>
       <View style={[s.row, { height: 52, borderRadius: 18, paddingHorizontal: 16, gap: 10, backgroundColor: C.control, borderWidth: 1, borderColor: '#FFFFFF14' }]}>
@@ -578,7 +579,7 @@ export function VyfotScreen() {
     let cancelled = false;
     if (!label && !pub) {
       toast({ kind: 'info', title: t.counter.cameraMenuNeedsPub, icon: 'map-pin' });
-      router.back();
+      nvBack(router);
       return undefined;
     }
     void (async () => {
@@ -586,7 +587,7 @@ export function VyfotScreen() {
       const picked = await pickAndPrepareMenuPhoto('camera');
       if (cancelled) return;
       if (picked.status === 'cancelled') {
-        if (attempt === 0) router.back();
+        if (attempt === 0) nvBack(router);
         else setPhase({ step: 'failed', message: copy.labelUnread });
         return;
       }
@@ -642,7 +643,7 @@ export function VyfotScreen() {
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, experimental_backgroundImage: 'radial-gradient(circle at 50% 35%, #3B2A18 0%, #140D07 70%)' }} />
       )}
       <View style={[s.row, { position: 'absolute', top: insets.top + 6, left: SCREEN_X, right: SCREEN_X, justifyContent: 'space-between' }]}>
-        <IconButton icon="x" bg="#0A0A0A99" onPress={() => router.back()} label={copy.close} />
+        <IconButton icon="x" bg="#0A0A0A99" onPress={() => nvBack(router)} label={copy.close} />
         <View style={{ paddingHorizontal: 14, height: 32, borderRadius: 16, justifyContent: 'center', backgroundColor: '#0A0A0A99' }}>
           <T s={13} w={700}>
             {label ? copy.snapLabel : copy.snapBoard}
@@ -665,7 +666,7 @@ export function VyfotScreen() {
           </T>
           <Button label={copy.retake} icon="camera" onPress={retake} />
           {label ? (
-            <Press onPress={() => router.back()} style={{ alignItems: 'center' }}>
+            <Press onPress={() => nvBack(router)} style={{ alignItems: 'center' }}>
               <T s={14} w={700} c={C.text2}>
                 {copy.notIt}
               </T>
@@ -693,7 +694,7 @@ export function VyfotScreen() {
               router.dismissTo('/nv/stamgast');
             }}
           />
-          <Press onPress={() => router.back()} style={{ alignItems: 'center' }}>
+          <Press onPress={() => nvBack(router)} style={{ alignItems: 'center' }}>
             <T s={14} w={700} c={C.text2}>
               {copy.notIt}
             </T>
@@ -730,7 +731,7 @@ export function VyfotScreen() {
             onPress={() => {
               const added = phase.missing.filter((_b, i) => checked[i]);
               if (!added.length || !pub) {
-                router.back();
+                nvBack(router);
                 return;
               }
               addBeersToMenu(pub, menu, added);
@@ -773,7 +774,7 @@ export function ZmenitMistoSheet() {
   const choose = (pub: Pub) => {
     if (forBackfill) useBackfillPick.getState().set(pub);
     else useNvPlaceStore.getState().pickPub(pub);
-    router.back();
+    nvBack(router);
   };
   const atHome = !forBackfill && place?.kind === 'outside';
   const selectedKey = forBackfill ? (backfillPub ? placeKey({ kind: 'pub', pub: backfillPub }) : null) : place?.kind === 'pub' ? placeKey(place) : null;
@@ -819,7 +820,7 @@ export function ZmenitMistoSheet() {
         <Press
           onPress={() => {
             useNvPlaceStore.getState().setOutside('private');
-            router.back();
+            nvBack(router);
           }}
           style={[s.row, { gap: 12, padding: 14, borderRadius: 20, backgroundColor: C.card }]}
         >

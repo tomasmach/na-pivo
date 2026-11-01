@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { generateUuidV4 } from '@/data/account';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
@@ -71,7 +72,7 @@ export function NovaPozvankaScreen() {
 
   if (id && !editing) {
     return (
-      <Screen header={<IconButton icon="x" size={40} iconSize={18} onPress={() => router.back()} label={t.nv.parta.close} />}>
+      <Screen header={<IconButton icon="x" size={40} iconSize={18} onPress={() => nvBack(router)} label={t.nv.parta.close} />}>
         <T s={15} c={C.muted}>
           {t.nv.parta.loading}
         </T>
@@ -166,7 +167,7 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
     const done = (plan: PartaPlan | null | undefined, toastTitle: string, sub?: string) => {
       if (plan) usePartaStore.getState().upsertPlan(plan);
       if (sticker) router.replace('/nv/nalepky');
-      else router.back();
+      else nvBack(router);
       toast({ kind: 'saved', title: toastTitle, sub, icon: 'send' });
     };
     if (editing) {
@@ -190,7 +191,7 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
           place: { kind, address: input.address ?? '' },
         },
       });
-      router.back();
+      nvBack(router);
       return toast({ kind: 'offline', title: t.nv.parta.sentOffline, icon: 'cloud-off' });
     }
     toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
@@ -201,7 +202,7 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
       header={
         <View style={[s.row, { justifyContent: 'space-between' }]}>
           <D s={30}>{editing ? t.nv.parta.editTitle : t.nv.parta.newTitle}</D>
-          <IconButton icon="x" size={40} iconSize={18} onPress={() => router.back()} label={t.nv.parta.close} />
+          <IconButton icon="x" size={40} iconSize={18} onPress={() => nvBack(router)} label={t.nv.parta.close} />
         </View>
       }
       footer={

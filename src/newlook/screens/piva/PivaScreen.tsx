@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
@@ -378,7 +379,7 @@ export function HledatPivoScreen() {
         <View style={s.fill}>
           <Input icon="search" value={q} onChangeText={setQ} placeholder={p.placeholder} autoFocus height={48} />
         </View>
-        <Press onPress={() => router.back()} hitSlop={10}>
+        <Press onPress={() => nvBack(router)} hitSlop={10}>
           <T s={15} w={700} c={C.yellow}>
             {p.cancel}
           </T>

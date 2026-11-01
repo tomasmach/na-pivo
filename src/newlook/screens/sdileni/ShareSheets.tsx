@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Image, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { updateSharingPrefs } from '@/data/sharingPrefsClient';
 import { getPubById } from '@/data/pubs';
@@ -249,7 +250,7 @@ export function SdileniSouhlasSheet() {
         label={t.nv.sdileni.done}
         onPress={() => {
           void updateSharingPrefs({ shareDefault: all ? 'public' : 'friends' });
-          router.back();
+          nvBack(router);
         }}
       />
     </Sheet>

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Share, View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { fetchSharedTour, fetchTourRunPreview, type PublicTourInfo, type TourRunPreview } from '@/data/toursClient';
 import { tourBoundary } from '@/data/toursBoundary';
@@ -169,7 +170,7 @@ function PublicTour({ token, runId }: { token: string; runId?: string }) {
           onPress: () =>
             void useToursStore.getState().reportPublic(id).then((r) => {
               toast(r.ok ? { kind: 'saved', title: t.tours.reported, icon: 'flag' } : { kind: 'error', title: t.tours.reportFailed });
-              if (r.ok) router.back();
+              if (r.ok) nvBack(router);
             }),
         },
       ],
@@ -178,7 +179,7 @@ function PublicTour({ token, runId }: { token: string; runId?: string }) {
 
   const busy = store.busy || answering;
   const footer = !plan ? undefined : reported ? (
-    <Button label={t.tours.backToTours} kind="raised" onPress={() => router.back()} />
+    <Button label={t.tours.backToTours} kind="raised" onPress={() => nvBack(router)} />
   ) : joining ? (
     <View style={{ gap: 12 }}>
       <View style={[s.row, { gap: 8, alignItems: 'flex-start' }]}>

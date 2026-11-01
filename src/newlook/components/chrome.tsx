@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
-import { Image, ScrollView, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { t } from '@/i18n';
+import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
 import { useMe, useUnopenedBadges } from '../screens/profil/profilModel';
 import { useProfilWatchers } from '../screens/profil/useProfilWatchers';
@@ -144,7 +147,7 @@ export function BackHeader({
   const router = useRouter();
   return (
     <View style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
-      <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={onBack ?? (() => router.back())} iconSize={20} />
+      <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={onBack ?? (() => nvBack(router))} iconSize={20} />
       {title ? (
         <View style={{ position: 'absolute', left: 56, right: 56, alignItems: 'center' }} pointerEvents="none">
           <T s={16} w={700} numberOfLines={1}>
@@ -196,6 +199,7 @@ export function Screen({
   const tabSpace = useTabBarSpace();
   const bottomBase = tab ? tabSpace : Math.max(insets.bottom, 16);
   const [footerH, setFooterH] = useState(52);
+  const keyboard = useKeyboardHeight();
   const footerSpace = footer ? footerH + 32 : 0;
   const content = (
     <View style={[{ paddingHorizontal: SCREEN_X, gap, paddingTop: padTop }, contentStyle]}>{children}</View>
@@ -206,14 +210,14 @@ export function Screen({
         {header ? <View style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>{header}</View> : null}
       </View>
       {scroll ? (
-        <ScrollView
+        <KeyboardAwareScrollView
           {...scrollProps}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: bottomBase + footerSpace + 24 }}
           keyboardShouldPersistTaps="handled"
         >
           {content}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       ) : (
         <View style={{ flex: 1, paddingBottom: bottomBase + footerSpace }}>{content}</View>
       )}
@@ -221,7 +225,7 @@ export function Screen({
       {footer ? (
         <View
           onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
-          style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: bottomBase + (tab ? 14 : 0) }}
+          style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: keyboard > 0 ? keyboard + 12 : bottomBase + (tab ? 14 : 0) }}
         >
           {footer}
         </View>

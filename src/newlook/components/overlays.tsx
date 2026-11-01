@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut, SlideInDown, SlideInUp, SlideOutUp } from 'react-native-reanimated';
 import { router, useRouter, type Href } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
 import { fireSuccessHaptic } from '@/utils/haptics';
 
@@ -169,7 +172,7 @@ export function Sheet({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const close = onClose ?? (() => router.back());
+  const close = onClose ?? (() => nvBack(router));
   const [footerH, setFooterH] = useState(52);
   const body = (
     <View style={[{ gap: 20, paddingTop: 14, paddingHorizontal: SCREEN_X, paddingBottom: footer ? footerH + 40 : insets.bottom + 24 }, contentStyle]}>
@@ -208,9 +211,9 @@ export function Sheet({
           </View>
         ) : null}
         {scroll ? (
-          <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
+          <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
             {body}
-          </ScrollView>
+          </KeyboardAwareScrollView>
         ) : (
           body
         )}

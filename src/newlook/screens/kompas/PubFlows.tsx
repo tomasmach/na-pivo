@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
@@ -75,7 +76,7 @@ export function NavrhnoutAkciScreen() {
     });
     setBusy(false);
     if (result === 'ok') {
-      router.back();
+      nvBack(router);
       toast({ kind: 'saved', title: L().eventSent, sub: L().eventSentSub, icon: 'send' });
       return;
     }
@@ -296,7 +297,7 @@ export function MojeSetkaniScreen() {
                 return;
               }
               toast({ kind: 'saved', title: L().meetCancelled, icon: 'x' });
-              router.back();
+              nvBack(router);
             }),
         },
       ],

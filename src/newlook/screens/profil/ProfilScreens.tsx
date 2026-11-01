@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Linking, ScrollView, Share, View } from 'react-native';
+
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { updateAccountPreferences } from '@/data/account';
@@ -450,7 +453,7 @@ export function OdznakSheet() {
 
   useEffect(() => {
     if (badge) markBadgeOpened(badge.key);
-    else router.back();
+    else nvBack(router);
   }, [badge, router]);
 
   if (!badge) return null;
@@ -651,7 +654,7 @@ export function NovyLevelSheet() {
   }, [since]);
 
   useEffect(() => {
-    if (!xp) router.back();
+    if (!xp) nvBack(router);
   }, [router, xp]);
 
   if (!xp) return null;
@@ -713,7 +716,7 @@ export function NovyLevelSheet() {
           </View>
         </>
       ) : null}
-      <Button label={P().level.cta} onPress={() => router.back()} />
+      <Button label={P().level.cta} onPress={() => nvBack(router)} />
     </Sheet>
   );
 }
@@ -998,13 +1001,13 @@ export function UpravitProfilScreen() {
     }
     if (trimmedName !== initialName.trim()) params.displayName = trimmedName;
     if (pub !== me.isPublic) params.isPublic = pub;
-    if (Object.keys(params).length === 0) return router.back();
+    if (Object.keys(params).length === 0) return nvBack(router);
     setError('');
     setSaving(true);
     try {
       const result = await updateProfile(params);
       if (result.ok) {
-        router.back();
+        nvBack(router);
         toast({ kind: 'saved', title: P().editProfile.saved, icon: 'check' });
         return;
       }
@@ -1059,7 +1062,7 @@ export function DokonciUcetSheet() {
 
   const dismiss = () => {
     void markNicknameNudgeSeen(getCurrentAppVersion());
-    router.back();
+    nvBack(router);
   };
 
   const save = async () => {
@@ -1072,7 +1075,7 @@ export function DokonciUcetSheet() {
       const result = await updateProfile({ nickname: trimmed });
       if (result.ok) {
         void markNicknameNudgeSeen(getCurrentAppVersion());
-        router.back();
+        nvBack(router);
         toast({ kind: 'saved', title: P().finishAccount.saved(trimmed), icon: 'check' });
         return;
       }
@@ -1465,7 +1468,7 @@ export function PrihlaseniScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: 160 }}>
+      <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: 160 }}>
         <Press onPress={() => close(router)} style={{ alignSelf: 'flex-end' }}>
           <T s={15} w={600} c={C.muted}>
             {P().signIn.skip}
@@ -1515,7 +1518,7 @@ export function PrihlaseniScreen() {
           />
         </Field>
         <ErrorLine text={error || (sessionExpired ? t.account.sessionExpired : '')} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
       <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4, gap: 14 }}>
         <Button
           label={busy === 'submit' ? t.account.loading : mode === 'login' ? P().signIn.login : P().signIn.register}

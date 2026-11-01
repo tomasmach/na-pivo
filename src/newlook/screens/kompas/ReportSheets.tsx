@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { submitPubRename } from '@/components/amenities/pubRename';
@@ -42,7 +43,7 @@ export function NesediSheet() {
   const { key, pub } = useParamPub();
   if (!pub) return null;
   const ask = (reason: PubReportReason) => {
-    router.back();
+    nvBack(router);
     dialog({
       title: L.reportConfirmTitle(pub.name),
       body: L.reportConfirmBody,
@@ -99,7 +100,7 @@ export function OpravitNazevSheet() {
         label={L.renameSave}
         disabled={!next || next === pub.name.trim()}
         onPress={() => {
-          router.back();
+          nvBack(router);
           void submitPubRename(pubInfoFromPub(pub), pub.name, next).then((sent) =>
             toast(sent ? { kind: 'saved', title: L.renameThanks, icon: 'pencil' } : { kind: 'offline', title: L.renameThanks, sub: L.renameQueuedSub, icon: 'pencil' }),
           );

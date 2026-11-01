@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useIsFocused, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { loadPartyFriends, type FriendProfile, type PartyFriends } from '@/data/friendsClient';
@@ -425,7 +426,7 @@ export function TourStopSheet() {
   const status = run?.statuses[stop.id];
   const line = facts[stop.id];
   async function setStatus(next: 'visited' | 'skipped' | null) {
-    if (await markRunStop(stop!.id, next)) router.back();
+    if (await markRunStop(stop!.id, next)) nvBack(router);
   }
   return (
     <Sheet title={stop.name} top={340} scroll={false}>
@@ -511,7 +512,7 @@ export function TourMapScreen() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <TourMap stops={stops} height="100%" interactive states={states} next={run ? target : undefined} planning={!run} />
       <View style={[s.row, { position: 'absolute', top: insets.top + 4, left: SCREEN_X, right: SCREEN_X, gap: 10 }]}>
-        <GlassButton icon="chevron-left" size={54} label={t.tours.back} onPress={() => router.back()} />
+        <GlassButton icon="chevron-left" size={54} label={t.tours.back} onPress={() => nvBack(router)} />
         <Glass style={[s.fill, { height: 54, borderRadius: 27, paddingHorizontal: 18, justifyContent: 'center' }]}>
           <T s={15} w={700} numberOfLines={1}>
             {title}
@@ -549,7 +550,7 @@ export function TourMapScreen() {
                 icon="check"
                 kind="onYellowGhost"
                 height={46}
-                onPress={() => void markRunStop(stop.id, 'visited').then((ok) => { if (ok) router.back(); })}
+                onPress={() => void markRunStop(stop.id, 'visited').then((ok) => { if (ok) nvBack(router); })}
               />
             ) : null}
           </View>
@@ -688,7 +689,7 @@ function PingFriends({ run }: { run: TourRun | null }) {
     }
     const state = { runId: run.id, stopId: target.stop.id, ...result };
     saveLastPing(state);
-    router.back();
+    nvBack(router);
     const names = away.filter((friend) => chosen.includes(friend.id)).map((friend) => friend.displayName || friend.nickname || '');
     toast(result.status === 'sent' ? { kind: 'saved', title: t.nv.tour.pinged, sub: t.nv.tour.pingedSub(names, together(run)), icon: 'bell-ring' } : { kind: 'info', title: t.tours.crewPingQueued, icon: 'bell' });
   }
@@ -761,7 +762,7 @@ function InviteFriends({ plan }: { plan: TourPlan }) {
       toast({ kind: 'error', title: outcome.error });
       return;
     }
-    router.back();
+    nvBack(router);
     toast({ kind: 'saved', title: t.tourInvites.sent(outcome.invited), icon: 'user-plus' });
   }
   async function link() {
@@ -844,7 +845,7 @@ export function TourUkoncitSheet() {
         </View>
       ) : null}
       <Button label={leaving ? t.tours.crewLeave : t.tours.end} icon="flag" disabled={busy} onPress={() => void end()} />
-      <Press onPress={() => router.back()} style={{ alignItems: 'center', paddingBottom: 4 }}>
+      <Press onPress={() => nvBack(router)} style={{ alignItems: 'center', paddingBottom: 4 }}>
         <T s={15} w={700} c={C.text2}>
           {t.tours.cancel}
         </T>

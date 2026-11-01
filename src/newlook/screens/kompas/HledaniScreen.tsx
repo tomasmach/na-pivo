@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
@@ -192,7 +193,7 @@ export function HledaniScreen() {
           />
           {searching ? <ActivityIndicator size="small" color={C.yellow} /> : null}
         </View>
-        <Press onPress={() => router.back()} hitSlop={10}>
+        <Press onPress={() => nvBack(router)} hitSlop={10}>
           <T s={15} w={700} c={C.yellow}>
             {L().cancelSearch}
           </T>

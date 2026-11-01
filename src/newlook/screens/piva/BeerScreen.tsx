@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Image, ScrollView, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '../../components/Icon';
@@ -128,7 +129,7 @@ export function BeerScreen() {
         <BeerBody beer={page.state.data} beerRef={ref} reload={page.retry} />
       ) : (
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X }}>
-          <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => router.back()} label={t.nv.piva.back} />
+          <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={t.nv.piva.back} />
           {page.state.status === 'loading' ? <Loading pad={80} /> : <EmptyState icon="cloud-off" title={t.nv.piva.beer.failed} onRetry={page.retry} />}
         </View>
       )}
@@ -180,7 +181,7 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 22, paddingBottom: insets.bottom + 40 }}>
       <View style={[s.row, { justifyContent: 'space-between' }]}>
-        <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => router.back()} label={p.back} />
+        <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={p.back} />
         <View style={[s.row, { gap: 10 }]}>
           <IconButton
             icon={watched ? 'bell-ring' : 'bell'}

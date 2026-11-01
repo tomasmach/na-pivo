@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { countDrink, placeKey, type CountPlace } from '@/counter/countDrink';
 import { cautiousCeil, formatClock, formatPromile, formatZeroAt, isMorning, useAlcoholEstimate } from '@/counter/useAlcoholEstimate';
@@ -161,7 +162,7 @@ export function DopsatSheet() {
       }
     }
     useBackfillPick.getState().set(null);
-    router.back();
+    nvBack(router);
     toast({
       kind: 'saved',
       title: copy.savedTitle,
@@ -546,7 +547,7 @@ export function OdhadSheet() {
               const settings = useSettingsStore.getState();
               settings.setBodyProfile(null);
               settings.setAlcoholEstimateHidden(true);
-              router.back();
+              nvBack(router);
             }}
           />
         ) : undefined

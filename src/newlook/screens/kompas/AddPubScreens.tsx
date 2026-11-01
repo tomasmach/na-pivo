@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Keyboard, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
@@ -380,7 +381,7 @@ export function SpendlikScreen() {
         </View>
       </View>
       <View style={[s.row, { position: 'absolute', top: insets.top + 4, left: SCREEN_X, right: SCREEN_X, gap: 10 }]}>
-        <GlassButton icon="chevron-left" size={54} label={L().back} onPress={() => router.back()} />
+        <GlassButton icon="chevron-left" size={54} label={L().back} onPress={() => nvBack(router)} />
         <Glass style={[s.fill, s.row, { height: 54, borderRadius: 27, paddingHorizontal: 18, gap: 10 }]}>
           <Icon name="map-pin" size={18} color={C.yellow} />
           <T s={15} w={600}>
@@ -396,7 +397,7 @@ export function SpendlikScreen() {
           left={L().cancel}
           right={L().pinUse}
           rightIcon="check"
-          onLeft={() => router.back()}
+          onLeft={() => nvBack(router)}
           onRight={() => {
             // A zoomed-out country view is not an aimed pin.
             if (!center || center.latitudeDelta > 0.05) {
@@ -404,7 +405,7 @@ export function SpendlikScreen() {
               return;
             }
             useKompasState.getState().set({ pin: { lat: center.latitude, lng: center.longitude } });
-            router.back();
+            nvBack(router);
             toast({ kind: 'saved', title: L().pinOk, icon: 'map-pin' });
           }}
         />

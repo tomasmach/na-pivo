@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { generateUuidV4 } from '@/data/account';
 import { AMENITIES, type AmenityKey } from '@/data/amenities';
@@ -129,7 +130,7 @@ export function DoplnitInfoScreen() {
     const sendHours = hoursTouched && normalized ? normalized : undefined;
     const sendBeers = beersTouched ? shownBeers : undefined;
     if (!sendHours && !sendBeers) {
-      router.back();
+      nvBack(router);
       return;
     }
     const entry = buildCommunityEntry(
@@ -169,7 +170,7 @@ export function DoplnitInfoScreen() {
       }
       if (response.xpAwarded > 0) toast({ kind: 'xp', title: L().xpGained(response.xpAwarded), xp: response.xpAwarded });
     });
-    router.back();
+    nvBack(router);
     toast({ kind: 'saved', title: L().savedThanks, icon: 'map-pin-plus' });
   };
 
@@ -373,7 +374,7 @@ export function OtevirackaDenSheet() {
     if (!draft || !valid) return;
     const next = { ...draft.hours, [day]: intervals.map((x) => normalizeEditableHoursInterval(x) ?? x) };
     useKompasState.getState().set({ hoursDraft: { key: draft.key, hours: next } });
-    router.back();
+    nvBack(router);
   };
   return (
     <Sheet title={L().dayTitle(L().daysLower[day])} top={470} scroll={false}>

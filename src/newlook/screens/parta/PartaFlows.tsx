@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Share, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { generateUuidV4 } from '@/data/account';
 import {
@@ -200,7 +201,7 @@ export function KamosScreen() {
                       void removeFriend(profile.id).then((res) => {
                         if (!res.ok) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
                         void usePartaStore.getState().load();
-                        router.back();
+                        nvBack(router);
                         toast({ kind: 'info', title: t.nv.parta.removed(name), icon: 'user-minus' });
                       }),
                   },
@@ -218,7 +219,7 @@ export function KamosScreen() {
             void blockFriend(profile.id).then((res) => {
               if (!res.ok) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
               void usePartaStore.getState().load();
-              router.back();
+              nvBack(router);
               toast({ kind: 'info', title: t.nv.parta.blocked, sub: t.nv.parta.blockedSub, icon: 'ban' });
             })
           }
@@ -433,7 +434,7 @@ export function PlanScreen() {
   if (gone) {
     return (
       <Screen header={<BackHeader />}>
-        <Loading failed onRetry={() => router.back()} failedText={t.nv.parta.planGone} />
+        <Loading failed onRetry={() => nvBack(router)} failedText={t.nv.parta.planGone} />
       </Screen>
     );
   }
@@ -500,7 +501,7 @@ export function PlanScreen() {
                         if (!res.ok && !isRetriableFriendError(res)) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
                         if (!res.ok) await enqueueFriendOp({ op: 'end', clientId: plan.id, activityId: plan.id });
                         usePartaStore.getState().removePlan(plan.id);
-                        router.back();
+                        nvBack(router);
                         toast({ kind: 'info', title: t.nv.parta.cancelled, icon: 'circle-x' });
                       }),
                   },

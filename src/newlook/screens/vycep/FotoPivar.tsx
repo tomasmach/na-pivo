@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { reportProfileContent } from '@/data/auth';
 import {
@@ -354,7 +355,7 @@ export function PrihlasitFotkuSheet() {
         return;
       }
       void loadBeerPhotos();
-      router.back();
+      nvBack(router);
       toast({ kind: 'saved', title: t.nv.vycep.entered, sub: t.nv.vycep.enteredSub, icon: 'trophy' });
     });
   };

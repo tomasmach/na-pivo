@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import type { AmenityKey } from '@/data/amenities';
 import { POPULAR_BEER_BRANDS } from '@/data/beerSuggestionsClient';
@@ -75,8 +76,8 @@ export function FiltrySheet() {
         <ButtonPair
           left={L.cancel}
           right={count === null ? L.showPubsUnknown : count ? L.showPubs(count) : L.nothingFits}
-          onLeft={() => router.back()}
-          onRight={() => router.back()}
+          onLeft={() => nvBack(router)}
+          onRight={() => nvBack(router)}
         />
       }
     >

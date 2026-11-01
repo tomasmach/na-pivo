@@ -3,6 +3,7 @@ import { Keyboard, Linking, View } from 'react-native';
 import * as Location from 'expo-location';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ensureLocationPermission } from '@/compass/permissions';
@@ -93,7 +94,7 @@ export function DomovskyBodScreen() {
           onPress={() => {
             if (!point) return;
             useSettingsStore.getState().setHomePoint(point);
-            router.back();
+            nvBack(router);
             toast({ kind: 'saved', title: copy.homeSaved, sub: copy.homeSavedSub, icon: 'house' });
           }}
         />
@@ -186,7 +187,7 @@ export function PripominkySheet() {
           </T>
         </View>
         <Button label={copy.remindShow} onPress={() => setStep('perms')} />
-        <Press onPress={() => router.back()} style={{ alignItems: 'center', paddingBottom: 6 }}>
+        <Press onPress={() => nvBack(router)} style={{ alignItems: 'center', paddingBottom: 6 }}>
           <T s={15} w={700} c={C.text2}>
             {copy.remindLater}
           </T>
@@ -221,7 +222,7 @@ export function PripominkySheet() {
               setStep('denied');
               return;
             }
-            router.back();
+            nvBack(router);
             toast({ kind: 'saved', title: copy.remindOn, sub: copy.remindOnSub, icon: 'bell-ring' });
           }}
         />

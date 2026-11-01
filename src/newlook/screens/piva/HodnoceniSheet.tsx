@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Image, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { FieldLabel, Input } from '../../components/forms';
 import { Icon } from '../../components/Icon';
@@ -111,7 +112,7 @@ function RatingForm({ beer, params }: { beer: { name: string; brewery: string; h
         }),
       );
     }
-    router.back();
+    nvBack(router);
     toast({ kind: 'saved', title: r.saved, icon: 'star' });
   };
 

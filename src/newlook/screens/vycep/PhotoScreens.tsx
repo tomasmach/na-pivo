@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { openSystemSettings } from '@/compass/permissions';
@@ -248,7 +249,7 @@ export function DetailFotkyScreen() {
         deleteBeerPhotoLocalFile(local.clientId);
         useBeerPhotosStore.getState().removePhoto(local.clientId);
       }
-      router.back();
+      nvBack(router);
       toast({ kind: 'info', title: t.nv.vycep.deleted, icon: 'trash-2' });
     } finally {
       setBusy(false);
@@ -256,7 +257,7 @@ export function DetailFotkyScreen() {
   }, [busy, photo?.local, router]);
 
   const back = (
-    <IconButton icon="chevron-left" size={40} iconSize={18} bg="#0A0A0A99" onPress={() => router.back()} label={t.nv.vycep.photoBack} />
+    <IconButton icon="chevron-left" size={40} iconSize={18} bg="#0A0A0A99" onPress={() => nvBack(router)} label={t.nv.vycep.photoBack} />
   );
 
   if (!photo) {
@@ -394,7 +395,7 @@ export function DoDenickuSheet() {
             actions: [{ label: t.nv.vycep.back }, { label: t.nv.vycep.openSettings, kind: 'primary', onPress: () => void openSystemSettings() }],
           });
         }
-        if (closeOnCancel) router.back();
+        if (closeOnCancel) nvBack(router);
       } finally {
         picking.current = false;
       }
@@ -425,7 +426,7 @@ export function DoDenickuSheet() {
       enterContest: forContest,
       contestMode: 'add',
     });
-    router.back();
+    nvBack(router);
     toast({ kind: 'saved', title: t.nv.vycep.diarySaved, sub: forContest ? t.nv.vycep.diarySavedContest : undefined, icon: 'camera' });
     if (!forContest) return;
     void completion.then(() => {

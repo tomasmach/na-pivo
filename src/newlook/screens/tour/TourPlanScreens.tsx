@@ -3,6 +3,7 @@ import { ActivityIndicator, Linking, Share, TextInput, View, type ViewInstance }
 import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { captureRef } from 'react-native-view-shot';
 
 import { haversineMeters } from '@/compass/distance';
@@ -73,7 +74,7 @@ export function TourEditorScreen() {
   }, []);
   if (!draft) {
     return (
-      <Screen header={<EditorHeader title={tx.newTour} onClose={() => router.back()} />}>
+      <Screen header={<EditorHeader title={tx.newTour} onClose={() => nvBack(router)} />}>
         {hydrated ? (
           <T s={15} c={C.text2}>
             {tourError(useToursStore.getState().error) ?? t.tours.loading}
@@ -146,7 +147,7 @@ function TourEditor() {
       failed(result);
       return;
     }
-    router.back();
+    nvBack(router);
     toast({ kind: 'saved', title: tx.saved, sub: tx.savedSub, icon: 'route' });
   }
 
@@ -155,7 +156,7 @@ function TourEditor() {
     const current = useToursStore.getState().draft;
     if (!current || (!current.stops.length && !current.title.trim())) {
       void useToursStore.getState().discardDraft();
-      router.back();
+      nvBack(router);
       return;
     }
     const savable = current.stops.length >= 2;
@@ -165,7 +166,7 @@ function TourEditor() {
         {
           label: t.tours.discard,
           kind: 'danger',
-          onPress: () => void useToursStore.getState().discardDraft().then((r) => { if (r.ok) router.back(); else failed(r); }),
+          onPress: () => void useToursStore.getState().discardDraft().then((r) => { if (r.ok) nvBack(router); else failed(r); }),
         },
         savable ? { label: t.tours.saveChanges, kind: 'primary', onPress: () => void save() } : { label: t.tours.stay, kind: 'primary' },
       ],
@@ -366,7 +367,7 @@ export function TourVyberScreen() {
     try {
       if (replaceStop) {
         const result = await store.replaceStop(replaceStop.id, pub);
-        if (result.ok) router.back();
+        if (result.ok) nvBack(router);
         else failed(result);
         return;
       }
@@ -386,7 +387,7 @@ export function TourVyberScreen() {
     <Screen
       header={
         <View style={[s.row, { gap: 10 }]}>
-          <IconButton icon="chevron-left" size={44} iconSize={18} onPress={() => router.back()} label={t.tours.back} />
+          <IconButton icon="chevron-left" size={44} iconSize={18} onPress={() => nvBack(router)} label={t.tours.back} />
           <View style={s.fill}>
             <Input icon="search" placeholder={tx.searchPubs} height={46} value={query} onChangeText={setQuery} autoCorrect={false} returnKeyType="search" />
           </View>
@@ -416,7 +417,7 @@ export function TourVyberScreen() {
               ))}
             </View>
           ) : null}
-          <Button label={replaceStop ? t.tours.back : t.tours.pickerDone(pubCount(stops.length))} onPress={() => router.back()} />
+          <Button label={replaceStop ? t.tours.back : t.tours.pickerDone(pubCount(stops.length))} onPress={() => nvBack(router)} />
         </View>
       }
       gap={16}
@@ -506,7 +507,7 @@ export function TourKdySheet() {
       return;
     }
     const result = await useToursStore.getState().updateDraft(patch);
-    if (result.ok) router.back();
+    if (result.ok) nvBack(router);
     else failed(result);
   }
 
@@ -634,13 +635,13 @@ function StopActions({ id }: { id: string }) {
           onPress={() => {
             void useToursStore.getState().removeStop(st.id).then((result) => {
               if (!result.ok) return failed(result);
-              router.back();
+              nvBack(router);
               toast({ kind: 'info', title: t.nv.tour.stopRemoved(st.name), icon: 'trash-2' });
             });
           }}
         />
       </Card>
-      <Press onPress={() => router.back()} style={{ alignItems: 'center', paddingBottom: 6 }}>
+      <Press onPress={() => nvBack(router)} style={{ alignItems: 'center', paddingBottom: 6 }}>
         <T s={15} w={700} c={C.text2}>
           {t.tours.cancel}
         </T>
@@ -658,7 +659,7 @@ function PlanActions({ id }: { id: string }) {
   const own = !plan.source && !plan.publicSource;
   const publication = plan.publication;
   const rows: { icon: React.ComponentProps<typeof Icon>['name']; title: string; onPress: () => void; danger?: boolean }[] = [];
-  if (!plan.source && !walking) rows.push({ icon: 'pencil', title: t.tours.editTour, onPress: () => { router.back(); void openEditor(router, id); } });
+  if (!plan.source && !walking) rows.push({ icon: 'pencil', title: t.tours.editTour, onPress: () => { nvBack(router); void openEditor(router, id); } });
   if (own && publication?.status !== 'hidden')
     rows.push({ icon: 'globe', title: publication?.status === 'active' ? t.tours.updatePublic : t.tours.publishPublic, onPress: () => router.replace({ pathname: '/nv/tour-zverejnit', params: { id } } as unknown as Href) });
   if (own && publication?.status === 'active')
@@ -682,7 +683,7 @@ function PlanActions({ id }: { id: string }) {
     onPress: () =>
       void useToursStore.getState().copyPlan(id).then((result) => {
         if (!result.ok) return failed(result);
-        router.back();
+        nvBack(router);
         toast({ kind: 'saved', title: t.nv.tour.copyReady, icon: 'copy' });
       }),
   });
@@ -694,7 +695,7 @@ function PlanActions({ id }: { id: string }) {
         dialog({
           title: t.tours.unpublishTitle,
           body: t.tours.unpublishMessage,
-          actions: [{ label: t.tours.cancel }, { label: t.tours.unpublish, kind: 'danger', onPress: () => void useToursStore.getState().unpublishPublic(id).then((r) => { if (r.ok) router.back(); else failed(r); }) }],
+          actions: [{ label: t.tours.cancel }, { label: t.tours.unpublish, kind: 'danger', onPress: () => void useToursStore.getState().unpublishPublic(id).then((r) => { if (r.ok) nvBack(router); else failed(r); }) }],
         }),
     });
   if (!walking)
@@ -727,7 +728,7 @@ function PlanActions({ id }: { id: string }) {
           <Row key={row.title} last={i === rows.length - 1} leading={<Icon name={row.icon} size={18} color={row.danger ? C.danger : C.white} />} title={row.title} titleColor={row.danger ? C.danger : C.white} chevron={!row.danger} onPress={busy ? undefined : row.onPress} />
         ))}
       </Card>
-      <Press onPress={() => router.back()} style={{ alignItems: 'center', paddingBottom: 6 }}>
+      <Press onPress={() => nvBack(router)} style={{ alignItems: 'center', paddingBottom: 6 }}>
         <T s={15} w={700} c={C.text2}>
           {t.tours.cancel}
         </T>
@@ -772,7 +773,7 @@ export function TourVyzvaSheet() {
         onPress={() =>
           void useToursStore.getState().setChallenge(st.id, text).then((result) => {
             if (!result.ok) return failed(result);
-            router.back();
+            nvBack(router);
             toast({ kind: 'saved', title: t.nv.tour.challengeSaved, icon: 'flag' });
           })
         }
@@ -818,7 +819,7 @@ export function TourZverejnitScreen() {
     setFailure(null);
     const result = await useToursStore.getState().publishPublic(current.id);
     if (result.ok) {
-      router.back();
+      nvBack(router);
       toast({ kind: 'saved', title: t.nv.tour.published, icon: 'globe' });
     } else setFailure(result);
   }
@@ -829,7 +830,7 @@ export function TourZverejnitScreen() {
       : failure.error === 'nickname' || failure.error === 'profile_private'
         ? { label: failure.error === 'nickname' ? t.tours.pickNickname : t.tours.openPrivacy, onPress: () => router.push(failure.error === 'nickname' ? '/nv/upravit-profil' : '/nv/nastaveni') }
         : ['text_rejected', 'unknown_pub', 'hidden_pub', 'duplicate'].includes(failure.error)
-          ? { label: t.tours.editTour, onPress: () => { router.back(); void openEditor(router, current.id); } }
+          ? { label: t.tours.editTour, onPress: () => { nvBack(router); void openEditor(router, current.id); } }
           : null;
   return (
     <Screen
