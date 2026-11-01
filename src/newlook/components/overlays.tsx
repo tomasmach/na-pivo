@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
 import { fireSuccessHaptic } from '@/utils/haptics';
+import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
 import { useNvUi, type Toast } from '../ui/store';
 import { C, SCREEN_X, s, shadow } from '../theme';
@@ -174,6 +175,8 @@ export function Sheet({
   const { height } = useWindowDimensions();
   const close = onClose ?? (() => nvBack(router));
   const [footerH, setFooterH] = useState(52);
+  const keyboard = useKeyboardHeight();
+  const footerBottom = Math.max(insets.bottom - 6, 16);
   const body = (
     <View style={[{ gap: 20, paddingTop: 14, paddingHorizontal: SCREEN_X, paddingBottom: footer ? footerH + 40 : insets.bottom + 24 }, contentStyle]}>
       {children}
@@ -190,8 +193,8 @@ export function Sheet({
           position: 'absolute',
           left: 0,
           right: 0,
-          bottom: 0,
-          maxHeight: height - Math.max(top, insets.top + 40),
+          bottom: keyboard,
+          maxHeight: height - keyboard - Math.max(top, insets.top + 40),
           backgroundColor: C.dialog,
           borderTopLeftRadius: 34,
           borderTopRightRadius: 34,
@@ -211,13 +214,18 @@ export function Sheet({
           </View>
         ) : null}
         {scroll ? (
-          <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
+          <KeyboardAwareScrollView
+            keyboardAvoidedExternally
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {body}
           </KeyboardAwareScrollView>
         ) : (
           body
         )}
-        {footer ? (
+        {footer && keyboard === 0 ? (
           <View
             pointerEvents="none"
             style={{
@@ -225,7 +233,7 @@ export function Sheet({
               left: 0,
               right: 0,
               bottom: 0,
-              height: footerH + Math.max(insets.bottom - 6, 16) + 28,
+              height: footerH + footerBottom + 28,
               experimental_backgroundImage: `linear-gradient(180deg, ${C.dialog}00 0%, ${C.dialog} 35%)`,
             }}
           />
@@ -233,7 +241,11 @@ export function Sheet({
         {footer ? (
           <View
             onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
-            style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom - 6, 16) }}
+            style={
+              keyboard > 0
+                ? { marginHorizontal: SCREEN_X, marginTop: 8, marginBottom: 12 }
+                : { position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: footerBottom }
+            }
           >
             {footer}
           </View>
