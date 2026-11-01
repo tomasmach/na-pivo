@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Image, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 
 import { isRetriableNightError, publishNight, type NightVisibility } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
@@ -12,7 +13,7 @@ import { useTallyStore } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { latestUnpublishedNight, nightPublishPayload, nightSummariesNewestFirst, type NightSummary } from '@/vycep/nightModel';
 
-import { Screen } from '../../components/chrome';
+import { BackHeader, Screen } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, D, Press, T } from '../../components/ui';
@@ -226,6 +227,7 @@ export function VyvesitSheet() {
 
 export function PrvniVyveseniScreen() {
   const router = useRouter();
+  const fromSettings = useLocalSearchParams<{ from?: string }>().from === 'nastaveni';
   const night = useNightToPublish();
   const autopublish = useVycepStore((st) => st.nightAutopublish);
   const [mode, setMode] = useState<'manual' | 'all' | 'parta'>(autopublish === 'public' ? 'all' : autopublish === 'friends' ? 'parta' : 'manual');
@@ -233,14 +235,16 @@ export function PrvniVyveseniScreen() {
     <Screen
       footer={
         <Button
-          label={t.nv.vycep.publishCta}
-          icon="megaphone"
+          label={fromSettings ? t.nv.vycep.firstSave : t.nv.vycep.publishCta}
+          icon={fromSettings ? 'check' : 'megaphone'}
           onPress={() => {
             void updateSharingPrefs({ nightAutopublish: mode === 'manual' ? 'off' : mode === 'all' ? 'public' : 'friends' });
-            router.replace('/nv/vyvesit');
+            if (fromSettings) nvBack(router);
+            else router.replace('/nv/vyvesit');
           }}
         />
       }
+      header={<BackHeader />}
       gap={16}
     >
       <View style={{ height: 210, justifyContent: 'flex-end' }}>
@@ -254,9 +258,11 @@ export function PrvniVyveseniScreen() {
         <PreviewCard night={night} compact />
       </View>
       <View style={{ gap: 10, marginTop: 12 }}>
-        <T s={14} w={700} c={C.yellow}>
-          {t.nv.vycep.firstKicker}
-        </T>
+        {fromSettings ? null : (
+          <T s={14} w={700} c={C.yellow}>
+            {t.nv.vycep.firstKicker}
+          </T>
+        )}
         <D s={44}>{t.nv.vycep.firstTitle}</D>
         <T s={16} c={C.text2} lh={1.45}>
           {t.nv.vycep.firstBody}

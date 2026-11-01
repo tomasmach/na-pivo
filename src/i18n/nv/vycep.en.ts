@@ -85,6 +85,7 @@ export const vycepEn: typeof vycepCs = {
   me: 'You',
 
   firstKicker: 'Your first post',
+  firstSave: 'Save',
   firstTitle: 'How do you want to post?',
   firstBody:
     'What gets posted: number of beers, pubs, date and length of the night. Spending and individual beers stay yours. You can change this in Settings.',

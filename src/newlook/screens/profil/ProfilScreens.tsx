@@ -824,7 +824,7 @@ export function NastaveniScreen() {
         {P().settings.vycep}
       </T>
       <Card>
-        <Row last title={P().settings.publishNights} chevron onPress={() => router.push('/nv/prvni-vyveseni')} />
+        <Row last title={P().settings.publishNights} chevron onPress={() => router.push({ pathname: '/nv/prvni-vyveseni', params: { from: 'nastaveni' } })} />
       </Card>
       <T s={15} w={700} c={C.muted}>
         {P().settings.kompas}

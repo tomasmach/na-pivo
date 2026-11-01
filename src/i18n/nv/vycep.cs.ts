@@ -87,6 +87,7 @@ export const vycepCs = {
 
   // Poprvé vyvěšuješ
   firstKicker: 'Poprvé vyvěšuješ',
+  firstSave: 'Uložit',
   firstTitle: 'Jak chceš vyvěšovat?',
   firstBody:
     'Vyvěsí se počet piv, hospody, datum a délka noci. Útrata a jednotlivá piva zůstávají jen tobě. Změníš to v Nastavení.',
