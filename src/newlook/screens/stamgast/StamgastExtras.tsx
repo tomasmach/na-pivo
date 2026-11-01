@@ -1,69 +1,174 @@
-import React, { useState } from 'react';
-import { Image, ScrollView, View, useWindowDimensions } from 'react-native';
-import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
+import React, { useEffect, useRef, useState } from 'react';
+import { Image, Keyboard, Linking, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
+import * as Location from 'expo-location';
+import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { ensureLocationPermission } from '@/compass/permissions';
+import { placeKey } from '@/counter/countDrink';
+import { formatClock } from '@/counter/useAlcoholEstimate';
+import { generateUuidV4 } from '@/data/account';
+import { pickAndPrepareBeerPhoto } from '@/data/beerPhotoPicker';
+import { enqueueBeerPhoto, persistBeerPhotoLocally } from '@/data/beerPhotosQueue';
+import { useNowTick } from '@/friends/useNowTick';
+import { intlLocale, t } from '@/i18n';
+import { enablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
+import { selectIsSignedIn, selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
+import { useHomeTransitStore } from '@/stores/homeTransitStore';
+import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
+import { sessionCount, sessionTotalCzk, useTallyStore } from '@/stores/tallyStore';
+import { formatDepartureTime, isUpcomingDeparture } from '@/transit/homeTransit';
+import { geocodeHomeAddress } from '@/transit/homeGeocode';
+import { homeTransitForCurrentEvening } from '@/transit/homeTransitSync';
+import { formatPrice } from '@/utils/currency';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, D, Dot, IconButton, Kicker, Press, Row, T, Tile } from '../../components/ui';
-import { ME_COORD, photo } from '../../mock/data';
-import { dialog, toast, useMock } from '../../mock/store';
-import { C, SCREEN_X, s } from '../../theme';
+import { photo } from '../../mock/data';
+import { useMock } from '../../mock/store';
+import { C, SCREEN_X, font, s } from '../../theme';
+import { dialog, toast } from '../../ui/store';
 import { GRAY_MAP } from '../kompas/NvMap';
+import { useCountPlace } from './placeStore';
+
+const CZECHIA: Region = { latitude: 49.8175, longitude: 15.473, latitudeDelta: 4.5, longitudeDelta: 4.5 };
+const STREET_DELTA = 0.014;
 
 export function DomovskyBodScreen() {
   const router = useRouter();
-  const [address, setAddress] = useState('Korunní 12, Praha');
+  const copy = t.nv.stamgast;
+  const saved = useSettingsStore((st) => st.homePoint);
+  const mapRef = useRef<MapView>(null);
+  const [address, setAddress] = useState('');
+  const [point, setPoint] = useState<HomePoint | null>(saved);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const moveTo = (next: HomePoint) => {
+    setPoint(next);
+    setError('');
+    mapRef.current?.animateToRegion({ latitude: next.lat, longitude: next.lng, latitudeDelta: STREET_DELTA, longitudeDelta: STREET_DELTA }, 300);
+  };
+
+  const find = async () => {
+    const query = address.trim();
+    if (!query) {
+      setError(t.homePoint.emptyQueryError);
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    Keyboard.dismiss();
+    try {
+      const found = await geocodeHomeAddress(query, new AbortController().signal);
+      if (found) moveTo(found);
+      else setError(t.homePoint.notFoundError);
+    } catch {
+      setError(t.homePoint.searchFailedError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const locate = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if ((await ensureLocationPermission()) !== 'granted') {
+        setError(t.homePoint.permissionDenied);
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      moveTo({ lat: position.coords.latitude, lng: position.coords.longitude });
+    } catch {
+      setError(t.addPub.locationUnavailable);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Screen
       header={<BackHeader />}
       footer={
         <Button
-          label="Uložit domov"
+          label={copy.homeSave}
+          disabled={!point}
           onPress={() => {
-            useMock.getState().set({ homeSet: true });
+            if (!point) return;
+            useSettingsStore.getState().setHomePoint(point);
             router.back();
-            toast({ kind: 'saved', title: 'Domov mám.', sub: 'Večer ti pohlídám poslední spoj.', icon: 'house' });
+            toast({ kind: 'saved', title: copy.homeSaved, sub: copy.homeSavedSub, icon: 'house' });
           }}
         />
       }
       gap={16}
     >
-      <PageTitle title="Domovský bod" />
+      <PageTitle title={copy.homeTitle} />
       <T s={16} w={500} c={C.text2} style={{ marginTop: -8 }}>
-        Kde je tvoje domácí základna?
+        {copy.homeQuestion}
       </T>
-      <View style={[s.row, { minHeight: 58, borderRadius: 18, paddingHorizontal: 14, gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: '#FFFFFF14' }]}>
+      <View style={[s.row, { minHeight: 58, borderRadius: 18, paddingHorizontal: 14, gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: error ? C.danger : '#FFFFFF14' }]}>
         <Icon name="house" size={18} color={C.muted} />
         <View style={s.fill}>
           <T s={12} c={C.muted}>
-            Adresa nebo město
+            {copy.homeAddress}
           </T>
-          <Input value={address} onChangeText={setAddress} height={24} focusRing={false} style={{ backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, minHeight: 24 }} />
+          <Input
+            value={address}
+            onChangeText={(value) => {
+              setAddress(value);
+              setError('');
+            }}
+            onSubmitEditing={() => void find()}
+            returnKeyType="search"
+            height={24}
+            focusRing={false}
+            style={{ backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, minHeight: 24 }}
+          />
         </View>
       </View>
+      {error ? (
+        <T s={14} w={500} c={C.danger} style={{ marginTop: -8 }}>
+          {error}
+        </T>
+      ) : null}
       <View style={[s.row, { gap: 10 }]}>
-        <Button label="Najít na mapě" icon="search" kind="raised" flex height={48} />
-        <Button label="Moje poloha" icon="locate-fixed" kind="raised" flex height={48} />
+        <Button label={copy.homeFind} icon="search" kind="raised" flex height={48} disabled={busy} onPress={() => void find()} />
+        <Button label={copy.homeMine} icon="locate-fixed" kind="raised" flex height={48} disabled={busy} onPress={() => void locate()} />
       </View>
       <View style={{ height: 300, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: C.hairline }}>
-        <MapView provider={PROVIDER_GOOGLE} style={{ flex: 1 }} customMapStyle={GRAY_MAP} initialRegion={{ ...ME_COORD, latitudeDelta: 0.014, longitudeDelta: 0.014 }} userInterfaceStyle="dark" />
-        <View pointerEvents="none" style={[{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }, s.center]}>
-          <View style={[{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFC40033' }, s.center]}>
-            <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.yellow, borderWidth: 2, borderColor: C.black }, s.center]}>
-              <Icon name="house" size={18} color={C.black} />
+        <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={{ flex: 1 }}
+          customMapStyle={GRAY_MAP}
+          initialRegion={saved ? { latitude: saved.lat, longitude: saved.lng, latitudeDelta: STREET_DELTA, longitudeDelta: STREET_DELTA } : CZECHIA}
+          userInterfaceStyle="dark"
+          onPress={(event) => moveTo({ lat: event.nativeEvent.coordinate.latitude, lng: event.nativeEvent.coordinate.longitude })}
+          onRegionChangeComplete={(region, details) => {
+            if (details?.isGesture && point) setPoint({ lat: region.latitude, lng: region.longitude });
+          }}
+        />
+        {point ? (
+          <View pointerEvents="none" style={[{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }, s.center]}>
+            <View style={[{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFC40033' }, s.center]}>
+              <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.yellow, borderWidth: 2, borderColor: C.black }, s.center]}>
+                <Icon name="house" size={18} color={C.black} />
+              </View>
             </View>
           </View>
-        </View>
+        ) : null}
       </View>
       <T s={15} w={600}>
-        Sedí bod přesně? Když ne, ťukni na správné místo v mapě.
+        {copy.homeAdjust}
       </T>
       <T s={13} c={C.muted} lh={1.45}>
-        Adresu jednou pošlu geokódovací službě, ať ji najdu na mapě. V telefonu zůstane jen ten potvrzený bod, žádná historie polohy ani trasy.
+        {copy.homePrivacy}
       </T>
     </Screen>
   );
@@ -172,7 +277,9 @@ export function HlidanaPivaScreen() {
 /** "Až sedneš do hospody, cinknu ti." The offer, then what the phone will ask for. */
 export function PripominkySheet() {
   const router = useRouter();
-  const [step, setStep] = useState<'offer' | 'perms'>('offer');
+  const copy = t.nv.stamgast;
+  const [step, setStep] = useState<'offer' | 'perms' | 'denied'>('offer');
+  const [busy, setBusy] = useState(false);
   if (step === 'offer') {
     return (
       <Sheet closeIcon={false} top={470} scroll={false}>
@@ -180,16 +287,16 @@ export function PripominkySheet() {
           <Icon name="bell-ring" size={28} color={C.yellow} />
         </View>
         <View style={{ gap: 10 }}>
-          <Kicker>Novinka pro večery</Kicker>
-          <D s={38}>Až sedneš do hospody, cinknu ti.</D>
+          <Kicker>{copy.remindKicker}</Kicker>
+          <D s={38}>{copy.remindTitle}</D>
           <T s={15} c={C.text2} lh={1.45}>
-            Počítadlo ti večer připomene, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.
+            {copy.remindBody}
           </T>
         </View>
-        <Button label="Ukázat, co povoluju" onPress={() => setStep('perms')} />
+        <Button label={copy.remindShow} onPress={() => setStep('perms')} />
         <Press onPress={() => router.back()} style={{ alignItems: 'center', paddingBottom: 6 }}>
           <T s={15} w={700} c={C.text2}>
-            Teď ne, nech mě pít v klidu
+            {copy.remindLater}
           </T>
         </Press>
       </Sheet>
@@ -198,26 +305,38 @@ export function PripominkySheet() {
   return (
     <Sheet closeIcon={false} top={340} scroll={false}>
       <View style={{ gap: 10 }}>
-        <D s={30}>Co bude telefon chtít povolit</D>
-        <T s={15} c={C.text2} lh={1.45}>
-          Kompasu stačí poloha při používání. Připomínka navíc potřebuje polohu „vždy“.
+        <D s={30}>{copy.remindPermsTitle}</D>
+        <T s={15} c={step === 'denied' ? C.danger : C.text2} lh={1.45}>
+          {step === 'denied' ? copy.remindDenied : copy.remindPermsBody}
         </T>
       </View>
       <View>
-        <Row leading={<Tile icon="bell" color={C.white} size={36} />} title="Notifikace" titleWeight={700} sub="Pošlu jen krátké připomenutí, ať večer nezmizí bez zápisu." />
-        <Row leading={<Tile icon="map-pin" color={C.white} size={36} />} title="Poloha „vždy“" titleWeight={700} sub="Sbírám ji jen kvůli hospodskému okruhu, i když je appka zavřená nebo ji zrovna nepoužíváš." />
-        <Row last leading={<Tile icon="shield-check" color={C.white} size={36} />} title="Bez GPS deníčku" titleWeight={700} sub="Trasy neukládám. Hlídám jen, jestli nejsi kousek od hospody." />
+        <Row leading={<Tile icon="bell" color={C.white} size={36} />} title={copy.remindNotif} titleWeight={700} sub={copy.remindNotifSub} />
+        <Row leading={<Tile icon="map-pin" color={C.white} size={36} />} title={copy.remindAlways} titleWeight={700} sub={copy.remindAlwaysSub} />
+        <Row last leading={<Tile icon="shield-check" color={C.white} size={36} />} title={copy.remindNoTrack} titleWeight={700} sub={copy.remindNoTrackSub} />
       </View>
-      <Button
-        label="Zapnout připomínky"
-        onPress={() => {
-          router.back();
-          toast({ kind: 'saved', title: 'Připomínky jedou.', sub: 'Cinknu, až sedneš do hospody.', icon: 'bell-ring' });
-        }}
-      />
+      {step === 'denied' ? (
+        <Button label={copy.openSettings} onPress={() => void Linking.openSettings()} />
+      ) : (
+        <Button
+          label={copy.remindEnable}
+          disabled={busy}
+          onPress={async () => {
+            setBusy(true);
+            const result = await enablePubReminderNotifications();
+            setBusy(false);
+            if (!result.ok) {
+              setStep('denied');
+              return;
+            }
+            router.back();
+            toast({ kind: 'saved', title: copy.remindOn, sub: copy.remindOnSub, icon: 'bell-ring' });
+          }}
+        />
+      )}
       <Press onPress={() => setStep('offer')} style={{ alignItems: 'center', paddingBottom: 6 }}>
         <T s={15} w={700} c={C.text2}>
-          Zpět
+          {copy.back}
         </T>
       </Press>
     </Sheet>
@@ -360,44 +479,101 @@ export function DetailFotkyScreen() {
   );
 }
 
+type PhotoAudience = 'private' | 'friends' | 'contest';
+
 export function DoDenickuSheet() {
   const router = useRouter();
-  return (
-    <Sheet
-      title="Do deníčku"
-      top={230}
-      footer={
-        <Button
-          label="Uložit do deníčku"
-          onPress={() => {
-            router.back();
-            toast({ kind: 'saved', title: 'Fotka je v deníčku.', sub: 'Soutěží ve FotoPivaři.', icon: 'camera' });
-          }}
-        />
+  const copy = t.nv.stamgast;
+  const place = useCountPlace();
+  const current = useTallyStore((st) => st.current);
+  const [uri, setUri] = useState<string | null>(null);
+  const [shot, setShot] = useState(0);
+  const lastBeer = [...(current?.drinks ?? [])].reverse().find((d) => (d.drinkType ?? 'beer') === 'beer');
+  const [caption, setCaption] = useState(lastBeer?.beerName ?? '');
+  const [audience, setAudience] = useState<PhotoAudience>('private');
+  const pub = current && !current.pubKey.startsWith('ctx:') ? { pubKey: current.pubKey, name: current.pubName, city: current.pubCity } : place?.kind === 'pub' ? { pubKey: placeKey(place), name: place.pub.name, city: place.pub.city } : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    void pickAndPrepareBeerPhoto('camera').then((picked) => {
+      if (cancelled) return;
+      if (picked.status === 'picked') setUri(picked.uri);
+      else if (!uri) {
+        if (picked.status !== 'cancelled') toast({ kind: 'error', title: t.contribute.scanMenu.permissionDenied, icon: 'camera' });
+        router.back();
       }
-    >
-      <View style={{ height: 250, borderRadius: 22, overflow: 'hidden' }}>
-        <Image source={photo(4)} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-        <View style={[s.row, { position: 'absolute', left: 10, bottom: 10, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AB3' }]}>
+    });
+    return () => {
+      cancelled = true;
+    };
+    // One camera per tap on "Vyfotit znovu".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shot]);
+
+  const nextAudience = () => {
+    const account = useAccountStore.getState();
+    const contestAllowed = selectIsSignedIn(account) && !selectNeedsNickname(account);
+    if (audience === 'friends' && !contestAllowed) toast({ kind: 'info', title: copy.photoNeedNickname, icon: 'trophy' });
+    setAudience(audience === 'private' ? 'friends' : audience === 'friends' && contestAllowed ? 'contest' : 'private');
+  };
+
+  const save = async () => {
+    if (!uri) return;
+    const clientId = generateUuidV4();
+    const localUri = await persistBeerPhotoLocally(uri, clientId);
+    void enqueueBeerPhoto({
+      clientId,
+      localUri,
+      caption: caption.trim(),
+      ...(pub ? { pubCacheKey: pub.pubKey, pubName: pub.name, ...(pub.city ? { pubCity: pub.city } : {}) } : {}),
+      visibility: audience === 'private' ? 'private' : 'friends',
+      takenAt: new Date().toISOString(),
+      enterContest: audience === 'contest',
+    });
+    router.back();
+    toast({ kind: 'saved', title: copy.photoSaved, ...(audience === 'contest' ? { sub: copy.photoContestSub } : {}), icon: 'camera' });
+  };
+
+  return (
+    <Sheet title={copy.photoTitle} top={230} footer={<Button label={copy.photoSave} disabled={!uri} onPress={() => void save()} />}>
+      <View style={{ height: 250, borderRadius: 22, overflow: 'hidden', backgroundColor: C.card }}>
+        {uri ? <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" /> : null}
+        <Press onPress={() => setShot((n) => n + 1)} style={[s.row, { position: 'absolute', left: 10, bottom: 10, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AB3' }]}>
           <Icon name="camera" size={15} />
           <T s={13} w={700}>
-            Vyfotit znovu
+            {copy.photoRetake}
           </T>
-        </View>
+        </Press>
       </View>
       <View>
-        <Row leading={<Icon name="beer" size={18} color={C.text2} />} title={<T s={12} c={C.muted}>Pivo</T>} sub={<T s={15} w={700}>Pilsner Urquell 12° · poslední zapsané</T>} chevron />
-        <Row leading={<Icon name="map-pin" size={18} color={C.text2} />} title={<T s={12} c={C.muted}>Hospoda</T>} sub={<T s={15} w={700}>U Zlatého tygra</T>} chevron />
-        <Row last leading={<Icon name="pencil" size={18} color={C.text2} />} title={<T s={12} c={C.muted}>Popisek</T>} sub={<T s={15} c={C.text2}>Co to bylo za pivo a za večer?</T>} chevron />
+        <Row leading={<Icon name="beer" size={18} color={C.text2} />} title={<T s={12} c={C.muted}>{copy.photoBeer}</T>} sub={<T s={15} w={700}>{lastBeer ? copy.photoLastBeer(lastBeer.beerName) : copy.photoNone}</T>} />
+        <Row leading={<Icon name="map-pin" size={18} color={C.text2} />} title={<T s={12} c={C.muted}>{copy.photoPub}</T>} sub={<T s={15} w={700}>{pub?.name ?? copy.photoNone}</T>} />
+        <Row
+          last
+          leading={<Icon name="pencil" size={18} color={C.text2} />}
+          title={<T s={12} c={C.muted}>{copy.photoCaption}</T>}
+          sub={
+            <TextInput
+              value={caption}
+              onChangeText={setCaption}
+              placeholder={copy.photoCaptionHint}
+              placeholderTextColor={C.text2}
+              keyboardAppearance="dark"
+              selectionColor={C.yellow}
+              maxLength={280}
+              style={[font(15, 600), { padding: 0 }]}
+            />
+          }
+        />
       </View>
       <View style={[s.row, { gap: 8 }]}>
-        <Icon name="globe" size={15} color={C.muted} />
+        <Icon name={audience === 'private' ? 'lock' : audience === 'friends' ? 'users' : 'globe'} size={15} color={C.muted} />
         <T s={13} c={C.muted} style={s.fill}>
-          Uvidí všichni, fotka bude soutěžit ve FotoPivaři
+          {audience === 'private' ? copy.photoPrivate : audience === 'friends' ? copy.photoFriends : copy.photoPublic}
         </T>
-        <Press onPress={() => router.push('/nv/sdileni-souhlas')}>
+        <Press onPress={nextAudience} hitSlop={8}>
           <T s={13} w={700}>
-            změnit
+            {copy.change.replace('· ', '')}
           </T>
         </Press>
       </View>
@@ -405,20 +581,33 @@ export function DoDenickuSheet() {
   );
 }
 
-type Notif = { day: string; time: string; title: string; body: string; live?: boolean };
-
-const NOTIFS: Record<string, Notif> = {
-  spoj: { day: 'středa 28. října', time: '23:32', title: 'Za 20 minut ti jede poslední přímý spoj domů', body: 'Linka 22 odjíždí ve 23:52 ze zastávky Národní třída.', live: true },
-  cep: { day: 'čtvrtek 29. října', time: '17:45', title: 'Na čepu poblíž', body: 'Únětické 12° je na čepu U Pinkasů, 1,8 km, doplnil někdo z komunity před chvílí.' },
-  hospoda: { day: 'pátek 30. října', time: '19:24', title: 'Sedíš v U Pinkasů?', body: 'Otevři počítadlo a připiš si čárku.' },
-};
-
-/** What the app shows outside itself: lock screen, Live Activity and notifications. */
+/** What the app shows outside itself: lock screen, Live Activity and notifications, from the live evening. */
 export function NotifPreviewScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const copy = t.nv.stamgast;
   const { kind } = useLocalSearchParams<{ kind?: string }>();
-  const n = NOTIFS[kind ?? 'spoj'] ?? NOTIFS.spoj;
+  const current = useTallyStore((st) => st.current);
+  const currency = useSettingsStore((st) => st.priceCurrency);
+  useHomeTransitStore((st) => st.departure);
+  const now = useNowTick();
+  const departure = homeTransitForCurrentEvening();
+  const upcoming = isUpcomingDeparture(departure, now) ? departure : null;
+  const count = sessionCount(current);
+  const lastBeer = [...(current?.drinks ?? [])].reverse().find((d) => (d.drinkType ?? 'beer') === 'beer');
+  const pubName = current && !current.pubKey.startsWith('ctx:') ? current.pubName : null;
+  const date = new Date(now);
+  const n =
+    kind === 'hospoda'
+      ? pubName
+        ? { title: t.notifications.pubReminderTitle(pubName), body: t.notifications.pubReminderBody }
+        : null
+      : kind === 'cep'
+        ? null
+        : upcoming
+          ? { title: t.notifications.homeTransitTitle, body: t.notifications.homeTransitBody(upcoming.line ?? '', formatDepartureTime(upcoming.departsAtMs), upcoming.fromStopName) }
+          : null;
+  const live = kind !== 'hospoda' && kind !== 'cep' && count > 0 && current;
   return (
     <Press
       onPress={() => router.replace(kind === 'cep' ? '/nv/hlidana-piva' : '/nv/stamgast')}
@@ -426,53 +615,57 @@ export function NotifPreviewScreen() {
     >
       <View style={{ alignItems: 'center' }}>
         <T s={20} w={700} c="#F2F2F7">
-          {n.day}
+          {date.toLocaleDateString(intlLocale, { weekday: 'long', day: 'numeric', month: 'long' })}
         </T>
         <T s={96} w={800} c="#F2F2F7" style={{ fontFamily: undefined, fontWeight: '700', lineHeight: 104 }}>
-          {n.time}
+          {formatClock(date)}
         </T>
       </View>
       <View style={{ flex: 1 }} />
-      {n.live ? (
+      {live ? (
         <View style={[s.row, { padding: 14, gap: 14, borderRadius: 26, backgroundColor: '#0A0A0AF2', marginBottom: 14 }]}>
           <View style={{ alignItems: 'center', width: 60 }}>
             <D s={84} lh={0.95} c={C.yellow}>
-              3
+              {String(count)}
             </D>
             <T s={13} w={700}>
-              piva
+              {copy.liveBeers(count)}
             </T>
           </View>
           <View style={[s.fill, { gap: 8 }]}>
-            <View style={[s.row, { justifyContent: 'space-between' }]}>
-              <T s={17} w={700}>
-                U Zlatého tygra
+            <View style={[s.row, { justifyContent: 'space-between', gap: 8 }]}>
+              <T s={17} w={700} numberOfLines={1} style={s.fill}>
+                {current.pubName}
               </T>
               <T s={15} w={700}>
-                177 Kč
+                {formatPrice(sessionTotalCzk(current), currency)}
               </T>
             </View>
-            <T s={12} c={C.muted}>
-              Pilsner Urquell 12° · zapsáno v 22:52
-            </T>
+            {lastBeer ? (
+              <T s={12} c={C.muted} numberOfLines={1}>
+                {copy.liveLogged(lastBeer.beerName, formatClock(new Date(lastBeer.at)))}
+              </T>
+            ) : null}
             <View style={[s.row, { height: 38, borderRadius: 19, justifyContent: 'center', gap: 6, backgroundColor: C.yellow }]}>
               <Icon name="plus" size={16} color={C.black} />
               <T s={15} w={800} c={C.black}>
-                Ještě jedno
+                {copy.oneMore}
               </T>
             </View>
-            <View style={[s.row, { gap: 6 }]}>
-              <Icon name="tram-front" size={12} color={C.muted} />
-              <T s={11} c={C.muted} style={s.fill}>
-                Domů 23:52 · Národní třída
-              </T>
-              <T s={11} c={C.muted}>
-                za
-              </T>
-              <T s={12} w={800}>
-                20:00
-              </T>
-            </View>
+            {upcoming ? (
+              <View style={[s.row, { gap: 6 }]}>
+                <Icon name="tram-front" size={12} color={C.muted} />
+                <T s={11} c={C.muted} style={s.fill} numberOfLines={1}>
+                  {copy.liveHome(formatDepartureTime(upcoming.departsAtMs), upcoming.fromStopName)}
+                </T>
+                <T s={11} c={C.muted}>
+                  {copy.liveIn}
+                </T>
+                <T s={12} w={800}>
+                  {t.homeTransit.leavesIn(Math.ceil((upcoming.departsAtMs - now) / 60000)).replace(/^\S+\s/, '')}
+                </T>
+              </View>
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -483,18 +676,26 @@ export function NotifPreviewScreen() {
         <View style={[s.fill, { gap: 2 }]}>
           <View style={[s.row, { justifyContent: 'space-between' }]}>
             <T s={12} w={500} c="#FFFFFFB3">
-              Na pivo
+              {copy.appName}
             </T>
             <T s={12} c="#FFFFFF99">
-              teď
+              {copy.now}
             </T>
           </View>
-          <T s={15} w={700} c="#FFFFFF">
-            {n.title}
-          </T>
-          <T s={14} c="#FFFFFFE6" lh={1.35}>
-            {n.body}
-          </T>
+          {n ? (
+            <>
+              <T s={15} w={700} c="#FFFFFF">
+                {n.title}
+              </T>
+              <T s={14} c="#FFFFFFE6" lh={1.35}>
+                {n.body}
+              </T>
+            </>
+          ) : (
+            <T s={14} c="#FFFFFFE6" lh={1.35}>
+              {copy.notifNothing}
+            </T>
+          )}
         </View>
       </View>
     </Press>

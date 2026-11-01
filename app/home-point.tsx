@@ -17,8 +17,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MapPinIcon, TargetIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
-import { geocodePubLocation } from '@/data/mapyClient';
 import { t } from '@/i18n';
+import { geocodeHomeAddress } from '@/transit/homeGeocode';
 import { useKeepCardOpen } from '@/navigation/useKeepCardOpen';
 import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -35,27 +35,6 @@ const CZECHIA_REGION: Region = {
 function regionFor(point: HomePoint | null): Region {
   if (!point) return CZECHIA_REGION;
   return { latitude: point.lat, longitude: point.lng, latitudeDelta: 0.025, longitudeDelta: 0.025 };
-}
-
-async function geocodeHomeAddress(query: string, signal: AbortSignal): Promise<HomePoint | null> {
-  try {
-    const [nativeResult] = await Location.geocodeAsync(query);
-    if (
-      !signal.aborted &&
-      nativeResult &&
-      Number.isFinite(nativeResult.latitude) &&
-      Number.isFinite(nativeResult.longitude)
-    ) {
-      return { lat: nativeResult.latitude, lng: nativeResult.longitude };
-    }
-  } catch {
-    // Android's native geocoder requires foreground location permission. Do
-    // not prompt just for an address lookup; use the existing backend fallback.
-  }
-
-  if (signal.aborted) return null;
-  const result = await geocodePubLocation({ name: '', address: query }, signal);
-  return result ? { lat: result.lat, lng: result.lng } : null;
 }
 
 export default function HomePointScreen() {

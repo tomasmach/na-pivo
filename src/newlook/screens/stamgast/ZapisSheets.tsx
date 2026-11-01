@@ -1,34 +1,58 @@
-import React, { useState } from 'react';
-import { Image, TextInput, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Image, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { placeKey, type CountPlace } from '@/counter/countDrink';
+import { normalizeBeerName, type CommunityBeer } from '@/data/communityHours';
+import { scanBeerLabel, type ScannedLabel } from '@/data/beerLabelScanClient';
+import { fetchNearbyBeers, type NearbyBeer } from '@/data/beersNearbyClient';
+import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
+import { pickAndPrepareMenuPhoto } from '@/data/menuPhotoPicker';
+import { scanMenuPhoto } from '@/data/menuScanClient';
+import type { Pub } from '@/data/pubs';
+import { isContextPubKey, type DrinkType, type ServingType } from '@/drinks/drinkTypes';
+import { formatVolume, intlLocale, t } from '@/i18n';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useTallyStore } from '@/stores/tallyStore';
+import { formatPrice } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, D, IconButton, Kicker, Press, Row, Segmented, T, Tile } from '../../components/ui';
-import { PUBS, beerById, formatDistance, pubById } from '../../mock/data';
-import { toast, useMock } from '../../mock/store';
-import { C, HAND_FONT, SCREEN_X, font, s } from '../../theme';
+import { C, SCREEN_X, font, s } from '../../theme';
+import { toast } from '../../ui/store';
+import { logDrink } from './counterActions';
+import { beerTally, drinkTally } from './eveningData';
+import { useBackfillPick, useCountPlace, useNvPlaceStore } from './placeStore';
+import { addBeersToMenu, usePubMenu } from './pubMenu';
+import { distanceLabel } from './stamgastFormat';
 
 type Kind = 'pivo' | 'vino' | 'nealko' | 'panak';
+type HomeServing = 'lahvac' | 'plech' | 'jinak';
 
-type Option = { id: string; name: string; rating?: number; meta: string; badge?: string; fresh?: boolean };
-
-const OTHER: Record<Exclude<Kind, 'pivo'>, Option[]> = {
-  vino: [
-    { id: 'vino-bile', name: 'Bílé víno', meta: '0,2 l · 65 Kč' },
-    { id: 'vino-cervene', name: 'Červené víno', meta: '0,2 l · 70 Kč' },
-  ],
-  nealko: [
-    { id: 'birell', name: 'Birell', meta: '0,5 l · 45 Kč' },
-    { id: 'kofola', name: 'Kofola', meta: '0,5 l · 42 Kč' },
-  ],
-  panak: [
-    { id: 'fernet', name: 'Fernet', meta: '4 cl · 60 Kč' },
-    { id: 'slivovice', name: 'Slivovice', meta: '4 cl · 70 Kč' },
-  ],
+const KIND_TYPE: Record<Kind, DrinkType> = { pivo: 'beer', vino: 'wine', nealko: 'soft_drink', panak: 'shot' };
+const HOME_SERVING: Record<HomeServing, { servingType: ServingType; volumeMl?: number }> = {
+  lahvac: { servingType: 'bottle', volumeMl: 500 },
+  plech: { servingType: 'can', volumeMl: 500 },
+  jinak: { servingType: 'plastic_bottle' },
 };
+
+type Option = {
+  id: string;
+  name: string;
+  meta: string;
+  badge?: string;
+  fresh?: boolean;
+  sizes: CommunityBeer[];
+  servingType?: ServingType;
+};
+
+function useAllSessions() {
+  const current = useTallyStore((st) => st.current);
+  const history = useTallyStore((st) => st.history);
+  return useMemo(() => (current ? [current, ...history] : history), [current, history]);
+}
 
 function BeerTile({ o, on, onPress }: { o: Option; on: boolean; onPress: () => void }) {
   return (
@@ -68,20 +92,9 @@ function BeerTile({ o, on, onPress }: { o: Option; on: boolean; onPress: () => v
         <T s={16} w={700} c={on ? C.black : C.white} numberOfLines={1}>
           {o.name}
         </T>
-        <View style={[s.row, { gap: 6 }]}>
-          {o.rating ? (
-            <View style={[s.row, { height: 22, borderRadius: 11, paddingHorizontal: 7, gap: 3, backgroundColor: on ? '#0A0A0A14' : '#FFFFFF14' }]}>
-              <Icon name="star" size={11} color={on ? C.black : C.yellow} fill={on ? C.black : C.yellow} />
-              <T s={12} w={800} c={on ? C.black : C.white}>
-                {o.rating.toFixed(1).replace('.', ',')}
-              </T>
-              <Icon name="chevron-right" size={10} color={on ? '#0A0A0A80' : C.muted} />
-            </View>
-          ) : null}
-          <T s={12} w={500} c={on ? '#0A0A0A99' : C.muted} numberOfLines={1}>
-            {o.meta}
-          </T>
-        </View>
+        <T s={12} w={500} c={on ? '#0A0A0A99' : C.muted} numberOfLines={1}>
+          {o.meta}
+        </T>
       </View>
     </Press>
   );
@@ -95,7 +108,7 @@ function AddTile({ sub, onPress }: { sub: string; onPress: () => void }) {
       </View>
       <View style={{ gap: 2 }}>
         <T s={16} w={700}>
-          Přidat pivo
+          {t.nv.stamgast.addBeer}
         </T>
         <T s={12} c={C.muted}>
           {sub}
@@ -121,109 +134,269 @@ function SizeCard({ title, sub, on, onPress, icon }: { title: string; sub: strin
   );
 }
 
+function groupMenu(menu: readonly CommunityBeer[]): Map<string, CommunityBeer[]> {
+  const groups = new Map<string, CommunityBeer[]>();
+  for (const beer of menu) {
+    const key = normalizeBeerName(beer.name);
+    groups.set(key, [...(groups.get(key) ?? []), beer].sort((a, b) => (a.volumeMl ?? 9999) - (b.volumeMl ?? 9999)));
+  }
+  return groups;
+}
+
 export function ZapisSheet() {
   const router = useRouter();
-  const { added } = useLocalSearchParams<{ added?: string }>();
-  const st = useMock();
-  const pub = pubById(st.pubId);
-  const home = st.atHome;
+  const copy = t.nv.stamgast;
+  const params = useLocalSearchParams<{ added?: string; price?: string; volume?: string }>();
+  const place = useCountPlace();
+  const pub = place?.kind === 'pub' ? place.pub : null;
+  const home = place?.kind === 'outside';
+  const currency = useSettingsStore((st) => st.priceCurrency);
+  const sessions = useAllSessions();
+  const menu = usePubMenu(pub);
+  const money = (czk: number) => formatPrice(czk, currency);
   const [kind, setKind] = useState<Kind>('pivo');
-  const [size, setSize] = useState(home ? 'lahvac' : '0,5 l');
+  const [homeServing, setHomeServing] = useState<HomeServing>('lahvac');
+  const [volume, setVolume] = useState<number | null>(null);
+  const [typedPrice, setTypedPrice] = useState('');
 
-  const beers: Option[] = home
-    ? [
-        { id: 'pilsner', name: 'Pilsner Urquell 12°', rating: 4.4, meta: 'lahváč · 2×' },
-        { id: 'kozel', name: 'Kozel 11°', rating: 3.6, meta: 'plechovka' },
-        { id: 'bernard', name: 'Bernard 11°', rating: 4.2, meta: 'lahváč · 2×' },
-      ]
-    : [
-        { id: 'pilsner', name: 'Pilsner Urquell 12°', rating: added ? undefined : 4.4, meta: added ? 'na čepu · od 42 Kč' : 'od 42 Kč' },
-        { id: 'kozel', name: 'Kozel 11°', rating: added ? undefined : 3.6, meta: added ? 'na čepu · 52 Kč' : '52 Kč', badge: 'minule tady' },
-        { id: 'kozel-cerny', name: 'Kozel Černý', rating: added ? undefined : 3.9, meta: added ? 'na čepu · od 36 Kč' : 'od 36 Kč' },
-        ...(added ? [{ id: 'bernard', name: 'Bernard 11°', meta: 'na čepu · 55 Kč', badge: 'nové', fresh: true }] : []),
-      ];
-  const list = kind === 'pivo' ? beers : OTHER[kind];
-  const [sel, setSel] = useState(added ? 'bernard' : list[0].id);
-  const selected = list.find((o) => o.id === sel) ?? list[0];
+  const options = useMemo<Option[]>(() => {
+    const key = place ? placeKey(place) : '';
+    const added = params.added?.trim();
+    const addedSize: CommunityBeer | null = added
+      ? {
+          name: added,
+          ...(Number(params.price) > 0 ? { priceCzk: Number(params.price) } : {}),
+          ...(Number(params.volume) > 0 ? { volumeMl: Number(params.volume) } : {}),
+        }
+      : null;
+    if (kind !== 'pivo') {
+      const defaults: Record<Exclude<Kind, 'pivo'>, [string, number][]> = {
+        vino: [[copy.wineWhite, 200], [copy.wineRed, 200]],
+        nealko: [[copy.softBirell, 500], [copy.softKofola, 500]],
+        panak: [[copy.shotFernet, 40], [copy.shotSlivovice, 40]],
+      };
+      const logged = drinkTally(sessions, KIND_TYPE[kind]).map<Option>((d) => ({
+        id: normalizeBeerName(d.name),
+        name: d.name,
+        meta: [d.last.volumeMl ? formatVolume(d.last.volumeMl) : null, typeof d.last.priceCzk === 'number' ? money(d.last.priceCzk) : null].filter(Boolean).join(' · '),
+        sizes: [{ name: d.name, ...(d.last.volumeMl ? { volumeMl: d.last.volumeMl } : {}), ...(typeof d.last.priceCzk === 'number' && !home ? { priceCzk: d.last.priceCzk } : {}) }],
+      }));
+      const fallback = defaults[kind]
+        .filter(([name]) => !logged.some((o) => o.id === normalizeBeerName(name)))
+        .map<Option>(([name, ml]) => ({ id: normalizeBeerName(name), name, meta: formatVolume(ml), sizes: [{ name, volumeMl: ml }] }));
+      return [...logged, ...fallback].slice(0, 5);
+    }
+    if (home) {
+      const list = beerTally(sessions, (_d, session) => isContextPubKey(session.pubKey)).slice(0, 5).map<Option>((b) => ({
+        id: normalizeBeerName(b.name),
+        name: b.name,
+        meta: copy.timesLogged(t.counter.servingTypeLabel(b.last.servingType ?? 'bottle').toLowerCase(), b.count),
+        sizes: [{ name: b.name }],
+        servingType: b.last.servingType,
+      }));
+      if (addedSize && !list.some((o) => o.id === normalizeBeerName(addedSize.name))) {
+        list.push({ id: normalizeBeerName(addedSize.name), name: addedSize.name, meta: copy.badgeNew, sizes: [addedSize], fresh: true });
+      }
+      return list;
+    }
+    const lastHere = beerTally(sessions, (_d, session) => session.pubKey === key)[0];
+    const groups = groupMenu(menu.beers);
+    const list: Option[] = [...groups.entries()].map(([id, sizes]) => {
+      const prices = sizes.map((b) => b.priceCzk).filter((p): p is number => typeof p === 'number');
+      const meta = prices.length === 0 ? '' : prices.length > 1 ? copy.fromPrice(money(Math.min(...prices))) : money(prices[0]);
+      return {
+        id,
+        name: sizes[0].name.trim(),
+        meta,
+        sizes,
+        ...(lastHere && normalizeBeerName(lastHere.name) === id ? { badge: copy.badgeLastTime } : {}),
+      };
+    });
+    if (addedSize) {
+      const id = normalizeBeerName(addedSize.name);
+      const existing = list.find((o) => o.id === id);
+      if (!existing) {
+        list.push({
+          id,
+          name: addedSize.name,
+          meta: typeof addedSize.priceCzk === 'number' ? copy.onTap(money(addedSize.priceCzk)) : '',
+          badge: copy.badgeNew,
+          fresh: true,
+          sizes: [addedSize],
+        });
+      }
+    }
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, home, menu.beers, params.added, params.price, params.volume, place, sessions, currency]);
 
-  const rows: Option[][] = [];
-  const withAdd = [...list, { id: '__add', name: '', meta: '' }];
-  for (let i = 0; i < withAdd.length; i += 2) rows.push(withAdd.slice(i, i + 2));
+  const [sel, setSel] = useState<string | null>(params.added ? normalizeBeerName(params.added) : null);
+  const selected = options.find((o) => o.id === sel) ?? options[0] ?? null;
 
-  const price = selected.id === 'bernard' ? 55 : size === '0,3 l' ? 42 : 59;
-  const sizeLabel = home ? (size === 'lahvac' ? 'lahváč 0,5 l' : size === 'plech' ? 'plechovka 0,5 l' : 'PETka 0,33 l') : `čepované ${size}`;
+  const sizeChoices = useMemo(() => {
+    if (!selected || home || kind !== 'pivo') return [];
+    const byVolume = new Map<number, CommunityBeer>();
+    for (const size of selected.sizes) if (size.volumeMl) byVolume.set(size.volumeMl, size);
+    if (byVolume.size === 0) {
+      byVolume.set(300, { name: selected.name, volumeMl: 300 });
+      byVolume.set(500, { name: selected.name, volumeMl: 500, ...(typeof selected.sizes[0]?.priceCzk === 'number' ? { priceCzk: selected.sizes[0].priceCzk } : {}) });
+    }
+    return [...byVolume.values()].slice(0, 3);
+  }, [home, kind, selected]);
+
+  const chosenSize =
+    sizeChoices.find((size) => size.volumeMl === volume) ?? sizeChoices.find((size) => size.volumeMl === 500) ?? sizeChoices[0] ?? selected?.sizes[0] ?? null;
+  const typed = Number(typedPrice.replace(',', '.'));
+  const price = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : typed > 0 && typed <= 1000 ? Math.round(typed) : undefined;
+  const needsPrice = !!pub && kind === 'pivo' && typeof chosenSize?.priceCzk !== 'number';
+  const priceMissing = needsPrice && price === undefined;
+
+  const homeLabel = {
+    lahvac: `${copy.bottle.toLowerCase()} ${formatVolume(500)}`,
+    plech: `${copy.can.toLowerCase()} ${formatVolume(500)}`,
+    jinak: copy.otherServing.toLowerCase(),
+  }[homeServing];
+  const sizeLabel =
+    home && kind === 'pivo'
+      ? homeLabel
+      : kind === 'pivo'
+        ? `${copy.draft} ${chosenSize?.volumeMl ? formatVolume(chosenSize.volumeMl) : ''}`.trim()
+        : chosenSize?.volumeMl
+          ? formatVolume(chosenSize.volumeMl)
+          : '';
+  const footerSub = selected
+    ? [selected.name, sizeLabel, priceMissing ? copy.priceNeeded : typeof price === 'number' && !home ? money(price) : null].filter(Boolean).join(' · ')
+    : undefined;
 
   const save = () => {
-    const beerKnown = !!beerById(selected.id);
-    st.addDrink(beerKnown ? selected.id : 'pilsner', { size: home ? '0,5 l' : size, kind: home ? (size === 'plech' ? 'plechovka' : 'lahváč') : 'čepované', price: home ? 0 : price });
-    if (selected.fresh || selected.id === 'bernard') st.set({ newBeerNudge: selected.id });
+    if (!place) {
+      router.push('/nv/zmenit-misto');
+      return;
+    }
+    if (!selected || priceMissing) return;
+    const serving = home && kind === 'pivo' ? HOME_SERVING[homeServing] : null;
+    logDrink(
+      place,
+      {
+        name: selected.name,
+        drinkType: KIND_TYPE[kind],
+        ...(typeof price === 'number' ? { priceCzk: price } : {}),
+        ...(serving ? serving : chosenSize?.volumeMl ? { volumeMl: chosenSize.volumeMl } : {}),
+      },
+      menu.beers,
+    );
     router.back();
   };
 
+  const rows: (Option | null)[][] = [];
+  const withAdd: (Option | null)[] = [...options, null];
+  for (let i = 0; i < withAdd.length; i += 2) rows.push(withAdd.slice(i, i + 2));
+
   return (
     <Sheet
-      title="Co si dáváš?"
+      title={copy.whatDrink}
       top={140}
-      footer={<Button height={60} label="Zapsat pivo" sub={home ? `${selected.name} · ${sizeLabel}` : `${selected.name} · ${sizeLabel} · ${price} Kč`} onPress={save} />}
+      footer={<Button height={60} label={copy.logBeer} sub={footerSub} disabled={!selected || priceMissing} onPress={save} />}
     >
       <Press onPress={() => router.push('/nv/zmenit-misto')} style={[s.row, { gap: 6, marginTop: -8 }]}>
         <Icon name={home ? 'house' : 'map-pin'} size={16} color={C.yellow} />
-        <T s={15} w={700}>
-          {home ? 'Doma / na chatě' : pub?.name}
+        <T s={15} w={700} numberOfLines={1} style={{ flexShrink: 1 }}>
+          {place ? (place.kind === 'outside' ? t.counter.outsideLabel(place.context) : place.pub.name) : copy.placeUnknown}
         </T>
         <T s={15} c={C.muted}>
-          · změnit
+          {copy.change}
         </T>
       </Press>
       <Segmented
         height={40}
         options={[
-          { key: 'pivo', label: 'Pivo' },
-          { key: 'vino', label: 'Víno' },
-          { key: 'nealko', label: 'Nealko' },
-          { key: 'panak', label: 'Panák' },
+          { key: 'pivo', label: copy.kindBeer },
+          { key: 'vino', label: copy.kindWine },
+          { key: 'nealko', label: copy.kindSoft },
+          { key: 'panak', label: copy.kindShot },
         ]}
         value={kind}
         onChange={(k) => {
           setKind(k);
-          setSel((k === 'pivo' ? beers : OTHER[k])[0].id);
+          setSel(null);
+          setVolume(null);
+          setTypedPrice('');
         }}
       />
       <View style={{ gap: 10 }}>
+        {menu.loading && options.length === 0 ? <ActivityIndicator color={C.muted} /> : null}
         {rows.map((r, i) => (
           <View key={i} style={[s.row, { gap: 10 }]}>
             {r.map((o) =>
-              o.id === '__add' ? (
-                <AddTile key={o.id} sub={home ? 'lahváč, plechovka' : 'co tu chybí'} onPress={() => router.push('/nv/pridat-pivo')} />
+              o === null ? (
+                <AddTile key="__add" sub={home ? copy.addBeerHome : copy.addBeerPub} onPress={() => router.push('/nv/pridat-pivo')} />
               ) : (
-                <BeerTile key={o.id} o={o} on={o.id === selected.id} onPress={() => setSel(o.id)} />
+                <BeerTile
+                  key={o.id}
+                  o={o}
+                  on={o.id === selected?.id}
+                  onPress={() => {
+                    setSel(o.id);
+                    setVolume(null);
+                    setTypedPrice('');
+                    if (o.servingType === 'can') setHomeServing('plech');
+                  }}
+                />
               ),
             )}
             {r.length === 1 ? <View style={s.fill} /> : null}
           </View>
         ))}
       </View>
-      <View style={{ gap: 12 }}>
-        <Kicker>{home ? 'Jak' : 'Kolik'}</Kicker>
-        <View style={[s.row, { gap: 10 }]}>
-          {home ? (
-            <>
-              <SizeCard title="Lahváč" sub="0,5 l" on={size === 'lahvac'} onPress={() => setSize('lahvac')} />
-              <SizeCard title="Plechovka" sub="0,5 l" on={size === 'plech'} onPress={() => setSize('plech')} />
-              <SizeCard title="Jinak" sub="PETka, 0,33 l" on={size === 'jinak'} onPress={() => setSize('jinak')} />
-            </>
-          ) : (
-            <>
-              <SizeCard title="0,3 l" sub={added ? 'cena?' : '42 Kč'} on={size === '0,3 l'} onPress={() => setSize('0,3 l')} />
-              <SizeCard title="0,5 l" sub={`${price} Kč`} icon={!!added} on={size === '0,5 l'} onPress={() => setSize('0,5 l')} />
-            </>
-          )}
+      {kind === 'pivo' && (home || sizeChoices.length > 0) ? (
+        <View style={{ gap: 12 }}>
+          <Kicker>{home ? copy.howHome : copy.howMuch}</Kicker>
+          <View style={[s.row, { gap: 10 }]}>
+            {home ? (
+              <>
+                <SizeCard title={copy.bottle} sub={formatVolume(500)} on={homeServing === 'lahvac'} onPress={() => setHomeServing('lahvac')} />
+                <SizeCard title={copy.can} sub={formatVolume(500)} on={homeServing === 'plech'} onPress={() => setHomeServing('plech')} />
+                <SizeCard title={copy.otherServing} sub={copy.otherServingSub} on={homeServing === 'jinak'} onPress={() => setHomeServing('jinak')} />
+              </>
+            ) : (
+              sizeChoices.map((size) => (
+                <SizeCard
+                  key={size.volumeMl}
+                  title={size.volumeMl ? formatVolume(size.volumeMl) : ''}
+                  sub={typeof size.priceCzk === 'number' ? money(size.priceCzk) : copy.priceUnknown}
+                  icon={typeof size.priceCzk !== 'number'}
+                  on={size.volumeMl === chosenSize?.volumeMl}
+                  onPress={() => {
+                    setVolume(size.volumeMl ?? null);
+                    setTypedPrice('');
+                  }}
+                />
+              ))
+            )}
+          </View>
         </View>
-      </View>
-      {added && selected.fresh ? (
+      ) : null}
+      {needsPrice ? (
+        <View style={[s.row, { height: 48, borderRadius: 16, paddingHorizontal: 14, gap: 10, backgroundColor: C.card, borderWidth: 1, borderColor: '#FFFFFF14' }]}>
+          <T s={15} w={600} c={C.muted} style={s.fill}>
+            {copy.priceLabel}
+          </T>
+          <TextInput
+            value={typedPrice}
+            onChangeText={setTypedPrice}
+            keyboardType="number-pad"
+            keyboardAppearance="dark"
+            placeholder={copy.priceUnknown}
+            placeholderTextColor={C.muted}
+            selectionColor={C.yellow}
+            style={[font(16, 700), { minWidth: 60, textAlign: 'right', padding: 0 }]}
+          />
+        </View>
+      ) : null}
+      {pub && selected?.fresh && typeof price === 'number' ? (
         <View style={[s.row, { gap: 10 }]}>
           <Icon name="list-plus" size={18} color={C.yellow} />
-          <T s={14} c={C.text2}>{`${selected.name} přidám na lístek ${pub?.name}.`}</T>
+          <T s={14} c={C.text2} style={s.fill}>{copy.addToMenu(selected.name, pub.name)}</T>
         </View>
       ) : null}
     </Sheet>
@@ -232,229 +405,436 @@ export function ZapisSheet() {
 
 export function PridatPivoSheet() {
   const router = useRouter();
-  const home = useMock((st) => st.atHome);
+  const copy = t.nv.stamgast;
+  const place = useCountPlace();
+  const home = place?.kind === 'outside';
+  const pub = place?.kind === 'pub' ? place.pub : null;
+  const currency = useSettingsStore((st) => st.priceCurrency);
+  const sessions = useAllSessions();
   const [q, setQ] = useState('');
-  const near = [
-    ['bernard', 'Bernard 11°', 'Rodinný pivovar Bernard'],
-    ['svijany', 'Svijany Máz 11°', 'Pivovar Svijany'],
-    ['raptor', 'Matuška Raptor IPA 15°', 'Pivovar Matuška'],
-  ];
-  const often = home
-    ? [
-        ['budvar', 'Budvar 33', 'lahváč 0,5 l · v deníku 6×'],
-        ['gambrinus', 'Gambrinus 10°', 'plechovka 0,5 l · v deníku 5×'],
-        ['svijany', 'Svijany Máz 11°', 'PETka 1,5 l · v deníku 4×'],
-        ['unetice', 'Únětické pivo 12°', 'lahváč 0,5 l · v deníku 3×'],
-      ]
-    : [
-        ['unetice', 'Únětické pivo 12°', 'v deníku 14×'],
-        ['budvar', 'Budvar 33', 'v deníku 6×'],
-      ];
-  const pick = (id: string) => router.replace({ pathname: '/nv/zapis', params: { added: id } });
-  const match = (x: string[]) => !q || x[1].toLowerCase().includes(q.toLowerCase());
+  const [near, setNear] = useState<{ state: 'loading' | 'failed' | 'ok'; beers: NearbyBeer[] }>({ state: 'loading', beers: [] });
+  const [found, setFound] = useState<{ query: string; list: BeerBrandSuggestion[] }>({ query: '', list: [] });
+
+  useEffect(() => {
+    if (!pub) return undefined;
+    const controller = new AbortController();
+    void fetchNearbyBeers({ lat: pub.lat, lng: pub.lng }, controller.signal).then((result) => {
+      if (!controller.signal.aborted) setNear(result.ok ? { state: 'ok', beers: result.beers } : { state: 'failed', beers: [] });
+    });
+    return () => controller.abort();
+  }, [pub]);
+
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 2) return undefined;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      const area = pub ? { lat: pub.lat, lng: pub.lng, radiusKm: 3 } : null;
+      void suggestBeerBrands(query, controller.signal, 6, '', area).then((list) => {
+        if (!controller.signal.aborted) setFound({ query, list });
+      });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [pub, q]);
+
+  const often = beerTally(sessions, (_d, session) => (home ? isContextPubKey(session.pubKey) : !isContextPubKey(session.pubKey))).slice(0, 4);
+  const pick = (name: string, size?: { priceCzk?: number; volumeMl?: number }) =>
+    router.replace({
+      pathname: '/nv/zapis',
+      params: { added: name, ...(size?.priceCzk ? { price: String(size.priceCzk) } : {}), ...(size?.volumeMl ? { volume: String(size.volumeMl) } : {}) },
+    });
+  const match = (name: string) => !q || name.toLocaleLowerCase(intlLocale).includes(q.trim().toLocaleLowerCase(intlLocale));
+  const nearShown = near.beers.filter((b) => match(b.name)).slice(0, 6);
+  const plusIcon = <Icon name="plus" size={20} color={C.text2} />;
+  const tile = <Tile icon="beer" bg={C.control} radius={18} size={36} />;
+
   return (
     <Sheet top={140} closeIcon={false} scroll>
       <View style={[s.row, { gap: 12, marginTop: -4 }]}>
-        <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => router.back()} label="Zpět" />
-        <D s={30}>Přidat pivo</D>
+        <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => router.back()} label={copy.back} />
+        <D s={30}>{copy.addBeer}</D>
       </View>
       <View style={[s.row, { height: 52, borderRadius: 18, paddingHorizontal: 16, gap: 10, backgroundColor: C.control, borderWidth: 1, borderColor: '#FFFFFF14' }]}>
         <Icon name="search" size={18} color={C.text2} />
-        <TextInput value={q} onChangeText={setQ} placeholder="Hledat pivo..." placeholderTextColor={C.muted} keyboardAppearance="dark" selectionColor={C.yellow} style={[font(16, 500), { flex: 1, padding: 0 }]} />
+        <TextInput value={q} onChangeText={setQ} placeholder={copy.searchBeer} placeholderTextColor={C.muted} keyboardAppearance="dark" selectionColor={C.yellow} style={[font(16, 500), { flex: 1, padding: 0 }]} />
       </View>
       <Press onPress={() => router.push({ pathname: '/nv/vyfot', params: { mode: home ? 'etiketa' : 'tabule' } })} style={[s.row, { gap: 12, padding: 14, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.hairline }]}>
         <Tile icon="camera" color={C.black} bg={C.yellow} size={36} radius={18} />
         <View style={[s.fill, { gap: 2 }]}>
           <T s={16} w={700}>
-            {home ? 'Vyfoť etiketu' : 'Vyfoť tabuli nebo lístek'}
+            {home ? copy.snapLabel : copy.snapBoard}
           </T>
           <T s={13} c={C.muted}>
-            {home ? 'poznám pivo i lahváč, nebo plechovku' : 'přečtu, co tu chybí'}
+            {home ? copy.snapLabelSub : copy.snapBoardSub}
           </T>
         </View>
         <Icon name="chevron-right" size={18} color={C.muted} />
       </Press>
-      {!home ? (
+      {q.trim().length >= 2 ? (
         <View style={{ gap: 4 }}>
-          <Kicker>Čepují v okolí</Kicker>
-          {near.filter(match).map((b, i, arr) => (
-            <Row key={b[0]} last={i === arr.length - 1} leading={<Tile icon="beer" bg={C.control} radius={18} size={36} />} title={b[1]} titleWeight={700} sub={b[2]} trailing={<Icon name="plus" size={20} color={C.text2} />} onPress={() => pick(b[0])} />
+          <Kicker>{copy.fromCatalogue}</Kicker>
+          {(found.query === q.trim() ? found.list : []).map((b) => (
+            <Row key={`${b.kind ?? 'x'}:${b.slug}`} leading={tile} title={b.name} titleWeight={700} sub={b.brandName && b.brandName !== b.name ? b.brandName : undefined} trailing={plusIcon} onPress={() => pick(b.name)} />
           ))}
+          <Row last leading={tile} title={copy.addTyped(q.trim())} titleWeight={700} trailing={plusIcon} onPress={() => pick(q.trim())} />
         </View>
       ) : null}
-      <View style={{ gap: 4 }}>
-        <Kicker>{home ? 'Tvoje lahváče a plechovky' : 'Piješ nejčastěji'}</Kicker>
-        {often.filter(match).map((b, i, arr) => (
-          <Row key={b[0]} last={i === arr.length - 1} leading={<Tile icon="beer" bg={C.control} radius={18} size={36} />} title={b[1]} titleWeight={700} sub={b[2]} trailing={<Icon name="plus" size={20} color={C.text2} />} onPress={() => pick(b[0])} />
-        ))}
-      </View>
+      {pub ? (
+        <View style={{ gap: 4 }}>
+          <Kicker>{copy.nearbyTaps}</Kicker>
+          {near.state === 'loading' ? (
+            <T s={13} c={C.muted}>
+              {copy.nearbyLoading}
+            </T>
+          ) : near.state === 'failed' ? (
+            <T s={13} c={C.muted}>
+              {copy.nearbyFailed}
+            </T>
+          ) : (
+            nearShown.map((b, i) => (
+              <Row
+                key={`${b.name}:${b.pubCacheKey}`}
+                last={i === nearShown.length - 1}
+                leading={tile}
+                title={b.name}
+                titleWeight={700}
+                sub={copy.nearbySub(
+                  [b.pubName, typeof b.priceCzk === 'number' ? formatPrice(b.priceCzk, currency) : null].filter(Boolean).join(' · '),
+                  distanceLabel(b.distanceMeters),
+                )}
+                trailing={plusIcon}
+                onPress={() => pick(b.name, { volumeMl: b.volumeMl })}
+              />
+            ))
+          )}
+        </View>
+      ) : null}
+      {often.filter((b) => match(b.name)).length ? (
+        <View style={{ gap: 4 }}>
+          <Kicker>{home ? copy.yourBottles : copy.drinkMost}</Kicker>
+          {often
+            .filter((b) => match(b.name))
+            .map((b, i, arr) => (
+              <Row
+                key={b.name}
+                last={i === arr.length - 1}
+                leading={tile}
+                title={b.name}
+                titleWeight={700}
+                sub={
+                  home
+                    ? copy.inDiaryServing(
+                        [b.last.servingType ? t.counter.servingTypeLabel(b.last.servingType).toLowerCase() : null, b.last.volumeMl ? formatVolume(b.last.volumeMl) : null].filter(Boolean).join(' '),
+                        b.count,
+                      )
+                    : copy.inDiary(b.count)
+                }
+                trailing={plusIcon}
+                onPress={() => pick(b.name, { volumeMl: b.last.volumeMl })}
+              />
+            ))}
+        </View>
+      ) : null}
     </Sheet>
   );
 }
 
-const BOARD = [
-  ['Pilsner Urquell 12°', '59,-', false],
-  ['Kozel 11°', '52,-', false],
-  ['Kozel Černý', '48,-', false],
-  ['Bernard 11°', '55,-', true],
-  ['Svijany Máz 11°', '49,-', true],
-] as const;
+function scanFailureMessage(status: string): string {
+  const scan = t.contribute.scanMenu;
+  return status === 'daily-cap'
+    ? scan.dailyCapToast
+    : status === 'rate-limited'
+      ? scan.rateLimitedToast
+      : status === 'unavailable'
+        ? scan.unavailableToast
+        : status === 'bad-image'
+          ? scan.badImageToast
+          : scan.errorToast;
+}
 
-/** Mocked camera: the board or label is already recognized. */
+type Phase = { step: 'shooting' } | { step: 'reading' } | { step: 'label'; beer: ScannedLabel } | { step: 'board'; missing: CommunityBeer[] } | { step: 'failed'; message: string };
+
+/** Camera for "Vyfoť etiketu" (home) or "Vyfoť tabuli" (pub): a real photo read by the vision helper. */
 export function VyfotScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const copy = t.nv.stamgast;
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const label = mode === 'etiketa';
-  const [checked, setChecked] = useState([true, true]);
-  const [kind, setKind] = useState<'lahvac' | 'plech'>('lahvac');
+  const place = useCountPlace();
+  const pub = place?.kind === 'pub' ? place.pub : null;
+  const menu = usePubMenu(label ? null : pub);
+  const [uri, setUri] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>({ step: 'shooting' });
+  const [checked, setChecked] = useState<boolean[]>([]);
+  const [serving, setServing] = useState<'lahvac' | 'plech'>('lahvac');
+  const [attempt, setAttempt] = useState(0);
+  const currency = useSettingsStore((st) => st.priceCurrency);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!label && !pub) {
+      toast({ kind: 'info', title: t.counter.cameraMenuNeedsPub, icon: 'map-pin' });
+      router.back();
+      return undefined;
+    }
+    void (async () => {
+      setPhase({ step: 'shooting' });
+      const picked = await pickAndPrepareMenuPhoto('camera');
+      if (cancelled) return;
+      if (picked.status === 'cancelled') {
+        if (attempt === 0) router.back();
+        else setPhase({ step: 'failed', message: copy.labelUnread });
+        return;
+      }
+      if (picked.status !== 'picked') {
+        setPhase({
+          step: 'failed',
+          message: picked.status === 'error' ? t.contribute.scanMenu.errorToast : t.contribute.scanMenu.permissionDenied,
+        });
+        return;
+      }
+      setUri(picked.uri);
+      setPhase({ step: 'reading' });
+      if (label) {
+        const result = await scanBeerLabel(picked.uri);
+        if (cancelled) return;
+        if (result.status === 'ok') {
+          setServing(result.beer.servingType === 'can' ? 'plech' : 'lahvac');
+          setPhase({ step: 'label', beer: result.beer });
+        } else {
+          setPhase({ step: 'failed', message: result.status === 'empty' ? copy.labelUnread : scanFailureMessage(result.status) });
+        }
+        return;
+      }
+      const result = await scanMenuPhoto(picked.uri);
+      if (cancelled) return;
+      if (result.status !== 'ok') {
+        setPhase({ step: 'failed', message: result.status === 'empty' ? t.counter.scanDrinksEmpty : scanFailureMessage(result.status) });
+        return;
+      }
+      const known = new Set(menu.beers.map((b) => normalizeBeerName(b.name)));
+      const missing = result.drinks
+        .filter((d) => d.drinkType === 'beer' && !known.has(normalizeBeerName(d.name)))
+        .map<CommunityBeer>((d) => ({ name: d.name, ...(d.priceCzk ? { priceCzk: d.priceCzk } : {}), ...(d.volumeMl ? { volumeMl: d.volumeMl } : {}) }));
+      setChecked(missing.map(() => true));
+      setPhase({ step: 'board', missing });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Each attempt takes one photo; the menu is read when the scan answers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt]);
+
+  const retake = () => setAttempt((n) => n + 1);
   const n = checked.filter(Boolean).length;
+  const panel = { position: 'absolute' as const, left: 10, right: 10, bottom: Math.max(insets.bottom, 12), backgroundColor: C.dialog, borderRadius: 28, padding: 20, gap: 14, borderWidth: 1, borderColor: '#FFFFFF14' };
+
   return (
     <View style={{ flex: 1, backgroundColor: '#1A120B' }}>
-      {label ? (
-        <Image source={require('../../../../assets/newlook/bottle.jpg')} style={{ position: 'absolute', width: '100%', height: '100%' }} resizeMode="cover" />
+      {uri ? (
+        <Image source={{ uri }} style={{ position: 'absolute', width: '100%', height: '100%' }} resizeMode="cover" />
       ) : (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, experimental_backgroundImage: 'radial-gradient(circle at 50% 35%, #3B2A18 0%, #140D07 70%)' }} />
       )}
       <View style={[s.row, { position: 'absolute', top: insets.top + 6, left: SCREEN_X, right: SCREEN_X, justifyContent: 'space-between' }]}>
-        <IconButton icon="x" bg="#0A0A0A99" onPress={() => router.back()} label="Zavřít" />
+        <IconButton icon="x" bg="#0A0A0A99" onPress={() => router.back()} label={copy.close} />
         <View style={{ paddingHorizontal: 14, height: 32, borderRadius: 16, justifyContent: 'center', backgroundColor: '#0A0A0A99' }}>
           <T s={13} w={700}>
-            {label ? 'Vyfoť etiketu' : 'Vyfoť tabuli nebo lístek'}
+            {label ? copy.snapLabel : copy.snapBoard}
           </T>
         </View>
         <View style={{ width: 44 }} />
       </View>
-      {label ? (
-        <View style={{ position: 'absolute', left: '32%', width: '38%', top: '42%', height: '27%', borderRadius: 18, borderWidth: 3, borderColor: C.yellow }} />
-      ) : (
-        <Animated.View entering={FadeIn.duration(500)} style={{ position: 'absolute', top: insets.top + 120, left: 14, right: 22, transform: [{ rotate: '-3deg' }] }}>
-          <View style={{ backgroundColor: '#1D2A22', borderRadius: 10, borderWidth: 10, borderColor: '#6B4A2B', paddingVertical: 18, paddingHorizontal: 18, gap: 10 }}>
-            <T style={{ fontFamily: HAND_FONT, fontSize: 32, color: '#F1EEE4', textAlign: 'center' }}>Na čepu</T>
-            {BOARD.map(([name, price, missing]) => (
-              <View key={name} style={[s.row, { justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }, missing && { borderWidth: 2, borderColor: C.yellow, backgroundColor: '#FFC40026' }]}>
-                <T style={{ fontFamily: HAND_FONT, fontSize: 24, color: '#F1EEE4' }}>{name}</T>
-                <T style={{ fontFamily: HAND_FONT, fontSize: 24, color: '#F1EEE4' }}>{price}</T>
-              </View>
-            ))}
-          </View>
-        </Animated.View>
-      )}
-      <View style={{ position: 'absolute', left: 10, right: 10, bottom: Math.max(insets.bottom, 12), backgroundColor: C.dialog, borderRadius: 28, padding: 20, gap: 14, borderWidth: 1, borderColor: '#FFFFFF14' }}>
-        {label ? (
-          <>
-            <View style={{ gap: 4 }}>
-              <Kicker>Poznal jsem</Kicker>
-              <D s={28}>Bernard 11°</D>
-            </View>
-            <View style={[s.row, { gap: 10 }]}>
-              <SizeCard title="Lahváč" sub="0,5 l" on={kind === 'lahvac'} onPress={() => setKind('lahvac')} />
-              <SizeCard title="Plechovka" sub="0,5 l" on={kind === 'plech'} onPress={() => setKind('plech')} />
-            </View>
-            <Button
-              height={58}
-              label="Zapsat pivo"
-              sub={`Bernard 11° · ${kind === 'lahvac' ? 'lahváč' : 'plechovka'} 0,5 l`}
-              onPress={() => {
-                useMock.getState().addDrink('bernard', { kind: kind === 'lahvac' ? 'lahváč' : 'plechovka', price: 0 });
-                useMock.getState().set({ newBeerNudge: 'bernard' });
-                router.dismissTo('/nv/stamgast');
-              }}
-            />
+      {label && uri ? <View style={{ position: 'absolute', left: '32%', width: '38%', top: '42%', height: '27%', borderRadius: 18, borderWidth: 3, borderColor: C.yellow }} /> : null}
+      {phase.step === 'reading' || phase.step === 'shooting' ? (
+        <View style={[panel, s.row, { gap: 12 }]}>
+          <ActivityIndicator color={C.yellow} />
+          <T s={15} w={700}>
+            {copy.reading}
+          </T>
+        </View>
+      ) : phase.step === 'failed' ? (
+        <View style={panel}>
+          <T s={15} w={600} c={C.text2}>
+            {phase.message}
+          </T>
+          <Button label={copy.retake} icon="camera" onPress={retake} />
+          {label ? (
             <Press onPress={() => router.back()} style={{ alignItems: 'center' }}>
               <T s={14} w={700} c={C.text2}>
-                Není to ono? Napiš ho
+                {copy.notIt}
               </T>
             </Press>
-          </>
-        ) : (
-          <>
-            <View style={{ gap: 2 }}>
-              <D s={26}>Na lístku tu chybí</D>
+          ) : null}
+        </View>
+      ) : phase.step === 'label' ? (
+        <View style={panel}>
+          <View style={{ gap: 4 }}>
+            <Kicker>{copy.recognized}</Kicker>
+            <D s={28}>{phase.beer.name}</D>
+          </View>
+          <View style={[s.row, { gap: 10 }]}>
+            <SizeCard title={copy.bottle} sub={formatVolume(phase.beer.volumeMl ?? 500)} on={serving === 'lahvac'} onPress={() => setServing('lahvac')} />
+            <SizeCard title={copy.can} sub={formatVolume(phase.beer.volumeMl ?? 500)} on={serving === 'plech'} onPress={() => setServing('plech')} />
+          </View>
+          <Button
+            height={58}
+            label={copy.logBeer}
+            sub={`${phase.beer.name} · ${(serving === 'lahvac' ? copy.bottle : copy.can).toLowerCase()} ${formatVolume(phase.beer.volumeMl ?? 500)}`}
+            onPress={() => {
+              const target: CountPlace = place?.kind === 'outside' ? place : { kind: 'outside', context: 'private' };
+              if (place?.kind !== 'outside') useNvPlaceStore.getState().setOutside('private');
+              logDrink(target, { name: phase.beer.name, drinkType: 'beer', servingType: serving === 'lahvac' ? 'bottle' : 'can', volumeMl: phase.beer.volumeMl ?? 500 });
+              router.dismissTo('/nv/stamgast');
+            }}
+          />
+          <Press onPress={() => router.back()} style={{ alignItems: 'center' }}>
+            <T s={14} w={700} c={C.text2}>
+              {copy.notIt}
+            </T>
+          </Press>
+        </View>
+      ) : (
+        <View style={panel}>
+          <View style={{ gap: 2 }}>
+            <D s={26}>{phase.missing.length ? copy.boardMissing : copy.boardAllThere}</D>
+            {phase.missing.length ? (
               <T s={13} c={C.muted}>
-                Ostatní z tabule už tu mají.
+                {copy.boardOthers}
               </T>
-            </View>
-            {[
-              ['Bernard 11°', '0,5 l · 55 Kč'],
-              ['Svijany Máz 11°', '0,5 l · 49 Kč'],
-            ].map(([name, meta], i) => (
-              <Press key={name} onPress={() => setChecked(checked.map((c, j) => (j === i ? !c : c)))} style={[s.row, { gap: 12, paddingVertical: 4 }]}>
-                <View style={[{ width: 24, height: 24, borderRadius: 6, backgroundColor: checked[i] ? C.yellow : 'transparent', borderWidth: checked[i] ? 0 : 2, borderColor: C.muted }, s.center]}>
-                  {checked[i] ? <Icon name="check" size={16} color={C.black} /> : null}
-                </View>
-                <View style={{ gap: 2 }}>
-                  <T s={15} w={700}>
-                    {name}
-                  </T>
-                  <T s={12} c={C.muted}>
-                    {meta}
-                  </T>
-                </View>
-              </Press>
-            ))}
-            <Button
-              label={n ? `Přidat ${n} ${n === 1 ? 'pivo' : 'piva'} na lístek` : 'Nic nepřidávat'}
-              onPress={() => {
-                toast({ kind: 'xp', title: 'Lístek doplněný!', icon: 'list-plus', xp: 10 });
-                router.replace({ pathname: '/nv/zapis', params: { added: 'bernard' } });
-              }}
-            />
-            <Press style={{ alignItems: 'center' }} onPress={() => setChecked([true, true])}>
-              <T s={14} w={700} c={C.text2}>
-                Vyfotit znovu
-              </T>
+            ) : null}
+          </View>
+          {phase.missing.map((beer, i) => (
+            <Press key={beer.name} onPress={() => setChecked(checked.map((c, j) => (j === i ? !c : c)))} style={[s.row, { gap: 12, paddingVertical: 4 }]}>
+              <View style={[{ width: 24, height: 24, borderRadius: 6, backgroundColor: checked[i] ? C.yellow : 'transparent', borderWidth: checked[i] ? 0 : 2, borderColor: C.muted }, s.center]}>
+                {checked[i] ? <Icon name="check" size={16} color={C.black} /> : null}
+              </View>
+              <View style={[s.fill, { gap: 2 }]}>
+                <T s={15} w={700}>
+                  {beer.name}
+                </T>
+                <T s={12} c={C.muted}>
+                  {[beer.volumeMl ? formatVolume(beer.volumeMl) : null, typeof beer.priceCzk === 'number' ? formatPrice(beer.priceCzk, currency) : null].filter(Boolean).join(' · ')}
+                </T>
+              </View>
             </Press>
-          </>
-        )}
-      </View>
+          ))}
+          <Button
+            label={n ? copy.addToBoard(n) : copy.addNothing}
+            disabled={n > 0 && !menu.fresh}
+            onPress={() => {
+              const added = phase.missing.filter((_b, i) => checked[i]);
+              if (!added.length || !pub) {
+                router.back();
+                return;
+              }
+              addBeersToMenu(pub, menu, added);
+              toast({ kind: 'xp', title: copy.boardDone, icon: 'list-plus' });
+              router.replace({
+                pathname: '/nv/zapis',
+                params: { added: added[0].name, ...(added[0].priceCzk ? { price: String(added[0].priceCzk) } : {}), ...(added[0].volumeMl ? { volume: String(added[0].volumeMl) } : {}) },
+              });
+            }}
+          />
+          <Press style={{ alignItems: 'center' }} onPress={retake}>
+            <T s={14} w={700} c={C.text2}>
+              {copy.retake}
+            </T>
+          </Press>
+        </View>
+      )}
     </View>
   );
 }
 
 export function ZmenitMistoSheet() {
   const router = useRouter();
-  const st = useMock();
-  const near = [...PUBS].sort((a, b) => a.distance - b.distance).slice(0, 4);
+  const copy = t.nv.stamgast;
+  const { target } = useLocalSearchParams<{ target?: string }>();
+  const forBackfill = target === 'dopsat';
+  const place = useCountPlace();
+  const candidates = useNvPlaceStore((st) => st.candidates);
+  const loading = useNvPlaceStore((st) => st.loading);
+  const permission = useNvPlaceStore((st) => st.permission);
+  const backfillPub = useBackfillPick((st) => st.pub);
+
+  useEffect(() => {
+    const { setPicking } = useNvPlaceStore.getState();
+    setPicking(true);
+    return () => setPicking(false);
+  }, []);
+
+  const near = candidates.slice(0, 8);
+  const choose = (pub: Pub) => {
+    if (forBackfill) useBackfillPick.getState().set(pub);
+    else useNvPlaceStore.getState().pickPub(pub);
+    router.back();
+  };
+  const atHome = !forBackfill && place?.kind === 'outside';
+  const selectedKey = forBackfill ? (backfillPub ? placeKey({ kind: 'pub', pub: backfillPub }) : null) : place?.kind === 'pub' ? placeKey(place) : null;
+
   return (
-    <Sheet title="Kde sedíš?" top={360}>
+    <Sheet title={copy.placeUnknown} top={360}>
       <View>
-        {near.map((p, i) => {
-          const d = formatDistance(p.distance);
-          const on = !st.atHome && st.pubId === p.id;
-          return (
-            <Row
-              key={p.id}
-              last={i === near.length - 1}
-              leading={<Tile icon="map-pin" color={on ? C.black : C.yellow} bg={on ? C.yellow : C.control} />}
-              title={p.name}
-              sub={`${p.area} · ${d.value} ${d.unit}`}
-              trailing={on ? <Icon name="check" size={18} color={C.yellow} /> : null}
-              onPress={() => {
-                st.set({ pubId: p.id, atHome: false, atFriend: null });
-                router.back();
-              }}
-            />
-          );
-        })}
+        {permission !== 'granted' ? (
+          <Row
+            last
+            leading={<Tile icon="locate-fixed" color={C.yellow} bg={C.control} />}
+            title={copy.placeLocate}
+            sub={copy.placeLocateSub}
+            onPress={() => void useNvPlaceStore.getState().requestPermission()}
+          />
+        ) : loading && near.length === 0 ? (
+          <View style={[s.row, { gap: 10, height: 62 }]}>
+            <ActivityIndicator color={C.muted} />
+            <T s={14} c={C.muted}>
+              {copy.placeSearching}
+            </T>
+          </View>
+        ) : near.length === 0 ? (
+          <Row last leading={<Tile icon="rotate-cw" color={C.yellow} bg={C.control} />} title={copy.placeNone} sub={copy.placeRetry} onPress={() => useNvPlaceStore.getState().retry()} />
+        ) : (
+          near.map((c, i) => {
+            const on = !atHome && selectedKey === c.pubKey;
+            return (
+              <Row
+                key={c.pubKey}
+                last={i === near.length - 1}
+                leading={<Tile icon="map-pin" color={on ? C.black : C.yellow} bg={on ? C.yellow : C.control} />}
+                title={c.pub.name}
+                sub={[c.pub.city ?? c.pub.address, distanceLabel(c.distanceMeters)].filter(Boolean).join(' · ')}
+                trailing={on ? <Icon name="check" size={18} color={C.yellow} /> : null}
+                onPress={() => choose(c.pub)}
+              />
+            );
+          })
+        )}
       </View>
-      <Press
-        onPress={() => {
-          st.set({ atHome: true, atFriend: null });
-          router.back();
-        }}
-        style={[s.row, { gap: 12, padding: 14, borderRadius: 20, backgroundColor: C.card }]}
-      >
-        <Tile icon="house" color={st.atHome ? C.black : C.yellow} bg={st.atHome ? C.yellow : C.control} />
-        <View style={[s.fill, { gap: 2 }]}>
-          <T s={16} w={700}>
-            Doma / na chatě
-          </T>
-          <T s={13} c={C.muted}>
-            lahváče, plechovky, bez hospody
-          </T>
-        </View>
-      </Press>
+      {forBackfill ? null : (
+        <Press
+          onPress={() => {
+            useNvPlaceStore.getState().setOutside('private');
+            router.back();
+          }}
+          style={[s.row, { gap: 12, padding: 14, borderRadius: 20, backgroundColor: C.card }]}
+        >
+          <Tile icon="house" color={atHome ? C.black : C.yellow} bg={atHome ? C.yellow : C.control} />
+          <View style={[s.fill, { gap: 2 }]}>
+            <T s={16} w={700}>
+              {copy.placeHome}
+            </T>
+            <T s={13} c={C.muted}>
+              {copy.placeHomeSub}
+            </T>
+          </View>
+        </Press>
+      )}
     </Sheet>
   );
 }
+
