@@ -188,6 +188,7 @@ jest.mock('@/stores/releaseStore', () => ({
 }));
 jest.mock('@/stores/tallyStore', () => ({
   useTallyStore: { getState: () => ({ current: null }), subscribe: jest.fn(() => () => undefined) },
+  onTallySessionClosed: jest.fn(() => () => undefined),
 }));
 jest.mock('@/notifications/friendPush', () => ({
   ...mockResolved('consumeInitialTourInviteTap', 'ensureFriendPushRegisteredIfGranted'),
