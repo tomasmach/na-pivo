@@ -161,6 +161,7 @@ export const partaEn: Strings['nv']['parta'] = {
   tabMappers: 'Mappers',
   tabPubs: 'Pubs',
   periodWeek: 'This week',
+  periodLastWeek: 'Last week',
   periodMonth: 'Month',
   periodAll: 'All time',
   rankBeers: 'place in Czechia',

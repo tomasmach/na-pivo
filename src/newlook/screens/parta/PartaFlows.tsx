@@ -301,7 +301,8 @@ export function ZebrickyScreen() {
   }, [tab, period, key]);
 
   const periods: { key: BoardPeriodKey; label: string }[] = [
-    { key: 'week', label: t.nv.parta.periodWeek },
+    // The pub board counts the last finished week.
+    { key: 'week', label: tab === 'hospody' ? t.nv.parta.periodLastWeek : t.nv.parta.periodWeek },
     { key: 'month', label: t.nv.parta.periodMonth },
     { key: 'all', label: t.nv.parta.periodAll },
   ];

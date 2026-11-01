@@ -160,6 +160,7 @@ export const partaCs = {
   tabMappers: 'Mapéři',
   tabPubs: 'Hospody',
   periodWeek: 'Tenhle týden',
+  periodLastWeek: 'Minulý týden',
   periodMonth: 'Měsíc',
   periodAll: 'Odjakživa',
   rankBeers: 'místo v Česku',
