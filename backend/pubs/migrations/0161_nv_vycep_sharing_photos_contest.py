@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pubs', '0159_add_vape_friendly_amenity'),
+        ('pubs', '0160_nv_piva_ranking'),
     ]
 
     operations = [

@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pubs', '0159_add_vape_friendly_amenity'),
+        ('pubs', '0162_nv_parta_plans_v2'),
     ]
 
     operations = [
