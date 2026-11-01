@@ -132,9 +132,11 @@ export function FotoPivarScreen() {
       <Screen header={<BackHeader onBack={() => setEnded(false)} />} footer={<Button label={t.nv.vycep.nextRound} onPress={() => setEnded(false)} />} gap={16}>
         <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end' }]}>
           <D s={44}>{t.nv.vycep.contestTitle}</D>
-          <T s={15} w={700} c={C.muted} style={{ marginBottom: 6 }}>
-            {t.nv.vycep.roundEnded}
-          </T>
+          {last ? (
+            <T s={15} w={700} c={C.muted} style={{ marginBottom: 6 }}>
+              {t.nv.vycep.roundEnded}
+            </T>
+          ) : null}
         </View>
         {!last ? (
           <T s={15} c={C.muted}>
