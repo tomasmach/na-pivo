@@ -178,7 +178,7 @@ export function Sheet({
   const keyboard = useKeyboardHeight();
   const footerBottom = Math.max(insets.bottom - 6, 16);
   const body = (
-    <View style={[{ gap: 20, paddingTop: 14, paddingHorizontal: SCREEN_X, paddingBottom: footer ? footerH + 40 : insets.bottom + 24 }, contentStyle]}>
+    <View style={[{ gap: 20, paddingTop: 14, paddingHorizontal: SCREEN_X, paddingBottom: footer ? (keyboard > 0 ? 8 : footerH + 40) : insets.bottom + 24 }, contentStyle]}>
       {children}
     </View>
   );
@@ -194,7 +194,7 @@ export function Sheet({
           left: 0,
           right: 0,
           bottom: keyboard,
-          maxHeight: height - keyboard - Math.max(top, insets.top + 40),
+          maxHeight: keyboard > 0 ? height - keyboard - insets.top - 40 : height - Math.max(top, insets.top + 40),
           backgroundColor: C.dialog,
           borderTopLeftRadius: 34,
           borderTopRightRadius: 34,
