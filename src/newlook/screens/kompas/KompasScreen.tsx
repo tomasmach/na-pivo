@@ -9,6 +9,7 @@ import { haversineMeters } from '@/compass/distance';
 import type { AmenityKey } from '@/data/amenities';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
+import { buildVisitedCities } from '@/map/mapModel';
 import { t } from '@/i18n';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -159,7 +160,8 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
 
   const showCityPubs = () => {
     if (!city) return;
-    const pubs = k.map.visitedPubs.filter((p) => p.city.toLocaleLowerCase('cs-CZ') === city.key);
+    // The same key the map grouped the city by.
+    const pubs = k.map.visitedPubs.filter((p) => buildVisitedCities([p])[0]?.key === city.key);
     st.set({ cityPubs: { name: city.name, pubs } });
     router.push({ pathname: '/nv/moje-hospody', params: { city: city.name } });
   };

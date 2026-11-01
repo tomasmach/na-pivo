@@ -30,6 +30,8 @@ type KompasState = {
   hoursDraft: { key: string; hours: WeeklyHours } | null;
   /** Pubs visited in one city, handed from the "Moje stopy" card to its list. */
   cityPubs: { name: string; pubs: VisitedPubSummary[] } | null;
+  /** A point aimed on the pin map, picked up by "Přidat hospodu". */
+  pin: { lat: number; lng: number } | null;
   set: (patch: Partial<Omit<KompasState, 'set' | 'setFilters' | 'clearFilters' | 'pick'>>) => void;
   setFilters: (patch: Partial<PubSearchFilters>) => void;
   clearFilters: () => void;
@@ -44,6 +46,7 @@ export const useKompasState = create<KompasState>((set, get) => ({
   picked: null,
   hoursDraft: null,
   cityPubs: null,
+  pin: null,
   set: (patch) => set(patch),
   setFilters: (patch) => set({ filters: normalizePubSearchFilters({ ...get().filters, ...patch }) }),
   clearFilters: () => {

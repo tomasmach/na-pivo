@@ -305,6 +305,9 @@ export const kompasCs = {
   meetKicker: 'Pivo u tebe doma',
   meetTitle: 'Pozvi lidi k sobě',
   meetName: 'Název setkání',
+  meetNamePlaceholder: 'Pivo, deskovky a klid',
+  meetAddressPlaceholder: 'Ulice, číslo a případně zvonek',
+  guest: 'Návštěvník',
   meetWhat: 'Co se bude dít',
   meetWhen: 'Kdy',
   today: 'Dnes',
@@ -312,10 +315,7 @@ export const kompasCs = {
   meetSeats: 'Kolik se vás vejde',
   meetSeatsSub: 'i s tebou, ukážu volná místa',
   meetAddress: 'Tvoje adresa',
-  meetAddressNote: (area: string) =>
-    area
-      ? `Ostatní uvidí jen čtvrť, tady ${area}. Celou adresu pošlu až lidem, které pustíš.`
-      : 'Ostatní uvidí jen čtvrť. Celou adresu pošlu až lidem, které pustíš.',
+  meetAddressNote: 'Ostatní uvidí jen město. Celou adresu pošlu až lidem, které pustíš.',
   meetAdults: 'Je mi 18+ a setkání je jen pro dospělé.',
   meetOpen: 'Otevřít stůl',
   meetCreated: 'Stůl je otevřený. Přesná adresa zůstává skrytá.',

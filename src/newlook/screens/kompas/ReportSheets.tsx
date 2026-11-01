@@ -1,46 +1,72 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+
+import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
+import { submitPubRename } from '@/components/amenities/pubRename';
+import { enqueuePubReport } from '@/data/pubReportQueue';
+import type { PubReportReason } from '@/data/pubReportsClient';
+import type { Pub } from '@/data/pubs';
+import { t } from '@/i18n';
+import { usePubStore } from '@/stores/pubStore';
 
 import { Input } from '../../components/forms';
 import { Sheet } from '../../components/overlays';
 import { Button, Row, T, Tile } from '../../components/ui';
-import { pubById } from '../../mock/data';
-import { dialog, toast, useMock } from '../../mock/store';
+import { dialog, toast } from '../../ui/store';
 import { C } from '../../theme';
+import { nvPubParams, useKompasState } from './state';
+import { useParamPub } from './usePubPage';
 
-function reportDone() {
-  const offline = useMock.getState().offline;
-  toast(
-    offline
-      ? { kind: 'offline', title: 'Nahlášení je uložené.', sub: 'Pošlu ho, až bude signál.', icon: 'eye-off', at: 'bottom' }
-      : { kind: 'saved', title: 'Nahlášeno.', sub: 'Mrknu na to.', icon: 'flag', at: 'bottom' },
+function report(pub: Pub, key: string, reason: PubReportReason) {
+  const L = t.nv.kompas;
+  // A pub without a provider id is hidden by its cell alone; an empty id would match other id-less results.
+  if (pub.id) usePubStore.getState().addReportedPub(pub.id, key);
+  else if (!usePubStore.getState().reportedCacheKeys.includes(key)) {
+    usePubStore.setState((state) => ({ reportedCacheKeys: [...state.reportedCacheKeys, key] }));
+  }
+  const picked = useKompasState.getState().picked;
+  if (picked && picked.lat === pub.lat && picked.lng === pub.lng) useKompasState.getState().pick(null);
+  void enqueuePubReport(pub, reason).then((sent) =>
+    toast(
+      sent
+        ? { kind: 'saved', title: L.reported, sub: L.reportedSub, icon: 'flag', at: 'bottom' }
+        : { kind: 'offline', title: L.reportQueued, sub: L.reportQueuedSub, icon: 'eye-off', at: 'bottom' },
+    ),
   );
 }
 
 export function NesediSheet() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const pub = pubById(id) ?? pubById('tygr')!;
-  const report = () => {
+  const L = t.nv.kompas;
+  const { key, pub } = useParamPub();
+  if (!pub) return null;
+  const ask = (reason: PubReportReason) => {
     router.back();
     dialog({
-      title: `Nahlásit „${pub.name}“?`,
-      body: 'Nahlášení může hospodu skrýt i ostatním.',
-      actions: [{ label: 'Zpátky' }, { label: 'Nahlásit', kind: 'danger', onPress: reportDone }],
+      title: L.reportConfirmTitle(pub.name),
+      body: L.reportConfirmBody,
+      actions: [{ label: L.reportBack }, { label: L.report, kind: 'danger', onPress: () => report(pub, key, reason) }],
     });
   };
   return (
-    <Sheet title="Chybí nebo nesedí?" top={480} scroll={false}>
-      <T s={16} c={C.text2} lh={1.4} style={{ marginTop: -8 }}>{`Přidej jinou hospodu, oprav „${pub.name}“, nebo nahlas problém.`}</T>
+    <Sheet title={L.wrongTitle} top={480} scroll={false}>
+      <T s={16} c={C.text2} lh={1.4} style={{ marginTop: -8 }}>
+        {L.wrongBody(pub.name)}
+      </T>
       <View style={{ gap: 0 }}>
-        <Row leading={<Tile icon="pencil" color={C.white} size={36} radius={18} />} title="Opravit název" chevron onPress={() => router.replace({ pathname: '/nv/opravit-nazev', params: { id: pub.id } })} />
-        <Row leading={<Tile icon="door-closed" color={C.white} size={36} radius={18} />} title="Hospoda už nefunguje" chevron onPress={report} />
-        <Row leading={<Tile icon="ban" color={C.white} size={36} radius={18} />} title="Není to hospoda" chevron onPress={report} />
+        <Row
+          leading={<Tile icon="pencil" color={C.white} size={36} radius={18} />}
+          title={L.rename}
+          chevron
+          onPress={() => router.replace({ pathname: '/nv/opravit-nazev', params: nvPubParams(pub) })}
+        />
+        <Row leading={<Tile icon="door-closed" color={C.white} size={36} radius={18} />} title={L.reportClosed} chevron onPress={() => ask('closed')} />
+        <Row leading={<Tile icon="ban" color={C.white} size={36} radius={18} />} title={L.reportNotPub} chevron onPress={() => ask('not_pub')} />
         <Row
           last
           leading={<Tile icon="plus" color={C.black} bg={C.yellow} size={36} radius={18} />}
-          title="Přidat jinou hospodu"
+          title={L.addOtherPub}
           titleColor={C.yellow}
           titleWeight={700}
           chevron
@@ -53,24 +79,30 @@ export function NesediSheet() {
 
 export function OpravitNazevSheet() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const pub = pubById(id) ?? pubById('tygr')!;
-  const [name, setName] = useState(`Pivnice ${pub.name}`);
+  const L = t.nv.kompas;
+  const { pub } = useParamPub();
+  const [name, setName] = useState(pub?.name ?? '');
+  if (!pub) return null;
+  const next = name.trim().slice(0, 200);
   return (
-    <Sheet title="Jak se jmenuje?" top={560} scroll={false}>
-      <T s={16} c={C.text2} lh={1.4} style={{ marginTop: -8 }}>{`Přejmenuju „${pub.name}“ i pro ostatní pivaře, když se oprava odešle.`}</T>
+    <Sheet title={L.renameTitle} top={560} scroll={false}>
+      <T s={16} c={C.text2} lh={1.4} style={{ marginTop: -8 }}>
+        {L.renameBody(pub.name)}
+      </T>
       <View style={{ gap: 8 }}>
         <T s={13} w={600} c={C.muted}>
-          Nový název hospody
+          {L.renameLabel}
         </T>
         <Input value={name} onChangeText={setName} autoFocus />
       </View>
       <Button
-        label="Uložit název"
-        disabled={!name.trim()}
+        label={L.renameSave}
+        disabled={!next || next === pub.name.trim()}
         onPress={() => {
           router.back();
-          toast({ kind: 'xp', title: 'Díky za opravu!', icon: 'pencil', xp: 5 });
+          void submitPubRename(pubInfoFromPub(pub), pub.name, next).then((sent) =>
+            toast(sent ? { kind: 'saved', title: L.renameThanks, icon: 'pencil' } : { kind: 'offline', title: L.renameThanks, sub: L.renameQueuedSub, icon: 'pencil' }),
+          );
         }}
       />
     </Sheet>

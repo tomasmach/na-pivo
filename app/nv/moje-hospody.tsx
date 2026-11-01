@@ -1,3 +1,3 @@
-import { MojeHospodyScreen } from '@/newlook/screens/kompas/PubFlows';
+import { MojeHospodyScreen } from '@/newlook/screens/kompas/AddPubScreens';
 
 export default MojeHospodyScreen;

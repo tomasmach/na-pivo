@@ -1,16 +1,31 @@
 import React from 'react';
-import { ScrollView, View } from 'react-native';
+import { ActivityIndicator, ScrollView, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomFade } from '../../components/chrome';
+import { haversineMeters } from '@/compass/distance';
+import { geohash8 } from '@/data/geohash';
+import { buildPubShareUrl } from '@/data/pubShareLink';
+import { formatVolume, t } from '@/i18n';
+import { calendarDaysBetween, eventDay, eventStartTime } from '@/pubPage/pubPageModel';
+import { findFavoriteKey, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { formatPrice } from '@/utils/currency';
+import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
+import { openPubInMaps } from '@/utils/maps';
+
+import { BackHeader, BottomFade, Screen } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
 import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../components/ui';
-import { beerById, formatDistance, pubById } from '../../mock/data';
-import { toast, useMock } from '../../mock/store';
+import { toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
+import { distanceLabel, hoursNow } from './format';
 import { GRAY_MAP } from './NvMap';
+import { nvPubParams, showOnKompas, useKompasState } from './state';
+import { usePubDetails, useParamPub, useRecentPosition } from './usePubPage';
+
+const L = () => t.nv.kompas;
 
 function Band() {
   return <View style={{ height: 10, backgroundColor: C.card }} />;
@@ -67,60 +82,111 @@ function AddLink({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
+function verifiedLabel(iso: string | null | undefined, now: Date): string | undefined {
+  const at = iso ? new Date(iso) : null;
+  if (!at || !Number.isFinite(at.getTime())) return undefined;
+  const days = calendarDaysBetween(at, now);
+  if (days <= 0) return L().verifiedToday;
+  if (days === 1) return L().verifiedYesterday;
+  if (days < 7) return L().verifiedDaysAgo(days);
+  if (days < 14) return L().verifiedLastWeek;
+  return L().verifiedOn(dateTimeFormat({ day: 'numeric', month: 'numeric' }).format(at));
+}
+
+function eventWhen(event: Parameters<typeof eventDay>[0], now: Date): string {
+  const day = eventDay(event, now);
+  const time = eventStartTime(event);
+  if (day.kind === 'running') return L().eventRunning;
+  if (day.kind === 'today') return L().eventToday(time);
+  if (day.kind === 'tomorrow') return L().eventTomorrow(time);
+  return L().eventOn(dateTimeFormat({ weekday: 'short', day: 'numeric', month: 'numeric' }).format(day.date), time);
+}
+
 export function PubScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const pub = pubById(id) ?? pubById('tygr')!;
-  const fav = useMock((st) => st.favorites.includes(pub.id));
-  const toggleFavorite = useMock((st) => st.toggleFavorite);
-  const set = useMock((st) => st.set);
-  const dist = formatDistance(pub.distance);
+  const { key, pub: opened } = useParamPub();
+  const details = usePubDetails(opened, key);
+  const { pub } = details;
+  const position = useRecentPosition();
+  const currency = useSettingsStore((st) => st.priceCurrency);
+  const favoriteKey = usePubFavoritesStore((st) => (pub ? findFavoriteKey(st.favorites, geohash8(pub.lat, pub.lng), pub) : undefined));
+
+  if (!pub) {
+    return (
+      <Screen header={<BackHeader />}>
+        <D s={36}>{L().pubMissingTitle}</D>
+        <T s={15} c={C.muted} lh={1.4}>
+          {L().pubMissingBody}
+        </T>
+      </Screen>
+    );
+  }
+
+  const fav = Boolean(favoriteKey);
+  const distance = position ? haversineMeters(position, pub) : null;
+  const hours = hoursNow(pub);
+  const params = nvPubParams(pub);
+  const area = pub.city || pub.address || '';
+  const toggleFavorite = () => {
+    const store = usePubFavoritesStore.getState();
+    if (favoriteKey) store.toggleFavorite(favoriteKey, pub);
+    else store.saveFavorite(geohash8(pub.lat, pub.lng), { name: pub.name, lat: pub.lat, lng: pub.lng, city: pub.city, externalId: pub.id || undefined });
+    toast({ kind: 'saved', title: fav ? L().favoriteRemoved : L().favoriteAdded, icon: 'heart' });
+  };
+  const guide = () => {
+    // The compass watches the arrival, so walking in still ends with "Na zdraví".
+    useKompasState.getState().pick(pub);
+    const sub = distance != null ? L().guideSub(pub.name, distanceLabel(distance)) : pub.name;
+    toast({ kind: 'info', title: L().guideTitle, sub, icon: 'navigation' });
+    void openPubInMaps(pub);
+  };
+  const verified = details.taps.length ? verifiedLabel(pub.beersUpdatedAt, details.now) : undefined;
+  const ratingValue =
+    typeof pub.rating === 'number' && pub.rating > 0
+      ? numberFormat({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(pub.rating)
+      : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 140 }}>
         <View style={{ paddingHorizontal: SCREEN_X, gap: 18, paddingBottom: 24 }}>
           <View style={[s.row, { justifyContent: 'space-between' }]}>
-            <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => router.back()} label="Zpět" />
+            <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => router.back()} label={L().back} />
             <View style={[s.row, { gap: 10 }]}>
+              <IconButton icon="heart" size={40} iconSize={18} color={fav ? C.yellow : C.white} label={fav ? L().favoriteRemove : L().favoriteAdd} onPress={toggleFavorite} />
               <IconButton
-                icon="heart"
+                icon="share"
                 size={40}
                 iconSize={18}
-                color={C.yellow}
-                label={fav ? 'Odebrat ze srdcovek' : 'Přidat do srdcovek'}
-                onPress={() => {
-                  toggleFavorite(pub.id);
-                  toast({ kind: 'saved', title: fav ? 'Ze srdcovek pryč.' : 'Mám ji ve srdcovkách.', icon: 'heart' });
-                }}
+                label={L().share}
+                onPress={() => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params, url: buildPubShareUrl(pub) } })}
               />
-              <IconButton icon="share" size={40} iconSize={18} label="Sdílet" onPress={() => router.push({ pathname: '/nv/sdilet-hospodu', params: { id: pub.id } })} />
-              <IconButton icon="ellipsis" size={40} iconSize={18} label="Další" onPress={() => router.push({ pathname: '/nv/nesedi', params: { id: pub.id } })} />
+              <IconButton icon="ellipsis" size={40} iconSize={18} label={L().more} onPress={() => router.push({ pathname: '/nv/nesedi', params })} />
             </View>
           </View>
           <View style={{ gap: 6 }}>
             <D s={44} accessibilityRole="header">
               {pub.name}
             </D>
-            <View style={[s.row, { gap: 6 }]}>
-              <Dot color={C.open} size={7} />
-              <T s={15} w={600} c={C.open}>{`Otevřeno do ${pub.openUntil}`}</T>
-              <T s={15} c={C.muted}>{`· ${dist.value} ${dist.unit} · ${pub.area}`}</T>
+            <View style={[s.row, { gap: 6, flexWrap: 'wrap' }]}>
+              <Dot color={hours.tone === 'open' ? C.open : C.muted} size={7} />
+              <T s={15} w={600} c={hours.tone === 'open' ? C.open : C.muted}>
+                {hours.tone === 'open' ? (hours.until ? L().openUntil(hours.until) : L().openNow) : hours.tone === 'closed' ? L().closedNow : L().hoursUnknown}
+              </T>
+              {distance != null || area ? (
+                <T s={15} c={C.muted}>
+                  {L().distanceArea(distance != null ? distanceLabel(distance) : '', area)}
+                </T>
+              ) : null}
             </View>
           </View>
-          <Press
-            onPress={() => {
-              set({ targetId: pub.id, mapView: 'okoli' });
-              router.navigate('/nv/kompas');
-            }}
-            style={{ height: 112, borderRadius: 20, overflow: 'hidden', backgroundColor: C.card }}
-          >
+          <Press onPress={() => showOnKompas(router, pub)} style={{ height: 112, borderRadius: 20, overflow: 'hidden', backgroundColor: C.card }}>
             <MapView
               provider={PROVIDER_GOOGLE}
               style={{ flex: 1 }}
               customMapStyle={GRAY_MAP}
-              initialRegion={{ ...pub.coord, latitudeDelta: 0.004, longitudeDelta: 0.004 }}
+              initialRegion={{ latitude: pub.lat, longitude: pub.lng, latitudeDelta: 0.004, longitudeDelta: 0.004 }}
               scrollEnabled={false}
               zoomEnabled={false}
               rotateEnabled={false}
@@ -128,7 +194,7 @@ export function PubScreen() {
               pointerEvents="none"
               userInterfaceStyle="dark"
             >
-              <Marker coordinate={pub.coord} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
+              <Marker coordinate={{ latitude: pub.lat, longitude: pub.lng }} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
                 <View style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.yellow, borderWidth: 2, borderColor: C.black }, s.center]}>
                   <Icon name="beer" size={18} color={C.black} />
                 </View>
@@ -137,80 +203,83 @@ export function PubScreen() {
             <View style={[s.row, { position: 'absolute', right: 10, bottom: 12, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AD9', borderWidth: 1, borderColor: '#FFFFFF1F' }]}>
               <Icon name="map" size={15} color={C.yellow} />
               <T s={13} w={700}>
-                Ukázat na mapě
+                {L().showOnMap}
               </T>
             </View>
           </Press>
           <View style={[s.row, { gap: 14, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 20, backgroundColor: C.card }]}>
             <View style={{ width: 40, height: 40 }}>
-              <ProgressRing size={40} progress={0.08} stroke={4} track={C.hairline} />
+              <ProgressRing size={40} progress={Math.max(0.02, details.mappedPercent / 100)} stroke={4} track={C.hairline} />
             </View>
             <View style={[s.fill, { gap: 2 }]}>
               <T s={16} w={700}>
-                Zmapováno na 8 %
+                {L().mapped(details.mappedPercent)}
               </T>
               <T s={13} c={C.muted}>
-                Doplň zahrádku, šipky nebo otevíračku. Uvidí to všichni.
+                {L().mappedSub}
               </T>
             </View>
-            <Press haptic onPress={() => router.push({ pathname: '/nv/doplnit-info', params: { id: pub.id } })} style={[{ height: 36, borderRadius: 18, paddingHorizontal: 14, backgroundColor: C.control }, s.center]}>
+            <Press haptic onPress={() => router.push({ pathname: '/nv/doplnit-info', params })} style={[{ height: 36, borderRadius: 18, paddingHorizontal: 14, backgroundColor: C.control }, s.center]}>
               <T s={14} w={700} c={C.yellow}>
-                Doplnit
+                {L().fill}
               </T>
             </Press>
           </View>
         </View>
         <Band />
-        <Section title="Na čepu" meta={pub.taps.length ? pub.verified ?? 'ověřeno minulý týden' : undefined}>
-          {pub.taps.length ? (
-            pub.taps.map((tap, i) => (
-              <Press key={`${tap.beerId}-${tap.size}`} onPress={() => router.push({ pathname: '/nv/pivo/[id]', params: { id: tap.beerId } })}>
-                <Line title={beerById(tap.beerId)?.name ?? ''} sub={tap.size} value={`${tap.price} Kč`} last={i === pub.taps.length - 1} />
+        <Section title={L().onTap} meta={verified}>
+          {details.taps.length ? (
+            details.taps.map((tap, i) => (
+              <Press key={`${tap.name}-${tap.volumeMl ?? ''}`} onPress={() => router.push({ pathname: '/nv/pivo/[id]', params: { id: tap.name, beer: tap.name } })}>
+                <Line
+                  title={tap.name}
+                  sub={tap.volumeMl ? formatVolume(tap.volumeMl) : undefined}
+                  value={tap.priceCzk ? formatPrice(tap.priceCzk, currency) : undefined}
+                  last={i === details.taps.length - 1}
+                />
               </Press>
             ))
+          ) : !details.hoursLoaded ? (
+            <ActivityIndicator color={C.yellow} style={{ alignSelf: 'flex-start', paddingVertical: 14 }} />
           ) : (
             <>
               <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
-                Co tu čepují, zatím nevím.
+                {L().noTaps}
               </T>
-              <AddLink label="Zapiš, co tu čepují" onPress={() => router.push({ pathname: '/nv/doplnit-info', params: { id: pub.id, tab: 'piva' } })} />
+              <AddLink label={L().addTaps} onPress={() => router.push({ pathname: '/nv/doplnit-info', params: { ...params, tab: 'piva' } })} />
             </>
           )}
         </Section>
         <Band />
-        <Section title="Akce">
-          {pub.event ? <Line title="Pub kvíz" sub="Dnes od 19:00" /> : null}
-          <AddLink label="Navrhni akci" onPress={() => router.push({ pathname: '/nv/navrhnout-akci', params: { id: pub.id } })} />
+        <Section title={L().events}>
+          {details.events.map((event) => (
+            <Line key={event.id} title={event.title} sub={eventWhen(event, details.now)} />
+          ))}
+          <AddLink label={L().suggestEvent} onPress={() => router.push({ pathname: '/nv/navrhnout-akci', params })} />
         </Section>
         <Band />
-        <Section title="O hospodě">
-          {pub.lastWeekBeers ? <Line title={`Minulý týden tu padlo ${pub.lastWeekBeers} piv`} sub="od lidí z Na pivo" /> : null}
-          {pub.rating ? <Line title={`${pub.rating.value} z ${pub.rating.count} hodnocení`} sub={pub.rating.source} /> : null}
-          <Line title="Navštíveno 2× · naposledy 20. 10." sub="Jen pro tebe" last />
+        <Section title={L().about}>
+          {details.beersLastWeek ? <Line title={L().lastWeekBeers(details.beersLastWeek)} sub={L().lastWeekBeersSub} /> : null}
+          {ratingValue ? (
+            <Line
+              title={L().rating(ratingValue, numberFormat().format(pub.ratingCount ?? 0))}
+              sub="Firmy.cz"
+              last={!details.visit}
+            />
+          ) : null}
+          {details.visit ? (
+            <Line
+              title={L().visits(details.visit.visitCount, dateTimeFormat({ day: 'numeric', month: 'numeric' }).format(new Date(details.visit.lastVisitedAt)))}
+              sub={L().onlyForYou}
+              last
+            />
+          ) : null}
         </Section>
       </ScrollView>
       <BottomFade height={184} />
       <View style={[s.row, { position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4, gap: 10 }]}>
-        <Button
-          label="Doveď mě tam"
-          icon="navigation"
-          flex
-          onPress={() => {
-            toast({ kind: 'info', title: 'Vedu tě do Map', sub: `${pub.name}, ${dist.value} ${dist.unit} pěšky`, icon: 'navigation' });
-            setTimeout(() => router.push({ pathname: '/nv/prichod', params: { id: pub.id } }), 1600);
-          }}
-        />
-        <IconButton
-          icon="compass"
-          size={52}
-          iconSize={23}
-          color={C.yellow}
-          label="Ukázat v kompasu"
-          onPress={() => {
-            set({ targetId: pub.id });
-            router.navigate('/nv/kompas');
-          }}
-        />
+        <Button label={L().guideMe} icon="navigation" flex onPress={guide} />
+        <IconButton icon="compass" size={52} iconSize={23} color={C.yellow} label={L().showOnCompass} onPress={() => showOnKompas(router, pub)} />
       </View>
     </View>
   );

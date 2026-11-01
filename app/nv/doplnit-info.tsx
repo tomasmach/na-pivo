@@ -1,3 +1,3 @@
-import { DoplnitInfoScreen } from '@/newlook/screens/kompas/PubFlows';
+import { DoplnitInfoScreen } from '@/newlook/screens/kompas/FillInfoScreens';
 
 export default DoplnitInfoScreen;

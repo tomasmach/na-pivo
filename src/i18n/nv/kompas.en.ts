@@ -287,6 +287,9 @@ export const kompasEn: Strings['nv']['kompas'] = {
   meetKicker: 'Beer at your place',
   meetTitle: 'Invite people over',
   meetName: 'Meetup name',
+  meetNamePlaceholder: 'Beer, board games and some peace',
+  meetAddressPlaceholder: 'Street, number and the doorbell if needed',
+  guest: 'Guest',
   meetWhat: "What's going to happen",
   meetWhen: 'When',
   today: 'Today',
@@ -294,10 +297,7 @@ export const kompasEn: Strings['nv']['kompas'] = {
   meetSeats: 'How many of you fit',
   meetSeatsSub: "including you, I'll show the free spots",
   meetAddress: 'Your address',
-  meetAddressNote: (area) =>
-    area
-      ? `Others only see the neighbourhood, here ${area}. I'll send the full address only to people you let in.`
-      : "Others only see the neighbourhood. I'll send the full address only to people you let in.",
+  meetAddressNote: "Others only see the city. I'll send the full address only to people you let in.",
   meetAdults: "I'm 18+ and the meetup is adults only.",
   meetOpen: 'Open the table',
   meetCreated: 'The table is open. The exact address stays hidden.',
