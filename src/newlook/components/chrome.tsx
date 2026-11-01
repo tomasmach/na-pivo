@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { ScrollView, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, ScrollView, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useMock } from '../mock/store';
-import { ME } from '../mock/data';
+import { t } from '@/i18n';
+
+import { useMe, useUnopenedBadges } from '../screens/profil/profilModel';
+import { useProfilWatchers } from '../screens/profil/useProfilWatchers';
 import { C, SCREEN_X, TAB_BAR_HEIGHT, s, shadow } from '../theme';
 import { Icon, type IconName } from './Icon';
 import { D, IconButton, Press, ProgressRing, T } from './ui';
@@ -55,7 +57,9 @@ export function GlassButton({ icon, onPress, size = 46, label }: { icon: IconNam
 /** The profile entry on every tab: avatar with the level ring and a new-badge dot. */
 export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: () => void }) {
   const router = useRouter();
-  const dot = useMock((st) => st.badgeDot);
+  const me = useMe();
+  const dot = useUnopenedBadges().length > 0;
+  useProfilWatchers();
   const inner = Math.round(size * 0.727);
   return (
     <Press
@@ -63,11 +67,11 @@ export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: (
       onPress={onPress ?? (() => router.push('/nv/profil'))}
       onLongPress={() => router.push('/nv/mock')}
       accessibilityRole="button"
-      accessibilityLabel={`Profil, level ${ME.level}`}
+      accessibilityLabel={t.nv.profil.chrome.avatarA11y(me.xp?.level ?? null)}
       style={{ width: size, height: size }}
     >
       <View style={{ position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: C.avatarBase }} />
-      <ProgressRing size={size} progress={ME.xp / ME.xpNext} stroke={size * 0.075} />
+      <ProgressRing size={size} progress={me.progress} stroke={size * 0.075} />
       <View
         style={[
           {
@@ -82,9 +86,13 @@ export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: (
           s.center,
         ]}
       >
-        <T s={Math.round(size * 0.34)} w={800} c={C.yellow}>
-          {ME.initial}
-        </T>
+        {me.avatarUrl ? (
+          <Image source={{ uri: me.avatarUrl }} style={{ width: inner, height: inner, borderRadius: inner / 2 }} accessibilityIgnoresInvertColors />
+        ) : (
+          <T s={Math.round(size * 0.34)} w={800} c={C.yellow}>
+            {me.initial}
+          </T>
+        )}
       </View>
       {dot ? (
         <View
@@ -137,7 +145,7 @@ export function BackHeader({
   const router = useRouter();
   return (
     <View style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
-      <IconButton icon={icon} label="Zpět" onPress={onBack ?? (() => router.back())} iconSize={20} />
+      <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={onBack ?? (() => router.back())} iconSize={20} />
       {title ? (
         <View style={{ position: 'absolute', left: 56, right: 56, alignItems: 'center' }} pointerEvents="none">
           <T s={16} w={700} numberOfLines={1}>

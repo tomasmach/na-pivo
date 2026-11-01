@@ -73,6 +73,7 @@ from .party_views import (
     party_game_stream,
 )
 from .piva_views import BeerCollectionView, BeerRankingView, BeerReviewsView, BeerSearchView
+from .profil_views import AccountXpEventsView
 from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
 from .tour_invite_views import MyTourInviteListView, MyTourInviteView, TourInvitesView
@@ -571,6 +572,7 @@ urlpatterns = [
         name="account-ugc-consent",
     ),
     path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
+    path("account/me/xp-events", AccountXpEventsView.as_view(), name="account-me-xp-events"),
     path(
         "account/me/purchases/restore",
         RestorePurchasesView.as_view(),

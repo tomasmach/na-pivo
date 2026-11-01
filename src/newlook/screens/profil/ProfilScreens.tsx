@@ -1,55 +1,125 @@
-import React, { useState } from 'react';
-import { Image, ScrollView, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Image, Linking, ScrollView, Share, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { updateAccountPreferences } from '@/data/account';
+import { loadAddedPubSubmissions } from '@/data/addedPubsQueue';
+import type { AuthProvider } from '@/data/auth';
+import { parseBadgeProgress } from '@/data/achievements';
+import { pickFeedbackAttachment, type FeedbackAttachmentSource } from '@/data/feedbackAttachmentPicker';
+import type { FeedbackCategory, FeedbackContactType } from '@/data/feedbackClient';
+import { enqueueFeedback } from '@/data/feedbackQueue';
+import { claimInviteCode } from '@/data/friendInviteLink';
+import {
+  fetchBlockedAccounts,
+  fetchFriendInviteCode,
+  fetchFriendsDashboard,
+  resolveInviteCode,
+  searchFriends,
+  sendFriendRequest,
+  unblockFriend,
+  type FriendInvite,
+  type FriendProfile,
+  type InviteResolveResult,
+} from '@/data/friendsClient';
+import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
+import { fetchAllReleaseNotes, getCurrentAppVersion, type ReleaseNote } from '@/data/releaseNotesClient';
+import { isAppleSignInSupported, isGoogleSignInConfigured } from '@/data/socialAuth';
+import { trackClientEvent } from '@/data/telemetryClient';
+import { fetchXpEvents, type XpEvent, type XpEventReason } from '@/data/xpEventsClient';
+import { friendDisplayName } from '@/friends/FriendMini';
+import { locale, t, type Locale } from '@/i18n';
+import { switchLocale } from '@/i18n/switchLocale';
+import {
+  disableBeerCountReminderNotifications,
+  enableBeerCountReminderNotifications,
+  reschedulePendingBeerCountReminder,
+} from '@/notifications/beerCountReminder';
+import { disableHomeTransitReminder, enableHomeTransitReminder } from '@/notifications/homeTransitReminder';
+import { pickAndPrepareAvatar } from '@/profile/avatarPicker';
+import { PUBLIC_BADGE_KEYS, badgeStates } from '@/profile/badgeModel';
+import { roman } from '@/profile/badgeText';
+import { checkNicknameLocal, nicknameReasonMessage, nicknameServerReasonMessage } from '@/profile/nickname';
+import { markNicknameNudgeSeen } from '@/profile/nicknameNudge';
+import { savedFavoritePubs } from '@/profile/profileModel';
+import { useRefreshBadgesOnFocus } from '@/profile/useAccountBadges';
+import { useLifetimeSummary } from '@/profile/useLifetimeSummary';
+import { useAccountStore } from '@/stores/accountStore';
+import { useBadgeStore } from '@/stores/badgeStore';
+import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { useBeerWatchStore } from '@/stores/beerWatchStore';
+import { useOnboardingStore } from '@/stores/onboardingStore';
+import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
+import { usePubStore } from '@/stores/pubStore';
+import {
+  BEER_COUNT_REMINDER_INTERVAL_OPTIONS,
+  useSettingsStore,
+  type BeerCountReminderIntervalMinutes,
+} from '@/stores/settingsStore';
+import { formatPrice } from '@/utils/currency';
+import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { Field, Input, PageTitle } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Person, Press, ProgressRing, Row, Segmented, T, Tile, Toggle } from '../../components/ui';
-import { ME, PUBS } from '../../mock/data';
-import { dialog, toast, useMock } from '../../mock/store';
+import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { Dial } from '../kompas/Dial';
+import { ProfilAvatar } from './ProfilAvatar';
+import {
+  groupBadges,
+  isPublicBadge,
+  markBadgeOpened,
+  nextGoal,
+  nvBadgeAbout,
+  nvBadgeAmount,
+  nvBadgeName,
+  nvStillLine,
+  buildNvBadges,
+  useMe,
+  useNvBadges,
+  type NvBadge,
+} from './profilModel';
 
-type BadgeView = { id: string; name: string; icon: IconName; got: boolean; sub: string; secret?: boolean };
+const P = () => t.nv.profil;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8;
+const PRIVACY_URL = 'https://tomasmach.github.io/na-pivo/privacy.html';
+const DISTANCE_OPTIONS: (number | null)[] = [0.5, 1, 1.5, 2, 2.5, 5, 10, null];
+const BADGES_SHOWN = 5;
 
-const BADGE_GROUPS: { title: string; items: BadgeView[] }[] = [
-  {
-    title: 'Pivo',
-    items: [
-      { id: 'carkar', name: 'Čárkař II', icon: 'beer', got: true, sub: '142 / 250' },
-      { id: 'ochutnavac', name: 'Ochutnávač I', icon: 'flask-conical', got: false, sub: '18 / 25 piv' },
-      { id: 'tyden', name: 'Týden co týden', icon: 'calendar-check', got: true, sub: '6 týdnů' },
-    ],
-  },
-  {
-    title: 'Hospody',
-    items: [
-      { id: 'poutnik', name: 'Poutník I', icon: 'map', got: true, sub: 'hotovo' },
-      { id: 'stamgast', name: 'Štamgast I', icon: 'landmark', got: true, sub: '5× na jednom místě' },
-      { id: 'cestovatel', name: 'Cestovatel', icon: 'globe', got: false, sub: '2 / 5 měst' },
-    ],
-  },
-  {
-    title: 'Parta a fotky',
-    items: [
-      { id: 'parta', name: 'Parta I', icon: 'users', got: true, sub: 'hotovo' },
-      { id: 'fotopivar', name: 'FotoPivař', icon: 'camera', got: false, sub: '0 / 1 fotka' },
-      { id: 'vecer', name: 'Večer s partou', icon: 'party-popper', got: false, sub: '3 / 5' },
-    ],
-  },
-  {
-    title: 'Speciální',
-    items: [
-      { id: 'celytyden', name: 'Celý týden', icon: 'calendar-days', got: false, sub: '5 ze 7 dní' },
-      { id: 'sova', name: 'Noční sova', icon: 'moon', got: true, sub: 'hotovo' },
-      { id: 'tajne', name: 'Tajné', icon: 'lock', got: false, sub: 'přijde samo', secret: true },
-    ],
-  },
-];
+function firstParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
+
+function close(router: ReturnType<typeof useRouter>) {
+  if (router.canGoBack()) router.back();
+  else router.replace('/nv/kompas');
+}
+
+function ErrorLine({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <T s={14} w={600} c={C.danger} accessibilityRole="alert">
+      {text}
+    </T>
+  );
+}
+
+function Bar({ progress, height = 8 }: { progress: number; height?: number }) {
+  const width = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%` as const;
+  return (
+    <View style={{ height, borderRadius: height / 2, backgroundColor: C.control }}>
+      <View style={{ width, height, borderRadius: height / 2, backgroundColor: C.yellow }} />
+    </View>
+  );
+}
 
 export function BadgeCircle({ icon, got, size = 76 }: { icon: IconName; got: boolean; size?: number }) {
   return (
@@ -64,54 +134,164 @@ export function BadgeCircle({ icon, got, size = 76 }: { icon: IconName; got: boo
   );
 }
 
+function notificationsDenied() {
+  const copy = t.settings.pubReminders.denied['notifications-denied'];
+  dialog({
+    title: copy.title,
+    body: copy.body,
+    actions: [
+      { label: P().settings.cancel },
+      { label: t.settings.pubReminders.openSettings, kind: 'primary', onPress: () => void Linking.openSettings() },
+    ],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Profil
+// ---------------------------------------------------------------------------
+
 export function ProfilScreen() {
   const router = useRouter();
-  const addedPubs = useMock((st) => st.addedPubs);
-  const set = useMock((st) => st.set);
+  const me = useMe();
+  const summary = useLifetimeSummary(true);
+  const priceCurrency = useSettingsStore((st) => st.priceCurrency);
+  const photos = useBeerPhotosStore((st) => st.photos);
+  const favoriteMap = usePubFavoritesStore((st) => st.favorites);
+  const reportedKeys = usePubStore((st) => st.reportedCacheKeys);
+  const reportedIds = usePubStore((st) => st.reportedPubIds);
+  const watchCount = useBeerWatchStore((st) => st.watches.length);
+  const ownLedger = useBadgeStore((st) => st.accountId != null && st.accountId === me.profile?.id);
+  const recentBadges = useBadgeStore((st) => st.recent);
+  const badges = useNvBadges();
+  const [addedPubs, setAddedPubs] = useState<number | null>(null);
+  const accountId = me.profile?.id ?? null;
+  useRefreshBadgesOnFocus();
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      void loadAddedPubSubmissions().then((list) => {
+        if (alive) setAddedPubs(list.length);
+      });
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadBeerPhotos(controller.signal);
+    return () => controller.abort();
+  }, [accountId]);
+
+  const favorites = useMemo(
+    () => savedFavoritePubs(favoriteMap, reportedKeys, reportedIds).length,
+    [favoriteMap, reportedIds, reportedKeys],
+  );
+
+  const shelf = useMemo(() => {
+    if (!badges) return null;
+    const recent = ownLedger ? recentBadges : [];
+    const rank = (key: string) => {
+      const index = (recent as readonly string[]).indexOf(key);
+      return index === -1 ? recent.length : index;
+    };
+    const earned = badges.filter((badge) => badge.state.tier > 0);
+    return {
+      earned: earned.length,
+      total: badges.length,
+      shown: [...earned].sort((a, b) => rank(a.key) - rank(b.key) || b.state.tier - a.state.tier).slice(0, BADGES_SHOWN),
+    };
+  }, [badges, ownLedger, recentBadges]);
+
+  const xp = me.xp;
+  const nf = numberFormat();
+  const title = me.isSignedIn ? (me.nick ? `@${me.nick}` : me.displayName || t.profile.noDisplayName) : t.profile.noAccountNick;
+  const missingNick = me.isSignedIn && me.profile != null && !me.nick;
+  const caption = !me.isSignedIn
+    ? t.profile.noAccountCaption
+    : missingNick
+      ? t.profile.nicknameMissing
+      : xp
+        ? P().profile.levelLine(xp.level, xp.title, me.isPublic)
+        : me.isPublic
+          ? t.profile.visibilityPublic
+          : t.profile.visibilityPrivate;
+  const average = summary.evenings > 0 ? summary.beers / summary.evenings : 0;
+  const since = summary.firstBeerAt
+    ? dateTimeFormat({ day: 'numeric', month: 'numeric', year: 'numeric' }).format(new Date(summary.firstBeerAt))
+    : null;
+
   return (
     <Screen header={<BackHeader />} gap={20}>
       <View style={[s.row, { gap: 16 }]}>
         <View style={{ width: 84, height: 84 }}>
-          <ProgressRing size={84} progress={ME.xp / ME.xpNext} stroke={4} />
-          <View style={[{ position: 'absolute', left: 8, top: 8, width: 68, height: 68, borderRadius: 34, backgroundColor: C.control }, s.center]}>
-            <T s={28} w={800} c={C.yellow}>
-              {ME.initial}
-            </T>
+          <ProgressRing size={84} progress={me.progress} stroke={4} />
+          <View style={[{ position: 'absolute', left: 8, top: 8, width: 68, height: 68, borderRadius: 34, backgroundColor: C.control, overflow: 'hidden' }, s.center]}>
+            {me.avatarUrl ? (
+              <Image source={{ uri: me.avatarUrl }} style={{ width: 68, height: 68 }} accessibilityIgnoresInvertColors />
+            ) : (
+              <T s={28} w={800} c={C.yellow}>
+                {me.initial}
+              </T>
+            )}
           </View>
         </View>
         <View style={[s.fill, { gap: 2 }]}>
-          <D s={34}>{`@${ME.nick}`}</D>
-          <T s={14} c={C.muted}>{`Level ${ME.level} · ${ME.title} · veřejný profil`}</T>
+          <D s={34} numberOfLines={1} adjustsFontSizeToFit>
+            {title}
+          </D>
+          <Press disabled={!missingNick} onPress={() => router.push('/nv/dokoncit-ucet')}>
+            <T s={14} c={missingNick ? C.yellow : C.muted}>
+              {caption}
+            </T>
+          </Press>
         </View>
-        <IconButton icon="pencil" size={40} iconSize={18} onPress={() => router.push('/nv/upravit-profil')} label="Upravit profil" />
-        <IconButton icon="settings" size={40} iconSize={18} onPress={() => router.push('/nv/nastaveni')} label="Nastavení" />
+        <IconButton
+          icon="pencil"
+          size={40}
+          iconSize={18}
+          onPress={() => router.push(me.isSignedIn ? '/nv/upravit-profil' : '/nv/prihlaseni')}
+          label={me.isSignedIn ? P().profile.edit : P().profile.signIn}
+        />
+        <IconButton icon="settings" size={40} iconSize={18} onPress={() => router.push('/nv/nastaveni')} label={P().profile.settings} />
       </View>
       <View style={[s.row, { gap: 14 }]}>
         <D s={96} lh={0.9} c={C.yellow}>
-          {String(ME.lifetime)}
+          {nf.format(summary.beers)}
         </D>
         <View style={{ gap: 2 }}>
           <T s={19} w={700}>
-            piv za život
+            {P().profile.lifetime(summary.beers)}
           </T>
-          <T s={13} c={C.muted}>{`od ${ME.since}`}</T>
+          {since ? <T s={13} c={C.muted}>{P().profile.since(since)}</T> : null}
         </View>
       </View>
-      <Press onPress={() => router.push('/nv/novy-level')} style={{ gap: 10 }}>
-        <View style={[s.row, { justifyContent: 'space-between' }]}>
-          <T s={14} w={600}>{`Do levelu ${ME.level + 1}`}</T>
-          <T s={14} c={C.muted}>{`${ME.xp} / ${ME.xpNext} XP`}</T>
-        </View>
-        <View style={{ height: 10, borderRadius: 5, backgroundColor: C.control }}>
-          <View style={{ width: `${(ME.xp / ME.xpNext) * 100}%`, height: 10, borderRadius: 5, backgroundColor: C.yellow }} />
-        </View>
-      </Press>
+      {xp ? (
+        <Press onPress={() => router.push('/nv/novy-level')} style={{ gap: 10 }}>
+          <View style={[s.row, { justifyContent: 'space-between' }]}>
+            <T s={14} w={600}>
+              {xp.xpForNextLevel == null ? t.profile.levelMaxed : P().profile.toLevel(xp.level + 1)}
+            </T>
+            {xp.xpForNextLevel != null ? <T s={14} c={C.muted}>{P().profile.xpOf(xp.xpIntoLevel, xp.xpForNextLevel)}</T> : null}
+          </View>
+          <Bar progress={me.progress} height={10} />
+        </Press>
+      ) : !me.isSignedIn ? (
+        <Press onPress={() => router.push('/nv/prihlaseni')} style={{ gap: 10 }}>
+          <T s={14} w={600}>
+            {t.profile.levelNoAccount}
+          </T>
+          <Bar progress={0} height={10} />
+        </Press>
+      ) : null}
       <View style={[s.row, { justifyContent: 'space-between' }]}>
         {[
-          [String(ME.pubs), 'hospod'],
-          [String(ME.evenings), 'večerů'],
-          [ME.avg, 'piva na večer'],
-          [ME.spent, 'utraceno'],
+          [nf.format(summary.pubs), P().profile.pubs(summary.pubs)],
+          [nf.format(summary.evenings), P().profile.evenings(summary.evenings)],
+          [numberFormat({ maximumFractionDigits: 1 }).format(average), P().profile.perEvening],
+          [formatPrice(summary.spentCzk, priceCurrency), P().profile.spent],
         ].map(([v, l]) => (
           <View key={l} style={{ gap: 2 }}>
             <D s={24} lh={1}>
@@ -123,94 +303,125 @@ export function ProfilScreen() {
           </View>
         ))}
       </View>
-      <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 14 }}>
-        <Press
-          onPress={() => {
-            set({ badgeDot: false });
-            router.push('/nv/odznaky');
-          }}
-          style={[s.row, { justifyContent: 'space-between' }]}
-        >
-          <T s={17} w={700}>
-            Odznaky
-          </T>
-          <T s={14} w={700} c={C.yellow}>
-            9 z 26 ›
-          </T>
-        </Press>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
-          {[
-            ['carkar', 'Čárkař II', 'beer'],
-            ['poutnik', 'Poutník I', 'map'],
-            ['parta', 'Parta I', 'users'],
-            ['chatar', 'Chatař', 'house'],
-            ['ochutnavac', 'Ochutnávač II', 'medal'],
-          ].map(([id, name, icon]) => (
-            <Press key={id} onPress={() => router.push({ pathname: '/nv/odznak', params: { id } })} style={{ alignItems: 'center', gap: 6 }}>
-              <BadgeCircle icon={icon as IconName} got size={54} />
-              <T s={11} w={600} c={C.text2}>
-                {name}
-              </T>
-            </Press>
-          ))}
-        </ScrollView>
-      </View>
+      {shelf ? (
+        <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 14 }}>
+          <Press onPress={() => router.push('/nv/odznaky')} style={[s.row, { justifyContent: 'space-between' }]}>
+            <T s={17} w={700}>
+              {P().profile.badges}
+            </T>
+            <T s={14} w={700} c={C.yellow}>
+              {P().profile.badgesCount(shelf.earned, shelf.total)}
+            </T>
+          </Press>
+          {shelf.shown.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
+              {shelf.shown.map((badge) => (
+                <Press key={badge.key} onPress={() => router.push({ pathname: '/nv/odznak', params: { id: badge.key } })} style={{ alignItems: 'center', gap: 6 }}>
+                  <BadgeCircle icon={badge.icon} got size={54} />
+                  <T s={11} w={600} c={C.text2}>
+                    {badge.name}
+                  </T>
+                </Press>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
+      ) : null}
       <Card>
-        <Row leading={<Tile icon="image" />} title="Pivní fotky" trailing={<T s={15} w={600}>24</T>} chevron onPress={() => router.push('/nv/pivni-fotky')} />
-        <Row leading={<Tile icon="heart" />} title="Srdcovky" trailing={<T s={15} w={600}>3</T>} chevron onPress={() => router.push('/nv/hledani')} />
-        <Row leading={<Tile icon="map-pin-plus" />} title="Moje přidané hospody" trailing={<T s={15} w={600}>{addedPubs ? '4' : '0'}</T>} chevron onPress={() => router.push('/nv/moje-hospody')} />
-        <Row leading={<Tile icon="route" />} title="Tour de pub" chevron onPress={() => router.push('/nv/tour')} />
-        <Row last leading={<Tile icon="bell" />} title="Hlídaná piva" chevron onPress={() => router.push('/nv/hlidana-piva')} />
+        <Row leading={<Tile icon="image" />} title={P().profile.photos} trailing={<T s={15} w={600}>{nf.format(photos.length)}</T>} chevron onPress={() => router.push('/nv/pivni-fotky')} />
+        <Row leading={<Tile icon="heart" />} title={P().profile.favorites} trailing={<T s={15} w={600}>{nf.format(favorites)}</T>} chevron onPress={() => router.push('/nv/hledani')} />
+        <Row
+          leading={<Tile icon="map-pin-plus" />}
+          title={P().profile.addedPubs}
+          trailing={addedPubs ? <T s={15} w={600}>{nf.format(addedPubs)}</T> : null}
+          chevron
+          onPress={() => router.push('/nv/moje-hospody')}
+        />
+        <Row leading={<Tile icon="route" />} title={P().profile.tours} chevron onPress={() => router.push('/nv/tour')} />
+        <Row
+          last
+          leading={<Tile icon="bell" />}
+          title={P().profile.watched}
+          trailing={watchCount > 0 ? <T s={15} w={600}>{nf.format(watchCount)}</T> : null}
+          chevron
+          onPress={() => router.push('/nv/hlidana-piva')}
+        />
       </Card>
     </Screen>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Odznaky
+// ---------------------------------------------------------------------------
+
+function useBadgesOrLocked(): NvBadge[] {
+  const badges = useNvBadges();
+  return useMemo(() => badges ?? buildNvBadges(parseBadgeProgress({}), new Date()), [badges]);
+}
+
 export function OdznakyScreen() {
   const router = useRouter();
+  const badges = useBadgesOrLocked();
+  useRefreshBadgesOnFocus();
+  const earned = badges.filter((badge) => badge.state.tier > 0).length;
+  const goal = nextGoal(badges);
+  const goalStill = goal ? nvStillLine(goal) : null;
   return (
     <Screen header={<BackHeader />} gap={18}>
       <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end' }]}>
-        <D s={44}>Odznaky</D>
+        <D s={44}>{P().badges.title}</D>
         <T s={16} w={700} c={C.muted} style={{ marginBottom: 6 }}>
-          9 z 26
+          {P().badges.count(earned, badges.length)}
         </T>
       </View>
-      <Press onPress={() => router.push({ pathname: '/nv/odznak', params: { id: 'poutnik' } })} style={{ padding: 16, gap: 14, borderRadius: 22, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }}>
-        <View style={[s.row, { gap: 12 }]}>
-          <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.control }, s.center]}>
-            <Icon name="signpost" size={18} color={C.yellow} />
+      {goal ? (
+        <Press
+          onPress={() => router.push({ pathname: '/nv/odznak', params: { id: goal.key } })}
+          style={{ padding: 16, gap: 14, borderRadius: 22, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }}
+        >
+          <View style={[s.row, { gap: 12 }]}>
+            <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.control }, s.center]}>
+              <Icon name={goal.icon} size={18} color={C.yellow} />
+            </View>
+            <View style={{ gap: 2 }}>
+              <T s={16} w={700}>
+                {t.badges.nextRow(nvBadgeName(goal, goal.state.tier + 1))}
+              </T>
+              {goalStill ? (
+                <T s={13} c={C.muted}>
+                  {goalStill}
+                </T>
+              ) : null}
+            </View>
           </View>
-          <View style={{ gap: 2 }}>
-            <T s={16} w={700}>
-              Na řadě: Poutník II
-            </T>
-            <T s={13} c={C.muted}>
-              Ještě 2 nové hospody
-            </T>
-          </View>
-        </View>
-        <View style={{ height: 8, borderRadius: 4, backgroundColor: C.control }}>
-          <View style={{ width: '60%', height: 8, borderRadius: 4, backgroundColor: C.yellow }} />
-        </View>
-      </Press>
-      {BADGE_GROUPS.map((g) => (
-        <View key={g.title} style={{ gap: 14 }}>
+          <Bar progress={goal.state.value / (goal.state.next ?? 1)} />
+        </Press>
+      ) : null}
+      {groupBadges(badges).map((group) => (
+        <View key={group.group} style={{ gap: 14 }}>
           <T s={17} w={700}>
-            {g.title}
+            {group.title}
           </T>
-          <View style={s.row}>
-            {g.items.map((b) => (
-              <Press key={b.id} onPress={() => router.push({ pathname: '/nv/odznak', params: { id: b.id } })} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
-                <BadgeCircle icon={b.secret ? 'circle-question-mark' : b.icon} got={b.got} />
-                <T s={13} w={700} c={b.got ? C.white : C.muted} style={{ textAlign: 'center' }}>
-                  {b.name}
-                </T>
-                <T s={11} c={C.muted}>
-                  {b.sub}
-                </T>
-              </Press>
-            ))}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 16 }}>
+            {group.items.map((badge) => {
+              const hidden = badge.state.secret && badge.state.tier === 0;
+              return (
+                <Press
+                  key={badge.key}
+                  onPress={() => router.push({ pathname: '/nv/odznak', params: { id: badge.key } })}
+                  style={{ width: '33.33%', alignItems: 'center', gap: 6 }}
+                >
+                  <BadgeCircle icon={hidden ? 'circle-question-mark' : badge.icon} got={badge.state.tier > 0} />
+                  <T s={13} w={700} c={badge.state.tier > 0 ? C.white : C.muted} style={{ textAlign: 'center' }}>
+                    {badge.name}
+                  </T>
+                  <T s={11} c={C.muted}>
+                    {badge.status}
+                  </T>
+                </Press>
+              );
+            })}
           </View>
         </View>
       ))}
@@ -218,9 +429,35 @@ export function OdznakyScreen() {
   );
 }
 
+function BadgeVisibility({ badge }: { badge: NvBadge }) {
+  const shared = isPublicBadge(badge.key);
+  return (
+    <View style={[s.row, { justifyContent: 'center', gap: 8 }]}>
+      <Icon name={shared ? 'users' : 'lock'} size={14} color={C.muted} />
+      <T s={13} c={C.muted}>
+        {shared ? t.badges.friendsSee : t.badges.onlyYou}
+      </T>
+    </View>
+  );
+}
+
 export function OdznakSheet() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  if (id === 'tajne') {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string }>();
+  const id = firstParam(params.id);
+  const badges = useBadgesOrLocked();
+  const badge = badges.find((candidate) => candidate.key === id) ?? null;
+
+  useEffect(() => {
+    if (badge) markBadgeOpened(badge.key);
+    else router.back();
+  }, [badge, router]);
+
+  if (!badge) return null;
+  const { state } = badge;
+  const got = state.tier > 0;
+
+  if (state.secret && !got) {
     return (
       <Sheet top={560} scroll={false} contentStyle={{ alignItems: 'center' }}>
         <View style={[{ width: 128, height: 128, borderRadius: 26, borderWidth: 2, borderStyle: 'dashed', borderColor: '#FFFFFF4D', marginTop: -20 }, s.center]}>
@@ -228,270 +465,585 @@ export function OdznakSheet() {
             ?
           </D>
         </View>
-        <D s={34}>Tajné</D>
+        <D s={34}>{t.badges.secretName}</D>
         <T s={15} c={C.text2} style={{ marginTop: -10 }}>
-          Co to je, zjistíš, až ho získáš.
+          {t.badges.secretAbout}
         </T>
         <View style={[s.row, { height: 38, borderRadius: 19, paddingHorizontal: 14, gap: 6, backgroundColor: C.control }]}>
           <Icon name="sparkles" size={15} color={C.text2} />
           <T s={14} w={700}>
-            Přijde samo
+            {t.badges.secretStatus}
           </T>
         </View>
       </Sheet>
     );
   }
-  if (id === 'celytyden') {
-    const days = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
-    const got = [true, true, false, true, true, true, false];
+
+  if (state.kind === 'slots') {
+    const weekdays = badge.key === 'weekdays';
+    const labels = weekdays ? t.badges.weekdays : t.badges.months;
+    const filled = new Set(state.slots ?? []);
+    const total = labels.length;
+    const missing = total - state.value;
+    const size = weekdays ? 40 : 44;
     return (
-      <Sheet top={490} scroll={false} contentStyle={{ alignItems: 'center' }}>
+      <Sheet top={weekdays ? 490 : 430} scroll={false} contentStyle={{ alignItems: 'center' }}>
         <View style={[{ width: 130, height: 130, marginTop: -20 }, s.center]}>
-          <ProgressRing size={130} progress={5 / 7} stroke={14} />
-          <Icon name="calendar-days" size={40} color={C.text2} />
+          <ProgressRing size={130} progress={state.value / total} stroke={14} />
+          <Icon name={badge.icon} size={40} color={got ? C.yellow : C.text2} />
         </View>
-        <D s={34}>Celý týden</D>
+        <D s={34}>{badge.name}</D>
         <T s={14} c={C.muted} style={{ marginTop: -14 }}>
-          5 ze 7 dní
+          {t.badges.slotsOf(state.value, total)}
         </T>
         <T s={15} c={C.text2} style={{ textAlign: 'center' }}>
-          Dny se sbírají napořád, klidně s odstupem měsíců.
+          {weekdays ? t.badges.keepDays : t.badges.keepMonths}
         </T>
-        <View style={[s.row, { gap: 8 }]}>
-          {days.map((d, i) => (
-            <View key={d} style={[{ width: 40, height: 40, borderRadius: 20, borderWidth: got[i] ? 2 : 1, borderColor: got[i] ? C.yellow : C.hairline, backgroundColor: got[i] ? '#FFC4001A' : 'transparent' }, s.center]}>
-              <T s={13} w={700} c={got[i] ? C.yellow : C.muted}>
-                {d}
-              </T>
-            </View>
-          ))}
+        <View style={[s.row, { gap: 8, flexWrap: 'wrap', justifyContent: 'center' }]}>
+          {labels.map((label, index) => {
+            const on = filled.has(weekdays ? index : index + 1);
+            return (
+              <View
+                key={label}
+                style={[{ width: size, height: size, borderRadius: size / 2, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.hairline, backgroundColor: on ? '#FFC4001A' : 'transparent' }, s.center]}
+              >
+                <T s={weekdays ? 13 : 12} w={700} c={on ? C.yellow : C.muted}>
+                  {label}
+                </T>
+              </View>
+            );
+          })}
         </View>
         <T s={16} w={700}>
-          Chybí ti ještě 2 dny.
+          {missing <= 0
+            ? weekdays
+              ? t.badges.allDays
+              : t.badges.allMonths
+            : weekdays
+              ? t.badges.missingDays(missing)
+              : t.badges.missingMonths(missing)}
         </T>
       </Sheet>
     );
   }
-  const levels = ['I', 'II', 'III', 'IV', 'V'];
+
+  const medal = (
+    <View style={{ alignItems: 'center', gap: 6, marginTop: -20 }}>
+      <View style={[{ width: 132, height: 132, borderRadius: 66, borderWidth: got ? 3 : 1.5, borderColor: got ? C.yellow : C.hairline, backgroundColor: got ? '#FFC4001A' : C.card }, s.center]}>
+        <View style={[{ width: 92, height: 92, borderRadius: 46, borderWidth: 1.5, borderColor: got ? '#FFC40080' : C.hairline }, s.center]}>
+          <Icon name={badge.icon} size={40} color={got ? C.yellow : C.muted} />
+        </View>
+      </View>
+      <D s={38} style={{ marginTop: 10, textAlign: 'center' }}>
+        {badge.name}
+      </D>
+      {state.kind === 'tiered' && got ? (
+        <T s={14} c={C.muted}>
+          {t.badges.levelOf(String(state.tier), String(state.tiers.length))}
+        </T>
+      ) : null}
+      <T s={16} c={C.text2} lh={1.4} style={{ textAlign: 'center', marginTop: 8 }}>
+        {nvBadgeAbout(badge)}
+      </T>
+    </View>
+  );
+  const quip = badge.key === 'partyEvenings' ? undefined : (t.badges.quips as Partial<Record<string, string>>)[badge.key];
+
+  if (state.kind === 'once') {
+    return (
+      <Sheet top={430} scroll={false}>
+        {medal}
+        <View style={[s.row, { alignSelf: 'center', height: 38, borderRadius: 19, paddingHorizontal: 14, gap: 6, backgroundColor: C.control }]}>
+          <Icon name={got ? 'check' : 'lock'} size={15} color={got ? C.yellow : C.text2} />
+          <T s={14} w={700}>
+            {badge.status}
+          </T>
+        </View>
+        {got && quip ? (
+          <View style={{ padding: 14, borderRadius: 16, backgroundColor: C.card }}>
+            <T s={14} c={C.text2} style={{ textAlign: 'center', fontStyle: 'italic' }}>
+              {`„${quip}“`}
+            </T>
+          </View>
+        ) : null}
+        <BadgeVisibility badge={badge} />
+      </Sheet>
+    );
+  }
+
+  const still = nvStillLine(badge);
   return (
     <Sheet top={310} scroll={false}>
-      <View style={{ alignItems: 'center', gap: 6, marginTop: -20 }}>
-        <View style={[{ width: 132, height: 132, borderRadius: 66, borderWidth: 3, borderColor: C.yellow, backgroundColor: '#FFC4001A' }, s.center]}>
-          <View style={[{ width: 92, height: 92, borderRadius: 46, borderWidth: 1.5, borderColor: '#FFC40080' }, s.center]}>
-            <Icon name="map" size={40} color={C.yellow} />
-          </View>
+      {medal}
+      {got && quip ? (
+        <View style={{ padding: 14, borderRadius: 16, backgroundColor: C.card }}>
+          <T s={14} c={C.text2} style={{ textAlign: 'center', fontStyle: 'italic' }}>
+            {`„${quip}“`}
+          </T>
         </View>
-        <D s={38} style={{ marginTop: 10 }}>
-          Poutník II
-        </D>
-        <T s={14} c={C.muted}>
-          Úroveň 2 ze 5
-        </T>
-        <T s={16} c={C.text2} lh={1.4} style={{ textAlign: 'center', marginTop: 8 }}>
-          Hospody, kde máš zapsané pivo nebo návštěvu. Každá se počítá jednou.
-        </T>
-      </View>
-      <View style={{ padding: 14, borderRadius: 16, backgroundColor: C.card }}>
-        <T s={14} c={C.text2} style={{ textAlign: 'center', fontStyle: 'italic' }}>
-          „Hospoda za každým rohem a ty víš, za kterým.“
-        </T>
-      </View>
-      <View style={{ gap: 10 }}>
-        <T s={15} w={700}>
-          Do úrovně 3 · Ještě 4 hospody
-        </T>
-        <View style={{ height: 8, borderRadius: 4, backgroundColor: C.control }}>
-          <View style={{ width: '60%', height: 8, borderRadius: 4, backgroundColor: C.yellow }} />
+      ) : null}
+      {state.next != null ? (
+        <View style={{ gap: 10 }}>
+          <T s={15} w={700}>
+            {state.volume ? nvBadgeAmount(badge, state.value) : [t.badges.toLevel(roman(state.tier + 1)), still].filter(Boolean).join(' · ')}
+          </T>
+          <Bar progress={state.value / state.next} />
         </View>
-      </View>
+      ) : (
+        <T s={15} w={700} style={{ textAlign: 'center' }}>
+          {t.badges.allLevels}
+        </T>
+      )}
       <View style={{ gap: 10 }}>
         <T s={15} w={700} c={C.muted}>
-          Úrovně
+          {t.badges.levels}
         </T>
         <View style={[s.row, { justifyContent: 'space-between' }]}>
-          {levels.map((l, i) => (
-            <View key={l} style={{ alignItems: 'center', gap: 6 }}>
-              <View style={[{ width: 44, height: 44, borderRadius: 22, borderWidth: i < 2 ? 2 : 1, borderColor: i < 2 ? C.yellow : C.muted, backgroundColor: i < 2 ? '#FFC4001A' : 'transparent' }, s.center]}>
-                <T s={14} w={800} c={i < 2 ? C.yellow : C.muted}>
-                  {l}
+          {state.tiers.map((threshold, i) => {
+            const on = i < state.tier;
+            return (
+              <View key={threshold} style={{ alignItems: 'center', gap: 6 }}>
+                <View style={[{ width: 44, height: 44, borderRadius: 22, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.muted, backgroundColor: on ? '#FFC4001A' : 'transparent' }, s.center]}>
+                  <T s={14} w={800} c={on ? C.yellow : C.muted}>
+                    {roman(i + 1)}
+                  </T>
+                </View>
+                <T s={11} c={on ? C.white : C.muted}>
+                  {on ? t.badges.earned : t.badges.locked}
                 </T>
               </View>
-              <T s={11} c={i < 2 ? C.white : C.muted}>
-                {i < 2 ? 'Získáno' : 'Ještě ne'}
-              </T>
-            </View>
-          ))}
+            );
+          })}
         </View>
       </View>
-      <View style={[s.row, { justifyContent: 'center', gap: 8 }]}>
-        <Icon name="users" size={14} color={C.muted} />
-        <T s={13} c={C.muted}>
-          Tenhle odznak vidí i tvoje parta.
-        </T>
-      </View>
+      <BadgeVisibility badge={badge} />
     </Sheet>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Nový level
+// ---------------------------------------------------------------------------
+
+const REASON_ICON: Record<XpEventReason, IconName> = {
+  drink: 'beer',
+  photo: 'camera',
+  checkin: 'star',
+  mapping: 'map',
+  community: 'clock-3',
+  contest: 'trophy',
+};
+
 export function NovyLevelSheet() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ since?: string }>();
+  const since = firstParam(params.since) || null;
+  const me = useMe();
+  const xp = me.xp;
+  const [events, setEvents] = useState<XpEvent[] | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchXpEvents(since, controller.signal).then((list) => {
+      if (!controller.signal.aborted) setEvents(list);
+    });
+    return () => controller.abort();
+  }, [since]);
+
+  useEffect(() => {
+    if (!xp) router.back();
+  }, [router, xp]);
+
+  if (!xp) return null;
+  const shown = (events ?? []).slice(0, 3);
   return (
     <Sheet closeIcon={false} top={400} scroll={false}>
       <View style={{ alignItems: 'center', gap: 16 }}>
         <View style={{ width: 124, height: 124 }}>
           <ProgressRing size={124} progress={0.999} stroke={8} />
-          <View style={[{ position: 'absolute', left: 16, top: 16, width: 92, height: 92, borderRadius: 46, backgroundColor: C.control }, s.center]}>
-            <T s={36} w={800} c={C.yellow}>
-              T
-            </T>
+          <View style={[{ position: 'absolute', left: 16, top: 16, width: 92, height: 92, borderRadius: 46, backgroundColor: C.control, overflow: 'hidden' }, s.center]}>
+            {me.avatarUrl ? (
+              <Image source={{ uri: me.avatarUrl }} style={{ width: 92, height: 92 }} accessibilityIgnoresInvertColors />
+            ) : (
+              <T s={36} w={800} c={C.yellow}>
+                {me.initial}
+              </T>
+            )}
           </View>
         </View>
-        <D s={36}>Level 6 · Pivní tovaryš</D>
+        <D s={36} style={{ textAlign: 'center' }}>
+          {P().level.title(xp.level, xp.title)}
+        </D>
       </View>
-      <View style={{ gap: 10 }}>
-        <View style={[s.row, { justifyContent: 'space-between' }]}>
-          <T s={14} w={700}>
-            Do levelu 7
-          </T>
-          <T s={14} c={C.muted}>
-            ještě 640 XP
-          </T>
+      {xp.xpForNextLevel != null ? (
+        <View style={{ gap: 10 }}>
+          <View style={[s.row, { justifyContent: 'space-between' }]}>
+            <T s={14} w={700}>
+              {P().level.toLevel(xp.level + 1)}
+            </T>
+            <T s={14} c={C.muted}>
+              {P().level.remaining(Math.max(0, xp.xpForNextLevel - xp.xpIntoLevel))}
+            </T>
+          </View>
+          <Bar progress={me.progress} />
         </View>
-        <View style={{ height: 8, borderRadius: 4, backgroundColor: C.control }}>
-          <View style={{ width: 10, height: 8, borderRadius: 4, backgroundColor: C.yellow }} />
-        </View>
-      </View>
-      <T s={15} w={700} c={C.muted}>
-        Co tě posunulo
-      </T>
-      <Row last leading={<Tile icon="map" color={C.white} />} title="Díky za zmapování" titleWeight={700} sub="U Zlatého tygra" trailing={<D s={24} c={C.yellow}>+20 XP</D>} />
-      <Button label="Na zdraví" onPress={() => router.back()} />
+      ) : (
+        <T s={15} w={700} style={{ textAlign: 'center' }}>
+          {t.profile.levelMaxed}
+        </T>
+      )}
+      {events == null && since ? <ActivityIndicator color={C.muted} /> : null}
+      {shown.length > 0 ? (
+        <>
+          <T s={15} w={700} c={C.muted}>
+            {P().level.whatMoved}
+          </T>
+          <View>
+            {shown.map((event, index) => (
+              <Row
+                key={`${event.createdAt}-${index}`}
+                last={index === shown.length - 1}
+                leading={<Tile icon={REASON_ICON[event.reason]} color={C.white} />}
+                title={P().level.reasons[event.reason]}
+                titleWeight={700}
+                sub={event.pubName || undefined}
+                trailing={<D s={24} c={C.yellow}>{P().level.amount(event.amount)}</D>}
+              />
+            ))}
+          </View>
+        </>
+      ) : null}
+      <Button label={P().level.cta} onPress={() => router.back()} />
     </Sheet>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Nastavení
+// ---------------------------------------------------------------------------
+
+function distanceLabel(km: number | null): string {
+  if (km === null) return t.settings.distance.unlimited;
+  if (km < 1) return t.settings.distance.meters(Math.round(km * 1000));
+  return `${numberFormat({ maximumFractionDigits: 1 }).format(km)} ${t.settings.distance.kmShort}`;
+}
+
+function providerName(provider: AuthProvider): string {
+  return P().account.methods[provider];
+}
+
 export function NastaveniScreen() {
   const router = useRouter();
-  const st = useMock();
-  const [rated, setRated] = useState(false);
-  const [nav, setNav] = useState<'google' | 'mapy'>('google');
-  const [reminders, setReminders] = useState({ pivo: true, spoj: false, voda: true });
+  const me = useMe();
+  const st = useSettingsStore();
+  const [picker, setPicker] = useState<'distance' | 'interval' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const homeSet = st.homePoint != null;
+  const providers = me.profile?.providers ?? [];
+
+  const togglePicker = (next: 'distance' | 'interval') => setPicker((current) => (current === next ? null : next));
+
+  const pickDistance = (km: number | null) => {
+    setPicker(null);
+    st.setMaxDistanceKm(km);
+    void updateAccountPreferences({ maxDistanceKm: km });
+  };
+
+  const pickInterval = (minutes: BeerCountReminderIntervalMinutes) => {
+    setPicker(null);
+    st.setBeerCountReminderIntervalMinutes(minutes);
+    void reschedulePendingBeerCountReminder();
+  };
+
+  const toggleNextBeer = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (st.beerCountReminderEnabled) await disableBeerCountReminderNotifications();
+      else if (!(await enableBeerCountReminderNotifications()).ok) notificationsDenied();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleTransit = async () => {
+    if (!homeSet) {
+      router.push('/nv/domovsky-bod');
+      return;
+    }
+    if (busy) return;
+    if (st.homeTransitReminderEnabled) {
+      disableHomeTransitReminder();
+      return;
+    }
+    setBusy(true);
+    try {
+      if (!(await enableHomeTransitReminder()).ok) notificationsDenied();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickLocale = async (code: Locale) => {
+    if (code === locale) return;
+    if (!(await switchLocale(code))) toast({ kind: 'error', title: t.account.errorGeneric });
+  };
+
+  const accountTitle = me.nick ? `@${me.nick}` : me.displayName || me.profile?.email || t.settings.accountCard.ctaSignedIn;
+
   return (
     <Screen header={<BackHeader />} gap={14}>
-      <PageTitle title="Nastavení" />
+      <PageTitle title={P().settings.title} />
       <Card>
-        <Row last leading={<Tile icon="user" />} title={`@${ME.nick}`} titleWeight={700} sub="Přihlášený přes Apple · účet a soukromí" chevron onPress={() => router.push('/nv/ucet')} />
+        {me.isSignedIn ? (
+          <Row
+            last
+            leading={<Tile icon="user" />}
+            title={accountTitle}
+            titleWeight={700}
+            sub={providers.length > 0 ? P().settings.accountSub(providers.map(providerName).join(', ')) : undefined}
+            chevron
+            onPress={() => router.push('/nv/ucet')}
+          />
+        ) : (
+          <Row
+            last
+            leading={<Tile icon="user" />}
+            title={t.settings.accountCard.signedOutTitle}
+            titleWeight={700}
+            sub={t.settings.accountCard.ctaSignedOutSubtitle}
+            chevron
+            onPress={() => router.push('/nv/prihlaseni')}
+          />
+        )}
       </Card>
       <T s={15} w={700} c={C.muted}>
-        Výčep
+        {P().settings.vycep}
       </T>
       <Card>
-        <Row last title="Vyvěšovat noci" trailing={<T s={15} w={600}>{st.shareMode === 'all' ? 'Samo světu' : st.shareMode === 'parta' ? 'Samo partě' : 'Ručně'}</T>} chevron onPress={() => router.push('/nv/prvni-vyveseni')} />
+        <Row last title={P().settings.publishNights} chevron onPress={() => router.push('/nv/prvni-vyveseni')} />
       </Card>
       <T s={15} w={700} c={C.muted}>
-        Kompas
+        {P().settings.kompas}
       </T>
       <Card>
-        <Row title="Jak daleko hledat" trailing={<T s={15} w={600}>Bez limitu</T>} chevron />
-        <Row title="Radši dobře hodnocené" sub="Přeskočím podniky pod 4 hvězdy" trailing={<Toggle value={rated} onChange={setRated} />} />
         <Row
-          title="Navigovat přes"
+          last={false}
+          title={P().settings.distance}
+          trailing={<T s={15} w={600}>{distanceLabel(st.maxDistanceKm)}</T>}
+          chevron
+          onPress={() => togglePicker('distance')}
+        />
+        {picker === 'distance' ? (
+          <ChipWrap style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.hairline }}>
+            {DISTANCE_OPTIONS.map((km) => (
+              <Chip key={String(km)} label={distanceLabel(km)} active={st.maxDistanceKm === km} onPress={() => pickDistance(km)} />
+            ))}
+          </ChipWrap>
+        ) : null}
+        <Row title={P().settings.preferRated} sub={P().settings.preferRatedSub} trailing={<Toggle value={st.preferRatedPubs} onChange={st.setPreferRatedPubs} />} />
+        <Row
+          title={P().settings.navigateVia}
           trailing={
             <Segmented
               height={36}
               style={{ width: 180 }}
               options={[
-                { key: 'google', label: 'Google' },
-                { key: 'mapy', label: 'Mapy.com' },
+                { key: 'google', label: P().settings.google },
+                { key: 'mapy', label: P().settings.mapy },
               ]}
-              value={nav}
-              onChange={setNav}
+              value={st.navigationProvider}
+              onChange={st.setNavigationProvider}
             />
           }
         />
-        <Row last title="Domovský bod" trailing={<T s={15} w={600}>{st.homeSet ? 'Korunní 12' : 'Nenastavený'}</T>} chevron onPress={() => router.push('/nv/domovsky-bod')} />
-      </Card>
-      <T s={15} w={700} c={C.muted}>
-        Připomínky
-      </T>
-      <Card>
-        <Row title="Připomenout další pivo" sub="Za 20 minut po každém pivu" trailing={<Toggle value={reminders.pivo} onChange={(v) => setReminders({ ...reminders, pivo: v })} />} />
         <Row
-          title="Připomenout poslední spoj"
-          sub="Jen Praha a okolí, potřebuju domovský bod"
+          last
+          title={P().settings.homePoint}
+          trailing={<T s={15} w={600}>{homeSet ? P().settings.homeSet : P().settings.homeUnset}</T>}
+          chevron
+          onPress={() => router.push('/nv/domovsky-bod')}
+        />
+      </Card>
+      <T s={15} w={700} c={C.muted}>
+        {P().settings.reminders}
+      </T>
+      <Card>
+        <Row
+          title={P().settings.nextBeer}
+          sub={P().settings.nextBeerSub(st.beerCountReminderIntervalMinutes)}
+          trailing={<Toggle value={st.beerCountReminderEnabled} onChange={() => void toggleNextBeer()} />}
+          onPress={st.beerCountReminderEnabled ? () => togglePicker('interval') : undefined}
+        />
+        {picker === 'interval' ? (
+          <ChipWrap style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.hairline }}>
+            {BEER_COUNT_REMINDER_INTERVAL_OPTIONS.map((minutes) => (
+              <Chip
+                key={minutes}
+                label={t.settings.beerCountReminder.intervalShort(minutes)}
+                active={st.beerCountReminderIntervalMinutes === minutes}
+                onPress={() => pickInterval(minutes)}
+              />
+            ))}
+          </ChipWrap>
+        ) : null}
+        <Row
+          title={P().settings.lastTransit}
+          sub={P().settings.lastTransitSub}
+          trailing={<Toggle value={st.homeTransitReminderEnabled && homeSet} onChange={() => void toggleTransit()} />}
+        />
+        <Row title={P().settings.water} sub={P().settings.waterSub} trailing={<Toggle value={st.waterNudgeEnabled} onChange={st.setWaterNudgeEnabled} />} />
+        <Row last title={P().settings.pubPing} chevron onPress={() => router.push('/nv/pripominky')} />
+      </Card>
+      <T s={15} w={700} c={C.muted}>
+        {P().settings.other}
+      </T>
+      <Card>
+        <Row title={P().settings.sharing} chevron onPress={() => router.push('/nv/sdileni-souhlas')} />
+        <Row
+          title={P().settings.language}
           trailing={
-            <Toggle
-              value={reminders.spoj && st.homeSet}
-              onChange={(v) => {
-                if (!st.homeSet) router.push('/nv/domovsky-bod');
-                else setReminders({ ...reminders, spoj: v });
-              }}
+            <Segmented
+              height={36}
+              style={{ width: 180 }}
+              options={[
+                { key: 'cs', label: t.settings.language.cs },
+                { key: 'en', label: t.settings.language.en },
+              ]}
+              value={locale}
+              onChange={(code) => void pickLocale(code)}
             />
           }
         />
-        <Row title="Připomenout vodu" sub="Po čtyřech pivech" trailing={<Toggle value={reminders.voda} onChange={(v) => setReminders({ ...reminders, voda: v })} />} />
-        <Row last title="Cinknout, když sednu do hospody" chevron onPress={() => router.push('/nv/pripominky')} />
-      </Card>
-      <T s={15} w={700} c={C.muted}>
-        Ostatní
-      </T>
-      <Card>
-        <Row title="Sdílení a soukromí" chevron onPress={() => router.push('/nv/sdileni-souhlas')} />
-        <Row title="Napiš mi" chevron onPress={() => router.push('/nv/napis-mi')} />
-        <Row last title="O appce" chevron onPress={() => router.push('/nv/o-appce')} />
-      </Card>
-      <T s={15} w={700} c={C.muted}>
-        Mock
-      </T>
-      <Card>
-        <Row last leading={<Tile icon="layers" />} title="Všechny obrazovky a stavy" sub="Přepínače pro prázdné a chybové stavy" chevron onPress={() => router.push('/nv/mock')} />
+        <Row title={P().settings.writeMe} chevron onPress={() => router.push('/nv/napis-mi')} />
+        <Row last title={P().settings.about} chevron onPress={() => router.push('/nv/o-appce')} />
       </Card>
     </Screen>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Upravit profil, dokončit účet
+// ---------------------------------------------------------------------------
+
+function nicknameError(code: string, detail: string): string {
+  if (code === 'nickname_taken' || code === 'http_409') return t.profile.form.nicknameTaken;
+  if (code.startsWith('nickname_') || code.startsWith('http_4')) return detail || nicknameServerReasonMessage(code);
+  return detail || t.profile.edit.errorGeneric;
+}
+
 export function UpravitProfilScreen() {
   const router = useRouter();
-  const [name, setName] = useState('Tomáš');
-  const [nick, setNick] = useState('tomas');
-  const [pub, setPub] = useState(true);
-  return (
-    <Screen
-      header={<BackHeader />}
-      footer={
-        <Button
-          label="Uložit"
-          onPress={() => {
-            router.back();
-            toast({ kind: 'saved', title: 'Profil uložený.', icon: 'check' });
-          }}
-        />
+  const me = useMe();
+  const updateProfile = useAccountStore((st) => st.updateProfile);
+  const uploadAvatar = useAccountStore((st) => st.uploadAvatar);
+  const removeAvatar = useAccountStore((st) => st.removeAvatar);
+  const initialNick = me.profile?.nickname ?? '';
+  const initialName = me.profile?.displayName ?? '';
+  const [name, setName] = useState(initialName);
+  const [nick, setNick] = useState(initialNick);
+  const [pub, setPub] = useState(me.isPublic);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+
+  const pickPhoto = async () => {
+    if (avatarBusy) return;
+    setError('');
+    setAvatarBusy(true);
+    try {
+      const picked = await pickAndPrepareAvatar();
+      if (picked.status === 'cancelled') return;
+      if (picked.status === 'denied') return setError(t.profile.form.permissionBody);
+      if (picked.status === 'denied-permanent') return setError(t.profile.form.permissionBlockedBody);
+      if (picked.status === 'error') return setError(t.profile.form.avatarUploadError);
+      const result = await uploadAvatar(picked.uri);
+      if (!result.ok) setError(result.detail || t.profile.form.avatarUploadError);
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const deletePhoto = async () => {
+    setAvatarBusy(true);
+    try {
+      const result = await removeAvatar();
+      if (!result.ok) setError(result.detail || t.profile.edit.errorGeneric);
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const changePhoto = () => {
+    if (!me.avatarUrl) return void pickPhoto();
+    dialog({
+      title: P().editProfile.changePhoto,
+      actions: [
+        { label: P().editProfile.removePhoto, kind: 'danger', onPress: () => void deletePhoto() },
+        { label: P().editProfile.changePhoto, kind: 'primary', onPress: () => void pickPhoto() },
+      ],
+    });
+  };
+
+  const save = async () => {
+    if (saving) return;
+    const trimmedNick = nick.trim();
+    const trimmedName = name.trim();
+    const nickChanged = trimmedNick !== initialNick;
+    const params: { nickname?: string; displayName?: string; isPublic?: boolean } = {};
+    if (nickChanged) {
+      const local = checkNicknameLocal(trimmedNick);
+      if (!local.valid) return setError(nicknameReasonMessage(local.reason));
+      params.nickname = trimmedNick;
+    }
+    if (trimmedName !== initialName.trim()) params.displayName = trimmedName;
+    if (pub !== me.isPublic) params.isPublic = pub;
+    if (Object.keys(params).length === 0) return router.back();
+    setError('');
+    setSaving(true);
+    try {
+      const result = await updateProfile(params);
+      if (result.ok) {
+        router.back();
+        toast({ kind: 'saved', title: P().editProfile.saved, icon: 'check' });
+        return;
       }
-      gap={16}
-    >
-      <PageTitle title="Upravit profil" />
-      <View style={{ alignItems: 'center', gap: 10 }}>
-        <Person initial="T" size={96} />
-        <T s={15} w={700} c={C.yellow}>
-          Změnit fotku
-        </T>
-      </View>
-      <Field label="Jméno (nepovinné)">
+      setError(nickChanged ? nicknameError(result.code, result.detail) : result.detail || t.profile.edit.errorGeneric);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Screen header={<BackHeader />} footer={<Button label={saving ? t.account.loading : P().editProfile.save} disabled={saving} onPress={() => void save()} />} gap={16}>
+      <PageTitle title={P().editProfile.title} />
+      <Press onPress={changePhoto} disabled={avatarBusy} style={{ alignItems: 'center', gap: 10 }} accessibilityRole="button">
+        <ProfilAvatar uri={me.avatarUrl} initial={me.initial} size={96} />
+        {avatarBusy ? (
+          <ActivityIndicator color={C.yellow} />
+        ) : (
+          <T s={15} w={700} c={C.yellow}>
+            {P().editProfile.changePhoto}
+          </T>
+        )}
+      </Press>
+      <Field label={P().editProfile.name}>
         <Input value={name} onChangeText={setName} />
       </Field>
       <View style={{ gap: 8 }}>
-        <Field label="Přezdívka">
-          <Input value={`@ ${nick}`} onChangeText={(v) => setNick(v.replace(/^@\s?/, ''))} autoCapitalize="none" />
+        <Field label={P().editProfile.nick}>
+          <Input value={`@ ${nick}`} onChangeText={(v) => setNick(v.replace(/^@\s?/, ''))} autoCapitalize="none" autoCorrect={false} />
         </Field>
         <T s={13} c={C.muted}>
-          Pod @přezdívkou tě najdou kamarádi.
+          {P().editProfile.nickHint}
         </T>
       </View>
+      <ErrorLine text={error} />
       <Card>
-        <Row last title="Veřejný profil" trailing={<Toggle value={pub} onChange={setPub} />} />
+        <Row last title={P().editProfile.public} trailing={<Toggle value={pub} onChange={setPub} />} />
       </Card>
       <T s={13} c={C.muted} lh={1.45}>
-        Veřejný profil tě zviditelní v žebříčcích a vyhledávání podle přezdívky a fotky. Poloha ani jednotlivá piva se nikdy nezveřejňují.
+        {P().editProfile.publicNote}
       </T>
     </Screen>
   );
@@ -499,153 +1051,338 @@ export function UpravitProfilScreen() {
 
 export function DokonciUcetSheet() {
   const router = useRouter();
+  const updateProfile = useAccountStore((st) => st.updateProfile);
   const [nick, setNick] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const trimmed = nick.trim().replace(/^@\s?/, '');
+
+  const dismiss = () => {
+    void markNicknameNudgeSeen(getCurrentAppVersion());
+    router.back();
+  };
+
+  const save = async () => {
+    if (busy) return;
+    const local = checkNicknameLocal(trimmed);
+    if (!local.valid) return setError(nicknameReasonMessage(local.reason));
+    setError('');
+    setBusy(true);
+    try {
+      const result = await updateProfile({ nickname: trimmed });
+      if (result.ok) {
+        void markNicknameNudgeSeen(getCurrentAppVersion());
+        router.back();
+        toast({ kind: 'saved', title: P().finishAccount.saved(trimmed), icon: 'check' });
+        return;
+      }
+      setError(nicknameError(result.code, result.detail));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <Sheet closeIcon={false} top={480} scroll={false}>
+    <Sheet closeIcon={false} top={480} scroll={false} onClose={dismiss}>
       <View style={{ gap: 6 }}>
-        <Kicker color={C.yellow}>Dokonči si účet</Kicker>
-        <D s={34}>Chybí ti @přezdívka</D>
+        <Kicker color={C.yellow}>{P().finishAccount.kicker}</Kicker>
+        <D s={34}>{P().finishAccount.title}</D>
       </View>
       <T s={15} c={C.text2} lh={1.45} style={{ marginTop: -6 }}>
-        Účet máš, ale bez přezdívky tě parta nenajde. Vyber si ji a profil, kamarádi i žebříčky pojedou naplno.
+        {P().finishAccount.body}
       </T>
       <View style={{ gap: 8 }}>
         <T s={13} w={600} c={C.muted}>
-          Přezdívka
+          {P().finishAccount.label}
         </T>
-        <Input value={nick} onChangeText={setNick} placeholder="@ tvoje přezdívka" autoFocus autoCapitalize="none" />
-        <T s={12} c={C.muted}>
-          Pod @přezdívkou tě najdou kamarádi.
+        <Input value={nick} onChangeText={setNick} placeholder={P().finishAccount.placeholder} autoFocus autoCapitalize="none" autoCorrect={false} onSubmitEditing={() => void save()} />
+        <T s={12} c={error ? C.danger : C.muted}>
+          {error || P().finishAccount.hint}
         </T>
       </View>
-      <Button
-        label="Uložit přezdívku"
-        disabled={nick.trim().length < 3}
-        onPress={() => {
-          router.back();
-          toast({ kind: 'saved', title: `Jsi @${nick.trim()}.`, icon: 'check' });
-        }}
-      />
-      <Press onPress={() => router.back()} style={{ alignItems: 'center', paddingBottom: 6 }}>
+      <Button label={busy ? t.account.loading : P().finishAccount.save} disabled={trimmed.length < 3 || busy} onPress={() => void save()} />
+      <Press onPress={dismiss} style={{ alignItems: 'center', paddingBottom: 6 }}>
         <T s={15} w={700} c={C.text2}>
-          Teď ne
+          {P().finishAccount.notNow}
         </T>
       </Press>
     </Sheet>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Účet, přihlašování
+// ---------------------------------------------------------------------------
+
 export function UcetScreen() {
   const router = useRouter();
-  const st = useMock();
-  const verified = !st.emailUnverified;
+  const me = useMe();
+  const profile = me.profile;
+  const logout = useAccountStore((st) => st.logout);
+  const deleteAccount = useAccountStore((st) => st.deleteAccount);
+  const exportAccountData = useAccountStore((st) => st.exportAccountData);
+  const requestEmailVerification = useAccountStore((st) => st.requestEmailVerification);
+  const [busy, setBusy] = useState<string | null>(null);
+  const providers = profile?.providers ?? [];
+
+  const run = async (key: string, action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(key);
+    try {
+      await action();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const resend = () =>
+    run('verify', async () => {
+      const result = await requestEmailVerification();
+      if (result.ok) toast({ kind: 'saved', title: P().account.resent, icon: 'mail' });
+      else toast({ kind: 'error', title: result.detail || t.account.errorGeneric });
+    });
+
+  const exportData = () =>
+    run('export', async () => {
+      const result = await exportAccountData();
+      if (result.ok) toast({ kind: 'saved', title: P().account.exported, sub: P().account.exportedSub, icon: 'mail' });
+      else toast({ kind: 'error', title: result.detail || t.account.errorGeneric });
+    });
+
+  const signOut = () =>
+    run('logout', async () => {
+      await logout();
+      router.replace('/nv/prihlaseni');
+    });
+
+  const confirmDelete = () =>
+    dialog({
+      title: P().account.deleteTitle,
+      body: P().account.deleteBody,
+      actions: [
+        { label: P().account.cancel },
+        {
+          label: P().account.deleteConfirm,
+          kind: 'danger',
+          onPress: () =>
+            void run('delete', async () => {
+              const result = await deleteAccount();
+              if (!result.ok) {
+                toast({ kind: 'error', title: result.detail || t.account.errorGeneric });
+                return;
+              }
+              toast({ kind: 'info', title: t.account.deleteToast });
+              router.replace('/nv/onboarding');
+            }),
+        },
+      ],
+    });
+
+  if (!me.isSignedIn) {
+    return (
+      <Screen header={<BackHeader />} gap={16}>
+        <PageTitle title={P().account.title} />
+        <Card>
+          <Row last title={t.settings.accountCard.signedOutTitle} sub={t.settings.accountCard.ctaSignedOutSubtitle} chevron onPress={() => router.replace('/nv/prihlaseni')} />
+        </Card>
+      </Screen>
+    );
+  }
+
+  const verified = profile?.emailVerified === true;
   return (
     <Screen header={<BackHeader />} gap={16}>
-      <PageTitle title="Účet" />
+      <PageTitle title={P().account.title} />
       <View style={{ backgroundColor: C.card, borderRadius: 24, paddingHorizontal: 16, paddingTop: 14 }}>
-        <View style={[s.row, { gap: 12, paddingBottom: 14 }]}>
-          <Tile icon="mail" />
-          <View style={{ gap: 3 }}>
-            <T s={16} w={600}>
-              tomas@napivo.cz
-            </T>
-            {verified ? (
-              <View style={[s.row, { gap: 5 }]}>
-                <Icon name="badge-check" size={14} color={C.yellow} />
-                <T s={13} c={C.text2}>
-                  E-mail ověřen
+        {profile?.email ? (
+          <>
+            <View style={[s.row, { gap: 12, paddingBottom: 14 }]}>
+              <Tile icon="mail" />
+              <View style={[s.fill, { gap: 3 }]}>
+                <T s={16} w={600} numberOfLines={1}>
+                  {profile.email}
                 </T>
+                {verified ? (
+                  <View style={[s.row, { gap: 5 }]}>
+                    <Icon name="badge-check" size={14} color={C.yellow} />
+                    <T s={13} c={C.text2}>
+                      {P().account.verified}
+                    </T>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+            {!verified ? (
+              <View style={[s.row, { gap: 10, padding: 12, marginBottom: 12, borderRadius: 14, backgroundColor: '#FFC40014', borderWidth: 1, borderColor: '#FFC40059' }]}>
+                <Icon name="mail-warning" size={18} color={C.yellow} />
+                <T s={13} c={C.text2} style={s.fill}>
+                  {P().account.unverified}
+                </T>
+                <Press onPress={() => void resend()} disabled={busy === 'verify'}>
+                  <T s={13} w={700} c={C.yellow}>
+                    {P().account.resend}
+                  </T>
+                </Press>
               </View>
             ) : null}
-          </View>
-        </View>
-        {!verified ? (
-          <View style={[s.row, { gap: 10, padding: 12, marginBottom: 12, borderRadius: 14, backgroundColor: '#FFC40014', borderWidth: 1, borderColor: '#FFC40059' }]}>
-            <Icon name="mail-warning" size={18} color={C.yellow} />
-            <T s={13} c={C.text2} style={s.fill}>
-              E-mail ještě není ověřený.
-            </T>
-            <Press onPress={() => toast({ kind: 'saved', title: 'Poslal jsem nový odkaz.', icon: 'mail' })}>
-              <T s={13} w={700} c={C.yellow}>
-                Poslat znovu
-              </T>
-            </Press>
-          </View>
+          </>
         ) : null}
-        <Row last title="Jak se přihlašuješ" trailing={<T s={14} c={C.text2}>{st.singleLogin ? 'Apple' : 'Apple, e-mail'}</T>} chevron onPress={() => router.push('/nv/prihlasovani')} />
-      </View>
-      <T s={15} w={700} c={C.muted}>
-        Co ještě?
-      </T>
-      <Card>
-        <Row title="Poslat moje data e-mailem" chevron onPress={() => toast({ kind: 'saved', title: 'Data letí e-mailem.', sub: 'Do hodiny je máš ve schránce.', icon: 'mail' })} />
-        <Row title="Odhlásit se" chevron onPress={() => router.push('/nv/prihlaseni')} />
         <Row
           last
-          title="Smazat účet"
-          titleColor={C.danger}
+          title={P().account.howYouSignIn}
+          trailing={<T s={14} c={C.text2}>{providers.map(providerName).join(', ')}</T>}
           chevron
-          onPress={() =>
-            dialog({
-              title: 'Smazat účet?',
-              body: 'Tvůj účet a data se po krátké lhůtě nevratně smažou. Vrátit to nejde.',
-              actions: [{ label: 'Zrušit' }, { label: 'Smazat', kind: 'danger', onPress: () => router.push('/nv/onboarding') }],
-            })
-          }
+          onPress={() => router.push('/nv/prihlasovani')}
         />
+      </View>
+      <T s={15} w={700} c={C.muted}>
+        {P().account.more}
+      </T>
+      <Card>
+        <Row title={P().account.export} chevron onPress={() => void exportData()} trailing={busy === 'export' ? <ActivityIndicator color={C.muted} /> : null} />
+        <Row title={P().account.logout} chevron onPress={() => void signOut()} trailing={busy === 'logout' ? <ActivityIndicator color={C.muted} /> : null} />
+        <Row last title={P().account.delete} titleColor={C.danger} chevron onPress={confirmDelete} trailing={busy === 'delete' ? <ActivityIndicator color={C.muted} /> : null} />
       </Card>
     </Screen>
   );
 }
 
 export function PrihlasovaniSheet() {
-  const single = useMock((st) => st.singleLogin);
-  const set = useMock((st) => st.set);
-  const rows: [IconName, string, string, 'off' | 'on' | 'set' | 'lock'][] = single
-    ? [
-        ['mail', 'E-mail a heslo', 'Není propojeno', 'set'],
-        ['globe', 'Google', 'Není propojeno', 'on'],
-        ['apple', 'Apple', 'Jediné přihlášení, odpojit nejde', 'lock'],
-      ]
-    : [
-        ['mail', 'E-mail a heslo', 'Propojeno', 'off'],
-        ['globe', 'Google', 'Není propojeno', 'on'],
-        ['apple', 'Apple', 'Propojeno', 'off'],
-      ];
+  const me = useMe();
+  const profile = me.profile;
+  const linkGoogle = useAccountStore((st) => st.linkGoogle);
+  const linkApple = useAccountStore((st) => st.linkApple);
+  const unlink = useAccountStore((st) => st.unlink);
+  const setPassword = useAccountStore((st) => st.setPassword);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [password, setPasswordValue] = useState('');
+  const [email, setEmail] = useState(profile?.email ?? '');
+  const [error, setError] = useState('');
+  const providers = profile?.providers ?? [];
+  const appleSupported = useMemo(() => isAppleSignInSupported(), []);
+  const googleConfigured = useMemo(() => isGoogleSignInConfigured(), []);
+  const single = providers.length === 1;
+  const all = (['email', 'google', 'apple'] as const).filter(
+    (provider) =>
+      providers.includes(provider) ||
+      provider === 'email' ||
+      (provider === 'google' ? googleConfigured : appleSupported),
+  );
+
+  const link = async (provider: 'google' | 'apple') => {
+    if (busy) return;
+    setBusy(provider);
+    try {
+      const result = provider === 'google' ? await linkGoogle() : await linkApple();
+      if (result.ok) toast({ kind: 'saved', title: P().loginMethods.linkedToast(P().loginMethods[provider]), icon: 'link' });
+      else if (result.code !== 'cancelled') toast({ kind: 'error', title: result.detail || t.account.errorGeneric });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmUnlink = (provider: AuthProvider) => {
+    const name = P().loginMethods[provider];
+    dialog({
+      title: t.account.unlinkConfirmTitle(name),
+      body: t.account.unlinkConfirmBody,
+      actions: [
+        { label: t.account.deleteConfirmCancel },
+        {
+          label: t.account.unlinkCta,
+          kind: 'danger',
+          onPress: async () => {
+            setBusy(provider);
+            try {
+              const result = await unlink(provider);
+              toast(result.ok ? { kind: 'saved', title: t.account.unlinkedToast, icon: 'check' } : { kind: 'error', title: result.detail || t.account.errorGeneric });
+            } finally {
+              setBusy(null);
+            }
+          },
+        },
+      ],
+    });
+  };
+
+  const savePassword = async () => {
+    if (busy) return;
+    if (password.length < MIN_PASSWORD) return setError(t.account.errorPasswordShort);
+    const needsEmail = !profile?.email;
+    if (needsEmail && !EMAIL_RE.test(email.trim())) return setError(t.account.errorEmailInvalid);
+    setError('');
+    setBusy('password');
+    try {
+      const result = await setPassword({ password, email: needsEmail ? email.trim() : undefined });
+      if (result.ok) {
+        setPasswordOpen(false);
+        setPasswordValue('');
+        toast({ kind: 'saved', title: t.account.setPasswordToast, icon: 'check' });
+      } else {
+        setError(result.detail || t.account.errorGeneric);
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const icons: Record<AuthProvider, IconName> = { email: 'mail', google: 'globe', apple: 'apple' };
   return (
-    <Sheet title="Jak se přihlašuješ" top={single ? 560 : 600} scroll={false}>
+    <Sheet title={P().loginMethods.title} top={single ? 560 : 600} scroll={passwordOpen}>
       {single ? (
         <T s={15} c={C.text2} style={{ marginTop: -8 }}>
-          Přihlásíš se jen přes Apple.
+          {P().loginMethods.onlyVia(providerName(providers[0]))}
         </T>
       ) : null}
       <Card>
-        {rows.map(([icon, title, sub, action], i) => (
-          <Row
-            key={title}
-            last={i === rows.length - 1}
-            leading={<Tile icon={icon} color={C.white} />}
-            title={title}
-            sub={sub}
-            trailing={
-              action === 'lock' ? (
-                <Icon name="lock" size={16} color={C.muted} />
-              ) : (
-                <Chip
-                  label={action === 'off' ? 'Odpojit' : action === 'set' ? 'Nastavit heslo' : 'Propojit'}
-                  plain
-                  active={action !== 'off'}
-                  height={34}
-                  onPress={() => {
-                    if (action === 'off') set({ singleLogin: true });
-                    else toast({ kind: 'saved', title: `${title} propojeno.`, icon: 'link' });
-                  }}
-                />
-              )
-            }
-          />
-        ))}
+        {all.map((provider, i) => {
+          const linked = providers.includes(provider);
+          const locked = linked && single;
+          return (
+            <Row
+              key={provider}
+              last={i === all.length - 1}
+              leading={<Tile icon={icons[provider]} color={C.white} />}
+              title={P().loginMethods[provider]}
+              sub={locked ? P().loginMethods.onlyOne : linked ? P().loginMethods.linked : P().loginMethods.notLinked}
+              trailing={
+                busy === provider ? (
+                  <ActivityIndicator color={C.muted} />
+                ) : locked ? (
+                  <Icon name="lock" size={16} color={C.muted} />
+                ) : (
+                  <Chip
+                    label={linked ? P().loginMethods.unlink : provider === 'email' ? P().loginMethods.setPassword : P().loginMethods.link}
+                    plain
+                    active={!linked}
+                    height={34}
+                    onPress={() => {
+                      if (linked) confirmUnlink(provider);
+                      else if (provider === 'email') setPasswordOpen(true);
+                      else void link(provider);
+                    }}
+                  />
+                )
+              }
+            />
+          );
+        })}
       </Card>
+      {passwordOpen ? (
+        <View style={{ gap: 14 }}>
+          {!profile?.email ? (
+            <Field label={P().loginMethods.emailLabel}>
+              <Input value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+            </Field>
+          ) : null}
+          <Field label={P().loginMethods.passwordLabel}>
+            <Input value={password} onChangeText={setPasswordValue} placeholder={P().loginMethods.passwordPlaceholder} secureTextEntry autoFocus onSubmitEditing={() => void savePassword()} />
+          </Field>
+          <ErrorLine text={error} />
+          <Button label={busy === 'password' ? t.account.loading : P().loginMethods.savePassword} disabled={busy !== null} onPress={() => void savePassword()} />
+        </View>
+      ) : null}
     </Sheet>
   );
 }
@@ -653,51 +1390,141 @@ export function PrihlasovaniSheet() {
 export function PrihlaseniScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const login = useAccountStore((st) => st.login);
+  const register = useAccountStore((st) => st.register);
+  const signInGoogle = useAccountStore((st) => st.signInGoogle);
+  const signInApple = useAccountStore((st) => st.signInApple);
+  const requestPasswordReset = useAccountStore((st) => st.requestPasswordReset);
+  const sessionExpired = useAccountStore((st) => st.status === 'reauth-required');
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('tomas@napivo.cz');
-  const done = () => {
-    router.dismissAll();
-    router.replace('/nv/kompas');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState<null | 'submit' | 'google' | 'apple' | 'reset'>(null);
+  const appleSupported = useMemo(() => isAppleSignInSupported(), []);
+  const googleConfigured = useMemo(() => isGoogleSignInConfigured(), []);
+
+  const done = (created: boolean) => {
+    // A new account picks its nickname and whether the profile is public first.
+    if (created) router.replace('/nv/upravit-profil');
+    else close(router);
   };
+
+  const submit = async () => {
+    if (busy) return;
+    const trimmed = email.trim();
+    if (!EMAIL_RE.test(trimmed)) return setError(t.account.errorEmailInvalid);
+    if (password.length < MIN_PASSWORD) return setError(t.account.errorPasswordShort);
+    setError('');
+    setBusy('submit');
+    try {
+      const result = mode === 'login' ? await login({ email: trimmed, password }) : await register({ email: trimmed, password });
+      if (result.ok) {
+        if (mode === 'register' && !result.profile.emailVerified) toast({ kind: 'info', title: t.account.verifyEmailSentToast, icon: 'mail' });
+        done(mode === 'register');
+        return;
+      }
+      if (result.code !== 'cancelled') setError(result.detail || t.account.errorGeneric);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const social = async (provider: 'google' | 'apple') => {
+    if (busy) return;
+    setError('');
+    setBusy(provider);
+    try {
+      const result = provider === 'google' ? await signInGoogle() : await signInApple();
+      if (result.ok) {
+        // Claimed anonymous accounts can come back with created=false and no nickname.
+        done(result.profile.created === true || result.profile.nickname == null);
+        return;
+      }
+      if (result.code !== 'cancelled') setError(result.detail || t.account.errorGeneric);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const forgot = async () => {
+    if (busy) return;
+    const trimmed = email.trim();
+    if (!EMAIL_RE.test(trimmed)) return setError(t.account.errorEmailInvalid);
+    setError('');
+    setBusy('reset');
+    try {
+      const result = await requestPasswordReset(trimmed);
+      if (!result.ok) return setError(result.detail || t.account.errorGeneric);
+      toast({ kind: 'saved', title: t.account.resetSentToast, icon: 'mail' });
+      router.push('/nv/obnova-hesla');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: 160 }}>
-        <Press onPress={done} style={{ alignSelf: 'flex-end' }}>
+        <Press onPress={() => close(router)} style={{ alignSelf: 'flex-end' }}>
           <T s={15} w={600} c={C.muted}>
-            Zatím bez účtu
+            {P().signIn.skip}
           </T>
         </Press>
-        <PageTitle title="Ať o piva nepřijdeš" intro="Přihlas se a deník, parta i odznaky ti naskočí na každém telefonu." />
+        <PageTitle title={P().signIn.title} intro={P().signIn.intro} />
         <Segmented
           height={40}
           options={[
-            { key: 'login', label: 'Přihlásit se' },
-            { key: 'register', label: 'Registrovat' },
+            { key: 'login', label: P().signIn.login },
+            { key: 'register', label: P().signIn.register },
           ]}
           value={mode}
-          onChange={setMode}
+          onChange={(next) => {
+            setMode(next);
+            setError('');
+          }}
         />
-        <Button label="Pokračovat přes Apple" icon="apple" kind="white" height={52} onPress={done} />
-        <Button label="G  Pokračovat přes Google" kind="raised" height={52} onPress={done} />
-        <View style={[s.row, { gap: 12 }]}>
-          <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
-          <T s={13} c={C.muted}>
-            nebo e-mailem
-          </T>
-          <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
-        </View>
-        <Field label="E-mail">
-          <Input value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+        {appleSupported ? (
+          <Button label={busy === 'apple' ? t.account.loading : P().signIn.apple} icon="apple" kind="white" height={52} disabled={busy !== null} onPress={() => void social('apple')} />
+        ) : null}
+        {googleConfigured ? (
+          <Button label={busy === 'google' ? t.account.loading : P().signIn.google} kind="raised" height={52} disabled={busy !== null} onPress={() => void social('google')} />
+        ) : null}
+        {appleSupported || googleConfigured ? (
+          <View style={[s.row, { gap: 12 }]}>
+            <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
+            <T s={13} c={C.muted}>
+              {P().signIn.orEmail}
+            </T>
+            <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
+          </View>
+        ) : null}
+        <Field label={P().signIn.email}>
+          <Input value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" textContentType="emailAddress" />
         </Field>
-        <Field label="Heslo">
-          <Input placeholder="Alespoň 8 znaků" secureTextEntry />
+        <Field label={P().signIn.password}>
+          <Input
+            value={password}
+            onChangeText={setPassword}
+            placeholder={P().signIn.passwordPlaceholder}
+            secureTextEntry
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            textContentType={mode === 'login' ? 'password' : 'newPassword'}
+            returnKeyType="go"
+            onSubmitEditing={() => void submit()}
+          />
         </Field>
+        <ErrorLine text={error || (sessionExpired ? t.account.sessionExpired : '')} />
       </ScrollView>
       <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4, gap: 14 }}>
-        <Button label={mode === 'login' ? 'Přihlásit se' : 'Registrovat'} onPress={done} />
-        <Press onPress={() => router.push('/nv/obnova-hesla')} style={{ alignItems: 'center' }}>
+        <Button
+          label={busy === 'submit' ? t.account.loading : mode === 'login' ? P().signIn.login : P().signIn.register}
+          disabled={busy !== null}
+          onPress={() => void submit()}
+        />
+        <Press onPress={() => void forgot()} style={{ alignItems: 'center' }}>
           <T s={14} w={600} c={C.yellow}>
-            Zapomenuté heslo?
+            {P().signIn.forgot}
           </T>
         </Press>
       </View>
@@ -707,287 +1534,752 @@ export function PrihlaseniScreen() {
 
 export function ObnovaHeslaScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ token?: string }>();
+  const linkToken = firstParam(params.token);
+  const resetPassword = useAccountStore((st) => st.resetPassword);
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (busy) return;
+    const token = linkToken || code.trim();
+    if (!token) return setError(t.account.errorResetCodeMissing);
+    if (password.length < MIN_PASSWORD) return setError(t.account.errorPasswordShort);
+    setError('');
+    setBusy(true);
+    try {
+      const result = await resetPassword({ token, password });
+      if (result.ok) {
+        toast({ kind: 'saved', title: t.account.resetDoneToast, icon: 'check' });
+        router.dismissAll();
+        router.replace('/nv/kompas');
+        return;
+      }
+      if (result.code === 'token_invalid') {
+        router.replace({ pathname: '/nv/vysledek', params: { kind: 'neplatny' } });
+        return;
+      }
+      setError(result.detail || t.account.errorGeneric);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <Screen header={<BackHeader icon="x" />} footer={<Button label="Změnit heslo" onPress={() => router.replace({ pathname: '/nv/vysledek', params: { kind: 'neplatny' } })} />} gap={16}>
-      <PageTitle title="Obnova hesla" />
-      <Field label="Kód z e-mailu">
-        <Input placeholder="Vlož sem celý kód" />
+    <Screen
+      header={<BackHeader icon="x" onBack={() => close(router)} />}
+      footer={<Button label={busy ? t.account.loading : P().reset.submit} disabled={busy} onPress={() => void submit()} />}
+      gap={16}
+    >
+      <PageTitle title={P().reset.title} />
+      {!linkToken ? (
+        <Field label={P().reset.code}>
+          <Input value={code} onChangeText={setCode} placeholder={P().reset.codePlaceholder} autoCapitalize="none" autoCorrect={false} />
+        </Field>
+      ) : null}
+      <Field label={P().reset.password}>
+        <Input
+          value={password}
+          onChangeText={setPassword}
+          placeholder={P().reset.passwordPlaceholder}
+          secureTextEntry
+          autoComplete="new-password"
+          textContentType="newPassword"
+          returnKeyType="go"
+          onSubmitEditing={() => void submit()}
+        />
       </Field>
-      <Field label="Nové heslo">
-        <Input placeholder="Alespoň 8 znaků" secureTextEntry />
-      </Field>
+      <ErrorLine text={error} />
     </Screen>
   );
 }
 
-const RESULTS: Record<string, { icon: IconName; title: string; body: string; button: string; raised?: boolean }> = {
-  neplatny: { icon: 'link-2-off', title: 'Neplatný odkaz', body: 'Tento odkaz na obnovu hesla už neplatí. Vyžádej si nový.', button: 'Zpět do aplikace' },
-  overen: { icon: 'badge-check', title: 'E-mail ověřen', body: 'Díky! Tvůj e-mail je teď ověřený.', button: 'Zpět do aplikace' },
-  neovereno: { icon: 'mail-x', title: 'Ověření se nezdařilo', body: 'Odkaz už vypršel nebo byl použitý. Pošlu ti nový z obrazovky Účet.', button: 'Zpět do aplikace' },
-  diky: { icon: 'send', title: 'Díky!', body: 'Zpráva dorazí, i kdyby teď zrovna nebylo připojení. Odešlu ji, jakmile budeš online.', button: 'Zavřít', raised: true },
+type ResultKind = 'neplatny' | 'overen' | 'neovereno' | 'diky';
+const RESULT_ICONS: Record<ResultKind, IconName> = {
+  neplatny: 'link-2-off',
+  overen: 'badge-check',
+  neovereno: 'mail-x',
+  diky: 'send',
 };
 
-/** One-message screens: verified e-mail, broken link, thanks. */
+function isResultKind(value: string): value is ResultKind {
+  return value in RESULT_ICONS;
+}
+
+/** One-message screens: verified e-mail (`?token=` verifies it here), broken link, thanks. */
 export function VysledekScreen() {
   const router = useRouter();
-  const { kind } = useLocalSearchParams<{ kind: string }>();
-  const r = RESULTS[kind ?? 'overen'] ?? RESULTS.overen;
+  const params = useLocalSearchParams<{ kind?: string; token?: string }>();
+  const token = firstParam(params.token);
+  const requested = firstParam(params.kind);
+  const verifyEmail = useAccountStore((st) => st.verifyEmail);
+  const [verified, setVerified] = useState<ResultKind | null>(null);
+  const ran = useRef(false);
+
+  useEffect(() => {
+    if (!token || ran.current) return;
+    ran.current = true;
+    void verifyEmail(token).then((result) => setVerified(result.ok ? 'overen' : 'neovereno'));
+  }, [token, verifyEmail]);
+
+  if (token && !verified) {
+    return (
+      <Screen>
+        <View style={{ marginTop: 130, gap: 18 }}>
+          <ActivityIndicator color={C.yellow} style={{ alignSelf: 'flex-start' }} />
+          <D s={44}>{P().result.verifying}</D>
+        </View>
+      </Screen>
+    );
+  }
+  const kind: ResultKind = verified ?? (isResultKind(requested) ? requested : 'overen');
+  const copy = P().result[kind];
   return (
-    <Screen footer={<Button label={r.button} kind={r.raised ? 'raised' : 'primary'} onPress={() => (router.canGoBack() ? router.back() : router.replace('/nv/kompas'))} />}>
+    <Screen
+      footer={<Button label={kind === 'diky' ? P().result.close : P().result.back} kind={kind === 'diky' ? 'raised' : 'primary'} onPress={() => close(router)} />}
+    >
       <View style={{ marginTop: 130, gap: 18 }}>
-        <Tile icon={r.icon} size={64} radius={32} />
-        <D s={44}>{r.title}</D>
+        <Tile icon={RESULT_ICONS[kind]} size={64} radius={32} />
+        <D s={44}>{copy.title}</D>
         <T s={16} c={C.text2} lh={1.45} style={{ marginTop: -6 }}>
-          {r.body}
+          {copy.body}
         </T>
       </View>
     </Screen>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Parta: správa a pozvánka
+// ---------------------------------------------------------------------------
 
 export function SpravaPartyScreen() {
   const router = useRouter();
-  const [blocked, setBlocked] = useState(true);
+  const me = useMe();
+  const needsNickname = me.isSignedIn && me.profile != null && !me.nick;
+  const [invite, setInvite] = useState<FriendInvite | null | 'loading'>('loading');
+  const [friends, setFriends] = useState<FriendProfile[] | null>(null);
+  const [blocked, setBlocked] = useState<FriendProfile[]>([]);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<FriendProfile[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [requesting, setRequesting] = useState<string | null>(null);
+  const searchSeq = useRef(0);
+
+  const load = useCallback(() => {
+    const controller = new AbortController();
+    void loadFriendsDashboardSnapshot().then((snapshot) => {
+      if (!controller.signal.aborted && snapshot) setFriends((current) => current ?? snapshot.dashboard.friends);
+    });
+    void fetchFriendsDashboard(controller.signal).then((dashboard) => {
+      if (!controller.signal.aborted && dashboard) setFriends(dashboard.friends);
+    });
+    void fetchBlockedAccounts(controller.signal).then((list) => {
+      if (!controller.signal.aborted && list) setBlocked(list);
+    });
+    return () => controller.abort();
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!me.isSignedIn) return undefined;
+      return load();
+    }, [load, me.isSignedIn]),
+  );
+
+  useEffect(() => {
+    if (!me.isSignedIn || needsNickname) return;
+    const controller = new AbortController();
+    void fetchFriendInviteCode(controller.signal).then((result) => {
+      if (!controller.signal.aborted) setInvite(result);
+    });
+    return () => controller.abort();
+  }, [me.isSignedIn, needsNickname]);
+
+  const link = invite && invite !== 'loading' ? invite.webUrl || invite.url : '';
+
+  const share = async () => {
+    if (!link) return toast({ kind: 'offline', title: t.friends.codeOffline });
+    await Share.share({ message: t.friends.shareMessage(link) }).catch(() => undefined);
+  };
+
+  const copyLink = async () => {
+    if (!link) return toast({ kind: 'offline', title: t.friends.codeOffline });
+    await Clipboard.setStringAsync(link);
+    toast({ kind: 'saved', title: P().parta.copied, icon: 'copy' });
+  };
+
+  const search = async () => {
+    const q = query.trim().replace(/^@/, '');
+    if (q.length < 2) return;
+    const seq = ++searchSeq.current;
+    setSearching(true);
+    const found = await searchFriends(q);
+    if (seq !== searchSeq.current) return;
+    setSearching(false);
+    if (found === null) {
+      toast({ kind: 'offline', title: t.friends.offline });
+      return;
+    }
+    setResults(found);
+  };
+
+  const request = async (profile: FriendProfile | null) => {
+    const nickname = query.trim().replace(/^@/, '');
+    const key = profile ? `account:${profile.id}` : `nickname:${nickname.toLowerCase()}`;
+    if (requesting) return;
+    setRequesting(key);
+    const result = profile ? await sendFriendRequest({ accountId: profile.id }) : await sendFriendRequest({ nickname });
+    setRequesting(null);
+    if (!result.ok && !isRetriableFriendError(result)) {
+      toast({ kind: 'error', title: result.detail });
+      return;
+    }
+    if (!result.ok) {
+      await enqueueFriendOp(profile ? { op: 'request', key, accountId: profile.id } : { op: 'request', key, nickname });
+    }
+    const accepted = result.ok && 'accepted' in result && result.accepted === true;
+    toast({ kind: 'saved', title: accepted ? t.friends.requestAccepted : t.friends.requestSent, icon: 'user-plus' });
+    setQuery('');
+    setResults(null);
+    load();
+  };
+
+  const confirmUnblock = (account: FriendProfile) =>
+    dialog({
+      title: t.friends.unblockTitle(friendDisplayName(account)),
+      body: t.friends.unblockBody,
+      actions: [
+        { label: P().settings.cancel },
+        {
+          label: t.friends.unblockAction,
+          kind: 'primary',
+          onPress: () =>
+            void unblockFriend(account.id).then((result) => {
+              if (!result.ok) return toast({ kind: 'error', title: result.detail });
+              setBlocked((list) => list.filter((item) => item.id !== account.id));
+              toast({ kind: 'saved', title: t.friends.unblocked, icon: 'check' });
+            }),
+        },
+      ],
+    });
+
+  const gate = !me.isSignedIn
+    ? { title: t.friends.coldStartAnonTitle, body: t.friends.coldStartAnonBody, cta: t.friends.coldStartAnonCta, href: '/nv/prihlaseni' as const }
+    : needsNickname
+      ? { title: t.friends.coldStartSetupTitle, body: t.friends.coldStartSetupBody, cta: t.friends.coldStartSetupCta, href: '/nv/dokoncit-ucet' as const }
+      : null;
+
   return (
     <Screen header={<BackHeader />} gap={16}>
-      <PageTitle title="Správa party" />
-      <T s={17} w={700}>
-        Můj kód
-      </T>
-      <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 20, gap: 16, alignItems: 'center' }}>
-        <View style={{ padding: 14, borderRadius: 22, backgroundColor: C.white }}>
-          <QRCode value="https://na-pivo.cz/p/tomas" size={200} color={C.black} backgroundColor={C.white} />
+      <PageTitle title={P().parta.title} />
+      {gate ? (
+        <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 20, gap: 12 }}>
+          <T s={17} w={700}>
+            {gate.title}
+          </T>
+          <T s={14} c={C.text2} lh={1.45}>
+            {gate.body}
+          </T>
+          <Button label={gate.cta} onPress={() => router.push(gate.href)} />
         </View>
-        <T s={14} c={C.text2} style={{ textAlign: 'center' }}>
-          Ukaž kámošovi QR kód nebo mu pošli pozvánku odkazem.
-        </T>
-        <Button label="Sdílet pozvánku" icon="share" style={{ alignSelf: 'stretch' }} onPress={() => router.push('/nv/pozvanka-do-party')} />
-        <Button label="Poslat odkaz" icon="link" kind="raised" style={{ alignSelf: 'stretch' }} onPress={() => toast({ kind: 'saved', title: 'Odkaz zkopírovaný.', icon: 'copy' })} />
-      </View>
-      <T s={17} w={700}>
-        Přidat do party
-      </T>
-      <View style={[s.row, { gap: 10 }]}>
-        <View style={s.fill}>
-          <Input placeholder="@ Přezdívka kámoše" autoCapitalize="none" />
-        </View>
-        <Button label="Najít" kind="raised" height={48} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/pozvanka-do-party')} />
-      </View>
-      <T s={17} w={700}>
-        Kámoši
-      </T>
-      <Card>
-        {[
-          ['K', '@KlaraNaCepu', 'Klára na čepu · level 7', 'klara'],
-          ['J', '@jirka', 'Jirka · level 4', 'jirka'],
-          ['M', '@majda', 'Magda · level 3', 'petra'],
-        ].map(([i, n, sub, id], idx) => (
-          <Row key={n} last={idx === 2} leading={<Person initial={i} />} title={n} sub={sub} chevron onPress={() => router.push({ pathname: '/nv/kamos/[id]', params: { id } })} />
-        ))}
-      </Card>
-      {blocked ? (
+      ) : (
         <>
           <T s={17} w={700}>
-            Zablokovaní
+            {P().parta.myCode}
           </T>
-          <Card>
-            <Row
-              last
-              leading={<Person initial="P" ring={false} />}
-              title="@pivni_troll"
-              trailing={<Chip label="Odblokovat" plain height={34} onPress={() => setBlocked(false)} />}
+          <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 20, gap: 16, alignItems: 'center' }}>
+            <View style={[{ width: 228, height: 228, padding: 14, borderRadius: 22, backgroundColor: C.white }, s.center]}>
+              {link ? (
+                <QRCode value={link} size={200} color={C.black} backgroundColor={C.white} />
+              ) : invite === 'loading' ? (
+                <ActivityIndicator color={C.black} />
+              ) : (
+                <T s={14} w={600} c={C.black} style={{ textAlign: 'center' }}>
+                  {t.friends.codeOffline}
+                </T>
+              )}
+            </View>
+            <T s={14} c={C.text2} style={{ textAlign: 'center' }}>
+              {P().parta.codeHint}
+            </T>
+            <Button label={P().parta.share} icon="share" style={{ alignSelf: 'stretch' }} onPress={() => void share()} />
+            <Button label={P().parta.copyLink} icon="link" kind="raised" style={{ alignSelf: 'stretch' }} onPress={() => void copyLink()} />
+          </View>
+          <T s={17} w={700}>
+            {P().parta.add}
+          </T>
+          <View style={[s.row, { gap: 10 }]}>
+            <View style={s.fill}>
+              <Input
+                value={query}
+                onChangeText={(value) => {
+                  setQuery(value);
+                  setResults(null);
+                }}
+                placeholder={P().parta.searchPlaceholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                onSubmitEditing={() => void search()}
+              />
+            </View>
+            <Button
+              label={P().parta.find}
+              kind="raised"
+              height={48}
+              style={{ paddingHorizontal: 16 }}
+              disabled={searching || query.trim().replace(/^@/, '').length < 2}
+              onPress={() => void search()}
             />
-          </Card>
+          </View>
+          {results ? (
+            <Card>
+              {results.map((profile, idx) => (
+                <Row
+                  key={profile.id}
+                  last={idx === results.length - 1}
+                  leading={<ProfilAvatar uri={profile.avatarUrl} initial={(profile.nickname ?? profile.displayName ?? '?')[0]?.toLocaleUpperCase() ?? '?'} />}
+                  title={friendDisplayName(profile)}
+                  sub={profile.nickname ? profile.displayName || undefined : undefined}
+                  trailing={
+                    requesting === `account:${profile.id}` ? (
+                      <ActivityIndicator color={C.muted} />
+                    ) : (
+                      <Chip label={P().parta.addOne} active plain height={34} onPress={() => void request(profile)} />
+                    )
+                  }
+                />
+              ))}
+              {results.length === 0 ? (
+                <Row
+                  last
+                  title={t.friends.noResults}
+                  trailing={<Chip label={t.friends.addByNickname} active plain height={34} onPress={() => void request(null)} />}
+                />
+              ) : null}
+            </Card>
+          ) : null}
+          <T s={17} w={700}>
+            {P().parta.friends}
+          </T>
+          {friends == null ? (
+            <ActivityIndicator color={C.muted} style={{ alignSelf: 'flex-start' }} />
+          ) : friends.length === 0 ? (
+            <T s={14} c={C.muted}>
+              {P().parta.noFriends}
+            </T>
+          ) : (
+            <Card>
+              {friends.map((profile, idx) => (
+                <Row
+                  key={profile.id}
+                  last={idx === friends.length - 1}
+                  leading={<ProfilAvatar uri={profile.avatarUrl} initial={(profile.nickname ?? profile.displayName ?? '?')[0]?.toLocaleUpperCase() ?? '?'} />}
+                  title={friendDisplayName(profile)}
+                  sub={profile.nickname ? profile.displayName || undefined : undefined}
+                  chevron
+                  onPress={() => router.push({ pathname: '/nv/kamos/[id]', params: { id: profile.id } })}
+                />
+              ))}
+            </Card>
+          )}
+          {blocked.length > 0 ? (
+            <>
+              <T s={17} w={700}>
+                {P().parta.blocked}
+              </T>
+              <Card>
+                {blocked.map((account, idx) => (
+                  <Row
+                    key={account.id}
+                    last={idx === blocked.length - 1}
+                    leading={<Person initial={(account.nickname ?? account.displayName ?? '?')[0]?.toLocaleUpperCase() ?? '?'} ring={false} />}
+                    title={friendDisplayName(account)}
+                    trailing={<Chip label={P().parta.unblock} plain height={34} onPress={() => confirmUnblock(account)} />}
+                  />
+                ))}
+              </Card>
+            </>
+          ) : null}
         </>
-      ) : null}
+      )}
     </Screen>
   );
+}
+
+function initialOf(profile: FriendProfile): string {
+  return ((profile.nickname || profile.displayName || '?')[0] ?? '?').toLocaleUpperCase();
 }
 
 export function PozvankaDoPartySheet() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ code?: string }>();
+  const code = firstParam(params.code);
+  const myId = useAccountStore((st) => st.profile?.id ?? null);
+  const [resolved, setResolved] = useState<InviteResolveResult | null>(null);
+  const [claiming, setClaiming] = useState(false);
+
+  useEffect(() => {
+    if (!code) return;
+    const controller = new AbortController();
+    void resolveInviteCode(code, controller.signal).then((result) => {
+      if (!controller.signal.aborted) setResolved(result);
+    });
+    return () => controller.abort();
+  }, [code]);
+
+  const claim = async () => {
+    if (claiming || !code) return;
+    setClaiming(true);
+    const result = await claimInviteCode(code);
+    setClaiming(false);
+    if (result.ok) {
+      close(router);
+      toast({ kind: 'saved', title: t.friends.claimDone, icon: 'user-plus' });
+      return;
+    }
+    toast({ kind: 'error', title: result.code === 'invite_expired' ? t.friends.claimExpired : result.detail || t.friends.claimInvalid });
+  };
+
+  const inviter = resolved?.valid ? resolved.inviter : null;
+  const state = !code
+    ? 'invalid'
+    : !resolved
+      ? 'loading'
+      : !resolved.valid || !inviter
+        ? resolved.expired
+          ? 'expired'
+          : 'invalid'
+        : myId && inviter.id === myId
+          ? 'self'
+          : 'valid';
+
+  if (state !== 'valid' || !inviter) {
+    const message =
+      state === 'loading' ? t.friends.claimLoading : state === 'expired' ? t.friends.claimExpired : state === 'self' ? t.friends.claimSelf : t.friends.claimInvalid;
+    return (
+      <Sheet closeIcon={false} top={520} scroll={false}>
+        <View style={{ alignItems: 'center', gap: 14, paddingVertical: 12 }}>
+          <Kicker>{P().invite.kicker}</Kicker>
+          {state === 'loading' ? <ActivityIndicator color={C.yellow} /> : <Icon name="users" size={40} color={C.muted} />}
+          <T s={16} c={C.text2} style={{ textAlign: 'center' }}>
+            {message}
+          </T>
+        </View>
+        <Press onPress={() => close(router)} style={{ alignItems: 'center', paddingBottom: 6 }}>
+          <T s={15} w={700} c={C.text2}>
+            {P().invite.notNow}
+          </T>
+        </Press>
+      </Sheet>
+    );
+  }
+
+  const stats = resolved?.publicStats ?? null;
+  const mutual = resolved?.mutualFriends;
+  const name = inviter.displayName || (inviter.nickname ? `@${inviter.nickname}` : t.friends.fallbackName);
+  const handle = inviter.nickname ? `@${inviter.nickname}` : name;
+  const earnedPublic = stats
+    ? badgeStates(stats.badgeProgress).filter((state) => PUBLIC_BADGE_KEYS.has(state.key) && state.tier > 0).length
+    : 0;
   return (
     <Sheet closeIcon={false} top={360} scroll={false}>
       <View style={{ alignItems: 'center', gap: 10, marginTop: -6 }}>
-        <Kicker>Pozvánka do party</Kicker>
-        <Person initial="K" size={84} />
-        <D s={34}>Klára na čepu</D>
-        <T s={14} c={C.muted} style={{ marginTop: -6 }}>
-          @KlaraNaCepu · Štamgastka, level 7
-        </T>
+        <Kicker>{P().invite.kicker}</Kicker>
+        <ProfilAvatar uri={inviter.avatarUrl} initial={initialOf(inviter)} size={84} />
+        <D s={34} style={{ textAlign: 'center' }}>
+          {name}
+        </D>
+        {inviter.displayName && inviter.nickname ? (
+          <T s={14} c={C.muted} style={{ marginTop: -6 }}>
+            {handle}
+          </T>
+        ) : null}
       </View>
-      <View style={[s.row, { padding: 14, borderRadius: 18, backgroundColor: C.card }]}>
-        {[
-          ['211', 'piv'],
-          ['38', 'hospod'],
-          ['12', 'odznaků'],
-        ].map(([v, l]) => (
-          <View key={l} style={{ flex: 1, alignItems: 'center' }}>
-            <D s={26}>{v}</D>
-            <T s={12} c={C.muted}>
-              {l}
-            </T>
-          </View>
-        ))}
-      </View>
-      <T s={15} c={C.text2} style={{ textAlign: 'center' }}>
-        V partě uvidíte, kdo z vás je zrovna na pivu, a můžete si cinknout.
-      </T>
-      <View style={[s.row, { justifyContent: 'center', gap: 8 }]}>
-        <View style={s.row}>
-          {['J', 'M'].map((x, i) => (
-            <View key={x} style={{ marginLeft: i ? -8 : 0 }}>
-              <Person initial={x} size={26} ring={false} />
+      {stats ? (
+        <View style={[s.row, { padding: 14, borderRadius: 18, backgroundColor: C.card }]}>
+          {[
+            [stats.totalBeers, P().invite.beers(stats.totalBeers)],
+            [stats.distinctPubs, P().invite.pubs(stats.distinctPubs)],
+            [earnedPublic, P().invite.badges(earnedPublic)],
+          ].map(([v, l]) => (
+            <View key={String(l)} style={{ flex: 1, alignItems: 'center' }}>
+              <D s={26}>{numberFormat().format(Number(v))}</D>
+              <T s={12} c={C.muted}>
+                {l}
+              </T>
             </View>
           ))}
         </View>
-        <T s={13} c={C.muted}>
-          Jirka a Marek už s ní v partě jsou
-        </T>
-      </View>
-      <Button
-        label="Přidat Kláru do party"
-        icon="user-plus"
-        onPress={() => {
-          router.back();
-          toast({ kind: 'saved', title: 'Klára je v partě.', icon: 'user-plus' });
-        }}
-      />
-      <Press onPress={() => router.back()} style={{ alignItems: 'center', paddingBottom: 6 }}>
+      ) : null}
+      <T s={15} c={C.text2} style={{ textAlign: 'center' }}>
+        {P().invite.body}
+      </T>
+      {mutual && mutual.count > 0 ? (
+        <View style={[s.row, { justifyContent: 'center', gap: 8 }]}>
+          <View style={s.row}>
+            {mutual.profiles.map((profile, i) => (
+              <View key={profile.id} style={{ marginLeft: i ? -8 : 0 }}>
+                <ProfilAvatar uri={profile.avatarUrl} initial={initialOf(profile)} size={26} ring={false} />
+              </View>
+            ))}
+          </View>
+          <T s={13} c={C.muted} style={{ flexShrink: 1 }}>
+            {P().invite.mutual(mutual.profiles.map(friendDisplayName), Math.max(0, mutual.count - mutual.profiles.length), handle)}
+          </T>
+        </View>
+      ) : null}
+      <Button label={claiming ? t.account.loading : P().invite.add(handle)} icon="user-plus" disabled={claiming} onPress={() => void claim()} />
+      <Press onPress={() => close(router)} style={{ alignItems: 'center', paddingBottom: 6 }}>
         <T s={15} w={700} c={C.text2}>
-          Teď ne
+          {P().invite.notNow}
         </T>
       </Press>
     </Sheet>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Napiš mi, O appce
+// ---------------------------------------------------------------------------
+
 export function NapisMiScreen() {
   const router = useRouter();
-  const [kind, setKind] = useState('Chyba');
-  const [via, setVia] = useState<'ig' | 'mail'>('ig');
+  const [kind, setKind] = useState<FeedbackCategory>('bug');
+  const [via, setVia] = useState<FeedbackContactType>('instagram');
+  const [message, setMessage] = useState('');
+  const [contact, setContact] = useState('');
+  const [attachment, setAttachment] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const version = getCurrentAppVersion();
+
+  const send = async () => {
+    if (busy || !message.trim()) return;
+    setBusy(true);
+    try {
+      // Waits only for local persistence; the queue sends it once online.
+      await enqueueFeedback({ category: kind, message, contactType: via, contact, attachmentUri: attachment ?? undefined });
+      router.replace({ pathname: '/nv/vysledek', params: { kind: 'diky' } });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pick = async (source: FeedbackAttachmentSource) => {
+    const result = await pickFeedbackAttachment(source);
+    if (result.status === 'picked') setAttachment(result.uri);
+    else if (result.status === 'denied' || result.status === 'denied-permanent') {
+      dialog({
+        title: t.report.attachmentPermissionTitle,
+        body: result.status === 'denied' ? t.report.attachmentPermissionDenied : t.report.attachmentPermissionBlocked,
+        actions:
+          result.status === 'denied'
+            ? [{ label: t.common.ok }]
+            : [{ label: P().writeMe.cancel }, { label: t.report.attachmentOpenSettings, kind: 'primary', onPress: () => void Linking.openSettings() }],
+      });
+    } else if (result.status === 'error') {
+      dialog({ title: t.report.attachmentErrorTitle, body: t.report.attachmentErrorBody, actions: [{ label: t.common.ok }] });
+    }
+  };
+
+  const chooseSource = () =>
+    dialog({
+      title: t.report.attachmentSourceTitle,
+      actions: [
+        { label: t.report.attachmentCamera, onPress: () => void pick('camera') },
+        { label: t.report.attachmentLibrary, onPress: () => void pick('library') },
+      ],
+    });
+
   return (
-    <Screen header={<BackHeader />} footer={
-      <View style={{ gap: 12 }}>
-        <Button label="Odeslat" onPress={() => router.replace({ pathname: '/nv/vysledek', params: { kind: 'diky' } })} />
-        <T s={12} c={C.muted} style={{ textAlign: 'center' }}>
-          Odesílám i verzi aplikace: 2.3.0
-        </T>
-      </View>
-    } gap={14}>
-      <PageTitle title="Napiš mi" />
+    <Screen
+      header={<BackHeader />}
+      footer={
+        <View style={{ gap: 12 }}>
+          <Button label={P().writeMe.send} disabled={busy || !message.trim()} onPress={() => void send()} />
+          {version ? (
+            <T s={12} c={C.muted} style={{ textAlign: 'center' }}>
+              {P().writeMe.version(version)}
+            </T>
+          ) : null}
+        </View>
+      }
+      gap={14}
+    >
+      <PageTitle title={P().writeMe.title} />
       <T s={16} c={C.text2} lh={1.45} style={{ marginTop: -6 }}>
-        Něco nefunguje nebo ti něco chybí? Napiš mi pár slov, pomůže to.
+        {P().writeMe.intro}
       </T>
       <ChipWrap>
-        {['Chyba', 'Nápad', 'Jiné'].map((k) => (
-          <Chip key={k} label={k} active={kind === k} onPress={() => setKind(k)} />
+        {(
+          [
+            ['bug', P().writeMe.bug],
+            ['idea', P().writeMe.idea],
+            ['other', P().writeMe.other],
+          ] as const
+        ).map(([key, label]) => (
+          <Chip key={key} label={label} active={kind === key} onPress={() => setKind(key)} />
         ))}
       </ChipWrap>
-      <Input multiline placeholder="Popiš, co se stalo nebo co ti chybí…" style={{ minHeight: 124 }} />
+      <Input multiline value={message} onChangeText={setMessage} placeholder={P().writeMe.placeholder} style={{ minHeight: 124 }} />
       <T s={13} c={C.text2}>
-        Fotka nebo screenshot (nepovinné)
+        {P().writeMe.attachment}
       </T>
-      <Button label="Přidat přílohu" icon="image-plus" kind="raised" height={46} style={{ alignSelf: 'flex-start' }} />
+      {attachment ? (
+        <View style={[s.row, { gap: 12 }]}>
+          <Image source={{ uri: attachment }} style={{ width: 64, height: 64, borderRadius: 14 }} accessibilityIgnoresInvertColors />
+          <Button label={P().writeMe.removeAttachment} icon="x" kind="raised" height={46} onPress={() => setAttachment(null)} />
+        </View>
+      ) : (
+        <Button label={P().writeMe.addAttachment} icon="image-plus" kind="raised" height={46} style={{ alignSelf: 'flex-start' }} onPress={chooseSource} />
+      )}
       <T s={13} c={C.text2}>
-        Kam ti můžu odepsat? (nepovinné)
+        {P().writeMe.contact}
       </T>
       <Segmented
         height={38}
         options={[
-          { key: 'ig', label: 'Instagram' },
-          { key: 'mail', label: 'E-mail' },
+          { key: 'instagram', label: P().writeMe.instagram },
+          { key: 'email', label: P().writeMe.email },
         ]}
         value={via}
         onChange={setVia}
       />
-      <Input placeholder={via === 'ig' ? '@tvujprofil' : 'tvuj@email.cz'} autoCapitalize="none" />
+      <Input
+        value={contact}
+        onChangeText={setContact}
+        placeholder={via === 'instagram' ? P().writeMe.instagramPlaceholder : P().writeMe.emailPlaceholder}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType={via === 'email' ? 'email-address' : 'default'}
+      />
     </Screen>
   );
 }
 
 export function OAppceScreen() {
+  const version = getCurrentAppVersion();
+  const [notes, setNotes] = useState<ReleaseNote | null | 'loading' | 'error'>('loading');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchAllReleaseNotes(controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      if (result.kind === 'error') return setNotes('error');
+      setNotes(result.notes.find((note) => note.version === version) ?? result.notes[0] ?? null);
+    });
+    return () => controller.abort();
+  }, [version]);
+
+  const items = notes && typeof notes === 'object' ? notes.items.filter((item) => item.text.trim()) : [];
   return (
     <Screen header={<BackHeader />} gap={16}>
       <View style={[s.row, { gap: 16 }]}>
         <Image source={require('../../../../assets/images/icon.png')} style={{ width: 84, height: 84, borderRadius: 20 }} />
         <View>
-          <D s={38}>Na pivo</D>
-          <T s={14} c={C.muted}>
-            Verze 2.3.0
-          </T>
+          <D s={38}>{P().about.name}</D>
+          {version ? (
+            <T s={14} c={C.muted}>
+              {P().about.version(version)}
+            </T>
+          ) : null}
         </View>
       </View>
       <T s={16} c={C.text2}>
-        Tvůj kompas k nejbližšímu pivu.
+        {P().about.tagline}
       </T>
-      <Kicker>Co je nového</Kicker>
+      {notes === 'loading' ? (
+        <ActivityIndicator color={C.muted} style={{ alignSelf: 'flex-start' }} />
+      ) : notes === 'error' ? (
+        <T s={14} c={C.muted}>
+          {P().about.notesFailed}
+        </T>
+      ) : items.length > 0 ? (
+        <>
+          <Kicker>{P().about.whatsNew}</Kicker>
+          <Card>
+            {items.map((item, i) => (
+              <Row
+                key={i}
+                last={i === items.length - 1}
+                leading={
+                  <View style={[{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFC40026', alignSelf: 'flex-start' }, s.center]}>
+                    <T s={12} w={800} c={C.yellow}>
+                      {String(i + 1)}
+                    </T>
+                  </View>
+                }
+                title={
+                  <T s={14} c={C.text2} lh={1.45}>
+                    {item.text}
+                  </T>
+                }
+              />
+            ))}
+          </Card>
+        </>
+      ) : null}
       <Card>
-        {[
-          'Ze zapsaného pití ti na počítadle odhadnu promile a kdy budeš na nule. Je to jen odhad, za volant podle něj nesedej.',
-          'Na lístku hospody ťukni na pivo a vyber Hlídat pivo. Až ho začnou čepovat poblíž, dám ti vědět.',
-          'Medaile s každou úrovní roste a ukáže ti, kolik do další chybí. Přibyly nové, třeba Silvestr, a některé jsou tajné.',
-        ].map((x, i) => (
-          <Row
-            key={i}
-            last={i === 2}
-            leading={
-              <View style={[{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFC40026', alignSelf: 'flex-start' }, s.center]}>
-                <T s={12} w={800} c={C.yellow}>
-                  {String(i + 1)}
-                </T>
-              </View>
-            }
-            title={<T s={14} c={C.text2} lh={1.45}>{x}</T>}
-          />
-        ))}
-      </Card>
-      <Card>
-        <Row last title="Zásady soukromí" trailing={<Icon name="arrow-up-right" size={16} color={C.muted} />} />
+        <Row last title={P().about.privacy} trailing={<Icon name="arrow-up-right" size={16} color={C.muted} />} onPress={() => void Linking.openURL(PRIVACY_URL)} />
       </Card>
       <T s={13} c={C.muted} style={{ textAlign: 'center', marginTop: 60 }}>
-        Bez reklam · Bez placení
+        {P().about.footer}
       </T>
     </Screen>
   );
 }
 
-const ONBOARDING = [
-  { title: 'Nejkratší cesta na pivo.', body: 'Šipka tě dovede do nejbližší otevřené hospody. Piva si čárkuješ jako na tácku a parta uvidí, kde sedíš.' },
-  { title: 'Čárka za každé pivo.', body: 'Jedno klepnutí a pivo je v deníku. Na konci večera dostaneš účtenku a vidíš, kolik padlo.' },
-  { title: 'Parta ví, kde sedíš.', body: 'Pozvi kámoše do hospody nebo k sobě. Kdo jde, uvidíš na lístku.' },
-];
+// ---------------------------------------------------------------------------
+// Onboarding
+// ---------------------------------------------------------------------------
 
 export function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [page, setPage] = useState(0);
-  const p = ONBOARDING[page];
-  const finish = () => router.replace('/nv/prihlaseni');
+  const finished = useRef(false);
+  const slides = P().onboarding.slides;
+  const p = slides[page];
+
+  useEffect(() => {
+    void trackClientEvent({ event: 'onboarding_started' });
+  }, []);
+
+  const finish = (event: 'onboarding_completed' | 'onboarding_skipped') => {
+    if (finished.current) return;
+    finished.current = true;
+    useOnboardingStore.getState().complete();
+    void trackClientEvent({ event, context: { slide: page + 1 } });
+    router.replace('/nv/prihlaseni');
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, paddingBottom: Math.max(insets.bottom, 16) + 4 }}>
       <View style={[s.row, { justifyContent: 'space-between', height: 32 }]}>
         <View style={[s.row, { gap: 6 }]}>
-          {ONBOARDING.map((_, i) => (
+          {slides.map((_, i) => (
             <View key={i} style={{ width: i === page ? 28 : 10, height: 6, borderRadius: 3, backgroundColor: i === page ? C.yellow : C.control }} />
           ))}
         </View>
-        <Press onPress={finish}>
+        <Press onPress={() => finish('onboarding_skipped')}>
           <T s={15} w={600} c={C.muted}>
-            Přeskočit
+            {P().onboarding.skip}
           </T>
         </Press>
       </View>
       <View style={{ flex: 1, justifyContent: 'center' }}>
         {page === 0 ? (
-          <Dial target={PUBS[0]} others={PUBS.slice(1, 6)} />
+          <Dial centerIcon="beer" />
         ) : page === 1 ? (
           <View style={{ alignItems: 'center', gap: 4 }}>
             <D s={180} lh={1} c={C.yellow}>
               3
             </D>
             <T s={18} w={600} c={C.text2}>
-              piva dnes večer
+              {P().onboarding.tonight}
             </T>
           </View>
         ) : (
@@ -1000,7 +2292,7 @@ export function OnboardingScreen() {
               ))}
             </View>
             <T s={16} w={600} c={C.text2}>
-              Klára a Marek jsou U Pinkasů
+              {P().onboarding.partaDemo}
             </T>
           </View>
         )}
@@ -1013,7 +2305,11 @@ export function OnboardingScreen() {
           {p.body}
         </T>
       </View>
-      <Button label={page < 2 ? 'Co dál?' : 'Jdeme na to'} onPress={() => (page < 2 ? setPage(page + 1) : finish())} />
+      <Button
+        label={page < slides.length - 1 ? P().onboarding.next : P().onboarding.done}
+        onPress={() => (page < slides.length - 1 ? setPage(page + 1) : finish('onboarding_completed'))}
+      />
     </View>
   );
 }
+

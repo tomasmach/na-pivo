@@ -247,6 +247,7 @@ from pubs.models import (
     TourPlan,
     TourRunMember,
     UserAddedPub,
+    XpEvent,
     account_deletion_fingerprint,
     account_deletion_fingerprint_matches,
     hash_account_token,
@@ -256,6 +257,7 @@ from pubs.photos import BeerPhotoError, process_beer_photo
 from pubs.pivar import pivar_snapshot
 from pubs.price_index import upsert_pub_price_index
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
+from pubs.xp_events import record_xp_event
 
 from . import piva_views
 from .authentication import AccountTokenAuthentication
@@ -2402,6 +2404,13 @@ class PubCommunityView(APIView):
             if has_beers:
                 kinds.add(PubCommunityXpLedger.Kind.BEERS)
             xp_awarded = _award_community_xp(request.user, cache_key, pub_identity_key, kinds)
+            record_xp_event(
+                request.user.pk,
+                reason=XpEvent.Reason.COMMUNITY,
+                amount=xp_awarded,
+                cache_key=cache_key,
+                pub_name=identity.name or data["name"],
+            )
             stats, _ = AccountUsageStats.objects.get_or_create(account=request.user)
             mapper = maper_snapshot(stats.mapper_xp, _mapper_counters(stats))
         except Exception as exc:  # noqa: BLE001
@@ -2603,7 +2612,13 @@ def _award_first_diary_event_xp(
             f"{timestamp_field}__lt": day_end,
         },
     ).exists()
-    return _increment_pivar_xp(account, amount if not had_event else 0)
+    awarded = amount if not had_event else 0
+    record_xp_event(
+        account.pk,
+        reason=XpEvent.Reason.PHOTO if event_model is BeerPhoto else XpEvent.Reason.CHECKIN,
+        amount=awarded,
+    )
+    return _increment_pivar_xp(account, awarded)
 
 
 _PARTY_ENTRY_CLOCK_GRACE = timedelta(minutes=10)
@@ -3030,6 +3045,13 @@ class DrinksView(APIView):
                     drank_at=flags.drank_at,
                     is_suspect=flags.is_suspect,
                     suspect_reason=flags.suspect_reason,
+                )
+                record_xp_event(
+                    account.pk,
+                    reason=XpEvent.Reason.DRINK,
+                    amount=xp_awarded,
+                    cache_key=cache_key,
+                    pub_name=row_kwargs["name"] if is_pub else "",
                 )
                 pivar_xp = _increment_pivar_xp(account, xp_awarded)
                 pivar = {
@@ -9719,6 +9741,9 @@ class FriendInviteView(APIView):
         return None
 
 
+_INVITE_MUTUAL_FRIENDS_SHOWN = 3
+
+
 class FriendInviteResolveView(APIView):
     """GET /v1/friends/invite/<code> — resolve a code to the inviter (no request sent).
 
@@ -9751,13 +9776,39 @@ class FriendInviteResolveView(APIView):
                 {"detail": gettext("Pozvánka už vypršela."), "code": "invite_expired"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        context = _friend_profile_context(request)
+        public_stats = None
+        if inviter.is_public:
+            stats = derive_account_public_stats(inviter, is_friend=False)
+            public_stats = {
+                **stats,
+                "badge_progress": derive_account_public_badge_progress(inviter, stats),
+            }
+        mutual_ids = []
+        if inviter.pk != request.user.pk:
+            blocked = _blocked_account_ids(request.user)
+            mutual_ids = [
+                account_id
+                for account_id in set(_accepted_friend_ids(inviter))
+                & set(_accepted_friend_ids(request.user))
+                if account_id not in blocked
+            ]
+        mutual_shown = Account.objects.filter(pk__in=mutual_ids).order_by("nickname", "pk")[
+            :_INVITE_MUTUAL_FRIENDS_SHOWN
+        ]
         return Response(
             {
                 "valid": True,
                 "expired": False,
-                "inviter": FriendProfileSerializer(
-                    inviter, context=_friend_profile_context(request)
-                ).data,
+                "inviter": FriendProfileSerializer(inviter, context=context).data,
+                # Only what the inviter's public profile already shows.
+                "public_stats": public_stats,
+                "mutual_friends": {
+                    "count": len(mutual_ids),
+                    "profiles": FriendProfileSerializer(
+                        mutual_shown, many=True, context=context
+                    ).data,
+                },
             },
             status=status.HTTP_200_OK,
         )
@@ -12256,6 +12307,16 @@ def _export_account_data(account: Account) -> dict:
             "last_platform": usage.last_platform if usage else "",
             "last_os_version": usage.last_os_version if usage else "",
         },
+        "xp_events": [
+            {
+                "reason": event.reason,
+                "amount": event.amount,
+                "cache_key": event.cache_key,
+                "pub_name": event.pub_name,
+                "created_at": _iso(event.created_at),
+            }
+            for event in account.xp_events.order_by("-created_at")
+        ],
         "telemetry_events": [
             {
                 "event": event.event,
@@ -14429,6 +14490,13 @@ class PubAmenityVoteView(APIView):
                 was_first_map=was_first_map,
                 active_keys=active_keys,
                 now=dj_timezone.now(),
+            )
+            record_xp_event(
+                account.pk,
+                reason=XpEvent.Reason.MAPPING,
+                amount=xp_awarded,
+                cache_key=cache_key,
+                pub_name=new_name,
             )
             # Re-read so the echoed client_updated_at is the DB-normalised UTC
             # value, matching the GET restore path / _rating_item exactly.

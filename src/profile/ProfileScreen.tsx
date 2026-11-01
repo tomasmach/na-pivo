@@ -20,11 +20,9 @@ import { ChevronRightIcon, SettingsIcon } from '@/components/shared/IconGlyph';
 import { accountXpProgress } from '@/data/accountXp';
 import { loadAddedPubSubmissions, type AddedPubSubmission } from '@/data/addedPubsQueue';
 import { enqueueBeerPhoto } from '@/data/beerPhotosQueue';
-import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { fetchLeaderboard } from '@/data/leaderboardsClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import { t, intlLocale } from '@/i18n';
 import { openPubPage } from '@/pubPage/openPubPage';
 import { Avatar } from '@/profile/Avatar';
@@ -33,14 +31,10 @@ import { nearestGoals, type BadgeKey } from '@/profile/badgeModel';
 import { BadgeGoalRow } from '@/profile/BadgeRows';
 import { badgeName } from '@/profile/badgeText';
 import { useAccountBadges, useRefreshBadgesOnFocus } from '@/profile/useAccountBadges';
-import {
-  dailyBeerAverage,
-  earliestTimestamp,
-  formatDailyBeerAverage,
-} from '@/profile/dailyBeerAverage';
+import { dailyBeerAverage, formatDailyBeerAverage } from '@/profile/dailyBeerAverage';
 import { LevelRing } from '@/profile/LevelRing';
 import { favoriteBeerName, savedFavoritePubs } from '@/profile/profileModel';
-import { useMyStats } from '@/stats/useMyStats';
+import { useLifetimeSummary } from '@/profile/useLifetimeSummary';
 import {
   selectAvatarUrl,
   selectIsPublic,
@@ -54,12 +48,6 @@ import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import {
-  allSessionsNewestFirst,
-  sessionCount,
-  sessionTotalCzk,
-  useTallyStore,
-} from '@/stores/tallyStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -92,14 +80,6 @@ function AccountProfileScreen() {
   const avatarUrl = useAccountStore(selectAvatarUrl);
   const isPublic = useAccountStore(selectIsPublic);
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
-  const diarySnapshot = useAccountStore((state) => {
-    const snapshot = state.diarySnapshot;
-    if (!snapshot || snapshot.accountId !== state.session?.accountId) return null;
-    return snapshot.data;
-  });
-
-  const current = useTallyStore((state) => state.current);
-  const history = useTallyStore((state) => state.history);
   const photos = useBeerPhotosStore((state) => state.photos);
   const priceCurrency = useSettingsStore((state) => state.priceCurrency);
   const favoriteMap = usePubFavoritesStore((state) => state.favorites);
@@ -108,7 +88,8 @@ function AccountProfileScreen() {
   const beerWatchCount = useBeerWatchStore((state) => state.watches.length);
 
   const opened = useFirstFocus();
-  const remoteStats = useMyStats(opened);
+  const { beers, evenings, pubs, spentCzk, firstBeerAt, sessions, diarySnapshot } = useLifetimeSummary(opened);
+  const lifetime = { evenings, pubs, spentCzk };
   const [codeVisible, setCodeVisible] = useState(false);
   const [allFavorites, setAllFavorites] = useState(false);
   const [partaCount, setPartaCount] = useState<number | null>(null);
@@ -143,68 +124,6 @@ function AccountProfileScreen() {
     return () => controller.abort();
   }, [opened, accountId]);
 
-  const sessions = useMemo(
-    () => allSessionsNewestFirst(current, history),
-    [current, history],
-  );
-  const localBeers = useMemo(
-    () => sessions.reduce((total, session) => total + sessionCount(session), 0),
-    [sessions],
-  );
-  const reconciledStats = useMemo(
-    () => (diarySnapshot ? deriveReconciledDiaryStats(diarySnapshot, sessions) : null),
-    [diarySnapshot, sessions],
-  );
-  let beers = localBeers;
-  if (isSignedIn && reconciledStats) {
-    beers = reconciledStats.totalBeers;
-  } else if (isSignedIn && profile?.stats) {
-    beers = Math.max(profile.stats.totalBeers, localBeers);
-  }
-
-  // Local sessions are the floor; the server knows evenings this phone never had,
-  // so its numbers win once they are larger, as in Deník.
-  const lifetime = useMemo(() => {
-    const evenings = sessions.filter((session) => session.drinks.length > 0).length;
-    const localPubs = new Set(
-      sessions
-        .filter((session) => session.drinks.length > 0 && !isContextPubKey(session.pubKey))
-        .map((session) => session.pubKey),
-    ).size;
-    const localSpent = sessions.reduce((total, session) => total + sessionTotalCzk(session), 0);
-    return {
-      evenings: Math.max(remoteStats?.totalEvenings ?? 0, evenings),
-      pubs: Math.max(reconciledStats?.distinctPubs ?? 0, localPubs),
-      spentCzk: Math.max(reconciledStats?.totalSpentCzk ?? 0, localSpent),
-    };
-  }, [reconciledStats, remoteStats, sessions]);
-
-  // The server snapshot holds the whole drink history; scan it only when the
-  // snapshot changes, not on every local drink.
-  const remoteFirstBeerAt = useMemo(
-    () =>
-      earliestTimestamp(
-        (diarySnapshot?.drinks ?? [])
-          .filter((drink) => !drink.is_suspect && normalizeDrinkType(drink.drink_type) === 'beer')
-          .map((drink) => drink.drank_at),
-      ),
-    [diarySnapshot],
-  );
-  const firstBeerAt = useMemo(
-    () =>
-      earliestTimestamp([
-        // The filtered drink snapshot already drops beers removed on this
-        // phone; the cached profile date would still count them.
-        isSignedIn && !diarySnapshot ? profile?.stats?.firstBeerAt : null,
-        remoteFirstBeerAt,
-        ...sessions.flatMap((session) =>
-          session.drinks
-            .filter((drink) => normalizeDrinkType(drink.drinkType) === 'beer')
-            .map((drink) => drink.at),
-        ),
-      ]),
-    [diarySnapshot, isSignedIn, profile?.stats?.firstBeerAt, remoteFirstBeerAt, sessions],
-  );
   const now = useMemo(() => new Date(), []);
   const average = dailyBeerAverage(beers, firstBeerAt, now);
   const favoriteBeer = useMemo(
