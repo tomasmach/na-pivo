@@ -263,8 +263,8 @@ export function PartaScreen() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}>
         <TabHeader title={t.nv.parta.title}>
-          <IconButton icon="qr-code" iconSize={20} onPress={() => router.push('/nv/pozvanka-do-party')} label={t.nv.parta.qrLabel} />
-          <Button label={t.nv.parta.add} icon="user-plus" kind="raised" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/pozvanka-do-party')} />
+          <IconButton icon="qr-code" iconSize={20} onPress={() => router.push('/nv/sprava-party')} label={t.nv.parta.qrLabel} />
+          <Button label={t.nv.parta.add} icon="user-plus" kind="raised" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/sprava-party')} />
         </TabHeader>
         {failed && dashboard ? (
           <Press onPress={() => void load()} style={[s.row, { gap: 10, paddingHorizontal: 4 }]}>
@@ -375,7 +375,7 @@ export function PartaScreen() {
             <SectionTitle title={t.nv.parta.wholeParty} action={String(friends.length)} onAction={() => router.push('/nv/sprava-party')} />
             <Card>
               {friends.length === 0 ? (
-                <Row last leading={<Tile icon="user-plus" />} title={t.nv.parta.inviteFirst} chevron onPress={() => router.push('/nv/pozvanka-do-party')} />
+                <Row last leading={<Tile icon="user-plus" />} title={t.nv.parta.inviteFirst} chevron onPress={() => router.push('/nv/sprava-party')} />
               ) : (
                 rest.map((f, i, arr) => {
                   const stats = dashboard.friendStats[f.id];
