@@ -19,9 +19,9 @@ export function StickerJduNaPivo({ when }: { when: string }) {
       <D s={86} lh={0.9} c={C.yellow} style={{ letterSpacing: -1 }}>
         {t.nv.sdileni.stickerPivo}
       </D>
-      <View style={[s.row, { alignSelf: 'flex-start', height: 30, borderRadius: 15, paddingHorizontal: 12, gap: 6, backgroundColor: '#FFFFFF1F', marginTop: 6, maxWidth: 162 }]}>
+      <View style={[s.row, { alignSelf: 'flex-start', minHeight: 30, borderRadius: 15, paddingHorizontal: 12, paddingVertical: 6, gap: 6, backgroundColor: '#FFFFFF1F', marginTop: 6, maxWidth: 162 }]}>
         <Icon name="clock-4" size={14} color={C.yellow} />
-        <T s={13} w={800} numberOfLines={1} style={{ flexShrink: 1 }}>
+        <T s={13} w={800} numberOfLines={2} style={{ flexShrink: 1 }}>
           {when}
         </T>
       </View>
