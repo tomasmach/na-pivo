@@ -101,7 +101,8 @@ export function DoplnitInfoScreen() {
     }
     return next;
   }, [hours]);
-  const open = normalized ? computeOpenState(normalized) : null;
+  const hoursKnown = DAY_KEYS.some((d) => hours[d].length > 0);
+  const open = normalized && hoursKnown ? computeOpenState(normalized) : null;
   const nextAt = open?.nextChange?.slice(11, 16) ?? null;
   const today = dayKeyOf(pubWallClock(new Date()));
 
@@ -218,7 +219,14 @@ export function DoplnitInfoScreen() {
                     : L().closedNowNoEnd}
               </T>
             </View>
-          ) : null}
+          ) : hoursKnown ? null : (
+            <View style={[s.row, { gap: 6 }]}>
+              <Dot color={C.muted} />
+              <T s={15} w={600} c={C.muted}>
+                {L().hoursUnknown}
+              </T>
+            </View>
+          )}
           <Card>
             {DAY_KEYS.map((day, i) => (
               <Press
@@ -233,7 +241,7 @@ export function DoplnitInfoScreen() {
                     {L().days[day]}
                   </T>
                   <T s={15} w={hours[day].length ? 700 : 500} c={hours[day].length ? C.white : C.muted}>
-                    {intervalsLabel(hours[day])}
+                    {hoursKnown ? intervalsLabel(hours[day]) : '–'}
                   </T>
                   <Icon name="chevron-right" size={16} color={C.muted} />
                 </View>
