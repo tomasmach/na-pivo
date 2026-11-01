@@ -8,7 +8,7 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, Card, D, Dot, IconButton, Kicker, Press, Row, T, Tile } from '../../components/ui';
+import { Button, D, IconButton, Kicker, Press, Row, T, Tile } from '../../components/ui';
 import { ME_COORD, photo } from '../../mock/data';
 import { dialog, toast, useMock } from '../../mock/store';
 import { C, SCREEN_X, s } from '../../theme';
@@ -65,106 +65,6 @@ export function DomovskyBodScreen() {
       <T s={13} c={C.muted} lh={1.45}>
         Adresu jednou pošlu geokódovací službě, ať ji najdu na mapě. V telefonu zůstane jen ten potvrzený bod, žádná historie polohy ani trasy.
       </T>
-    </Screen>
-  );
-}
-
-const WATCH_INFO: Record<string, { name: string; where?: string }> = {
-  unetice: { name: 'Únětické 12°', where: 'na čepu U Pinkasů · 1,8 km' },
-  raptor: { name: 'Matuška Raptor 15°', where: 'na čepu Pivovarský klub · 3,4 km' },
-  samuraj: { name: 'Kocour Samuraj 12°' },
-  bernard: { name: 'Bernard Černý 12°' },
-};
-
-export function HlidanaPivaScreen() {
-  const st = useMock();
-  const [radius, setRadius] = useState(5);
-  const list = Object.keys(WATCH_INFO).filter((id) => st.watched.includes(id) || id === 'samuraj' || id === 'bernard');
-  const shown = st.watched.length ? list : [];
-  return (
-    <Screen header={<BackHeader />} gap={16}>
-      <PageTitle title="Hlídaná piva" />
-      {!st.watchAlerts ? (
-        <View style={[s.row, { gap: 12, padding: 16, borderRadius: 20, backgroundColor: C.card, alignItems: 'flex-start' }]}>
-          <Icon name="bell-off" size={20} color={C.yellow} />
-          <View style={[s.fill, { gap: 10 }]}>
-            <T s={15} w={700}>
-              Upozornění máš vypnutá, takže ti nedám vědět.
-            </T>
-            <Press onPress={() => st.set({ watchAlerts: true })} style={{ alignSelf: 'flex-start', height: 34, paddingHorizontal: 14, borderRadius: 17, justifyContent: 'center', backgroundColor: C.control }}>
-              <T s={13} w={700}>
-                Otevřít nastavení
-              </T>
-            </Press>
-          </View>
-        </View>
-      ) : null}
-      <T s={15} w={700} c={C.muted}>
-        Jak daleko
-      </T>
-      <View style={[s.row, { height: 46, borderRadius: 23, padding: 3, backgroundColor: '#FFFFFF12' }]}>
-        {[1, 3, 5, 10].map((km) => (
-          <Press key={km} haptic onPress={() => setRadius(km)} style={[s.fill, s.center, { alignSelf: 'stretch', borderRadius: 20 }, radius === km && { backgroundColor: C.white }]}>
-            <T s={15} w={radius === km ? 800 : 600} c={radius === km ? C.black : C.text2}>{`${km} km`}</T>
-          </Press>
-        ))}
-      </View>
-      {shown.length ? (
-        <>
-          <T s={15} w={700} c={C.muted}>{`Hlídáš · ${shown.length}`}</T>
-          <Card>
-            {shown.map((id, i) => {
-              const w = WATCH_INFO[id];
-              return (
-                <Row
-                  key={id}
-                  last={i === shown.length - 1}
-                  leading={<Tile icon="beer" color={C.white} />}
-                  title={w.name}
-                  titleWeight={700}
-                  sub={
-                    w.where ? (
-                      <View style={[s.row, { gap: 6 }]}>
-                        <Dot color={C.yellow} />
-                        <T s={13} w={500} c={C.text2}>
-                          {w.where}
-                        </T>
-                      </View>
-                    ) : (
-                      `do ${radius} km zatím nikde`
-                    )
-                  }
-                  trailing={
-                    <IconButton
-                      icon="bell-ring"
-                      size={36}
-                      iconSize={16}
-                      label="Přestat hlídat"
-                      onPress={() => {
-                        st.set({ watched: st.watched.filter((x) => x !== id) });
-                        toast({ kind: 'info', title: `${w.name} už nehlídám.`, icon: 'bell-off' });
-                      }}
-                    />
-                  }
-                />
-              );
-            })}
-          </Card>
-          <T s={13} c={C.muted} lh={1.4}>
-            Dám vědět, až ho začnou čepovat poblíž. Zvoneček hlídání vypne.
-          </T>
-        </>
-      ) : (
-        <View style={{ alignItems: 'center', gap: 12, paddingTop: 50 }}>
-          <View style={[{ width: 64, height: 64, borderRadius: 32, backgroundColor: C.control }, s.center]}>
-            <Icon name="bell-ring" size={26} color={C.text2} />
-          </View>
-          <D s={30}>Zatím nic nehlídáš</D>
-          <T s={15} c={C.text2} style={{ textAlign: 'center' }}>
-            Ťukni na pivo na lístku hospody a vyber Hlídat pivo.
-          </T>
-        </View>
-      )}
     </Screen>
   );
 }

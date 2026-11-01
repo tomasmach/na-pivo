@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { Image, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { BackHeader, Screen } from '../../components/chrome';
-import { Field, FieldLabel, Input } from '../../components/forms';
+import { Field, Input } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, Segmented, T } from '../../components/ui';
-import { EVENINGS, beerById, photo, pubById } from '../../mock/data';
+import { EVENINGS, beerById, pubById } from '../../mock/data';
 import { toast, useMock } from '../../mock/store';
 import { C, font, s } from '../../theme';
 
@@ -461,88 +461,3 @@ export function OdhadSheet() {
     </Sheet>
   );
 }
-
-const TAGS = ['Má říz', 'Pěna jak smetana', 'Jde samo', 'Vodový', 'Zvětralý', 'Předražený', 'Ještě jedno', 'Už nikdy'];
-const VERDICT = ['', 'Nic moc', 'Ujde', 'Dobrý', 'Moc dobrý', 'Pecka'];
-
-export function HodnoceniSheet() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const beer = beerById(id) ?? beerById('bernard')!;
-  const rate = useMock((st) => st.rate);
-  const existing = useMock((st) => st.ratings[beer.id]);
-  const [stars, setStars] = useState(existing ?? 4);
-  const [tags, setTags] = useState<string[]>(['Má říz', 'Pěna jak smetana']);
-  const [text, setText] = useState('Tmavý, sladový, na konci kafe. V Kolkovně ho čepujou fakt dobře.');
-  const [hasPhoto, setHasPhoto] = useState(true);
-  return (
-    <Sheet
-      title={beer.name}
-      top={130}
-      footer={
-        <Button
-          height={60}
-          label="Uložit hodnocení"
-          sub={existing ? undefined : '+10 XP za první recenzi tohohle piva'}
-          onPress={() => {
-            rate(beer.id, stars);
-            router.back();
-            toast({ kind: 'xp', title: 'Hodnocení uložené', icon: 'star', xp: existing ? undefined : 10 });
-          }}
-        />
-      }
-    >
-      <T s={14} c={C.muted} style={{ marginTop: -16 }}>
-        Kolkovna Celnice · dnes 21:40
-      </T>
-      <View style={{ alignItems: 'center', gap: 8 }}>
-        <View style={[s.row, { gap: 8 }]}>
-          {[1, 2, 3, 4, 5].map((n) => (
-            <Press key={n} haptic onPress={() => setStars(n)} accessibilityLabel={`${n} hvězd`}>
-              <Icon name="star" size={46} color={n <= stars ? C.yellow : C.muted} fill={n <= stars ? C.yellow : 'none'} strokeWidth={1.5} />
-            </Press>
-          ))}
-        </View>
-        <T s={16} w={700}>
-          {VERDICT[stars]}
-        </T>
-      </View>
-      <View style={{ gap: 12 }}>
-        <FieldLabel>Štítky</FieldLabel>
-        <ChipWrap>
-          {TAGS.map((t) => (
-            <Chip key={t} label={t} active={tags.includes(t)} plain onPress={() => setTags(tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t])} />
-          ))}
-        </ChipWrap>
-      </View>
-      <Input multiline value={text} onChangeText={setText} placeholder="Pár slov, když chceš" />
-      <View style={[s.row, { gap: 10 }]}>
-        {hasPhoto ? (
-          <View style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden' }}>
-            <Image source={photo(12)} style={{ width: '100%', height: '100%' }} />
-            <Press onPress={() => setHasPhoto(false)} style={[{ position: 'absolute', right: 4, top: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: '#0A0A0AB3' }, s.center]}>
-              <Icon name="x" size={12} />
-            </Press>
-          </View>
-        ) : null}
-        <Press onPress={() => setHasPhoto(true)} style={[{ width: 72, height: 72, borderRadius: 14, borderWidth: 1.5, borderColor: '#FFFFFF26', gap: 4 }, s.center]}>
-          <Icon name="camera" size={18} color={C.yellow} />
-          <T s={12} w={600}>
-            Fotka
-          </T>
-        </Press>
-      </View>
-      <Press onPress={() => router.push('/nv/sdileni-souhlas')} style={[s.row, { height: 48, borderRadius: 16, paddingHorizontal: 14, gap: 10, backgroundColor: C.card }]}>
-        <Icon name="globe" size={18} color={C.yellow} />
-        <T s={15} w={600} style={s.fill}>
-          Uvidí všichni u piva
-        </T>
-        <T s={14} c={C.muted}>
-          změnit
-        </T>
-        <Icon name="chevron-right" size={14} color={C.muted} />
-      </Press>
-    </Sheet>
-  );
-}
-

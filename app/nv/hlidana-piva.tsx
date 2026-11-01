@@ -1,3 +1,3 @@
-import { HlidanaPivaScreen } from '@/newlook/screens/stamgast/StamgastExtras';
+import { HlidanaPivaScreen } from '@/newlook/screens/piva/HlidanaPivaScreen';
 
 export default HlidanaPivaScreen;
