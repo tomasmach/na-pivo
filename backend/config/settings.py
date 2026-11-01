@@ -730,6 +730,8 @@ REST_FRAMEWORK = {
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
         "pub_favorites": PUB_FAVORITES_THROTTLE_RATE,
         "beer_watches": "60/min",
+        # Piva tab reads: ranking pages, search while typing, reviews and the collection.
+        "beers": "120/min",
         "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,
         "pub_location_lookup": PUB_LOCATION_LOOKUP_THROTTLE_RATE,

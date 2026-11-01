@@ -391,13 +391,19 @@ class ContentReportRequestSerializer(serializers.Serializer):
     # view re-checks the full comment-list visibility contract and snapshots
     # the comment body with its author for moderation.
     comment_id = serializers.UUIDField(required=False, allow_null=True)
+    # Additive (Piva tab): report one beer review (a check-in the reporter can see).
+    checkin_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate(self, attrs: dict) -> dict:
         targets = [
-            key for key in ("photo_id", "night_id", "comment_id") if attrs.get(key) is not None
+            key
+            for key in ("photo_id", "night_id", "comment_id", "checkin_id")
+            if attrs.get(key) is not None
         ]
         if len(targets) > 1:
-            raise serializers.ValidationError("Report only one target: photo, night or comment.")
+            raise serializers.ValidationError(
+                "Report only one target: photo, night, comment or review."
+            )
         return attrs
 
 
