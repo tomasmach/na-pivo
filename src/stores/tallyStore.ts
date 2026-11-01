@@ -308,7 +308,22 @@ function closeSession(session: TallySession, reason: ArchivedReason, nowMs = Dat
   const closedAt = new Date(Math.max(nowMs, sessionLastActivityMs(session))).toISOString();
   const archived = { ...session, archivedReason: reason, closedAt, visitUpdatedAt: closedAt };
   syncSessionLifecycle(archived);
+  scheduleNightAutopublish(archived, reason);
   return archived;
+}
+
+/** Runs after the archiving set() commits, so the night includes this sitting. */
+function scheduleNightAutopublish(session: TallySession, reason: ArchivedReason): void {
+  setTimeout(() => {
+    try {
+      // nightAutopublish reads this store too; resolve it only after the store exists.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { autopublishClosedNight } = require('@/data/nightAutopublish') as typeof import('@/data/nightAutopublish');
+      autopublishClosedNight(session, reason);
+    } catch {
+      // Publishing is optional; closing the evening must never fail because of it.
+    }
+  }, 0);
 }
 
 /** Set one drink's delivery state wherever it lives. A drink the server

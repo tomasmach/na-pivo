@@ -51,6 +51,8 @@ export interface BeerPhotoLocal {
   takenAt: string;
   createdAt: string;
   inContest: boolean;
+  /** Beer tagged on the photo; absent on entries persisted by older builds. */
+  beerName?: string;
   /** Durable local file uri while the upload is pending/failed. */
   localUri?: string;
   syncState: BeerPhotoSyncState;
@@ -73,6 +75,7 @@ export interface PendingBeerPhotoInput {
   pubCity?: string;
   visibility: BeerPhotoVisibility;
   takenAt: string;
+  beerName?: string;
 }
 
 function fromServerPhoto(photo: BeerPhoto): BeerPhotoLocal {
@@ -88,6 +91,7 @@ function fromServerPhoto(photo: BeerPhoto): BeerPhotoLocal {
     takenAt: photo.takenAt,
     createdAt: photo.createdAt,
     inContest: photo.inContest,
+    beerName: photo.beerName,
     syncState: 'synced',
   };
 }
@@ -156,6 +160,7 @@ export const useBeerPhotosStore = create<BeerPhotosState>()(
             takenAt: input.takenAt,
             createdAt: input.takenAt,
             inContest: false,
+            ...(input.beerName ? { beerName: input.beerName } : {}),
             localUri: input.localUri,
             syncState: 'pending',
           };

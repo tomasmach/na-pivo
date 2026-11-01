@@ -154,6 +154,12 @@ from .views import (
     RestorePurchasesView,
     UserAddedPubView,
 )
+from .vycep_views import (
+    BeerPhotosView,
+    NightsSummaryView,
+    PhotoContestEntryDetailView,
+    PhotoContestRoundView,
+)
 
 urlpatterns = [
     path("tours", TourListView.as_view()),
@@ -296,6 +302,7 @@ urlpatterns = [
     ),
     path("nights", PublishedNightView.as_view(http_method_names=["post", "options"]), name="nights"),
     path("nights/feed", PublishedNightFeedView.as_view(), name="nights-feed"),
+    path("nights/summary", NightsSummaryView.as_view(), name="nights-summary"),
     path(
         "nights/<uuid:night_id>/detail",
         PublishedNightDetailView.as_view(),
@@ -329,6 +336,7 @@ urlpatterns = [
     path("beers/search", BeerSearchView.as_view(), name="beers-search"),
     path("beers/reviews", BeerReviewsView.as_view(), name="beers-reviews"),
     path("beers/collection", BeerCollectionView.as_view(), name="beers-collection"),
+    path("beers/photos", BeerPhotosView.as_view(), name="beer-photos-by-beer"),
     # --- photo diary + FotoPivař contest ---
     path(
         "beer-photos",
@@ -357,6 +365,16 @@ urlpatterns = [
         name="photo-contest-entries",
     ),
     path("photo-contest/vote", PhotoContestVoteView.as_view(), name="photo-contest-vote"),
+    path(
+        "photo-contest/entries/<uuid:entry_id>",
+        PhotoContestEntryDetailView.as_view(),
+        name="photo-contest-entry",
+    ),
+    path(
+        "photo-contest/entries/<uuid:entry_id>/round",
+        PhotoContestRoundView.as_view(),
+        name="photo-contest-entry-round",
+    ),
     path("beer-brands/suggest", BeerBrandSuggestView.as_view(), name="beer-brands-suggest"),
     path(
         "pub-ratings",

@@ -1723,9 +1723,7 @@ def _merge_contest_entry_tree(
     source_entry: PhotoContestEntry, target_entry: PhotoContestEntry
 ) -> None:
     target_voters = set(
-        PhotoContestVote.objects.filter(contest=target_entry.contest)
-        .exclude(entry=source_entry)
-        .values_list("voter_id", flat=True)
+        PhotoContestVote.objects.filter(entry=target_entry).values_list("voter_id", flat=True)
     )
     for vote in PhotoContestVote.objects.filter(entry=source_entry).order_by("pk"):
         if vote.voter_id in target_voters:
@@ -1752,6 +1750,8 @@ def _merge_beer_photo_tree(
             "pub_cache_key",
             "pub_name",
             "pub_city",
+            "beer_name",
+            "beer_key",
         ):
             if not getattr(target_photo, field_name) and getattr(source_photo, field_name):
                 setattr(target_photo, field_name, getattr(source_photo, field_name))
@@ -1770,10 +1770,10 @@ def _merge_beer_photo_tree(
         entry.photo = target_photo
         entry.save(update_fields=["photo"])
         target_entries[entry.contest_id] = entry
-    # Never turn a reference to a PRIVATE source into a visible FRIENDS photo.
+    # Never turn a reference to a PRIVATE source into a visible shared photo.
     if not (
         source_photo.visibility == BeerPhoto.Visibility.PRIVATE
-        and target_photo.visibility == BeerPhoto.Visibility.FRIENDS
+        and target_photo.visibility != BeerPhoto.Visibility.PRIVATE
     ):
         _replace_published_night_reference(
             "photo_ids",
@@ -2174,17 +2174,9 @@ def _merge_community_events(source: Account, target: Account) -> None:
 
 
 def _merge_photo_contest_entries(source: Account, target: Account) -> None:
-    target_by_contest = {
-        row.contest_id: row for row in PhotoContestEntry.objects.filter(account=target)
-    }
-    for entry in PhotoContestEntry.objects.filter(account=source).order_by("pk"):
-        conflict = target_by_contest.get(entry.contest_id)
-        if conflict is not None:
-            _merge_contest_entry_tree(entry, conflict)
-            continue
-        entry.account = target
-        entry.save(update_fields=["account"])
-        target_by_contest[entry.contest_id] = entry
+    # An account may hold several entries per round, so every source entry
+    # simply moves. Entries of one photo were already merged with the photo.
+    PhotoContestEntry.objects.filter(account=source).update(account=target)
 
 
 def _merge_tour_invites(source: Account, target: Account) -> None:
@@ -2517,7 +2509,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         source=source,
         target=target,
         account_field="voter",
-        unique_fields=("contest_id",),
+        unique_fields=("entry_id",),
     )
     PhotoContestVote.objects.filter(voter=target, entry__account=target).delete()
 

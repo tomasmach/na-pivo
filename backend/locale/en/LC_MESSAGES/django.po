@@ -1637,3 +1637,6 @@ msgstr "Opening hours"
 
 msgid "Navigovat"
 msgstr "Directions"
+
+msgid "Napiš, o jaké pivo jde."
+msgstr "Say which beer you mean."

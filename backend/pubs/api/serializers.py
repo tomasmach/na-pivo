@@ -1579,7 +1579,7 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         rows = BeerPhoto.objects.filter(
             Q(public_id__in=requested) | Q(client_id__in=requested),
             account=obj.account,
-            visibility=BeerPhoto.Visibility.FRIENDS,
+            visibility__in=(BeerPhoto.Visibility.FRIENDS, BeerPhoto.Visibility.PUBLIC),
         )
         by_reference = {}
         for row in rows:
@@ -1726,6 +1726,13 @@ class BeerPhotoUploadSerializer(serializers.Serializer):
         choices=BeerPhoto.Visibility.choices,
         default=BeerPhoto.Visibility.FRIENDS,
     )
+    beer_name = serializers.CharField(
+        max_length=200,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
     taken_at = serializers.DateTimeField(required=False, allow_null=True)
     # Best-effort association only. An ended/foreign table must never reject
     # the photo itself when an offline upload finally reaches the server.
@@ -1756,6 +1763,8 @@ class BeerPhotoSerializer(serializers.ModelSerializer):
     pub_name = serializers.SerializerMethodField()
     pub_city = serializers.SerializerMethodField()
     in_contest = serializers.SerializerMethodField()
+    beer_name = serializers.SerializerMethodField()
+    beer_key = serializers.SerializerMethodField()
 
     class Meta:
         model = BeerPhoto
@@ -1771,8 +1780,16 @@ class BeerPhotoSerializer(serializers.ModelSerializer):
             "taken_at",
             "created_at",
             "in_contest",
+            "beer_name",
+            "beer_key",
         ]
         read_only_fields = fields
+
+    def get_beer_name(self, obj: BeerPhoto) -> str | None:
+        return obj.beer_name or None
+
+    def get_beer_key(self, obj: BeerPhoto) -> str | None:
+        return obj.beer_key or None
 
     def get_image_url(self, obj: BeerPhoto) -> str | None:
         return _photo_image_url(obj.image, self.context.get("request"))
@@ -1848,6 +1865,7 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
     caption = serializers.CharField(source="photo.caption", read_only=True)
     pub_name = serializers.SerializerMethodField()
     pub_city = serializers.SerializerMethodField()
+    beer_name = serializers.SerializerMethodField()
     votes = serializers.SerializerMethodField()
     my_vote = serializers.SerializerMethodField()
     is_mine = serializers.SerializerMethodField()
@@ -1862,12 +1880,16 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
             "caption",
             "pub_name",
             "pub_city",
+            "beer_name",
             "votes",
             "my_vote",
             "is_mine",
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_beer_name(self, obj: PhotoContestEntry) -> str | None:
+        return obj.photo.beer_name or None
 
     def get_image_url(self, obj: PhotoContestEntry) -> str | None:
         return _photo_image_url(obj.photo.image, self.context.get("request"))
@@ -1882,6 +1904,9 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
         return int(getattr(obj, "vote_count", 0) or 0)
 
     def get_my_vote(self, obj: PhotoContestEntry) -> bool:
+        voted = self.context.get("my_vote_entry_pks")
+        if voted is not None:
+            return obj.pk in voted
         return self.context.get("my_vote_entry_pk") == obj.pk
 
     def get_is_mine(self, obj: PhotoContestEntry) -> bool:
@@ -1908,9 +1933,14 @@ class PhotoContestWinnerSerializer(serializers.ModelSerializer):
 
 
 class PhotoContestEnterSerializer(serializers.Serializer):
-    """Request body for POST /v1/photo-contest/entries."""
+    """Request body for POST /v1/photo-contest/entries.
+
+    Released clients omit ``add`` and keep the replace semantics (one entry per
+    round). ``add=true`` keeps the caller's other entries in the round.
+    """
 
     photo_id = serializers.UUIDField()
+    add = serializers.BooleanField(required=False, default=False)
 
 
 class PhotoContestVoteSerializer(serializers.Serializer):
@@ -3197,6 +3227,8 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "usage",
             "created_at",
             "last_seen_at",
+            "share_default",
+            "night_autopublish",
         ]
 
     def _auth_snapshot(self, obj: Account) -> dict:
@@ -3418,6 +3450,8 @@ class AccountUpdateSerializer(serializers.ModelSerializer):
             "sound_enabled",
             "hide_closed_pubs",
             "marketing_emails_enabled",
+            "share_default",
+            "night_autopublish",
         ]
 
     def validate_nickname(self, value: str | None) -> str | None:

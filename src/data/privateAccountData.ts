@@ -43,7 +43,7 @@ import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore } from '@/stores/tallyStore';
-import { useVycepStore } from '@/stores/vycepStore';
+import { DEFAULT_SHARING_PREFS, useVycepStore } from '@/stores/vycepStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 const PRIVATE_STORAGE_KEYS = [
@@ -171,7 +171,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     counterNudgeDismissal: null,
   });
   // Výčep publication ledger is tied to the outgoing account's nights.
-  useVycepStore.setState({ published: {} });
+  useVycepStore.setState({ published: {}, ...DEFAULT_SHARING_PREFS });
   // Seen levels and unopened medals describe the outgoing account.
   useBadgeStore.getState().reset();
   usePubStore.setState({

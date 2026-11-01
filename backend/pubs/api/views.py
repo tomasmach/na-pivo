@@ -123,6 +123,7 @@ from pubs.beer_photo_deletions import (
     retry_beer_photo_file_deletions,
     schedule_beer_photo_file_deletions,
 )
+from pubs.beer_photo_gallery import BEER_PHOTO_SHARED_VISIBILITIES, beer_photo_key
 from pubs.beer_watch import pub_product_ids, record_new_tap_events
 from pubs.community_trust import trusted_account_q
 from pubs.enrichment import (
@@ -3618,7 +3619,7 @@ class ContentReportView(APIView):
                     and (
                         photo.contest_entries.exists()
                         or (
-                            photo.visibility == BeerPhoto.Visibility.FRIENDS
+                            photo.visibility in BEER_PHOTO_SHARED_VISIBILITIES
                             and Friendship.objects.filter(
                                 Q(requester=reporter, recipient=target)
                                 | Q(requester=target, recipient=reporter),
@@ -8727,12 +8728,21 @@ def _photo_contest_entry_queryset(contest: PhotoContest):
 
 
 def _photo_contest_entry_context(request: Request, contest: PhotoContest) -> dict:
-    """Serializer context for PhotoContestEntrySerializer (one vote lookup)."""
-    my_vote = PhotoContestVote.objects.filter(contest=contest, voter=request.user).first()
+    """Serializer context for PhotoContestEntrySerializer (one vote lookup).
+
+    ``my_vote_entry_pk`` is the newest runda, the single vote released clients
+    understand; ``my_vote_entry_pks`` holds every entry the caller gave one.
+    """
+    voted = list(
+        PhotoContestVote.objects.filter(contest=contest, voter=request.user)
+        .order_by("-created_at", "-pk")
+        .values_list("entry_id", flat=True)
+    )
     return {
         "request": request,
         "account": request.user,
-        "my_vote_entry_pk": my_vote.entry_id if my_vote else None,
+        "my_vote_entry_pk": voted[0] if voted else None,
+        "my_vote_entry_pks": set(voted),
     }
 
 
@@ -8746,6 +8756,7 @@ def _photo_contest_my_result(contest: PhotoContest, account: Account) -> dict:
     entry = (
         PhotoContestEntry.objects.filter(contest=contest, account=account)
         .annotate(vote_count=Count("votes"))
+        .order_by(F("final_rank").asc(nulls_last=True), F("final_votes").desc(nulls_last=True), "-vote_count")
         .values("final_rank", "final_votes", "vote_count")
         .first()
     )
@@ -8827,8 +8838,9 @@ class BeerPhotoView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         data = serializer.validated_data
-        if (data.get("visibility") or BeerPhoto.Visibility.FRIENDS) == (
-            BeerPhoto.Visibility.FRIENDS
+        if (data.get("visibility") or BeerPhoto.Visibility.FRIENDS) in (
+            BeerPhoto.Visibility.FRIENDS,
+            BeerPhoto.Visibility.PUBLIC,
         ):
             precondition = ugc_consent_precondition(request)
             if precondition is not None:
@@ -8934,6 +8946,8 @@ class BeerPhotoView(APIView):
             pub_name=data.get("pub_name") or "",
             pub_city=data.get("pub_city") or "",
             visibility=data.get("visibility") or BeerPhoto.Visibility.FRIENDS,
+            beer_name=data.get("beer_name") or "",
+            beer_key=beer_photo_key(data.get("beer_name") or ""),
             taken_at=taken_at,
         )
         # upload_to ignores the supplied name and builds the stable
@@ -9148,7 +9162,7 @@ class FriendBeerPhotosView(APIView):
         contest = current_photo_contest()
         rows = (
             _beer_photo_queryset(contest)
-            .filter(account=target, visibility=BeerPhoto.Visibility.FRIENDS)
+            .filter(account=target, visibility__in=BEER_PHOTO_SHARED_VISIBILITIES)
             .order_by("-taken_at")[: settings.BEER_PHOTO_MAX_PER_ACCOUNT]
         )
         return Response(
@@ -9176,7 +9190,7 @@ class FriendsBeerPhotosFeedView(APIView):
                 account_id__in=friend_ids,
                 account__status=Account.Status.ACTIVE,
                 account__ghost_mode=False,
-                visibility=BeerPhoto.Visibility.FRIENDS,
+                visibility__in=BEER_PHOTO_SHARED_VISIBILITIES,
                 taken_at__gte=cutoff,
             )
             .select_related("account")
@@ -9216,7 +9230,13 @@ class PhotoContestView(APIView):
             .filter(account__status=Account.Status.ACTIVE)
             .exclude(account_id__in=blocked_ids)
         )
-        my_entry = _photo_contest_entry_queryset(contest).filter(account=request.user).first()
+        my_entries = list(
+            _photo_contest_entry_queryset(contest)
+            .filter(account=request.user)
+            .order_by("-created_at", "-pk")
+        )
+        # Released clients understand one entry; they get the newest one.
+        my_entry = my_entries[0] if my_entries else None
         my_vote_entry_id = None
         if context["my_vote_entry_pk"] is not None:
             my_vote_entry_id = (
@@ -9224,6 +9244,13 @@ class PhotoContestView(APIView):
                 .values_list("public_id", flat=True)
                 .first()
             )
+        my_vote_entry_ids = [
+            str(value)
+            for value in PhotoContestEntry.objects.filter(
+                pk__in=context["my_vote_entry_pks"]
+            ).values_list("public_id", flat=True)
+        ]
+        order_top = request.query_params.get("order") == "top"
 
         has_explicit_paging = (
             request.query_params.get("limit") is not None
@@ -9262,11 +9289,15 @@ class PhotoContestView(APIView):
             "my_entry_id": str(my_entry.public_id) if my_entry else None,
             "my_entry_photo_id": str(my_entry.photo.public_id) if my_entry else None,
             "my_vote_entry_id": str(my_vote_entry_id) if my_vote_entry_id else None,
+            "my_entry_ids": [str(entry.public_id) for entry in my_entries],
+            "my_vote_entry_ids": my_vote_entry_ids,
             "last_results": last_results,
         }
         if not has_explicit_paging:
             # Legacy contract: unchanged shape, first 100 newest visible entries.
-            entries = base_entries.order_by("-created_at")[:100]
+            # ``order=top`` (new look "Vedou") ranks the same slice by rundas.
+            ordering = ("-vote_count", "created_at", "pk") if order_top else ("-created_at",)
+            entries = base_entries.order_by(*ordering)[:100]
             payload["entries"] = PhotoContestEntrySerializer(
                 entries, many=True, context=context
             ).data
@@ -9330,13 +9361,23 @@ class PhotoContestEntryView(APIView):
             )
 
         contest = current_photo_contest()
+        add = serializer.validated_data.get("add", False)
         try:
             with transaction.atomic():
-                # Replace semantics: the old entry (and its votes) go away.
-                PhotoContestEntry.objects.filter(contest=contest, account=request.user).delete()
-                entry = PhotoContestEntry.objects.create(
-                    contest=contest, photo=photo, account=request.user
-                )
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
+                existing = PhotoContestEntry.objects.filter(contest=contest, photo=photo).first()
+                if add and existing is not None:
+                    entry = existing
+                else:
+                    # Released clients: replace semantics, the old entries
+                    # (and their votes) go away.
+                    if not add:
+                        PhotoContestEntry.objects.filter(
+                            contest=contest, account=request.user
+                        ).delete()
+                    entry = PhotoContestEntry.objects.create(
+                        contest=contest, photo=photo, account=request.user
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error("photo_contest: enter failed: %s", exc, exc_info=True)
             return _internal_error()
@@ -9360,8 +9401,10 @@ class PhotoContestEntryView(APIView):
 class PhotoContestVoteView(APIView):
     """POST/DELETE /v1/photo-contest/vote — one movable vote per round.
 
-    POST upserts the caller's single vote in the current open round (voting
-    again MOVES it to the new entry); DELETE clears it. Idempotent and safe
+    This is the released-client contract: POST leaves the caller with exactly
+    one runda in the current round (voting again MOVES it); DELETE clears all
+    of the caller's rundas in the round. The new look gives and takes rundas
+    per entry through /v1/photo-contest/entries/<id>/round. Idempotent and safe
     for offline retries.
     """
 
@@ -9397,11 +9440,16 @@ class PhotoContestVoteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            PhotoContestVote.objects.update_or_create(
-                contest=contest,
-                voter=request.user,
-                defaults={"entry": entry},
-            )
+            with transaction.atomic():
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
+                PhotoContestVote.objects.filter(contest=contest, voter=request.user).exclude(
+                    entry=entry
+                ).delete()
+                PhotoContestVote.objects.get_or_create(
+                    contest=contest,
+                    voter=request.user,
+                    entry=entry,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error("photo_contest: vote failed: %s", exc, exc_info=True)
             return _internal_error()
@@ -12074,6 +12122,8 @@ def _export_account_data(account: Account) -> dict:
             "quiet_hours_start": account.quiet_hours_start,
             "quiet_hours_end": account.quiet_hours_end,
             "excluded_from_leaderboards": account.excluded_from_leaderboards,
+            "share_default": account.share_default,
+            "night_autopublish": account.night_autopublish,
         },
         "auth_sessions": [
             {
@@ -12267,6 +12317,7 @@ def _export_account_data(account: Account) -> dict:
                 "pub_cache_key": photo.pub_cache_key or None,
                 "pub_name": photo.pub_name or None,
                 "pub_city": photo.pub_city or None,
+                "beer_name": photo.beer_name or None,
                 "visibility": photo.visibility,
                 "taken_at": _iso(photo.taken_at),
                 "created_at": _iso(photo.created_at),

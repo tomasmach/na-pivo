@@ -49,6 +49,8 @@ export interface PhotoContestEntry {
   caption: string;
   pubName: string;
   pubCity: string;
+  /** Beer tagged on the photo (additive `beer_name`); empty when untagged. */
+  beerName: string;
   votes: number;
   /** True when MY vote currently sits on this entry. */
   myVote: boolean;
@@ -96,6 +98,10 @@ export interface PhotoContestSnapshot {
   entries: PhotoContestEntry[];
   myEntryId: string | null;
   myVoteEntryId: string | null;
+  /** Every entry of mine in the round (additive; falls back to myEntryId). */
+  myEntryIds?: string[];
+  /** Every entry I gave a runda (additive; falls back to myVoteEntryId). */
+  myVoteEntryIds?: string[];
   lastResults: PhotoContestResults | null;
 }
 
@@ -123,6 +129,7 @@ interface RawEntry {
   caption?: string;
   pub_name?: string;
   pub_city?: string;
+  beer_name?: string | null;
   votes?: number;
   my_vote?: boolean;
   is_mine?: boolean;
@@ -191,6 +198,7 @@ export function parsePhotoContestEntry(raw: RawEntry): PhotoContestEntry {
     caption: raw.caption ?? '',
     pubName: raw.pub_name ?? '',
     pubCity: raw.pub_city ?? '',
+    beerName: typeof raw.beer_name === 'string' ? raw.beer_name : '',
     votes: typeof raw.votes === 'number' && Number.isFinite(raw.votes) ? raw.votes : 0,
     myVote: raw.my_vote === true,
     isMine: raw.is_mine === true,
@@ -291,6 +299,11 @@ let teaserCache: { at: number; accountId: string; snapshot: PhotoContestSnapshot
  */
 let teaserGeneration = 0;
 
+function stringList(list: unknown, fallback: unknown): string[] {
+  if (Array.isArray(list)) return list.filter((v): v is string => typeof v === 'string');
+  return typeof fallback === 'string' ? [fallback] : [];
+}
+
 /** The snapshot for lightweight teaser surfaces: cached, TTL-bounded. */
 export async function fetchPhotoContestTeaser(
   signal?: AbortSignal,
@@ -317,9 +330,11 @@ export function clearPhotoContestTeaserCache(): void {
  */
 export async function fetchPhotoContest(
   signal?: AbortSignal,
+  options: { order?: 'top' } = {},
 ): Promise<PhotoContestSnapshot | null> {
   const generation = teaserGeneration;
-  const res = await requestJson('/v1/photo-contest', { signal });
+  const path = options.order === 'top' ? '/v1/photo-contest?order=top' : '/v1/photo-contest';
+  const res = await requestJson(path, { signal });
   if (!res.ok || generation !== teaserGeneration || res.accountId !== getLastKnownSessionAccountId()) {
     return null;
   }
@@ -338,6 +353,8 @@ export async function fetchPhotoContest(
       : [],
     myEntryId: typeof d.my_entry_id === 'string' ? d.my_entry_id : null,
     myVoteEntryId: typeof d.my_vote_entry_id === 'string' ? d.my_vote_entry_id : null,
+    myEntryIds: stringList(d.my_entry_ids, d.my_entry_id),
+    myVoteEntryIds: stringList(d.my_vote_entry_ids, d.my_vote_entry_id),
     lastResults:
       rawLast && typeof rawLast === 'object'
         ? {
@@ -404,4 +421,47 @@ export async function votePhotoContest(
 export async function clearPhotoContestVote(): Promise<FriendActionResult> {
   const res = await requestJson('/v1/photo-contest/vote', { method: 'DELETE' });
   return res.ok ? { ok: true } : res.result;
+}
+
+/**
+ * POST /v1/photo-contest/entries with add=true: enter one more photo and keep
+ * my other entries. Entering the same photo twice returns the existing entry.
+ */
+export async function addPhotoContestEntry(
+  photoId: string,
+  signal?: AbortSignal,
+): Promise<{ ok: true; entry: PhotoContestEntry } | FriendActionError> {
+  const res = await requestJson('/v1/photo-contest/entries', {
+    method: 'POST',
+    body: { photo_id: photoId, add: true },
+    signal,
+  });
+  if (!res.ok) return res.result;
+  return { ok: true, entry: parsePhotoContestEntry((res.data.entry ?? {}) as RawEntry) };
+}
+
+/** DELETE /v1/photo-contest/entries/<id>: withdraw one of my entries. */
+export async function withdrawPhotoContestEntryById(entryId: string): Promise<FriendActionResult> {
+  const res = await requestJson(`/v1/photo-contest/entries/${encodeURIComponent(entryId)}`, {
+    method: 'DELETE',
+  });
+  return res.ok ? { ok: true } : res.result;
+}
+
+/** POST/DELETE /v1/photo-contest/entries/<id>/round: give or take one runda. */
+export async function setPhotoContestRound(
+  entryId: string,
+  given: boolean,
+): Promise<{ ok: true; votes: number; myVote: boolean } | FriendActionError> {
+  const res = await requestJson(
+    `/v1/photo-contest/entries/${encodeURIComponent(entryId)}/round`,
+    { method: given ? 'POST' : 'DELETE' },
+  );
+  if (!res.ok) return res.result;
+  return {
+    ok: true,
+    votes:
+      typeof res.data.votes === 'number' && Number.isFinite(res.data.votes) ? res.data.votes : 0,
+    myVote: res.data.my_vote === true,
+  };
 }
