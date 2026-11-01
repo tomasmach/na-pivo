@@ -6,13 +6,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomFade, LevelAvatar, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
-import { Button, D, Press, Segmented, Stack, T, Tile } from '../../components/ui';
+import { Button, D, Press, Segmented, T, Tile } from '../../components/ui';
 import { beerById, pubById } from '../../mock/data';
 import { toast, useMock, useTonight } from '../../mock/store';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import { TOUR, nextStopIndex } from '../../mock/tour';
 import { TourRunContent } from '../tour/TourScreens';
 import { DiaryView } from './DiaryView';
+import { FriendEveningCard } from '../parta/FriendEveningCard';
 
 export function StamgastScreen() {
   const insets = useSafeAreaInsets();
@@ -299,34 +300,6 @@ function CounterView() {
       ) : null}
       <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 12 }}>
         <Button height={60} label="Ještě jedno" sub={lastBeer ? `${lastBeer.name} · ${last?.size}` : 'Pilsner Urquell 12° · 0,5 l'} onPress={oneMore} />
-      </View>
-    </View>
-  );
-}
-
-function FriendEveningCard() {
-  return (
-    <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12 }}>
-      <View style={[s.row, { gap: 8 }]}>
-        <Icon name="house" size={18} color={C.yellow} />
-        <T s={17} w={700} style={s.fill}>
-          Večer u Kláry
-        </T>
-        <T s={13} w={600} c={C.muted}>
-          od 19:00
-        </T>
-      </View>
-      <View style={[s.row, { gap: 12 }]}>
-        <Stack initials={['K', 'J', 'T']} />
-        <T s={14} c={C.text2} style={s.fill}>
-          Jsi tu s Klárou a Jirkou. Petra a Marek dorazí.
-        </T>
-      </View>
-      <View style={[s.row, { gap: 8, borderTopWidth: 1, borderTopColor: C.hairline, paddingTop: 10 }]}>
-        <Icon name="lock" size={13} color={C.muted} />
-        <T s={12} c={C.muted}>
-          Zbytek party vidí jen „U někoho doma“.
-        </T>
       </View>
     </View>
   );

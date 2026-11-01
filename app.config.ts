@@ -6,6 +6,10 @@ const LOCATION_REASON =
 const BACKGROUND_LOCATION_REASON =
   'Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv, i když je aplikace zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii neukládáme.';
 
+const CALENDAR_REASON = 'Na pivo ti do kalendáře přidá jen pozvánku od party, kterou potvrdíš.';
+// The calendar plugin always declares reminders too; the app never reads them.
+const REMINDERS_REASON = 'Na pivo připomínky nepoužívá.';
+
 const LOCAL_BACKEND_MODES = new Set(['local', 'auto']);
 const SPLASH_BACKGROUND = '#15120F';
 const SKIP_IOS_WIDGETS = process.env.NA_PIVO_SKIP_IOS_WIDGETS === '1';
@@ -104,6 +108,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         isIosBackgroundLocationEnabled: true,
         isAndroidBackgroundLocationEnabled: true,
         isAndroidForegroundServiceEnabled: false,
+      },
+    ],
+    // "Do kalendáře" on a Parta plan opens the system event form. iOS 17+
+    // needs only write access; older iOS asks for the calendar once.
+    [
+      'expo-calendar',
+      {
+        calendarPermission: CALENDAR_REASON,
+        writeOnlyAccess: true,
+        writeOnlyCalendarPermission: CALENDAR_REASON,
+        remindersPermission: REMINDERS_REASON,
       },
     ],
     ['expo-camera', { microphonePermission: false, recordAudioAndroid: false }],
@@ -242,6 +257,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       blockedPermissions: [
         'android.permission.FOREGROUND_SERVICE',
         'android.permission.FOREGROUND_SERVICE_LOCATION',
+        // "Do kalendáře" hands the event to the calendar app by intent, which
+        // needs no permission; expo-calendar would otherwise declare both.
+        'android.permission.READ_CALENDAR',
+        'android.permission.WRITE_CALENDAR',
       ],
       intentFilters: [
         {
