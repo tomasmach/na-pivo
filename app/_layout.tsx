@@ -57,7 +57,7 @@ import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useReleaseStore } from '@/stores/releaseStore';
-import { useTallyStore } from '@/stores/tallyStore';
+import { onTallySessionClosed, useTallyStore } from '@/stores/tallyStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import {
   consumeInitialTourInviteTap,
@@ -112,6 +112,7 @@ import { useBookLayout } from '@/layout/bookLayout';
 import { noteTopPathname, openDetail } from '@/layout/openDetail';
 import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
 import { NEW_LOOK } from '@/newlook/flag';
+import { autopublishClosedNight } from '@/data/nightAutopublish';
 import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
 
 /** In the new look every route outside app/nv falls back to its start, so a deep link into /nv survives a cold start. */
@@ -319,6 +320,9 @@ export default function RootLayout() {
       beerOnTapSubscription.remove();
     };
   }, [fontsLoaded, fontError, router]);
+
+  // A closed evening may publish itself to Výčep when the account asked for it.
+  useEffect(() => onTallySessionClosed(autopublishClosedNight), []);
 
   useEffect(() => {
     const subscription = Linking.addEventListener('url', ({ url }) => {

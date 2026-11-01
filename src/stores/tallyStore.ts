@@ -312,18 +312,28 @@ function closeSession(session: TallySession, reason: ArchivedReason, nowMs = Dat
   return archived;
 }
 
+type SessionClosedListener = (session: TallySession, reason: ArchivedReason) => void;
+let sessionClosedListener: SessionClosedListener | null = null;
+
+/** One listener for closed evenings (night auto-publish); returns the unsubscribe. */
+export function onTallySessionClosed(listener: SessionClosedListener): () => void {
+  sessionClosedListener = listener;
+  return () => {
+    if (sessionClosedListener === listener) sessionClosedListener = null;
+  };
+}
+
 /** Runs after the archiving set() commits, so the night includes this sitting. */
 function scheduleNightAutopublish(session: TallySession, reason: ArchivedReason): void {
-  setTimeout(() => {
+  const listener = sessionClosedListener;
+  if (!listener) return;
+  queueMicrotask(() => {
     try {
-      // nightAutopublish reads this store too; resolve it only after the store exists.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { autopublishClosedNight } = require('@/data/nightAutopublish') as typeof import('@/data/nightAutopublish');
-      autopublishClosedNight(session, reason);
+      listener(session, reason);
     } catch {
       // Publishing is optional; closing the evening must never fail because of it.
     }
-  }, 0);
+  });
 }
 
 /** Set one drink's delivery state wherever it lives. A drink the server
