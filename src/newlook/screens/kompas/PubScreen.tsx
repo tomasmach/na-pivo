@@ -127,7 +127,8 @@ export function PubScreen() {
   const fav = Boolean(favoriteKey);
   const distance = position ? haversineMeters(position, pub) : null;
   const hours = details.hours;
-  const params = nvPubParams(pub);
+  // Building the params parks the pub in the hand-off store, which must not happen while rendering.
+  const params = () => nvPubParams(pub);
   const area = pub.city || pub.address || '';
   const toggleFavorite = () => {
     const store = usePubFavoritesStore.getState();
@@ -161,9 +162,9 @@ export function PubScreen() {
                 size={40}
                 iconSize={18}
                 label={L().share}
-                onPress={() => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params, url: buildPubShareUrl(pub) } })}
+                onPress={() => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params(), url: buildPubShareUrl(pub) } })}
               />
-              <IconButton icon="ellipsis" size={40} iconSize={18} label={L().more} onPress={() => router.push({ pathname: '/nv/nesedi', params })} />
+              <IconButton icon="ellipsis" size={40} iconSize={18} label={L().more} onPress={() => router.push({ pathname: '/nv/nesedi', params: params() })} />
             </View>
           </View>
           <View style={{ gap: 6 }}>
@@ -220,7 +221,7 @@ export function PubScreen() {
                 {L().mappedSub}
               </T>
             </View>
-            <Press haptic onPress={() => router.push({ pathname: '/nv/doplnit-info', params })} style={[{ height: 36, borderRadius: 18, paddingHorizontal: 14, backgroundColor: C.control }, s.center]}>
+            <Press haptic onPress={() => router.push({ pathname: '/nv/doplnit-info', params: params() })} style={[{ height: 36, borderRadius: 18, paddingHorizontal: 14, backgroundColor: C.control }, s.center]}>
               <T s={14} w={700} c={C.yellow}>
                 {L().fill}
               </T>
@@ -247,7 +248,7 @@ export function PubScreen() {
               <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
                 {L().noTaps}
               </T>
-              <AddLink label={L().addTaps} onPress={() => router.push({ pathname: '/nv/doplnit-info', params: { ...params, tab: 'piva' } })} />
+              <AddLink label={L().addTaps} onPress={() => router.push({ pathname: '/nv/doplnit-info', params: { ...params(), tab: 'piva' } })} />
             </>
           )}
         </Section>
@@ -256,7 +257,7 @@ export function PubScreen() {
           {details.events.map((event) => (
             <Line key={event.id} title={event.title} sub={eventWhen(event, details.now)} />
           ))}
-          <AddLink label={L().suggestEvent} onPress={() => router.push({ pathname: '/nv/navrhnout-akci', params })} />
+          <AddLink label={L().suggestEvent} onPress={() => router.push({ pathname: '/nv/navrhnout-akci', params: params() })} />
         </Section>
         <Band />
         <Section title={L().about}>
