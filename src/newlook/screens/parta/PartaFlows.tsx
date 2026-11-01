@@ -372,7 +372,7 @@ export function ZebrickyScreen() {
                 />
               ))}
             </Card>
-          ) : (
+          ) : view.title === t.nv.parta.boardEmpty ? null : (
             <T s={14} c={C.muted}>
               {t.nv.parta.boardEmpty}
             </T>
