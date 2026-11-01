@@ -351,7 +351,7 @@ export function MojeSetkaniScreen() {
           <View style={[s.row, { gap: 8, paddingHorizontal: 4, height: 40 }]}>
             <Icon name="lock-open" size={16} color={C.muted} />
             <T s={14} w={600} c={C.text2} style={s.fill} numberOfLines={1}>
-              {[event.exactAddress, event.areaLabel || event.city].filter(Boolean).join(', ')}
+              {[event.exactAddress, event.areaLabel || event.city].filter((part, i, all) => part && (i === 0 || !all[0]?.includes(part))).join(', ')}
             </T>
             <T s={14} w={700}>
               {L().freeSpots(event.availableSpots)}
