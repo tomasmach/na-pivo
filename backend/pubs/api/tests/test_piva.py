@@ -15,7 +15,7 @@ from rest_framework.test import APIClient
 
 from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.beer_ranking import classify_styles, refresh_beer_ranking
-from pubs.models import Account, BeerCheckIn, BeerProduct, ContentReport, FriendBlock, Friendship
+from pubs.models import Account, BeerProduct, ContentReport, FriendBlock, Friendship
 
 PUB = {"name": "U Zlatého tygra", "lat": 50.0876, "lng": 14.4214}
 
@@ -54,7 +54,9 @@ def _friends(a: Account, b: Account) -> None:
 
 
 def _products(n: int) -> list[BeerProduct]:
-    return list(BeerProduct.objects.filter(active=True, brand__active=True).order_by("rank", "key")[:n])
+    return list(
+        BeerProduct.objects.filter(active=True, brand__active=True).order_by("rank", "key")[:n]
+    )
 
 
 def _checkin(client, token, product: BeerProduct, rating=None, **extra):
@@ -90,7 +92,13 @@ def _rate_many(client, product: BeerProduct, ratings: list[float]) -> list[str]:
     tokens = []
     for index, rating in enumerate(ratings):
         token, _ = _register(client, f"r{index}{uuid.uuid4().hex[:10]}")
-        _checkin(client, token, product, rating=str(rating), tags=["crisp"] if rating >= 4 else ["watery"])
+        _checkin(
+            client,
+            token,
+            product,
+            rating=str(rating),
+            tags=["crisp"] if rating >= 4 else ["watery"],
+        )
         tokens.append(token)
     return tokens
 
@@ -135,20 +143,30 @@ def test_friends_see_public_checkins_in_feed_and_can_cheer_public_from_strangers
     stranger_token, _ = _register(client, "cizi")
     _friends(owner, friend)
     product = _products(1)[0]
-    checkin = _checkin(client, owner_token, product, rating="4", visibility="public", note="Dobrý.").json()
+    checkin = _checkin(
+        client, owner_token, product, rating="4", visibility="public", note="Dobrý."
+    ).json()
 
     feed = client.get("/v1/beer-checkins/feed", **_auth(friend_token)).json()["checkins"]
     assert [row["id"] for row in feed] == [checkin["id"]]
 
     cheer = client.post(
-        f"/v1/beer-checkins/{checkin['id']}/react", data={"reaction": "cheers"}, format="json", **_auth(stranger_token)
+        f"/v1/beer-checkins/{checkin['id']}/react",
+        data={"reaction": "cheers"},
+        format="json",
+        **_auth(stranger_token),
     )
     assert cheer.status_code == status.HTTP_200_OK
     assert cheer.json()["reactions"]["cheers"] == 1
 
-    party_only = _checkin(client, owner_token, product, rating="3", visibility="friends", note="Jen pro partu.").json()
+    party_only = _checkin(
+        client, owner_token, product, rating="3", visibility="friends", note="Jen pro partu."
+    ).json()
     refused = client.post(
-        f"/v1/beer-checkins/{party_only['id']}/react", data={"reaction": "cheers"}, format="json", **_auth(stranger_token)
+        f"/v1/beer-checkins/{party_only['id']}/react",
+        data={"reaction": "cheers"},
+        format="json",
+        **_auth(stranger_token),
     )
     assert refused.status_code == status.HTTP_403_FORBIDDEN
 
@@ -203,7 +221,10 @@ def test_ranking_move_compares_with_last_week(client):
 
     token, _ = _register(client, "tyden")
     items = client.get("/v1/beers/ranking", **_auth(token)).json()["items"]
-    assert [(item["product_key"], item["move"]) for item in items] == [(second.key, 1), (first.key, -1)]
+    assert [(item["product_key"], item["move"]) for item in items] == [
+        (second.key, 1),
+        (first.key, -1),
+    ]
 
 
 @pytest.mark.django_db
@@ -235,7 +256,9 @@ def test_beer_detail_keeps_old_fields_and_adds_global_numbers(client):
 
     token, _ = _register(client, "detail")
     old = client.get(
-        "/v1/beers/detail", {"beer_name": product.name, "brewery_name": product.brand_name}, **_auth(token)
+        "/v1/beers/detail",
+        {"beer_name": product.name, "brewery_name": product.brand_name},
+        **_auth(token),
     )
     assert old.status_code == 200
     for key in ("my_count", "party_count", "my_history", "recent_checkins", "my_tags"):
@@ -259,6 +282,11 @@ def test_beer_detail_keeps_old_fields_and_adds_global_numbers(client):
     missing = client.get("/v1/beers/detail", {"product": "no-such-beer"}, **_auth(token))
     assert missing.status_code == 400
 
+    # By key, my check-in counts even when I typed no brewery.
+    _checkin(client, token, product, rating="2", brewery_name="")
+    mine = client.get("/v1/beers/detail", {"product": product.key}, **_auth(token)).json()
+    assert [row["rating"] for row in mine["my_history"]] == ["2.0"]
+
 
 # --- reviews ---------------------------------------------------------------
 
@@ -274,11 +302,24 @@ def test_reviews_show_public_and_party_check_ins_only(client):
     _friends(viewer, friend)
     FriendBlock.objects.create(blocker=viewer, blocked=hidden)
 
-    public = _checkin(client, stranger_token, product, rating="3", visibility="public", note="Na čepu jiný.").json()
-    party = _checkin(client, friend_token, product, rating="5", visibility="friends", note="Pecka.").json()
-    _checkin(client, stranger_token, product, rating="1", visibility="friends", note="Jen pro moji partu.")
+    public = _checkin(
+        client, stranger_token, product, rating="3", visibility="public", note="Na čepu jiný."
+    ).json()
+    party = _checkin(
+        client, friend_token, product, rating="5", visibility="friends", note="Pecka."
+    ).json()
+    _checkin(
+        client,
+        stranger_token,
+        product,
+        rating="1",
+        visibility="friends",
+        note="Jen pro moji partu.",
+    )
     _checkin(client, stranger_token, product, rating="2", visibility="private", note="Jen pro mě.")
-    _checkin(client, nameless_token, product, rating="4", visibility="public", note="Bez přezdívky.")
+    _checkin(
+        client, nameless_token, product, rating="4", visibility="public", note="Bez přezdívky."
+    )
     _checkin(client, hidden_token, product, rating="4", visibility="public", note="Blokovaný.")
     _checkin(client, viewer_token, product, rating="4", visibility="public", note="Moje.")
 
@@ -291,16 +332,25 @@ def test_reviews_show_public_and_party_check_ins_only(client):
     assert by_id[public["id"]]["author"]["nickname"] == "cizinec"
     assert len(by_id[public["id"]]["day"]) == 10  # a day, never the hour
 
-    only_party = client.get("/v1/beers/reviews", {"product": product.key, "filter": "party"}, **_auth(viewer_token))
+    only_party = client.get(
+        "/v1/beers/reviews", {"product": product.key, "filter": "party"}, **_auth(viewer_token)
+    )
     assert [item["id"] for item in only_party.json()["items"]] == [party["id"]]
     by_name = client.get(
-        "/v1/beers/reviews", {"beer_name": product.name, "brewery_name": product.brand_name}, **_auth(viewer_token)
+        "/v1/beers/reviews",
+        {"beer_name": product.name, "brewery_name": product.brand_name},
+        **_auth(viewer_token),
     )
     assert by_name.json()["total"] == 2
 
     stranger.ghost_mode = True
     stranger.save(update_fields=["ghost_mode"])
-    assert client.get("/v1/beers/reviews", {"product": product.key}, **_auth(viewer_token)).json()["total"] == 1
+    assert (
+        client.get("/v1/beers/reviews", {"product": product.key}, **_auth(viewer_token)).json()[
+            "total"
+        ]
+        == 1
+    )
     assert client.get("/v1/beers/reviews", **_auth(viewer_token)).status_code == 400
 
 
@@ -309,13 +359,21 @@ def test_report_a_review_the_reporter_can_see(client):
     product = _products(1)[0]
     reporter_token, _ = _register(client, "hlasic")
     author_token, author = _register(client, "pisalek")
-    public = _checkin(client, author_token, product, rating="1", visibility="public", note="Hnus.").json()
-    private = _checkin(client, author_token, product, rating="1", visibility="private", note="Tajné.").json()
+    public = _checkin(
+        client, author_token, product, rating="1", visibility="public", note="Hnus."
+    ).json()
+    private = _checkin(
+        client, author_token, product, rating="1", visibility="private", note="Tajné."
+    ).json()
 
     def report(checkin_id):
         return client.post(
             "/v1/content-reports",
-            data={"target_account_id": str(author.public_id), "reason": "other", "checkin_id": checkin_id},
+            data={
+                "target_account_id": str(author.public_id),
+                "reason": "other",
+                "checkin_id": checkin_id,
+            },
             format="json",
             **_auth(reporter_token),
         )
@@ -382,7 +440,9 @@ def test_beer_watch_list_says_where_the_beer_pours_within_radius(client):
     product = _products(1)[0]
     token, _ = _register(client, "hlidac")
     _drink(client, token, product.name)
-    assert client.post("/v1/beer-watches", {"beer_name": product.name}, format="json", **_auth(token)).status_code in (
+    assert client.post(
+        "/v1/beer-watches", {"beer_name": product.name}, format="json", **_auth(token)
+    ).status_code in (
         200,
         201,
     )

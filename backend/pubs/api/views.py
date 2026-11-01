@@ -8619,7 +8619,8 @@ class BeerDetailView(APIView):
         product = piva_views.resolve_product(
             (request.query_params.get("product") or "").strip(), beer_name, brewery_name
         )
-        if not beer_name and product is not None:
+        by_product = not beer_name and product is not None
+        if by_product:
             beer_name, brewery_name = product.name, product.brand_name
         if not beer_name:
             return Response(
@@ -8627,11 +8628,16 @@ class BeerDetailView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         match_cache = BeerCatalogMatchCache()
-        identity = _beer_identity_query(
-            beer_name,
-            brewery_name,
-            exact_brewery=True,
-            match_cache=match_cache,
+        # By catalogue key, every check-in matched to the beer counts, whatever brewery was typed.
+        identity = (
+            Q(beer_product=product)
+            if by_product
+            else _beer_identity_query(
+                beer_name,
+                brewery_name,
+                exact_brewery=True,
+                match_cache=match_cache,
+            )
         )
         blocked_ids = _blocked_account_ids(request.user)
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]

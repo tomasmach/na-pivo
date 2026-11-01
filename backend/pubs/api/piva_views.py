@@ -343,8 +343,10 @@ class BeerCollectionView(_BeersPolicy):
         )
         if not ranked:
             return None
-        level, tier = len(TASTER_TIERS), TASTER_TIERS[-1]
-        for index, size in enumerate(TASTER_TIERS):
+        # While the ranking is short, only the levels it can fill count.
+        tiers = [size for size in TASTER_TIERS if size <= len(ranked)] or [TASTER_TIERS[0]]
+        level, tier = len(tiers), tiers[-1]
+        for index, size in enumerate(tiers):
             if any(product_id not in had for product_id in ranked[:size]):
                 level, tier = index + 1, size
                 break
