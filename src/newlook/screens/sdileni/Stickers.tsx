@@ -41,7 +41,7 @@ export function StickerKdoJde({ where }: { where: string }) {
       <D s={44} c={C.black} lh={1}>
         {t.nv.sdileni.stickerNaPivo}
       </D>
-      <T s={13} w={800} c={C.black} numberOfLines={1} style={{ marginTop: 6, maxWidth: 180 }}>
+      <T s={13} w={800} c={C.black} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ marginTop: 6, maxWidth: 180 }}>
         {where}
       </T>
     </View>
