@@ -1,3 +1,3 @@
-import { DoDenickuSheet } from '@/newlook/screens/stamgast/StamgastExtras';
+import { DoDenickuSheet } from '@/newlook/screens/vycep/PhotoScreens';
 
 export default DoDenickuSheet;

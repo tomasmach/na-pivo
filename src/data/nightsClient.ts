@@ -54,6 +54,8 @@ export interface NightPublishPayload {
   durationMinutes?: number;
   visibility: NightVisibility;
   updatedAt: string;
+  /** Diary photo ids (server or client id) shown on the night; additive. */
+  photoIds?: string[];
 }
 
 export interface NightActionError {
@@ -189,6 +191,7 @@ export function nightPublishWire(payload: NightPublishPayload): Record<string, u
       : {}),
     visibility: payload.visibility,
     updated_at: payload.updatedAt,
+    ...(payload.photoIds ? { photo_ids: payload.photoIds } : {}),
   };
 }
 

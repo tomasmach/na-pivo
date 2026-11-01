@@ -1,3 +1,3 @@
-import { VyvesitSheet } from '@/newlook/screens/vycep/VycepFlows';
+import { VyvesitSheet } from '@/newlook/screens/vycep/VyvesitFlows';
 
 export default VyvesitSheet;

@@ -50,7 +50,10 @@ function isQueueItem(value: unknown): value is NightQueueItem {
         (item.payload.durationMinutes === undefined ||
           typeof item.payload.durationMinutes === 'number') &&
         (item.payload.visibility === 'friends' || item.payload.visibility === 'public') &&
-        typeof item.payload.updatedAt === 'string'
+        typeof item.payload.updatedAt === 'string' &&
+        (item.payload.photoIds === undefined ||
+          (Array.isArray(item.payload.photoIds) &&
+            item.payload.photoIds.every((id) => typeof id === 'string')))
       );
     case 'unpublish':
       return typeof item.clientId === 'string';

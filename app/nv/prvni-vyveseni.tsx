@@ -1,3 +1,3 @@
-import { PrvniVyveseniScreen } from '@/newlook/screens/vycep/VycepFlows';
+import { PrvniVyveseniScreen } from '@/newlook/screens/vycep/VyvesitFlows';
 
 export default PrvniVyveseniScreen;

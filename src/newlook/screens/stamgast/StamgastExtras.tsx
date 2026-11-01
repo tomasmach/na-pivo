@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, ScrollView, View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,9 +9,9 @@ import { Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, D, Dot, IconButton, Kicker, Press, Row, T, Tile } from '../../components/ui';
-import { ME_COORD, photo } from '../../mock/data';
-import { dialog, toast, useMock } from '../../mock/store';
-import { C, SCREEN_X, s } from '../../theme';
+import { ME_COORD } from '../../mock/data';
+import { toast, useMock } from '../../mock/store';
+import { C, s } from '../../theme';
 import { GRAY_MAP } from '../kompas/NvMap';
 
 export function DomovskyBodScreen() {
@@ -220,187 +220,6 @@ export function PripominkySheet() {
           Zpět
         </T>
       </Press>
-    </Sheet>
-  );
-}
-
-const ALBUM: { month: string; photos: { n: number; state?: 'upload' | 'failed' }[] }[] = [
-  {
-    month: 'Říjen 2026',
-    photos: [{ n: 1, state: 'upload' }, { n: 2, state: 'failed' }, { n: 3 }, { n: 4 }, { n: 5 }, { n: 6 }],
-  },
-  { month: 'Září 2026', photos: [{ n: 7 }, { n: 9 }, { n: 10 }, { n: 13 }, { n: 12 }] },
-];
-
-export function PivniFotkyScreen() {
-  const router = useRouter();
-  const { width } = useWindowDimensions();
-  const size = (width - SCREEN_X * 2 - 8) / 3;
-  return (
-    <Screen header={<BackHeader />} footer={<Button label="Vyfotit pivo" icon="camera" onPress={() => router.push('/nv/do-denicku')} />} gap={16}>
-      <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end' }]}>
-        <D s={44}>Pivní fotky</D>
-        <T s={14} w={600} c={C.muted} style={{ marginBottom: 6 }}>
-          24 fotek
-        </T>
-      </View>
-      <Press onPress={() => router.push('/nv/fotopivar')} style={[s.row, { gap: 12, padding: 14, borderRadius: 20, backgroundColor: C.card }]}>
-        <Tile icon="trophy" />
-        <View style={[s.fill, { gap: 2 }]}>
-          <T s={16} w={700}>
-            FotoPivař
-          </T>
-          <T s={13} c={C.muted}>
-            Kolo běží ještě 5 dní · 3 tvoje fotky v kole
-          </T>
-        </View>
-        <Icon name="chevron-right" size={16} color={C.muted} />
-      </Press>
-      {ALBUM.map((m) => (
-        <View key={m.month} style={{ gap: 10 }}>
-          <T s={15} w={700} c={C.text2}>
-            {m.month}
-          </T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-            {m.photos.map((p) => (
-              <Press key={p.n} onPress={() => router.push({ pathname: '/nv/fotka/[n]', params: { n: String(p.n) } })}>
-                <Image source={photo(p.n)} style={{ width: size, height: size, borderRadius: 8 }} />
-                {p.state ? (
-                  <View style={[s.row, { position: 'absolute', left: 8, bottom: 8, height: 26, borderRadius: 13, paddingHorizontal: 9, gap: 5, backgroundColor: '#0A0A0AB3' }]}>
-                    <Icon name={p.state === 'upload' ? 'upload' : 'rotate-cw'} size={12} color={p.state === 'upload' ? C.white : C.yellow} />
-                    <T s={11} w={700} c={p.state === 'upload' ? C.white : C.yellow}>
-                      {p.state === 'upload' ? 'Nahrává se' : 'Nenahráno'}
-                    </T>
-                  </View>
-                ) : null}
-              </Press>
-            ))}
-          </View>
-        </View>
-      ))}
-    </Screen>
-  );
-}
-
-export function DetailFotkyScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { n } = useLocalSearchParams<{ n: string }>();
-  const { height } = useWindowDimensions();
-  return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView bounces={false} contentContainerStyle={{ paddingBottom: insets.bottom + 30 }}>
-        <Image source={photo(Number(n) || 5)} style={{ width: '100%', height: height * 0.56 }} resizeMode="cover" />
-        <View style={{ position: 'absolute', top: height * 0.56 - 140, left: 0, right: 0, height: 140, experimental_backgroundImage: `linear-gradient(180deg, ${C.bg}00 0%, ${C.bg} 100%)` }} />
-        <View style={{ paddingHorizontal: SCREEN_X, gap: 12, marginTop: -40 }}>
-          <View style={[s.row, { alignSelf: 'flex-start', height: 30, borderRadius: 15, paddingHorizontal: 12, gap: 6, backgroundColor: '#FFC40029', borderWidth: 1, borderColor: '#FFC40080' }]}>
-            <Icon name="trophy" size={14} color={C.yellow} />
-            <T s={13} w={700} c={C.yellow}>
-              Ve FotoPivaři
-            </T>
-          </View>
-          <D s={34}>Pilsner Urquell 12°</D>
-          <T s={14} c={C.muted}>
-            U Pinkasů · pátek 23. 10.
-          </T>
-          <T s={16} c={C.text2} lh={1.45}>
-            Tankový, pěna jak smetana. Na tenhle jsem se těšil celej tejden.
-          </T>
-          <View style={[s.row, { gap: 12, padding: 16, borderRadius: 20, backgroundColor: C.card }]}>
-            <View style={[s.fill, { gap: 2 }]}>
-              <T s={14} w={700}>
-                Tahle fotka právě bojuje o FotoPivaře.
-              </T>
-              <T s={13} c={C.muted}>
-                12 rund · 4. místo · ještě 5 dní
-              </T>
-            </View>
-            <Press onPress={() => router.push('/nv/fotopivar')} style={{ height: 36, paddingHorizontal: 16, borderRadius: 18, justifyContent: 'center', backgroundColor: C.control }}>
-              <T s={14} w={700}>
-                Otevřít
-              </T>
-            </Press>
-          </View>
-          <View style={[s.row, { gap: 8 }]}>
-            <Icon name="globe" size={14} color={C.muted} />
-            <T s={13} c={C.muted}>
-              Uvidí všichni · v soutěži ji vidí každý
-            </T>
-          </View>
-        </View>
-      </ScrollView>
-      <View style={[s.row, { position: 'absolute', top: insets.top + 6, left: SCREEN_X, right: SCREEN_X, justifyContent: 'space-between' }]}>
-        <IconButton icon="chevron-left" size={40} iconSize={18} bg="#0A0A0A99" onPress={() => router.back()} label="Zpět" />
-        <IconButton
-          icon="trash-2"
-          size={40}
-          iconSize={18}
-          bg="#0A0A0A99"
-          label="Smazat fotku"
-          onPress={() =>
-            dialog({
-              title: 'Smazat fotku?',
-              body: 'Zmizí z alba i ze soutěže. Tohle vrátit neumím.',
-              actions: [
-                { label: 'Nechat' },
-                {
-                  label: 'Smazat',
-                  kind: 'danger',
-                  onPress: () => {
-                    router.back();
-                    toast({ kind: 'info', title: 'Fotka je pryč.', icon: 'trash-2' });
-                  },
-                },
-              ],
-            })
-          }
-        />
-      </View>
-    </View>
-  );
-}
-
-export function DoDenickuSheet() {
-  const router = useRouter();
-  return (
-    <Sheet
-      title="Do deníčku"
-      top={230}
-      footer={
-        <Button
-          label="Uložit do deníčku"
-          onPress={() => {
-            router.back();
-            toast({ kind: 'saved', title: 'Fotka je v deníčku.', sub: 'Soutěží ve FotoPivaři.', icon: 'camera' });
-          }}
-        />
-      }
-    >
-      <View style={{ height: 250, borderRadius: 22, overflow: 'hidden' }}>
-        <Image source={photo(4)} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-        <View style={[s.row, { position: 'absolute', left: 10, bottom: 10, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AB3' }]}>
-          <Icon name="camera" size={15} />
-          <T s={13} w={700}>
-            Vyfotit znovu
-          </T>
-        </View>
-      </View>
-      <View>
-        <Row leading={<Icon name="beer" size={18} color={C.text2} />} title={<T s={12} c={C.muted}>Pivo</T>} sub={<T s={15} w={700}>Pilsner Urquell 12° · poslední zapsané</T>} chevron />
-        <Row leading={<Icon name="map-pin" size={18} color={C.text2} />} title={<T s={12} c={C.muted}>Hospoda</T>} sub={<T s={15} w={700}>U Zlatého tygra</T>} chevron />
-        <Row last leading={<Icon name="pencil" size={18} color={C.text2} />} title={<T s={12} c={C.muted}>Popisek</T>} sub={<T s={15} c={C.text2}>Co to bylo za pivo a za večer?</T>} chevron />
-      </View>
-      <View style={[s.row, { gap: 8 }]}>
-        <Icon name="globe" size={15} color={C.muted} />
-        <T s={13} c={C.muted} style={s.fill}>
-          Uvidí všichni, fotka bude soutěžit ve FotoPivaři
-        </T>
-        <Press onPress={() => router.push('/nv/sdileni-souhlas')}>
-          <T s={13} w={700}>
-            změnit
-          </T>
-        </Press>
-      </View>
     </Sheet>
   );
 }

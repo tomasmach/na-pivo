@@ -120,7 +120,7 @@ export function beerPhotoFromWire(raw: RawBeerPhoto): BeerPhoto {
     takenAt: raw.taken_at ?? '',
     createdAt: raw.created_at ?? '',
     inContest: raw.in_contest === true,
-    beerName: typeof raw.beer_name === 'string' ? raw.beer_name : '',
+    ...(typeof raw.beer_name === 'string' && raw.beer_name ? { beerName: raw.beer_name } : {}),
   };
 }
 
