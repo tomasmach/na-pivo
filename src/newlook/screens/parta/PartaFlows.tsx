@@ -388,9 +388,9 @@ function PeopleRow({ label, people, last, trailing }: { label: string; people: F
   return (
     <Row
       last={last}
-      title={<T s={15} c={C.muted}>{label}</T>}
+      title={<T s={15} c={C.muted} numberOfLines={1}>{label}</T>}
       trailing={
-        <View style={[s.row, { gap: 12, flexShrink: 1 }]}>
+        <View style={[s.row, { gap: 12, flexShrink: 1, maxWidth: '78%' }]}>
           <T s={15} w={700} numberOfLines={2} style={{ flexShrink: 1, textAlign: 'right' }}>
             {names}
           </T>
