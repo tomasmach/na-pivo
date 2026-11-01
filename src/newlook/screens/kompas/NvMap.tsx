@@ -26,7 +26,8 @@ export const GRAY_MAP: MapStyleElement[] = [
 ];
 
 type Point = { lat: number; lng: number };
-export type MapPin = Point & { key: string; label: string | null };
+/** `key` is the pub's cell; `id` tells apart pubs that share one cell. */
+export type MapPin = Point & { key: string; id: string; label: string | null };
 export type MapFriend = Point & { key: string; initial: string };
 export type MapCity = Point & { key: string; name: string; count: number };
 export type NvMapHandle = { centerOn: (at: Point) => void };
@@ -47,7 +48,7 @@ type Props = {
   view: 'okoli' | 'stopy' | 'parta';
   pinMode: 'price' | 'count';
   selectedCity?: string | null;
-  onPub?: (key: string) => void;
+  onPub?: (id: string) => void;
   onCity?: (key: string) => void;
   onRegion?: (region: Region) => void;
   showRoute?: boolean;
@@ -120,10 +121,10 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
       ) : null}
       {shown.map((p) => (
         <Marker
-          key={`${p.key}-${p.key === target?.key}-${pinMode}-${p.label ?? ''}`}
+          key={`${p.id}-${p.key === target?.key}-${pinMode}-${p.label ?? ''}`}
           coordinate={{ latitude: p.lat, longitude: p.lng }}
           anchor={{ x: 0.5, y: 0.5 }}
-          onPress={() => onPub?.(p.key)}
+          onPress={() => onPub?.(p.id)}
           tracksViewChanges={false}
         >
           <PubPin label={p.label} target={p.key === target?.key} mode={pinMode} />

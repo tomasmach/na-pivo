@@ -171,9 +171,9 @@ export function useKompas() {
   );
 
   const pins = useMemo(() => {
-    const list = mapPubs.map((pub) => ({ key: geohash8(pub.lat, pub.lng), lat: pub.lat, lng: pub.lng, label: pinLabel(pub, pinMode, beersLastWeek) }));
+    const list = mapPubs.map((pub) => ({ key: geohash8(pub.lat, pub.lng), id: pinId(pub), lat: pub.lat, lng: pub.lng, label: pinLabel(pub, pinMode, beersLastWeek) }));
     if (picked && !list.some((p) => p.key === geohash8(picked.lat, picked.lng))) {
-      list.push({ key: geohash8(picked.lat, picked.lng), lat: picked.lat, lng: picked.lng, label: pinLabel(picked, pinMode, beersLastWeek) });
+      list.push({ key: geohash8(picked.lat, picked.lng), id: pinId(picked), lat: picked.lat, lng: picked.lng, label: pinLabel(picked, pinMode, beersLastWeek) });
     }
     return list;
   }, [beersLastWeek, mapPubs, picked, pinMode]);
@@ -233,4 +233,9 @@ export function pinLabel(pub: Pub, mode: 'price' | 'count', beers: PubBeersByKey
     return n ? String(n) : null;
   }
   return pub.price && isPriceFresh(pub.price.observedAt) ? formatPrice(pub.price.czk, useSettingsStore.getState().priceCurrency) : null;
+}
+
+/** Two pubs can share a geohash cell, so a map pin also carries the pub's own id. */
+export function pinId(pub: Pub): string {
+  return `${geohash8(pub.lat, pub.lng)}:${pub.id}:${pub.name}`;
 }

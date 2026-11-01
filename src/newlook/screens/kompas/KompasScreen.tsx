@@ -27,7 +27,7 @@ import { Dial } from './Dial';
 import { distanceLabel, formatDistance, hoursNow } from './format';
 import { NvMap, type NvMapHandle } from './NvMap';
 import { openNvPub, setOpenOnly, useKompasState } from './state';
-import { useKompas, type Kompas, type KompasTarget } from './useKompas';
+import { pinId, useKompas, type Kompas, type KompasTarget } from './useKompas';
 
 const L = () => t.nv.kompas;
 
@@ -142,8 +142,8 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
     else st.setFilters({ beerBrand: null });
   };
 
-  const onPub = (key: string) => {
-    const pub = k.mapPubs.find((p) => geohash8(p.lat, p.lng) === key) ?? (st.picked && geohash8(st.picked.lat, st.picked.lng) === key ? st.picked : null);
+  const onPub = (id: string) => {
+    const pub = k.mapPubs.find((p) => pinId(p) === id) ?? (st.picked && pinId(st.picked) === id ? st.picked : null);
     if (pub) st.pick(pub);
     setCollapsed(false);
   };
