@@ -3,8 +3,11 @@ import { View } from 'react-native';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TOUR, nextStopIndex } from '../mock/tour';
-import { useMock } from '../mock/store';
+import { t } from '@/i18n';
+import { useActiveTourRun } from '@/tours/activeRun';
+import { runGlance } from '@/tours/glance';
+
+import { useTourSegment } from '../screens/tour/tourSegment';
 import { C, TAB_BAR_HEIGHT, s } from '../theme';
 import { Glass, tabBarBottom } from './chrome';
 import { Icon, type IconName } from './Icon';
@@ -57,7 +60,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
         <TourStrip
           bottom={bottom + TAB_BAR_HEIGHT + 8}
           onOpen={() => {
-            useMock.getState().set({ stamgastMode: 'tour' });
+            useTourSegment.getState().open();
             go('stamgast');
           }}
         />
@@ -92,12 +95,12 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
 
 /** During a tour every other tab shows the next stop above the tab bar. */
 function TourStrip({ bottom, onOpen }: { bottom: number; onOpen: () => void }) {
-  const active = useMock((st) => st.tourActive);
-  const stops = useMock((st) => st.tourStops);
-  if (!active) return null;
-  const i = nextStopIndex(stops);
-  if (i < 0) return null;
-  const done = stops.filter((x) => x !== 'todo').length;
+  const run = useActiveTourRun();
+  // A run forgotten for half a day stops following the walker around.
+  const glance = runGlance(run);
+  if (!run || !glance?.next) return null;
+  const i = run.snapshot.stops.indexOf(glance.next);
+  const done = Object.keys(run.statuses).length;
   return (
     <View style={{ position: 'absolute', left: 16, right: 16, bottom }}>
       <Press haptic onPress={onOpen}>
@@ -108,8 +111,12 @@ function TourStrip({ bottom, onOpen }: { bottom: number; onOpen: () => void }) {
             </D>
           </View>
           <View style={[s.fill, { gap: 1 }]}>
-            <T s={15} w={700}>{`Další ${TOUR.stops[i].name}`}</T>
-            <T s={12} c={C.muted}>{`${TOUR.name} · ${done} z ${TOUR.stops.length} za vámi · ${TOUR.stops[i].walkShort}`}</T>
+            <T s={15} w={700} numberOfLines={1}>
+              {t.nv.tour.stripNext(glance.next.name)}
+            </T>
+            <T s={12} c={C.muted} numberOfLines={1}>
+              {t.nv.tour.stripSub(glance.title, done, glance.total, glance.minutes)}
+            </T>
           </View>
           <Icon name="chevron-right" size={16} color={C.muted} />
         </Glass>

@@ -1,3 +1,3 @@
-import { TourPozvatSheet } from '@/newlook/screens/sdileni/ShareSheets';
+import { TourPozvatSheet } from '@/newlook/screens/tour/TourScreens';
 
 export default TourPozvatSheet;
