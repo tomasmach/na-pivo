@@ -1581,3 +1581,56 @@ msgstr "%(hours)s h ago"
 #, python-format
 msgid "%(beer)s je na čepu %(pub)s, %(distance)s km, doplnil někdo z komunity %(age)s"
 msgstr "%(beer)s is on tap at %(pub)s, %(distance)s km away, added by someone from the community %(age)s"
+
+msgid "Pondělí"
+msgstr "Monday"
+
+msgid "Úterý"
+msgstr "Tuesday"
+
+msgid "Středa"
+msgstr "Wednesday"
+
+msgid "Čtvrtek"
+msgstr "Thursday"
+
+msgid "Pátek"
+msgstr "Friday"
+
+msgid "Sobota"
+msgstr "Saturday"
+
+msgid "Neděle"
+msgstr "Sunday"
+
+msgid "Zavřeno"
+msgstr "Closed"
+
+#, python-format
+msgid "%(name)s | Na pivo"
+msgstr "%(name)s | Na pivo"
+
+#, python-format
+msgid "Mrkni, co čepují v hospodě %(name)s, a otevři ji v Na pivo."
+msgstr "See what %(name)s has on tap, and open it in Na pivo."
+
+msgid "Hospodu nenašel | Na pivo"
+msgstr "Pub not found | Na pivo"
+
+msgid "Tuhle hospodu neznám."
+msgstr "I don't know this pub."
+
+msgid "Možná už nefunguje, nebo je odkaz neúplný."
+msgstr "Maybe it closed, or the link is incomplete."
+
+msgid "Na čepu"
+msgstr "On tap"
+
+msgid "Co tu čepují, zatím nevím."
+msgstr "I don't know what they pour here yet."
+
+msgid "Otevíračka"
+msgstr "Opening hours"
+
+msgid "Navigovat"
+msgstr "Directions"

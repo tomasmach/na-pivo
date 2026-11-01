@@ -709,6 +709,8 @@ REST_FRAMEWORK = {
         "tour_write": "20/hour",
         "tour_share": "10/hour",
         "tour_public": "60/min",
+        # Public pub share page; a reader opens one pub at a time.
+        "pub_public": "60/min",
         # Public beer price page and its share image; a reader loads one page at a time.
         "price_map": "60/min",
         "tour_search": "60/min",
