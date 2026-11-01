@@ -51,6 +51,13 @@ from .community_event_views import (
     CommunityEventTeamDetailView,
     CommunityEventTeamMembershipView,
 )
+from .parta_views import (
+    FriendPingView,
+    PartaActivityView,
+    PartaHomeCheckinView,
+    PartaPlanRemindView,
+    PartaPlansView,
+)
 from .party_views import (
     PartyEveningCollectionView,
     PartyEveningDetailView,
@@ -101,7 +108,6 @@ from .views import (
     FollowView,
     FriendActivityReactView,
     FriendActivityRespondView,
-    FriendActivityView,
     FriendBeerPhotosView,
     FriendBlockView,
     FriendDetailView,
@@ -486,6 +492,19 @@ urlpatterns = [
         name="friends-activity-react",
     ),
     path("friends/settings", FriendSettingsView.as_view(), name="friends-settings"),
+    # New look: open invitations, host reminders, home evenings, direct pings.
+    path("friends/plans", PartaPlansView.as_view(), name="friends-plans"),
+    path(
+        "friends/pub-activity/<uuid:activity_id>/remind",
+        PartaPlanRemindView.as_view(),
+        name="friends-activity-remind",
+    ),
+    path(
+        "friends/pub-activity/<uuid:activity_id>/checkin",
+        PartaHomeCheckinView.as_view(),
+        name="friends-activity-checkin",
+    ),
+    path("friends/<uuid:account_id>/ping", FriendPingView.as_view(), name="friend-ping"),
     path(
         "friends/<uuid:public_id>/beer-photos",
         FriendBeerPhotosView.as_view(),
@@ -496,12 +515,12 @@ urlpatterns = [
     path("friends/<uuid:account_id>", FriendDetailView.as_view(), name="friend-detail"),
     path(
         "friends/pub-activity",
-        FriendActivityView.as_view(http_method_names=["post", "options"]),
+        PartaActivityView.as_view(http_method_names=["post", "options"]),
         name="friends-pub-activity",
     ),
     path(
         "friends/pub-activity/<uuid:activity_id>",
-        FriendActivityView.as_view(http_method_names=["delete", "options"]),
+        PartaActivityView.as_view(http_method_names=["get", "patch", "delete", "options"]),
         name="friends-pub-activity-end",
     ),
     path(

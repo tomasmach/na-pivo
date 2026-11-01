@@ -995,7 +995,7 @@ class LeaderboardQuerySerializer(serializers.Serializer):
     """Query params for GET /v1/leaderboards."""
 
     VALID_CATEGORIES = {"beers", "pubs", "mapper"}
-    VALID_PERIODS = {"week", "year", "all"}
+    VALID_PERIODS = {"week", "month", "year", "all"}
 
     category = serializers.CharField(required=False, default="beers")
     period = serializers.CharField(required=False, default="week")
@@ -1011,7 +1011,7 @@ class LeaderboardQuerySerializer(serializers.Serializer):
     def validate_period(self, value: str) -> str:
         value = value.strip().lower()
         if value not in self.VALID_PERIODS:
-            raise serializers.ValidationError("period must be week, year or all.")
+            raise serializers.ValidationError("period must be week, month, year or all.")
         return value
 
     def validate(self, attrs: dict) -> dict:

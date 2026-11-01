@@ -1,0 +1,62 @@
+<!doctype html>
+{% load i18n %}
+<html lang="{{ LANGUAGE_CODE }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0A0A0A">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{{ page_title }}</title>
+    {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <meta property="og:type" content="profile">
+    <meta property="og:site_name" content="Na pivo">
+    <meta property="og:title" content="{{ page_title }}">
+    <style>
+      :root { color-scheme: dark; --bg: #0a0a0a; --card: #1a1a1a; --yellow: #ffc400; --text: #f7f7f2; --muted: #8e8e8a; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
+      main { width: min(100% - 40px, 520px); margin: 0 auto; padding: max(32px, env(safe-area-inset-top)) 0 max(36px, env(safe-area-inset-bottom)); }
+      .brand { color: var(--yellow); font-weight: 900; letter-spacing: .13em; font-size: 14px; }
+      .who { display: flex; align-items: center; gap: 16px; margin: 32px 0 28px; }
+      .avatar { width: 84px; height: 84px; border-radius: 50%; border: 2px solid var(--yellow); display: grid; place-items: center; color: var(--yellow); font-weight: 800; font-size: 34px; background: #1f1f1f; }
+      h1 { margin: 0; font-size: 34px; line-height: 1.05; }
+      .sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+      .stats { display: flex; justify-content: space-between; background: var(--card); border-radius: 24px; padding: 18px 20px; }
+      .stat b { display: block; font-size: 34px; line-height: 1; }
+      .stat span { color: var(--muted); font-size: 12px; }
+      .hint { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 14px 4px 28px; }
+      .stores { display: grid; gap: 10px; }
+      .stores a { display: flex; min-height: 54px; align-items: center; justify-content: center; border-radius: 27px; background: var(--yellow); color: #0a0a0a; font-weight: 800; text-decoration: none; }
+      .stores a + a { background: #2a2a2a; color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">NA PIVO</div>
+      {% if missing %}
+        <h1 style="margin-top:32px">{% translate "Tenhle profil tu není." %}</h1>
+        <p class="hint">{% translate "Buď je soukromý, nebo neexistuje." %}</p>
+      {% else %}
+        <div class="who">
+          <div class="avatar" aria-hidden="true">{{ initial }}</div>
+          <div>
+            <h1>@{{ nickname }}</h1>
+            <div class="sub">{{ stats.mapper_title }}, level {{ stats.mapper_level }}</div>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><b>{{ stats.total_beers }}</b><span>{% translate "piv celkem" %}</span></div>
+          <div class="stat" style="text-align:center"><b>{{ stats.distinct_pubs }}</b><span>{% translate "hospod" %}</span></div>
+          <div class="stat" style="text-align:right"><b>{{ stats.mapper_level }}</b><span>{% translate "level Mapéra" %}</span></div>
+        </div>
+        <p class="hint">{% translate "Jen čísla z večerů zveřejněných pro všechny." %}</p>
+        <div class="stores">
+          <a href="{{ app_store_url }}">{% translate "Stáhnout pro iPhone" %}</a>
+          <a href="{{ play_store_url }}">{% translate "Stáhnout pro Android" %}</a>
+        </div>
+      {% endif %}
+    </main>
+  </body>
+</html>

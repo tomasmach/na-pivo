@@ -197,6 +197,7 @@ from pubs.models import (
     FriendActivityReaction,
     FriendActivityResponse,
     FriendBlock,
+    FriendHomeCheckin,
     FriendInviteCode,
     FriendNotification,
     FriendPubActivity,
@@ -5099,6 +5100,9 @@ class FriendsView(APIView):
         shared_stats, shared_dates = _shared_pub_stats(request.user, page_friend_ids)
         slices = _friend_activity_slices(request, all_friend_ids, now, activity_context)
         presence_slice = _friend_presence_slice(request, all_friend_ids, now)
+        from .parta_views import home_presence_slice
+
+        home_presence = home_presence_slice(request.user, all_friend_ids, now)
 
         notification_base = (
             FriendNotification.objects.filter(recipient=request.user)
@@ -5147,6 +5151,7 @@ class FriendsView(APIView):
             "my_plan": slices["my_plan"],
             "presence": presence_slice["presence"],
             "my_presence": presence_slice["my_presence"],
+            "home_presence": home_presence,
             "notifications": FriendNotificationSerializer(
                 notifications, many=True, context=context
             ).data,
@@ -5276,6 +5281,7 @@ class FriendsLiveView(APIView):
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
         slices = _friend_activity_slices(request, friend_ids, now, activity_context)
         presence_slice = _friend_presence_slice(request, friend_ids, now)
+        from .parta_views import home_presence_slice
 
         incoming_count = (
             Friendship.objects.filter(
@@ -5312,6 +5318,7 @@ class FriendsLiveView(APIView):
                 "my_plan": slices["my_plan"],
                 "presence": presence_slice["presence"],
                 "my_presence": presence_slice["my_presence"],
+                "home_presence": home_presence_slice(request.user, friend_ids, now),
                 "incoming_count": incoming_count,
                 "unread_count": unread_count,
                 "server_time": now.isoformat(),
@@ -5894,6 +5901,8 @@ def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, d
     local_now = dj_timezone.localtime(now or dj_timezone.now(), PRAGUE_TZ)
     if period == "week":
         start_date = local_now.date() - timedelta(days=local_now.weekday())
+    elif period == "month":
+        start_date = local_now.date().replace(day=1)
     else:
         start_date = date(local_now.year, 1, 1)
     local_start = datetime.combine(start_date, datetime.min.time(), tzinfo=PRAGUE_TZ)
@@ -6933,6 +6942,7 @@ class FriendDetailView(APIView):
                 .order_by("-checked_in_at", "created_at", "id")[:5]
             )
         public_profile_stats = derive_account_public_stats(friend, is_friend=is_friend)
+        from .parta_views import recent_together_with_beers
 
         return Response(
             {
@@ -6977,14 +6987,9 @@ class FriendDetailView(APIView):
                     if plan is not None
                     else None
                 ),
-                "recent_together": [
-                    {
-                        "pub_name": evening["pub_name"],
-                        "cache_key": evening["cache_key"],
-                        "at": evening["at"].isoformat(),
-                    }
-                    for evening in shared_evenings[:3]
-                ],
+                "recent_together": recent_together_with_beers(
+                    request.user, shared_evenings[:3]
+                ),
                 "latest_beers": BeerCheckInSerializer(
                     latest_beers,
                     many=True,
@@ -7026,6 +7031,8 @@ DUEL_WINDOWS: dict[str, timedelta | None] = {
     "30d": timedelta(days=30),
     "180d": timedelta(days=180),
     "all": None,
+    # The calendar month so far; its start is computed, not a fixed span.
+    "month": None,
 }
 # How many trailing months the head-to-head chart draws. A month with no beer
 # still gets a column — without it the stretch reads calmer than it was.
@@ -7226,6 +7233,10 @@ class FriendDuelView(APIView):
         now = dj_timezone.now()
         delta = DUEL_WINDOWS[window]
         since = now - delta if delta is not None else None
+        if window == "month":
+            from .parta_views import duel_month_start
+
+            since = duel_month_start(now)
         account_ids = [request.user.id, friend.id]
         rows = list(_duel_evening_rows(account_ids, since))
         today = dj_timezone.localtime(now, PRAGUE_TZ).date()
@@ -7337,7 +7348,13 @@ class FriendActivityView(APIView):
                     .first()
                 )
                 # The single-active-row invariant is per-kind, so creating a plan
-                # never kills my live broadcast (and vice-versa).
+                # never kills my live broadcast (and vice-versa). New-look plans
+                # (several per account) and home evenings are never reused or ended here.
+                legacy_rows = (
+                    Q(place_kind="")
+                    if kind == FriendPubActivity.Kind.PLAN
+                    else ~Q(place_kind__in=["home", "custom"])
+                )
                 current_active = (
                     FriendPubActivity.objects.select_for_update()
                     .filter(
@@ -7346,6 +7363,7 @@ class FriendActivityView(APIView):
                         expires_at__gt=now,
                         kind=kind,
                     )
+                    .filter(legacy_rows)
                     .order_by("-started_at")
                     .first()
                 )
@@ -7435,7 +7453,7 @@ class FriendActivityView(APIView):
                     active=True,
                     expires_at__gt=now,
                     kind=kind,
-                ).exclude(pk=activity.pk).update(active=False, updated_at=now)
+                ).filter(legacy_rows).exclude(pk=activity.pk).update(active=False, updated_at=now)
                 FriendPubActivityRecipient.objects.filter(activity=activity).delete()
                 if requested_recipient_ids is not None:
                     FriendPubActivityRecipient.objects.bulk_create(
@@ -11639,6 +11657,7 @@ def _load_export_account(account: Account) -> Account:
                 "activity_reactions",
                 queryset=FriendActivityReaction.objects.select_related("activity"),
             ),
+            Prefetch("home_checkins", queryset=FriendHomeCheckin.objects.select_related("activity")),
             Prefetch(
                 "friend_notifications",
                 queryset=FriendNotification.objects.select_related(
@@ -12276,6 +12295,8 @@ def _export_account_data(account: Account) -> dict:
                     "external_id": activity.external_id,
                     "message": activity.message,
                     "kind": activity.kind,
+                    "place_kind": activity.place_kind,
+                    "address": activity.address,
                     "scheduled_for": _iso(activity.scheduled_for),
                     "reminder_sent_at": _iso(activity.reminder_sent_at),
                     "started_at": _iso(activity.started_at),
@@ -12301,6 +12322,14 @@ def _export_account_data(account: Account) -> dict:
                     "updated_at": _iso(row.updated_at),
                 }
                 for row in account.activity_responses.all()
+            ],
+            "home_checkins": [
+                {
+                    "activity_id": str(row.activity.public_id),
+                    "joined_at": _iso(row.joined_at),
+                    "left_at": _iso(row.left_at),
+                }
+                for row in account.home_checkins.all()
             ],
             "reactions": [
                 {
