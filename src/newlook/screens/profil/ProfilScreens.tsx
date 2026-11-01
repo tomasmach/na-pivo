@@ -43,6 +43,7 @@ import {
   reschedulePendingBeerCountReminder,
 } from '@/notifications/beerCountReminder';
 import { disableHomeTransitReminder, enableHomeTransitReminder } from '@/notifications/homeTransitReminder';
+import { disablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
 import { pickAndPrepareAvatar } from '@/profile/avatarPicker';
 import { PUBLIC_BADGE_KEYS, badgeStates } from '@/profile/badgeModel';
 import { roman } from '@/profile/badgeText';
@@ -896,7 +897,23 @@ export function NastaveniScreen() {
           trailing={<Toggle value={st.homeTransitReminderEnabled && homeSet} onChange={() => void toggleTransit()} />}
         />
         <Row title={P().settings.water} sub={P().settings.waterSub} trailing={<Toggle value={st.waterNudgeEnabled} onChange={st.setWaterNudgeEnabled} />} />
-        <Row last title={P().settings.pubPing} chevron onPress={() => router.push('/nv/pripominky')} />
+        <Row
+          last
+          title={P().settings.pubPing}
+          trailing={
+            <Toggle
+              value={st.pubReminderEnabled}
+              onChange={(on) => {
+                if (on) {
+                  router.push('/nv/pripominky');
+                  return;
+                }
+                st.setPubReminderEnabled(false);
+                void disablePubReminderNotifications();
+              }}
+            />
+          }
+        />
       </Card>
       <T s={15} w={700} c={C.muted}>
         {P().settings.other}

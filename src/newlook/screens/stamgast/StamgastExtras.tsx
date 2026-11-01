@@ -218,6 +218,7 @@ export function PripominkySheet() {
             setBusy(true);
             const result = await enablePubReminderNotifications();
             setBusy(false);
+            useSettingsStore.getState().setPubReminderEnabled(result.ok);
             if (!result.ok) {
               setStep('denied');
               return;
