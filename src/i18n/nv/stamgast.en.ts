@@ -47,7 +47,6 @@ export const stamgastEn: typeof stamgastCs = {
   oneMore: 'One more',
   logBeer: 'Log beer',
   draft: 'draught',
-  price: (czk: string) => czk,
 
   placeHome: 'At home / cottage',
   placeHomeSub: 'bottles, cans, no pub',
@@ -78,7 +77,6 @@ export const stamgastEn: typeof stamgastCs = {
   addToMenu: (beer: string, pub: string) => `I'll add ${beer} to the menu of ${pub}.`,
   badgeLastTime: 'last time here',
   badgeNew: 'new',
-  onTapFrom: (price: string) => `on tap · from ${price}`,
   onTap: (price: string) => `on tap · ${price}`,
   fromPrice: (price: string) => `from ${price}`,
   timesLogged: (serving: string, n: number) => `${serving} · ${n}×`,
@@ -117,7 +115,6 @@ export const stamgastEn: typeof stamgastCs = {
   retake: 'Take again',
   reading: 'Reading the photo…',
   labelUnread: "I couldn't read the label. Try a closer photo.",
-  takePhoto: 'Take photo',
 
   week: 'Week',
   month: 'Month',

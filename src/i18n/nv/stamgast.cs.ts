@@ -51,7 +51,6 @@ export const stamgastCs = {
   oneMore: 'Ještě jedno',
   logBeer: 'Zapsat pivo',
   draft: 'čepované',
-  price: (czk: string) => czk,
 
   // Place sheet
   placeHome: 'Doma / na chatě',
@@ -84,7 +83,6 @@ export const stamgastCs = {
   addToMenu: (beer: string, pub: string) => `${beer} přidám na lístek ${pub}.`,
   badgeLastTime: 'minule tady',
   badgeNew: 'nové',
-  onTapFrom: (price: string) => `na čepu · od ${price}`,
   onTap: (price: string) => `na čepu · ${price}`,
   fromPrice: (price: string) => `od ${price}`,
   timesLogged: (serving: string, n: number) => `${serving} · ${n}×`,
@@ -125,7 +123,6 @@ export const stamgastCs = {
   retake: 'Vyfotit znovu',
   reading: 'Čtu fotku…',
   labelUnread: 'Etiketu jsem nepřečetl. Zkus ji vyfotit zblízka.',
-  takePhoto: 'Vyfotit',
 
   // Diary
   week: 'Týden',
