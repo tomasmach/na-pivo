@@ -1581,3 +1581,6 @@ msgstr "%(hours)s h ago"
 #, python-format
 msgid "%(beer)s je na čepu %(pub)s, %(distance)s km, doplnil někdo z komunity %(age)s"
 msgstr "%(beer)s is on tap at %(pub)s, %(distance)s km away, added by someone from the community %(age)s"
+
+msgid "Napiš, o jaké pivo jde."
+msgstr "Say which beer you mean."

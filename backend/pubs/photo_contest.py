@@ -85,8 +85,8 @@ def close_due_contests(now: datetime | None = None) -> list[PhotoContest]:
 
     * stamp every entry's ``final_votes``, rank the top 3 entries with AT LEAST
       ONE vote by vote count (tiebreak: earlier ``created_at``, then pk, wins),
-      and stamp their ``final_rank`` — a zero-vote entry never ranks, so an
-      uncontested round pays nothing;
+      at most one per account, and stamp their ``final_rank`` — a zero-vote
+      entry never ranks, so an uncontested round pays nothing;
     * pay ``PHOTO_CONTEST_XP_FIRST/SECOND/THIRD`` onto ``mapper_xp`` with F()
       increments (never a read-modify-write);
     * rank 1 also increments the monotonic ``photo_contest_wins_count``;
@@ -126,7 +126,17 @@ def close_due_contests(now: datetime | None = None) -> list[PhotoContest]:
                     "-vote_count", "created_at", "pk"
                 )
             )
-            winners = [entry for entry in entries if entry.vote_count >= 1][:3]
+            # One podium place per account: several entries of one author must
+            # not collect the XP of several ranks.
+            winners = []
+            ranked_accounts: set[int] = set()
+            for entry in entries:
+                if entry.vote_count < 1 or entry.account_id in ranked_accounts:
+                    continue
+                winners.append(entry)
+                ranked_accounts.add(entry.account_id)
+                if len(winners) == 3:
+                    break
             for entry in entries:
                 entry.final_votes = entry.vote_count
             PhotoContestEntry.objects.bulk_update(entries, ["final_votes"])

@@ -719,6 +719,31 @@ class Account(models.Model):
         help_text="Whether the user opted in to product/marketing e-mails.",
     )
 
+    # ---------- Výčep sharing defaults (new look) ----------
+    # Both default to the most private option. Released clients never send
+    # them, so their behavior stays exactly as before.
+    class ShareDefault(models.TextChoices):
+        FRIENDS = "friends", "Friends"
+        PUBLIC = "public", "Public"
+
+    class NightAutopublish(models.TextChoices):
+        OFF = "off", "Off"
+        FRIENDS = "friends", "Friends"
+        PUBLIC = "public", "Public"
+
+    share_default = models.CharField(
+        max_length=16,
+        choices=ShareDefault.choices,
+        default=ShareDefault.FRIENDS,
+        help_text="Preselected audience for published nights, ratings and photos.",
+    )
+    night_autopublish = models.CharField(
+        max_length=16,
+        choices=NightAutopublish.choices,
+        default=NightAutopublish.OFF,
+        help_text="Whether the app hangs a finished night on the Výčep by itself.",
+    )
+
     # ---------- UGC consent proof ----------
     ugc_terms_version = models.CharField(
         max_length=32,
@@ -2128,6 +2153,8 @@ class BeerPhoto(models.Model):
     class Visibility(models.TextChoices):
         PRIVATE = "private", "Private"
         FRIENDS = "friends", "Friends"
+        # Explicit opt-in from the new look; released clients never send it.
+        PUBLIC = "public", "Public"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     account = models.ForeignKey(
@@ -2149,6 +2176,10 @@ class BeerPhoto(models.Model):
     pub_cache_key = models.CharField(max_length=12, blank=True, default="", db_index=True)
     pub_name = models.TextField(blank=True, default="")
     pub_city = models.TextField(blank=True, default="")
+    # Optional beer tag. ``beer_key`` uses the BeerCheckIn identity: the
+    # catalogue product key when the name matches, otherwise the text hash.
+    beer_name = models.CharField(max_length=200, blank=True, default="")
+    beer_key = models.CharField(max_length=100, blank=True, default="", db_index=True)
     visibility = models.CharField(
         max_length=16,
         choices=Visibility.choices,
@@ -2321,7 +2352,10 @@ class PhotoContest(models.Model):
 
 
 class PhotoContestEntry(models.Model):
-    """One account's entry (a photo of their own) in one contest round.
+    """One entry (a photo of the account's own) in one contest round.
+
+    An account may enter several photos per round. Released clients that
+    assume a single entry still get replace semantics from the API.
 
     ``final_votes`` is stamped for every entry at close time and ``final_rank``
     for the top 3, making them the DURABLE results record. The entry row itself
@@ -2355,16 +2389,13 @@ class PhotoContestEntry(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["contest", "account"],
-                name="unique_photo_contest_entry_per_account",
-            ),
-            models.UniqueConstraint(
                 fields=["contest", "photo"],
                 name="unique_photo_contest_entry_per_photo",
             ),
         ]
         indexes = [
             models.Index(fields=["contest", "created_at"]),
+            models.Index(fields=["contest", "account"], name="pubs_contest_entry_acct_idx"),
         ]
 
     def __str__(self) -> str:
@@ -2372,10 +2403,11 @@ class PhotoContestEntry(models.Model):
 
 
 class PhotoContestVote(models.Model):
-    """One account's single vote in one contest round.
+    """One account's "runda" (vote) on one contest entry.
 
-    Unique on (contest, voter): re-voting MOVES the vote to another entry
-    (update_or_create on the entry FK) rather than adding a second one.
+    Unique on (entry, voter): a voter may give a runda to any number of
+    entries, at most one each. Released clients still get the old single,
+    movable vote through POST /v1/photo-contest/vote.
     """
 
     contest = models.ForeignKey(
@@ -2401,12 +2433,13 @@ class PhotoContestVote(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["contest", "voter"],
-                name="unique_photo_contest_vote_per_voter",
+                fields=["entry", "voter"],
+                name="unique_photo_contest_vote_per_entry_voter",
             )
         ]
         indexes = [
             models.Index(fields=["entry"]),
+            models.Index(fields=["contest", "voter"], name="pubs_contest_vote_voter_idx"),
         ]
 
     def __str__(self) -> str:

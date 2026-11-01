@@ -431,6 +431,8 @@ def test_contest_wire_shape_votes_and_blocked_exclusion(client):
         "my_entry_id",
         "my_entry_photo_id",
         "my_vote_entry_id",
+        "my_entry_ids",
+        "my_vote_entry_ids",
         "last_results",
     }
     # Blocked accounts' entries are hidden (bidirectional block).
@@ -448,6 +450,7 @@ def test_contest_wire_shape_votes_and_blocked_exclusion(client):
         "caption",
         "pub_name",
         "pub_city",
+        "beer_name",
         "votes",
         "my_vote",
         "is_mine",
