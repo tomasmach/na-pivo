@@ -1,14 +1,9 @@
 import { create } from 'zustand';
 
-import type { IconName } from '../components/Icon';
 import type { StopState } from './tour';
 import { EVENINGS, PLANS, PUBS, TONIGHT, beerById, pubById, type Drink, type Evening, type Plan, type PlanResponse, type Pub } from './data';
 
-export type ToastKind = 'saved' | 'offline' | 'error' | 'xp' | 'info' | 'medal';
-export type Toast = { id: number; kind: ToastKind; title: string; sub?: string; icon?: IconName; xp?: number; at?: 'top' | 'bottom'; href?: string };
-
-export type DialogAction = { label: string; kind?: 'primary' | 'raised' | 'danger'; onPress?: () => void };
-export type Dialog = { title: string; body?: string; actions: DialogAction[] };
+export { dialog, toast, type Dialog, type DialogAction, type Toast, type ToastKind } from '../ui/store';
 
 export type KompasScenario = 'normal' | 'empty' | 'error' | 'noresults';
 
@@ -59,8 +54,6 @@ type MockState = {
   lastEvening: { beers: number; spent: number; pubIds: string[]; from: string; to: string } | null;
   homeSet: boolean;
   badgeDot: boolean;
-  toast: Toast | null;
-  dialog: Dialog | null;
 
   addDrink: (beerId?: string, opts?: { price?: number; size?: string; kind?: string }) => void;
   removeLastDrink: () => void;
@@ -75,13 +68,7 @@ type MockState = {
   nextTarget: () => void;
   toggleTag: (tag: string) => void;
   set: (patch: Partial<MockState>) => void;
-  showToast: (t: Omit<Toast, 'id'>) => void;
-  hideToast: () => void;
-  showDialog: (d: Dialog) => void;
-  hideDialog: () => void;
 };
-
-let toastSeq = 0;
 
 function clock(): string {
   const d = new Date();
@@ -135,8 +122,6 @@ export const useMock = create<MockState>((set, get) => ({
   lastEvening: null,
   homeSet: false,
   badgeDot: true,
-  toast: null,
-  dialog: null,
 
   addDrink: (beerId, opts) => {
     if (get().tourActive) {
@@ -197,10 +182,6 @@ export const useMock = create<MockState>((set, get) => ({
     set({ tags: tags.includes(tag) ? tags.filter((x) => x !== tag) : [...tags, tag] });
   },
   set: (patch) => set(patch),
-  showToast: (t) => set({ toast: { ...t, id: ++toastSeq } }),
-  hideToast: () => set({ toast: null }),
-  showDialog: (d) => set({ dialog: d }),
-  hideDialog: () => set({ dialog: null }),
 }));
 
 export function useTonight() {
@@ -211,8 +192,6 @@ export function useTonight() {
   return { tonight, count: tonight.length, spent, last, lastBeer };
 }
 
-export const toast = (t: Omit<Toast, 'id'>) => useMock.getState().showToast(t);
-export const dialog = (d: Dialog) => useMock.getState().showDialog(d);
 
 /** Pubs that pass the current filters, nearest first. */
 export function matchingPubs(st: Pick<MockState, 'openNow' | 'maxPrice' | 'beerFilter' | 'tags' | 'onlyDrunk'>): Pub[] {

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fireSuccessHaptic } from '@/utils/haptics';
 
-import { useMock, type Toast } from '../mock/store';
+import { useNvUi, type Toast } from '../ui/store';
 import { C, SCREEN_X, s, shadow } from '../theme';
 import { useTabBarSpace } from './chrome';
 import { Icon, type IconName } from './Icon';
@@ -22,8 +22,8 @@ const TOAST_LOOK: Record<Toast['kind'], { icon: IconName; bg: string; fg: string
 };
 
 export function ToastHost() {
-  const t = useMock((st) => st.toast);
-  const hide = useMock((st) => st.hideToast);
+  const t = useNvUi((st) => st.toast);
+  const hide = useNvUi((st) => st.hideToast);
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
 
@@ -49,7 +49,8 @@ export function ToastHost() {
       <Pressable
         onPress={() => {
           hide();
-          if (t.href) router.push(t.href as Href);
+          if (t.onPress) t.onPress();
+          else if (t.href) router.push(t.href as Href);
         }}
         accessibilityRole="alert"
         style={[
@@ -90,8 +91,8 @@ export function ToastHost() {
 }
 
 export function DialogHost() {
-  const d = useMock((st) => st.dialog);
-  const hide = useMock((st) => st.hideDialog);
+  const d = useNvUi((st) => st.dialog);
+  const hide = useNvUi((st) => st.hideDialog);
   if (!d) return null;
   return (
     <Animated.View

@@ -5,6 +5,7 @@
 
 import { beerCountLabel, beerNoun, czechPlural, peopleCountLabel } from './plural';
 import type { DrinkType, OutsidePlaceContext, ServingType } from '@/drinks/drinkTypes';
+import { nvCs } from './nv/cs';
 
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
  *  500 → "0,5 l", 300 → "0,3 l", 1000 → "1 l", 330 → "0,33 l". */
@@ -24,6 +25,9 @@ function atTime(time: string): string {
 
 export const cs = {
   appName: 'Na pivo',
+
+  /** The new look (app/nv), one sub-object per area in ./nv. */
+  nv: nvCs,
 
   common: {
     cancel: 'Zrušit',

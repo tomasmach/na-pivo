@@ -5,6 +5,7 @@
 
 import type { Strings } from './cs';
 import type { DrinkType, OutsidePlaceContext, ServingType } from '@/drinks/drinkTypes';
+import { nvEn } from './nv/en';
 import {
   beerCountLabel,
   beerNoun,
@@ -16,6 +17,7 @@ import {
 
 export const en: Strings = {
   appName: 'Na pivo',
+  nv: nvEn,
   common: {
     cancel: 'Cancel',
     ok: 'OK',

@@ -11,7 +11,7 @@ import { Icon } from '../../components/Icon';
 import { ButtonPair, Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, Dot, IconButton, Kicker, Person, Press, Row, Segmented, T, Tile, Toggle } from '../../components/ui';
 import { ME_COORD, beerById, pubById } from '../../mock/data';
-import { toast, useMock } from '../../mock/store';
+import { dialog, toast, useMock } from '../../mock/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { GRAY_MAP } from './NvMap';
 
@@ -571,7 +571,7 @@ export function MojeSetkaniScreen() {
           icon="x"
           kind="raised"
           onPress={() =>
-            useMock.getState().showDialog({
+            dialog({
               title: 'Zrušit setkání?',
               body: 'Všem pozvaným dám vědět, že se nekoná.',
               actions: [{ label: 'Nechat' }, { label: 'Zrušit', kind: 'danger', onPress: () => router.back() }],
