@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
+import { FullWindowOverlay } from 'react-native-screens';
 
 import { DialogHost, ToastHost } from '@/newlook/components/overlays';
 import { C, FontFiles } from '@/newlook/theme';
@@ -45,6 +46,9 @@ const SHEETS = [
   'sdileni-souhlas',
 ];
 
+// Sheets are native modals on iOS; only a window-level overlay keeps dialogs and toasts above them.
+const Overlay = Platform.OS === 'ios' ? FullWindowOverlay : React.Fragment;
+
 export default function NewLookLayout() {
   const [loaded, error] = useFonts(FontFiles);
   useEffect(() => bridgeAppToasts(), []);
@@ -69,8 +73,10 @@ export default function NewLookLayout() {
           <Stack.Screen key={name} name={name} options={SHEET} />
         ))}
       </Stack>
-      <DialogHost />
-      <ToastHost />
+      <Overlay>
+        <DialogHost />
+        <ToastHost />
+      </Overlay>
     </View>
   );
 }
