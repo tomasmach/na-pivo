@@ -113,6 +113,17 @@ import { noteTopPathname, openDetail } from '@/layout/openDetail';
 import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
 import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
 
+// The clickable mock of the redesign (app/nv) replaces the start screen.
+const NEW_LOOK = process.env.EXPO_PUBLIC_NEW_LOOK === '1';
+
+function NewLookGate() {
+  const router = useRouter();
+  useEffect(() => {
+    if (NEW_LOOK) router.replace('/nv' as Href);
+  }, [router]);
+  return null;
+}
+
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
  * signed-out existing install, never completed), replace the stack root with
@@ -127,6 +138,7 @@ function OnboardingGate() {
 
   useEffect(() => {
     if (
+      !NEW_LOOK &&
       decision === 'show' &&
       pathname !== '/onboarding' &&
       !pathname.startsWith('/parta/pozvanka') &&
@@ -510,7 +522,7 @@ export default function RootLayout() {
           screenLayout={({ route, children }) => (
             <AppDialogScreen>
               {/* The tabs narrow each tab themselves, leaving the system tab bar where it is. */}
-              {route.name === '(tabs)' ? children : <RouteScreen>{children}</RouteScreen>}
+              {route.name === '(tabs)' || route.name === 'nv' ? children : <RouteScreen>{children}</RouteScreen>}
             </AppDialogScreen>
           )}
           screenOptions={{
@@ -520,6 +532,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="nv" options={{ animation: 'none', gestureEnabled: false }} />
           <Stack.Screen name="pub-search" options={{ animation: 'none' }} />
           <Stack.Screen
             name="onboarding"
@@ -622,13 +635,18 @@ export default function RootLayout() {
           <Stack.Screen name="photo-contest" options={sheet} />
         </Stack>
         <OnboardingGate />
+        <NewLookGate />
         <PaneRouteMigrator />
-        <WhatsNewModal />
-        <ContestResultsModal />
-        <PubReminderOnboardingModal />
-        <NicknameNudgeModal />
-        <PubReminderEnableFailureModal />
-        <AppReviewPromptGate />
+        {NEW_LOOK ? null : (
+          <>
+            <WhatsNewModal />
+            <ContestResultsModal />
+            <PubReminderOnboardingModal />
+            <NicknameNudgeModal />
+            <PubReminderEnableFailureModal />
+            <AppReviewPromptGate />
+          </>
+        )}
         <ProductTelemetryTracker
           enabled={
             telemetryReady &&
@@ -636,8 +654,8 @@ export default function RootLayout() {
             !(onboardingDecision === 'show' && pathname !== '/onboarding')
           }
         />
-        <BadgeHost />
-        <Toast />
+        {NEW_LOOK ? null : <BadgeHost />}
+        {NEW_LOOK ? null : <Toast />}
       </WindowSafeAreaProvider>
     </GestureHandlerRootView>
   );
