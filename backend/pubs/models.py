@@ -1797,6 +1797,8 @@ class BeerCheckIn(models.Model):
     class Visibility(models.TextChoices):
         PRIVATE = "private", "Private"
         FRIENDS = "friends", "Friends"
+        # Opt-in: friends still see it, and it shows as a review on the beer page.
+        PUBLIC = "public", "Public"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     account = models.ForeignKey(
@@ -3758,6 +3760,34 @@ class BeerWatchPush(models.Model):
                 fields=["account", "local_date"], name="unique_beer_watch_push_per_day"
             ),
         ]
+
+
+class BeerRanking(models.Model):
+    """Hourly aggregate behind the national beer ranking and the global part of a beer page.
+
+    Rebuilt by ``refresh_beer_ranking``. Each account counts once per beer, with
+    its latest rating, so nothing here points back to a person.
+    """
+
+    product = models.OneToOneField(BeerProduct, on_delete=models.CASCADE, related_name="ranking")
+    rating_avg = models.FloatField(null=True, blank=True)
+    rating_count = models.PositiveIntegerField(default=0)
+    # Raters per star, 5 down to 1.
+    stars = models.JSONField(default=list, blank=True)
+    tag_counts = models.JSONField(default=dict, blank=True)
+    tagged_count = models.PositiveIntegerField(default=0)
+    styles = models.JSONField(default=list, blank=True)
+    rank = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    # Final rank of the previous ISO week, for the arrow next to the rank.
+    last_week_rank = models.PositiveIntegerField(null=True, blank=True)
+    week_start = models.DateField(null=True, blank=True)
+    drunk_total = models.PositiveIntegerField(default=0)
+    drinkers = models.PositiveIntegerField(default=0)
+    drunk_week = models.PositiveIntegerField(default=0)
+    computed_at = models.DateTimeField()
+
+    def __str__(self) -> str:
+        return f"BeerRanking({self.product_id}: {self.rank})"
 
 
 class DrinkLog(models.Model):

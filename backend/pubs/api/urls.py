@@ -65,6 +65,7 @@ from .party_views import (
     PartyGameEventView,
     party_game_stream,
 )
+from .piva_views import BeerCollectionView, BeerRankingView, BeerReviewsView, BeerSearchView
 from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
 from .tour_invite_views import MyTourInviteListView, MyTourInviteView, TourInvitesView
@@ -324,6 +325,10 @@ urlpatterns = [
     path("beers/detail", BeerDetailView.as_view(), name="beer-detail"),
     path("beers/nearby", BeersNearbyView.as_view(), name="beers-nearby"),
     path("beer-label-scan", BeerLabelScanView.as_view(), name="beer-label-scan"),
+    path("beers/ranking", BeerRankingView.as_view(), name="beers-ranking"),
+    path("beers/search", BeerSearchView.as_view(), name="beers-search"),
+    path("beers/reviews", BeerReviewsView.as_view(), name="beers-reviews"),
+    path("beers/collection", BeerCollectionView.as_view(), name="beers-collection"),
     # --- photo diary + FotoPivař contest ---
     path(
         "beer-photos",

@@ -255,6 +255,7 @@ from pubs.pivar import pivar_snapshot
 from pubs.price_index import upsert_pub_price_index
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
+from . import piva_views
 from .authentication import AccountTokenAuthentication
 from .cache import get_cached_pub_details, get_or_enrich
 from .client_time import bounded_client_time
@@ -797,6 +798,10 @@ def _friend_activity_reactions_prefetch() -> Prefetch:
 def _friend_activity_prefetches() -> tuple[Prefetch, Prefetch]:
     """The RSVP + reaction prefetches every FriendPubActivity read path needs."""
     return _friend_activity_responses_prefetch(), _friend_activity_reactions_prefetch()
+
+
+# Who besides the author may see a check-in: friends see both, public adds the beer page.
+BEER_CHECKIN_SHARED_VISIBILITIES = piva_views.SHARED_VISIBILITIES
 
 
 def _beer_checkin_context(request: Request) -> dict:
@@ -3569,6 +3574,8 @@ class ContentReportView(APIView):
                     {"detail": "Comment not found.", "code": "comment_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            if data.get("checkin_id") is not None:
+                return _checkin_not_found()
             return Response(
                 {"detail": "Profile not found.", "code": "profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
@@ -3672,6 +3679,29 @@ class ContentReportView(APIView):
                         status=status.HTTP_404_NOT_FOUND,
                     )
 
+            # Additive (Piva tab): a review is reportable by whoever can see it,
+            # a public one by anyone, a party one by the author's friends.
+            checkin = None
+            if data.get("checkin_id") is not None:
+                checkin = (
+                    BeerCheckIn.objects.select_related("account")
+                    .filter(public_id=data["checkin_id"], account=target)
+                    .first()
+                )
+                checkin_visible = (
+                    checkin is not None
+                    and target.pk not in _blocked_account_ids(reporter)
+                    and (
+                        checkin.visibility == BeerCheckIn.Visibility.PUBLIC
+                        or (
+                            checkin.visibility == BeerCheckIn.Visibility.FRIENDS
+                            and target.pk in _accepted_friend_ids(reporter)
+                        )
+                    )
+                )
+                if not checkin_visible:
+                    return _checkin_not_found()
+
             # A profile the reporter can actually see can be reported: a public
             # profile, or a non-public one they share a friendship with. "Share a
             # friendship" includes a still-pending request in either direction, not
@@ -3682,6 +3712,7 @@ class ContentReportView(APIView):
                 photo is not None
                 or night is not None
                 or comment is not None
+                or checkin is not None
                 or target.is_public
                 or Friendship.objects.filter(
                     Q(requester=reporter, recipient=target)
@@ -3730,6 +3761,16 @@ class ContentReportView(APIView):
                     },
                 }
                 night = comment.night
+            if checkin is not None:
+                snapshot["checkin_id"] = str(checkin.public_id)
+                snapshot["checkin"] = {
+                    "beer_name": checkin.beer_name,
+                    "rating": float(checkin.rating) if checkin.rating is not None else None,
+                    "tags": checkin.tags,
+                    "note": checkin.note,
+                    "pub_name": checkin.pub_name,
+                    "visibility": checkin.visibility,
+                }
             if night is not None:
                 # Keep enough immutable context for moderation if the author later
                 # unpublishes or edits the night. No raw location or price data is
@@ -3756,6 +3797,13 @@ class ContentReportView(APIView):
                 target_snapshot=snapshot,
             )
         return Response(ContentReportSerializer(report).data, status=status.HTTP_201_CREATED)
+
+
+def _checkin_not_found() -> Response:
+    return Response(
+        {"detail": "Review not found.", "code": "checkin_not_found"},
+        status=status.HTTP_404_NOT_FOUND,
+    )
 
 
 def _rating_item(rating: PubRating) -> dict:
@@ -6927,7 +6975,7 @@ class FriendDetailView(APIView):
                 _beer_checkin_queryset()
                 .filter(
                     account=friend,
-                    visibility=BeerCheckIn.Visibility.FRIENDS,
+                    visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES,
                     account__ghost_mode=False,
                 )
                 .order_by("-checked_in_at", "created_at", "id")[:5]
@@ -7834,8 +7882,9 @@ class BeerCheckInView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        if (data.get("visibility") or BeerCheckIn.Visibility.PRIVATE) == (
-            BeerCheckIn.Visibility.FRIENDS
+        if (data.get("visibility") or BeerCheckIn.Visibility.PRIVATE) in (
+            BeerCheckIn.Visibility.FRIENDS,
+            BeerCheckIn.Visibility.PUBLIC,
         ):
             precondition = ugc_consent_precondition(request)
             if precondition is not None:
@@ -7938,7 +7987,7 @@ class BeerCheckInFeedView(APIView):
                 account_id__in=friend_ids,
                 account__status=Account.Status.ACTIVE,
                 account__ghost_mode=False,
-                visibility=BeerCheckIn.Visibility.FRIENDS,
+                visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES,
             )
             .order_by("-checked_in_at", "created_at", "id")[:200]
         )
@@ -7965,7 +8014,7 @@ class BeerCheckInReactView(APIView):
             BeerCheckIn.objects.select_related("account")
             .filter(
                 public_id=checkin_id,
-                visibility=BeerCheckIn.Visibility.FRIENDS,
+                visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES,
                 account__status=Account.Status.ACTIVE,
                 account__ghost_mode=False,
             )
@@ -7983,7 +8032,10 @@ class BeerCheckInReactView(APIView):
                 {"detail": gettext("Tady se reagovat nedá."), "code": "blocked"},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if checkin.account_id not in _accepted_friend_ids(request.user):
+        # A public review takes a round from anyone; a party check-in only from friends.
+        if checkin.visibility != BeerCheckIn.Visibility.PUBLIC and checkin.account_id not in _accepted_friend_ids(
+            request.user
+        ):
             return Response(
                 {"detail": gettext("S tímhle člověkem ještě nejste parta."), "code": "not_friends"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -8563,17 +8615,29 @@ class BeerDetailView(APIView):
     def get(self, request: Request) -> Response:
         beer_name = (request.query_params.get("beer_name") or "").strip()
         brewery_name = (request.query_params.get("brewery_name") or "").strip()
+        # Additive (Piva tab): a catalogue key alone is enough; its name stands in for beer_name.
+        product = piva_views.resolve_product(
+            (request.query_params.get("product") or "").strip(), beer_name, brewery_name
+        )
+        by_product = not beer_name and product is not None
+        if by_product:
+            beer_name, brewery_name = product.name, product.brand_name
         if not beer_name:
             return Response(
                 {"detail": "beer_name is required.", "code": "missing_beer_name"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         match_cache = BeerCatalogMatchCache()
-        identity = _beer_identity_query(
-            beer_name,
-            brewery_name,
-            exact_brewery=True,
-            match_cache=match_cache,
+        # By catalogue key, every check-in matched to the beer counts, whatever brewery was typed.
+        identity = (
+            Q(beer_product=product)
+            if by_product
+            else _beer_identity_query(
+                beer_name,
+                brewery_name,
+                exact_brewery=True,
+                match_cache=match_cache,
+            )
         )
         blocked_ids = _blocked_account_ids(request.user)
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
@@ -8582,7 +8646,7 @@ class BeerDetailView(APIView):
             account_id__in=friend_ids,
             account__status=Account.Status.ACTIVE,
             account__ghost_mode=False,
-            visibility=BeerCheckIn.Visibility.FRIENDS,
+            visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES,
         ).filter(identity)
         party_accounts = Account.objects.filter(id__in=party.values("account_id")).order_by(
             "nickname",
@@ -8594,7 +8658,7 @@ class BeerDetailView(APIView):
                 Q(account=request.user) | Q(account_id__in=friend_ids),
             )
             .filter(identity)
-            .filter(Q(account=request.user) | Q(visibility=BeerCheckIn.Visibility.FRIENDS))
+            .filter(Q(account=request.user) | Q(visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES))
             .filter(
                 Q(account=request.user)
                 | Q(account__status=Account.Status.ACTIVE, account__ghost_mode=False)
@@ -8640,6 +8704,7 @@ class BeerDetailView(APIView):
                     many=True,
                     context=_beer_checkin_context(request),
                 ).data,
+                **piva_views.beer_global_detail(product, *piva_views._location(request)),
             },
             status=status.HTTP_200_OK,
         )

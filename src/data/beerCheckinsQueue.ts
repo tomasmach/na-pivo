@@ -33,7 +33,9 @@ function isQueueItem(value: unknown): value is BeerCheckInQueueItem {
       return (
         typeof item.payload?.clientId === 'string' &&
         typeof item.payload?.beerName === 'string' &&
-        (item.payload.visibility === 'private' || item.payload.visibility === 'friends')
+        (item.payload.visibility === 'private' ||
+          item.payload.visibility === 'friends' ||
+          item.payload.visibility === 'public')
       );
     case 'cheer':
     case 'cheer-clear':
