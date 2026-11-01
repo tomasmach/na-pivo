@@ -38,6 +38,7 @@ from .auth_views import (
     VerifyEmailView,
 )
 from .beer_watch_views import BeerWatchDetailView, BeerWatchesView, BeerWatchSettingsView
+from .beers_nearby_views import BeersNearbyView
 from .challenge_views import ChallengeListView
 from .community_event_views import (
     CommunityEventCancelView,
@@ -51,6 +52,7 @@ from .community_event_views import (
     CommunityEventTeamDetailView,
     CommunityEventTeamMembershipView,
 )
+from .label_scan_views import BeerLabelScanView
 from .party_views import (
     PartyEveningCollectionView,
     PartyEveningDetailView,
@@ -320,6 +322,8 @@ urlpatterns = [
     ),
     path("beers/memory", BeerMemoryView.as_view(), name="beer-memory"),
     path("beers/detail", BeerDetailView.as_view(), name="beer-detail"),
+    path("beers/nearby", BeersNearbyView.as_view(), name="beers-nearby"),
+    path("beer-label-scan", BeerLabelScanView.as_view(), name="beer-label-scan"),
     # --- photo diary + FotoPivař contest ---
     path(
         "beer-photos",

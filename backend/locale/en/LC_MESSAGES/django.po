@@ -641,6 +641,9 @@ msgstr "Menu scanning has used up its limit for today. Try tomorrow."
 msgid "Chybí fotka menu."
 msgstr "The menu photo is missing."
 
+msgid "Chybí fotka etikety."
+msgstr "The label photo is missing."
+
 msgid "Chybí parametr 'nickname'."
 msgstr "The 'nickname' parameter is missing."
 
