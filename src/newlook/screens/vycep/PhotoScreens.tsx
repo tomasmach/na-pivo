@@ -469,7 +469,7 @@ export function DoDenickuSheet() {
               onChangeText={setCaption}
               maxLength={280}
               placeholder={t.nv.vycep.captionPlaceholder}
-              placeholderTextColor={C.text2}
+              placeholderTextColor={C.muted}
               selectionColor={C.yellow}
               keyboardAppearance="dark"
               style={[font(15, 400, C.white), { padding: 0 }]}

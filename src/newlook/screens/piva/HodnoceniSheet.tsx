@@ -5,6 +5,7 @@ import { nvBack } from '@/newlook/navigation';
 
 import { FieldLabel, Input } from '../../components/forms';
 import { Icon } from '../../components/Icon';
+import { StatusCard } from '../../components/StatusCard';
 import { Sheet } from '../../components/overlays';
 import { Button, Chip, ChipWrap, Press, T } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
@@ -17,7 +18,7 @@ import { fetchBeerPage } from '@/data/beersClient';
 import { intlLocale, t } from '@/i18n';
 
 import { myLatestRating, saveBeerRating, savedRating } from './model';
-import { EmptyState, Loading, useLoad } from './states';
+import { Loading, useLoad } from './states';
 
 const VISIBILITIES: BeerCheckInVisibility[] = ['private', 'friends', 'public'];
 
@@ -46,7 +47,7 @@ export function HodnoceniSheet() {
   }
   return (
     <Sheet title={fallback?.name} top={130}>
-      {load.state.status === 'loading' ? <Loading /> : <EmptyState icon="cloud-off" title={t.nv.piva.beer.failed} onRetry={load.retry} />}
+      {load.state.status === 'loading' ? <Loading /> : <StatusCard text={t.nv.piva.beer.failed} action={t.nv.piva.retry} onAction={load.retry} />}
     </Sheet>
   );
 }

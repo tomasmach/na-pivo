@@ -322,7 +322,7 @@ export const kompasEn: Strings['nv']['kompas'] = {
   meetNone: "You're not hosting anything yet.",
   meetNoneBody: 'Open a table at your place and people nearby can ask to join.',
   meetStart: 'Start a meetup',
-  meetLoadFailed: "I couldn't load the meetups right now.",
+  meetLoadFailed: "The meetups didn't come through right now.",
   dayToday: 'Today',
   dayTomorrow: 'Tomorrow',
 

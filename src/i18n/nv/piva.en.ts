@@ -15,9 +15,8 @@ export const pivaEn: Strings['nv']['piva'] = {
   legendBottom: 'to 1★',
   rankNew: 'new',
   mostOften: (verdict: string) => `most often “${verdict}”`,
-  rankingFailed: 'The ranking did not load.',
-  rankingEmpty: 'The ranking is still filling up',
-  rankingEmptyBody: 'Rate the beers you drink and some will show up here soon.',
+  rankingFailed: 'The ranking did not come through.',
+  rankingEmpty: 'The ranking is still filling up, so rate the beers you drink.',
   unratedTitle: 'You drank these but never rated them',
   unratedHint: 'helps the ranking',
   drankTimes: (n: number) => `you had it ${n}×`,
@@ -26,7 +25,7 @@ export const pivaEn: Strings['nv']['piva'] = {
   collection: {
     distinct: (n: number) => englishPlural(n, { one: 'different beer', other: 'different beers' }),
     fromDrunk: (drunk: number, breweries: number) =>
-      `out of ${drunk} drunk · ${breweries} ${englishPlural(breweries, { one: 'brewery', other: 'breweries' })}`,
+      `${drunk} drunk in total · ${breweries} ${englishPlural(breweries, { one: 'brewery', other: 'breweries' })}`,
     taster: (level: string) => `Taster ${level}`,
     tasterSub: (tier: number) => `taste the top ${tier} in Czechia`,
     tasterDone: 'You have them all',
@@ -36,7 +35,7 @@ export const pivaEn: Strings['nv']['piva'] = {
     national: (rating: string) => `Czechia ${rating}`,
     yours: 'yours',
     watched: 'Watched beers',
-    failed: 'The collection did not load.',
+    failed: 'The collection did not come through.',
   },
 
   search: {
@@ -76,7 +75,7 @@ export const pivaEn: Strings['nv']['piva'] = {
     reviewFilters: { newest: 'Newest', party: 'From the party', photo: 'With a photo' },
     allReviews: (n: string) => `All ${n} reviews`,
     noReviews: 'Nobody has written anything here yet.',
-    failed: 'The beer did not load.',
+    failed: 'The beer did not come through.',
   },
 
   review: {
@@ -137,7 +136,6 @@ export const pivaEn: Strings['nv']['piva'] = {
     stop: 'Stop watching',
     stopped: (name: string) => `Not watching ${name} any more.`,
     footer: 'I will let you know when a pub nearby starts pouring it. The bell stops watching.',
-    emptyTitle: 'Not watching anything yet',
-    emptyBody: 'Tap a beer on a pub menu and choose Watch beer.',
+    empty: 'Not watching anything yet. Add a beer from a pub menu with Watch beer.',
   },
 };

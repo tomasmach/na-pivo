@@ -6,6 +6,7 @@ const names = (list: string[]) => (list.length > 1 ? `${list.slice(0, -1).join('
 
 export const tourEn: Strings['nv']['tour'] = {
   title: 'Tour de pub',
+  empty: 'No tours yet, so plan your first pub crawl.',
   more: 'More',
   create: 'Plan a tour',
   tabMine: 'Mine',
@@ -47,7 +48,7 @@ export const tourEn: Strings['nv']['tour'] = {
   started: 'Off you go!',
   startedSub: 'The Regular tab now has a Tour section.',
   publicNobody: 'Public · nobody has walked it yet',
-  ofPubs: (n) => `of ${pubs(n)}`,
+  ofPubs: (n) => `/ ${pubs(n)}`,
   skip: 'Skip',
   lastStop: 'Last stop!',
   mapSub: (n, total) => `${n} of ${total} · The line shows the order of stops`,

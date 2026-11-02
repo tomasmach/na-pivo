@@ -121,7 +121,7 @@ export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: (
 export function TabHeader({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <View style={[s.row, { justifyContent: 'space-between', minHeight: 46 }]}>
-      <D s={44} accessibilityRole="header">
+      <D s={44} accessibilityRole="header" numberOfLines={1} style={{ flexShrink: 1 }}>
         {title}
       </D>
       <View style={[s.row, { gap: 10 }]}>

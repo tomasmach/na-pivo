@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS } from 'react-native-reanimated';
+import Animated, { LayoutAnimationConfig, runOnJS } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -293,83 +293,86 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
       </View>
 
       <View style={{ position: 'absolute', left: 12, right: 12, bottom: tabSpace + 4 }}>
-        {st.mapView === 'stopy' && city ? (
-          <Animated.View entering={riseIn} style={[{ backgroundColor: C.yellow, borderRadius: 26, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, gap: 14 }]}>
-            <Grabber />
-            <View style={{ gap: 3, paddingLeft: 2 }}>
-              <T s={18} w={600} c={C.black}>
-                {city.name}
-              </T>
-              <T s={13} c={C.onYellowMuted}>{L().cityStats(city.visitCount, city.pubCount)}</T>
-            </View>
-            <Button label={L().showMyPubs} icon="map-pinned" kind="onYellow" height={46} onPress={showCityPubs} />
-          </Animated.View>
-        ) : st.mapView !== 'stopy' && target && !collapsed ? (
-          <GestureDetector gesture={swipe}>
+        {/* The card is already there when the tab opens; it only rises in when it shows up later. */}
+        <LayoutAnimationConfig skipEntering>
+          {st.mapView === 'stopy' && city ? (
             <Animated.View entering={riseIn} style={[{ backgroundColor: C.yellow, borderRadius: 26, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, gap: 14 }]}>
-              <Press onPress={() => setCollapsed(true)} hitSlop={12} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 20 }}>
-                <Grabber />
-              </Press>
-              <Animated.View key={target.key} entering={SWAP_IN}>
-                <Press onPress={() => openTarget(router, target)} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
-                  <View style={[s.fill, { gap: 3 }]}>
-                    <T s={18} w={600} c={C.black} style={{ letterSpacing: -0.2 }} numberOfLines={1}>
-                      {target.name}
-                    </T>
-                    <View style={[s.row, { gap: 5 }]}>
-                      {hours ? (
-                        <>
-                          <Dot color={hours.tone === 'open' ? C.black : C.onYellowMuted} />
-                          <T s={13} w={600} c={C.black}>
-                            {hours.tone === 'open' ? (hours.until ? L().openUntilShort(hours.until) : L().openShort) : hours.tone === 'closed' ? L().closedShort : L().hoursUnknownShort}
-                          </T>
-                        </>
-                      ) : null}
-                      <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>{`${hours ? '· ' : ''}${subLine(target, st.pinMode, k)}`}</T>
-                    </View>
-                  </View>
-                  {target.distance != null ? (
-                    <View style={[s.row, { alignItems: 'flex-end', gap: 3 }]}>
-                      <D s={24} c={C.black} lh={1.15}>
-                        {formatDistance(target.distance).value}
-                      </D>
-                      <T s={14} w={600} c={C.onYellowMuted} style={{ marginBottom: 3 }}>
-                        {formatDistance(target.distance).unit}
-                      </T>
-                    </View>
-                  ) : null}
-                </Press>
-              </Animated.View>
-              <View style={[s.row, { gap: 10 }]}>
-                <Button label={L().guideMe} icon="navigation" kind="onYellow" height={46} flex onPress={() => goThere(target)} />
-                {target.kind !== 'tour' ? (
-                  <Button label={L().another} icon="shuffle" kind="onYellowGhost" height={46} style={{ paddingHorizontal: 16 }} onPress={k.nextTarget} />
-                ) : null}
-              </View>
-            </Animated.View>
-          </GestureDetector>
-        ) : st.mapView !== 'stopy' && target ? (
-          <Animated.View entering={fadeIn} style={{ alignItems: 'center' }}>
-            <Press haptic onPress={() => setCollapsed(false)}>
-              <Glass style={[s.row, { height: 44, borderRadius: 22, paddingHorizontal: 16, gap: 8 }]}>
-                {target.distance != null ? (
-                  <>
-                    <T s={15} w={800} c={C.yellow}>
-                      {distanceLabel(target.distance)}
-                    </T>
-                    <T s={15} c={C.muted}>
-                      ·
-                    </T>
-                  </>
-                ) : null}
-                <T s={15} w={700} numberOfLines={1}>
-                  {target.name}
+              <Grabber />
+              <View style={{ gap: 3, paddingLeft: 2 }}>
+                <T s={18} w={600} c={C.black}>
+                  {city.name}
                 </T>
-                <Icon name="chevron-up" size={16} color={C.text2} />
-              </Glass>
-            </Press>
-          </Animated.View>
-        ) : null}
+                <T s={13} c={C.onYellowMuted}>{L().cityStats(city.visitCount, city.pubCount)}</T>
+              </View>
+              <Button label={L().showMyPubs} icon="map-pinned" kind="onYellow" height={46} onPress={showCityPubs} />
+            </Animated.View>
+          ) : st.mapView !== 'stopy' && target && !collapsed ? (
+            <GestureDetector gesture={swipe}>
+              <Animated.View entering={riseIn} style={[{ backgroundColor: C.yellow, borderRadius: 26, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, gap: 14 }]}>
+                <Press onPress={() => setCollapsed(true)} hitSlop={12} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 20 }}>
+                  <Grabber />
+                </Press>
+                <Animated.View key={target.key} entering={SWAP_IN}>
+                  <Press onPress={() => openTarget(router, target)} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
+                    <View style={[s.fill, { gap: 3 }]}>
+                      <T s={18} w={600} c={C.black} style={{ letterSpacing: -0.2 }} numberOfLines={1}>
+                        {target.name}
+                      </T>
+                      <View style={[s.row, { gap: 5 }]}>
+                        {hours ? (
+                          <>
+                            <Dot color={hours.tone === 'open' ? C.black : C.onYellowMuted} />
+                            <T s={13} w={600} c={C.black}>
+                              {hours.tone === 'open' ? (hours.until ? L().openUntilShort(hours.until) : L().openShort) : hours.tone === 'closed' ? L().closedShort : L().hoursUnknownShort}
+                            </T>
+                          </>
+                        ) : null}
+                        <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>{`${hours ? '· ' : ''}${subLine(target, st.pinMode, k)}`}</T>
+                      </View>
+                    </View>
+                    {target.distance != null ? (
+                      <View style={[s.row, { alignItems: 'flex-end', gap: 3 }]}>
+                        <D s={24} c={C.black} lh={1.15}>
+                          {formatDistance(target.distance).value}
+                        </D>
+                        <T s={14} w={600} c={C.onYellowMuted} style={{ marginBottom: 3 }}>
+                          {formatDistance(target.distance).unit}
+                        </T>
+                      </View>
+                    ) : null}
+                  </Press>
+                </Animated.View>
+                <View style={[s.row, { gap: 10 }]}>
+                  <Button label={L().guideMe} icon="navigation" kind="onYellow" height={46} flex onPress={() => goThere(target)} />
+                  {target.kind !== 'tour' ? (
+                    <Button label={L().another} icon="shuffle" kind="onYellowGhost" height={46} style={{ paddingHorizontal: 16 }} onPress={k.nextTarget} />
+                  ) : null}
+                </View>
+              </Animated.View>
+            </GestureDetector>
+          ) : st.mapView !== 'stopy' && target ? (
+            <Animated.View entering={fadeIn} style={{ alignItems: 'center' }}>
+              <Press haptic onPress={() => setCollapsed(false)}>
+                <Glass style={[s.row, { height: 44, borderRadius: 22, paddingHorizontal: 16, gap: 8 }]}>
+                  {target.distance != null ? (
+                    <>
+                      <T s={15} w={800} c={C.yellow}>
+                        {distanceLabel(target.distance)}
+                      </T>
+                      <T s={15} c={C.muted}>
+                        ·
+                      </T>
+                    </>
+                  ) : null}
+                  <T s={15} w={700} numberOfLines={1}>
+                    {target.name}
+                  </T>
+                  <Icon name="chevron-up" size={16} color={C.text2} />
+                </Glass>
+              </Press>
+            </Animated.View>
+          ) : null}
+        </LayoutAnimationConfig>
       </View>
     </View>
   );

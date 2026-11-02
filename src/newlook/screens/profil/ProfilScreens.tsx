@@ -1052,7 +1052,13 @@ export function UpravitProfilScreen() {
       </Field>
       <View style={{ gap: 8 }}>
         <Field label={P().editProfile.nick}>
-          <Input value={`@ ${nick}`} onChangeText={(v) => setNick(v.replace(/^@\s?/, ''))} autoCapitalize="none" autoCorrect={false} />
+          <Input
+            value={nick ? `@ ${nick}` : ''}
+            onChangeText={(v) => setNick(v.replace(/^@\s?/, ''))}
+            placeholder={P().finishAccount.placeholder}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
         </Field>
         <T s={13} c={C.muted}>
           {P().editProfile.nickHint}

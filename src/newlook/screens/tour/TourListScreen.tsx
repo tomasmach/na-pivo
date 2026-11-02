@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import * as Location from 'expo-location';
+import Animated from 'react-native-reanimated';
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 
 import { checkLocationPermission, ensureLocationPermission } from '@/compass/permissions';
@@ -14,14 +15,19 @@ import { formatWalkDistance } from '@/tours/stopFacts';
 import { pubCount, tourError } from '@/tours/TourChrome';
 
 import { BackHeader, Screen } from '../../components/chrome';
+import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Input, PageTitle, Ticket } from '../../components/forms';
 import { Icon } from '../../components/Icon';
-import { Button, Card, Chip, D, IconButton, Press, Row, Segmented, Spinner, Stack, T, Tile } from '../../components/ui';
+import { Button, Card, Chip, IconButton, Press, Row, Segmented, Stack, T, Tile } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
+import { fadeIn } from '../../motion';
 import { C, s } from '../../theme';
 import { planSummary, ticketDay, whenText } from './tourView';
 
 const STOPS: (TourStopsFilter | null)[] = [null, '2-3', '4-5', '6-8'];
+const HERO_TICKET_HEIGHT = 290;
+// Three result rows of 80 inside a card.
+const PUBLIC_GHOST_HEIGHT = 3 * 80 + 8;
 
 export const planHref = (id: string) => ({ pathname: '/nv/tour-pruchod', params: { id } }) as unknown as Href;
 
@@ -104,23 +110,13 @@ function MineTab() {
   const heroPlan = active ? store.plans.find((p) => p.id === active.planId) : (upcoming ?? sortPlans(store.plans)[0]);
   const others = sortPlans(store.plans.filter((plan) => plan.id !== heroPlan?.id && plan.id !== active?.planId));
 
-  if (!store.hydrated) return <Spinner style={{ marginTop: 24 }} />;
+  // Tours live on the phone, so this only waits for local storage; the stand-in is the size of the hero ticket.
+  if (!store.hydrated) return <Ghost height={HERO_TICKET_HEIGHT} />;
   if (store.error && !store.plans.length && !store.runs.length) {
-    return (
-      <T s={15} c={C.text2} lh={1.4}>
-        {tourError(store.error) ?? t.tours.errors.storage}
-      </T>
-    );
+    return <StatusCard text={tourError(store.error) ?? t.tours.errors.storage} />;
   }
   if (!active && !heroPlan && !store.draft && !store.runs.length) {
-    return (
-      <View style={{ gap: 8, marginTop: 8 }}>
-        <D s={30}>{t.tours.emptyTitle}</D>
-        <T s={15} c={C.text2} lh={1.4}>
-          {t.tours.empty}
-        </T>
-      </View>
-    );
+    return <StatusCard text={tx.empty} />;
   }
   return (
     <>
@@ -361,23 +357,25 @@ function PublicTab() {
         <Chip label={tx.withChallenges} icon="flag" active={challenges} onPress={() => setChallenges(!challenges)} />
       </View>
       {!current || locating ? (
-        <Spinner style={{ marginTop: 12 }} />
+        <Ghost height={PUBLIC_GHOST_HEIGHT} />
       ) : current.failure ? (
-        <View style={{ gap: 12 }}>
-          <T s={15} c={C.text2} lh={1.4}>
-            {current.failure === 'offline' ? t.tours.discoverOffline : t.tours.discoverFailed}
-          </T>
-          <Button label={t.tours.retry} kind="raised" icon="refresh-cw" onPress={() => setRetry((r) => r + 1)} />
-        </View>
+        <StatusCard
+          text={current.failure === 'offline' ? t.tours.discoverOffline : t.tours.discoverFailed}
+          action={t.tours.retry}
+          actionIcon="refresh-cw"
+          onAction={() => setRetry((r) => r + 1)}
+        />
       ) : !hits.length ? (
-        <View style={{ gap: 12 }}>
-          <T s={15} c={C.text2} lh={1.4}>
-            {term ? t.tours.discoverNothingFor(term) : filtered ? t.tours.discoverNothingFiltered : t.tours.discoverNothing}
-          </T>
-          {filtered ? <Button label={t.tours.discoverClearFilters} kind="raised" onPress={() => { setStops(null); setChallenges(false); }} /> : null}
-        </View>
+        <StatusCard
+          text={term ? t.tours.discoverNothingFor(term) : filtered ? t.tours.discoverNothingFiltered : t.tours.discoverNothing}
+          action={filtered ? t.tours.discoverClearFilters : undefined}
+          onAction={() => {
+            setStops(null);
+            setChallenges(false);
+          }}
+        />
       ) : (
-        <>
+        <Animated.View entering={fadeIn} style={{ gap: 16 }}>
           {position && !term && !current.nearby ? (
             <T s={13} c={C.muted} lh={1.4}>
               {filtered ? t.tours.discoverNothingNearFiltered : t.tours.discoverNothingNear}
@@ -417,7 +415,7 @@ function PublicTab() {
               />
             ))}
           </Card>
-        </>
+        </Animated.View>
       )}
     </>
   );

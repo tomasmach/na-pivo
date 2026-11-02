@@ -5,6 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { BackHeader, Screen } from '../../components/chrome';
 import { PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
+import { StatusCard } from '../../components/StatusCard';
 import { Card, Dot, IconButton, Press, Row, T, Tile } from '../../components/ui';
 import { toast } from '../../ui/store';
 import { C, s } from '../../theme';
@@ -15,7 +16,7 @@ import { notificationsDenied } from '@/notifications/beerWatchPush';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 
 import { fmtDistance } from './model';
-import { EmptyState, Loading } from './states';
+import { Loading } from './states';
 
 export function HlidanaPivaScreen() {
   const w = t.nv.piva.watches;
@@ -93,7 +94,7 @@ export function HlidanaPivaScreen() {
       {!loaded && !failed ? (
         <Loading />
       ) : failed && !loaded ? (
-        <EmptyState icon="cloud-off" title={t.beerWatch.loadFailed} onRetry={load} />
+        <StatusCard text={t.beerWatch.loadFailed} action={t.nv.piva.retry} onAction={load} />
       ) : watches.length ? (
         <>
           <T s={15} w={700} c={C.muted}>
@@ -128,7 +129,7 @@ export function HlidanaPivaScreen() {
           </T>
         </>
       ) : (
-        <EmptyState icon="bell-ring" title={w.emptyTitle} body={w.emptyBody} />
+        <StatusCard text={w.empty} />
       )}
     </Screen>
   );

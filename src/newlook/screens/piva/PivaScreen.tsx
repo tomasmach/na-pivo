@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
+import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { D, T, Card, Chip, IconButton, Press, Row, Segmented, Tile } from '../../components/ui';
 import { NO_VALUE } from '../../format';
 import { Input } from '../../components/forms';
+import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
 import {
   fetchBeerCollection,
@@ -24,10 +27,16 @@ import { t } from '@/i18n';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 
 import { STYLE_FILTERS, fmtCount, fmtDistance, fmtRating, lastKnownPosition, styleFilterLabel } from './model';
-import { EmptyState, Loading, useLoad, type Load } from './states';
+import { useLoad, type Load } from './states';
 
 const SHADES = [C.yellow, '#F7F7F2B3', '#F7F7F273', '#F7F7F242', '#F7F7F229'];
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+// Loading stand-ins at the size of what replaces them: ranking rows, the collection's count and taster card, a page of search rows.
+const RANK_ROW_HEIGHT = 77;
+const GHOST_ROWS = [0, 1, 2, 3, 4, 5];
+const COLLECTION_HERO_HEIGHT = 79;
+const COLLECTION_TASTER_HEIGHT = 174;
+const SEARCH_GHOST_HEIGHT = 5 * 62 + 8;
 
 /** Share of raters per star, 5★ first, as one bar. */
 export function DistBar({ shares, width = 230, flip }: { shares: number[]; width?: number; flip?: boolean }) {
@@ -56,7 +65,7 @@ function RankRow({ b, bottom, onPress, early }: { b: RankedBeer; bottom?: boolea
   return (
     <Press onPress={onPress} style={[s.row, { paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
       <View style={{ width: 34, alignItems: 'center', gap: 2 }}>
-        <D s={34} c={b.position === 1 && !bottom ? C.yellow : C.muted}>
+        <D s={34} c={b.position === 1 && !bottom ? C.yellow : C.muted} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
           {String(b.position)}
         </D>
         {early ? (
@@ -186,17 +195,21 @@ export function PivaScreen() {
               </T>
             </View>
             {ranking.state.status === 'loading' ? (
-              <Loading />
-            ) : ranking.state.status === 'error' ? (
-              <EmptyState icon="cloud-off" title={p.rankingFailed} onRetry={ranking.retry} />
-            ) : page && page.items.length ? (
               <View>
+                {GHOST_ROWS.map((i) => (
+                  <Ghost key={i} height={RANK_ROW_HEIGHT - 8} radius={16} style={{ marginVertical: 4 }} />
+                ))}
+              </View>
+            ) : ranking.state.status === 'error' ? (
+              <StatusCard text={p.rankingFailed} action={p.retry} onAction={ranking.retry} />
+            ) : page && page.items.length ? (
+              <Animated.View entering={fadeIn}>
                 {page.items.map((b) => (
                   <RankRow key={b.productKey} b={b} bottom={tab === 'bottom'} early={early} onPress={() => openBeer(router, b.productKey)} />
                 ))}
-              </View>
+              </Animated.View>
             ) : (
-              <EmptyState icon="list-ordered" title={p.rankingEmpty} body={p.rankingEmptyBody} />
+              <StatusCard text={p.rankingEmpty} />
             )}
             {tab === 'best' && (early || (page && !page.items.length)) && unrated.length ? (
               <>
@@ -233,11 +246,16 @@ export function PivaScreen() {
             ) : null}
           </>
         ) : collection.state.status === 'loading' ? (
-          <Loading />
+          <>
+            <Ghost height={COLLECTION_HERO_HEIGHT} radius={16} />
+            <Ghost height={COLLECTION_TASTER_HEIGHT} />
+          </>
         ) : collection.state.status === 'error' ? (
-          <EmptyState icon="cloud-off" title={p.collection.failed} onRetry={collection.retry} />
+          <StatusCard text={p.collection.failed} action={p.retry} onAction={collection.retry} />
         ) : (
-          <Collection data={collection.state.data} watchedCount={watchedCount} />
+          <Animated.View entering={fadeIn} style={{ gap: 16 }}>
+            <Collection data={collection.state.data} watchedCount={watchedCount} />
+          </Animated.View>
         )}
       </ScrollView>
       <BottomFade height={tabSpace + 40} />
@@ -386,11 +404,11 @@ export function HledatPivoScreen() {
       </View>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: SCREEN_X, paddingBottom: insets.bottom + 30 }}>
         {state.status === 'loading' ? (
-          <Loading />
+          <Ghost height={SEARCH_GHOST_HEIGHT} />
         ) : state.status === 'error' ? (
-          <EmptyState icon="cloud-off" title={p.failed} />
+          <StatusCard text={p.failed} />
         ) : !list.length ? (
-          <EmptyState icon="search" title={p.empty} />
+          <StatusCard text={p.empty} />
         ) : (
           <Card>
             {list.map((b, i) => (

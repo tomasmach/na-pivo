@@ -5,6 +5,7 @@ import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '../../components/Icon';
+import { StatusCard } from '../../components/StatusCard';
 import { Chip, ChipWrap, D, IconButton, Kicker, Press, Stack, T } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
@@ -25,7 +26,7 @@ import { findBeerWatch, useBeerWatchStore } from '@/stores/beerWatchStore';
 
 import { fmtCount, fmtDistance, fmtRating, lastKnownPosition, myLatestRating, reviewDay, saveBeerRating, savedRating, toggleWatch } from './model';
 import { Stars } from './PivaScreen';
-import { EmptyState, Loading, useLoad } from './states';
+import { Loading, useLoad } from './states';
 
 const REVIEW_FILTERS: ReviewFilter[] = ['newest', 'party', 'photo'];
 
@@ -130,7 +131,7 @@ export function BeerScreen() {
       ) : (
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X }}>
           <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={t.nv.piva.back} />
-          {page.state.status === 'loading' ? <Loading pad={80} /> : <EmptyState icon="cloud-off" title={t.nv.piva.beer.failed} onRetry={page.retry} />}
+          {page.state.status === 'loading' ? <Loading pad={80} /> : <StatusCard text={t.nv.piva.beer.failed} action={t.nv.piva.retry} onAction={page.retry} style={{ marginTop: 24 }} />}
         </View>
       )}
     </View>
