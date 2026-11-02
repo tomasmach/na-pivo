@@ -6,6 +6,7 @@ const names = (list: string[]) => (list.length > 1 ? `${list.slice(0, -1).join('
 
 export const tourCs = {
   title: 'Tour de pub',
+  empty: 'Zatím nemáš žádnou tour, tak si naplánuj první tah po hospodách.',
   more: 'Další',
   create: 'Naplánovat tour',
   tabMine: 'Moje',
@@ -47,7 +48,7 @@ export const tourCs = {
   started: 'Jdete na to!',
   startedSub: 'Štamgast má teď záložku Tour.',
   publicNobody: 'Veřejná · zatím ji nikdo neprošel',
-  ofPubs: (n: number) => (n === 1 ? 'z 1 hospody' : `${[2, 3, 4, 6, 7].includes(n) ? 'ze' : 'z'} ${n} hospod`),
+  ofPubs: (n: number) => `/ ${pubs(n)}`,
   skip: 'Přeskočit',
   lastStop: 'Poslední zastávka!',
   mapSub: (n: number, total: number) => `${n} z ${total} · Čára ukazuje pořadí zastávek`,

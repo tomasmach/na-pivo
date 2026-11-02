@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Linking, ScrollView, Share, View, type TextInputInstance } from 'react-native';
+import { Image, Linking, ScrollView, Share, View, type TextInputInstance } from 'react-native';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import * as Clipboard from 'expo-clipboard';
@@ -71,7 +71,7 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Field, Input, PageTitle } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Person, Press, ProgressRing, Row, Segmented, T, Tile, Toggle } from '../../components/ui';
+import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Person, Press, ProgressRing, Row, Segmented, Spinner, T, Tile, Toggle } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { Dial } from '../kompas/Dial';
@@ -129,7 +129,7 @@ export function BadgeCircle({ icon, got, size = 76 }: { icon: IconName; got: boo
   return (
     <View
       style={[
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: got ? '#FFC4001A' : C.card, borderWidth: got ? 2.5 : 1, borderColor: got ? C.yellow : C.hairline },
+        { width: size, height: size, borderRadius: size / 2, backgroundColor: got ? C.yellowSoft : C.card, borderWidth: got ? 2.5 : 1, borderColor: got ? C.yellow : C.hairline },
         s.center,
       ]}
     >
@@ -384,7 +384,7 @@ export function OdznakyScreen() {
       {goal ? (
         <Press
           onPress={() => router.push({ pathname: '/nv/odznak', params: { id: goal.key } })}
-          style={{ padding: 16, gap: 14, borderRadius: 22, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }}
+          style={{ padding: 16, gap: 14, borderRadius: 22, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }}
         >
           <View style={[s.row, { gap: 12 }]}>
             <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.control }, s.center]}>
@@ -511,7 +511,7 @@ export function OdznakSheet() {
             return (
               <View
                 key={label}
-                style={[{ width: size, height: size, borderRadius: size / 2, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.hairline, backgroundColor: on ? '#FFC4001A' : 'transparent' }, s.center]}
+                style={[{ width: size, height: size, borderRadius: size / 2, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.hairline, backgroundColor: on ? C.yellowSoft : 'transparent' }, s.center]}
               >
                 <T s={weekdays ? 13 : 12} w={700} c={on ? C.yellow : C.muted}>
                   {label}
@@ -535,8 +535,8 @@ export function OdznakSheet() {
 
   const medal = (
     <View style={{ alignItems: 'center', gap: 6, marginTop: -20 }}>
-      <View style={[{ width: 132, height: 132, borderRadius: 66, borderWidth: got ? 3 : 1.5, borderColor: got ? C.yellow : C.hairline, backgroundColor: got ? '#FFC4001A' : C.card }, s.center]}>
-        <View style={[{ width: 92, height: 92, borderRadius: 46, borderWidth: 1.5, borderColor: got ? '#FFC40080' : C.hairline }, s.center]}>
+      <View style={[{ width: 132, height: 132, borderRadius: 66, borderWidth: got ? 3 : 1.5, borderColor: got ? C.yellow : C.hairline, backgroundColor: got ? C.yellowSoft : C.card }, s.center]}>
+        <View style={[{ width: 92, height: 92, borderRadius: 46, borderWidth: 1.5, borderColor: got ? C.yellowLine : C.hairline }, s.center]}>
           <Icon name={badge.icon} size={40} color={got ? C.yellow : C.muted} />
         </View>
       </View>
@@ -609,7 +609,7 @@ export function OdznakSheet() {
             const on = i < state.tier;
             return (
               <View key={threshold} style={{ alignItems: 'center', gap: 6 }}>
-                <View style={[{ width: 44, height: 44, borderRadius: 22, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.muted, backgroundColor: on ? '#FFC4001A' : 'transparent' }, s.center]}>
+                <View style={[{ width: 44, height: 44, borderRadius: 22, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.muted, backgroundColor: on ? C.yellowSoft : 'transparent' }, s.center]}>
                   <T s={14} w={800} c={on ? C.yellow : C.muted}>
                     {roman(i + 1)}
                   </T>
@@ -700,7 +700,7 @@ export function NovyLevelSheet() {
           {t.profile.levelMaxed}
         </T>
       )}
-      {events == null && since ? <ActivityIndicator color={C.muted} /> : null}
+      {events == null && since ? <Spinner /> : null}
       {shown.length > 0 ? (
         <>
           <T s={15} w={700} c={C.muted}>
@@ -1044,7 +1044,7 @@ export function UpravitProfilScreen() {
       <Press onPress={changePhoto} disabled={avatarBusy} style={{ alignItems: 'center', gap: 10 }} accessibilityRole="button">
         <ProfilAvatar uri={me.avatarUrl} initial={me.initial} size={96} />
         {avatarBusy ? (
-          <ActivityIndicator color={C.yellow} />
+          <Spinner />
         ) : (
           <T s={15} w={700} c={C.yellow}>
             {P().editProfile.changePhoto}
@@ -1056,7 +1056,13 @@ export function UpravitProfilScreen() {
       </Field>
       <View style={{ gap: 8 }}>
         <Field label={P().editProfile.nick}>
-          <Input value={`@ ${nick}`} onChangeText={(v) => setNick(v.replace(/^@\s?/, ''))} autoCapitalize="none" autoCorrect={false} />
+          <Input
+            value={nick ? `@ ${nick}` : ''}
+            onChangeText={(v) => setNick(v.replace(/^@\s?/, ''))}
+            placeholder={P().finishAccount.placeholder}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
         </Field>
         <T s={13} c={C.muted}>
           {P().editProfile.nickHint}
@@ -1237,7 +1243,7 @@ export function UcetScreen() {
               </View>
             </View>
             {!verified ? (
-              <View style={[s.row, { gap: 10, padding: 12, marginBottom: 12, borderRadius: 14, backgroundColor: '#FFC40014', borderWidth: 1, borderColor: '#FFC40059' }]}>
+              <View style={[s.row, { gap: 10, padding: 12, marginBottom: 12, borderRadius: 14, backgroundColor: '#FFC40014', borderWidth: 1, borderColor: C.yellowEdge }]}>
                 <Icon name="mail-warning" size={18} color={C.yellow} />
                 <T s={13} c={C.text2} style={s.fill}>
                   {P().account.unverified}
@@ -1263,9 +1269,9 @@ export function UcetScreen() {
         {P().account.more}
       </T>
       <Card>
-        <Row title={P().account.export} chevron onPress={() => void exportData()} trailing={busy === 'export' ? <ActivityIndicator color={C.muted} /> : null} />
-        <Row title={P().account.logout} chevron onPress={() => void signOut()} trailing={busy === 'logout' ? <ActivityIndicator color={C.muted} /> : null} />
-        <Row last title={P().account.delete} titleColor={C.danger} chevron onPress={confirmDelete} trailing={busy === 'delete' ? <ActivityIndicator color={C.muted} /> : null} />
+        <Row title={P().account.export} chevron onPress={() => void exportData()} trailing={busy === 'export' ? <Spinner /> : null} />
+        <Row title={P().account.logout} chevron onPress={() => void signOut()} trailing={busy === 'logout' ? <Spinner /> : null} />
+        <Row last title={P().account.delete} titleColor={C.danger} chevron onPress={confirmDelete} trailing={busy === 'delete' ? <Spinner /> : null} />
       </Card>
     </Screen>
   );
@@ -1372,7 +1378,7 @@ export function PrihlasovaniSheet() {
               sub={locked ? P().loginMethods.onlyOne : linked ? P().loginMethods.linked : P().loginMethods.notLinked}
               trailing={
                 busy === provider ? (
-                  <ActivityIndicator color={C.muted} />
+                  <Spinner />
                 ) : locked ? (
                   <Icon name="lock" size={16} color={C.muted} />
                 ) : (
@@ -1665,7 +1671,7 @@ export function VysledekScreen() {
     return (
       <Screen>
         <View style={{ marginTop: 130, gap: 18 }}>
-          <ActivityIndicator color={C.yellow} style={{ alignSelf: 'flex-start' }} />
+          <Spinner style={{ alignSelf: 'flex-start' }} />
           <D s={44}>{P().result.verifying}</D>
         </View>
       </Screen>
@@ -1832,7 +1838,7 @@ export function SpravaPartyScreen() {
               {link ? (
                 <QRCode value={link} size={200} color={C.black} backgroundColor={C.white} />
               ) : invite === 'loading' ? (
-                <ActivityIndicator color={C.black} />
+                <Spinner color={C.black} />
               ) : (
                 <T s={14} w={600} c={C.black} style={{ textAlign: 'center' }}>
                   {t.friends.codeOffline}
@@ -1883,7 +1889,7 @@ export function SpravaPartyScreen() {
                   sub={profile.nickname ? profile.displayName || undefined : undefined}
                   trailing={
                     requesting === `account:${profile.id}` ? (
-                      <ActivityIndicator color={C.muted} />
+                      <Spinner />
                     ) : (
                       <Chip label={P().parta.addOne} active plain height={34} onPress={() => void request(profile)} />
                     )
@@ -1903,7 +1909,7 @@ export function SpravaPartyScreen() {
             {P().parta.friends}
           </T>
           {friends == null ? (
-            <ActivityIndicator color={C.muted} style={{ alignSelf: 'flex-start' }} />
+            <Spinner style={{ alignSelf: 'flex-start' }} />
           ) : friends.length === 0 ? (
             <T s={14} c={C.muted}>
               {P().parta.noFriends}
@@ -2030,7 +2036,7 @@ export function PozvankaDoPartySheet() {
       <Sheet closeIcon={false} top={520} scroll={false}>
         <View style={{ alignItems: 'center', gap: 14, paddingVertical: 12 }}>
           <Kicker>{P().invite.kicker}</Kicker>
-          {state === 'loading' ? <ActivityIndicator color={C.yellow} /> : <Icon name="users" size={40} color={C.muted} />}
+          {state === 'loading' ? <Spinner /> : <Icon name="users" size={40} color={C.muted} />}
           <T s={16} c={C.text2} style={{ textAlign: 'center' }}>
             {message}
           </T>
@@ -2094,11 +2100,11 @@ export function PozvankaDoPartySheet() {
             ))}
           </View>
           <T s={13} c={C.muted} style={{ flexShrink: 1 }}>
-            {P().invite.mutual(mutual.profiles.map(friendDisplayName), Math.max(0, mutual.count - mutual.profiles.length), handle)}
+            {P().invite.mutual(mutual.profiles.map(friendDisplayName), Math.max(0, mutual.count - mutual.profiles.length))}
           </T>
         </View>
       ) : null}
-      <Button label={claiming ? t.account.loading : P().invite.add(handle)} icon="user-plus" disabled={claiming} onPress={() => void claim()} />
+      <Button label={claiming ? t.account.loading : P().invite.add} icon="user-plus" disabled={claiming} onPress={() => void claim()} />
       <Press onPress={() => close(router)} style={{ alignItems: 'center', paddingBottom: 6 }}>
         <T s={15} w={700} c={C.text2}>
           {P().invite.notNow}
@@ -2258,7 +2264,7 @@ export function OAppceScreen() {
         {P().about.tagline}
       </T>
       {notes === 'loading' ? (
-        <ActivityIndicator color={C.muted} style={{ alignSelf: 'flex-start' }} />
+        <Spinner style={{ alignSelf: 'flex-start' }} />
       ) : notes === 'error' ? (
         <T s={14} c={C.muted}>
           {P().about.notesFailed}

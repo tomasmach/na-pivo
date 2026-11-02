@@ -6,6 +6,7 @@ import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { t } from '@/i18n';
 
 import { fireSuccessHaptic } from '@/utils/haptics';
 
@@ -17,12 +18,12 @@ import { Icon, type IconName } from './Icon';
 import { Button, D, IconButton, T } from './ui';
 
 const TOAST_LOOK: Record<Toast['kind'], { icon: IconName; bg: string; fg: string; border: string }> = {
-  saved: { icon: 'check', bg: C.yellow, fg: C.black, border: '#FFFFFF1F' },
-  xp: { icon: 'map', bg: C.yellow, fg: C.black, border: '#FFFFFF1F' },
-  offline: { icon: 'cloud-off', bg: C.control, fg: C.text2, border: '#FFFFFF1F' },
+  saved: { icon: 'check', bg: C.yellow, fg: C.black, border: C.line },
+  xp: { icon: 'map', bg: C.yellow, fg: C.black, border: C.line },
+  offline: { icon: 'cloud-off', bg: C.control, fg: C.text2, border: C.line },
   error: { icon: 'circle-alert', bg: C.control, fg: C.yellow, border: '#FFC40038' },
-  info: { icon: 'info', bg: C.control, fg: C.text2, border: '#FFFFFF1F' },
-  medal: { icon: 'medal', bg: '#FFC4001A', fg: C.yellow, border: '#FFC40080' },
+  info: { icon: 'info', bg: C.control, fg: C.text2, border: C.line },
+  medal: { icon: 'medal', bg: C.yellowSoft, fg: C.yellow, border: C.yellowLine },
 };
 
 const TOAST_IN = enter(-16, DURATION.sheet);
@@ -107,7 +108,7 @@ export function DialogHost() {
       exiting={fadeOut}
       style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.scrim, zIndex: 90 }, s.center]}
     >
-      <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={hide} accessibilityLabel="Zavřít" />
+      <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={hide} accessibilityLabel={t.nv.common.close} />
       <View
         accessibilityViewIsModal
         style={{
@@ -120,7 +121,7 @@ export function DialogHost() {
           borderRadius: 28,
           backgroundColor: C.dialog,
           borderWidth: 1,
-          borderColor: '#FFFFFF14',
+          borderColor: C.tint,
         }}
       >
         <D s={30}>{d.title}</D>
@@ -242,7 +243,7 @@ export function Sheet({
   return (
     <View style={{ flex: 1 }}>
       <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.scrim }, scrimStyle]}>
-        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Zavřít" />
+        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel={t.nv.common.close} />
       </Animated.View>
       <Animated.View
         onLayout={(e) => {
@@ -261,7 +262,7 @@ export function Sheet({
             borderTopLeftRadius: 34,
             borderTopRightRadius: 34,
             borderTopWidth: 1,
-            borderColor: '#FFFFFF14',
+            borderColor: C.tint,
             paddingTop: 22,
           },
           cardStyle,
@@ -274,7 +275,7 @@ export function Sheet({
               {kicker}
               {title ? <D s={30}>{title}</D> : null}
             </View>
-            {closeIcon ? <IconButton icon="x" size={40} iconSize={18} onPress={close} label="Zavřít" /> : null}
+            {closeIcon ? <IconButton icon="x" size={40} iconSize={18} onPress={close} label={t.nv.common.close} /> : null}
           </View>
         ) : null}
         {scroll ? (

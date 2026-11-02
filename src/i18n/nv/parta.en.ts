@@ -9,7 +9,7 @@ export const partaEn: Strings['nv']['parta'] = {
   qrLabel: 'Crew QR code',
   add: 'Add',
   loading: 'Loading…',
-  loadFailed: 'Could not load your crew.',
+  loadFailed: 'Your crew did not come through.',
   retry: 'Try again',
   offline: 'You are offline. Showing what I saw last.',
   failed: 'That did not work. Try again.',
@@ -17,8 +17,7 @@ export const partaEn: Strings['nv']['parta'] = {
   invitations: 'Invitations',
   plan: 'Plan',
   newInvite: 'New invitation',
-  nothingPlanned: 'Nothing planned',
-  nothingPlannedBody: 'Invite the crew to a pub or to your place. It can be next Friday, too.',
+  nothingPlanned: 'Nothing planned, so invite the crew to a pub or to your place.',
 
   outNow: 'Out now',
   outCount: (n: number, total: number) => `${n} of ${total}`,
@@ -57,8 +56,9 @@ export const partaEn: Strings['nv']['parta'] = {
   homeMeetupsSub: 'Small meetups with strangers',
 
   yourPlan: 'Your plan',
-  inviteFrom: (name: string) => `Invitation from ${name}`,
+  inviteFrom: (name: string) => `${name} invites you`,
   homePlace: (name: string) => `At ${name}’s place`,
+  homePlaceMine: 'At my place',
   dayToday: (weekday: string) => `Today, ${weekday}`,
   dayTomorrow: (weekday: string) => `Tomorrow, ${weekday}`,
   rsvpGoing: 'Going',
@@ -96,7 +96,7 @@ export const partaEn: Strings['nv']['parta'] = {
   inCalendar: 'In your calendar.',
   calendarFailed: 'Could not add it to the calendar.',
   addressLater: (name: string) => `${name} will send you the address`,
-  imAt: (name: string) => `I am at ${name}’s`,
+  imAt: 'I am here',
   checkedIn: (name: string) => `You are at ${name}’s.`,
   checkedInOffline: 'I will let them know once you have signal.',
 
@@ -153,7 +153,7 @@ export const partaEn: Strings['nv']['parta'] = {
   block: 'Block',
   blocked: 'Blocked.',
   blockedSub: 'Unblock them in Crew settings.',
-  profileFailed: 'Could not load the profile.',
+  profileFailed: 'The profile did not come through.',
 
   boards: 'Leaderboards',
   tabBeers: 'Beers',

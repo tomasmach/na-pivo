@@ -17,6 +17,7 @@ import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 
 import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
+import { StatusCard } from '../../components/StatusCard';
 import { Ticket } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, Card, IconButton, Person, Press, Row, SectionTitle, Stack, T, Tile, Toggle } from '../../components/ui';
@@ -159,7 +160,7 @@ function LiveRow({ profile, sub, last }: { profile: FriendProfile; sub: string; 
               if (!ok) setDone(false);
             });
           }}
-          style={[s.row, { height: 34, borderRadius: 18, paddingHorizontal: 14, gap: 6, backgroundColor: done ? '#FFC40029' : C.card, borderWidth: 1, borderColor: done ? '#FFC40080' : C.hairline }]}
+          style={[s.row, { height: 34, borderRadius: 18, paddingHorizontal: 14, gap: 6, backgroundColor: done ? C.yellowTint : C.card, borderWidth: 1, borderColor: done ? C.yellowLine : C.hairline }]}
         >
           <Icon name="beer" size={16} color={C.yellow} />
           <T s={14} w={600} c={done ? C.yellow : C.white}>
@@ -168,29 +169,6 @@ function LiveRow({ profile, sub, last }: { profile: FriendProfile; sub: string; 
         </Press>
       }
     />
-  );
-}
-
-/** `reserve` keeps the body and action invisible but in place, so the card doesn't change height when they arrive. */
-function StatusCard({ title, body, action, onAction, reserve }: { title: string; body?: string; action?: string; onAction?: () => void; reserve?: boolean }) {
-  const hidden = reserve ? ({ opacity: 0 } as const) : null;
-  const a11yHidden = { accessibilityElementsHidden: reserve, importantForAccessibility: reserve ? ('no-hide-descendants' as const) : ('auto' as const) };
-  return (
-    <View style={{ padding: 20, gap: 8, borderRadius: 24, borderWidth: 1.5, borderColor: '#FFFFFF26' }}>
-      <T s={18} w={700}>
-        {title}
-      </T>
-      {body ? (
-        <T s={14} c={C.muted} lh={1.4} style={hidden} {...a11yHidden}>
-          {body}
-        </T>
-      ) : null}
-      {action ? (
-        <View pointerEvents={reserve ? 'none' : 'auto'} style={hidden} {...a11yHidden}>
-          <Button label={action} icon="plus" kind="raised" height={42} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={onAction} />
-        </View>
-      ) : null}
-    </View>
   );
 }
 
@@ -304,7 +282,7 @@ export function PartaScreen() {
                   <PlanTicket plan={p} width={ticketW} />
                 </Press>
               ))}
-              <Press onPress={() => router.push('/nv/nova-pozvanka')} style={[{ width: ticketW, minHeight: 242, borderRadius: 24, borderWidth: 1.5, borderColor: '#FFFFFF26', gap: 10 }, s.center]}>
+              <Press onPress={() => router.push('/nv/nova-pozvanka')} style={[{ width: ticketW, minHeight: 242, borderRadius: 24, borderWidth: 1.5, borderColor: C.lineStrong, gap: 10 }, s.center]}>
                 <View style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.control }, s.center]}>
                   <Icon name="plus" size={20} />
                 </View>
@@ -320,11 +298,11 @@ export function PartaScreen() {
             </View>
           </View>
         ) : plans === null && loading ? (
-          <StatusCard title={t.nv.parta.loading} body={t.nv.parta.nothingPlannedBody} action={t.nv.parta.newInvite} reserve />
+          <StatusCard text={t.nv.parta.loading} action={t.nv.parta.newInvite} actionIcon="plus" reserve />
         ) : plans === null && failed ? (
-          <StatusCard title={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
+          <StatusCard text={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
         ) : (
-          <StatusCard title={t.nv.parta.nothingPlanned} body={t.nv.parta.nothingPlannedBody} action={t.nv.parta.newInvite} onAction={() => router.push('/nv/nova-pozvanka')} />
+          <StatusCard text={t.nv.parta.nothingPlanned} action={t.nv.parta.newInvite} actionIcon="plus" onAction={() => router.push('/nv/nova-pozvanka')} />
         )}
         {dashboard ? (
           <Animated.View entering={fadeIn} style={{ gap: 20 }}>
@@ -381,30 +359,35 @@ export function PartaScreen() {
                 />
               </View>
             ))}
-            <SectionTitle title={t.nv.parta.wholeParty} action={String(friends.length)} onAction={() => router.push('/nv/sprava-party')} />
-            <Card>
-              {friends.length === 0 ? (
-                <Row last leading={<Tile icon="user-plus" />} title={t.nv.parta.inviteFirst} chevron onPress={() => router.push('/nv/sprava-party')} />
-              ) : (
-                rest.map((f, i, arr) => {
-                  const stats = dashboard.friendStats[f.id];
-                  return (
-                    <Row
-                      key={f.id}
-                      last={i === arr.length - 1}
-                      leading={<Person initial={personInitial(f)} />}
-                      title={personName(f)}
-                      sub={lastTogetherLabel(stats?.lastSharedAt ?? null, stats?.lastPubName ?? '')}
-                      chevron
-                      onPress={() => openFriend(f.id)}
-                    />
-                  );
-                })
-              )}
-            </Card>
+            {friends.length === 0 || rest.length ? (
+              <>
+                <SectionTitle title={t.nv.parta.wholeParty} action={String(friends.length)} onAction={() => router.push('/nv/sprava-party')} />
+                <Card>
+                  {friends.length === 0 ? (
+                    <Row last leading={<Tile icon="user-plus" />} title={t.nv.parta.inviteFirst} chevron onPress={() => router.push('/nv/sprava-party')} />
+                  ) : (
+                    rest.map((f, i, arr) => {
+                      const stats = dashboard.friendStats[f.id];
+                      return (
+                        <Row
+                          key={f.id}
+                          last={i === arr.length - 1}
+                          leading={<Person initial={personInitial(f)} />}
+                          title={personName(f)}
+                          sub={lastTogetherLabel(stats?.lastSharedAt ?? null, stats?.lastPubName ?? '')}
+                          chevron
+                          onPress={() => openFriend(f.id)}
+                        />
+                      );
+                    })
+                  )}
+                </Card>
+              </>
+            ) : null}
           </Animated.View>
-        ) : failed ? (
-          <StatusCard title={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
+        ) : failed && plans !== null ? (
+          // Without plans the invitations card above already says the load failed.
+          <StatusCard text={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
         ) : null}
         {/* Waits for the first load, so it doesn't show up under the loading card and then jump down. */}
         {dashboard || failed ? (

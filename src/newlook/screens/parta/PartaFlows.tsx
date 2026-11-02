@@ -22,7 +22,8 @@ import { badgeStates, PUBLIC_BADGE_KEYS } from '@/profile/badgeModel';
 import { BackHeader, Screen } from '../../components/chrome';
 import { PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
-import { Button, Card, Chip, D, Dot, IconButton, Person, Row, Segmented, T } from '../../components/ui';
+import { D, T, Button, Card, Chip, Dot, IconButton, Person, Row, Segmented } from '../../components/ui';
+import { NO_VALUE } from '../../format';
 import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
 import { PlanTicket } from './PartaScreen';
@@ -250,7 +251,7 @@ function personBoard(tab: Exclude<BoardTab, 'hospody'>, board: Leaderboard, peri
     rows.push({ key: 'me', rank: board.me.rank, initial: t.nv.parta.you.slice(0, 1), name: t.nv.parta.you, sub: '', score: String(board.me.score), me: true });
   }
   return {
-    rank: board.me.rank ? `${board.me.rank}.` : '–',
+    rank: board.me.rank ? `${board.me.rank}.` : NO_VALUE,
     title: board.me.rank ? (tab === 'piva' ? t.nv.parta.rankBeers : tab === 'objevitele' ? t.nv.parta.rankExplorers : t.nv.parta.rankMappers) : t.nv.parta.noRank,
     sub: !board.me.eligible ? t.nv.parta.privateRank : [score(board.me.score), race].filter(Boolean).join(' · '),
     rows,
@@ -260,7 +261,7 @@ function personBoard(tab: Exclude<BoardTab, 'hospody'>, board: Leaderboard, peri
 function pubsBoard(board: PubBoard, period: BoardPeriodKey): BoardView {
   const top = board.entries[0];
   return {
-    rank: top ? '1.' : '–',
+    rank: top ? '1.' : NO_VALUE,
     title: top?.name ?? t.nv.parta.boardEmpty,
     sub: top ? t.nv.parta.pubBoardSub(top.beers, period) : '',
     rows: board.entries.slice(0, 10).map((e) => ({
@@ -332,7 +333,7 @@ export function ZebrickyScreen() {
         <Loading failed={failed} onRetry={() => setAttempt((n) => n + 1)} failedText={t.nv.parta.failed} />
       ) : (
         <>
-          <View style={[s.row, { gap: 16, padding: 18, borderRadius: 24, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }]}>
+          <View style={[s.row, { gap: 16, padding: 18, borderRadius: 24, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }]}>
             <D s={64} lh={0.9} c={C.yellow}>
               {view.rank}
             </D>
@@ -596,7 +597,7 @@ export function PlanScreen() {
         ))}
       </View>
       {plan.placeKind === 'home' && plan.myResponse === 'going' && home?.canCheckIn && !home.myCheckin ? (
-        <Button label={t.nv.parta.imAt(host)} icon="house" kind="raised" onPress={checkIn} />
+        <Button label={t.nv.parta.imAt} icon="house" kind="raised" onPress={checkIn} />
       ) : null}
     </Screen>
   );

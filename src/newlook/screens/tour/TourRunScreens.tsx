@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useIsFocused, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
@@ -27,7 +27,7 @@ import { BackHeader, Glass, GlassButton, Screen } from '../../components/chrome'
 import { PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, Card, D, IconButton, Kicker, Person, Press, Row, Stack, T } from '../../components/ui';
+import { Button, Card, D, IconButton, Kicker, Person, Press, Row, Spinner, Stack, T } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { openEditor, planHref, RosterStub, useRoster } from './TourListScreen';
@@ -103,7 +103,7 @@ export function TourRunScreen() {
           {t.tours.invalidLink}
         </T>
       ) : (
-        <ActivityIndicator color={C.yellow} />
+        <Spinner />
       )}
     </Screen>
   );
@@ -371,7 +371,7 @@ function LiveRun({ run }: { run: TourRun }) {
         ) : (
           <View style={{ gap: 10 }}>
             {undo && undoStop ? (
-              <View style={[s.row, { padding: 12, paddingHorizontal: 16, borderRadius: 18, backgroundColor: C.toast, borderWidth: 1, borderColor: '#FFFFFF1F', gap: 10 }]}>
+              <View style={[s.row, { padding: 12, paddingHorizontal: 16, borderRadius: 18, backgroundColor: C.toast, borderWidth: 1, borderColor: C.line, gap: 10 }]}>
                 <Icon name="circle-check" size={18} />
                 <View style={s.fill}>
                   <T s={14} w={700} numberOfLines={1}>
@@ -700,7 +700,7 @@ function PingFriends({ run }: { run: TourRun | null }) {
           {t.tours.crewPingNote(run.snapshot.title, target.stop.name, target.heading, together(run))}
         </T>
       ) : null}
-      {party === undefined ? <ActivityIndicator color={C.yellow} /> : null}
+      {party === undefined ? <Spinner /> : null}
       {quiet ? (
         <T s={14} c={C.muted} lh={1.4}>
           {quiet}
@@ -776,7 +776,7 @@ function InviteFriends({ plan }: { plan: TourPlan }) {
       <T s={14} c={C.text2} lh={1.4} style={{ marginTop: -10 }}>
         {[plan.title, inviteDetail(plan)].filter(Boolean).join(' · ')}
       </T>
-      {party === undefined ? <ActivityIndicator color={C.yellow} /> : null}
+      {party === undefined ? <Spinner /> : null}
       {note ? (
         <T s={14} c={C.muted} lh={1.4}>
           {note}

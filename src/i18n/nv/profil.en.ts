@@ -187,7 +187,7 @@ export const profilEn: Strings['nv']['profil'] = {
     copyLink: 'Send link',
     copied: 'Link copied.',
     add: 'Add to crew',
-    searchPlaceholder: "@ Friend's nickname",
+    searchPlaceholder: "@ friend's nickname",
     find: 'Find',
     addOne: 'Add',
     friends: 'Friends',
@@ -201,12 +201,12 @@ export const profilEn: Strings['nv']['profil'] = {
     pubs: (n: number) => englishPlural(n, { one: 'pub', other: 'pubs' }),
     badges: (n: number) => englishPlural(n, { one: 'badge', other: 'badges' }),
     body: 'In a crew you see who is out for a beer right now, and you can clink glasses.',
-    mutual: (names: string[], extra: number, inviter: string) => {
+    mutual: (names: string[], extra: number) => {
       const all = extra > 0 ? [...names, `${extra} more`] : names;
       const list = all.length > 1 ? `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}` : all[0];
-      return `${list} ${all.length > 1 ? 'are' : 'is'} already in a crew with ${inviter}`;
+      return `Mutual friends: ${list}`;
     },
-    add: (name: string) => `Add ${name} to the crew`,
+    add: 'Add to the crew',
     alreadyFriends: "You're already in each other's crew.",
     openProfile: 'Open profile',
     notNow: 'Not now',
@@ -235,7 +235,7 @@ export const profilEn: Strings['nv']['profil'] = {
     version: (version: string) => `Version ${version}`,
     tagline: 'Your compass to the nearest beer.',
     whatsNew: "What's new",
-    notesFailed: 'Could not load the news right now.',
+    notesFailed: 'The news did not come through right now.',
     privacy: 'Privacy policy',
     footer: 'No ads · No payments',
   },

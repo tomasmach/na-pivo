@@ -96,9 +96,9 @@ export function Dial({
           {(
             [
               ['S', 0, C.white],
-              ['V', 90, '#FFFFFF8C'],
-              ['J', 180, '#FFFFFF8C'],
-              ['Z', 270, '#FFFFFF8C'],
+              ['V', 90, C.dim],
+              ['J', 180, C.dim],
+              ['Z', 270, C.dim],
             ] as const
           ).map(([l, deg, color]) => {
             const p = polar(113, deg);

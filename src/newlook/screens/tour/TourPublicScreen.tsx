@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Share, View } from 'react-native';
+import { Share, View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 
@@ -17,7 +17,7 @@ import { pubCount, tourError } from '@/tours/TourChrome';
 import { BackHeader, Screen } from '../../components/chrome';
 import { PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
-import { Button, Card, IconButton, Person, Row, Stack, T } from '../../components/ui';
+import { Button, Card, IconButton, Person, Row, Spinner, Stack, T } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
 import { planHref } from './TourListScreen';
@@ -227,7 +227,7 @@ function PublicTour({ token, runId }: { token: string; runId?: string }) {
       gap={16}
     >
       {loading ? (
-        <ActivityIndicator color={C.yellow} style={{ marginTop: 24 }} />
+        <Spinner style={{ marginTop: 24 }} />
       ) : error || !plan ? (
         <View style={{ gap: 12 }}>
           <T s={15} c={C.text2} lh={1.4}>

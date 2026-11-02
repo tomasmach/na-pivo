@@ -1,6 +1,7 @@
 import React from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,9 +18,11 @@ import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
 
 import { BackHeader, BottomFade, Screen } from '../../components/chrome';
+import { Ghost } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../components/ui';
 import { toast } from '../../ui/store';
+import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
 import { distanceLabel } from './format';
 import { GRAY_MAP } from './NvMap';
@@ -50,9 +53,11 @@ function Section({ title, meta, children }: { title: string; meta?: string; chil
   );
 }
 
+const TAP_ROW_HEIGHT = 64;
+
 function Line({ title, sub, value, last, valueColor = C.white }: { title: string; sub?: string; value?: string; last?: boolean; valueColor?: string }) {
   return (
-    <View style={[s.row, { minHeight: 64, gap: 12 }, !last && { borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
+    <View style={[s.row, { minHeight: TAP_ROW_HEIGHT, gap: 12 }, !last && { borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
       <View style={[s.fill, { gap: 2 }]}>
         <T s={16} w={600}>
           {title}
@@ -202,7 +207,7 @@ export function PubScreen() {
                 </View>
               </Marker>
             </MapView>
-            <View style={[s.row, { position: 'absolute', right: 10, bottom: 12, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AD9', borderWidth: 1, borderColor: '#FFFFFF1F' }]}>
+            <View style={[s.row, { position: 'absolute', right: 10, bottom: 12, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AD9', borderWidth: 1, borderColor: C.line }]}>
               <Icon name="map" size={15} color={C.yellow} />
               <T s={13} w={700}>
                 {L().showOnMap}
@@ -231,25 +236,28 @@ export function PubScreen() {
         <Band />
         <Section title={L().onTap} meta={verified}>
           {details.taps.length ? (
-            details.taps.map((tap, i) => (
-              <Press key={`${tap.name}-${tap.volumeMl ?? ''}`} onPress={() => router.push({ pathname: '/nv/pivo/[id]', params: { id: '-', name: tap.name } })}>
-                <Line
-                  title={tap.name}
-                  sub={tap.volumeMl ? formatVolume(tap.volumeMl) : undefined}
-                  value={tap.priceCzk ? formatPrice(tap.priceCzk, currency) : undefined}
-                  last={i === details.taps.length - 1}
-                />
-              </Press>
-            ))
+            <Animated.View entering={fadeIn}>
+              {details.taps.map((tap, i) => (
+                <Press key={`${tap.name}-${tap.volumeMl ?? ''}`} onPress={() => router.push({ pathname: '/nv/pivo/[id]', params: { id: '-', name: tap.name } })}>
+                  <Line
+                    title={tap.name}
+                    sub={tap.volumeMl ? formatVolume(tap.volumeMl) : undefined}
+                    value={tap.priceCzk ? formatPrice(tap.priceCzk, currency) : undefined}
+                    last={i === details.taps.length - 1}
+                  />
+                </Press>
+              ))}
+            </Animated.View>
           ) : !details.hoursLoaded ? (
-            <ActivityIndicator color={C.yellow} style={{ alignSelf: 'flex-start', paddingVertical: 14 }} />
+            // One tap row high, the shortest answer the menu can have.
+            <Ghost height={TAP_ROW_HEIGHT - 12} radius={14} style={{ marginVertical: 6 }} />
           ) : (
-            <>
+            <Animated.View entering={fadeIn}>
               <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
                 {L().noTaps}
               </T>
               <AddLink label={L().addTaps} onPress={() => router.push({ pathname: '/nv/doplnit-info', params: { ...params(), tab: 'piva' } })} />
-            </>
+            </Animated.View>
           )}
         </Section>
         <Band />

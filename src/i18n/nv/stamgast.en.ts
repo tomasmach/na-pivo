@@ -1,5 +1,6 @@
 // English mirror of ./stamgast.cs.ts. Keys must match (en.test.ts).
 import { englishPlural } from '../enHelpers';
+import { commonEn } from './common.en';
 import type { stamgastCs } from './stamgast.cs';
 
 const STOP_ORDINAL = ['first', 'second', 'third', 'fourth', 'fifth'];
@@ -8,7 +9,7 @@ const BEER = { one: 'beer', other: 'beers' };
 export const stamgastEn: typeof stamgastCs = {
   segCount: 'Count',
   segDiary: 'Diary',
-  segTour: '• Tour',
+  segTour: 'Tour',
 
   tourLogAt: (index: number) => `Log a beer at the ${STOP_ORDINAL[index] ?? `${index + 1}th`} stop`,
   tourWalk: (minutes: number) => `${minutes} min`,
@@ -18,7 +19,7 @@ export const stamgastEn: typeof stamgastCs = {
 
   placeUnknown: 'Where are you sitting?',
   tonight: (n: number) => `${englishPlural(n, BEER)} tonight`,
-  atFriend: (n: number, host: string) => `${englishPlural(n, BEER)} at ${host}’s`,
+  atFriend: (n: number) => `${englishPlural(n, BEER)} at a friend’s`,
   tonightA11y: (n: number) => `${n} ${englishPlural(n, BEER)} tonight`,
   statSpent: 'spent',
   statTable: 'at the table',
@@ -26,8 +27,6 @@ export const stamgastEn: typeof stamgastCs = {
   statEstimateSetup: 'estimate ‰',
   estimateSetup: 'Set up',
   estimateValue: (value: string) => `≈ ${value} ‰`,
-  durationHm: (h: number, m: number) => `${h} h ${m} min`,
-  durationM: (m: number) => `${m} min`,
   quickOther: 'Other beer',
   quickBackfill: 'Add past',
   quickPhoto: 'Photo',
@@ -41,7 +40,7 @@ export const stamgastEn: typeof stamgastCs = {
   tonightEmpty: 'Nothing yet. Log your first beer with the button below.',
   undoLast: 'Undo the last entry',
   newBeerTitle: 'New beer for your collection',
-  newBeerSub: (n: number) => `${n} different so far · how is it?`,
+  newBeerSub: (n: number) => `${n} different ${englishPlural(n, { one: 'beer', other: 'beers' })} in your collection. How is it?`,
   rate: 'Rate',
   oneMore: 'One more',
   logBeer: 'Log beer',
@@ -147,7 +146,7 @@ export const stamgastEn: typeof stamgastCs = {
   eveningTitle: (weekday: string, day: number, month: number) => `${weekday} ${day}/${month}`,
   eveningMissing: "This evening isn't in your diary.",
   statBeers: (n: number) => englishPlural(n, BEER),
-  durationShort: (h: number, m: number) => `${h} h ${m} m`,
+  durationShort: commonEn.duration,
   tempo: 'Pace by the hour',
   tempoPeak: (n: number, hour: number) => `${n} ${englishPlural(n, BEER)} at ${hour}:00`,
   hourLabel: (hour: number) => `${hour}:00`,

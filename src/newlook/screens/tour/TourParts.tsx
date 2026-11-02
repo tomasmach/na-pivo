@@ -197,7 +197,7 @@ export function StopRail({
           <Press key={st.id} onPress={() => onStop?.(st, i)} style={[s.row, { gap: 16, alignItems: 'flex-start' }]}>
             <View style={{ alignItems: 'center', alignSelf: 'stretch' }}>
               <Marker2 i={i} state={state} next={isNext} />
-              {!last ? <View style={{ width: 2, flex: 1, backgroundColor: '#FFFFFF26', marginVertical: 2 }} /> : null}
+              {!last ? <View style={{ width: 2, flex: 1, backgroundColor: C.lineStrong, marginVertical: 2 }} /> : null}
             </View>
             <View style={[s.fill, { gap: 4, paddingBottom: 18, paddingTop: isNext ? 2 : 6 }]}>
               <View style={[s.row, { justifyContent: 'space-between', gap: 8 }]}>

@@ -8,6 +8,7 @@ import { useToursStore } from '@/stores/toursStore';
 import { pubFromStop } from '@/tours/counterLink';
 import { tourError } from '@/tours/TourChrome';
 
+import { NO_VALUE } from '../../format';
 import { toast } from '../../ui/store';
 import type { TourPlan, TourRun, TourStop } from '@/tours/model';
 import { formatWalkDistance, hoursOnDay, planDay, type StopFacts, walkingDistance, walkingLeg } from '@/tours/stopFacts';
@@ -34,7 +35,7 @@ export function whenText(plan: Pick<TourPlan, 'scheduledDate' | 'scheduledTime' 
 
 /** The date block of a plan ticket. */
 export function ticketDay(plan: Pick<TourPlan, 'scheduledDate' | 'scheduledTime'>): { dayNum: string; dayName: string; time: string } {
-  if (!plan.scheduledDate) return { dayNum: '–', dayName: t.tours.optional, time: '' };
+  if (!plan.scheduledDate) return { dayNum: NO_VALUE, dayName: t.tours.optional, time: '' };
   const date = new Date(`${plan.scheduledDate}T12:00:00Z`);
   return {
     dayNum: String(date.getUTCDate()),

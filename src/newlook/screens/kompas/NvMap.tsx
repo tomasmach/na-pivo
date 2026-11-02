@@ -112,7 +112,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
           ) : null}
           {me ? (
             <Marker coordinate={{ latitude: me.lat, longitude: me.lng }} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
-              <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF1F' }, s.center]}>
+              <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.line }, s.center]}>
                 <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: C.white, borderWidth: 3, borderColor: C.black }} />
               </View>
             </Marker>

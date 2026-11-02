@@ -4,9 +4,9 @@ import type { TallyDrink } from '@/stores/tallyStore';
 
 import { dateOfDay } from './eveningData';
 
+/** "1 h 25 min", "4 h", "5 min": the one way the new look writes a duration. */
 export function durationLabel(minutes: number): string {
-  const copy = t.nv.stamgast;
-  return minutes >= 60 ? copy.durationHm(Math.floor(minutes / 60), minutes % 60) : copy.durationM(minutes);
+  return t.nv.common.duration(Math.floor(minutes / 60), minutes % 60);
 }
 
 /** "čepované · 0,5 l", "lahváč · 0,5 l" or just the volume of a non-beer. */

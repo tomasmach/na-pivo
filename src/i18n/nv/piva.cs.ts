@@ -15,9 +15,8 @@ export const pivaCs = {
   legendBottom: 'až 1★',
   rankNew: 'nové',
   mostOften: (verdict: string) => `nejčastěji „${verdict}“`,
-  rankingFailed: 'Žebříček se nenačetl.',
-  rankingEmpty: 'Žebříček se teprve plní',
-  rankingEmptyBody: 'Ohodnoť piva, která piješ, a brzy tu nějaká budou.',
+  rankingFailed: 'Žebříček se nedotáhl.',
+  rankingEmpty: 'Žebříček se teprve plní, tak ohodnoť piva, která piješ.',
   unratedTitle: 'Pil jsi, ještě jsi nehodnotil',
   unratedHint: 'pomůžeš žebříčku',
   drankTimes: (n: number) => `pil jsi ho ${n}×`,
@@ -26,7 +25,7 @@ export const pivaCs = {
   collection: {
     distinct: (n: number) => czechPlural(n, { one: 'různé pivo', few: 'různá piva', many: 'různých piv' }),
     fromDrunk: (drunk: number, breweries: number) =>
-      `ze ${drunk} vypitých · ${breweries} ${czechPlural(breweries, { one: 'pivovaru', few: 'pivovarů', many: 'pivovarů' })}`,
+      `celkem vypito ${drunk} · ${breweries} ${czechPlural(breweries, { one: 'pivovar', few: 'pivovary', many: 'pivovarů' })}`,
     taster: (level: string) => `Ochutnávač ${level}`,
     tasterSub: (tier: number) => `ochutnej top ${tier} z Česka`,
     tasterDone: 'Máš je všechny',
@@ -36,7 +35,7 @@ export const pivaCs = {
     national: (rating: string) => `Česko ${rating}`,
     yours: 'tvoje',
     watched: 'Hlídaná piva',
-    failed: 'Sbírka se nenačetla.',
+    failed: 'Sbírka se nedotáhla.',
   },
 
   search: {
@@ -77,14 +76,14 @@ export const pivaCs = {
     reviewFilters: { newest: 'Nejnovější', party: 'Od party', photo: 'S fotkou' },
     allReviews: (n: string) => `Všech ${n} recenzí`,
     noReviews: 'Zatím tu nikdo nic nenapsal.',
-    failed: 'Pivo se nenačetlo.',
+    failed: 'Pivo se nedotáhlo.',
   },
 
   review: {
     inParty: 'v partě',
     reportA11y: 'Nahlásit recenzi',
     reportTitle: 'Nahlásit recenzi?',
-    reportBody: 'Mrknu na ni. Když nesedí s pravidly, zmizí.',
+    reportBody: 'Mrknu na ni. Když porušuje pravidla, zmizí.',
     reportBack: 'Zpátky',
     report: 'Nahlásit',
     reported: 'Nahlášeno.',
@@ -138,7 +137,6 @@ export const pivaCs = {
     stop: 'Přestat hlídat',
     stopped: (name: string) => `${name} už nehlídám.`,
     footer: 'Dám vědět, až ho začnou čepovat poblíž. Zvoneček hlídání vypne.',
-    emptyTitle: 'Zatím nic nehlídáš',
-    emptyBody: 'Ťukni na pivo na lístku hospody a vyber Hlídat pivo.',
+    empty: 'Zatím nic nehlídáš, pivo přidáš z lístku hospody přes Hlídat pivo.',
   },
 };

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
@@ -25,7 +25,7 @@ import { formatEventDateTime, parseEventDateTime } from '../../../../app/suggest
 import { BackHeader, Screen } from '../../components/chrome';
 import { Field, Input, PageTitle, Stepper, Ticket } from '../../components/forms';
 import { Icon } from '../../components/Icon';
-import { Button, Card, D, IconButton, Kicker, Person, Row, Segmented, T, Toggle } from '../../components/ui';
+import { Button, Card, D, IconButton, Kicker, Person, Row, Segmented, Spinner, T, Toggle } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { riseIn } from '../../motion';
 import { C, s } from '../../theme';
@@ -228,7 +228,7 @@ export function ZalozitSetkaniScreen() {
       <Card>
         <Row last title={L().meetAdults} titleWeight={500} trailing={<Toggle value={adults} onChange={setAdults} />} />
       </Card>
-      {busy ? <ActivityIndicator color={C.yellow} /> : null}
+      {busy ? <Spinner /> : null}
     </Screen>
   );
 }
@@ -308,7 +308,7 @@ export function MojeSetkaniScreen() {
   if (event === undefined) {
     return (
       <Screen header={<BackHeader />}>
-        <ActivityIndicator color={C.yellow} style={{ marginTop: 80 }} />
+        <Spinner style={{ marginTop: 80 }} />
       </Screen>
     );
   }
@@ -398,7 +398,7 @@ export function MojeSetkaniScreen() {
                       {L().approved}
                     </T>
                   ) : deciding === r.id ? (
-                    <ActivityIndicator color={C.yellow} style={{ alignSelf: 'flex-start' }} />
+                    <Spinner style={{ alignSelf: 'flex-start' }} />
                   ) : (
                     <View style={[s.row, { gap: 8 }]}>
                       <Button label={L().reject} kind="raised" height={40} flex onPress={() => void decide(r.id, 'reject')} />

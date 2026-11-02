@@ -68,10 +68,10 @@ export function StamgastScreen() {
   }
   const mode = stored === 'tour' && !tourActive ? 'pocitat' : stored;
   const copy = t.nv.stamgast;
-  const options: { key: Mode; label: string }[] = [
+  const options: { key: Mode; label: string; dot?: boolean }[] = [
     { key: 'pocitat', label: copy.segCount },
     { key: 'denik', label: copy.segDiary },
-    ...(tourActive ? [{ key: 'tour' as const, label: copy.segTour }] : []),
+    ...(tourActive ? [{ key: 'tour' as const, label: copy.segTour, dot: true }] : []),
   ];
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -274,7 +274,7 @@ function CounterView() {
           <Press
             haptic
             onPress={() => router.push('/nv/zmenit-misto')}
-            style={[s.row, { height: 34, borderRadius: 17, paddingHorizontal: 14, gap: 6, backgroundColor: '#FFFFFF14' }]}
+            style={[s.row, { height: 34, borderRadius: 17, paddingHorizontal: 14, gap: 6, backgroundColor: C.tint }]}
           >
             <Icon name={atFriend || place?.kind === 'outside' ? 'house' : 'map-pin'} size={15} color={C.yellow} />
             <T s={14} w={700} numberOfLines={1} style={{ maxWidth: 260 }}>
@@ -290,7 +290,7 @@ function CounterView() {
             </D>
           </Animated.View>
           <T s={17} w={600} c={C.text2}>
-            {atFriend && friendHome ? copy.atFriend(count, friendHome.hostName) : copy.tonight(count)}
+            {atFriend && friendHome ? copy.atFriend(count) : copy.tonight(count)}
           </T>
           <View style={[s.row, { gap: 28, paddingTop: 8 }]}>
             {atFriend ? null : <Stat value={formatPrice(spent, priceCurrency)} label={copy.statSpent} />}
@@ -305,7 +305,7 @@ function CounterView() {
           <QuickAction icon="circle-check" label={copy.quickDone} onPress={finish} />
         </View>
         {stickerShown ? (
-          <Animated.View entering={fadeIn} style={[s.row, { gap: 12, padding: 12, borderRadius: 22, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }]}>
+          <Animated.View entering={fadeIn} style={[s.row, { gap: 12, padding: 12, borderRadius: 22, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }]}>
             <View style={[{ width: 52, height: 52, borderRadius: 26, backgroundColor: C.white, borderWidth: 3, borderColor: C.yellow }, s.center]}>
               <T s={22} w={900} c={C.black} style={{ letterSpacing: 2 }}>
                 III
@@ -357,7 +357,7 @@ function CounterView() {
             <T s={16} w={700}>
               {copy.tonightList}
             </T>
-            <T s={14} w={600} c={C.muted}>{formatPrice(spent, priceCurrency)}</T>
+            {drinks.length && !atFriend ? <T s={14} w={600} c={C.muted}>{formatPrice(spent, priceCurrency)}</T> : null}
           </View>
           {drinks.length ? (
             drinks.map((d, i) => (
@@ -401,7 +401,7 @@ function CounterView() {
       <BottomFade height={tabSpace + 130} />
       {nudges.newBeer ? (
         <Animated.View entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
-          <View style={[s.row, { padding: 14, paddingRight: 10, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: '#FFFFFF1F', gap: 10 }, shadow.raised]}>
+          <View style={[s.row, { padding: 14, paddingRight: 10, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: C.line, gap: 10 }, shadow.raised]}>
             <View style={[s.fill, { gap: 2 }]}>
               <T s={15} w={700}>
                 {copy.newBeerTitle}

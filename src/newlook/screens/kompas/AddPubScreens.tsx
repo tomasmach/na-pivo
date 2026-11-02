@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
@@ -23,7 +23,7 @@ import { BackHeader, Glass, GlassButton, Screen } from '../../components/chrome'
 import { Field, Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { ButtonPair } from '../../components/overlays';
-import { Button, Card, Chip, D, Dot, Kicker, Press, Row, T, Tile } from '../../components/ui';
+import { Button, Card, Chip, D, Dot, Kicker, Press, Row, Spinner, T, Tile } from '../../components/ui';
 import { toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { distanceLabel } from './format';
@@ -195,7 +195,7 @@ export function PridatHospoduScreen() {
           autoFocus
           height={52}
         />
-        {searching ? <ActivityIndicator color={C.yellow} style={{ alignSelf: 'flex-start' }} /> : null}
+        {searching ? <Spinner style={{ alignSelf: 'flex-start' }} /> : null}
         {results === null ? (
           <T s={14} c={C.muted}>
             {L().addSearchFailed}
@@ -213,7 +213,7 @@ export function PridatHospoduScreen() {
                   sub={r.location || [r.address, r.city].filter(Boolean).join(', ') || undefined}
                   trailing={
                     opening === r.id ? (
-                      <ActivityIndicator color={C.yellow} />
+                      <Spinner />
                     ) : position && typeof r.lat === 'number' && typeof r.lng === 'number' ? (
                       <T s={14} w={600}>
                         {distanceLabel(haversineMeters(position, { lat: r.lat, lng: r.lng }))}
@@ -288,7 +288,7 @@ export function PridatHospoduScreen() {
                   </View>
                 </>
               ) : (
-                <View style={[s.fill, s.center]}>{locating ? <ActivityIndicator color={C.yellow} /> : <Icon name="map-pin" size={22} color={C.muted} />}</View>
+                <View style={[s.fill, s.center]}>{locating ? <Spinner /> : <Icon name="map-pin" size={22} color={C.muted} />}</View>
               )}
             </View>
             <View style={[s.fill, { gap: 3 }]}>
@@ -505,7 +505,7 @@ function AddedPubs({ onAdd }: { onAdd: () => void }) {
         {L().myPubsTitle}
       </D>
       {rows === null ? (
-        <ActivityIndicator color={C.yellow} style={{ marginTop: 40 }} />
+        <Spinner style={{ marginTop: 40 }} />
       ) : sorted.length ? (
         <>
           <View style={[s.row, { gap: 16, padding: 18, borderRadius: 24, backgroundColor: C.card }]}>
@@ -562,7 +562,7 @@ function AddedPubs({ onAdd }: { onAdd: () => void }) {
                         </View>
                       ) : failed ? (
                         retrying === p.client_id ? (
-                          <ActivityIndicator color={C.yellow} />
+                          <Spinner />
                         ) : p.failureReason === 'location-not-found' ? null : (
                           <Chip label={L().retry} icon="rotate-cw" onPress={() => void retry(p.client_id)} />
                         )

@@ -57,9 +57,9 @@ export function VrstvySheet() {
                   padding: 14,
                   borderRadius: 20,
                   justifyContent: 'space-between',
-                  backgroundColor: on ? '#FFC40029' : C.card,
+                  backgroundColor: on ? C.yellowTint : C.card,
                   borderWidth: 1,
-                  borderColor: on ? '#FFC40080' : C.hairline,
+                  borderColor: on ? C.yellowLine : C.hairline,
                 }}
               >
                 <Icon name={v.icon} size={22} color={on ? C.yellow : C.white} />
@@ -82,7 +82,7 @@ export function VrstvySheet() {
         <T s={15} w={700} c={C.muted}>
           {L.pinsGroup}
         </T>
-        <View style={[s.row, { height: 42, borderRadius: 21, padding: 3, backgroundColor: '#FFFFFF12' }]}>
+        <View style={[s.row, { height: 42, borderRadius: 21, padding: 3, backgroundColor: C.tintSoft }]}>
           {(
             [
               ['price', L.pinPrice, 'banknote'],

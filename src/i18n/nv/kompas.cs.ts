@@ -342,7 +342,7 @@ export const kompasCs = {
   meetNone: 'Zatím nic nepořádáš.',
   meetNoneBody: 'Otevři stůl u sebe doma a lidi z okolí se můžou přihlásit.',
   meetStart: 'Založit setkání',
-  meetLoadFailed: 'Setkání se teď nepodařilo načíst.',
+  meetLoadFailed: 'Setkání se teď nedotáhlo.',
   dayToday: 'Dnes',
   dayTomorrow: 'Zítra',
 
