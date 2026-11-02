@@ -510,3 +510,47 @@ def test_beer_detail_and_reviews_show_only_photos_the_viewer_may_see(client, tmp
     ).json()
     assert [item["id"] for item in with_photo["items"]] == [review["id"]]
     assert with_photo["items"][0]["photo_url"].startswith("http")
+
+
+@pytest.mark.django_db
+def test_regional_ranking_counts_where_the_beer_was_rated_and_drunk(client):
+    from pubs.enrichment.matcher import geohash8
+
+    prague = geohash8(50.0876, 14.4214)
+    brno = geohash8(49.1951, 16.6068)
+    pilsner, kozel = _products(2)
+
+    def rate(product: BeerProduct, rating: str, cell: str) -> None:
+        token, _ = _register(client, f"k{uuid.uuid4().hex[:10]}")
+        _checkin(client, token, product, rating=rating, pub_cache_key=cell)
+
+    for rating in ("5", "5", "4"):
+        rate(pilsner, rating, brno)
+    for rating in ("3", "3", "3"):
+        rate(kozel, rating, brno)
+    for rating in ("2", "2", "2"):
+        rate(pilsner, rating, prague)
+    token, _ = _register(client, "pije")
+    _drink(client, token, pilsner.name)
+    refresh_beer_ranking(force=True)
+
+    south = client.get("/v1/beers/ranking", {"region": "CZ064"}, **_auth(token)).json()
+    assert [item["product_key"] for item in south["items"]] == [pilsner.key, kozel.key]
+    assert south["items"][0]["rating_avg"] == pytest.approx(4.67, abs=0.01)
+    assert south["items"][0]["rating_count"] == 3
+    assert south["items"][0]["move"] is None
+
+    capital = client.get("/v1/beers/ranking", {"region": "CZ010"}, **_auth(token)).json()
+    assert [item["product_key"] for item in capital["items"]] == [pilsner.key]
+    assert capital["items"][0]["rating_avg"] == 2
+    assert capital["items"][0]["drunk_total"] == 1
+
+    # Without a region the ranking stays national, as released clients read it.
+    national = client.get("/v1/beers/ranking", **_auth(token)).json()
+    assert {item["product_key"] for item in national["items"]} == {pilsner.key, kozel.key}
+    assert (
+        next(i for i in national["items"] if i["product_key"] == pilsner.key)["rating_count"] == 6
+    )
+
+    bad = client.get("/v1/beers/ranking", {"region": "SK010"}, **_auth(token))
+    assert bad.status_code == 400

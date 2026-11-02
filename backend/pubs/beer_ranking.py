@@ -23,9 +23,11 @@ from pubs.models import (
     BeerCheckIn,
     BeerProduct,
     BeerRanking,
+    BeerRegionRanking,
     DrinkLog,
     PubBeerProduct,
 )
+from pubs.regions import region_of_cell
 
 # A beer enters the ranking with this many people who rated it.
 RANKING_MIN_RATERS = 10
@@ -98,12 +100,19 @@ def refresh_beer_ranking(now: datetime | None = None, *, force: bool = False) ->
             beer_product__isnull=False, account__status=Account.Status.ACTIVE
         )
         .order_by("checked_in_at", "id")
-        .values_list("account_id", "beer_product_id", "rating", "tags", "beer_style")
+        .values_list(
+            "account_id", "beer_product_id", "rating", "tags", "beer_style", "pub_cache_key"
+        )
     )
-    for account_id, product_id, rating, row_tags, style in checkins.iterator(chunk_size=2000):
+    # (region, account, product) -> latest rating given at a pub in that region.
+    region_ratings: dict[tuple[str, int, int], float] = {}
+    for account_id, product_id, rating, row_tags, style, cell in checkins.iterator(chunk_size=2000):
         key = (account_id, product_id)
         if rating is not None:
             ratings[key] = float(rating)
+            region = region_of_cell(cell)
+            if region:
+                region_ratings[(region, account_id, product_id)] = float(rating)
         clean = [
             tag
             for tag in (row_tags if isinstance(row_tags, list) else [])
@@ -224,10 +233,85 @@ def refresh_beer_ranking(now: datetime | None = None, *, force: bool = False) ->
             ],
             batch_size=500,
         )
+    _refresh_region_rankings(
+        now, region_ratings, set(products), {pid: p.name for pid, p in products.items()}
+    )
     return len(ranks)
 
 
-def star_shares(row: BeerRanking | None) -> list[float]:
+def _refresh_region_rankings(
+    now: datetime,
+    region_ratings: dict[tuple[str, int, int], float],
+    product_ids: set[int],
+    names: dict[int, str],
+) -> None:
+    """Rebuild ``BeerRegionRanking`` from ratings and drinks at pubs in each region."""
+
+    per: dict[tuple[str, int], dict] = {}
+
+    def entry(region: str, product_id: int) -> dict:
+        return per.setdefault((region, product_id), {"ratings": [], "stars": [0] * 5, "drunk": 0})
+
+    for (region, _, product_id), rating in region_ratings.items():
+        if product_id in product_ids:
+            row = entry(region, product_id)
+            row["ratings"].append(rating)
+            row["stars"][5 - _star(rating)] += 1
+    drinks = (
+        DrinkLog.objects.filter(
+            drink_type=DrinkLog.DrinkType.BEER,
+            is_suspect=False,
+            beer_product__isnull=False,
+            account__status=Account.Status.ACTIVE,
+            cache_key__isnull=False,
+        )
+        .order_by()
+        .values("beer_product_id", "cache_key")
+        .annotate(total=Count("id"))
+    )
+    for row in drinks.iterator(chunk_size=2000):
+        region = region_of_cell(row["cache_key"])
+        if region and row["beer_product_id"] in product_ids:
+            entry(region, row["beer_product_id"])["drunk"] += row["total"]
+
+    by_region: dict[str, list[tuple[int, float, int]]] = {}
+    for (region, product_id), row in per.items():
+        if row["ratings"]:
+            by_region.setdefault(region, []).append(
+                (product_id, sum(row["ratings"]) / len(row["ratings"]), len(row["ratings"]))
+            )
+    ranks: dict[tuple[str, int], int] = {}
+    for region, rated in by_region.items():
+        # Same rule as the national ranking: a stricter bar once enough beers clear it.
+        min_raters = RANKING_MIN_RATERS
+        if sum(1 for _, _, count in rated if count >= RANKING_MIN_RATERS) < EARLY_UNTIL_BEERS:
+            min_raters = EARLY_MIN_RATERS
+        qualified = sorted(
+            (item for item in rated if item[2] >= min_raters),
+            key=lambda item: (-item[1], -item[2], names.get(item[0], "")),
+        )
+        for index, (product_id, _, _) in enumerate(qualified):
+            ranks[(region, product_id)] = index + 1
+
+    rows = [
+        BeerRegionRanking(
+            product_id=product_id,
+            region=region,
+            rating_avg=sum(row["ratings"]) / len(row["ratings"]) if row["ratings"] else None,
+            rating_count=len(row["ratings"]),
+            stars=row["stars"],
+            rank=ranks.get((region, product_id)),
+            drunk_total=row["drunk"],
+            computed_at=now,
+        )
+        for (region, product_id), row in per.items()
+    ]
+    with transaction.atomic():
+        BeerRegionRanking.objects.all().delete()
+        BeerRegionRanking.objects.bulk_create(rows, batch_size=500)
+
+
+def star_shares(row: BeerRanking | BeerRegionRanking | None) -> list[float]:
     stars = (
         list(row.stars)
         if row is not None and isinstance(row.stars, list) and len(row.stars) == 5
@@ -272,7 +356,36 @@ def ranking_item(row: BeerRanking, position: int | None = None) -> dict:
         "move": move(row),
         "stars": star_shares(row),
         "top_tag": top_tag(row),
+        "drunk_total": row.drunk_total,
     }
+
+
+def regional_item(row: BeerRegionRanking, position: int | None = None) -> dict:
+    """A ranking row with the region's own numbers; style and tags stay national."""
+    national = getattr(row.product, "ranking", None)
+    item = (
+        ranking_item(national, position)
+        if national is not None
+        else {
+            "product_key": row.product.key,
+            "name": row.product.name,
+            "brand_name": row.product.brand_name,
+            "styles": [],
+            "top_tag": None,
+        }
+    )
+    item.update(
+        {
+            "rating_avg": round(row.rating_avg, 2) if row.rating_avg is not None else None,
+            "rating_count": row.rating_count,
+            "rank": row.rank,
+            "position": position,
+            "move": None,
+            "stars": star_shares(row),
+            "drunk_total": row.drunk_total,
+        }
+    )
+    return item
 
 
 def _distance_m(lat: float, lng: float, other_lat: float, other_lng: float) -> int:

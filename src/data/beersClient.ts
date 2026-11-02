@@ -17,6 +17,10 @@ export type BeerStyle = (typeof BEER_STYLES)[number];
 export type RankingOrder = 'best' | 'bottom';
 export type ReviewFilter = 'newest' | 'party' | 'photo';
 
+/** NUTS 3 codes of the Czech regions; the ranking counts where a beer was rated and drunk. */
+export const CZ_REGIONS = ['CZ010', 'CZ020', 'CZ031', 'CZ032', 'CZ041', 'CZ042', 'CZ051', 'CZ052', 'CZ053', 'CZ063', 'CZ064', 'CZ071', 'CZ072', 'CZ080'] as const;
+export type CzRegion = (typeof CZ_REGIONS)[number];
+
 export interface RankedBeer {
   productKey: string;
   name: string;
@@ -31,6 +35,8 @@ export interface RankedBeer {
   /** Share of raters per star, 5★ first. */
   stars: number[];
   topTag: BeerTag | null;
+  /** Drinks logged of it, nationally or at pubs in the asked region. */
+  drunkTotal: number;
 }
 
 export interface BeerRankingPage {
@@ -183,6 +189,7 @@ function rankedBeer(raw: Raw, fallbackPosition: number): RankedBeer | null {
     move: num(raw.move),
     stars: stars(raw.stars),
     topTag: parseBeerTags([raw.top_tag])[0] ?? null,
+    drunkTotal: count(raw.drunk_total),
   };
 }
 
@@ -194,10 +201,10 @@ function list<T>(value: unknown, parse: (raw: Raw, index: number) => T | null): 
 }
 
 export async function fetchBeerRanking(
-  options: { order: RankingOrder; style?: BeerStyle | null; cursor?: string | null; limit?: number },
+  options: { order: RankingOrder; style?: BeerStyle | null; region?: CzRegion | null; cursor?: string | null; limit?: number },
   signal?: AbortSignal,
 ): Promise<BeerRankingPage | null> {
-  const qs = query({ order: options.order, style: options.style, cursor: options.cursor, limit: options.limit ?? 50 });
+  const qs = query({ order: options.order, style: options.style, region: options.region, cursor: options.cursor, limit: options.limit ?? 50 });
   const data = await getJson(`/v1/beers/ranking?${qs}`, signal);
   if (!data) return null;
   return {

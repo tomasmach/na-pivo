@@ -3882,6 +3882,32 @@ class BeerRanking(models.Model):
         return f"BeerRanking({self.product_id}: {self.rank})"
 
 
+class BeerRegionRanking(models.Model):
+    """Hourly per-region slice of ``BeerRanking``: ratings and drinks at pubs in one kraj.
+
+    Built by ``refresh_beer_ranking`` from the pub cell of each check-in and drink,
+    so the region is where the beer was drunk, not where it is brewed.
+    """
+
+    product = models.ForeignKey(BeerProduct, on_delete=models.CASCADE, related_name="region_rankings")
+    region = models.CharField(max_length=5, help_text="NUTS 3 code of the Czech region, e.g. CZ064.")
+    rating_avg = models.FloatField(null=True, blank=True)
+    rating_count = models.PositiveIntegerField(default=0)
+    stars = models.JSONField(default=list, blank=True)
+    rank = models.PositiveIntegerField(null=True, blank=True)
+    drunk_total = models.PositiveIntegerField(default=0)
+    computed_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["product", "region"], name="beer_region_ranking_unique"),
+        ]
+        indexes = [models.Index(fields=["region", "rank"])]
+
+    def __str__(self) -> str:
+        return f"BeerRegionRanking({self.product_id}, {self.region}: {self.rank})"
+
+
 class DrinkLog(models.Model):
     """
     A single drink the user logged via the in-app counter.

@@ -14,6 +14,7 @@ const SHEET = { presentation: 'transparentModal', animation: 'none', contentStyl
 // Routes that open as a bottom sheet over the current screen.
 const SHEETS = [
   'filtry',
+  'kraj',
   'vrstvy',
   'nesedi',
   'opravit-nazev',

@@ -19,10 +19,20 @@ from pubs.beer_ranking import (
     is_early,
     pouring_pubs,
     ranking_item,
+    regional_item,
     star_shares,
     tag_shares,
 )
-from pubs.models import Account, BeerCheckIn, BeerPhoto, BeerProduct, BeerRanking, DrinkLog
+from pubs.models import (
+    Account,
+    BeerCheckIn,
+    BeerPhoto,
+    BeerProduct,
+    BeerRanking,
+    BeerRegionRanking,
+    DrinkLog,
+)
+from pubs.regions import REGION_CODES
 
 from .authentication import AccountTokenAuthentication
 
@@ -141,15 +151,26 @@ def beer_global_detail(
 
 
 class BeerRankingView(_BeersPolicy):
-    """GET /v1/beers/ranking?order=best|bottom&style=&cursor=&limit= — the national ranking."""
+    """GET /v1/beers/ranking?order=best|bottom&style=&region=&cursor=&limit= — the ranking.
+
+    Without ``region`` it is national; with a NUTS 3 code it ranks the ratings and
+    drinks given at pubs in that region.
+    """
 
     def get(self, request: Request) -> Response:
         order = request.query_params.get("order") or "best"
         style = request.query_params.get("style") or ""
-        if order not in ("best", "bottom") or (style and style not in STYLES):
+        region = request.query_params.get("region") or ""
+        if (
+            order not in ("best", "bottom")
+            or (style and style not in STYLES)
+            or (region and region not in REGION_CODES)
+        ):
             return Response({"code": "invalid_query"}, status=status.HTTP_400_BAD_REQUEST)
         offset = _int_param(request, "cursor", 0, 0, 10_000)
         limit = _int_param(request, "limit", 20, 1, 50)
+        if region:
+            return self._regional(region, order, style, offset, limit)
         rows = BeerRanking.objects.filter(rank__isnull=False).select_related("product")
         rows = rows.order_by("rank" if order == "best" else "-rank")
         if style:
@@ -170,6 +191,37 @@ class BeerRankingView(_BeersPolicy):
                 "early": is_early(),
                 "computed_at": computed_at,
                 "items": [ranking_item(row, offset + index + 1) for index, row in enumerate(page)],
+                "next_cursor": str(offset + limit) if len(ranked) > limit else None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def _regional(self, region: str, order: str, style: str, offset: int, limit: int) -> Response:
+        rows = (
+            BeerRegionRanking.objects.filter(region=region, rank__isnull=False)
+            .select_related("product", "product__ranking")
+            .order_by("rank" if order == "best" else "-rank")
+        )
+        if style:
+            ranked = [
+                row
+                for row in rows
+                if style
+                in (getattr(row.product, "ranking", None) and row.product.ranking.styles or [])
+            ][offset : offset + limit + 1]
+        else:
+            ranked = list(rows[offset : offset + limit + 1])
+        page = ranked[:limit]
+        computed_at = (
+            BeerRegionRanking.objects.order_by("-computed_at")
+            .values_list("computed_at", flat=True)
+            .first()
+        )
+        return Response(
+            {
+                "early": is_early(),
+                "computed_at": computed_at,
+                "items": [regional_item(row, offset + index + 1) for index, row in enumerate(page)],
                 "next_cursor": str(offset + limit) if len(ranked) > limit else None,
             },
             status=status.HTTP_200_OK,

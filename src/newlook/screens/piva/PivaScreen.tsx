@@ -19,6 +19,7 @@ import {
   searchBeers,
   type BeerCollection,
   type BeerRankingPage,
+  type CzRegion,
   type BeerSearchItem,
   type BeerStyle,
   type RankedBeer,
@@ -27,6 +28,7 @@ import { t } from '@/i18n';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 
 import { STYLE_FILTERS, fmtCount, fmtDistance, fmtRating, lastKnownPosition, styleFilterLabel } from './model';
+import { regionLabel, useRankingRegion } from './RegionSheet';
 import { useLoad, type Load } from './states';
 
 const SHADES = [C.yellow, '#F7F7F2B3', '#F7F7F273', '#F7F7F242', '#F7F7F229'];
@@ -58,10 +60,14 @@ export function openBeer(router: ReturnType<typeof useRouter>, productKey: strin
   else router.push(href);
 }
 
-function RankRow({ b, bottom, onPress, early }: { b: RankedBeer; bottom?: boolean; onPress: () => void; early?: boolean }) {
+function RankRow({ b, bottom, onPress, early, inRegion }: { b: RankedBeer; bottom?: boolean; onPress: () => void; early?: boolean; inRegion?: boolean }) {
   const p = t.nv.piva;
   const style = b.styles[0];
-  const sub = bottom && b.topTag ? p.mostOften(p.rating.tags[b.topTag]) : [b.brandName, style ? p.styles[style] : ''].filter(Boolean).join(' · ');
+  const sub = inRegion
+    ? [b.brandName, b.drunkTotal ? p.drunkInRegion(b.drunkTotal) : ''].filter(Boolean).join(' · ')
+    : bottom && b.topTag
+      ? p.mostOften(p.rating.tags[b.topTag])
+      : [b.brandName, style ? p.styles[style] : ''].filter(Boolean).join(' · ');
   return (
     <Press onPress={onPress} style={[s.row, { paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
       <View style={{ width: 34, alignItems: 'center', gap: 2 }}>
@@ -107,8 +113,8 @@ function RankRow({ b, bottom, onPress, early }: { b: RankedBeer; bottom?: boolea
   );
 }
 
-function useRanking(order: 'best' | 'bottom', style: BeerStyle | null, enabled: boolean) {
-  return useLoad<BeerRankingPage>(`${order}:${style ?? ''}`, (signal) => fetchBeerRanking({ order, style }, signal), enabled);
+function useRanking(order: 'best' | 'bottom', style: BeerStyle | null, region: CzRegion | null, enabled: boolean) {
+  return useLoad<BeerRankingPage>(`${order}:${style ?? ''}:${region ?? ''}`, (signal) => fetchBeerRanking({ order, style, region }, signal), enabled);
 }
 
 function useCollection() {
@@ -142,7 +148,8 @@ export function PivaScreen() {
   const p = t.nv.piva;
   const [tab, setTab] = useState<'best' | 'bottom' | 'mine'>('best');
   const [style, setStyle] = useState<BeerStyle | null>(null);
-  const ranking = useRanking(tab === 'bottom' ? 'bottom' : 'best', style, tab !== 'mine');
+  const region = useRankingRegion((st) => st.region);
+  const ranking = useRanking(tab === 'bottom' ? 'bottom' : 'best', style, region, tab !== 'mine');
   const collection = useCollection();
   const watchedCount = useBeerWatchStore((st) => st.watches.length);
   const watchesLoaded = useBeerWatchStore((st) => st.loaded);
@@ -173,7 +180,7 @@ export function PivaScreen() {
         {tab !== 'mine' ? (
           <>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
-              <Chip label={p.region} trailing="chevron-down" />
+              <Chip label={regionLabel(region)} trailing="chevron-down" active={!!region} plain onPress={() => router.push('/nv/kraj')} />
               {STYLE_FILTERS.map((f) => (
                 <Chip key={f ?? 'all'} label={styleFilterLabel(f)} active={style === f} plain onPress={() => setStyle(f)} />
               ))}
@@ -205,11 +212,11 @@ export function PivaScreen() {
             ) : page && page.items.length ? (
               <Animated.View entering={fadeIn}>
                 {page.items.map((b) => (
-                  <RankRow key={b.productKey} b={b} bottom={tab === 'bottom'} early={early} onPress={() => openBeer(router, b.productKey)} />
+                  <RankRow key={b.productKey} b={b} bottom={tab === 'bottom'} early={early && !region} inRegion={!!region} onPress={() => openBeer(router, b.productKey)} />
                 ))}
               </Animated.View>
             ) : (
-              <StatusCard text={p.rankingEmpty} />
+              <StatusCard text={region ? p.regionEmpty : p.rankingEmpty} />
             )}
             {tab === 'best' && (early || (page && !page.items.length)) && unrated.length ? (
               <>
