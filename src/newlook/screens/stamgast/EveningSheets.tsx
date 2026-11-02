@@ -12,7 +12,8 @@ import { isContextPubKey } from '@/drinks/drinkTypes';
 import { useNowTick } from '@/friends/useNowTick';
 import { intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useTallyStore } from '@/stores/tallyStore';
+import { useTallyStore, type TallyDrink } from '@/stores/tallyStore';
+import { deleteSessionDrink, renameSessionDrinks } from '@/myBeers/drinkEdits';
 import { formatPrice } from '@/utils/currency';
 
 import { BackHeader, Screen } from '../../components/chrome';
@@ -21,7 +22,7 @@ import { Icon, type IconName } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, Segmented, T } from '../../components/ui';
 import { C, font, s } from '../../theme';
-import { toast } from '../../ui/store';
+import { dialog, toast } from '../../ui/store';
 import { beerTally, dateOfDay, dayKeyOf, dayString, hourlyTempo, minutesBetween, nightsOf } from './eveningData';
 import { nightDayLabel, servingLine } from './stamgastFormat';
 import { useBackfillPick, useCountPlace } from './placeStore';
@@ -310,6 +311,56 @@ export function DopsatSheet() {
   );
 }
 
+function drinkActions(router: ReturnType<typeof useRouter>, day: string, startedAt: string, drink: TallyDrink, lastOne: boolean) {
+  const old = t.myBeers;
+  const remove = () => {
+    if (deleteSessionDrink(startedAt, drink.id) && lastOne) nvBack(router);
+  };
+  dialog({
+    title: drink.beerName,
+    actions: [
+      { label: old.editDrinkCancel },
+      { label: t.nv.stamgast.renameDrink, kind: 'raised', onPress: () => router.push({ pathname: '/nv/opravit-pivo', params: { day, id: drink.id } }) },
+      {
+        label: old.deleteDrinkConfirm,
+        kind: 'danger',
+        onPress: () =>
+          dialog({
+            title: old.deleteDrinkTitle,
+            body: old.deleteDrinkBody,
+            actions: [{ label: old.deleteDrinkCancel }, { label: old.deleteDrinkConfirm, kind: 'danger', onPress: remove }],
+          }),
+      },
+    ],
+  });
+}
+
+/** Renames one logged drink of a past or running evening. */
+export function OpravitPivoSheet() {
+  const router = useRouter();
+  const old = t.myBeers;
+  const { day, id } = useLocalSearchParams<{ day: string; id: string }>();
+  const { nights } = useAllNights();
+  const session = nights.find((n) => n.day === day)?.sessions.find((x) => x.drinks.some((d) => d.id === id));
+  const drink = session?.drinks.find((d) => d.id === id);
+  const [name, setName] = useState(drink?.beerName ?? '');
+  if (!session || !drink) return null;
+  const next = name.trim();
+  return (
+    <Sheet title={old.editDrinkTitle} top={560} scroll={false}>
+      <Input value={name} onChangeText={setName} placeholder={old.editDrinkPlaceholder} autoFocus />
+      <Button
+        label={old.editDrinkSave}
+        disabled={!next || next === drink.beerName}
+        onPress={() => {
+          renameSessionDrinks(session.startedAt, [drink], next);
+          nvBack(router);
+        }}
+      />
+    </Sheet>
+  );
+}
+
 export function EveningDetailScreen() {
   const router = useRouter();
   const copy = t.nv.stamgast;
@@ -406,6 +457,7 @@ export function EveningDetailScreen() {
             <Row
               key={drink.id}
               last={i === arr.length - 1}
+              onPress={session ? () => drinkActions(router, night.day, session.startedAt, drink, arr.length === 1) : undefined}
               leading={
                 <T s={13} c={C.muted} style={{ width: 38 }}>
                   {formatClock(new Date(drink.at))}

@@ -129,13 +129,14 @@ export function DialogHost() {
             {d.body}
           </T>
         ) : null}
-        <View style={[s.row, { gap: 10, paddingTop: 10 }]}>
-          {d.actions.map((a) => (
+        {/* Three actions don't fit side by side; stacked, the first one (the way out) goes last. */}
+        <View style={[d.actions.length > 2 ? { gap: 10 } : s.row, { gap: 10, paddingTop: 10 }]}>
+          {(d.actions.length > 2 ? [...d.actions].reverse() : d.actions).map((a) => (
             <Button
               key={a.label}
               label={a.label}
               kind={a.kind ?? 'raised'}
-              flex
+              flex={d.actions.length <= 2}
               onPress={() => {
                 hide();
                 a.onPress?.();
@@ -217,13 +218,17 @@ export function Sheet({
   // footer, so the focused field scrolls into the part that is really visible.
   const footerRoom = footer ? footerH + 24 : 0;
   const scrimStyle = useAnimatedStyle(() => ({ opacity: shown.value }));
+  const minTop = insets.top + 40;
   const cardStyle = useAnimatedStyle(() => {
     const paddingBottom = keyboard.value + Math.min(keyboard.value, footerRoom);
+    // A short sheet grows by the keyboard's height, so its content stays above it.
+    const maxHeight = height - Math.max(minTop, top - keyboard.value);
     return reduced
-      ? { opacity: shown.value * cardFade.value, paddingBottom }
+      ? { opacity: shown.value * cardFade.value, paddingBottom, maxHeight }
       : {
           opacity: cardFade.value,
           paddingBottom,
+          maxHeight,
           transform: [{ translateY: (1 - shown.value) * (cardH.value + keyboard.value) }],
         };
   });
@@ -252,7 +257,6 @@ export function Sheet({
             left: 0,
             right: 0,
             bottom: 0,
-            maxHeight: height - Math.max(top, insets.top + 40),
             backgroundColor: C.dialog,
             borderTopLeftRadius: 34,
             borderTopRightRadius: 34,

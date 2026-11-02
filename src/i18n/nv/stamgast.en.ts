@@ -283,4 +283,5 @@ export const stamgastEn: typeof stamgastCs = {
   photoPublic: 'Everyone will see it, the photo will compete in FotoPivar',
   photoNeedNickname: 'FotoPivar needs a nickname.',
   photoNone: '-',
+  renameDrink: 'Fix the name',
 };

@@ -17,6 +17,7 @@ const SHEETS = [
   'vrstvy',
   'nesedi',
   'opravit-nazev',
+  'opravit-pivo',
   'oteviracka-den',
   'zapis',
   'pridat-pivo',

@@ -303,4 +303,5 @@ export const stamgastCs = {
   photoPublic: 'Uvidí všichni, fotka bude soutěžit ve FotoPivaři',
   photoNeedNickname: 'Do FotoPivaře potřebuješ přezdívku.',
   photoNone: '-',
+  renameDrink: 'Opravit název',
 };
