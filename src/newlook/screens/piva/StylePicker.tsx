@@ -92,8 +92,13 @@ export function DegreePicker({ value, onPick, onUnknown }: { value?: BeerDegree 
 
 function UnknownButton({ onPress }: { onPress: () => void }) {
   return (
-    <Press onPress={onPress} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 12 }}>
-      <T s={14} w={600} c={C.muted}>
+    <Press
+      haptic
+      onPress={onPress}
+      accessibilityRole="button"
+      style={[s.center, { height: 44, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.control }]}
+    >
+      <T s={15} w={700} c={C.text2}>
         {t.nv.piva.stylePick.unknown}
       </T>
     </Press>
