@@ -1,6 +1,6 @@
 import type { TallySession } from '@/stores/tallyStore';
 
-import { beerTally, distinctBeerCount, hasBeerBefore, hourlyTempo, nightOrdinal, nightsOf, previousNight } from '../eveningData';
+import { beerTally, hasBeerBefore, hourlyTempo, nightOrdinal, nightsOf, previousNight } from '../eveningData';
 
 function local(y: number, m: number, d: number, h: number, min = 0): string {
   return new Date(y, m - 1, d, h, min).toISOString();
@@ -72,7 +72,6 @@ it('ranks beers by how often they were logged and spots a first-time beer', () =
     ['Pilsner Urquell', 3],
     ['Kozel 11°', 2],
   ]);
-  expect(distinctBeerCount(sessions)).toBe(2);
   expect(hasBeerBefore(sessions, 'kozel 11°', 'b-0')).toBe(true);
   expect(hasBeerBefore([pinkas], 'Kozel 11°', 'b-0')).toBe(true);
   expect(hasBeerBefore([lokal], 'Bernard 11°', 'x')).toBe(false);

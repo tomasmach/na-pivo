@@ -1,3 +1,3 @@
-import { RegionSheet } from '@/newlook/screens/piva/RegionSheet';
+import { RegionSheet } from '@/newlook/screens/piva/RankingFilterSheets';
 
 export default RegionSheet;

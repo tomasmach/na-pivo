@@ -14,7 +14,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from pubs.api.ugc_consent import UGC_POLICY_HEADER
-from pubs.beer_ranking import classify_styles, refresh_beer_ranking
+from pubs.beer_ranking import classify_styles, degree_of, refresh_beer_ranking
 from pubs.models import Account, BeerProduct, BeerRanking, ContentReport, FriendBlock, Friendship
 
 PUB = {"name": "U Zlatého tygra", "lat": 50.0876, "lng": 14.4214}
@@ -237,11 +237,20 @@ def test_refresh_command_runs_once_an_hour(client):
     assert "ranked=0" in out.getvalue()
 
 
-def test_style_buckets():
-    assert classify_styles("Gambrinus Originál 10°", []) == ["ten"]
-    assert classify_styles("Pilsner Urquell", ["světlý ležák"]) == ["lager"]
+def test_kind_and_degree_from_the_name():
+    assert classify_styles("Gambrinus Originál 10°", []) == ["pale"]
+    assert classify_styles("Pilsner Urquell", ["světlý ležák"]) == ["pale"]
     assert classify_styles("Kozel Černý", []) == ["dark"]
+    assert classify_styles("Bernard Jantarový ležák", []) == ["amber"]
+    assert classify_styles("Polotmavý ležák 13°", []) == ["amber"]
     assert classify_styles("Matuška Raptor", ["IPA"]) == ["craft"]
+    assert classify_styles("Matuška Raptor", []) == []
+    assert degree_of("Gambrinus Originál 10°") == "10"
+    assert degree_of("Kozel 11°") == "11"
+    assert degree_of("Pilsner Urquell 12°") == "12"
+    assert degree_of("Bernard 14,5°") == "13plus"
+    assert degree_of("Starobrno desítka") == "10"
+    assert degree_of("Matuška Raptor") == ""
 
 
 # --- beer page ---------------------------------------------------------------
@@ -557,50 +566,63 @@ def test_regional_ranking_counts_where_the_beer_was_rated_and_drunk(client):
 
 
 @pytest.mark.django_db
-def test_beer_style_follows_the_majority_once_three_people_agree(client):
+def test_kind_and_degree_follow_the_majority_once_three_people_agree(client):
     product = _products(1)[0]
     product.name = "Matuska Raptor"
     product.save(update_fields=["name"])
     _rate_many(client, product, [5, 5, 4])
 
-    def vote(style: str) -> str:
+    def vote(**answer) -> str:
         token, _ = _register(client, f"s{uuid.uuid4().hex[:10]}")
         resp = client.post(
-            "/v1/beers/style",
-            {"product": product.key, "style": style},
-            format="json",
-            **_auth(token),
+            "/v1/beers/style", {"product": product.key, **answer}, format="json", **_auth(token)
         )
         assert resp.status_code == 200, resp.content
         return token
 
-    def ranking_styles() -> tuple[bool, list[str]]:
+    def ranking() -> tuple[bool, list[str], str]:
         refresh_beer_ranking(force=True)
         row = BeerRanking.objects.get(product=product)
-        return row.style_settled, row.styles
+        return row.style_settled, row.styles, row.degree
 
-    vote("craft")
-    vote("craft")
-    vote("unknown")
-    assert ranking_styles() == (False, [])
+    vote(style="craft", degree="13plus")
+    vote(style="craft", degree="13plus")
+    vote(style="unknown")
+    assert ranking() == (False, [], "")
 
-    vote("lager")
-    token = vote("craft")
-    assert ranking_styles() == (True, ["craft"])
+    vote(style="pale")
+    token = vote(style="craft", degree="13plus")
+    assert ranking() == (True, ["craft"], "13plus")
 
     detail = client.get("/v1/beers/detail", {"product": product.key}, **_auth(token)).json()
     assert detail["style_settled"] is True
     assert detail["my_style"] == "craft"
+    assert detail["degree"] == "13plus"
+    assert detail["my_degree"] == "13plus"
 
     for _ in range(3):
-        vote("lager")
-    # 3 craft against 4 lager: the majority wins.
-    assert ranking_styles() == (True, ["lager"])
+        vote(style="pale")
+    # 3 craft against 4 pale: the majority wins.
+    assert ranking()[:2] == (True, ["pale"])
 
-    bad = client.post(
-        "/v1/beers/style",
-        {"product": product.key, "style": "pilsner"},
-        format="json",
-        **_auth(token),
+    craft = client.get("/v1/beers/ranking", {"style": "craft"}, **_auth(token)).json()
+    assert craft["items"] == []
+    pale_strong = client.get(
+        "/v1/beers/ranking", {"style": "pale", "degree": "13plus"}, **_auth(token)
+    ).json()
+    assert [item["product_key"] for item in pale_strong["items"]] == [product.key]
+    assert pale_strong["items"][0]["degree"] == "13plus"
+
+    # A later answer with only the degree keeps my kind.
+    client.post(
+        "/v1/beers/style", {"product": product.key, "degree": "12"}, format="json", **_auth(token)
     )
-    assert bad.status_code == 400
+    detail = client.get("/v1/beers/detail", {"product": product.key}, **_auth(token)).json()
+    assert (detail["my_style"], detail["my_degree"]) == ("craft", "12")
+
+    for bad in ({"style": "lager"}, {"degree": "9"}, {}):
+        resp = client.post(
+            "/v1/beers/style", {"product": product.key, **bad}, format="json", **_auth(token)
+        )
+        assert resp.status_code == 400
+    assert client.get("/v1/beers/ranking", {"degree": "9"}, **_auth(token)).status_code == 400

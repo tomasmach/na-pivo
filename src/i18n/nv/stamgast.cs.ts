@@ -43,8 +43,6 @@ export const stamgastCs = {
   tonightEmpty: 'Zatím nic. První pivo zapíšeš tlačítkem dole.',
   undoLast: 'Vrátit poslední zápis',
   newBeerTitle: 'Nové pivo do sbírky',
-  newBeerSub: (n: number) =>
-    `Ve sbírce máš ${n} ${czechPlural(n, { one: 'různé pivo', few: 'různá piva', many: 'různých piv' })}. Jak ti chutná?`,
   rate: 'Ohodnotit',
   oneMore: 'Ještě jedno',
   logBeer: 'Zapsat pivo',

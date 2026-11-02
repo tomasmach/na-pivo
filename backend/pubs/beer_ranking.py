@@ -38,12 +38,18 @@ EARLY_MIN_RATERS = 3
 REFRESH_EVERY = timedelta(hours=1)
 # A pub counts as pouring a beer when someone confirmed it within this window.
 POURING_FRESH_DAYS = 90
-STYLES = ("lager", "ten", "craft", "dark")
+# What kind of beer it is, and how strong (Czech degrees), as two separate filters.
+STYLES = ("pale", "amber", "dark", "craft")
+DEGREES = ("10", "11", "12", "13plus")
 
-_DARK = re.compile(r"tmav|cern|dark|porter|stout|schwarz|bock")
+_AMBER = re.compile(r"polotmav|jantar|amber|granat|cerven")
+_DARK = re.compile(r"tmav|cern|dark|porter|stout|schwarz")
 _CRAFT = re.compile(r"\b(craft|ipa|apa|neipa|ale|sour|weizen|psenic\w*|wheat|saison|gose)\b")
-_TEN = re.compile(r"\b10\b|desitk|vycepni")
-_LAGER = re.compile(r"lezak|lager|pils|\b1[1-3]\b|premium")
+_PALE = re.compile(
+    r"svetl|lezak|lager|pils|vycepni|premium|original|desitk|jedenact|dvanact|\d\s*°"
+)
+_DEGREE = re.compile(r"(\d{1,2})(?:[.,]\d+)?\s*°")
+_DEGREE_WORDS = {"desitk": 10, "jedenact": 11, "dvanact": 12, "trinact": 13}
 
 
 def _fold(value: str) -> str:
@@ -52,42 +58,51 @@ def _fold(value: str) -> str:
 
 
 def classify_styles(name: str, style_texts: list[str]) -> list[str]:
-    """Rough style buckets for the ranking filter, from the product name and what people typed as style."""
+    """The kind of beer for the ranking filter, guessed from its name and what people typed."""
 
     text = " ".join([_fold(name), *(_fold(style) for style in style_texts)])
-    styles: list[str] = []
-    dark = bool(_DARK.search(text))
-    craft = bool(_CRAFT.search(text))
-    if _TEN.search(text):
-        styles.append("ten")
-    if not dark and not craft and _LAGER.search(text):
-        styles.append("lager")
-    if craft:
-        styles.append("craft")
-    if dark:
-        styles.append("dark")
-    return [style for style in STYLES if style in styles]
+    # Order matters: "polotmavé" also contains "tmav".
+    for style, pattern in (("amber", _AMBER), ("dark", _DARK), ("craft", _CRAFT), ("pale", _PALE)):
+        if pattern.search(text):
+            return [style]
+    return []
 
 
-# A people-chosen style replaces the name guess once this many agree and it has the most votes.
+def degree_of(name: str) -> str:
+    """Degree bucket written in the name (Kozel 11°, desítka), or "" when the name does not say."""
+
+    text = _fold(name)
+    match = _DEGREE.search(text)
+    value = int(match.group(1)) if match else None
+    if value is None:
+        value = next((n for word, n in _DEGREE_WORDS.items() if word in text), None)
+    if value is None or value < 6:
+        return ""
+    if value <= 10:
+        return "10"
+    if value >= 13:
+        return "13plus"
+    return str(value)
+
+
+# People's answer replaces the name guess once this many agree and it has the most votes.
 STYLE_MIN_VOTES = 3
 
 
-def settled_style(votes: Counter) -> tuple[bool, list[str]]:
-    """(settled, styles) from people's answers: the majority wins with enough agreement."""
+def majority(votes: Counter) -> str | None:
+    """The answer most people gave, once at least STYLE_MIN_VOTES agree and nobody ties it."""
     ranked = votes.most_common(2)
     if not ranked or ranked[0][1] < STYLE_MIN_VOTES:
-        return False, []
+        return None
     if len(ranked) > 1 and ranked[1][1] == ranked[0][1]:
-        return False, []
-    winner = ranked[0][0]
-    return True, [winner] if winner in STYLES else []
+        return None
+    return ranked[0][0]
 
 
 def _vote_of_text(text: str) -> str | None:
-    """The style bucket a typed style names, for check-ins that carry one."""
+    """The kind a typed style names, for check-ins that carry one."""
     found = classify_styles("", [text])
-    return found[0] if len(found) == 1 else None
+    return found[0] if found else None
 
 
 def _star(rating) -> int:
@@ -147,12 +162,14 @@ def refresh_beer_ranking(now: datetime | None = None, *, force: bool = False) ->
         if vote:
             style_votes[key] = vote
 
-    for account_id, product_id, style in BeerStyleVote.objects.filter(
+    degree_votes: dict[int, Counter] = {}
+    for account_id, product_id, style, degree in BeerStyleVote.objects.filter(
         account__status=Account.Status.ACTIVE
-    ).values_list("account_id", "product_id", "style"):
-        if style == BeerStyleVote.Style.UNKNOWN:
-            continue
-        style_votes[(account_id, product_id)] = style
+    ).values_list("account_id", "product_id", "style", "degree"):
+        if style and style != BeerStyleVote.Style.UNKNOWN:
+            style_votes[(account_id, product_id)] = style
+        if degree:
+            degree_votes.setdefault(product_id, Counter())[degree] += 1
     votes_per_product: dict[int, Counter] = {}
     for (_, product_id), style in style_votes.items():
         votes_per_product.setdefault(product_id, Counter())[style] += 1
@@ -236,9 +253,15 @@ def refresh_beer_ranking(now: datetime | None = None, *, force: bool = False) ->
         row.stars = stats["stars"]
         row.tag_counts = dict(stats["tags"])
         row.tagged_count = stats["tagged"]
-        settled, chosen = settled_style(votes_per_product.get(product_id, Counter()))
-        row.style_settled = settled
-        row.styles = chosen if settled else classify_styles(product.name, [])
+        chosen = majority(votes_per_product.get(product_id, Counter()))
+        row.style_settled = chosen is not None
+        if chosen is None:
+            row.styles = classify_styles(product.name, [])
+        else:
+            row.styles = [chosen] if chosen in STYLES else []
+        row.degree = (
+            degree_of(product.name) or majority(degree_votes.get(product_id, Counter())) or ""
+        )
         row.drunk_total = drunk.get("total", 0)
         row.drinkers = drunk.get("people", 0)
         row.drunk_week = drunk.get("week", 0)
@@ -260,6 +283,7 @@ def refresh_beer_ranking(now: datetime | None = None, *, force: bool = False) ->
                 "tagged_count",
                 "styles",
                 "style_settled",
+                "degree",
                 "drunk_total",
                 "drinkers",
                 "drunk_week",
@@ -383,6 +407,7 @@ def ranking_item(row: BeerRanking, position: int | None = None) -> dict:
         "name": product.name,
         "brand_name": product.brand_name,
         "styles": row.styles or [],
+        "degree": row.degree or None,
         "rating_avg": round(row.rating_avg, 2) if row.rating_avg is not None else None,
         "rating_count": row.rating_count,
         "rank": row.rank,

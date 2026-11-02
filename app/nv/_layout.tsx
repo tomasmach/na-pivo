@@ -15,6 +15,7 @@ const SHEET = { presentation: 'transparentModal', animation: 'none', contentStyl
 const SHEETS = [
   'filtry',
   'kraj',
+  'stupen',
   'vrstvy',
   'nesedi',
   'opravit-nazev',

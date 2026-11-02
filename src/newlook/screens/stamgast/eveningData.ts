@@ -94,11 +94,6 @@ export function previousNight(nights: readonly Night[], day: string): Night | nu
 
 const nameKey = (name: string) => name.trim().toLocaleLowerCase();
 
-/** Distinct beer names ever logged. */
-export function distinctBeerCount(sessions: readonly TallySession[]): number {
-  return new Set(sessions.flatMap((s) => s.drinks.filter(isBeer).map((d) => nameKey(d.beerName)))).size;
-}
-
 export function hasBeerBefore(sessions: readonly TallySession[], name: string, exceptId: string): boolean {
   const key = nameKey(name);
   return sessions.some((s) => s.drinks.some((d) => d.id !== exceptId && isBeer(d) && nameKey(d.beerName) === key));

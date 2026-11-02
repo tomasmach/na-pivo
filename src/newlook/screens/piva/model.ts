@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 import { generateUuidV4 } from '@/data/account';
 import type { BeerCheckIn, BeerCheckInInput, BeerCheckInVisibility, BeerTag } from '@/data/beerCheckinsClient';
 import { enqueueBeerCheckInOp, getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
-import type { BeerStyle, Position } from '@/data/beersClient';
+import type { BeerDegree, BeerStyle, Position } from '@/data/beersClient';
 import { intlLocale, t } from '@/i18n';
 import { requestPushRegistration } from '@/notifications/friendPush';
 import { syncBeerWatchLocation } from '@/beerWatch/beerWatchLocation';
@@ -23,10 +23,16 @@ export function fmtDistance(meters: number): string {
 }
 
 /** Ranking filter chips, in the mock's order; null is "all". */
-export const STYLE_FILTERS: (BeerStyle | null)[] = [null, 'lager', 'ten', 'craft', 'dark'];
+export const STYLE_FILTERS: (BeerStyle | null)[] = [null, 'pale', 'amber', 'dark', 'craft'];
 
 export function styleFilterLabel(style: BeerStyle | null): string {
   return style ? t.nv.piva.filters[style] : t.nv.piva.filters.all;
+}
+
+/** "světlé 12°" for a ranking row or a beer page, from what is known. */
+export function kindLine(styles: BeerStyle[], degree: BeerDegree | null): string {
+  const p = t.nv.piva;
+  return [styles[0] ? p.styles[styles[0]] : '', degree ? p.degrees[degree] : ''].filter(Boolean).join(' ');
 }
 
 /** "včera", "před 3 dny", a date further back. Reviews only carry the day. */

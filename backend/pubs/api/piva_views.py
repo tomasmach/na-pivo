@@ -15,7 +15,9 @@ from rest_framework.views import APIView
 from pubs.beer_catalog import BeerCatalogMatchCache, match_beer_identity, suggest_beers
 from pubs.beer_photo_gallery import visible_beer_photo_count, visible_beer_photos
 from pubs.beer_ranking import (
+    DEGREES,
     STYLES,
+    degree_of,
     is_early,
     pouring_pubs,
     ranking_item,
@@ -130,6 +132,13 @@ def beer_global_detail(
     """The additive, everyone-wide part of GET /v1/beers/detail."""
 
     row = BeerRanking.objects.filter(product=product).first() if product is not None else None
+    mine = (
+        BeerStyleVote.objects.filter(account=viewer, product=product)
+        .values_list("style", "degree")
+        .first()
+        if product is not None
+        else None
+    )
     pubs = pouring_pubs([product.pk], lat, lng).get(product.pk) if product is not None else None
     return {
         "product_key": product.key if product is not None else None,
@@ -149,18 +158,15 @@ def beer_global_detail(
         "nearest_pub": pubs["nearest"] if pubs else None,
         "photo_count": beer_photo_count(product, viewer),
         "style_settled": bool(row is not None and row.style_settled),
-        "my_style": (
-            BeerStyleVote.objects.filter(account=viewer, product=product)
-            .values_list("style", flat=True)
-            .first()
-            if product is not None
-            else None
-        ),
+        "degree": (row.degree if row is not None else degree_of(product.name if product else ""))
+        or None,
+        "my_style": mine[0] or None if mine else None,
+        "my_degree": mine[1] or None if mine else None,
     }
 
 
 class BeerRankingView(_BeersPolicy):
-    """GET /v1/beers/ranking?order=best|bottom&style=&region=&cursor=&limit= — the ranking.
+    """GET /v1/beers/ranking?order=best|bottom&style=&degree=&region=&cursor=&limit= — the ranking.
 
     Without ``region`` it is national; with a NUTS 3 code it ranks the ratings and
     drinks given at pubs in that region.
@@ -170,18 +176,22 @@ class BeerRankingView(_BeersPolicy):
         order = request.query_params.get("order") or "best"
         style = request.query_params.get("style") or ""
         region = request.query_params.get("region") or ""
+        degree = request.query_params.get("degree") or ""
         if (
             order not in ("best", "bottom")
             or (style and style not in STYLES)
+            or (degree and degree not in DEGREES)
             or (region and region not in REGION_CODES)
         ):
             return Response({"code": "invalid_query"}, status=status.HTTP_400_BAD_REQUEST)
         offset = _int_param(request, "cursor", 0, 0, 10_000)
         limit = _int_param(request, "limit", 20, 1, 50)
         if region:
-            return self._regional(region, order, style, offset, limit)
+            return self._regional(region, order, style, degree, offset, limit)
         rows = BeerRanking.objects.filter(rank__isnull=False).select_related("product")
         rows = rows.order_by("rank" if order == "best" else "-rank")
+        if degree:
+            rows = rows.filter(degree=degree)
         if style:
             # styles is a short JSON list; filtering in Python keeps SQLite and Postgres alike.
             ranked = [row for row in rows if style in (row.styles or [])][
@@ -205,12 +215,16 @@ class BeerRankingView(_BeersPolicy):
             status=status.HTTP_200_OK,
         )
 
-    def _regional(self, region: str, order: str, style: str, offset: int, limit: int) -> Response:
+    def _regional(
+        self, region: str, order: str, style: str, degree: str, offset: int, limit: int
+    ) -> Response:
         rows = (
             BeerRegionRanking.objects.filter(region=region, rank__isnull=False)
             .select_related("product", "product__ranking")
             .order_by("rank" if order == "best" else "-rank")
         )
+        if degree:
+            rows = rows.filter(product__ranking__degree=degree)
         if style:
             ranked = [
                 row
@@ -238,15 +252,21 @@ class BeerRankingView(_BeersPolicy):
 
 
 class BeerStyleVoteView(_BeersPolicy):
-    """POST /v1/beers/style — my answer to "Jaký je to styl?" for one catalogue beer.
+    """POST /v1/beers/style — my answer to "Jaké je to pivo?" for one catalogue beer.
 
-    Body: ``product`` (or ``beer_name`` + ``brewery_name``) and ``style``. The
-    ranking uses the majority of answers once enough people agree.
+    Body: ``product`` (or ``beer_name`` + ``brewery_name``) and ``style`` and/or
+    ``degree``. A field left out keeps my earlier answer. The ranking uses the
+    majority of answers once enough people agree.
     """
 
     def post(self, request: Request) -> Response:
         style = str(request.data.get("style") or "")
-        if style not in BeerStyleVote.Style.values:
+        degree = str(request.data.get("degree") or "")
+        if (
+            (not style and not degree)
+            or (style and style not in BeerStyleVote.Style.values)
+            or (degree and degree not in BeerStyleVote.Degree.values)
+        ):
             return Response({"code": "invalid_style"}, status=status.HTTP_400_BAD_REQUEST)
         product = resolve_product(
             str(request.data.get("product") or "").strip(),
@@ -255,10 +275,18 @@ class BeerStyleVoteView(_BeersPolicy):
         )
         if product is None:
             return Response({"code": "beer_not_found"}, status=status.HTTP_404_NOT_FOUND)
-        BeerStyleVote.objects.update_or_create(
-            account=request.user, product=product, defaults={"style": style}
+        changes = {key: value for key, value in (("style", style), ("degree", degree)) if value}
+        vote, _ = BeerStyleVote.objects.update_or_create(
+            account=request.user, product=product, defaults=changes
         )
-        return Response({"product_key": product.key, "my_style": style}, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "product_key": product.key,
+                "my_style": vote.style or None,
+                "my_degree": vote.degree or None,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class BeerSearchView(_BeersPolicy):

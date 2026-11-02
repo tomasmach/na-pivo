@@ -12,10 +12,17 @@ import { parseBeerDetail, parseBeerTags, type BeerDetail, type BeerTag } from '.
 
 const REQUEST_TIMEOUT_MS = 9000;
 
-export const BEER_STYLES = ['lager', 'ten', 'craft', 'dark'] as const;
+export const BEER_STYLES = ['pale', 'amber', 'dark', 'craft'] as const;
 export type BeerStyle = (typeof BEER_STYLES)[number];
-/** An answer to "Jaký je to styl?": a filter style, something else, or "Nevím". */
+/** An answer to "Co je to za pivo?": a filter kind, something else, or "Nevím". */
 export type StyleAnswer = BeerStyle | 'other' | 'unknown';
+/** Czech degrees buckets; '10' also holds weaker beers, '13plus' everything stronger. */
+export const BEER_DEGREES = ['10', '11', '12', '13plus'] as const;
+export type BeerDegree = (typeof BEER_DEGREES)[number];
+
+function degree(value: unknown): BeerDegree | null {
+  return BEER_DEGREES.includes(value as BeerDegree) ? (value as BeerDegree) : null;
+}
 export type RankingOrder = 'best' | 'bottom';
 export type ReviewFilter = 'newest' | 'party' | 'photo';
 
@@ -28,6 +35,7 @@ export interface RankedBeer {
   name: string;
   brandName: string;
   styles: BeerStyle[];
+  degree: BeerDegree | null;
   ratingAvg: number | null;
   ratingCount: number;
   rank: number | null;
@@ -84,6 +92,9 @@ export interface BeerPage extends BeerDetail {
   /** Enough people agreed on the style, so the app stops asking. */
   styleSettled: boolean;
   myStyle: StyleAnswer | null;
+  /** Known from the name or what most people answered. */
+  degree: BeerDegree | null;
+  myDegree: BeerDegree | null;
 }
 
 export interface BeerReview {
@@ -187,6 +198,7 @@ function rankedBeer(raw: Raw, fallbackPosition: number): RankedBeer | null {
     name: raw.name,
     brandName: str(raw.brand_name),
     styles: styles(raw.styles),
+    degree: degree(raw.degree),
     ratingAvg: num(raw.rating_avg),
     ratingCount: count(raw.rating_count),
     rank: num(raw.rank),
@@ -206,10 +218,10 @@ function list<T>(value: unknown, parse: (raw: Raw, index: number) => T | null): 
 }
 
 export async function fetchBeerRanking(
-  options: { order: RankingOrder; style?: BeerStyle | null; region?: CzRegion | null; cursor?: string | null; limit?: number },
+  options: { order: RankingOrder; style?: BeerStyle | null; degree?: BeerDegree | null; region?: CzRegion | null; cursor?: string | null; limit?: number },
   signal?: AbortSignal,
 ): Promise<BeerRankingPage | null> {
-  const qs = query({ order: options.order, style: options.style, region: options.region, cursor: options.cursor, limit: options.limit ?? 50 });
+  const qs = query({ order: options.order, style: options.style, degree: options.degree, region: options.region, cursor: options.cursor, limit: options.limit ?? 50 });
   const data = await getJson(`/v1/beers/ranking?${qs}`, signal);
   if (!data) return null;
   return {
@@ -280,13 +292,15 @@ export async function fetchBeerPage(
     photoCount: num(data.photo_count),
     styleSettled: data.style_settled === true,
     myStyle: STYLE_ANSWERS.includes(data.my_style as StyleAnswer) ? (data.my_style as StyleAnswer) : null,
+    degree: degree(data.degree),
+    myDegree: degree(data.my_degree),
   };
 }
 
 const STYLE_ANSWERS: readonly StyleAnswer[] = [...BEER_STYLES, 'other', 'unknown'];
 
-/** Sends my answer to "Jaký je to styl?"; false when it did not reach the server. */
-export async function submitBeerStyle(ref: BeerRef, style: StyleAnswer): Promise<boolean> {
+/** Sends my answer about the beer's kind and/or degrees; false when it did not reach the server. */
+export async function submitBeerStyle(ref: BeerRef, answer: { style?: StyleAnswer; degree?: BeerDegree }): Promise<boolean> {
   const endpoint = getBackendEndpoint('/v1/beers/style');
   if (!endpoint) return false;
   const session = await ensureAccount();
@@ -296,7 +310,7 @@ export async function submitBeerStyle(ref: BeerRef, style: StyleAnswer): Promise
     const resp = await fetch(endpoint, {
       method: 'POST',
       headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...refQuery(ref), style }),
+      body: JSON.stringify({ ...refQuery(ref), ...answer }),
       signal: abort.signal,
     });
     return resp.ok;

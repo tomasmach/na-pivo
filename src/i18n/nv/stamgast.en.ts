@@ -39,7 +39,6 @@ export const stamgastEn: typeof stamgastCs = {
   tonightEmpty: 'Nothing yet. Log your first beer with the button below.',
   undoLast: 'Undo the last entry',
   newBeerTitle: 'New beer for your collection',
-  newBeerSub: (n: number) => `${n} different ${englishPlural(n, { one: 'beer', other: 'beers' })} in your collection. How is it?`,
   rate: 'Rate',
   oneMore: 'One more',
   logBeer: 'Log beer',

@@ -14,12 +14,12 @@ import { generateUuidV4 } from '@/data/account';
 import { BEER_TAGS, MAX_BEER_TAGS, type BeerCheckIn, type BeerCheckInVisibility, type BeerTag } from '@/data/beerCheckinsClient';
 import { pickAndPrepareBeerPhoto, type BeerPhotoSource } from '@/data/beerPhotoPicker';
 import { enqueueBeerPhoto, persistBeerPhotoLocally } from '@/data/beerPhotosQueue';
-import { fetchBeerPage, submitBeerStyle, type StyleAnswer } from '@/data/beersClient';
+import { fetchBeerPage, submitBeerStyle, type BeerDegree, type StyleAnswer } from '@/data/beersClient';
 import { intlLocale, t } from '@/i18n';
 
 import { myLatestRating, saveBeerRating, savedRating } from './model';
 import { Loading, useLoad } from './states';
-import { StylePicker } from './StylePicker';
+import { DegreePicker, KindPicker } from './StylePicker';
 
 const VISIBILITIES: BeerCheckInVisibility[] = ['private', 'friends', 'public'];
 
@@ -46,6 +46,7 @@ export function HodnoceniSheet() {
               history: page.myHistory,
               productKey: page.productKey,
               askStyle: !!page.productKey && !page.styleSettled && !page.myStyle,
+              askDegree: !!page.productKey && !page.degree && !page.myDegree,
             }
           : fallback,
       ),
@@ -61,7 +62,7 @@ export function HodnoceniSheet() {
   );
 }
 
-type RatedBeer = { name: string; brewery: string; history: BeerCheckIn[]; productKey?: string | null; askStyle?: boolean };
+type RatedBeer = { name: string; brewery: string; history: BeerCheckIn[]; productKey?: string | null; askStyle?: boolean; askDegree?: boolean };
 
 function RatingForm({ beer, params }: { beer: RatedBeer; params: Params }) {
   const router = useRouter();
@@ -75,6 +76,7 @@ function RatingForm({ beer, params }: { beer: RatedBeer; params: Params }) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [style, setStyle] = useState<StyleAnswer | null>(null);
+  const [degree, setDegree] = useState<BeerDegree | null>(null);
   const time = new Date().toLocaleTimeString(intlLocale, { hour: 'numeric', minute: '2-digit' });
 
   const toggleTag = (tag: BeerTag) =>
@@ -110,7 +112,9 @@ function RatingForm({ beer, params }: { beer: RatedBeer; params: Params }) {
       { rating: stars, tags, note: text.trim(), visibility },
     );
     // The style is a crowd answer next to the rating; offline it simply is not counted.
-    if (style && beer.productKey) void submitBeerStyle({ productKey: beer.productKey }, style);
+    if ((style || degree) && beer.productKey) {
+      void submitBeerStyle({ productKey: beer.productKey }, { ...(style ? { style } : {}), ...(degree ? { degree } : {}) });
+    }
     if (photoUri) {
       const clientId = generateUuidV4();
       void persistBeerPhotoLocally(photoUri, clientId).then((localUri) =>
@@ -151,7 +155,13 @@ function RatingForm({ beer, params }: { beer: RatedBeer; params: Params }) {
       {beer.askStyle ? (
         <View style={{ gap: 12 }}>
           <FieldLabel>{t.nv.piva.stylePick.question}</FieldLabel>
-          <StylePicker value={style} onPick={(next) => setStyle((prev) => (prev === next ? null : next))} />
+          <KindPicker value={style} onPick={(next) => setStyle((prev) => (prev === next ? null : next))} />
+        </View>
+      ) : null}
+      {beer.askDegree ? (
+        <View style={{ gap: 12 }}>
+          <FieldLabel>{t.nv.piva.stylePick.degreeQuestion}</FieldLabel>
+          <DegreePicker value={degree} onPick={(next) => setDegree((prev) => (prev === next ? null : next))} />
         </View>
       ) : null}
       <View style={{ gap: 12 }}>

@@ -8,7 +8,7 @@ import { create } from 'zustand';
 
 import { formatClock, formatPromile, useAlcoholEstimate } from '@/counter/useAlcoholEstimate';
 import { placeKey, removeCountedDrink, type CountableDrink } from '@/counter/countDrink';
-import { fetchBeerPage, submitBeerStyle, type StyleAnswer } from '@/data/beersClient';
+import { fetchBeerPage, submitBeerStyle, type BeerDegree, type StyleAnswer } from '@/data/beersClient';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useNowTick } from '@/friends/useNowTick';
@@ -39,7 +39,7 @@ import { toast } from '../../ui/store';
 import { TourRunContent } from '../tour/TourScreens';
 import { useTourSegment } from '../tour/tourSegment';
 import { logDrink, useCounterNudges } from './counterActions';
-import { StylePicker } from '../piva/StylePicker';
+import { DegreePicker, KindPicker } from '../piva/StylePicker';
 import { FriendEveningCard, leaveFriendHome, useFriendHomeEvening } from '../parta/FriendEveningCard';
 import { DiaryView } from './DiaryView';
 import { durationLabel, servingLine } from './stamgastFormat';
@@ -56,23 +56,29 @@ function useTourGlance() {
   return useMemo(() => ({ run: activeRun, glance: runGlance(activeRun, now) }), [activeRun, now]);
 }
 
-// The beer whose style question was answered or waved off, so it does not come back.
-const useStyleAnswered = create<{ name: string | null }>(() => ({ name: null }));
+// What I already answered about the beer just logged, so a question does not come back.
+const useBeerAnswered = create<{ name: string | null; kind: boolean; degree: boolean }>(() => ({ name: null, kind: false, degree: false }));
 
-/** Catalogue key of the beer just logged when nobody has settled its style and I have not answered. */
-function useStyleQuestion(beerName: string | null): string | null {
-  const [ask, setAsk] = useState<{ name: string; key: string } | null>(null);
-  const answered = useStyleAnswered((st) => st.name);
+type BeerQuestion = { key: string; step: 'kind' | 'degree' };
+
+/** The next question about the beer just logged: its kind, then its degrees, only while nobody settled them. */
+function useBeerQuestion(beerName: string | null): BeerQuestion | null {
+  const [known, setKnown] = useState<{ name: string; key: string; kind: boolean; degree: boolean } | null>(null);
+  const answered = useBeerAnswered();
   useEffect(() => {
     if (!beerName) return;
     const controller = new AbortController();
     void fetchBeerPage({ beerName }, null, controller.signal).then((page) => {
-      if (controller.signal.aborted || !page?.productKey || page.styleSettled || page.myStyle) return;
-      setAsk({ name: beerName, key: page.productKey });
+      if (controller.signal.aborted || !page?.productKey) return;
+      setKnown({ name: beerName, key: page.productKey, kind: !page.styleSettled && !page.myStyle, degree: !page.degree && !page.myDegree });
     });
     return () => controller.abort();
   }, [beerName]);
-  return ask && ask.name === beerName && answered !== beerName ? ask.key : null;
+  if (!known || known.name !== beerName) return null;
+  const done = answered.name === beerName ? answered : { kind: false, degree: false };
+  if (known.kind && !done.kind) return { key: known.key, step: 'kind' };
+  if (known.degree && !done.degree) return { key: known.key, step: 'degree' };
+  return null;
 }
 
 export function StamgastScreen() {
@@ -223,12 +229,17 @@ function CounterView() {
   const { estimate } = useAlcoholEstimate();
   const now = useNowTick();
   const nudges = useCounterNudges();
-  const styleAsk = useStyleQuestion(nudges.newBeer?.name ?? null);
-  const answerStyle = (style: StyleAnswer) => {
-    if (!styleAsk) return;
-    useStyleAnswered.setState({ name: nudges.newBeer?.name ?? null });
-    void submitBeerStyle({ productKey: styleAsk }, style).then((ok) => {
-      if (ok && style !== 'unknown') toast({ kind: 'saved', title: t.nv.piva.stylePick.thanks, icon: 'check' });
+  const question = useBeerQuestion(nudges.newBeer?.name ?? null);
+  const answer = (reply: { style?: StyleAnswer; degree?: BeerDegree }, skip = false) => {
+    if (!question) return;
+    const prev = useBeerAnswered.getState();
+    const name = nudges.newBeer?.name ?? null;
+    const base = prev.name === name ? prev : { name, kind: false, degree: false };
+    // "Nevím" on the kind skips the degree too; one shrug is enough.
+    useBeerAnswered.setState({ ...base, name, kind: true, degree: base.degree || question.step === 'degree' || skip });
+    if (!reply.style && !reply.degree) return;
+    void submitBeerStyle({ productKey: question.key }, reply).then((ok) => {
+      if (ok && !skip) toast({ kind: 'saved', title: t.nv.piva.stylePick.thanks, icon: 'check' });
     });
   };
   const { run } = useTourGlance();
@@ -299,7 +310,7 @@ function CounterView() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_X, paddingTop: 20, gap: 20, paddingBottom: tabSpace + (styleAsk ? 340 : nudges.newBeer ? 180 : 100) }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_X, paddingTop: 20, gap: 20, paddingBottom: tabSpace + (question ? 340 : nudges.newBeer ? 180 : 100) }}>
         <View style={{ alignItems: 'center' }}>
           <Press
             haptic
@@ -429,18 +440,17 @@ function CounterView() {
         </View>
       </ScrollView>
       <BottomFade height={tabSpace + 130} />
-      {nudges.newBeer && styleAsk ? (
-        <Animated.View key="style" entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
+      {nudges.newBeer && question ? (
+        <Animated.View key={question.step} entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
           <View style={[{ padding: 14, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: C.line, gap: 10 }, shadow.raised]}>
-            <View style={{ gap: 2 }}>
-              <T s={15} w={700}>
-                {t.nv.piva.stylePick.nudgeTitle(nudges.newBeer.name)}
-              </T>
-              <T s={13} c={C.muted}>
-                {t.nv.piva.stylePick.nudgeSub}
-              </T>
-            </View>
-            <StylePicker onPick={answerStyle} onUnknown={() => answerStyle('unknown')} />
+            <T s={15} w={700}>
+              {question.step === 'kind' ? t.nv.piva.stylePick.nudgeTitle(nudges.newBeer.name) : t.nv.piva.stylePick.nudgeDegree(nudges.newBeer.name)}
+            </T>
+            {question.step === 'kind' ? (
+              <KindPicker onPick={(style) => answer({ style })} onUnknown={() => answer({ style: 'unknown' }, true)} />
+            ) : (
+              <DegreePicker onPick={(degree) => answer({ degree })} onUnknown={() => answer({}, true)} />
+            )}
           </View>
         </Animated.View>
       ) : nudges.newBeer ? (
@@ -449,9 +459,6 @@ function CounterView() {
             <View style={[s.fill, { gap: 2 }]}>
               <T s={15} w={700}>
                 {copy.newBeerTitle}
-              </T>
-              <T s={13} c={C.muted}>
-                {copy.newBeerSub(nudges.newBeer.ordinal)}
               </T>
             </View>
             <Press

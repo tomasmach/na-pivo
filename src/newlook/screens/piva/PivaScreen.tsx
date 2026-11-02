@@ -18,6 +18,7 @@ import {
   fetchBeerRanking,
   searchBeers,
   type BeerCollection,
+  type BeerDegree,
   type BeerRankingPage,
   type CzRegion,
   type BeerSearchItem,
@@ -27,8 +28,8 @@ import {
 import { t } from '@/i18n';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 
-import { STYLE_FILTERS, fmtCount, fmtDistance, fmtRating, lastKnownPosition, styleFilterLabel } from './model';
-import { regionLabel, useRankingRegion } from './RegionSheet';
+import { STYLE_FILTERS, fmtCount, fmtDistance, fmtRating, kindLine, lastKnownPosition, styleFilterLabel } from './model';
+import { degreeLabel, regionLabel, useRankingRegion } from './RankingFilterSheets';
 import { useLoad, type Load } from './states';
 
 const SHADES = [C.yellow, '#F7F7F2B3', '#F7F7F273', '#F7F7F242', '#F7F7F229'];
@@ -62,12 +63,11 @@ export function openBeer(router: ReturnType<typeof useRouter>, productKey: strin
 
 function RankRow({ b, bottom, onPress, early, inRegion }: { b: RankedBeer; bottom?: boolean; onPress: () => void; early?: boolean; inRegion?: boolean }) {
   const p = t.nv.piva;
-  const style = b.styles[0];
   const sub = inRegion
     ? [b.brandName, b.drunkTotal ? p.drunkInRegion(b.drunkTotal) : ''].filter(Boolean).join(' · ')
     : bottom && b.topTag
       ? p.mostOften(p.rating.tags[b.topTag])
-      : [b.brandName, style ? p.styles[style] : ''].filter(Boolean).join(' · ');
+      : [b.brandName, kindLine(b.styles, b.degree)].filter(Boolean).join(' · ');
   return (
     <Press onPress={onPress} style={[s.row, { paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
       <View style={{ width: 34, alignItems: 'center', gap: 2 }}>
@@ -113,8 +113,8 @@ function RankRow({ b, bottom, onPress, early, inRegion }: { b: RankedBeer; botto
   );
 }
 
-function useRanking(order: 'best' | 'bottom', style: BeerStyle | null, region: CzRegion | null, enabled: boolean) {
-  return useLoad<BeerRankingPage>(`${order}:${style ?? ''}:${region ?? ''}`, (signal) => fetchBeerRanking({ order, style, region }, signal), enabled);
+function useRanking(order: 'best' | 'bottom', style: BeerStyle | null, degree: BeerDegree | null, region: CzRegion | null, enabled: boolean) {
+  return useLoad<BeerRankingPage>(`${order}:${style ?? ''}:${degree ?? ''}:${region ?? ''}`, (signal) => fetchBeerRanking({ order, style, degree, region }, signal), enabled);
 }
 
 function useCollection() {
@@ -149,7 +149,8 @@ export function PivaScreen() {
   const [tab, setTab] = useState<'best' | 'bottom' | 'mine'>('best');
   const [style, setStyle] = useState<BeerStyle | null>(null);
   const region = useRankingRegion((st) => st.region);
-  const ranking = useRanking(tab === 'bottom' ? 'bottom' : 'best', style, region, tab !== 'mine');
+  const degree = useRankingRegion((st) => st.degree);
+  const ranking = useRanking(tab === 'bottom' ? 'bottom' : 'best', style, degree, region, tab !== 'mine');
   const collection = useCollection();
   const watchedCount = useBeerWatchStore((st) => st.watches.length);
   const watchesLoaded = useBeerWatchStore((st) => st.loaded);
@@ -181,6 +182,7 @@ export function PivaScreen() {
           <>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
               <Chip label={regionLabel(region)} trailing="chevron-down" active={!!region} plain onPress={() => router.push('/nv/kraj')} />
+              <Chip label={degreeLabel(degree)} trailing="chevron-down" active={!!degree} plain onPress={() => router.push('/nv/stupen')} />
               {STYLE_FILTERS.map((f) => (
                 <Chip key={f ?? 'all'} label={styleFilterLabel(f)} active={style === f} plain onPress={() => setStyle(f)} />
               ))}
@@ -424,7 +426,7 @@ export function HledatPivoScreen() {
                 last={i === list.length - 1}
                 leading={<Tile icon="beer" />}
                 title={b.name}
-                sub={[b.brandName, b.styles[0] ? t.nv.piva.styles[b.styles[0]] : ''].filter(Boolean).join(' · ')}
+                sub={[b.brandName, kindLine(b.styles, null)].filter(Boolean).join(' · ')}
                 trailing={<D s={22}>{b.ratingAvg !== null ? fmtRating(b.ratingAvg) : NO_VALUE}</D>}
                 onPress={() => openBeer(router, b.productKey, true)}
               />

@@ -3871,6 +3871,8 @@ class BeerRanking(models.Model):
     styles = models.JSONField(default=list, blank=True)
     # True once enough people agreed on the style; until then ``styles`` is guessed from the name.
     style_settled = models.BooleanField(default=False)
+    # Czech degrees bucket: from the name, else what most people answered; "" when unknown.
+    degree = models.CharField(max_length=6, blank=True, default="")
     rank = models.PositiveIntegerField(null=True, blank=True, db_index=True)
     # Final rank of the previous ISO week, for the arrow next to the rank.
     last_week_rank = models.PositiveIntegerField(null=True, blank=True)
@@ -3885,25 +3887,32 @@ class BeerRanking(models.Model):
 
 
 class BeerStyleVote(models.Model):
-    """One account's answer to "Jaký je to styl?" for a catalogue beer.
+    """One account's answer to "Jaké je to pivo?" for a catalogue beer: its kind and degrees.
 
     The majority wins once enough people agree, so a single careless tap changes
     nothing. ``unknown`` records "Nevím" and only stops the app asking again.
     """
 
     class Style(models.TextChoices):
-        LAGER = "lager", "Lager"
-        TEN = "ten", "Ten"
+        PALE = "pale", "Pale"
+        AMBER = "amber", "Amber"
         DARK = "dark", "Dark"
         CRAFT = "craft", "Craft"
         OTHER = "other", "Other"
         UNKNOWN = "unknown", "Unknown"
 
+    class Degree(models.TextChoices):
+        TEN = "10", "10° or less"
+        ELEVEN = "11", "11°"
+        TWELVE = "12", "12°"
+        STRONG = "13plus", "13° or more"
+
     account = models.ForeignKey(
         "pubs.Account", on_delete=models.CASCADE, related_name="beer_style_votes"
     )
     product = models.ForeignKey(BeerProduct, on_delete=models.CASCADE, related_name="style_votes")
-    style = models.CharField(max_length=8, choices=Style.choices)
+    style = models.CharField(max_length=8, choices=Style.choices, blank=True, default="")
+    degree = models.CharField(max_length=6, choices=Degree.choices, blank=True, default="")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

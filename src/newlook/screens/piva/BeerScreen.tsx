@@ -24,7 +24,7 @@ import {
 import { t } from '@/i18n';
 import { findBeerWatch, useBeerWatchStore } from '@/stores/beerWatchStore';
 
-import { fmtCount, fmtDistance, fmtRating, lastKnownPosition, myLatestRating, reviewDay, saveBeerRating, savedRating, toggleWatch } from './model';
+import { fmtCount, fmtDistance, fmtRating, kindLine, lastKnownPosition, myLatestRating, reviewDay, saveBeerRating, savedRating, toggleWatch } from './model';
 import { Stars } from './PivaScreen';
 import { Loading, useLoad } from './states';
 
@@ -171,7 +171,7 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
   };
 
   const nearest = beer.nearestPub;
-  const subtitle = [beer.brandName, beer.styles[0] ? p.styles[beer.styles[0]] : ''].filter(Boolean).join(' · ');
+  const subtitle = [beer.brandName, kindLine(beer.styles, beer.degree)].filter(Boolean).join(' · ');
   const stats: [string, string][] = [
     [fmtCount(beer.drunkTotal), b.drunkTotal],
     [fmtCount(beer.drinkers), b.drinkers],

@@ -9,14 +9,14 @@ import { sessionCount, useTallyStore } from '@/stores/tallyStore';
 import { fireRigidImpactHaptic } from '@/utils/haptics';
 
 import { dialog, toast } from '../../ui/store';
-import { distinctBeerCount, hasBeerBefore } from './eveningData';
+import { hasBeerBefore } from './eveningData';
 
 /** The counter's one-off nudges; drinks logged from other sheets set them too. */
 interface CounterNudges {
   /** Session whose 3rd beer offers the story sticker. */
   stickerFor: string | null;
   tourBanner: { stopId: string; index: number; beers: number } | null;
-  newBeer: { name: string; ordinal: number; pubName: string } | null;
+  newBeer: { name: string; pubName: string } | null;
   set: (patch: Partial<Omit<CounterNudges, 'set'>>) => void;
 }
 
@@ -52,7 +52,7 @@ function record(place: CountPlace, beer: CountableDrink, menu?: readonly Communi
   if (live === 3) patch.stickerFor = result.session.clientId;
   if (result.tourStop) patch.tourBanner = { stopId: result.tourStop.stop.id, index: result.tourStop.number - 1, beers: live };
   if (!hasBeerBefore(all, beer.name, result.id)) {
-    patch.newBeer = { name: beer.name, ordinal: distinctBeerCount(all), pubName: result.session.pubName };
+    patch.newBeer = { name: beer.name, pubName: result.session.pubName };
   }
   useCounterNudges.getState().set(patch);
   if (settings.waterNudgeEnabled && live > 0 && live % 4 === 0) {
