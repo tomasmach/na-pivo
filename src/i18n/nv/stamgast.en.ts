@@ -1,6 +1,5 @@
 // English mirror of ./stamgast.cs.ts. Keys must match (en.test.ts).
 import { englishPlural } from '../enHelpers';
-import { commonEn } from './common.en';
 import type { stamgastCs } from './stamgast.cs';
 
 const STOP_ORDINAL = ['first', 'second', 'third', 'fourth', 'fifth'];
@@ -141,12 +140,10 @@ export const stamgastEn: typeof stamgastCs = {
   recordNewPubs: 'new pubs',
   nights: 'Evenings',
   today: 'Today',
-  dash: '-',
 
   eveningTitle: (weekday: string, day: number, month: number) => `${weekday} ${day}/${month}`,
   eveningMissing: "This evening isn't in your diary.",
   statBeers: (n: number) => englishPlural(n, BEER),
-  durationShort: commonEn.duration,
   tempo: 'Pace by the hour',
   tempoPeak: (n: number, hour: number) => `${n} ${englishPlural(n, BEER)} at ${hour}:00`,
   hourLabel: (hour: number) => `${hour}:00`,

@@ -1,6 +1,5 @@
 // Czech copy for the new look, area: stamgast. English mirror in ./stamgast.en.ts.
 import { czechPlural } from '../plural';
-import { commonCs } from './common.cs';
 
 const STOP_AT = ['jedničce', 'dvojce', 'trojce', 'čtyřce', 'pětce'];
 const STOP_NAME = ['jednička', 'dvojka', 'trojka', 'čtyřka', 'pětka'];
@@ -154,13 +153,11 @@ export const stamgastCs = {
   recordNewPubs: 'nových hospod',
   nights: 'Večery',
   today: 'Dnes',
-  dash: '-',
 
   // Evening detail
   eveningTitle: (weekday: string, day: number, month: number) => `${weekday} ${day}. ${month}.`,
   eveningMissing: 'Tenhle večer v deníku nemám.',
   statBeers: (n: number) => czechPlural(n, PIVO),
-  durationShort: commonCs.duration,
   tempo: 'Tempo po hodinách',
   tempoPeak: (n: number, hour: number) => `${n} ${czechPlural(n, PIVO)} ve ${hour}:00`,
   hourLabel: (hour: number) => `${hour}:00`,

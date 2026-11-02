@@ -24,7 +24,8 @@ import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, Segmented, T }
 import { C, font, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { beerTally, dateOfDay, dayKeyOf, dayString, hourlyTempo, minutesBetween, nightsOf } from './eveningData';
-import { nightDayLabel, servingLine } from './stamgastFormat';
+import { durationLabel, nightDayLabel, servingLine } from './stamgastFormat';
+import { NO_VALUE } from '../../format';
 import { useBackfillPick, useCountPlace } from './placeStore';
 
 function Counter({ value, onChange }: { value: number; onChange: (n: number) => void }) {
@@ -403,8 +404,8 @@ export function EveningDetailScreen() {
         {(
           [
             [String(night.beers), copy.statBeers(night.beers), C.yellow],
-            [night.priced ? formatPrice(night.spentCzk, currency) : copy.dash, copy.statSpent, C.white],
-            [copy.durationShort(Math.floor(minutes / 60), minutes % 60), copy.statTable, C.white],
+            [night.priced ? formatPrice(night.spentCzk, currency) : NO_VALUE, copy.statSpent, C.white],
+            [durationLabel(minutes), copy.statTable, C.white],
           ] as const
         ).map(([v, l, c]) => (
           <View key={l} style={{ gap: 2 }}>
