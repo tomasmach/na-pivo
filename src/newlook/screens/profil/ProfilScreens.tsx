@@ -1941,6 +1941,13 @@ export function PozvankaDoPartySheet() {
   const myId = useAccountStore((st) => st.profile?.id ?? null);
   const [resolved, setResolved] = useState<InviteResolveResult | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const [friendIds, setFriendIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    void loadFriendsDashboardSnapshot().then((snap) => {
+      if (snap) setFriendIds(new Set(snap.dashboard.friends.map((f) => f.id)));
+    });
+  }, []);
 
   useEffect(() => {
     if (!code) return;
@@ -1975,7 +1982,29 @@ export function PozvankaDoPartySheet() {
           : 'invalid'
         : myId && inviter.id === myId
           ? 'self'
-          : 'valid';
+          : friendIds.has(inviter.id)
+            ? 'friend'
+            : 'valid';
+
+  if (state === 'friend' && inviter) {
+    return (
+      <Sheet closeIcon={false} top={520} scroll={false}>
+        <View style={{ alignItems: 'center', gap: 14, paddingVertical: 12 }}>
+          <Kicker>{P().invite.kicker}</Kicker>
+          <ProfilAvatar uri={inviter.avatarUrl} initial={initialOf(inviter)} size={84} />
+          <T s={16} c={C.text2} style={{ textAlign: 'center' }}>
+            {P().invite.alreadyFriends}
+          </T>
+        </View>
+        <Button label={P().invite.openProfile} onPress={() => router.replace({ pathname: '/nv/kamos/[id]', params: { id: inviter.id } })} />
+        <Press onPress={() => close(router)} style={{ alignItems: 'center', paddingBottom: 6 }}>
+          <T s={15} w={700} c={C.text2}>
+            {P().invite.notNow}
+          </T>
+        </Press>
+      </Sheet>
+    );
+  }
 
   if (state !== 'valid' || !inviter) {
     const message =

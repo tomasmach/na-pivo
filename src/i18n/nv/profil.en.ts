@@ -207,6 +207,8 @@ export const profilEn: Strings['nv']['profil'] = {
       return `${list} ${all.length > 1 ? 'are' : 'is'} already in a crew with ${inviter}`;
     },
     add: (name: string) => `Add ${name} to the crew`,
+    alreadyFriends: "You're already in each other's crew.",
+    openProfile: 'Open profile',
     notNow: 'Not now',
   },
   writeMe: {

@@ -250,7 +250,6 @@ export function ZapisSheet() {
   const typed = Number(typedPrice.replace(',', '.'));
   const price = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : typed > 0 && typed <= 1000 ? Math.round(typed) : undefined;
   const needsPrice = !!pub && kind === 'pivo' && typeof chosenSize?.priceCzk !== 'number';
-  const priceMissing = needsPrice && price === undefined;
 
   const homeLabel = {
     lahvac: `${copy.bottle.toLowerCase()} ${formatVolume(500)}`,
@@ -266,7 +265,7 @@ export function ZapisSheet() {
           ? formatVolume(chosenSize.volumeMl)
           : '';
   const footerSub = selected
-    ? [selected.name, sizeLabel, priceMissing ? copy.priceNeeded : typeof price === 'number' && !home ? money(price) : null].filter(Boolean).join(' · ')
+    ? [selected.name, sizeLabel, typeof price === 'number' && !home ? money(price) : null].filter(Boolean).join(' · ')
     : undefined;
 
   const save = () => {
@@ -274,7 +273,7 @@ export function ZapisSheet() {
       router.push('/nv/zmenit-misto');
       return;
     }
-    if (!selected || priceMissing) return;
+    if (!selected) return;
     const serving = home && kind === 'pivo' ? HOME_SERVING[homeServing] : null;
     logDrink(
       place,
@@ -297,7 +296,7 @@ export function ZapisSheet() {
     <Sheet
       title={copy.whatDrink}
       top={140}
-      footer={<Button height={60} label={copy.logBeer} sub={footerSub} disabled={!selected || priceMissing} onPress={save} />}
+      footer={<Button height={60} label={copy.logBeer} sub={footerSub} disabled={!selected} onPress={save} />}
     >
       <Press onPress={() => router.push('/nv/zmenit-misto')} style={[s.row, { gap: 6, marginTop: -8 }]}>
         <Icon name={home ? 'house' : 'map-pin'} size={16} color={C.yellow} />

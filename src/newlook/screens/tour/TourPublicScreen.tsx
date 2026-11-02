@@ -89,7 +89,8 @@ function PublicTour({ token, runId }: { token: string; runId?: string }) {
   const inviteKey = privatePlanId && accountId ? `${privatePlanId}:${accountId}` : null;
   const invite = found && found.key === inviteKey ? found.invite : null;
 
-  const own = info ? store.plans.find((p) => p.publication?.token === token) : undefined;
+  // My own link, public or private, opens my plan instead of saving a copy of it.
+  const own = store.plans.find((p) => p.publication?.token === token || p.share?.url.split('?')[0].endsWith(`/t/${token}`));
   const authored = !!info && !!accountId && info.author.id === accountId;
   const existing = plan ? store.plans.find((p) => (info ? p.publicSource?.publicId === info.id : p.source?.tourId === plan.id)) : undefined;
   const update = !info && !!existing?.source && existing.source.revision < (plan?.revision ?? 0);
@@ -200,7 +201,7 @@ function PublicTour({ token, runId }: { token: string; runId?: string }) {
       <Button label={t.tourInvites.changeToGoing} disabled={busy} onPress={() => void answer('going')} />
     ) : (
       <View style={{ gap: 10 }}>
-        <Button label={update ? t.tours.update : existing ? t.tours.openSaved : t.tours.import} icon="bookmark" disabled={busy} onPress={() => void save()} />
+        <Button label={own ? t.tours.open : update ? t.tours.update : existing ? t.tours.openSaved : t.tours.import} icon="bookmark" disabled={busy} onPress={() => void save()} />
         <Button label={t.tourInvites.changeToNotGoing} kind="raised" disabled={busy} onPress={() => void answer('declined')} />
       </View>
     )

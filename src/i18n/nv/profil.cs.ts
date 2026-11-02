@@ -207,6 +207,8 @@ export const profilCs = {
       return `${list} už s ${inviter} v partě ${all.length > 1 || extra > 0 ? 'jsou' : 'je'}`;
     },
     add: (name: string) => `Přidat ${name} do party`,
+    alreadyFriends: 'Už jste spolu v partě.',
+    openProfile: 'Otevřít profil',
     notNow: 'Teď ne',
   },
   writeMe: {

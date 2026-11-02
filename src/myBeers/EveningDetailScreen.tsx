@@ -23,17 +23,11 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { formatVolume, t } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
-import {
-  enqueueDrink,
-  updateQueuedDrinkBeerName,
-  removeQueuedDrink,
-  flushDrinksQueue,
-} from '@/data/drinksQueue';
+import { enqueueDrink } from '@/data/drinksQueue';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { buildHistoricalDrinkEntry } from '@/data/drinksHistorySync';
-import { enqueueDelete, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
-import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
-import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
+import { syncVisit } from '@/data/visitsSync';
+import { deleteSessionDrink, renameSessionDrinks } from '@/myBeers/drinkEdits';
 import {
   BeerIcon,
   ChevronLeftIcon,
@@ -54,7 +48,6 @@ import {
   normalizeDrinkType,
   normalizePlaceContext,
 } from '@/drinks/drinkTypes';
-import { useAccountStore } from '@/stores/accountStore';
 import { useBookStore } from '@/stores/bookStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -131,8 +124,6 @@ export default function EveningDetailScreen() {
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
-  const removeDrinkFromSession = useTallyStore((s) => s.removeDrinkFromSession);
-  const updateDrinkNameInSession = useTallyStore((s) => s.updateDrinkNameInSession);
   const addDrinkToSession = useTallyStore((s) => s.addDrinkToSession);
   const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
   const markDrinkRejected = useTallyStore((s) => s.markDrinkRejected);
@@ -184,28 +175,8 @@ export default function EveningDetailScreen() {
       });
       return;
     }
-    const changedDrinks = group.drinks.filter((drink) => drink.beerName !== trimmed);
     setEditingGroup(null);
-    if (changedDrinks.length === 0) return;
-
-    for (const drink of changedDrinks) {
-      updateDrinkNameInSession(session.startedAt, drink.id, trimmed);
-    }
-
-    const nextSession = findSessionByStart(
-      useTallyStore.getState().current,
-      useTallyStore.getState().history,
-      session.startedAt,
-    );
-    if (nextSession) syncVisit(nextSession, new Date().toISOString());
-
-    for (const drink of changedDrinks) {
-      void updateQueuedDrinkBeerName(drink.id, trimmed).then((updateState) => {
-        if (updateState !== 'queued') {
-          void enqueueDrinkUpdate({ client_id: drink.id, beer_name: trimmed });
-        }
-      });
-    }
+    renameSessionDrinks(session.startedAt, group.drinks, trimmed);
   };
 
   const handleDeleteDrink = (drink: TallyDrink) => {
@@ -219,30 +190,7 @@ export default function EveningDetailScreen() {
           text: t.myBeers.deleteDrinkConfirm,
           style: 'destructive',
           onPress: () => {
-            const removed = removeDrinkFromSession(session.startedAt, drink.id);
-            if (!removed) return;
-            if (removed.remainingDrinks > 0) {
-              const nextSession = findSessionByStart(
-                useTallyStore.getState().current,
-                useTallyStore.getState().history,
-                session.startedAt,
-              );
-              syncVisit(nextSession, new Date().toISOString());
-            } else {
-              deleteVisitByClientId(removed.sessionClientId);
-            }
-            void removeQueuedDrinkUpdate(removed.drinkId);
-            void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
-              // Persist a DELETE before waiting for an in-flight POST. The
-              // server's removal tombstone also protects a restart in between.
-              if (!pulledFromQueue) {
-                useAccountStore.getState().forgetDiaryDrink(removed.drinkId);
-                void enqueueDelete(removed.drinkId, { deliver: false })
-                  .then(() => flushDrinksQueue())
-                  .then(() => flushDeleteDrinksQueue())
-                  .catch(() => undefined);
-              }
-            });
+            deleteSessionDrink(session.startedAt, drink.id);
           },
         },
       ],

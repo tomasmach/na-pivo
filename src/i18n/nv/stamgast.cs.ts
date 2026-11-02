@@ -78,7 +78,6 @@ export const stamgastCs = {
   otherServingSub: 'PETka, 0,33 l',
   priceUnknown: 'cena?',
   priceLabel: 'Cena',
-  priceNeeded: 'Napiš cenu, ať ji vidí i ostatní',
   addToMenu: (beer: string, pub: string) => `${beer} přidám na lístek ${pub}.`,
   badgeLastTime: 'minule tady',
   badgeNew: 'nové',
