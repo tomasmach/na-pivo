@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { haversineMeters } from '@/compass/distance';
 import type { AmenityKey } from '@/data/amenities';
+import { CRAFT_BEER_FILTER_KEY } from '@/data/pubSearchFilters';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import { buildVisitedCities } from '@/map/mapModel';
@@ -35,8 +36,10 @@ const L = () => t.nv.kompas;
 const SWAP_IN = enter(0, DURATION.fast);
 
 const PILSNER = { key: 'pilsner-urquell', label: 'Pilsner Urquell' };
+const CRAFT = { key: CRAFT_BEER_FILTER_KEY, label: 'Craft' };
 const CATEGORIES: { key: string; icon: IconName; label: () => string; amenity?: AmenityKey; beer?: typeof PILSNER }[] = [
   { key: 'pilsner', icon: 'beer', label: () => L().categories.pilsner, beer: PILSNER },
+  { key: 'craft', icon: 'flask-conical', label: () => L().categories.craft, beer: CRAFT },
   { key: 'game_darts', icon: 'target', label: () => L().categories.darts, amenity: 'game_darts' },
   { key: 'seating_garden', icon: 'trees', label: () => L().categories.garden, amenity: 'seating_garden' },
   { key: 'atmosphere_sports_tv', icon: 'tv', label: () => L().categories.sportsTv, amenity: 'atmosphere_sports_tv' },

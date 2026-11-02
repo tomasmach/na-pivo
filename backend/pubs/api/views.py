@@ -124,6 +124,7 @@ from pubs.beer_photo_deletions import (
     schedule_beer_photo_file_deletions,
 )
 from pubs.beer_photo_gallery import BEER_PHOTO_SHARED_VISIBILITIES, beer_photo_key
+from pubs.beer_ranking import classify_styles
 from pubs.beer_watch import pub_product_ids, record_new_tap_events
 from pubs.community_trust import trusted_account_q
 from pubs.enrichment import (
@@ -182,6 +183,7 @@ from pubs.models import (
     BeerPhoto,
     BeerPhotoDeletionTombstone,
     BeerPhotoFileDeletion,
+    BeerRanking,
     BeerTapEvent,
     BeerWatch,
     BeerWatchPush,
@@ -10529,6 +10531,46 @@ def _nearby_menu_beer_suggestions(
     return suggestions
 
 
+def _nearby_pub_beer_kind_items(
+    *,
+    beer_kind: str,
+    lat: float,
+    lng: float,
+    radius_km: float,
+) -> tuple[list[dict], set[str]]:
+    """Pubs with at least one beer of ``beer_kind`` on their current menu.
+
+    A catalog beer takes its kind from the beer ranking, where people's votes
+    replace the name guess. Any other beer is judged by its name alone.
+    """
+    rows = _nearby_menu_rows(lat=lat, lng=lng, radius_km=radius_km)
+    match_cache = BeerCatalogMatchCache()
+    product_of: dict[str, int | None] = {}
+    for row in rows:
+        for normalized, display in _menu_beer_names(row).items():
+            if normalized not in product_of:
+                found = match_beer(display, fuzzy=False, match_cache=match_cache)
+                product_of[normalized] = found.product.id if found and found.product else None
+    ranked_styles = dict(
+        BeerRanking.objects.filter(
+            product_id__in={pid for pid in product_of.values() if pid is not None}
+        ).values_list("product_id", "styles")
+    )
+
+    def is_kind(normalized: str, display: str) -> bool:
+        product_id = product_of.get(normalized)
+        if product_id is not None and product_id in ranked_styles:
+            return beer_kind in (ranked_styles[product_id] or [])
+        return beer_kind in classify_styles(display, [])
+
+    matching = [
+        row
+        for row in rows
+        if any(is_kind(name, display) for name, display in _menu_beer_names(row).items())
+    ][:_BEER_BRAND_MAX_RESULTS]
+    return [_pub_community_item(row) for row in matching], {row.cache_key for row in matching}
+
+
 def _nearby_pub_community_items(
     *,
     lat: float,
@@ -10966,6 +11008,7 @@ class PubsNearView(APIView):
         explicit_beer_brand_keys: list[str] = data.get("beer_brands") or []
         beer_brand_keys = explicit_beer_brand_keys or ([beer_brand_key] if beer_brand_key else [])
         beer_name: str = data.get("beer_name") or ""
+        beer_kind: str = data.get("beer_kind") or ""
         amenity_keys: list[str] = data.get("amenities") or []
         include_other_places: bool = data["include_other_places"]
         max_beer_filters = max(
@@ -11110,7 +11153,7 @@ class PubsNearView(APIView):
                 "cached": cached,
                 "fetched_at": fetched_at,
             }
-            if beer_brand_keys or beer_name or amenity_keys or include_other_places:
+            if beer_brand_keys or beer_name or beer_kind or amenity_keys or include_other_places:
                 applied_filters = {
                     "version": 3
                     if explicit_beer_brand_keys
@@ -11124,6 +11167,8 @@ class PubsNearView(APIView):
                     applied_filters["beer_match"] = "any"
                 if beer_name:
                     applied_filters["beer_name"] = beer_name
+                if beer_kind:
+                    applied_filters["beer_kind"] = beer_kind
                 if include_other_places:
                     applied_filters["include_other_places"] = True
                 body["applied_filters"] = applied_filters
@@ -11136,19 +11181,19 @@ class PubsNearView(APIView):
                 lng=data["lng"],
                 radius_km=radius_km,
             )
-            if not beer_brand_key and not beer_name and not amenity_keys
+            if not beer_brand_key and not beer_name and not beer_kind and not amenity_keys
             else []
         )
         beer_brand_items: list[dict] = []
         beer_brand_cache_keys: set[str] = set()
-        # A menu-name filter shares the brand-filter path: the same AND with
-        # amenities and the same empty result.
-        beer_filter = bool(beer_brand_keys or beer_name)
+        # Menu-name and beer-kind filters share the brand-filter path: the same
+        # AND with amenities and the same empty result.
+        beer_filter = bool(beer_brand_keys or beer_name or beer_kind)
 
         def filter_by_beer_signals(items: list[dict]) -> list[dict]:
-            # A menu-name match must also match the pub name: two venues can
-            # share one geohash cell and only one of them pours the beer.
-            if beer_name:
+            # A menu match must also match the pub name: two venues can share
+            # one geohash cell and only one of them pours the beer.
+            if beer_name or beer_kind:
                 return _filter_items_by_amenity_signals(items, beer_brand_items)
             return _filter_items_by_cache_key(items, beer_brand_cache_keys)
 
@@ -11156,6 +11201,13 @@ class PubsNearView(APIView):
             if beer_name:
                 beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_name_items(
                     beer_name=beer_name,
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    radius_km=radius_km,
+                )
+            elif beer_kind:
+                beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_kind_items(
+                    beer_kind=beer_kind,
                     lat=data["lat"],
                     lng=data["lng"],
                     radius_km=radius_km,

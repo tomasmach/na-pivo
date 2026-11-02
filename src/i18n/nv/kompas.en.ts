@@ -7,6 +7,7 @@ const beers = (n: number) => englishPlural(n, { one: `${n} beer`, other: `${n} b
 export const kompasEn: Strings['nv']['kompas'] = {
   categories: {
     pilsner: 'Pilsner Urquell',
+    craft: 'Craft',
     darts: 'Darts',
     garden: 'Beer garden',
     sportsTv: 'Sports on TV',

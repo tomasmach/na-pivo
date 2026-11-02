@@ -1187,6 +1187,9 @@ msgstr "Beer name must have at least 2 characters."
 msgid "Název piva nejde kombinovat se značkami piva."
 msgstr "Beer name cannot be combined with beer brands."
 
+msgid "Druh piva nejde kombinovat s konkrétním pivem."
+msgstr "Beer kind cannot be combined with a specific beer."
+
 msgid "Pošli lat i lng zároveň."
 msgstr "Send lat and lng together."
 

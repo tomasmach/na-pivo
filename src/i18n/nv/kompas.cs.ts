@@ -8,6 +8,7 @@ export const kompasCs = {
   // — Kompas tab: map and compass —
   categories: {
     pilsner: 'Pilsner Urquell',
+    craft: 'Craft',
     darts: 'Šipky',
     garden: 'Zahrádka',
     sportsTv: 'Sport v TV',

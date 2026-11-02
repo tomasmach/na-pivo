@@ -2726,6 +2726,9 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         max_length=80,
         trim_whitespace=True,
     )
+    # Additive: pubs with at least one beer of this kind on their menu.
+    # Released clients never send it.
+    beer_kind = serializers.ChoiceField(choices=["craft"], required=False, allow_blank=True)
 
     def validate_radius_km(self, value: float | None) -> float:
         # Default when omitted/null; otherwise clamp into (0, 100]. A value <= 0
@@ -2754,6 +2757,13 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
                     {"beer_name": [gettext("Název piva nejde kombinovat se značkami piva.")]}
                 )
             attrs["beer_name"] = beer_name
+        if attrs.get("beer_kind"):
+            if beer_name or attrs.get("beer_brand") or attrs.get("beer_brands"):
+                raise serializers.ValidationError(
+                    {"beer_kind": [gettext("Druh piva nejde kombinovat s konkrétním pivem.")]}
+                )
+        else:
+            attrs.pop("beer_kind", None)
         raw_beer_brands = attrs.get("beer_brands", "")
         if raw_beer_brands:
             keys = []
