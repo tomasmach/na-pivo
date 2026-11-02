@@ -1,5 +1,6 @@
 // Czech copy for the new look, area: stamgast. English mirror in ./stamgast.en.ts.
 import { czechPlural } from '../plural';
+import { commonCs } from './common.cs';
 
 const STOP_AT = ['jedničce', 'dvojce', 'trojce', 'čtyřce', 'pětce'];
 const STOP_NAME = ['jednička', 'dvojka', 'trojka', 'čtyřka', 'pětka'];
@@ -22,7 +23,7 @@ export const stamgastCs = {
   // Counter
   placeUnknown: 'Kde sedíš?',
   tonight: (n: number) => `${czechPlural(n, PIVO)} dnes večer`,
-  atFriend: (n: number, host: string) => `${czechPlural(n, PIVO)} u ${host}`,
+  atFriend: (n: number) => `${czechPlural(n, PIVO)} na návštěvě`,
   tonightA11y: (n: number) => `${n} ${czechPlural(n, PIVO)} dnes večer`,
   statSpent: 'útrata',
   statTable: 'u stolu',
@@ -30,8 +31,6 @@ export const stamgastCs = {
   statEstimateSetup: 'odhad ‰',
   estimateSetup: 'Nastavit',
   estimateValue: (value: string) => `≈ ${value} ‰`,
-  durationHm: (h: number, m: number) => `${h} h ${m} min`,
-  durationM: (m: number) => `${m} min`,
   quickOther: 'Jiné pivo',
   quickBackfill: 'Dopsat',
   quickPhoto: 'Fotka',
@@ -45,7 +44,8 @@ export const stamgastCs = {
   tonightEmpty: 'Zatím nic. První pivo zapíšeš tlačítkem dole.',
   undoLast: 'Vrátit poslední zápis',
   newBeerTitle: 'Nové pivo do sbírky',
-  newBeerSub: (n: number) => `${n}. různé · jak ti chutná?`,
+  newBeerSub: (n: number) =>
+    `Ve sbírce máš ${n} ${czechPlural(n, { one: 'různé pivo', few: 'různá piva', many: 'různých piv' })}. Jak ti chutná?`,
   rate: 'Ohodnotit',
   oneMore: 'Ještě jedno',
   logBeer: 'Zapsat pivo',
@@ -160,7 +160,7 @@ export const stamgastCs = {
   eveningTitle: (weekday: string, day: number, month: number) => `${weekday} ${day}. ${month}.`,
   eveningMissing: 'Tenhle večer v deníku nemám.',
   statBeers: (n: number) => czechPlural(n, PIVO),
-  durationShort: (h: number, m: number) => `${h} h ${m} m`,
+  durationShort: commonCs.duration,
   tempo: 'Tempo po hodinách',
   tempoPeak: (n: number, hour: number) => `${n} ${czechPlural(n, PIVO)} ve ${hour}:00`,
   hourLabel: (hour: number) => `${hour}:00`,

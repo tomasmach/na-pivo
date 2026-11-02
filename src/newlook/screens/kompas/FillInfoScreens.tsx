@@ -32,7 +32,8 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Field, FieldLabel, Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, Card, Chip, ChipWrap, Dot, IconButton, Press, Row, Segmented, T, Toggle } from '../../components/ui';
+import { T, Button, Card, Chip, ChipWrap, Dot, IconButton, Press, Row, Segmented, Toggle } from '../../components/ui';
+import { NO_VALUE } from '../../format';
 import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
 import { useKompasState } from './state';
@@ -241,7 +242,7 @@ export function DoplnitInfoScreen() {
                     {L().days[day]}
                   </T>
                   <T s={15} w={hours[day].length ? 700 : 500} c={hours[day].length ? C.white : C.muted}>
-                    {hoursKnown ? intervalsLabel(hours[day]) : '–'}
+                    {hoursKnown ? intervalsLabel(hours[day]) : NO_VALUE}
                   </T>
                   <Icon name="chevron-right" size={16} color={C.muted} />
                 </View>

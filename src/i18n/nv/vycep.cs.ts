@@ -23,8 +23,7 @@ export const vycepCs = {
   shortcutContestLeft: (days: number) => `ještě ${days} ${czechPlural(days, DEN)}`,
   shortcutContestToday: 'končí dnes',
   shortcutTour: 'Tour de pub',
-  shortcutTourSub: (title: string, stops: number) =>
-    `${title} · ${stops} ${czechPlural(stops, { one: 'hospoda', few: 'hospody', many: 'hospod' })}`,
+  shortcutTourSub: (stops: number) => `${stops} ${czechPlural(stops, { one: 'hospoda', few: 'hospody', many: 'hospod' })}`,
   shortcutTourEmpty: 'Naplánuj tah',
   shortcutBoards: 'Žebříčky',
   shortcutBoardsRank: (rank: number) => `${rank}. v zemi`,
@@ -34,8 +33,6 @@ export const vycepCs = {
   postScopeWorld: 'celý svět',
   postScopeParta: 'parta',
   postBeers: (n: number) => `${n} ${czechPlural(n, PIVO)}`,
-  duration: (hours: number, minutes: number) =>
-    hours > 0 ? (minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`) : `${minutes} min`,
   round: (n: number) => `Runda · ${n}`,
   roundGive: 'Dát rundu',
   roundTake: 'Vzít rundu zpět',
@@ -43,7 +40,7 @@ export const vycepCs = {
   roundError: 'Runda nedošla. Zkus to za chvíli.',
   report: 'Nahlásit',
   reportTitle: 'Nahlásit noc?',
-  reportBody: (user: string) => `Mrknu na noc od ${user}. Když nesedí s pravidly, zmizí z Výčepu.`,
+  reportBody: (user: string) => `Mrknu na noc od ${user}. Když porušuje pravidla, zmizí z Výčepu.`,
   back: 'Zpátky',
   reported: 'Nahlášeno.',
   reportedSub: 'Mrknu na to.',
@@ -54,12 +51,10 @@ export const vycepCs = {
   unpublishConfirm: 'Stáhnout',
   unpublished: 'Noc už ve Výčepu nevisí.',
   unpublishError: 'Noc se nepodařilo stáhnout. Zkus to znovu.',
-  loadError: 'Výčep se nenačetl.',
+  loadError: 'Výčep se nedotáhl.',
   retry: 'Zkusit znovu',
-  emptyWorldTitle: 'Svět zatím mlčí',
-  emptyWorldBody: 'Nikdo teď nemá vyvěšenou noc. Vyvěs tu svoji a rozjeď to.',
-  emptyPartaTitle: 'Ve Výčepu je zatím prázdno',
-  emptyPartaBody: 'Až někdo z party vyvěsí svou noc, uvidíš ji tady. Klidně začni ty.',
+  emptyWorld: 'Svět zatím mlčí, tak vyvěs svoji noc a rozjeď to.',
+  emptyParta: 'Z party zatím nikdo nic nevyvěsil, klidně začni ty.',
   authorFallback: 'Pivař',
 
   // Vyvěsit noc
@@ -93,10 +88,10 @@ export const vycepCs = {
     'Vyvěsí se počet piv, hospody, datum a délka noci. Útrata a jednotlivá piva zůstávají jen tobě. Změníš to v Nastavení.',
   firstManual: 'Ručně',
   firstManualSub: 'Vyvěsím jen noc, kterou vybereš',
-  firstWorld: 'Samo celému světu',
-  firstWorldSub: 'Po Dopito. Stáhneš kdykoli',
-  firstParta: 'Samo partě',
-  firstPartaSub: 'Po Dopito uvidí jen tvoje parta',
+  firstWorld: 'Automaticky celému světu',
+  firstWorldSub: 'Po „Dopito“. Stáhneš kdykoli',
+  firstParta: 'Automaticky partě',
+  firstPartaSub: 'Po „Dopito“ uvidí jen tvoje parta',
   firstDecor: ['@Hospodsky', '@PivniVlk'],
   roundLabel: 'Runda',
 
@@ -105,7 +100,7 @@ export const vycepCs = {
   lastRound: 'Minulé kolo',
   roundEnded: 'Kolo skončilo',
   daysLeft: (days: number) => `${czechPlural(days, DEN)} do konce kola`,
-  contestHint: 'Runda u fotky je hlas. Rozdat jich můžeš kolik chceš.',
+  contestHint: 'Runda u fotky je hlas. Rozdat jich můžeš, kolik chceš.',
   partaOnly: 'Sdílíš jen partě',
   partaOnlySub: 'Do soutěže pošleš fotku sám. Tu pak uvidí každý.',
   myPhotos: (n: number) =>
@@ -130,7 +125,7 @@ export const vycepCs = {
   rounds: (n: number) => `${n} ${czechPlural(n, RUNDA)}`,
   noLastRound: 'Minulé kolo ještě neběželo.',
   contestEmpty: 'Zatím nikdo nesoutěží. Buď první.',
-  contestLoadError: 'Soutěž se teď nenačetla. Zkus to znovu.',
+  contestLoadError: 'Soutěž se teď nedotáhla. Zkus to znovu.',
   entryMenu: 'Další',
   withdrawTitle: 'Stáhnout fotku ze soutěže?',
   withdrawBody: 'Rundy, které dostala, propadnou. V deníčku ti fotka zůstane.',
@@ -138,7 +133,7 @@ export const vycepCs = {
   withdrawn: 'Fotka už nesoutěží.',
   reportPhotoTitle: 'Nahlásit fotku?',
   reportPhotoBody: (user: string) =>
-    `Mrknu na fotku od ${user}. Když nesedí s pravidly, zmizí ze soutěže.`,
+    `Mrknu na fotku od ${user}. Když porušuje pravidla, zmizí ze soutěže.`,
 
   // Přihlásit fotku
   enterTitle: 'Přihlásit fotku',
@@ -184,7 +179,7 @@ export const vycepCs = {
       czechPlural(mine, { one: 'tvoje fotka', few: 'tvoje fotky', many: 'tvých fotek' })
     } v kole`,
   photosEmpty: 'Zatím tu žádná fotka není.',
-  photosLoadError: 'Fotky se nenačetly.',
+  photosLoadError: 'Fotky se nedotáhly.',
 
   // Detail fotky
   inContest: 'Ve FotoPivaři',

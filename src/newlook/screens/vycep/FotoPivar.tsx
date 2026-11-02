@@ -21,7 +21,8 @@ import { useVycepStore } from '@/stores/vycepStore';
 import { BackHeader, Screen } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, D, Kicker, Press, Segmented, T } from '../../components/ui';
+import { D, T, Button, Kicker, Press, Segmented } from '../../components/ui';
+import { NO_VALUE } from '../../format';
 import { C, SCREEN_X, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { daysUntil } from './nightData';
@@ -147,7 +148,7 @@ export function FotoPivarScreen() {
             {result?.entered ? (
               <View style={[s.row, { gap: 14 }]}>
                 <D s={80} lh={0.9} c={C.yellow}>
-                  {result.rank ? `${result.rank}.` : '–'}
+                  {result.rank ? `${result.rank}.` : NO_VALUE}
                 </D>
                 <View style={[s.fill, { gap: 2 }]}>
                   <T s={18} w={700}>
@@ -228,7 +229,7 @@ export function FotoPivarScreen() {
       </View>
       <View style={[s.row, { gap: 14 }]}>
         <D s={80} lh={0.9} c={C.yellow}>
-          {days === null ? '–' : String(days)}
+          {days === null ? NO_VALUE : String(days)}
         </D>
         <View style={[s.fill, { gap: 2 }]}>
           <T s={18} w={700}>

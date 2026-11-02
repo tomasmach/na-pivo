@@ -290,7 +290,7 @@ function CounterView() {
             </D>
           </Animated.View>
           <T s={17} w={600} c={C.text2}>
-            {atFriend && friendHome ? copy.atFriend(count, friendHome.hostName) : copy.tonight(count)}
+            {atFriend && friendHome ? copy.atFriend(count) : copy.tonight(count)}
           </T>
           <View style={[s.row, { gap: 28, paddingTop: 8 }]}>
             {atFriend ? null : <Stat value={formatPrice(spent, priceCurrency)} label={copy.statSpent} />}
@@ -357,7 +357,7 @@ function CounterView() {
             <T s={16} w={700}>
               {copy.tonightList}
             </T>
-            <T s={14} w={600} c={C.muted}>{formatPrice(spent, priceCurrency)}</T>
+            {drinks.length && !atFriend ? <T s={14} w={600} c={C.muted}>{formatPrice(spent, priceCurrency)}</T> : null}
           </View>
           {drinks.length ? (
             drinks.map((d, i) => (

@@ -11,7 +11,8 @@ import { formatPrice } from '@/utils/currency';
 
 import { BottomFade, useTabBarSpace } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
-import { D, IconButton, Press, T } from '../../components/ui';
+import { D, T, IconButton, Press } from '../../components/ui';
+import { NO_VALUE } from '../../format';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import {
   beerTally,
@@ -385,7 +386,7 @@ function Year({ nights, today }: { nights: Night[]; today: string }) {
                     {m}
                   </T>
                   <D s={22} c={future ? C.lineBright : current ? C.yellow : C.white}>
-                    {future ? copy.dash : String(n)}
+                    {future ? NO_VALUE : String(n)}
                   </D>
                 </View>
               );

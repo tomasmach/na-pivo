@@ -201,12 +201,12 @@ export const profilCs = {
     pubs: (n: number) => czechPlural(n, { one: 'hospoda', few: 'hospody', many: 'hospod' }),
     badges: (n: number) => czechPlural(n, { one: 'odznak', few: 'odznaky', many: 'odznaků' }),
     body: 'V partě uvidíte, kdo z vás je zrovna na pivu, a můžete si cinknout.',
-    mutual: (names: string[], extra: number, inviter: string) => {
+    mutual: (names: string[], extra: number) => {
       const all = extra > 0 ? [...names, `${extra} ${czechPlural(extra, { one: 'další', few: 'další', many: 'dalších' })}`] : names;
       const list = all.length > 1 ? `${all.slice(0, -1).join(', ')} a ${all[all.length - 1]}` : all[0];
-      return `${list} už s ${inviter} v partě ${all.length > 1 || extra > 0 ? 'jsou' : 'je'}`;
+      return `Společní kámoši: ${list}`;
     },
-    add: (name: string) => `Přidat ${name} do party`,
+    add: 'Přidat do party',
     alreadyFriends: 'Už jste spolu v partě.',
     openProfile: 'Otevřít profil',
     notNow: 'Teď ne',

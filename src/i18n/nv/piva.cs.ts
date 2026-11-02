@@ -84,7 +84,7 @@ export const pivaCs = {
     inParty: 'v partě',
     reportA11y: 'Nahlásit recenzi',
     reportTitle: 'Nahlásit recenzi?',
-    reportBody: 'Mrknu na ni. Když nesedí s pravidly, zmizí.',
+    reportBody: 'Mrknu na ni. Když porušuje pravidla, zmizí.',
     reportBack: 'Zpátky',
     report: 'Nahlásit',
     reported: 'Nahlášeno.',

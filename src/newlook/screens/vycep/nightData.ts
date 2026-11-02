@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 
-import { intlLocale, t } from '@/i18n';
+import { intlLocale } from '@/i18n';
 import { isContextPubKey } from '@/drinks/drinkTypes';
 import { drinkingDayKey, sessionDrinkTypeCounts, useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { buildNightSummary, nightSummariesNewestFirst, sessionsOfNight, type NightSummary } from '@/vycep/nightModel';
+
+import { durationLabel as formatDuration } from '../stamgast/stamgastFormat';
 
 export type NightView = {
   summary: NightSummary;
@@ -57,7 +59,7 @@ export function shortDay(iso: string): string {
 
 export function durationLabel(minutes: number | null | undefined): string {
   if (!minutes || minutes <= 0) return '';
-  return t.nv.vycep.duration(Math.floor(minutes / 60), minutes % 60);
+  return formatDuration(minutes);
 }
 
 /** "Lokál → U Pinkasů · 4 h 10 min" */

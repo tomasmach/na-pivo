@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
-import { Card, Chip, D, IconButton, Press, Row, Segmented, T, Tile } from '../../components/ui';
+import { D, T, Card, Chip, IconButton, Press, Row, Segmented, Tile } from '../../components/ui';
+import { NO_VALUE } from '../../format';
 import { Input } from '../../components/forms';
 import { C, SCREEN_X, s } from '../../theme';
 import {
@@ -27,8 +28,6 @@ import { EmptyState, Loading, useLoad, type Load } from './states';
 
 const SHADES = [C.yellow, '#F7F7F2B3', '#F7F7F273', '#F7F7F242', '#F7F7F229'];
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
-// Not copy: the mock's mark for "no number yet".
-export const NO_VALUE = '–';
 
 /** Share of raters per star, 5★ first, as one bar. */
 export function DistBar({ shares, width = 230, flip }: { shares: number[]; width?: number; flip?: boolean }) {

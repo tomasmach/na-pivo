@@ -132,7 +132,7 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
   }, []);
 
   const myName = personName(profile ? { displayName: profile.displayName, nickname: profile.nickname } : null);
-  const title = kind === 'home' ? t.nv.parta.homePlace(myName) : pub?.name ?? t.nv.parta.pickPub;
+  const title = kind === 'home' ? t.nv.parta.homePlaceMine : pub?.name ?? t.nv.parta.pickPub;
   const day = ticketDay(when.toISOString());
   const recipients = audience === 'all' ? undefined : audience;
   const whereLabel = kind === 'home' ? (address.trim() ? t.nv.parta.atMineAddress(address.trim()) : t.nv.parta.atMine) : pub?.name ?? t.nv.parta.pickPub;

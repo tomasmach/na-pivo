@@ -2077,11 +2077,11 @@ export function PozvankaDoPartySheet() {
             ))}
           </View>
           <T s={13} c={C.muted} style={{ flexShrink: 1 }}>
-            {P().invite.mutual(mutual.profiles.map(friendDisplayName), Math.max(0, mutual.count - mutual.profiles.length), handle)}
+            {P().invite.mutual(mutual.profiles.map(friendDisplayName), Math.max(0, mutual.count - mutual.profiles.length))}
           </T>
         </View>
       ) : null}
-      <Button label={claiming ? t.account.loading : P().invite.add(handle)} icon="user-plus" disabled={claiming} onPress={() => void claim()} />
+      <Button label={claiming ? t.account.loading : P().invite.add} icon="user-plus" disabled={claiming} onPress={() => void claim()} />
       <Press onPress={() => close(router)} style={{ alignItems: 'center', paddingBottom: 6 }}>
         <T s={15} w={700} c={C.text2}>
           {P().invite.notNow}

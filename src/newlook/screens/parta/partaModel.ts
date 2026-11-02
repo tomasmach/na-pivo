@@ -55,7 +55,8 @@ export function planTime(plan: Pick<PartaPlan, 'scheduledFor' | 'startedAt'>): s
 
 /** What a plan is called on a ticket: the pub, or whose home it is. */
 export function planTitle(plan: PartaPlan): string {
-  return plan.placeKind === 'home' ? t.nv.parta.homePlace(personName(plan.account)) : plan.name;
+  if (plan.placeKind !== 'home') return plan.name;
+  return plan.isMine ? t.nv.parta.homePlaceMine : t.nv.parta.homePlace(personName(plan.account));
 }
 
 /** "Naposledy včera · U Vystřelenýho oka" from the shared-evening stats. */

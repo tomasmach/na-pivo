@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,20 +25,33 @@ import { useToursStore } from '@/stores/toursStore';
 import { useVycepStore } from '@/stores/vycepStore';
 
 import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
+import { StatusCard } from '../../components/StatusCard';
 import { Icon, type IconName } from '../../components/Icon';
-import { Button, D, Dot, Press, Segmented, T } from '../../components/ui';
+import { D, T, Button, Dot, Press, Segmented } from '../../components/ui';
+import { NO_VALUE } from '../../format';
+import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { clockTime, daysUntil, routeLine } from './nightData';
 
 export function RundaButton({ count, given, onPress, disabled }: { count: number; given: boolean; onPress: () => void; disabled?: boolean }) {
+  if (disabled) {
+    // Your own night collects rounds but cannot take one, so it shows a count instead of a button.
+    return (
+      <View style={[s.row, { height: 36, gap: 6 }]} accessible accessibilityLabel={t.nv.vycep.round(count)}>
+        <Icon name="hand-platter" size={16} color={C.muted} />
+        <T s={14} w={600} c={C.text2}>
+          {t.nv.vycep.round(count)}
+        </T>
+      </View>
+    );
+  }
   return (
     <Press
       haptic
       onPress={onPress}
-      disabled={disabled}
       accessibilityLabel={given ? t.nv.vycep.roundTake : t.nv.vycep.roundGive}
-      accessibilityState={{ selected: given, disabled }}
+      accessibilityState={{ selected: given }}
       style={[
         s.row,
         {
@@ -190,8 +204,13 @@ function Post({ night, onRemoved }: { night: PublishedNight; onRemoved: (id: str
             {meta}
           </T>
         </View>
-        <Press hitSlop={10} accessibilityLabel={night.isMine ? t.nv.vycep.unpublish : t.nv.vycep.report} onPress={night.isMine ? unpublish : report}>
-          <Icon name={night.isMine ? 'trash-2' : 'flag'} size={16} color={C.muted} />
+        <Press
+          accessibilityRole="button"
+          accessibilityLabel={night.isMine ? t.nv.vycep.unpublish : t.nv.vycep.report}
+          onPress={night.isMine ? unpublish : report}
+          style={[{ width: 44, height: 44, marginVertical: -4, marginRight: -12 }, s.center]}
+        >
+          <Icon name={night.isMine ? 'eye-off' : 'flag'} size={16} color={C.muted} />
         </Press>
       </View>
       {night.heroPhotoUrl ? <Image source={{ uri: night.heroPhotoUrl }} style={{ width: '100%', height: 170, borderRadius: 16 }} resizeMode="cover" /> : null}
@@ -208,8 +227,21 @@ function Post({ night, onRemoved }: { night: PublishedNight; onRemoved: (id: str
   );
 }
 
+/** A post without a photo, drawn as empty boxes of the same sizes. */
 function GhostPost() {
-  return <View style={{ height: 150, borderRadius: 24, backgroundColor: C.card, opacity: 0.6 }} />;
+  return (
+    <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12, opacity: 0.6 }}>
+      <View style={[s.row, { gap: 12 }]}>
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control }} />
+        <View style={{ width: 120, height: 14, borderRadius: 7, backgroundColor: C.control }} />
+      </View>
+      <View style={{ gap: 4 }}>
+        <View style={{ width: 110, height: 40, borderRadius: 10, backgroundColor: C.control }} />
+        <View style={{ width: 180, height: 19, borderRadius: 8, backgroundColor: C.control }} />
+      </View>
+      <View style={{ width: 96, height: 36, borderRadius: 18, backgroundColor: C.control }} />
+    </View>
+  );
 }
 
 type FeedState = { scope: NightsFeedScope; nights: PublishedNight[] | null; cursor: string | null; failed: boolean };
@@ -304,15 +336,17 @@ export function VycepScreen() {
     void syncSharingPrefs();
   }, []);
 
+  const publish = () => router.push(autopublish === null ? '/nv/prvni-vyveseni' : '/nv/vyvesit');
+
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
     if (layoutMeasurement.height + contentOffset.y > contentSize.height - 600) feed.loadMore();
   };
 
-  const leader = summary?.leader ? (summary.leader.isMe ? t.nv.vycep.summaryYou : summary.leader.name) : '–';
+  const leader = summary?.leader ? (summary.leader.isMe ? t.nv.vycep.summaryYou : summary.leader.name) : NO_VALUE;
   const stats: [string, string][] = [
-    [summary ? String(summary.nights) : '–', t.nv.vycep.summaryNights(summary?.nights ?? 0)],
-    [summary ? String(summary.beers) : '–', t.nv.vycep.summaryBeers(summary?.beers ?? 0)],
+    [summary ? String(summary.nights) : NO_VALUE, t.nv.vycep.summaryNights(summary?.nights ?? 0)],
+    [summary ? String(summary.beers) : NO_VALUE, t.nv.vycep.summaryBeers(summary?.beers ?? 0)],
     [leader, t.nv.vycep.summaryLeads],
   ];
 
@@ -325,7 +359,7 @@ export function VycepScreen() {
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: tabSpace + 30 }}
       >
         <TabHeader title={t.nv.vycep.title}>
-          <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={() => router.push(autopublish === null ? '/nv/prvni-vyveseni' : '/nv/vyvesit')} />
+          <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
         </TabHeader>
         <Segmented
           height={38}
@@ -366,7 +400,7 @@ export function VycepScreen() {
           <Shortcut
             icon="route"
             title={t.nv.vycep.shortcutTour}
-            sub={plan ? t.nv.vycep.shortcutTourSub(plan.title, plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
+            sub={plan ? t.nv.vycep.shortcutTourSub(plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
             onPress={() => router.push('/nv/tour')}
           />
           <Shortcut
@@ -382,31 +416,22 @@ export function VycepScreen() {
             <GhostPost />
             <GhostPost />
           </>
-        ) : null}
-        {feed.failed && !feed.nights?.length ? (
-          <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12 }}>
-            <View style={[s.row, { gap: 10 }]}>
-              <Icon name="wifi-off" size={18} color={C.muted} />
-              <T s={15} w={600} style={s.fill}>
-                {t.nv.vycep.loadError}
-              </T>
-            </View>
-            <Button label={t.nv.vycep.retry} kind="raised" height={44} onPress={feed.load} />
-          </View>
-        ) : null}
-        {feed.nights?.length === 0 && !feed.failed ? (
-          <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 6 }}>
-            <T s={17} w={700}>
-              {scope === 'svet' ? t.nv.vycep.emptyWorldTitle : t.nv.vycep.emptyPartaTitle}
-            </T>
-            <T s={14} c={C.muted} lh={1.4}>
-              {scope === 'svet' ? t.nv.vycep.emptyWorldBody : t.nv.vycep.emptyPartaBody}
-            </T>
-          </View>
-        ) : null}
-        {feed.nights?.map((night) => (
-          <Post key={night.id} night={night} onRemoved={feed.remove} />
-        ))}
+        ) : feed.failed && !feed.nights?.length ? (
+          <StatusCard text={t.nv.vycep.loadError} action={t.nv.vycep.retry} onAction={feed.load} />
+        ) : feed.nights?.length === 0 ? (
+          <StatusCard
+            text={scope === 'svet' ? t.nv.vycep.emptyWorld : t.nv.vycep.emptyParta}
+            action={t.nv.vycep.publishCta}
+            actionIcon="plus"
+            onAction={publish}
+          />
+        ) : (
+          <Animated.View key={feed.scope} entering={fadeIn} style={{ gap: 16 }}>
+            {feed.nights?.map((night) => (
+              <Post key={night.id} night={night} onRemoved={feed.remove} />
+            ))}
+          </Animated.View>
+        )}
       </ScrollView>
       <BottomFade height={tabSpace + 40} />
     </View>
