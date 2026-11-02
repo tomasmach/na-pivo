@@ -232,6 +232,12 @@ export function ZapisSheet() {
   }, [kind, home, menu.beers, params.added, params.price, params.volume, place, sessions, currency]);
 
   const [sel, setSel] = useState<string | null>(params.added ? normalizeBeerName(params.added) : null);
+  // Back from "Přidat pivo" or the camera, this sheet gets the picked beer as a new param.
+  const [seenAdded, setSeenAdded] = useState(params.added);
+  if (params.added !== seenAdded) {
+    setSeenAdded(params.added);
+    if (params.added) setSel(normalizeBeerName(params.added));
+  }
   const selected = options.find((o) => o.id === sel) ?? options[0] ?? null;
 
   const sizeChoices = useMemo(() => {
@@ -249,7 +255,7 @@ export function ZapisSheet() {
     sizeChoices.find((size) => size.volumeMl === volume) ?? sizeChoices.find((size) => size.volumeMl === 500) ?? sizeChoices[0] ?? selected?.sizes[0] ?? null;
   const typed = Number(typedPrice.replace(',', '.'));
   const price = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : typed > 0 && typed <= 1000 ? Math.round(typed) : undefined;
-  const needsPrice = !!pub && kind === 'pivo' && typeof chosenSize?.priceCzk !== 'number';
+  const needsPrice = !!pub && !!selected && kind === 'pivo' && typeof chosenSize?.priceCzk !== 'number';
 
   const homeLabel = {
     lahvac: `${copy.bottle.toLowerCase()} ${formatVolume(500)}`,
@@ -442,7 +448,7 @@ export function PridatPivoSheet() {
 
   const often = beerTally(sessions, (_d, session) => (home ? isContextPubKey(session.pubKey) : !isContextPubKey(session.pubKey))).slice(0, 4);
   const pick = (name: string, size?: { priceCzk?: number; volumeMl?: number }) =>
-    router.replace({
+    router.dismissTo({
       pathname: '/nv/zapis',
       params: { added: name, ...(size?.priceCzk ? { price: String(size.priceCzk) } : {}), ...(size?.volumeMl ? { volume: String(size.volumeMl) } : {}) },
     });
@@ -735,7 +741,7 @@ export function VyfotScreen() {
               }
               addBeersToMenu(pub, menu, added);
               toast({ kind: 'xp', title: copy.boardDone, icon: 'list-plus' });
-              router.replace({
+              router.dismissTo({
                 pathname: '/nv/zapis',
                 params: { added: added[0].name, ...(added[0].priceCzk ? { price: String(added[0].priceCzk) } : {}), ...(added[0].volumeMl ? { volume: String(added[0].volumeMl) } : {}) },
               });

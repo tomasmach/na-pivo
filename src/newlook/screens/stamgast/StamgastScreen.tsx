@@ -357,7 +357,7 @@ function CounterView() {
             <T s={16} w={700}>
               {copy.tonightList}
             </T>
-            {drinks.length && !atFriend ? <T s={14} w={600} c={C.muted}>{formatPrice(spent, priceCurrency)}</T> : null}
+            {spent > 0 && !atFriend ? <T s={14} w={600} c={C.muted}>{formatPrice(spent, priceCurrency)}</T> : null}
           </View>
           {drinks.length ? (
             drinks.map((d, i) => (
