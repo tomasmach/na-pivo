@@ -30,6 +30,7 @@ from pubs.models import (
     BeerProduct,
     BeerRanking,
     BeerRegionRanking,
+    BeerStyleVote,
     DrinkLog,
 )
 from pubs.regions import REGION_CODES
@@ -147,6 +148,14 @@ def beer_global_detail(
         "pubs_pouring": pubs["count"] if pubs else 0,
         "nearest_pub": pubs["nearest"] if pubs else None,
         "photo_count": beer_photo_count(product, viewer),
+        "style_settled": bool(row is not None and row.style_settled),
+        "my_style": (
+            BeerStyleVote.objects.filter(account=viewer, product=product)
+            .values_list("style", flat=True)
+            .first()
+            if product is not None
+            else None
+        ),
     }
 
 
@@ -226,6 +235,30 @@ class BeerRankingView(_BeersPolicy):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class BeerStyleVoteView(_BeersPolicy):
+    """POST /v1/beers/style — my answer to "Jaký je to styl?" for one catalogue beer.
+
+    Body: ``product`` (or ``beer_name`` + ``brewery_name``) and ``style``. The
+    ranking uses the majority of answers once enough people agree.
+    """
+
+    def post(self, request: Request) -> Response:
+        style = str(request.data.get("style") or "")
+        if style not in BeerStyleVote.Style.values:
+            return Response({"code": "invalid_style"}, status=status.HTTP_400_BAD_REQUEST)
+        product = resolve_product(
+            str(request.data.get("product") or "").strip(),
+            str(request.data.get("beer_name") or "").strip()[:200],
+            str(request.data.get("brewery_name") or "").strip()[:200],
+        )
+        if product is None:
+            return Response({"code": "beer_not_found"}, status=status.HTTP_404_NOT_FOUND)
+        BeerStyleVote.objects.update_or_create(
+            account=request.user, product=product, defaults={"style": style}
+        )
+        return Response({"product_key": product.key, "my_style": style}, status=status.HTTP_200_OK)
 
 
 class BeerSearchView(_BeersPolicy):

@@ -4,9 +4,11 @@ import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { create } from 'zustand';
 
 import { formatClock, formatPromile, useAlcoholEstimate } from '@/counter/useAlcoholEstimate';
 import { placeKey, removeCountedDrink, type CountableDrink } from '@/counter/countDrink';
+import { fetchBeerPage, submitBeerStyle, type StyleAnswer } from '@/data/beersClient';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useNowTick } from '@/friends/useNowTick';
@@ -37,6 +39,7 @@ import { toast } from '../../ui/store';
 import { TourRunContent } from '../tour/TourScreens';
 import { useTourSegment } from '../tour/tourSegment';
 import { logDrink, useCounterNudges } from './counterActions';
+import { StylePicker } from '../piva/StylePicker';
 import { FriendEveningCard, leaveFriendHome, useFriendHomeEvening } from '../parta/FriendEveningCard';
 import { DiaryView } from './DiaryView';
 import { durationLabel, servingLine } from './stamgastFormat';
@@ -51,6 +54,25 @@ function useTourGlance() {
     void useToursStore.getState().hydrate();
   }, []);
   return useMemo(() => ({ run: activeRun, glance: runGlance(activeRun, now) }), [activeRun, now]);
+}
+
+// The beer whose style question was answered or waved off, so it does not come back.
+const useStyleAnswered = create<{ name: string | null }>(() => ({ name: null }));
+
+/** Catalogue key of the beer just logged when nobody has settled its style and I have not answered. */
+function useStyleQuestion(beerName: string | null): string | null {
+  const [ask, setAsk] = useState<{ name: string; key: string } | null>(null);
+  const answered = useStyleAnswered((st) => st.name);
+  useEffect(() => {
+    if (!beerName) return;
+    const controller = new AbortController();
+    void fetchBeerPage({ beerName }, null, controller.signal).then((page) => {
+      if (controller.signal.aborted || !page?.productKey || page.styleSettled || page.myStyle) return;
+      setAsk({ name: beerName, key: page.productKey });
+    });
+    return () => controller.abort();
+  }, [beerName]);
+  return ask && ask.name === beerName && answered !== beerName ? ask.key : null;
 }
 
 export function StamgastScreen() {
@@ -201,6 +223,14 @@ function CounterView() {
   const { estimate } = useAlcoholEstimate();
   const now = useNowTick();
   const nudges = useCounterNudges();
+  const styleAsk = useStyleQuestion(nudges.newBeer?.name ?? null);
+  const answerStyle = (style: StyleAnswer) => {
+    if (!styleAsk) return;
+    useStyleAnswered.setState({ name: nudges.newBeer?.name ?? null });
+    void submitBeerStyle({ productKey: styleAsk }, style).then((ok) => {
+      if (ok && style !== 'unknown') toast({ kind: 'saved', title: t.nv.piva.stylePick.thanks, icon: 'check' });
+    });
+  };
   const { run } = useTourGlance();
   const friendHome = useFriendHomeEvening();
   const atFriend = !!friendHome && place?.kind === 'outside';
@@ -269,7 +299,7 @@ function CounterView() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_X, paddingTop: 20, gap: 20, paddingBottom: tabSpace + (nudges.newBeer ? 180 : 100) }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_X, paddingTop: 20, gap: 20, paddingBottom: tabSpace + (styleAsk ? 340 : nudges.newBeer ? 180 : 100) }}>
         <View style={{ alignItems: 'center' }}>
           <Press
             haptic
@@ -399,8 +429,22 @@ function CounterView() {
         </View>
       </ScrollView>
       <BottomFade height={tabSpace + 130} />
-      {nudges.newBeer ? (
-        <Animated.View entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
+      {nudges.newBeer && styleAsk ? (
+        <Animated.View key="style" entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
+          <View style={[{ padding: 14, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: C.line, gap: 10 }, shadow.raised]}>
+            <View style={{ gap: 2 }}>
+              <T s={15} w={700}>
+                {t.nv.piva.stylePick.nudgeTitle(nudges.newBeer.name)}
+              </T>
+              <T s={13} c={C.muted}>
+                {t.nv.piva.stylePick.nudgeSub}
+              </T>
+            </View>
+            <StylePicker onPick={answerStyle} onUnknown={() => answerStyle('unknown')} />
+          </View>
+        </Animated.View>
+      ) : nudges.newBeer ? (
+        <Animated.View key="rate" entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
           <View style={[s.row, { padding: 14, paddingRight: 10, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: C.line, gap: 10 }, shadow.raised]}>
             <View style={[s.fill, { gap: 2 }]}>
               <T s={15} w={700}>

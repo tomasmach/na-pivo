@@ -15,7 +15,7 @@ from rest_framework.test import APIClient
 
 from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.beer_ranking import classify_styles, refresh_beer_ranking
-from pubs.models import Account, BeerProduct, ContentReport, FriendBlock, Friendship
+from pubs.models import Account, BeerProduct, BeerRanking, ContentReport, FriendBlock, Friendship
 
 PUB = {"name": "U Zlatého tygra", "lat": 50.0876, "lng": 14.4214}
 
@@ -553,4 +553,54 @@ def test_regional_ranking_counts_where_the_beer_was_rated_and_drunk(client):
     )
 
     bad = client.get("/v1/beers/ranking", {"region": "SK010"}, **_auth(token))
+    assert bad.status_code == 400
+
+
+@pytest.mark.django_db
+def test_beer_style_follows_the_majority_once_three_people_agree(client):
+    product = _products(1)[0]
+    product.name = "Matuska Raptor"
+    product.save(update_fields=["name"])
+    _rate_many(client, product, [5, 5, 4])
+
+    def vote(style: str) -> str:
+        token, _ = _register(client, f"s{uuid.uuid4().hex[:10]}")
+        resp = client.post(
+            "/v1/beers/style",
+            {"product": product.key, "style": style},
+            format="json",
+            **_auth(token),
+        )
+        assert resp.status_code == 200, resp.content
+        return token
+
+    def ranking_styles() -> tuple[bool, list[str]]:
+        refresh_beer_ranking(force=True)
+        row = BeerRanking.objects.get(product=product)
+        return row.style_settled, row.styles
+
+    vote("craft")
+    vote("craft")
+    vote("unknown")
+    assert ranking_styles() == (False, [])
+
+    vote("lager")
+    token = vote("craft")
+    assert ranking_styles() == (True, ["craft"])
+
+    detail = client.get("/v1/beers/detail", {"product": product.key}, **_auth(token)).json()
+    assert detail["style_settled"] is True
+    assert detail["my_style"] == "craft"
+
+    for _ in range(3):
+        vote("lager")
+    # 3 craft against 4 lager: the majority wins.
+    assert ranking_styles() == (True, ["lager"])
+
+    bad = client.post(
+        "/v1/beers/style",
+        {"product": product.key, "style": "pilsner"},
+        format="json",
+        **_auth(token),
+    )
     assert bad.status_code == 400

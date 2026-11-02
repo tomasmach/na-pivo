@@ -14,6 +14,8 @@ const REQUEST_TIMEOUT_MS = 9000;
 
 export const BEER_STYLES = ['lager', 'ten', 'craft', 'dark'] as const;
 export type BeerStyle = (typeof BEER_STYLES)[number];
+/** An answer to "Jaký je to styl?": a filter style, something else, or "Nevím". */
+export type StyleAnswer = BeerStyle | 'other' | 'unknown';
 export type RankingOrder = 'best' | 'bottom';
 export type ReviewFilter = 'newest' | 'party' | 'photo';
 
@@ -79,6 +81,9 @@ export interface BeerPage extends BeerDetail {
   pubsPouring: number;
   nearestPub: NearestPub | null;
   photoCount: number | null;
+  /** Enough people agreed on the style, so the app stops asking. */
+  styleSettled: boolean;
+  myStyle: StyleAnswer | null;
 }
 
 export interface BeerReview {
@@ -273,7 +278,33 @@ export async function fetchBeerPage(
           }
         : null,
     photoCount: num(data.photo_count),
+    styleSettled: data.style_settled === true,
+    myStyle: STYLE_ANSWERS.includes(data.my_style as StyleAnswer) ? (data.my_style as StyleAnswer) : null,
   };
+}
+
+const STYLE_ANSWERS: readonly StyleAnswer[] = [...BEER_STYLES, 'other', 'unknown'];
+
+/** Sends my answer to "Jaký je to styl?"; false when it did not reach the server. */
+export async function submitBeerStyle(ref: BeerRef, style: StyleAnswer): Promise<boolean> {
+  const endpoint = getBackendEndpoint('/v1/beers/style');
+  if (!endpoint) return false;
+  const session = await ensureAccount();
+  if (!session) return false;
+  const abort = chainAbortSignal(undefined, REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...refQuery(ref), style }),
+      signal: abort.signal,
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  } finally {
+    abort.cleanup();
+  }
 }
 
 export async function fetchBeerReviews(

@@ -14,11 +14,12 @@ import { generateUuidV4 } from '@/data/account';
 import { BEER_TAGS, MAX_BEER_TAGS, type BeerCheckIn, type BeerCheckInVisibility, type BeerTag } from '@/data/beerCheckinsClient';
 import { pickAndPrepareBeerPhoto, type BeerPhotoSource } from '@/data/beerPhotoPicker';
 import { enqueueBeerPhoto, persistBeerPhotoLocally } from '@/data/beerPhotosQueue';
-import { fetchBeerPage } from '@/data/beersClient';
+import { fetchBeerPage, submitBeerStyle, type StyleAnswer } from '@/data/beersClient';
 import { intlLocale, t } from '@/i18n';
 
 import { myLatestRating, saveBeerRating, savedRating } from './model';
 import { Loading, useLoad } from './states';
+import { StylePicker } from './StylePicker';
 
 const VISIBILITIES: BeerCheckInVisibility[] = ['private', 'friends', 'public'];
 
@@ -33,12 +34,20 @@ export function HodnoceniSheet() {
   const params = useLocalSearchParams<Params>();
   const productKey = params.id && params.id !== '-' ? params.id : null;
   const fallback = params.name ? { name: params.name, brewery: params.brewery ?? '', history: [] as BeerCheckIn[] } : null;
-  const load = useLoad<{ name: string; brewery: string; history: BeerCheckIn[] }>(
+  const load = useLoad<RatedBeer>(
     `${productKey ?? ''}|${params.name ?? ''}|${params.brewery ?? ''}`,
     // Offline with a name still rates; the queue sends it later.
     (signal) =>
       fetchBeerPage({ productKey, beerName: params.name, breweryName: params.brewery }, null, signal).then((page) =>
-        page ? { name: page.beerName, brewery: page.breweryName, history: page.myHistory } : fallback,
+        page
+          ? {
+              name: page.beerName,
+              brewery: page.breweryName,
+              history: page.myHistory,
+              productKey: page.productKey,
+              askStyle: !!page.productKey && !page.styleSettled && !page.myStyle,
+            }
+          : fallback,
       ),
   );
 
@@ -52,7 +61,9 @@ export function HodnoceniSheet() {
   );
 }
 
-function RatingForm({ beer, params }: { beer: { name: string; brewery: string; history: BeerCheckIn[] }; params: Params }) {
+type RatedBeer = { name: string; brewery: string; history: BeerCheckIn[]; productKey?: string | null; askStyle?: boolean };
+
+function RatingForm({ beer, params }: { beer: RatedBeer; params: Params }) {
   const router = useRouter();
   const r = t.nv.piva.rating;
   const latest = myLatestRating(beer.history);
@@ -63,6 +74,7 @@ function RatingForm({ beer, params }: { beer: { name: string; brewery: string; h
   const [visibility, setVisibility] = useState<BeerCheckInVisibility>(latest?.visibility ?? 'private');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [style, setStyle] = useState<StyleAnswer | null>(null);
   const time = new Date().toLocaleTimeString(intlLocale, { hour: 'numeric', minute: '2-digit' });
 
   const toggleTag = (tag: BeerTag) =>
@@ -97,6 +109,8 @@ function RatingForm({ beer, params }: { beer: { name: string; brewery: string; h
       { beerName: beer.name, breweryName: beer.brewery, history: beer.history, pub },
       { rating: stars, tags, note: text.trim(), visibility },
     );
+    // The style is a crowd answer next to the rating; offline it simply is not counted.
+    if (style && beer.productKey) void submitBeerStyle({ productKey: beer.productKey }, style);
     if (photoUri) {
       const clientId = generateUuidV4();
       void persistBeerPhotoLocally(photoUri, clientId).then((localUri) =>
@@ -134,6 +148,12 @@ function RatingForm({ beer, params }: { beer: { name: string; brewery: string; h
           {r.verdict[stars] ?? ''}
         </T>
       </View>
+      {beer.askStyle ? (
+        <View style={{ gap: 12 }}>
+          <FieldLabel>{t.nv.piva.stylePick.question}</FieldLabel>
+          <StylePicker value={style} onPick={(next) => setStyle((prev) => (prev === next ? null : next))} />
+        </View>
+      ) : null}
       <View style={{ gap: 12 }}>
         <FieldLabel>{r.tagsLabel}</FieldLabel>
         <ChipWrap>

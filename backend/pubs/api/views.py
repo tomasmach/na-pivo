@@ -12309,6 +12309,14 @@ def _export_account_data(account: Account) -> dict:
             "last_platform": usage.last_platform if usage else "",
             "last_os_version": usage.last_os_version if usage else "",
         },
+        "beer_style_votes": [
+            {
+                "beer": vote.product.name,
+                "style": vote.style,
+                "updated_at": _iso(vote.updated_at),
+            }
+            for vote in account.beer_style_votes.select_related("product").order_by("-updated_at")
+        ],
         "xp_events": [
             {
                 "reason": event.reason,

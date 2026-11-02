@@ -3869,6 +3869,8 @@ class BeerRanking(models.Model):
     tag_counts = models.JSONField(default=dict, blank=True)
     tagged_count = models.PositiveIntegerField(default=0)
     styles = models.JSONField(default=list, blank=True)
+    # True once enough people agreed on the style; until then ``styles`` is guessed from the name.
+    style_settled = models.BooleanField(default=False)
     rank = models.PositiveIntegerField(null=True, blank=True, db_index=True)
     # Final rank of the previous ISO week, for the arrow next to the rank.
     last_week_rank = models.PositiveIntegerField(null=True, blank=True)
@@ -3880,6 +3882,37 @@ class BeerRanking(models.Model):
 
     def __str__(self) -> str:
         return f"BeerRanking({self.product_id}: {self.rank})"
+
+
+class BeerStyleVote(models.Model):
+    """One account's answer to "Jaký je to styl?" for a catalogue beer.
+
+    The majority wins once enough people agree, so a single careless tap changes
+    nothing. ``unknown`` records "Nevím" and only stops the app asking again.
+    """
+
+    class Style(models.TextChoices):
+        LAGER = "lager", "Lager"
+        TEN = "ten", "Ten"
+        DARK = "dark", "Dark"
+        CRAFT = "craft", "Craft"
+        OTHER = "other", "Other"
+        UNKNOWN = "unknown", "Unknown"
+
+    account = models.ForeignKey(
+        "pubs.Account", on_delete=models.CASCADE, related_name="beer_style_votes"
+    )
+    product = models.ForeignKey(BeerProduct, on_delete=models.CASCADE, related_name="style_votes")
+    style = models.CharField(max_length=8, choices=Style.choices)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["account", "product"], name="beer_style_vote_unique"),
+        ]
+
+    def __str__(self) -> str:
+        return f"BeerStyleVote({self.account_id}, {self.product_id}: {self.style})"
 
 
 class BeerRegionRanking(models.Model):

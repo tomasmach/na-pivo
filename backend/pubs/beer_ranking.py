@@ -24,6 +24,7 @@ from pubs.models import (
     BeerProduct,
     BeerRanking,
     BeerRegionRanking,
+    BeerStyleVote,
     DrinkLog,
     PubBeerProduct,
 )
@@ -40,7 +41,7 @@ POURING_FRESH_DAYS = 90
 STYLES = ("lager", "ten", "craft", "dark")
 
 _DARK = re.compile(r"tmav|cern|dark|porter|stout|schwarz|bock")
-_CRAFT = re.compile(r"\b(ipa|apa|neipa|ale|sour|weizen|psenic\w*|wheat|saison|gose)\b")
+_CRAFT = re.compile(r"\b(craft|ipa|apa|neipa|ale|sour|weizen|psenic\w*|wheat|saison|gose)\b")
 _TEN = re.compile(r"\b10\b|desitk|vycepni")
 _LAGER = re.compile(r"lezak|lager|pils|\b1[1-3]\b|premium")
 
@@ -66,6 +67,27 @@ def classify_styles(name: str, style_texts: list[str]) -> list[str]:
     if dark:
         styles.append("dark")
     return [style for style in STYLES if style in styles]
+
+
+# A people-chosen style replaces the name guess once this many agree and it has the most votes.
+STYLE_MIN_VOTES = 3
+
+
+def settled_style(votes: Counter) -> tuple[bool, list[str]]:
+    """(settled, styles) from people's answers: the majority wins with enough agreement."""
+    ranked = votes.most_common(2)
+    if not ranked or ranked[0][1] < STYLE_MIN_VOTES:
+        return False, []
+    if len(ranked) > 1 and ranked[1][1] == ranked[0][1]:
+        return False, []
+    winner = ranked[0][0]
+    return True, [winner] if winner in STYLES else []
+
+
+def _vote_of_text(text: str) -> str | None:
+    """The style bucket a typed style names, for check-ins that carry one."""
+    found = classify_styles("", [text])
+    return found[0] if len(found) == 1 else None
 
 
 def _star(rating) -> int:
@@ -94,7 +116,8 @@ def refresh_beer_ranking(now: datetime | None = None, *, force: bool = False) ->
 
     ratings: dict[tuple[int, int], float] = {}
     tags: dict[tuple[int, int], list[str]] = {}
-    style_texts: dict[int, Counter] = {}
+    # (account, product) -> style the account named, an explicit answer beating a typed one.
+    style_votes: dict[tuple[int, int], str] = {}
     checkins = (
         BeerCheckIn.objects.filter(
             beer_product__isnull=False, account__status=Account.Status.ACTIVE
@@ -120,8 +143,19 @@ def refresh_beer_ranking(now: datetime | None = None, *, force: bool = False) ->
         ]
         if clean:
             tags[key] = clean
-        if style:
-            style_texts.setdefault(product_id, Counter())[style.strip()[:40]] += 1
+        vote = _vote_of_text(style) if style else None
+        if vote:
+            style_votes[key] = vote
+
+    for account_id, product_id, style in BeerStyleVote.objects.filter(
+        account__status=Account.Status.ACTIVE
+    ).values_list("account_id", "product_id", "style"):
+        if style == BeerStyleVote.Style.UNKNOWN:
+            continue
+        style_votes[(account_id, product_id)] = style
+    votes_per_product: dict[int, Counter] = {}
+    for (_, product_id), style in style_votes.items():
+        votes_per_product.setdefault(product_id, Counter())[style] += 1
 
     per_product: dict[int, dict] = {}
 
@@ -202,10 +236,9 @@ def refresh_beer_ranking(now: datetime | None = None, *, force: bool = False) ->
         row.stars = stats["stars"]
         row.tag_counts = dict(stats["tags"])
         row.tagged_count = stats["tagged"]
-        row.styles = classify_styles(
-            product.name,
-            [text for text, _ in style_texts.get(product_id, Counter()).most_common(3)],
-        )
+        settled, chosen = settled_style(votes_per_product.get(product_id, Counter()))
+        row.style_settled = settled
+        row.styles = chosen if settled else classify_styles(product.name, [])
         row.drunk_total = drunk.get("total", 0)
         row.drinkers = drunk.get("people", 0)
         row.drunk_week = drunk.get("week", 0)
@@ -226,6 +259,7 @@ def refresh_beer_ranking(now: datetime | None = None, *, force: bool = False) ->
                 "tag_counts",
                 "tagged_count",
                 "styles",
+                "style_settled",
                 "drunk_total",
                 "drinkers",
                 "drunk_week",

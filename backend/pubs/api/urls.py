@@ -72,7 +72,13 @@ from .party_views import (
     PartyGameEventView,
     party_game_stream,
 )
-from .piva_views import BeerCollectionView, BeerRankingView, BeerReviewsView, BeerSearchView
+from .piva_views import (
+    BeerCollectionView,
+    BeerRankingView,
+    BeerReviewsView,
+    BeerSearchView,
+    BeerStyleVoteView,
+)
 from .profil_views import AccountXpEventsView
 from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
@@ -340,6 +346,7 @@ urlpatterns = [
     path("beers/nearby", BeersNearbyView.as_view(), name="beers-nearby"),
     path("beer-label-scan", BeerLabelScanView.as_view(), name="beer-label-scan"),
     path("beers/ranking", BeerRankingView.as_view(), name="beers-ranking"),
+    path("beers/style", BeerStyleVoteView.as_view(), name="beers-style"),
     path("beers/search", BeerSearchView.as_view(), name="beers-search"),
     path("beers/reviews", BeerReviewsView.as_view(), name="beers-reviews"),
     path("beers/collection", BeerCollectionView.as_view(), name="beers-collection"),
