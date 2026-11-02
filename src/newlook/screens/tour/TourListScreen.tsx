@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import * as Location from 'expo-location';
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 
@@ -16,7 +16,7 @@ import { pubCount, tourError } from '@/tours/TourChrome';
 import { BackHeader, Screen } from '../../components/chrome';
 import { Input, PageTitle, Ticket } from '../../components/forms';
 import { Icon } from '../../components/Icon';
-import { Button, Card, Chip, D, IconButton, Press, Row, Segmented, Stack, T, Tile } from '../../components/ui';
+import { Button, Card, Chip, D, IconButton, Press, Row, Segmented, Spinner, Stack, T, Tile } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
 import { planSummary, ticketDay, whenText } from './tourView';
@@ -104,7 +104,7 @@ function MineTab() {
   const heroPlan = active ? store.plans.find((p) => p.id === active.planId) : (upcoming ?? sortPlans(store.plans)[0]);
   const others = sortPlans(store.plans.filter((plan) => plan.id !== heroPlan?.id && plan.id !== active?.planId));
 
-  if (!store.hydrated) return <ActivityIndicator color={C.yellow} style={{ marginTop: 24 }} />;
+  if (!store.hydrated) return <Spinner style={{ marginTop: 24 }} />;
   if (store.error && !store.plans.length && !store.runs.length) {
     return (
       <T s={15} c={C.text2} lh={1.4}>
@@ -361,7 +361,7 @@ function PublicTab() {
         <Chip label={tx.withChallenges} icon="flag" active={challenges} onPress={() => setChallenges(!challenges)} />
       </View>
       {!current || locating ? (
-        <ActivityIndicator color={C.yellow} style={{ marginTop: 12 }} />
+        <Spinner style={{ marginTop: 12 }} />
       ) : current.failure ? (
         <View style={{ gap: 12 }}>
           <T s={15} c={C.text2} lh={1.4}>

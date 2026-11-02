@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
@@ -18,7 +18,7 @@ import { openPubInMaps } from '@/utils/maps';
 
 import { BackHeader, BottomFade, Screen } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
-import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../components/ui';
+import { Button, D, Dot, IconButton, Press, ProgressRing, Spinner, T } from '../../components/ui';
 import { toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { distanceLabel } from './format';
@@ -242,7 +242,7 @@ export function PubScreen() {
               </Press>
             ))
           ) : !details.hoursLoaded ? (
-            <ActivityIndicator color={C.yellow} style={{ alignSelf: 'flex-start', paddingVertical: 14 }} />
+            <Spinner style={{ alignSelf: 'flex-start', paddingVertical: 14 }} />
           ) : (
             <>
               <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>

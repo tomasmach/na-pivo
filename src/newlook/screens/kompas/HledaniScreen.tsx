@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, ScrollView, TextInput, View } from 'react-native';
+import { Keyboard, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,7 +21,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { formatPrice } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
-import { Card, Person, Press, Row, T, Tile } from '../../components/ui';
+import { Card, Person, Press, Row, Spinner, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { distanceLabel, hoursNow } from './format';
 import { openNvPub, useKompasState } from './state';
@@ -191,7 +191,7 @@ export function HledaniScreen() {
             returnKeyType="search"
             style={[font(16, 600), { flex: 1, padding: 0 }]}
           />
-          {searching ? <ActivityIndicator size="small" color={C.yellow} /> : null}
+          {searching ? <Spinner size="small" /> : null}
         </View>
         <Press onPress={() => nvBack(router)} hitSlop={10}>
           <T s={15} w={700} c={C.yellow}>
@@ -251,7 +251,7 @@ export function HledaniScreen() {
                   leading={<Tile icon="beer" />}
                   title={r.name}
                   sub={r.pub ? areaLine(r.pub) : r.location || [r.address, r.city].filter(Boolean).join(', ') || undefined}
-                  trailing={openingId === r.id ? <ActivityIndicator color={C.yellow} /> : null}
+                  trailing={openingId === r.id ? <Spinner /> : null}
                   onPress={() => void openResult(r)}
                 />
               ))}

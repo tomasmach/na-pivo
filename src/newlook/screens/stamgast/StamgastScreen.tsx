@@ -68,10 +68,10 @@ export function StamgastScreen() {
   }
   const mode = stored === 'tour' && !tourActive ? 'pocitat' : stored;
   const copy = t.nv.stamgast;
-  const options: { key: Mode; label: string }[] = [
+  const options: { key: Mode; label: string; dot?: boolean }[] = [
     { key: 'pocitat', label: copy.segCount },
     { key: 'denik', label: copy.segDiary },
-    ...(tourActive ? [{ key: 'tour' as const, label: copy.segTour }] : []),
+    ...(tourActive ? [{ key: 'tour' as const, label: copy.segTour, dot: true }] : []),
   ];
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>

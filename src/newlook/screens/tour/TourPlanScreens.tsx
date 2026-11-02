@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Share, TextInput, View, type ViewInstance } from 'react-native';
+import { Linking, Share, TextInput, View, type ViewInstance } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
@@ -25,7 +25,7 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, Card, Chip, D, IconButton, Kicker, Press, Row, T, Tile } from '../../components/ui';
+import { Button, Card, Chip, D, IconButton, Kicker, Press, Row, Spinner, T, Tile } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { C, display, s } from '../../theme';
 import { StickerKdoJde } from '../sdileni/Stickers';
@@ -80,7 +80,7 @@ export function TourEditorScreen() {
             {tourError(useToursStore.getState().error) ?? t.tours.loading}
           </T>
         ) : (
-          <ActivityIndicator color={C.yellow} />
+          <Spinner />
         )}
       </Screen>
     );
@@ -464,7 +464,7 @@ export function TourVyberScreen() {
           })}
         </Card>
       ) : loading ? (
-        <ActivityIndicator color={C.yellow} />
+        <Spinner />
       ) : (
         <T s={15} c={C.text2} lh={1.4}>
           {status === 'error' ? t.tours.searchError : t.tours.searchEmpty}

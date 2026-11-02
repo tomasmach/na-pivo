@@ -6,6 +6,7 @@ import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { t } from '@/i18n';
 
 import { fireSuccessHaptic } from '@/utils/haptics';
 
@@ -107,7 +108,7 @@ export function DialogHost() {
       exiting={fadeOut}
       style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.scrim, zIndex: 90 }, s.center]}
     >
-      <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={hide} accessibilityLabel="Zavřít" />
+      <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={hide} accessibilityLabel={t.nv.common.close} />
       <View
         accessibilityViewIsModal
         style={{
@@ -237,7 +238,7 @@ export function Sheet({
   return (
     <View style={{ flex: 1 }}>
       <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.scrim }, scrimStyle]}>
-        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Zavřít" />
+        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel={t.nv.common.close} />
       </Animated.View>
       <Animated.View
         onLayout={(e) => {
@@ -270,7 +271,7 @@ export function Sheet({
               {kicker}
               {title ? <D s={30}>{title}</D> : null}
             </View>
-            {closeIcon ? <IconButton icon="x" size={40} iconSize={18} onPress={close} label="Zavřít" /> : null}
+            {closeIcon ? <IconButton icon="x" size={40} iconSize={18} onPress={close} label={t.nv.common.close} /> : null}
           </View>
         ) : null}
         {scroll ? (

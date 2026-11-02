@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
+import { t } from '@/i18n';
 
 import { C, font, s } from '../theme';
 import { Icon, type IconName } from './Icon';
@@ -185,7 +186,7 @@ export function Stepper({ value, onChange, min = 1, max = 20 }: { value: number;
 
 function StepBtn({ icon, onPress }: { icon: IconName; onPress: () => void }) {
   return (
-    <Press haptic onPress={onPress} accessibilityLabel={icon === 'plus' ? 'Přidat' : 'Ubrat'} style={[{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control }, s.center]}>
+    <Press haptic onPress={onPress} accessibilityLabel={icon === 'plus' ? t.nv.common.stepUp : t.nv.common.stepDown} style={[{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control }, s.center]}>
       <Icon name={icon} size={18} color={C.white} />
     </Press>
   );

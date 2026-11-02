@@ -1,15 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Icon, type IconName } from '../../components/Icon';
-import { D, Press, T } from '../../components/ui';
+import { D, Press, Spinner, T } from '../../components/ui';
 import { C, s } from '../../theme';
 import { t } from '@/i18n';
 
 export function Loading({ pad = 40 }: { pad?: number }) {
   return (
     <View style={[s.center, { paddingVertical: pad }]}>
-      <ActivityIndicator color={C.muted} />
+      <Spinner />
     </View>
   );
 }

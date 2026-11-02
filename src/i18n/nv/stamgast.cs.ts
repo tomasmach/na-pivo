@@ -9,7 +9,7 @@ const PIVO = { one: 'pivo', few: 'piva', many: 'piv' };
 export const stamgastCs = {
   segCount: 'Počítat',
   segDiary: 'Deník',
-  segTour: '• Tour',
+  segTour: 'Tour',
 
   // Tour segment
   tourLogAt: (index: number) => `Zapsat pivo na ${STOP_AT[index] ?? `${index + 1}. zastávce`}`,

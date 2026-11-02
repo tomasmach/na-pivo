@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, TextInput, View } from 'react-native';
+import { Image, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,7 +20,7 @@ import { formatPrice } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, D, IconButton, Kicker, Press, Row, Segmented, T, Tile } from '../../components/ui';
+import { Button, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { toast } from '../../ui/store';
 import { logDrink } from './counterActions';
@@ -324,7 +324,7 @@ export function ZapisSheet() {
         }}
       />
       <View style={{ gap: 10 }}>
-        {menu.loading && options.length === 0 ? <ActivityIndicator color={C.muted} /> : null}
+        {menu.loading && options.length === 0 ? <Spinner /> : null}
         {rows.map((r, i) => (
           <View key={i} style={[s.row, { gap: 10 }]}>
             {r.map((o) =>
@@ -653,7 +653,7 @@ export function VyfotScreen() {
       {label && uri ? <View style={{ position: 'absolute', left: '32%', width: '38%', top: '42%', height: '27%', borderRadius: 18, borderWidth: 3, borderColor: C.yellow }} /> : null}
       {phase.step === 'reading' || phase.step === 'shooting' ? (
         <View style={[panel, s.row, { gap: 12 }]}>
-          <ActivityIndicator color={C.yellow} />
+          <Spinner />
           <T s={15} w={700}>
             {copy.reading}
           </T>
@@ -791,7 +791,7 @@ export function ZmenitMistoSheet() {
           />
         ) : loading && near.length === 0 ? (
           <View style={[s.row, { gap: 10, height: 62 }]}>
-            <ActivityIndicator color={C.muted} />
+            <Spinner />
             <T s={14} c={C.muted}>
               {copy.placeSearching}
             </T>

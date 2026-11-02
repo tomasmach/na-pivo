@@ -13,11 +13,11 @@ import { Glass, tabBarBottom } from './chrome';
 import { Icon, type IconName } from './Icon';
 import { D, Press, T } from './ui';
 
-const SIDE: Record<string, { label: string; icon: IconName }> = {
-  kompas: { label: 'Kompas', icon: 'compass' },
-  vycep: { label: 'Výčep', icon: 'hop' },
-  piva: { label: 'Piva', icon: 'star' },
-  parta: { label: 'Parta', icon: 'users' },
+const SIDE: Record<string, { label: () => string; icon: IconName }> = {
+  kompas: { label: () => t.nv.common.tabKompas, icon: 'compass' },
+  vycep: { label: () => t.nv.common.tabVycep, icon: 'hop' },
+  piva: { label: () => t.nv.common.tabPiva, icon: 'star' },
+  parta: { label: () => t.nv.common.tabParta, icon: 'users' },
 };
 
 /** Two glass pills with the Štamgast circle between them. */
@@ -31,7 +31,8 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
   };
 
   const tab = (name: string) => {
-    const t = SIDE[name];
+    const side = SIDE[name];
+    const label = side.label();
     const on = current === name;
     return (
       <Press
@@ -39,13 +40,13 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
         haptic
         onPress={() => go(name)}
         accessibilityRole="tab"
-        accessibilityLabel={t.label}
+        accessibilityLabel={label}
         accessibilityState={{ selected: on }}
         style={[s.fill, s.center, { borderRadius: 27, gap: 3, alignSelf: 'stretch' }, on && { backgroundColor: C.ring }]}
       >
-        <Icon name={t.icon} size={21} color={on ? C.yellow : C.glassText} />
+        <Icon name={side.icon} size={21} color={on ? C.yellow : C.glassText} />
         <T s={10} w={700} c={on ? C.yellow : C.glassText}>
-          {t.label}
+          {label}
         </T>
       </Press>
     );
@@ -73,7 +74,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
           {tab('kompas')}
           {tab('vycep')}
         </Glass>
-        <Press haptic onPress={() => go('stamgast')} accessibilityRole="tab" accessibilityLabel="Štamgast" accessibilityState={{ selected: stamgastOn }}>
+        <Press haptic onPress={() => go('stamgast')} accessibilityRole="tab" accessibilityLabel={t.nv.common.tabStamgast} accessibilityState={{ selected: stamgastOn }}>
           {stamgastOn ? (
             <View style={[{ width: 64, height: 64, borderRadius: 32, backgroundColor: C.yellow }, s.center]}>
               <Icon name="beer" size={28} color={C.black} />

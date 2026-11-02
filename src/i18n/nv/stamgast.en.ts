@@ -8,7 +8,7 @@ const BEER = { one: 'beer', other: 'beers' };
 export const stamgastEn: typeof stamgastCs = {
   segCount: 'Count',
   segDiary: 'Diary',
-  segTour: '• Tour',
+  segTour: 'Tour',
 
   tourLogAt: (index: number) => `Log a beer at the ${STOP_ORDINAL[index] ?? `${index + 1}th`} stop`,
   tourWalk: (minutes: number) => `${minutes} min`,

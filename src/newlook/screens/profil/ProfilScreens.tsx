@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Linking, ScrollView, Share, View } from 'react-native';
+import { Image, Linking, ScrollView, Share, View } from 'react-native';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import * as Clipboard from 'expo-clipboard';
@@ -71,7 +71,7 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Field, Input, PageTitle } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Person, Press, ProgressRing, Row, Segmented, T, Tile, Toggle } from '../../components/ui';
+import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Person, Press, ProgressRing, Row, Segmented, Spinner, T, Tile, Toggle } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { Dial } from '../kompas/Dial';
@@ -696,7 +696,7 @@ export function NovyLevelSheet() {
           {t.profile.levelMaxed}
         </T>
       )}
-      {events == null && since ? <ActivityIndicator color={C.muted} /> : null}
+      {events == null && since ? <Spinner /> : null}
       {shown.length > 0 ? (
         <>
           <T s={15} w={700} c={C.muted}>
@@ -1040,7 +1040,7 @@ export function UpravitProfilScreen() {
       <Press onPress={changePhoto} disabled={avatarBusy} style={{ alignItems: 'center', gap: 10 }} accessibilityRole="button">
         <ProfilAvatar uri={me.avatarUrl} initial={me.initial} size={96} />
         {avatarBusy ? (
-          <ActivityIndicator color={C.yellow} />
+          <Spinner />
         ) : (
           <T s={15} w={700} c={C.yellow}>
             {P().editProfile.changePhoto}
@@ -1259,9 +1259,9 @@ export function UcetScreen() {
         {P().account.more}
       </T>
       <Card>
-        <Row title={P().account.export} chevron onPress={() => void exportData()} trailing={busy === 'export' ? <ActivityIndicator color={C.muted} /> : null} />
-        <Row title={P().account.logout} chevron onPress={() => void signOut()} trailing={busy === 'logout' ? <ActivityIndicator color={C.muted} /> : null} />
-        <Row last title={P().account.delete} titleColor={C.danger} chevron onPress={confirmDelete} trailing={busy === 'delete' ? <ActivityIndicator color={C.muted} /> : null} />
+        <Row title={P().account.export} chevron onPress={() => void exportData()} trailing={busy === 'export' ? <Spinner /> : null} />
+        <Row title={P().account.logout} chevron onPress={() => void signOut()} trailing={busy === 'logout' ? <Spinner /> : null} />
+        <Row last title={P().account.delete} titleColor={C.danger} chevron onPress={confirmDelete} trailing={busy === 'delete' ? <Spinner /> : null} />
       </Card>
     </Screen>
   );
@@ -1368,7 +1368,7 @@ export function PrihlasovaniSheet() {
               sub={locked ? P().loginMethods.onlyOne : linked ? P().loginMethods.linked : P().loginMethods.notLinked}
               trailing={
                 busy === provider ? (
-                  <ActivityIndicator color={C.muted} />
+                  <Spinner />
                 ) : locked ? (
                   <Icon name="lock" size={16} color={C.muted} />
                 ) : (
@@ -1648,7 +1648,7 @@ export function VysledekScreen() {
     return (
       <Screen>
         <View style={{ marginTop: 130, gap: 18 }}>
-          <ActivityIndicator color={C.yellow} style={{ alignSelf: 'flex-start' }} />
+          <Spinner style={{ alignSelf: 'flex-start' }} />
           <D s={44}>{P().result.verifying}</D>
         </View>
       </Screen>
@@ -1815,7 +1815,7 @@ export function SpravaPartyScreen() {
               {link ? (
                 <QRCode value={link} size={200} color={C.black} backgroundColor={C.white} />
               ) : invite === 'loading' ? (
-                <ActivityIndicator color={C.black} />
+                <Spinner color={C.black} />
               ) : (
                 <T s={14} w={600} c={C.black} style={{ textAlign: 'center' }}>
                   {t.friends.codeOffline}
@@ -1866,7 +1866,7 @@ export function SpravaPartyScreen() {
                   sub={profile.nickname ? profile.displayName || undefined : undefined}
                   trailing={
                     requesting === `account:${profile.id}` ? (
-                      <ActivityIndicator color={C.muted} />
+                      <Spinner />
                     ) : (
                       <Chip label={P().parta.addOne} active plain height={34} onPress={() => void request(profile)} />
                     )
@@ -1886,7 +1886,7 @@ export function SpravaPartyScreen() {
             {P().parta.friends}
           </T>
           {friends == null ? (
-            <ActivityIndicator color={C.muted} style={{ alignSelf: 'flex-start' }} />
+            <Spinner style={{ alignSelf: 'flex-start' }} />
           ) : friends.length === 0 ? (
             <T s={14} c={C.muted}>
               {P().parta.noFriends}
@@ -2013,7 +2013,7 @@ export function PozvankaDoPartySheet() {
       <Sheet closeIcon={false} top={520} scroll={false}>
         <View style={{ alignItems: 'center', gap: 14, paddingVertical: 12 }}>
           <Kicker>{P().invite.kicker}</Kicker>
-          {state === 'loading' ? <ActivityIndicator color={C.yellow} /> : <Icon name="users" size={40} color={C.muted} />}
+          {state === 'loading' ? <Spinner /> : <Icon name="users" size={40} color={C.muted} />}
           <T s={16} c={C.text2} style={{ textAlign: 'center' }}>
             {message}
           </T>
@@ -2241,7 +2241,7 @@ export function OAppceScreen() {
         {P().about.tagline}
       </T>
       {notes === 'loading' ? (
-        <ActivityIndicator color={C.muted} style={{ alignSelf: 'flex-start' }} />
+        <Spinner style={{ alignSelf: 'flex-start' }} />
       ) : notes === 'error' ? (
         <T s={14} c={C.muted}>
           {P().about.notesFailed}
