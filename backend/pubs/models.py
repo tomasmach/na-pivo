@@ -3902,7 +3902,8 @@ class BeerStyleVote(models.Model):
         UNKNOWN = "unknown", "Unknown"
 
     class Degree(models.TextChoices):
-        TEN = "10", "10° or less"
+        NINE = "9", "9° or less"
+        TEN = "10", "10°"
         ELEVEN = "11", "11°"
         TWELVE = "12", "12°"
         STRONG = "13plus", "13° or more"

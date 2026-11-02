@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { BEER_DEGREES, type BeerDegree, type StyleAnswer } from '@/data/beersClient';
 import { t } from '@/i18n';
 
-import { Chip, ChipWrap, Press, T } from '../../components/ui';
+import { Press, T } from '../../components/ui';
 import { C, s } from '../../theme';
 
 const KINDS = ['pale', 'amber', 'dark', 'craft', 'other'] as const;
@@ -51,15 +51,40 @@ export function KindPicker({ value, onPick, onUnknown }: { value?: StyleAnswer |
   );
 }
 
-/** 10°, 11°, 12°, 13° a víc as one row of chips. */
+/** do 9° … 13°+ as one row of equal tiles. */
 export function DegreePicker({ value, onPick, onUnknown }: { value?: BeerDegree | null; onPick: (degree: BeerDegree) => void; onUnknown?: () => void }) {
   return (
     <View style={{ gap: 8 }}>
-      <ChipWrap>
-        {BEER_DEGREES.map((degree) => (
-          <Chip key={degree} label={t.nv.piva.degrees[degree]} active={value === degree} plain onPress={() => onPick(degree)} />
-        ))}
-      </ChipWrap>
+      <View style={[s.row, { gap: 6 }]}>
+        {BEER_DEGREES.map((degree) => {
+          const on = value === degree;
+          return (
+            <Press
+              key={degree}
+              haptic
+              onPress={() => onPick(degree)}
+              accessibilityRole="button"
+              accessibilityLabel={t.nv.piva.degrees[degree]}
+              accessibilityState={{ selected: on }}
+              style={[
+                s.center,
+                {
+                  flex: 1,
+                  height: 48,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: on ? C.yellowEdge : C.line,
+                  backgroundColor: on ? C.yellowTint : C.card,
+                },
+              ]}
+            >
+              <T s={15} w={700} c={on ? C.yellow : C.white} numberOfLines={1}>
+                {t.nv.piva.degreesShort[degree]}
+              </T>
+            </Press>
+          );
+        })}
+      </View>
       {onUnknown ? <UnknownButton onPress={onUnknown} /> : null}
     </View>
   );

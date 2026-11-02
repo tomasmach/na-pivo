@@ -40,7 +40,7 @@ REFRESH_EVERY = timedelta(hours=1)
 POURING_FRESH_DAYS = 90
 # What kind of beer it is, and how strong (Czech degrees), as two separate filters.
 STYLES = ("pale", "amber", "dark", "craft")
-DEGREES = ("10", "11", "12", "13plus")
+DEGREES = ("9", "10", "11", "12", "13plus")
 
 _AMBER = re.compile(r"polotmav|jantar|amber|granat|cerven")
 _DARK = re.compile(r"tmav|cern|dark|porter|stout|schwarz")
@@ -76,9 +76,11 @@ def degree_of(name: str) -> str:
     value = int(match.group(1)) if match else None
     if value is None:
         value = next((n for word, n in _DEGREE_WORDS.items() if word in text), None)
-    if value is None or value < 6:
+    if value is None or value < 3:
         return ""
-    if value <= 10:
+    if value <= 9:
+        return "9"
+    if value == 10:
         return "10"
     if value >= 13:
         return "13plus"

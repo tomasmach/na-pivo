@@ -250,6 +250,7 @@ def test_kind_and_degree_from_the_name():
     assert degree_of("Pilsner Urquell 12°") == "12"
     assert degree_of("Bernard 14,5°") == "13plus"
     assert degree_of("Starobrno desítka") == "10"
+    assert degree_of("Primátor Nealko 8°") == "9"
     assert degree_of("Matuška Raptor") == ""
 
 
@@ -620,9 +621,9 @@ def test_kind_and_degree_follow_the_majority_once_three_people_agree(client):
     detail = client.get("/v1/beers/detail", {"product": product.key}, **_auth(token)).json()
     assert (detail["my_style"], detail["my_degree"]) == ("craft", "12")
 
-    for bad in ({"style": "lager"}, {"degree": "9"}, {}):
+    for bad in ({"style": "lager"}, {"degree": "8"}, {}):
         resp = client.post(
             "/v1/beers/style", {"product": product.key, **bad}, format="json", **_auth(token)
         )
         assert resp.status_code == 400
-    assert client.get("/v1/beers/ranking", {"degree": "9"}, **_auth(token)).status_code == 400
+    assert client.get("/v1/beers/ranking", {"degree": "8"}, **_auth(token)).status_code == 400

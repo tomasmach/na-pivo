@@ -16,8 +16,8 @@ export const BEER_STYLES = ['pale', 'amber', 'dark', 'craft'] as const;
 export type BeerStyle = (typeof BEER_STYLES)[number];
 /** An answer to "Co je to za pivo?": a filter kind, something else, or "Nevím". */
 export type StyleAnswer = BeerStyle | 'other' | 'unknown';
-/** Czech degrees buckets; '10' also holds weaker beers, '13plus' everything stronger. */
-export const BEER_DEGREES = ['10', '11', '12', '13plus'] as const;
+/** Czech degrees buckets; '9' holds everything up to 9°, '13plus' everything stronger. */
+export const BEER_DEGREES = ['9', '10', '11', '12', '13plus'] as const;
 export type BeerDegree = (typeof BEER_DEGREES)[number];
 
 function degree(value: unknown): BeerDegree | null {
