@@ -8,8 +8,8 @@ from django.views.generic import RedirectView
 
 from pubs.home_views import home, landing_asset
 from pubs.models import BeerPage
-from pubs.pub_web_views import pub_share_landing
 from pubs.profile_pages import public_profile_page
+from pubs.pub_web_views import pub_share_landing
 from pubs.web_views import (
     android_asset_statements,
     apple_app_site_association,
