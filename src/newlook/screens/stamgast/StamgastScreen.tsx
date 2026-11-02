@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
-import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
+import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +31,7 @@ import { formatPrice } from '@/utils/currency';
 import { BottomFade, LevelAvatar, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, Press, Segmented, T, Tile } from '../../components/ui';
+import { fadeIn, fadeOut, riseIn, sinkOut } from '../../motion';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import { toast } from '../../ui/store';
 import { TourRunContent } from '../tour/TourScreens';
@@ -79,7 +80,10 @@ export function StamgastScreen() {
         <LevelAvatar />
       </View>
       {mode === 'pocitat' ? (
-        <CounterView />
+        // The count, a new row and the nudge animate when they change, not when the counter opens.
+        <LayoutAnimationConfig skipEntering>
+          <CounterView />
+        </LayoutAnimationConfig>
       ) : mode === 'denik' ? (
         <DiaryView onToday={() => setStored('pocitat')} />
       ) : (
@@ -216,13 +220,6 @@ function CounterView() {
   const resumable = key && count === 0 ? resumableSession(current, history, key, now) : null;
   const sittingMinutes = session ? Math.max(0, Math.round((now - Date.parse(session.startedAt)) / 60000)) : 0;
 
-  const prevCount = useRef(count);
-  const [bump, setBump] = useState(0);
-  useEffect(() => {
-    if (count > prevCount.current) setBump((b) => b + 1);
-    prevCount.current = count;
-  }, [count]);
-
   const oneMore = () => {
     const target = currentCountPlace();
     if (!target) {
@@ -287,7 +284,7 @@ function CounterView() {
           </Press>
         </View>
         <View style={{ alignItems: 'center', gap: 4 }}>
-          <Animated.View key={bump} entering={bump ? ZoomIn.springify().damping(12) : undefined}>
+          <Animated.View key={count} entering={fadeIn} exiting={fadeOut}>
             <D s={120} lh={1} c={C.yellow} style={{ letterSpacing: -2 }} accessibilityLabel={copy.tonightA11y(count)}>
               {String(count)}
             </D>
@@ -308,7 +305,7 @@ function CounterView() {
           <QuickAction icon="circle-check" label={copy.quickDone} onPress={finish} />
         </View>
         {stickerShown ? (
-          <View style={[s.row, { gap: 12, padding: 12, borderRadius: 22, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }]}>
+          <Animated.View entering={fadeIn} style={[s.row, { gap: 12, padding: 12, borderRadius: 22, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }]}>
             <View style={[{ width: 52, height: 52, borderRadius: 26, backgroundColor: C.white, borderWidth: 3, borderColor: C.yellow }, s.center]}>
               <T s={22} w={900} c={C.black} style={{ letterSpacing: 2 }}>
                 III
@@ -335,10 +332,10 @@ function CounterView() {
             <Press onPress={() => nudges.set({ stickerFor: null })} hitSlop={10} accessibilityLabel={copy.close}>
               <Icon name="x" size={16} color={C.muted} />
             </Press>
-          </View>
+          </Animated.View>
         ) : null}
         {tourBanner ? (
-          <View style={[s.row, { gap: 12, padding: 16, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.hairline }]}>
+          <Animated.View entering={fadeIn} style={[s.row, { gap: 12, padding: 16, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.hairline }]}>
             <Icon name="route" size={18} color={C.yellow} />
             <T s={15} w={700} style={s.fill}>{copy.tourChecked(tourBanner.beers, tourBanner.index)}</T>
             <Press
@@ -351,7 +348,7 @@ function CounterView() {
                 {copy.undo}
               </T>
             </Press>
-          </View>
+          </Animated.View>
         ) : null}
         {atFriend ? <FriendEveningCard /> : null}
         {session && count > 0 && !atFriend ? <TransitCard session={session} /> : null}
@@ -364,7 +361,7 @@ function CounterView() {
           </View>
           {drinks.length ? (
             drinks.map((d, i) => (
-              <Animated.View key={d.id} entering={i === 0 ? FadeInDown : undefined} style={[s.row, { height: 62, gap: 12 }]}>
+              <Animated.View key={d.id} entering={i === 0 ? fadeIn : undefined} style={[s.row, { height: 62, gap: 12 }]}>
                 <Tile icon={normalizeDrinkType(d.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
                 <View style={[s.fill, { gap: 2 }]}>
                   <T s={15} w={600} numberOfLines={1}>
@@ -403,7 +400,7 @@ function CounterView() {
       </ScrollView>
       <BottomFade height={tabSpace + 130} />
       {nudges.newBeer ? (
-        <Animated.View entering={FadeInDown} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
+        <Animated.View entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
           <View style={[s.row, { padding: 14, paddingRight: 10, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: '#FFFFFF1F', gap: 10 }, shadow.raised]}>
             <View style={[s.fill, { gap: 2 }]}>
               <T s={15} w={700}>

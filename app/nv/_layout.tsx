@@ -9,7 +9,7 @@ import { DialogHost, ToastHost } from '@/newlook/components/overlays';
 import { C, FontFiles } from '@/newlook/theme';
 import { bridgeAppToasts } from '@/newlook/ui/store';
 
-const SHEET = { presentation: 'transparentModal', animation: 'fade', contentStyle: { backgroundColor: 'transparent' } } as const;
+const SHEET = { presentation: 'transparentModal', animation: 'none', contentStyle: { backgroundColor: 'transparent' } } as const;
 
 // Routes that open as a bottom sheet over the current screen.
 const SHEETS = [

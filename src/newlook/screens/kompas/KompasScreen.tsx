@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { FadeIn, FadeInDown, runOnJS } from 'react-native-reanimated';
+import Animated, { runOnJS } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,6 +22,7 @@ import { Glass, GlassButton, LevelAvatar, useTabBarSpace } from '../../component
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, Chip, D, Dot, IconButton, Press, T } from '../../components/ui';
 import { toast } from '../../ui/store';
+import { DURATION, enter, fadeIn, riseIn } from '../../motion';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import { Dial } from './Dial';
 import { distanceLabel, formatDistance, hoursNow } from './format';
@@ -30,6 +31,8 @@ import { openNvPub, setOpenOnly, useKompasState } from './state';
 import { pinId, useKompas, type Kompas, type KompasTarget } from './useKompas';
 
 const L = () => t.nv.kompas;
+// "Jinou" swaps the pub inside the card in place; the card itself stays put.
+const SWAP_IN = enter(0, DURATION.fast);
 
 const PILSNER = { key: 'pilsner-urquell', label: 'Pilsner Urquell' };
 const CATEGORIES: { key: string; icon: IconName; label: () => string; amenity?: AmenityKey; beer?: typeof PILSNER }[] = [
@@ -291,7 +294,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
 
       <View style={{ position: 'absolute', left: 12, right: 12, bottom: tabSpace + 4 }}>
         {st.mapView === 'stopy' && city ? (
-          <Animated.View entering={FadeInDown} style={[{ backgroundColor: C.yellow, borderRadius: 26, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, gap: 14 }]}>
+          <Animated.View entering={riseIn} style={[{ backgroundColor: C.yellow, borderRadius: 26, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, gap: 14 }]}>
             <Grabber />
             <View style={{ gap: 3, paddingLeft: 2 }}>
               <T s={18} w={600} c={C.black}>
@@ -303,38 +306,40 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
           </Animated.View>
         ) : st.mapView !== 'stopy' && target && !collapsed ? (
           <GestureDetector gesture={swipe}>
-            <Animated.View entering={FadeInDown.duration(220)} style={[{ backgroundColor: C.yellow, borderRadius: 26, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, gap: 14 }]}>
+            <Animated.View entering={riseIn} style={[{ backgroundColor: C.yellow, borderRadius: 26, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, gap: 14 }]}>
               <Press onPress={() => setCollapsed(true)} hitSlop={12} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 20 }}>
                 <Grabber />
               </Press>
-              <Press onPress={() => openTarget(router, target)} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
-                <View style={[s.fill, { gap: 3 }]}>
-                  <T s={18} w={600} c={C.black} style={{ letterSpacing: -0.2 }} numberOfLines={1}>
-                    {target.name}
-                  </T>
-                  <View style={[s.row, { gap: 5 }]}>
-                    {hours ? (
-                      <>
-                        <Dot color={hours.tone === 'open' ? C.black : C.onYellowMuted} />
-                        <T s={13} w={600} c={C.black}>
-                          {hours.tone === 'open' ? (hours.until ? L().openUntilShort(hours.until) : L().openShort) : hours.tone === 'closed' ? L().closedShort : L().hoursUnknownShort}
-                        </T>
-                      </>
-                    ) : null}
-                    <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>{`${hours ? '· ' : ''}${subLine(target, st.pinMode, k)}`}</T>
-                  </View>
-                </View>
-                {target.distance != null ? (
-                  <View style={[s.row, { alignItems: 'flex-end', gap: 3 }]}>
-                    <D s={24} c={C.black} lh={1.15}>
-                      {formatDistance(target.distance).value}
-                    </D>
-                    <T s={14} w={600} c={C.onYellowMuted} style={{ marginBottom: 3 }}>
-                      {formatDistance(target.distance).unit}
+              <Animated.View key={target.key} entering={SWAP_IN}>
+                <Press onPress={() => openTarget(router, target)} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
+                  <View style={[s.fill, { gap: 3 }]}>
+                    <T s={18} w={600} c={C.black} style={{ letterSpacing: -0.2 }} numberOfLines={1}>
+                      {target.name}
                     </T>
+                    <View style={[s.row, { gap: 5 }]}>
+                      {hours ? (
+                        <>
+                          <Dot color={hours.tone === 'open' ? C.black : C.onYellowMuted} />
+                          <T s={13} w={600} c={C.black}>
+                            {hours.tone === 'open' ? (hours.until ? L().openUntilShort(hours.until) : L().openShort) : hours.tone === 'closed' ? L().closedShort : L().hoursUnknownShort}
+                          </T>
+                        </>
+                      ) : null}
+                      <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>{`${hours ? '· ' : ''}${subLine(target, st.pinMode, k)}`}</T>
+                    </View>
                   </View>
-                ) : null}
-              </Press>
+                  {target.distance != null ? (
+                    <View style={[s.row, { alignItems: 'flex-end', gap: 3 }]}>
+                      <D s={24} c={C.black} lh={1.15}>
+                        {formatDistance(target.distance).value}
+                      </D>
+                      <T s={14} w={600} c={C.onYellowMuted} style={{ marginBottom: 3 }}>
+                        {formatDistance(target.distance).unit}
+                      </T>
+                    </View>
+                  ) : null}
+                </Press>
+              </Animated.View>
               <View style={[s.row, { gap: 10 }]}>
                 <Button label={L().guideMe} icon="navigation" kind="onYellow" height={46} flex onPress={() => goThere(target)} />
                 {target.kind !== 'tour' ? (
@@ -344,7 +349,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
             </Animated.View>
           </GestureDetector>
         ) : st.mapView !== 'stopy' && target ? (
-          <Animated.View entering={FadeIn} style={{ alignItems: 'center' }}>
+          <Animated.View entering={fadeIn} style={{ alignItems: 'center' }}>
             <Press haptic onPress={() => setCollapsed(false)}>
               <Glass style={[s.row, { height: 44, borderRadius: 22, paddingHorizontal: 16, gap: 8 }]}>
                 {target.distance != null ? (

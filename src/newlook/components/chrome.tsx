@@ -1,27 +1,16 @@
-import React, { useRef, useState } from 'react';
-import {
-  findNodeHandle,
-  Image,
-  TextInput,
-  UIManager,
-  View,
-  type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  type ScrollViewInstance,
-  type ScrollViewProps,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import React, { useState } from 'react';
+import { Image, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { t } from '@/i18n';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
+import { useKeyboardLift } from '../motion';
 import { useMe, useUnopenedBadges } from '../screens/profil/profilModel';
 import { useProfilWatchers } from '../screens/profil/useProfilWatchers';
 import { C, SCREEN_X, TAB_BAR_HEIGHT, s, shadow } from '../theme';
@@ -42,7 +31,7 @@ export function Glass({
 }) {
   if (glassAvailable) {
     return (
-      <GlassView style={[style, shadow.glass]} glassEffectStyle="regular" tintColor={tint ?? '#1A1A1A80'} isInteractive>
+      <GlassView style={[style, shadow.glass]} glassEffectStyle="regular" tintColor={tint ?? '#1A1A1A80'}>
         {children}
       </GlassView>
     );
@@ -212,34 +201,30 @@ export function Screen({
   const tabSpace = useTabBarSpace();
   const bottomBase = tab ? tabSpace : Math.max(insets.bottom, 16);
   const [footerH, setFooterH] = useState(52);
-  const keyboard = useKeyboardHeight();
-  // With the keyboard up the footer sits in the layout above it, so a focused field scrolls clear of both.
-  const lifted = !!footer && keyboard > 0;
-  const { ref: revealRef, onLayout: revealLayout, onScroll: revealScroll } = useRevealFocusedInput(lifted);
-  const footerSpace = footer && !lifted ? footerH + 32 : 0;
+  const keyboard = useKeyboardLift();
+  const footerBottom = bottomBase + (tab ? 14 : 0);
+  const footerLift = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(0, keyboard.value + 12 - footerBottom) }],
+  }));
+  // With the keyboard up the scroll area stops where the lifted footer starts, so the
+  // focused field scrolls above the footer, not under it. The strip it gives up sits
+  // under the resting footer and its fade, so the switch is never visible.
+  const keyboardUp = useKeyboardHeight() > 0;
+  const footerRoom = footer && keyboardUp ? footerH + 24 : 0;
+  const footerSpace = footer ? footerH + 32 : 0;
   const content = (
     <View style={[{ paddingHorizontal: SCREEN_X, gap, paddingTop: padTop }, contentStyle]}>{children}</View>
   );
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg, paddingBottom: lifted ? keyboard : 0 }}>
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingBottom: footerRoom }}>
       <View style={{ paddingTop: insets.top + 8 }}>
         {header ? <View style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>{header}</View> : null}
       </View>
       {scroll ? (
         <KeyboardAwareScrollView
           {...scrollProps}
-          ref={revealRef}
-          onLayout={(e) => {
-            scrollProps?.onLayout?.(e);
-            revealLayout(e);
-          }}
-          onScroll={(e) => {
-            revealScroll(e);
-            scrollProps?.onScroll?.(e);
-          }}
-          keyboardAvoidedExternally={!!footer}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: lifted ? 16 : bottomBase + footerSpace + 24 }}
+          contentContainerStyle={{ paddingBottom: bottomBase + footerSpace + 24 }}
           keyboardShouldPersistTaps="handled"
         >
           {content}
@@ -247,18 +232,14 @@ export function Screen({
       ) : (
         <View style={{ flex: 1, paddingBottom: bottomBase + footerSpace }}>{content}</View>
       )}
-      {lifted ? null : <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} />}
+      <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} />
       {footer ? (
-        <View
+        <Animated.View
           onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
-          style={
-            lifted
-              ? { marginHorizontal: SCREEN_X, marginTop: 8, marginBottom: 12 }
-              : { position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: bottomBase + (tab ? 14 : 0) }
-          }
+          style={[{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: footerBottom }, footerLift]}
         >
           {footer}
-        </View>
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -278,27 +259,4 @@ export function BottomFade({ height }: { height: number }) {
       }}
     />
   );
-}
-
-/**
- * A scroll view that shrinks once the keyboard is up reveals the focused field
- * after its new size is known; the focus-time scroll still saw the old size.
- */
-export function useRevealFocusedInput(active: boolean) {
-  const ref = useRef<ScrollViewInstance>(null);
-  const scrollY = useRef(0);
-  const onLayout = (e: LayoutChangeEvent) => {
-    const viewport = e.nativeEvent.layout.height;
-    const input = TextInput.State.currentlyFocusedInput();
-    const field = input ? findNodeHandle(input) : null;
-    const scroll = ref.current ? findNodeHandle(ref.current) : null;
-    if (!active || !field || !scroll) return;
-    UIManager.measureLayout(field, scroll, () => undefined, (_x, y, _w, h) => {
-      if (y + h > viewport - 16) ref.current?.scrollTo({ y: scrollY.current + y + h - viewport + 16, animated: true });
-    });
-  };
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    scrollY.current = e.nativeEvent.contentOffset.y;
-  };
-  return { ref, onLayout, onScroll };
 }

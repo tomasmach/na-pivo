@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,6 +21,7 @@ import { Ticket } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, Card, IconButton, Person, Press, Row, SectionTitle, Stack, T, Tile, Toggle } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
+import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
 import { lastTogetherLabel, personInitial, personName, planTime, planTitle, ticketDay } from './partaModel';
 import { usePartaStore } from './partaStore';
@@ -169,18 +171,25 @@ function LiveRow({ profile, sub, last }: { profile: FriendProfile; sub: string; 
   );
 }
 
-function StatusCard({ title, body, action, onAction }: { title: string; body?: string; action?: string; onAction?: () => void }) {
+/** `reserve` keeps the body and action invisible but in place, so the card doesn't change height when they arrive. */
+function StatusCard({ title, body, action, onAction, reserve }: { title: string; body?: string; action?: string; onAction?: () => void; reserve?: boolean }) {
+  const hidden = reserve ? ({ opacity: 0 } as const) : null;
+  const a11yHidden = { accessibilityElementsHidden: reserve, importantForAccessibility: reserve ? ('no-hide-descendants' as const) : ('auto' as const) };
   return (
     <View style={{ padding: 20, gap: 8, borderRadius: 24, borderWidth: 1.5, borderColor: '#FFFFFF26' }}>
       <T s={18} w={700}>
         {title}
       </T>
       {body ? (
-        <T s={14} c={C.muted} lh={1.4}>
+        <T s={14} c={C.muted} lh={1.4} style={hidden} {...a11yHidden}>
           {body}
         </T>
       ) : null}
-      {action ? <Button label={action} icon="plus" kind="raised" height={42} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={onAction} /> : null}
+      {action ? (
+        <View pointerEvents={reserve ? 'none' : 'auto'} style={hidden} {...a11yHidden}>
+          <Button label={action} icon="plus" kind="raised" height={42} style={{ alignSelf: 'flex-start', marginTop: 8 }} onPress={onAction} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -311,14 +320,14 @@ export function PartaScreen() {
             </View>
           </View>
         ) : plans === null && loading ? (
-          <StatusCard title={t.nv.parta.loading} />
+          <StatusCard title={t.nv.parta.loading} body={t.nv.parta.nothingPlannedBody} action={t.nv.parta.newInvite} reserve />
         ) : plans === null && failed ? (
           <StatusCard title={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
         ) : (
           <StatusCard title={t.nv.parta.nothingPlanned} body={t.nv.parta.nothingPlannedBody} action={t.nv.parta.newInvite} onAction={() => router.push('/nv/nova-pozvanka')} />
         )}
         {dashboard ? (
-          <>
+          <Animated.View entering={fadeIn} style={{ gap: 20 }}>
             <SectionTitle title={t.nv.parta.outNow} action={t.nv.parta.outCount(outCount, friends.length + 1)} />
             <Card>
               <Row
@@ -393,22 +402,27 @@ export function PartaScreen() {
                 })
               )}
             </Card>
-          </>
+          </Animated.View>
         ) : failed ? (
           <StatusCard title={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
         ) : null}
-        <Card>
-          <Row
-            last
-            height={72}
-            leading={<Tile icon="house" size={46} radius={14} />}
-            title={t.nv.parta.homeMeetups}
-            titleWeight={700}
-            sub={t.nv.parta.homeMeetupsSub}
-            chevron
-            onPress={() => router.push('/nv/pivo-u-nekoho')}
-          />
-        </Card>
+        {/* Waits for the first load, so it doesn't show up under the loading card and then jump down. */}
+        {dashboard || failed ? (
+          <Animated.View entering={fadeIn}>
+            <Card>
+              <Row
+                last
+                height={72}
+                leading={<Tile icon="house" size={46} radius={14} />}
+                title={t.nv.parta.homeMeetups}
+                titleWeight={700}
+                sub={t.nv.parta.homeMeetupsSub}
+                chevron
+                onPress={() => router.push('/nv/pivo-u-nekoho')}
+              />
+            </Card>
+          </Animated.View>
+        ) : null}
       </ScrollView>
       <BottomFade height={tabSpace + 40} />
     </View>
