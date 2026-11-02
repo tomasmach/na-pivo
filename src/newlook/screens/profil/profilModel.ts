@@ -188,7 +188,7 @@ export function useMe() {
     nick,
     displayName,
     isPublic,
-    initial: (label[0] ?? '·').toLocaleUpperCase(),
+    initial: (label[0] ?? '').toLocaleUpperCase(),
     avatarUrl: isSignedIn ? (profile?.avatarUrl ?? null) : null,
     xp: isSignedIn ? xp : null,
     progress,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
+import { TextInput, View, type StyleProp, type TextInputInstance, type TextInputProps, type ViewStyle } from 'react-native';
 
 import { C, font, s } from '../theme';
 import { Icon, type IconName } from './Icon';
@@ -19,8 +19,9 @@ export function Input({
   multiline,
   focusRing = true,
   height = 48,
+  inputRef,
   ...rest
-}: TextInputProps & { icon?: IconName; style?: StyleProp<ViewStyle>; focusRing?: boolean; height?: number }) {
+}: TextInputProps & { icon?: IconName; style?: StyleProp<ViewStyle>; focusRing?: boolean; height?: number; inputRef?: React.Ref<TextInputInstance> }) {
   const [focused, setFocused] = useState(false);
   return (
     <View
@@ -42,6 +43,7 @@ export function Input({
     >
       {icon ? <Icon name={icon} size={18} color={C.muted} /> : null}
       <TextInput
+        ref={inputRef}
         placeholderTextColor={C.muted}
         selectionColor={C.yellow}
         cursorColor={C.yellow}

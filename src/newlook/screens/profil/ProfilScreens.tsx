@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Linking, ScrollView, Share, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, ScrollView, Share, View, type TextInputInstance } from 'react-native';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import * as Clipboard from 'expo-clipboard';
@@ -235,10 +235,12 @@ export function ProfilScreen() {
           <View style={[{ position: 'absolute', left: 8, top: 8, width: 68, height: 68, borderRadius: 34, backgroundColor: C.control, overflow: 'hidden' }, s.center]}>
             {me.avatarUrl ? (
               <Image source={{ uri: me.avatarUrl }} style={{ width: 68, height: 68 }} accessibilityIgnoresInvertColors />
-            ) : (
+            ) : me.initial ? (
               <T s={28} w={800} c={C.yellow}>
                 {me.initial}
               </T>
+            ) : (
+              <Icon name="user" size={28} color={C.yellow} />
             )}
           </View>
         </View>
@@ -668,10 +670,12 @@ export function NovyLevelSheet() {
           <View style={[{ position: 'absolute', left: 16, top: 16, width: 92, height: 92, borderRadius: 46, backgroundColor: C.control, overflow: 'hidden' }, s.center]}>
             {me.avatarUrl ? (
               <Image source={{ uri: me.avatarUrl }} style={{ width: 92, height: 92 }} accessibilityIgnoresInvertColors />
-            ) : (
+            ) : me.initial ? (
               <T s={36} w={800} c={C.yellow}>
                 {me.initial}
               </T>
+            ) : (
+              <Icon name="user" size={36} color={C.yellow} />
             )}
           </View>
         </View>
@@ -1409,6 +1413,7 @@ export function PrihlasovaniSheet() {
 
 export function PrihlaseniScreen() {
   const router = useRouter();
+  const passwordRef = useRef<TextInputInstance>(null);
   const insets = useSafeAreaInsets();
   const login = useAccountStore((st) => st.login);
   const register = useAccountStore((st) => st.register);
@@ -1520,10 +1525,22 @@ export function PrihlaseniScreen() {
           </View>
         ) : null}
         <Field label={P().signIn.email}>
-          <Input value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" textContentType="emailAddress" />
+          <Input
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => passwordRef.current?.focus()}
+          />
         </Field>
         <Field label={P().signIn.password}>
           <Input
+            inputRef={passwordRef}
             value={password}
             onChangeText={setPassword}
             placeholder={P().signIn.passwordPlaceholder}

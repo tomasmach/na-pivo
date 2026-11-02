@@ -92,10 +92,12 @@ export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: (
       >
         {me.avatarUrl ? (
           <Image source={{ uri: me.avatarUrl }} style={{ width: inner, height: inner, borderRadius: inner / 2 }} accessibilityIgnoresInvertColors />
-        ) : (
+        ) : me.initial ? (
           <T s={Math.round(size * 0.34)} w={800} c={C.yellow}>
             {me.initial}
           </T>
+        ) : (
+          <Icon name="user" size={Math.round(size * 0.34)} color={C.yellow} />
         )}
       </View>
       {dot ? (
