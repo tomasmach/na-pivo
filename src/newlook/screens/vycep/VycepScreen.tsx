@@ -46,9 +46,9 @@ export function RundaButton({ count, given, onPress, disabled }: { count: number
           borderRadius: 18,
           paddingHorizontal: 14,
           gap: 6,
-          backgroundColor: given ? '#FFC40029' : 'transparent',
+          backgroundColor: given ? C.yellowTint : 'transparent',
           borderWidth: 1,
-          borderColor: given ? '#FFC40080' : C.hairline,
+          borderColor: given ? C.yellowLine : C.hairline,
         },
       ]}
     >
@@ -336,7 +336,7 @@ export function VycepScreen() {
           value={scope}
           onChange={setScope}
         />
-        <View style={{ padding: 16, gap: 12, borderRadius: 24, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }}>
+        <View style={{ padding: 16, gap: 12, borderRadius: 24, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }}>
           <View style={[s.row, { gap: 8 }]}>
             <Dot />
             <T s={14} w={700} c={C.yellow}>

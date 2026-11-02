@@ -1,5 +1,6 @@
 import React from 'react';
 import type { LucideProps } from 'lucide-react-native';
+import { C } from '../theme';
 import PaletteIcon from 'lucide-react-native/icons/palette';
 import TypeIcon from 'lucide-react-native/icons/type';
 import HopIcon from 'lucide-react-native/icons/hop';
@@ -273,7 +274,7 @@ const ICONS = {
 
 export type IconName = keyof typeof ICONS;
 
-export function Icon({ name, size = 20, color = '#F7F7F2', strokeWidth = 2, fill }: { name: IconName; size?: number; color?: string; strokeWidth?: number; fill?: string }) {
+export function Icon({ name, size = 20, color = C.white, strokeWidth = 2, fill }: { name: IconName; size?: number; color?: string; strokeWidth?: number; fill?: string }) {
   const Glyph = ICONS[name] as React.ComponentType<LucideProps>;
   return <Glyph size={size} color={color} strokeWidth={strokeWidth} fill={fill ?? 'none'} />;
 }

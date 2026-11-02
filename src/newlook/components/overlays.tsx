@@ -17,12 +17,12 @@ import { Icon, type IconName } from './Icon';
 import { Button, D, IconButton, T } from './ui';
 
 const TOAST_LOOK: Record<Toast['kind'], { icon: IconName; bg: string; fg: string; border: string }> = {
-  saved: { icon: 'check', bg: C.yellow, fg: C.black, border: '#FFFFFF1F' },
-  xp: { icon: 'map', bg: C.yellow, fg: C.black, border: '#FFFFFF1F' },
-  offline: { icon: 'cloud-off', bg: C.control, fg: C.text2, border: '#FFFFFF1F' },
+  saved: { icon: 'check', bg: C.yellow, fg: C.black, border: C.line },
+  xp: { icon: 'map', bg: C.yellow, fg: C.black, border: C.line },
+  offline: { icon: 'cloud-off', bg: C.control, fg: C.text2, border: C.line },
   error: { icon: 'circle-alert', bg: C.control, fg: C.yellow, border: '#FFC40038' },
-  info: { icon: 'info', bg: C.control, fg: C.text2, border: '#FFFFFF1F' },
-  medal: { icon: 'medal', bg: '#FFC4001A', fg: C.yellow, border: '#FFC40080' },
+  info: { icon: 'info', bg: C.control, fg: C.text2, border: C.line },
+  medal: { icon: 'medal', bg: C.yellowSoft, fg: C.yellow, border: C.yellowLine },
 };
 
 const TOAST_IN = enter(-16, DURATION.sheet);
@@ -120,7 +120,7 @@ export function DialogHost() {
           borderRadius: 28,
           backgroundColor: C.dialog,
           borderWidth: 1,
-          borderColor: '#FFFFFF14',
+          borderColor: C.tint,
         }}
       >
         <D s={30}>{d.title}</D>
@@ -257,7 +257,7 @@ export function Sheet({
             borderTopLeftRadius: 34,
             borderTopRightRadius: 34,
             borderTopWidth: 1,
-            borderColor: '#FFFFFF14',
+            borderColor: C.tint,
             paddingTop: 22,
           },
           cardStyle,

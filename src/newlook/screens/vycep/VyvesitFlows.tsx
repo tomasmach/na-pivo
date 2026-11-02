@@ -73,7 +73,7 @@ function PreviewCard({ night, photo, onPhoto, compact }: { night: NightSummary |
           <Image source={{ uri: photo }} style={{ height: 120, borderRadius: 16, width: '100%' }} />
         </Press>
       ) : (
-        <Press onPress={onPhoto} style={[{ height: 92, borderRadius: 16, borderWidth: 1.5, borderColor: '#FFFFFF33', gap: 4 }, s.center]}>
+        <Press onPress={onPhoto} style={[{ height: 92, borderRadius: 16, borderWidth: 1.5, borderColor: C.lineBright, gap: 4 }, s.center]}>
           <Icon name="camera" size={20} color={C.yellow} />
           <T s={14} w={700}>
             {t.nv.vycep.addPhoto}
@@ -109,7 +109,7 @@ function Choice({ title, sub, on, icon, onPress }: { title: string; sub: string;
       haptic
       onPress={onPress}
       accessibilityState={{ selected: on }}
-      style={{ flex: icon ? 1 : undefined, padding: 14, gap: 6, borderRadius: 18, backgroundColor: on ? '#FFFFFF14' : C.card, borderWidth: on ? 1.5 : 1, borderColor: on ? C.white : C.hairline }}
+      style={{ flex: icon ? 1 : undefined, padding: 14, gap: 6, borderRadius: 18, backgroundColor: on ? C.tint : C.card, borderWidth: on ? 1.5 : 1, borderColor: on ? C.white : C.hairline }}
     >
       <View style={[s.row, { justifyContent: 'space-between' }]}>
         {icon ? <Icon name={icon} size={22} color={on ? C.yellow : C.text2} /> : <T s={16} w={700}>{title}</T>}

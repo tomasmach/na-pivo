@@ -146,12 +146,12 @@ function RatingForm({ beer, params }: { beer: { name: string; brewery: string; h
         {photoUri ? (
           <View style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden' }}>
             <Image source={{ uri: photoUri }} style={{ width: '100%', height: '100%' }} />
-            <Press onPress={() => setPhotoUri(null)} style={[{ position: 'absolute', right: 4, top: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: '#0A0A0AB3' }, s.center]}>
+            <Press onPress={() => setPhotoUri(null)} style={[{ position: 'absolute', right: 4, top: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: C.onYellowMuted }, s.center]}>
               <Icon name="x" size={12} />
             </Press>
           </View>
         ) : null}
-        <Press onPress={pickPhoto} style={[{ width: 72, height: 72, borderRadius: 14, borderWidth: 1.5, borderColor: '#FFFFFF26', gap: 4 }, s.center]}>
+        <Press onPress={pickPhoto} style={[{ width: 72, height: 72, borderRadius: 14, borderWidth: 1.5, borderColor: C.lineStrong, gap: 4 }, s.center]}>
           <Icon name="camera" size={18} color={C.yellow} />
           <T s={12} w={600}>
             {r.photo}

@@ -61,7 +61,7 @@ function PeriodSwitch({ value, onChange }: { value: Period; onChange: (v: Period
   ] as const;
   return (
     <View style={{ alignItems: 'center' }}>
-      <View style={[s.row, { height: 32, borderRadius: 16, padding: 3, backgroundColor: '#FFFFFF12', borderWidth: 1, borderColor: '#FFFFFF1F' }]}>
+      <View style={[s.row, { height: 32, borderRadius: 16, padding: 3, backgroundColor: C.tintSoft, borderWidth: 1, borderColor: C.line }]}>
         {opts.map(([k, label]) => {
           const on = value === k;
           return (
@@ -251,7 +251,7 @@ function Month({ nights, today, onToday }: { nights: Night[]; today: string; onT
                       </View>
                     </View>
                   ) : (
-                    <T s={13} w={500} c={future ? '#FFFFFF33' : '#FFFFFF73'}>
+                    <T s={13} w={500} c={future ? C.lineBright : '#FFFFFF73'}>
                       {day}
                     </T>
                   )}
@@ -378,13 +378,13 @@ function Year({ nights, today }: { nights: Night[]; today: string }) {
                     justifyContent: 'space-between',
                     backgroundColor: future ? '#FFFFFF08' : C.control,
                     borderWidth: current ? 1.5 : 0,
-                    borderColor: '#FFC40099',
+                    borderColor: C.yellowStrong,
                   }}
                 >
-                  <T s={12} w={600} c={future ? '#FFFFFF33' : current ? C.yellow : C.white} numberOfLines={1}>
+                  <T s={12} w={600} c={future ? C.lineBright : current ? C.yellow : C.white} numberOfLines={1}>
                     {m}
                   </T>
-                  <D s={22} c={future ? '#FFFFFF33' : current ? C.yellow : C.white}>
+                  <D s={22} c={future ? C.lineBright : current ? C.yellow : C.white}>
                     {future ? copy.dash : String(n)}
                   </D>
                 </View>

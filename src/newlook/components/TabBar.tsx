@@ -41,7 +41,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
         accessibilityRole="tab"
         accessibilityLabel={t.label}
         accessibilityState={{ selected: on }}
-        style={[s.fill, s.center, { borderRadius: 27, gap: 3, alignSelf: 'stretch' }, on && { backgroundColor: '#FFFFFF24' }]}
+        style={[s.fill, s.center, { borderRadius: 27, gap: 3, alignSelf: 'stretch' }, on && { backgroundColor: C.ring }]}
       >
         <Icon name={t.icon} size={21} color={on ? C.yellow : C.glassText} />
         <T s={10} w={700} c={on ? C.yellow : C.glassText}>

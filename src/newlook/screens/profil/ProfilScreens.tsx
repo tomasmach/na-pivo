@@ -129,7 +129,7 @@ export function BadgeCircle({ icon, got, size = 76 }: { icon: IconName; got: boo
   return (
     <View
       style={[
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: got ? '#FFC4001A' : C.card, borderWidth: got ? 2.5 : 1, borderColor: got ? C.yellow : C.hairline },
+        { width: size, height: size, borderRadius: size / 2, backgroundColor: got ? C.yellowSoft : C.card, borderWidth: got ? 2.5 : 1, borderColor: got ? C.yellow : C.hairline },
         s.center,
       ]}
     >
@@ -382,7 +382,7 @@ export function OdznakyScreen() {
       {goal ? (
         <Press
           onPress={() => router.push({ pathname: '/nv/odznak', params: { id: goal.key } })}
-          style={{ padding: 16, gap: 14, borderRadius: 22, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }}
+          style={{ padding: 16, gap: 14, borderRadius: 22, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }}
         >
           <View style={[s.row, { gap: 12 }]}>
             <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.control }, s.center]}>
@@ -509,7 +509,7 @@ export function OdznakSheet() {
             return (
               <View
                 key={label}
-                style={[{ width: size, height: size, borderRadius: size / 2, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.hairline, backgroundColor: on ? '#FFC4001A' : 'transparent' }, s.center]}
+                style={[{ width: size, height: size, borderRadius: size / 2, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.hairline, backgroundColor: on ? C.yellowSoft : 'transparent' }, s.center]}
               >
                 <T s={weekdays ? 13 : 12} w={700} c={on ? C.yellow : C.muted}>
                   {label}
@@ -533,8 +533,8 @@ export function OdznakSheet() {
 
   const medal = (
     <View style={{ alignItems: 'center', gap: 6, marginTop: -20 }}>
-      <View style={[{ width: 132, height: 132, borderRadius: 66, borderWidth: got ? 3 : 1.5, borderColor: got ? C.yellow : C.hairline, backgroundColor: got ? '#FFC4001A' : C.card }, s.center]}>
-        <View style={[{ width: 92, height: 92, borderRadius: 46, borderWidth: 1.5, borderColor: got ? '#FFC40080' : C.hairline }, s.center]}>
+      <View style={[{ width: 132, height: 132, borderRadius: 66, borderWidth: got ? 3 : 1.5, borderColor: got ? C.yellow : C.hairline, backgroundColor: got ? C.yellowSoft : C.card }, s.center]}>
+        <View style={[{ width: 92, height: 92, borderRadius: 46, borderWidth: 1.5, borderColor: got ? C.yellowLine : C.hairline }, s.center]}>
           <Icon name={badge.icon} size={40} color={got ? C.yellow : C.muted} />
         </View>
       </View>
@@ -607,7 +607,7 @@ export function OdznakSheet() {
             const on = i < state.tier;
             return (
               <View key={threshold} style={{ alignItems: 'center', gap: 6 }}>
-                <View style={[{ width: 44, height: 44, borderRadius: 22, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.muted, backgroundColor: on ? '#FFC4001A' : 'transparent' }, s.center]}>
+                <View style={[{ width: 44, height: 44, borderRadius: 22, borderWidth: on ? 2 : 1, borderColor: on ? C.yellow : C.muted, backgroundColor: on ? C.yellowSoft : 'transparent' }, s.center]}>
                   <T s={14} w={800} c={on ? C.yellow : C.muted}>
                     {roman(i + 1)}
                   </T>
@@ -1233,7 +1233,7 @@ export function UcetScreen() {
               </View>
             </View>
             {!verified ? (
-              <View style={[s.row, { gap: 10, padding: 12, marginBottom: 12, borderRadius: 14, backgroundColor: '#FFC40014', borderWidth: 1, borderColor: '#FFC40059' }]}>
+              <View style={[s.row, { gap: 10, padding: 12, marginBottom: 12, borderRadius: 14, backgroundColor: '#FFC40014', borderWidth: 1, borderColor: C.yellowEdge }]}>
                 <Icon name="mail-warning" size={18} color={C.yellow} />
                 <T s={13} c={C.text2} style={s.fill}>
                   {P().account.unverified}

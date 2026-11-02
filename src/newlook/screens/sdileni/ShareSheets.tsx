@@ -200,7 +200,7 @@ export function NalepkySheet() {
         {kinds.map(([k, label]) => {
           const on = kind === k;
           return (
-            <Press key={k} haptic onPress={() => setKind(k)} style={[s.fill, s.center, { height: 46, borderRadius: 16, backgroundColor: on ? '#FFFFFF14' : C.card, borderWidth: on ? 1.5 : 1, borderColor: on ? C.white : C.hairline }]}>
+            <Press key={k} haptic onPress={() => setKind(k)} style={[s.fill, s.center, { height: 46, borderRadius: 16, backgroundColor: on ? C.tint : C.card, borderWidth: on ? 1.5 : 1, borderColor: on ? C.white : C.hairline }]}>
               <T s={14} w={on ? 800 : 600}>
                 {label}
               </T>

@@ -280,7 +280,7 @@ function Collection({ data, watchedCount }: { data: BeerCollection; watchedCount
         <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 14 }}>
           <View style={[s.row, { gap: 12 }]}>
             <View style={{ width: 44, height: 44 }}>
-              <View style={[{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: C.yellow, backgroundColor: '#FFC4001A' }, s.center]}>
+              <View style={[{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: C.yellow, backgroundColor: C.yellowSoft }, s.center]}>
                 <Icon name="medal" size={20} color={C.yellow} />
               </View>
             </View>

@@ -159,7 +159,7 @@ function LiveRow({ profile, sub, last }: { profile: FriendProfile; sub: string; 
               if (!ok) setDone(false);
             });
           }}
-          style={[s.row, { height: 34, borderRadius: 18, paddingHorizontal: 14, gap: 6, backgroundColor: done ? '#FFC40029' : C.card, borderWidth: 1, borderColor: done ? '#FFC40080' : C.hairline }]}
+          style={[s.row, { height: 34, borderRadius: 18, paddingHorizontal: 14, gap: 6, backgroundColor: done ? C.yellowTint : C.card, borderWidth: 1, borderColor: done ? C.yellowLine : C.hairline }]}
         >
           <Icon name="beer" size={16} color={C.yellow} />
           <T s={14} w={600} c={done ? C.yellow : C.white}>
@@ -176,7 +176,7 @@ function StatusCard({ title, body, action, onAction, reserve }: { title: string;
   const hidden = reserve ? ({ opacity: 0 } as const) : null;
   const a11yHidden = { accessibilityElementsHidden: reserve, importantForAccessibility: reserve ? ('no-hide-descendants' as const) : ('auto' as const) };
   return (
-    <View style={{ padding: 20, gap: 8, borderRadius: 24, borderWidth: 1.5, borderColor: '#FFFFFF26' }}>
+    <View style={{ padding: 20, gap: 8, borderRadius: 24, borderWidth: 1.5, borderColor: C.lineStrong }}>
       <T s={18} w={700}>
         {title}
       </T>
@@ -304,7 +304,7 @@ export function PartaScreen() {
                   <PlanTicket plan={p} width={ticketW} />
                 </Press>
               ))}
-              <Press onPress={() => router.push('/nv/nova-pozvanka')} style={[{ width: ticketW, minHeight: 242, borderRadius: 24, borderWidth: 1.5, borderColor: '#FFFFFF26', gap: 10 }, s.center]}>
+              <Press onPress={() => router.push('/nv/nova-pozvanka')} style={[{ width: ticketW, minHeight: 242, borderRadius: 24, borderWidth: 1.5, borderColor: C.lineStrong, gap: 10 }, s.center]}>
                 <View style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.control }, s.center]}>
                   <Icon name="plus" size={20} />
                 </View>

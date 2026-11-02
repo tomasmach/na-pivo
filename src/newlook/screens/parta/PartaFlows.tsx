@@ -332,7 +332,7 @@ export function ZebrickyScreen() {
         <Loading failed={failed} onRetry={() => setAttempt((n) => n + 1)} failedText={t.nv.parta.failed} />
       ) : (
         <>
-          <View style={[s.row, { gap: 16, padding: 18, borderRadius: 24, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }]}>
+          <View style={[s.row, { gap: 16, padding: 18, borderRadius: 24, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }]}>
             <D s={64} lh={0.9} c={C.yellow}>
               {view.rank}
             </D>

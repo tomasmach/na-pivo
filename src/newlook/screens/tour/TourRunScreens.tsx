@@ -371,7 +371,7 @@ function LiveRun({ run }: { run: TourRun }) {
         ) : (
           <View style={{ gap: 10 }}>
             {undo && undoStop ? (
-              <View style={[s.row, { padding: 12, paddingHorizontal: 16, borderRadius: 18, backgroundColor: C.toast, borderWidth: 1, borderColor: '#FFFFFF1F', gap: 10 }]}>
+              <View style={[s.row, { padding: 12, paddingHorizontal: 16, borderRadius: 18, backgroundColor: C.toast, borderWidth: 1, borderColor: C.line, gap: 10 }]}>
                 <Icon name="circle-check" size={18} />
                 <View style={s.fill}>
                   <T s={14} w={700} numberOfLines={1}>

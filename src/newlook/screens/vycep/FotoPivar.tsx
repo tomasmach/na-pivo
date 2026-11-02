@@ -163,7 +163,7 @@ export function FotoPivarScreen() {
               <>
                 <View>
                   <Image source={{ uri: first.imageUrl }} style={{ width: '100%', height: 250, borderRadius: 22, backgroundColor: C.card }} />
-                  <View style={[s.row, { position: 'absolute', left: 10, top: 10, height: 30, borderRadius: 15, paddingHorizontal: 10, gap: 6, backgroundColor: '#0A0A0AB3' }]}>
+                  <View style={[s.row, { position: 'absolute', left: 10, top: 10, height: 30, borderRadius: 15, paddingHorizontal: 10, gap: 6, backgroundColor: C.onYellowMuted }]}>
                     <Icon name="trophy" size={14} color={C.yellow} />
                     <T s={12} w={700}>
                       {t.nv.vycep.winnerBadge}
@@ -294,7 +294,7 @@ export function FotoPivarScreen() {
                   <View key={e.id} style={{ gap: 6 }}>
                     <View>
                       <Image source={{ uri: e.imageUrl }} style={{ width: col, height: h, borderRadius: 20, backgroundColor: C.card }} />
-                      <Press hitSlop={8} accessibilityLabel={t.nv.vycep.entryMenu} onPress={() => entryMenu(e)} style={[{ position: 'absolute', right: 10, top: 10, width: 28, height: 28, borderRadius: 14, backgroundColor: '#0A0A0AB3' }, s.center]}>
+                      <Press hitSlop={8} accessibilityLabel={t.nv.vycep.entryMenu} onPress={() => entryMenu(e)} style={[{ position: 'absolute', right: 10, top: 10, width: 28, height: 28, borderRadius: 14, backgroundColor: C.onYellowMuted }, s.center]}>
                         <Icon name="ellipsis" size={14} />
                       </Press>
                       <Press
@@ -303,7 +303,7 @@ export function FotoPivarScreen() {
                         accessibilityLabel={e.myVote ? t.nv.vycep.roundTake : t.nv.vycep.roundGive}
                         accessibilityState={{ selected: e.myVote, disabled: e.isMine }}
                         onPress={() => toggleRound(e)}
-                        style={[s.row, { position: 'absolute', left: 10, bottom: 10, height: 32, borderRadius: 16, paddingHorizontal: 10, gap: 6, backgroundColor: e.myVote ? C.yellow : '#0A0A0AB3' }]}
+                        style={[s.row, { position: 'absolute', left: 10, bottom: 10, height: 32, borderRadius: 16, paddingHorizontal: 10, gap: 6, backgroundColor: e.myVote ? C.yellow : C.onYellowMuted }]}
                       >
                         <Icon name="hand-platter" size={15} color={e.myVote ? C.black : C.yellow} />
                         <T s={14} w={800} c={e.myVote ? C.black : C.white}>
@@ -388,7 +388,7 @@ export function PrihlasitFotkuSheet() {
                 </View>
               ) : null}
               {badge ? (
-                <View style={[s.row, { position: 'absolute', left: 6, bottom: 6, height: 24, borderRadius: 12, paddingHorizontal: 8, gap: 4, backgroundColor: '#0A0A0AB3' }]}>
+                <View style={[s.row, { position: 'absolute', left: 6, bottom: 6, height: 24, borderRadius: 12, paddingHorizontal: 8, gap: 4, backgroundColor: C.onYellowMuted }]}>
                   <Icon name={p.inContest ? 'trophy' : p.syncState === 'failed' ? 'rotate-cw' : 'cloud-upload'} size={11} color={p.syncState === 'failed' ? C.yellow : C.white} />
                   <T s={10} w={700}>
                     {badge}

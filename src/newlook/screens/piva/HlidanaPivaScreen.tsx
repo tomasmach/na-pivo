@@ -81,7 +81,7 @@ export function HlidanaPivaScreen() {
       <T s={15} w={700} c={C.muted}>
         {w.howFar}
       </T>
-      <View style={[s.row, { height: 46, borderRadius: 23, padding: 3, backgroundColor: '#FFFFFF12' }]}>
+      <View style={[s.row, { height: 46, borderRadius: 23, padding: 3, backgroundColor: C.tintSoft }]}>
         {BEER_WATCH_RADII.map((m) => (
           <Press key={m} haptic onPress={() => setRadius(m)} style={[s.fill, s.center, { alignSelf: 'stretch', borderRadius: 20 }, radiusM === m && { backgroundColor: C.white }]}>
             <T s={15} w={radiusM === m ? 800 : 600} c={radiusM === m ? C.black : C.text2}>

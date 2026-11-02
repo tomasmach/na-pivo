@@ -202,7 +202,7 @@ export function PubScreen() {
                 </View>
               </Marker>
             </MapView>
-            <View style={[s.row, { position: 'absolute', right: 10, bottom: 12, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AD9', borderWidth: 1, borderColor: '#FFFFFF1F' }]}>
+            <View style={[s.row, { position: 'absolute', right: 10, bottom: 12, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AD9', borderWidth: 1, borderColor: C.line }]}>
               <Icon name="map" size={15} color={C.yellow} />
               <T s={13} w={700}>
                 {L().showOnMap}

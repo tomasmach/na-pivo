@@ -241,9 +241,9 @@ export function Chip({
           borderRadius: height / 2,
           paddingHorizontal: 14,
           gap: 6,
-          backgroundColor: active ? '#FFC40029' : C.card,
+          backgroundColor: active ? C.yellowTint : C.card,
           borderWidth: 1,
-          borderColor: active ? '#FFC40080' : C.hairline,
+          borderColor: active ? C.yellowLine : C.hairline,
         },
         style,
       ]}
@@ -283,9 +283,9 @@ export function Segmented<K extends string>({
           height,
           borderRadius: height / 2,
           padding: 3,
-          backgroundColor: '#FFFFFF12',
+          backgroundColor: C.tintSoft,
           borderWidth: 1,
-          borderColor: '#FFFFFF1F',
+          borderColor: C.line,
         },
         style,
       ]}

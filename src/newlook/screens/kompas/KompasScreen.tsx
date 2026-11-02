@@ -216,7 +216,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
             style={[
               s.fill,
               s.row,
-              { height: 54, borderRadius: 27, paddingLeft: 18, paddingRight: 8, gap: 12, backgroundColor: '#141414F0', borderWidth: 1, borderColor: '#FFFFFF24' },
+              { height: 54, borderRadius: 27, paddingLeft: 18, paddingRight: 8, gap: 12, backgroundColor: '#141414F0', borderWidth: 1, borderColor: C.ring },
               shadow.raised,
             ]}
           >
@@ -244,7 +244,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
           <Press
             haptic
             onPress={clearActive}
-            style={[s.row, { height: 34, borderRadius: 17, paddingLeft: 13, paddingRight: 10, gap: 6, backgroundColor: '#3A2E08F0', borderWidth: 1, borderColor: '#FFC40099' }]}
+            style={[s.row, { height: 34, borderRadius: 17, paddingLeft: 13, paddingRight: 10, gap: 6, backgroundColor: '#3A2E08F0', borderWidth: 1, borderColor: C.yellowStrong }]}
           >
             {beerFilter && st.mapView !== 'stopy' && !st.onlyDrunk ? <Icon name="beer" size={15} color={C.yellow} /> : null}
             <T s={13} w={700} c={C.yellow}>
@@ -269,7 +269,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
                   gap: 6,
                   backgroundColor: on ? '#3A2E08F0' : '#141414F0',
                   borderWidth: 1,
-                  borderColor: on ? '#FFC40099' : '#FFFFFF1F',
+                  borderColor: on ? C.yellowStrong : C.line,
                 },
               ]}
             >
@@ -381,9 +381,9 @@ function Grabber() {
 
 function MiniCompass() {
   return (
-    <View style={[{ width: 54, height: 54, borderRadius: 27, backgroundColor: C.card, borderWidth: 1.5, borderColor: '#FFFFFF33' }, s.center, shadow.raised]}>
+    <View style={[{ width: 54, height: 54, borderRadius: 27, backgroundColor: C.card, borderWidth: 1.5, borderColor: C.lineBright }, s.center, shadow.raised]}>
       <View style={{ width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 19, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: C.yellow }} />
-      <View style={{ width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 19, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#FFFFFF33' }} />
+      <View style={{ width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 19, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: C.lineBright }} />
     </View>
   );
 }

@@ -40,7 +40,7 @@ export function Glass({
     <View
       style={[
         style,
-        { backgroundColor: tint ?? C.glassFallback, borderWidth: 1, borderColor: '#FFFFFF26' },
+        { backgroundColor: tint ?? C.glassFallback, borderWidth: 1, borderColor: C.lineStrong },
         shadow.glass,
       ]}
     >

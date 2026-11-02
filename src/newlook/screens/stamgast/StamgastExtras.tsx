@@ -105,7 +105,7 @@ export function DomovskyBodScreen() {
       <T s={16} w={500} c={C.text2} style={{ marginTop: -8 }}>
         {copy.homeQuestion}
       </T>
-      <View style={[s.row, { minHeight: 58, borderRadius: 18, paddingHorizontal: 14, gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: error ? C.danger : '#FFFFFF14' }]}>
+      <View style={[s.row, { minHeight: 58, borderRadius: 18, paddingHorizontal: 14, gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: error ? C.danger : C.tint }]}>
         <Icon name="house" size={18} color={C.muted} />
         <View style={s.fill}>
           <T s={12} c={C.muted}>

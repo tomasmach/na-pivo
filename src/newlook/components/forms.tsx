@@ -33,7 +33,7 @@ export function Input({
           gap: 10,
           backgroundColor: C.card,
           borderWidth: 1,
-          borderColor: focused && focusRing ? '#FFC40099' : '#FFFFFF14',
+          borderColor: focused && focusRing ? C.yellowStrong : C.tint,
           alignItems: multiline ? 'flex-start' : 'center',
           paddingVertical: multiline ? 12 : 0,
         },
@@ -164,7 +164,7 @@ export function Ticket({
           </T>
         ) : null}
       </View>
-      <Perforation color={yellow ? '#0A0A0A40' : '#FFFFFF26'} ground={ground} />
+      <Perforation color={yellow ? '#0A0A0A40' : C.lineStrong} ground={ground} />
       <View style={{ paddingTop: 10, paddingHorizontal: 14, paddingBottom: 14 }}>{stub}</View>
     </View>
   );

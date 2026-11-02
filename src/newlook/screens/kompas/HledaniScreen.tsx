@@ -172,7 +172,7 @@ export function HledaniScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top + 8 }}>
       <View style={[s.row, { paddingHorizontal: SCREEN_X, gap: 12, height: 48 }]}>
-        <View style={[s.fill, s.row, { height: 48, borderRadius: 24, paddingHorizontal: 16, gap: 10, backgroundColor: C.card, borderWidth: 1, borderColor: '#FFC40099' }]}>
+        <View style={[s.fill, s.row, { height: 48, borderRadius: 24, paddingHorizontal: 16, gap: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.yellowStrong }]}>
           <Icon name="search" size={18} color={C.text2} />
           <TextInput
             autoFocus

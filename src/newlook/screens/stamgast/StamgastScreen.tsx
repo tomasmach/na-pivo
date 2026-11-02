@@ -274,7 +274,7 @@ function CounterView() {
           <Press
             haptic
             onPress={() => router.push('/nv/zmenit-misto')}
-            style={[s.row, { height: 34, borderRadius: 17, paddingHorizontal: 14, gap: 6, backgroundColor: '#FFFFFF14' }]}
+            style={[s.row, { height: 34, borderRadius: 17, paddingHorizontal: 14, gap: 6, backgroundColor: C.tint }]}
           >
             <Icon name={atFriend || place?.kind === 'outside' ? 'house' : 'map-pin'} size={15} color={C.yellow} />
             <T s={14} w={700} numberOfLines={1} style={{ maxWidth: 260 }}>
@@ -305,7 +305,7 @@ function CounterView() {
           <QuickAction icon="circle-check" label={copy.quickDone} onPress={finish} />
         </View>
         {stickerShown ? (
-          <Animated.View entering={fadeIn} style={[s.row, { gap: 12, padding: 12, borderRadius: 22, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }]}>
+          <Animated.View entering={fadeIn} style={[s.row, { gap: 12, padding: 12, borderRadius: 22, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }]}>
             <View style={[{ width: 52, height: 52, borderRadius: 26, backgroundColor: C.white, borderWidth: 3, borderColor: C.yellow }, s.center]}>
               <T s={22} w={900} c={C.black} style={{ letterSpacing: 2 }}>
                 III
@@ -401,7 +401,7 @@ function CounterView() {
       <BottomFade height={tabSpace + 130} />
       {nudges.newBeer ? (
         <Animated.View entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
-          <View style={[s.row, { padding: 14, paddingRight: 10, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: '#FFFFFF1F', gap: 10 }, shadow.raised]}>
+          <View style={[s.row, { padding: 14, paddingRight: 10, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: C.line, gap: 10 }, shadow.raised]}>
             <View style={[s.fill, { gap: 2 }]}>
               <T s={15} w={700}>
                 {copy.newBeerTitle}

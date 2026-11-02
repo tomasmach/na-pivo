@@ -186,7 +186,7 @@ export function PivniFotkyScreen() {
               <Press key={p.key} onPress={() => router.push({ pathname: '/nv/fotka/[n]', params: { n: p.key } })}>
                 {p.uri ? <Image source={{ uri: p.uri }} style={{ width: size, height: size, borderRadius: 8 }} /> : <View style={{ width: size, height: size, borderRadius: 8, backgroundColor: C.card }} />}
                 {p.state ? (
-                  <View style={[s.row, { position: 'absolute', left: 8, bottom: 8, height: 26, borderRadius: 13, paddingHorizontal: 9, gap: 5, backgroundColor: '#0A0A0AB3' }]}>
+                  <View style={[s.row, { position: 'absolute', left: 8, bottom: 8, height: 26, borderRadius: 13, paddingHorizontal: 9, gap: 5, backgroundColor: C.onYellowMuted }]}>
                     <Icon name={p.state === 'upload' ? 'upload' : 'rotate-cw'} size={12} color={p.state === 'upload' ? C.white : C.yellow} />
                     <T s={11} w={700} c={p.state === 'upload' ? C.white : C.yellow}>
                       {p.state === 'upload' ? t.nv.vycep.uploading : t.nv.vycep.failed}
@@ -281,7 +281,7 @@ export function DetailFotkyScreen() {
         <View style={{ position: 'absolute', top: height * 0.56 - 140, left: 0, right: 0, height: 140, experimental_backgroundImage: `linear-gradient(180deg, ${C.bg}00 0%, ${C.bg} 100%)` }} />
         <View style={{ paddingHorizontal: SCREEN_X, gap: 12, marginTop: -40 }}>
           {photo.inContest ? (
-            <View style={[s.row, { alignSelf: 'flex-start', height: 30, borderRadius: 15, paddingHorizontal: 12, gap: 6, backgroundColor: '#FFC40029', borderWidth: 1, borderColor: '#FFC40080' }]}>
+            <View style={[s.row, { alignSelf: 'flex-start', height: 30, borderRadius: 15, paddingHorizontal: 12, gap: 6, backgroundColor: C.yellowTint, borderWidth: 1, borderColor: C.yellowLine }]}>
               <Icon name="trophy" size={14} color={C.yellow} />
               <T s={13} w={700} c={C.yellow}>
                 {t.nv.vycep.inContest}
@@ -439,7 +439,7 @@ export function DoDenickuSheet() {
     <Sheet title={t.nv.vycep.diaryTitle} top={230} footer={<Button label={t.nv.vycep.diarySave} disabled={!uri} onPress={() => void save()} />}>
       <Press onPress={() => void shoot(false)} style={{ height: 250, borderRadius: 22, overflow: 'hidden', backgroundColor: C.card }}>
         {uri ? <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" /> : null}
-        <View style={[s.row, { position: 'absolute', left: 10, bottom: 10, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AB3' }]}>
+        <View style={[s.row, { position: 'absolute', left: 10, bottom: 10, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: C.onYellowMuted }]}>
           <Icon name="camera" size={15} />
           <T s={13} w={700}>
             {uri ? t.nv.vycep.retake : t.nv.vycep.shoot}
