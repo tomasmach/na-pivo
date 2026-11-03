@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Keyboard, Linking, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, Keyboard, Linking, View } from 'react-native';
 import * as Location from 'expo-location';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -173,9 +173,18 @@ export function DomovskyBodScreen() {
 export function PripominkySheet() {
   const router = useRouter();
   const copy = t.nv.stamgast;
-  const [step, setStep] = useState<'offer' | 'perms'>('offer');
+  // Settings opens the sheet straight at the permissions; the user already chose to turn it on.
+  const fromSettings = useLocalSearchParams<{ krok?: string }>().krok === 'povoleni';
+  const [step, setStep] = useState<'offer' | 'perms'>(fromSettings ? 'perms' : 'offer');
   const [denied, setDenied] = useState<PubReminderEnableFailureReason | null>(null);
   const [busy, setBusy] = useState(false);
+  // Coming back from the system settings may have fixed the permission, so offer the switch again.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setDenied(null);
+    });
+    return () => sub.remove();
+  }, []);
   const failure = denied ? t.settings.pubReminders.denied[denied] : null;
   if (step === 'offer') {
     return (
@@ -203,7 +212,7 @@ export function PripominkySheet() {
     <Sheet closeIcon={false} top={340} scroll={false}>
       <View style={{ gap: 10 }}>
         <D s={30}>{failure ? failure.title : copy.remindPermsTitle}</D>
-        <T s={15} c={failure ? C.danger : C.text2} lh={1.45}>
+        <T s={15} c={C.text2} lh={1.45}>
           {failure ? failure.body : copy.remindPermsBody}
         </T>
       </View>
@@ -234,6 +243,7 @@ export function PripominkySheet() {
       )}
       <Press
         onPress={() => {
+          if (fromSettings) return nvBack(router);
           setDenied(null);
           setStep('offer');
         }}

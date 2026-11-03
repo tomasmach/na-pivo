@@ -324,7 +324,7 @@ function PlanHero({ plan, upcoming }: { plan: TourPlan; upcoming: boolean }) {
         time={day.time}
         title={plan.title}
         quote={[planSummary(plan.stops), origin].filter(Boolean).join(' · ')}
-        stub={<RosterStub roster={plan.source ? null : roster} />}
+        stub={plan.source ? undefined : <RosterStub roster={roster} />}
       />
     </Press>
   );

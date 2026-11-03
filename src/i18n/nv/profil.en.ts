@@ -77,7 +77,7 @@ export const profilEn: Strings['nv']['profil'] = {
     tourRemindersSub: "On tour day, I'll remind you when and where to meet",
     water: 'Remind me to drink water',
     waterSub: 'After four beers',
-    pubPing: 'Ping me when I sit down in a pub',
+    pubPing: 'Remind me in the pub',
     partyPush: 'Crew notifications',
     partyPushSub: "Pings, invites and who's out for a beer",
     partyPushDenied: "Without notifications, pings from your crew won't reach you. Turn them on in Settings and try again.",

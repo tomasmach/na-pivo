@@ -908,7 +908,7 @@ export const en: Strings = {
     empty: "Pick 2 to 8 pubs, send the crew a link and head out. On the way I'll show how far it is on foot and what's on tap.",
     emptyTitle: 'Plan a pub crawl', edit: 'Edit', editTour: 'Edit tour',
     untitled: 'Tour draft', draft: 'Draft', continueDraft: 'Continue your draft',
-    ready: 'Ready', imported: 'Saved from a link', active: 'On your way', ended: 'Finished',
+    ready: 'Ready', imported: 'Saved', active: 'On your way', ended: 'Finished',
     name: 'Name', optional: 'No date set',
     when: 'When', whenTitle: 'When are you going?', whenToday: 'today', whenTomorrow: 'tomorrow',
     whenPast: (day: string) => `${day} has passed`, whenTime: 'Time', whenOtherTime: 'Other time', whenQuickTimes: 'Quick times',

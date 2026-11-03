@@ -250,7 +250,7 @@ export const stamgastEn: typeof stamgastCs = {
 
   remindKicker: 'New for your evenings',
   remindTitle: "When you sit down in a pub, I'll ping you.",
-  remindBody: 'The counter reminds you in the evening when you reach a pub. Just turn on notifications and background location.',
+  remindBody: 'The counter reminds you in the evening when you reach a pub. Just turn on notifications and location "always".',
   remindShow: "Show me what I'm allowing",
   remindLater: 'Not now, let me drink in peace',
   remindPermsTitle: 'What the phone will ask for',

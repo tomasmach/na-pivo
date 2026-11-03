@@ -145,7 +145,7 @@ export function Button({
     >
       <View style={[s.row, { gap: 8 }]}>
         {icon ? <Icon name={icon} size={labelSize + 1} color={k.fg} /> : null}
-        <T s={labelSize} w={700} c={k.fg}>
+        <T s={labelSize} w={700} c={k.fg} style={{ flexShrink: 1, textAlign: 'center' }}>
           {label}
         </T>
       </View>

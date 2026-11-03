@@ -77,7 +77,7 @@ export const profilCs = {
     tourRemindersSub: 'V den tour připomenu, kdy a kde je sraz',
     water: 'Připomenout vodu',
     waterSub: 'Po čtyřech pivech',
-    pubPing: 'Cinknout, když sednu do hospody',
+    pubPing: 'Připomenout v hospodě',
     partyPush: 'Upozornění na partu',
     partyPushSub: 'Cinky, pozvánky a kdo je na pivu',
     partyPushDenied: 'Bez notifikací ti cinky od party nepřijdou. Zapni je v Nastavení a zkus to znovu.',

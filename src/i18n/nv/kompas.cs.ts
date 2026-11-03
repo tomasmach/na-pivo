@@ -225,7 +225,7 @@ export const kompasCs = {
   myPubsEmptyBody: 'Když v kompasu chybí hospoda, doplň ji. Přidám ji do mapy i ostatním.',
   waitingEdit: 'Oprava čeká',
   editTitle: 'Opravit hospodu',
-  editIntro: 'Název opravíš hned. Když změníš adresu, najdu ji znovu na mapě.',
+  editIntro: 'Když změníš adresu, najdu ji znovu na mapě.',
   editNeedsLocation: 'Tuhle adresu jsem na mapě nenašel. Oprav ji, nebo zapíchni špendlík přímo do hospody.',
   editNeedsAddress: 'Tuhle adresu jsem na mapě nenašel. Oprav ji.',
   editSave: 'Uložit opravu',

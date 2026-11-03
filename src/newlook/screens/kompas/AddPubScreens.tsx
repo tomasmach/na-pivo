@@ -601,7 +601,8 @@ function AddedPubs({ onAdd }: { onAdd: () => void }) {
   };
 
   const sorted = useMemo(() => [...(rows ?? [])].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)), [rows]);
-  const synced = sorted.filter((r) => r.syncState === 'synced');
+  // A queued edit does not take the pub off the map.
+  const synced = sorted.filter((r) => r.syncState === 'synced' || r.pendingOperation === 'edit');
 
   return (
     <Screen header={<BackHeader />} footer={<Button label={L().addTitle} icon="plus" onPress={onAdd} />}>

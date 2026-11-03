@@ -268,7 +268,7 @@ export const stamgastCs = {
   // Reminders
   remindKicker: 'Novinka pro večery',
   remindTitle: 'Až sedneš do hospody, cinknu ti.',
-  remindBody: 'Počítadlo ti večer připomene, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
+  remindBody: 'Počítadlo ti večer připomene, když dorazíš k hospodě. Stačí zapnout notifikace a polohu „vždy“.',
   remindShow: 'Ukázat, co povoluju',
   remindLater: 'Teď ne, nech mě pít v klidu',
   remindPermsTitle: 'Co bude telefon chtít povolit',

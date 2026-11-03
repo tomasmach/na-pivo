@@ -1059,7 +1059,7 @@ export function NastaveniScreen() {
               onChange={(on) => {
                 trackUiInteraction('settings_pub_reminders', on ? 'toggle_on' : 'toggle_off');
                 if (on) {
-                  router.push('/nv/pripominky');
+                  router.push({ pathname: '/nv/pripominky', params: { krok: 'povoleni' } });
                   return;
                 }
                 st.setPubReminderEnabled(false);
@@ -1737,6 +1737,7 @@ export function PrihlaseniScreen() {
         <Input
           value={email}
           onChangeText={setEmail}
+          placeholder={t.account.emailPlaceholder}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -1752,7 +1753,7 @@ export function PrihlaseniScreen() {
           inputRef={passwordRef}
           value={password}
           onChangeText={setPassword}
-          placeholder={P().signIn.passwordPlaceholder}
+          placeholder={mode === 'register' ? P().signIn.passwordPlaceholder : undefined}
           secureTextEntry
           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
           textContentType={mode === 'login' ? 'password' : 'newPassword'}
@@ -1895,6 +1896,7 @@ export function SpravaPartyScreen() {
   const [invite, setInvite] = useState<FriendInvite | null | 'loading'>('loading');
   const [friends, setFriends] = useState<FriendProfile[] | null>(null);
   const [outgoing, setOutgoing] = useState<Friendship[]>([]);
+  const [canceling, setCanceling] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<FriendProfile[]>([]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<FriendProfile[] | null>(null);
@@ -2019,13 +2021,16 @@ export function SpravaPartyScreen() {
         {
           label: P().parta.cancelRequestConfirm,
           kind: 'danger',
-          onPress: () =>
+          onPress: () => {
+            setCanceling(request.id);
             void cancelFriendRequest(request.recipient.id).then((result) => {
+              setCanceling(null);
               if (!result.ok) return toast({ kind: 'error', title: result.detail });
               setOutgoing((list) => list.filter((item) => item.id !== request.id));
               toast({ kind: 'saved', title: P().parta.requestCanceled, icon: 'check' });
               load();
-            }),
+            });
+          },
         },
       ],
     });
@@ -2163,7 +2168,13 @@ export function SpravaPartyScreen() {
                     leading={<ProfilAvatar uri={request.recipient.avatarUrl} initial={initialOf(request.recipient)} />}
                     title={friendDisplayName(request.recipient)}
                     sub={P().parta.outgoingSub}
-                    trailing={<Chip label={P().parta.cancelRequest} plain height={34} onPress={() => confirmCancelRequest(request)} />}
+                    trailing={
+                      canceling === request.id ? (
+                        <Spinner />
+                      ) : (
+                        <Chip label={P().parta.cancelRequest} plain height={34} onPress={canceling ? undefined : () => confirmCancelRequest(request)} />
+                      )
+                    }
                   />
                 ))}
               </Card>

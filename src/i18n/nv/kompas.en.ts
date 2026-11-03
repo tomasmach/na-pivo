@@ -211,7 +211,7 @@ export const kompasEn: Strings['nv']['kompas'] = {
   myPubsEmptyBody: "When a pub is missing from the compass, add it. I'll put it on the map for everyone.",
   waitingEdit: 'Fix waiting',
   editTitle: 'Fix the pub',
-  editIntro: "You can fix the name right away. If you change the address, I'll find it on the map again.",
+  editIntro: "If you change the address, I'll find it on the map again.",
   editNeedsLocation: "I couldn't find this address on the map. Fix it, or drop a pin right on the pub.",
   editNeedsAddress: "I couldn't find this address on the map. Fix it.",
   editSave: 'Save the fix',

@@ -1072,7 +1072,7 @@ export const cs = {
     empty: 'Vyber 2 až 8 hospod, pošli partě odkaz a vyrazte. Po cestě ti ukážu, kolik to je pěšky a co kde čepujou.',
     emptyTitle: 'Naplánuj tah po hospodách', edit: 'Upravit', editTour: 'Upravit tour',
     untitled: 'Rozepsaná tour', draft: 'Rozepsaná', continueDraft: 'Pokračovat v rozepsané tour',
-    ready: 'Připravená', imported: 'Uložená z odkazu', active: 'Právě jdete', ended: 'Ukončeno',
+    ready: 'Připravená', imported: 'Uložená', active: 'Právě jdete', ended: 'Ukončeno',
     name: 'Název', optional: 'Bez termínu',
     when: 'Kdy', whenTitle: 'Kdy jdete?', whenToday: 'dnes', whenTomorrow: 'zítra',
     whenPast: (day: string) => `${day} už bylo`, whenTime: 'Čas', whenOtherTime: 'Jiný čas', whenQuickTimes: 'Rychlé časy',
