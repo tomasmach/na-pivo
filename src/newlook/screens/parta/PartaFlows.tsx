@@ -18,6 +18,7 @@ import { fetchFriendDuel, fetchPlanDetail, remindPlan, type FriendDuel, type Pla
 import { fetchPubBoard, type PubBoard } from '@/data/pubBoardClient';
 import { t } from '@/i18n';
 import { badgeStates, PUBLIC_BADGE_KEYS } from '@/profile/badgeModel';
+import { useHomeEveningStore } from '@/stores/homeEveningStore';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { PageTitle } from '../../components/forms';
@@ -27,9 +28,8 @@ import { NO_VALUE } from '../../format';
 import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
 import { PlanTicket } from './PartaScreen';
+import { useNvPlaceStore } from '../stamgast/placeStore';
 import { joinNames, personInitial, personName, planTitle, shortDay } from './partaModel';
-import { useHomeEveningStore } from '@/stores/homeEveningStore';
-
 import { usePartaStore } from './partaStore';
 import { addPlanToCalendar, openNavigation, pingPerson } from './planActions';
 
@@ -525,6 +525,8 @@ export function PlanScreen() {
   const checkIn = () => {
     const clientId = generateUuidV4();
     useHomeEveningStore.getState().setEvening({ activityId: plan.id, hostName: host, startedAt: plan.scheduledFor || plan.startedAt });
+    // The next beer counts at the friend's place, even when a pub was picked by hand earlier.
+    useNvPlaceStore.getState().setOutside('private');
     void enqueueFriendOp({ op: 'home-checkin', activityId: plan.id, clientId });
     toast({ kind: 'saved', title: t.nv.parta.checkedIn(host), icon: 'house' });
     router.navigate('/nv/stamgast');
