@@ -43,6 +43,8 @@ jest.mock('@/newlook/screens/stamgast/pubMenu', () => ({
 
 const PUB = { id: 'osm:node:1', name: 'U Zlatého tygra', lat: 50.087, lng: 14.421, city: 'Praha' };
 const TAPS: CommunityBeer[] = [{ name: 'Pilsner Urquell', volumeMl: 500, priceCzk: 69 }];
+jest.mock('@/newlook/screens/piva/model', () => ({ myRating: () => null }));
+jest.mock('@/newlook/screens/piva/useMyRatings', () => ({ useMyRatings: () => new Map() }));
 jest.mock('@/newlook/screens/kompas/usePubPage', () => ({
   useParamPub: () => ({ key: 'u2fkbnhu', pub: PUB }),
   usePubDetails: () => ({ pub: { ...PUB, beers: TAPS }, hoursLoaded: true, taps: TAPS, identityKey: 'pub:osm:node:1' }),
