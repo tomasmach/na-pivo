@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Image, View } from 'react-native';
+import { Image, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 
@@ -13,7 +13,7 @@ import { useVycepStore } from '@/stores/vycepStore';
 
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, Card, Chip, ChipWrap, Press, Row, T, Tile, Toggle } from '../../components/ui';
+import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, T, Tile, Toggle } from '../../components/ui';
 import { C, s } from '../../theme';
 import { clockTime, durationLabel, shortDay, useTonightOrLast } from '../vycep/nightData';
 import { buildPubShareUrl } from '@/data/pubShareLink';
@@ -39,15 +39,34 @@ function useStageBackground(): string | null {
   return photo ? (photo.imageUrl ?? photo.localUri ?? null) : null;
 }
 
-const HALF_HOUR = 30 * 60 * 1000;
+const QUARTER = 15 * 60 * 1000;
+const HALF_HOUR = 2 * QUARTER;
+const DAYS_AHEAD = 14;
 
 function nextSlots(now: Date, count: number): Date[] {
   const first = Math.ceil((now.getTime() + 1) / HALF_HOUR) * HALF_HOUR;
   return Array.from({ length: count }, (_, i) => new Date(first + i * HALF_HOUR));
 }
 
+/** Keeps a picked time on its own day and no earlier than the next quarter hour. */
+function clampToFuture(at: Date, now = new Date()): Date {
+  const dayStart = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+  const dayEnd = dayStart + 24 * 60 * 60 * 1000 - QUARTER;
+  const earliest = Math.ceil((now.getTime() + 1) / QUARTER) * QUARTER;
+  return new Date(Math.min(dayEnd, Math.max(earliest, dayStart, at.getTime())));
+}
+
+function onDay(day: Date, at: Date): Date {
+  return clampToFuture(new Date(day.getFullYear(), day.getMonth(), day.getDate(), at.getHours(), at.getMinutes()));
+}
+
 function hhmm(d: Date): string {
   return d.toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' });
+}
+
+/** "19:15" today, "Čt 6. 11. 19:15" on another day. */
+function whenText(at: Date, now = new Date()): string {
+  return at.toDateString() === now.toDateString() ? hhmm(at) : `${shortDay(at.toISOString())} ${hhmm(at)}`;
 }
 
 export function SdiletHospoduSheet() {
@@ -64,11 +83,20 @@ export function SdiletHospoduSheet() {
   const slots = useMemo(() => nextSlots(new Date(), 2), []);
   const [time, setTime] = useState<Date | null>(slots[0]);
   const [custom, setCustom] = useState<Date | null>(null);
+  const days = useMemo(() => {
+    const today = new Date();
+    return Array.from({ length: DAYS_AHEAD }, (_, i) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + i));
+  }, []);
   const { ref: stickerRef, onLayout, busy, toInstagram, saveToPhotos, copyLink } = useStickerShare();
-  const when = [time ? hhmm(time) : t.nv.sdileni.nowSticker, pub.name].filter(Boolean).join(' · ');
+  const when = [time ? whenText(time) : t.nv.sdileni.nowSticker, pub.name].filter(Boolean).join(' · ');
+  const customOn = !!custom && time?.getTime() === custom.getTime();
+  const pickCustom = (at: Date) => {
+    setCustom(at);
+    setTime(at);
+  };
 
   return (
-    <Sheet title={t.nv.sdileni.shareTitle} top={150} scroll={false}>
+    <Sheet title={t.nv.sdileni.shareTitle} top={150}>
       <Stage>
         <View style={{ transform: [{ rotate: '-4deg' }] }}>
           <View ref={stickerRef} collapsable={false} onLayout={onLayout}>
@@ -83,19 +111,35 @@ export function SdiletHospoduSheet() {
         <ChipWrap>
           <Chip label={t.nv.sdileni.now} active={time === null} onPress={() => setTime(null)} />
           {slots.map((slot) => (
-            <Chip key={slot.getTime()} label={hhmm(slot)} active={time?.getTime() === slot.getTime()} onPress={() => setTime(slot)} />
+            <Chip key={slot.getTime()} label={hhmm(slot)} active={!customOn && time?.getTime() === slot.getTime()} onPress={() => setTime(slot)} />
           ))}
           <Chip
-            label={custom ? hhmm(custom) : t.nv.sdileni.otherTime}
+            label={custom ? whenText(custom) : t.nv.sdileni.otherTime}
             icon="clock-4"
-            active={!!custom && time?.getTime() === custom.getTime()}
-            onPress={() => {
-              const next = new Date((custom ?? slots[slots.length - 1]).getTime() + HALF_HOUR);
-              setCustom(next);
-              setTime(next);
-            }}
+            active={customOn}
+            onPress={() => pickCustom(clampToFuture(custom ?? new Date(slots[slots.length - 1].getTime() + HALF_HOUR)))}
           />
         </ChipWrap>
+        {customOn && custom ? (
+          <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {days.map((d) => (
+                <Chip
+                  key={d.toDateString()}
+                  plain
+                  label={`${d.toLocaleDateString(intlLocale, { weekday: 'short' })} ${d.getDate()}. ${d.getMonth() + 1}.`}
+                  active={d.toDateString() === custom.toDateString()}
+                  onPress={() => pickCustom(onDay(d, custom))}
+                />
+              ))}
+            </ScrollView>
+            <View style={[s.row, { gap: 12, justifyContent: 'center' }]}>
+              <IconButton icon="minus" size={40} iconSize={18} label={t.tours.whenTimeDown} onPress={() => pickCustom(clampToFuture(new Date(custom.getTime() - QUARTER)))} />
+              <D s={32}>{hhmm(custom)}</D>
+              <IconButton icon="plus" size={40} iconSize={18} label={t.tours.whenTimeUp} onPress={() => pickCustom(clampToFuture(new Date(custom.getTime() + QUARTER)))} />
+            </View>
+          </>
+        ) : null}
       </View>
       <Button label={t.nv.sdileni.toInstagram} icon="send" disabled={busy} onPress={toInstagram} />
       <View style={[s.row, { gap: 10 }]}>
