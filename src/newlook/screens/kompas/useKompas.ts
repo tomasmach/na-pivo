@@ -6,6 +6,7 @@ import { geohash8 } from '@/data/geohash';
 import { fetchPubBeersLastWeek, type PubBeersByKey } from '@/data/pubBeersClient';
 import { findNearbyPubs, findNearestPub, type Pub } from '@/data/pubs';
 import { activePubSearchFilterCount, pubMatchesPriceFilter } from '@/data/pubSearchFilters';
+import { trackRepeatedUiInteraction, trackUiInteraction } from '@/data/uxTelemetry';
 import { UNLIMITED_SEARCH_RADIUS_KM, useCompass } from '@/hooks/useCompass';
 import { pubOpeningVerdict } from '@/map/mapModel';
 import { useBeerMap } from '@/map/useBeerMap';
@@ -197,10 +198,12 @@ export function useKompas() {
 
   const nextTarget = useCallback(() => {
     if (useKompasState.getState().picked || useFocusedPubStore.getState().pub) {
+      trackUiInteraction('compass_focus_clear');
       useKompasState.getState().pick(null);
       useFocusedPubStore.getState().clear();
       return;
     }
+    trackRepeatedUiInteraction(surprise ? 'compass_reroll' : 'compass_skip');
     if (surprise) compass.reroll();
     else compass.skip();
   }, [compass, surprise]);

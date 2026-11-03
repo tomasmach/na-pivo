@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { useActiveTourRun } from '@/tours/activeRun';
 import { runGlance } from '@/tours/glance';
@@ -20,6 +21,13 @@ const SIDE: Record<string, { label: () => string; icon: IconName }> = {
   parta: { label: () => t.nv.common.tabParta, icon: 'users' },
 };
 
+// Výčep and Piva had no tab before the new look, so they send nothing.
+const TAB_TELEMETRY_TARGETS: Record<string, UiInteractionTarget> = {
+  kompas: 'tab_compass',
+  stamgast: 'tab_beer',
+  parta: 'tab_friends',
+};
+
 /** Two glass pills with the Štamgast circle between them. */
 export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -30,6 +38,12 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
     if (route && current !== name) navigateToTab(route.key);
   };
 
+  const press = (name: string) => {
+    const target = TAB_TELEMETRY_TARGETS[name];
+    if (target && current !== name) trackUiInteraction(target, 'select');
+    go(name);
+  };
+
   const tab = (name: string) => {
     const side = SIDE[name];
     const label = side.label();
@@ -38,7 +52,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
       <Press
         key={name}
         haptic
-        onPress={() => go(name)}
+        onPress={() => press(name)}
         accessibilityRole="tab"
         accessibilityLabel={label}
         accessibilityState={{ selected: on }}
@@ -74,7 +88,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
           {tab('kompas')}
           {tab('vycep')}
         </Glass>
-        <Press haptic onPress={() => go('stamgast')} accessibilityRole="tab" accessibilityLabel={t.nv.common.tabStamgast} accessibilityState={{ selected: stamgastOn }}>
+        <Press haptic onPress={() => press('stamgast')} accessibilityRole="tab" accessibilityLabel={t.nv.common.tabStamgast} accessibilityState={{ selected: stamgastOn }}>
           {stamgastOn ? (
             <View style={[{ width: 64, height: 64, borderRadius: 32, backgroundColor: C.yellow }, s.center]}>
               <Icon name="beer" size={28} color={C.black} />

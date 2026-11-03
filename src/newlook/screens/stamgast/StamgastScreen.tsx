@@ -1,15 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 import * as Linking from 'expo-linking';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create } from 'zustand';
 
 import { formatClock, formatPromile, useAlcoholEstimate } from '@/counter/useAlcoholEstimate';
 import { placeKey, removeCountedDrink, type CountableDrink } from '@/counter/countDrink';
 import { fetchBeerPage, submitBeerStyle, type BeerDegree, type StyleAnswer } from '@/data/beersClient';
+import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { trackClientEvent } from '@/data/telemetryClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useNowTick } from '@/friends/useNowTick';
 import { beerCountLabel, formatVolume, t } from '@/i18n';
@@ -95,6 +97,19 @@ export function StamgastScreen() {
     setStored('tour');
   }
   const mode = stored === 'tour' && !tourActive ? 'pocitat' : stored;
+  // The tab mounts before the tally may have loaded; the counter counts as opened the first time it is on screen.
+  const counterOpened = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (mode !== 'pocitat' || counterOpened.current) return;
+      counterOpened.current = true;
+      void trackCounterTabOpened((useTallyStore.getState().current?.drinks.length ?? 0) > 0);
+    }, [mode]),
+  );
+  const changeMode = (next: Mode) => {
+    if (next !== mode && next !== 'tour') trackUiInteraction(next === 'pocitat' ? 'beer_counter_segment' : 'beer_diary_segment', 'select');
+    setStored(next);
+  };
   const copy = t.nv.stamgast;
   const options: { key: Mode; label: string; dot?: boolean }[] = [
     { key: 'pocitat', label: copy.segCount },
@@ -104,7 +119,7 @@ export function StamgastScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={[s.row, { paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 12, zIndex: 2 }]}>
-        <Segmented style={s.fill} options={options} value={mode} onChange={setStored} />
+        <Segmented style={s.fill} options={options} value={mode} onChange={changeMode} />
         <LevelAvatar />
       </View>
       {mode === 'pocitat' ? (
@@ -261,24 +276,39 @@ function CounterView() {
   const resumable = key && count === 0 ? resumableSession(current, history, key, now) : null;
   const sittingMinutes = session ? Math.max(0, Math.round((now - Date.parse(session.startedAt)) / 60000)) : 0;
 
+  const openPlace = () => {
+    trackUiInteraction('counter_place_open');
+    router.push('/nv/zmenit-misto');
+  };
+
+  const openAddDrink = () => {
+    trackUiInteraction('counter_add_drink_open');
+    router.push('/nv/zapis');
+  };
+
   const oneMore = () => {
     const target = currentCountPlace();
     if (!target) {
-      router.push('/nv/zmenit-misto');
+      openPlace();
       return;
     }
-    if (resumable && useTallyStore.getState().resumeLast(placeKey(target))) {
-      void trackClientEvent({ event: 'counter_session_resumed' });
-      return;
+    if (resumable) {
+      trackUiInteraction('counter_resume');
+      if (useTallyStore.getState().resumeLast(placeKey(target))) {
+        void trackClientEvent({ event: 'counter_session_resumed' });
+        return;
+      }
     }
     if (!repeat) {
-      router.push('/nv/zapis');
+      openAddDrink();
       return;
     }
+    trackUiInteraction('counter_repeat_drink');
     logDrink(target, repeat);
   };
 
   const finish = () => {
+    trackUiInteraction('counter_finish_open');
     const live = useTallyStore.getState().current;
     if (!live || live.drinks.length === 0) {
       toast({ kind: 'info', title: copy.nothingYet, icon: 'beer' });
@@ -314,7 +344,7 @@ function CounterView() {
         <View style={{ alignItems: 'center' }}>
           <Press
             haptic
-            onPress={() => router.push('/nv/zmenit-misto')}
+            onPress={openPlace}
             style={[s.row, { height: 34, borderRadius: 17, paddingHorizontal: 14, gap: 6, backgroundColor: C.tint }]}
           >
             <Icon name={atFriend || place?.kind === 'outside' ? 'house' : 'map-pin'} size={15} color={C.yellow} />
@@ -340,7 +370,7 @@ function CounterView() {
           </View>
         </View>
         <View style={[s.row, { paddingTop: 4 }]}>
-          <QuickAction icon="plus" label={copy.quickOther} onPress={() => router.push('/nv/zapis')} />
+          <QuickAction icon="plus" label={copy.quickOther} onPress={openAddDrink} />
           <QuickAction icon="history" label={copy.quickBackfill} onPress={() => router.push('/nv/dopsat')} />
           <QuickAction icon="camera" label={copy.quickPhoto} onPress={() => router.push('/nv/do-denicku')} />
           <QuickAction icon="circle-check" label={copy.quickDone} onPress={finish} />

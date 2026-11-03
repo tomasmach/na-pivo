@@ -33,6 +33,7 @@ import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { fetchAllReleaseNotes, getCurrentAppVersion, type ReleaseNote } from '@/data/releaseNotesClient';
 import { isAppleSignInSupported, isGoogleSignInConfigured } from '@/data/socialAuth';
 import { trackClientEvent } from '@/data/telemetryClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { fetchXpEvents, type XpEvent, type XpEventReason } from '@/data/xpEventsClient';
 import { friendDisplayName } from '@/friends/FriendMini';
 import { locale, t, type Locale } from '@/i18n';
@@ -259,10 +260,22 @@ export function ProfilScreen() {
           icon="pencil"
           size={40}
           iconSize={18}
-          onPress={() => router.push(me.isSignedIn ? '/nv/upravit-profil' : '/nv/prihlaseni')}
+          onPress={() => {
+            trackUiInteraction(me.isSignedIn ? 'profile_edit_open' : 'profile_signup_open');
+            router.push(me.isSignedIn ? '/nv/upravit-profil' : '/nv/prihlaseni');
+          }}
           label={me.isSignedIn ? P().profile.edit : P().profile.signIn}
         />
-        <IconButton icon="settings" size={40} iconSize={18} onPress={() => router.push('/nv/nastaveni')} label={P().profile.settings} />
+        <IconButton
+          icon="settings"
+          size={40}
+          iconSize={18}
+          onPress={() => {
+            trackUiInteraction('profile_settings_open');
+            router.push('/nv/nastaveni');
+          }}
+          label={P().profile.settings}
+        />
       </View>
       <View style={[s.row, { gap: 14 }]}>
         <D s={96} lh={0.9} c={C.yellow}>
@@ -286,7 +299,13 @@ export function ProfilScreen() {
           <Bar progress={me.progress} height={10} />
         </Press>
       ) : !me.isSignedIn ? (
-        <Press onPress={() => router.push('/nv/prihlaseni')} style={{ gap: 10 }}>
+        <Press
+          onPress={() => {
+            trackUiInteraction('profile_signup_open');
+            router.push('/nv/prihlaseni');
+          }}
+          style={{ gap: 10 }}
+        >
           <T s={14} w={600}>
             {t.profile.levelNoAccount}
           </T>
@@ -312,7 +331,13 @@ export function ProfilScreen() {
       </View>
       {shelf ? (
         <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 14 }}>
-          <Press onPress={() => router.push('/nv/odznaky')} style={[s.row, { justifyContent: 'space-between' }]}>
+          <Press
+            onPress={() => {
+              trackUiInteraction('profile_badges_open');
+              router.push('/nv/odznaky');
+            }}
+            style={[s.row, { justifyContent: 'space-between' }]}
+          >
             <T s={17} w={700}>
               {P().profile.badges}
             </T>
@@ -335,7 +360,12 @@ export function ProfilScreen() {
         </View>
       ) : null}
       <Card>
-        <Row leading={<Tile icon="image" />} title={P().profile.photos} trailing={<T s={15} w={600}>{nf.format(photos.length)}</T>} chevron onPress={() => router.push('/nv/pivni-fotky')} />
+        <Row leading={<Tile icon="image" />} title={P().profile.photos} trailing={<T s={15} w={600}>{nf.format(photos.length)}</T>} chevron
+          onPress={() => {
+            trackUiInteraction('profile_photos_open');
+            router.push('/nv/pivni-fotky');
+          }}
+        />
         <Row leading={<Tile icon="heart" />} title={P().profile.favorites} trailing={<T s={15} w={600}>{nf.format(favorites)}</T>} chevron onPress={() => router.push('/nv/hledani')} />
         <Row
           leading={<Tile icon="map-pin-plus" />}
@@ -765,6 +795,7 @@ export function NastaveniScreen() {
 
   const pickDistance = (km: number | null) => {
     setPicker(null);
+    trackUiInteraction('settings_distance_change', 'select');
     st.setMaxDistanceKm(km);
     void updateAccountPreferences({ maxDistanceKm: km });
   };
@@ -777,6 +808,7 @@ export function NastaveniScreen() {
 
   const toggleNextBeer = async () => {
     if (busy) return;
+    trackUiInteraction('settings_beer_reminders', st.beerCountReminderEnabled ? 'toggle_off' : 'toggle_on');
     setBusy(true);
     try {
       if (st.beerCountReminderEnabled) await disableBeerCountReminderNotifications();
@@ -805,18 +837,42 @@ export function NastaveniScreen() {
   };
 
   const toggleHaptic = (on: boolean) => {
+    trackUiInteraction('settings_haptics', on ? 'toggle_on' : 'toggle_off');
     st.setHapticEnabled(on);
     void updateAccountPreferences({ hapticEnabled: on });
   };
 
   const toggleSound = (on: boolean) => {
+    trackUiInteraction('settings_sound', on ? 'toggle_on' : 'toggle_off');
     st.setSoundEnabled(on);
     void updateAccountPreferences({ soundEnabled: on });
   };
 
   const toggleHideNames = (on: boolean) => {
+    trackUiInteraction('settings_hide_names', on ? 'toggle_on' : 'toggle_off');
     st.setHidePubNames(on);
     void updateAccountPreferences({ hidePubNames: on });
+  };
+
+  const togglePreferRated = (on: boolean) => {
+    trackUiInteraction('settings_prefer_rated', on ? 'toggle_on' : 'toggle_off');
+    st.setPreferRatedPubs(on);
+  };
+
+  const toggleWater = (on: boolean) => {
+    trackUiInteraction('settings_water_nudge', on ? 'toggle_on' : 'toggle_off');
+    st.setWaterNudgeEnabled(on);
+  };
+
+  const pickNavigation = (provider: typeof st.navigationProvider) => {
+    if (provider === st.navigationProvider) return;
+    trackUiInteraction(provider === 'google' ? 'settings_navigation_google' : 'settings_navigation_mapy', 'select');
+    st.setNavigationProvider(provider);
+  };
+
+  const openAccount = (pathname: '/nv/ucet' | '/nv/prihlaseni') => {
+    trackUiInteraction('settings_account_open');
+    router.push(pathname);
   };
 
   const toggleTourReminders = async () => {
@@ -851,7 +907,7 @@ export function NastaveniScreen() {
             titleWeight={700}
             sub={providers.length > 0 ? P().settings.accountSub(providers.map(providerName).join(', ')) : undefined}
             chevron
-            onPress={() => router.push('/nv/ucet')}
+            onPress={() => openAccount('/nv/ucet')}
           />
         ) : (
           <Row
@@ -861,7 +917,7 @@ export function NastaveniScreen() {
             titleWeight={700}
             sub={t.settings.accountCard.ctaSignedOutSubtitle}
             chevron
-            onPress={() => router.push('/nv/prihlaseni')}
+            onPress={() => openAccount('/nv/prihlaseni')}
           />
         )}
       </Card>
@@ -889,7 +945,7 @@ export function NastaveniScreen() {
             ))}
           </ChipWrap>
         ) : null}
-        <Row title={P().settings.preferRated} sub={P().settings.preferRatedSub} trailing={<Toggle value={st.preferRatedPubs} onChange={st.setPreferRatedPubs} />} />
+        <Row title={P().settings.preferRated} sub={P().settings.preferRatedSub} trailing={<Toggle value={st.preferRatedPubs} onChange={togglePreferRated} />} />
         <Row
           title={P().settings.navigateVia}
           trailing={
@@ -901,7 +957,7 @@ export function NastaveniScreen() {
                 { key: 'mapy', label: P().settings.mapy },
               ]}
               value={st.navigationProvider}
-              onChange={st.setNavigationProvider}
+              onChange={pickNavigation}
             />
           }
         />
@@ -946,7 +1002,7 @@ export function NastaveniScreen() {
           sub={P().settings.tourRemindersSub}
           trailing={<Toggle value={tourRemindersOn} onChange={() => void toggleTourReminders()} />}
         />
-        <Row title={P().settings.water} sub={P().settings.waterSub} trailing={<Toggle value={st.waterNudgeEnabled} onChange={st.setWaterNudgeEnabled} />} />
+        <Row title={P().settings.water} sub={P().settings.waterSub} trailing={<Toggle value={st.waterNudgeEnabled} onChange={toggleWater} />} />
         <Row
           last
           title={P().settings.pubPing}
@@ -954,6 +1010,7 @@ export function NastaveniScreen() {
             <Toggle
               value={st.pubReminderEnabled}
               onChange={(on) => {
+                trackUiInteraction('settings_pub_reminders', on ? 'toggle_on' : 'toggle_off');
                 if (on) {
                   router.push('/nv/pripominky');
                   return;
@@ -1496,13 +1553,17 @@ export function PrihlaseniScreen() {
 
   const submit = async () => {
     if (busy) return;
+    trackUiInteraction('auth_email_submit', 'submit');
     const trimmed = email.trim();
-    if (!EMAIL_RE.test(trimmed)) return setError(t.account.errorEmailInvalid);
-    if (password.length < MIN_PASSWORD) return setError(t.account.errorPasswordShort);
+    if (!EMAIL_RE.test(trimmed) || password.length < MIN_PASSWORD) {
+      trackUiInteraction('auth_email_submit', 'failure');
+      return setError(EMAIL_RE.test(trimmed) ? t.account.errorPasswordShort : t.account.errorEmailInvalid);
+    }
     setError('');
     setBusy('submit');
     try {
       const result = mode === 'login' ? await login({ email: trimmed, password }) : await register({ email: trimmed, password });
+      trackUiInteraction('auth_email_submit', result.ok ? 'success' : result.code === 'cancelled' ? 'cancel' : 'failure');
       if (result.ok) {
         if (mode === 'register' && !result.profile.emailVerified) toast({ kind: 'info', title: t.account.verifyEmailSentToast, icon: 'mail' });
         done(mode === 'register');
@@ -1516,10 +1577,13 @@ export function PrihlaseniScreen() {
 
   const social = async (provider: 'google' | 'apple') => {
     if (busy) return;
+    const target = provider === 'google' ? 'auth_google_submit' : 'auth_apple_submit';
+    trackUiInteraction(target, 'submit');
     setError('');
     setBusy(provider);
     try {
       const result = provider === 'google' ? await signInGoogle() : await signInApple();
+      trackUiInteraction(target, result.ok ? 'success' : result.code === 'cancelled' ? 'cancel' : 'failure');
       if (result.ok) {
         // Claimed anonymous accounts can come back with created=false and no nickname.
         done(result.profile.created === true || result.profile.nickname == null);
@@ -1531,14 +1595,21 @@ export function PrihlaseniScreen() {
     }
   };
 
+  // One tap both opens and sends the reset, which the old screen tracked as two steps.
   const forgot = async () => {
     if (busy) return;
+    trackUiInteraction('auth_reset_open');
+    trackUiInteraction('auth_reset_submit', 'submit');
     const trimmed = email.trim();
-    if (!EMAIL_RE.test(trimmed)) return setError(t.account.errorEmailInvalid);
+    if (!EMAIL_RE.test(trimmed)) {
+      trackUiInteraction('auth_reset_submit', 'failure');
+      return setError(t.account.errorEmailInvalid);
+    }
     setError('');
     setBusy('reset');
     try {
       const result = await requestPasswordReset(trimmed);
+      trackUiInteraction('auth_reset_submit', result.ok ? 'success' : 'failure');
       if (!result.ok) return setError(result.detail || t.account.errorGeneric);
       toast({ kind: 'saved', title: t.account.resetSentToast, icon: 'mail' });
       router.push('/nv/obnova-hesla');
@@ -1564,6 +1635,7 @@ export function PrihlaseniScreen() {
           ]}
           value={mode}
           onChange={(next) => {
+            if (next !== mode) trackUiInteraction(next === 'login' ? 'auth_login_mode' : 'auth_register_mode', 'select');
             setMode(next);
             setError('');
           }}
@@ -1797,6 +1869,7 @@ export function SpravaPartyScreen() {
   const link = invite && invite !== 'loading' ? invite.webUrl || invite.url : '';
 
   const share = async () => {
+    trackUiInteraction('friend_invite_share', 'share');
     if (!link) return toast({ kind: 'offline', title: t.friends.codeOffline });
     await Share.share({ message: t.friends.shareMessage(link) }).catch(() => undefined);
   };
@@ -1826,9 +1899,11 @@ export function SpravaPartyScreen() {
     const nickname = query.trim().replace(/^@/, '');
     const key = profile ? `account:${profile.id}` : `nickname:${nickname.toLowerCase()}`;
     if (requesting) return;
+    trackUiInteraction('friend_request_send', 'submit');
     setRequesting(key);
     const result = profile ? await sendFriendRequest({ accountId: profile.id }) : await sendFriendRequest({ nickname });
     setRequesting(null);
+    trackUiInteraction('friend_request_send', result.ok || isRetriableFriendError(result) ? 'success' : 'failure');
     if (!result.ok && !isRetriableFriendError(result)) {
       toast({ kind: 'error', title: result.detail });
       return;
@@ -2389,7 +2464,12 @@ export function OnboardingScreen() {
             <View key={i} style={{ width: i === page ? 28 : 10, height: 6, borderRadius: 3, backgroundColor: i === page ? C.yellow : C.control }} />
           ))}
         </View>
-        <Press onPress={() => finish('onboarding_skipped')}>
+        <Press
+          onPress={() => {
+            trackUiInteraction('onboarding_skip');
+            finish('onboarding_skipped');
+          }}
+        >
           <T s={15} w={600} c={C.muted}>
             {P().onboarding.skip}
           </T>
@@ -2432,7 +2512,11 @@ export function OnboardingScreen() {
       </View>
       <Button
         label={page < slides.length - 1 ? P().onboarding.next : P().onboarding.done}
-        onPress={() => (page < slides.length - 1 ? setPage(page + 1) : finish('onboarding_completed'))}
+        onPress={() => {
+          trackUiInteraction('onboarding_next');
+          if (page < slides.length - 1) setPage(page + 1);
+          else finish('onboarding_completed');
+        }}
       />
     </View>
   );

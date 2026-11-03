@@ -8,6 +8,7 @@ import { POPULAR_BEER_BRANDS } from '@/data/beerSuggestionsClient';
 import { geohash8 } from '@/data/geohash';
 import { getAllLoadedPubs } from '@/data/pubs';
 import { backendPubSearchFilterKey, pubMatchesPriceFilter } from '@/data/pubSearchFilters';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { pubOpeningVerdict } from '@/map/mapModel';
 import { usePubStore } from '@/stores/pubStore';
@@ -77,13 +78,41 @@ export function FiltrySheet() {
           left={L.cancel}
           right={count === null ? L.showPubsUnknown : count ? L.showPubs(count) : L.nothingFits}
           onLeft={() => nvBack(router)}
-          onRight={() => nvBack(router)}
+          onRight={() => {
+            trackUiInteraction('compass_filters_apply', 'submit');
+            nvBack(router);
+          }}
         />
       }
     >
       <Card>
-        <Row title={L.openOnly} sub={L.openOnlySub} trailing={<Toggle value={openOnly} onChange={setOpenOnly} />} />
-        <Row last title={L.surprise} sub={L.surpriseSub} trailing={<Toggle value={surprise} onChange={setSurprise} />} />
+        <Row
+          title={L.openOnly}
+          sub={L.openOnlySub}
+          trailing={
+            <Toggle
+              value={openOnly}
+              onChange={(on) => {
+                trackUiInteraction('settings_hide_closed', on ? 'toggle_on' : 'toggle_off');
+                setOpenOnly(on);
+              }}
+            />
+          }
+        />
+        <Row
+          last
+          title={L.surprise}
+          sub={L.surpriseSub}
+          trailing={
+            <Toggle
+              value={surprise}
+              onChange={(on) => {
+                trackUiInteraction(on ? 'compass_mode_surprise' : 'compass_mode_nearest', 'select');
+                setSurprise(on);
+              }}
+            />
+          }
+        />
       </Card>
       <Group title={L.beerGroup}>
         {BEER_CHIPS.map((brand) => (

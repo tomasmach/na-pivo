@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 
 import { isRetriableNightError, publishNight, type NightVisibility } from '@/data/nightsClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { updateSharingPrefs } from '@/data/sharingPrefsClient';
 import { t } from '@/i18n';
@@ -183,9 +184,11 @@ export function VyvesitSheet() {
       return;
     }
     const payload = { ...nightPublishPayload(night, visibility), ...(photo ? { photoIds: [photo.id ?? photo.clientId] } : {}) };
+    trackUiInteraction('night_publish', 'submit');
     setBusy(true);
     void publishNight(payload).then((res) => {
       setBusy(false);
+      trackUiInteraction('night_publish', res.ok || isRetriableNightError(res) ? 'success' : 'failure');
       if (!res.ok && !isRetriableNightError(res)) {
         toast({ kind: 'error', title: res.detail, icon: 'megaphone' });
         return;

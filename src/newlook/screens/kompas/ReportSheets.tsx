@@ -8,6 +8,7 @@ import { submitPubRename } from '@/components/amenities/pubRename';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import type { Pub } from '@/data/pubs';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { usePubStore } from '@/stores/pubStore';
 
@@ -60,7 +61,10 @@ export function NesediSheet() {
           leading={<Tile icon="pencil" color={C.white} size={36} radius={18} />}
           title={L.rename}
           chevron
-          onPress={() => router.replace({ pathname: '/nv/opravit-nazev', params: nvPubParams(pub) })}
+          onPress={() => {
+            trackUiInteraction('compass_rename_open');
+            router.replace({ pathname: '/nv/opravit-nazev', params: nvPubParams(pub) });
+          }}
         />
         <Row leading={<Tile icon="door-closed" color={C.white} size={36} radius={18} />} title={L.reportClosed} chevron onPress={() => ask('closed')} />
         <Row leading={<Tile icon="ban" color={C.white} size={36} radius={18} />} title={L.reportNotPub} chevron onPress={() => ask('not_pub')} />

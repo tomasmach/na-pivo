@@ -13,6 +13,7 @@ import {
   type PhotoContestSnapshot,
 } from '@/data/photoContestClient';
 import type { FriendProfile } from '@/data/friendsClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { loadBeerPhotos, useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
@@ -71,8 +72,10 @@ export function FotoPivarScreen() {
   const toggleRound = (entry: PhotoContestEntry) => {
     if (!snap || entry.isMine) return;
     const on = !entry.myVote;
+    trackUiInteraction('photo_contest_vote', 'submit');
     setSnap(patchEntry(snap, entry.id, { myVote: on, votes: Math.max(0, entry.votes + (on ? 1 : -1)) }));
     void setPhotoContestRound(entry.id, on).then((res) => {
+      trackUiInteraction('photo_contest_vote', res.ok ? 'success' : 'failure');
       setSnap((prev) =>
         prev ? patchEntry(prev, entry.id, res.ok ? { myVote: res.myVote, votes: res.votes } : { myVote: entry.myVote, votes: entry.votes }) : prev,
       );
@@ -350,9 +353,11 @@ export function PrihlasitFotkuSheet() {
 
   const enter = () => {
     if (!selected?.id || !choosable(selected) || busy) return;
+    trackUiInteraction('photo_contest_enter', 'submit');
     setBusy(true);
     void addPhotoContestEntry(selected.id).then((res) => {
       setBusy(false);
+      trackUiInteraction('photo_contest_enter', res.ok ? 'success' : 'failure');
       if (!res.ok) {
         toast({ kind: 'error', title: res.detail, icon: 'trophy' });
         return;
