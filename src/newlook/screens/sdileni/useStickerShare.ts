@@ -1,20 +1,21 @@
 import { useCallback, useRef, useState } from 'react';
 import { Linking, Share, type LayoutChangeEvent, type ViewInstance } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 
+import { openSystemSettings } from '@/compass/permissions';
 import { t } from '@/i18n';
 
-import { toast } from '../../ui/store';
+import { dialog, toast } from '../../ui/store';
 
 const INSTAGRAM_STORY_URL = 'instagram://story-camera';
 const EXPORT_SCALE = 3;
 
 /**
- * Turns the sticker under `ref` into a transparent PNG and hands it on, the
- * same path as the old story card: clipboard for Instagram, the system share
- * sheet for everything else (it also offers saving to Photos).
+ * Turns the sticker under `ref` into a transparent PNG and hands it on:
+ * clipboard for Instagram, the Photos library, or the system share sheet.
  */
 export function useStickerShare() {
   const ref = useRef<ViewInstance>(null);
@@ -71,6 +72,25 @@ export function useStickerShare() {
     [capture, run],
   );
 
+  const saveToPhotos = useCallback(
+    () =>
+      run(async () => {
+        const permission = await MediaLibrary.requestPermissionsAsync(true);
+        if (!permission.granted) {
+          dialog({
+            title: t.nv.sdileni.photosDeniedTitle,
+            body: t.nv.sdileni.photosDeniedBody,
+            actions: [{ label: t.nv.sdileni.photosDeniedBack }, { label: t.nv.sdileni.openSettings, kind: 'primary', onPress: () => void openSystemSettings() }],
+          });
+          return;
+        }
+        const uri = await capture('tmpfile');
+        await MediaLibrary.Asset.create(uri.startsWith('file://') ? uri : `file://${uri}`);
+        toast({ kind: 'saved', title: t.nv.sdileni.savedToPhotos, icon: 'download' });
+      }),
+    [capture, run],
+  );
+
   const copyLink = useCallback(
     (url: string) =>
       run(async () => {
@@ -80,5 +100,5 @@ export function useStickerShare() {
     [run],
   );
 
-  return { ref, onLayout, busy, toInstagram, shareImage, copyLink };
+  return { ref, onLayout, busy, toInstagram, shareImage, saveToPhotos, copyLink };
 }

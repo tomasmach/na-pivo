@@ -6,6 +6,7 @@
     "NSMotionUsageDescription": "We use the motion sensors to turn the arrow when you turn.",
     "NSMicrophoneUsageDescription": "The microphone is used only for the app's sound features and never without your consent.",
     "NSPhotoLibraryUsageDescription": "I open your gallery so you can pick a profile photo, a photo of the beer menu, or a beer photo for your diary.",
+    "NSPhotoLibraryAddUsageDescription": "I save a sticker to your Photos when you ask. This doesn't let me see your other photos.",
     "NSCameraUsageDescription": "I need the camera to read beers off a menu and to let you snap a beer for your diary.",
     "NSCalendarsUsageDescription": "Na pivo only adds a crew invitation to your calendar after you confirm it.",
     "NSCalendarsWriteOnlyAccessUsageDescription": "Na pivo only adds a crew invitation to your calendar after you confirm it.",

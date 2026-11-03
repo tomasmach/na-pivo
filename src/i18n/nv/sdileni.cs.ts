@@ -32,6 +32,11 @@ export const sdileniCs = {
   kindCedule: 'Cedule',
   kindCislo: 'Velké číslo',
   saveToPhotos: 'Uložit do fotek',
+  savedToPhotos: 'Nálepka je ve Fotkách.',
+  photosDeniedTitle: 'Do Fotek nemůžu',
+  photosDeniedBody: 'Povol v Nastavení, ať ti Na pivo může přidávat do Fotek, a zkus to znovu.',
+  photosDeniedBack: 'Zpátky',
+  openSettings: 'Otevřít Nastavení',
   shareElsewhere: 'Sdílet jinam',
 
   // Kdo co vidí

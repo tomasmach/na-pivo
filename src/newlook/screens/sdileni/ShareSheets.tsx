@@ -64,7 +64,7 @@ export function SdiletHospoduSheet() {
   const slots = useMemo(() => nextSlots(new Date(), 2), []);
   const [time, setTime] = useState<Date | null>(slots[0]);
   const [custom, setCustom] = useState<Date | null>(null);
-  const { ref: stickerRef, onLayout, busy, toInstagram, shareImage, copyLink } = useStickerShare();
+  const { ref: stickerRef, onLayout, busy, toInstagram, saveToPhotos, copyLink } = useStickerShare();
   const when = [time ? hhmm(time) : t.nv.sdileni.nowSticker, pub.name].filter(Boolean).join(' · ');
 
   return (
@@ -109,7 +109,7 @@ export function SdiletHospoduSheet() {
             if (pub.lat !== null && pub.lng !== null) copyLink(buildPubShareUrl({ name: pub.name, lat: pub.lat, lng: pub.lng }));
           }}
         />
-        <Button label={t.nv.sdileni.saveSticker} icon="download" kind="raised" flex disabled={busy} onPress={shareImage} />
+        <Button label={t.nv.sdileni.saveSticker} icon="download" kind="raised" flex disabled={busy} onPress={saveToPhotos} />
       </View>
     </Sheet>
   );
@@ -167,7 +167,7 @@ export function NalepkySheet() {
   const night = useTonightOrLast();
   const sittingAt = useTallyStore((st) => st.current?.pubName ?? null);
   const bg = useStageBackground();
-  const { ref: stickerRef, onLayout, busy, toInstagram, shareImage } = useStickerShare();
+  const { ref: stickerRef, onLayout, busy, toInstagram, shareImage, saveToPhotos } = useStickerShare();
   const [kind, setKind] = useState<Kind>(KINDS.includes(initial as Kind) ? (initial as Kind) : 'tacek');
 
   const summary = night?.summary;
@@ -210,7 +210,7 @@ export function NalepkySheet() {
       </View>
       <Button label={t.nv.sdileni.toInstagram} icon="send" disabled={busy} onPress={toInstagram} />
       <View style={[s.row, { gap: 10 }]}>
-        <Button label={t.nv.sdileni.saveToPhotos} icon="download" kind="raised" flex disabled={busy} onPress={shareImage} />
+        <Button label={t.nv.sdileni.saveToPhotos} icon="download" kind="raised" flex disabled={busy} onPress={saveToPhotos} />
         <Button label={t.nv.sdileni.shareElsewhere} icon="share" kind="raised" flex disabled={busy} onPress={shareImage} />
       </View>
     </Sheet>

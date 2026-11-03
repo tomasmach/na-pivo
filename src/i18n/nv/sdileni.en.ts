@@ -30,6 +30,11 @@ export const sdileniEn: typeof sdileniCs = {
   kindCedule: 'Sign',
   kindCislo: 'Big number',
   saveToPhotos: 'Save to Photos',
+  savedToPhotos: 'The sticker is in your Photos.',
+  photosDeniedTitle: "Can't save to Photos",
+  photosDeniedBody: 'Allow Na pivo to add to Photos in Settings, then try again.',
+  photosDeniedBack: 'Back',
+  openSettings: 'Open Settings',
   shareElsewhere: 'Share elsewhere',
 
   consentTitle: 'Who sees what',
