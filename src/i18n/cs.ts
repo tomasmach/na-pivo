@@ -233,6 +233,10 @@ export const cs = {
       title: 'Schovávat názvy hospod',
       subtitle: 'Název ukážu až po ťuknutí a skryju ho i v upozorněních',
     },
+    marketingEmails: {
+      title: 'Novinky e-mailem',
+      subtitle: 'Tipy a nabídky. Kdykoli je vypneš.',
+    },
     about: {
       title: 'O appce',
     },

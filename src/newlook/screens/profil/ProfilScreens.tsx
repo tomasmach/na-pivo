@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Image, Linking, ScrollView, Share, View, type TextInputInstance } from 'react-native';
+import { AppState, Image, Linking, Platform, ScrollView, Share, View, type TextInputInstance } from 'react-native';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import * as Clipboard from 'expo-clipboard';
@@ -44,6 +44,7 @@ import {
   enableBeerCountReminderNotifications,
   reschedulePendingBeerCountReminder,
 } from '@/notifications/beerCountReminder';
+import { disableFriendPush, registerFriendPush } from '@/notifications/friendPush';
 import { disableHomeTransitReminder, enableHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { disablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
 import { askTourReminderPermission, notificationPermissionStatus } from '@/notifications/tourReminder';
@@ -67,6 +68,8 @@ import {
   useSettingsStore,
   type BeerCountReminderIntervalMinutes,
 } from '@/stores/settingsStore';
+import { palette, PALETTES, type Palette } from '@/theme/palette';
+import { switchPalette } from '@/theme/switchPalette';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 
@@ -141,11 +144,11 @@ export function BadgeCircle({ icon, got, size = 76 }: { icon: IconName; got: boo
   );
 }
 
-function notificationsDenied() {
+function notificationsDenied(body?: string) {
   const copy = t.settings.pubReminders.denied['notifications-denied'];
   dialog({
     title: copy.title,
-    body: copy.body,
+    body: body ?? copy.body,
     actions: [
       { label: P().settings.cancel },
       { label: t.settings.pubReminders.openSettings, kind: 'primary', onPress: () => void Linking.openSettings() },
@@ -749,6 +752,7 @@ export function NastaveniScreen() {
   const st = useSettingsStore();
   const [picker, setPicker] = useState<'distance' | 'interval' | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const homeSet = st.homePoint != null;
   const providers = me.profile?.providers ?? [];
   // On only when tour reminders can really come: a fresh install that was never asked shows off, and a tap asks.
@@ -811,6 +815,11 @@ export function NastaveniScreen() {
     void updateAccountPreferences({ hapticEnabled: on });
   };
 
+  const toggleMarketingEmails = (on: boolean) => {
+    st.setMarketingEmailsEnabled(on);
+    void updateAccountPreferences({ marketingEmailsEnabled: on });
+  };
+
   const toggleSound = (on: boolean) => {
     st.setSoundEnabled(on);
     void updateAccountPreferences({ soundEnabled: on });
@@ -834,6 +843,28 @@ export function NastaveniScreen() {
     if (answer === 'denied') notificationsDenied();
   };
 
+  // The system can refuse notifications, so the switch shows the stored outcome, not the tap.
+  const togglePartyPush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (st.friendPushEnabled) {
+        if (!(await disableFriendPush())) toast({ kind: 'error', title: P().settings.partyPushDisableError });
+        return;
+      }
+      const result = await registerFriendPush();
+      if (result.ok || result.reason === 'cancelled') return;
+      if (result.reason === 'denied') notificationsDenied(P().settings.partyPushDenied);
+      else toast({ kind: 'error', title: P().settings.partyPushEnableError });
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const pickPalette = async (next: Palette) => {
+    if (!(await switchPalette(next))) toast({ kind: 'error', title: t.account.errorGeneric });
+  };
+
   const pickLocale = async (code: Locale) => {
     if (code === locale) return;
     if (!(await switchLocale(code))) toast({ kind: 'error', title: t.account.errorGeneric });
@@ -846,15 +877,22 @@ export function NastaveniScreen() {
       <PageTitle title={P().settings.title} />
       <Card>
         {me.isSignedIn ? (
-          <Row
-            last
-            leading={<Tile icon="user" />}
-            title={accountTitle}
-            titleWeight={700}
-            sub={providers.length > 0 ? P().settings.accountSub(providers.map(providerName).join(', ')) : undefined}
-            chevron
-            onPress={() => router.push('/nv/ucet')}
-          />
+          <>
+            <Row
+              leading={<Tile icon="user" />}
+              title={accountTitle}
+              titleWeight={700}
+              sub={providers.length > 0 ? P().settings.accountSub(providers.map(providerName).join(', ')) : undefined}
+              chevron
+              onPress={() => router.push('/nv/ucet')}
+            />
+            <Row
+              last
+              title={t.settings.marketingEmails.title}
+              sub={t.settings.marketingEmails.subtitle}
+              trailing={<Toggle value={st.marketingEmailsEnabled} onChange={toggleMarketingEmails} />}
+            />
+          </>
         ) : (
           <Row
             last
@@ -949,6 +987,13 @@ export function NastaveniScreen() {
           trailing={<Toggle value={tourRemindersOn} onChange={() => void toggleTourReminders()} />}
         />
         <Row title={P().settings.water} sub={P().settings.waterSub} trailing={<Toggle value={st.waterNudgeEnabled} onChange={st.setWaterNudgeEnabled} />} />
+        {me.isSignedIn ? (
+          <Row
+            title={P().settings.partyPush}
+            sub={P().settings.partyPushSub}
+            trailing={<Toggle value={st.friendPushEnabled} onChange={() => void togglePartyPush()} />}
+          />
+        ) : null}
         <Row
           last
           title={P().settings.pubPing}
@@ -994,6 +1039,22 @@ export function NastaveniScreen() {
             />
           }
         />
+        {/* The new look ignores the palette and Android keeps its icon (switchPalette), so there it would change nothing. */}
+        {Platform.OS === 'ios' ? (
+          <Row
+            title={P().settings.appIcon}
+            sub={P().settings.appIconSub}
+            trailing={
+              <Segmented
+                height={36}
+                style={{ width: 180 }}
+                options={PALETTES.map((key) => ({ key, label: key === 'brown' ? P().settings.appIconBrown : P().settings.appIconGray }))}
+                value={palette}
+                onChange={(next) => void pickPalette(next)}
+              />
+            }
+          />
+        ) : null}
         <Row title={P().settings.writeMe} chevron onPress={() => router.push('/nv/napis-mi')} />
         <Row last title={P().settings.about} chevron onPress={() => router.push('/nv/o-appce')} />
       </Card>

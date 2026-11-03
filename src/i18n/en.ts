@@ -226,6 +226,10 @@ export const en: Strings = {
       title: 'Hide pub names',
       subtitle: "I'll show the name after a tap and hide it in notifications too",
     },
+    marketingEmails: {
+      title: 'News by email',
+      subtitle: 'You can turn tips and offers off any time',
+    },
     about: {
       title: 'About the app',
     },
