@@ -162,7 +162,7 @@ def _bars(rows: list[dict], key: str = "median") -> list[dict]:
 
 @web_page
 def beer_index(request: HttpRequest) -> HttpResponse:
-    wait = throttle_wait(request, "price_map")
+    wait = throttle_wait(request, "web_pages")
     if wait:
         return too_many(request, wait, "prices")
 
@@ -347,7 +347,7 @@ def _csv(data: dict, lang: str) -> str:
 
 @canonical_host
 def beer_index_csv(request: HttpRequest, lang: str = "cs") -> HttpResponse:
-    wait = throttle_wait(request, "price_map")
+    wait = throttle_wait(request, "web_og")
     if wait:
         response = HttpResponse(status=429)
         response["Retry-After"] = str(wait)
@@ -383,7 +383,7 @@ def _og(data: dict, lang: str) -> bytes:
 
 @canonical_host
 def beer_index_og(request: HttpRequest, lang: str = "cs") -> HttpResponse:
-    wait = throttle_wait(request, "price_map")
+    wait = throttle_wait(request, "web_og")
     if wait:
         response = HttpResponse(status=429)
         response["Retry-After"] = str(wait)

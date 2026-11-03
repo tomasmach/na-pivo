@@ -112,10 +112,10 @@ def test_pages_read_their_numbers_in_a_few_queries(client, django_assert_max_num
         client.get("/pivo/testovar-11")
 
 
-def test_invites_follow_the_browser_language_and_keep_their_preview(client, settings):
+def test_english_invite_keeps_its_preview(client, settings):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 
-    response = client.get("/party/EFJ66G", HTTP_ACCEPT_LANGUAGE="en")
+    response = client.get("/en/party/EFJ66G")
 
     html = response.content.decode()
     assert response["Content-Language"] == "en"

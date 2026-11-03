@@ -45,6 +45,7 @@
 .rs-year__hero .np-stat__label { font-size: 20px; }
 .rs-year__hero .np-stat__sub { font-size: 15px; }
 .rs-year__list { align-self: start; }
+.rs-year__list { --np-row-inset: 0; }
 .rs-year__list .np-row { padding-inline: 0; }
 .rs-bars {
   display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: end; gap: 16px;
@@ -66,6 +67,7 @@
   display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
   color: var(--np-text-2); font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
 }
+.rs-features { --np-row-inset: 0; }
 .rs-features .np-row { min-height: 92px; padding-inline: 0; }
 .rs-features .np-row__lead { width: 48px; height: 48px; background: var(--np-card); }
 .rs-features .np-row__title { font-size: 18px; font-weight: 500; }
@@ -90,12 +92,14 @@
 .rs-head__main .np-h1 { max-width: 900px; overflow-wrap: anywhere; }
 .rs-h1--long { font-size: 64px; }
 .rs-head__stats { align-items: flex-start; margin-top: 12px; }
+.rs-stack .np-card { --np-row-inset: 0; }
 .rs-stack .np-card .np-row { padding-inline: 0; }
 .rs-price { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 24px; margin-top: 8px; }
 .rs-price__value { font: 800 128px/0.85 var(--np-display); color: var(--np-yellow); white-space: nowrap; }
 .rs-price__text { display: grid; gap: 4px; padding-bottom: 8px; }
 .rs-price__label { font-size: 22px; font-weight: 600; }
 .rs-price__sub { color: var(--np-text-2); font-size: 15px; }
+.rs-facts { --np-row-inset: 0; }
 .rs-facts .np-row { padding-inline: 0; }
 .rs-facts .np-row__title { font-size: 15px; }
 
@@ -224,6 +228,7 @@ a.rs-tile:hover { background: var(--np-control); }
 .rs-ticket__cut::before { left: -10px; }
 .rs-ticket__cut::after { right: -10px; }
 .rs-ticket__actions { display: grid; gap: 10px; }
+.rs-ticket .rs-stores .np-btn { flex: 1; }
 .rs-stops { width: 100%; }
 .rs-stops__list { display: grid; margin-bottom: 16px; }
 .rs-stop { display: flex; gap: 14px; padding: 16px 0; border-top: 1px solid var(--np-hairline); }

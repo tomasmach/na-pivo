@@ -234,7 +234,7 @@ def _row(item: dict, lang: str) -> dict:
 
 @web_page
 def news(request: HttpRequest) -> HttpResponse:
-    wait = throttle_wait(request, "price_map")
+    wait = throttle_wait(request, "web_pages")
     if wait:
         return too_many(request, wait, "news")
 

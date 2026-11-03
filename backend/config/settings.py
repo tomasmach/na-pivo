@@ -709,10 +709,12 @@ REST_FRAMEWORK = {
         "tour_write": "20/hour",
         "tour_share": "10/hour",
         "tour_public": "60/min",
-        # Public pub share page; a reader opens one pub at a time.
-        "pub_public": "60/min",
-        # Public beer price page and its share image; a reader loads one page at a time.
-        "price_map": "60/min",
+        # Public web pages per network. A person reads a few pages a minute and a search engine
+        # crawls a few per second at most; 600 also covers a busy shared network (school, mobile NAT).
+        # Each page reads cached aggregates in a handful of queries, so this is not where load comes from.
+        "web_pages": "600/min",
+        # Share images and the CSV draw on a cache miss, so they keep a tighter budget.
+        "web_og": "60/min",
         "tour_search": "60/min",
         # Web search: one query per submitted form, so a person stays far below this.
         "web_search": "30/min",

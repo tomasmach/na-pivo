@@ -15,8 +15,7 @@ from django.utils.translation import gettext
 from pubs.api.profile_helpers import derive_account_public_stats
 from pubs.home_views import app_store_url, play_store_url
 from pubs.models import Account
-from pubs.web.pages import render_page
-from pubs.web_views import _negotiated
+from pubs.web.pages import render_page, web_page
 
 
 def public_profile_account(nickname: str) -> Account | None:
@@ -29,7 +28,7 @@ def public_profile_account(nickname: str) -> Account | None:
     ).first()
 
 
-@_negotiated
+@web_page
 def public_profile_page(request: HttpRequest, nickname: str) -> HttpResponse:
     account = public_profile_account(nickname[:20])
     if account is None:

@@ -5127,3 +5127,73 @@ msgstr "where and with whom."
 
 msgid "Řadit: nejnovější"
 msgstr "Sort: newest"
+
+# web: shell fixes
+msgid "Napiš svůj e-mail."
+msgstr "Enter your email."
+
+msgid "Napiš heslo."
+msgstr "Enter your password."
+
+msgid "Tohle ještě vyplň."
+msgstr "Fill this in, please."
+
+msgid "Heslo potřebuje aspoň 8 znaků."
+msgstr "The password needs at least 8 characters."
+
+msgid "Tohle heslo je moc dlouhé."
+msgstr "That password is too long."
+
+msgid "Přezdívka je moc dlouhá, vejdi se do 120 znaků."
+msgstr "That nickname is too long, keep it within 120 characters."
+
+msgid "Tohle ještě zkontroluj."
+msgstr "Check this one again."
+
+msgid "Tohle heslo se dá moc snadno uhodnout. Zkus delší nebo méně obvyklé."
+msgstr "That password is too easy to guess. Try a longer or less common one."
+
+msgid "Tenhle odkaz už neplatí. Nech si poslat nový, platí jen chvíli."
+msgstr "This link no longer works. Ask for a new one, it only lasts a little while."
+
+msgid "Vymysli si nové heslo. Platí hned tady na webu i v appce."
+msgstr "Pick a new password. It works right away, here on the web and in the app."
+
+msgid "Jestli k tomu e-mailu máš účet, odkaz už ti letí. Nové heslo si přes něj nastavíš tady na webu i v appce."
+msgstr "If that email has an account, the link is on its way. It lets you set a new password here on the web or in the app."
+
+msgid "Uložit heslo"
+msgstr "Save password"
+
+msgid "Nastavit v appce"
+msgstr "Set it in the app"
+
+msgid "Tohle tu nečepujeme"
+msgstr "Nothing on tap here"
+
+msgid "Na téhle adrese nic není. Možná je v odkazu překlep, nebo stránka zmizela."
+msgstr "There is nothing at this address. Maybe the link has a typo, or the page is gone."
+
+msgid "Najít hospodu"
+msgstr "Find a pub"
+
+msgid "Chyba je na mojí straně. Zkus stránku za chvíli načíst znovu."
+msgstr "Something broke on my side. Try reloading the page in a moment."
+
+#, python-format
+msgid "Hospody %(where)s"
+msgstr "Pubs %(where)s"
+
+#, python-format
+msgid "Kolik stojí pivo %(where)s"
+msgstr "What a beer costs %(where)s"
+
+msgid "Ceny piva po městech"
+msgstr "Beer prices by city"
+
+msgid "Pozvánka se otevře v appce. Pošli si odkaz do telefonu, kde máš Na pivo."
+msgstr "The invite opens in the app. Send the link to the phone where you have Na pivo."
+
+#, python-format
+msgid "Mapér: %(title)s"
+msgstr "Mapper: %(title)s"

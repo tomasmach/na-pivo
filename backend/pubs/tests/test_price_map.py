@@ -462,7 +462,7 @@ def test_price_page_has_its_own_throttle(client, monkeypatch):
     assert client.get("/ceny").status_code == 200
     limited = client.get("/ceny")
 
-    assert rates == {"price_map": True}
+    assert rates == {"web_pages": True}
     assert limited.status_code == 429
     assert limited["Cache-Control"] == "no-store"
     assert int(limited["Retry-After"]) >= 1

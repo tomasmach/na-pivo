@@ -193,6 +193,42 @@ def test_signed_in_header_on_public_pages():
     assert ">Přihlásit se<" not in html
 
 
+def test_reset_from_the_email_link_sets_the_password_on_the_web(no_emails):
+    _register(Client())
+    Client().post("/zapomenute-heslo", {"email": EMAIL})
+    link = urlsplit(no_emails[-1][2]["link"])
+    browser = Client()
+    page = browser.get(browser.get(f"{link.path}?{link.query}")["Location"])
+    html = page.content.decode()
+    token = parse_qs(link.query)["token"][0]
+    assert page.status_code == 200 and f'href="napivo://auth/reset?token={token}"' in html
+    assert page["Referrer-Policy"] == "same-origin" and page["Cache-Control"] == "no-store"
+
+    short = browser.post("/nove-heslo", {"token": token, "password": "kratke"})
+    assert short.status_code == 400 and "Heslo potřebuje aspoň 8 znaků." in short.content.decode()
+    common = browser.post("/nove-heslo", {"token": token, "password": "password123"})
+    assert "Tohle heslo se dá moc snadno uhodnout." in common.content.decode()
+
+    done = browser.post("/nove-heslo", {"token": token, "password": "Nove-pivo-2026"})
+    assert done.status_code == 302 and done["Location"] == "/denik"
+    assert browser.get("/denik").status_code == 200
+
+    assert Client().post("/prihlaseni", {"email": EMAIL, "password": PASSWORD}).status_code == 401
+    assert Client().post("/prihlaseni", {"email": EMAIL, "password": "Nove-pivo-2026"})["Location"] == "/denik"
+    used = Client().post("/nove-heslo", {"token": token, "password": "Jine-pivo-2026"})
+    assert used.status_code == 400 and "Tenhle odkaz už neplatí." in used.content.decode()
+
+
+def test_form_errors_talk_like_the_app():
+    empty = Client().post("/prihlaseni", {"email": "", "password": ""}).content.decode()
+    assert "Napiš svůj e-mail." in empty and "Napiš heslo." in empty
+    assert "Toto pole" not in empty
+    bad = Client().post("/registrace", {"email": "pivo", "password": "Pivo-je-zivot-12"}).content.decode()
+    assert "Tohle nevypadá jako e-mail." in bad and "Vložte" not in bad
+    forgot = Client().post("/en/forgot-password", {"email": ""}).content.decode()
+    assert "Enter your email." in forgot
+
+
 def test_forgot_password_sends_the_app_reset_email(no_emails):
     _register(Client())
     response = Client().post("/zapomenute-heslo", {"email": EMAIL})

@@ -17,8 +17,9 @@
       <a class="np-btn np-btn--primary" href="{% web_url "home" %}">{% translate "Stáhnout appku" %}</a>
     </div>
     <div class="np-header__menu">
+      {% if page.account %}<a class="np-header__me" href="{% web_url "web-diary" %}" aria-label="{% translate "Deník" %}">{% include "web/components/avatar.html" with name=page.account.name src=page.account.avatar_url ring=True %}</a>{% endif %}
       <a class="np-btn np-btn--icon" href="{% web_url "web-search" %}" aria-label="{% translate "Hledat" %}">{% icon "search" %}</a>
-      <a class="np-btn np-btn--icon" href="#menu" aria-label="{% translate "Menu" %}" aria-controls="np-mobile-menu">{% icon "menu" %}</a>
+      <a class="np-btn np-btn--icon" href="#menu" aria-label="{% translate "Menu" %}" aria-controls="np-mobile-menu" data-menu-open>{% icon "menu" %}</a>
     </div>
   </div>
   <div class="np-header__mobile" id="np-mobile-menu">
@@ -30,7 +31,7 @@
         {% include "web/components/public_account.html" with mobile=True %}
         <a class="np-btn np-btn--primary" href="{% web_url "home" %}">{% translate "Stáhnout appku" %}</a>
       </div>
-      <a class="np-btn np-btn--ghost" href="#">{% icon "x" "np-icon--s" %}{% translate "Zavřít" %}</a>
+      <a class="np-btn np-btn--ghost" href="#" data-menu-close>{% icon "x" "np-icon--s" %}{% translate "Zavřít" %}</a>
     </div>
   </div>
 </header>
@@ -40,4 +41,5 @@
   </div>
 </main>
 {% include "web/components/footer.html" %}
+<script src="{% asset "web.js" %}" defer></script>
 {% endblock %}

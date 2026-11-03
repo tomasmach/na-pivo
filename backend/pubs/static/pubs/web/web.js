@@ -28,6 +28,16 @@
     }
   };
 
+  // The mobile menu opens as #menu (works without this script); Escape closes it and returns to the button.
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape" || location.hash !== "#menu") return;
+    var close = document.querySelector("[data-menu-close]");
+    if (!close) return;
+    close.click();
+    var open = document.querySelector("[data-menu-open]");
+    if (open) open.focus();
+  });
+
   // The return page of Google and Apple sign-in posts itself on.
   var form = document.querySelector("form[data-autosubmit]");
   if (form) form.submit();

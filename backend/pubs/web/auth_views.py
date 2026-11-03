@@ -77,8 +77,36 @@ def _after_sign_in(request: HttpRequest, raw_token: str, next_url: str | None) -
     return HttpResponseRedirect(safe_next(request, next_url) or web_reverse("web-diary"))
 
 
+def _field_error(field: str, code: str) -> str:
+    # DRF's own Czech messages say "Vložte…" and "Toto pole…"; the web speaks like the app.
+    if code in ("required", "blank", "null"):
+        return {
+            "email": gettext("Napiš svůj e-mail."),
+            "password": gettext("Napiš heslo."),
+        }.get(field, gettext("Tohle ještě vyplň."))
+    if field == "email":
+        return gettext("Tohle nevypadá jako e-mail.")
+    if field == "password":
+        return gettext("Heslo potřebuje aspoň 8 znaků.") if code == "min_length" else gettext("Tohle heslo je moc dlouhé.")
+    if field == "display_name":
+        return gettext("Přezdívka je moc dlouhá, vejdi se do 120 znaků.")
+    return gettext("Tohle ještě zkontroluj.")
+
+
 def _first_errors(errors: dict) -> dict[str, str]:
-    return {field: str(messages[0]) for field, messages in errors.items() if messages}
+    return {
+        field: _field_error(field, getattr(messages[0], "code", ""))
+        for field, messages in errors.items() if messages
+    }
+
+
+def _account_error(exc: AccountError) -> tuple[dict[str, str], str]:
+    """Field errors and the alert for a refused credential."""
+
+    if exc.code == "weak_password":
+        # Django's password validators also say "Vaše heslo…".
+        return {"password": gettext("Tohle heslo se dá moc snadno uhodnout. Zkus delší nebo méně obvyklé.")}, ""
+    return {}, str(exc.message)
 
 
 # Old Town Square: the map beside the form shows central Prague.
@@ -102,12 +130,21 @@ def _prague_pins() -> list[dict]:
 
 
 def _render_auth(
-    request: HttpRequest, mode: str, *, values: dict, errors: dict, error: str = "", status: int = 200, sent: bool = False
+    request: HttpRequest,
+    mode: str,
+    *,
+    values: dict,
+    errors: dict,
+    error: str = "",
+    status: int = 200,
+    sent: bool = False,
+    **extra,
 ):
     titles = {
         "login": gettext("Přihlášení"),
         "register": gettext("Registrace"),
         "forgot": gettext("Zapomenuté heslo"),
+        "reset": gettext("Nové heslo"),
     }
     pins = _prague_pins()
     return render_page(
@@ -123,10 +160,11 @@ def _render_auth(
             "sent": sent,
             "map": pub_map(pins, size=(720, 960)),
             "live_map": live_map(pins, kind="decor", centre=_PRAGUE),
+            **extra,
         },
         title=titles[mode],
         status=status,
-        indexable=mode != "forgot",
+        indexable=mode in ("login", "register"),
         with_map=True,
     )
 
@@ -161,7 +199,8 @@ def login(request: HttpRequest) -> HttpResponse:
             email=form.validated_data["email"], password=form.validated_data["password"]
         )
     except AccountError as exc:
-        return _render_auth(request, "login", values=values, errors={}, error=str(exc.message), status=exc.http_status)
+        errors, error = _account_error(exc)
+        return _render_auth(request, "login", values=values, errors=errors, error=error, status=exc.http_status)
     return _after_sign_in(request, token, request.POST.get("next"))
 
 
@@ -197,13 +236,14 @@ def register(request: HttpRequest) -> HttpResponse:
             verification_link_base=request.build_absolute_uri(reverse("auth-verify-email")),
         )
     except AccountError as exc:
-        return _render_auth(request, "register", values=values, errors={}, error=str(exc.message), status=exc.http_status)
+        errors, error = _account_error(exc)
+        return _render_auth(request, "register", values=values, errors=errors, error=error, status=exc.http_status)
     return _after_sign_in(request, token, request.POST.get("next"))
 
 
 @web_page
 def forgot_password(request: HttpRequest) -> HttpResponse:
-    """Send the same reset e-mail as the app; its link opens the reset in the app."""
+    """Send the same reset e-mail as the app; its link opens ``reset_password`` below."""
 
     if request.method == "GET":
         return _render_auth(request, "forgot", values={}, errors={})
@@ -220,6 +260,60 @@ def forgot_password(request: HttpRequest) -> HttpResponse:
         link_base=request.build_absolute_uri(reverse("auth-reset-page")),
     )
     return _render_auth(request, "forgot", values={}, errors={}, sent=True)
+
+
+def _render_reset(request: HttpRequest, token: str, *, errors: dict, error: str = "", status: int = 200) -> HttpResponse:
+    response = _render_auth(
+        request,
+        "reset",
+        values={},
+        errors=errors,
+        error=error,
+        status=status,
+        token=token,
+        app_link=f"{settings.APP_DEEP_LINK_SCHEME}://auth/reset?{urlencode({'token': token})}" if token else "",
+    )
+    # The address carries a one-time password token: no other site may see it. "no-referrer"
+    # would make the browser post the form with Origin: null, which the CSRF check refuses.
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@web_page
+def reset_password(request: HttpRequest) -> HttpResponse:
+    """New password from the e-mail link, through the same ``accounts.reset_password`` as the app.
+
+    The old link ``/v1/auth/reset?token=…`` from e-mails already sent redirects here.
+    A finished reset signs this browser in with the fresh token it returns.
+    """
+
+    if request.method not in ("GET", "POST"):
+        return HttpResponseNotAllowed(["GET", "POST"])
+    token = (request.POST if request.method == "POST" else request.GET).get("token", "").strip()[:512]
+    expired = gettext("Tenhle odkaz už neplatí. Nech si poslat nový, platí jen chvíli.")
+    if not token:
+        return _render_reset(request, "", errors={}, error=expired, status=400)
+    if request.method == "GET":
+        return _render_reset(request, token, errors={})
+    if _over_limit(request, "auth"):
+        return _render_reset(
+            request, token, errors={}, error=gettext("Moc pokusů za sebou. Dej si chvilku pauzu a zkus to znovu."), status=429
+        )
+    form = s.ResetPasswordSerializer(data={"token": token, "password": request.POST.get("password", "")})
+    if not form.is_valid():
+        return _render_reset(request, token, errors=_first_errors(form.errors), status=400)
+    try:
+        _account, fresh = accounts.reset_password(
+            form.validated_data["token"], new_password=form.validated_data["password"]
+        )
+    except AccountError as exc:
+        if exc.code == "token_invalid":
+            return _render_reset(request, "", errors={}, error=expired, status=400)
+        errors, error = _account_error(exc)
+        return _render_reset(request, token, errors=errors, error=error, status=exc.http_status)
+    start_session(request, fresh)
+    return HttpResponseRedirect(web_reverse("web-diary"))
 
 
 @require_POST

@@ -11,7 +11,7 @@
     {% include "web/components/avatar.html" with name=nickname size="l" ring=True %}
     <div>
       <h1 class="rs-profile__name" id="profile-title">@{{ nickname }}</h1>
-      <p class="np-muted">{{ stats.mapper_title }}, level {{ stats.mapper_level }}</p>
+      <p class="np-muted">{% blocktranslate with title=stats.mapper_title %}Mapér: {{ title }}{% endblocktranslate %}</p>
     </div>
   </div>
   <div class="np-stats">

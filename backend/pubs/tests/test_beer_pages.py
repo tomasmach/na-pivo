@@ -422,7 +422,7 @@ def test_beer_pages_share_the_price_page_throttle(client, monkeypatch):
     assert client.get("/pivo").status_code == 200
     limited = client.get("/pivo/testovar-11")
 
-    assert scopes == {"price_map"}
+    assert scopes == {"web_pages"}
     assert limited.status_code == 429
     assert limited["Cache-Control"] == "no-store"
     assert "Hospody se teď nedotáhly. Zkus to za minutu." in limited.content.decode()
