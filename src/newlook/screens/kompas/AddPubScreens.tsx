@@ -181,6 +181,15 @@ export function PridatHospoduScreen() {
     }
   };
 
+  // A lookup started for the previous text must not land on the new one.
+  const retype = (set: (v: string) => void, v: string) => {
+    set(v);
+    request.current?.abort();
+    setLocating(false);
+    setLookupFailed(false);
+    if (located?.source === 'address') setLocated(null);
+  };
+
   const hasAddress = !!city.trim() && !!address.trim();
   const canSubmit = editedId
     ? !!original &&
@@ -327,22 +336,10 @@ export function PridatHospoduScreen() {
         </Field>
         <View style={[s.row, { gap: 10, alignItems: 'flex-start' }]}>
           <Field label={L().addCity} style={{ width: 120 }}>
-            <Input
-              value={city}
-              onChangeText={(v) => {
-                setCity(v);
-                if (located?.source === 'address') setLocated(null);
-              }}
-            />
+            <Input value={city} onChangeText={(v) => retype(setCity, v)} />
           </Field>
           <Field label={L().addAddress} style={s.fill}>
-            <Input
-              value={address}
-              onChangeText={(v) => {
-                setAddress(v);
-                if (located?.source === 'address') setLocated(null);
-              }}
-            />
+            <Input value={address} onChangeText={(v) => retype(setAddress, v)} />
           </Field>
         </View>
         {located || locating || lookupFailed ? (
