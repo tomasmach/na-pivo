@@ -159,6 +159,30 @@ describe('added pub state registry', () => {
     ]);
   });
 
+  it('folds an offline rename of an unsent addition into its single create', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
+    await enqueueAddedPub(ENTRY);
+    await expect(
+      enqueueAddedPubEdit({ client_id: ENTRY.client_id, name: 'U Opravené fronty' }),
+    ).resolves.toBe('pending');
+
+    (submitAddedPub as jest.Mock).mockImplementation(async (entry: typeof ENTRY) => ({
+      clientId: entry.client_id, cacheKey: 'renamed', name: entry.name,
+      lat: entry.lat, lng: entry.lng, city: entry.city, address: entry.address,
+    }));
+    await flushAddedPubsQueue();
+    await flushAddedPubsQueue();
+
+    expect(submitAddedPub).toHaveBeenCalledTimes(3);
+    expect(submitAddedPub).toHaveBeenLastCalledWith(expect.objectContaining({
+      client_id: ENTRY.client_id, name: 'U Opravené fronty', lat: ENTRY.lat, lng: ENTRY.lng,
+    }));
+    expect(submitAddedPubEdit).not.toHaveBeenCalled();
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
+      expect.objectContaining({ name: 'U Opravené fronty', syncState: 'synced', pendingOperation: null }),
+    ]);
+  });
+
   it('keeps a permanent rejection as failed and lets the user retry it', async () => {
     (submitAddedPub as jest.Mock).mockResolvedValueOnce('permanent-error');
 
