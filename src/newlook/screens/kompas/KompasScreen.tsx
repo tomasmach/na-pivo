@@ -174,6 +174,8 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
 
   const hours = target?.pub ? hoursNow(target.pub) : null;
 
+  // The map buttons sit just above whatever card is showing, or above the tab bar when none is.
+  const cardSpace = st.mapView === 'stopy' ? (city ? 160 : 0) : target ? (collapsed ? 64 : 160) : 0;
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <NvMap
@@ -285,7 +287,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
         })}
       </ScrollView>
 
-      <View style={{ position: 'absolute', right: SCREEN_X - 8, bottom: tabSpace + (collapsed ? 64 : 160) + 12, gap: 8 }}>
+      <View style={{ position: 'absolute', right: SCREEN_X - 8, bottom: tabSpace + cardSpace + 12, gap: 8 }}>
         <View>
           <GlassButton icon="layers" label={L().layers} onPress={() => router.push('/nv/vrstvy')} />
           {layersDot ? (
