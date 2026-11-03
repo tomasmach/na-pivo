@@ -93,11 +93,9 @@ def review_photos(checkins: list[BeerCheckIn], request: Request) -> dict[int, st
             viewer,
             friend_ids=set(_accepted_friend_ids(viewer)),
             blocked_ids=_blocked_account_ids(viewer),
+            beer_keys=list({row.beer_key for row in checkins}),
         )
-        .filter(
-            account_id__in={row.account_id for row in checkins},
-            beer_key__in={row.beer_key for row in checkins},
-        )
+        .filter(account_id__in={row.account_id for row in checkins})
         .order_by("-created_at")
     )
     latest: dict[tuple[int, str], BeerPhoto] = {}
