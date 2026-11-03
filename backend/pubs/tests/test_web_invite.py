@@ -262,3 +262,10 @@ def test_guests_follow_the_plan_on_merge_and_go_with_the_account(party):
 
     accounts.hard_delete(party["host"][1])
     assert not FriendPlanGuest.objects.exists()
+
+
+def test_plan_invite_tokens_stay_out_of_the_request_log():
+    from pubs.privacy import redact_party_codes
+
+    for path in ("/pozvanka/b7vvMjB9X1Cg", "/en/invite/b7vv-MjB9_X1/og.png", "/pozvanka/b7vvMjB9X1Cg/kalendar.ics"):
+        assert "b7vv" not in redact_party_codes(path)

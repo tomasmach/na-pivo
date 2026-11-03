@@ -445,7 +445,9 @@ def _candidates(cache_key: str) -> list[dict]:
     found = [pub for pub in catalogue()["pubs"] if pub["k"] == cache_key]
     if found:
         return found
-    # A pub somebody filled in that the catalogue does not know yet.
+    # A pub somebody filled in that the catalogue does not know yet, unless the community hid it.
+    if _globally_reported_pub_cache_keys({cache_key}):
+        return []
     for model in (PubCommunityData, PubHours):
         rows = model.objects.filter(cache_key=cache_key)
         if model is PubHours:

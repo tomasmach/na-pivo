@@ -68,9 +68,13 @@
         {% endif %}
       </div>
       <form class="npa-set__row npa-set__row--block" data-api="/v1/auth/set-password" data-scope data-ok="{% translate "Heslo je uložené." %}">
-        {% if me.email %}
+        {% if has_password %}
           {% translate "Nové heslo" as l_pw %}{% translate "Aspoň 8 znaků." as h_pw %}
           {% include "web/components/field.html" with name="password" type="password" label=l_pw autocomplete="new-password" minlength=8 maxlength=128 required=True hint=h_pw %}
+        {% elif me.email %}
+          <input type="hidden" name="email" value="{{ me.email }}">
+          {% translate "Heslo" as l_pw3 %}{% translate "Aspoň 8 znaků." as h_pw3 %}
+          {% include "web/components/field.html" with name="password" type="password" label=l_pw3 autocomplete="new-password" minlength=8 maxlength=128 required=True hint=h_pw3 %}
         {% else %}
           <p class="npa-set__sub">{% translate "Přidej si e-mail a heslo, ať se přihlásíš i bez Googlu nebo Applu." %}</p>
           <div class="npa-fields">
@@ -80,7 +84,7 @@
         {% endif %}
         <p class="np-alert" role="alert" data-error hidden></p>
         <p class="npa-ok" role="status" data-ok-text hidden></p>
-        <div><button class="np-btn" type="submit">{% if me.email %}{% translate "Změnit heslo" %}{% else %}{% translate "Nastavit heslo" %}{% endif %}</button></div>
+        <div><button class="np-btn" type="submit">{% if has_password %}{% translate "Změnit heslo" %}{% else %}{% translate "Nastavit heslo" %}{% endif %}</button></div>
       </form>
     </div>
 

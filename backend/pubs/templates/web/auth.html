@@ -28,9 +28,8 @@
           <a class="np-segment__item" href="{{ login_url }}{% if next %}?next={{ next|urlencode }}{% endif %}"{% if mode == "login" %} aria-current="page"{% endif %}>{% translate "Přihlásit se" %}</a>
           <a class="np-segment__item" href="{{ register_url }}{% if next %}?next={{ next|urlencode }}{% endif %}"{% if mode == "register" %} aria-current="page"{% endif %}>{% translate "Registrovat" %}</a>
         </nav>
-        {% if social.apple or social.google %}
+        {% if social.google %}
           <div class="np-auth__social">
-            {% if social.apple %}<a class="np-btn np-btn--light np-btn--l np-btn--block" href="{% web_url "web-oauth" provider="apple" %}{% if next %}?next={{ next|urlencode }}{% endif %}">{% icon "apple" "np-icon--s" %}{% translate "Pokračovat přes Apple" %}</a>{% endif %}
             {% if social.google %}<a class="np-btn np-btn--l np-btn--block" href="{% web_url "web-oauth" provider="google" %}{% if next %}?next={{ next|urlencode }}{% endif %}"><span class="np-auth__g" aria-hidden="true">G</span>{% translate "Pokračovat přes Google" %}</a>{% endif %}
           </div>
           <p class="np-divider">{% translate "nebo e-mailem" %}</p>

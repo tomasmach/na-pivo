@@ -181,6 +181,7 @@ def test_city_index_and_english_pages(client):
 def test_reported_pub_needs_a_quorum_to_disappear(client, settings):
     settings.PUB_REPORT_GLOBAL_HIDE_THRESHOLD = 2
     tiger = _pub()
+    _menu(tiger)  # community data must not bring a hidden pub back
     key = f"/hospoda/u-zlateho-tygra-{tiger.cache_key}"
     old = timezone.now() - timedelta(days=60)
     reporters = [Account.objects.create(device_id=f"reporter-{index}") for index in range(2)]

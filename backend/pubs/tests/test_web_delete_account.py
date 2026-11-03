@@ -110,3 +110,17 @@ def test_invalid_link_and_page_basics(account_token):
     assert "Přihlásit se a smazat účet" in html and "/prihlaseni?next=/nastaveni" in html
     assert Client().get("/en/delete-account").status_code == 200
     assert sitemap_paths() == ["/smazat-ucet"]
+
+
+def test_google_only_account_gets_the_link_too(mails):
+    from pubs import accounts
+    from pubs.models import AuthIdentity
+
+    accounts.resolve_social(
+        None, provider=AuthIdentity.Provider.GOOGLE,
+        claims={"sub": "g-delete", "email": "gdelete@example.com", "email_verified": True},
+    )
+
+    Client().post("/smazat-ucet", {"email": "GDelete@example.com"})
+
+    assert [(kind, to) for kind, to, _ in mails] == [("link", "gdelete@example.com")]

@@ -816,6 +816,7 @@ def settings_page(request: HttpRequest) -> HttpResponse:
             "providers": [{"code": code, "name": names.get(code, code)} for code in providers],
             "provider_names": ", ".join(names.get(code, code) for code in providers),
             "can_unlink": len(providers) > 1,
+            "has_password": "email" in providers,
             "share_drinks": social.get("share_drinks_with_parta", True),
             "autopublish": me.get("night_autopublish") or "off",
             "autopublish_options": [

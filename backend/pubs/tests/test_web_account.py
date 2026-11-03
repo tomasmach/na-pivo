@@ -353,3 +353,24 @@ def test_small_fixes_on_settings_and_crew():
     assert client.get("/parta").context["needs_nickname"] is False
     Account.objects.filter(pk=me.pk).update(nickname=None)
     assert "Jak ti má parta říkat?" in client.get("/parta").content.decode()
+
+
+def test_google_only_account_sets_a_password_with_its_email():
+    from pubs.models import AuthIdentity
+    from pubs.web.session import SESSION_KEY, hash_account_token
+
+    _account, token, _created = accounts.resolve_social(
+        None, provider=AuthIdentity.Provider.GOOGLE,
+        claims={"sub": "g-only", "email": "gonly@example.com", "email_verified": True},
+    )
+    client = Client()
+    session = client.session
+    session[SESSION_KEY] = hash_account_token(token)
+    session.save()
+
+    html = client.get("/nastaveni").content.decode()
+
+    assert '<input type="hidden" name="email" value="gonly@example.com">' in html
+    assert "Nastavit heslo" in html and "Změnit heslo" not in html
+    done = _bearer(token).post("/v1/auth/set-password", {"email": "gonly@example.com", "password": PASSWORD}, format="json")
+    assert done.status_code == 200, done.content

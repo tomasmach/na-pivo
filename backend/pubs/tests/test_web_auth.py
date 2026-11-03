@@ -307,20 +307,11 @@ def test_social_sign_in_rejects_a_foreign_state_or_nonce(fake_providers):
     assert replay.status_code == 400
 
 
-def test_apple_sign_in_stores_the_refresh_token(fake_providers):
-    client = Client()
-    pending = _start(client, "apple")
-    done = client.post("/prihlaseni/apple", {
-        "state": pending["state"],
-        "id_token": f"apple:a-sub:{EMAIL}:{pending['nonce']}",
-        "code": "abc",
-        "user": '{"name": {"firstName": "Tomáš", "lastName": "Mach"}}',
-    })
-    assert done.status_code == 302 and done["Location"] == "/denik"
-    identity = AuthIdentity.objects.get(provider=AuthIdentity.Provider.APPLE, subject="a-sub")
-    assert identity.apple_refresh_token == "rt-abc"
-    assert identity.account.display_name == "Tomáš Mach"
+def test_apple_sign_in_is_not_offered_on_the_web(client, settings):
+    settings.APPLE_SERVICES_ID = "cz.napivo.web"
 
+    assert "Pokračovat přes Apple" not in client.get("/prihlaseni").content.decode()
+    assert client.get("/prihlaseni/apple").status_code == 404
 
 def test_panel_level_counts_mapper_and_pivar_xp_like_the_app():
     client = Client()

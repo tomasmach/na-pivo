@@ -262,7 +262,8 @@
     }
 
     // The evening at a pub is a visit, like the app's session: append to the visit of
-    // the same pub and drinking day, or open one. A past night is closed at its last drink.
+    // the same pub and drinking day, or open one. A past night is closed at its last drink,
+    // and so is a "Jen pro mě" one: an open visit would show the crew where I sit.
     function visitPayload(step) {
       var pub = step.place.pub;
       var times = step.beers.map(function (b) { return b.at; }).sort();
@@ -281,7 +282,7 @@
       };
       if (pub.city) body.city = pub.city;
       if (pub.external_id) body.external_id = pub.external_id;
-      if (step.day !== data.today) body.closed_at = ended;
+      if (step.day !== data.today || step.onlyMe) body.closed_at = ended;
       return body;
     }
 
@@ -311,8 +312,9 @@
         }
         pending.done[id] = true;
       }
+      var toParta = form.querySelector("input[name=scope]:checked").value === "parta";
       if (next.place.kind === "pub") {
-        var visit = await window.npApi("/v1/pub-visits", { method: "POST", body: visitPayload({ day: next.day, place: next.place, beers: next.beers, visitId: pending.visitId }) });
+        var visit = await window.npApi("/v1/pub-visits", { method: "POST", body: visitPayload({ day: next.day, place: next.place, beers: next.beers, visitId: pending.visitId, onlyMe: !toParta }) });
         if (!visit.ok) {
           busy = false;
           refreshTotal();
@@ -321,7 +323,6 @@
         }
       }
       // "Parta" opens the night's Vyvěsit dialog, like the app's Dopsat opens its Vyvěsit sheet.
-      var toParta = form.querySelector("input[name=scope]:checked").value === "parta";
       window.location.assign(data.night_url.replace("0000-00-00", next.day) + (toParta ? "?vyvesit=parta" : ""));
     });
   }

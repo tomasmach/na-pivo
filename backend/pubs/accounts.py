@@ -3143,20 +3143,27 @@ DELETION_LINK_TTL = timedelta(hours=1)
 def request_account_deletion_link(email: str, *, link_base: str) -> None:
     """Email a link that confirms account deletion. Silent for unknown e-mails."""
     norm = normalize_email(email)
-    cred = (
+    if not norm:
+        return
+    # A Google or Apple account has no password e-mail; the provider vouched for its address.
+    holder = (
         EmailCredential.objects.select_related("account")
         .filter(email=norm, account__status=Account.Status.ACTIVE)
         .first()
+    ) or (
+        AuthIdentity.objects.select_related("account")
+        .filter(email__iexact=norm, account__status=Account.Status.ACTIVE)
+        .first()
     )
-    if cred is None:
+    if holder is None:
         return
     raw = _create_one_time_token(
-        cred.account, purpose=OneTimeToken.Purpose.DELETE_ACCOUNT, ttl=DELETION_LINK_TTL
+        holder.account, purpose=OneTimeToken.Purpose.DELETE_ACCOUNT, ttl=DELETION_LINK_TTL
     )
     emailer.send_account_deletion_link_email(
-        cred.email,
+        norm,
         link=_append_token(link_base, raw),
-        locale=locale_for_account(cred.account),
+        locale=locale_for_account(holder.account),
     )
 
 
