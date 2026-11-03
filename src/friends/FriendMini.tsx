@@ -21,7 +21,7 @@ export function friendDisplayName(profile: FriendProfile | null | undefined): st
   return profile.displayName || t.friends.fallbackName;
 }
 
-export function FriendMini({ profile }: { profile: FriendProfile }) {
+function FriendMini({ profile }: { profile: FriendProfile }) {
   return (
     <View style={styles.friendMini}>
       <Avatar

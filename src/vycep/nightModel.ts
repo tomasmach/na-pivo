@@ -121,18 +121,6 @@ export function buildNightSummary(sessions: TallySession[]): NightSummary | null
   return summary;
 }
 
-/** Split a beer count into tally-mark groups of five ("čárky na tácku"):
- *  12 → [5, 5, 2]. Capped so a troll number cannot blow up the layout; the
- *  caller renders the `overflow` remainder as "+N". */
-export function tallyGroups(count: number, maxMarks = 25): { groups: number[]; overflow: number } {
-  const shown = Math.max(0, Math.min(count, maxMarks));
-  const groups: number[] = [];
-  for (let remaining = shown; remaining > 0; remaining -= 5) {
-    groups.push(Math.min(5, remaining));
-  }
-  return { groups, overflow: Math.max(0, count - shown) };
-}
-
 /** Whole hours of a night for the story stat trio (rounded to nearest hour,
  *  minimum 1 once the night spans at least half an hour). */
 export function nightHours(durationMinutes?: number): number {

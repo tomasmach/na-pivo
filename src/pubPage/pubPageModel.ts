@@ -4,8 +4,7 @@
  * renders. No React, no network, so the wording and grouping are unit-tested.
  */
 
-import { DAY_KEYS, type CommunityBeer, type DayKey, type WeeklyHours } from '@/data/communityHours';
-import type { WireAmenityAggregate } from '@/data/pubAmenitiesClient';
+import { type CommunityBeer, type DayKey } from '@/data/communityHours';
 import type { PubEvent } from '@/data/pubEventsClient';
 
 /** Map JS Date.getDay() (0=Sun..6=Sat) onto the Monday-first day keys. */
@@ -13,36 +12,6 @@ const JS_DAY_TO_KEY: readonly DayKey[] = ['su', 'mo', 'tu', 'we', 'th', 'fr', 's
 
 export function dayKeyOf(date: Date): DayKey {
   return JS_DAY_TO_KEY[date.getDay()];
-}
-
-export interface HoursRow {
-  /** First and last day of a run of days with identical hours. */
-  from: DayKey;
-  to: DayKey;
-  /** Intervals as "15:00–23:00", empty when the pub is closed those days. */
-  intervals: string[];
-  /** The run contains today. */
-  today: boolean;
-}
-
-/**
- * Collapse the week into runs of consecutive days with the same hours, so
- * "Po–Čt 15:00–23:00" reads as one row instead of four identical ones.
- */
-export function groupWeeklyHours(weekly: WeeklyHours, today: DayKey): HoursRow[] {
-  const rows: HoursRow[] = [];
-  for (const day of DAY_KEYS) {
-    const intervals = (weekly[day] ?? []).map(([start, end]) => `${start}–${end}`);
-    const signature = intervals.join(',');
-    const last = rows[rows.length - 1];
-    if (last && last.intervals.join(',') === signature) {
-      last.to = day;
-      last.today = last.today || day === today;
-    } else {
-      rows.push({ from: day, to: day, intervals, today: day === today });
-    }
-  }
-  return rows;
 }
 
 function startOfDay(date: Date): number {
@@ -87,23 +56,6 @@ export function visibleEvents(events: readonly PubEvent[], now: Date): PubEvent[
   return events
     .filter((event) => Date.parse(event.endsAt) > now.getTime())
     .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
-}
-
-/**
- * Amenities the crowd confirmed as present, in the server's order. Disputed or
- * absent ones are left out: the page only states what people agree on.
- */
-export function confirmedAmenityKeys(
-  aggregates: readonly WireAmenityAggregate[] | undefined,
-): string[] {
-  if (!aggregates) return [];
-  return aggregates.filter((a) => a.status === 'yes').map((a) => a.amenity_key);
-}
-
-/** "350 m" / "1,4 km" style distance, formatted by the caller's locale helpers. */
-export function roundedDistance(meters: number): { unit: 'm' | 'km'; value: number } {
-  if (meters < 1000) return { unit: 'm', value: Math.max(10, Math.round(meters / 10) * 10) };
-  return { unit: 'km', value: Math.round(meters / 100) / 10 };
 }
 
 /**
@@ -174,23 +126,6 @@ export function isSamePubRecord(
 export function isEventOfPub(event: PubEvent, pub: { id: string; name: string }): boolean {
   if (!event.pubName && !event.pubExternalId) return true;
   return isSamePubRecord({ name: event.pubName, externalId: event.pubExternalId }, pub);
-}
-
-/**
- * Whether another business shares this pub's map cell. The server counts
- * beers per cell, so such a count would belong to both pubs.
- */
-export function sharesCell(
-  pubs: readonly { id: string; name: string; lat: number; lng: number }[],
-  pubKey: string,
-  pub: { id: string; name: string },
-  cellOf: (lat: number, lng: number) => string,
-): boolean {
-  return pubs.some(
-    (other) =>
-      cellOf(other.lat, other.lng) === pubKey &&
-      !isSamePubRecord({ name: other.name, externalId: other.id }, pub),
-  );
 }
 
 /**

@@ -39,14 +39,3 @@ export function cellStatus(state: BadgeState, now: Date): string {
   if (state.holiday) return t.badges.inDays(daysUntilHoliday(state.holiday, now));
   return t.badges.locked;
 }
-
-export function badgeA11y(state: BadgeState, now: Date, isNew = false): string {
-  return [
-    badgeName(state),
-    state.tier > 0 ? t.badges.a11yEarned : t.badges.a11yLocked,
-    isNew ? t.badges.a11yNew : null,
-    stillLine(state) ?? (state.kind === 'once' && state.tier > 0 ? null : cellStatus(state, now)),
-  ]
-    .filter(Boolean)
-    .join(', ');
-}

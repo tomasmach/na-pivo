@@ -80,7 +80,7 @@ export function drinkAbv(drink: Pick<EstimateDrink, 'beerName' | 'drinkType'>): 
   return 6;
 }
 
-export function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl'>): number {
+function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl'>): number {
   if (typeof drink.volumeMl === 'number' && drink.volumeMl > 0) return drink.volumeMl;
   const type = normalizeDrinkType(drink.drinkType);
   if (type === 'shot') return 40;
