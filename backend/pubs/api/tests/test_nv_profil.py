@@ -346,6 +346,35 @@ def test_party_evenings_count_days_shared_with_a_friend(client):
 
 
 @pytest.mark.django_db
+def test_night_summary_counts_party_evenings_only_up_to_the_night(client):
+    token, me = _register(client, "tomas")
+    _, friend = _register(client, "jirka")
+    _befriend(me, friend)
+    night = drinking_day(timezone.now()) - timedelta(days=5)
+    # The night itself, with the friend arriving after midnight.
+    _visit(me, _prague(night, 20))
+    _visit(friend, _prague(night + timedelta(days=1), 1))
+    # A later shared night must not leak into this night's receipt.
+    _visit(me, _prague(night + timedelta(days=2), 20))
+    _visit(friend, _prague(night + timedelta(days=2), 21))
+    later_table = PartyEvening.objects.create(
+        client_id=uuid.uuid4(),
+        join_code="LATER123",
+        host=friend,
+        pub_name="U Pinkasů",
+        started_at=_prague(night + timedelta(days=3), 20),
+    )
+    PartyEveningMember.objects.create(evening=later_table, account=me)
+    PartyEveningMember.objects.create(evening=later_table, account=friend)
+
+    body = client.get("/v1/account/me/night-summary", {"day": night.isoformat()}, **_auth(token)).json()
+
+    assert body["badge_progress_before"]["party_evenings"] == 0
+    assert body["badge_progress"]["party_evenings"] == 1
+    assert derive_account_badge_progress(derive_account_profile_stats(me))["party_evenings"] == 3
+
+
+@pytest.mark.django_db
 def test_account_me_sends_party_evenings_additively(client):
     token, _me = _register(client)
 
