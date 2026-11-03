@@ -2110,13 +2110,618 @@ msgstr "%(day)s/%(month)s/%(year)s"
 msgid "%(h)s h %(m)s m"
 msgstr "%(h)s h %(m)s m"
 
+# web: account
+
+msgid "Zpátky na moje hospody"
+msgstr "Back to my pubs"
+
+msgid "Přidat hospodu"
+msgstr "Add a pub"
+
+msgid "Název"
+msgstr "Name"
+
+msgid "Ulice a číslo"
+msgstr "Street and number"
+
+msgid "Našel jsem tuhle adresu"
+msgstr "I found this address"
+
+msgid "Kde hospoda stojí, zjistím z adresy. Než ji uložím, ukážu ti, co jsem našel. Pak ji uvidí všichni na mapě v appce."
+msgstr "I work out where the pub is from the address. Before saving it I show you what I found. Then everyone sees it on the map in the app."
+
+msgid "Zrušit"
+msgstr "Cancel"
+
+msgid "Najít adresu"
+msgstr "Find the address"
+
+msgid "Sedí, přidat hospodu"
+msgstr "That's it, add the pub"
+
+msgid "Než to uvidí ostatní"
+msgstr "Before others see it"
+
+msgid "Sdílené hodnocení, přezdívku, fotku nebo hospodu uvidí i jiní pivaři. Potvrď, že budeš psát slušně a nebudeš sdílet nic cizího."
+msgstr "Other beer lovers will see a shared rating, nickname, photo or pub. Confirm you'll keep it decent and won't share anything that isn't yours."
+
+msgid "Pravidla"
+msgstr "Rules"
+
+msgid "Potvrzuju"
+msgstr "I confirm"
+
+msgid "Hledej pivo nebo pivovar"
+msgstr "Search for a beer or brewery"
+
 #, python-format
-msgid "%(h)s h"
-msgstr "%(h)s h"
+msgid "Výsledky pro „%(query)s“"
+msgstr "Results for “%(query)s”"
+
+msgid "Zpátky na žebříček"
+msgstr "Back to the ranking"
+
+msgid "Nejlepší piva v Česku"
+msgstr "Best beers in Czechia"
+
+msgid "Žebříček se teprve plní"
+msgstr "The ranking is still filling up"
+
+msgid "Styl piva"
+msgstr "Beer style"
+
+msgid "Tohle pivo v katalogu nemám. Zkus jiný název nebo pivovar."
+msgstr "That beer isn't in the catalogue. Try another name or brewery."
+
+msgid "Žebříček zatím nemá dost hodnocení. Ohodnoť pár piv a naplní se."
+msgstr "The ranking doesn't have enough ratings yet. Rate a few beers and it fills up."
+
+msgid "Moje piva"
+msgstr "My beers"
+
+#, python-format
+msgid "%(n)s z 5 hvězd"
+msgstr "%(n)s of 5 stars"
+
+msgid "Změnit hodnocení"
+msgstr "Change rating"
+
+msgid "Ještě bez známky"
+msgstr "Not rated yet"
+
+msgid "Zatím tu nic není"
+msgstr "Nothing here yet"
+
+msgid "Vyber pivo v žebříčku nebo ho najdi a dej mu hvězdy. Piva zapsaná v appce se tu objeví taky."
+msgstr "Pick a beer in the ranking or search for it and give it stars. Beers you rate in the app show up here too."
+
+msgid "Vybrané pivo"
+msgstr "Selected beer"
+
+#, python-format
+msgid "%(rank)s. v Česku"
+msgstr "#%(rank)s in Czechia"
+
+msgid "vypito v Na pivo"
+msgstr "drunk in Na pivo"
+
+msgid "lidí ho pilo"
+msgstr "people drank it"
+
+msgid "tento týden"
+msgstr "this week"
+
+msgid "Tvoje známka"
+msgstr "Your rating"
+
+msgid "Změnit"
+msgstr "Change"
+
+msgid "Ohodnotit"
+msgstr "Rate"
+
+#, python-format
+msgid "%(names)s a další %(more)s ho pijou"
+msgstr "%(names)s and %(more)s more drink it"
+
+#, python-format
+msgid "%(names)s ho pijou"
+msgstr "%(names)s drink it"
+
+msgid "průměr party"
+msgstr "crew average"
+
+msgid "Kde přesně"
+msgstr "Where exactly"
+
+msgid "Fotky od lidí"
+msgstr "Photos from people"
+
+msgid "Vyber si pivo"
+msgstr "Pick a beer"
+
+msgid "Klepni na pivo vlevo a uvidíš, jak ho hodnotí ostatní i tvoje parta."
+msgstr "Click a beer on the left to see how others and your crew rate it."
+
+msgid "Hvězdy"
+msgstr "Stars"
+
+msgid "Štítky"
+msgstr "Tags"
+
+msgid "Pár slov"
+msgstr "A few words"
+
+msgid "Pár slov, když chceš"
+msgstr "A few words, if you like"
+
+msgid "Kdo hodnocení uvidí?"
+msgstr "Who sees the rating?"
+
+msgid "Uložit hodnocení"
+msgstr "Save rating"
+
+msgid "Žádosti o přátelství"
+msgstr "Friend requests"
+
+#, python-format
+msgid "%(name)s chce do party"
+msgstr "%(name)s wants to join your crew"
+
+#, python-format
+msgid "Odmítnout %(name)s"
+msgstr "Decline %(name)s"
+
+#, python-format
+msgid "Přijmout %(name)s"
+msgstr "Accept %(name)s"
+
+msgid "Kamarádi"
+msgstr "Friends"
+
+msgid "Parta je zatím prázdná"
+msgstr "Your crew is empty so far"
+
+msgid "Pošli kamarádům odkaz nebo je najdi podle přezdívky. Až žádost přijmou, uvidíte se tady."
+msgstr "Send your friends a link or find them by nickname. Once they accept, you'll see each other here."
+
+msgid "Čeká na odpověď:"
+msgstr "Waiting for an answer:"
+
+msgid "Přidat kamaráda"
+msgstr "Add a friend"
+
+msgid "Podle přezdívky"
+msgstr "By nickname"
+
+msgid "přezdívka"
+msgstr "nickname"
+
+msgid "V partě"
+msgstr "In your crew"
+
+msgid "Žádost odeslaná"
+msgstr "Request sent"
+
+msgid "Poslat žádost"
+msgstr "Send request"
+
+msgid "Nikoho takového nevidím. Zkus jinou přezdívku, nebo mu pošli odkaz."
+msgstr "I can't see anyone like that. Try another nickname or send them a link."
+
+msgid "Nebo mu pošli odkaz"
+msgstr "Or send them a link"
+
+msgid "Odkaz do party"
+msgstr "Crew invite link"
+
+msgid "Kopírovat"
+msgstr "Copy"
+
+msgid "Kdo ho otevře, pošle ti žádost. Přijmout ji musíš ty."
+msgstr "Whoever opens it sends you a request. You have to accept it."
+
+msgid "Žebříček party"
+msgstr "Crew leaderboard"
+
+msgid "posledních 30 dní"
+msgstr "last 30 days"
+
+msgid "Účet mažeme"
+msgstr "Deleting your account"
+
+#, python-format
+msgid "Odhlásil jsem tě na webu i v appce. Účet a data se nevratně smažou za %(days)s dní. Když si to rozmyslíš, stačí se do té doby znovu přihlásit a účet se obnoví i se vším, co v něm máš."
+msgstr "I signed you out on the web and in the app. The account and its data will be deleted for good in %(days)s days. If you change your mind, just sign in again before then and the account comes back with everything in it."
+
+msgid "Na úvod"
+msgstr "Home"
+
+msgid "Přihlásit se a obnovit účet"
+msgstr "Sign in and restore the account"
+
+msgid "Moje hospody"
+msgstr "My pubs"
+
+msgid "Tvoje hospody"
+msgstr "Your pubs"
+
+msgid "Oblíbená"
+msgstr "Favourite"
+
+msgid "Vybraná hospoda"
+msgstr "Selected pub"
+
+msgid "Máš ji v oblíbených"
+msgstr "It's in your favourites"
+
+msgid "Detail hospody"
+msgstr "Pub details"
+
+msgid "Zatím žádná hospoda"
+msgstr "No pubs yet"
+
+msgid "Hospody, kde zapíšeš pivo nebo které si v appce dáš do oblíbených, se objeví tady. Chybí ti nějaká na mapě? Přidej ji."
+msgstr "Pubs where you log a beer or that you favourite in the app show up here. Missing one on the map? Add it."
+
+msgid "Části nastavení"
+msgstr "Settings sections"
+
+msgid "Účet a přihlášení"
+msgstr "Account and sign-in"
+
+msgid "Kompas, připomínky a domovský bod nastavíš v appce."
+msgstr "Set up the compass, reminders and home point in the app."
+
+msgid "Nahrát fotku"
+msgstr "Upload photo"
+
+msgid "Smazat fotku"
+msgstr "Remove photo"
+
+msgid "Uvidí ji parta a lidi u tvých hodnocení."
+msgstr "Your crew sees it, and so do people next to your ratings."
+
+msgid "Jméno"
+msgstr "Name"
+
+msgid "Uložit profil"
+msgstr "Save profile"
+
+msgid "ověřený"
+msgstr "verified"
+
+msgid "zatím neověřený"
+msgstr "not verified yet"
+
+msgid "Jak se přihlašuješ"
+msgstr "How you sign in"
+
+#, python-format
+msgid "Odpojit %(name)s? Přihlašovat se pak budeš jiným způsobem."
+msgstr "Disconnect %(name)s? You'll then sign in another way."
+
+#, python-format
+msgid "Odpojit %(name)s"
+msgstr "Disconnect %(name)s"
+
+msgid "Heslo je uložené."
+msgstr "Password saved."
+
+msgid "Aspoň 8 znaků."
+msgstr "At least 8 characters."
+
+msgid "Přidej si e-mail a heslo, ať se přihlásíš i bez Googlu nebo Applu."
+msgstr "Add an email and password so you can sign in without Google or Apple too."
+
+msgid "Změnit heslo"
+msgstr "Change password"
+
+msgid "Nastavit heslo"
+msgstr "Set password"
+
+msgid "Veřejný profil"
+msgstr "Public profile"
+
+msgid "Kdo zná tvou přezdívku, uvidí počty a odznaky."
+msgstr "Anyone who knows your nickname sees your counts and badges."
+
+msgid "Kamarádi vidí můj pivní feed"
+msgstr "Friends see my beer feed"
+
+msgid "Piva z večera se ukážou partě."
+msgstr "Beers from your night show up for your crew."
+
+msgid "Vyvěšovat noci"
+msgstr "Post nights"
+
+msgid "Komu se večer sám vyvěsí na Výčep. Ručně znamená jen to, co pustíš sám."
+msgstr "Who your night gets posted to on the Taproom automatically. Manual means only what you post yourself."
+
+msgid "Poslat moje data e-mailem"
+msgstr "Email me my data"
+
+msgid "Deník, hodnocení a hospody v jednom souboru."
+msgstr "Diary, ratings and pubs in one file."
+
+msgid "Export ti letí na e-mail."
+msgstr "The export is on its way to your email."
+
+msgid "Poslat"
+msgstr "Send"
+
+msgid "Stáhnout data hned"
+msgstr "Download data now"
+
+msgid "Stejný soubor rovnou do počítače."
+msgstr "The same file straight to your computer."
+
+msgid "Stáhnout"
+msgstr "Download"
+
+msgid "Odhlásit se všude"
+msgstr "Sign out everywhere"
+
+msgid "Z webu, z appky i ze všech telefonů."
+msgstr "From the web, the app and every phone."
+
+msgid "Smazat účet"
+msgstr "Delete account"
+
+msgid "Smaže účet, deník i hodnocení."
+msgstr "Deletes the account, diary and ratings."
+
+msgid "Smazat účet?"
+msgstr "Delete account?"
+
+#, python-format
+msgid "Do %(days)s dní to můžeš zrušit tím, že se znovu přihlásíš. Pak se účet i data nevratně smažou."
+msgstr "You can undo it within %(days)s days by signing in again. After that the account and data are deleted for good."
+
+msgid "Hodnocení piv a fotky"
+msgstr "Beer ratings and photos"
+
+msgid "Parta a odznaky"
+msgstr "Crew and badges"
+
+msgid "Chceš si je nechat? Pošli si je předtím e-mailem"
+msgstr "Want to keep it? Email it to yourself first"
+
+msgid "Smazat"
+msgstr "Delete"
+
+msgid "Čí večery"
+msgstr "Whose nights"
+
+msgid "celý svět"
+msgstr "everyone"
+
+msgid "parta"
+msgstr "crew"
+
+msgid "Runda"
+msgstr "Round"
+
+msgid "Parta zatím nic nevyvěsila"
+msgstr "Your crew hasn't posted anything yet"
+
+msgid "Až někdo z party vyvěsí svůj večer, objeví se tady."
+msgstr "When someone in your crew posts their night, it shows up here."
+
+msgid "Pozvat do party"
+msgstr "Invite to your crew"
+
+msgid "Výčep je zatím prázdný"
+msgstr "The Taproom is empty so far"
+
+msgid "Večery, které lidi vyvěsí pro všechny, se objeví tady."
+msgstr "Nights people post for everyone show up here."
+
+msgid "Starší večery"
+msgstr "Older nights"
+
+msgid "Posledních 7 dní v partě"
+msgstr "Last 7 days in your crew"
+
+msgid "Posledních 7 dní ve světě"
+msgstr "Last 7 days everywhere"
+
+msgid "vyvěšených nocí"
+msgstr "nights posted"
+
+msgid "vede"
+msgstr "leads"
+
+msgid "Parta je venku"
+msgstr "Crew out now"
+
+msgid "Celá parta"
+msgstr "Whole crew"
+
+msgid "Teď nikdo z party nesedí v hospodě."
+msgstr "Nobody from your crew is at the pub right now."
+
+msgid "Má říz"
+msgstr "Crisp"
+
+msgid "Pěna jak smetana"
+msgstr "Creamy head"
+
+msgid "Jde samo"
+msgstr "Goes down easy"
+
+msgid "Vodový"
+msgstr "Watery"
+
+msgid "Zvětralý"
+msgstr "Stale"
+
+msgid "Předražený"
+msgstr "Overpriced"
+
+msgid "Ještě jedno"
+msgstr "One more"
+
+msgid "Už nikdy"
+msgstr "Never again"
+
+msgid "Nic moc"
+msgstr "Meh"
+
+msgid "Ujde"
+msgstr "OK"
+
+msgid "Dobrý"
+msgstr "Good"
+
+msgid "Moc dobrý"
+msgstr "Very good"
+
+msgid "Pecka"
+msgstr "Superb"
+
+msgid "Uvidíš jen ty"
+msgstr "Only you will see it"
+
+msgid "Uvidí tvoje parta"
+msgstr "Your crew will see it"
+
+msgid "Uvidí všichni u piva"
+msgstr "Everyone in Na pivo will see it"
+
+msgid "Světlá"
+msgstr "Pale"
+
+msgid "Polotmavá"
+msgstr "Amber"
+
+msgid "Tmavá"
+msgstr "Dark"
+
+msgid "Craft"
+msgstr "Craft"
+
+msgid "dnes"
+msgstr "today"
+
+msgid "včera"
+msgstr "yesterday"
+
+#, python-format
+msgid "před %(n)s dnem"
+msgstr "%(n)s day ago"
+
+#, python-format
+msgid "před %(n)s dny"
+msgstr "%(n)s days ago"
+
+msgid "minulý týden"
+msgstr "last week"
+
+msgid "Jsi bez internetu. Zkus to znovu, až chytíš signál."
+msgstr "You're offline. Try again once you have signal."
+
+msgid "Nepovedlo se to. Zkus to prosím znovu."
+msgstr "That didn't work. Please try again."
+
+msgid "Zkopírováno"
+msgstr "Copied"
+
+msgid "Vyplň název, město i adresu."
+msgstr "Fill in the name, city and address."
+
+msgid "Adresu teď nedokážu dohledat. Zkus to za chvíli, vyplněné údaje ti tu nechám."
+msgstr "I can't look the address up right now. Try again in a moment, I'll keep what you filled in."
+
+msgid "Tuhle adresu jsem nenašel. Zkontroluj ulici s číslem a město."
+msgstr "I couldn't find that address. Check the street, number and city."
+
+#, python-format
+msgid "Vypil jsi ho %(n)s×"
+msgstr "You drank it %(n)s×"
+
+msgid "Všechna"
+msgstr "All"
+
+#, python-format
+msgid "%(n)s hodnocení"
+msgstr "%(n)s ratings"
+
+#, python-format
+msgid "Čepuje ho %(n)s hospoda"
+msgstr "%(n)s pub pours it"
+
+#, python-format
+msgid "Čepujou ho %(n)s hospody"
+msgstr "%(n)s pubs pour it"
+
+#, python-format
+msgid "Čepuje ho %(n)s hospod"
+msgstr "%(n)s pubs pour it"
+
+#, python-format
+msgid "Byl jsi tu %(n)s×"
+msgstr "You've been here %(n)s×"
+
+#, python-format
+msgid "naposledy %(when)s"
+msgstr "last time %(when)s"
+
+msgid "Přidal jsi ji ty"
+msgstr "You added it"
+
+msgid "Teď venku"
+msgstr "Out now"
+
+#, python-format
+msgid "Naposledy %(when)s · %(pub)s"
+msgstr "Last time %(when)s · %(pub)s"
+
+#, python-format
+msgid "Naposledy %(when)s"
+msgstr "Last time %(when)s"
+
+msgid "Zatím jste spolu nebyli"
+msgstr "You haven't been out together yet"
+
+#, python-format
+msgid "%(n)s večer spolu"
+msgstr "%(n)s night together"
+
+#, python-format
+msgid "%(n)s večery spolu"
+msgstr "%(n)s nights together"
+
+#, python-format
+msgid "%(n)s večerů spolu"
+msgstr "%(n)s nights together"
+
+msgid "Ty"
+msgstr "You"
+
+#, python-format
+msgid "Před tebou je %(name)s o %(n)s pivo."
+msgstr "%(name)s is %(n)s beer ahead of you."
+
+#, python-format
+msgid "Před tebou je %(name)s o %(n)s piva."
+msgstr "%(name)s is %(n)s beers ahead of you."
+
+#, python-format
+msgid "Před tebou je %(name)s o %(n)s piv."
+msgstr "%(name)s is %(n)s beers ahead of you."
 
 #, python-format
 msgid "%(m)s min"
 msgstr "%(m)s min"
+
+#, python-format
+msgid "%(h)s h %(m)s min"
+msgstr "%(h)s h %(m)s min"
+
+#, python-format
+msgid "%(h)s h"
+msgstr "%(h)s h"
 
 msgid "Doma / na chatě"
 msgstr "Home / cottage"
@@ -2144,9 +2749,6 @@ msgstr "Today"
 
 msgid "za týden"
 msgstr "in the week"
-
-msgid "minulý týden"
-msgstr "the week before"
 
 #, python-format
 msgid "v roce %(year)s"
@@ -2512,9 +3114,6 @@ msgstr "Fix the beer"
 msgid "Cena"
 msgstr "Price"
 
-msgid "Smazat"
-msgstr "Delete"
-
 msgid "Uložit"
 msgstr "Save"
 
@@ -2536,9 +3135,6 @@ msgstr "Back to the diary"
 
 msgid "Upravit profil"
 msgstr "Edit profile"
-
-msgid "Zatím tu nic není"
-msgstr "Nothing here yet"
 
 msgid "Až zapíšeš první pivo, ukážu ti tady, kam chodíš, co piješ a s kým."
 msgstr "Once you log your first beer, I'll show you where you go, what you drink and who with."
@@ -2932,9 +3528,6 @@ msgstr "Log in on the web"
 msgid "Otevírací doba"
 msgstr "Opening hours"
 
-msgid "dnes"
-msgstr "today"
-
 msgid "Otevře mapy v telefonu"
 msgstr "Opens maps on your phone"
 
@@ -2961,9 +3554,6 @@ msgstr "Is a pub missing?"
 
 msgid "Hospody do mapy zapisují lidi jako ty. Stačí název a adresa, ceny a pivo na čepu doplní další štamgasti."
 msgstr "People like you put pubs on the map. A name and an address are enough, other regulars add prices and what's on tap."
-
-msgid "Přidat hospodu"
-msgstr "Add a pub"
 
 msgid "Ceny zapisují lidi v appce, když si zapíšou pivo s cenou nebo doplní lístek hospody."
 msgstr "People add prices in the app when they log a beer with its price or fill in a pub's tap list."
@@ -3015,3 +3605,41 @@ msgstr "beer went down here last week"
 
 msgid "piva tu padla minulý týden"
 msgstr "beers went down here last week"
+
+msgid "%(n)s pivo"
+msgstr "%(n)s beer"
+
+#, python-format
+msgid "%(n)s piva"
+msgstr "%(n)s beers"
+
+#, python-format
+msgid "%(n)s piv"
+msgstr "%(n)s beers"
+
+msgid "Svět"
+msgstr "Everyone"
+
+msgid "E-mail a heslo"
+msgstr "Email and password"
+
+msgid "Ručně"
+msgstr "Manually"
+
+msgid "Partě"
+msgstr "To my crew"
+
+msgid "Všem"
+msgstr "To everyone"
+
+#, python-format
+msgid "Deník: %(n)s zapsané pivo"
+msgstr "Diary: %(n)s logged beer"
+
+#, python-format
+msgid "Deník: %(n)s zapsaná piva"
+msgstr "Diary: %(n)s logged beers"
+
+#, python-format
+msgid "Deník: %(n)s zapsaných piv"
+msgstr "Diary: %(n)s logged beers"

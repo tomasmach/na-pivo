@@ -50,7 +50,7 @@ from pubs.i18n import current_locale
 from pubs.models import Account, AuthIdentity, PushDevice
 
 from . import auth_serializers as s
-from .authentication import AccountTokenAuthentication
+from .authentication import AccountTokenAuthentication, WebSessionAuthentication
 from .serializers import AccountMeSerializer
 
 logger = logging.getLogger("pubs.api.auth")
@@ -462,7 +462,7 @@ class LinkView(_AuthView):
 
 
 class UnlinkView(_AuthView):
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_scope = "auth"
 
@@ -480,7 +480,7 @@ class UnlinkView(_AuthView):
 
 
 class SetPasswordView(_AuthView):
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_scope = "auth"
 

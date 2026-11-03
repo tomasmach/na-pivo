@@ -1,0 +1,29 @@
+{% extends "web/account/base.html" %}
+{% load i18n web %}
+{% block page %}
+<header class="np-app__head">
+  <div class="npa-title-row">
+    <a class="npa-back" href="{% web_url "web-my-pubs" %}" aria-label="{% translate "Zpátky na moje hospody" %}">{% icon "chevron-left" %}</a>
+    <h1 class="np-app__title">{% translate "Přidat hospodu" %}</h1>
+  </div>
+</header>
+{% web_url "web-my-pubs" as done_url %}
+<form class="npa-form" id="npa-add-pub" data-done="{{ done_url }}" novalidate>
+  {% translate "Název" as l_name %}{% include "web/components/field.html" with name="name" label=l_name maxlength=200 required=True autocomplete="off" %}
+  <div class="npa-form__row">
+    {% translate "Město" as l_city %}{% include "web/components/field.html" with name="city" label=l_city maxlength=120 required=True autocomplete="address-level2" %}
+    {% translate "Ulice a číslo" as l_address %}{% include "web/components/field.html" with name="address" label=l_address maxlength=255 required=True autocomplete="street-address" %}
+  </div>
+  <div class="npa-form__found" data-found hidden>
+    {% icon "map-pin" %}
+    <p><strong>{% translate "Našel jsem tuhle adresu" %}</strong><span></span></p>
+  </div>
+  <p class="npa-info">{% icon "shield-check" "np-icon--s" %}{% translate "Kde hospoda stojí, zjistím z adresy. Než ji uložím, ukážu ti, co jsem našel. Pak ji uvidí všichni na mapě v appce." %}</p>
+  <p class="np-alert" role="alert" data-error hidden></p>
+  <div class="npa-dialog__actions">
+    <a class="np-btn np-btn--l" href="{{ done_url }}">{% translate "Zrušit" %}</a>
+    <button class="np-btn np-btn--primary np-btn--l npa-grow" type="submit" data-lookup>{% icon "search" "np-icon--s" %}{% translate "Najít adresu" %}</button>
+    <button class="np-btn np-btn--primary np-btn--l npa-grow" type="submit" data-save hidden>{% icon "send" "np-icon--s" %}{% translate "Sedí, přidat hospodu" %}</button>
+  </div>
+</form>
+{% endblock %}
