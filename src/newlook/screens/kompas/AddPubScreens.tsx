@@ -12,7 +12,15 @@ import { ensureLocationPermission } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
 import { lookupAddedPubLocation, type AddedPubLocation } from '@/data/addedPubLocationClient';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
-import { enqueueAddedPub, enqueueAddedPubEdit, loadAddedPubSubmissions, retryAddedPub, syncOwnAddedPubs, type AddedPubSubmission } from '@/data/addedPubsQueue';
+import {
+  enqueueAddedPub,
+  enqueueAddedPubEdit,
+  loadAddedPubSubmissions,
+  onAddedPubSubmissionsChanged,
+  retryAddedPub,
+  syncOwnAddedPubs,
+  type AddedPubSubmission,
+} from '@/data/addedPubsQueue';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { resolvePubSearchResult, suggestPubsToAdd, type PubSearchResult } from '@/data/pubSearchClient';
 import { t } from '@/i18n';
@@ -551,16 +559,18 @@ function AddedPubs({ onAdd }: { onAdd: () => void }) {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      const reload = async () => {
+        const rows = await loadAddedPubSubmissions();
+        if (active) setRows(rows);
+      };
+      const stopListening = onAddedPubSubmissionsChanged(() => void reload());
       void (async () => {
-        const cached = await loadAddedPubSubmissions();
-        if (!active) return;
-        setRows(cached);
-        await syncOwnAddedPubs();
-        const fresh = await loadAddedPubSubmissions();
-        if (active) setRows(fresh);
+        await reload();
+        if (active) await syncOwnAddedPubs();
       })();
       return () => {
         active = false;
+        stopListening();
       };
     }, []),
   );

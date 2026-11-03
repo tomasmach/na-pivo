@@ -5,6 +5,7 @@ import {
   enqueueAddedPub,
   flushAddedPubsQueue,
   loadAddedPubSubmissions,
+  onAddedPubSubmissionsChanged,
   retryAddedPub,
   restoreQueuedAddedPubs,
   syncOwnAddedPubs,
@@ -157,6 +158,31 @@ describe('added pub state registry', () => {
     await expect(loadAddedPubSubmissions()).resolves.toEqual([
       expect.objectContaining({ syncState: 'synced', pendingOperation: null }),
     ]);
+  });
+
+  it('tells an open list when a queued addition is delivered', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce('retry');
+    await enqueueAddedPub(ENTRY);
+    const seen: string[] = [];
+    const stop = onAddedPubSubmissionsChanged(() => {
+      void loadAddedPubSubmissions().then((rows) => seen.push(rows[0]?.syncState ?? 'none'));
+    });
+
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce({
+      clientId: ENTRY.client_id,
+      cacheKey: 'u2fkbnvy',
+      name: ENTRY.name,
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      city: ENTRY.city,
+      address: ENTRY.address,
+    });
+    await flushAddedPubsQueue();
+    await loadAddedPubSubmissions();
+    stop();
+    await enqueueAddedPub({ ...ENTRY, client_id: 'after-stop' });
+
+    expect(seen).toEqual(['synced']);
   });
 
   it('folds an offline rename of an unsent addition into its single create', async () => {
