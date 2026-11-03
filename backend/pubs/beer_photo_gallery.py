@@ -55,20 +55,22 @@ def visible_beer_photos(
     *,
     friend_ids: set[int],
     blocked_ids: set[int],
+    beer_keys: list[str],
 ) -> QuerySet[BeerPhoto]:
-    """Every beer photo ``viewer`` may see, before any beer filter."""
+    """Photos of the beers in ``beer_keys`` that ``viewer`` may see."""
     friend_ids = set(friend_ids) - set(blocked_ids)
     shared = Q(account_id__in=friend_ids, visibility__in=BEER_PHOTO_SHARED_VISIBILITIES)
     public = Q(visibility=BeerPhoto.Visibility.PUBLIC) & ~(
         Q(account__nickname__isnull=True) | Q(account__nickname="")
     )
+    of_beer = BeerPhoto.objects.filter(beer_key__in=beer_keys)
     others = (
-        BeerPhoto.objects.filter(shared | public)
+        of_beer.filter(shared | public)
         .filter(account__status=Account.Status.ACTIVE, account__ghost_mode=False)
         .exclude(account=viewer)
         .exclude(account_id__in=blocked_ids)
     )
-    return BeerPhoto.objects.filter(Q(account=viewer) | Q(pk__in=others.values("pk")))
+    return of_beer.filter(Q(account=viewer) | Q(pk__in=others.values("pk")))
 
 
 def visible_beer_photo_count(viewer: Account, *, beer: str = "", beer_name: str = "") -> int:
@@ -83,7 +85,6 @@ def visible_beer_photo_count(viewer: Account, *, beer: str = "", beer_name: str 
             viewer,
             friend_ids=set(_accepted_friend_ids(viewer)),
             blocked_ids=_blocked_account_ids(viewer),
-        )
-        .filter(beer_key__in=keys)
-        .count()
+            beer_keys=keys,
+        ).count()
     )

@@ -183,7 +183,8 @@ class BeerPhotosView(APIView):
             request.user,
             friend_ids=set(_accepted_friend_ids(request.user)),
             blocked_ids=_blocked_account_ids(request.user),
-        ).filter(beer_key__in=keys)
+            beer_keys=keys,
+        )
         contest = current_photo_contest()
         rows = (
             _beer_photo_queryset(contest)
