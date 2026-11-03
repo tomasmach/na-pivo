@@ -17,6 +17,13 @@ import type { NightVisibility } from './nightsClient';
 
 const PATH = '/v1/account/me';
 
+/** Bumped at every account boundary; a reply that straddles one belongs to the previous account. */
+let boundaryGeneration = 0;
+
+export function forgetSharingPrefsForAccountBoundary(): void {
+  boundaryGeneration += 1;
+}
+
 interface RemoteSharing {
   shareDefault: NightVisibility;
   nightAutopublish: NightAutopublish;
@@ -82,17 +89,18 @@ function wire(prefs: SharingPrefs): Record<string, unknown> {
 
 /** Push a pending local change, otherwise adopt the server value. */
 export async function syncSharingPrefs(): Promise<void> {
+  const generation = boundaryGeneration;
   const local = useVycepStore.getState();
   if (!local.sharingDirty) {
     const remote = await request();
-    if (remote && !useVycepStore.getState().sharingDirty) adopt(remote);
+    if (remote && generation === boundaryGeneration && !useVycepStore.getState().sharingDirty) adopt(remote);
     return;
   }
   const sent = wire(local);
   const remote = await request(sent);
   const now = useVycepStore.getState();
   // A newer local change made while this PATCH was in flight stays dirty.
-  if (remote && JSON.stringify(wire(now)) === JSON.stringify(sent)) adopt(remote);
+  if (remote && generation === boundaryGeneration && JSON.stringify(wire(now)) === JSON.stringify(sent)) adopt(remote);
 }
 
 /** Change the defaults on this device right away and tell the server. */

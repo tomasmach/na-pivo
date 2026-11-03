@@ -29,6 +29,7 @@ import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
 import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
 import { clearPubFavoritesQueue } from './pubFavoritesQueue';
 import { clearLocalPubFavorites } from './pubFavoritesSync';
+import { forgetSharingPrefsForAccountBoundary } from './sharingPrefsClient';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
@@ -174,6 +175,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     counterNudgeDismissal: null,
   });
   // Výčep publication ledger is tied to the outgoing account's nights.
+  forgetSharingPrefsForAccountBoundary();
   useVycepStore.setState({ published: {}, ...DEFAULT_SHARING_PREFS });
   // Seen levels and unopened medals describe the outgoing account.
   useBadgeStore.getState().reset();
