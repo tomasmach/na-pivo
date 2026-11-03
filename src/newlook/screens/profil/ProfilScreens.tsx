@@ -65,8 +65,6 @@ import {
   useSettingsStore,
   type BeerCountReminderIntervalMinutes,
 } from '@/stores/settingsStore';
-import { palette, PALETTES, type Palette } from '@/theme/palette';
-import { switchPalette } from '@/theme/switchPalette';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 
@@ -834,11 +832,6 @@ export function NastaveniScreen() {
     if (answer === 'denied') notificationsDenied();
   };
 
-  const pickPalette = async (next: Palette) => {
-    if (next === palette) return;
-    if (!(await switchPalette(next))) toast({ kind: 'error', title: t.account.errorGeneric });
-  };
-
   const pickLocale = async (code: Locale) => {
     if (code === locale) return;
     if (!(await switchLocale(code))) toast({ kind: 'error', title: t.account.errorGeneric });
@@ -977,21 +970,7 @@ export function NastaveniScreen() {
       </T>
       <Card>
         <Row title={P().settings.haptics} sub={P().settings.hapticsSub} trailing={<Toggle value={st.hapticEnabled} onChange={toggleHaptic} />} />
-        <Row title={P().settings.sound} sub={P().settings.soundSub} trailing={<Toggle value={st.soundEnabled} onChange={toggleSound} />} />
-        <Row
-          last
-          title={P().settings.palette}
-          sub={P().settings.paletteSub}
-          trailing={
-            <Segmented
-              height={36}
-              style={{ width: 150 }}
-              options={PALETTES.map((key) => ({ key, label: P().settings[key] }))}
-              value={palette}
-              onChange={(next) => void pickPalette(next)}
-            />
-          }
-        />
+        <Row last title={P().settings.sound} sub={P().settings.soundSub} trailing={<Toggle value={st.soundEnabled} onChange={toggleSound} />} />
       </Card>
       <T s={15} w={700} c={C.muted}>
         {P().settings.other}
