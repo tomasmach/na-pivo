@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Keyboard, Platform, type KeyboardEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Easing,
   LinearTransition,
@@ -81,9 +82,13 @@ export const layoutMove = LinearTransition.duration(DURATION.base).easing(EASE_E
  */
 export function useKeyboardLift(): SharedValue<number> {
   const lift = useSharedValue(0);
+  // React Native on Android reports the keyboard height without the navigation bar under it.
+  const insets = useSafeAreaInsets();
+  const navBar = Platform.OS === 'android' ? insets.bottom : 0;
   useEffect(() => {
     const ios = Platform.OS === 'ios';
-    const to = (height: number, e?: KeyboardEvent) => {
+    const to = (keyboardHeight: number, e?: KeyboardEvent) => {
+      const height = keyboardHeight > 0 ? keyboardHeight + navBar : 0;
       const duration = ios && e?.duration ? e.duration : DURATION.base;
       lift.value = withTiming(height, { duration, easing: ios ? EASE_KEYBOARD : EASE_ENTER, reduceMotion: ReduceMotion.Never });
     };
@@ -93,6 +98,6 @@ export function useKeyboardLift(): SharedValue<number> {
       show.remove();
       hide.remove();
     };
-  }, [lift]);
+  }, [lift, navBar]);
   return lift;
 }
