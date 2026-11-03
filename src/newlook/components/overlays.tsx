@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { t } from '@/i18n';
 
+import { useSettingsStore } from '@/stores/settingsStore';
 import { fireSuccessHaptic } from '@/utils/haptics';
 
 import { DURATION, enter, exit, fadeIn, fadeInTiming, fadeOut, fadeOutTiming, riseIn, sinkOut, useKeyboardLift } from '../motion';
@@ -37,7 +38,7 @@ export function ToastHost() {
 
   useEffect(() => {
     if (!t) return;
-    if (t.kind === 'saved' || t.kind === 'xp') fireSuccessHaptic();
+    if ((t.kind === 'saved' || t.kind === 'xp') && useSettingsStore.getState().hapticEnabled) fireSuccessHaptic();
     const timer = setTimeout(hide, 2800);
     return () => clearTimeout(timer);
   }, [t, hide]);

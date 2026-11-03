@@ -15,6 +15,7 @@ import {
 import Animated, { interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 
+import { useSettingsStore } from '@/stores/settingsStore';
 import { fireSelectionHaptic } from '@/utils/haptics';
 
 import { DURATION, enterTiming, fadeInTiming } from '../motion';
@@ -77,7 +78,7 @@ export function Press({
         onPressOut?.(e);
       }}
       onPress={(e) => {
-        if (haptic) fireSelectionHaptic();
+        if (haptic && useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
         onPress?.(e);
       }}
       style={[style, pressStyle]}
@@ -428,7 +429,7 @@ export function Toggle({ value, onChange }: { value: boolean; onChange: (v: bool
   return (
     <Pressable
       onPress={() => {
-        fireSelectionHaptic();
+        if (useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
         onChange(!value);
       }}
       accessibilityRole="switch"

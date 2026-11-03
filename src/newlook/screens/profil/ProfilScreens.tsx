@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Linking, ScrollView, Share, View, type TextInputInstance } from 'react-native';
+import { AppState, Image, Linking, ScrollView, Share, View, type TextInputInstance } from 'react-native';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import * as Clipboard from 'expo-clipboard';
@@ -44,6 +44,7 @@ import {
 } from '@/notifications/beerCountReminder';
 import { disableHomeTransitReminder, enableHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { disablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
+import { askTourReminderPermission, notificationPermissionStatus } from '@/notifications/tourReminder';
 import { pickAndPrepareAvatar } from '@/profile/avatarPicker';
 import { PUBLIC_BADGE_KEYS, badgeStates } from '@/profile/badgeModel';
 import { roman } from '@/profile/badgeText';
@@ -64,6 +65,8 @@ import {
   useSettingsStore,
   type BeerCountReminderIntervalMinutes,
 } from '@/stores/settingsStore';
+import { palette, PALETTES, type Palette } from '@/theme/palette';
+import { switchPalette } from '@/theme/switchPalette';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 
@@ -748,6 +751,17 @@ export function NastaveniScreen() {
   const [busy, setBusy] = useState(false);
   const homeSet = st.homePoint != null;
   const providers = me.profile?.providers ?? [];
+  // On only when tour reminders can really come: a fresh install that was never asked shows off, and a tap asks.
+  const [tourPermissionGranted, setTourPermissionGranted] = useState(false);
+  useEffect(() => {
+    const check = () => void notificationPermissionStatus().then((status) => setTourPermissionGranted(status === 'granted'));
+    check();
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') check();
+    });
+    return () => subscription.remove();
+  }, []);
+  const tourRemindersOn = st.tourRemindersEnabled && tourPermissionGranted;
 
   const togglePicker = (next: 'distance' | 'interval') => setPicker((current) => (current === next ? null : next));
 
@@ -790,6 +804,39 @@ export function NastaveniScreen() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const toggleHaptic = (on: boolean) => {
+    st.setHapticEnabled(on);
+    void updateAccountPreferences({ hapticEnabled: on });
+  };
+
+  const toggleSound = (on: boolean) => {
+    st.setSoundEnabled(on);
+    void updateAccountPreferences({ soundEnabled: on });
+  };
+
+  const toggleHideNames = (on: boolean) => {
+    st.setHidePubNames(on);
+    void updateAccountPreferences({ hidePubNames: on });
+  };
+
+  const toggleTourReminders = async () => {
+    if (tourRemindersOn) {
+      st.setTourRemindersEnabled(false);
+      return;
+    }
+    st.setTourRemindersEnabled(true);
+    const answer = await askTourReminderPermission();
+    setTourPermissionGranted(answer === 'granted');
+    if (answer !== 'granted') useSettingsStore.getState().setTourRemindersEnabled(false);
+    // Only a real no sends people to the system settings; without an answer the toggle can simply be tried again.
+    if (answer === 'denied') notificationsDenied();
+  };
+
+  const pickPalette = async (next: Palette) => {
+    if (next === palette) return;
+    if (!(await switchPalette(next))) toast({ kind: 'error', title: t.account.errorGeneric });
   };
 
   const pickLocale = async (code: Locale) => {
@@ -865,6 +912,7 @@ export function NastaveniScreen() {
             />
           }
         />
+        <Row title={P().settings.hideNames} sub={P().settings.hideNamesSub} trailing={<Toggle value={st.hidePubNames} onChange={toggleHideNames} />} />
         <Row
           last
           title={P().settings.homePoint}
@@ -900,6 +948,11 @@ export function NastaveniScreen() {
           sub={P().settings.lastTransitSub}
           trailing={<Toggle value={st.homeTransitReminderEnabled && homeSet} onChange={() => void toggleTransit()} />}
         />
+        <Row
+          title={P().settings.tourReminders}
+          sub={P().settings.tourRemindersSub}
+          trailing={<Toggle value={tourRemindersOn} onChange={() => void toggleTourReminders()} />}
+        />
         <Row title={P().settings.water} sub={P().settings.waterSub} trailing={<Toggle value={st.waterNudgeEnabled} onChange={st.setWaterNudgeEnabled} />} />
         <Row
           last
@@ -915,6 +968,27 @@ export function NastaveniScreen() {
                 st.setPubReminderEnabled(false);
                 void disablePubReminderNotifications();
               }}
+            />
+          }
+        />
+      </Card>
+      <T s={15} w={700} c={C.muted}>
+        {P().settings.phone}
+      </T>
+      <Card>
+        <Row title={P().settings.haptics} sub={P().settings.hapticsSub} trailing={<Toggle value={st.hapticEnabled} onChange={toggleHaptic} />} />
+        <Row title={P().settings.sound} sub={P().settings.soundSub} trailing={<Toggle value={st.soundEnabled} onChange={toggleSound} />} />
+        <Row
+          last
+          title={P().settings.palette}
+          sub={P().settings.paletteSub}
+          trailing={
+            <Segmented
+              height={36}
+              style={{ width: 150 }}
+              options={PALETTES.map((key) => ({ key, label: P().settings[key] }))}
+              value={palette}
+              onChange={(next) => void pickPalette(next)}
             />
           }
         />
