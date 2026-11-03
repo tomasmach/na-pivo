@@ -73,6 +73,8 @@ import ShieldCheckIcon from 'lucide-react-native/icons/shield-check';
 import SendIcon from 'lucide-react-native/icons/send';
 import MinusIcon from 'lucide-react-native/icons/minus';
 import LockIcon from 'lucide-react-native/icons/lock';
+import ThumbsDownIcon from 'lucide-react-native/icons/thumbs-down';
+import ThumbsUpIcon from 'lucide-react-native/icons/thumbs-up';
 import LockOpenIcon from 'lucide-react-native/icons/lock-open';
 import BeerOffIcon from 'lucide-react-native/icons/beer-off';
 import WifiOffIcon from 'lucide-react-native/icons/wifi-off';
@@ -208,6 +210,8 @@ const ICONS = {
   'send': SendIcon,
   'minus': MinusIcon,
   'lock': LockIcon,
+  'thumbs-up': ThumbsUpIcon,
+  'thumbs-down': ThumbsDownIcon,
   'lock-open': LockOpenIcon,
   'beer-off': BeerOffIcon,
   'wifi-off': WifiOffIcon,

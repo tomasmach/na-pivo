@@ -164,6 +164,12 @@ export const stamgastCs = {
   postToVycep: 'Vyvěsit na Výčep',
   edit: 'Upravit',
   pubSep: ' → ',
+  pubVerdictTitle: 'Stálo to za návrat?',
+  pubVerdictPrivate: 'jen pro tebe',
+  pubVerdictRowSub: (beers: number, from: string) => `${beers} ${czechPlural(beers, PIVO)} · od ${from}`,
+  pubVerdictSheetSub: (day: string, beers: number) => `${day} · ${beers} ${czechPlural(beers, PIVO)}`,
+  pubVerdictSave: 'Uložit',
+  pubVerdictOpen: (pub: string) => `Ohodnoť hospodu ${pub}`,
 
   // Backfill
   backfillTitle: 'Dopsat piva',

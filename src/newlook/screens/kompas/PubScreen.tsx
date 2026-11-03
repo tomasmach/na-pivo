@@ -12,6 +12,7 @@ import { buildPubShareUrl } from '@/data/pubShareLink';
 import { formatVolume, t } from '@/i18n';
 import { calendarDaysBetween, eventDay, eventStartTime } from '@/pubPage/pubPageModel';
 import { findFavoriteKey, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
+import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
@@ -26,6 +27,7 @@ import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
 import { distanceLabel } from './format';
 import { GRAY_MAP } from './NvMap';
+import { openPubVerdict, verdictLabel } from '../stamgast/PubVerdict';
 import { nvPubParams, showOnKompas, useKompasState } from './state';
 import { usePubDetails, useParamPub, useRecentPosition } from './usePubPage';
 
@@ -74,6 +76,30 @@ function Line({ title, sub, value, last, valueColor = C.white }: { title: string
         </T>
       ) : null}
     </View>
+  );
+}
+
+function VisitLine({ pubKey, name, visitCount, lastVisitedAt }: { pubKey: string; name: string; visitCount: number; lastVisitedAt: string }) {
+  const router = useRouter();
+  const verdict = usePubRatingsStore((st) => st.ratings[pubKey]?.verdict);
+  const title = L().visits(visitCount, dateTimeFormat({ day: 'numeric', month: 'numeric' }).format(new Date(lastVisitedAt)));
+  return (
+    <Press onPress={() => openPubVerdict(router, pubKey, name, title)} accessibilityRole="button" style={[s.row, { minHeight: TAP_ROW_HEIGHT, gap: 12 }]}>
+      <View style={[s.fill, { gap: 2 }]}>
+        <T s={16} w={600}>
+          {title}
+        </T>
+        <T s={14} c={C.muted}>
+          {verdict ? t.pubDetail.privateVerdict(verdictLabel(verdict)) : L().onlyForYou}
+        </T>
+      </View>
+      {verdict ? (
+        <View style={[s.center, { width: 36, height: 36, borderRadius: 18 }, verdict === 'like' ? { backgroundColor: C.yellowTint, borderWidth: 1, borderColor: C.yellowStrong } : { backgroundColor: C.control }]}>
+          <Icon name={verdict === 'like' ? 'thumbs-up' : 'thumbs-down'} size={16} color={verdict === 'like' ? C.yellow : C.muted} />
+        </View>
+      ) : null}
+      <Icon name="chevron-right" size={16} color={C.muted} />
+    </Press>
   );
 }
 
@@ -277,13 +303,7 @@ export function PubScreen() {
               last={!details.visit}
             />
           ) : null}
-          {details.visit ? (
-            <Line
-              title={L().visits(details.visit.visitCount, dateTimeFormat({ day: 'numeric', month: 'numeric' }).format(new Date(details.visit.lastVisitedAt)))}
-              sub={L().onlyForYou}
-              last
-            />
-          ) : null}
+          {details.visit ? <VisitLine pubKey={details.visit.cacheKey} name={pub.name} visitCount={details.visit.visitCount} lastVisitedAt={details.visit.lastVisitedAt} /> : null}
         </Section>
       </ScrollView>
       <BottomFade height={184} />

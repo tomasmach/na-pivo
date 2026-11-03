@@ -151,6 +151,12 @@ export const stamgastEn: typeof stamgastCs = {
   postToVycep: 'Post to the Taproom',
   edit: 'Edit',
   pubSep: ' → ',
+  pubVerdictTitle: 'Worth coming back?',
+  pubVerdictPrivate: 'only for you',
+  pubVerdictRowSub: (beers: number, from: string) => `${beers} ${englishPlural(beers, BEER)} · from ${from}`,
+  pubVerdictSheetSub: (day: string, beers: number) => `${day} · ${beers} ${englishPlural(beers, BEER)}`,
+  pubVerdictSave: 'Save',
+  pubVerdictOpen: (pub: string) => `Rate ${pub}`,
 
   backfillTitle: 'Add past beers',
   backfillSave: 'Save the memory',

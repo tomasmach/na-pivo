@@ -30,10 +30,10 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import {
   usePubRatingsStore,
   selectPubRating,
+  PUB_NOTE_MAX_LENGTH,
   type PubVerdict,
 } from '@/stores/pubRatingsStore';
 
-const NOTE_MAX_LENGTH = 280;
 
 interface PubRatingControlProps {
   pubKey: string;
@@ -196,7 +196,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
         placeholder={t.myBeers.notePlaceholder}
         placeholderTextColor={Colors.mutedText}
         multiline
-        maxLength={NOTE_MAX_LENGTH}
+        maxLength={PUB_NOTE_MAX_LENGTH}
         textAlignVertical="top"
         accessibilityLabel={t.a11y.ratingNoteInput(pubName)}
         maxFontSizeMultiplier={FontScaleCap.body}

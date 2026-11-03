@@ -23,6 +23,7 @@ import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, Segmented, T } from '../../components/ui';
 import { C, font, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
+import { PubVerdictSection } from './PubVerdict';
 import { beerTally, dateOfDay, dayKeyOf, dayString, hourlyTempo, minutesBetween, nightsOf } from './eveningData';
 import { durationLabel, nightDayLabel, servingLine } from './stamgastFormat';
 import { NO_VALUE } from '../../format';
@@ -478,6 +479,7 @@ export function EveningDetailScreen() {
           );
         })}
       </Card>
+      <PubVerdictSection night={night} />
     </Screen>
   );
 }

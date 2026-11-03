@@ -27,6 +27,7 @@ const SHEETS = [
   'dopsat',
   'odhad',
   'hodnoceni',
+  'palec',
   'pripominky',
   'do-denicku',
   'vyvesit',

@@ -27,12 +27,29 @@ import {
   sumSpent,
   type Night,
 } from './eveningData';
+import { VerdictMark } from './PubVerdict';
 import { nightDayLabel } from './stamgastFormat';
 
 type Period = 'tyden' | 'mesic' | 'rok';
 
-function pubLine(night: Night) {
-  return night.pubs.map((p) => p.name).join(t.nv.stamgast.pubSep);
+function PubLineWithMarks({ night }: { night: Night }) {
+  return (
+    <View style={[s.row, { gap: 4, overflow: 'hidden' }]}>
+      {night.pubs.map((pub, i) => (
+        <React.Fragment key={`${pub.pubKey}-${i}`}>
+          {i > 0 ? (
+            <T s={13} w={700} c={C.muted}>
+              {t.nv.stamgast.pubSep.trim()}
+            </T>
+          ) : null}
+          <T s={13} w={700} c={C.muted} numberOfLines={1} style={{ flexShrink: i === night.pubs.length - 1 ? 1 : 0 }}>
+            {pub.name}
+          </T>
+          <VerdictMark pubKey={pub.pubKey} />
+        </React.Fragment>
+      ))}
+    </View>
+  );
 }
 
 function heroMeta(nights: readonly Night[], spentLabel: string) {
@@ -143,9 +160,7 @@ function NightsCard({ nights, today }: { nights: readonly Night[]; today: string
             <T s={15} w={600}>
               {night.day === today ? t.nv.stamgast.today : nightDayLabel(night.day)}
             </T>
-            <T s={13} w={700} c={C.muted} numberOfLines={1}>
-              {pubLine(night)}
-            </T>
+            <PubLineWithMarks night={night} />
           </View>
           <D s={22}>{String(night.beers)}</D>
         </Press>
