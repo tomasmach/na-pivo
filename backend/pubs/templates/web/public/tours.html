@@ -1,0 +1,67 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "public-pages.css" %}">{{ structured_data }}{% endblock %}
+{% block og_image %}<meta property="og:image" content="{{ og_image }}">{% endblock %}
+{% block content %}
+{% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
+<header class="pp-head tr-head">
+  <div>
+    <h1 class="np-h1">{% if city_label %}{% blocktranslate %}Pivní trasy: {{ city_label }}{% endblocktranslate %}{% else %}{% translate "Pivní trasy" %}{% endif %}</h1>
+    <p class="pp-head__lead">{{ lead }}</p>
+  </div>
+  <a class="np-link" href="{% web_url "home" %}">{% translate "Sestav si vlastní trasu v appce" %}{% icon "chevron-right" "np-icon--s" %}</a>
+</header>
+
+<div class="pp-toolbar">
+  <div class="tr-filters">
+    <details class="pp-more">
+      <summary class="np-chip{% if city_label %} is-active{% endif %}"{% if city_label %} aria-current="true"{% endif %}>{% icon "map-pin" %}{% if city_label %}{{ city_label }}{% else %}{% translate "Všechna města" %}{% endif %}{% icon "chevron-down" %}</summary>
+      <div class="pp-more__menu">
+        {% for item in city_links %}<a href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
+      </div>
+    </details>
+    {% translate "Počet hospod" as stops_label %}
+    {% include "web/components/chips.html" with items=stop_chips label=stops_label %}
+  </div>
+  <span class="np-small np-muted">{% translate "Řadit: nejvíc prošlé" %}</span>
+</div>
+
+{% if featured %}
+<a class="tr-featured" href="{{ featured.url }}">
+  <span class="tr-featured__map">{% include "web/public/_route.html" with map=featured.map_big %}</span>
+  <span class="tr-featured__body">
+    <span class="tr-kicker">{% if featured.people %}{% translate "Nejprošlejší trasa" %}{% else %}{% translate "Nejnovější trasa" %}{% endif %}</span>
+    <span class="tr-featured__title">{{ featured.title }}</span>
+    <span class="tr-featured__area">{{ featured.area }} · @{{ featured.author }}</span>
+    <span class="tr-featured__names">{{ featured.names }}</span>
+    <span class="tr-featured__stats">
+      <span><b>{{ featured.km }}</b><small>{% translate "pěšky" %}</small></span>
+      <span><b>{{ featured.stops }}</b><small>{{ featured.stops_label }}</small></span>
+      {% if featured.avg_label %}<span><b>{{ featured.avg_label }}</b><small>{% translate "průměr za pivo" %}</small></span>{% endif %}
+      {% if featured.people %}<span><b>{{ featured.people_label }}</b><small>{% translate "lidí ji prošlo" %}</small></span>{% endif %}
+    </span>
+    <span class="np-btn np-btn--primary tr-featured__cta">{% translate "Ukázat trasu" %}{% icon "chevron-right" "np-icon--s" %}</span>
+  </span>
+</a>
+{% if cards %}
+<div class="tr-grid">
+  {% for card in cards %}{% include "web/public/_tour_card.html" with card=card %}{% endfor %}
+</div>
+{% endif %}
+<div class="tr-more">
+  <span class="np-small np-muted">{{ count_label }}</span>
+  {% if more_url %}<a class="np-btn" href="{{ more_url }}">{% translate "Načíst další trasy" %}</a>{% endif %}
+</div>
+{% elif filtered %}
+{% translate "Takovou trasu tu zatím nemám" as empty_title %}
+{% translate "S těmihle filtry jsem žádnou veřejnou trasu nenašel. Zkus jiné město nebo počet hospod." as empty_text %}
+{% translate "Všechny trasy" as action_label %}
+{% include "web/components/empty.html" with icon="route" title=empty_title text=empty_text action_label=action_label action_url=all_url %}
+{% else %}
+{% translate "Zatím tu žádná trasa není" as empty_title %}
+{% translate "Trasy sestavují lidi v appce: vyberou hospody, projdou je a pak je zveřejní. Ta první může být tvoje." as empty_text %}
+{% translate "Stáhnout appku" as action_label %}
+{% web_url "home" as home_url %}
+{% include "web/components/empty.html" with icon="route" title=empty_title text=empty_text action_label=action_label action_url=home_url %}
+{% endif %}
+{% endblock %}
