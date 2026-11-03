@@ -1,0 +1,63 @@
+{% load i18n web %}<footer class="np-footer">
+  <div class="np-wrap">
+    <div class="np-footer__top">
+      <div class="np-footer__about">
+        {% include "web/components/logo.html" %}
+        <p>{% translate "Pivní deníček do kapsy." %}<br>{% translate "Kompas, počítadlo, deník a parta." %}</p>
+      </div>
+      <div class="np-footer__cols">
+        <nav class="np-footer__col" aria-labelledby="np-foot-pubs">
+          <h2 id="np-foot-pubs">{% translate "Hospody" %}</h2>
+          <ul>
+            <li><a href="{% web_url "web-pubs-city" city="praha" %}">{% translate "Hospody v Praze" %}</a></li>
+            <li><a href="{% web_url "web-pubs-city" city="brno" %}">{% translate "Hospody v Brně" %}</a></li>
+            <li><a href="{% web_url "web-pubs-city" city="ostrava" %}">{% translate "Hospody v Ostravě" %}</a></li>
+            <li><a href="{% web_url "web-pubs-city" city="plzen" %}">{% translate "Hospody v Plzni" %}</a></li>
+            <li><a href="{% web_url "web-pubs" %}">{% translate "Všechna města" %}</a></li>
+          </ul>
+        </nav>
+        <nav class="np-footer__col" aria-labelledby="np-foot-prices">
+          <h2 id="np-foot-prices">{% translate "Ceny piva" %}</h2>
+          <ul>
+            <li><a href="{% web_url "beer-prices-city" city="praha" %}">{% translate "Kolik stojí pivo v Praze" %}</a></li>
+            <li><a href="{% web_url "beer-prices-city" city="brno" %}">{% translate "Kolik stojí pivo v Brně" %}</a></li>
+            <li><a href="{% web_url "web-beer-index" %}">{% translate "Ceny piva v Česku" %}</a></li>
+            <li><a href="{% web_url "beer-prices" %}">{% translate "Nejlevnější hospody" %}</a></li>
+          </ul>
+        </nav>
+        <nav class="np-footer__col" aria-labelledby="np-foot-beer">
+          <h2 id="np-foot-beer">{% translate "Piva" %}</h2>
+          <ul>
+            <li><a href="{% web_url "beer" key="pilsner-urquell" %}">Pilsner Urquell 12°</a></li>
+            <li><a href="{% web_url "beer" key="velkopopovicky-kozel-11" %}">Kozel 11°</a></li>
+            <li><a href="{% web_url "beer" key="budweiser-budvar-original" %}">Budvar 12°</a></li>
+            <li><a href="{% web_url "web-rankings" %}">{% translate "Nejlepší piva" %}</a></li>
+            <li><a href="{% web_url "beer-list" %}">{% translate "Pivovary" %}</a></li>
+          </ul>
+        </nav>
+        <nav class="np-footer__col" aria-labelledby="np-foot-app">
+          <h2 id="np-foot-app">{% translate "Appka" %}</h2>
+          <ul>
+            <li><a href="{{ page.app_store_url }}">{% translate "Pro iPhone" %}</a></li>
+            <li><a href="{{ page.play_store_url }}">{% translate "Pro Android" %}</a></li>
+            <li><a href="{% web_url "web-news" %}">{% translate "Co je nového" %}</a></li>
+          </ul>
+        </nav>
+        <nav class="np-footer__col" aria-labelledby="np-foot-about">
+          <h2 id="np-foot-about">Na pivo</h2>
+          <ul>
+            <li><a href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a></li>
+            <li><a href="{{ page.privacy_url }}">{% translate "Ochrana soukromí" %}</a></li>
+            <li><a href="{{ page.terms_url }}">{% translate "Podmínky" %}</a></li>
+            <li><a href="{% web_url "web-delete-account" %}">{% translate "Smazání účtu" %}</a></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+    <div class="np-footer__bottom">
+      <span>© {% now "Y" %} Na pivo</span>
+      <a class="np-footer__lang" href="{{ page.switch_url }}" hreflang="{{ page.other_lang }}" lang="{{ page.other_lang }}">{% icon "globe" "np-icon--s" %}{% if page.other_lang == "en" %}English{% else %}Česky{% endif %}</a>
+      <span>{% translate "Pij s rozumem. Na pivo je jen pro dospělé." %}</span>
+    </div>
+  </div>
+</footer>

@@ -1,0 +1,80 @@
+{% extends "web/public.html" %}
+{% load web %}
+{% block content %}
+{% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
+<div class="np-page-head">
+  <h1 class="np-h1">Komponenty webu</h1>
+  <p class="np-lead">Všechno, z čeho se skládají stránky. Jen pro lokální vývoj.</p>
+</div>
+
+<div class="np-gallery">
+  <section class="np-card">
+    <h2 class="np-title">Tlačítka</h2>
+    <div class="np-gallery__row">
+      <a class="np-btn np-btn--primary" href="#">{% icon "plus" %}Zapsat pivo</a>
+      <a class="np-btn" href="#">Sekundární</a>
+      <a class="np-btn np-btn--light" href="#">{% icon "apple" "np-icon--s" %}Pokračovat přes Apple</a>
+      <button class="np-btn np-btn--ghost" type="button">Tiché</button>
+      <button class="np-btn np-btn--danger" type="button">Smazat účet</button>
+      <button class="np-btn np-btn--icon" type="button" aria-label="Sdílet">{% icon "share" %}</button>
+      <button class="np-btn" type="button" disabled>Vypnuté</button>
+    </div>
+  </section>
+
+  <section class="np-card">
+    <h2 class="np-title">Formulář</h2>
+    <form class="np-form np-gallery__form">
+      {% include "web/components/field.html" with name="email" label="E-mail" type="email" placeholder="tomas@napivo.cz" %}
+      {% include "web/components/field.html" with name="password" label="Heslo" type="password" error="Nesprávný e-mail nebo heslo." %}
+      {% include "web/components/field.html" with name="nick" label="Přezdívka" hint="Uvidí ji parta." %}
+      <div class="np-search">{% icon "search" "np-icon--s" %}<input class="np-input" type="search" placeholder="Hledej pivo nebo pivovar"></div>
+      <p class="np-alert" role="alert">Něco se nepovedlo.</p>
+      <p class="np-divider">nebo e-mailem</p>
+      <button class="np-btn np-btn--primary np-btn--l np-btn--block" type="button">Přihlásit se</button>
+    </form>
+  </section>
+
+  <section class="np-card">
+    <h2 class="np-title">Čipy, dlaždice a přepínač</h2>
+    {% include "web/components/chips.html" with items=chips label="Filtry" %}
+    <div class="np-gallery__row">
+      {% include "web/components/segment.html" with items=segment label="Období" %}
+    </div>
+    <div class="np-gallery__tiles">
+      <a class="np-tile" href="#">Staré Město{% icon "chevron-right" %}</a>
+      <a class="np-tile" href="#">Vinohrady{% icon "chevron-right" %}</a>
+      <a class="np-tile" href="#">Žižkov{% icon "chevron-right" %}</a>
+    </div>
+  </section>
+
+  <section class="np-card">
+    <h2 class="np-title">Velká čísla</h2>
+    <div class="np-stats">
+      {% include "web/components/stat.html" with value="22" label="piv v říjnu" sub="o 4 víc než v září" hero=True %}
+      {% include "web/components/stat.html" with value="7" label="večerů" %}
+      {% include "web/components/stat.html" with value="1 478 Kč" label="utraceno" %}
+    </div>
+  </section>
+
+  <section class="np-card np-card--tight">
+    <div class="np-list">
+      {% include "web/components/row.html" with href="#" title="U Pinkasů" meta="Jungmannovo nám. 16, Praha 1" status="otevřeno do 23:30" value="64 Kč" value_meta="4,7" %}
+      {% include "web/components/row.html" with href="#" icon="beer" title="U Bobra" meta="Praha 10, Vršovice · Bernard 11° za 48 Kč" %}
+      {% include "web/components/row.html" with title="Pilsner Urquell 12°" meta="Vypil jsi 41×" %}
+    </div>
+  </section>
+
+  <section class="np-card">
+    <h2 class="np-title">Avatary</h2>
+    <div class="np-gallery__row">
+      {% include "web/components/avatar.html" with name="tomas" ring=True %}
+      {% include "web/components/avatar.html" with name="Klára" size="s" %}
+      {% include "web/components/avatar.html" with name="Marek" %}
+      {% include "web/components/avatar.html" with name="Jirka" size="l" %}
+      <span class="np-avatars">{% include "web/components/avatar.html" with name="K" size="s" %}{% include "web/components/avatar.html" with name="M" size="s" %}{% include "web/components/avatar.html" with name="P" size="s" %}</span>
+    </div>
+  </section>
+</div>
+
+{% include "web/components/empty.html" with icon="map-pin" title="Tuhle hospodu ještě neznáme" text="Buď je úplně nová, nebo ji zatím nikdo nezapsal." action_label="Přidat hospodu" action_url="#" secondary_label="Najít ji na mapě" secondary_url="#" %}
+{% endblock %}

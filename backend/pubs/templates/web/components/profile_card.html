@@ -1,0 +1,12 @@
+{% load i18n web %}<div class="np-profile">
+  <a class="np-profile__who np-row__body" href="{% web_url "web-profile" %}">
+    <span class="np-profile__line">
+      {% include "web/components/avatar.html" with name=page.account.name src=page.account.avatar_url ring=True %}
+      <span class="np-profile__text">
+        <span class="np-profile__name">{{ page.account.handle }}</span>
+        <span class="np-profile__level">{{ page.account.level_label }}</span>
+      </span>
+    </span>
+  </a>
+  <a class="np-profile__settings" href="{% web_url "web-settings" %}" aria-label="{% translate "Nastavení" %}"{% if page.section == "settings" %} aria-current="page"{% endif %}>{% icon "settings" %}</a>
+</div>

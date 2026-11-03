@@ -34,6 +34,28 @@ celé plochy jen u sheetu. Pro nový vzhled tím neplatí pružiny a přejetí z
   dál jedou s klávesnicí, aby je nezakryla.
 - Nativní chování platformy (gumový okraj posouvání, přechody stacku) zůstává.
 
+## Web na na-pivo.cz (3. 11. 2026)
+
+Web je šedý jako nový vzhled appky, jen tmavý režim. Stojí na Djangu (šablony, žádný
+Next.js) a všechno, co načítá, je z na-pivo.cz: žádné CDN, cizí písma ani skripty.
+
+- **Tokeny** jsou CSS proměnné `--np-*` v `backend/pubs/static/pubs/web/np.css` a
+  kopírují `np-*` z redesignu stejně jako `src/newlook/theme.ts`: zem `#0A0A0A`, karta
+  `#151515`, pole `#181818`, ovládací prvek `#232323`, jantar `#FFC400`, text
+  `#F7F7F2`, druhý text `#D4D4CE`, šedá `#8F8F8A`, hairline bílá s alfou 0,1.
+  Jantarová plná plocha je na stránce jednou (hlavní akce, v panelu „Zapsat pivo“).
+- **Písma** jsou Sofia Sans Extra Condensed 800 na nadpisy a čísla a Sofia Sans 400
+  až 700 na text, jako woff2 vedle CSS. **Ikony** jsou lucide jako inline SVG z
+  `backend/pubs/web/icons/`; novou ikonu tam přidej jako soubor.
+- **Kostra:** veřejné stránky dědí `web/public.html` (hlavička s hledáním, patička
+  s městy, cenami, pivy a přepínačem jazyka), přihlášené `web/app.html` (levý panel
+  264 px, na telefonu horní lišta a spodní lišta s „Zapsat“). Pod 960 px se hlavička
+  složí do menu.
+- **Komponenty** jsou partialy v `backend/pubs/templates/web/components/` (řádek,
+  pole, velké číslo, drobečky, prázdný stav, avatar, čipy, přepínač) a třídy
+  `np-*` v `np.css`. Lokálně je všechny ukáže `/_komponenty`. Nová stránka skládá
+  tyhle díly; když chybí, přidej ho sem, ne do šablony stránky.
+
 ## Kompas v mapě (26. 10. 2026)
 
 Varianta A z návrhu „Kompas a mapa na první obrazovce“: tab Kompas se na
@@ -54,7 +76,7 @@ Celá appka leží na zemi stránky hospody. Stouty mají znovu hodnoty z §2.1:
 Jantar, pěna i texty zůstávají. Samostatný `Colors.canvas` zanikl, jeho
 obrazovky leží na `Colors.stout`. Ikona appky, splash a Live Activity mají
 pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
-`Colors.deep` (`#0E0C0A`). Hnědý zůstává jen web na na-pivo.cz. Jantar s nízkou alfou na
+`Colors.deep` (`#0E0C0A`). Web na na-pivo.cz je taky šedý (viz Web). Jantar s nízkou alfou na
 šedé zemi vypadá olivově hnědě, proto klidové plochy nesou neutrální pěnu:
 sekundární tlačítko je `stout3` bez okraje (§6.2), medailonek pod ikonou
 `foam` 0,07. Jantarový nádech zůstává jen vybraným a varovným stavům.

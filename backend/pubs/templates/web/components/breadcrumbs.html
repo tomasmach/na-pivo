@@ -1,0 +1,7 @@
+{% comment %}
+crumbs: list of {"label": ..., "url": ...}; the last one is the current page and needs no url.
+{% endcomment %}{% load i18n web %}<nav class="np-crumbs" aria-label="{% translate "Drobečková navigace" %}">
+  <ol>{% for crumb in crumbs %}
+    <li>{% if not forloop.last %}<a href="{{ crumb.url }}">{{ crumb.label }}</a>{% icon "chevron-right" %}{% else %}<span aria-current="page">{{ crumb.label }}</span>{% endif %}</li>{% endfor %}
+  </ol>
+</nav>

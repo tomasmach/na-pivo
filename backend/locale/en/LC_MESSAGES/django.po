@@ -1718,3 +1718,126 @@ msgstr "Mapper level"
 
 msgid "Jen čísla z večerů zveřejněných pro všechny."
 msgstr "Only numbers from evenings shared publicly."
+
+msgid "Brzy tu bude. Zatím mrkni, kolik stojí pivo, nebo si stáhni appku."
+msgstr "It'll be here soon. Meanwhile, check what a beer costs or get the app."
+
+msgid "Ceny piva v Česku"
+msgstr "Beer prices in Czechia"
+
+msgid "Co je nového"
+msgstr "What's new"
+
+msgid "Deník"
+msgstr "Diary"
+
+msgid "Drobečková navigace"
+msgstr "Breadcrumbs"
+
+msgid "Hlavní menu"
+msgstr "Main menu"
+
+msgid "Hledat"
+msgstr "Search"
+
+msgid "Hospoda, pivo nebo město"
+msgstr "Pub, beer or city"
+
+msgid "Hospody v Brně"
+msgstr "Pubs in Brno"
+
+msgid "Hospody v Ostravě"
+msgstr "Pubs in Ostrava"
+
+msgid "Hospody v Plzni"
+msgstr "Pubs in Pilsen"
+
+msgid "Hospody v Praze"
+msgstr "Pubs in Prague"
+
+msgid "Kolik stojí pivo v Brně"
+msgstr "What a beer costs in Brno"
+
+msgid "Kolik stojí pivo v Praze"
+msgstr "What a beer costs in Prague"
+
+msgid "Kompas máš v telefonu"
+msgstr "The compass lives on your phone"
+
+msgid "Kompas, počítadlo, deník a parta."
+msgstr "Compass, counter, diary and crew."
+
+msgid "Menu"
+msgstr "Menu"
+
+msgid "Na pivo, úvod"
+msgstr "Na pivo, home"
+
+msgid "Nastavení"
+msgstr "Settings"
+
+msgid "Na webu tu brzy bude. V appce už to máš."
+msgstr "Coming to the web soon. The app already has it."
+
+msgid "Nejlepší piva"
+msgstr "Best beers"
+
+msgid "Novinky"
+msgstr "News"
+
+msgid "Ochrana soukromí"
+msgstr "Privacy"
+
+msgid "Parta"
+msgstr "Crew"
+
+msgid "Pij s rozumem. Na pivo je jen pro dospělé."
+msgstr "Drink responsibly. Na pivo is for adults only."
+
+msgid "Pivní deníček do kapsy."
+msgstr "A beer diary for your pocket."
+
+msgid "Pivovary"
+msgstr "Breweries"
+
+msgid "Přihlásit se"
+msgstr "Log in"
+
+msgid "Pro Android"
+msgstr "For Android"
+
+msgid "Profil"
+msgstr "Profile"
+
+msgid "Pro iPhone"
+msgstr "For iPhone"
+
+msgid "Stáhnout appku"
+msgstr "Get the app"
+
+msgid "Trasy"
+msgstr "Tours"
+
+msgid "Tuhle stránku ještě čepujeme"
+msgstr "This page is still being poured"
+
+msgid "Tvoje Na pivo"
+msgstr "Your Na pivo"
+
+msgid "Všechna města"
+msgstr "All cities"
+
+msgid "Výčep"
+msgstr "Taproom"
+
+msgid "Zapsat"
+msgstr "Log"
+
+msgid "Zapsat pivo"
+msgstr "Log a beer"
+
+msgid "Zavřít"
+msgstr "Close"
+
+msgid "Žebříčky"
+msgstr "Rankings"

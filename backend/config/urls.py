@@ -82,6 +82,7 @@ urlpatterns = [
         {"filename": "og-invite.png"},
         name="invite-og-image",
     ),
+    path("", include("pubs.web.urls")),
     # All v1 API routes live in the pubs app — the api agent will create pubs/api/urls.py
     path("v1/", include("pubs.api.urls")),
 ]
