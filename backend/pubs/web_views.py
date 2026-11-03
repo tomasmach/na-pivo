@@ -230,7 +230,7 @@ def tour_invite_landing(request: HttpRequest, token: str) -> HttpResponse:
     )
 
     throttle = SharedScopedRateThrottle()
-    policy = type("TourPublicPolicy", (), {"throttle_scope": "web_pages"})()
+    policy = type("TourPublicPolicy", (), {"throttle_scope": "tour_public"})()
     if not throttle.allow_request(Request(request), policy):
         response = HttpResponse(gettext("Zkus to prosím za chvíli."), status=429)
         response["Retry-After"] = str(throttle.wait())

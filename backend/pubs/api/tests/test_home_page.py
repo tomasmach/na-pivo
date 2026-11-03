@@ -24,7 +24,7 @@ def test_home_is_czech_with_store_links_and_alternates(client, settings):
     assert "X-Robots-Tag" not in response
     html = response.content.decode()
     assert '<html lang="cs">' in html
-    assert "Kolik piv, kde a s kým." in html
+    assert "Kolik piv,<br>kde a s kým." in html
     assert f'href="{APP_STORE_URL}?ct=web-home&amp;mt=8"' in html
     assert f'href="{PLAY_STORE_URL}&amp;referrer=utm_source%3Dna-pivo.cz%26utm_medium%3Dweb%26utm_campaign%3Dhome"' in html
     assert '<link rel="canonical" href="https://na-pivo.cz/">' in html
@@ -41,7 +41,7 @@ def test_english_home_is_translated_and_links_english_documents(client, settings
     assert response["Content-Language"] == "en"
     html = response.content.decode()
     assert '<html lang="en">' in html
-    assert "How many beers, where and with whom." in html
+    assert "How many beers,<br>where and with whom." in html
     assert "Kolik piv" not in html
     assert "https://tomasmach.github.io/na-pivo/en/privacy.html" in html
 
