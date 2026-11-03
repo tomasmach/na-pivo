@@ -10,6 +10,7 @@ import {
   requestCommunityEventJoin,
   type CommunityEvent,
 } from '@/data/communityEventsClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { intlLocale, t } from '@/i18n';
 
 import { BackHeader, Screen } from '../../components/chrome';
@@ -203,18 +204,23 @@ export function SetkaniScreen() {
   const asked = membership === 'pending' || membership === 'approved';
 
   const join = () => {
+    trackUiInteraction('community_join_request', 'submit');
     setBusy(true);
     void requestCommunityEventJoin(event.id, message.trim()).then(async (res) => {
       setBusy(false);
+      trackUiInteraction('community_join_request', res.ok ? 'success' : 'failure');
       if (!res.ok) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
       toast({ kind: 'saved', title: t.nv.parta.requestToast, sub: t.nv.parta.requestToastSub, icon: 'hand' });
       await load();
     });
   };
   const leave = () => {
+    const target = membership === 'approved' ? 'community_leave' : 'community_cancel_request';
+    trackUiInteraction(target, target === 'community_leave' ? 'submit' : 'cancel');
     setBusy(true);
     void leaveCommunityEvent(event.id).then(async (res) => {
       setBusy(false);
+      trackUiInteraction(target, res.ok ? 'success' : 'failure');
       if (!res.ok) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
       await load();
     });
@@ -240,12 +246,17 @@ export function SetkaniScreen() {
                       {
                         label: t.nv.parta.report,
                         kind: 'danger',
-                        onPress: () =>
-                          void reportCommunityEvent(event.id).then((res) =>
-                            res.ok
-                              ? toast({ kind: 'saved', title: t.nv.parta.reported, sub: t.nv.parta.reportedSub, icon: 'flag' })
-                              : toast({ kind: 'error', title: res.detail, icon: 'circle-alert' }),
-                          ),
+                        onPress: () => {
+                          trackUiInteraction('community_report', 'submit');
+                          void reportCommunityEvent(event.id).then((res) => {
+                            trackUiInteraction('community_report', res.ok ? 'success' : 'failure');
+                            toast(
+                              res.ok
+                                ? { kind: 'saved', title: t.nv.parta.reported, sub: t.nv.parta.reportedSub, icon: 'flag' }
+                                : { kind: 'error', title: res.detail, icon: 'circle-alert' },
+                            );
+                          });
+                        },
                       },
                     ],
                   })

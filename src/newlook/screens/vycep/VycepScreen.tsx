@@ -18,6 +18,7 @@ import {
   type PublishedNight,
 } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { fetchPhotoContestTeaser } from '@/data/photoContestClient';
 import { syncSharingPrefs } from '@/data/sharingPrefsClient';
 import { intlLocale, t } from '@/i18n';
@@ -114,10 +115,12 @@ const Post = memo(function Post({ night, onRemoved }: { night: PublishedNight; o
     if (busy.current || night.isMine) return;
     busy.current = true;
     const turningOn = !given;
+    trackUiInteraction('night_react', turningOn ? 'toggle_on' : 'toggle_off');
     setGiven(turningOn);
     setCount((c) => Math.max(0, c + (turningOn ? 1 : -1)));
     void (turningOn ? reactToNight(night.id) : clearNightReaction(night.id)).then((res) => {
       busy.current = false;
+      trackUiInteraction('night_react', res.ok || isRetriableNightError(res) ? 'success' : 'failure');
       if (res.ok) {
         setCount(res.rounds);
         setGiven(res.myRound);
@@ -165,7 +168,9 @@ const Post = memo(function Post({ night, onRemoved }: { night: PublishedNight; o
           onPress: () => {
             const clientId = night.clientId;
             if (!clientId) return;
+            trackUiInteraction('night_unpublish', 'submit');
             void unpublishNight(clientId).then((res) => {
+              trackUiInteraction('night_unpublish', res.ok || isRetriableNightError(res) ? 'success' : 'failure');
               if (!res.ok && !isRetriableNightError(res)) {
                 toast({ kind: 'error', title: t.nv.vycep.unpublishError, icon: 'megaphone' });
                 return;

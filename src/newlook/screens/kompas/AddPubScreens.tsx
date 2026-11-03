@@ -21,6 +21,7 @@ import {
   syncOwnAddedPubs,
   type AddedPubSubmission,
 } from '@/data/addedPubsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { resolvePubSearchResult, suggestPubsToAdd, type PubSearchResult } from '@/data/pubSearchClient';
 import { t } from '@/i18n';
@@ -170,6 +171,7 @@ export function PridatHospoduScreen() {
   };
 
   const standingHere = async () => {
+    trackUiInteraction('add_pub_location', 'select');
     const permission = await ensureLocationPermission({ openSettingsIfDenied: true });
     if (permission !== 'granted') {
       toast({ kind: 'error', title: L().addNoPosition, icon: 'locate-fixed' });
@@ -230,6 +232,7 @@ export function PridatHospoduScreen() {
   const add = () => {
     if (!canSubmit || !located || submitted.current) return;
     submitted.current = true;
+    trackUiInteraction('add_pub_submit', 'submit');
     const clientId = generateUuidV4();
     const entry = {
       name: name.trim().slice(0, 200),
@@ -243,6 +246,7 @@ export function PridatHospoduScreen() {
     bumpCatalogRevision();
     void clearPubsSnapshot();
     void enqueueAddedPub(buildAddedPubEntry(entry, clientId)).then((state) => {
+      trackUiInteraction('add_pub_submit', state === 'failed' || state === 'location-not-found' ? 'failure' : 'success');
       bumpCatalogRevision();
       if (state === 'synced') toast({ kind: 'saved', title: L().addThanks, icon: 'map-pin-plus' });
       else if (state === 'pending') toast({ kind: 'offline', title: L().addThanks, sub: L().addQueued, icon: 'cloud-upload' });
@@ -256,7 +260,16 @@ export function PridatHospoduScreen() {
     const results = term.length >= 3 && found?.term === term ? found.items : [];
     const searching = term.length >= 3 && found?.term !== term;
     return (
-      <Screen header={<BackHeader />}>
+      <Screen
+        header={
+          <BackHeader
+            onBack={() => {
+              trackUiInteraction('add_pub_cancel', 'cancel');
+              nvBack(router);
+            }}
+          />
+        }
+      >
         <PageTitle title={L().addTitle} intro={L().addIntro} />
         <Input
           icon="search"
@@ -413,7 +426,10 @@ export function PridatHospoduScreen() {
               title={L().addPin}
               titleWeight={700}
               chevron
-              onPress={() => router.push({ pathname: '/nv/spendlik', params: located ? { lat: String(located.lat), lng: String(located.lng) } : {} })}
+              onPress={() => {
+                trackUiInteraction('add_pub_location', 'tap');
+                router.push({ pathname: '/nv/spendlik', params: located ? { lat: String(located.lat), lng: String(located.lng) } : {} });
+              }}
             />
           ) : null}
         </Card>
@@ -507,6 +523,7 @@ export function SpendlikScreen() {
               toast({ kind: 'info', title: L().pinHint, icon: 'map-pin' });
               return;
             }
+            trackUiInteraction('add_pub_location', 'submit');
             useKompasState.getState().set({ pin: { lat: center.latitude, lng: center.longitude } });
             nvBack(router);
             toast({ kind: 'saved', title: L().pinOk, icon: 'map-pin' });

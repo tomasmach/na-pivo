@@ -18,6 +18,7 @@ import {
   type CommunityEvent,
 } from '@/data/communityEventsClient';
 import { submitPubEventSuggestion } from '@/data/pubEventsClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { dateTimeFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
@@ -141,6 +142,7 @@ export function ZalozitSetkaniScreen() {
 
   const open = async () => {
     if (!ready || !clock) return;
+    trackUiInteraction('community_publish', 'submit');
     setBusy(true);
     try {
       const permission = await ensureLocationPermission({ openSettingsIfDenied: true });
@@ -166,6 +168,7 @@ export function ZalozitSetkaniScreen() {
         endsAt: new Date(starts.getTime() + MEETUP_HOURS * 60 * 60 * 1000).toISOString(),
         capacity: seats,
       });
+      trackUiInteraction('community_publish', result.ok ? 'success' : 'failure');
       if (!result.ok) {
         toast({ kind: 'error', title: result.detail, icon: 'circle-alert' });
         return;
@@ -174,6 +177,7 @@ export function ZalozitSetkaniScreen() {
       toast({ kind: 'saved', title: L().meetCreated, icon: 'house' });
       router.replace({ pathname: '/nv/moje-setkani', params: result.event ? { id: result.event.id } : {} });
     } catch {
+      trackUiInteraction('community_publish', 'failure');
       toast({ kind: 'error', title: L().meetNeedsPlace, icon: 'map-pin' });
     } finally {
       setBusy(false);
@@ -275,9 +279,12 @@ export function MojeSetkaniScreen() {
 
   const decide = async (requestId: string, action: 'approve' | 'reject') => {
     if (!event) return;
+    const target = action === 'approve' ? 'community_request_accept' : 'community_request_decline';
+    trackUiInteraction(target, action === 'approve' ? 'accept' : 'decline');
     setDeciding(requestId);
     const result = await decideCommunityJoinRequest(event.id, requestId, action);
     setDeciding(null);
+    trackUiInteraction(target, result.ok ? 'success' : 'failure');
     if (!result.ok) toast({ kind: 'error', title: result.detail, icon: 'circle-alert' });
     await load();
   };
@@ -292,15 +299,18 @@ export function MojeSetkaniScreen() {
         {
           label: L().cancelConfirm,
           kind: 'danger',
-          onPress: () =>
+          onPress: () => {
+            trackUiInteraction('community_cancel_event', 'cancel');
             void cancelCommunityEvent(event.id).then((result) => {
+              trackUiInteraction('community_cancel_event', result.ok ? 'success' : 'failure');
               if (!result.ok) {
                 toast({ kind: 'error', title: result.detail, icon: 'circle-alert' });
                 return;
               }
               toast({ kind: 'saved', title: L().meetCancelled, icon: 'x' });
               nvBack(router);
-            }),
+            });
+          },
         },
       ],
     });

@@ -3,6 +3,7 @@ import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { fetchMyStats, type RemoteStats } from '@/data/statsClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { useNowTick } from '@/friends/useNowTick';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -123,7 +124,13 @@ function CardHead({ title, onPrev, onNext, nextDisabled }: { title: string; onPr
         </T>
         <IconButton icon="chevron-right" size={32} iconSize={16} onPress={nextDisabled ? undefined : onNext} label={copy.next} color={nextDisabled ? C.muted : C.white} />
       </View>
-      <Press haptic onPress={() => router.push('/nv/dopsat')} style={[s.row, { height: 32, borderRadius: 16, paddingHorizontal: 12, gap: 5, backgroundColor: C.control }]}>
+      <Press
+        haptic
+        onPress={() => {
+          trackUiInteraction('diary_historical_open');
+          router.push('/nv/dopsat');
+        }}
+        style={[s.row, { height: 32, borderRadius: 16, paddingHorizontal: 12, gap: 5, backgroundColor: C.control }]}>
         <Icon name="plus" size={14} color={C.yellow} />
         <T s={13} w={700}>
           {copy.quickBackfill}
@@ -155,7 +162,13 @@ function NightsCard({ nights, today }: { nights: readonly Night[]; today: string
         {t.nv.stamgast.nights}
       </T>
       {nights.map((night) => (
-        <Press key={night.day} onPress={() => router.push({ pathname: '/nv/vecer/[id]', params: { id: night.day } })} style={[s.row, { height: 60, gap: 12 }]}>
+        <Press
+          key={night.day}
+          onPress={() => {
+            trackUiInteraction('diary_evening_open');
+            router.push({ pathname: '/nv/vecer/[id]', params: { id: night.day } });
+          }}
+          style={[s.row, { height: 60, gap: 12 }]}>
           <View style={[s.fill, { gap: 2 }]}>
             <T s={15} w={600}>
               {night.day === today ? t.nv.stamgast.today : nightDayLabel(night.day)}
@@ -246,13 +259,17 @@ function Month({ nights, today, onToday }: { nights: Night[]; today: string; onT
                 <Press
                   key={di}
                   disabled={future}
-                  onPress={() =>
-                    night
-                      ? router.push({ pathname: '/nv/vecer/[id]', params: { id: key } })
-                      : isToday
-                        ? onToday?.()
-                        : router.push({ pathname: '/nv/dopsat', params: { day: key } })
-                  }
+                  onPress={() => {
+                    if (night) {
+                      trackUiInteraction('diary_evening_open');
+                      router.push({ pathname: '/nv/vecer/[id]', params: { id: key } });
+                    } else if (isToday) {
+                      onToday?.();
+                    } else {
+                      trackUiInteraction('diary_historical_open');
+                      router.push({ pathname: '/nv/dopsat', params: { day: key } });
+                    }
+                  }}
                   style={[{ flex: 1, height: 42 }, s.center]}
                 >
                   {n ? (

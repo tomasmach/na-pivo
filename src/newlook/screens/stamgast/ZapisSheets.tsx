@@ -12,6 +12,7 @@ import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggesti
 import { pickAndPrepareMenuPhoto } from '@/data/menuPhotoPicker';
 import { scanMenuPhoto } from '@/data/menuScanClient';
 import type { Pub } from '@/data/pubs';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { isContextPubKey, type DrinkType, type ServingType } from '@/drinks/drinkTypes';
 import { formatVolume, intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -295,6 +296,7 @@ export function ZapisSheet() {
       return;
     }
     if (!selected) return;
+    trackUiInteraction('counter_drink_form_submit', 'submit');
     const serving = home && kind === 'pivo' ? HOME_SERVING[homeServing] : null;
     logDrink(
       place,
@@ -483,7 +485,12 @@ export function PridatPivoSheet() {
         <Icon name="search" size={18} color={C.text2} />
         <TextInput value={q} onChangeText={setQ} placeholder={copy.searchBeer} placeholderTextColor={C.muted} keyboardAppearance="dark" selectionColor={C.yellow} style={[font(16, 500), { flex: 1, padding: 0 }]} />
       </View>
-      <Press onPress={() => router.push({ pathname: '/nv/vyfot', params: { mode: home ? 'etiketa' : 'tabule' } })} style={[s.row, { gap: 12, padding: 14, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.hairline }]}>
+      <Press
+        onPress={() => {
+          if (!home) trackUiInteraction('counter_menu_scan_open');
+          router.push({ pathname: '/nv/vyfot', params: { mode: home ? 'etiketa' : 'tabule' } });
+        }}
+        style={[s.row, { gap: 12, padding: 14, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.hairline }]}>
         <Tile icon="camera" color={C.black} bg={C.yellow} size={36} radius={18} />
         <View style={[s.fill, { gap: 2 }]}>
           <T s={16} w={700}>

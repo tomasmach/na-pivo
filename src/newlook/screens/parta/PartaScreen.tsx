@@ -13,6 +13,7 @@ import {
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import type { PartaPlan } from '@/data/partaPlansClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 
@@ -217,7 +218,9 @@ export function PartaScreen() {
     if (!me || me.lat == null || me.lng == null) return;
     const pub = { id: '', name: me.pubName, lat: me.lat, lng: me.lng, city: me.pubCity };
     const clientId = generateUuidV4();
+    trackUiInteraction('parta_activity_share', 'submit');
     void shareFriendPubActivity(pub, '', clientId).then(async (res) => {
+      trackUiInteraction('parta_activity_share', res.ok || isRetriableFriendError(res) ? 'success' : 'failure');
       if (res.ok) {
         toast({ kind: 'saved', title: t.nv.parta.called, sub: t.nv.parta.calledSub, icon: 'megaphone' });
       } else if (isRetriableFriendError(res)) {
@@ -230,6 +233,7 @@ export function PartaScreen() {
   };
 
   const answerRequest = (id: string, name: string, action: 'accept' | 'decline') => {
+    trackUiInteraction(action === 'accept' ? 'friends_request_accept' : 'friends_request_decline', action);
     usePartaStore.getState().setDashboard((d) => ({ ...d, incomingRequests: d.incomingRequests.filter((r) => r.id !== id) }));
     void respondFriendRequest(id, action).then((res) => {
       if (res.ok) {
@@ -243,7 +247,10 @@ export function PartaScreen() {
   };
 
   const openPlan = (id: string) => router.push({ pathname: '/nv/plan/[id]', params: { id } });
-  const openFriend = (id: string) => router.push({ pathname: '/nv/kamos/[id]', params: { id } });
+  const openFriend = (id: string) => {
+    trackUiInteraction('friends_profile_open');
+    router.push({ pathname: '/nv/kamos/[id]', params: { id } });
+  };
   const plansList = plans ?? [];
 
   return (
@@ -361,7 +368,14 @@ export function PartaScreen() {
             ))}
             {friends.length === 0 || rest.length ? (
               <>
-                <SectionTitle title={t.nv.parta.wholeParty} action={String(friends.length)} onAction={() => router.push('/nv/sprava-party')} />
+                <SectionTitle
+                  title={t.nv.parta.wholeParty}
+                  action={String(friends.length)}
+                  onAction={() => {
+                    trackUiInteraction('friends_manage_open');
+                    router.push('/nv/sprava-party');
+                  }}
+                />
                 <Card>
                   {friends.length === 0 ? (
                     <Row last leading={<Tile icon="user-plus" />} title={t.nv.parta.inviteFirst} chevron onPress={() => router.push('/nv/sprava-party')} />

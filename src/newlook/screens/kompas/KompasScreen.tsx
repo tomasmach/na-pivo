@@ -10,6 +10,7 @@ import type { AmenityKey } from '@/data/amenities';
 import { CRAFT_BEER_FILTER_KEY } from '@/data/pubSearchFilters';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { buildVisitedCities } from '@/map/mapModel';
 import { t } from '@/i18n';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
@@ -78,13 +79,20 @@ function subLine(target: KompasTarget, mode: 'price' | 'count', k: Kompas): stri
 }
 
 function goThere(target: KompasTarget) {
+  trackUiInteraction('compass_directions_open');
   const sub = target.distance != null ? L().guideSub(target.name, distanceLabel(target.distance)) : target.name;
   toast({ kind: 'info', title: L().guideTitle, sub, icon: 'navigation' });
   void openPubInMaps({ lat: target.lat, lng: target.lng, name: target.name, googlePlaceId: target.pub?.googlePlaceId });
 }
 
-function openTarget(router: ReturnType<typeof useRouter>, target: KompasTarget) {
+function openTarget(router: ReturnType<typeof useRouter>, target: KompasTarget, from: 'map' | 'compass') {
+  trackUiInteraction(from === 'map' ? 'map_pub_detail_open' : 'compass_pub_card_open');
   openNvPub(router, target.pub ?? { id: '', name: target.name, lat: target.lat, lng: target.lng });
+}
+
+function openFilters(router: ReturnType<typeof useRouter>) {
+  trackUiInteraction('compass_filters_open');
+  router.push('/nv/filtry');
 }
 
 function toParty(k: Kompas) {
@@ -119,7 +127,15 @@ export function KompasScreen() {
     dismissArrival();
   }, [arrived, dismissArrival, router, target]);
 
-  return mode === 'map' ? <MapMode k={k} onCompass={() => setMode('compass')} /> : <CompassMode k={k} onMap={() => setMode('map')} />;
+  const showCompass = () => {
+    trackUiInteraction('compass_return');
+    setMode('compass');
+  };
+  const showMap = () => {
+    trackUiInteraction('compass_map_open');
+    setMode('map');
+  };
+  return mode === 'map' ? <MapMode k={k} onCompass={showCompass} /> : <CompassMode k={k} onMap={showMap} />;
 }
 
 function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
@@ -150,11 +166,15 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
 
   const onPub = (id: string) => {
     const pub = k.mapPubs.find((p) => pinId(p) === id) ?? (st.picked && pinId(st.picked) === id ? st.picked : null);
-    if (pub) st.pick(pub);
+    if (pub) {
+      trackUiInteraction('map_pub_select', 'select');
+      st.pick(pub);
+    }
     setCollapsed(false);
   };
 
   const locate = async () => {
+    trackUiInteraction('map_locate');
     st.set({ mapView: 'okoli' });
     if (k.map.permissionState !== 'granted') {
       await k.map.requestPermission();
@@ -241,7 +261,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
                 {summaryLine(k)}
               </T>
             </View>
-            <IconButton icon="sliders-horizontal" size={38} iconSize={17} badge={k.filterCount || undefined} onPress={() => router.push('/nv/filtry')} label={L().filters} />
+            <IconButton icon="sliders-horizontal" size={38} iconSize={17} badge={k.filterCount || undefined} onPress={() => openFilters(router)} label={L().filters} />
           </Press>
           <LevelAvatar />
         </View>
@@ -325,7 +345,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
                   <Grabber />
                 </Press>
                 <Animated.View key={target.key} entering={SWAP_IN}>
-                  <Press onPress={() => openTarget(router, target)} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
+                  <Press onPress={() => openTarget(router, target, 'map')} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
                     <View style={[s.fill, { gap: 3 }]}>
                       <T s={18} w={600} c={C.black} style={{ letterSpacing: -0.2 }} numberOfLines={1}>
                         {target.name}
@@ -448,8 +468,17 @@ function CompassMode({ k, onMap }: { k: Kompas; onMap: () => void }) {
         </View>
       </View>
       <View style={[s.row, { gap: 8, marginTop: 12, opacity: tour ? 0 : 1 }]} pointerEvents={tour ? 'none' : 'auto'}>
-        <Chip label={L().filters} icon="sliders-horizontal" onPress={() => router.push('/nv/filtry')} />
-        {k.hideClosed ? <Chip label={L().openNowChip} active onPress={() => setOpenOnly(false)} /> : null}
+        <Chip label={L().filters} icon="sliders-horizontal" onPress={() => openFilters(router)} />
+        {k.hideClosed ? (
+          <Chip
+            label={L().openNowChip}
+            active
+            onPress={() => {
+              trackUiInteraction('settings_hide_closed', 'toggle_off');
+              setOpenOnly(false);
+            }}
+          />
+        ) : null}
         {st.filters.priceMaxCzk && state === 'noresults' ? (
           <Chip label={L().maxPriceChip(st.filters.priceMaxCzk)} active onPress={() => st.setFilters({ priceMaxCzk: null })} />
         ) : null}
@@ -464,7 +493,7 @@ function CompassMode({ k, onMap }: { k: Kompas; onMap: () => void }) {
               heading={k.compass.heading}
             />
             <View style={{ alignItems: 'center', gap: 6 }}>
-              <Press onPress={() => openTarget(router, target)} style={[s.row, { gap: 6 }]}>
+              <Press onPress={() => openTarget(router, target, 'compass')} style={[s.row, { gap: 6 }]}>
                 <T s={22} w={700} numberOfLines={1} style={{ flexShrink: 1 }}>
                   {target.name}
                 </T>
@@ -531,12 +560,30 @@ function CompassMode({ k, onMap }: { k: Kompas; onMap: () => void }) {
       ) : state === 'empty' ? (
         <View style={[s.row, { gap: 10 }]}>
           <Button label={L().retry} icon="refresh-cw" flex onPress={k.compass.retrySearch} />
-          <Button label={L().addPub} icon="plus" kind="raised" flex onPress={() => router.push('/nv/pridat-hospodu')} />
+          <Button
+            label={L().addPub}
+            icon="plus"
+            kind="raised"
+            flex
+            onPress={() => {
+              trackUiInteraction('compass_add_pub_open');
+              router.push('/nv/pridat-hospodu');
+            }}
+          />
         </View>
       ) : (
         <View style={[s.row, { gap: 10 }]}>
-          <Button label={L().editFilters} icon="sliders-horizontal" flex onPress={() => router.push('/nv/filtry')} />
-          <Button label={L().clearFilters} icon="x" kind="raised" flex onPress={st.clearFilters} />
+          <Button label={L().editFilters} icon="sliders-horizontal" flex onPress={() => openFilters(router)} />
+          <Button
+            label={L().clearFilters}
+            icon="x"
+            kind="raised"
+            flex
+            onPress={() => {
+              trackUiInteraction('compass_filters_clear');
+              st.clearFilters();
+            }}
+          />
         </View>
       )}
     </View>

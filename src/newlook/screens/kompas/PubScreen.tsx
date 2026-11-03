@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { haversineMeters } from '@/compass/distance';
 import { geohash8 } from '@/data/geohash';
 import { buildPubShareUrl } from '@/data/pubShareLink';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { formatVolume, t } from '@/i18n';
 import { calendarDaysBetween, eventDay, eventStartTime } from '@/pubPage/pubPageModel';
 import { findFavoriteKey, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
@@ -195,7 +196,16 @@ export function PubScreen() {
                 label={L().share}
                 onPress={() => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params(), url: buildPubShareUrl(pub) } })}
               />
-              <IconButton icon="ellipsis" size={40} iconSize={18} label={L().more} onPress={() => router.push({ pathname: '/nv/nesedi', params: params() })} />
+              <IconButton
+                icon="ellipsis"
+                size={40}
+                iconSize={18}
+                label={L().more}
+                onPress={() => {
+                  trackUiInteraction('compass_report_open');
+                  router.push({ pathname: '/nv/nesedi', params: params() });
+                }}
+              />
             </View>
           </View>
           <View style={{ gap: 6 }}>

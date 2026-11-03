@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { fetchFriendsLive } from '@/data/friendsClient';
+import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { buildLivePubs } from '@/map/mapModel';
 
@@ -32,6 +33,12 @@ function useLiveFriendCount(): number | null {
   return count;
 }
 
+const LAYER_TARGETS: Record<MapView, UiInteractionTarget> = {
+  okoli: 'map_layer_all',
+  stopy: 'map_layer_visited',
+  parta: 'map_layer_friends',
+};
+
 export function VrstvySheet() {
   const L = t.nv.kompas;
   const st = useKompasState();
@@ -49,7 +56,10 @@ export function VrstvySheet() {
               <Press
                 key={v.key}
                 haptic
-                onPress={() => st.set({ mapView: v.key })}
+                onPress={() => {
+                  if (!on) trackUiInteraction(LAYER_TARGETS[v.key], 'select');
+                  st.set({ mapView: v.key });
+                }}
                 accessibilityState={{ selected: on }}
                 style={{
                   flex: 1,
