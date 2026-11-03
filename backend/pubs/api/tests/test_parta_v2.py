@@ -274,6 +274,78 @@ def test_patch_edits_owner_plan_and_tells_invitees(client, party):
 
 
 @pytest.mark.django_db
+def test_undated_plan_can_be_edited_dated_and_undated_again_keeping_answers(client, party):
+    token, host = party["host"]
+    guest_token, guest = party["guest"]
+    plan = _home_plan(client, token, scheduled=False).json()
+    assert plan["kind"] == "live" and plan["scheduled_for"] is None
+    client.post(
+        f"/v1/friends/pub-activity/{plan['id']}/respond",
+        data={"response": "going"},
+        format="json",
+        **_auth(guest_token),
+    )
+    url = f"/v1/friends/pub-activity/{plan['id']}"
+
+    edited = client.patch(url, data={"message": "Přines chipsy.", "address": "Vinohradská 1"}, format="json", **_auth(token))
+    assert edited.status_code == status.HTTP_200_OK
+    assert edited.json()["kind"] == "live" and edited.json()["scheduled_for"] is None
+    assert edited.json()["started_at"] == plan["started_at"]
+    assert edited.json()["address"] == "Vinohradská 1"
+
+    saturday = (timezone.now() + timedelta(days=4)).replace(microsecond=0)
+    dated = client.patch(url, data={"scheduled_for": saturday.isoformat()}, format="json", **_auth(token))
+    assert dated.status_code == status.HTTP_200_OK
+    assert dated.json()["kind"] == "plan"
+    assert dated.json()["scheduled_for"] is not None
+    assert [p["nickname"] for p in dated.json()["people"]["going"]] == ["jirka"]
+    guest_plans = client.get("/v1/friends/plans", **_auth(guest_token)).json()["plans"]
+    assert [(p["id"], p["kind"], p["my_response"]) for p in guest_plans] == [(plan["id"], "plan", "going")]
+
+    undated = client.patch(url, data={"scheduled_for": None}, format="json", **_auth(token))
+    assert undated.status_code == status.HTTP_200_OK
+    assert undated.json()["kind"] == "live" and undated.json()["scheduled_for"] is None
+    assert [p["nickname"] for p in undated.json()["people"]["going"]] == ["jirka"]
+    row = FriendPubActivity.objects.get(public_id=plan["id"])
+    assert row.active and row.expires_at > timezone.now() + timedelta(hours=7)
+    assert FriendNotification.objects.filter(recipient=guest, title="Změna plánu").count() == 3
+    assert FriendPubActivity.objects.filter(account=host, active=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_released_payloads_unchanged_by_editing_undated_plans(client, party):
+    token, host = party["host"]
+    guest_token, _ = party["guest"]
+    # A released client's live broadcast: no place_kind, no scheduled_for.
+    released_live = {
+        "client_id": str(uuid.uuid4()),
+        "name": "U Zlatého tygra",
+        "lat": LAT,
+        "lng": LNG,
+        "city": "Praha",
+        "external_id": "",
+        "message": "",
+    }
+    created = client.post("/v1/friends/pub-activity", data=released_live, format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+    assert created.json()["kind"] == "live"
+    assert "place_kind" not in created.json()
+    # It is presence, not a plan: the edit path does not touch it.
+    patched = client.patch(
+        f"/v1/friends/pub-activity/{created.json()['id']}", data={"message": "x"}, format="json", **_auth(token)
+    )
+    assert patched.status_code == status.HTTP_404_NOT_FOUND
+    assert FriendPubActivity.objects.get(public_id=created.json()["id"]).message == ""
+    dashboard = client.get("/v1/friends", **_auth(guest_token)).json()
+    assert [row["id"] for row in dashboard["active_friends"]] == [created.json()["id"]]
+    # A released plan still lands in the released plans slice.
+    released_plan = {**released_live, "client_id": str(uuid.uuid4()), "scheduled_for": (timezone.now() + timedelta(hours=2)).isoformat()}
+    plan = client.post("/v1/friends/pub-activity", data=released_plan, format="json", **_auth(token)).json()
+    assert plan["kind"] == "plan"
+    assert [p["name"] for p in client.get("/v1/friends", **_auth(guest_token)).json()["plans"]] == ["U Zlatého tygra"]
+
+
+@pytest.mark.django_db
 def test_cancel_new_look_plan_tells_invitees(client, party):
     token, _ = party["host"]
     _, guest = party["guest"]

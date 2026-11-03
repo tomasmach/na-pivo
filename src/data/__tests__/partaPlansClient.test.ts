@@ -1,4 +1,7 @@
-import { parsePartaPlan, parsePlanDetail } from '../partaPlansClient';
+import { requestJson } from '../friendsClient';
+import { parsePartaPlan, parsePlanDetail, updatePartaPlan } from '../partaPlansClient';
+
+jest.mock('../friendsClient', () => ({ ...jest.requireActual('../friendsClient'), requestJson: jest.fn() }));
 
 const base = {
   id: 'a1',
@@ -41,5 +44,17 @@ describe('partaPlansClient parsing', () => {
 
   it('rejects a row without an id', () => {
     expect(parsePartaPlan({ name: 'x' })).toBeNull();
+  });
+});
+
+describe('updatePartaPlan', () => {
+  it('sends an explicit null time so the plan runs from now', async () => {
+    (requestJson as jest.Mock).mockResolvedValue({ ok: true, data: { ...base, kind: 'live', scheduled_for: null } });
+    const res = await updatePartaPlan('a1', { placeKind: 'home', name: 'U mě', scheduledFor: null });
+    expect(requestJson).toHaveBeenCalledWith('/v1/friends/pub-activity/a1', {
+      method: 'PATCH',
+      body: { place_kind: 'home', name: 'U mě', scheduled_for: null },
+    });
+    expect(res.ok && res.detail?.plan).toMatchObject({ kind: 'live', scheduledFor: null });
   });
 });

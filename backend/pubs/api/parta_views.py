@@ -544,7 +544,11 @@ class PartaActivityView(FriendActivityView):
             .filter(public_id=activity_id, account=request.user)
             .first()
         )
-        if activity is None or not _is_open(activity, now) or activity.kind != FriendPubActivity.Kind.PLAN:
+        # A released live broadcast (no place_kind) is presence, not a plan to edit.
+        editable = activity is not None and (
+            activity.kind == FriendPubActivity.Kind.PLAN or activity.place_kind != ""
+        )
+        if not editable or not _is_open(activity, now):
             return _not_found()
         serializer = PartaPlanPatchSerializer(data=request.data, partial=True)
         if not serializer.is_valid():
@@ -554,8 +558,9 @@ class PartaActivityView(FriendActivityView):
         place_kind = data.get("place_kind") or activity.place_kind or "pub"
         if place_kind == "pub" and data.get("lat") is None and activity.place_kind in ("home", "custom"):
             return Response({"lat": ["A pub needs its coordinates."]}, status=status.HTTP_400_BAD_REQUEST)
+        # No time means the plan is on now, exactly like a plan created without one.
         scheduled_for = data.get("scheduled_for", activity.scheduled_for)
-        if scheduled_for is None or scheduled_for <= now or scheduled_for > now + PLAN_MAX_AHEAD:
+        if scheduled_for is not None and (scheduled_for <= now or scheduled_for > now + PLAN_MAX_AHEAD):
             return Response(
                 {"detail": gettext("Plán je moc daleko. Zkus dřívější čas."), "code": "invalid_schedule"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -576,6 +581,7 @@ class PartaActivityView(FriendActivityView):
 
         place_changed = any(key in data for key in ("place_kind", "name", "lat", "lng", "address"))
         with transaction.atomic():
+            Account.objects.select_for_update().get(pk=request.user.pk)
             if place_changed:
                 merged = {
                     "name": data.get("name", activity.name),
@@ -591,11 +597,22 @@ class PartaActivityView(FriendActivityView):
             activity.place_kind = place_kind
             if "message" in data:
                 activity.message = data["message"]
-            if scheduled_for != activity.scheduled_for:
-                activity.reminder_sent_at = None
-            activity.scheduled_for = scheduled_for
-            activity.started_at = scheduled_for
-            activity.expires_at = scheduled_for + _ttl(place_kind)
+            if scheduled_for is not None:
+                if scheduled_for != activity.scheduled_for:
+                    activity.reminder_sent_at = None
+                activity.kind = FriendPubActivity.Kind.PLAN
+                activity.scheduled_for = scheduled_for
+                activity.started_at = scheduled_for
+                activity.expires_at = scheduled_for + _ttl(place_kind)
+            elif activity.kind == FriendPubActivity.Kind.PLAN:
+                activity.kind = FriendPubActivity.Kind.LIVE
+                activity.scheduled_for = None
+                activity.started_at = now
+                activity.expires_at = now + _ttl(place_kind)
+                # One live row per account, as the create path keeps it.
+                FriendPubActivity.objects.filter(
+                    account=request.user, active=True, expires_at__gt=now, kind=FriendPubActivity.Kind.LIVE
+                ).exclude(pk=activity.pk).update(active=False, updated_at=now)
             activity.save()
             if target_ids is not None:
                 _set_targets(activity, target_ids)

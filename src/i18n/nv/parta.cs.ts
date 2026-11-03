@@ -117,6 +117,7 @@ export const partaCs = {
   pickPub: 'Vyber hospodu',
   pubSearchFailed: 'Hledání teď nejde.',
   whenLabel: (day: string, time: string) => `${day} v ${time}`,
+  whenNow: 'Teď',
   wholePartyN: (n: number) => `Celá parta · ${n}`,
   peopleN: (n: number) => `${n} ${czechPlural(n, { one: 'člověk', few: 'lidi', many: 'lidí' })}`,
   pickSomeone: 'Vyber aspoň jednoho kámoše.',

@@ -102,7 +102,8 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
   const [pub, setPub] = useState<Pub | null>(() => initialPlace(editing).pub);
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState<{ query: string; pubs: PubSearchResult[]; failed: boolean } | null>(null);
-  const [when, setWhen] = useState(() => (editing ? new Date(editing.scheduledFor || editing.startedAt) : defaultWhen()));
+  // null = "now": a plan without a time runs from when it was posted.
+  const [when, setWhen] = useState<Date | null>(() => (editing ? (editing.scheduledFor ? new Date(editing.scheduledFor) : null) : defaultWhen()));
   const [audience, setAudience] = useState<'all' | string[]>('all');
   const [audienceTouched, setAudienceTouched] = useState(false);
   const [note, setNote] = useState(editing?.message ?? '');
@@ -133,7 +134,10 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
 
   const myName = personName(profile ? { displayName: profile.displayName, nickname: profile.nickname } : null);
   const title = kind === 'home' ? t.nv.parta.homePlaceMine : pub?.name ?? t.nv.parta.pickPub;
-  const day = ticketDay(when.toISOString());
+  const day = ticketDay((when ?? (editing && !editing.scheduledFor ? new Date(editing.startedAt) : new Date())).toISOString());
+  const whenLabel = when ? t.nv.parta.whenLabel(shortDay(when.toISOString()), hhmm(when)) : t.nv.parta.whenNow;
+  const pickDay = (d: Date) => setWhen(withTime(d, hhmm(when ?? defaultWhen())));
+  const pickTime = (time: string) => setWhen(withTime(when ?? defaultWhen(), time));
   const recipients = audience === 'all' ? undefined : audience;
   const whereLabel = kind === 'home' ? (address.trim() ? t.nv.parta.atMineAddress(address.trim()) : t.nv.parta.atMine) : pub?.name ?? t.nv.parta.pickPub;
   const whomLabel = audience === 'all' ? t.nv.parta.wholePartyN(friends.length) : t.nv.parta.peopleN(audience.length);
@@ -152,7 +156,7 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
     if (busy) return;
     if (kind === 'pub' && !pub) return toast({ kind: 'info', title: t.nv.parta.pickPub, icon: 'map-pin' });
     if (recipients && recipients.length === 0) return toast({ kind: 'info', title: t.nv.parta.pickSomeone, icon: 'users' });
-    if (when.getTime() <= Date.now()) return toast({ kind: 'info', title: t.nv.parta.pickLaterTime, icon: 'calendar' });
+    if (when && when.getTime() <= Date.now()) return toast({ kind: 'info', title: t.nv.parta.pickLaterTime, icon: 'calendar' });
     const input: PlanInput = {
       clientId,
       placeKind: kind,
@@ -160,7 +164,7 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
       ...(kind === 'pub' ? { lat: pub!.lat, lng: pub!.lng, externalId: pub!.id, city: pub!.city ?? '' } : {}),
       address: kind === 'home' ? address.trim() : '',
       message: note.trim(),
-      scheduledFor: when.toISOString(),
+      scheduledFor: when ? when.toISOString() : null,
       recipientIds: recipients,
     };
     setBusy(true);
@@ -279,23 +283,24 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
             )}
           </View>
         ) : null}
-        <PickerRow icon="calendar" label={t.nv.parta.when} value={t.nv.parta.whenLabel(shortDay(when.toISOString()), hhmm(when))} open={open === 'when'} onPress={() => toggle('when')} />
+        <PickerRow icon="calendar" label={t.nv.parta.when} value={whenLabel} open={open === 'when'} onPress={() => toggle('when')} />
         {open === 'when' ? (
           <View style={{ gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.hairline }}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {editing ? <Chip plain label={t.nv.parta.whenNow} active={!when} onPress={() => setWhen(null)} /> : null}
               {days.map((d) => (
                 <Chip
                   key={d.toDateString()}
                   plain
                   label={`${d.toLocaleDateString(intlLocale, { weekday: 'short' })} ${d.getDate()}. ${d.getMonth() + 1}.`}
-                  active={d.toDateString() === when.toDateString()}
-                  onPress={() => setWhen(withTime(d, hhmm(when)))}
+                  active={!!when && d.toDateString() === when.toDateString()}
+                  onPress={() => pickDay(d)}
                 />
               ))}
             </ScrollView>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {TIMES.map((time) => (
-                <Chip key={time} plain label={time} active={hhmm(when) === time} onPress={() => setWhen(withTime(when, time))} />
+                <Chip key={time} plain label={time} active={!!when && hhmm(when) === time} onPress={() => pickTime(time)} />
               ))}
             </ScrollView>
           </View>

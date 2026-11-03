@@ -429,8 +429,8 @@ export function PlanScreen() {
     fetchDetail();
   }, [fetchDetail]);
 
-  // RSVP changes land in the store first; keep the ticket in step with them.
-  const plan = detail ? { ...detail.plan, ...(cached ? { myResponse: cached.myResponse, responses: cached.responses } : {}) } : cached;
+  // RSVPs and edits land in the store first; every detail fetch writes there too.
+  const plan = cached ?? detail?.plan ?? null;
   const share = <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.share} onPress={() => router.push('/nv/nalepky')} />;
 
   if (gone) {
@@ -481,9 +481,7 @@ export function PlanScreen() {
           />
         </Card>
         <Card>
-          {plan.kind === 'plan' ? (
-            <Row leading={<Icon name="pencil-line" size={18} color={C.text2} />} title={t.nv.parta.editPlan} onPress={() => router.push({ pathname: '/nv/nova-pozvanka', params: { id: plan.id } })} />
-          ) : null}
+          <Row leading={<Icon name="pencil-line" size={18} color={C.text2} />} title={t.nv.parta.editPlan} onPress={() => router.push({ pathname: '/nv/nova-pozvanka', params: { id: plan.id } })} />
           <Row leading={<Icon name="sticker" size={18} color={C.text2} />} title={t.nv.parta.sendSticker} onPress={() => router.push('/nv/nalepky')} />
           <Row
             last

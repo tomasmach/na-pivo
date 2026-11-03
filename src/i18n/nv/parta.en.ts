@@ -118,6 +118,7 @@ export const partaEn: Strings['nv']['parta'] = {
   pickPub: 'Pick a pub',
   pubSearchFailed: 'Search is not working right now.',
   whenLabel: (day: string, time: string) => `${day} at ${time}`,
+  whenNow: 'Now',
   wholePartyN: (n: number) => `Whole crew · ${n}`,
   peopleN: (n: number) => `${n} ${people(n)}`,
   pickSomeone: 'Pick at least one friend.',
