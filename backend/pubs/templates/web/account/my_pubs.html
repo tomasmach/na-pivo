@@ -1,0 +1,51 @@
+{% extends "web/account/base.html" %}
+{% load i18n web %}
+{% block page %}
+<header class="np-app__head">
+  <h1 class="np-app__title">{% translate "Moje hospody" %}</h1>
+  <a class="np-btn" href="{% web_url "web-add-pub" %}">{% icon "plus" "np-icon--s np-yellow" %}{% translate "Přidat hospodu" %}</a>
+</header>
+{% if pubs %}
+  <div class="npa-split">
+    <section class="np-card npa-card" aria-labelledby="npa-pubs-title">
+      <div class="npa-card__head">
+        <h2 class="np-title" id="npa-pubs-title">{% translate "Tvoje hospody" %}</h2>
+        <span class="np-small np-muted">{{ pubs|length }}</span>
+      </div>
+      <div class="npa-pubs">
+        {% for pub in pubs %}
+          <a class="npa-pub" href="{{ pub.url }}"{% if pub == selected %} aria-current="true"{% endif %}>
+            <span class="npa-pub__body">
+              <span class="npa-pub__name">{{ pub.name }}{% if pub.favorite %}{% icon "star" "np-icon--s" label=_("Oblíbená") %}{% endif %}</span>
+              {% if pub.meta %}<span class="npa-pub__meta">{{ pub.meta }}</span>{% endif %}
+              {% if pub.status %}<span class="npa-pub__status">{{ pub.status }}</span>{% elif pub.city %}<span class="npa-pub__meta">{{ pub.city }}</span>{% endif %}
+            </span>
+            {% icon "chevron-right" "np-icon--s np-muted" %}
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% if selected %}
+      <aside class="np-card npa-pubcard" data-picked="hospoda" aria-label="{% translate "Vybraná hospoda" %}">
+        <h2 class="npa-pubcard__name">{{ selected.name }}</h2>
+        <div class="npa-pubcard__lines">
+          {% if selected.address %}<p>{% icon "map-pin" "np-icon--s" %}{{ selected.address }}</p>{% endif %}
+          {% if selected.meta %}<p>{% icon "beer" "np-icon--s" %}{{ selected.meta }}</p>{% endif %}
+          {% if selected.favorite %}<p>{% icon "star" "np-icon--s" %}{% translate "Máš ji v oblíbených" %}</p>{% endif %}
+          {% if selected.status %}<p>{% icon "shield-check" "np-icon--s" %}{{ selected.status }}</p>{% endif %}
+        </div>
+        {% if selected.public_url %}
+          <div class="npa-pubcard__actions">
+            <a class="np-btn" href="{{ selected.public_url }}">{% icon "chevron-right" "np-icon--s" %}{% translate "Detail hospody" %}</a>
+          </div>
+        {% endif %}
+      </aside>
+    {% endif %}
+  </div>
+{% else %}
+  {% translate "Zatím žádná hospoda" as empty_title %}
+  {% translate "Hospody, kde zapíšeš pivo nebo které si v appce dáš do oblíbených, se objeví tady. Chybí ti nějaká na mapě? Přidej ji." as empty_text %}
+  {% web_url "web-add-pub" as add_url %}{% translate "Přidat hospodu" as add_label %}
+  {% include "web/components/empty.html" with icon="map-pin" title=empty_title text=empty_text action_url=add_url action_label=add_label %}
+{% endif %}
+{% endblock %}

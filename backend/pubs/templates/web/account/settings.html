@@ -1,0 +1,173 @@
+{% extends "web/account/base.html" %}
+{% load i18n web %}
+{% block page %}
+<header class="np-app__head"><h1 class="np-app__title">{% translate "Nastavení" %}</h1></header>
+<div class="npa-settings">
+  <nav class="npa-subnav" aria-label="{% translate "Části nastavení" %}">
+    <a href="#profil">{% icon "user" "np-icon--s" %}{% translate "Profil" %}</a>
+    <a href="#ucet">{% icon "key-round" "np-icon--s" %}{% translate "Účet a přihlášení" %}</a>
+    <a href="#soukromi">{% icon "eye" "np-icon--s" %}{% translate "Soukromí" %}</a>
+    <a href="#data">{% icon "download" "np-icon--s" %}{% translate "Tvoje data" %}</a>
+    <p class="npa-note npa-subnav__note">{% translate "Kompas, připomínky a domovský bod nastavíš v appce." %}</p>
+  </nav>
+
+  <div class="npa-settings__main">
+    <h2 id="profil">{% translate "Profil" %}</h2>
+    <div class="np-card npa-set">
+      <div class="npa-set__row" data-scope>
+        <div class="npa-profile">
+          {% include "web/components/avatar.html" with name=page.account.name src=me.avatar_url size="l" %}
+          <div class="npa-profile__photo">
+            <label class="np-btn npa-file">{% translate "Nahrát fotku" %}<input id="npa-avatar-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic"></label>
+            {% if me.has_avatar %}<button class="np-btn np-btn--ghost np-btn--danger" type="button" data-api="/v1/account/me/avatar" data-method="DELETE">{% translate "Smazat fotku" %}</button>{% endif %}
+          </div>
+        </div>
+        <p class="np-field__error" data-error hidden></p>
+      </div>
+      <form class="npa-set__row npa-set__row--block" data-api="/v1/account/me" data-method="PATCH" data-ugc data-scope>
+        <div class="npa-fields">
+          {% translate "Přezdívka" as l_nick %}{% translate "Uvidí ji parta a lidi u tvých hodnocení." as h_nick %}
+          {% include "web/components/field.html" with name="nickname" label=l_nick value=me.nickname maxlength=20 autocomplete="nickname" hint=h_nick %}
+          {% translate "Jméno" as l_name %}{% include "web/components/field.html" with name="display_name" label=l_name value=me.display_name maxlength=120 autocomplete="name" %}
+        </div>
+        <p class="np-alert" role="alert" data-error hidden></p>
+        <div><button class="np-btn np-btn--primary" type="submit">{% translate "Uložit profil" %}</button></div>
+      </form>
+      <div class="npa-set__row">
+        <span class="npa-set__text"><span class="npa-set__title">{% translate "Jazyk" %}</span></span>
+        <nav class="np-segment" aria-label="{% translate "Jazyk" %}">
+          <a class="np-segment__item" href="{{ lang_urls.cs }}" lang="cs" hreflang="cs"{% if page.lang == "cs" %} aria-current="page"{% endif %}>Čeština</a>
+          <a class="np-segment__item" href="{{ lang_urls.en }}" lang="en" hreflang="en"{% if page.lang == "en" %} aria-current="page"{% endif %}>English</a>
+        </nav>
+      </div>
+    </div>
+
+    <h2 id="ucet">{% translate "Účet a přihlášení" %}</h2>
+    <div class="np-card npa-set">
+      {% if me.email %}
+        <div class="npa-set__row">
+          <span class="npa-set__text">
+            <span class="npa-set__title">{% translate "E-mail" %}</span>
+            <span class="npa-set__sub">{{ me.email }} · {% if me.email_verified %}{% translate "ověřený" %}{% else %}{% translate "zatím neověřený" %}{% endif %}</span>
+          </span>
+        </div>
+      {% endif %}
+      <div class="npa-set__row" data-scope>
+        <span class="npa-set__text">
+          <span class="npa-set__title">{% translate "Jak se přihlašuješ" %}</span>
+          <span class="npa-set__sub">{{ provider_names }}</span>
+          <span class="np-field__error" data-error hidden></span>
+        </span>
+        {% if can_unlink %}
+          <span class="npa-provider">
+            {% for p in providers %}{% if p.code != "email" %}
+              <button class="np-btn" type="button" data-api="/v1/auth/unlink" data-body='{"provider": "{{ p.code }}"}' data-confirm="{% blocktranslate with name=p.name %}Odpojit {{ name }}? Přihlašovat se pak budeš jiným způsobem.{% endblocktranslate %}">{% blocktranslate with name=p.name %}Odpojit {{ name }}{% endblocktranslate %}</button>
+            {% endif %}{% endfor %}
+          </span>
+        {% endif %}
+      </div>
+      <form class="npa-set__row npa-set__row--block" data-api="/v1/auth/set-password" data-scope data-ok="{% translate "Heslo je uložené." %}">
+        {% if me.email %}
+          {% translate "Nové heslo" as l_pw %}{% translate "Aspoň 8 znaků." as h_pw %}
+          {% include "web/components/field.html" with name="password" type="password" label=l_pw autocomplete="new-password" minlength=8 maxlength=128 required=True hint=h_pw %}
+        {% else %}
+          <p class="npa-set__sub">{% translate "Přidej si e-mail a heslo, ať se přihlásíš i bez Googlu nebo Applu." %}</p>
+          <div class="npa-fields">
+            {% translate "E-mail" as l_mail %}{% include "web/components/field.html" with name="email" type="email" label=l_mail autocomplete="email" required=True %}
+            {% translate "Heslo" as l_pw2 %}{% include "web/components/field.html" with name="password" type="password" label=l_pw2 autocomplete="new-password" minlength=8 maxlength=128 required=True %}
+          </div>
+        {% endif %}
+        <p class="np-alert" role="alert" data-error hidden></p>
+        <p class="npa-ok" role="status" data-ok-text hidden></p>
+        <div><button class="np-btn" type="submit">{% if me.email %}{% translate "Změnit heslo" %}{% else %}{% translate "Nastavit heslo" %}{% endif %}</button></div>
+      </form>
+    </div>
+
+    <h2 id="soukromi">{% translate "Soukromí" %}</h2>
+    <div class="np-card npa-set">
+      <div class="npa-set__row" data-scope>
+        <label class="npa-set__text" for="npa-public">
+          <span class="npa-set__title">{% translate "Veřejný profil" %}</span>
+          <span class="npa-set__sub">{% translate "Kdo zná tvou přezdívku, uvidí počty a odznaky." %}</span>
+          <span class="np-field__error" data-error hidden></span>
+        </label>
+        <span class="npa-switch"><input id="npa-public" type="checkbox" name="is_public" data-toggle="/v1/account/me" data-ugc{% if me.is_public %} checked{% endif %}><span></span></span>
+      </div>
+      <div class="npa-set__row" data-scope>
+        <label class="npa-set__text" for="npa-share">
+          <span class="npa-set__title">{% translate "Kamarádi vidí můj pivní feed" %}</span>
+          <span class="npa-set__sub">{% translate "Piva z večera se ukážou partě." %}</span>
+          <span class="np-field__error" data-error hidden></span>
+        </label>
+        <span class="npa-switch"><input id="npa-share" type="checkbox" name="share_drinks_with_parta" data-toggle="/v1/friends/settings"{% if share_drinks %} checked{% endif %}><span></span></span>
+      </div>
+      <div class="npa-set__row" data-scope>
+        <label class="npa-set__text" for="npa-autopublish">
+          <span class="npa-set__title">{% translate "Vyvěšovat noci" %}</span>
+          <span class="npa-set__sub">{% translate "Komu se večer sám vyvěsí na Výčep. Ručně znamená jen to, co pustíš sám." %}</span>
+          <span class="np-field__error" data-error hidden></span>
+        </label>
+        <select class="npa-select" id="npa-autopublish" name="night_autopublish" data-toggle="/v1/account/me">
+          {% for value, label in autopublish_options %}<option value="{{ value }}"{% if value == autopublish %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <h2 id="data">{% translate "Tvoje data" %}</h2>
+    <div class="np-card npa-set">
+      <div class="npa-set__row" data-scope>
+        <span class="npa-set__text">
+          <span class="npa-set__title">{% translate "Poslat moje data e-mailem" %}</span>
+          <span class="npa-set__sub">{% translate "Deník, hodnocení a hospody v jednom souboru." %}</span>
+          <span class="np-field__error" data-error hidden></span>
+          <span class="npa-ok" data-ok-text hidden></span>
+        </span>
+        <button class="np-btn" type="button" data-api="/v1/account/export" data-ok="{% translate "Export ti letí na e-mail." %}">{% icon "mail" "np-icon--s" %}{% translate "Poslat" %}</button>
+      </div>
+      <div class="npa-set__row">
+        <span class="npa-set__text">
+          <span class="npa-set__title">{% translate "Stáhnout data hned" %}</span>
+          <span class="npa-set__sub">{% translate "Stejný soubor rovnou do počítače." %}</span>
+        </span>
+        <a class="np-btn" href="{{ export_url }}" download="na-pivo-export.json">{% icon "download" "np-icon--s" %}{% translate "Stáhnout" %}</a>
+      </div>
+      <form class="npa-set__row" method="post" action="{% web_url "web-logout" %}">
+        {% csrf_token %}
+        <button class="npa-row-btn npa-set__title" type="submit">{% translate "Odhlásit se" %}</button>
+      </form>
+      <form class="npa-set__row" method="post" action="{% web_url "web-logout-everywhere" %}">
+        {% csrf_token %}
+        <button class="npa-row-btn npa-set__text" type="submit">
+          <span class="npa-set__title">{% translate "Odhlásit se všude" %}</span>
+          <span class="npa-set__sub">{% translate "Z webu, z appky i ze všech telefonů." %}</span>
+        </button>
+      </form>
+      <div class="npa-set__row">
+        <button class="npa-row-btn npa-set__text" type="button" data-dialog="npa-delete">
+          <span class="npa-set__title npa-set__danger">{% translate "Smazat účet" %}</span>
+          <span class="npa-set__sub">{% translate "Smaže účet, deník i hodnocení." %}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block dialogs %}
+<dialog class="npa-dialog npa-dialog--small" id="npa-delete" aria-labelledby="npa-delete-title">
+  <h2 class="npa-dialog__title" id="npa-delete-title">{% translate "Smazat účet?" %}</h2>
+  <p class="npa-dialog__text">{% blocktranslate with days=grace_days %}Do {{ days }} dní to můžeš zrušit tím, že se znovu přihlásíš. Pak se účet i data nevratně smažou.{% endblocktranslate %}</p>
+  <ul class="npa-dialog__list">
+    <li>{{ diary_line }}</li>
+    <li>{% translate "Hodnocení piv a fotky" %}</li>
+    <li>{% translate "Parta a odznaky" %}</li>
+  </ul>
+  {% if me.email_verified %}<p class="npa-dialog__text"><a class="np-link" href="#data" data-close>{% translate "Chceš si je nechat? Pošli si je předtím e-mailem" %} ›</a></p>{% endif %}
+  <p class="np-alert" role="alert" data-error hidden></p>
+  <div class="npa-dialog__actions">
+    <button class="np-btn np-btn--l npa-grow" type="button" data-close>{% translate "Zrušit" %}</button>
+    {% web_url "web-account-deleted" as deleted_url %}
+    <button class="np-btn np-btn--l np-btn--danger npa-grow" type="button" id="npa-delete-confirm" data-done="{{ deleted_url }}">{% translate "Smazat" %}</button>
+  </div>
+</dialog>
+{% endblock %}

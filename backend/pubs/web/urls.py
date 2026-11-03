@@ -10,6 +10,16 @@ from __future__ import annotations
 from django.conf import settings
 from django.urls import path
 
+from pubs.web.account_views import (
+    account_deleted,
+    add_pub,
+    beers,
+    crew,
+    logout_everywhere,
+    my_pubs,
+    settings_page,
+    taproom,
+)
 from pubs.web.assets import web_asset
 from pubs.web.auth_views import (
     diary,
@@ -55,17 +65,20 @@ urlpatterns = [
     *bilingual("denik", "en/diary", diary, "web-diary"),
     *bilingual("denik/zapsat", "en/diary/log", coming_soon, "web-log-beer"),
 
-    *bilingual("piva", "en/my-beers", coming_soon, "web-beers"),
+    *bilingual("piva", "en/my-beers", beers, "web-beers"),
 
-    *bilingual("moje-hospody", "en/my-pubs", coming_soon, "web-my-pubs"),
+    *bilingual("moje-hospody", "en/my-pubs", my_pubs, "web-my-pubs"),
+    *bilingual("moje-hospody/pridat", "en/my-pubs/add", add_pub, "web-add-pub"),
 
-    *bilingual("vycep", "en/taproom", coming_soon, "web-taproom"),
+    *bilingual("vycep", "en/taproom", taproom, "web-taproom"),
 
-    *bilingual("parta", "en/crew", coming_soon, "web-crew"),
+    *bilingual("parta", "en/crew", crew, "web-crew"),
 
     *bilingual("profil", "en/profile", coming_soon, "web-profile"),
 
-    *bilingual("nastaveni", "en/settings", coming_soon, "web-settings"),
+    *bilingual("nastaveni", "en/settings", settings_page, "web-settings"),
+    *bilingual("odhlasit-vsude", "en/logout-everywhere", logout_everywhere, "web-logout-everywhere"),
+    *bilingual("ucet-smazan", "en/account-deleted", account_deleted, "web-account-deleted"),
 ]
 
 if settings.DEBUG:

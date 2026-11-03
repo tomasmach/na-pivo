@@ -26,7 +26,7 @@ from pubs.beer_photo_gallery import beer_photo_lookup_keys, visible_beer_photos
 from pubs.models import Account, PhotoContestEntry, PhotoContestVote, PublishedNight
 from pubs.photo_contest import current_photo_contest
 
-from .authentication import AccountTokenAuthentication
+from .authentication import AccountTokenAuthentication, WebSessionAuthentication
 from .serializers import FriendsBeerPhotoFeedSerializer
 from .views import (
     _accepted_friend_ids,
@@ -73,7 +73,7 @@ class NightsSummaryView(APIView):
     server; both answers are cached for a few minutes.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends_dashboard"
@@ -167,7 +167,7 @@ class BeerPhotosView(APIView):
     :mod:`pubs.beer_photo_gallery`), newest first. Never exposes pub GPS.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends_dashboard"

@@ -1,0 +1,113 @@
+{% extends "web/account/base.html" %}
+{% load i18n web %}
+{% block page %}
+<header class="np-app__head"><h1 class="np-app__title">{% translate "Parta" %}</h1></header>
+<div class="npa-split npa-split--wide">
+  <div class="np-stack">
+    {% if incoming %}
+      <section aria-labelledby="npa-req">
+        <div class="npa-section-head"><h2 class="np-title" id="npa-req">{% translate "Žádosti o přátelství" %}</h2><span class="np-small">{{ incoming|length }}</span></div>
+        <div class="np-card np-card--tight">
+          {% for req in incoming %}
+            <div class="npa-request" data-scope>
+              {% include "web/components/avatar.html" with name=req.name src=req.requester.avatar_url %}
+              <span class="np-row__body">
+                <span class="np-row__title">{% blocktranslate with name=req.name %}{{ name }} chce do party{% endblocktranslate %}</span>
+                {% if req.requester.nickname %}<span class="np-row__meta">@{{ req.requester.nickname }}</span>{% endif %}
+                <span class="np-field__error" data-error hidden></span>
+              </span>
+              <span class="npa-request__actions">
+                <button class="np-btn np-btn--icon npa-round-btn" type="button" data-api="/v1/friends/requests/{{ req.id }}/decline" aria-label="{% blocktranslate with name=req.name %}Odmítnout {{ name }}{% endblocktranslate %}">{% icon "x" "np-icon--s" %}</button>
+                <button class="np-btn np-btn--light np-btn--icon npa-round-btn" type="button" data-api="/v1/friends/requests/{{ req.id }}/accept" aria-label="{% blocktranslate with name=req.name %}Přijmout {{ name }}{% endblocktranslate %}">{% icon "check" "np-icon--s" %}</button>
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <section aria-labelledby="npa-friends">
+      <div class="npa-section-head"><h2 class="np-title" id="npa-friends">{% translate "Kamarádi" %}</h2>{% if friends %}<span class="np-small">{{ friends|length }}</span>{% endif %}</div>
+      {% if friends %}
+        <div class="np-card np-card--tight"><div class="np-list">
+          {% for friend in friends %}
+            <div class="np-row">
+              {% include "web/components/avatar.html" with name=friend.name src=friend.avatar_url ring=friend.out %}
+              <span class="np-row__body">
+                <span class="np-row__title">{{ friend.name }}</span>
+                <span class="np-row__meta{% if friend.out %} np-row__meta--out{% endif %}">{{ friend.meta }}</span>
+              </span>
+              {% if friend.together %}<span class="npa-friend__end">{{ friend.together }}</span>{% endif %}
+            </div>
+          {% endfor %}
+        </div></div>
+      {% else %}
+        {% translate "Parta je zatím prázdná" as empty_title %}
+        {% translate "Pošli kamarádům odkaz nebo je najdi podle přezdívky. Až žádost přijmou, uvidíte se tady." as empty_text %}
+        {% include "web/components/empty.html" with icon="users" title=empty_title text=empty_text %}
+      {% endif %}
+      {% if outgoing %}
+        <p class="npa-note npa-gap-s">{% translate "Čeká na odpověď:" %} {% for req in outgoing %}{{ req.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="npa-side">
+    <section class="np-card" aria-labelledby="npa-add">
+      <h2 class="np-title" id="npa-add">{% translate "Přidat kamaráda" %}</h2>
+      <form class="npa-search-form" method="get" action="{% web_url "web-crew" %}" role="search">
+        <label class="npa-label np-sr-only" for="npa-find">{% translate "Podle přezdívky" %}</label>
+        <div class="np-search">{% icon "at-sign" %}<input class="np-input" id="npa-find" name="hledat" type="search" value="{{ term }}" placeholder="{% translate "přezdívka" %}" maxlength="40" minlength="2" autocomplete="off"></div>
+        <button class="np-btn" type="submit">{% translate "Hledat" %}</button>
+      </form>
+      {% if results is not None %}
+        {% if results %}
+          <div class="np-list">
+            {% for person in results %}
+              <div class="np-row" data-scope>
+                {% include "web/components/avatar.html" with name=person.name src=person.avatar_url %}
+                <span class="np-row__body">
+                  <span class="np-row__title">{{ person.name }}</span>
+                  {% if person.nickname %}<span class="np-row__meta">@{{ person.nickname }}</span>{% endif %}
+                  <span class="np-field__error" data-error hidden></span>
+                </span>
+                {% if person.friend %}<span class="npa-friend__end">{% translate "V partě" %}</span>
+                {% elif person.pending %}<span class="npa-friend__end">{% translate "Žádost odeslaná" %}</span>
+                {% else %}<button class="np-btn" type="button" data-api="/v1/friends/requests" data-body='{"target_account_id": "{{ person.id }}"}'>{% icon "user-plus" "np-icon--s np-yellow" %}{% translate "Poslat žádost" %}</button>{% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="npa-empty-line">{% translate "Nikoho takového nevidím. Zkus jinou přezdívku, nebo mu pošli odkaz." %}</p>
+        {% endif %}
+      {% endif %}
+      {% if invite_url %}
+        <p class="npa-label npa-gap-top">{% translate "Nebo mu pošli odkaz" %}</p>
+        <div class="npa-invite">
+          <label class="np-sr-only" for="npa-invite">{% translate "Odkaz do party" %}</label>
+          <input class="np-input" id="npa-invite" value="{{ invite_url }}" readonly>
+          <button class="np-btn" type="button" data-copy="npa-invite">{% icon "copy" "np-icon--s" %}<span>{% translate "Kopírovat" %}</span></button>
+        </div>
+        <p class="npa-note npa-gap-s">{% translate "Kdo ho otevře, pošle ti žádost. Přijmout ji musíš ty." %}</p>
+      {% endif %}
+    </section>
+
+    {% if board|length > 1 %}
+      <section class="np-card" aria-labelledby="npa-board">
+        <div class="npa-card__head"><h2 class="np-title" id="npa-board">{% translate "Žebříček party" %}</h2><span class="np-small np-muted">{% translate "posledních 30 dní" %}</span></div>
+        <ol class="npa-board">
+          {% for row in board %}
+            <li{% if row.is_me %} class="is-me"{% endif %}>
+              <span class="npa-board__pos{% if forloop.first %} np-yellow{% endif %}">{{ forloop.counter }}</span>
+              {% include "web/components/avatar.html" with name=row.name src=row.account.avatar_url size="s" ring=row.is_me %}
+              <span class="npa-board__name">{{ row.name }}</span>
+              <span class="npa-board__score">{{ row.beers_30d }}<small>{{ row.unit }}</small></span>
+            </li>
+          {% endfor %}
+        </ol>
+        {% if chase %}<p class="npa-chase">{% icon "trophy" "np-icon--s" %}{{ chase }}</p>{% endif %}
+      </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -262,7 +262,7 @@ from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 from pubs.xp_events import record_xp_event
 
 from . import piva_views
-from .authentication import AccountTokenAuthentication
+from .authentication import AccountTokenAuthentication, WebSessionAuthentication
 from .cache import get_cached_pub_details, get_or_enrich
 from .client_time import bounded_client_time
 from .drink_flags import evaluate_drink_flags
@@ -1717,7 +1717,7 @@ class UserAddedPubView(APIView):
     the existing community contribution endpoint.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "added_pubs"
@@ -4049,7 +4049,7 @@ class PubFavoriteView(APIView):
     once the user frees a slot. Updates and removals are never capped.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "pub_favorites"
@@ -4258,7 +4258,7 @@ class PubVisitView(APIView):
     "pub_visits").
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "pub_visits"
@@ -5041,7 +5041,7 @@ class FriendsView(APIView):
     the bounded live poll never starves the friend write budget.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends_dashboard"
@@ -5709,7 +5709,7 @@ def _friend_suggestion_payloads(
 class FriendSearchView(APIView):
     """GET /v1/friends/search?q=nick — public profile lookup for adding friends."""
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
@@ -6459,7 +6459,7 @@ class LeaderboardsView(APIView):
 class FriendRequestView(APIView):
     """POST /v1/friends/requests — send a friend request by id, nickname or invite code."""
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
@@ -6745,7 +6745,7 @@ class FriendRequestView(APIView):
 class FriendRequestActionView(APIView):
     """POST /v1/friends/requests/<id>/accept|decline."""
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
@@ -7900,7 +7900,7 @@ class BeerCheckInView(APIView):
     safely replay. The payload never accepts raw GPS, only a chosen pub identity.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
@@ -8318,7 +8318,7 @@ class PublishedNightView(APIView):
 class PublishedNightFeedView(APIView):
     """GET /v1/nights/feed — cursor-paginated friends or global Výčep."""
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends_dashboard"
@@ -8553,7 +8553,7 @@ class PublishedNightCommentDeleteView(APIView):
 class PublishedNightReactView(APIView):
     """POST/DELETE /v1/nights/<public_id>/react — buy a symbolic round."""
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
@@ -8651,7 +8651,7 @@ class BeerMemoryView(APIView):
 class BeerDetailView(APIView):
     """GET /v1/beers/detail?beer_name=&brewery_name= — personal + party aggregate."""
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends_dashboard"
@@ -9711,7 +9711,7 @@ class FriendInviteView(APIView):
     PII; identity resolves server-side only after the scanner authenticates.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
@@ -9822,7 +9822,7 @@ class FriendInviteResolveView(APIView):
 class FriendSettingsView(APIView):
     """GET/PATCH /v1/friends/settings — ghost mode + quiet-hours preferences."""
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
@@ -13081,7 +13081,7 @@ def _dispatch_account_export(account_id: int, email: str) -> bool:
 class AccountExportView(APIView):
     """GET downloads data; POST sends the same export to the account e-mail."""
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "account_export"
@@ -13303,7 +13303,7 @@ class AccountMeView(APIView):
     future per-user features build on.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "account"
@@ -13511,7 +13511,7 @@ class AccountUGCConsentView(APIView):
     409 so the client re-fetches the terms before retrying.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "account"
@@ -13677,7 +13677,7 @@ class AccountAvatarView(APIView):
     default stays JSON-only so no other endpoint is affected.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser]
     throttle_classes = [ScopedRateThrottle]

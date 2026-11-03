@@ -37,7 +37,7 @@ from pubs.models import (
 )
 from pubs.regions import REGION_CODES
 
-from .authentication import AccountTokenAuthentication
+from .authentication import AccountTokenAuthentication, WebSessionAuthentication
 
 # Ochutnávač levels: taste the top 10, then the top 50, then the top 100 of the ranking.
 TASTER_TIERS = (10, 50, 100)
@@ -47,7 +47,7 @@ SHARED_VISIBILITIES = (BeerCheckIn.Visibility.FRIENDS, BeerCheckIn.Visibility.PU
 
 
 class _BeersPolicy(APIView):
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "beers"
