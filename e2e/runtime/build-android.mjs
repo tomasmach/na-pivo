@@ -6,10 +6,11 @@ import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { acquireLock } from './locks.mjs';
 import { start, stop } from './processes.mjs';
-import { sdkPath } from './device.mjs';
+import { androidAbi, sdkPath } from './device.mjs';
 import { requireFreshNativeProject } from './preflight-native-build.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
+process.env.LC_ALL = 'en_US.UTF-8';
 const free = () => { const disk = fs.statfsSync(root); return disk.bavail * disk.bsize; };
 requireFreshNativeProject(root, 'android');
 const marker = path.join(root, '.e2e/android-build-owner.json');
@@ -18,7 +19,9 @@ const runDir = path.join(root, '.e2e/runs', randomUUID());
 fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
 const env = {
   PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
-  JAVA_HOME: process.env.JAVA_HOME || execFileSync('/usr/libexec/java_home', ['-v', '17'], { encoding: 'utf8' }).trim(),
+  JAVA_HOME: process.env.JAVA_HOME || (process.platform === 'darwin'
+    ? execFileSync('/usr/libexec/java_home', ['-v', '17'], { encoding: 'utf8' }).trim()
+    : path.dirname(path.dirname(fs.realpathSync(execFileSync('which', ['java'], { encoding: 'utf8' }).trim())))),
   ANDROID_HOME: sdkPath(), NODE_ENV: 'development', CI: '1',
   NA_PIVO_E2E_RUN_DIR: runDir,
   E2E_TELEMETRY_DISABLED: '1', EXPO_NO_TELEMETRY: '1', EXPO_NO_DOTENV: '1',
@@ -66,7 +69,7 @@ async function command(executable, args, cwd) {
 try {
   await command(process.execPath, ['node_modules/expo/bin/cli', 'prebuild', '--platform', 'android', '--no-install'], root);
   if (!closing) await command(path.join(root, 'android/gradlew'), ['assembleDebug', '--no-daemon', '--max-workers=2',
-    '-PreactNativeArchitectures=arm64-v8a', '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m'], path.join(root, 'android'));
+    `-PreactNativeArchitectures=${androidAbi}`, '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m'], path.join(root, 'android'));
   if (!closing) {
     const output = path.join(root, '.e2e/build/na-pivo-debug.apk');
     fs.mkdirSync(path.dirname(output), { recursive: true });
