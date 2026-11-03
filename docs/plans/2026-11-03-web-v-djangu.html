@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Web Na pivo v Djangu: podklad pro build</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0a0a0a;--panel:#151515;--panel2:#232323;--text:#f7f7f2;--text2:#d4d4ce;--muted:#8f8f8a;--line:#ffffff1a;--amber:#ffc400;--green:#62cf8a;--red:#ff6b5e}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}
+    a{color:var(--amber)}main{width:min(100%,1040px);margin:0 auto;padding:52px 32px 100px}
+    h1{font-size:clamp(34px,5vw,56px);line-height:1.02;letter-spacing:-.03em;margin:.1em 0 .3em}h2{margin-top:56px;font-size:26px;letter-spacing:-.01em}h3{margin:26px 0 8px;font-size:18px}
+    .eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--amber)}.lead{font-size:18px;color:var(--text2);max-width:72ch}.muted{color:var(--muted)}
+    table{width:100%;border-collapse:collapse;margin:12px 0}th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+    td code,p code,li code{background:var(--panel2);padding:1px 6px;border-radius:6px;font-size:13px}
+    .card{padding:18px 20px;border:1px solid var(--line);border-radius:16px;background:var(--panel);margin:12px 0}
+    .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}.ok{background:#62cf8a22;color:var(--green)}.miss{background:#ff6b5e22;color:var(--red)}.part{background:#ffc40022;color:var(--amber)}
+    ol li,ul li{margin:6px 0}
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Podklad pro build · 3. 11. 2026</div>
+  <h1>Web Na pivo v Djangu</h1>
+  <p class="lead">Web dělá skoro všechno, co appka kromě kompasu a počítání u stolu. Veřejná část přivádí lidi z Googlu. Celé to běží v Djangu vedle <code>/v1/</code> API, takže backend pro appku zůstává, jak je.</p>
+
+  <h2>Kde jsou návrhy</h2>
+  <p>Návrhy jsou v souboru <code>na-pivo-redesign.pen</code> v kořeni hlavního checkoutu na desce <strong>„Web · Na pivo na webu“</strong>. <strong>Soubor není v gitu</strong>, takže na jiný stroj ho musíš přenést ručně. V závorkách jsou ID uzlů v .pen souboru.</p>
+  <p>Vybraný obrázek pro sdílení hlavní stránky je <code>output/og/og-home-web.png</code> a <code>og-home-web@2x.png</code> v hlavním checkoutu. Složka je v <code>.gitignore</code>.</p>
+
+  <h2>Co je rozhodnuté</h2>
+  <ul>
+    <li>Celý web je v Djangu (templates). Next.js se nepoužívá. Rozdělaný Next.js web ve větvích <code>feat/web-piva</code>, <code>feat/web-stamgast</code>, <code>feat/web-vycep</code> a <code>feat/web-profil</code> nikdy nebyl pushnutý. Je jen zdroj logiky a textů a po buildu půjde smazat.</li>
+    <li>Vzhled přebírá šedý jazyk redesignu, jen tmavý režim. Barvy jsou proměnné <code>np-*</code> v .pen souboru (země <code>#0A0A0A</code>, karty <code>#151515</code>, ovládací prvky <code>#232323</code>, jantar <code>#FFC400</code>). Písma jsou Sofia Sans Extra Condensed 800 na nadpisy a čísla a Sofia Sans na text, ikony jsou lucide.</li>
+    <li>Po přihlášení je vlevo panel (Deník, Piva, Hospody, Výčep, Parta, dole profil). Jediná jantarová věc v panelu je „Zapsat pivo“. Veřejné stránky mají společnou hlavičku (Hospody, Piva, Ceny piva, Trasy, Žebříčky, Novinky, hledání) a patičku s odkazy na města, ceny a piva.</li>
+    <li>Kompas a počítání u stolu zůstávají jen v appce.</li>
+    <li>Hodnocení piv s přezdívkou, hospodou a datem jsou veřejná.</li>
+    <li>Smazání účtu má dál 14denní lhůtu (<code>ACCOUNT_DELETION_GRACE_DAYS</code>).</li>
+    <li>Obrázek pro sdílení hlavní stránky je B4 „Deník s mapou“. Pro pivo, hospodu, ceny ve městě, Pivní index, trasu a pozvánku jsou textové šablony. Pivovar, žebříček a novinky zatím použijí B4.</li>
+    <li>Na později nebo vůbec: Pivní rok 2026 (až potom), odznak pro hospody (teď ne).</li>
+  </ul>
+
+  <h2>Co už v Djangu běží</h2>
+  <p>Stav na <code>origin/dev</code> (<code>e5895505</code>). Tyhle stránky se jen přebarví a doplní, nestaví se znovu. Nové stránky potřebují i anglickou verzi pod <code>/en/…</code> stejně jako ty stávající.</p>
+  <table>
+    <tr><th>Adresa</th><th>Kód</th><th>Podle návrhu</th></tr>
+    <tr><td><code>/</code>, <code>/en</code></td><td><code>home_views.home</code>, <code>home.html</code></td><td>Web · Landing (VPR7K)</td></tr>
+    <tr><td><code>/ceny</code>, <code>/ceny/&lt;město&gt;</code>, <code>…/og.png</code></td><td><code>web_views.beer_prices</code>, <code>beer_prices.html</code></td><td>Web · Ceny piva Praha (a7alfJ), mobil (G9r4uJ), OG · Ceny ve městě (ximSF)</td></tr>
+    <tr><td><code>/pivo</code>, <code>/pivo/&lt;pivo&gt;</code>, <code>…/og.png</code></td><td><code>web_views.beer_pages</code>, <code>beers.html</code></td><td>Web · Pivo Pilsner Urquell (bWe2h), mobil (NtKxB), OG · Pivo (q0vjzL)</td></tr>
+    <tr><td><code>/pivo/znacka/&lt;značka&gt;</code></td><td><code>web_views.beer_pages</code> (BRAND)</td><td>Web · Pivovar Plzeňský Prazdroj (gD5hr)</td></tr>
+    <tr><td><code>/p/&lt;kód&gt;</code>, <code>/t/&lt;token&gt;</code>, <code>/party/&lt;kód&gt;</code></td><td><code>invite_landing.html</code>, <code>tour_landing.html</code></td><td>Přebarvit. Návrh pozvánky (TStMv, gnDJz, aFlSI) je pozvánka na pivo s Jdu / Možná / Nejdu. Ověř, ke kterému typu pozvánky patří.</td></tr>
+    <tr><td><code>/sitemap.xml</code>, <code>/robots.txt</code></td><td><code>web_views</code></td><td>Doplnit nové veřejné stránky.</td></tr>
+    <tr><td>Smazání účtu pro Google Play</td><td><code>docs/delete-account.html</code> (GitHub Pages, <code>WEB_BASE_URL</code>)</td><td>Web · Smazání účtu (k09aje). Rozhodni, jestli stránka zůstane na GitHub Pages, nebo se přesune do Djanga. Odkaz v Google Play pak musí sedět.</td></tr>
+  </table>
+
+  <h2>Obrazovky</h2>
+  <h3>Veřejné, bez přihlášení</h3>
+  <table>
+    <tr><th>Obrazovka</th><th>Návrh</th><th>Data v backendu</th></tr>
+    <tr><td>Hospody ve městě</td><td>Web · Hospody v Praze (R8p5o2)</td><td><span class="tag part">část</span> hospody, <code>city</code> a ceny jsou. Filtr „otevřeno teď“ jde z <code>hours_json</code>. Agregace a cache se musí dopsat.</td></tr>
+    <tr><td>Stránka hospody</td><td>Web · Stránka hospody (F6Xo39)</td><td><span class="tag ok">je</span> komunitní data, ceny, hodnocení</td></tr>
+    <tr><td>Žebříček piv</td><td>Web · Nejlepší piva v Česku (Y0MkjT), mobil (Iqrua)</td><td><span class="tag part">část</span> hodnocení jsou v <code>BeerCheckIn.rating</code>. Žebříček a práh 50 hodnocení se musí dopsat.</td></tr>
+    <tr><td>Hledání</td><td>Web · Výsledky hledání (fOvbj), bez výsledku (SRAaz)</td><td><span class="tag part">část</span> v API je jen hledání hospod. Piva a města přidat.</td></tr>
+    <tr><td>Novinky</td><td>Web · Novinky (kgvft)</td><td><span class="tag part">část</span> „nově na čepu“ dává <code>BeerTapEvent</code>, změny cen <code>PubPriceSnapshot</code>, nové hospody <code>UserAddedPub</code>, „už nečepují“ jde odvodit z <code>historical_beers</code>. <span class="tag miss">chybí</span> model pro akce hospod jsem nenašel.</td></tr>
+    <tr><td>Pivní index Česka</td><td>Web · Pivní index Česka (Y1cTjL), OG · Pivní index (z8hTBS)</td><td><span class="tag part">část</span> ceny po hospodách jsou v <code>PubPriceIndex</code> a <code>PubPriceSnapshot</code>. Kraj ani okres hospoda nemá, jen <code>city</code>, takže je potřeba převod na kraje. Čtvrtletní historii a export pro novináře dopsat.</td></tr>
+    <tr><td>Pivovar</td><td>Web · Pivovar (gD5hr)</td><td><span class="tag part">část</span> <code>BeerBrand</code> má jen název a aliasy. Město a rok založení z návrhu v datech nejsou. Doplnit, nebo z návrhu vypustit.</td></tr>
+    <tr><td>Pivní trasy</td><td>Web · Pivní trasy (SZUnv), Web · Pivní trasa Žižkovem (pXuDA), mobil (AUSku), OG · Trasa (hA69N)</td><td><span class="tag ok">je</span> <code>TourPublication</code> a <code>/v1/tour-publications/search</code>. Počet lidí, kteří trasu prošli, ověřit.</td></tr>
+    <tr><td>Pozvánka bez appky</td><td>Mobil · Pozvánka (TStMv), po Jdu (gnDJz), desktop (aFlSI), OG · Pozvánka (RlByv)</td><td><span class="tag miss">chybí</span> dnes odpovídají jen kamarádi s účtem (<code>FriendActivityResponse</code>). Odpověď hosta jen se jménem potřebuje nový model, limit proti spamu a pravidlo pro jména.</td></tr>
+    <tr><td>Smazání účtu bez přihlášení</td><td>Web · Smazání účtu (k09aje)</td><td><span class="tag part">část</span> dnes je to e-mail na adresu z <code>docs/delete-account.html</code>. Formulář „Poslat odkaz“ potřebuje endpoint s <code>OneTimeToken</code> a limitem.</td></tr>
+  </table>
+
+  <h3>Po přihlášení</h3>
+  <table>
+    <tr><th>Obrazovka</th><th>Návrh</th><th>Poznámka</th></tr>
+    <tr><td>Přihlášení a registrace</td><td>Web · Přihlášení (y8Am0), Registrace (uN3fM)</td><td>Viz „Přihlášení na webu“ níž.</td></tr>
+    <tr><td>Deník</td><td>Web · Deník (Z9FeY)</td><td>Měsíční kalendář a seznam večerů. Data jsou v <code>DrinkLog</code>.</td></tr>
+    <tr><td>Detail večera</td><td>Web · Detail večera (B4Bzt)</td><td>Kdy, kde, s kým, tempo, co padlo, fotky.</td></tr>
+    <tr><td>Dopsat večer</td><td>Web · Dopsat večer (IQate)</td><td>Zápis zpětně musí jít stejnou cestou a stejnými pravidly jako „Dopsat piva“ v appce: jeden zápis, žádná druhá kopie.</td></tr>
+    <tr><td>Profil a statistiky</td><td>Web · Profil a statistiky (PkUDB)</td><td>Piva po měsících, kam chodíš, co piješ, s kým, kdy, odznaky.</td></tr>
+    <tr><td>Piva a hodnocení</td><td>Web · Piva (xpoHl), Ohodnotit pivo (jCv49)</td><td>Hodnocení je <code>BeerCheckIn</code>.</td></tr>
+    <tr><td>Hospody a přidání hospody</td><td>Web · Hospody (JrVtl), Přidat hospodu (N9ucXS)</td><td>Přidání jde přes <code>UserAddedPub</code>, stejně jako v appce.</td></tr>
+    <tr><td>Parta</td><td>Web · Parta (cX38o)</td><td>Kamarádi, žádosti, pozvánka odkazem.</td></tr>
+    <tr><td>Výčep</td><td>Web · Výčep (F0hVo)</td><td><code>/v1/nights/feed</code>, Runda, Svět a Parta.</td></tr>
+    <tr><td>Nastavení a smazání účtu</td><td>Web · Nastavení (hbMbD), Smazat účet (SG0S2)</td><td>Export dat je <code>AccountExportJob</code>, smazání stejný tok jako v appce.</td></tr>
+  </table>
+  <p class="muted">Mobilní verze má jen část veřejných stránek. U ostatních obrazovek je odvoď z mobilních vzorů v .pen souboru (Mobil · Ceny, Mobil · Pivo).</p>
+
+  <h2>Přihlášení na webu</h2>
+  <div class="card">
+    <p>Appka posílá bearer token (<code>AccountTokenAuthentication</code>). Na webu ho nedávej do <code>localStorage</code>. Použij Django session v cookie (<code>HttpOnly</code>, <code>Secure</code>, <code>SameSite=Lax</code>) s ochranou CSRF. <code>SessionMiddleware</code> a <code>CsrfViewMiddleware</code> už v nastavení jsou.</p>
+    <p>Apple na webu potřebuje <code>APPLE_SERVICES_ID</code> a návratovou adresu. Proměnná existuje, ale ve výchozím stavu je prázdná. Pro Google existuje <code>GOOGLE_WEB_CLIENT_ID</code>.</p>
+    <p>Hranice soukromého účtu (zmrazení zápisů během slučování a mazání) musí platit i pro zápisy z webu.</p>
+  </div>
+
+  <h2>Pravidla z AGENTS.md, která se tu nejvíc týkají</h2>
+  <ul>
+    <li>Každý nový endpoint i webový formulář má výslovně určené přihlášení, oprávnění a limit (<code>ScopedRateThrottle</code>).</li>
+    <li>API se mění jen přidáváním. Vydané verze appky musí dál fungovat.</li>
+    <li>Každý text v češtině i angličtině. Na backendu přes <code>gettext</code> a <code>django.po</code>, v angličtině bez dlouhých pomlček.</li>
+    <li>Žádná surová GPS historie ani tokeny v logu. Veřejné stránky nesmí ukázat polohu konkrétního člověka nad rámec toho, co sám zveřejnil.</li>
+    <li>Ověřovat proti lokálnímu backendu na portu 8012, nikdy proti produkci.</li>
+    <li><code>DESIGN.md</code> dnes říká, že web na na-pivo.cz zůstává hnědý. V prvním PR to přepiš na šedý vzhled.</li>
+  </ul>
+
+  <h2>Navržené pořadí PR</h2>
+  <ol>
+    <li><strong>Základ:</strong> společná šablona, tokeny, písma, hlavička a patička. Přebarvit <code>/</code>, <code>/ceny</code>, <code>/pivo</code> i anglické verze. Upravit <code>DESIGN.md</code>.</li>
+    <li><strong>Hospody:</strong> hospody ve městě, stránka hospody, hledání, sitemap.</li>
+    <li><strong>Přihlášení na webu:</strong> session a CSRF, pak Deník, Detail večera a Dopsat večer.</li>
+    <li><strong>Zbytek přihlášené části:</strong> Piva a hodnocení, Hospody a přidání hospody, Parta, Profil, Výčep, Nastavení a smazání účtu.</li>
+    <li><strong>Nové veřejné stránky:</strong> žebříčky, novinky, trasy, pivovar, Pivní index, pozvánka bez appky.</li>
+    <li><strong>Obrázky pro sdílení:</strong> šablony podle OG · Pivo, Hospoda, Ceny ve městě, Pivní index, Trasa, Pozvánka. Obrázek se vytvoří při prvním požadavku a pak se drží v cache. Dlouhé názvy zmenšit písmo, chybějící číslo nahradit jiným údajem.</li>
+  </ol>
+
+  <h2>Co nebylo ověřené</h2>
+  <ul>
+    <li>Obrazovky od pomocných návrhářů (Landing, Přihlášení, Registrace, Stránka hospody, Nejlepší piva, Hledání, Piva, Ohodnotit pivo, Hospody, Přidat hospodu, Parta, Pivní index, Pivovar, Trasy, Pozvánka) prošly jen celkovou kontrolou. Nezávislá kritika neproběhla.</li>
+    <li>Čísla v návrzích jsou ilustrační a mezi obrazovkami se místy liší. Na webu je počítá backend.</li>
+    <li>Tvrzení o datech výše vycházejí z modelů a rout na <code>origin/dev</code>. Endpointy jsem nespouštěl.</li>
+  </ul>
+</main>
+</body>
+</html>
