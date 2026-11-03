@@ -203,6 +203,12 @@ export const profilEn: Strings['nv']['profil'] = {
     noFriends: 'Nobody here yet. Send an invite.',
     blocked: 'Blocked',
     unblock: 'Unblock',
+    outgoing: 'Sent requests',
+    outgoingSub: 'Waiting for them to accept',
+    cancelRequest: 'Cancel',
+    cancelRequestTitle: (name: string) => `Cancel the request to ${name}?`,
+    cancelRequestConfirm: 'Cancel request',
+    requestCanceled: 'Request cancelled.',
   },
   invite: {
     kicker: 'Crew invite',

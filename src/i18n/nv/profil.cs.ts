@@ -203,6 +203,12 @@ export const profilCs = {
     noFriends: 'Zatím tu nikdo není. Pošli pozvánku.',
     blocked: 'Zablokovaní',
     unblock: 'Odblokovat',
+    outgoing: 'Odeslané žádosti',
+    outgoingSub: 'Čeká, až to potvrdí',
+    cancelRequest: 'Zrušit',
+    cancelRequestTitle: (name: string) => `Zrušit žádost pro ${name}?`,
+    cancelRequestConfirm: 'Zrušit žádost',
+    requestCanceled: 'Žádost zrušená.',
   },
   invite: {
     kicker: 'Pozvánka do party',
