@@ -88,6 +88,33 @@ describe('KeyboardAwareScrollView', () => {
     expect(mockedScrollTo).not.toHaveBeenCalled();
   });
 
+  it('keeps the top of the field visible when the viewport is already above the keyboard', async () => {
+    mockKeyboardHeight = 300;
+    mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
+    mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
+      onSuccess(0, 100, 100, 50);
+    });
+    const screen = await render(
+      <KeyboardAwareScrollView testID="scroll-view">
+        <TextInput testID="field" />
+      </KeyboardAwareScrollView>,
+    );
+
+    await fireEvent(screen.getByTestId('scroll-view'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 250 } },
+    });
+    await fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 2000);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
+      target: 22,
+      nativeEvent: { target: 22 },
+    });
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+
+    expect(mockedScrollTo).toHaveBeenLastCalledWith({ y: 92, animated: true });
+  });
+
   it('clamps the target offset to the maximum scrollable content offset', async () => {
     mockKeyboardHeight = 0;
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
@@ -172,6 +199,119 @@ describe('KeyboardAwareScrollView', () => {
     // The reduced viewport already ends above the keyboard, so only the
     // regular field margin is needed.
     expect(mockedScrollTo).toHaveBeenCalledWith({ y: 20, animated: true });
+  });
+
+  it('reads the native tag when the focus target is an element', async () => {
+    mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
+    mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
+      onSuccess(0, 350, 100, 50);
+    });
+    const screen = await render(
+      <KeyboardAwareScrollView testID="scroll-view" keyboardAvoidedExternally>
+        <TextInput testID="field" />
+      </KeyboardAwareScrollView>,
+    );
+
+    await fireEvent(screen.getByTestId('scroll-view'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+    });
+    await fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 500);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
+      target: focusedInput,
+      nativeEvent: { target: 22 },
+    });
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+
+    expect(mockedMeasureLayout).toHaveBeenCalledWith(22, 99, expect.any(Function), expect.any(Function));
+    expect(mockedScrollTo).toHaveBeenCalledWith({ y: 20, animated: true });
+  });
+
+  it('keeps a focused field visible when a lifting parent shrinks the viewport or the field grows', async () => {
+    mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
+    let field = { y: 200, height: 70 };
+    mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
+      onSuccess(0, field.y, 100, field.height);
+    });
+    const screen = await render(
+      <KeyboardAwareScrollView testID="scroll-view" keyboardAvoidedExternally>
+        <TextInput testID="field" />
+      </KeyboardAwareScrollView>,
+    );
+    const scrollView = screen.getByTestId('scroll-view');
+
+    await fireEvent(scrollView, 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+    });
+    await fireEvent(scrollView, 'contentSizeChange', 300, 500);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
+      target: focusedInput,
+      nativeEvent: { target: 22 },
+    });
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+    expect(mockedScrollTo).not.toHaveBeenCalled();
+
+    // The keyboard lifts the sheet after focus: the field now ends below the visible part.
+    await fireEvent(scrollView, 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 250 } },
+    });
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+    expect(mockedScrollTo).toHaveBeenLastCalledWith({ y: 40, animated: true });
+    await fireEvent(scrollView, 'scroll', { nativeEvent: { contentOffset: { x: 0, y: 40 } } });
+
+    // Typing a new line grows the field. Its measured position is in content
+    // coordinates, so the 40 px already scrolled must not be added twice.
+    field = { y: 200, height: 100 };
+    await fireEvent(scrollView, 'contentSizeChange', 300, 530);
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+    expect(mockedScrollTo).toHaveBeenLastCalledWith({ y: 70, animated: true });
+
+    // A field scrolled away above stays where the user left it.
+    mockedScrollTo.mockClear();
+    field = { y: -300, height: 100 };
+    await fireEvent(scrollView, 'contentSizeChange', 300, 560);
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+    expect(mockedScrollTo).not.toHaveBeenCalled();
+  });
+
+  it('does not follow layout changes when the scroll view handles the keyboard itself', async () => {
+    mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
+    mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
+      onSuccess(0, 100, 100, 50);
+    });
+    const screen = await render(
+      <KeyboardAwareScrollView testID="scroll-view">
+        <TextInput testID="field" />
+      </KeyboardAwareScrollView>,
+    );
+    const scrollView = screen.getByTestId('scroll-view');
+
+    await fireEvent(scrollView, 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+    });
+    await fireEvent(screen.getByTestId('field'), 'focus', {
+      target: focusedInput,
+      nativeEvent: { target: 22 },
+    });
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+    expect(mockedMeasureLayout).toHaveBeenCalledTimes(1);
+
+    await fireEvent(scrollView, 'contentSizeChange', 300, 900);
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+    expect(mockedMeasureLayout).toHaveBeenCalledTimes(1);
   });
 
   it('retries after the native keyboard animation so late layout changes are handled', async () => {
