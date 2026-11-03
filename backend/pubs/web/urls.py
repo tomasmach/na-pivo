@@ -20,6 +20,8 @@ from pubs.web.auth_views import (
     oauth_start,
     register,
 )
+from pubs.web.delete_account_views import delete_account, delete_account_confirm
+from pubs.web.invite_views import plan_invite, plan_invite_calendar, plan_invite_og
 from pubs.web.pages import coming_soon, component_gallery
 from pubs.web.routes import bilingual
 
@@ -41,7 +43,12 @@ urlpatterns = [
 
     *bilingual("pivni-index", "en/beer-index", coming_soon, "web-beer-index"),
 
-    *bilingual("smazat-ucet", "en/delete-account", coming_soon, "web-delete-account"),
+    *bilingual("smazat-ucet", "en/delete-account", delete_account, "web-delete-account"),
+    *bilingual("smazat-ucet/potvrdit", "en/delete-account/confirm", delete_account_confirm, "web-delete-account-confirm"),
+
+    *bilingual("pozvanka/<slug:token>", "en/invite/<slug:token>", plan_invite, "web-plan-invite"),
+    *bilingual("pozvanka/<slug:token>/og.png", "en/invite/<slug:token>/og.png", plan_invite_og, "web-plan-invite-og"),
+    *bilingual("pozvanka/<slug:token>/kalendar.ics", "en/invite/<slug:token>/calendar.ics", plan_invite_calendar, "web-plan-invite-calendar"),
 
     *bilingual("prihlaseni", "en/login", login, "web-login"),
     *bilingual("prihlaseni/<slug:provider>", "en/login/<slug:provider>", oauth_start, "web-oauth"),

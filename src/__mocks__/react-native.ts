@@ -98,6 +98,10 @@ export const Linking = {
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
 };
 
+export const Share = {
+  share: jest.fn(async () => ({ action: 'sharedAction' })),
+};
+
 export const Alert = {
   alert: jest.fn(),
 };

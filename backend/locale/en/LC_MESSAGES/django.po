@@ -1951,3 +1951,293 @@ msgstr "The account is free. Your beers, nights and crew then stay in sync betwe
 #, python-format
 msgid "Pokračováním souhlasíš s <a href=\"%(terms)s\">podmínkami</a> a <a href=\"%(privacy)s\">zásadami ochrany soukromí</a>."
 msgstr "By continuing you agree to the <a href=\"%(terms)s\">terms</a> and the <a href=\"%(privacy)s\">privacy policy</a>."
+
+# web: guest-invite and delete-account
+
+msgid "Na Pivo: potvrď smazání účtu"
+msgstr "Na Pivo: confirm deleting your account"
+
+#, python-format
+msgid "Na webu si někdo řekl o smazání tvého účtu. Snad ty. Smazání potvrdíš tlačítkem níž. Pak má účet ještě %(days)s dní lhůtu a když se mezitím přihlásíš, zůstane ti.<br><br>Jestli to nebyl ty, nech to být, účtu se nic nestane."
+msgstr "Someone asked on the web to delete your account. Hopefully you. Confirm it with the button below. Your account then waits %(days)s days, and if you sign in before that, it stays yours.<br><br>If it wasn't you, just leave it. Nothing will happen to your account."
+
+msgid "Potvrdit smazání"
+msgstr "Confirm deletion"
+
+#, python-format
+msgid "Na webu si někdo řekl o smazání tvého účtu. Snad ty.\n\nSmazání potvrdíš tady:\n\n%(link)s\n\nPak má účet ještě %(days)s dní lhůtu a když se mezitím přihlásíš, zůstane ti.\n\nJestli to nebyl ty, nech to být. Odkaz platí hodinu.\n\nNa Pivo"
+msgstr "Someone asked on the web to delete your account. Hopefully you.\n\nConfirm it here:\n\n%(link)s\n\nYour account then waits %(days)s days, and if you sign in before that, it stays yours.\n\nIf it wasn't you, just leave it. The link works for an hour.\n\nNa Pivo"
+
+msgid "Napiš jméno, ať tě parta pozná."
+msgstr "Write your name so the crew knows you."
+
+#, python-format
+msgid "Stačí kratší jméno, nejvýš %(max)s znaků."
+msgstr "A shorter name will do, %(max)s characters at most."
+
+msgid "Jméno nesmí obsahovat odkaz ani adresu."
+msgstr "The name can't contain a link or an address."
+
+msgid "Tohle jméno použít nejde. Zkus jiné."
+msgstr "You can't use this name. Try another one."
+
+msgid "Opravdu smazat účet?"
+msgstr "Delete your account?"
+
+msgid "Smazat účet"
+msgstr "Delete account"
+
+msgid "Nechat si ho"
+msgstr "Keep it"
+
+#, python-format
+msgid "Odhlásili jsme tě všude. Rozmyslíš si to? Přihlas se do %(date)s a účet ti zůstane. Pak ho smažeme natrvalo."
+msgstr "We signed you out everywhere. Changed your mind? Sign in by %(date)s and your account stays. After that we delete it for good."
+
+msgid "Účet se maže"
+msgstr "Your account is being deleted"
+
+msgid "Moc pokusů za sebou"
+msgstr "Too many tries in a row"
+
+msgid "Dej si chvilku pauzu a otevři odkaz z e-mailu znovu."
+msgstr "Take a short break and open the link from the email again."
+
+msgid "Odkaz už neplatí"
+msgstr "This link no longer works"
+
+msgid "Platí hodinu a jen jednou. Pošli si nový a smazání potvrď hned."
+msgstr "It works for an hour and only once. Send yourself a new one and confirm right away."
+
+msgid "Poslat nový odkaz"
+msgstr "Send a new link"
+
+msgid "Smazání účtu Na pivo"
+msgstr "Delete your Na pivo account"
+
+msgid "stejně jako v appce"
+msgstr "the same way as in the app"
+
+msgid "Tvoje data → Smazat účet"
+msgstr "Your data → Delete account"
+
+msgid "Potvrď smazání"
+msgstr "Confirm the deletion"
+
+msgid "e-mailem dostaneš datum, do kdy jde smazání zrušit"
+msgstr "we email you the date until which you can cancel it"
+
+msgid "Otevřít Nastavení"
+msgstr "Open Settings"
+
+msgid "Přihlásit se a smazat účet"
+msgstr "Log in and delete account"
+
+msgid "Nedostaneš se dovnitř?"
+msgstr "Can't get in?"
+
+msgid "Napiš e-mail, pod kterým máš účet. Pošleme na něj odkaz, kterým smazání potvrdíš."
+msgstr "Enter the email of your account. We'll send it a link to confirm the deletion."
+
+msgid "Jestli k tomu e-mailu máš účet, odkaz už ti letí. Platí hodinu."
+msgstr "If that email has an account, the link is on its way. It works for an hour."
+
+msgid "Přihlašuješ se přes Apple nebo Google? Přihlas se tady stejně jako v appce a účet smaž v Nastavení. Účet bez přihlášení smažeš jen v appce."
+msgstr "Do you sign in with Apple or Google? Log in here the same way as in the app and delete the account in Settings. An account without sign-in can only be deleted in the app."
+
+msgid "V telefonu to jde taky: Nastavení → Účet → Smazat účet."
+msgstr "On your phone it works too: Settings → Account → Delete account."
+
+msgid "Co je Na pivo?"
+msgstr "What is Na pivo?"
+
+#, python-format
+msgid "Platí. %(name)s s tebou počítá."
+msgstr "Deal. %(name)s is counting on you."
+
+#, python-format
+msgid "Dobře. %(name)s ví, že možná dorazíš."
+msgstr "Okay. %(name)s knows you might come."
+
+#, python-format
+msgid "Škoda. %(name)s ví, že tentokrát nedorazíš."
+msgstr "Shame. %(name)s knows you won't make it this time."
+
+#, python-format
+msgid "%(name)s tě zve na pivo"
+msgstr "%(name)s invites you for a beer"
+
+msgid "Jak ti říkají?"
+msgstr "What do people call you?"
+
+msgid "Tvoje jméno, třeba Ondra"
+msgstr "Your name, like Ondra"
+
+msgid "Jdu"
+msgstr "Going"
+
+msgid "Možná"
+msgstr "Maybe"
+
+msgid "Nejdu"
+msgstr "Not going"
+
+msgid "Změnit odpověď"
+msgstr "Change answer"
+
+msgid "Bez registrace a bez appky. Parta uvidí jen jméno, které napíšeš."
+msgstr "No sign-up and no app. The crew only sees the name you write."
+
+msgid "Přidat do kalendáře"
+msgstr "Add to calendar"
+
+msgid "Pivní deníček do kapsy"
+msgstr "A beer diary for your pocket"
+
+msgid "V appce si zapíšeš piva jedním ťuknutím a s partou se domluvíš na dalším večeru."
+msgstr "In the app you log a beer with one tap and plan the next night with your crew."
+
+msgid "Stáhnout z App Storu"
+msgstr "Get it on the App Store"
+
+msgid "Máš Android? Je i na Google Play ›"
+msgstr "On Android? It's on Google Play too ›"
+
+msgid "Kdo jde"
+msgstr "Who's going"
+
+msgid "Tohle nevypadá jako e-mail."
+msgstr "That doesn't look like an email."
+
+msgid "Jak smazat účet Na pivo i s deníkem, hodnoceními a partou. Bez appky stačí e-mail."
+msgstr "How to delete your Na pivo account with your diary, ratings and crew. Without the app, an email is enough."
+
+msgid "Potvrzení smazání účtu"
+msgstr "Confirm account deletion"
+
+#, python-format
+msgid "%(first)s a %(last)s"
+msgstr "%(first)s and %(last)s"
+
+msgid "Dnes"
+msgstr "Today"
+
+msgid "Zítra"
+msgstr "Tomorrow"
+
+#, python-format
+msgid "od %(time)s"
+msgstr "since %(time)s"
+
+#, python-format
+msgid "Adresu ti dá %(name)s."
+msgstr "%(name)s will give you the address."
+
+#, python-format
+msgid "Přesné místo ti dá %(name)s."
+msgstr "%(name)s will tell you the exact place."
+
+msgid "zve"
+msgstr "host"
+
+msgid "jde"
+msgstr "going"
+
+msgid "přes odkaz"
+msgstr "via link"
+
+#, python-format
+msgid "%(count)s další"
+msgstr "%(count)s more"
+
+msgid "možná"
+msgstr "maybe"
+
+msgid "nejde"
+msgstr "not going"
+
+msgid "ty"
+msgstr "you"
+
+#, python-format
+msgid "Jdeš %(people)s"
+msgstr "Going: %(people)s"
+
+msgid "Vyber, jestli jdeš."
+msgstr "Pick whether you're going."
+
+msgid "Moc odpovědí za sebou. Zkus to za chvilku."
+msgstr "Too many answers in a row. Try again in a bit."
+
+msgid "Přes odkaz se už přihlásilo dost lidí. Napiš přímo tomu, kdo tě zve."
+msgstr "Enough people have already answered through the link. Message the person who invited you directly."
+
+msgid "Takovou pozvánku neznám"
+msgstr "I don't know this invite"
+
+msgid "Odkaz je neplatný nebo ho někdo špatně zkopíroval. Řekni si o nový."
+msgstr "The link is invalid or got copied wrong. Ask for a new one."
+
+msgid "Tenhle plán se zrušil"
+msgstr "This plan was called off"
+
+msgid "Kdo tě zval, plán odvolal. Třeba se domluvíte na jindy."
+msgstr "The person who invited you called it off. Maybe another time."
+
+msgid "Tenhle večer už skončil"
+msgstr "This night is already over"
+
+msgid "Na pozvánku už odpovědět nejde. Příště se ozvi dřív."
+msgstr "You can't answer this invite anymore. Speak up sooner next time."
+
+msgid "Moc požadavků. Zkus to za chvilku."
+msgstr "Too many requests. Try again in a bit."
+
+#, python-format
+msgid "%(place)s. Odpověz bez appky a bez registrace."
+msgstr "%(place)s. Answer without the app and without signing up."
+
+msgid "Jdeš?"
+msgstr "Coming?"
+
+msgid "odpověz bez appky"
+msgstr "answer without the app"
+
+#, python-format
+msgid "Host %(name)s už jde za tebou"
+msgstr "Guest %(name)s is on the way"
+
+#, python-format
+msgid "Hned tě odhlásíme ze všech telefonů i z webu. Když se do %(days)s dne přihlásíš, účet ti zůstane. Potom ho smažeme i s deníkem, hodnoceními, fotkami a partou."
+msgid_plural "Hned tě odhlásíme ze všech telefonů i z webu. Když se do %(days)s dní přihlásíš, účet ti zůstane. Potom ho smažeme i s deníkem, hodnoceními, fotkami a partou."
+msgstr[0] "We'll sign you out of every phone and the web right away. If you sign in within %(days)s day, your account stays. After that we delete it with your diary, ratings, photos and crew."
+msgstr[1] "We'll sign you out of every phone and the web right away. If you sign in within %(days)s days, your account stays. After that we delete it with your diary, ratings, photos and crew."
+
+#, python-format
+msgid "Smažeme účet a s ním deník, hodnocení, fotky, partu a odznaky. Do %(days)s dne se stačí přihlásit a účet ti zůstane, pak je to nevratné."
+msgid_plural "Smažeme účet a s ním deník, hodnocení, fotky, partu a odznaky. Do %(days)s dní se stačí přihlásit a účet ti zůstane, pak je to nevratné."
+msgstr[0] "We delete the account along with your diary, ratings, photos, crew and badges. Sign in within %(days)s day and it stays yours. After that it can't be undone."
+msgstr[1] "We delete the account along with your diary, ratings, photos, crew and badges. Sign in within %(days)s days and it stays yours. After that it can't be undone."
+
+#, python-format
+msgid "%(people)s jde"
+msgid_plural "%(people)s jdou"
+msgstr[0] "%(people)s is going"
+msgstr[1] "%(people)s are going"
+
+#, python-format
+msgid "%(count)s jde"
+msgid_plural "%(count)s jdou"
+msgstr[0] "%(count)s going"
+msgstr[1] "%(count)s going"
+
+#, python-format
+msgid "%(count)s možná"
+msgid_plural "%(count)s možná"
+msgstr[0] "%(count)s maybe"
+msgstr[1] "%(count)s maybe"
+
+msgid "už jde"
+msgid_plural "už jdou"
+msgstr[0] "going"
+msgstr[1] "going"

@@ -20,6 +20,9 @@ _SAMPLE_KWARGS = {
     "web-pubs-city": {"city": "praha"},
     "web-pub": {"key": "u-pinkasu"},
     "web-tour": {"tour_id": "abc"},
+    "web-plan-invite": {"token": "abc"},
+    "web-plan-invite-og": {"token": "abc"},
+    "web-plan-invite-calendar": {"token": "abc"},
 }
 
 

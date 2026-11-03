@@ -1,0 +1,111 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}
+<link rel="stylesheet" href="{% asset "invite.css" %}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Na pivo">
+<meta property="og:locale" content="{{ page.og_locale }}">
+<meta property="og:title" content="{{ page.title }}">
+<meta property="og:description" content="{{ page.description }}">
+<meta property="og:url" content="{{ og_url }}">
+<meta property="og:image" content="{{ og_image_url }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+{% endblock %}
+{% block content %}
+<div class="iv">
+  <div class="iv__main">
+    {% if not editing %}
+      <h1 class="iv__done">
+        {% if mine.response == "going" %}{% blocktranslate with name=host %}Platí. {{ name }} s tebou počítá.{% endblocktranslate %}
+        {% elif mine.response == "maybe" %}{% blocktranslate with name=host %}Dobře. {{ name }} ví, že možná dorazíš.{% endblocktranslate %}
+        {% else %}{% blocktranslate with name=host %}Škoda. {{ name }} ví, že tentokrát nedorazíš.{% endblocktranslate %}{% endif %}
+      </h1>
+    {% endif %}
+
+    <section class="iv-ticket{% if not editing %} iv-ticket--dark{% endif %}" aria-labelledby="iv-place">
+      <div class="iv-ticket__top">
+        <p class="iv-ticket__eyebrow">{% blocktranslate with name=host %}{{ name }} tě zve na pivo{% endblocktranslate %}</p>
+        {% icon "beer" "np-icon--s" %}
+      </div>
+      <div class="iv-ticket__when">
+        <span class="iv-ticket__day">{{ when.day }}</span>
+        <span class="iv-ticket__daytext"><strong>{{ when.label }}</strong><span>{{ when.time }}</span></span>
+      </div>
+      <h2 class="iv-ticket__place" id="iv-place">{{ place.name }}</h2>
+      {% if message %}<p class="iv-ticket__note">„{{ message }}“</p>{% endif %}
+      <div class="iv-ticket__cut" aria-hidden="true"></div>
+      <div class="iv-ticket__who">
+        <span class="iv-ticket__faces" aria-hidden="true">{% for person in people.initials %}<span class="iv-face{% if person.you %} iv-face--you{% endif %}">{{ person.name|slice:":1"|upper }}</span>{% endfor %}</span>
+        <span>{{ people.summary }}</span>
+      </div>
+
+      {% if editing %}
+        <form class="iv-form" method="post" novalidate>
+          {% if errors.form %}<p class="iv-form__error" role="alert">{{ errors.form }}</p>{% endif %}
+          <label class="iv-form__label" for="iv-name">{% translate "Jak ti říkají?" %}</label>
+          <input class="iv-form__input" id="iv-name" name="name" type="text" value="{{ values.name }}" placeholder="{% translate "Tvoje jméno, třeba Ondra" %}" maxlength="{{ name_max }}" autocomplete="given-name" required{% if errors.name %} aria-invalid="true" aria-describedby="iv-name-error"{% endif %}>
+          {% if errors.name %}<p class="iv-form__error" id="iv-name-error">{{ errors.name }}</p>{% endif %}
+          {% if errors.response %}<p class="iv-form__error">{{ errors.response }}</p>{% endif %}
+          <div class="iv-form__answers">
+            <button class="iv-answer iv-answer--go" type="submit" name="response" value="going">{% icon "check" "np-icon--s" %}{% translate "Jdu" %}</button>
+            <button class="iv-answer" type="submit" name="response" value="maybe">{% icon "circle-question-mark" "np-icon--s" %}{% translate "Možná" %}</button>
+            <button class="iv-answer" type="submit" name="response" value="cant">{% icon "x" "np-icon--s" %}{% translate "Nejdu" %}</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="iv-ticket__mine">
+          <a class="iv-ticket__change" href="?zmenit=1">{% translate "Změnit odpověď" %}</a>
+          <span class="iv-ticket__answer">
+            {% if mine.response == "going" %}{% icon "check" "np-icon--s" %}{% translate "Jdu" %}
+            {% elif mine.response == "maybe" %}{% icon "circle-question-mark" "np-icon--s" %}{% translate "Možná" %}
+            {% else %}{% icon "x" "np-icon--s" %}{% translate "Nejdu" %}{% endif %}
+          </span>
+        </div>
+      {% endif %}
+    </section>
+
+    {% if editing %}
+      <p class="iv__fine">{% translate "Bez registrace a bez appky. Parta uvidí jen jméno, které napíšeš." %}</p>
+    {% else %}
+      {% if mine.response != "cant" %}
+        <a class="np-btn np-btn--l np-btn--block" href="{{ calendar_url }}" download>{% icon "calendar-plus" "np-icon--s" %}{% translate "Přidat do kalendáře" %}</a>
+      {% endif %}
+      <section class="iv-app">
+        <h2 class="iv-app__title">{% translate "Pivní deníček do kapsy" %}</h2>
+        <p class="iv-app__text">{% translate "V appce si zapíšeš piva jedním ťuknutím a s partou se domluvíš na dalším večeru." %}</p>
+        <a class="np-btn np-btn--primary np-btn--l np-btn--block" href="{{ page.app_store_url }}">{% icon "download" "np-icon--s" %}{% translate "Stáhnout z App Storu" %}</a>
+        <a class="iv-app__android" href="{{ page.play_store_url }}">{% translate "Máš Android? Je i na Google Play ›" %}</a>
+      </section>
+    {% endif %}
+  </div>
+
+  <div class="iv__side">
+    {% if place.nav_url %}<div class="iv-map" data-map data-lat="{{ place.lat }}" data-lng="{{ place.lng }}" data-label="{{ place.name }}"></div>{% endif %}
+    <section class="iv-place">
+      <div class="iv-place__text">
+        <h2 class="iv-place__name">{{ place.name }}</h2>
+        {% if place.meta %}<p class="iv-place__meta">{{ place.meta }}</p>{% endif %}
+      </div>
+      {% if place.nav_url %}<a class="np-btn" href="{{ place.nav_url }}" rel="noopener noreferrer" target="_blank">{% icon "navigation" "np-icon--s" %}{% translate "Navigovat" %}</a>{% endif %}
+    </section>
+
+    <section class="np-card iv-who" aria-labelledby="iv-who">
+      <div class="np-card__head">
+        <h2 class="np-title" id="iv-who">{% translate "Kdo jde" %}</h2>
+        <span class="np-muted np-small">{{ people.counts }}</span>
+      </div>
+      <ul class="iv-who__list">
+        {% for person in people.rows %}
+          <li class="iv-who__row">
+            <span class="iv-face iv-face--row{% if person.you %} iv-face--you{% elif person.host %} iv-face--host{% endif %}" aria-hidden="true">{{ person.name|slice:":1"|upper }}</span>
+            <span class="iv-who__name">{{ person.name }}{% if person.note %} <span class="iv-who__note">{{ person.note }}</span>{% endif %}</span>
+            <span class="iv-who__status">{{ person.status }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+</div>
+{% endblock %}
