@@ -340,6 +340,25 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
 .np-app__title { font: 800 56px/1 var(--np-display); }
 .np-tabbar { display: none; }
 
+/* Login, registration, forgotten password */
+.np-auth { display: grid; grid-template-columns: minmax(0, 720px) minmax(0, 1fr); min-height: 100vh; }
+.np-auth__side { display: flex; flex-direction: column; padding: 40px 64px 40px; }
+.np-auth__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.np-auth__back { display: inline-flex; align-items: center; gap: 6px; color: var(--np-text-2); font-size: 14px; font-weight: 500; }
+.np-auth__main { display: grid; gap: 16px; width: 100%; max-width: 400px; margin: auto auto auto 96px; padding: 48px 0; }
+.np-auth__title { font: 800 56px/1 var(--np-display); }
+.np-auth__lead { margin: -4px 0 8px; color: var(--np-text-2); font-size: 16px; line-height: 1.5; }
+.np-auth__social { display: grid; gap: 16px; }
+.np-auth__g { font-weight: 800; }
+.np-auth__forgot { justify-self: center; font-size: 14px; }
+.np-auth__legal { color: var(--np-muted); font-size: 12px; }
+.np-auth__legal a { text-decoration: underline; }
+.np-auth__legal a:hover { color: var(--np-white); }
+.np-auth__map { position: relative; overflow: hidden; border-left: 1px solid var(--np-card); background: var(--np-card); }
+.np-auth__map img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: left center; }
+.np-oauth { display: grid; place-items: center; min-height: 100vh; padding: 24px; text-align: center; }
+.np-oauth form { display: grid; gap: 16px; justify-items: center; }
+
 /* Telefon a úzké okno */
 @media (max-width: 1180px) {
   .np-header__nav a { padding: 0 8px; }
@@ -376,6 +395,12 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
   .np-stats { gap: 16px 32px; }
   .np-card { padding: 20px; }
   .np-empty { padding: 28px 20px; }
+
+  .np-auth { display: block; }
+  .np-auth__map { display: none; }
+  .np-auth__side { min-height: 100vh; padding: 20px 20px 28px; }
+  .np-auth__main { margin: 0; padding: 40px 0 32px; max-width: none; }
+  .np-auth__title { font-size: 44px; }
 
   .np-app { display: block; }
   .np-panel { display: none; }

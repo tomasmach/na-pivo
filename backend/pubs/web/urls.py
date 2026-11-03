@@ -11,6 +11,15 @@ from django.conf import settings
 from django.urls import path
 
 from pubs.web.assets import web_asset
+from pubs.web.auth_views import (
+    diary,
+    forgot_password,
+    login,
+    logout,
+    oauth_return,
+    oauth_start,
+    register,
+)
 from pubs.web.pages import coming_soon, component_gallery
 from pubs.web.routes import bilingual
 
@@ -34,11 +43,16 @@ urlpatterns = [
 
     *bilingual("smazat-ucet", "en/delete-account", coming_soon, "web-delete-account"),
 
-    *bilingual("prihlaseni", "en/login", coming_soon, "web-login"),
+    *bilingual("prihlaseni", "en/login", login, "web-login"),
+    *bilingual("prihlaseni/<slug:provider>", "en/login/<slug:provider>", oauth_start, "web-oauth"),
+    # The one return address registered at Google and Apple; the language travels in the session.
+    path("prihlaseni/<slug:provider>/navrat", oauth_return, name="web-oauth-return"),
+    *bilingual("zapomenute-heslo", "en/forgot-password", forgot_password, "web-forgot-password"),
+    *bilingual("odhlasit", "en/logout", logout, "web-logout"),
 
-    *bilingual("registrace", "en/register", coming_soon, "web-register"),
+    *bilingual("registrace", "en/register", register, "web-register"),
 
-    *bilingual("denik", "en/diary", coming_soon, "web-diary"),
+    *bilingual("denik", "en/diary", diary, "web-diary"),
     *bilingual("denik/zapsat", "en/diary/log", coming_soon, "web-log-beer"),
 
     *bilingual("piva", "en/my-beers", coming_soon, "web-beers"),

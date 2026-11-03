@@ -18,6 +18,7 @@ _CONTENT_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
     ".woff2": "font/woff2",
+    ".webp": "image/webp",
 }
 _CSS_URL = re.compile(r'url\("([a-z0-9.-]+)"\)')
 

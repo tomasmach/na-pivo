@@ -28,7 +28,6 @@ Account deletion is DELETE /v1/account/me (see pubs.api.views.AccountMeView).
 from __future__ import annotations
 
 import logging
-import uuid
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -288,7 +287,7 @@ class RegisterView(_AuthView):
             account = _optional_bearer_account(request)
             merge_operation_id = ser.validated_data.get("merge_operation_id")
             if account is None and merge_operation_id is None:
-                account = Account.objects.create(device_id=f"reg-{uuid.uuid4()}")
+                account = accounts.new_registration_account()
             account, token = accounts.register_email(
                 account,
                 email=ser.validated_data["email"],

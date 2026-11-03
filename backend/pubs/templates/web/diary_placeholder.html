@@ -1,0 +1,14 @@
+{% extends "web/app.html" %}
+{% load i18n web %}
+{% block content %}
+<header class="np-app__head">
+  <h1 class="np-app__title">{% translate "Deník" %}</h1>
+  <form method="post" action="{% web_url "web-logout" %}">
+    {% csrf_token %}
+    <button class="np-btn" type="submit">{% icon "log-out" "np-icon--s" %}{% translate "Odhlásit se" %}</button>
+  </form>
+</header>
+{% translate "Deník na webu brzy načepujeme" as empty_title %}
+{% translate "Zatím ho najdeš v appce. Tady se brzy objeví kalendář večerů a všechno, co padlo." as empty_text %}
+{% include "web/components/empty.html" with icon="notebook-pen" title=empty_title text=empty_text %}
+{% endblock %}

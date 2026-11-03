@@ -14,9 +14,13 @@ pytestmark = pytest.mark.django_db
 
 _WEB_NAMES = sorted(
     p.name for p in web_patterns if p.name and p.name.startswith("web-") and not p.name.endswith("-en")
-    and p.name != "web-components" and p.name != "web-asset"
+    and p.name not in ("web-components", "web-asset", "web-oauth", "web-oauth-return")
 )
-_SAMPLE_KWARGS = {"web-pubs-city": {"city": "praha"}, "web-pub": {"key": "u-pinkasu"}, "web-tour": {"tour_id": "abc"}}
+_SAMPLE_KWARGS = {
+    "web-pubs-city": {"city": "praha"},
+    "web-pub": {"key": "u-pinkasu"},
+    "web-tour": {"tour_id": "abc"},
+}
 
 
 @pytest.mark.parametrize("name", _WEB_NAMES)
@@ -26,7 +30,12 @@ def test_every_reserved_page_answers_in_both_languages(client, name):
     assert not cs.startswith("/en/") and en.startswith("/en/")
     for path, lang in ((cs, "cs"), (en, "en")):
         response = client.get(path)
-        assert response.status_code == 404
+        if response.status_code == 302:
+            assert response["Location"].startswith(web_reverse("web-login", lang) + "?next=")
+            continue
+        assert response.status_code in (200, 404, 405)
+        if response.status_code == 405:
+            continue
         assert response["Content-Language"] == lang
         assert "script-src 'self'" in response["Content-Security-Policy"]
         assert f'<html lang="{lang}">' in response.content.decode()
@@ -48,11 +57,9 @@ def test_language_switch_points_at_the_same_page(client):
     assert 'href="/hledat?q=bobr" hreflang="cs"' in html
 
 
-def test_signed_in_pages_use_the_panel_shell(client):
-    html = client.get("/denik").content.decode()
-    assert 'class="np-panel"' in html
-    assert 'href="/denik" aria-current="page"' in html
-    assert 'class="np-header"' not in html
+def test_signed_in_pages_need_a_session(client):
+    response = client.get("/en/my-beers")
+    assert response.status_code == 302 and response["Location"] == "/en/login?next=/en/my-beers"
 
 
 def test_existing_pub_share_link_still_resolves():

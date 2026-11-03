@@ -1,0 +1,69 @@
+{% extends "web/base.html" %}
+{% load i18n web %}
+{% block shell %}
+<div class="np-auth">
+  <div class="np-auth__side">
+    <header class="np-auth__top">
+      {% include "web/components/logo.html" %}
+      <a class="np-auth__back" href="{% web_url "home" %}">{% icon "arrow-left" "np-icon--s" %}{% translate "Zpátky na úvod" %}</a>
+    </header>
+    <main class="np-auth__main" id="obsah">
+      {% if mode == "login" %}
+        <h1 class="np-auth__title">{% translate "Ať o piva nepřijdeš" %}</h1>
+        <p class="np-auth__lead">{% translate "Přihlas se a deník, parta i odznaky ti naskočí na každém telefonu i tady na webu." %}</p>
+      {% elif mode == "register" %}
+        <h1 class="np-auth__title">{% translate "Založ si deníček" %}</h1>
+        <p class="np-auth__lead">{% translate "Účet je zdarma. Piva, večery i parta se ti pak srovnají mezi telefonem a webem." %}</p>
+      {% else %}
+        <h1 class="np-auth__title">{% translate "Zapomenuté heslo" %}</h1>
+        <p class="np-auth__lead">{% translate "Napiš e-mail, se kterým se přihlašuješ. Pošlu ti odkaz na nové heslo." %}</p>
+      {% endif %}
+
+      {% if mode != "forgot" %}
+        {% web_url "web-login" as login_url %}{% web_url "web-register" as register_url %}
+        <nav class="np-segment np-segment--block np-auth__switch" aria-label="{% translate "Přihlášení nebo registrace" %}">
+          <a class="np-segment__item" href="{{ login_url }}{% if next %}?next={{ next|urlencode }}{% endif %}"{% if mode == "login" %} aria-current="page"{% endif %}>{% translate "Přihlásit se" %}</a>
+          <a class="np-segment__item" href="{{ register_url }}{% if next %}?next={{ next|urlencode }}{% endif %}"{% if mode == "register" %} aria-current="page"{% endif %}>{% translate "Registrovat" %}</a>
+        </nav>
+        {% if social.apple or social.google %}
+          <div class="np-auth__social">
+            {% if social.apple %}<a class="np-btn np-btn--light np-btn--l np-btn--block" href="{% web_url "web-oauth" provider="apple" %}{% if next %}?next={{ next|urlencode }}{% endif %}">{% icon "apple" "np-icon--s" %}{% translate "Pokračovat přes Apple" %}</a>{% endif %}
+            {% if social.google %}<a class="np-btn np-btn--l np-btn--block" href="{% web_url "web-oauth" provider="google" %}{% if next %}?next={{ next|urlencode }}{% endif %}"><span class="np-auth__g" aria-hidden="true">G</span>{% translate "Pokračovat přes Google" %}</a>{% endif %}
+          </div>
+          <p class="np-divider">{% translate "nebo e-mailem" %}</p>
+        {% endif %}
+      {% endif %}
+
+      {% if error %}<p class="np-alert" role="alert">{{ error }}</p>{% endif %}
+
+      {% if sent %}
+        <p class="np-alert np-alert--ok" role="status">{% translate "Jestli k tomu e-mailu máš účet, odkaz už ti letí. Otevři ho na telefonu s Na pivo." %}</p>
+        <a class="np-btn np-btn--l np-btn--block" href="{% web_url "web-login" %}">{% translate "Zpátky na přihlášení" %}</a>
+      {% else %}
+      <form class="np-form" method="post" novalidate>
+        {% csrf_token %}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        {% if mode == "register" %}
+          {% translate "Přezdívka" as l_name %}{% translate "Jak ti má parta říkat" as p_name %}
+          {% include "web/components/field.html" with name="display_name" label=l_name placeholder=p_name value=values.display_name autocomplete="nickname" maxlength=120 error=errors.display_name %}
+        {% endif %}
+        {% translate "E-mail" as l_email %}
+        {% include "web/components/field.html" with name="email" type="email" label=l_email placeholder="pivar@email.cz" value=values.email autocomplete="email" required=True error=errors.email %}
+        {% if mode != "forgot" %}
+          {% translate "Heslo" as l_password %}{% translate "Alespoň 8 znaků" as p_password %}
+          {% if mode == "register" %}{% include "web/components/field.html" with name="password" type="password" label=l_password placeholder=p_password autocomplete="new-password" required=True minlength=8 error=errors.password %}
+          {% else %}{% include "web/components/field.html" with name="password" type="password" label=l_password placeholder=p_password autocomplete="current-password" required=True error=errors.password %}{% endif %}
+        {% endif %}
+        <button class="np-btn np-btn--primary np-btn--l np-btn--block" type="submit">{% if mode == "login" %}{% translate "Přihlásit se" %}{% elif mode == "register" %}{% translate "Založit účet" %}{% else %}{% translate "Poslat odkaz" %}{% endif %}</button>
+      </form>
+      {% if mode == "login" %}<a class="np-link np-auth__forgot" href="{% web_url "web-forgot-password" %}">{% translate "Zapomenuté heslo?" %}</a>{% endif %}
+      {% if mode == "forgot" %}<a class="np-link np-auth__forgot" href="{% web_url "web-login" %}">{% translate "Zpátky na přihlášení" %}</a>{% endif %}
+      {% endif %}
+    </main>
+    <p class="np-auth__legal">{% blocktranslate with terms=page.terms_url privacy=page.privacy_url %}Pokračováním souhlasíš s <a href="{{ terms }}">podmínkami</a> a <a href="{{ privacy }}">zásadami ochrany soukromí</a>.{% endblocktranslate %}</p>
+  </div>
+  <div class="np-auth__map" aria-hidden="true">
+    <img src="{% asset "auth-map.webp" %}" alt="" width="719" height="960">
+  </div>
+</div>
+{% endblock %}

@@ -14,17 +14,19 @@ renders the page inside it, so views and templates only call ``gettext`` and
 from __future__ import annotations
 
 from functools import wraps
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from django.conf import settings
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.template.response import SimpleTemplateResponse
 from django.utils import translation
 from django.utils.translation import gettext
 
 from pubs.home_views import app_store_url, canonical_host, play_store_url
+from pubs.pivar import pivar_progress
 from pubs.web.routes import base_name, web_reverse
+from pubs.web.session import session_token
 
 LANGS = ("cs", "en")
 _LEGAL_ROOT = "https://tomasmach.github.io/na-pivo"
@@ -48,6 +50,8 @@ def web_page(view):
     @wraps(view)
     def wrapper(request: HttpRequest, *args, lang: str = "cs", **kwargs) -> HttpResponse:
         request.web_lang = lang
+        request.web_token = session_token(request)
+        request.web_account = request.web_token.account if request.web_token else None
         with translation.override(lang):
             response = view(request, *args, **kwargs)
             if isinstance(response, SimpleTemplateResponse):
@@ -56,9 +60,55 @@ def web_page(view):
         response.headers.setdefault("Content-Security-Policy", _csp())
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        if request.web_account is not None:
+            # The header shows who is signed in, so no shared cache may keep the page.
+            response.headers["Cache-Control"] = "private, no-store"
         return response
 
     return canonical_host(wrapper)
+
+
+def login_url(request: HttpRequest) -> str:
+    return f"{web_reverse('web-login')}?next={quote(request.get_full_path(), safe='/?=&')}"
+
+
+def signed_in_page(view):
+    """``@web_page`` for pages behind sign-in.
+
+    Without a session the browser goes to the login page with ``next`` set to
+    this page. The view reads ``request.web_account`` (the Account) and
+    ``request.web_token`` (its AuthToken, e.g. for ``deletion_epoch``).
+    """
+
+    @wraps(view)
+    def wrapper(request: HttpRequest, *args, **kwargs) -> HttpResponse:
+        if request.web_account is None:
+            return HttpResponseRedirect(login_url(request))
+        return view(request, *args, **kwargs)
+
+    return web_page(wrapper)
+
+
+def _account_card(account) -> dict | None:
+    """What the header, panel and profile card show about the signed-in account."""
+
+    if account is None:
+        return None
+    name = account.nickname or account.display_name or ""
+    usage = getattr(account, "usage_stats", None)
+    progress = pivar_progress(int(getattr(usage, "pivar_xp", 0) or 0))
+    avatar_url = None
+    if account.avatar:
+        try:
+            avatar_url = f"{settings.PUBLIC_API_ORIGIN}{account.avatar.url}"
+        except ValueError:
+            avatar_url = None
+    return {
+        "name": name or gettext("Pivař"),
+        "handle": f"@{account.nickname}" if account.nickname else (name or gettext("Pivař")),
+        "avatar_url": avatar_url,
+        "level_label": gettext("Level %(level)s · %(title)s") % {"level": progress["level"], "title": progress["title"]},
+    }
 
 
 def _alternates(request: HttpRequest) -> dict[str, str]:
@@ -108,7 +158,7 @@ def render_page(
         "description": description,
         "section": section,
         "indexable": indexable and status == 200,
-        "account": getattr(request, "web_account", None),
+        "account": _account_card(getattr(request, "web_account", None)),
         "app_store_url": app_store_url("web"),
         "play_store_url": play_store_url("web"),
         "privacy_url": f"{legal}/privacy.html",
@@ -148,6 +198,8 @@ def coming_soon(request: HttpRequest, **_kwargs) -> HttpResponse:
 
     name = base_name(request.resolver_match.url_name if request.resolver_match else "")
     section, signed_in = _PLACEHOLDERS.get(name, ("", False))
+    if signed_in and request.web_account is None:
+        return HttpResponseRedirect(login_url(request))
     return render_page(
         request,
         "web/app_coming_soon.html" if signed_in else "web/coming_soon.html",

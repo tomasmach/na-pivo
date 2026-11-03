@@ -24,6 +24,7 @@
 <link rel="preload" href="{% asset "sofia-sans.woff2" %}" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="{% asset "sofia-sans-extra-condensed-800.woff2" %}" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{% asset "np.css" %}">
+{% if page.account %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">

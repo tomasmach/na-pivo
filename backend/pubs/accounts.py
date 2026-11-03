@@ -902,6 +902,11 @@ def set_password(account: Account, raw_password: str, *, email: str | None = Non
     return cred
 
 
+def new_registration_account() -> Account:
+    """Fresh account for an e-mail registration that has no anonymous account to claim."""
+    return Account.objects.create(device_id=f"reg-{uuid.uuid4()}")
+
+
 def register_email(
     current_account: Account | None,
     *,

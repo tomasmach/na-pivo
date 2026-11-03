@@ -1841,3 +1841,113 @@ msgstr "Close"
 
 msgid "Žebříčky"
 msgstr "Rankings"
+
+msgid "Alespoň 8 znaků"
+msgstr "At least 8 characters"
+
+msgid "Ať o piva nepřijdeš"
+msgstr "Never lose a beer"
+
+msgid "Deník na webu brzy načepujeme"
+msgstr "The diary is coming to the web soon"
+
+msgid "E-mail"
+msgstr "Email"
+
+msgid "Heslo"
+msgstr "Password"
+
+msgid "Jak ti má parta říkat"
+msgstr "What your crew calls you"
+
+msgid "Jestli k tomu e-mailu máš účet, odkaz už ti letí. Otevři ho na telefonu s Na pivo."
+msgstr "If that email has an account, the link is on its way. Open it on the phone with Na pivo."
+
+msgid "Ještě moment, přihlašuju tě."
+msgstr "One moment, logging you in."
+
+#, python-format
+msgid "Level %(level)s · %(title)s"
+msgstr "Level %(level)s · %(title)s"
+
+msgid "Moc pokusů za sebou. Dej si chvilku pauzu a zkus to znovu."
+msgstr "Too many attempts in a row. Take a short break and try again."
+
+msgid "Napiš e-mail, se kterým se přihlašuješ. Pošlu ti odkaz na nové heslo."
+msgstr "Enter the email you log in with. I'll send you a link to a new password."
+
+msgid "Odhlásit se"
+msgstr "Log out"
+
+msgid "Pivař"
+msgstr "Beer fan"
+
+msgid "Pokračovat"
+msgstr "Continue"
+
+msgid "Pokračovat přes Apple"
+msgstr "Continue with Apple"
+
+msgid "Pokračovat přes Google"
+msgstr "Continue with Google"
+
+msgid "Poslat odkaz"
+msgstr "Send the link"
+
+msgid "Přezdívka"
+msgstr "Nickname"
+
+msgid "Přihlas se a deník, parta i odznaky ti naskočí na každém telefonu i tady na webu."
+msgstr "Log in and your diary, crew and badges show up on every phone and here on the web."
+
+msgid "Přihlašuju…"
+msgstr "Logging in…"
+
+msgid "Přihlášení"
+msgstr "Log in"
+
+msgid "Přihlášení nebo registrace"
+msgstr "Log in or sign up"
+
+msgid "Přihlášení se nepovedlo. Zkus to prosím znovu."
+msgstr "Logging in didn't work. Please try again."
+
+msgid "Přihlášení vypršelo. Zkus to prosím znovu."
+msgstr "The login expired. Please try again."
+
+msgid "Registrace"
+msgstr "Sign up"
+
+msgid "Registrovat"
+msgstr "Sign up"
+
+msgid "Založ si deníček"
+msgstr "Start your beer diary"
+
+msgid "Založit účet"
+msgstr "Create account"
+
+msgid "Zapomenuté heslo"
+msgstr "Forgotten password"
+
+msgid "Zapomenuté heslo?"
+msgstr "Forgot your password?"
+
+msgid "Zatím ho najdeš v appce. Tady se brzy objeví kalendář večerů a všechno, co padlo."
+msgstr "For now it lives in the app. Soon you'll find your calendar of nights and everything you drank here."
+
+msgid "Zpátky na přihlášení"
+msgstr "Back to log in"
+
+msgid "Zpátky na úvod"
+msgstr "Back to home"
+
+msgid "nebo e-mailem"
+msgstr "or with email"
+
+msgid "Účet je zdarma. Piva, večery i parta se ti pak srovnají mezi telefonem a webem."
+msgstr "The account is free. Your beers, nights and crew then stay in sync between phone and web."
+
+#, python-format
+msgid "Pokračováním souhlasíš s <a href=\"%(terms)s\">podmínkami</a> a <a href=\"%(privacy)s\">zásadami ochrany soukromí</a>."
+msgstr "By continuing you agree to the <a href=\"%(terms)s\">terms</a> and the <a href=\"%(privacy)s\">privacy policy</a>."
