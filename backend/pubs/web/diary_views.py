@@ -722,8 +722,3 @@ def profile(request: HttpRequest) -> HttpResponse:
     }
     return render_page(request, "web/diary/profile.html", context, title=gettext("Profil"), section="profile", indexable=False)
 
-
-def sitemap_paths() -> list[str]:
-    """The diary is private; none of its pages belong in the sitemap."""
-
-    return []

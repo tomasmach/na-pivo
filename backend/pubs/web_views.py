@@ -20,6 +20,7 @@ from django.db.models import Count, Max, Q, Sum
 from django.db.models.functions import TruncMonth
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.urls import resolve
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext, pgettext_lazy
 
@@ -1149,11 +1150,6 @@ def beer_pages_og_image(
     return response
 
 
-def sitemap_paths() -> list[str]:
-    """Pages of this module the sitemap still lacks; home, prices and beers are already in ``sitemap_xml``."""
-
-    return []
-
 
 def robots_txt(_request: HttpRequest) -> HttpResponse:
     """Crawlers may read every page; the API only answers the app."""
@@ -1168,6 +1164,12 @@ def robots_txt(_request: HttpRequest) -> HttpResponse:
     response = HttpResponse("\n".join(lines) + "\n", content_type="text/plain; charset=utf-8")
     response["Cache-Control"] = "public, max-age=86400"
     return response
+
+
+def _web_sitemap_paths() -> list[str]:
+    from pubs.web import beer_index, news, pubs_views, rankings, tours
+
+    return [path for module in (pubs_views, rankings, news, beer_index, tours) for path in module.sitemap_paths()]
 
 
 def sitemap_xml(request: HttpRequest) -> HttpResponse:
@@ -1185,6 +1187,9 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
         pages.append({"urls": {lang: f"{origin}{path}/{slug}" for lang, path in PRICE_PATHS.items()}, "lastmod": day})
     for kind, key, beer_day in BeerPage.objects.order_by("kind", "key").values_list("kind", "key", "day"):
         pages.append({"urls": {lang: f"{origin}{page_path(kind, key, lang)}" for lang in BEER_PATHS}, "lastmod": beer_day})
+    for path in _web_sitemap_paths():
+        match = resolve(path)
+        pages.append({"urls": {lang: f"{origin}{web_reverse(match.url_name, lang, **match.kwargs)}" for lang in ("cs", "en")}})
     response = render(
         request, "pubs/sitemap.xml", {"pages": pages}, content_type="application/xml; charset=utf-8"
     )

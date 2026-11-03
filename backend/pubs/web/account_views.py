@@ -589,8 +589,3 @@ def account_deleted(request: HttpRequest) -> HttpResponse:
         indexable=False,
     )
 
-
-def sitemap_paths() -> list[str]:
-    """Signed-in pages stay out of the sitemap."""
-
-    return []

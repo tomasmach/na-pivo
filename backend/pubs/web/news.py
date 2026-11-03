@@ -362,4 +362,4 @@ def news(request: HttpRequest) -> HttpResponse:
 
 
 def sitemap_paths() -> list[str]:
-    return [web_reverse("web-news", lang) for lang in ("cs", "en")]
+    return [web_reverse("web-news", "cs")]

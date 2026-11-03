@@ -398,4 +398,4 @@ def beer_index_og(request: HttpRequest, lang: str = "cs") -> HttpResponse:
 
 
 def sitemap_paths() -> list[str]:
-    return [web_reverse("web-beer-index", lang) for lang in ("cs", "en")]
+    return [web_reverse("web-beer-index", "cs")]

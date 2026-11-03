@@ -288,4 +288,4 @@ def rankings(request: HttpRequest) -> HttpResponse:
 
 
 def sitemap_paths() -> list[str]:
-    return [web_reverse("web-rankings", lang) for lang in ("cs", "en")]
+    return [web_reverse("web-rankings", "cs")]

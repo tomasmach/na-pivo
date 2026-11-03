@@ -405,7 +405,7 @@ def tour_og(request: HttpRequest, tour_id: str, lang: str = "cs") -> HttpRespons
 
 
 def sitemap_paths() -> list[str]:
-    paths = [web_reverse("web-tours", lang) for lang in ("cs", "en")]
+    paths = [web_reverse("web-tours", "cs")]
     for token in readable_publications().order_by("-people_count").values_list("token", flat=True)[:500]:
-        paths += [web_reverse("web-tour", lang, tour_id=token) for lang in ("cs", "en")]
+        paths.append(web_reverse("web-tour", "cs", tour_id=token))
     return paths

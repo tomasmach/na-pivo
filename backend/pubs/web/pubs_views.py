@@ -822,8 +822,6 @@ def search_page(request: HttpRequest) -> HttpResponse:
 
 
 def sitemap_paths() -> list[str]:
-    """Czech paths of the pub pages for the sitemap; each has an English twin under the same route name."""
-
     paths = [web_reverse("web-pubs", "cs")]
     paths += [web_reverse("web-pubs-city", "cs", city=city["slug"]) for city in pubs_data.cities_by_size() if city["pubs"] >= 3]
     paths += [web_reverse("web-pub", "cs", key=key) for key in pubs_data.sitemap_pub_keys()]

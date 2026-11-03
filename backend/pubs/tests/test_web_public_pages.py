@@ -7,7 +7,9 @@ import io
 import uuid
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
+from django.test import Client
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -196,7 +198,7 @@ def test_tours_show_what_the_author_published_and_start_in_the_app(client, djang
     cache.clear()
     assert client.get(f"/trasy/{token}").status_code == 404
     assert "Pátek po Starém Městě" not in _page(client, "/trasy")
-    assert other["token"] in tours.sitemap_paths()[-2]
+    assert other["token"] in tours.sitemap_paths()[-1]
 
 
 def test_tours_hide_blocked_authors_from_a_signed_in_reader():
@@ -208,7 +210,11 @@ def test_tours_hide_blocked_authors_from_a_signed_in_reader():
     assert tours._hidden_authors(None) == set()
 
 
-def test_sitemap_paths_cover_both_languages():
+def test_sitemap_lists_the_new_pages_in_both_languages():
+    xml = Client().get("/sitemap.xml").content.decode()
+
     for module in (rankings, news, beer_index):
-        cs, en = module.sitemap_paths()
-        assert not cs.startswith("/en/") and en.startswith("/en/")
+        [path] = module.sitemap_paths()
+        assert not path.startswith("/en/") and f"{settings.PUBLIC_WEB_ORIGIN}{path}</loc>" in xml
+    for path in ("/en/rankings", "/en/news", "/en/beer-index", "/hospody", "/en/pubs"):
+        assert f'href="{settings.PUBLIC_WEB_ORIGIN}{path}"' in xml
