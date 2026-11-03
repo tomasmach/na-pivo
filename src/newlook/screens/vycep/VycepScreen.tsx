@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { FlatList, Image, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -104,7 +104,7 @@ function postWhen(iso: string, now = new Date()): string {
   return d.toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
 }
 
-function Post({ night, onRemoved }: { night: PublishedNight; onRemoved: (id: string) => void }) {
+const Post = memo(function Post({ night, onRemoved }: { night: PublishedNight; onRemoved: (id: string) => void }) {
   const [given, setGiven] = useState(night.myRound);
   const [count, setCount] = useState(night.rounds);
   const busy = useRef(false);
@@ -225,7 +225,7 @@ function Post({ night, onRemoved }: { night: PublishedNight; onRemoved: (id: str
       <RundaButton count={count} given={given} disabled={night.isMine} onPress={toggleRound} />
     </View>
   );
-}
+});
 
 /** A post without a photo, drawn as empty boxes of the same sizes. */
 function GhostPost() {
@@ -243,6 +243,11 @@ function GhostPost() {
     </View>
   );
 }
+
+const NO_NIGHTS: PublishedNight[] = [];
+const nightKey = (night: PublishedNight) => night.id;
+/** Posts on the first screen fade in like the rest of the tab; later pages just appear. */
+const FADED_POSTS = 4;
 
 type FeedState = { scope: NightsFeedScope; nights: PublishedNight[] | null; cursor: string | null; failed: boolean };
 
@@ -338,11 +343,6 @@ export function VycepScreen() {
 
   const publish = () => router.push(autopublish === null ? '/nv/prvni-vyveseni' : '/nv/vyvesit');
 
-  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    if (layoutMeasurement.height + contentOffset.y > contentSize.height - 600) feed.loadMore();
-  };
-
   const leader = summary?.leader ? (summary.leader.isMe ? t.nv.vycep.summaryYou : summary.leader.name) : NO_VALUE;
   const stats: [string, string][] = [
     [summary ? String(summary.nights) : NO_VALUE, t.nv.vycep.summaryNights(summary?.nights ?? 0)],
@@ -352,87 +352,96 @@ export function VycepScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView
+      <FlatList
+        data={feed.nights ?? NO_NIGHTS}
+        keyExtractor={nightKey}
+        renderItem={({ item, index }) =>
+          index < FADED_POSTS ? (
+            <Animated.View entering={fadeIn}>
+              <Post night={item} onRemoved={feed.remove} />
+            </Animated.View>
+          ) : (
+            <Post night={item} onRemoved={feed.remove} />
+          )
+        }
+        onEndReached={feed.loadMore}
+        onEndReachedThreshold={1.5}
         showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={200}
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: tabSpace + 30 }}
-      >
-        <TabHeader title={t.nv.vycep.title}>
-          <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
-        </TabHeader>
-        <Segmented
-          height={38}
-          options={[
-            { key: 'svet', label: t.nv.vycep.scopeWorld },
-            { key: 'parta', label: t.nv.vycep.scopeParta },
-          ]}
-          value={scope}
-          onChange={setScope}
-        />
-        <View style={{ padding: 16, gap: 12, borderRadius: 24, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }}>
-          <View style={[s.row, { gap: 8 }]}>
-            <Dot />
-            <T s={14} w={700} c={C.yellow}>
-              {scope === 'svet' ? t.nv.vycep.summaryWorld : t.nv.vycep.summaryParta}
-            </T>
-          </View>
-          <View style={[s.row, { justifyContent: 'space-between' }]}>
-            {stats.map(([v, l], i) => (
-              <View key={i} style={{ gap: 2, alignItems: i === 2 ? 'flex-end' : 'flex-start', flex: i === 0 ? 1.4 : 1 }}>
-                <D s={28} lh={1} numberOfLines={1}>
-                  {v}
-                </D>
-                <T s={12} c={C.muted}>
-                  {l}
+        ListHeaderComponentStyle={{ gap: 16 }}
+        ListHeaderComponent={
+          <>
+            <TabHeader title={t.nv.vycep.title}>
+              <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
+            </TabHeader>
+            <Segmented
+              height={38}
+              options={[
+                { key: 'svet', label: t.nv.vycep.scopeWorld },
+                { key: 'parta', label: t.nv.vycep.scopeParta },
+              ]}
+              value={scope}
+              onChange={setScope}
+            />
+            <View style={{ padding: 16, gap: 12, borderRadius: 24, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }}>
+              <View style={[s.row, { gap: 8 }]}>
+                <Dot />
+                <T s={14} w={700} c={C.yellow}>
+                  {scope === 'svet' ? t.nv.vycep.summaryWorld : t.nv.vycep.summaryParta}
                 </T>
               </View>
-            ))}
-          </View>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
-          <Shortcut
-            icon="camera"
-            title={t.nv.vycep.shortcutContest}
-            sub={contestDays === null ? '' : contestDays > 0 ? t.nv.vycep.shortcutContestLeft(contestDays) : t.nv.vycep.shortcutContestToday}
-            onPress={() => router.push('/nv/fotopivar')}
-          />
-          <Shortcut
-            icon="route"
-            title={t.nv.vycep.shortcutTour}
-            sub={plan ? t.nv.vycep.shortcutTourSub(plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
-            onPress={() => router.push('/nv/tour')}
-          />
-          <Shortcut
-            icon="trophy"
-            title={t.nv.vycep.shortcutBoards}
-            sub={rank === undefined ? '' : rank ? t.nv.vycep.shortcutBoardsRank(rank) : t.nv.vycep.shortcutBoardsNone}
-            onPress={() => router.push('/nv/zebricky')}
-          />
-        </ScrollView>
-        {feed.nights === null && !feed.failed ? (
-          <>
-            <GhostPost />
-            <GhostPost />
-            <GhostPost />
+              <View style={[s.row, { justifyContent: 'space-between' }]}>
+                {stats.map(([v, l], i) => (
+                  <View key={i} style={{ gap: 2, alignItems: i === 2 ? 'flex-end' : 'flex-start', flex: i === 0 ? 1.4 : 1 }}>
+                    <D s={28} lh={1} numberOfLines={1}>
+                      {v}
+                    </D>
+                    <T s={12} c={C.muted}>
+                      {l}
+                    </T>
+                  </View>
+                ))}
+              </View>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
+              <Shortcut
+                icon="camera"
+                title={t.nv.vycep.shortcutContest}
+                sub={contestDays === null ? '' : contestDays > 0 ? t.nv.vycep.shortcutContestLeft(contestDays) : t.nv.vycep.shortcutContestToday}
+                onPress={() => router.push('/nv/fotopivar')}
+              />
+              <Shortcut
+                icon="route"
+                title={t.nv.vycep.shortcutTour}
+                sub={plan ? t.nv.vycep.shortcutTourSub(plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
+                onPress={() => router.push('/nv/tour')}
+              />
+              <Shortcut
+                icon="trophy"
+                title={t.nv.vycep.shortcutBoards}
+                sub={rank === undefined ? '' : rank ? t.nv.vycep.shortcutBoardsRank(rank) : t.nv.vycep.shortcutBoardsNone}
+                onPress={() => router.push('/nv/zebricky')}
+              />
+            </ScrollView>
+            {feed.nights === null && !feed.failed ? (
+              <>
+                <GhostPost />
+                <GhostPost />
+                <GhostPost />
+              </>
+            ) : feed.failed && !feed.nights?.length ? (
+              <StatusCard text={t.nv.vycep.loadError} action={t.nv.vycep.retry} onAction={feed.load} />
+            ) : feed.nights?.length === 0 ? (
+              <StatusCard
+                text={scope === 'svet' ? t.nv.vycep.emptyWorld : t.nv.vycep.emptyParta}
+                action={t.nv.vycep.publishCta}
+                actionIcon="plus"
+                onAction={publish}
+              />
+            ) : null}
           </>
-        ) : feed.failed && !feed.nights?.length ? (
-          <StatusCard text={t.nv.vycep.loadError} action={t.nv.vycep.retry} onAction={feed.load} />
-        ) : feed.nights?.length === 0 ? (
-          <StatusCard
-            text={scope === 'svet' ? t.nv.vycep.emptyWorld : t.nv.vycep.emptyParta}
-            action={t.nv.vycep.publishCta}
-            actionIcon="plus"
-            onAction={publish}
-          />
-        ) : (
-          <Animated.View key={feed.scope} entering={fadeIn} style={{ gap: 16 }}>
-            {feed.nights?.map((night) => (
-              <Post key={night.id} night={night} onRemoved={feed.remove} />
-            ))}
-          </Animated.View>
-        )}
-      </ScrollView>
+        }
+      />
       <BottomFade height={tabSpace + 40} />
     </View>
   );

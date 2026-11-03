@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapStyleElement, type Region } from 'react-native-maps';
 
@@ -61,6 +61,15 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
 ) {
   const ref = useRef<MapView>(null);
   const centered = useRef(false);
+  const [initialRegion] = useState(() => (me ? nearRegion(me) : COUNTRY_REGION));
+  const padding = useMemo(() => ({ top: 0, left: 0, right: 0, bottom: bottomPadding }), [bottomPadding]);
+  // Position fixes re-render the map; stable handlers let the marker lists skip them.
+  const handlers = useRef({ onPub, onCity });
+  useEffect(() => {
+    handlers.current = { onPub, onCity };
+  });
+  const pressPub = useCallback((id: string) => handlers.current.onPub?.(id), []);
+  const pressCity = useCallback((key: string) => handlers.current.onCity?.(key), []);
 
   useImperativeHandle(handle, () => ({ centerOn: (at) => ref.current?.animateToRegion(nearRegion(at), 450) }));
 
@@ -86,13 +95,13 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
       provider={PROVIDER_GOOGLE}
       style={StyleSheet.absoluteFill}
       customMapStyle={GRAY_MAP}
-      initialRegion={me ? nearRegion(me) : COUNTRY_REGION}
+      initialRegion={initialRegion}
       showsUserLocation={false}
       showsCompass={false}
       showsPointsOfInterests={false}
       showsBuildings={false}
       toolbarEnabled={false}
-      mapPadding={{ top: 0, left: 0, right: 0, bottom: bottomPadding }}
+      mapPadding={padding}
       userInterfaceStyle="dark"
       onRegionChangeComplete={(region) => onRegion?.(region)}
     >
@@ -119,39 +128,58 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
           ) : null}
         </>
       ) : null}
-      {shown.map((p) => (
-        <Marker
-          key={`${p.id}-${p.key === target?.key}-${pinMode}-${p.label ?? ''}`}
-          coordinate={{ latitude: p.lat, longitude: p.lng }}
-          anchor={{ x: 0.5, y: 0.5 }}
-          onPress={() => onPub?.(p.id)}
-          tracksViewChanges={false}
-        >
-          <PubPin label={p.label} target={p.key === target?.key} mode={pinMode} />
-        </Marker>
-      ))}
-      {view === 'parta'
-        ? friends.map((f) => (
-            <Marker key={f.key} coordinate={{ latitude: f.lat + 0.0004, longitude: f.lng }} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={false}>
-              <Person initial={f.initial} size={34} />
-            </Marker>
-          ))
-        : null}
-      {view === 'stopy'
-        ? cities.map((c) => (
-            <Marker
-              key={`${c.key}-${selectedCity === c.key}`}
-              coordinate={{ latitude: c.lat, longitude: c.lng }}
-              anchor={{ x: 0.5, y: 0.5 }}
-              onPress={() => onCity?.(c.key)}
-              tracksViewChanges={false}
-            >
-              <CityPin name={c.name} count={c.count} active={selectedCity === c.key} />
-            </Marker>
-          ))
-        : null}
+      <PubMarkers pins={shown} targetKey={target?.key ?? null} pinMode={pinMode} onPress={pressPub} />
+      {view === 'parta' ? <FriendMarkers friends={friends} /> : null}
+      {view === 'stopy' ? <CityMarkers cities={cities} selected={selectedCity ?? null} onPress={pressCity} /> : null}
     </MapView>
   );
+});
+
+const PubMarkers = memo(function PubMarkers({
+  pins,
+  targetKey,
+  pinMode,
+  onPress,
+}: {
+  pins: MapPin[];
+  targetKey: string | null;
+  pinMode: 'price' | 'count';
+  onPress: (id: string) => void;
+}) {
+  return pins.map((p) => (
+    // A marker that does not track view changes keeps its first snapshot, so a new look needs a new key.
+    <Marker
+      key={`${p.id}-${p.key === targetKey}-${pinMode}-${p.label ?? ''}`}
+      coordinate={{ latitude: p.lat, longitude: p.lng }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      onPress={() => onPress(p.id)}
+      tracksViewChanges={false}
+    >
+      <PubPin label={p.label} target={p.key === targetKey} mode={pinMode} />
+    </Marker>
+  ));
+});
+
+const FriendMarkers = memo(function FriendMarkers({ friends }: { friends: MapFriend[] }) {
+  return friends.map((f) => (
+    <Marker key={f.key} coordinate={{ latitude: f.lat + 0.0004, longitude: f.lng }} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={false}>
+      <Person initial={f.initial} size={34} />
+    </Marker>
+  ));
+});
+
+const CityMarkers = memo(function CityMarkers({ cities, selected, onPress }: { cities: MapCity[]; selected: string | null; onPress: (key: string) => void }) {
+  return cities.map((c) => (
+    <Marker
+      key={`${c.key}-${selected === c.key}`}
+      coordinate={{ latitude: c.lat, longitude: c.lng }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      onPress={() => onPress(c.key)}
+      tracksViewChanges={false}
+    >
+      <CityPin name={c.name} count={c.count} active={selected === c.key} />
+    </Marker>
+  ));
 });
 
 export function PubPin({ label, target, mode }: { label: string | null; target: boolean; mode: 'price' | 'count' }) {

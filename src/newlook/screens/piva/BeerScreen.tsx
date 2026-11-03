@@ -97,12 +97,12 @@ function Review({ r }: { r: BeerReview }) {
 const refKey = (ref: BeerRef) => `${ref.productKey ?? ''}|${ref.beerName ?? ''}|${ref.breweryName ?? ''}`;
 
 function useBeerPage(ref: BeerRef) {
-  return useLoad<BeerPage>(refKey(ref), (signal) => lastKnownPosition().then((position) => fetchBeerPage(ref, position, signal)));
+  return useLoad<BeerPage>(refKey(ref), (signal) => lastKnownPosition().then((position) => fetchBeerPage(ref, position, signal)), true, 'beer');
 }
 
 function useReviews(ref: BeerRef, filter: ReviewFilter) {
   const key = `${refKey(ref)}:${filter}`;
-  const first = useLoad<BeerReviewsPage>(key, (signal) => fetchBeerReviews(ref, { filter, limit: 3 }, signal));
+  const first = useLoad<BeerReviewsPage>(key, (signal) => fetchBeerReviews(ref, { filter, limit: 3 }, signal), true, 'beer-reviews');
   const [extra, setExtra] = useState<{ key: string; items: BeerReview[]; cursor: string | null } | null>(null);
   const page = first.state.status === 'ready' ? first.state.data : null;
   const more = extra?.key === key ? extra : null;
