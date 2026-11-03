@@ -714,6 +714,8 @@ REST_FRAMEWORK = {
         # Public beer price page and its share image; a reader loads one page at a time.
         "price_map": "60/min",
         "tour_search": "60/min",
+        # Web search: one query per submitted form, so a person stays far below this.
+        "web_search": "30/min",
         "tour_publish": "20/hour",
         "tour_run": "240/hour",
         # Inviting friends pushes to their phones, so it has a tighter budget than reading who answered.

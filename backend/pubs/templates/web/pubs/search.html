@@ -1,0 +1,99 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/pubs/_head.html" %}{% endblock %}
+{% block content %}
+{% if not query %}
+<div class="np-pubs-head">
+  <h1 class="np-pubs-h1">{% translate "Hledání" %}</h1>
+  <p class="np-pubs-lead">{% translate "Hospoda, pivo nebo město. Diakritiku psát nemusíš." %}</p>
+</div>
+<form class="np-search np-pubs-search" role="search" action="{% web_url "web-search" %}" method="get">
+  {% icon "search" "np-icon--s" %}
+  <label class="np-sr-only" for="np-search-page">{% translate "Hledat" %}</label>
+  <input class="np-input" id="np-search-page" type="search" name="q" placeholder="{% translate "Hospoda, pivo nebo město" %}" maxlength="120">
+</form>
+{% if cities %}<section class="np-pubs-section">
+  <h2 class="np-pubs-section__title">{% translate "Hospody ve městech" %}</h2>
+  <div class="np-pubs-tiles">{% for item in cities %}<a class="np-tile" href="{{ item.url }}">{{ item.label }}{% icon "chevron-right" %}</a>{% endfor %}</div>
+</section>{% endif %}
+{% else %}
+<div class="np-pubs-head">
+  <p class="np-pubs-kicker">{% translate "Hledáš" %}</p>
+  <h1 class="np-pubs-h1 np-pubs-h1--query">{{ quoted }}</h1>
+  <p class="np-pubs-lead">{{ lead }}</p>
+</div>
+
+{% if type_chips %}
+<nav class="np-pubs-types" aria-label="{% translate "Co hledáš" %}">{% for item in type_chips %}
+  <a class="np-chip np-chip--accent{% if item.current %} is-active{% endif %}" href="{{ item.url }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.label }} <span class="np-pubs-types__count">{{ item.count }}</span></a>{% endfor %}
+</nav>
+
+<div class="np-pubs-layout np-pubs-layout--search">
+  <div class="np-pubs-results">
+    {% if pubs %}<section class="np-pubs-block">
+      <div class="np-pubs-block__head"><h2>{% translate "Hospody" %}</h2></div>
+      <div class="np-pubs-list"><div class="np-pubs-list__rows">{% for row in pubs %}{% include "web/pubs/_pub_row.html" %}{% endfor %}</div></div>
+      {% if pubs_more_url %}<a class="np-btn np-pubs-more" href="{{ pubs_more_url }}">{{ pubs_more_label }}{% icon "chevron-down" "np-icon--s" %}</a>{% endif %}
+    </section>{% endif %}
+
+    {% if beers %}<section class="np-pubs-block">
+      <div class="np-pubs-block__head"><h2>{% translate "Piva" %}</h2><span>{% translate "hodnocení od lidí z appky" %}</span></div>
+      <div class="np-card np-card--tight"><div class="np-list">{% for beer in beers %}
+        <{% if beer.url %}a href="{{ beer.url }}"{% else %}div{% endif %} class="np-row"><span class="np-row__body"><span class="np-row__title">{{ beer.name }}</span>{% if beer.meta %}<span class="np-row__meta">{{ beer.meta }}</span>{% endif %}</span>{% if beer.rating_label %}<span class="np-pubs-score"><span class="np-pub-rating">{% icon "star" %}{{ beer.rating_label }}</span><span class="np-row__meta">{{ beer.ratings_label }}</span></span>{% endif %}</{% if beer.url %}a{% else %}div{% endif %}>{% endfor %}
+      </div></div>
+    </section>{% endif %}
+
+    {% if cities %}<section class="np-pubs-block">
+      <div class="np-pubs-block__head"><h2>{% translate "Města a čtvrti" %}</h2></div>
+      <div class="np-card np-card--tight"><div class="np-list">{% for city in cities %}
+        {% translate "medián" as median_meta %}{% include "web/components/row.html" with href=city.url icon="map-pin" title=city.name meta=city.meta value=city.median_label value_meta=median_meta %}{% endfor %}
+      </div></div>
+    </section>{% endif %}
+  </div>
+
+  <aside class="np-pubs-side">
+    {% if map %}<div class="np-map np-map--small">{% include "web/pubs/_map.html" with map=map label=map_caption %}
+      <div class="np-map__caption"><span>{{ map_caption }}</span></div>
+    </div>{% endif %}
+    <section class="np-card np-pubs-missing">
+      <h2 class="np-pubs-missing__title">{% translate "Chybí ti tu hospoda?" %}</h2>
+      <p>{% translate "Hospody do mapy zapisují lidi jako ty. Stačí název a adresa, ceny a pivo na čepu doplní další štamgasti." %}</p>
+      <a class="np-btn" href="{{ add_pub_url }}">{% icon "plus" "np-icon--s" %}{% translate "Přidat hospodu" %}</a>
+    </section>
+    <p class="np-pubs-hint">{% icon "info" "np-icon--s" %}<span>{% translate "Ceny zapisují lidi v appce, když si zapíšou pivo s cenou nebo doplní lístek hospody." %}</span></p>
+  </aside>
+</div>
+{% else %}
+<div class="np-pubs-layout np-pubs-layout--search">
+  <div class="np-pubs-results">
+    <section class="np-card np-pubs-nothing">
+      <div>
+        <h2 class="np-pubs-nothing__title">{% translate "Tuhle hospodu ještě neznáme" %}</h2>
+        <p>{% translate "Buď je úplně nová, nebo ji zatím nikdo nezapsal. Přidej ji a budeš první, kdo tam zapíše pivo. Stačí název a adresa." %}</p>
+      </div>
+      <div class="np-pubs-nothing__actions">
+        <a class="np-btn np-btn--primary np-btn--l" href="{{ add_pub_url }}">{% icon "plus" %}{% translate "Přidat hospodu" %}</a>
+        <a class="np-btn np-btn--l" href="{{ pubs_url }}">{% icon "map" %}{% translate "Projít hospody po městech" %}</a>
+      </div>
+    </section>
+    {% if similar %}<section class="np-pubs-block">
+      <div class="np-pubs-block__head"><h2>{% translate "Nemyslel jsi náhodou" %}</h2><span>{% translate "podobné názvy" %}</span></div>
+      <div class="np-card np-card--tight"><div class="np-list">{% for row in similar %}
+        <a class="np-row" href="{{ row.url }}"><span class="np-row__lead">{% icon "beer" %}</span><span class="np-row__body"><span class="np-row__title">{{ row.name }}</span>{% if row.place %}<span class="np-row__meta">{{ row.place }}</span>{% endif %}</span>{% if row.rating_label %}<span class="np-pub-rating">{% icon "star" %}{{ row.rating_label }}</span>{% endif %}</a>{% endfor %}
+      </div></div>
+    </section>{% endif %}
+  </div>
+  <aside class="np-pubs-side">
+    <section class="np-pubs-tips">
+      <h2 class="np-title">{% translate "Jak hledat" %}</h2>
+      <ol>
+        <li>{% translate "Zkus jen kus názvu, třeba „bobr“." %}</li>
+        <li>{% translate "Napiš město nebo čtvrť, ukážu hospody v ní." %}</li>
+        <li>{% translate "Hledáš pivo? Stačí pivovar a stupně, třeba „bernard 11“." %}</li>
+      </ol>
+    </section>
+  </aside>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

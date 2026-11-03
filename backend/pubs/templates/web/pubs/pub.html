@@ -1,0 +1,62 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/pubs/_head.html" %}{% endblock %}
+{% block og_image %}{% include "web/pubs/_og.html" %}{% endblock %}
+{% block content %}
+{% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
+<div class="np-pub-head">
+  <h1 class="np-pub-h1">{{ pub.name }}</h1>
+  <p class="np-pub-head__line">
+    {% if status %}<span class="np-pub-status{% if status.open %} is-open{% endif %}">{{ status.text|capfirst }}</span><span class="np-pub-head__dot" aria-hidden="true">·</span>{% endif %}
+    <span>{{ place }}{% if place_sub %}, {{ place_sub }}{% endif %}</span>
+  </p>
+</div>
+
+<div class="np-pub">
+  <div class="np-pub__main">
+    {% if map %}<div class="np-map np-map--pub np-pub__map">{% include "web/pubs/_map.html" with map=map label=pub.name %}</div>{% endif %}
+
+    {% if stats %}<div class="np-pub-stats np-pub__stats">{% for stat in stats %}
+      <div class="np-pub-stat"><span class="np-pub-stat__value">{{ stat.value }}</span><span class="np-pub-stat__label">{{ stat.label }}</span></div>{% endfor %}
+    </div>{% endif %}
+
+    <section class="np-pubs-block np-pub__menu">
+      <div class="np-pubs-block__head"><h2>{% translate "Na čepu" %}</h2>{% if menu_updated %}<span>{{ menu_updated }}</span>{% endif %}</div>
+      <div class="np-card np-card--tight">
+        {% if menu %}<div class="np-list">{% for beer in menu %}
+          <div class="np-row"><span class="np-row__body"><span class="np-row__title">{{ beer.name }}</span>{% if beer.meta %}<span class="np-row__meta">{{ beer.meta }}</span>{% endif %}</span>{% if beer.price %}<span class="np-pub-price">{{ beer.price }}</span>{% endif %}</div>{% endfor %}
+        </div>{% else %}<p class="np-pubs-note">{% translate "Co tu čepují, zatím nevím. Kdo tu sedí, může lístek doplnit v appce." %}</p>{% endif %}
+      </div>
+    </section>
+
+    {% if beer_ratings %}<section class="np-pubs-block np-pub__ratings">
+      <div class="np-pubs-block__head"><h2>{% translate "Hodnocení piv" %}</h2><span>{% translate "od lidí z Na pivo" %}</span></div>
+      <div class="np-card np-card--tight"><div class="np-list">{% for beer in beer_ratings %}
+        <div class="np-row"><span class="np-row__body"><span class="np-row__title">{{ beer.name }}</span><span class="np-row__meta">{{ beer.count_label }}{% if beer.note %} · „{{ beer.note }}“{% endif %}</span></span><span class="np-pub-rating">{% icon "star" %}{{ beer.rating_label }}</span></div>{% endfor %}
+      </div></div>
+    </section>{% endif %}
+  </div>
+
+  <aside class="np-pub__side">
+    <section class="np-card np-pub-cta np-pub__cta">
+      <h2 class="np-pub-cta__title">{% translate "Sedíš tady?" %}</h2>
+      <p>{% translate "Zapiš si pivo v appce a večer se ti sám uloží do deníku. Lístek i otevírací dobu může doplnit každý, kdo tu sedí." %}</p>
+      <a class="np-btn np-btn--primary np-btn--block np-btn--l" href="{{ deep_link }}">{% icon "smartphone" %}{% translate "Otevřít v appce" %}</a>
+      {% if page.account %}<a class="np-btn np-btn--block np-btn--l" href="{% web_url "web-log-beer" %}">{% icon "plus" %}{% translate "Zapsat pivo" %}</a>
+      {% else %}<a class="np-btn np-btn--block np-btn--l" href="{{ login_url }}">{% icon "log-in" %}{% translate "Přihlásit se na webu" %}</a>{% endif %}
+    </section>
+
+    {% if days %}<section class="np-card np-pub-hours np-pub__hours">
+      <h2 class="np-title">{% translate "Otevírací doba" %}</h2>
+      <dl>{% for row in days %}
+        <div class="{% if row.today %}is-today{% endif %}{% if row.closed %} is-closed{% endif %}"><dt>{{ row.day }}{% if row.today %} <span class="np-pub-hours__today">{% translate "dnes" %}</span>{% endif %}</dt><dd>{{ row.hours }}</dd></div>{% endfor %}
+      </dl>
+    </section>{% endif %}
+
+    <section class="np-card np-card--tight np-pub__where"><div class="np-list">
+      <div class="np-row"><span class="np-row__lead">{% icon "map-pin" %}</span><span class="np-row__body"><span class="np-row__title">{{ place }}</span>{% if place_sub %}<span class="np-row__meta">{{ place_sub }}</span>{% endif %}</span></div>
+      <a class="np-row" href="{{ navigation_url }}" rel="noopener noreferrer"><span class="np-row__lead">{% icon "navigation" %}</span><span class="np-row__body"><span class="np-row__title">{% translate "Navigovat" %}</span><span class="np-row__meta">{% translate "Otevře mapy v telefonu" %}</span></span></a>
+    </div></section>
+  </aside>
+</div>
+{% endblock %}

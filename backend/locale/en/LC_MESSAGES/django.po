@@ -2566,3 +2566,452 @@ msgstr "Badges"
 
 msgid "První odznak přijde s prvním pivem."
 msgstr "Your first badge comes with your first beer."
+
+# web: hospody
+
+msgid "Zkus to prosím za chvíli"
+msgstr "Please try again in a moment"
+
+#, python-format
+msgid "otevřeno do %(time)s"
+msgstr "open until %(time)s"
+
+msgid "zavřeno"
+msgstr "closed"
+
+msgid "v pondělí"
+msgstr "on Monday"
+
+msgid "v úterý"
+msgstr "on Tuesday"
+
+msgid "ve středu"
+msgstr "on Wednesday"
+
+msgid "ve čtvrtek"
+msgstr "on Thursday"
+
+msgid "v pátek"
+msgstr "on Friday"
+
+msgid "v sobotu"
+msgstr "on Saturday"
+
+msgid "v neděli"
+msgstr "on Sunday"
+
+#, python-format
+msgid "zavřeno, otevírá v %(time)s"
+msgstr "closed, opens at %(time)s"
+
+#, python-format
+msgid "zavřeno, otevírá zítra v %(time)s"
+msgstr "closed, opens tomorrow at %(time)s"
+
+#, python-format
+msgid "zavřeno, otevírá %(day)s v %(time)s"
+msgstr "closed, opens %(day)s at %(time)s"
+
+msgid "v Praze"
+msgstr "in Prague"
+
+msgid "v Brně"
+msgstr "in Brno"
+
+msgid "v Ostravě"
+msgstr "in Ostrava"
+
+msgid "v Plzni"
+msgstr "in Pilsen"
+
+msgid "v Olomouci"
+msgstr "in Olomouc"
+
+msgid "v Liberci"
+msgstr "in Liberec"
+
+msgid "v Českých Budějovicích"
+msgstr "in České Budějovice"
+
+msgid "v Hradci Králové"
+msgstr "in Hradec Králové"
+
+msgid "v Pardubicích"
+msgstr "in Pardubice"
+
+msgid "ve Zlíně"
+msgstr "in Zlín"
+
+#, python-format
+msgid "ve městě %(city)s"
+msgstr "in %(city)s"
+
+msgid "Tohle město neznám"
+msgstr "I don't know this town"
+
+msgid "Tuhle hospodu neznám"
+msgstr "I don't know this pub"
+
+#, python-format
+msgid "%(pubs)s v %(cities)s. Vyber město a uvidíš, kde mají otevřeno a co čepují."
+msgstr "%(pubs)s in %(cities)s. Pick a town to see where's open and what's on tap."
+
+msgid "městě"
+msgstr "town"
+
+msgid "městech"
+msgstr "towns"
+
+msgid "Hospody po městech"
+msgstr "Pubs by town"
+
+msgid "Hospody v českých městech: co čepují, kolik stojí půllitr a kdo má zrovna otevřeno."
+msgstr "Pubs in Czech towns: what's on tap, what a half litre costs and who's open right now."
+
+msgid "Otevřeno teď"
+msgstr "Open now"
+
+msgid "Všechny čtvrti"
+msgstr "All districts"
+
+#, python-format
+msgid "Čepují: %(beer)s"
+msgstr "On tap: %(beer)s"
+
+msgid "Čepují: cokoliv"
+msgstr "On tap: anything"
+
+msgid "Cokoliv"
+msgstr "Anything"
+
+#, python-format
+msgid "Do %(price)s Kč"
+msgstr "Up to %(price)s CZK"
+
+msgid "Tankové"
+msgstr "Tank beer"
+
+msgid "Zahrádka"
+msgstr "Beer garden"
+
+msgid "nejlíp hodnocené"
+msgstr "best rated"
+
+msgid "nejlevnější"
+msgstr "cheapest"
+
+msgid "podle názvu"
+msgstr "by name"
+
+#, python-format
+msgid "Řadit: %(sort)s"
+msgstr "Sort: %(sort)s"
+
+#, python-format
+msgid "%(pubs)s, právě teď má otevřeno %(open)s z těch, u kterých znám otevírací dobu."
+msgstr "%(pubs)s. Of the ones with known hours, %(open)s are open right now."
+
+#, python-format
+msgid "Půllitr tu stojí kolem %(price)s."
+msgstr "A half litre costs about %(price)s here."
+
+#, python-format
+msgid "Hospody %(in_city)s"
+msgstr "Pubs %(in_city)s"
+
+#, python-format
+msgid "Kolik stojí pivo %(in_city)s"
+msgstr "Beer prices %(in_city)s"
+
+#, python-format
+msgid "%(shown)s z %(total)s"
+msgstr "%(shown)s of %(total)s"
+
+msgid "ověřeno dnes"
+msgstr "checked today"
+
+msgid "ověřeno včera"
+msgstr "checked yesterday"
+
+#, python-format
+msgid "ověřeno %(date)s"
+msgstr "checked %(date)s"
+
+msgid "piv tu padlo minulý týden"
+msgstr "beers went down here last week"
+
+#, python-format
+msgid "průměr z %(ratings)s piv"
+msgstr "beer average from %(ratings)s"
+
+#, python-format
+msgid "dnes: %(title)s"
+msgstr "today: %(title)s"
+
+#, python-format
+msgid "nejlevnější pivo, %(volume)s"
+msgstr "cheapest beer, %(volume)s"
+
+msgid "pivo na čepu"
+msgstr "beer on tap"
+
+msgid "piva na čepu"
+msgstr "beers on tap"
+
+msgid "piv na čepu"
+msgstr "beers on tap"
+
+msgid "Tank"
+msgstr "Tank"
+
+#, python-format
+msgid "%(name)s, %(place)s"
+msgstr "%(name)s, %(place)s"
+
+#, python-format
+msgid "Co čepují v hospodě %(name)s"
+msgstr "What's on tap at %(name)s"
+
+#, python-format
+msgid "pivo od %(price)s Kč"
+msgstr "beer from %(price)s CZK"
+
+msgid "Lístek s cenami, otevírací doba a hodnocení piv od lidí z Na pivo."
+msgstr "Tap list with prices, opening hours and beer ratings from Na pivo users."
+
+msgid "Vše"
+msgstr "All"
+
+msgid "Města a čtvrti"
+msgstr "Towns and districts"
+
+#, python-format
+msgid "čepují v %(pubs)s"
+msgstr "on tap in %(pubs)s"
+
+msgid "hospodě"
+msgstr "pub"
+
+msgid "hospodách"
+msgstr "pubs"
+
+msgid "Hledání"
+msgstr "Search"
+
+#, python-format
+msgid "%(beer)s za %(price)s Kč"
+msgstr "%(beer)s for %(price)s CZK"
+
+msgid "výsledek"
+msgstr "result"
+
+msgid "výsledky"
+msgstr "results"
+
+msgid "výsledků"
+msgstr "results"
+
+#, python-format
+msgid "Nic. Prošel jsem %(pubs)s, %(beers)s a %(cities)s."
+msgstr "Nothing. I went through %(pubs)s, %(beers)s and %(cities)s."
+
+msgid "hospodu"
+msgstr "pub"
+
+msgid "město nebo čtvrť"
+msgstr "town or district"
+
+msgid "města a čtvrti"
+msgstr "towns and districts"
+
+msgid "měst a čtvrtí"
+msgstr "towns and districts"
+
+#, python-format
+msgid "Ukázat všech %(pubs)s"
+msgstr "Show all %(pubs)s"
+
+#, python-format
+msgid "Hledáš „%(query)s“"
+msgstr "Searching for “%(query)s”"
+
+#, python-format
+msgid "„%(query)s“"
+msgstr "“%(query)s”"
+
+msgid "Podívej se, kde mají otevřeno a co čepují."
+msgstr "See where's open and what's on tap."
+
+msgctxt "one"
+msgid "hodnocení"
+msgstr "rating"
+
+msgctxt "few"
+msgid "hodnocení"
+msgstr "ratings"
+
+msgctxt "many"
+msgid "hodnocení"
+msgstr "ratings"
+
+msgid "nejlevnější pivo"
+msgstr "cheapest beer"
+
+msgid "tankové"
+msgstr "tank beer"
+
+msgid "čepují"
+msgstr "on tap"
+
+msgid "piv minulý týden"
+msgstr "beers last week"
+
+msgid "piv na lístku"
+msgstr "beers on the list"
+
+msgid "hodnocení piv"
+msgstr "beer rating"
+
+msgid "Co tu čepují a kolik to stojí, ti řekne Na pivo."
+msgstr "Na pivo tells you what's on tap here and what it costs."
+
+msgid "Filtry"
+msgstr "Filters"
+
+msgid "Načíst další"
+msgstr "Load more"
+
+msgid "Takovou hospodu tu nemám"
+msgstr "No pub like that here"
+
+msgid "S těmihle filtry nic nevyšlo. Zkus jich pár vypnout."
+msgstr "Nothing matches these filters. Try turning a few off."
+
+msgid "Zrušit filtry"
+msgstr "Clear filters"
+
+msgid "Hospody podle čtvrtí"
+msgstr "Pubs by district"
+
+msgid "Hospody v dalších městech"
+msgstr "Pubs in other towns"
+
+msgid "Další města"
+msgstr "More towns"
+
+msgid "Zatím tu nejsou žádné hospody"
+msgstr "No pubs here yet"
+
+msgid "Mrkni mezitím, kolik stojí pivo."
+msgstr "Meanwhile, check what beer costs."
+
+msgid "V tomhle městě zatím nemám žádnou hospodu. Zkus jiné, nebo hledej podle názvu."
+msgstr "I don't have any pub in this town yet. Try another one or search by name."
+
+msgid "Možná už nefunguje, nebo je odkaz neúplný. Zkus ji najít podle názvu."
+msgstr "Maybe it closed, or the link is incomplete. Try finding it by name."
+
+msgid "Co tu čepují, zatím nevím. Kdo tu sedí, může lístek doplnit v appce."
+msgstr "I don't know what's on tap here yet. Anyone sitting here can add the list in the app."
+
+msgid "Hodnocení piv"
+msgstr "Beer ratings"
+
+msgid "od lidí z Na pivo"
+msgstr "from Na pivo users"
+
+msgid "Sedíš tady?"
+msgstr "Sitting here?"
+
+msgid "Zapiš si pivo v appce a večer se ti sám uloží do deníku. Lístek i otevírací dobu může doplnit každý, kdo tu sedí."
+msgstr "Log a beer in the app and the night saves itself to your diary. Anyone sitting here can add the tap list and opening hours."
+
+msgid "Přihlásit se na webu"
+msgstr "Log in on the web"
+
+msgid "Otevírací doba"
+msgstr "Opening hours"
+
+msgid "dnes"
+msgstr "today"
+
+msgid "Otevře mapy v telefonu"
+msgstr "Opens maps on your phone"
+
+msgid "Hospoda, pivo nebo město. Diakritiku psát nemusíš."
+msgstr "A pub, a beer or a town. Czech accents are optional."
+
+msgid "Hospody ve městech"
+msgstr "Pubs in towns"
+
+msgid "Hledáš"
+msgstr "You searched for"
+
+msgid "Co hledáš"
+msgstr "What you're looking for"
+
+msgid "hodnocení od lidí z appky"
+msgstr "ratings from app users"
+
+msgid "medián"
+msgstr "median"
+
+msgid "Chybí ti tu hospoda?"
+msgstr "Is a pub missing?"
+
+msgid "Hospody do mapy zapisují lidi jako ty. Stačí název a adresa, ceny a pivo na čepu doplní další štamgasti."
+msgstr "People like you put pubs on the map. A name and an address are enough, other regulars add prices and what's on tap."
+
+msgid "Přidat hospodu"
+msgstr "Add a pub"
+
+msgid "Ceny zapisují lidi v appce, když si zapíšou pivo s cenou nebo doplní lístek hospody."
+msgstr "People add prices in the app when they log a beer with its price or fill in a pub's tap list."
+
+msgid "Tuhle hospodu ještě neznáme"
+msgstr "We don't know this pub yet"
+
+msgid "Buď je úplně nová, nebo ji zatím nikdo nezapsal. Přidej ji a budeš první, kdo tam zapíše pivo. Stačí název a adresa."
+msgstr "Either it's brand new or nobody has added it yet. Add it and be the first to log a beer there. A name and an address are enough."
+
+msgid "Projít hospody po městech"
+msgstr "Browse pubs by town"
+
+msgid "Nemyslel jsi náhodou"
+msgstr "Did you mean"
+
+msgid "podobné názvy"
+msgstr "similar names"
+
+msgid "Jak hledat"
+msgstr "How to search"
+
+msgid "Zkus jen kus názvu, třeba „bobr“."
+msgstr "Try just part of the name, like “bobr”."
+
+msgid "Napiš město nebo čtvrť, ukážu hospody v ní."
+msgstr "Type a town or district and I'll show its pubs."
+
+msgid "Hledáš pivo? Stačí pivovar a stupně, třeba „bernard 11“."
+msgstr "Looking for a beer? The brewery and the degrees will do, like “bernard 11”."
+
+msgid "Tohle bylo moc dotazů za sebou. Dej si chvilku pauzu a zkus to znovu."
+msgstr "That was a lot of requests in a row. Take a short break and try again."
+
+msgid "pivo minulý týden"
+msgstr "beer last week"
+
+msgid "piva minulý týden"
+msgstr "beers last week"
+
+msgid "pivo na lístku"
+msgstr "beer on the list"
+
+msgid "piva na lístku"
+msgstr "beers on the list"
+
+msgid "pivo tu padlo minulý týden"
+msgstr "beer went down here last week"
+
+msgid "piva tu padla minulý týden"
+msgstr "beers went down here last week"
