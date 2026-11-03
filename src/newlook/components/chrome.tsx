@@ -1,11 +1,18 @@
 import React, { useState } from 'react';
-import { ScrollView, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useMock } from '../mock/store';
-import { ME } from '../mock/data';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { t } from '@/i18n';
+import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
+
+import { useKeyboardLift } from '../motion';
+import { useMe, useUnopenedBadges } from '../screens/profil/profilModel';
+import { useProfilWatchers } from '../screens/profil/useProfilWatchers';
 import { C, SCREEN_X, TAB_BAR_HEIGHT, s, shadow } from '../theme';
 import { Icon, type IconName } from './Icon';
 import { D, IconButton, Press, ProgressRing, T } from './ui';
@@ -24,7 +31,7 @@ export function Glass({
 }) {
   if (glassAvailable) {
     return (
-      <GlassView style={[style, shadow.glass]} glassEffectStyle="regular" tintColor={tint ?? '#1A1A1A80'} isInteractive>
+      <GlassView style={[style, shadow.glass]} glassEffectStyle="regular" tintColor={tint ?? '#1A1A1A80'}>
         {children}
       </GlassView>
     );
@@ -33,7 +40,7 @@ export function Glass({
     <View
       style={[
         style,
-        { backgroundColor: tint ?? C.glassFallback, borderWidth: 1, borderColor: '#FFFFFF26' },
+        { backgroundColor: tint ?? C.glassFallback, borderWidth: 1, borderColor: C.lineStrong },
         shadow.glass,
       ]}
     >
@@ -55,19 +62,20 @@ export function GlassButton({ icon, onPress, size = 46, label }: { icon: IconNam
 /** The profile entry on every tab: avatar with the level ring and a new-badge dot. */
 export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: () => void }) {
   const router = useRouter();
-  const dot = useMock((st) => st.badgeDot);
+  const me = useMe();
+  const dot = useUnopenedBadges().length > 0;
+  useProfilWatchers();
   const inner = Math.round(size * 0.727);
   return (
     <Press
       haptic
       onPress={onPress ?? (() => router.push('/nv/profil'))}
-      onLongPress={() => router.push('/nv/mock')}
       accessibilityRole="button"
-      accessibilityLabel={`Profil, level ${ME.level}`}
+      accessibilityLabel={t.nv.profil.chrome.avatarA11y(me.xp?.level ?? null)}
       style={{ width: size, height: size }}
     >
       <View style={{ position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: C.avatarBase }} />
-      <ProgressRing size={size} progress={ME.xp / ME.xpNext} stroke={size * 0.075} />
+      <ProgressRing size={size} progress={me.progress} stroke={size * 0.075} />
       <View
         style={[
           {
@@ -82,9 +90,15 @@ export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: (
           s.center,
         ]}
       >
-        <T s={Math.round(size * 0.34)} w={800} c={C.yellow}>
-          {ME.initial}
-        </T>
+        {me.avatarUrl ? (
+          <Image source={{ uri: me.avatarUrl }} style={{ width: inner, height: inner, borderRadius: inner / 2 }} accessibilityIgnoresInvertColors />
+        ) : me.initial ? (
+          <T s={Math.round(size * 0.34)} w={800} c={C.yellow}>
+            {me.initial}
+          </T>
+        ) : (
+          <Icon name="user" size={Math.round(size * 0.34)} color={C.yellow} />
+        )}
       </View>
       {dot ? (
         <View
@@ -109,7 +123,7 @@ export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: (
 export function TabHeader({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <View style={[s.row, { justifyContent: 'space-between', minHeight: 46 }]}>
-      <D s={44} accessibilityRole="header">
+      <D s={44} accessibilityRole="header" numberOfLines={1} style={{ flexShrink: 1 }}>
         {title}
       </D>
       <View style={[s.row, { gap: 10 }]}>
@@ -137,7 +151,7 @@ export function BackHeader({
   const router = useRouter();
   return (
     <View style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
-      <IconButton icon={icon} label="Zpět" onPress={onBack ?? (() => router.back())} iconSize={20} />
+      <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={onBack ?? (() => nvBack(router))} iconSize={20} />
       {title ? (
         <View style={{ position: 'absolute', left: 56, right: 56, alignItems: 'center' }} pointerEvents="none">
           <T s={16} w={700} numberOfLines={1}>
@@ -189,35 +203,45 @@ export function Screen({
   const tabSpace = useTabBarSpace();
   const bottomBase = tab ? tabSpace : Math.max(insets.bottom, 16);
   const [footerH, setFooterH] = useState(52);
+  const keyboard = useKeyboardLift();
+  const footerBottom = bottomBase + (tab ? 14 : 0);
+  const footerLift = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(0, keyboard.value + 12 - footerBottom) }],
+  }));
+  // With the keyboard up the scroll area stops where the lifted footer starts, so the
+  // focused field scrolls above the footer, not under it. The strip it gives up sits
+  // under the resting footer and its fade, so the switch is never visible.
+  const keyboardUp = useKeyboardHeight() > 0;
+  const footerRoom = footer && keyboardUp ? footerH + 24 : 0;
   const footerSpace = footer ? footerH + 32 : 0;
   const content = (
     <View style={[{ paddingHorizontal: SCREEN_X, gap, paddingTop: padTop }, contentStyle]}>{children}</View>
   );
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingBottom: footerRoom }}>
       <View style={{ paddingTop: insets.top + 8 }}>
         {header ? <View style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>{header}</View> : null}
       </View>
       {scroll ? (
-        <ScrollView
+        <KeyboardAwareScrollView
           {...scrollProps}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: bottomBase + footerSpace + 24 }}
           keyboardShouldPersistTaps="handled"
         >
           {content}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       ) : (
         <View style={{ flex: 1, paddingBottom: bottomBase + footerSpace }}>{content}</View>
       )}
       <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} />
       {footer ? (
-        <View
+        <Animated.View
           onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
-          style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: bottomBase + (tab ? 14 : 0) }}
+          style={[{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: footerBottom }, footerLift]}
         >
           {footer}
-        </View>
+        </Animated.View>
       ) : null}
     </View>
   );

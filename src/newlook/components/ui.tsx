@@ -1,18 +1,24 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
+  StyleSheet,
   Text,
   View,
+  type ActivityIndicatorProps,
   type PressableProps,
   type StyleProp,
   type TextProps,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import Animated, { interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 
+import { useSettingsStore } from '@/stores/settingsStore';
 import { fireSelectionHaptic } from '@/utils/haptics';
 
+import { DURATION, enterTiming, fadeInTiming } from '../motion';
 import { C, display, font, s, shadow, type Weight } from '../theme';
 import { Icon, type IconName } from './Icon';
 
@@ -34,20 +40,48 @@ export function D({ s: size = 44, c = C.white, lh = 1.05, style, ...rest }: TPro
   return <Text maxFontSizeMultiplier={1.1} {...rest} style={[display(size, c, lh), style]} />;
 }
 
+/** The one spinner color of the new look; dark only on yellow or white buttons. */
+export function Spinner({ color = C.muted, ...rest }: ActivityIndicatorProps) {
+  return <ActivityIndicator color={color} {...rest} />;
+}
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const PRESS_IN = fadeInTiming(DURATION.press);
+const PRESS_OUT = fadeInTiming(DURATION.base);
+
+/** Dims and shrinks a touch on the UI thread while held; scale never moves layout. */
 export function Press({
   style,
   haptic = false,
   onPress,
+  onPressIn,
+  onPressOut,
   ...rest
 }: Omit<PressableProps, 'style'> & { style?: StyleProp<ViewStyle>; haptic?: boolean }) {
+  const pressed = useSharedValue(0);
+  const reduced = useReducedMotion();
+  const flatOpacity = StyleSheet.flatten(style)?.opacity;
+  const restOpacity = typeof flatOpacity === 'number' ? flatOpacity : 1;
+  const pressStyle = useAnimatedStyle(() => ({
+    opacity: restOpacity * (1 - 0.15 * pressed.value),
+    transform: [{ scale: reduced ? 1 : 1 - 0.03 * pressed.value }],
+  }));
   return (
-    <Pressable
+    <AnimatedPressable
       {...rest}
+      onPressIn={(e) => {
+        pressed.value = withTiming(1, PRESS_IN);
+        onPressIn?.(e);
+      }}
+      onPressOut={(e) => {
+        pressed.value = withTiming(0, PRESS_OUT);
+        onPressOut?.(e);
+      }}
       onPress={(e) => {
-        if (haptic) fireSelectionHaptic();
+        if (haptic && useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
         onPress?.(e);
       }}
-      style={({ pressed }) => [style, pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] }]}
+      style={[style, pressStyle]}
     />
   );
 }
@@ -111,7 +145,7 @@ export function Button({
     >
       <View style={[s.row, { gap: 8 }]}>
         {icon ? <Icon name={icon} size={labelSize + 1} color={k.fg} /> : null}
-        <T s={labelSize} w={700} c={k.fg}>
+        <T s={labelSize} w={700} c={k.fg} style={{ flexShrink: 1, textAlign: 'center' }}>
           {label}
         </T>
       </View>
@@ -215,9 +249,9 @@ export function Chip({
           borderRadius: height / 2,
           paddingHorizontal: 14,
           gap: 6,
-          backgroundColor: active ? '#FFC40029' : C.card,
+          backgroundColor: active ? C.yellowTint : C.card,
           borderWidth: 1,
-          borderColor: active ? '#FFC40080' : C.hairline,
+          borderColor: active ? C.yellowLine : C.hairline,
         },
         style,
       ]}
@@ -243,7 +277,7 @@ export function Segmented<K extends string>({
   style,
   height = 36,
 }: {
-  options: { key: K; label: string }[];
+  options: { key: K; label: string; dot?: boolean }[];
   value: K;
   onChange: (k: K) => void;
   style?: StyleProp<ViewStyle>;
@@ -257,9 +291,9 @@ export function Segmented<K extends string>({
           height,
           borderRadius: height / 2,
           padding: 3,
-          backgroundColor: '#FFFFFF12',
+          backgroundColor: C.tintSoft,
           borderWidth: 1,
-          borderColor: '#FFFFFF1F',
+          borderColor: C.line,
         },
         style,
       ]}
@@ -280,9 +314,12 @@ export function Segmented<K extends string>({
               on && { backgroundColor: C.white, ...shadow.soft },
             ]}
           >
-            <T s={14} w={on ? 800 : 600} c={on ? C.black : C.text2}>
-              {o.label}
-            </T>
+            <View style={[s.row, { gap: 5 }]}>
+              {o.dot ? <Dot color={on ? C.black : C.text2} size={5} /> : null}
+              <T s={14} w={on ? 800 : 600} c={on ? C.black : C.text2}>
+                {o.label}
+              </T>
+            </View>
           </Press>
         );
       })}
@@ -372,24 +409,36 @@ export function Row({
   );
 }
 
+const TOGGLE_TRAVEL = 20;
+const TOGGLE_OFF_TRACK = '#39393D';
+const TOGGLE_OFF_KNOB = '#FFFFFF';
+
+/** The knob slides and both colors blend over the same stretch; the switch never shrinks under the finger. */
 export function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  const move = useSharedValue(value ? 1 : 0);
+  const tone = useSharedValue(value ? 1 : 0);
+  useEffect(() => {
+    move.value = withTiming(value ? 1 : 0, enterTiming());
+    tone.value = withTiming(value ? 1 : 0, fadeInTiming());
+  }, [value, move, tone]);
+  const track = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(tone.value, [0, 1], [TOGGLE_OFF_TRACK, C.yellow]) }));
+  const knob = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(tone.value, [0, 1], [TOGGLE_OFF_KNOB, C.black]),
+    transform: [{ translateX: move.value * TOGGLE_TRAVEL }],
+  }));
   return (
-    <Press
-      haptic
-      onPress={() => onChange(!value)}
+    <Pressable
+      onPress={() => {
+        if (useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
+        onChange(!value);
+      }}
       accessibilityRole="switch"
       accessibilityState={{ checked: value }}
-      style={{
-        width: 51,
-        height: 31,
-        borderRadius: 16,
-        backgroundColor: value ? C.yellow : '#39393D',
-        padding: 2,
-        alignItems: value ? 'flex-end' : 'flex-start',
-      }}
     >
-      <View style={{ width: 27, height: 27, borderRadius: 14, backgroundColor: value ? C.black : '#FFFFFF' }} />
-    </Press>
+      <Animated.View style={[{ width: 51, height: 31, borderRadius: 16, padding: 2 }, track]}>
+        <Animated.View style={[{ width: 27, height: 27, borderRadius: 14 }, knob]} />
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -409,12 +458,16 @@ export function SectionTitle({
       <T s={19} w={700}>
         {title}
       </T>
-      {action ? (
-        <Press onPress={onAction} hitSlop={10}>
+      {action && onAction ? (
+        <Press onPress={onAction} hitSlop={10} accessibilityRole="button">
           <T s={15} w={600} c={C.yellow}>
             {action}
           </T>
         </Press>
+      ) : action ? (
+        <T s={15} w={600} c={C.muted}>
+          {action}
+        </T>
       ) : null}
     </View>
   );

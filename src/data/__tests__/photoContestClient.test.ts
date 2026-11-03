@@ -93,6 +93,7 @@ const APP_ENTRY = {
   caption: 'Zlatá pěna',
   pubName: 'U Palmy',
   pubCity: 'Brno',
+  beerName: '',
   votes: 12,
   myVote: true,
   isMine: false,
@@ -150,6 +151,8 @@ describe('fetchPhotoContest', () => {
       entries: [APP_ENTRY],
       myEntryId: 'e9',
       myVoteEntryId: 'e1',
+      myEntryIds: ['e9'],
+      myVoteEntryIds: ['e1'],
       lastResults: {
         contest: {
           id: 'contest-6',
@@ -195,6 +198,8 @@ describe('fetchPhotoContest', () => {
       entries: [],
       myEntryId: null,
       myVoteEntryId: null,
+      myEntryIds: [],
+      myVoteEntryIds: [],
       lastResults: null,
     });
   });

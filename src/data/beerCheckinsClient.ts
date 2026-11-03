@@ -7,7 +7,8 @@ import { trackApiFailure } from './telemetryClient';
 
 const REQUEST_TIMEOUT_MS = 9000;
 
-export type BeerCheckInVisibility = 'private' | 'friends';
+/** 'public' is opt-in: friends see it and it shows as a review on the beer page. */
+export type BeerCheckInVisibility = 'private' | 'friends' | 'public';
 export type BeerCheckInReactionKind = 'cheers';
 
 /**
@@ -91,6 +92,8 @@ export interface BeerCheckIn {
   clientId: string;
   beerName: string;
   breweryName: string;
+  /** Matched catalogue beer, when the server recognised the name. */
+  productKey?: string | null;
   beerStyle: string;
   abv: number | null;
   quantity: number;
@@ -164,6 +167,7 @@ interface RawCheckIn {
   client_id?: string;
   beer_name?: string;
   brewery_name?: string;
+  beer_product_key?: string | null;
   beer_style?: string;
   abv?: string | number | null;
   quantity?: number | string | null;
@@ -204,7 +208,7 @@ function parseProfile(raw?: RawProfile): FriendProfile {
 }
 
 function parseVisibility(value: unknown): BeerCheckInVisibility {
-  return value === 'friends' ? 'friends' : 'private';
+  return value === 'friends' || value === 'public' ? value : 'private';
 }
 
 export function parseBeerCheckIn(raw: RawCheckIn): BeerCheckIn {
@@ -214,6 +218,7 @@ export function parseBeerCheckIn(raw: RawCheckIn): BeerCheckIn {
     clientId: raw.client_id ?? '',
     beerName: raw.beer_name ?? '',
     breweryName: raw.brewery_name ?? '',
+    productKey: typeof raw.beer_product_key === 'string' ? raw.beer_product_key : null,
     beerStyle: raw.beer_style ?? '',
     abv: parseNumber(raw.abv),
     quantity: Math.max(1, Math.floor(parseNumber(raw.quantity) ?? 1)),
@@ -384,25 +389,33 @@ export async function fetchBeerDetail(
   const qs = `beer_name=${encodeURIComponent(beerName)}&brewery_name=${encodeURIComponent(breweryName ?? '')}`;
   const res = await requestJson(`/v1/beers/detail?${qs}`, { signal });
   if (!res.ok) return null;
+  return parseBeerDetail(res.data, beerName, breweryName);
+}
+
+/** The personal + party part of a /v1/beers/detail body. */
+export function parseBeerDetail(
+  data: Record<string, unknown>,
+  beerName: string,
+  breweryName?: string,
+): BeerDetail {
   return {
-    beerName: typeof res.data.beer_name === 'string' ? res.data.beer_name : beerName,
-    breweryName: typeof res.data.brewery_name === 'string' ? res.data.brewery_name : breweryName ?? '',
-    firstCheckedInAt:
-      typeof res.data.first_checked_in_at === 'string' ? res.data.first_checked_in_at : null,
-    myCount: typeof res.data.my_count === 'number' ? res.data.my_count : 0,
-    partyCount: typeof res.data.party_count === 'number' ? res.data.party_count : 0,
-    myAverageRating: parseNumber(res.data.my_average_rating),
-    partyAverageRating: parseNumber(res.data.party_average_rating),
-    partyDrinkers: Array.isArray(res.data.party_drinkers)
-      ? (res.data.party_drinkers as RawProfile[]).map(parseProfile)
+    beerName: typeof data.beer_name === 'string' ? data.beer_name : beerName,
+    breweryName: typeof data.brewery_name === 'string' ? data.brewery_name : breweryName ?? '',
+    firstCheckedInAt: typeof data.first_checked_in_at === 'string' ? data.first_checked_in_at : null,
+    myCount: typeof data.my_count === 'number' ? data.my_count : 0,
+    partyCount: typeof data.party_count === 'number' ? data.party_count : 0,
+    myAverageRating: parseNumber(data.my_average_rating),
+    partyAverageRating: parseNumber(data.party_average_rating),
+    partyDrinkers: Array.isArray(data.party_drinkers)
+      ? (data.party_drinkers as RawProfile[]).map(parseProfile)
       : [],
-    recentCheckins: Array.isArray(res.data.recent_checkins)
-      ? (res.data.recent_checkins as RawCheckIn[]).map(parseBeerCheckIn)
+    recentCheckins: Array.isArray(data.recent_checkins)
+      ? (data.recent_checkins as RawCheckIn[]).map(parseBeerCheckIn)
       : [],
-    myHistory: Array.isArray(res.data.my_history)
-      ? (res.data.my_history as RawCheckIn[]).map(parseBeerCheckIn)
+    myHistory: Array.isArray(data.my_history)
+      ? (data.my_history as RawCheckIn[]).map(parseBeerCheckIn)
       : [],
-    myTags: parseBeerTagCounts(res.data.my_tags),
+    myTags: parseBeerTagCounts(data.my_tags),
   };
 }
 

@@ -1,21 +1,57 @@
-import React, { useState } from 'react';
-import { Image, ScrollView, View } from 'react-native';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { FlatList, Image, ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
-import { Icon, type IconName } from '../../components/Icon';
-import { Button, D, Dot, Press, Segmented, T } from '../../components/ui';
-import { FEED, photo, type FeedPost } from '../../mock/data';
-import { dialog, toast, useMock } from '../../mock/store';
-import { C, SCREEN_X, s } from '../../theme';
+import { reportProfileContent } from '@/data/auth';
+import { fetchLeaderboard } from '@/data/leaderboardsClient';
+import {
+  clearNightReaction,
+  fetchNightsFeed,
+  fetchNightsSummary,
+  isRetriableNightError,
+  reactToNight,
+  unpublishNight,
+  type NightsFeedScope,
+  type NightsSummaryResult,
+  type PublishedNight,
+} from '@/data/nightsClient';
+import { enqueueNightOp } from '@/data/nightsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
+import { fetchPhotoContestTeaser } from '@/data/photoContestClient';
+import { syncSharingPrefs } from '@/data/sharingPrefsClient';
+import { intlLocale, t } from '@/i18n';
+import { useToursStore } from '@/stores/toursStore';
+import { useVycepStore } from '@/stores/vycepStore';
 
-export function RundaButton({ count, given, onPress }: { count: number; given: boolean; onPress: () => void }) {
+import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
+import { StatusCard } from '../../components/StatusCard';
+import { Icon, type IconName } from '../../components/Icon';
+import { D, T, Button, Dot, Press, Segmented } from '../../components/ui';
+import { NO_VALUE } from '../../format';
+import { fadeIn } from '../../motion';
+import { C, SCREEN_X, s } from '../../theme';
+import { dialog, toast } from '../../ui/store';
+import { clockTime, daysUntil, routeLine } from './nightData';
+
+export function RundaButton({ count, given, onPress, disabled }: { count: number; given: boolean; onPress: () => void; disabled?: boolean }) {
+  if (disabled) {
+    // Your own night collects rounds but cannot take one, so it shows a count instead of a button.
+    return (
+      <View style={[s.row, { height: 36, gap: 6 }]} accessible accessibilityLabel={t.nv.vycep.round(count)}>
+        <Icon name="hand-platter" size={16} color={C.muted} />
+        <T s={14} w={600} c={C.text2}>
+          {t.nv.vycep.round(count)}
+        </T>
+      </View>
+    );
+  }
   return (
     <Press
       haptic
       onPress={onPress}
-      accessibilityLabel={given ? 'Vzít rundu zpět' : 'Dát rundu'}
+      accessibilityLabel={given ? t.nv.vycep.roundTake : t.nv.vycep.roundGive}
       accessibilityState={{ selected: given }}
       style={[
         s.row,
@@ -25,14 +61,16 @@ export function RundaButton({ count, given, onPress }: { count: number; given: b
           borderRadius: 18,
           paddingHorizontal: 14,
           gap: 6,
-          backgroundColor: given ? '#FFC40029' : 'transparent',
+          backgroundColor: given ? C.yellowTint : 'transparent',
           borderWidth: 1,
-          borderColor: given ? '#FFC40080' : C.hairline,
+          borderColor: given ? C.yellowLine : C.hairline,
         },
       ]}
     >
       <Icon name="hand-platter" size={16} color={C.yellow} />
-      <T s={14} w={600} c={given ? C.yellow : C.white}>{`Runda · ${count}`}</T>
+      <T s={14} w={600} c={given ? C.yellow : C.white}>
+        {t.nv.vycep.round(count)}
+      </T>
     </Press>
   );
 }
@@ -46,61 +84,251 @@ function Shortcut({ icon, title, sub, onPress }: { icon: IconName; title: string
           {title}
         </T>
         <T s={12} c={C.muted} numberOfLines={1}>
-          {sub}
+          {sub || ' '}
         </T>
       </View>
     </Press>
   );
 }
 
-function Post({ p }: { p: FeedPost }) {
-  const [given, setGiven] = useState(false);
+function authorHandle(night: PublishedNight): string {
+  return night.author.nickname ? `@${night.author.nickname}` : night.author.displayName || t.nv.vycep.authorFallback;
+}
+
+function postWhen(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const day = (x: Date) => x.toDateString();
+  const yesterday = new Date(now.getTime() - 86_400_000);
+  if (day(d) === day(now)) return t.nv.vycep.postToday(clockTime(iso));
+  if (day(d) === day(yesterday)) return t.nv.vycep.postYesterday(clockTime(iso));
+  return d.toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
+}
+
+const Post = memo(function Post({ night, onRemoved }: { night: PublishedNight; onRemoved: (id: string) => void }) {
+  const [given, setGiven] = useState(night.myRound);
+  const [count, setCount] = useState(night.rounds);
+  const busy = useRef(false);
+  const handle = authorHandle(night);
+
+  const toggleRound = () => {
+    if (busy.current || night.isMine) return;
+    busy.current = true;
+    const turningOn = !given;
+    trackUiInteraction('night_react', turningOn ? 'toggle_on' : 'toggle_off');
+    setGiven(turningOn);
+    setCount((c) => Math.max(0, c + (turningOn ? 1 : -1)));
+    void (turningOn ? reactToNight(night.id) : clearNightReaction(night.id)).then((res) => {
+      busy.current = false;
+      trackUiInteraction('night_react', res.ok || isRetriableNightError(res) ? 'success' : 'failure');
+      if (res.ok) {
+        setCount(res.rounds);
+        setGiven(res.myRound);
+        return;
+      }
+      if (isRetriableNightError(res)) {
+        void enqueueNightOp(turningOn ? { op: 'round', nightId: night.id } : { op: 'round-clear', nightId: night.id });
+        toast({ kind: 'offline', title: t.nv.vycep.roundQueued, icon: 'hand-platter' });
+        return;
+      }
+      setGiven(!turningOn);
+      setCount((c) => Math.max(0, c + (turningOn ? -1 : 1)));
+      toast({ kind: 'error', title: t.nv.vycep.roundError, icon: 'hand-platter' });
+    });
+  };
+
+  const report = () =>
+    dialog({
+      title: t.nv.vycep.reportTitle,
+      body: t.nv.vycep.reportBody(handle),
+      actions: [
+        { label: t.nv.vycep.back },
+        {
+          label: t.nv.vycep.report,
+          kind: 'danger',
+          onPress: () =>
+            void reportProfileContent({ targetAccountId: night.author.id, reason: 'spam', nightId: night.id }).then((res) =>
+              res.ok
+                ? toast({ kind: 'saved', title: t.nv.vycep.reported, sub: t.nv.vycep.reportedSub, icon: 'flag' })
+                : toast({ kind: 'error', title: t.nv.vycep.reportError, icon: 'flag' }),
+            ),
+        },
+      ],
+    });
+
+  const unpublish = () =>
+    dialog({
+      title: t.nv.vycep.unpublishTitle,
+      body: t.nv.vycep.unpublishBody,
+      actions: [
+        { label: t.nv.vycep.back },
+        {
+          label: t.nv.vycep.unpublishConfirm,
+          kind: 'danger',
+          onPress: () => {
+            const clientId = night.clientId;
+            if (!clientId) return;
+            trackUiInteraction('night_unpublish', 'submit');
+            void unpublishNight(clientId).then((res) => {
+              trackUiInteraction('night_unpublish', res.ok || isRetriableNightError(res) ? 'success' : 'failure');
+              if (!res.ok && !isRetriableNightError(res)) {
+                toast({ kind: 'error', title: t.nv.vycep.unpublishError, icon: 'megaphone' });
+                return;
+              }
+              if (!res.ok) void enqueueNightOp({ op: 'unpublish', clientId });
+              useVycepStore.getState().markUnpublished(clientId);
+              toast({ kind: 'info', title: t.nv.vycep.unpublished, icon: 'megaphone' });
+              onRemoved(night.id);
+            });
+          },
+        },
+      ],
+    });
+
+  const meta = [night.city, postWhen(night.createdAt), night.visibility === 'public' ? t.nv.vycep.postScopeWorld : t.nv.vycep.postScopeParta]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
     <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12 }}>
       <View style={[s.row, { gap: 12 }]}>
-        <View style={[{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control }, s.center]}>
-          <T s={14} w={800} c={C.yellow}>
-            {p.initial}
-          </T>
+        <View style={[{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control, overflow: 'hidden' }, s.center]}>
+          {night.author.avatarUrl ? (
+            <Image source={{ uri: night.author.avatarUrl }} style={{ width: 36, height: 36 }} />
+          ) : (
+            <T s={14} w={800} c={C.yellow}>
+              {handle.replace('@', '').charAt(0).toUpperCase()}
+            </T>
+          )}
         </View>
         <View style={[s.fill, { gap: 1 }]}>
-          <T s={16} w={700}>{`@${p.user}`}</T>
-          <T s={12} c={C.muted}>{`${p.city} · ${p.when} · ${p.scope}`}</T>
+          <T s={16} w={700} numberOfLines={1}>
+            {handle}
+          </T>
+          <T s={12} c={C.muted} numberOfLines={1}>
+            {meta}
+          </T>
         </View>
         <Press
-          hitSlop={10}
-          accessibilityLabel="Nahlásit"
-          onPress={() =>
-            dialog({
-              title: 'Nahlásit noc?',
-              body: `Mrknu na noc od @${p.user}. Když nesedí s pravidly, zmizí z Výčepu.`,
-              actions: [{ label: 'Zpátky' }, { label: 'Nahlásit', kind: 'danger', onPress: () => toast({ kind: 'saved', title: 'Nahlášeno.', sub: 'Mrknu na to.', icon: 'flag' }) }],
-            })
-          }
+          accessibilityRole="button"
+          accessibilityLabel={night.isMine ? t.nv.vycep.unpublish : t.nv.vycep.report}
+          onPress={night.isMine ? unpublish : report}
+          style={[{ width: 44, height: 44, marginVertical: -4, marginRight: -12 }, s.center]}
         >
-          <Icon name="flag" size={16} color={C.muted} />
+          <Icon name={night.isMine ? 'eye-off' : 'flag'} size={16} color={C.muted} />
         </Press>
       </View>
-      {p.photo ? (
-        <View>
-          <Image source={photo(p.photo)} style={{ width: '100%', height: 170, borderRadius: 16 }} resizeMode="cover" />
-          {p.rounds > 10 ? (
-            <View style={[s.row, { position: 'absolute', left: 10, top: 10, height: 30, borderRadius: 15, paddingHorizontal: 10, gap: 6, backgroundColor: '#0A0A0AB3' }]}>
-              <Icon name="trophy" size={14} color={C.yellow} />
-              <T s={12} w={700}>
-                Ve FotoPivaři
-              </T>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
+      {night.heroPhotoUrl ? <Image source={{ uri: night.heroPhotoUrl }} style={{ width: '100%', height: 170, borderRadius: 16 }} resizeMode="cover" /> : null}
       <View style={{ gap: 4 }}>
-        <D s={40} lh={1}>{`${p.beers} piv`}</D>
-        <T s={14} w={500} c={C.text2}>{`${p.route} · ${p.duration}`}</T>
+        <D s={40} lh={1}>
+          {t.nv.vycep.postBeers(night.beerCount)}
+        </D>
+        <T s={14} w={500} c={C.text2}>
+          {routeLine(night.pubNames, night.durationMinutes)}
+        </T>
       </View>
-      <RundaButton count={p.rounds + (given ? 1 : 0)} given={given} onPress={() => setGiven(!given)} />
+      <RundaButton count={count} given={given} disabled={night.isMine} onPress={toggleRound} />
     </View>
   );
+});
+
+/** A post without a photo, drawn as empty boxes of the same sizes. */
+function GhostPost() {
+  return (
+    <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12, opacity: 0.6 }}>
+      <View style={[s.row, { gap: 12 }]}>
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control }} />
+        <View style={{ width: 120, height: 14, borderRadius: 7, backgroundColor: C.control }} />
+      </View>
+      <View style={{ gap: 4 }}>
+        <View style={{ width: 110, height: 40, borderRadius: 10, backgroundColor: C.control }} />
+        <View style={{ width: 180, height: 19, borderRadius: 8, backgroundColor: C.control }} />
+      </View>
+      <View style={{ width: 96, height: 36, borderRadius: 18, backgroundColor: C.control }} />
+    </View>
+  );
+}
+
+const NO_NIGHTS: PublishedNight[] = [];
+const nightKey = (night: PublishedNight) => night.id;
+/** Posts on the first screen fade in like the rest of the tab; later pages just appear. */
+const FADED_POSTS = 4;
+
+type FeedState = { scope: NightsFeedScope; nights: PublishedNight[] | null; cursor: string | null; failed: boolean };
+
+function useFeed(scope: NightsFeedScope) {
+  const [state, setState] = useState<FeedState>({ scope, nights: null, cursor: null, failed: false });
+  const seq = useRef(0);
+  const loadingMore = useRef(false);
+  // A scope switch shows the skeleton until that scope's first page lands.
+  const view: FeedState = state.scope === scope ? state : { scope, nights: null, cursor: null, failed: false };
+
+  const load = useCallback(() => {
+    const mine = ++seq.current;
+    void fetchNightsFeed(scope).then((res) => {
+      if (mine !== seq.current) return;
+      setState((prev) =>
+        res.ok
+          ? { scope, nights: res.nights, cursor: res.nextCursor, failed: false }
+          : { ...(prev.scope === scope ? prev : { scope, nights: null, cursor: null }), failed: true },
+      );
+    });
+  }, [scope]);
+
+  useEffect(load, [load]);
+
+  const loadMore = useCallback(() => {
+    if (!view.cursor || loadingMore.current) return;
+    const mine = seq.current;
+    loadingMore.current = true;
+    void fetchNightsFeed(scope, view.cursor).then((res) => {
+      loadingMore.current = false;
+      if (mine !== seq.current || !res.ok) return;
+      setState((prev) => {
+        if (prev.scope !== scope) return prev;
+        const seen = new Set((prev.nights ?? []).map((n) => n.id));
+        return { ...prev, nights: [...(prev.nights ?? []), ...res.nights.filter((n) => !seen.has(n.id))], cursor: res.nextCursor };
+      });
+    });
+  }, [scope, view.cursor]);
+
+  const remove = useCallback((id: string) => setState((prev) => ({ ...prev, nights: prev.nights?.filter((n) => n.id !== id) ?? null })), []);
+
+  return { ...view, load, loadMore, remove };
+}
+
+function useSummary(scope: NightsFeedScope) {
+  const [summary, setSummary] = useState<Partial<Record<NightsFeedScope, NightsSummaryResult>>>({});
+  useEffect(() => {
+    let live = true;
+    void fetchNightsSummary(scope).then((res) => {
+      if (live) setSummary((prev) => ({ ...prev, [scope]: res }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [scope]);
+  const res = summary[scope];
+  return res?.ok ? res : null;
+}
+
+function useShortcutData() {
+  const [contestDays, setContestDays] = useState<number | null>(null);
+  const [rank, setRank] = useState<number | null | undefined>(undefined);
+  const plan = useToursStore((st) => st.plans[0] ?? null);
+  useEffect(() => {
+    let live = true;
+    void fetchPhotoContestTeaser().then((snap) => {
+      if (live && snap?.contest) setContestDays(daysUntil(snap.contest.periodEnd));
+    });
+    void fetchLeaderboard('beers', 'week').then((board) => {
+      if (live && board) setRank(board.me.rank);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return { contestDays, rank, plan };
 }
 
 export function VycepScreen() {
@@ -108,64 +336,117 @@ export function VycepScreen() {
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const [scope, setScope] = useState<'svet' | 'parta'>('svet');
-  const shareMode = useMock((st) => st.shareMode);
-  const feed = scope === 'svet' ? FEED : FEED.filter((f) => f.friend);
+  const feedScope: NightsFeedScope = scope === 'svet' ? 'global' : 'friends';
+  const autopublish = useVycepStore((st) => st.nightAutopublish);
+  const feed = useFeed(feedScope);
+  const summary = useSummary(feedScope);
+  const { contestDays, rank, plan } = useShortcutData();
+
+  useEffect(() => {
+    void syncSharingPrefs();
+  }, []);
+
+  const publish = () => router.push(autopublish === null ? '/nv/prvni-vyveseni' : '/nv/vyvesit');
+
+  const leader = summary?.leader ? (summary.leader.isMe ? t.nv.vycep.summaryYou : summary.leader.name) : NO_VALUE;
+  const stats: [string, string][] = [
+    [summary ? String(summary.nights) : NO_VALUE, t.nv.vycep.summaryNights(summary?.nights ?? 0)],
+    [summary ? String(summary.beers) : NO_VALUE, t.nv.vycep.summaryBeers(summary?.beers ?? 0)],
+    [leader, t.nv.vycep.summaryLeads],
+  ];
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: tabSpace + 30 }}>
-        <TabHeader title="Výčep">
-          <Button label="Vyvěsit noc" icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={() => router.push(shareMode ? '/nv/vyvesit' : '/nv/prvni-vyveseni')} />
-        </TabHeader>
-        <Segmented
-          height={38}
-          options={[
-            { key: 'svet', label: 'Svět' },
-            { key: 'parta', label: 'Parta' },
-          ]}
-          value={scope}
-          onChange={setScope}
-        />
-        <View style={{ padding: 16, gap: 12, borderRadius: 24, backgroundColor: '#FFC4000D', borderWidth: 1, borderColor: '#FFC40059' }}>
-          <View style={[s.row, { gap: 8 }]}>
-            <Dot />
-            <T s={14} w={700} c={C.yellow}>
-              {scope === 'svet' ? 'Posledních 7 dní ve světě' : 'Posledních 7 dní v partě'}
-            </T>
-          </View>
-          <View style={[s.row, { justifyContent: 'space-between' }]}>
-            {(scope === 'svet'
-              ? [
-                  ['214', 'vyvěšených nocí'],
-                  ['689', 'piv'],
-                  ['Praha', 'vede'],
-                ]
-              : [
-                  ['9', 'vyvěšených nocí'],
-                  ['31', 'piv'],
-                  ['Marek', 'vede'],
-                ]
-            ).map(([v, l], i) => (
-              <View key={l} style={{ gap: 2, alignItems: i === 2 ? 'flex-end' : 'flex-start', flex: i === 0 ? 1.4 : 1 }}>
-                <D s={28} lh={1}>
-                  {v}
-                </D>
-                <T s={12} c={C.muted}>
-                  {l}
+      <FlatList
+        data={feed.nights ?? NO_NIGHTS}
+        keyExtractor={nightKey}
+        renderItem={({ item, index }) =>
+          index < FADED_POSTS ? (
+            <Animated.View entering={fadeIn}>
+              <Post night={item} onRemoved={feed.remove} />
+            </Animated.View>
+          ) : (
+            <Post night={item} onRemoved={feed.remove} />
+          )
+        }
+        onEndReached={feed.loadMore}
+        onEndReachedThreshold={1.5}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: tabSpace + 30 }}
+        ListHeaderComponentStyle={{ gap: 16 }}
+        ListHeaderComponent={
+          <>
+            <TabHeader title={t.nv.vycep.title}>
+              <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
+            </TabHeader>
+            <Segmented
+              height={38}
+              options={[
+                { key: 'svet', label: t.nv.vycep.scopeWorld },
+                { key: 'parta', label: t.nv.vycep.scopeParta },
+              ]}
+              value={scope}
+              onChange={setScope}
+            />
+            <View style={{ padding: 16, gap: 12, borderRadius: 24, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }}>
+              <View style={[s.row, { gap: 8 }]}>
+                <Dot />
+                <T s={14} w={700} c={C.yellow}>
+                  {scope === 'svet' ? t.nv.vycep.summaryWorld : t.nv.vycep.summaryParta}
                 </T>
               </View>
-            ))}
-          </View>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
-          <Shortcut icon="camera" title="FotoPivař" sub="ještě 5 dní" onPress={() => router.push('/nv/fotopivar')} />
-          <Shortcut icon="route" title="Tour de pub" sub="Žižkov · 5 hospod" onPress={() => router.push('/nv/tour')} />
-          <Shortcut icon="trophy" title="Žebříčky" sub="4. v zemi" onPress={() => router.push('/nv/zebricky')} />
-        </ScrollView>
-        {feed.map((p) => (
-          <Post key={p.id} p={p} />
-        ))}
-      </ScrollView>
+              <View style={[s.row, { justifyContent: 'space-between' }]}>
+                {stats.map(([v, l], i) => (
+                  <View key={i} style={{ gap: 2, alignItems: i === 2 ? 'flex-end' : 'flex-start', flex: i === 0 ? 1.4 : 1 }}>
+                    <D s={28} lh={1} numberOfLines={1}>
+                      {v}
+                    </D>
+                    <T s={12} c={C.muted}>
+                      {l}
+                    </T>
+                  </View>
+                ))}
+              </View>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
+              <Shortcut
+                icon="camera"
+                title={t.nv.vycep.shortcutContest}
+                sub={contestDays === null ? '' : contestDays > 0 ? t.nv.vycep.shortcutContestLeft(contestDays) : t.nv.vycep.shortcutContestToday}
+                onPress={() => router.push('/nv/fotopivar')}
+              />
+              <Shortcut
+                icon="route"
+                title={t.nv.vycep.shortcutTour}
+                sub={plan ? t.nv.vycep.shortcutTourSub(plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
+                onPress={() => router.push('/nv/tour')}
+              />
+              <Shortcut
+                icon="trophy"
+                title={t.nv.vycep.shortcutBoards}
+                sub={rank === undefined ? '' : rank ? t.nv.vycep.shortcutBoardsRank(rank) : t.nv.vycep.shortcutBoardsNone}
+                onPress={() => router.push('/nv/zebricky')}
+              />
+            </ScrollView>
+            {feed.nights === null && !feed.failed ? (
+              <>
+                <GhostPost />
+                <GhostPost />
+                <GhostPost />
+              </>
+            ) : feed.failed && !feed.nights?.length ? (
+              <StatusCard text={t.nv.vycep.loadError} action={t.nv.vycep.retry} onAction={feed.load} />
+            ) : feed.nights?.length === 0 ? (
+              <StatusCard
+                text={scope === 'svet' ? t.nv.vycep.emptyWorld : t.nv.vycep.emptyParta}
+                action={t.nv.vycep.publishCta}
+                actionIcon="plus"
+                onAction={publish}
+              />
+            ) : null}
+          </>
+        }
+      />
       <BottomFade height={tabSpace + 40} />
     </View>
   );

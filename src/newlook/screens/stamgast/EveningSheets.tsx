@@ -1,158 +1,265 @@
-import React, { useState } from 'react';
-import { Image, TextInput, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
+
+import { countDrink, placeKey, type CountPlace } from '@/counter/countDrink';
+import { cautiousCeil, formatClock, formatPromile, formatZeroAt, isMorning, useAlcoholEstimate } from '@/counter/useAlcoholEstimate';
+import { decodeGeohash8 } from '@/data/geohash';
+import type { Pub } from '@/data/pubs';
+import { BODY_LIMITS, drinkAbv, isBodyValueValid, type BodyProfile, type BodySex } from '@/drinks/alcoholEstimate';
+import { isContextPubKey } from '@/drinks/drinkTypes';
+import { useNowTick } from '@/friends/useNowTick';
+import { intlLocale, t } from '@/i18n';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useTallyStore, type TallyDrink } from '@/stores/tallyStore';
+import { deleteSessionDrink, renameSessionDrinks } from '@/myBeers/drinkEdits';
+import { formatPrice } from '@/utils/currency';
 
 import { BackHeader, Screen } from '../../components/chrome';
-import { Field, FieldLabel, Input } from '../../components/forms';
+import { Field, Input } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, Segmented, T } from '../../components/ui';
-import { EVENINGS, beerById, photo, pubById } from '../../mock/data';
-import { toast, useMock } from '../../mock/store';
 import { C, font, s } from '../../theme';
-
-const DAYNAMES = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
-
-function dayLabel(day: number, month = 10) {
-  const d = new Date(2026, month - 1, day);
-  return `${DAYNAMES[d.getDay()]} ${day}. ${month}.`;
-}
+import { dialog, toast } from '../../ui/store';
+import { PubVerdictSection } from './PubVerdict';
+import { beerTally, dateOfDay, dayKeyOf, dayString, hourlyTempo, minutesBetween, nightsOf } from './eveningData';
+import { durationLabel, nightDayLabel, servingLine } from './stamgastFormat';
+import { NO_VALUE } from '../../format';
+import { useBackfillPick, useCountPlace } from './placeStore';
 
 function Counter({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const copy = t.nv.stamgast;
   return (
     <View style={[s.row, { gap: 10 }]}>
-      <IconButton icon="minus" size={30} iconSize={14} onPress={() => onChange(Math.max(0, value - 1))} label="Ubrat" />
+      <IconButton icon="minus" size={30} iconSize={14} onPress={() => onChange(Math.max(0, value - 1))} label={copy.minus} />
       <D s={24} lh={1} style={{ minWidth: 14, textAlign: 'center' }}>
         {String(value)}
       </D>
-      <IconButton icon="plus" size={30} iconSize={14} onPress={() => onChange(value + 1)} label="Přidat" />
+      <IconButton icon="plus" size={30} iconSize={14} onPress={() => onChange(value + 1)} label={copy.plus} />
     </View>
   );
 }
 
+function useAllNights() {
+  const current = useTallyStore((st) => st.current);
+  const history = useTallyStore((st) => st.history);
+  return useMemo(() => {
+    const sessions = current ? [current, ...history] : history;
+    return { sessions, nights: nightsOf(sessions) };
+  }, [current, history]);
+}
+
+function parseClock(value: string): { h: number; m: number } | null {
+  const match = /^(\d{1,2})[:.](\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  return h <= 23 && m <= 59 ? { h, m } : null;
+}
+
+/** A clock time on a drinking day: hours before the 04:00 cutoff belong to the next calendar day. */
+function atOnDay(day: string, clock: { h: number; m: number }): Date {
+  const base = dateOfDay(day);
+  return new Date(base.getFullYear(), base.getMonth(), base.getDate() + (clock.h < 4 ? 1 : 0), clock.h, clock.m);
+}
+
+/** A pub of an earlier evening, rebuilt from its geohash cell like the counter's stand-in. */
+function pubFromSession(pubKey: string, name: string, externalId?: string, city?: string): Pub {
+  const { lat, lng } = decodeGeohash8(pubKey);
+  return { id: externalId ?? `tally:${pubKey}`, name, lat, lng, ...(city ? { city } : {}) };
+}
+
+/** The currency sign alone, for the price column. */
+function currencySign(currency: Parameters<typeof formatPrice>[1]): string {
+  return formatPrice(0, currency).replace(/[\d\s.,]/g, '');
+}
+
+type PlaceChoice = { id: string; label: string; icon?: IconName; place: CountPlace };
+type BeerRow = { key: string; name: string; n: number; price: string };
+
+const BACKFILL_DAYS = 60;
+
 export function DopsatSheet() {
   const router = useRouter();
+  const copy = t.nv.stamgast;
   const { day } = useLocalSearchParams<{ day?: string }>();
-  const fromDiary = !!day;
-  const st = useMock();
-  const [date, setDate] = useState(day ? Number(day) : 31);
-  const [month, setMonth] = useState(10);
-  const [from, setFrom] = useState(fromDiary ? '18:30' : '19:00');
-  const [to, setTo] = useState(fromDiary ? '23:00' : '');
-  const [place, setPlace] = useState<string | null>(fromDiary ? 'tygr' : null);
-  const [rows, setRows] = useState([
-    { id: 'pilsner', n: 2, price: '59' },
-    { id: 'kozel', n: 1, price: fromDiary ? '52' : '' },
-  ]);
+  const fromDiary = !!day && /^\d{4}-\d{2}-\d{2}$/.test(day);
+  const now = useNowTick();
+  const today = dayKeyOf(new Date(now));
+  const { sessions, nights } = useAllNights();
+  const live = useCountPlace();
+  const picked = useBackfillPick((st) => st.pub);
+  const currency = useSettingsStore((st) => st.priceCurrency);
+  const [date, setDate] = useState(fromDiary ? (day as string) : today);
+  const [from, setFrom] = useState('19:00');
+  const [to, setTo] = useState('');
   const [scope, setScope] = useState<'me' | 'parta'>('me');
-  const future = month > 11 || (month === 11 && date > 1);
-  const err = future;
+
+  const places = useMemo<PlaceChoice[]>(() => {
+    const out: PlaceChoice[] = [];
+    if (live?.kind === 'pub') out.push({ id: placeKey(live), label: live.pub.name, icon: 'navigation', place: live });
+    for (const session of sessions) {
+      if (out.length >= 3) break;
+      if (isContextPubKey(session.pubKey) || out.some((p) => p.id === session.pubKey)) continue;
+      out.push({
+        id: session.pubKey,
+        label: session.pubName,
+        icon: 'history',
+        place: { kind: 'pub', pub: pubFromSession(session.pubKey, session.pubName, session.pubExternalId, session.pubCity) },
+      });
+    }
+    if (picked) {
+      const pickedPlace: CountPlace = { kind: 'pub', pub: picked };
+      if (!out.some((p) => p.id === placeKey(pickedPlace))) out.push({ id: placeKey(pickedPlace), label: picked.name, icon: 'map-pin', place: pickedPlace });
+    }
+    out.push({ id: 'none', label: copy.noPub, place: { kind: 'outside', context: 'other' } });
+    return out;
+  }, [copy.noPub, live, picked, sessions]);
+
+  const night = nights.find((n) => n.day === date);
+  const [placeId, setPlaceId] = useState<string | null>(() =>
+    night?.pubs[0] && !isContextPubKey(night.pubs[0].pubKey) ? night.pubs[0].pubKey : live?.kind === 'pub' ? placeKey(live) : null,
+  );
+  const pickedId = picked ? placeKey({ kind: 'pub', pub: picked }) : null;
+  const chosen = places.find((p) => p.id === placeId) ?? places.find((p) => p.id === pickedId) ?? places.find((p) => p.id === 'none');
+
+  const [rows, setRows] = useState<BeerRow[]>(() => {
+    const top = beerTally(sessions)[0];
+    return [{ key: 'r0', name: top?.name ?? '', n: 1, price: typeof top?.last.priceCzk === 'number' ? String(top.last.priceCzk) : '' }];
+  });
+
+  const fromClock = parseClock(from);
+  const toClock = to.trim() ? parseClock(to) : null;
+  const start = fromClock ? atOnDay(date, fromClock) : null;
+  const end = toClock ? atOnDay(date, toClock) : null;
+  // The tick is a minute behind at most; a minute of slack keeps "right now" valid.
+  const latest = now + 60000;
+  const err = date > today || !start || start.getTime() > latest || (!!to.trim() && (!end || end < start || end.getTime() > latest));
+  const total = rows.reduce((a, r) => a + (r.name.trim() ? r.n : 0), 0);
 
   const save = () => {
-    if (err) return;
-    const beers = rows.reduce((a, r) => a + r.n, 0);
-    st.addEvening({
-      id: `e-${month}${date}`,
-      date: `2026-${String(month).padStart(2, '0')}-${String(date).padStart(2, '0')}`,
-      dayLabel: dayLabel(date, month),
-      pubIds: [place ?? 'tygr'],
-      beers,
-      spent: rows.reduce((a, r) => a + r.n * (Number(r.price) || 0), 0),
-      from,
-      to: to || '22:00',
+    if (err || !start || !total || !chosen) return;
+    const target = chosen.place;
+    const span = end ? end.getTime() - start.getTime() : (total - 1) * 30 * 60000;
+    const step = total > 1 ? span / (total - 1) : 0;
+    let i = 0;
+    for (const row of rows) {
+      const name = row.name.trim();
+      if (!name) continue;
+      const price = Number(row.price);
+      for (let k = 0; k < row.n; k++) {
+        const at = new Date(Math.min(start.getTime() + step * i, Date.now())).toISOString();
+        countDrink(
+          target,
+          {
+            name,
+            drinkType: 'beer',
+            ...(price > 0 && price <= 1000 ? { priceCzk: Math.round(price) } : {}),
+            ...(target.kind === 'pub' ? { volumeMl: 500 } : {}),
+          },
+          { at },
+        );
+        i += 1;
+      }
+    }
+    useBackfillPick.getState().set(null);
+    nvBack(router);
+    toast({
+      kind: 'saved',
+      title: copy.savedTitle,
+      sub: copy.savedSub(nightDayLabel(date), total, target.kind === 'pub' ? target.pub.name : copy.noPubLower),
+      at: 'bottom',
     });
-    router.back();
-    toast({ kind: 'saved', title: 'Uloženo do deníku', sub: `${dayLabel(date, month)} · ${beers} piva · ${pubById(place)?.name ?? 'bez hospody'}`, at: 'bottom' });
+    if (scope === 'parta') router.push({ pathname: '/nv/vyvesit', params: { day: date } });
   };
 
-  const places: { id: string; label: string; icon?: IconName }[] = [
-    { id: 'tygr', label: 'U Zlatého tygra', icon: 'navigation' },
-    { id: 'dlouha', label: 'Lokál Dlouhá', icon: 'history' },
-    { id: 'pinkas', label: 'U Pinkasů', icon: 'history' },
-    { id: 'none', label: 'Bez hospody' },
-    { id: 'jina', label: 'Jiná', icon: 'search' },
-  ];
+  /** Tap walks back one day; past the backfill window it wraps to today. */
+  const stepDay = () => {
+    const d = dateOfDay(date);
+    const prev = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, 12);
+    setDate(Date.now() - prev.getTime() > BACKFILL_DAYS * 86400000 ? today : dayString(prev));
+  };
 
   return (
-    <Sheet title="Dopsat piva" top={150} footer={<Button label="Uložit vzpomínku" onPress={save} />}>
+    <Sheet title={copy.backfillTitle} top={150} footer={<Button label={copy.backfillSave} disabled={err || !total} onPress={save} />}>
       <T s={16} c={C.text2} style={{ marginTop: -12 }}>
-        Stejný zápis, jen zpětně.
+        {copy.backfillIntro}
       </T>
       <View style={{ gap: 8 }}>
         <View style={[s.row, { gap: 10, alignItems: 'flex-end' }]}>
           <View style={{ flex: 1.6, gap: 8 }}>
             <T s={12} w={800} c={err ? C.danger : C.muted} style={{ letterSpacing: 1 }}>
-              DATUM
+              {copy.date}
             </T>
             <Press
-              onPress={() => {
-                if (month === 10 && date < 31) setDate(date + 1);
-                else if (month === 10) {
-                  setMonth(11);
-                  setDate(2);
-                } else {
-                  setMonth(10);
-                  setDate(17);
-                }
-              }}
+              onPress={stepDay}
               style={[s.row, { height: 48, borderRadius: 16, paddingHorizontal: 14, gap: 10, backgroundColor: err ? '#FF6B5E14' : C.card, borderWidth: 1, borderColor: err ? C.danger : '#FFFFFF14' }]}
             >
               <Icon name="calendar" size={16} color={err ? C.danger : C.text2} />
               <T s={15} w={600}>
-                {dayLabel(date, month)}
+                {nightDayLabel(date)}
               </T>
             </Press>
           </View>
-          <Field label="Od" style={s.fill}>
-            <Input value={from} onChangeText={setFrom} />
+          <Field label={copy.from} style={s.fill}>
+            <Input value={from} onChangeText={setFrom} keyboardType="numbers-and-punctuation" />
           </Field>
-          <Field label="Do" style={s.fill}>
-            <Input value={to} onChangeText={setTo} placeholder="volitelně" />
+          <Field label={copy.to} style={s.fill}>
+            <Input value={to} onChangeText={setTo} placeholder={copy.optional} keyboardType="numbers-and-punctuation" />
           </Field>
         </View>
         {err ? (
           <View style={[s.row, { gap: 6 }]}>
             <Icon name="circle-alert" size={15} color={C.danger} />
             <T s={14} w={500} c={C.danger}>
-              Zkontroluj datum a časy. Budoucnost zatím nečepuju.
+              {copy.dateError}
             </T>
           </View>
         ) : null}
       </View>
       <View style={{ gap: 12 }}>
         <T s={15} w={700} c={C.muted}>
-          Kde to bylo?
+          {copy.where}
         </T>
         <ChipWrap>
           {places.map((p) => (
-            <Chip key={p.id} label={p.label} icon={place === p.id ? undefined : p.icon} active={place === p.id} onPress={() => setPlace(p.id)} />
+            <Chip key={p.id} label={p.label} icon={chosen?.id === p.id ? undefined : p.icon} active={chosen?.id === p.id} onPress={() => setPlaceId(p.id)} />
           ))}
+          <Chip label={copy.otherPub} icon="search" active={false} onPress={() => router.push({ pathname: '/nv/zmenit-misto', params: { target: 'dopsat' } })} />
         </ChipWrap>
       </View>
       <View style={{ gap: 12 }}>
         <T s={15} w={700} c={C.muted}>
-          Piva
+          {copy.beers}
         </T>
         <View style={{ backgroundColor: C.card, borderRadius: 24, paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.row, { height: 40, borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
             <T s={11} w={800} c={C.muted} style={[s.fill, { letterSpacing: 1 }]}>
-              PIVO
+              {copy.colBeer}
             </T>
             <T s={11} w={800} c={C.muted} style={{ width: 100, textAlign: 'center', letterSpacing: 1 }}>
-              POČET
+              {copy.colCount}
             </T>
             <T s={11} w={800} c={C.muted} style={{ width: 80, textAlign: 'right', letterSpacing: 1 }}>
-              CENA / KS
+              {copy.colPrice}
             </T>
           </View>
           {rows.map((r, i) => (
-            <View key={r.id} style={[s.row, { height: 62, borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
+            <View key={r.key} style={[s.row, { height: 62, borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
               <View style={[s.fill, { gap: 2 }]}>
-                <T s={15} w={700} numberOfLines={1}>
-                  {beerById(r.id)?.name}
-                </T>
+                <TextInput
+                  value={r.name}
+                  onChangeText={(name) => setRows(rows.map((x, j) => (j === i ? { ...x, name } : x)))}
+                  placeholder={copy.beerName}
+                  placeholderTextColor={C.muted}
+                  keyboardAppearance="dark"
+                  selectionColor={C.yellow}
+                  style={[font(15, 700), { padding: 0 }]}
+                />
                 <T s={12} c={C.muted}>
-                  čepované 0,5 l
+                  {chosen?.place.kind === 'pub' ? servingLine({ volumeMl: 500 }, true) : copy.noPubLower}
                 </T>
               </View>
               <View style={{ width: 106, alignItems: 'center' }}>
@@ -161,36 +268,36 @@ export function DopsatSheet() {
               <View style={[s.row, { width: 76, height: 40, borderRadius: 12, paddingHorizontal: 10, backgroundColor: C.control, borderWidth: 1, borderColor: '#FFFFFF14' }]}>
                 <TextInput
                   value={r.price}
-                  onChangeText={(price) => setRows(rows.map((x, j) => (j === i ? { ...x, price } : x)))}
+                  onChangeText={(price) => setRows(rows.map((x, j) => (j === i ? { ...x, price: price.replace(/[^0-9]/g, '') } : x)))}
                   keyboardType="number-pad"
                   keyboardAppearance="dark"
                   style={[font(14, 600), { flex: 1, textAlign: 'right', padding: 0 }]}
                 />
                 <T s={14} w={600} c={r.price ? C.white : C.muted}>
-                  {' Kč'}
+                  {` ${currencySign(currency)}`}
                 </T>
               </View>
             </View>
           ))}
-          <Press onPress={() => setRows([...rows, { id: 'bernard', n: 1, price: '' }])} style={[s.row, { height: 56, gap: 12 }]}>
+          <Press onPress={() => setRows([...rows, { key: `r${Date.now()}`, name: '', n: 1, price: '' }])} style={[s.row, { height: 56, gap: 12 }]}>
             <View style={[{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.yellow }, s.center]}>
               <Icon name="plus" size={18} color={C.black} />
             </View>
             <T s={16} w={700} c={C.yellow}>
-              Přidat pivo
+              {copy.addBeer}
             </T>
           </Press>
         </View>
       </View>
       <View style={{ gap: 10 }}>
         <T s={14} c={C.muted}>
-          Starší zápisy jsou nejdřív jen pro tebe.
+          {copy.olderPrivate}
         </T>
         <View style={[s.row, { height: 42, borderRadius: 21, padding: 3, backgroundColor: '#FFFFFF12' }]}>
           {(
             [
-              ['me', 'Jen pro mě', 'lock'],
-              ['parta', 'Parta', 'users'],
+              ['me', copy.onlyMe, 'lock'],
+              ['parta', copy.parta, 'users'],
             ] as const
           ).map(([k, label, icon]) => (
             <Press key={k} onPress={() => setScope(k)} style={[s.fill, s.row, { alignSelf: 'stretch', justifyContent: 'center', gap: 6, borderRadius: 18 }, scope === k && { backgroundColor: C.white }]}>
@@ -206,51 +313,100 @@ export function DopsatSheet() {
   );
 }
 
-const DETAIL_DRINKS = [
-  ['19:10', 'Pilsner Urquell 12°', 'Lokál Dlouhááá · čepované 0,5 l', '59 Kč'],
-  ['20:05', 'Pilsner Urquell 12°', 'Lokál Dlouhááá · čepované 0,5 l', '59 Kč'],
-  ['21:20', 'Pilsner Urquell 12°', 'Lokál Dlouhááá · čepované 0,5 l', '52 Kč'],
-  ['22:15', 'Kozel 11°', 'U Pinkasů · čepované 0,5 l', '52 Kč'],
-  ['22:40', 'Kozel 11°', 'U Pinkasů · čepované 0,5 l', '52 Kč'],
-];
+function drinkActions(router: ReturnType<typeof useRouter>, day: string, startedAt: string, drink: TallyDrink, lastOne: boolean) {
+  const old = t.myBeers;
+  const remove = () => {
+    if (deleteSessionDrink(startedAt, drink.id) && lastOne) nvBack(router);
+  };
+  dialog({
+    title: drink.beerName,
+    actions: [
+      { label: old.editDrinkCancel },
+      { label: t.nv.stamgast.renameDrink, kind: 'raised', onPress: () => router.push({ pathname: '/nv/opravit-pivo', params: { day, id: drink.id } }) },
+      {
+        label: old.deleteDrinkConfirm,
+        kind: 'danger',
+        onPress: () =>
+          dialog({
+            title: old.deleteDrinkTitle,
+            body: old.deleteDrinkBody,
+            actions: [{ label: old.deleteDrinkCancel }, { label: old.deleteDrinkConfirm, kind: 'danger', onPress: remove }],
+          }),
+      },
+    ],
+  });
+}
+
+/** Renames one logged drink of a past or running evening. */
+export function OpravitPivoSheet() {
+  const router = useRouter();
+  const old = t.myBeers;
+  const { day, id } = useLocalSearchParams<{ day: string; id: string }>();
+  const { nights } = useAllNights();
+  const session = nights.find((n) => n.day === day)?.sessions.find((x) => x.drinks.some((d) => d.id === id));
+  const drink = session?.drinks.find((d) => d.id === id);
+  const [name, setName] = useState(drink?.beerName ?? '');
+  if (!session || !drink) return null;
+  const next = name.trim();
+  return (
+    <Sheet title={old.editDrinkTitle} top={560} scroll={false}>
+      <Input value={name} onChangeText={setName} placeholder={old.editDrinkPlaceholder} autoFocus />
+      <Button
+        label={old.editDrinkSave}
+        disabled={!next || next === drink.beerName}
+        onPress={() => {
+          renameSessionDrinks(session.startedAt, [drink], next);
+          nvBack(router);
+        }}
+      />
+    </Sheet>
+  );
+}
 
 export function EveningDetailScreen() {
   const router = useRouter();
+  const copy = t.nv.stamgast;
   const { id } = useLocalSearchParams<{ id: string }>();
-  const evenings = useMock((st) => st.evenings);
-  const e = evenings.find((x) => x.id === id) ?? EVENINGS[0];
-  const day = Number(e.date.slice(8));
-  const d = new Date(2026, Number(e.date.slice(5, 7)) - 1, day);
-  const long = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'][d.getDay()];
-  const hours = [
-    ['19:00', 1],
-    ['20:00', 1],
-    ['21:00', 0],
-    ['22:00', 2],
-    ['23:00', 1],
-  ] as const;
+  const { nights } = useAllNights();
+  const currency = useSettingsStore((st) => st.priceCurrency);
+  const night = nights.find((n) => n.day === id);
+  if (!night) {
+    return (
+      <Screen header={<BackHeader />}>
+        <T s={16} c={C.text2}>
+          {copy.eveningMissing}
+        </T>
+      </Screen>
+    );
+  }
+  const d = dateOfDay(night.day);
+  const tempo = hourlyTempo(night);
+  const peak = tempo.reduce((best, h) => (h.count > best.count ? h : best), { hour: 0, count: 0 });
+  const sessionOf = new Map(night.sessions.flatMap((session) => session.drinks.map((drink) => [drink.id, session] as const)));
+  const minutes = minutesBetween(night.startMs, night.endMs);
+  const share = () => router.push({ pathname: '/nv/vyvesit', params: { day: night.day } });
   return (
     <Screen
-      header={<BackHeader right={<IconButton icon="share" size={40} iconSize={18} label="Sdílet" onPress={() => router.push('/nv/vyvesit')} />} />}
+      header={<BackHeader right={<IconButton icon="share" size={40} iconSize={18} label={copy.share} onPress={share} />} />}
       footer={
         <View style={[s.row, { gap: 10 }]}>
-          <Button label="Vyvěsit na Výčep" icon="megaphone" flex onPress={() => router.push('/nv/vyvesit')} />
-          <Button label="Upravit" icon="pencil" kind="raised" style={{ paddingHorizontal: 18 }} onPress={() => router.push({ pathname: '/nv/dopsat', params: { day: String(day) } })} />
+          <Button label={copy.postToVycep} icon="megaphone" flex onPress={share} />
+          <Button label={copy.edit} icon="pencil" kind="raised" style={{ paddingHorizontal: 18 }} onPress={() => router.push({ pathname: '/nv/dopsat', params: { day: night.day } })} />
         </View>
       }
     >
       <View style={{ gap: 8 }}>
-        <D s={44}>{`${long} ${day}. ${Number(e.date.slice(5, 7))}.`}</D>
+        <D s={44}>{copy.eveningTitle(copy.weekdaysLong[d.getDay()], d.getDate(), d.getMonth() + 1)}</D>
         <T s={15} w={500} c={C.text2}>
-          {e.pubIds.map((p) => pubById(p)?.name).join(' → ')}
+          {night.pubs.map((p) => p.name).join(copy.pubSep)}
         </T>
       </View>
       <View style={[s.row, { justifyContent: 'space-between' }]}>
         {(
           [
-            [String(e.beers), 'piv', C.yellow],
-            [`${e.spent} Kč`, 'útrata', C.white],
-            ['4 h 10 m', 'u stolu', C.white],
+            [String(night.beers), copy.statBeers(night.beers), C.yellow],
+            [night.priced ? formatPrice(night.spentCzk, currency) : NO_VALUE, copy.statSpent, C.white],
+            [durationLabel(minutes), copy.statTable, C.white],
           ] as const
         ).map(([v, l, c]) => (
           <View key={l} style={{ gap: 2 }}>
@@ -263,138 +419,190 @@ export function EveningDetailScreen() {
           </View>
         ))}
       </View>
-      <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 14 }}>
-        <View style={[s.row, { justifyContent: 'space-between' }]}>
-          <T s={15} w={700}>
-            Tempo po hodinách
-          </T>
-          <T s={13} c={C.muted}>
-            2 piva ve 22:00
-          </T>
+      {tempo.length > 1 ? (
+        <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 14 }}>
+          <View style={[s.row, { justifyContent: 'space-between' }]}>
+            <T s={15} w={700}>
+              {copy.tempo}
+            </T>
+            <T s={13} c={C.muted}>
+              {copy.tempoPeak(peak.count, peak.hour)}
+            </T>
+          </View>
+          <View style={[s.row, { gap: 8, height: 76, alignItems: 'flex-end' }]}>
+            {tempo.map((h, i) => (
+              <View key={i} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
+                <View
+                  style={{
+                    width: '100%',
+                    height: h.count ? Math.min(52, 26 * h.count) : 4,
+                    borderRadius: 6,
+                    backgroundColor: h.count && h.count === peak.count ? C.white : h.count ? '#FFFFFF4D' : C.control,
+                  }}
+                />
+                <T s={11} c={C.muted}>
+                  {copy.hourLabel(h.hour)}
+                </T>
+              </View>
+            ))}
+          </View>
         </View>
-        <View style={[s.row, { gap: 8, height: 76, alignItems: 'flex-end' }]}>
-          {hours.map(([h, n]) => (
-            <View key={h} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
-              <View style={{ width: '100%', height: n ? 26 * n : 4, borderRadius: 6, backgroundColor: n === 2 ? C.white : n ? '#FFFFFF4D' : C.control }} />
-              <T s={11} c={C.muted}>
-                {h}
-              </T>
-            </View>
-          ))}
-        </View>
-      </View>
+      ) : null}
       <T s={19} w={700}>
-        Co padlo
+        {copy.whatPoured}
       </T>
       <Card>
-        {DETAIL_DRINKS.slice(0, e.beers).map(([time, name, sub, price], i, arr) => (
-          <Row
-            key={time}
-            last={i === arr.length - 1}
-            leading={
-              <T s={13} c={C.muted} style={{ width: 38 }}>
-                {time}
-              </T>
-            }
-            title={name}
-            titleWeight={700}
-            sub={sub}
-            trailing={
-              <T s={15} w={700}>
-                {price}
-              </T>
-            }
-          />
-        ))}
+        {night.drinks.map((drink, i, arr) => {
+          const session = sessionOf.get(drink.id);
+          const inPub = !!session && !isContextPubKey(session.pubKey);
+          return (
+            <Row
+              key={drink.id}
+              last={i === arr.length - 1}
+              onPress={session ? () => drinkActions(router, night.day, session.startedAt, drink, arr.length === 1) : undefined}
+              leading={
+                <T s={13} c={C.muted} style={{ width: 38 }}>
+                  {formatClock(new Date(drink.at))}
+                </T>
+              }
+              title={drink.beerName}
+              titleWeight={700}
+              sub={[session?.pubName, servingLine(drink, inPub)].filter(Boolean).join(' · ')}
+              trailing={
+                typeof drink.priceCzk === 'number' ? (
+                  <T s={15} w={700}>
+                    {formatPrice(drink.priceCzk, currency)}
+                  </T>
+                ) : null
+              }
+            />
+          );
+        })}
       </Card>
+      <PubVerdictSection night={night} />
     </Screen>
   );
 }
 
-type OdhadStep = 'setup' | 'live' | 'morning';
+function abvLabel(abv: number): string {
+  return abv.toLocaleString(intlLocale, { maximumFractionDigits: 1 });
+}
+
+function BodySetup({ initial, onDone }: { initial: BodyProfile | null; onDone: () => void }) {
+  const copy = t.nv.stamgast;
+  const [sex, setSex] = useState<BodySex>(initial?.sex ?? 'male');
+  const [age, setAge] = useState(initial ? String(initial.age) : '');
+  const [height, setHeight] = useState(initial ? String(initial.heightCm) : '');
+  const [weight, setWeight] = useState(initial ? String(initial.weightKg) : '');
+  const valid = isBodyValueValid('age', Number(age)) && isBodyValueValid('heightCm', Number(height)) && isBodyValueValid('weightKg', Number(weight));
+  const confirm = () => {
+    if (!valid) return;
+    const settings = useSettingsStore.getState();
+    settings.setBodyProfile({ sex, age: Number(age), heightCm: Number(height), weightKg: Number(weight) });
+    settings.setAlcoholEstimateHidden(false);
+    onDone();
+  };
+  const fields = [
+    [copy.age, age, setAge, copy.ageUnit, BODY_LIMITS.age],
+    [copy.height, height, setHeight, copy.heightUnit, BODY_LIMITS.heightCm],
+    [copy.weight, weight, setWeight, copy.weightUnit, BODY_LIMITS.weightKg],
+  ] as const;
+  return (
+    <Sheet title={copy.odhadTitle} top={190} footer={<Button label={copy.odhadConfirm} disabled={!valid} onPress={confirm} />}>
+      <T s={16} c={C.text2} lh={1.4} style={{ marginTop: -6 }}>
+        {copy.odhadIntro}
+      </T>
+      <View style={{ gap: 12 }}>
+        <T s={15} w={700} c={C.muted}>
+          {copy.sex}
+        </T>
+        <Segmented
+          height={44}
+          options={[
+            { key: 'male', label: copy.male },
+            { key: 'female', label: copy.female },
+          ]}
+          value={sex}
+          onChange={setSex}
+        />
+      </View>
+      <Card>
+        {fields.map(([label, value, setValue, unit, limits], i) => (
+          <Row
+            key={label}
+            last={i === fields.length - 1}
+            title={label}
+            titleWeight={500}
+            trailing={
+              <View style={[s.row, { height: 36, borderRadius: 12, paddingHorizontal: 12, gap: 4, backgroundColor: C.control }]}>
+                <TextInput
+                  value={value}
+                  onChangeText={(v) => setValue(v.replace(/[^0-9]/g, '').slice(0, 3))}
+                  keyboardType="number-pad"
+                  keyboardAppearance="dark"
+                  selectionColor={C.yellow}
+                  placeholder={String(Math.round((limits.min + limits.max) / 2))}
+                  placeholderTextColor={C.muted}
+                  style={[font(20, 800), { minWidth: 40, textAlign: 'right', padding: 0 }]}
+                />
+                <T s={13} c={C.muted}>
+                  {unit}
+                </T>
+              </View>
+            }
+          />
+        ))}
+      </Card>
+      <View style={[s.row, { gap: 8 }]}>
+        <Icon name="lock" size={15} color={C.muted} />
+        <T s={14} c={C.muted}>
+          {copy.notSent}
+        </T>
+      </View>
+      <View style={[s.row, { gap: 12, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: C.hairline, alignItems: 'flex-start' }]}>
+        <Icon name="triangle-alert" size={18} color={C.text2} />
+        <T s={14} c={C.text2} lh={1.4} style={s.fill}>
+          {copy.odhadWarning}
+        </T>
+      </View>
+    </Sheet>
+  );
+}
 
 export function OdhadSheet() {
   const router = useRouter();
-  const st = useMock();
-  const [sex, setSex] = useState<'muz' | 'zena'>('muz');
-  const step: OdhadStep = !st.promileEnabled ? 'setup' : st.tonight.length ? 'live' : 'morning';
-  const drinks = st.tonight.length ? st.tonight : [];
-  const pils = drinks.filter((d) => d.beerId === 'pilsner').length;
-  const other = drinks.length - pils;
+  const copy = t.nv.stamgast;
+  const profile = useSettingsStore((st) => st.bodyProfile);
+  const { estimate, nowMs } = useAlcoholEstimate();
+  const [editing, setEditing] = useState(false);
 
-  if (step === 'setup') {
-    return (
-      <Sheet title="Odhad promile" top={190} footer={<Button label="Rozumím, počítej" onPress={() => st.set({ promileEnabled: true })} />}>
-        <T s={16} c={C.text2} lh={1.4} style={{ marginTop: -6 }}>
-          Ze zapsaného pití ti odhadnu promile a kdy budeš na nule. Potřebuju k tomu pár čísel o tobě.
-        </T>
-        <View style={{ gap: 12 }}>
-          <T s={15} w={700} c={C.muted}>
-            Pohlaví
-          </T>
-          <Segmented
-            height={44}
-            options={[
-              { key: 'muz', label: 'Muž' },
-              { key: 'zena', label: 'Žena' },
-            ]}
-            value={sex}
-            onChange={setSex}
-          />
-        </View>
-        <Card>
-          {(
-            [
-              ['Věk', '34', 'let'],
-              ['Výška', '182', 'cm'],
-              ['Váha', '85', 'kg'],
-            ] as const
-          ).map(([l, v, u], i) => (
-            <Row
-              key={l}
-              last={i === 2}
-              title={l}
-              titleWeight={500}
-              trailing={
-                <View style={[s.row, { height: 36, borderRadius: 12, paddingHorizontal: 12, gap: 4, backgroundColor: C.control }]}>
-                  <D s={22}>{v}</D>
-                  <T s={13} c={C.muted}>
-                    {u}
-                  </T>
-                </View>
-              }
-            />
-          ))}
-        </Card>
-        <View style={[s.row, { gap: 8 }]}>
-          <Icon name="lock" size={15} color={C.muted} />
-          <T s={14} c={C.muted}>
-            Na server to neposílám.
-          </T>
-        </View>
-        <View style={[s.row, { gap: 12, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: C.hairline, alignItems: 'flex-start' }]}>
-          <Icon name="triangle-alert" size={18} color={C.text2} />
-          <T s={14} c={C.text2} lh={1.4} style={s.fill}>
-            Je to jen odhad. Skutečnost se může lišit o dost: jídlo, léky, únava i pivo, které nezapíšeš. Za volant podle toho nesedej.
-          </T>
-        </View>
-      </Sheet>
-    );
+  if (!profile || editing) return <BodySetup initial={profile} onDone={() => setEditing(false)} />;
+
+  const morning = !!estimate && isMorning(estimate);
+  const live = !morning;
+  const grouped = new Map<string, { n: number; abv: number }>();
+  for (const drink of estimate?.drinks ?? []) {
+    const entry = grouped.get(drink.beerName) ?? { n: 0, abv: drinkAbv(drink) };
+    entry.n += 1;
+    grouped.set(drink.beerName, entry);
   }
+  const big = !estimate ? formatPromile(0) : morning ? formatClock(estimate.zeroAt) : formatPromile(estimate.now);
+  const sexLabel = profile.sex === 'male' ? copy.male : copy.female;
 
-  const live = step === 'live';
   return (
     <Sheet
-      title="Odhad promile"
+      title={copy.odhadTitle}
       top={live ? 130 : 330}
       footer={
         live ? (
           <Button
-            label="Vypnout odhad"
+            label={copy.odhadOff}
             kind="raised"
             onPress={() => {
-              st.set({ promileEnabled: false });
-              router.back();
+              const settings = useSettingsStore.getState();
+              settings.setBodyProfile(null);
+              settings.setAlcoholEstimateHidden(true);
+              nvBack(router);
             }}
           />
         ) : undefined
@@ -402,7 +610,7 @@ export function OdhadSheet() {
     >
       <View style={[s.row, { alignItems: 'flex-end', gap: 8, marginTop: -6 }]}>
         <D s={96} lh={0.95} c={C.yellow}>
-          {live ? '0,6' : '7:20'}
+          {big}
         </D>
         {live ? (
           <T s={34} w={700} style={{ marginBottom: 6 }}>
@@ -411,44 +619,47 @@ export function OdhadSheet() {
         ) : null}
       </View>
       <T s={15} c={C.text2} style={{ marginTop: -10 }}>
-        {live ? 'Odhad teď. Spíš 0,4 až 0,8 ‰.' : 'Podle odhadu budeš na nule dnes kolem 7:20.'}
+        {!estimate
+          ? copy.odhadNothing
+          : morning
+            ? copy.odhadZeroAt(formatZeroAt(estimate.zeroAt, nowMs))
+            : copy.odhadNow(formatPromile(estimate.low), formatPromile(estimate.high))}
       </T>
-      <Card>
-        {live ? (
-          <>
-            <Row
-              leading={<Icon name="trending-up" size={20} />}
-              title="Stoupne až na 0,8 ‰ kolem 22:40"
-              titleWeight={700}
-              sub="Alkohol se do krve dostává postupně, u každého pití zhruba 45 minut. Proto je číslo teď nižší."
-            />
-            <Row last leading={<Icon name="moon" size={20} />} title="Na nule zítra kolem 4:50" titleWeight={700} sub="Když už nic nepřibude a vyspíš se. Počítám s pomalým odbouráváním." />
-          </>
-        ) : (
-          <Row last leading={<Icon name="sunrise" size={20} />} title="Teď můžeš mít ještě až 0,3 ‰" titleWeight={700} sub="Spíš méně, ale radši počítám s horším koncem." />
-        )}
-      </Card>
+      {estimate ? (
+        <Card>
+          {morning ? (
+            <Row last leading={<Icon name="sunrise" size={20} />} title={copy.odhadMorning(formatPromile(cautiousCeil(estimate.high)))} titleWeight={700} sub={copy.odhadMorningSub} />
+          ) : (
+            <>
+              {estimate.rising ? (
+                <Row
+                  leading={<Icon name="trending-up" size={20} />}
+                  title={copy.odhadRising(formatPromile(estimate.rising.promile), formatClock(estimate.rising.at))}
+                  titleWeight={700}
+                  sub={copy.odhadRisingSub}
+                />
+              ) : null}
+              <Row last leading={<Icon name="moon" size={20} />} title={copy.odhadZero(formatZeroAt(estimate.zeroAt, nowMs))} titleWeight={700} sub={copy.odhadZeroSub} />
+            </>
+          )}
+        </Card>
+      ) : null}
       <T s={15} w={700} c={C.muted}>
-        S čím počítám
+        {copy.odhadCounts}
       </T>
       <View>
-        {live ? (
-          <>
-            {pils ? <Row title={`${pils}× Pilsner Urquell 12°`} titleWeight={700} sub="4,4 % alkoholu" /> : null}
-            {other ? <Row title={`${other}× Kozel 11°`} titleWeight={700} sub="4,6 % alkoholu" /> : null}
-          </>
-        ) : (
-          <Row title="5× Pilsner Urquell 12°" titleWeight={700} sub="4,4 % alkoholu · včera 19:10 až 23:30" />
-        )}
+        {[...grouped.entries()].map(([name, g]) => (
+          <Row key={name} title={copy.odhadDrink(g.n, name)} titleWeight={700} sub={copy.odhadAbv(abvLabel(g.abv))} />
+        ))}
         <Row
           last
-          title="Muž · 34 let · 182 cm · 85 kg"
+          title={copy.odhadProfile(sexLabel, profile.age, profile.heightCm, profile.weightKg)}
           titleWeight={700}
-          sub="tvoje údaje, jen v telefonu"
+          sub={copy.odhadProfileSub}
           trailing={
-            <Press onPress={() => st.set({ promileEnabled: false })} style={[s.row, { gap: 4 }]}>
+            <Press onPress={() => setEditing(true)} style={[s.row, { gap: 4 }]}>
               <T s={14} w={700}>
-                Upravit
+                {copy.edit}
               </T>
               <Icon name="chevron-right" size={14} color={C.text2} />
             </Press>
@@ -456,92 +667,8 @@ export function OdhadSheet() {
         />
       </View>
       <T s={13} c={C.muted} lh={1.4}>
-        Je to jen odhad ze zapsaného pití. Skutečnost se může lišit o dost. Za volant podle toho nesedej.
+        {copy.odhadFooter}
       </T>
-    </Sheet>
-  );
-}
-
-const TAGS = ['Má říz', 'Pěna jak smetana', 'Jde samo', 'Vodový', 'Zvětralý', 'Předražený', 'Ještě jedno', 'Už nikdy'];
-const VERDICT = ['', 'Nic moc', 'Ujde', 'Dobrý', 'Moc dobrý', 'Pecka'];
-
-export function HodnoceniSheet() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const beer = beerById(id) ?? beerById('bernard')!;
-  const rate = useMock((st) => st.rate);
-  const existing = useMock((st) => st.ratings[beer.id]);
-  const [stars, setStars] = useState(existing ?? 4);
-  const [tags, setTags] = useState<string[]>(['Má říz', 'Pěna jak smetana']);
-  const [text, setText] = useState('Tmavý, sladový, na konci kafe. V Kolkovně ho čepujou fakt dobře.');
-  const [hasPhoto, setHasPhoto] = useState(true);
-  return (
-    <Sheet
-      title={beer.name}
-      top={130}
-      footer={
-        <Button
-          height={60}
-          label="Uložit hodnocení"
-          sub={existing ? undefined : '+10 XP za první recenzi tohohle piva'}
-          onPress={() => {
-            rate(beer.id, stars);
-            router.back();
-            toast({ kind: 'xp', title: 'Hodnocení uložené', icon: 'star', xp: existing ? undefined : 10 });
-          }}
-        />
-      }
-    >
-      <T s={14} c={C.muted} style={{ marginTop: -16 }}>
-        Kolkovna Celnice · dnes 21:40
-      </T>
-      <View style={{ alignItems: 'center', gap: 8 }}>
-        <View style={[s.row, { gap: 8 }]}>
-          {[1, 2, 3, 4, 5].map((n) => (
-            <Press key={n} haptic onPress={() => setStars(n)} accessibilityLabel={`${n} hvězd`}>
-              <Icon name="star" size={46} color={n <= stars ? C.yellow : C.muted} fill={n <= stars ? C.yellow : 'none'} strokeWidth={1.5} />
-            </Press>
-          ))}
-        </View>
-        <T s={16} w={700}>
-          {VERDICT[stars]}
-        </T>
-      </View>
-      <View style={{ gap: 12 }}>
-        <FieldLabel>Štítky</FieldLabel>
-        <ChipWrap>
-          {TAGS.map((t) => (
-            <Chip key={t} label={t} active={tags.includes(t)} plain onPress={() => setTags(tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t])} />
-          ))}
-        </ChipWrap>
-      </View>
-      <Input multiline value={text} onChangeText={setText} placeholder="Pár slov, když chceš" />
-      <View style={[s.row, { gap: 10 }]}>
-        {hasPhoto ? (
-          <View style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden' }}>
-            <Image source={photo(12)} style={{ width: '100%', height: '100%' }} />
-            <Press onPress={() => setHasPhoto(false)} style={[{ position: 'absolute', right: 4, top: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: '#0A0A0AB3' }, s.center]}>
-              <Icon name="x" size={12} />
-            </Press>
-          </View>
-        ) : null}
-        <Press onPress={() => setHasPhoto(true)} style={[{ width: 72, height: 72, borderRadius: 14, borderWidth: 1.5, borderColor: '#FFFFFF26', gap: 4 }, s.center]}>
-          <Icon name="camera" size={18} color={C.yellow} />
-          <T s={12} w={600}>
-            Fotka
-          </T>
-        </Press>
-      </View>
-      <Press onPress={() => router.push('/nv/sdileni-souhlas')} style={[s.row, { height: 48, borderRadius: 16, paddingHorizontal: 14, gap: 10, backgroundColor: C.card }]}>
-        <Icon name="globe" size={18} color={C.yellow} />
-        <T s={15} w={600} style={s.fill}>
-          Uvidí všichni u piva
-        </T>
-        <T s={14} c={C.muted}>
-          změnit
-        </T>
-        <Icon name="chevron-right" size={14} color={C.muted} />
-      </Press>
     </Sheet>
   );
 }

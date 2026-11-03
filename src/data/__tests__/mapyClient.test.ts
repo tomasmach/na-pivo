@@ -408,6 +408,35 @@ describe('searchPubsNear — backend proxy only', () => {
     ).rejects.toThrow('Pub directory backend is not configured or unavailable');
   });
 
+  it('sends the craft chip as beer_kind and fails closed without the echo', async () => {
+    setBackend('https://api.example.com');
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [PUB_ITEM],
+        applied_filters: { version: 1, match: 'all', amenities: [], beer_brand: null, beer_kind: 'craft' },
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25, undefined, { beerBrandKey: 'kind:craft' });
+
+    const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
+    expect(calledUrl.searchParams.get('beer_kind')).toBe('craft');
+    expect(calledUrl.searchParams.has('beer_brand')).toBe(false);
+    expect(pubs).toHaveLength(1);
+
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [PUB_ITEM] }),
+    })) as unknown as typeof fetch;
+    await expect(
+      searchPubsNear(50.08, 14.42, 25, undefined, { beerBrandKey: 'kind:craft' }),
+    ).rejects.toThrow('Pub directory backend is not configured or unavailable');
+  });
+
   it('passes amenity filters alongside a beer brand', async () => {
     setBackend('https://api.example.com');
     const fetchMock = jest.fn(async () => ({

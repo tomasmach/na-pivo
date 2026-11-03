@@ -1,0 +1,203 @@
+// Czech copy for the new look, area: vycep. English mirror in ./vycep.en.ts.
+import { czechPlural } from '../plural';
+
+const PIVO = { one: 'pivo', few: 'piva', many: 'piv' };
+const RUNDA = { one: 'runda', few: 'rundy', many: 'rund' };
+const DEN = { one: 'den', few: 'dny', many: 'dní' };
+const FOTKA = { one: 'fotka', few: 'fotky', many: 'fotek' };
+
+export const vycepCs = {
+  // Feed
+  title: 'Výčep',
+  publishCta: 'Vyvěsit noc',
+  scopeWorld: 'Svět',
+  scopeParta: 'Parta',
+  summaryWorld: 'Posledních 7 dní ve světě',
+  summaryParta: 'Posledních 7 dní v partě',
+  summaryNights: (n: number) =>
+    czechPlural(n, { one: 'vyvěšená noc', few: 'vyvěšené noci', many: 'vyvěšených nocí' }),
+  summaryBeers: (n: number) => czechPlural(n, PIVO),
+  summaryLeads: 'vede',
+  summaryYou: 'Ty',
+  shortcutContest: 'FotoPivař',
+  shortcutContestLeft: (days: number) => `ještě ${days} ${czechPlural(days, DEN)}`,
+  shortcutContestToday: 'končí dnes',
+  shortcutTour: 'Tour de pub',
+  shortcutTourSub: (stops: number) => `${stops} ${czechPlural(stops, { one: 'hospoda', few: 'hospody', many: 'hospod' })}`,
+  shortcutTourEmpty: 'Naplánuj tah',
+  shortcutBoards: 'Žebříčky',
+  shortcutBoardsRank: (rank: number) => `${rank}. v zemi`,
+  shortcutBoardsNone: 'zatím bez pořadí',
+  postToday: (time: string) => `dnes ${time}`,
+  postYesterday: (time: string) => `včera ${time}`,
+  postScopeWorld: 'celý svět',
+  postScopeParta: 'parta',
+  postBeers: (n: number) => `${n} ${czechPlural(n, PIVO)}`,
+  round: (n: number) => `Runda · ${n}`,
+  roundGive: 'Dát rundu',
+  roundTake: 'Vzít rundu zpět',
+  roundQueued: 'Rundu pošlu, až chytím signál.',
+  roundError: 'Runda nedošla. Zkus to za chvíli.',
+  report: 'Nahlásit',
+  reportTitle: 'Nahlásit noc?',
+  reportBody: (user: string) => `Mrknu na noc od ${user}. Když porušuje pravidla, zmizí z Výčepu.`,
+  back: 'Zpátky',
+  reported: 'Nahlášeno.',
+  reportedSub: 'Mrknu na to.',
+  reportError: 'Nahlášení nedošlo. Zkus to znovu.',
+  unpublish: 'Stáhnout z Výčepu',
+  unpublishTitle: 'Stáhnout noc?',
+  unpublishBody: 'Zmizí z Výčepu. V deníčku ti zůstane.',
+  unpublishConfirm: 'Stáhnout',
+  unpublished: 'Noc už ve Výčepu nevisí.',
+  unpublishError: 'Noc se nepodařilo stáhnout. Zkus to znovu.',
+  loadError: 'Výčep se nedotáhl.',
+  retry: 'Zkusit znovu',
+  emptyWorld: 'Svět zatím mlčí, tak vyvěs svoji noc a rozjeď to.',
+  emptyParta: 'Z party zatím nikdo nic nevyvěsil, klidně začni ty.',
+  authorFallback: 'Pivař',
+
+  // Vyvěsit noc
+  publishTitle: 'Vyvěsit noc',
+  publishWorld: 'Vyvěsit celému světu',
+  publishParta: 'Vyvěsit partě',
+  published: 'Noc visí na Výčepu!',
+  publishQueued: 'Vyvěsím ji, až budeš online.',
+  preview: 'náhled',
+  addPhoto: 'Přidat fotku z večera',
+  optional: 'nepovinné',
+  choiceWorld: 'Celý svět',
+  choiceWorldSub: 'Uvidí každý ve Výčepu',
+  choiceParta: 'Jen parta',
+  choicePartaSub: 'Uvidí tvoje parta',
+  privacyNote:
+    'Vyvěsí se počet piv, hospody, datum a délka noci. Útrata a jednotlivá piva zůstávají jen tobě.',
+  nothingTitle: 'Zatím nemáš co vyvěsit.',
+  nothingBody: 'Prázdnou noc nevyvěsíš. Nejdřív musí něco padnout.',
+  logBeer: 'Zapiš si pivo',
+  nicknameTitle: 'Chybí ti přezdívka',
+  nicknameBody:
+    'Aby noc mohl vidět celý svět, potřebuješ přezdívku. Nastavíš ji v profilu za minutku.',
+  me: 'Ty',
+
+  // Poprvé vyvěšuješ
+  firstKicker: 'Poprvé vyvěšuješ',
+  firstSave: 'Uložit',
+  firstTitle: 'Jak chceš vyvěšovat?',
+  firstBody:
+    'Vyvěsí se počet piv, hospody, datum a délka noci. Útrata a jednotlivá piva zůstávají jen tobě. Změníš to v Nastavení.',
+  firstManual: 'Ručně',
+  firstManualSub: 'Vyvěsím jen noc, kterou vybereš',
+  firstWorld: 'Automaticky celému světu',
+  firstWorldSub: 'Po „Dopito“. Stáhneš kdykoli',
+  firstParta: 'Automaticky partě',
+  firstPartaSub: 'Po „Dopito“ uvidí jen tvoje parta',
+  firstDecor: ['@Hospodsky', '@PivniVlk'],
+  roundLabel: 'Runda',
+
+  // FotoPivař
+  contestTitle: 'FotoPivař',
+  lastRound: 'Minulé kolo',
+  roundEnded: 'Kolo skončilo',
+  daysLeft: (days: number) => `${czechPlural(days, DEN)} do konce kola`,
+  contestHint: 'Runda u fotky je hlas. Rozdat jich můžeš, kolik chceš.',
+  partaOnly: 'Sdílíš jen partě',
+  partaOnlySub: 'Do soutěže pošleš fotku sám. Tu pak uvidí každý.',
+  myPhotos: (n: number) =>
+    `Tvoje ${n} ${czechPlural(n, { one: 'fotka', few: 'fotky', many: 'fotek' })} v kole`,
+  myBest: (rounds: number, rank: number) =>
+    `Nejlepší má ${rounds} ${czechPlural(rounds, RUNDA)} · ${rank}. místo`,
+  myNone: 'Zatím tu nemáš fotku',
+  myNoneSub: 'Vyfoť pivo a přihlas ho.',
+  tabNew: 'Nové',
+  tabTop: 'Vedou',
+  enter: 'Přihlásit fotku',
+  shoot: 'Vyfotit pivo',
+  nextRound: 'Do nového kola',
+  podium: ['Zlato na bedně', 'Stříbro na bedně', 'Bronz na bedně'],
+  noPodium: 'Tentokrát bez bedny',
+  resultSub: (rounds: number, xp: number) =>
+    xp > 0
+      ? `${rounds} ${czechPlural(rounds, RUNDA)} · +${xp} XP. Příště to může být výš.`
+      : `${rounds} ${czechPlural(rounds, RUNDA)}. Příště to může být výš.`,
+  winnerBadge: 'Zlatý tácek',
+  winner: (rank: number, user: string) => `${rank}. ${user}`,
+  rounds: (n: number) => `${n} ${czechPlural(n, RUNDA)}`,
+  noLastRound: 'Minulé kolo ještě neběželo.',
+  contestEmpty: 'Zatím nikdo nesoutěží. Buď první.',
+  contestLoadError: 'Soutěž se teď nedotáhla. Zkus to znovu.',
+  entryMenu: 'Další',
+  withdrawTitle: 'Stáhnout fotku ze soutěže?',
+  withdrawBody: 'Rundy, které dostala, propadnou. V deníčku ti fotka zůstane.',
+  withdrawConfirm: 'Stáhnout',
+  withdrawn: 'Fotka už nesoutěží.',
+  reportPhotoTitle: 'Nahlásit fotku?',
+  reportPhotoBody: (user: string) =>
+    `Mrknu na fotku od ${user}. Když porušuje pravidla, zmizí ze soutěže.`,
+
+  // Přihlásit fotku
+  enterTitle: 'Přihlásit fotku',
+  enterBody: 'Tuhle fotku uvidí každý, i když jinak sdílíš jen partě. Přihlásit jich můžeš víc.',
+  shootNew: 'Vyfotit novou',
+  fromDiary: 'Nebo z deníčku',
+  enterCta: 'Přihlásit tuhle fotku',
+  entered: 'Fotka soutěží.',
+  enteredSub: 'Uvidí ji každý ve FotoPivaři.',
+  uploading: 'Nahrává se',
+  failed: 'Nenahráno',
+  diaryEmpty: 'V deníčku zatím nemáš žádnou fotku.',
+  alreadyIn: 'Už soutěží',
+
+  // Do deníčku
+  diaryTitle: 'Do deníčku',
+  diarySave: 'Uložit do deníčku',
+  diarySaved: 'Fotka je v deníčku.',
+  diarySavedContest: 'Soutěží ve FotoPivaři.',
+  retake: 'Vyfotit znovu',
+  beerLabel: 'Pivo',
+  beerLast: (name: string) => `${name} · poslední zapsané`,
+  beerNone: 'Bez piva',
+  pubLabel: 'Hospoda',
+  pubNone: 'Bez hospody',
+  captionLabel: 'Popisek',
+  captionPlaceholder: 'Co to bylo za pivo a za večer?',
+  visWorld: 'Uvidí všichni, fotka bude soutěžit ve FotoPivaři',
+  visParta: 'Uvidí jen tvoje parta',
+  visContest: 'Fotka bude soutěžit ve FotoPivaři, uvidí ji každý',
+  change: 'změnit',
+  permissionCamera: 'K foťáku jsem se nedostal. Zkus to znovu a povol focení.',
+  permissionBlocked: 'Přístup je zakázaný. Povol ho v systémovém Nastavení a zkus to znovu.',
+  openSettings: 'Otevřít Nastavení',
+  pickError: 'Fotku se nepodařilo načíst. Zkus to znovu.',
+  contestEntryFailed: 'Fotka je uložená, ale do soutěže se nepřihlásila. Přihlas ji ve FotoPivaři.',
+
+  // Pivní fotky
+  photosTitle: 'Pivní fotky',
+  photosCount: (n: number) => `${n} ${czechPlural(n, FOTKA)}`,
+  photosContestSub: (days: number, mine: number) =>
+    `Kolo běží ještě ${days} ${czechPlural(days, DEN)} · ${mine} ${
+      czechPlural(mine, { one: 'tvoje fotka', few: 'tvoje fotky', many: 'tvých fotek' })
+    } v kole`,
+  photosEmpty: 'Zatím tu žádná fotka není.',
+  photosLoadError: 'Fotky se nedotáhly.',
+
+  // Detail fotky
+  inContest: 'Ve FotoPivaři',
+  photoFallbackTitle: 'Pivní fotka',
+  fightsLine: 'Tahle fotka právě bojuje o FotoPivaře.',
+  fightsSub: (rounds: number, rank: number, days: number) =>
+    `${rounds} ${czechPlural(rounds, RUNDA)} · ${rank}. místo · ještě ${days} ${czechPlural(days, DEN)}`,
+  open: 'Otevřít',
+  photoVisWorld: 'Uvidí všichni · v soutěži ji vidí každý',
+  photoVisParta: 'Uvidí tvoje parta',
+  photoVisPrivate: 'Vidíš ji jen ty',
+  photoBack: 'Zpět',
+  deleteLabel: 'Smazat fotku',
+  deleteTitle: 'Smazat fotku?',
+  deleteBody: 'Zmizí z alba i ze soutěže. Tohle vrátit neumím.',
+  keep: 'Nechat',
+  deleteConfirm: 'Smazat',
+  deleted: 'Fotka je pryč.',
+  deleteError: 'Fotku se nepodařilo smazat. Zkus to znovu.',
+  photoMissing: 'Tuhle fotku už nevidím.',
+};

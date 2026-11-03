@@ -1,16 +1,24 @@
 import React from 'react';
 import { View } from 'react-native';
+import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
 
 import { Icon, type IconName } from '../../components/Icon';
 import { D, T } from '../../components/ui';
-import { ME_COORD, formatDistance, type LatLng, type Pub } from '../../mock/data';
 import { C, DISPLAY_FONT, s } from '../../theme';
+import { formatDistance } from './format';
 
 const SIZE = 320;
 const CX = SIZE / 2;
 const RANGE_M = 300;
 const FACE_R = 96;
+
+export type LatLng = { latitude: number; longitude: number };
+/** Anything the dial can place: a pub, a tour stop or a friend's table. */
+export type DialPoint = { id: string; coord: LatLng; distance: number };
+
+// Illustrations that pass no position (the profile's decorative dial) keep the old centre.
+const ILLUSTRATION_ORIGIN: LatLng = { latitude: 50.0843, longitude: 14.4199 };
 
 export function bearing(from: LatLng, to: LatLng): number {
   const dLon = (to.longitude - from.longitude) * Math.cos((from.latitude * Math.PI) / 180);
@@ -34,22 +42,33 @@ const TICKS = Array.from({ length: 72 }, (_, i) => i * 5);
 export function Dial({
   target,
   others,
+  from,
+  heading,
   dim,
   centerIcon,
 }: {
-  target?: Pub;
-  others?: Pub[];
+  target?: DialPoint;
+  others?: DialPoint[];
+  /** Where the phone is; the dial measures every bearing from here. */
+  from?: LatLng | null;
+  /** Where the phone points, degrees from north; the face turns so north stays north. */
+  heading?: SharedValue<number | null>;
   dim?: boolean;
   centerIcon?: IconName;
 }) {
-  const tb = target ? bearing(ME_COORD, target.coord) : 0;
+  const origin = from ?? ILLUSTRATION_ORIGIN;
+  const tb = target ? bearing(origin, target.coord) : 0;
   const tr = target ? Math.min(target.distance / RANGE_M, 1.05) * (FACE_R - 13) : 0;
   const tp = polar(tr, tb);
   const tail = polar(28, tb + 180);
   const dist = target ? formatDistance(target.distance) : null;
+  const faceStyle = useAnimatedStyle(() => {
+    const deg = heading?.value;
+    return { transform: [{ rotate: `${typeof deg === 'number' ? -deg : 0}deg` }] };
+  });
   return (
     <View style={{ width: SIZE, height: SIZE, alignSelf: 'center' }}>
-      <View style={{ opacity: dim ? 0.35 : 1, width: SIZE, height: SIZE }}>
+      <Animated.View style={[{ opacity: dim ? 0.35 : 1, width: SIZE, height: SIZE }, faceStyle]}>
         <Svg width={SIZE} height={SIZE}>
           <Circle cx={CX} cy={CX} r={150} fill="#111111" stroke="#FFFFFF1F" strokeWidth={1} />
           {TICKS.map((deg) => {
@@ -77,9 +96,9 @@ export function Dial({
           {(
             [
               ['S', 0, C.white],
-              ['V', 90, '#FFFFFF8C'],
-              ['J', 180, '#FFFFFF8C'],
-              ['Z', 270, '#FFFFFF8C'],
+              ['V', 90, C.dim],
+              ['J', 180, C.dim],
+              ['Z', 270, C.dim],
             ] as const
           ).map(([l, deg, color]) => {
             const p = polar(113, deg);
@@ -100,12 +119,11 @@ export function Dial({
             </G>
           ) : null}
           {!centerIcon ? <Circle cx={CX} cy={CX} r={7} fill={C.black} stroke={C.yellow} strokeWidth={3} /> : null}
-          <Path d={`M ${CX - 8} -4 L ${CX + 8} -4 L ${CX} 8 Z`} fill={C.white} />
         </Svg>
         {!dim
           ? (others ?? []).map((p) => {
               const r = Math.min(p.distance / RANGE_M, 1) * (FACE_R - 10);
-              const pt = polar(r, bearing(ME_COORD, p.coord));
+              const pt = polar(r, bearing(origin, p.coord));
               return (
                 <View key={p.id} style={{ position: 'absolute', left: pt.x - 6.5, top: pt.y - 6.5 }}>
                   <Icon name="beer" size={13} color="#FFFFFF73" />
@@ -113,7 +131,10 @@ export function Dial({
               );
             })
           : null}
-      </View>
+      </Animated.View>
+      <Svg width={SIZE} height={12} style={{ position: 'absolute', top: 0, left: 0, opacity: dim ? 0.35 : 1 }} pointerEvents="none">
+        <Path d={`M ${CX - 8} -4 L ${CX + 8} -4 L ${CX} 8 Z`} fill={C.white} />
+      </Svg>
       {centerIcon ? (
         <View style={[{ position: 'absolute', left: CX - 36, top: CX - 36, width: 72, height: 72, borderRadius: 36, backgroundColor: C.control }, s.center]}>
           <Icon name={centerIcon} size={30} color={C.yellow} />

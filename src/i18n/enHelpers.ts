@@ -26,22 +26,6 @@ export function pubCountLabel(count: number): string {
   return `${count} ${englishPlural(count, { one: 'pub', other: 'pubs' })}`;
 }
 
-/** "1 game" / "3 games". */
-export function gameCountLabel(count: number): string {
-  return `${count} ${englishPlural(count, { one: 'game', other: 'games' })}`;
-}
-
-export function softDrinkCountLabel(count: number): string {
-  return `${count} ${englishPlural(count, { one: 'soft drink', other: 'soft drinks' })}`;
-}
-
-export function shotCountLabel(count: number): string {
-  return `${count} ${englishPlural(count, { one: 'shot', other: 'shots' })}`;
-}
-
-export function wineCountLabel(count: number): string {
-  return `${count} ${englishPlural(count, { one: 'wine', other: 'wines' })}`;
-}
 
 /** English volume: 500 → "0.5 l", 330 → "0.33 l", 1000 → "1 l" (decimal point). */
 export function formatVolume(ml: number): string {

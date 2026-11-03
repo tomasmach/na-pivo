@@ -53,6 +53,10 @@ class BeerCatalogMatchCache:
     def __init__(self) -> None:
         self._products: list[BeerProduct] | None = None
         self._brands: list[BeerBrand] | None = None
+        self._product_aliases: list[tuple[BeerProduct, list[str]]] | None = None
+        self._brand_aliases: list[tuple[BeerBrand, list[str]]] | None = None
+        self._exact_products: dict[str, BeerProduct] | None = None
+        self._exact_brands: dict[str, BeerBrand] | None = None
         self._matches: dict[tuple[bool, str], tuple[BeerBrand, BeerProduct | None] | None] = {}
 
     def products(self) -> list[BeerProduct]:
@@ -68,6 +72,34 @@ class BeerCatalogMatchCache:
         if self._brands is None:
             self._brands = list(BeerBrand.objects.filter(active=True).order_by("rank", "name"))
         return self._brands
+
+    def product_aliases(self) -> list[tuple[BeerProduct, list[str]]]:
+        if self._product_aliases is None:
+            self._product_aliases = [(p, _alias_candidates(p)) for p in self.products()]
+        return self._product_aliases
+
+    def brand_aliases(self) -> list[tuple[BeerBrand, list[str]]]:
+        if self._brand_aliases is None:
+            self._brand_aliases = [(b, _alias_candidates(b)) for b in self.brands()]
+        return self._brand_aliases
+
+    def exact_product(self, normalized: str) -> BeerProduct | None:
+        # Rows come in rank order, so the first owner of an alias is the one
+        # the full scan would pick for an exact match.
+        if self._exact_products is None:
+            self._exact_products = {}
+            for product, aliases in self.product_aliases():
+                for alias in aliases:
+                    self._exact_products.setdefault(alias, product)
+        return self._exact_products.get(normalized)
+
+    def exact_brand(self, normalized: str) -> BeerBrand | None:
+        if self._exact_brands is None:
+            self._exact_brands = {}
+            for brand, aliases in self.brand_aliases():
+                for alias in aliases:
+                    self._exact_brands.setdefault(alias, brand)
+        return self._exact_brands.get(normalized)
 
     def get_match(
         self, *, fuzzy: bool, normalized: str
@@ -154,16 +186,30 @@ def match_beer(
             brand, product = cached
             return BeerMatch(brand=brand, product=product, submitted_name=submitted)
 
+    if match_cache is not None and not fuzzy:
+        product = match_cache.exact_product(normalized)
+        brand = product.brand if product is not None else match_cache.exact_brand(normalized)
+        match = (
+            BeerMatch(brand=brand, product=product, submitted_name=submitted)
+            if brand is not None
+            else None
+        )
+        match_cache.set_match(fuzzy=fuzzy, normalized=normalized, match=match)
+        return match
+
     best_product: tuple[int, int, BeerProduct] | None = None
     products = (
-        match_cache.products()
+        match_cache.product_aliases()
         if match_cache is not None
-        else BeerProduct.objects.select_related("brand")
-        .filter(active=True, brand__active=True)
-        .order_by("rank", "name")
+        else (
+            (product, _alias_candidates(product))
+            for product in BeerProduct.objects.select_related("brand")
+            .filter(active=True, brand__active=True)
+            .order_by("rank", "name")
+        )
     )
-    for product in products:
-        for alias in _alias_candidates(product):
+    for product, aliases in products:
+        for alias in aliases:
             exact = normalized == alias
             prefix = normalized.startswith(f"{alias} ")
             contained = f" {alias} " in f" {normalized} "
@@ -183,12 +229,15 @@ def match_beer(
 
     best_brand: tuple[int, int, BeerBrand] | None = None
     brands = (
-        match_cache.brands()
+        match_cache.brand_aliases()
         if match_cache is not None
-        else BeerBrand.objects.filter(active=True).order_by("rank", "name")
+        else (
+            (brand, _alias_candidates(brand))
+            for brand in BeerBrand.objects.filter(active=True).order_by("rank", "name")
+        )
     )
-    for brand in brands:
-        for alias in _alias_candidates(brand):
+    for brand, aliases in brands:
+        for alias in aliases:
             exact = normalized == alias
             prefix = normalized.startswith(f"{alias} ")
             # Covers common free-text names such as "tanková Plzeň" without

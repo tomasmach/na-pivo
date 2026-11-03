@@ -8,11 +8,22 @@ export const C = {
   toast: '#262626',
   control: '#232323',
   yellow: '#FFC400',
+  yellowWash: '#FFC4000D',
+  yellowSoft: '#FFC4001A',
+  yellowTint: '#FFC40029',
+  yellowEdge: '#FFC40059',
+  yellowLine: '#FFC40080',
+  yellowStrong: '#FFC40099',
   white: '#F7F7F2',
   text2: '#D4D4CE',
   muted: '#8F8F8A',
   dim: '#FFFFFF8C',
   hairline: '#FFFFFF1A',
+  line: '#FFFFFF1F',
+  lineStrong: '#FFFFFF26',
+  lineBright: '#FFFFFF33',
+  tint: '#FFFFFF14',
+  tintSoft: '#FFFFFF12',
   open: '#FFD54F',
   glass: '#2A2A2A61',
   glassFallback: '#1E1E1EF2',
@@ -55,9 +66,14 @@ export function font(size: number, weight: Weight = 400, color: string = C.white
   return { fontFamily: TEXT_FONT[weight], fontSize: size, color };
 }
 
+/** iOS clips glyphs that rise above the line box, so a tighter design line height becomes negative margins. */
+const DISPLAY_MIN_LINE = 1.15;
+
 /** Sofia Sans Extra Condensed, the numbers and headline face. */
 export function display(size: number, color: string = C.white, lineHeight = 1.05): TextStyle {
-  return { fontFamily: DISPLAY_FONT, fontSize: size, color, lineHeight: Math.round(size * lineHeight) };
+  const line = Math.max(lineHeight, DISPLAY_MIN_LINE);
+  const trim = Math.round((size * (line - lineHeight)) / 2);
+  return { fontFamily: DISPLAY_FONT, fontSize: size, color, lineHeight: Math.round(size * line), marginVertical: -trim };
 }
 
 export const shadow = {

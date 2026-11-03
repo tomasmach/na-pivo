@@ -1,35 +1,44 @@
-import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { FadeIn, FadeInDown, FadeOut, SlideInDown, SlideInUp, SlideOutUp } from 'react-native-reanimated';
-import { router, useRouter, type Href } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { Pressable, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, { runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
+import { router, usePreventRemove, useRoute, useRouter, type Href } from 'expo-router';
+import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { t } from '@/i18n';
+
+import { useSettingsStore } from '@/stores/settingsStore';
 import { fireSuccessHaptic } from '@/utils/haptics';
 
-import { useMock, type Toast } from '../mock/store';
+import { DURATION, enter, exit, fadeIn, fadeInTiming, fadeOut, fadeOutTiming, riseIn, sinkOut, useKeyboardLift } from '../motion';
+import { useNvUi, type Toast } from '../ui/store';
 import { C, SCREEN_X, s, shadow } from '../theme';
 import { useTabBarSpace } from './chrome';
 import { Icon, type IconName } from './Icon';
 import { Button, D, IconButton, T } from './ui';
 
 const TOAST_LOOK: Record<Toast['kind'], { icon: IconName; bg: string; fg: string; border: string }> = {
-  saved: { icon: 'check', bg: C.yellow, fg: C.black, border: '#FFFFFF1F' },
-  xp: { icon: 'map', bg: C.yellow, fg: C.black, border: '#FFFFFF1F' },
-  offline: { icon: 'cloud-off', bg: C.control, fg: C.text2, border: '#FFFFFF1F' },
+  saved: { icon: 'check', bg: C.yellow, fg: C.black, border: C.line },
+  xp: { icon: 'map', bg: C.yellow, fg: C.black, border: C.line },
+  offline: { icon: 'cloud-off', bg: C.control, fg: C.text2, border: C.line },
   error: { icon: 'circle-alert', bg: C.control, fg: C.yellow, border: '#FFC40038' },
-  info: { icon: 'info', bg: C.control, fg: C.text2, border: '#FFFFFF1F' },
-  medal: { icon: 'medal', bg: '#FFC4001A', fg: C.yellow, border: '#FFC40080' },
+  info: { icon: 'info', bg: C.control, fg: C.text2, border: C.line },
+  medal: { icon: 'medal', bg: C.yellowSoft, fg: C.yellow, border: C.yellowLine },
 };
 
+const TOAST_IN = enter(-16, DURATION.sheet);
+const TOAST_OUT = exit(-16, DURATION.base);
+
 export function ToastHost() {
-  const t = useMock((st) => st.toast);
-  const hide = useMock((st) => st.hideToast);
+  const t = useNvUi((st) => st.toast);
+  const hide = useNvUi((st) => st.hideToast);
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
 
   useEffect(() => {
     if (!t) return;
-    if (t.kind === 'saved' || t.kind === 'xp') fireSuccessHaptic();
+    if ((t.kind === 'saved' || t.kind === 'xp') && useSettingsStore.getState().hapticEnabled) fireSuccessHaptic();
     const timer = setTimeout(hide, 2800);
     return () => clearTimeout(timer);
   }, [t, hide]);
@@ -39,8 +48,8 @@ export function ToastHost() {
   return (
     <Animated.View
       key={t.id}
-      entering={t.at === 'bottom' ? FadeInDown.duration(220) : SlideInUp.springify().damping(18)}
-      exiting={t.at === 'bottom' ? FadeOut.duration(160) : SlideOutUp.duration(200)}
+      entering={t.at === 'bottom' ? riseIn : TOAST_IN}
+      exiting={t.at === 'bottom' ? sinkOut : TOAST_OUT}
       style={[
         { position: 'absolute', left: SCREEN_X, right: SCREEN_X, zIndex: 100 },
         t.at === 'bottom' ? { bottom: tabSpace + 156 } : { top: insets.top - 6 },
@@ -49,7 +58,8 @@ export function ToastHost() {
       <Pressable
         onPress={() => {
           hide();
-          if (t.href) router.push(t.href as Href);
+          if (t.onPress) t.onPress();
+          else if (t.href) router.push(t.href as Href);
         }}
         accessibilityRole="alert"
         style={[
@@ -90,16 +100,16 @@ export function ToastHost() {
 }
 
 export function DialogHost() {
-  const d = useMock((st) => st.dialog);
-  const hide = useMock((st) => st.hideDialog);
+  const d = useNvUi((st) => st.dialog);
+  const hide = useNvUi((st) => st.hideDialog);
   if (!d) return null;
   return (
     <Animated.View
-      entering={FadeIn.duration(160)}
-      exiting={FadeOut.duration(120)}
+      entering={fadeIn}
+      exiting={fadeOut}
       style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.scrim, zIndex: 90 }, s.center]}
     >
-      <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={hide} accessibilityLabel="Zavřít" />
+      <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={hide} accessibilityLabel={t.nv.common.close} />
       <View
         accessibilityViewIsModal
         style={{
@@ -112,7 +122,7 @@ export function DialogHost() {
           borderRadius: 28,
           backgroundColor: C.dialog,
           borderWidth: 1,
-          borderColor: '#FFFFFF14',
+          borderColor: C.tint,
         }}
       >
         <D s={30}>{d.title}</D>
@@ -121,13 +131,14 @@ export function DialogHost() {
             {d.body}
           </T>
         ) : null}
-        <View style={[s.row, { gap: 10, paddingTop: 10 }]}>
-          {d.actions.map((a) => (
+        {/* Three actions don't fit side by side; stacked, the first one (the way out) goes last. */}
+        <View style={[d.actions.length > 2 ? { gap: 10 } : s.row, { gap: 10, paddingTop: 10 }]}>
+          {(d.actions.length > 2 ? [...d.actions].reverse() : d.actions).map((a) => (
             <Button
               key={a.label}
               label={a.label}
               kind={a.kind ?? 'raised'}
-              flex
+              flex={d.actions.length <= 2}
               onPress={() => {
                 hide();
                 a.onPress?.();
@@ -140,9 +151,16 @@ export function DialogHost() {
   );
 }
 
+// Routes whose sheet has already slid in; a sheet that re-mounts on the same route
+// (loading, then content) fades in place instead of sliding up a second time.
+const enteredRoutes = new Set<string>();
+
 /**
- * Bottom sheet rendered by a transparent modal route. The route itself fades
- * in; the sheet slides up from the bottom.
+ * Bottom sheet rendered by a transparent modal route that animates nothing
+ * itself. The sheet slides up over a fading scrim, and every way of leaving
+ * the route (close button, scrim, back gesture, replace) plays the same
+ * motion backwards before the route goes. Above the keyboard it rides up with
+ * it, so a field or the footer is never hidden behind it.
  */
 export function Sheet({
   title,
@@ -166,10 +184,58 @@ export function Sheet({
   kicker?: React.ReactNode;
 }) {
   const router = useRouter();
+  const routeKey = useRoute().key;
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const close = onClose ?? (() => router.back());
+  const reduced = useReducedMotion();
+  const close = onClose ?? (() => nvBack(router));
   const [footerH, setFooterH] = useState(52);
+  const keyboard = useKeyboardLift();
+  const [remount] = useState(() => enteredRoutes.has(routeKey));
+  const shown = useSharedValue(remount ? 1 : 0);
+  const cardFade = useSharedValue(remount ? 0 : 1);
+  const cardH = useSharedValue(height);
+  const [guard, setGuard] = useState(true);
+  const leaving = useRef(false);
+  const started = useRef(remount);
+
+  useEffect(() => {
+    enteredRoutes.add(routeKey);
+    if (remount) cardFade.value = withTiming(1, fadeInTiming());
+  }, [cardFade, remount, routeKey]);
+
+  usePreventRemove(guard, ({ repeat }) => {
+    if (leaving.current) return;
+    leaving.current = true;
+    const leave = () => {
+      enteredRoutes.delete(routeKey);
+      setGuard(false);
+      repeat();
+    };
+    shown.value = withTiming(0, fadeOutTiming(DURATION.base), () => runOnJS(leave)());
+  });
+
+  const footerBottom = Math.max(insets.bottom - 6, 16);
+  // With the keyboard up the footer floats above it, and the scroll area ends above the
+  // footer, so the focused field scrolls into the part that is really visible.
+  const footerRoom = footer ? footerH + 24 : 0;
+  const scrimStyle = useAnimatedStyle(() => ({ opacity: shown.value }));
+  const minTop = insets.top + 40;
+  const cardStyle = useAnimatedStyle(() => {
+    const paddingBottom = keyboard.value + Math.min(keyboard.value, footerRoom);
+    // A short sheet grows by the keyboard's height, so its content stays above it.
+    const maxHeight = height - Math.max(minTop, top - keyboard.value);
+    return reduced
+      ? { opacity: shown.value * cardFade.value, paddingBottom, maxHeight }
+      : {
+          opacity: cardFade.value,
+          paddingBottom,
+          maxHeight,
+          transform: [{ translateY: (1 - shown.value) * (cardH.value + keyboard.value) }],
+        };
+  });
+  const footerStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -Math.max(0, keyboard.value + 12 - footerBottom) }] }));
+
   const body = (
     <View style={[{ gap: 20, paddingTop: 14, paddingHorizontal: SCREEN_X, paddingBottom: footer ? footerH + 40 : insets.bottom + 24 }, contentStyle]}>
       {children}
@@ -177,24 +243,31 @@ export function Sheet({
   );
   return (
     <View style={{ flex: 1 }}>
-      <Animated.View entering={FadeIn.duration(180)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.scrim }}>
-        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Zavřít" />
+      <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.scrim }, scrimStyle]}>
+        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel={t.nv.common.close} />
       </Animated.View>
       <Animated.View
-        entering={SlideInDown.springify().damping(22).stiffness(180)}
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          maxHeight: height - Math.max(top, insets.top + 40),
-          backgroundColor: C.dialog,
-          borderTopLeftRadius: 34,
-          borderTopRightRadius: 34,
-          borderTopWidth: 1,
-          borderColor: '#FFFFFF14',
-          paddingTop: 22,
+        onLayout={(e) => {
+          cardH.set(e.nativeEvent.layout.height);
+          if (started.current) return;
+          started.current = true;
+          shown.set(withTiming(1, fadeInTiming(DURATION.sheet)));
         }}
+        style={[
+          {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: C.dialog,
+            borderTopLeftRadius: 34,
+            borderTopRightRadius: 34,
+            borderTopWidth: 1,
+            borderColor: C.tint,
+            paddingTop: 22,
+          },
+          cardStyle,
+        ]}
       >
         <View style={{ position: 'absolute', top: 8, alignSelf: 'center', width: 36, height: 5, borderRadius: 3, backgroundColor: '#FFFFFF40' }} />
         {title || closeIcon ? (
@@ -203,36 +276,39 @@ export function Sheet({
               {kicker}
               {title ? <D s={30}>{title}</D> : null}
             </View>
-            {closeIcon ? <IconButton icon="x" size={40} iconSize={18} onPress={close} label="Zavřít" /> : null}
+            {closeIcon ? <IconButton icon="x" size={40} iconSize={18} onPress={close} label={t.nv.common.close} /> : null}
           </View>
         ) : null}
         {scroll ? (
-          <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
+          <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled" keyboardAvoidedExternally>
             {body}
-          </ScrollView>
+          </KeyboardAwareScrollView>
         ) : (
           body
         )}
         {footer ? (
-          <View
+          <Animated.View
             pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: footerH + Math.max(insets.bottom - 6, 16) + 28,
-              experimental_backgroundImage: `linear-gradient(180deg, ${C.dialog}00 0%, ${C.dialog} 35%)`,
-            }}
+            style={[
+              {
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: footerH + footerBottom + 28,
+                experimental_backgroundImage: `linear-gradient(180deg, ${C.dialog}00 0%, ${C.dialog} 35%)`,
+              },
+              footerStyle,
+            ]}
           />
         ) : null}
         {footer ? (
-          <View
+          <Animated.View
             onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
-            style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom - 6, 16) }}
+            style={[{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: footerBottom }, footerStyle]}
           >
             {footer}
-          </View>
+          </Animated.View>
         ) : null}
       </Animated.View>
     </View>

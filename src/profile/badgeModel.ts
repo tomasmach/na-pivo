@@ -184,22 +184,6 @@ export function badgeStates(progress: BadgeProgress): BadgeState[] {
   return BADGE_RULES.map((rule) => badgeState(rule, progress));
 }
 
-/** The medal's frame: 1 plain coin … 4 wreath. The top level always wears the wreath. */
-export function medalFrame(tier: number, tierCount: number): 1 | 2 | 3 | 4 {
-  if (tier >= tierCount) return 4;
-  return Math.max(1, Math.min(3, tier)) as 1 | 2 | 3;
-}
-
-/** The closest next levels of the families worth chasing; volume never is. */
-export function nearestGoals(states: readonly BadgeState[], count = 3): BadgeState[] {
-  return states
-    .filter((state) => state.kind === 'tiered' && !state.volume && state.next != null)
-    .map((state, index) => ({ state, index, share: state.value / (state.next as number) }))
-    .sort((a, b) => b.share - a.share || a.index - b.index)
-    .slice(0, count)
-    .map(({ state }) => state);
-}
-
 const DRINKING_DAY_CUTOFF_HOURS = 4;
 
 function holidayDate(holiday: BadgeHoliday, year: number): Date {

@@ -28,6 +28,9 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+/** Longest private note on a pub, the same in the old and the new look. */
+export const PUB_NOTE_MAX_LENGTH = 280;
+
 /** The personal verdict on a pub. */
 export type PubVerdict = 'like' | 'dislike';
 

@@ -1,3 +1,3 @@
-import { PivniFotkyScreen } from '@/newlook/screens/stamgast/StamgastExtras';
+import { PivniFotkyScreen } from '@/newlook/screens/vycep/PhotoScreens';
 
 export default PivniFotkyScreen;

@@ -123,6 +123,8 @@ from pubs.beer_photo_deletions import (
     retry_beer_photo_file_deletions,
     schedule_beer_photo_file_deletions,
 )
+from pubs.beer_photo_gallery import BEER_PHOTO_SHARED_VISIBILITIES, beer_photo_key
+from pubs.beer_ranking import classify_styles
 from pubs.beer_watch import pub_product_ids, record_new_tap_events
 from pubs.community_trust import trusted_account_q
 from pubs.enrichment import (
@@ -181,6 +183,7 @@ from pubs.models import (
     BeerPhoto,
     BeerPhotoDeletionTombstone,
     BeerPhotoFileDeletion,
+    BeerRanking,
     BeerTapEvent,
     BeerWatch,
     BeerWatchPush,
@@ -197,6 +200,7 @@ from pubs.models import (
     FriendActivityReaction,
     FriendActivityResponse,
     FriendBlock,
+    FriendHomeCheckin,
     FriendInviteCode,
     FriendNotification,
     FriendPubActivity,
@@ -245,6 +249,7 @@ from pubs.models import (
     TourPlan,
     TourRunMember,
     UserAddedPub,
+    XpEvent,
     account_deletion_fingerprint,
     account_deletion_fingerprint_matches,
     hash_account_token,
@@ -254,7 +259,9 @@ from pubs.photos import BeerPhotoError, process_beer_photo
 from pubs.pivar import pivar_snapshot
 from pubs.price_index import upsert_pub_price_index
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
+from pubs.xp_events import record_xp_event
 
+from . import piva_views
 from .authentication import AccountTokenAuthentication
 from .cache import get_cached_pub_details, get_or_enrich
 from .client_time import bounded_client_time
@@ -797,6 +804,10 @@ def _friend_activity_reactions_prefetch() -> Prefetch:
 def _friend_activity_prefetches() -> tuple[Prefetch, Prefetch]:
     """The RSVP + reaction prefetches every FriendPubActivity read path needs."""
     return _friend_activity_responses_prefetch(), _friend_activity_reactions_prefetch()
+
+
+# Who besides the author may see a check-in: friends see both, public adds the beer page.
+BEER_CHECKIN_SHARED_VISIBILITIES = piva_views.SHARED_VISIBILITIES
 
 
 def _beer_checkin_context(request: Request) -> dict:
@@ -2395,6 +2406,13 @@ class PubCommunityView(APIView):
             if has_beers:
                 kinds.add(PubCommunityXpLedger.Kind.BEERS)
             xp_awarded = _award_community_xp(request.user, cache_key, pub_identity_key, kinds)
+            record_xp_event(
+                request.user.pk,
+                reason=XpEvent.Reason.COMMUNITY,
+                amount=xp_awarded,
+                cache_key=cache_key,
+                pub_name=identity.name or data["name"],
+            )
             stats, _ = AccountUsageStats.objects.get_or_create(account=request.user)
             mapper = maper_snapshot(stats.mapper_xp, _mapper_counters(stats))
         except Exception as exc:  # noqa: BLE001
@@ -2596,7 +2614,13 @@ def _award_first_diary_event_xp(
             f"{timestamp_field}__lt": day_end,
         },
     ).exists()
-    return _increment_pivar_xp(account, amount if not had_event else 0)
+    awarded = amount if not had_event else 0
+    record_xp_event(
+        account.pk,
+        reason=XpEvent.Reason.PHOTO if event_model is BeerPhoto else XpEvent.Reason.CHECKIN,
+        amount=awarded,
+    )
+    return _increment_pivar_xp(account, awarded)
 
 
 _PARTY_ENTRY_CLOCK_GRACE = timedelta(minutes=10)
@@ -3023,6 +3047,14 @@ class DrinksView(APIView):
                     drank_at=flags.drank_at,
                     is_suspect=flags.is_suspect,
                     suspect_reason=flags.suspect_reason,
+                    xp_awarded=xp_awarded,
+                )
+                record_xp_event(
+                    account.pk,
+                    reason=XpEvent.Reason.DRINK,
+                    amount=xp_awarded,
+                    cache_key=cache_key,
+                    pub_name=row_kwargs["name"] if is_pub else "",
                 )
                 pivar_xp = _increment_pivar_xp(account, xp_awarded)
                 pivar = {
@@ -3569,6 +3601,8 @@ class ContentReportView(APIView):
                     {"detail": "Comment not found.", "code": "comment_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            if data.get("checkin_id") is not None:
+                return _checkin_not_found()
             return Response(
                 {"detail": "Profile not found.", "code": "profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
@@ -3611,7 +3645,7 @@ class ContentReportView(APIView):
                     and (
                         photo.contest_entries.exists()
                         or (
-                            photo.visibility == BeerPhoto.Visibility.FRIENDS
+                            photo.visibility in BEER_PHOTO_SHARED_VISIBILITIES
                             and Friendship.objects.filter(
                                 Q(requester=reporter, recipient=target)
                                 | Q(requester=target, recipient=reporter),
@@ -3672,6 +3706,29 @@ class ContentReportView(APIView):
                         status=status.HTTP_404_NOT_FOUND,
                     )
 
+            # Additive (Piva tab): a review is reportable by whoever can see it,
+            # a public one by anyone, a party one by the author's friends.
+            checkin = None
+            if data.get("checkin_id") is not None:
+                checkin = (
+                    BeerCheckIn.objects.select_related("account")
+                    .filter(public_id=data["checkin_id"], account=target)
+                    .first()
+                )
+                checkin_visible = (
+                    checkin is not None
+                    and target.pk not in _blocked_account_ids(reporter)
+                    and (
+                        checkin.visibility == BeerCheckIn.Visibility.PUBLIC
+                        or (
+                            checkin.visibility == BeerCheckIn.Visibility.FRIENDS
+                            and target.pk in _accepted_friend_ids(reporter)
+                        )
+                    )
+                )
+                if not checkin_visible:
+                    return _checkin_not_found()
+
             # A profile the reporter can actually see can be reported: a public
             # profile, or a non-public one they share a friendship with. "Share a
             # friendship" includes a still-pending request in either direction, not
@@ -3682,6 +3739,7 @@ class ContentReportView(APIView):
                 photo is not None
                 or night is not None
                 or comment is not None
+                or checkin is not None
                 or target.is_public
                 or Friendship.objects.filter(
                     Q(requester=reporter, recipient=target)
@@ -3730,6 +3788,16 @@ class ContentReportView(APIView):
                     },
                 }
                 night = comment.night
+            if checkin is not None:
+                snapshot["checkin_id"] = str(checkin.public_id)
+                snapshot["checkin"] = {
+                    "beer_name": checkin.beer_name,
+                    "rating": float(checkin.rating) if checkin.rating is not None else None,
+                    "tags": checkin.tags,
+                    "note": checkin.note,
+                    "pub_name": checkin.pub_name,
+                    "visibility": checkin.visibility,
+                }
             if night is not None:
                 # Keep enough immutable context for moderation if the author later
                 # unpublishes or edits the night. No raw location or price data is
@@ -3756,6 +3824,13 @@ class ContentReportView(APIView):
                 target_snapshot=snapshot,
             )
         return Response(ContentReportSerializer(report).data, status=status.HTTP_201_CREATED)
+
+
+def _checkin_not_found() -> Response:
+    return Response(
+        {"detail": "Review not found.", "code": "checkin_not_found"},
+        status=status.HTTP_404_NOT_FOUND,
+    )
 
 
 def _rating_item(rating: PubRating) -> dict:
@@ -5099,6 +5174,9 @@ class FriendsView(APIView):
         shared_stats, shared_dates = _shared_pub_stats(request.user, page_friend_ids)
         slices = _friend_activity_slices(request, all_friend_ids, now, activity_context)
         presence_slice = _friend_presence_slice(request, all_friend_ids, now)
+        from .parta_views import home_presence_slice
+
+        home_presence = home_presence_slice(request.user, all_friend_ids, now)
 
         notification_base = (
             FriendNotification.objects.filter(recipient=request.user)
@@ -5147,6 +5225,7 @@ class FriendsView(APIView):
             "my_plan": slices["my_plan"],
             "presence": presence_slice["presence"],
             "my_presence": presence_slice["my_presence"],
+            "home_presence": home_presence,
             "notifications": FriendNotificationSerializer(
                 notifications, many=True, context=context
             ).data,
@@ -5276,6 +5355,7 @@ class FriendsLiveView(APIView):
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
         slices = _friend_activity_slices(request, friend_ids, now, activity_context)
         presence_slice = _friend_presence_slice(request, friend_ids, now)
+        from .parta_views import home_presence_slice
 
         incoming_count = (
             Friendship.objects.filter(
@@ -5312,6 +5392,7 @@ class FriendsLiveView(APIView):
                 "my_plan": slices["my_plan"],
                 "presence": presence_slice["presence"],
                 "my_presence": presence_slice["my_presence"],
+                "home_presence": home_presence_slice(request.user, friend_ids, now),
                 "incoming_count": incoming_count,
                 "unread_count": unread_count,
                 "server_time": now.isoformat(),
@@ -5894,6 +5975,8 @@ def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, d
     local_now = dj_timezone.localtime(now or dj_timezone.now(), PRAGUE_TZ)
     if period == "week":
         start_date = local_now.date() - timedelta(days=local_now.weekday())
+    elif period == "month":
+        start_date = local_now.date().replace(day=1)
     else:
         start_date = date(local_now.year, 1, 1)
     local_start = datetime.combine(start_date, datetime.min.time(), tzinfo=PRAGUE_TZ)
@@ -6927,12 +7010,13 @@ class FriendDetailView(APIView):
                 _beer_checkin_queryset()
                 .filter(
                     account=friend,
-                    visibility=BeerCheckIn.Visibility.FRIENDS,
+                    visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES,
                     account__ghost_mode=False,
                 )
                 .order_by("-checked_in_at", "created_at", "id")[:5]
             )
         public_profile_stats = derive_account_public_stats(friend, is_friend=is_friend)
+        from .parta_views import recent_together_with_beers
 
         return Response(
             {
@@ -6977,14 +7061,9 @@ class FriendDetailView(APIView):
                     if plan is not None
                     else None
                 ),
-                "recent_together": [
-                    {
-                        "pub_name": evening["pub_name"],
-                        "cache_key": evening["cache_key"],
-                        "at": evening["at"].isoformat(),
-                    }
-                    for evening in shared_evenings[:3]
-                ],
+                "recent_together": recent_together_with_beers(
+                    request.user, shared_evenings[:3]
+                ),
                 "latest_beers": BeerCheckInSerializer(
                     latest_beers,
                     many=True,
@@ -7026,6 +7105,8 @@ DUEL_WINDOWS: dict[str, timedelta | None] = {
     "30d": timedelta(days=30),
     "180d": timedelta(days=180),
     "all": None,
+    # The calendar month so far; its start is computed, not a fixed span.
+    "month": None,
 }
 # How many trailing months the head-to-head chart draws. A month with no beer
 # still gets a column — without it the stretch reads calmer than it was.
@@ -7226,6 +7307,10 @@ class FriendDuelView(APIView):
         now = dj_timezone.now()
         delta = DUEL_WINDOWS[window]
         since = now - delta if delta is not None else None
+        if window == "month":
+            from .parta_views import duel_month_start
+
+            since = duel_month_start(now)
         account_ids = [request.user.id, friend.id]
         rows = list(_duel_evening_rows(account_ids, since))
         today = dj_timezone.localtime(now, PRAGUE_TZ).date()
@@ -7337,7 +7422,13 @@ class FriendActivityView(APIView):
                     .first()
                 )
                 # The single-active-row invariant is per-kind, so creating a plan
-                # never kills my live broadcast (and vice-versa).
+                # never kills my live broadcast (and vice-versa). New-look plans
+                # (several per account) and home evenings are never reused or ended here.
+                legacy_rows = (
+                    Q(place_kind="")
+                    if kind == FriendPubActivity.Kind.PLAN
+                    else ~Q(place_kind__in=["home", "custom"])
+                )
                 current_active = (
                     FriendPubActivity.objects.select_for_update()
                     .filter(
@@ -7346,6 +7437,7 @@ class FriendActivityView(APIView):
                         expires_at__gt=now,
                         kind=kind,
                     )
+                    .filter(legacy_rows)
                     .order_by("-started_at")
                     .first()
                 )
@@ -7435,7 +7527,7 @@ class FriendActivityView(APIView):
                     active=True,
                     expires_at__gt=now,
                     kind=kind,
-                ).exclude(pk=activity.pk).update(active=False, updated_at=now)
+                ).filter(legacy_rows).exclude(pk=activity.pk).update(active=False, updated_at=now)
                 FriendPubActivityRecipient.objects.filter(activity=activity).delete()
                 if requested_recipient_ids is not None:
                     FriendPubActivityRecipient.objects.bulk_create(
@@ -7834,8 +7926,9 @@ class BeerCheckInView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        if (data.get("visibility") or BeerCheckIn.Visibility.PRIVATE) == (
-            BeerCheckIn.Visibility.FRIENDS
+        if (data.get("visibility") or BeerCheckIn.Visibility.PRIVATE) in (
+            BeerCheckIn.Visibility.FRIENDS,
+            BeerCheckIn.Visibility.PUBLIC,
         ):
             precondition = ugc_consent_precondition(request)
             if precondition is not None:
@@ -7938,7 +8031,7 @@ class BeerCheckInFeedView(APIView):
                 account_id__in=friend_ids,
                 account__status=Account.Status.ACTIVE,
                 account__ghost_mode=False,
-                visibility=BeerCheckIn.Visibility.FRIENDS,
+                visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES,
             )
             .order_by("-checked_in_at", "created_at", "id")[:200]
         )
@@ -7965,7 +8058,7 @@ class BeerCheckInReactView(APIView):
             BeerCheckIn.objects.select_related("account")
             .filter(
                 public_id=checkin_id,
-                visibility=BeerCheckIn.Visibility.FRIENDS,
+                visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES,
                 account__status=Account.Status.ACTIVE,
                 account__ghost_mode=False,
             )
@@ -7983,7 +8076,10 @@ class BeerCheckInReactView(APIView):
                 {"detail": gettext("Tady se reagovat nedá."), "code": "blocked"},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if checkin.account_id not in _accepted_friend_ids(request.user):
+        # A public review takes a round from anyone; a party check-in only from friends.
+        if checkin.visibility != BeerCheckIn.Visibility.PUBLIC and checkin.account_id not in _accepted_friend_ids(
+            request.user
+        ):
             return Response(
                 {"detail": gettext("S tímhle člověkem ještě nejste parta."), "code": "not_friends"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -8563,17 +8659,29 @@ class BeerDetailView(APIView):
     def get(self, request: Request) -> Response:
         beer_name = (request.query_params.get("beer_name") or "").strip()
         brewery_name = (request.query_params.get("brewery_name") or "").strip()
+        # Additive (Piva tab): a catalogue key alone is enough; its name stands in for beer_name.
+        product = piva_views.resolve_product(
+            (request.query_params.get("product") or "").strip(), beer_name, brewery_name
+        )
+        by_product = not beer_name and product is not None
+        if by_product:
+            beer_name, brewery_name = product.name, product.brand_name
         if not beer_name:
             return Response(
                 {"detail": "beer_name is required.", "code": "missing_beer_name"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         match_cache = BeerCatalogMatchCache()
-        identity = _beer_identity_query(
-            beer_name,
-            brewery_name,
-            exact_brewery=True,
-            match_cache=match_cache,
+        # By catalogue key, every check-in matched to the beer counts, whatever brewery was typed.
+        identity = (
+            Q(beer_product=product)
+            if by_product
+            else _beer_identity_query(
+                beer_name,
+                brewery_name,
+                exact_brewery=True,
+                match_cache=match_cache,
+            )
         )
         blocked_ids = _blocked_account_ids(request.user)
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
@@ -8582,7 +8690,7 @@ class BeerDetailView(APIView):
             account_id__in=friend_ids,
             account__status=Account.Status.ACTIVE,
             account__ghost_mode=False,
-            visibility=BeerCheckIn.Visibility.FRIENDS,
+            visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES,
         ).filter(identity)
         party_accounts = Account.objects.filter(id__in=party.values("account_id")).order_by(
             "nickname",
@@ -8594,7 +8702,7 @@ class BeerDetailView(APIView):
                 Q(account=request.user) | Q(account_id__in=friend_ids),
             )
             .filter(identity)
-            .filter(Q(account=request.user) | Q(visibility=BeerCheckIn.Visibility.FRIENDS))
+            .filter(Q(account=request.user) | Q(visibility__in=BEER_CHECKIN_SHARED_VISIBILITIES))
             .filter(
                 Q(account=request.user)
                 | Q(account__status=Account.Status.ACTIVE, account__ghost_mode=False)
@@ -8640,6 +8748,9 @@ class BeerDetailView(APIView):
                     many=True,
                     context=_beer_checkin_context(request),
                 ).data,
+                **piva_views.beer_global_detail(
+                    product, *piva_views._location(request), viewer=request.user
+                ),
             },
             status=status.HTTP_200_OK,
         )
@@ -8662,12 +8773,21 @@ def _photo_contest_entry_queryset(contest: PhotoContest):
 
 
 def _photo_contest_entry_context(request: Request, contest: PhotoContest) -> dict:
-    """Serializer context for PhotoContestEntrySerializer (one vote lookup)."""
-    my_vote = PhotoContestVote.objects.filter(contest=contest, voter=request.user).first()
+    """Serializer context for PhotoContestEntrySerializer (one vote lookup).
+
+    ``my_vote_entry_pk`` is the newest runda, the single vote released clients
+    understand; ``my_vote_entry_pks`` holds every entry the caller gave one.
+    """
+    voted = list(
+        PhotoContestVote.objects.filter(contest=contest, voter=request.user)
+        .order_by("-created_at", "-pk")
+        .values_list("entry_id", flat=True)
+    )
     return {
         "request": request,
         "account": request.user,
-        "my_vote_entry_pk": my_vote.entry_id if my_vote else None,
+        "my_vote_entry_pk": voted[0] if voted else None,
+        "my_vote_entry_pks": set(voted),
     }
 
 
@@ -8681,6 +8801,7 @@ def _photo_contest_my_result(contest: PhotoContest, account: Account) -> dict:
     entry = (
         PhotoContestEntry.objects.filter(contest=contest, account=account)
         .annotate(vote_count=Count("votes"))
+        .order_by(F("final_rank").asc(nulls_last=True), F("final_votes").desc(nulls_last=True), "-vote_count")
         .values("final_rank", "final_votes", "vote_count")
         .first()
     )
@@ -8762,8 +8883,9 @@ class BeerPhotoView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         data = serializer.validated_data
-        if (data.get("visibility") or BeerPhoto.Visibility.FRIENDS) == (
-            BeerPhoto.Visibility.FRIENDS
+        if (data.get("visibility") or BeerPhoto.Visibility.FRIENDS) in (
+            BeerPhoto.Visibility.FRIENDS,
+            BeerPhoto.Visibility.PUBLIC,
         ):
             precondition = ugc_consent_precondition(request)
             if precondition is not None:
@@ -8869,6 +8991,8 @@ class BeerPhotoView(APIView):
             pub_name=data.get("pub_name") or "",
             pub_city=data.get("pub_city") or "",
             visibility=data.get("visibility") or BeerPhoto.Visibility.FRIENDS,
+            beer_name=data.get("beer_name") or "",
+            beer_key=beer_photo_key(data.get("beer_name") or ""),
             taken_at=taken_at,
         )
         # upload_to ignores the supplied name and builds the stable
@@ -9083,7 +9207,7 @@ class FriendBeerPhotosView(APIView):
         contest = current_photo_contest()
         rows = (
             _beer_photo_queryset(contest)
-            .filter(account=target, visibility=BeerPhoto.Visibility.FRIENDS)
+            .filter(account=target, visibility__in=BEER_PHOTO_SHARED_VISIBILITIES)
             .order_by("-taken_at")[: settings.BEER_PHOTO_MAX_PER_ACCOUNT]
         )
         return Response(
@@ -9111,7 +9235,7 @@ class FriendsBeerPhotosFeedView(APIView):
                 account_id__in=friend_ids,
                 account__status=Account.Status.ACTIVE,
                 account__ghost_mode=False,
-                visibility=BeerPhoto.Visibility.FRIENDS,
+                visibility__in=BEER_PHOTO_SHARED_VISIBILITIES,
                 taken_at__gte=cutoff,
             )
             .select_related("account")
@@ -9151,7 +9275,13 @@ class PhotoContestView(APIView):
             .filter(account__status=Account.Status.ACTIVE)
             .exclude(account_id__in=blocked_ids)
         )
-        my_entry = _photo_contest_entry_queryset(contest).filter(account=request.user).first()
+        my_entries = list(
+            _photo_contest_entry_queryset(contest)
+            .filter(account=request.user)
+            .order_by("-created_at", "-pk")
+        )
+        # Released clients understand one entry; they get the newest one.
+        my_entry = my_entries[0] if my_entries else None
         my_vote_entry_id = None
         if context["my_vote_entry_pk"] is not None:
             my_vote_entry_id = (
@@ -9159,6 +9289,13 @@ class PhotoContestView(APIView):
                 .values_list("public_id", flat=True)
                 .first()
             )
+        my_vote_entry_ids = [
+            str(value)
+            for value in PhotoContestEntry.objects.filter(
+                pk__in=context["my_vote_entry_pks"]
+            ).values_list("public_id", flat=True)
+        ]
+        order_top = request.query_params.get("order") == "top"
 
         has_explicit_paging = (
             request.query_params.get("limit") is not None
@@ -9197,11 +9334,15 @@ class PhotoContestView(APIView):
             "my_entry_id": str(my_entry.public_id) if my_entry else None,
             "my_entry_photo_id": str(my_entry.photo.public_id) if my_entry else None,
             "my_vote_entry_id": str(my_vote_entry_id) if my_vote_entry_id else None,
+            "my_entry_ids": [str(entry.public_id) for entry in my_entries],
+            "my_vote_entry_ids": my_vote_entry_ids,
             "last_results": last_results,
         }
         if not has_explicit_paging:
             # Legacy contract: unchanged shape, first 100 newest visible entries.
-            entries = base_entries.order_by("-created_at")[:100]
+            # ``order=top`` (new look "Vedou") ranks the same slice by rundas.
+            ordering = ("-vote_count", "created_at", "pk") if order_top else ("-created_at",)
+            entries = base_entries.order_by(*ordering)[:100]
             payload["entries"] = PhotoContestEntrySerializer(
                 entries, many=True, context=context
             ).data
@@ -9265,13 +9406,23 @@ class PhotoContestEntryView(APIView):
             )
 
         contest = current_photo_contest()
+        add = serializer.validated_data.get("add", False)
         try:
             with transaction.atomic():
-                # Replace semantics: the old entry (and its votes) go away.
-                PhotoContestEntry.objects.filter(contest=contest, account=request.user).delete()
-                entry = PhotoContestEntry.objects.create(
-                    contest=contest, photo=photo, account=request.user
-                )
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
+                existing = PhotoContestEntry.objects.filter(contest=contest, photo=photo).first()
+                if add and existing is not None:
+                    entry = existing
+                else:
+                    # Released clients: replace semantics, the old entries
+                    # (and their votes) go away.
+                    if not add:
+                        PhotoContestEntry.objects.filter(
+                            contest=contest, account=request.user
+                        ).delete()
+                    entry = PhotoContestEntry.objects.create(
+                        contest=contest, photo=photo, account=request.user
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error("photo_contest: enter failed: %s", exc, exc_info=True)
             return _internal_error()
@@ -9295,8 +9446,10 @@ class PhotoContestEntryView(APIView):
 class PhotoContestVoteView(APIView):
     """POST/DELETE /v1/photo-contest/vote — one movable vote per round.
 
-    POST upserts the caller's single vote in the current open round (voting
-    again MOVES it to the new entry); DELETE clears it. Idempotent and safe
+    This is the released-client contract: POST leaves the caller with exactly
+    one runda in the current round (voting again MOVES it); DELETE clears all
+    of the caller's rundas in the round. The new look gives and takes rundas
+    per entry through /v1/photo-contest/entries/<id>/round. Idempotent and safe
     for offline retries.
     """
 
@@ -9332,11 +9485,16 @@ class PhotoContestVoteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            PhotoContestVote.objects.update_or_create(
-                contest=contest,
-                voter=request.user,
-                defaults={"entry": entry},
-            )
+            with transaction.atomic():
+                Account.objects.select_for_update().filter(pk=request.user.pk).first()
+                PhotoContestVote.objects.filter(contest=contest, voter=request.user).exclude(
+                    entry=entry
+                ).delete()
+                PhotoContestVote.objects.get_or_create(
+                    contest=contest,
+                    voter=request.user,
+                    entry=entry,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error("photo_contest: vote failed: %s", exc, exc_info=True)
             return _internal_error()
@@ -9588,6 +9746,9 @@ class FriendInviteView(APIView):
         return None
 
 
+_INVITE_MUTUAL_FRIENDS_SHOWN = 3
+
+
 class FriendInviteResolveView(APIView):
     """GET /v1/friends/invite/<code> — resolve a code to the inviter (no request sent).
 
@@ -9620,13 +9781,39 @@ class FriendInviteResolveView(APIView):
                 {"detail": gettext("Pozvánka už vypršela."), "code": "invite_expired"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        context = _friend_profile_context(request)
+        public_stats = None
+        if inviter.is_public:
+            stats = derive_account_public_stats(inviter, is_friend=False)
+            public_stats = {
+                **stats,
+                "badge_progress": derive_account_public_badge_progress(inviter, stats),
+            }
+        mutual_ids = []
+        if inviter.pk != request.user.pk:
+            blocked = _blocked_account_ids(request.user)
+            mutual_ids = [
+                account_id
+                for account_id in set(_accepted_friend_ids(inviter))
+                & set(_accepted_friend_ids(request.user))
+                if account_id not in blocked
+            ]
+        mutual_shown = Account.objects.filter(pk__in=mutual_ids).order_by("nickname", "pk")[
+            :_INVITE_MUTUAL_FRIENDS_SHOWN
+        ]
         return Response(
             {
                 "valid": True,
                 "expired": False,
-                "inviter": FriendProfileSerializer(
-                    inviter, context=_friend_profile_context(request)
-                ).data,
+                "inviter": FriendProfileSerializer(inviter, context=context).data,
+                # Only what the inviter's public profile already shows.
+                "public_stats": public_stats,
+                "mutual_friends": {
+                    "count": len(mutual_ids),
+                    "profiles": FriendProfileSerializer(
+                        mutual_shown, many=True, context=context
+                    ).data,
+                },
             },
             status=status.HTTP_200_OK,
         )
@@ -10345,6 +10532,53 @@ def _nearby_menu_beer_suggestions(
     return suggestions
 
 
+def _nearby_pub_beer_kind_items(
+    *,
+    beer_kind: str,
+    lat: float,
+    lng: float,
+    radius_km: float,
+) -> tuple[list[dict], set[str]]:
+    """Pubs with at least one beer of ``beer_kind`` on their current menu.
+
+    A catalog beer takes its kind from the beer ranking, where people's votes
+    replace the name guess. Any other beer is judged by its name alone.
+    """
+    rows = [
+        (row, _menu_beer_names(row))
+        for row in _nearby_menu_rows(lat=lat, lng=lng, radius_km=radius_km)
+    ]
+    match_cache = BeerCatalogMatchCache()
+    product_of: dict[str, int | None] = {}
+    for _, names in rows:
+        for normalized, display in names.items():
+            if normalized not in product_of:
+                found = match_beer(display, fuzzy=False, match_cache=match_cache)
+                product_of[normalized] = found.product.id if found and found.product else None
+    ranked_styles = dict(
+        BeerRanking.objects.filter(
+            product_id__in={pid for pid in product_of.values() if pid is not None}
+        ).values_list("product_id", "styles")
+    )
+    # Keyed by the display name: the name guess reads "12°", which normalizing drops.
+    kind_of: dict[str, bool] = {}
+
+    def is_kind(normalized: str, display: str) -> bool:
+        product_id = product_of.get(normalized)
+        if product_id is not None and product_id in ranked_styles:
+            return beer_kind in (ranked_styles[product_id] or [])
+        if display not in kind_of:
+            kind_of[display] = beer_kind in classify_styles(display, [])
+        return kind_of[display]
+
+    matching = [
+        row
+        for row, names in rows
+        if any(is_kind(name, display) for name, display in names.items())
+    ][:_BEER_BRAND_MAX_RESULTS]
+    return [_pub_community_item(row) for row in matching], {row.cache_key for row in matching}
+
+
 def _nearby_pub_community_items(
     *,
     lat: float,
@@ -10782,6 +11016,7 @@ class PubsNearView(APIView):
         explicit_beer_brand_keys: list[str] = data.get("beer_brands") or []
         beer_brand_keys = explicit_beer_brand_keys or ([beer_brand_key] if beer_brand_key else [])
         beer_name: str = data.get("beer_name") or ""
+        beer_kind: str = data.get("beer_kind") or ""
         amenity_keys: list[str] = data.get("amenities") or []
         include_other_places: bool = data["include_other_places"]
         max_beer_filters = max(
@@ -10926,7 +11161,7 @@ class PubsNearView(APIView):
                 "cached": cached,
                 "fetched_at": fetched_at,
             }
-            if beer_brand_keys or beer_name or amenity_keys or include_other_places:
+            if beer_brand_keys or beer_name or beer_kind or amenity_keys or include_other_places:
                 applied_filters = {
                     "version": 3
                     if explicit_beer_brand_keys
@@ -10940,6 +11175,8 @@ class PubsNearView(APIView):
                     applied_filters["beer_match"] = "any"
                 if beer_name:
                     applied_filters["beer_name"] = beer_name
+                if beer_kind:
+                    applied_filters["beer_kind"] = beer_kind
                 if include_other_places:
                     applied_filters["include_other_places"] = True
                 body["applied_filters"] = applied_filters
@@ -10952,19 +11189,19 @@ class PubsNearView(APIView):
                 lng=data["lng"],
                 radius_km=radius_km,
             )
-            if not beer_brand_key and not beer_name and not amenity_keys
+            if not beer_brand_key and not beer_name and not beer_kind and not amenity_keys
             else []
         )
         beer_brand_items: list[dict] = []
         beer_brand_cache_keys: set[str] = set()
-        # A menu-name filter shares the brand-filter path: the same AND with
-        # amenities and the same empty result.
-        beer_filter = bool(beer_brand_keys or beer_name)
+        # Menu-name and beer-kind filters share the brand-filter path: the same
+        # AND with amenities and the same empty result.
+        beer_filter = bool(beer_brand_keys or beer_name or beer_kind)
 
         def filter_by_beer_signals(items: list[dict]) -> list[dict]:
-            # A menu-name match must also match the pub name: two venues can
-            # share one geohash cell and only one of them pours the beer.
-            if beer_name:
+            # A menu match must also match the pub name: two venues can share
+            # one geohash cell and only one of them pours the beer.
+            if beer_name or beer_kind:
                 return _filter_items_by_amenity_signals(items, beer_brand_items)
             return _filter_items_by_cache_key(items, beer_brand_cache_keys)
 
@@ -10972,6 +11209,13 @@ class PubsNearView(APIView):
             if beer_name:
                 beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_name_items(
                     beer_name=beer_name,
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    radius_km=radius_km,
+                )
+            elif beer_kind:
+                beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_kind_items(
+                    beer_kind=beer_kind,
                     lat=data["lat"],
                     lng=data["lng"],
                     radius_km=radius_km,
@@ -11639,6 +11883,7 @@ def _load_export_account(account: Account) -> Account:
                 "activity_reactions",
                 queryset=FriendActivityReaction.objects.select_related("activity"),
             ),
+            Prefetch("home_checkins", queryset=FriendHomeCheckin.objects.select_related("activity")),
             Prefetch(
                 "friend_notifications",
                 queryset=FriendNotification.objects.select_related(
@@ -12009,6 +12254,8 @@ def _export_account_data(account: Account) -> dict:
             "quiet_hours_start": account.quiet_hours_start,
             "quiet_hours_end": account.quiet_hours_end,
             "excluded_from_leaderboards": account.excluded_from_leaderboards,
+            "share_default": account.share_default,
+            "night_autopublish": account.night_autopublish,
         },
         "auth_sessions": [
             {
@@ -12122,6 +12369,24 @@ def _export_account_data(account: Account) -> dict:
             "last_platform": usage.last_platform if usage else "",
             "last_os_version": usage.last_os_version if usage else "",
         },
+        "beer_style_votes": [
+            {
+                "beer": vote.product.name,
+                "style": vote.style,
+                "updated_at": _iso(vote.updated_at),
+            }
+            for vote in account.beer_style_votes.select_related("product").order_by("-updated_at")
+        ],
+        "xp_events": [
+            {
+                "reason": event.reason,
+                "amount": event.amount,
+                "cache_key": event.cache_key,
+                "pub_name": event.pub_name,
+                "created_at": _iso(event.created_at),
+            }
+            for event in account.xp_events.order_by("-created_at")
+        ],
         "telemetry_events": [
             {
                 "event": event.event,
@@ -12202,6 +12467,7 @@ def _export_account_data(account: Account) -> dict:
                 "pub_cache_key": photo.pub_cache_key or None,
                 "pub_name": photo.pub_name or None,
                 "pub_city": photo.pub_city or None,
+                "beer_name": photo.beer_name or None,
                 "visibility": photo.visibility,
                 "taken_at": _iso(photo.taken_at),
                 "created_at": _iso(photo.created_at),
@@ -12276,6 +12542,8 @@ def _export_account_data(account: Account) -> dict:
                     "external_id": activity.external_id,
                     "message": activity.message,
                     "kind": activity.kind,
+                    "place_kind": activity.place_kind,
+                    "address": activity.address,
                     "scheduled_for": _iso(activity.scheduled_for),
                     "reminder_sent_at": _iso(activity.reminder_sent_at),
                     "started_at": _iso(activity.started_at),
@@ -12301,6 +12569,14 @@ def _export_account_data(account: Account) -> dict:
                     "updated_at": _iso(row.updated_at),
                 }
                 for row in account.activity_responses.all()
+            ],
+            "home_checkins": [
+                {
+                    "activity_id": str(row.activity.public_id),
+                    "joined_at": _iso(row.joined_at),
+                    "left_at": _iso(row.left_at),
+                }
+                for row in account.home_checkins.all()
             ],
             "reactions": [
                 {
@@ -14284,6 +14560,13 @@ class PubAmenityVoteView(APIView):
                 was_first_map=was_first_map,
                 active_keys=active_keys,
                 now=dj_timezone.now(),
+            )
+            record_xp_event(
+                account.pk,
+                reason=XpEvent.Reason.MAPPING,
+                amount=xp_awarded,
+                cache_key=cache_key,
+                pub_name=new_name,
             )
             # Re-read so the echoed client_updated_at is the DB-normalised UTC
             # value, matching the GET restore path / _rating_item exactly.

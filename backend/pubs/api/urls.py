@@ -38,6 +38,7 @@ from .auth_views import (
     VerifyEmailView,
 )
 from .beer_watch_views import BeerWatchDetailView, BeerWatchesView, BeerWatchSettingsView
+from .beers_nearby_views import BeersNearbyView
 from .challenge_views import ChallengeListView
 from .community_event_views import (
     CommunityEventCancelView,
@@ -51,6 +52,14 @@ from .community_event_views import (
     CommunityEventTeamDetailView,
     CommunityEventTeamMembershipView,
 )
+from .label_scan_views import BeerLabelScanView
+from .parta_views import (
+    FriendPingView,
+    PartaActivityView,
+    PartaHomeCheckinView,
+    PartaPlanRemindView,
+    PartaPlansView,
+)
 from .party_views import (
     PartyEveningCollectionView,
     PartyEveningDetailView,
@@ -63,6 +72,14 @@ from .party_views import (
     PartyGameEventView,
     party_game_stream,
 )
+from .piva_views import (
+    BeerCollectionView,
+    BeerRankingView,
+    BeerReviewsView,
+    BeerSearchView,
+    BeerStyleVoteView,
+)
+from .profil_views import AccountNightSummaryView, AccountXpEventsView
 from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
 from .tour_invite_views import MyTourInviteListView, MyTourInviteView, TourInvitesView
@@ -101,7 +118,6 @@ from .views import (
     FollowView,
     FriendActivityReactView,
     FriendActivityRespondView,
-    FriendActivityView,
     FriendBeerPhotosView,
     FriendBlockView,
     FriendDetailView,
@@ -150,6 +166,12 @@ from .views import (
     ReleaseNotesView,
     RestorePurchasesView,
     UserAddedPubView,
+)
+from .vycep_views import (
+    BeerPhotosView,
+    NightsSummaryView,
+    PhotoContestEntryDetailView,
+    PhotoContestRoundView,
 )
 
 urlpatterns = [
@@ -293,6 +315,7 @@ urlpatterns = [
     ),
     path("nights", PublishedNightView.as_view(http_method_names=["post", "options"]), name="nights"),
     path("nights/feed", PublishedNightFeedView.as_view(), name="nights-feed"),
+    path("nights/summary", NightsSummaryView.as_view(), name="nights-summary"),
     path(
         "nights/<uuid:night_id>/detail",
         PublishedNightDetailView.as_view(),
@@ -320,6 +343,14 @@ urlpatterns = [
     ),
     path("beers/memory", BeerMemoryView.as_view(), name="beer-memory"),
     path("beers/detail", BeerDetailView.as_view(), name="beer-detail"),
+    path("beers/nearby", BeersNearbyView.as_view(), name="beers-nearby"),
+    path("beer-label-scan", BeerLabelScanView.as_view(), name="beer-label-scan"),
+    path("beers/ranking", BeerRankingView.as_view(), name="beers-ranking"),
+    path("beers/style", BeerStyleVoteView.as_view(), name="beers-style"),
+    path("beers/search", BeerSearchView.as_view(), name="beers-search"),
+    path("beers/reviews", BeerReviewsView.as_view(), name="beers-reviews"),
+    path("beers/collection", BeerCollectionView.as_view(), name="beers-collection"),
+    path("beers/photos", BeerPhotosView.as_view(), name="beer-photos-by-beer"),
     # --- photo diary + FotoPivař contest ---
     path(
         "beer-photos",
@@ -348,6 +379,16 @@ urlpatterns = [
         name="photo-contest-entries",
     ),
     path("photo-contest/vote", PhotoContestVoteView.as_view(), name="photo-contest-vote"),
+    path(
+        "photo-contest/entries/<uuid:entry_id>",
+        PhotoContestEntryDetailView.as_view(),
+        name="photo-contest-entry",
+    ),
+    path(
+        "photo-contest/entries/<uuid:entry_id>/round",
+        PhotoContestRoundView.as_view(),
+        name="photo-contest-entry-round",
+    ),
     path("beer-brands/suggest", BeerBrandSuggestView.as_view(), name="beer-brands-suggest"),
     path(
         "pub-ratings",
@@ -486,6 +527,19 @@ urlpatterns = [
         name="friends-activity-react",
     ),
     path("friends/settings", FriendSettingsView.as_view(), name="friends-settings"),
+    # New look: open invitations, host reminders, home evenings, direct pings.
+    path("friends/plans", PartaPlansView.as_view(), name="friends-plans"),
+    path(
+        "friends/pub-activity/<uuid:activity_id>/remind",
+        PartaPlanRemindView.as_view(),
+        name="friends-activity-remind",
+    ),
+    path(
+        "friends/pub-activity/<uuid:activity_id>/checkin",
+        PartaHomeCheckinView.as_view(),
+        name="friends-activity-checkin",
+    ),
+    path("friends/<uuid:account_id>/ping", FriendPingView.as_view(), name="friend-ping"),
     path(
         "friends/<uuid:public_id>/beer-photos",
         FriendBeerPhotosView.as_view(),
@@ -496,12 +550,12 @@ urlpatterns = [
     path("friends/<uuid:account_id>", FriendDetailView.as_view(), name="friend-detail"),
     path(
         "friends/pub-activity",
-        FriendActivityView.as_view(http_method_names=["post", "options"]),
+        PartaActivityView.as_view(http_method_names=["post", "options"]),
         name="friends-pub-activity",
     ),
     path(
         "friends/pub-activity/<uuid:activity_id>",
-        FriendActivityView.as_view(http_method_names=["delete", "options"]),
+        PartaActivityView.as_view(http_method_names=["get", "patch", "delete", "options"]),
         name="friends-pub-activity-end",
     ),
     path(
@@ -525,6 +579,12 @@ urlpatterns = [
         name="account-ugc-consent",
     ),
     path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
+    path("account/me/xp-events", AccountXpEventsView.as_view(), name="account-me-xp-events"),
+    path(
+        "account/me/night-summary",
+        AccountNightSummaryView.as_view(),
+        name="account-me-night-summary",
+    ),
     path(
         "account/me/purchases/restore",
         RestorePurchasesView.as_view(),

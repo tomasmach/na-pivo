@@ -8,6 +8,8 @@ from django.views.generic import RedirectView
 
 from pubs.home_views import home, landing_asset
 from pubs.models import BeerPage
+from pubs.profile_pages import public_profile_page
+from pubs.pub_web_views import pub_share_landing
 from pubs.web_views import (
     android_asset_statements,
     apple_app_site_association,
@@ -54,6 +56,8 @@ urlpatterns = [
     path("en/beer/<slug:key>/og.png", beer_pages_og_image, {"lang": "en", "kind": BeerPage.Kind.BEER}, name="beer-og-image-en"),
     path("t/<slug:token>", tour_invite_landing, name="tour-invite-landing"),
     path("p/<slug:code>", invite_landing, name="friend-invite-landing"),
+    path("h/<str:key>", pub_share_landing, name="pub-share-landing"),
+    path("u/<str:nickname>", public_profile_page, name="public-profile"),
     path("party/<slug:code>", party_invite_landing, name="party-invite-landing"),
     path(
         ".well-known/apple-app-site-association",

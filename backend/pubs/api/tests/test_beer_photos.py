@@ -185,6 +185,8 @@ def test_upload_happy_path_stores_downscaled_webp(client, tmp_media):
         "taken_at",
         "created_at",
         "in_contest",
+        "beer_name",
+        "beer_key",
     }
     assert body["caption"] == "Večer u Tygra"
     assert body["pub_cache_key"] == "u2fkbn1z"

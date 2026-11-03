@@ -18,7 +18,8 @@
       },
       "ios": {
         "buildFromSource": [
-          "expo-location"
+          "expo-location",
+          "expo-media-library"
         ]
       }
     }
@@ -28,7 +29,6 @@
     "dev": "bash scripts/dev-local.sh",
     "dev:detached": "node scripts/dev-detached.js",
     "dev:stop": "node scripts/dev-detached.js --stop",
-    "dev:novy": "EXPO_PUBLIC_NEW_LOOK=1 bash scripts/dev-local.sh",
     "release:ios": "node scripts/release-ios.js",
     "start:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo start --lan",
     "postinstall": "node scripts/patch-expo-location-heading.js && node scripts/patch-expo-widgets-live-activity.js && node scripts/patch-react-native-screens-tabs-frame.js",
@@ -59,6 +59,7 @@
     "expo-asset": "~58.0.18",
     "expo-audio": "~58.0.10",
     "expo-build-properties": "~58.0.11",
+    "expo-calendar": "~58.0.6",
     "expo-camera": "~58.0.12",
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.13",
@@ -71,13 +72,13 @@
     "expo-image-picker": "~58.0.10",
     "expo-linking": "~58.0.14",
     "expo-location": "~58.0.19",
+    "expo-media-library": "~58.0.13",
     "expo-notifications": "~58.1.6",
     "expo-router": "~58.0.26",
     "expo-secure-store": "~58.0.2",
     "expo-sharing": "~58.0.20",
     "expo-splash-screen": "~58.0.11",
     "expo-status-bar": "~58.0.4",
-    "expo-store-review": "~58.0.2",
     "expo-system-ui": "~58.0.6",
     "expo-task-manager": "~58.0.12",
     "expo-updates": "~58.0.18",

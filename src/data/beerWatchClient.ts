@@ -15,6 +15,8 @@ export interface BeerWatch {
   productKey: string;
   name: string;
   aliases: string[];
+  /** Where it pours nearest within the radius; null when nowhere or on an older backend. */
+  nearest?: { pubName: string; distanceM: number } | null;
 }
 
 export interface BeerHelped {
@@ -81,13 +83,24 @@ async function request(
   }
 }
 
+function toNearest(value: unknown): BeerWatch['nearest'] {
+  const n = value as { pub_name?: unknown; distance_m?: unknown } | null;
+  if (!n || typeof n.pub_name !== 'string' || typeof n.distance_m !== 'number') return null;
+  return { pubName: n.pub_name, distanceM: n.distance_m };
+}
+
 function toWatch(value: unknown): BeerWatch | null {
-  const w = value as { product_key?: unknown; name?: unknown; aliases?: unknown } | null;
+  const w = value as { product_key?: unknown; name?: unknown; aliases?: unknown; nearest?: unknown } | null;
   if (!w || typeof w.product_key !== 'string' || typeof w.name !== 'string') return null;
   const aliases = Array.isArray(w.aliases)
     ? w.aliases.filter((a): a is string => typeof a === 'string')
     : [];
-  return { productKey: w.product_key, name: w.name, aliases };
+  return {
+    productKey: w.product_key,
+    name: w.name,
+    aliases,
+    ...(w.nearest !== undefined ? { nearest: toNearest(w.nearest) } : null),
+  };
 }
 
 function toHelped(value: unknown): BeerHelped | null {

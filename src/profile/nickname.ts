@@ -16,7 +16,7 @@ import { t } from '@/i18n';
 /** Allowed characters + length, mirroring `^[a-zA-Z0-9_.]{3,20}$`. */
 const NICKNAME_RE = /^[a-zA-Z0-9_.]+$/;
 export const NICKNAME_MIN = 3;
-export const NICKNAME_MAX = 20;
+const NICKNAME_MAX = 20;
 
 /**
  * Reserved handles (lowercase compare) — a verbatim mirror of the backend's

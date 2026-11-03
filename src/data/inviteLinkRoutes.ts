@@ -1,5 +1,5 @@
 /** Only links issued by Na pivo may become friend invitations. */
-function parseAppUrl(value: string | null | undefined): { url: URL; path: string } | null {
+export function parseAppUrl(value: string | null | undefined): { url: URL; path: string } | null {
   if (!value) return null;
   try {
     const url = new URL(value);

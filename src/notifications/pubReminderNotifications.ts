@@ -591,7 +591,8 @@ function isFriendResponse(response: ExpoNotifications.NotificationResponse | nul
     kind === 'friend_at_pub' ||
     kind === 'friend_rsvp' ||
     kind === 'friend_cheers' ||
-    kind === 'friend_plan'
+    kind === 'friend_plan' ||
+    kind === 'friend_ping'
   );
 }
 

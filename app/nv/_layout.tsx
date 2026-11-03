@@ -1,20 +1,25 @@
-import React from 'react';
-import { View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Platform, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
+import { FullWindowOverlay } from 'react-native-screens';
 
 import { DialogHost, ToastHost } from '@/newlook/components/overlays';
 import { C, FontFiles } from '@/newlook/theme';
+import { bridgeAppToasts } from '@/newlook/ui/store';
 
-const SHEET = { presentation: 'transparentModal', animation: 'fade', contentStyle: { backgroundColor: 'transparent' } } as const;
+const SHEET = { presentation: 'transparentModal', animation: 'none', contentStyle: { backgroundColor: 'transparent' } } as const;
 
 // Routes that open as a bottom sheet over the current screen.
 const SHEETS = [
   'filtry',
+  'kraj',
+  'stupen',
   'vrstvy',
   'nesedi',
   'opravit-nazev',
+  'opravit-pivo',
   'oteviracka-den',
   'zapis',
   'pridat-pivo',
@@ -22,6 +27,7 @@ const SHEETS = [
   'dopsat',
   'odhad',
   'hodnoceni',
+  'palec',
   'pripominky',
   'do-denicku',
   'vyvesit',
@@ -42,11 +48,14 @@ const SHEETS = [
   'tour-pozvat',
   'nalepky',
   'sdileni-souhlas',
-  'mock',
 ];
+
+// Sheets are native modals on iOS; only a window-level overlay keeps dialogs and toasts above them.
+const Overlay = Platform.OS === 'ios' ? FullWindowOverlay : React.Fragment;
 
 export default function NewLookLayout() {
   const [loaded, error] = useFonts(FontFiles);
+  useEffect(() => bridgeAppToasts(), []);
   if (!loaded && !error) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -68,8 +77,10 @@ export default function NewLookLayout() {
           <Stack.Screen key={name} name={name} options={SHEET} />
         ))}
       </Stack>
-      <DialogHost />
-      <ToastHost />
+      <Overlay>
+        <DialogHost />
+        <ToastHost />
+      </Overlay>
     </View>
   );
 }

@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapStyleElement } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapStyleElement, type Region } from 'react-native-maps';
 
 import { Icon } from '../../components/Icon';
 import { Person, T } from '../../components/ui';
-import { FRIENDS, ME_COORD, PUBS, pubById, type LatLng, type Pub } from '../../mock/data';
 import { C, s } from '../../theme';
 
 // Gray Google style without museums, shops and transit (the redesign decision "Mapa").
@@ -26,52 +25,69 @@ export const GRAY_MAP: MapStyleElement[] = [
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4a4a48' }] },
 ];
 
-export const CITIES: { name: string; coord: LatLng; evenings: number; pubs: number }[] = [
-  { name: 'Praha', coord: { latitude: 50.0755, longitude: 14.4378 }, evenings: 24, pubs: 12 },
-  { name: 'Liberec', coord: { latitude: 50.7663, longitude: 15.0543 }, evenings: 2, pubs: 2 },
-  { name: 'Hradec Králové', coord: { latitude: 50.2092, longitude: 15.8328 }, evenings: 1, pubs: 1 },
-  { name: 'Plzeň', coord: { latitude: 49.7384, longitude: 13.3736 }, evenings: 3, pubs: 3 },
-  { name: 'Brno', coord: { latitude: 49.1951, longitude: 16.6068 }, evenings: 6, pubs: 5 },
-  { name: 'České Budějovice', coord: { latitude: 48.9745, longitude: 14.4743 }, evenings: 1, pubs: 1 },
-];
+type Point = { lat: number; lng: number };
+/** `key` is the pub's cell; `id` tells apart pubs that share one cell. */
+export type MapPin = Point & { key: string; id: string; label: string | null };
+export type MapFriend = Point & { key: string; initial: string };
+export type MapCity = Point & { key: string; name: string; count: number };
+export type NvMapHandle = { centerOn: (at: Point) => void };
 
-const CITY_REGION = { latitude: 49.85, longitude: 15.2, latitudeDelta: 3.6, longitudeDelta: 3.6 };
-const NEAR_REGION = { latitude: 50.0868, longitude: 14.4232, latitudeDelta: 0.017, longitudeDelta: 0.017 };
+const COUNTRY_REGION = { latitude: 49.85, longitude: 15.2, latitudeDelta: 3.6, longitudeDelta: 3.6 };
+const NEAR_DELTA = 0.017;
 
-function dots(from: LatLng, to: LatLng): LatLng[] {
-  return [from, to];
+export function nearRegion(at: Point): Region {
+  return { latitude: at.lat, longitude: at.lng, latitudeDelta: NEAR_DELTA, longitudeDelta: NEAR_DELTA };
 }
 
-export function NvMap({
-  pubs,
-  targetId,
-  view,
-  pinMode,
-  selectedCity,
-  onPub,
-  onCity,
-  showRoute = true,
-  bottomPadding = 0,
-}: {
-  pubs: Pub[];
-  targetId: string | null;
+type Props = {
+  pins: MapPin[];
+  me: Point | null;
+  target: (Point & { key: string }) | null;
+  friends: MapFriend[];
+  cities: MapCity[];
   view: 'okoli' | 'stopy' | 'parta';
   pinMode: 'price' | 'count';
-  selectedCity?: string;
+  selectedCity?: string | null;
   onPub?: (id: string) => void;
-  onCity?: (name: string) => void;
+  onCity?: (key: string) => void;
+  onRegion?: (region: Region) => void;
   showRoute?: boolean;
   bottomPadding?: number;
-}) {
-  const ref = useRef<MapView>(null);
-  const target = pubById(targetId);
+};
 
+export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
+  { pins, me, target, friends, cities, view, pinMode, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0 },
+  handle,
+) {
+  const ref = useRef<MapView>(null);
+  const centered = useRef(false);
+  const [initialRegion] = useState(() => (me ? nearRegion(me) : COUNTRY_REGION));
+  const padding = useMemo(() => ({ top: 0, left: 0, right: 0, bottom: bottomPadding }), [bottomPadding]);
+  // Position fixes re-render the map; stable handlers let the marker lists skip them.
+  const handlers = useRef({ onPub, onCity });
   useEffect(() => {
-    const region = view === 'stopy' ? CITY_REGION : NEAR_REGION;
-    ref.current?.animateToRegion(region, 450);
+    handlers.current = { onPub, onCity };
+  });
+  const pressPub = useCallback((id: string) => handlers.current.onPub?.(id), []);
+  const pressCity = useCallback((key: string) => handlers.current.onCity?.(key), []);
+
+  useImperativeHandle(handle, () => ({ centerOn: (at) => ref.current?.animateToRegion(nearRegion(at), 450) }));
+
+  // Switching the layer moves the camera; later position fixes must not fight the user's pan.
+  useEffect(() => {
+    if (view === 'stopy') ref.current?.animateToRegion(COUNTRY_REGION, 450);
+    else if (me) ref.current?.animateToRegion(nearRegion(me), 450);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  const pins = useMemo(() => (view === 'stopy' ? [] : pubs), [pubs, view]);
+  useEffect(() => {
+    if (!me || centered.current || view === 'stopy') return;
+    centered.current = true;
+    ref.current?.animateToRegion(nearRegion(me), 0);
+    onRegion?.(nearRegion(me));
+  }, [me, onRegion, view]);
+
+  const shown = useMemo(() => (view === 'stopy' ? [] : pins), [pins, view]);
 
   return (
     <MapView
@@ -79,62 +95,94 @@ export function NvMap({
       provider={PROVIDER_GOOGLE}
       style={StyleSheet.absoluteFill}
       customMapStyle={GRAY_MAP}
-      initialRegion={NEAR_REGION}
+      initialRegion={initialRegion}
       showsUserLocation={false}
       showsCompass={false}
       showsPointsOfInterests={false}
       showsBuildings={false}
       toolbarEnabled={false}
-      mapPadding={{ top: 0, left: 0, right: 0, bottom: bottomPadding }}
+      mapPadding={padding}
       userInterfaceStyle="dark"
+      onRegionChangeComplete={(region) => onRegion?.(region)}
     >
       {view !== 'stopy' ? (
         <>
-          {showRoute && target ? (
-            <Polyline coordinates={dots(ME_COORD, target.coord)} strokeColor="#FFFFFFB3" strokeWidth={3} lineDashPattern={[1, 14]} lineCap="round" />
+          {showRoute && target && me ? (
+            <Polyline
+              coordinates={[
+                { latitude: me.lat, longitude: me.lng },
+                { latitude: target.lat, longitude: target.lng },
+              ]}
+              strokeColor="#FFFFFFB3"
+              strokeWidth={3}
+              lineDashPattern={[1, 14]}
+              lineCap="round"
+            />
           ) : null}
-          <Marker coordinate={ME_COORD} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
-            <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF1F' }, s.center]}>
-              <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: C.white, borderWidth: 3, borderColor: C.black }} />
-            </View>
-          </Marker>
+          {me ? (
+            <Marker coordinate={{ latitude: me.lat, longitude: me.lng }} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
+              <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.line }, s.center]}>
+                <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: C.white, borderWidth: 3, borderColor: C.black }} />
+              </View>
+            </Marker>
+          ) : null}
         </>
       ) : null}
-      {pins.map((p) => (
-        <Marker
-          key={`${p.id}-${p.id === targetId}-${pinMode}`}
-          coordinate={p.coord}
-          anchor={{ x: 0.5, y: 0.5 }}
-          onPress={() => onPub?.(p.id)}
-          tracksViewChanges={false}
-        >
-          <PubPin pub={p} target={p.id === targetId} mode={pinMode} />
-        </Marker>
-      ))}
-      {view === 'parta'
-        ? FRIENDS.filter((f) => f.live).map((f) => {
-            const pub = pubById(f.live?.pubId);
-            if (!pub) return null;
-            return (
-              <Marker key={f.id} coordinate={{ latitude: pub.coord.latitude + 0.0004, longitude: pub.coord.longitude }} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={false}>
-                <Person initial={f.initial} size={34} />
-              </Marker>
-            );
-          })
-        : null}
-      {view === 'stopy'
-        ? CITIES.map((c) => (
-            <Marker key={`${c.name}-${selectedCity === c.name}`} coordinate={c.coord} anchor={{ x: 0.5, y: 0.5 }} onPress={() => onCity?.(c.name)} tracksViewChanges={false}>
-              <CityPin name={c.name} count={c.evenings} active={selectedCity === c.name} />
-            </Marker>
-          ))
-        : null}
+      <PubMarkers pins={shown} targetKey={target?.key ?? null} pinMode={pinMode} onPress={pressPub} />
+      {view === 'parta' ? <FriendMarkers friends={friends} /> : null}
+      {view === 'stopy' ? <CityMarkers cities={cities} selected={selectedCity ?? null} onPress={pressCity} /> : null}
     </MapView>
   );
-}
+});
 
-export function PubPin({ pub, target, mode }: { pub: Pub; target: boolean; mode: 'price' | 'count' }) {
-  const label = mode === 'count' ? (pub.lastWeekBeers ? String(Math.round(pub.lastWeekBeers / 4)) : null) : pub.price ? `${pub.price} Kč` : null;
+const PubMarkers = memo(function PubMarkers({
+  pins,
+  targetKey,
+  pinMode,
+  onPress,
+}: {
+  pins: MapPin[];
+  targetKey: string | null;
+  pinMode: 'price' | 'count';
+  onPress: (id: string) => void;
+}) {
+  return pins.map((p) => (
+    // A marker that does not track view changes keeps its first snapshot, so a new look needs a new key.
+    <Marker
+      key={`${p.id}-${p.key === targetKey}-${pinMode}-${p.label ?? ''}`}
+      coordinate={{ latitude: p.lat, longitude: p.lng }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      onPress={() => onPress(p.id)}
+      tracksViewChanges={false}
+    >
+      <PubPin label={p.label} target={p.key === targetKey} mode={pinMode} />
+    </Marker>
+  ));
+});
+
+const FriendMarkers = memo(function FriendMarkers({ friends }: { friends: MapFriend[] }) {
+  return friends.map((f) => (
+    <Marker key={f.key} coordinate={{ latitude: f.lat + 0.0004, longitude: f.lng }} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={false}>
+      <Person initial={f.initial} size={34} />
+    </Marker>
+  ));
+});
+
+const CityMarkers = memo(function CityMarkers({ cities, selected, onPress }: { cities: MapCity[]; selected: string | null; onPress: (key: string) => void }) {
+  return cities.map((c) => (
+    <Marker
+      key={`${c.key}-${selected === c.key}`}
+      coordinate={{ latitude: c.lat, longitude: c.lng }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      onPress={() => onPress(c.key)}
+      tracksViewChanges={false}
+    >
+      <CityPin name={c.name} count={c.count} active={selected === c.key} />
+    </Marker>
+  ));
+});
+
+export function PubPin({ label, target, mode }: { label: string | null; target: boolean; mode: 'price' | 'count' }) {
   const showIcon = mode === 'count' || !label || target;
   if (target && !label) {
     return (
@@ -150,7 +198,7 @@ export function PubPin({ pub, target, mode }: { pub: Pub; target: boolean; mode:
         {
           height: target ? 38 : 30,
           borderRadius: target ? 19 : 15,
-          paddingHorizontal: target ? 14 : label ? 10 : 10,
+          paddingHorizontal: target ? 14 : 10,
           gap: target ? 6 : 4,
           backgroundColor: target ? C.yellow : C.white,
           borderWidth: target ? 2 : 0,
@@ -181,8 +229,4 @@ function CityPin({ name, count, active }: { name: string; count: number; active:
       </View>
     </View>
   );
-}
-
-export function nearestPub(): Pub {
-  return [...PUBS].sort((a, b) => a.distance - b.distance)[0];
 }

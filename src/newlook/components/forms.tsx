@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
+import { TextInput, View, type StyleProp, type TextInputInstance, type TextInputProps, type ViewStyle } from 'react-native';
+import { t } from '@/i18n';
 
 import { C, font, s } from '../theme';
 import { Icon, type IconName } from './Icon';
@@ -19,8 +20,9 @@ export function Input({
   multiline,
   focusRing = true,
   height = 48,
+  inputRef,
   ...rest
-}: TextInputProps & { icon?: IconName; style?: StyleProp<ViewStyle>; focusRing?: boolean; height?: number }) {
+}: TextInputProps & { icon?: IconName; style?: StyleProp<ViewStyle>; focusRing?: boolean; height?: number; inputRef?: React.Ref<TextInputInstance> }) {
   const [focused, setFocused] = useState(false);
   return (
     <View
@@ -33,7 +35,7 @@ export function Input({
           gap: 10,
           backgroundColor: C.card,
           borderWidth: 1,
-          borderColor: focused && focusRing ? '#FFC40099' : '#FFFFFF14',
+          borderColor: focused && focusRing ? C.yellowStrong : C.tint,
           alignItems: multiline ? 'flex-start' : 'center',
           paddingVertical: multiline ? 12 : 0,
         },
@@ -42,6 +44,7 @@ export function Input({
     >
       {icon ? <Icon name={icon} size={18} color={C.muted} /> : null}
       <TextInput
+        ref={inputRef}
         placeholderTextColor={C.muted}
         selectionColor={C.yellow}
         cursorColor={C.yellow}
@@ -50,7 +53,7 @@ export function Input({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         {...rest}
-        style={[font(15, 600), { flex: 1, padding: 0, textAlignVertical: multiline ? 'top' : 'center' }]}
+        style={[font(15, 600), { flex: 1, padding: 0, textAlignVertical: multiline ? 'top' : 'center' }, multiline && { alignSelf: 'stretch' }]}
       />
     </View>
   );
@@ -164,7 +167,7 @@ export function Ticket({
           </T>
         ) : null}
       </View>
-      <Perforation color={yellow ? '#0A0A0A40' : '#FFFFFF26'} ground={ground} />
+      <Perforation color={yellow ? '#0A0A0A40' : C.lineStrong} ground={ground} />
       <View style={{ paddingTop: 10, paddingHorizontal: 14, paddingBottom: 14 }}>{stub}</View>
     </View>
   );
@@ -185,7 +188,7 @@ export function Stepper({ value, onChange, min = 1, max = 20 }: { value: number;
 
 function StepBtn({ icon, onPress }: { icon: IconName; onPress: () => void }) {
   return (
-    <Press haptic onPress={onPress} accessibilityLabel={icon === 'plus' ? 'Přidat' : 'Ubrat'} style={[{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control }, s.center]}>
+    <Press haptic onPress={onPress} accessibilityLabel={icon === 'plus' ? t.nv.common.stepUp : t.nv.common.stepDown} style={[{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control }, s.center]}>
       <Icon name={icon} size={18} color={C.white} />
     </Press>
   );

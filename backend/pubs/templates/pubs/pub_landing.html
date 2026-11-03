@@ -1,0 +1,74 @@
+<!doctype html>
+{% load i18n %}
+<html lang="{{ LANGUAGE_CODE }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0A0A0A">
+    <meta name="robots" content="noindex, nofollow">
+    {% if unavailable %}
+    <title>{% trans "Hospodu nenašel | Na pivo" %}</title>
+    {% else %}
+    <title>{{ page_title }}</title>
+    <meta name="description" content="{{ description }}">
+    <link rel="canonical" href="{{ canonical_url }}">
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="{{ og_locale }}">
+    <meta property="og:site_name" content="Na pivo">
+    <meta property="og:title" content="{{ pub.name }}">
+    <meta property="og:description" content="{{ description }}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    {% endif %}
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <style>
+      :root { color-scheme: dark; --bg: #0A0A0A; --card: #161616; --yellow: #FFC400; --white: #F7F7F2; --muted: #8A8A86; --line: #FFFFFF14; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--white); font-family: system-ui, -apple-system, sans-serif; }
+      main { width: min(100% - 32px, 560px); margin: 0 auto; padding: max(28px, env(safe-area-inset-top)) 0 max(36px, env(safe-area-inset-bottom)); }
+      .brand { display: flex; align-items: center; gap: 10px; color: var(--yellow); font-size: 14px; font-weight: 800; letter-spacing: .12em; }
+      .brand img { width: 30px; height: 30px; border-radius: 8px; }
+      h1 { margin: 28px 0 6px; font-size: clamp(36px, 10vw, 52px); line-height: 1; letter-spacing: -.03em; }
+      .city { margin: 0 0 26px; color: var(--muted); font-size: 16px; }
+      h2 { margin: 26px 0 8px; font-size: 19px; }
+      .card { background: var(--card); border-radius: 20px; padding: 4px 16px; }
+      .row { display: flex; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 16px; }
+      .row:last-child { border-bottom: 0; }
+      .row span:last-child { font-weight: 700; text-align: right; }
+      .row small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+      .empty { color: var(--muted); font-size: 15px; padding: 14px 0; margin: 0; }
+      .open-app { display: flex; min-height: 56px; margin-top: 30px; align-items: center; justify-content: center; border-radius: 28px; background: var(--yellow); color: #0A0A0A; font-size: 17px; font-weight: 800; text-decoration: none; }
+      .secondary { display: flex; min-height: 52px; margin-top: 10px; align-items: center; justify-content: center; border-radius: 26px; background: #FFFFFF14; color: var(--white); font-size: 16px; font-weight: 700; text-decoration: none; }
+      .hint { margin: 16px 8px 0; color: var(--muted); font-size: 14px; line-height: 1.45; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand"><img src="/apple-touch-icon.png" alt="" width="30" height="30"><span>NA PIVO</span></div>
+      {% if unavailable %}
+      <h1>{% trans "Tuhle hospodu neznám." %}</h1>
+      <p class="city">{% trans "Možná už nefunguje, nebo je odkaz neúplný." %}</p>
+      {% else %}
+      <h1>{{ pub.name }}</h1>
+      {% if pub.city %}<p class="city">{{ pub.city }}</p>{% endif %}
+      <h2>{% trans "Na čepu" %}</h2>
+      <div class="card">
+        {% for beer in beers %}
+        <div class="row"><span>{{ beer.name }}{% if beer.volume %}<small>{{ beer.volume }}</small>{% endif %}</span><span>{{ beer.price }}</span></div>
+        {% empty %}
+        <p class="empty">{% trans "Co tu čepují, zatím nevím." %}</p>
+        {% endfor %}
+      </div>
+      {% if hours %}
+      <h2>{% trans "Otevíračka" %}</h2>
+      <div class="card">
+        {% for row in hours %}<div class="row"><span>{{ row.day }}</span><span>{{ row.hours }}</span></div>{% endfor %}
+      </div>
+      {% endif %}
+      <a class="open-app" href="{{ deep_link }}">{% trans "Otevřít v appce" %}</a>
+      <a class="secondary" href="{{ navigation_url }}" rel="noopener noreferrer">{% trans "Navigovat" %}</a>
+      <div class="hint">{% trans "Když se nic nestane, nainstaluj nebo aktualizuj Na pivo a klepni znovu." %}</div>
+      {% endif %}
+    </main>
+  </body>
+</html>

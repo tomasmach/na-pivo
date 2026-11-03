@@ -1,3 +1,3 @@
-import { SpendlikScreen } from '@/newlook/screens/kompas/PubFlows';
+import { SpendlikScreen } from '@/newlook/screens/kompas/AddPubScreens';
 
 export default SpendlikScreen;

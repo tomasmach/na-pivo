@@ -370,4 +370,36 @@ describe('useDevicePosition', () => {
     expect(hook.result.position).toEqual({ lat: 50.087, lng: 14.421, accuracyMeters: 12 });
     hook.unmount();
   });
+
+  it('keeps the same position for a repeated standing fix and moves on a real step', async () => {
+    let emitLocation:
+      | ((location: { coords: { latitude: number; longitude: number; accuracy: number } }) => void)
+      | undefined;
+    (Location.watchPositionAsync as jest.Mock).mockImplementation(async (_options, callback) => {
+      emitLocation = callback;
+      return { remove: jest.fn() };
+    });
+
+    const hook = renderDevicePositionHook({ enabled: true });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => emitLocation?.({ coords: { latitude: 50.087, longitude: 14.421, accuracy: 12 } }));
+    const first = hook.result.position;
+
+    // About 1 m away with the same accuracy: the screen must not redraw.
+    act(() => emitLocation?.({ coords: { latitude: 50.08701, longitude: 14.421, accuracy: 12.5 } }));
+    expect(hook.result.position).toBe(first);
+
+    // A clearly better accuracy is news even without moving.
+    act(() => emitLocation?.({ coords: { latitude: 50.087, longitude: 14.421, accuracy: 5 } }));
+    expect(hook.result.position).toEqual({ lat: 50.087, lng: 14.421, accuracyMeters: 5 });
+
+    // About 5 m north is a real step.
+    act(() => emitLocation?.({ coords: { latitude: 50.087045, longitude: 14.421, accuracy: 5 } }));
+    expect(hook.result.position).toEqual({ lat: 50.087045, lng: 14.421, accuracyMeters: 5 });
+
+    hook.unmount();
+  });
 });

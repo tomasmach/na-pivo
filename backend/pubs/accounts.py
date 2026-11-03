@@ -135,6 +135,7 @@ from pubs.models import (
     PubVisit,
     PushDevice,
     UserAddedPub,
+    XpEvent,
     account_deletion_fingerprint_candidates,
     account_merge_fingerprint,
     account_merge_fingerprint_matches,
@@ -1723,9 +1724,7 @@ def _merge_contest_entry_tree(
     source_entry: PhotoContestEntry, target_entry: PhotoContestEntry
 ) -> None:
     target_voters = set(
-        PhotoContestVote.objects.filter(contest=target_entry.contest)
-        .exclude(entry=source_entry)
-        .values_list("voter_id", flat=True)
+        PhotoContestVote.objects.filter(entry=target_entry).values_list("voter_id", flat=True)
     )
     for vote in PhotoContestVote.objects.filter(entry=source_entry).order_by("pk"):
         if vote.voter_id in target_voters:
@@ -1752,6 +1751,8 @@ def _merge_beer_photo_tree(
             "pub_cache_key",
             "pub_name",
             "pub_city",
+            "beer_name",
+            "beer_key",
         ):
             if not getattr(target_photo, field_name) and getattr(source_photo, field_name):
                 setattr(target_photo, field_name, getattr(source_photo, field_name))
@@ -1770,10 +1771,10 @@ def _merge_beer_photo_tree(
         entry.photo = target_photo
         entry.save(update_fields=["photo"])
         target_entries[entry.contest_id] = entry
-    # Never turn a reference to a PRIVATE source into a visible FRIENDS photo.
+    # Never turn a reference to a PRIVATE source into a visible shared photo.
     if not (
         source_photo.visibility == BeerPhoto.Visibility.PRIVATE
-        and target_photo.visibility == BeerPhoto.Visibility.FRIENDS
+        and target_photo.visibility != BeerPhoto.Visibility.PRIVATE
     ):
         _replace_published_night_reference(
             "photo_ids",
@@ -2174,17 +2175,9 @@ def _merge_community_events(source: Account, target: Account) -> None:
 
 
 def _merge_photo_contest_entries(source: Account, target: Account) -> None:
-    target_by_contest = {
-        row.contest_id: row for row in PhotoContestEntry.objects.filter(account=target)
-    }
-    for entry in PhotoContestEntry.objects.filter(account=source).order_by("pk"):
-        conflict = target_by_contest.get(entry.contest_id)
-        if conflict is not None:
-            _merge_contest_entry_tree(entry, conflict)
-            continue
-        entry.account = target
-        entry.save(update_fields=["account"])
-        target_by_contest[entry.contest_id] = entry
+    # An account may hold several entries per round, so every source entry
+    # simply moves. Entries of one photo were already merged with the photo.
+    PhotoContestEntry.objects.filter(account=source).update(account=target)
 
 
 def _merge_tour_invites(source: Account, target: Account) -> None:
@@ -2234,6 +2227,18 @@ def _merge_beer_watches(source: Account, target: Account) -> None:
         update_fields += ["beer_watch_lat", "beer_watch_lng", "beer_watch_located_at"]
     if update_fields:
         target.save(update_fields=update_fields)
+
+
+def _merge_nv_rows(source: Account, target: Account) -> None:
+    """The claimed account keeps its own answer when both voted or joined the same evening."""
+    from pubs.models import BeerStyleVote, FriendHomeCheckin
+
+    _delete_or_move_account_rows(
+        BeerStyleVote, source=source, target=target, unique_fields=("product_id",)
+    )
+    _delete_or_move_account_rows(
+        FriendHomeCheckin, source=source, target=target, unique_fields=("activity_id",)
+    )
 
 
 def _merge_anonymous_account(source: Account | None, target: Account) -> None:
@@ -2517,7 +2522,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         source=source,
         target=target,
         account_field="voter",
-        unique_fields=("contest_id",),
+        unique_fields=("entry_id",),
     )
     PhotoContestVote.objects.filter(voter=target, entry__account=target).delete()
 
@@ -2650,6 +2655,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         unique_fields=("push_token",),
     )
     _merge_beer_watches(source, target)
+    _merge_nv_rows(source, target)
 
     PubCommunityData.objects.filter(account=source).update(account=target)
     PubBeerBrand.objects.filter(account=source).update(account=target)
@@ -2658,6 +2664,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     ClientEvent.objects.filter(account=source).update(account=target)
     ContentReport.objects.filter(reporter=source).update(reporter=target)
     ContentReport.objects.filter(target_account=source).update(target_account=target)
+    XpEvent.objects.filter(account=source).update(account=target)
     _merge_usage_stats(source, target)
 
     # Future Account-owned models must be added above. Failing the transaction

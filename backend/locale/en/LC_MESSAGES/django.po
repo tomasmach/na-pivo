@@ -641,6 +641,9 @@ msgstr "Menu scanning has used up its limit for today. Try tomorrow."
 msgid "Chybí fotka menu."
 msgstr "The menu photo is missing."
 
+msgid "Chybí fotka etikety."
+msgstr "The label photo is missing."
+
 msgid "Chybí parametr 'nickname'."
 msgstr "The 'nickname' parameter is missing."
 
@@ -1184,6 +1187,9 @@ msgstr "Beer name must have at least 2 characters."
 msgid "Název piva nejde kombinovat se značkami piva."
 msgstr "Beer name cannot be combined with beer brands."
 
+msgid "Druh piva nejde kombinovat s konkrétním pivem."
+msgstr "Beer kind cannot be combined with a specific beer."
+
 msgid "Pošli lat i lng zároveň."
 msgstr "Send lat and lng together."
 
@@ -1581,3 +1587,134 @@ msgstr "%(hours)s h ago"
 #, python-format
 msgid "%(beer)s je na čepu %(pub)s, %(distance)s km, doplnil někdo z komunity %(age)s"
 msgstr "%(beer)s is on tap at %(pub)s, %(distance)s km away, added by someone from the community %(age)s"
+
+msgid "Pondělí"
+msgstr "Monday"
+
+msgid "Úterý"
+msgstr "Tuesday"
+
+msgid "Středa"
+msgstr "Wednesday"
+
+msgid "Čtvrtek"
+msgstr "Thursday"
+
+msgid "Pátek"
+msgstr "Friday"
+
+msgid "Sobota"
+msgstr "Saturday"
+
+msgid "Neděle"
+msgstr "Sunday"
+
+msgid "Zavřeno"
+msgstr "Closed"
+
+#, python-format
+msgid "%(name)s | Na pivo"
+msgstr "%(name)s | Na pivo"
+
+#, python-format
+msgid "Mrkni, co čepují v hospodě %(name)s, a otevři ji v Na pivo."
+msgstr "See what %(name)s has on tap, and open it in Na pivo."
+
+msgid "Hospodu nenašel | Na pivo"
+msgstr "Pub not found | Na pivo"
+
+msgid "Tuhle hospodu neznám."
+msgstr "I don't know this pub."
+
+msgid "Možná už nefunguje, nebo je odkaz neúplný."
+msgstr "Maybe it closed, or the link is incomplete."
+
+msgid "Na čepu"
+msgstr "On tap"
+
+msgid "Co tu čepují, zatím nevím."
+msgstr "I don't know what they pour here yet."
+
+msgid "Otevíračka"
+msgstr "Opening hours"
+
+msgid "Navigovat"
+msgstr "Directions"
+
+msgid "Napiš, o jaké pivo jde."
+msgstr "Say which beer you mean."
+
+msgid "Tenhle plán už neplatí."
+msgstr "This plan is no longer on."
+
+msgid "Máš naplánováno dost. Nějaký plán nejdřív zruš."
+msgstr "You have plenty planned. Cancel one of your plans first."
+
+msgid "Změna plánu"
+msgstr "Plan changed"
+
+#, python-format
+msgid "%(name)s mění plán: %(place)s, %(day)s v %(time)s."
+msgstr "%(name)s changed the plan: %(place)s, %(day)s at %(time)s."
+
+#, python-format
+msgid "%(name)s zve na pivo: %(place)s, %(day)s v %(time)s. Přidáš se?"
+msgstr "%(name)s invites you for a beer: %(place)s, %(day)s at %(time)s. Coming?"
+
+msgid "Plán se ruší"
+msgstr "Plan called off"
+
+#, python-format
+msgid "%(name)s ruší %(place)s, %(day)s v %(time)s."
+msgstr "%(name)s called off %(place)s, %(day)s at %(time)s."
+
+msgid "Jsi neviditelný, nikomu nic nepípne."
+msgstr "You are invisible, so nobody gets a ping."
+
+msgid "Připomenutí šlo před chvílí. Dej jim chvíli."
+msgstr "You sent a reminder a moment ago. Give them a while."
+
+msgid "Dorazíš?"
+msgstr "Coming?"
+
+#, python-format
+msgid "%(name)s se ptá: %(place)s, %(day)s v %(time)s."
+msgstr "%(name)s is asking: %(place)s, %(day)s at %(time)s."
+
+msgid "Tohle je tvůj večer, jsi tu doma."
+msgstr "This is your evening, you are the host."
+
+msgid "Na tenhle večer je ještě brzo."
+msgstr "It is too early for this evening."
+
+msgid "Cinknutí šlo před chvílí. Zkus to za půl hodiny."
+msgstr "You pinged a moment ago. Try again in half an hour."
+
+#, python-format
+msgid "%(name)s ti cinká"
+msgstr "%(name)s is pinging you"
+
+msgid "Chybíš u stolu. Dáš si jedno?"
+msgstr "We miss you at the table. Up for one?"
+
+msgid "Profil nenalezen | Na pivo"
+msgstr "Profile not found | Na pivo"
+
+#, python-format
+msgid "@%(nick)s na Na pivo"
+msgstr "@%(nick)s on Na pivo"
+
+msgid "Tenhle profil tu není."
+msgstr "This profile is not here."
+
+msgid "Buď je soukromý, nebo neexistuje."
+msgstr "It is either private or does not exist."
+
+msgid "piv celkem"
+msgstr "beers in total"
+
+msgid "level Mapéra"
+msgstr "Mapper level"
+
+msgid "Jen čísla z večerů zveřejněných pro všechny."
+msgstr "Only numbers from evenings shared publicly."

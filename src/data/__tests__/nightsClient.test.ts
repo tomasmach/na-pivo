@@ -117,6 +117,7 @@ describe('night wire and parser', () => {
       rounds: 0,
       myRound: false,
       isMine: false,
+      heroPhotoUrl: null,
     });
   });
 

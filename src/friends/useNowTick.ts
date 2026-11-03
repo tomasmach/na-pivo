@@ -13,12 +13,7 @@
 import { useSyncExternalStore } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 
-import { intlLocale, t } from '@/i18n';
-
 const TICK_MS = 60_000;
-const MINUTE_MS = 60_000;
-const HOUR_MS = 3_600_000;
-const DAY_MS = 86_400_000;
 
 // --- Singleton ticker store ---------------------------------------------------
 
@@ -88,53 +83,4 @@ function getSnapshot(): number {
  */
 export function useNowTick(): number {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-// --- Formatting helpers -------------------------------------------------------
-
-function parseMs(iso: string): number | null {
-  const ms = Date.parse(iso);
-  return Number.isFinite(ms) ? ms : null;
-}
-
-/**
- * "před 20 min" — how long ago `iso` was, relative to `now`.
- * Returns "" for an unparseable timestamp. Falls back to a short local date
- * for anything older than a week.
- */
-export function formatRelative(iso: string, now: number = Date.now()): string {
-  const ms = parseMs(iso);
-  if (ms === null) return '';
-
-  const diff = now - ms;
-  if (diff < MINUTE_MS) return t.relativeTime.now;
-  if (diff < HOUR_MS) return t.relativeTime.minutesAgo(Math.floor(diff / MINUTE_MS));
-  if (diff < DAY_MS) return t.relativeTime.hoursAgo(Math.floor(diff / HOUR_MS));
-  if (diff < 7 * DAY_MS) return t.relativeTime.daysAgo(Math.floor(diff / DAY_MS));
-
-  return new Date(ms).toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
-}
-
-/**
- * "ještě 2 h 40 min" — time left until `iso`, relative to `now`.
- * Returns "" for an unparseable or already-passed timestamp (the caller hides
- * an expired card on its own).
- */
-export function formatExpiry(iso: string, now: number = Date.now()): string {
-  const ms = parseMs(iso);
-  if (ms === null) return '';
-
-  const remaining = ms - now;
-  if (remaining <= 0) return '';
-  if (remaining < MINUTE_MS) return t.relativeTime.soon;
-
-  const hours = Math.floor(remaining / HOUR_MS);
-  const minutes = Math.floor((remaining % HOUR_MS) / MINUTE_MS);
-
-  if (hours > 0) {
-    return minutes > 0
-      ? t.relativeTime.hoursMinutesLeft(hours, minutes)
-      : t.relativeTime.hoursLeft(hours);
-  }
-  return t.relativeTime.minutesLeft(minutes);
 }

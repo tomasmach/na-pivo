@@ -29,7 +29,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { uploadBeerPhoto, type BeerPhotoVisibility } from './beerPhotosClient';
 import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
-import { enterPhotoContest } from './photoContestClient';
+import { addPhotoContestEntry, enterPhotoContest } from './photoContestClient';
 import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 
 const STORAGE_KEY = 'na-pivo-beer-photos-queue';
@@ -55,6 +55,9 @@ export interface BeerPhotoUploadOp {
    * on the upload op makes "save + enter" work offline and across app restarts.
    */
   enterContest?: boolean;
+  /** 'add' keeps my other FotoPivař entries; absent means the old replace. */
+  contestMode?: 'add';
+  beerName?: string;
 }
 
 function isQueueItem(value: unknown): value is BeerPhotoUploadOp {
@@ -66,8 +69,10 @@ function isQueueItem(value: unknown): value is BeerPhotoUploadOp {
     typeof op.localUri === 'string' &&
     typeof op.caption === 'string' &&
     typeof op.takenAt === 'string' &&
-    (op.visibility === 'private' || op.visibility === 'friends') &&
-    (op.enterContest === undefined || typeof op.enterContest === 'boolean')
+    (op.visibility === 'private' || op.visibility === 'friends' || op.visibility === 'public') &&
+    (op.enterContest === undefined || typeof op.enterContest === 'boolean') &&
+    (op.contestMode === undefined || op.contestMode === 'add') &&
+    (op.beerName === undefined || typeof op.beerName === 'string')
   );
 }
 
@@ -148,13 +153,17 @@ async function deliver(op: BeerPhotoUploadOp, signal: AbortSignal): Promise<Queu
       pubCity: op.pubCity,
       visibility: op.visibility,
       takenAt: op.takenAt,
+      beerName: op.beerName,
     },
     signal,
   );
   if (result.status === 'ok') {
     let photo = result.photo;
     if (op.enterContest && photo.id) {
-      const contestResult = await enterPhotoContest(photo.id, signal);
+      const contestResult =
+        op.contestMode === 'add'
+          ? await addPhotoContestEntry(photo.id, signal)
+          : await enterPhotoContest(photo.id, signal);
       if (!contestResult.ok && shouldRetryContestEntry(contestResult.code)) {
         // Keep both the durable file and queue op. Re-upload is idempotent, so
         // the next foreground flush can retry the contest intent safely.

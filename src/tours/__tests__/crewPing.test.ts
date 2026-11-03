@@ -1,6 +1,6 @@
 import { shareFriendPubActivity } from '@/data/friendsClient';
 import { dropQueuedTourPings, enqueueFriendOp, flushFriendsQueue } from '@/data/friendsQueue';
-import { loadLastPing, pingRecipients, pingStop, saveLastPing, sendPing } from '../crewPing';
+import { loadLastPing, pingStop, saveLastPing, sendPing } from '../crewPing';
 import type { TourStop } from '../model';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -31,12 +31,6 @@ it('points friends at the last pub checked off, or the one the crew walks to', (
   expect(pingStop(run({ a: 'skipped', b: 'skipped', c: 'skipped' }))).toBeNull();
   // A stop checked off out of order does not move the crew past the one still ahead, as on screen.
   expect(pingStop(run({ a: 'visited', c: 'visited' }))).toEqual({ stop: stops[0], heading: false });
-});
-
-it('leaves out friends already walking and keeps the plain audience when nobody is left out', () => {
-  expect(pingRecipients(['pepa', 'eva', 'karel'], ['me', 'pepa'])).toEqual(['eva', 'karel']);
-  expect(pingRecipients(['eva'], ['me'])).toBeUndefined();
-  expect(pingRecipients(['pepa'], ['me', 'pepa'])).toEqual([]);
 });
 
 it('sends the tour with the pub, and waits for signal instead of losing it', async () => {

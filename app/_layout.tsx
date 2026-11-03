@@ -4,6 +4,7 @@ import { hideAsync, preventAutoHideAsync } from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, Linking, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState } from 'react';
 
 import { fontAssets } from '@/theme/fonts';
@@ -57,7 +58,7 @@ import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useReleaseStore } from '@/stores/releaseStore';
-import { useTallyStore } from '@/stores/tallyStore';
+import { onTallySessionClosed, useTallyStore } from '@/stores/tallyStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import {
   consumeInitialTourInviteTap,
@@ -72,17 +73,6 @@ import {
 import { syncBeerWatchLocation } from '@/beerWatch/beerWatchLocation';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
-import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
-import { ContestResultsModal } from '@/photos/ContestResultsModal';
-import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboardingModal';
-import { NicknameNudgeModal } from '@/components/shared/NicknameNudgeModal';
-import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
-import { AppDialogScreen } from '@/components/shared/AppDialog';
-import { WindowSafeAreaProvider } from '@/components/shared/Modal';
-import { RouteScreen } from '@/navigation/TabScreen';
-import { AppReviewPromptGate } from '@/reviews/AppReviewPromptGate';
-import { Toast } from '@/components/shared/Toast';
-import { BadgeHost } from '@/profile/BadgeHost';
 import {
   cancelPendingPubReminder,
   consumeInitialPubReminderTap,
@@ -108,19 +98,18 @@ import {
 } from '@/liveActivity/liveBeerActivity';
 import { initializeHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransitSync';
-import { useBookLayout } from '@/layout/bookLayout';
-import { noteTopPathname, openDetail } from '@/layout/openDetail';
-import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
+import { FontFiles as NewLookFontFiles } from '@/newlook/theme';
+import { hydratePubsSnapshot } from '@/data/pubs';
+import { autopublishClosedNight } from '@/data/nightAutopublish';
 import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
 
-// The clickable mock of the redesign (app/nv) replaces the start screen.
-const NEW_LOOK = process.env.EXPO_PUBLIC_NEW_LOOK === '1';
-
+/** Every route outside app/nv falls back to its start, so a deep link into /nv survives a cold start. */
 function NewLookGate() {
   const router = useRouter();
+  const pathname = usePathname();
   useEffect(() => {
-    if (NEW_LOOK) router.replace('/nv' as Href);
-  }, [router]);
+    if (!pathname.startsWith('/nv')) router.replace('/nv' as Href);
+  }, [pathname, router]);
   return null;
 }
 
@@ -138,13 +127,13 @@ function OnboardingGate() {
 
   useEffect(() => {
     if (
-      !NEW_LOOK &&
       decision === 'show' &&
-      pathname !== '/onboarding' &&
-      !pathname.startsWith('/parta/pozvanka') &&
-      !pathname.startsWith('/t/')
+      pathname.startsWith('/nv') &&
+      pathname !== '/nv/onboarding' &&
+      !pathname.startsWith('/nv/pozvanka-do-party') &&
+      !pathname.startsWith('/nv/tour-verejna')
     ) {
-      router.replace('/onboarding' as Href);
+      router.replace('/nv/onboarding' as Href);
     }
   }, [decision, pathname, router]);
 
@@ -228,22 +217,21 @@ const launchInviteStashed = Linking.getInitialURL()
   })
   .catch(() => undefined);
 
+// The first screen is the map; its saved pubs load while the fonts do.
+void hydratePubsSnapshot();
+
+// The first screen draws in the new look's fonts; loading them behind the
+// splash saves a blank frame between the splash and the first tab.
+const startupFonts = { ...fontAssets, ...NewLookFontFiles };
+
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts(fontAssets);
+  const [fontsLoaded, fontError] = useFonts(startupFonts);
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   const [telemetryReady, setTelemetryReady] = useState(false);
-  // A wide window opens these in a tab's right half; when one still arrives as
-  // a route, it moves there without a slide.
-  const { wide } = useBookLayout();
-  const detailAnimation = wide ? 'none' : undefined;
-  // A card that pulls down to close (DESIGN.md §17.4). An open Duo would centre
-  // it in the window, so there it stays a full-window page (§17.6).
-  const sheet = { presentation: wide ? 'fullScreenModal' : 'modal', animation: 'slide_from_bottom' } as const;
   useEffect(() => {
     pathnameRef.current = pathname;
-    noteTopPathname(pathname);
   }, [pathname]);
   // Hold the splash until the first-run decision resolves too, so a fresh
   // install fades straight into the onboarding instead of flashing the compass.
@@ -270,19 +258,20 @@ export default function RootLayout() {
   useEffect(() => {
     // Tapping a "nejsi v hospodě?" reminder jumps straight to the beer counter.
     // Handle both a running app (listener) and a cold start from the tap.
-    const navigateToCounter = () => router.push('/beer' as Href);
+    const navigateToCounter = () => router.push('/nv/stamgast' as Href);
     // A friend push tap forces a Parta refresh (and scroll to its payload row).
     const navigateToFriends = (payload?: FriendTapPayload) => {
       usePartaSignalStore.getState().requestRefresh(payload ?? undefined);
-      router.push('/friends' as Href);
+      router.push('/nv/parta' as Href);
     };
     // A tour reminder opens its plan; a plan deleted since falls back to the list.
     const navigateToTour = (planId: string | null) =>
-      router.push((planId ? { pathname: '/tours/[id]', params: { id: planId } } : '/tours') as Href);
+      router.push((planId ? { pathname: '/nv/tour-pruchod', params: { id: planId } } : '/nv/tour') as Href);
     // A tour invite tap opens the tour's link screen, where the friend says Jdu or Nejdu.
-    const openTourInvite = (token: string) => router.push(`/t/${token}` as Href);
+    const openTourInvite = (token: string) =>
+      router.push({ pathname: '/nv/tour-verejna', params: { token } } as Href);
     const openBeerOnTapPub = ({ key, name, lat, lng }: BeerOnTapPub) =>
-      openDetail(router, { kind: 'pub', params: { key, name, lat: String(lat), lng: String(lng) } });
+      router.push({ pathname: '/nv/hospoda/[id]', params: { id: key, name, lat: String(lat), lng: String(lng) } } as Href);
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
       void consumeInitialBeerCountReminderTap(navigateToCounter);
@@ -303,6 +292,9 @@ export default function RootLayout() {
       beerOnTapSubscription.remove();
     };
   }, [fontsLoaded, fontError, router]);
+
+  // A closed evening may publish itself to Výčep when the account asked for it.
+  useEffect(() => onTallySessionClosed(autopublishClosedNight), []);
 
   useEffect(() => {
     const subscription = Linking.addEventListener('url', ({ url }) => {
@@ -440,7 +432,7 @@ export default function RootLayout() {
         // offline/server failure keeps the previous state intact.
         void useAccountStore.getState().resumeSession().then((result) => {
           if (result === 'invalid') {
-            if (!pathnameRef.current.startsWith('/auth')) router.push('/auth' as Href);
+            if (!pathnameRef.current.startsWith('/nv/prihlaseni')) router.push('/nv/prihlaseni' as Href);
             return;
           }
           // Retry a deferred history seed only after resume has settled.
@@ -516,147 +508,27 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.stout }}>
-      <WindowSafeAreaProvider>
+      <SafeAreaProvider>
         <StatusBar style="light" />
         <Stack
-          screenLayout={({ route, children }) => (
-            <AppDialogScreen>
-              {/* The tabs narrow each tab themselves, leaving the system tab bar where it is. */}
-              {route.name === '(tabs)' || route.name === 'nv' ? children : <RouteScreen>{children}</RouteScreen>}
-            </AppDialogScreen>
-          )}
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: Colors.stout },
             animation: 'fade',
           }}
         >
-          <Stack.Screen name="(tabs)" />
           <Stack.Screen name="nv" options={{ animation: 'none', gestureEnabled: false }} />
-          <Stack.Screen name="pub-search" options={{ animation: 'none' }} />
-          <Stack.Screen
-            name="onboarding"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'fade',
-              // One-way door: finish or skip, never swipe away.
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen name="settings" options={sheet} />
-          <Stack.Screen name="home-point" options={sheet} />
-          <Stack.Screen
-            name="celebration"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'fade',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen name="about" options={sheet} />
-          <Stack.Screen name="privacy" options={sheet} />
-          <Stack.Screen name="report" options={sheet} />
-          <Stack.Screen name="contribute" options={sheet} />
-          <Stack.Screen name="add-pub" options={sheet} />
-          <Stack.Screen name="suggest-pub-event" options={sheet} />
-          <Stack.Screen
-            name="evening"
-            options={{ ...sheet, animation: detailAnimation ?? 'slide_from_bottom' }}
-          />
-          <Stack.Screen
-            name="pub"
-            options={{
-              animation: detailAnimation ?? 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          />
-          <Stack.Screen
-            name="beer-detail"
-            options={{
-              animation: 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          />
-          <Stack.Screen
-            name="vycep"
-            options={{
-              animation: 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          />
-          <Stack.Screen name="auth/index" options={sheet} />
-          <Stack.Screen name="auth/reset" options={sheet} />
-          <Stack.Screen name="auth/verify" options={sheet} />
-          <Stack.Screen name="account" options={sheet} />
-          <Stack.Screen name="profile/privacy" options={sheet} />
-          <Stack.Screen name="profile/edit" options={sheet} />
-          <Stack.Screen
-            name="profile/parta"
-            options={{
-              // A back-navigable "place" (party management), pushed like a detail
-              // screen with the native right-edge back-swipe.
-              animation: 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          />
-          <Stack.Screen
-            name="profile/beer-watches"
-            options={{
-              animation: 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          />
-          <Stack.Screen
-            name="profile/badges"
-            options={{
-              animation: 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          />
-          <Stack.Screen
-            name="leaderboards"
-            options={{
-              // Global leaderboards — a back-navigable "place" like /profile/parta.
-              animation: 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          />
-          <Stack.Screen name="parta/pozvanka" options={sheet} />
-          <Stack.Screen
-            name="parta/[id]"
-            options={{
-              // A back-navigable "place" (friend profile), pushed like a detail
-              // screen with the native right-edge back-swipe.
-              animation: detailAnimation ?? 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          />
-          <Stack.Screen name="photo/[key]" options={sheet} />
-          <Stack.Screen name="photo-contest" options={sheet} />
         </Stack>
         <OnboardingGate />
         <NewLookGate />
-        <PaneRouteMigrator />
-        {NEW_LOOK ? null : (
-          <>
-            <WhatsNewModal />
-            <ContestResultsModal />
-            <PubReminderOnboardingModal />
-            <NicknameNudgeModal />
-            <PubReminderEnableFailureModal />
-            <AppReviewPromptGate />
-          </>
-        )}
         <ProductTelemetryTracker
           enabled={
             telemetryReady &&
             onboardingDecided &&
-            !(onboardingDecision === 'show' && pathname !== '/onboarding')
+            !(onboardingDecision === 'show' && pathname !== '/nv/onboarding')
           }
         />
-        {NEW_LOOK ? null : <BadgeHost />}
-        {NEW_LOOK ? null : <Toast />}
-      </WindowSafeAreaProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
