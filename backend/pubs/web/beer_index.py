@@ -13,13 +13,13 @@ from datetime import date, timedelta
 
 from django.conf import settings
 from django.core.cache import cache
-from django.http import Http404, HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.utils import formats, translation
 from django.utils.translation import gettext
 
 from pubs.api.pub_beers_views import _merged_aliases, city_name
 from pubs.api.views import _globally_reported_pub_cache_keys
-from pubs.home_views import AUTHOR, canonical_host
+from pubs.home_views import AUTHOR, HOME_OG_PATH, canonical_host
 from pubs.models import BeerPage, PubPriceIndex, PubPriceSnapshot
 from pubs.price_map import _SOURCES, MIN_PUBS, WINDOW_DAYS, _confirmed_since, _in_czechia, _stats
 from pubs.regions import REGION_CODES, region_of
@@ -390,7 +390,8 @@ def beer_index_og(request: HttpRequest, lang: str = "cs") -> HttpResponse:
         return response
     data = _index()
     if not data or not data["country"]:
-        raise Http404
+        # Without an index yet, a link shared earlier still shows the general picture.
+        return HttpResponseRedirect(HOME_OG_PATH)
     image = cache.get_or_set(f"web:beer-index:og:{data['day']}:{lang}", lambda: _og(data, lang), 86400)
     response = HttpResponse(image, content_type="image/png")
     response["Cache-Control"] = "public, max-age=86400"

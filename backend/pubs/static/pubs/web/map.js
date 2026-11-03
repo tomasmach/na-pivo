@@ -65,8 +65,8 @@ function text(className, value) {
   return span;
 }
 
-function pinElement(frame, kind, point, index) {
-  const link = point.url && kind !== "decor";
+function pinElement(frame, kind, point, index, inert) {
+  const link = point.url && !inert;
   const el = document.createElement(link ? "a" : "span");
   if (link) {
     el.href = point.url;
@@ -155,7 +155,8 @@ function initialView(lib, data, box) {
 
 async function start(frame) {
   const data = JSON.parse(frame.dataset.map);
-  const decor = data.kind === "decor";
+  // A map inside a link (a whole card is one) takes no clicks of its own.
+  const inert = data.kind === "decor" || Boolean(frame.closest("a"));
   const box = document.createElement("div");
   box.className = "np-map__live";
   frame.append(box);
@@ -171,7 +172,7 @@ async function start(frame) {
     style: STYLE,
     transformStyle: restyle,
     attributionControl: false,
-    interactive: !decor,
+    interactive: !inert,
     scrollZoom: false,
     dragRotate: false,
     pitchWithRotate: false,
@@ -199,7 +200,7 @@ async function start(frame) {
   });
 
   const pins = data.points.map((point, index) => {
-    const el = pinElement(frame, data.kind, point, index);
+    const el = pinElement(frame, data.kind, point, index, inert);
     const options = data.kind === "route" ? { element: el, anchor: "left", offset: [-15, 0] } : { element: el };
     new lib.Marker(options).setLngLat([point.lng, point.lat]).addTo(map);
     return el;
@@ -225,8 +226,14 @@ async function start(frame) {
     declutter(box, order);
   });
   map.on("moveend", () => declutter(box, order));
-  map.on("resize", () => declutter(box, order));
-  if (!decor) {
+  // MapLibre resizes the canvas at once but draws on the next frame, so a frame
+  // painted in between (a rotated phone, a page capture) shows the old drawing in a
+  // corner of the cleared canvas. Drawing right away leaves no such frame.
+  map.on("resize", () => {
+    map.redraw();
+    declutter(box, order);
+  });
+  if (!inert) {
     zoomButtons(frame, box, map);
     gateGestures(box, map);
   }

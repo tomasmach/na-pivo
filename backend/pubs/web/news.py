@@ -217,7 +217,7 @@ def _row(item: dict, lang: str) -> dict:
         label, value = gettext("Už nečepují"), ""
     elif kind == "pub":
         title = gettext("Nová hospoda: %(pub)s") % values
-        label, value = gettext("Nová hospoda"), ""
+        label, value = "", ""
     else:
         title = gettext("%(pub)s: %(title)s") % values
         label = gettext("Akce")

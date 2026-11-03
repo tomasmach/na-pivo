@@ -23,12 +23,12 @@
     {% translate "Počet hospod" as stops_label %}
     {% include "web/components/chips.html" with items=stop_chips label=stops_label %}
   </div>
-  <span class="np-small np-muted">{% translate "Řadit: nejvíc prošlé" %}</span>
+  <span class="np-small np-muted">{% if featured and not featured.people %}{% translate "Řadit: nejnovější" %}{% else %}{% translate "Řadit: nejvíc prošlé" %}{% endif %}</span>
 </div>
 
 {% if featured %}
 <a class="tr-featured" href="{{ featured.url }}">
-  <span class="tr-featured__map">{% include "web/public/_route.html" with map=featured.map_big %}</span>
+  {% translate "Mapa trasy" as map_label %}<span class="tr-featured__map">{% include "web/components/map.html" with live=featured.live_map fallback="web/public/_route.html" map=featured.map_big label=map_label %}</span>
   <span class="tr-featured__body">
     <span class="tr-kicker">{% if featured.people %}{% translate "Nejprošlejší trasa" %}{% else %}{% translate "Nejnovější trasa" %}{% endif %}</span>
     <span class="tr-featured__title">{{ featured.title }}</span>

@@ -1,6 +1,13 @@
-// Share a public page: the phone's share sheet, or the link copied on a computer.
 (function () {
   "use strict";
+  // A link to the app leads to the App Store; an Android phone gets Google Play instead.
+  if (/Android/i.test(navigator.userAgent)) {
+    document.querySelectorAll("a[data-play]").forEach(function (link) {
+      link.href = link.getAttribute("data-play");
+    });
+  }
+
+  // Share a public page: the phone's share sheet, or the link copied on a computer.
   document.querySelectorAll("[data-share]").forEach(function (button) {
     button.addEventListener("click", async function () {
       var url = button.getAttribute("data-share");

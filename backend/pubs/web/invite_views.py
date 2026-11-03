@@ -154,6 +154,8 @@ def _people(activity: FriendPubActivity, mine: FriendPlanGuest | None) -> dict:
     if len(names) > len(shown):
         shown = [*shown, gettext("%(count)s další") % {"count": len(names) - len(shown)}]
     rows = list(going)
+    if maybe:
+        rows.append({"name": gettext("%(count)s další") % {"count": maybe}, "face": f"+{maybe}", "status": gettext("možná")})
     me_going = mine is not None and mine.response == GOING
     if mine is not None:
         status = {GOING: gettext("jde"), MAYBE: gettext("možná"), CANT: gettext("nejde")}[mine.response]

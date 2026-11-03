@@ -99,7 +99,7 @@
       <ul class="iv-who__list">
         {% for person in people.rows %}
           <li class="iv-who__row">
-            <span class="iv-face iv-face--row{% if person.you %} iv-face--you{% elif person.host %} iv-face--host{% endif %}" aria-hidden="true">{{ person.name|slice:":1"|upper }}</span>
+            <span class="iv-face iv-face--row{% if person.you %} iv-face--you{% elif person.host %} iv-face--host{% endif %}" aria-hidden="true">{% if person.face %}{{ person.face }}{% else %}{{ person.name|slice:":1"|upper }}{% endif %}</span>
             <span class="iv-who__name">{{ person.name }}{% if person.note %} <span class="iv-who__note">{{ person.note }}</span>{% endif %}</span>
             <span class="iv-who__status">{{ person.status }}</span>
           </li>

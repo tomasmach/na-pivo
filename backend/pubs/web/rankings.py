@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.db.models import Sum
 from django.http import HttpRequest, HttpResponse
 from django.utils import formats, timezone
-from django.utils.translation import gettext, ngettext
+from django.utils.translation import gettext, ngettext, npgettext
 
 from pubs.beer_pages import page_path
 from pubs.beer_ranking import POURING_FRESH_DAYS, STYLES
@@ -209,7 +209,7 @@ def rankings(request: HttpRequest) -> HttpResponse:
             **row,
             "position": index,
             "avg_label": decimal(row["avg"]),
-            "count_label": ngettext("%(n)s hodnocení", "%(n)s hodnocení", row["count"]) % {"n": thousands(row["count"])},
+            "count_label": npgettext("rankings row", "%(n)s hodnocení", "%(n)s hodnocení", row["count"]) % {"n": thousands(row["count"])},
             "count_short": thousands(row["count"]),
             "pubs_line": _pubs_line(row),
             "url": page_path(BeerPage.Kind.BEER, row["key"], request.web_lang) if row["has_page"] else "",
@@ -234,7 +234,7 @@ def rankings(request: HttpRequest) -> HttpResponse:
         )
         updated = gettext("přepočítáno %(when)s") % {"when": when}
 
-    crumbs, crumb_graph = breadcrumbs([(gettext("Žebříčky"), base), (gettext("Piva"), url())])
+    crumbs, crumb_graph = breadcrumbs([("Na pivo", web_reverse("home")), (gettext("Žebříčky"), base), (gettext("Piva"), url())])
     graph = [crumb_graph]
     if rows:
         graph.append({
@@ -253,7 +253,7 @@ def rankings(request: HttpRequest) -> HttpResponse:
             "h1": title,
             "ratings_label": ngettext(
                 "Z %(n)s hodnocení z appky Na pivo", "Z %(n)s hodnocení z appky Na pivo", data["ratings"]
-            ) % {"n": thousands(data["ratings"])},
+            ) % {"n": thousands(data["ratings"])} if data["ratings"] else "",
             "updated": updated,
             "style_chips": style_chips,
             "region_chips": region_chips,

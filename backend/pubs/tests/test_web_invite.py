@@ -126,6 +126,9 @@ def test_guest_sees_who_goes_like_an_invitee(party):
     html = Client().get(_path(plan["invite_url"])).content.decode()
     assert "Marek a Jana jdou, 1 možná" in html
     assert "Petra" not in html  # a maybe is a count, as invitees see it
+    # The list under the count accounts for every maybe, without a name.
+    assert "2 jdou · 1 možná" in html
+    assert '<span class="iv-who__name">1 další</span>' in html
     assert "Dvořák" not in html and "@jana" not in html
 
 

@@ -42,7 +42,7 @@
       <h2 class="np-pub-cta__title">{% translate "Sedíš tady?" %}</h2>
       <p>{% translate "Zapiš si pivo v appce a večer se ti sám uloží do deníku. Lístek i otevírací dobu může doplnit každý, kdo tu sedí." %}</p>
       <a class="np-btn np-btn--primary np-btn--block np-btn--l" href="{{ deep_link }}">{% icon "smartphone" %}{% translate "Otevřít v appce" %}</a>
-      {% if page.account %}<a class="np-btn np-btn--block np-btn--l" href="{% web_url "web-log-beer" %}">{% icon "plus" %}{% translate "Zapsat pivo" %}</a>
+      {% if page.account %}<a class="np-btn np-btn--block np-btn--l" href="{% web_url "web-log-beer" %}?hospoda={{ pub.cache_key|urlencode:"" }}&amp;n={{ pub.name|urlencode:"" }}">{% icon "plus" %}{% translate "Zapsat pivo" %}</a>
       {% else %}<a class="np-btn np-btn--block np-btn--l" href="{{ login_url }}">{% icon "log-in" %}{% translate "Přihlásit se na webu" %}</a>{% endif %}
     </section>
 

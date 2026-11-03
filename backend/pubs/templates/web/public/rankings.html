@@ -6,7 +6,7 @@
 {% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
 <header class="pp-head">
   <h1 class="np-h1">{{ h1 }}</h1>
-  <p class="pp-head__meta">{% icon "users" "np-icon--s" %}<span>{{ ratings_label }}{% if updated %} · {{ updated }}{% endif %}</span> <a class="pp-head__how" href="#jak">{% translate "Jak to počítáme?" %}</a></p>
+  <p class="pp-head__meta">{% if ratings_label %}{% icon "users" "np-icon--s" %}<span>{{ ratings_label }}{% if updated %} · {{ updated }}{% endif %}</span> {% endif %}<a class="pp-head__how" href="#jak">{% translate "Jak to počítáme?" %}</a></p>
 </header>
 
 <div class="pp-filters">

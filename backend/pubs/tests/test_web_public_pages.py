@@ -66,6 +66,8 @@ def test_ranking_shows_only_beers_with_fifty_ratings_and_counts_queries(client, 
 def test_empty_ranking_and_region_say_so_honestly(client):
     html = _page(client, "/zebricky")
     assert "Žebříček se teprve plní" in html
+    assert "Z 0 hodnocení" not in html
+    assert '<a href="/">Na pivo</a>' in html
     regional = _page(client, "/zebricky?kraj=jihomoravsky")
     assert "Nejlepší piva: Jihomoravský kraj" in regional and "Žebříček se teprve plní" in regional
     # A filtered list is the same page for search engines.
@@ -169,6 +171,8 @@ def test_beer_index_without_prices_waits(client):
     html = _page(client, "/pivni-index")
     assert "Index se teprve počítá" in html
     assert client.get("/pivni-index/data.csv").status_code == 404
+    image = client.get("/pivni-index/og.png")
+    assert image.status_code == 302 and image["Location"] == "/og/home.png"
 
 
 # --- tours ---------------------------------------------------------------------
@@ -181,6 +185,9 @@ def test_tours_show_what_the_author_published_and_start_in_the_app(client, djang
     with django_assert_max_num_queries(16):
         listing = _page(client, "/trasy")
     assert "Pátek po Starém Městě" in listing and "Od vola" in listing and "@pivni_vlk" in listing
+    # One street map for the featured tour; the cards stay drawings, a map each would be too heavy.
+    assert listing.count("data-map=") == 1
+    assert "Řadit: nejnovější" in listing and "Nejnovější trasa" in listing
 
     token = publication["token"]
     with django_assert_max_num_queries(16):
@@ -199,6 +206,17 @@ def test_tours_show_what_the_author_published_and_start_in_the_app(client, djang
     assert client.get(f"/trasy/{token}").status_code == 404
     assert "Pátek po Starém Městě" not in _page(client, "/trasy")
     assert other["token"] in tours.sitemap_paths()[-1]
+
+
+def test_tour_suggests_tours_from_other_districts_of_the_same_city(client):
+    _, _, publication = published("pivni_vlk", pubs=(0, 1, 2))
+    _, _, other = published("druhy", pubs=(2, 3), title="Od vola")
+    TourPublication.objects.filter(token=publication["token"]).update(city="Praha")
+    TourPublication.objects.filter(token=other["token"]).update(city="Praha 3 - Žižkov")
+
+    html = _page(client, f"/trasy/{publication['token']}")
+
+    assert "Kousek vedle" in html and "Od vola" in html
 
 
 def test_tours_hide_blocked_authors_from_a_signed_in_reader():

@@ -247,12 +247,11 @@ a.pp-rank__name:hover { text-decoration: underline; }
 }
 .tr-featured:hover { color: var(--np-white); }
 .tr-featured:hover .tr-featured__cta { background: var(--np-yellow-hover); }
-.tr-featured__map, .tr-card .tr-route {
-  background-color: #111;
-  background-image: linear-gradient(var(--np-hairline) 1px, transparent 1px), linear-gradient(90deg, var(--np-hairline) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
-.tr-featured__map { display: grid; place-items: center; min-height: 360px; padding: 16px; }
+/* A card shows a diagram of the route; only the featured tour gets a street map, since every
+   street map costs the browser a WebGL context. */
+.tr-featured__map, .tr-card .tr-route { background-color: #111; }
+.tr-featured__map { position: relative; display: grid; place-items: center; min-height: 360px; padding: 16px; }
+.tr-featured__map > .np-map__frame { position: static; }
 .tr-featured__body { display: grid; align-content: center; gap: 12px; padding: 40px; }
 .tr-kicker { color: var(--np-yellow); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .tr-featured__title { font: 800 52px/0.95 var(--np-display); }

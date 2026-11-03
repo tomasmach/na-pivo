@@ -5104,3 +5104,26 @@ msgstr "Map of your pubs"
 
 msgid "Mapa hospod v Praze"
 msgstr "Map of pubs in Prague"
+
+# web: public fixes
+msgid "Přihlas se"
+msgstr "Log in"
+
+msgid "Otevři Nastavení"
+msgstr "Open Settings"
+
+#, python-format
+msgctxt "rankings row"
+msgid "%(n)s hodnocení"
+msgid_plural "%(n)s hodnocení"
+msgstr[0] "%(n)s rating"
+msgstr[1] "%(n)s ratings"
+
+msgid "Kolik piv,"
+msgstr "How many beers,"
+
+msgid "kde a s kým."
+msgstr "where and with whom."
+
+msgid "Řadit: nejnovější"
+msgstr "Sort: newest"

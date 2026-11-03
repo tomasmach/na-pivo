@@ -437,7 +437,8 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "map": pub_map(map_points, [(pub["lat"], pub["lng"]) for pub in data["list"]]),
             "live_map": live_map(map_points),
             "district_tiles": [
-                {"label": district, "url": _query({}, district=slugify(district))} for district, _ in districts[:8]
+                {"label": district, "url": _query({}, district=slugify(district))}
+                for district, _ in sorted(districts[:8], key=lambda item: _natural(item[0]))
             ] if len(districts) >= 2 else [],
             "other_cities": _others(8, skip=city),
             "crumbs": _crumbs(crumbs),
@@ -476,14 +477,16 @@ def _day_rows(week: dict | None, now: datetime) -> list[dict]:
 def _og_payload(pub: dict, lang: str) -> dict:
     """What the share image draws. Nothing depends on the clock, so one image serves a day."""
 
-    priced = [beer for beer in pub["menu"] if beer["price"]]
-    half = next((beer for beer in priced if beer["volume"] in (None, 500)), priced[0] if priced else None)
+    cheapest = next(
+        (beer for beer in pub["menu"] if beer["price"] == pub["price"] and (beer["volume"] or 500) == pub["volume"]),
+        None,
+    )
     return {
         "name": pub["name"],
         "place": pub["district"] or pub["city"],
         "rating": pub["rating"],
-        "price": half["price"] if half else pub["price"],
-        "price_beer": half["name"] if half else "",
+        "price": pub["price"],
+        "price_beer": cheapest["name"] if cheapest else "",
         "tank": pub["tank"],
         "beers": len(pub["menu"]),
         "week_beers": pub["week_beers"],

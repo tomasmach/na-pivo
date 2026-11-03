@@ -108,6 +108,7 @@ def _card(publication: TourPublication, prices: dict[str, int]) -> dict:
         "owner_id": publication.plan.owner_id,
         "map": _route_svg(stops, 360, 150, 22),
         "map_big": _route_svg(stops, 640, 400, 80),
+        "live_map": live_map([{"lat": stop["lat"], "lng": stop["lon"], "label": stop["name"]} for stop in stops], kind="route"),
         "names": " · ".join(stop["name"] for stop in stops[:3]) + (" …" if len(stops) > 3 else ""),
     }
 
@@ -235,6 +236,7 @@ def tours(request: HttpRequest) -> HttpResponse:
         ),
         section="tours",
         indexable=not request.GET,
+        with_map=bool(shown),
     )
     return public_cache(response, 300)
 
@@ -317,12 +319,11 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
             ],
         },
     }
-    nearby_rows = list(
-        readable_publications().filter(city=publication.city).exclude(pk=publication.pk).order_by("-people_count", "-published_at")[:3]
-    )
-    nearby_prices = _prices({stop.get("cache_key") for p in nearby_rows for stop in p.snapshot["stops"]} - {None, ""})
     hidden = _hidden_authors(request.web_account)
-    nearby = [_card_view(_card(p, nearby_prices)) for p in nearby_rows if p.plan.owner_id not in hidden]
+    same_city = _listing(slugify(city), "")["cards"] if city else []
+    nearby = [
+        _card_view(card) for card in same_city if card["token"] != publication.token and card["owner_id"] not in hidden
+    ][:3]
     waypoints = "|".join(f"{stop['lat']},{stop['lon']}" for stop in stops[1:-1])
     maps_url = (
         "https://www.google.com/maps/dir/?api=1&travelmode=walking"

@@ -20,7 +20,7 @@ from pubs.models import (
     PubPriceIndex,
     PubReport,
 )
-from pubs.web import pubs_data
+from pubs.web import pubs_data, pubs_views
 from pubs.web.pubs_views import sitemap_paths
 
 pytestmark = pytest.mark.django_db
@@ -226,6 +226,24 @@ def test_pub_page_shows_community_data_without_who_was_there(client):
     place = next(item for item in data["@graph"] if item["@type"] == "BarOrPub")
     assert place["name"] == "U Zlatého tygra" and len(place["openingHoursSpecification"]) == 6
     assert re.search(r'<meta property="og:image" content="https://na-pivo.cz/hospoda/u-zlateho-tygra-\w+/og.png\?v=\w+">', html)
+
+
+def test_cheapest_beer_follows_the_menu_on_the_page(client):
+    # A beer logged with a price lowered the menu, while the index kept the older menu price.
+    kalich = _pub("Hostinec U Kalicha")
+    _menu(kalich, beers=[
+        {"name": "Starobrno 11°", "price_czk": 30, "volume_ml": 300},
+        {"name": "Svijanský Máz 11°", "price_czk": 59, "volume_ml": 500},
+        {"name": "Velkopopovický Kozel 11°", "price_czk": 45, "volume_ml": 500},
+    ])
+    _price(kalich, 59)
+
+    html = client.get(f"/hospoda/hostinec-u-kalicha-{kalich.cache_key}").content.decode()
+
+    assert re.search(r">45\u00a0Kč</span><span [^>]+>nejlevnější pivo, 0,5\u00a0l<", html)
+    assert "pivo od 45 Kč" in html
+    og = pubs_views._og_payload(pubs_data.find_pub(f"hostinec-u-kalicha-{kalich.cache_key}")["pub"], "cs")
+    assert (og["price"], og["price_beer"]) == (45, "Velkopopovický Kozel 11°")
 
 
 def test_pub_rating_needs_three_people(client):

@@ -7,7 +7,7 @@
 <section class="rs-hero" aria-labelledby="hero-title">
   <div class="rs-hero__copy">
     <p class="rs-eyebrow">{% translate "Pivní deníček pro tebe a partu" %}</p>
-    <h1 class="rs-hero__title" id="hero-title">{% translate "Kolik piv, kde a s kým." %}</h1>
+    <h1 class="rs-hero__title" id="hero-title">{% translate "Kolik piv," %}<br>{% translate "kde a s kým." %}</h1>
     <p class="rs-hero__lead">{% translate "Pivo zapíšeš jedním klepnutím u stolu, zbytek dopočítám já. Deník, partu a statistiky teď otevřeš i na webu." %}</p>
     <div class="rs-actions">
       <a class="np-btn np-btn--l np-btn--primary" href="{% web_url "web-diary" %}">{% translate "Otevřít na webu" %}{% icon "arrow-right" "np-icon--s" %}</a>
@@ -29,7 +29,7 @@
     </div>
     <ol class="rs-bars" aria-label="{% translate "Piva po měsících" %}">
       {% for month in months %}<li class="rs-bars__month{% if month.current %} is-current{% elif month.future %} is-future{% endif %}">
-        <svg class="rs-bars__bar" aria-hidden="true" focusable="false"><rect width="100%" height="{{ month.height }}" y="{{ month.top }}" rx="6"/>{% if not month.future %}<text x="50%" y="{{ month.top }}" dy="-10" text-anchor="middle">{{ month.beers }}</text>{% endif %}</svg>
+        <svg class="rs-bars__bar" aria-hidden="true" focusable="false"><rect width="100%" height="{{ month.height }}" y="{{ month.top }}" rx="6"/>{% if not month.future and month.beers %}<text x="50%" y="{{ month.top }}" dy="-10" text-anchor="middle">{{ month.beers }}</text>{% endif %}</svg>
         <span class="rs-bars__label">{{ month.label }}{% if not month.future %}<span class="np-sr-only">: {{ month.beers }}</span>{% endif %}</span>
       </li>{% endfor %}
     </ol>

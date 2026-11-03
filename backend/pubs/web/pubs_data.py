@@ -49,6 +49,7 @@ from pubs.models import (
     PubReport,
     UserAddedPub,
 )
+from pubs.price_index import compute_reference_price
 from pubs.price_map import WINDOW_DAYS, city_slug, prague_district
 from pubs.pub_events import PubEvent
 
@@ -349,6 +350,21 @@ def _menu_rows(beers) -> list[dict]:
     return rows[:30]
 
 
+def _menu_price(menu: dict | None) -> tuple[int, int | None] | None:
+    """The cheapest beer of the menu the page shows, picked by the price index's rule.
+
+    A beer logged with a price lands in the menu, but the index keeps an older menu
+    price until the menu is edited, so the index alone can disagree with the menu.
+    """
+
+    since = timezone.now() - timedelta(days=WINDOW_DAYS)
+    if not menu or not menu["beers_updated_at"] or menu["beers_updated_at"] < since:
+        return None
+    return compute_reference_price(
+        [{"price_czk": row["price"], "volume_ml": row["volume"]} for row in _menu_rows(menu["beers"])]
+    )
+
+
 def _enrich(pubs: list[dict]) -> list[dict]:
     """Menu, price, brands, garden and rating of each pub, guarded by name per cell."""
 
@@ -365,6 +381,7 @@ def _enrich(pubs: list[dict]) -> list[dict]:
         if price and not names_match(price["name"], name):
             price = None
         beers = _menu_rows(menu["beers"]) if menu else []
+        cheapest = _menu_price(menu) or ((price["price_czk"], price["volume_ml"]) if price else None)
         rating = _rating_for(name, ratings.get(key, []))
         out.append({
             "key": pub_key(name, key),
@@ -378,8 +395,8 @@ def _enrich(pubs: list[dict]) -> list[dict]:
             "hours": valid_hours(menu["hours_json"]) if menu else None,
             "beers": [beer["name"] for beer in beers],
             "tank": any("tank" in fold(beer["name"]) for beer in beers),
-            "price": price["price_czk"] if price else None,
-            "volume": (price["volume_ml"] or 500) if price else None,
+            "price": cheapest[0] if cheapest else None,
+            "volume": (cheapest[1] or 500) if cheapest else None,
             "brands": sorted({b_key for b_name, b_key, _ in brands.get(key, []) if names_match(b_name, name)}),
             "brand_names": {b_key: label for b_name, b_key, label in brands.get(key, []) if names_match(b_name, name)},
             "garden": pub_identity_key(key, name) in gardens,

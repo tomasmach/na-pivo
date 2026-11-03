@@ -2,6 +2,7 @@
 {% load i18n web %}
 {% block head %}<link rel="stylesheet" href="{% asset "public-pages.css" %}">{{ structured_data }}{% endblock %}
 {% block og_image %}<meta property="og:image" content="{{ og_image }}">{% endblock %}
+{% block scripts %}<script src="{% asset "public-pages.js" %}" defer></script>{% endblock %}
 {% block content %}
 {% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
 <header class="pp-head">
@@ -77,7 +78,7 @@
       <h2 class="pp-cta__title">{% translate "Čepují něco nového?" %}</h2>
       <p>{% translate "Zapiš to v appce a ukáže se to tady. Nové pivo, cenu i hospodu." %}</p>
       <div class="pp-cta__actions">
-        <a class="np-btn np-btn--primary" href="{% web_url "home" %}">{% icon "plus" "np-icon--s" %}{% translate "Zapsat novinku" %}</a>
+        <a class="np-btn np-btn--primary" href="{{ page.app_store_url }}" data-play="{{ page.play_store_url }}">{% icon "plus" "np-icon--s" %}{% translate "Zapsat novinku" %}</a>
       </div>
     </section>
   </aside>
