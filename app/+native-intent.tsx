@@ -26,6 +26,8 @@ function newLookPath(path: string): string | null {
   const token = parsed?.url.searchParams.get('token');
   if (parsed && token && /^\/auth\/verify\/?$/.test(parsed.path)) return `/nv/vysledek?${query({ token })}`;
   if (parsed && token && /^\/auth\/reset\/?$/.test(parsed.path)) return `/nv/obnova-hesla?${query({ token })}`;
+  // The Live Activity and the Android counter notification open the counter.
+  if (/^\/beer\/?$/.test(parsed?.path ?? path)) return '/nv/stamgast';
   return null;
 }
 
