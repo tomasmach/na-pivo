@@ -15,7 +15,6 @@ import { selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
 import { useBadgeStore } from '@/stores/badgeStore';
 import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
-import { useReleaseStore } from '@/stores/releaseStore';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 
 import { toast } from '../../ui/store';
@@ -47,8 +46,6 @@ export function useProfilWatchers() {
   const accountId = useAccountStore((s) => s.profile?.id ?? null);
   const needsNickname = useAccountStore(selectNeedsNickname);
   const firstLaunch = useOnboardingStore((s) => s.firstLaunchSession);
-  const releaseSettled = useReleaseStore((s) => s.checkSettled);
-  const releaseNote = useReleaseStore((s) => s.pendingNote);
   const remindersOn = useSettingsStore((s) => s.pubReminderEnabled);
   const holder = useLaunchModalMutex((s) => s.holder);
   const states = useAccountBadges();
@@ -98,8 +95,8 @@ export function useProfilWatchers() {
       }
     }
 
-    // The welcome pager owns the first launch, and a what's-new note goes first.
-    if (onTab && !firstLaunch && releaseSettled && !releaseNote && !remindersOn && !reminderChecked) {
+    // The welcome pager owns the first launch.
+    if (onTab && !firstLaunch && !remindersOn && !reminderChecked) {
       if (useLaunchModalMutex.getState().claim('pub-reminder')) {
         reminderChecked = true;
         const version = getCurrentAppVersion();
@@ -131,5 +128,5 @@ export function useProfilWatchers() {
         });
       }
     }
-  }, [accountId, firstLaunch, holder, isSignedIn, level, needsNickname, onTab, releaseNote, releaseSettled, remindersOn, router]);
+  }, [accountId, firstLaunch, holder, isSignedIn, level, needsNickname, onTab, remindersOn, router]);
 }

@@ -31,7 +31,6 @@ const SEEN_KEY = 'na-pivo-pub-reminder-onboarding-seen-version';
 
 type Loaded = {
   useProfilWatchers: typeof import('../useProfilWatchers').useProfilWatchers;
-  release: typeof import('@/stores/releaseStore').useReleaseStore;
   onboarding: typeof import('@/stores/onboardingStore').useOnboardingStore;
   settings: typeof import('@/stores/settingsStore').useSettingsStore;
   storage: typeof import('@react-native-async-storage/async-storage').default;
@@ -45,14 +44,12 @@ function load(): Loaded {
     /* eslint-disable @typescript-eslint/no-require-imports */
     loaded = {
       useProfilWatchers: require('../useProfilWatchers').useProfilWatchers,
-      release: require('@/stores/releaseStore').useReleaseStore,
       onboarding: require('@/stores/onboardingStore').useOnboardingStore,
       settings: require('@/stores/settingsStore').useSettingsStore,
       storage: (({ default: d, ...m }) => d ?? m)(require('@react-native-async-storage/async-storage')),
     };
     /* eslint-enable @typescript-eslint/no-require-imports */
   });
-  loaded.release.setState({ checkSettled: true, pendingNote: null });
   return loaded;
 }
 
@@ -100,23 +97,15 @@ describe('pub reminder offer in the new look', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it('waits out the welcome session, a pending what-s-new note and non-tab screens', async () => {
-    const { useProfilWatchers, onboarding, release } = load();
+  it('waits out the welcome session and non-tab screens', async () => {
+    const { useProfilWatchers, onboarding } = load();
     onboarding.setState({ firstLaunchSession: true });
     const view = await renderHook(() => useProfilWatchers());
     await flush();
     expect(mockPush).not.toHaveBeenCalled();
 
-    await act(async () => {
-      onboarding.setState({ firstLaunchSession: false });
-      release.setState({ pendingNote: { version: '3.0.0', title: 'x', body: 'x' } as never });
-    });
     mockPath = '/nv/hospoda/abc';
-    await view.rerender({});
-    await flush();
-    expect(mockPush).not.toHaveBeenCalled();
-
-    await act(async () => release.setState({ pendingNote: null }));
+    await act(async () => onboarding.setState({ firstLaunchSession: false }));
     await flush();
     expect(mockPush).not.toHaveBeenCalled();
 
