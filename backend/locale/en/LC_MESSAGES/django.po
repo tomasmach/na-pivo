@@ -1951,3 +1951,618 @@ msgstr "The account is free. Your beers, nights and crew then stay in sync betwe
 #, python-format
 msgid "Pokračováním souhlasíš s <a href=\"%(terms)s\">podmínkami</a> a <a href=\"%(privacy)s\">zásadami ochrany soukromí</a>."
 msgstr "By continuing you agree to the <a href=\"%(terms)s\">terms</a> and the <a href=\"%(privacy)s\">privacy policy</a>."
+
+# web: diary
+
+msgctxt "weekday"
+msgid "Po"
+msgstr "Mo"
+
+msgctxt "weekday"
+msgid "Út"
+msgstr "Tu"
+
+msgctxt "weekday"
+msgid "St"
+msgstr "We"
+
+msgctxt "weekday"
+msgid "Čt"
+msgstr "Th"
+
+msgctxt "weekday"
+msgid "Pá"
+msgstr "Fr"
+
+msgctxt "weekday"
+msgid "So"
+msgstr "Sa"
+
+msgctxt "weekday"
+msgid "Ne"
+msgstr "Su"
+
+msgid "Leden"
+msgstr "January"
+
+msgid "Únor"
+msgstr "February"
+
+msgid "Březen"
+msgstr "March"
+
+msgid "Duben"
+msgstr "April"
+
+msgid "Květen"
+msgstr "May"
+
+msgid "Červen"
+msgstr "June"
+
+msgid "Červenec"
+msgstr "July"
+
+msgid "Srpen"
+msgstr "August"
+
+msgid "Září"
+msgstr "September"
+
+msgid "Říjen"
+msgstr "October"
+
+msgid "Listopad"
+msgstr "November"
+
+msgid "Prosinec"
+msgstr "December"
+
+msgid "v lednu"
+msgstr "in January"
+
+msgid "v únoru"
+msgstr "in February"
+
+msgid "v březnu"
+msgstr "in March"
+
+msgid "v dubnu"
+msgstr "in April"
+
+msgid "v květnu"
+msgstr "in May"
+
+msgid "v červnu"
+msgstr "in June"
+
+msgid "v červenci"
+msgstr "in July"
+
+msgid "v srpnu"
+msgstr "in August"
+
+msgid "v září"
+msgstr "in September"
+
+msgid "v říjnu"
+msgstr "in October"
+
+msgid "v listopadu"
+msgstr "in November"
+
+msgid "v prosinci"
+msgstr "in December"
+
+msgid "led"
+msgstr "Jan"
+
+msgid "úno"
+msgstr "Feb"
+
+msgid "bře"
+msgstr "Mar"
+
+msgid "dub"
+msgstr "Apr"
+
+msgid "kvě"
+msgstr "May"
+
+msgid "čer"
+msgstr "Jun"
+
+msgid "čec"
+msgstr "Jul"
+
+msgid "srp"
+msgstr "Aug"
+
+msgid "zář"
+msgstr "Sep"
+
+msgid "říj"
+msgstr "Oct"
+
+msgid "lis"
+msgstr "Nov"
+
+msgid "pro"
+msgstr "Dec"
+
+#, python-format
+msgid "%(from)s až %(to)s"
+msgstr "%(from)s to %(to)s"
+
+#, python-format
+msgid "%(weekday)s %(day)s. %(month)s."
+msgstr "%(weekday)s %(day)s/%(month)s"
+
+#, python-format
+msgid "%(day)s. %(month)s."
+msgstr "%(day)s/%(month)s"
+
+#, python-format
+msgid "%(day)s. %(month)s. %(year)s"
+msgstr "%(day)s/%(month)s/%(year)s"
+
+#, python-format
+msgid "%(h)s h %(m)s m"
+msgstr "%(h)s h %(m)s m"
+
+#, python-format
+msgid "%(h)s h"
+msgstr "%(h)s h"
+
+#, python-format
+msgid "%(m)s min"
+msgstr "%(m)s min"
+
+msgid "Doma / na chatě"
+msgstr "Home / cottage"
+
+msgid "Venku"
+msgstr "Outdoors"
+
+msgid "Mimo hospodu"
+msgstr "Outside a pub"
+
+msgid "lahváč"
+msgstr "bottle"
+
+msgid "plechovka"
+msgstr "can"
+
+msgid "PET lahev"
+msgstr "plastic bottle"
+
+msgid "čepované"
+msgstr "on tap"
+
+msgid "Dnes"
+msgstr "Today"
+
+msgid "za týden"
+msgstr "in the week"
+
+msgid "minulý týden"
+msgstr "the week before"
+
+#, python-format
+msgid "v roce %(year)s"
+msgstr "in %(year)s"
+
+#, python-format
+msgid "stejně jako %(when)s"
+msgstr "same as %(when)s"
+
+#, python-format
+msgid "o %(n)s víc než %(when)s"
+msgstr "%(n)s more than %(when)s"
+
+#, python-format
+msgid "o %(n)s míň než %(when)s"
+msgstr "%(n)s fewer than %(when)s"
+
+#, python-format
+msgid "%(day)s, %(beers)s"
+msgstr "%(day)s, %(beers)s"
+
+#, python-format
+msgid "Dopsat %(day)s"
+msgstr "Add beers to %(day)s"
+
+#, python-format
+msgid "nejvíc %(when)s"
+msgstr "most %(when)s"
+
+msgid "nejvíc za večer"
+msgstr "most in a night"
+
+msgid "Týden"
+msgstr "Week"
+
+msgid "Měsíc"
+msgstr "Month"
+
+msgid "Rok"
+msgstr "Year"
+
+msgid "večer"
+msgstr "night"
+
+msgid "večery"
+msgstr "nights"
+
+msgid "večerů"
+msgstr "nights"
+
+msgid "utraceno"
+msgstr "spent"
+
+msgid "kamarádi u stolu"
+msgstr "friends at the table"
+
+#, python-format
+msgid "Večery %(when)s"
+msgstr "Nights %(when)s"
+
+msgid "Tenhle večer v deníku nemám."
+msgstr "This night isn't in your diary."
+
+#, python-format
+msgid "Deník · %(month)s"
+msgstr "Diary · %(month)s"
+
+msgid "útrata"
+msgstr "spent"
+
+msgid "u stolu"
+msgstr "at the table"
+
+#, python-format
+msgid "%(beers)s ve %(hour)s:00"
+msgstr "%(beers)s at %(hour)s:00"
+
+msgid "Nepovedlo se to. Zkus to znovu."
+msgstr "That didn't work. Try again."
+
+msgid "Tohle neprojde. Zkontroluj název a cenu."
+msgstr "That won't go through. Check the name and the price."
+
+msgid "Bez internetu to neuložím. Zkus to, až chytíš signál."
+msgstr "I can't save this without internet. Try again once you have signal."
+
+msgid "Přihlášení vypršelo. Přihlas se znovu a zkus to znovu."
+msgstr "Your sign-in expired. Sign in again and retry."
+
+msgid "Zápis nedošel. Zkus to znovu."
+msgstr "The entry didn't arrive. Try again."
+
+msgid "Přihlášení vypršelo. Přihlas se znovu a zápis zopakuj."
+msgstr "Your sign-in expired. Sign in again and repeat the entry."
+
+msgid "Zkontroluj datum a časy. Budoucnost zatím nečepuju."
+msgstr "Check the date and times. I don't pour into the future yet."
+
+msgid "Nic jsem nenašel. Zkus jiný název."
+msgstr "Nothing found. Try another name."
+
+msgid "Dopsat večer"
+msgstr "Log a past night"
+
+#, python-format
+msgid "naposled %(day)s"
+msgstr "last %(day)s"
+
+#, python-format
+msgid "tvoje hodnocení %(rating)s"
+msgstr "your rating %(rating)s"
+
+msgid "ještě nehodnoceno"
+msgstr "not rated yet"
+
+msgid "Letos"
+msgstr "This year"
+
+msgid "Celkově"
+msgstr "All time"
+
+#, python-format
+msgid "Do levelu %(level)s"
+msgstr "To level %(level)s"
+
+msgid "Nejvyšší level"
+msgstr "Top level"
+
+#, python-format
+msgid "%(xp)s / %(next)s XP"
+msgstr "%(xp)s / %(next)s XP"
+
+msgid "pivo letos"
+msgstr "beer this year"
+
+msgid "piva letos"
+msgstr "beers this year"
+
+msgid "piv letos"
+msgstr "beers this year"
+
+msgid "pivo za život"
+msgstr "beer in a lifetime"
+
+msgid "piva za život"
+msgstr "beers in a lifetime"
+
+msgid "piv za život"
+msgstr "beers in a lifetime"
+
+#, python-format
+msgid "od %(date)s"
+msgstr "since %(date)s"
+
+msgid "piva na večer"
+msgstr "beers a night"
+
+msgid "kamarád"
+msgstr "friend"
+
+msgid "kamarádi"
+msgstr "friends"
+
+msgid "kamarádů"
+msgstr "friends"
+
+#, python-format
+msgid "Piva po měsících · %(year)s"
+msgstr "Beers by month · %(year)s"
+
+#, python-format
+msgid "nejvíc %(when)s · %(n)s"
+msgstr "most %(when)s · %(n)s"
+
+#, python-format
+msgid "nejčastěji %(day)s"
+msgstr "mostly on %(day)s"
+
+#, python-format
+msgid "%(earned)s z %(total)s"
+msgstr "%(earned)s of %(total)s"
+
+msgid "Poutník"
+msgstr "Pilgrim"
+
+msgid "Cestovatel"
+msgstr "Traveller"
+
+msgid "Recenzent"
+msgstr "Reviewer"
+
+msgid "Týden co týden"
+msgstr "Week after week"
+
+msgid "Celý týden"
+msgstr "Full week"
+
+msgid "Kolo roku"
+msgstr "Round the year"
+
+msgid "Řidič"
+msgstr "Designated driver"
+
+msgid "Čárkař"
+msgstr "Tally keeper"
+
+msgid "Lahváčový filozof"
+msgstr "Bottle philosopher"
+
+msgid "Plechovkáč"
+msgstr "Can crusher"
+
+msgid "Fotograf"
+msgstr "Photographer"
+
+msgid "FotoPivař"
+msgstr "Beer Snap"
+
+msgid "Večer s partou"
+msgstr "Night with the crew"
+
+msgid "Kartograf"
+msgstr "Cartographer"
+
+msgid "Prvomapér"
+msgstr "First mapper"
+
+msgid "Pořádkumil"
+msgstr "Completionist"
+
+msgid "Pivní detektiv"
+msgstr "Beer detective"
+
+msgid "Chatař"
+msgstr "Cottage dweller"
+
+msgid "Pod širákem"
+msgstr "Under the stars"
+
+msgid "Den piva"
+msgstr "Beer Day"
+
+msgid "Noční sova"
+msgstr "Night owl"
+
+msgid "Štědrý den"
+msgstr "Christmas Eve"
+
+msgid "Silvestr"
+msgstr "New Year's Eve"
+
+msgid "Pivo k obědu"
+msgstr "Lunch beer"
+
+msgid "Období"
+msgstr "Period"
+
+msgid "Deník je zatím prázdný"
+msgstr "Your diary is empty so far"
+
+msgid "Zapiš první pivo a večer se objeví tady i v appce."
+msgstr "Log your first beer and the night shows up here and in the app."
+
+msgid "Předchozí"
+msgstr "Previous"
+
+msgid "Další"
+msgstr "Next"
+
+msgid "Klepni na den a dopiš, co padlo."
+msgstr "Click a day to add what you had."
+
+msgid "Od nejnovějšího"
+msgstr "Newest first"
+
+msgid "Starší večery najdeš po klepnutí na měsíc."
+msgstr "Click a month to see older nights."
+
+msgid "Tady zatím nic nepadlo."
+msgstr "Nothing here yet."
+
+msgid "Stejný zápis jako v appce, jen na webu."
+msgstr "The same entry as in the app, just on the web."
+
+msgid "Zápis potřebuje zapnutý JavaScript."
+msgstr "Logging needs JavaScript turned on."
+
+msgid "Datum"
+msgstr "Date"
+
+msgid "Od"
+msgstr "From"
+
+msgid "Do"
+msgstr "To"
+
+msgid "volitelně"
+msgstr "optional"
+
+msgid "Kde to bylo?"
+msgstr "Where was it?"
+
+msgid "Doma"
+msgstr "Home"
+
+msgid "Jiná hospoda"
+msgstr "Another pub"
+
+msgid "Hledat hospodu"
+msgstr "Search for a pub"
+
+msgid "Název hospody nebo město"
+msgstr "Pub name or town"
+
+msgid "Počet"
+msgstr "Count"
+
+msgid "Cena / ks"
+msgstr "Price each"
+
+msgid "Přidat pivo"
+msgstr "Add a beer"
+
+msgid "Starší zápisy jsou nejdřív jen pro tebe."
+msgstr "Older entries are just for you at first."
+
+msgid "Uložit vzpomínku"
+msgstr "Save the memory"
+
+msgid "Název piva"
+msgstr "Beer name"
+
+msgid "O jedno míň"
+msgstr "One less"
+
+msgid "O jedno víc"
+msgstr "One more"
+
+msgid "Tempo po hodinách"
+msgstr "Pace by the hour"
+
+msgid "Co padlo"
+msgstr "What you had"
+
+msgid "Dopsat pivo k tomuhle večeru"
+msgstr "Add a beer to this night"
+
+msgid "Kde"
+msgstr "Where"
+
+msgid "Přidat další zastávku"
+msgstr "Add another stop"
+
+msgid "S kým"
+msgstr "Who with"
+
+msgid "Fotky"
+msgstr "Photos"
+
+msgid "Opravit pivo"
+msgstr "Fix the beer"
+
+msgid "Cena"
+msgstr "Price"
+
+msgid "Smazat"
+msgstr "Delete"
+
+msgid "Uložit"
+msgstr "Save"
+
+msgid "Smazat tohle pivo z deníku? Vrátit to nepůjde."
+msgstr "Delete this beer from your diary? You can't undo it."
+
+msgid "Nechat"
+msgstr "Keep it"
+
+#, python-format
+msgid "Upravit %(name)s"
+msgstr "Edit %(name)s"
+
+msgid "Možná se pivo smazalo, nebo je to jiný den."
+msgstr "Maybe the beer was deleted, or it's another day."
+
+msgid "Zpátky do deníku"
+msgstr "Back to the diary"
+
+msgid "Upravit profil"
+msgstr "Edit profile"
+
+msgid "Zatím tu nic není"
+msgstr "Nothing here yet"
+
+msgid "Až zapíšeš první pivo, ukážu ti tady, kam chodíš, co piješ a s kým."
+msgstr "Once you log your first beer, I'll show you where you go, what you drink and who with."
+
+msgid "Kam chodíš"
+msgstr "Where you go"
+
+msgid "Zatím žádná hospoda."
+msgstr "No pub yet."
+
+msgid "Co piješ"
+msgstr "What you drink"
+
+msgid "Zatím žádné pivo."
+msgstr "No beer yet."
+
+msgid "S kým nejčastěji"
+msgstr "Most often with"
+
+msgid "Kdy chodíš"
+msgstr "When you go"
+
+msgid "Odznaky"
+msgstr "Badges"
+
+msgid "První odznak přijde s prvním pivem."
+msgstr "Your first badge comes with your first beer."

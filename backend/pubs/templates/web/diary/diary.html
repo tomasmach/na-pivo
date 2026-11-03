@@ -1,0 +1,80 @@
+{% extends "web/app.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "diary.css" %}">{% endblock %}
+{% block content %}
+<header class="np-app__head dy-head">
+  <h1 class="np-app__title">{% translate "Deník" %}</h1>
+  {% if has_any %}<div class="dy-head__actions">
+    {% translate "Období" as segment_label %}
+    {% include "web/components/segment.html" with items=segment label=segment_label %}
+    <a class="np-btn" href="{{ backfill_url }}">{% icon "plus" "np-icon--s np-yellow" %}{% translate "Dopsat večer" %}</a>
+  </div>{% endif %}
+</header>
+{% if not has_any %}
+  {% translate "Deník je zatím prázdný" as empty_title %}
+  {% translate "Zapiš první pivo a večer se objeví tady i v appce." as empty_text %}
+  {% translate "Zapsat pivo" as empty_action %}
+  {% include "web/components/empty.html" with icon="notebook-pen" title=empty_title text=empty_text action_label=empty_action action_url=log_url %}
+{% else %}
+<div class="np-stats dy-stats">
+  {% include "web/components/stat.html" with value=headline.value label=headline.label sub=headline.sub hero=True %}
+  {% for stat in stats %}{% include "web/components/stat.html" with value=stat.value label=stat.label %}{% endfor %}
+</div>
+<div class="dy-grid">
+  <div class="dy-main">
+    <section class="np-card dy-cal" aria-labelledby="dy-cal-title">
+      <div class="dy-cal__head">
+        <div class="dy-cal__nav">
+          <a class="np-btn np-btn--icon dy-cal__arrow" href="{{ prev_url }}" aria-label="{% translate "Předchozí" %}">{% icon "chevron-left" "np-icon--s" %}</a>
+          <h2 class="np-title" id="dy-cal-title">{{ card_title }}</h2>
+          {% if next_url %}<a class="np-btn np-btn--icon dy-cal__arrow" href="{{ next_url }}" aria-label="{% translate "Další" %}">{% icon "chevron-right" "np-icon--s" %}</a>
+          {% else %}<span class="np-btn np-btn--icon dy-cal__arrow" aria-disabled="true">{% icon "chevron-right" "np-icon--s" %}</span>{% endif %}
+        </div>
+        {% if period != "rok" %}<p class="np-small np-muted dy-cal__hint">{% translate "Klepni na den a dopiš, co padlo." %}</p>{% endif %}
+      </div>
+      {% if weeks %}
+      <table class="dy-month">
+        <thead><tr>{% for wd in weekdays %}<th scope="col">{{ wd }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for week in weeks %}<tr>{% for cell in week %}
+          <td>{% if cell.url %}<a class="dy-day{% if cell.beers %} dy-day--beer{% endif %}{% if cell.today %} dy-day--today{% endif %}" href="{{ cell.url }}" aria-label="{{ cell.label }}">{{ cell.day }}{% if cell.beers %}<span class="dy-day__count" aria-hidden="true">{{ cell.beers }}</span>{% endif %}</a>
+          {% else %}<span class="dy-day{% if not cell.in_month %} dy-day--out{% else %} dy-day--future{% endif %}">{{ cell.day }}</span>{% endif %}</td>{% endfor %}
+        </tr>{% endfor %}</tbody>
+      </table>
+      {% elif bars %}
+      <div class="dy-week">{% for bar in bars %}
+        <{% if bar.url %}a href="{{ bar.url }}"{% else %}div{% endif %} class="dy-week__col">
+          <span class="dy-week__value">{% if bar.beers %}{{ bar.beers }}{% endif %}</span>
+          <span class="dy-week__bar{% if bar.beers %} is-on{% endif %}" data-h="{{ bar.height }}"></span>
+          <span class="dy-week__label">{{ bar.label }}<b>{{ bar.day }}</b></span>
+        </{% if bar.url %}a{% else %}div{% endif %}>{% endfor %}
+      </div>
+      {% else %}
+      <div class="dy-year">{% for tile in tiles %}
+        {% if tile.future %}<span class="dy-year__tile is-future"><span>{{ tile.label }}</span><b>–</b></span>
+        {% else %}<a class="dy-year__tile{% if tile.current %} is-current{% endif %}" href="{{ tile.url }}"><span>{{ tile.label }}</span><b>{{ tile.beers }}</b></a>{% endif %}{% endfor %}
+      </div>
+      {% endif %}
+    </section>
+    {% if records %}<div class="dy-records">{% for record in records %}
+      <div class="dy-record"><span class="dy-record__value">{{ record.value }}</span><span class="dy-record__label">{{ record.label }}</span></div>{% endfor %}
+    </div>{% endif %}
+  </div>
+  <section class="np-card np-card--tight dy-nights" aria-labelledby="dy-nights-title">
+    <div class="dy-nights__head">
+      <h2 class="np-title" id="dy-nights-title">{{ nights_title }}</h2>
+      {% if nights|length > 1 %}<span class="np-small np-muted">{% translate "Od nejnovějšího" %}</span>{% endif %}
+    </div>
+    {% if nights %}<div class="np-list">{% for night in nights %}
+      <a class="np-row dy-night" href="{{ night.url }}">
+        <span class="np-row__body"><span class="np-row__title">{{ night.label }}</span><span class="np-row__meta">{{ night.meta }}</span></span>
+        {% if night.initials %}<span class="np-avatars" aria-hidden="true">{% for letter in night.initials %}<span class="np-avatar np-avatar--s"><span>{{ letter }}</span></span>{% endfor %}</span>{% endif %}
+        <span class="np-row__value">{{ night.beers }}</span>
+        <span class="np-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span>
+      </a>{% endfor %}
+    </div>
+    {% if more_nights %}<p class="dy-nights__more">{% translate "Starší večery najdeš po klepnutí na měsíc." %}</p>{% endif %}
+    {% else %}<p class="dy-nights__empty np-muted">{% translate "Tady zatím nic nepadlo." %} <a class="np-link" href="{{ backfill_url }}">{% translate "Dopsat večer" %}</a></p>{% endif %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}

@@ -12,7 +12,6 @@ from django.urls import path
 
 from pubs.web.assets import web_asset
 from pubs.web.auth_views import (
-    diary,
     forgot_password,
     login,
     logout,
@@ -20,6 +19,7 @@ from pubs.web.auth_views import (
     oauth_start,
     register,
 )
+from pubs.web.diary_views import diary, log_beer, night, profile
 from pubs.web.pages import coming_soon, component_gallery
 from pubs.web.routes import bilingual
 
@@ -53,7 +53,8 @@ urlpatterns = [
     *bilingual("registrace", "en/register", register, "web-register"),
 
     *bilingual("denik", "en/diary", diary, "web-diary"),
-    *bilingual("denik/zapsat", "en/diary/log", coming_soon, "web-log-beer"),
+    *bilingual("denik/zapsat", "en/diary/log", log_beer, "web-log-beer"),
+    *bilingual("denik/vecer/<str:day>", "en/diary/night/<str:day>", night, "web-night"),
 
     *bilingual("piva", "en/my-beers", coming_soon, "web-beers"),
 
@@ -63,7 +64,7 @@ urlpatterns = [
 
     *bilingual("parta", "en/crew", coming_soon, "web-crew"),
 
-    *bilingual("profil", "en/profile", coming_soon, "web-profile"),
+    *bilingual("profil", "en/profile", profile, "web-profile"),
 
     *bilingual("nastaveni", "en/settings", coming_soon, "web-settings"),
 ]

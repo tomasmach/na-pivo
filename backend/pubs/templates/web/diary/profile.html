@@ -1,0 +1,81 @@
+{% extends "web/app.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "diary.css" %}">{% endblock %}
+{% block content %}
+<header class="dy-profile-head">
+  <div class="dy-profile-head__who">
+    {% include "web/components/avatar.html" with name=page.account.name src=page.account.avatar_url size="l" ring=True %}
+    <div>
+      <h1 class="np-app__title dy-profile-head__name">{{ page.account.handle }}</h1>
+      <p class="np-muted">{{ level }}</p>
+    </div>
+  </div>
+  <div class="dy-head__actions">
+    {% translate "Období" as segment_label %}
+    {% include "web/components/segment.html" with items=segment label=segment_label %}
+    <a class="np-btn" href="{{ settings_url }}">{% icon "pencil" "np-icon--s" %}{% translate "Upravit profil" %}</a>
+  </div>
+</header>
+<div class="dy-profile-top">
+  <div class="np-stats dy-stats">
+    {% include "web/components/stat.html" with value=headline.value label=headline.label sub=headline.sub hero=True %}
+    {% for stat in stats %}{% include "web/components/stat.html" with value=stat.value label=stat.label %}{% endfor %}
+  </div>
+  <div class="dy-xp">
+    <div class="dy-xp__line"><span>{{ xp_label }}</span><span class="np-muted">{{ xp_of }}</span></div>
+    <progress class="dy-xp__bar" max="100" value="{{ xp_percent }}">{{ xp_percent }} %</progress>
+  </div>
+</div>
+{% if not has_any %}
+  {% translate "Zatím tu nic není" as empty_title %}
+  {% translate "Až zapíšeš první pivo, ukážu ti tady, kam chodíš, co piješ a s kým." as empty_text %}
+  {% translate "Zapsat pivo" as empty_action %}
+  {% web_url "web-log-beer" as log_url %}
+  {% include "web/components/empty.html" with icon="beer" title=empty_title text=empty_text action_label=empty_action action_url=log_url %}
+{% else %}
+<div class="dy-grid dy-grid--profile">
+  <div class="dy-main">
+    <section class="np-card dy-months" aria-labelledby="dy-months-title">
+      <div class="np-card__head"><h2 class="np-title" id="dy-months-title">{{ months_title }}</h2><span class="np-small np-muted">{{ months_peak }}</span></div>
+      <div class="dy-chart">{% for month in months %}
+        <div class="dy-chart__col"><span class="dy-chart__value">{% if month.beers %}{{ month.beers }}{% endif %}</span><span class="dy-chart__bar{% if month.peak %} is-peak{% elif month.beers %} is-on{% endif %}" data-h="{{ month.height }}"></span><span class="dy-chart__label">{{ month.label }}</span></div>{% endfor %}
+      </div>
+    </section>
+    <div class="dy-pair">
+      <section class="np-card np-card--tight" aria-labelledby="dy-pubs-title">
+        <div class="dy-nights__head"><h2 class="np-title" id="dy-pubs-title">{% translate "Kam chodíš" %}</h2></div>
+        {% if pubs %}<ol class="np-list dy-ranked">{% for pub in pubs %}
+          <li class="np-row"><span class="dy-ranked__n">{{ forloop.counter }}</span><span class="np-row__body"><span class="np-row__title">{{ pub.name }}</span><span class="np-row__meta">{{ pub.meta }}</span></span><span class="np-row__value">{{ pub.value }}</span></li>{% endfor %}
+        </ol>{% else %}<p class="dy-nights__empty np-muted">{% translate "Zatím žádná hospoda." %}</p>{% endif %}
+      </section>
+      <section class="np-card np-card--tight" aria-labelledby="dy-beers-title">
+        <div class="dy-nights__head"><h2 class="np-title" id="dy-beers-title">{% translate "Co piješ" %}</h2></div>
+        {% if beers %}<ol class="np-list dy-ranked">{% for beer in beers %}
+          <li class="np-row"><span class="dy-ranked__n">{{ forloop.counter }}</span><span class="np-row__body"><span class="np-row__title">{{ beer.name }}</span><span class="np-row__meta">{{ beer.meta }}</span></span><span class="np-row__value">{{ beer.value }}</span></li>{% endfor %}
+        </ol>{% else %}<p class="dy-nights__empty np-muted">{% translate "Zatím žádné pivo." %}</p>{% endif %}
+      </section>
+    </div>
+  </div>
+  <aside class="dy-side">
+    {% if companions %}<section class="np-card np-card--tight" aria-labelledby="dy-people-title">
+      <div class="dy-nights__head"><h2 class="np-title" id="dy-people-title">{% translate "S kým nejčastěji" %}</h2></div>
+      <div class="np-list">{% for person in companions %}
+        <div class="np-row">{% include "web/components/avatar.html" with name=person.name %}<span class="np-row__body"><span class="np-row__title">{{ person.name }}</span></span><span class="np-small np-muted">{{ person.value }}</span></div>{% endfor %}
+      </div>
+    </section>{% endif %}
+    <section class="np-card dy-when" aria-labelledby="dy-when-title">
+      <div class="np-card__head"><h2 class="np-title" id="dy-when-title">{% translate "Kdy chodíš" %}</h2><span class="np-small np-muted">{{ busiest }}</span></div>
+      <div class="dy-chart dy-chart--small">{% for day in weekdays %}
+        <div class="dy-chart__col"><span class="dy-chart__bar{% if day.peak %} is-peak{% elif day.height %} is-on{% endif %}" data-h="{{ day.height }}"></span><span class="dy-chart__label">{{ day.label }}</span></div>{% endfor %}
+      </div>
+    </section>
+    <section class="np-card dy-badges" aria-labelledby="dy-badges-title">
+      <div class="np-card__head"><h2 class="np-title" id="dy-badges-title">{% translate "Odznaky" %}</h2><span class="np-small np-yellow">{{ badges_count }}</span></div>
+      {% if badges %}<ul class="dy-badges__list">{% for badge in badges %}
+        <li><span class="dy-badges__medal">{% icon badge.icon %}</span><span>{{ badge.name }}</span></li>{% endfor %}
+      </ul>{% else %}<p class="np-small np-muted">{% translate "První odznak přijde s prvním pivem." %}</p>{% endif %}
+    </section>
+  </aside>
+</div>
+{% endif %}
+{% endblock %}

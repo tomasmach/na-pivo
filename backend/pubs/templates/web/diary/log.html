@@ -1,0 +1,80 @@
+{% extends "web/app.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "diary.css" %}">{% endblock %}
+{% block content %}
+<section class="dy-log np-card" aria-labelledby="dy-log-title">
+  <form class="dy-log__form" data-log-form novalidate>
+    <div class="dy-dialog__head">
+      <div>
+        <h1 class="dy-log__title" id="dy-log-title">{{ heading }}</h1>
+        <p class="np-muted">{% translate "Stejný zápis jako v appce, jen na webu." %}</p>
+      </div>
+      <a class="np-btn np-btn--icon" href="{{ back_url }}" aria-label="{% translate "Zavřít" %}">{% icon "x" "np-icon--s" %}</a>
+    </div>
+    <noscript><p class="np-alert">{% translate "Zápis potřebuje zapnutý JavaScript." %}</p></noscript>
+
+    <div class="dy-log__when">
+      <div class="np-field dy-log__date">
+        <label class="np-field__label dy-label" for="dy-date">{% translate "Datum" %}</label>
+        <input class="np-input" id="dy-date" name="date" type="date" value="{{ day }}" min="{{ data.earliest }}" max="{{ data.today }}" required>
+      </div>
+      <div class="np-field">
+        <label class="np-field__label dy-label" for="dy-from">{% translate "Od" %}</label>
+        <input class="np-input" id="dy-from" name="from" type="time" value="{{ start }}" required>
+      </div>
+      <div class="np-field">
+        <label class="np-field__label dy-label" for="dy-to">{% translate "Do" %}</label>
+        <input class="np-input" id="dy-to" name="to" type="time" aria-describedby="dy-to-hint">
+        <span class="np-field__hint" id="dy-to-hint">{% translate "volitelně" %}</span>
+      </div>
+    </div>
+    <p class="np-field__error" data-date-error hidden></p>
+
+    <fieldset class="dy-log__group">
+      <legend class="dy-log__legend">{% translate "Kde to bylo?" %}</legend>
+      <div class="np-chips" data-places>
+        {% for pub in data.pubs %}<button class="np-chip" type="button" data-place="pub:{{ pub.key }}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}">{% icon "history" %}{{ pub.name }}</button>{% endfor %}
+        <button class="np-chip" type="button" data-place="private" aria-pressed="{% if not data.pubs %}true{% else %}false{% endif %}">{% icon "house" %}{% translate "Doma" %}</button>
+        <button class="np-chip" type="button" data-place="other" aria-pressed="false">{% translate "Mimo hospodu" %}</button>
+        <button class="np-chip" type="button" data-search-toggle aria-expanded="false" aria-controls="dy-search">{% icon "search" %}{% translate "Jiná hospoda" %}</button>
+      </div>
+      <div class="dy-log__search" id="dy-search" hidden>
+        <label class="np-sr-only" for="dy-search-q">{% translate "Hledat hospodu" %}</label>
+        <div class="np-search">{% icon "search" %}<input class="np-input" id="dy-search-q" type="search" placeholder="{% translate "Název hospody nebo město" %}" autocomplete="off"></div>
+        <div class="dy-log__results" data-results role="list"></div>
+      </div>
+    </fieldset>
+
+    <fieldset class="dy-log__group">
+      <legend class="dy-log__legend">{% translate "Piva" %}</legend>
+      <div class="dy-beers">
+        <div class="dy-beers__head" aria-hidden="true"><span>{% translate "Pivo" %}</span><span>{% translate "Počet" %}</span><span>{% translate "Cena / ks" %}</span></div>
+        <div data-beers></div>
+        <div class="dy-beers__foot">
+          <button class="dy-add" type="button" data-add-beer>{% icon "plus" "np-icon--s" %}{% translate "Přidat pivo" %}</button>
+          <span class="np-small np-muted" data-total aria-live="polite"></span>
+        </div>
+      </div>
+      <datalist id="dy-beer-names"></datalist>
+    </fieldset>
+
+    {% if backfill %}<p class="np-small np-muted">{% translate "Starší zápisy jsou nejdřív jen pro tebe." %}</p>{% endif %}
+    <p class="np-alert" data-status role="status" hidden></p>
+    <button class="np-btn np-btn--primary np-btn--l np-btn--block" type="submit" data-submit>{% if backfill %}{% translate "Uložit vzpomínku" %}{% else %}{% translate "Zapsat" %}{% endif %}</button>
+  </form>
+</section>
+<template id="dy-beer-row">
+  <div class="dy-beer" data-beer>
+    <label class="np-sr-only">{% translate "Název piva" %}</label>
+    <input class="np-input dy-beer__name" type="text" maxlength="80" list="dy-beer-names" placeholder="{% translate "Název piva" %}" autocomplete="off" data-name>
+    <div class="dy-beer__count">
+      <button class="np-btn np-btn--icon dy-beer__step" type="button" data-step="-1" aria-label="{% translate "O jedno míň" %}">{% icon "minus" "np-icon--s" %}</button>
+      <output class="dy-beer__n" data-n>1</output>
+      <button class="np-btn np-btn--icon dy-beer__step" type="button" data-step="1" aria-label="{% translate "O jedno víc" %}">{% icon "plus" "np-icon--s" %}</button>
+    </div>
+    <label class="dy-beer__price"><span class="np-sr-only">{% translate "Cena / ks" %}</span><input class="np-input" type="number" min="1" max="1000" step="1" inputmode="numeric" data-price><span aria-hidden="true">{% translate "Kč" %}</span></label>
+  </div>
+</template>
+{{ data|json_script:"dy-log-data" }}
+{% endblock %}
+{% block scripts %}{{ block.super }}<script src="{% asset "diary.js" %}" defer></script>{% endblock %}

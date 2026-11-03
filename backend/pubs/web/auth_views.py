@@ -32,7 +32,7 @@ from pubs.accounts import AccountError
 from pubs.api import auth_serializers as s
 from pubs.api.throttling import SharedScopedRateThrottle
 from pubs.models import AuthIdentity
-from pubs.web.pages import render_page, signed_in_page, web_page
+from pubs.web.pages import render_page, web_page
 from pubs.web.routes import web_reverse
 from pubs.web.session import end_session, safe_next, start_session
 
@@ -321,10 +321,3 @@ def _oauth_finish(request: HttpRequest, provider: str) -> HttpResponse:
     return HttpResponseRedirect(
         safe_next(request, pending.get("next")) or web_reverse("web-diary", pending.get("lang") or "cs")
     )
-
-
-@signed_in_page
-def diary(request: HttpRequest) -> HttpResponse:
-    """Placeholder until the Diary page lands; proves the signed-in shell."""
-
-    return render_page(request, "web/diary_placeholder.html", title=gettext("Deník"), section="diary", indexable=False)

@@ -20,6 +20,7 @@ _SAMPLE_KWARGS = {
     "web-pubs-city": {"city": "praha"},
     "web-pub": {"key": "u-pinkasu"},
     "web-tour": {"tour_id": "abc"},
+    "web-night": {"day": "2026-10-24"},
 }
 
 

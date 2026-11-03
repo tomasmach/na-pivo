@@ -262,7 +262,7 @@ from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 from pubs.xp_events import record_xp_event
 
 from . import piva_views
-from .authentication import AccountTokenAuthentication
+from .authentication import AccountTokenAuthentication, WebSessionAuthentication
 from .cache import get_cached_pub_details, get_or_enrich
 from .client_time import bounded_client_time
 from .drink_flags import evaluate_drink_flags
@@ -2792,7 +2792,8 @@ class DrinksView(APIView):
     permanent 422. Responses carry additive ``limited`` for both accepted and
     duplicate outcomes.
 
-    Auth: Bearer token (per-account). Idempotent on (account, client_id): a
+    Auth: Bearer token (per-account), or the signed-in web's session with
+    CSRF (additive, the bearer path is unchanged). Idempotent on (account, client_id): a
     replayed client_id returns 200 ``duplicate: true`` with NO repeated side
     effects (no second log row, no second merge). Throttled per-IP (scope
     "drinks").
@@ -2818,7 +2819,7 @@ class DrinksView(APIView):
     the contributor pointer. Headerless legacy clients keep released behavior.
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "drinks"
@@ -4258,7 +4259,7 @@ class PubVisitView(APIView):
     "pub_visits").
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "pub_visits"
