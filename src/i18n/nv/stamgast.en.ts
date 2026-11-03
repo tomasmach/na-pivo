@@ -264,7 +264,6 @@ export const stamgastEn: typeof stamgastCs = {
   remindEnable: 'Turn reminders on',
   remindOn: 'Reminders are on.',
   remindOnSub: "I'll ping you when you sit down in a pub.",
-  remindDenied: "Without the phone's permission I can't ping you.",
   openSettings: 'Open settings',
 
   appName: 'Na pivo',

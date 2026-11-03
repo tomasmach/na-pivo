@@ -226,6 +226,10 @@ export const en: Strings = {
       title: 'Hide pub names',
       subtitle: "I'll show the name after a tap and hide it in notifications too",
     },
+    marketingEmails: {
+      title: 'News by email',
+      subtitle: 'You can turn tips and offers off any time',
+    },
     about: {
       title: 'About the app',
     },
@@ -1285,6 +1289,7 @@ export const en: Strings = {
       ? `Invited ${n} ${englishPlural(n, { one: 'mate', other: 'mates' })}. Anyone with notifications on knows right away.`
       : 'Everyone you picked already has an invite.',
     rosterSummary: (invited: number, going: number) => going > 0 ? `${invited} invited · ${going} going` : `${invited} invited`,
+    inboxTitle: 'Invites',
     invitedBy: (name: string) => `${name} is inviting you`,
     going: "I'm in",
     notGoing: "Can't make it",

@@ -263,7 +263,7 @@ function PublicTour({ token, runId }: { token: string; runId?: string }) {
           ) : invite ? (
             <View style={{ gap: 6 }}>
               <View style={[s.row, { gap: 8 }]}>
-                <Person initial={initial(friendDisplayName(invite.inviter))} size={28} ring={false} />
+                <Person initial={initial(invite.inviter.nickname || invite.inviter.displayName)} size={28} ring={false} />
                 <T s={14} w={600} style={s.fill}>
                   {t.tourInvites.invitedBy(friendDisplayName(invite.inviter))}
                 </T>

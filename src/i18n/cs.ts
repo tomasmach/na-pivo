@@ -233,6 +233,10 @@ export const cs = {
       title: 'Schovávat názvy hospod',
       subtitle: 'Název ukážu až po ťuknutí a skryju ho i v upozorněních',
     },
+    marketingEmails: {
+      title: 'Novinky e-mailem',
+      subtitle: 'Tipy a nabídky. Kdykoli je vypneš.',
+    },
     about: {
       title: 'O appce',
     },
@@ -1463,6 +1467,7 @@ export const cs = {
       : 'Všichni vybraní už pozvánku mají.',
     rosterSummary: (invited: number, going: number) => going > 0
       ? `Pozváno ${invited} · ${czechPlural(going, { one: 'jde', few: 'jdou', many: 'jde' })} ${going}` : `Pozváno ${invited}`,
+    inboxTitle: 'Pozvánky',
     invitedBy: (name: string) => `${name} tě zve`,
     going: 'Jdu',
     notGoing: 'Nejdu',

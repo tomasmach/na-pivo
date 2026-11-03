@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'expo-router';
+import { usePathname, useRouter, type Href } from 'expo-router';
 
 import { getCurrentAppVersion } from '@/data/releaseNotesClient';
 import { t } from '@/i18n';
+import {
+  getSeenPubReminderOnboardingVersion,
+  markPubReminderOnboardingSeen,
+  shouldShowPubReminderOnboarding,
+} from '@/notifications/pubReminderOnboarding';
 import { badgeName } from '@/profile/badgeText';
 import { getSeenNicknameNudgeVersion, markNicknameNudgeSeen, shouldShowNicknameNudge } from '@/profile/nicknameNudge';
 import { useAccountBadges } from '@/profile/useAccountBadges';
 import { selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
 import { useBadgeStore } from '@/stores/badgeStore';
+import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 
 import { toast } from '../../ui/store';
 import { badgeIcon, observeLevel, useMe } from './profilModel';
@@ -17,12 +24,20 @@ const TAB_PATHS = new Set(['/nv', '/nv/kompas', '/nv/piva', '/nv/stamgast', '/nv
 
 let levelCheck: string | null = null;
 let nudgeChecked = false;
+let reminderChecked = false;
+let openSheet: string | null = null;
+
+function release(id: string) {
+  useLaunchModalMutex.getState().release(id);
+}
 
 /**
- * The new look has no BadgeHost or nickname nudge of its own, so the header
- * avatar, which sits on every tab, raises them: a medal toast when a badge goes
- * up, the level-up sheet once per new level, and the nickname prompt once per
- * app version. Sheets only open over a tab, never over another flow.
+ * The new look has no BadgeHost, nickname nudge or pub-reminder explainer of
+ * its own, so the header avatar, which sits on every tab, raises them: a medal
+ * toast when a badge goes up, the level-up sheet once per new level, the
+ * pub-reminder offer and the nickname prompt once per app version. Sheets only
+ * open over a tab, one at a time: each holds the launch-modal mutex until the
+ * user is back on a tab.
  */
 export function useProfilWatchers() {
   const router = useRouter();
@@ -31,12 +46,20 @@ export function useProfilWatchers() {
   const accountId = useAccountStore((s) => s.profile?.id ?? null);
   const needsNickname = useAccountStore(selectNeedsNickname);
   const firstLaunch = useOnboardingStore((s) => s.firstLaunchSession);
+  const remindersOn = useSettingsStore((s) => s.pubReminderEnabled);
+  const holder = useLaunchModalMutex((s) => s.holder);
   const states = useAccountBadges();
   const { xp, isSignedIn } = useMe();
   const level = xp?.level ?? null;
   const [hydrated, setHydrated] = useState(() => useBadgeStore.persist.hasHydrated());
 
   useEffect(() => useBadgeStore.persist.onFinishHydration(() => setHydrated(true)), []);
+
+  useEffect(() => {
+    if (!onTab || !openSheet) return;
+    release(openSheet);
+    openSheet = null;
+  }, [onTab]);
 
   useEffect(() => {
     if (!hydrated || !accountId || !states) return;
@@ -56,23 +79,54 @@ export function useProfilWatchers() {
   }, [accountId, hydrated, states]);
 
   useEffect(() => {
-    if (!onTab || !isSignedIn || !accountId || level == null) return;
-    const key = `${accountId}:${level}`;
-    if (levelCheck === key) return;
-    levelCheck = key;
-    void observeLevel(accountId, level).then((up) => {
-      if (up) router.push({ pathname: '/nv/novy-level', params: { since: up.since } });
-    });
-  }, [accountId, isSignedIn, level, onTab, router]);
+    const open = (id: string, href: Href) => {
+      openSheet = id;
+      router.push(href);
+    };
 
-  useEffect(() => {
-    if (!onTab || !needsNickname || firstLaunch || nudgeChecked) return;
-    nudgeChecked = true;
-    const version = getCurrentAppVersion();
-    void getSeenNicknameNudgeVersion().then((seen) => {
-      if (!shouldShowNicknameNudge({ currentVersion: version, seenVersion: seen })) return;
-      void markNicknameNudgeSeen(version);
-      router.push('/nv/dokoncit-ucet');
-    });
-  }, [firstLaunch, needsNickname, onTab, router]);
+    if (onTab && isSignedIn && accountId && level != null) {
+      const key = `${accountId}:${level}`;
+      if (levelCheck !== key && useLaunchModalMutex.getState().claim('level-up')) {
+        levelCheck = key;
+        void observeLevel(accountId, level).then((up) => {
+          if (up) open('level-up', { pathname: '/nv/novy-level', params: { since: up.since } });
+          else release('level-up');
+        });
+      }
+    }
+
+    // The welcome pager owns the first launch.
+    if (onTab && !firstLaunch && !remindersOn && !reminderChecked) {
+      if (useLaunchModalMutex.getState().claim('pub-reminder')) {
+        reminderChecked = true;
+        const version = getCurrentAppVersion();
+        void (async () => {
+          await waitForSettingsHydration();
+          const seenVersion = await getSeenPubReminderOnboardingVersion();
+          const pubReminderEnabled = useSettingsStore.getState().pubReminderEnabled;
+          if (!shouldShowPubReminderOnboarding({ currentVersion: version, seenVersion, pubReminderEnabled })) {
+            release('pub-reminder');
+            return;
+          }
+          await markPubReminderOnboardingSeen(version);
+          open('pub-reminder', '/nv/pripominky');
+        })();
+      }
+    }
+
+    if (onTab && needsNickname && !firstLaunch && !nudgeChecked) {
+      if (useLaunchModalMutex.getState().claim('nickname')) {
+        nudgeChecked = true;
+        const version = getCurrentAppVersion();
+        void getSeenNicknameNudgeVersion().then((seen) => {
+          if (!shouldShowNicknameNudge({ currentVersion: version, seenVersion: seen })) {
+            release('nickname');
+            return;
+          }
+          void markNicknameNudgeSeen(version);
+          open('nickname', '/nv/dokoncit-ucet');
+        });
+      }
+    }
+  }, [accountId, firstLaunch, holder, isSignedIn, level, needsNickname, onTab, remindersOn, router]);
 }

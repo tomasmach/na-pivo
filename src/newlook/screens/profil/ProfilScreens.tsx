@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Image, Linking, ScrollView, Share, View, type TextInputInstance } from 'react-native';
+import { AppState, Image, Linking, Platform, ScrollView, Share, View, type TextInputInstance } from 'react-native';
 
-import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -17,6 +16,7 @@ import type { FeedbackCategory, FeedbackContactType } from '@/data/feedbackClien
 import { enqueueFeedback } from '@/data/feedbackQueue';
 import { claimInviteCode } from '@/data/friendInviteLink';
 import {
+  cancelFriendRequest,
   fetchBlockedAccounts,
   fetchFriendInviteCode,
   fetchFriendsDashboard,
@@ -26,6 +26,7 @@ import {
   unblockFriend,
   type FriendInvite,
   type FriendProfile,
+  type Friendship,
   type InviteResolveResult,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
@@ -43,6 +44,7 @@ import {
   enableBeerCountReminderNotifications,
   reschedulePendingBeerCountReminder,
 } from '@/notifications/beerCountReminder';
+import { disableFriendPush, registerFriendPush } from '@/notifications/friendPush';
 import { disableHomeTransitReminder, enableHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { disablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
 import { askTourReminderPermission, notificationPermissionStatus } from '@/notifications/tourReminder';
@@ -66,6 +68,8 @@ import {
   useSettingsStore,
   type BeerCountReminderIntervalMinutes,
 } from '@/stores/settingsStore';
+import { palette, PALETTES, type Palette } from '@/theme/palette';
+import { switchPalette } from '@/theme/switchPalette';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 
@@ -140,11 +144,11 @@ export function BadgeCircle({ icon, got, size = 76 }: { icon: IconName; got: boo
   );
 }
 
-function notificationsDenied() {
+function notificationsDenied(body?: string) {
   const copy = t.settings.pubReminders.denied['notifications-denied'];
   dialog({
     title: copy.title,
-    body: copy.body,
+    body: body ?? copy.body,
     actions: [
       { label: P().settings.cancel },
       { label: t.settings.pubReminders.openSettings, kind: 'primary', onPress: () => void Linking.openSettings() },
@@ -777,6 +781,7 @@ export function NastaveniScreen() {
   const st = useSettingsStore();
   const [picker, setPicker] = useState<'distance' | 'interval' | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const homeSet = st.homePoint != null;
   const providers = me.profile?.providers ?? [];
   // On only when tour reminders can really come: a fresh install that was never asked shows off, and a tap asks.
@@ -842,6 +847,12 @@ export function NastaveniScreen() {
     void updateAccountPreferences({ hapticEnabled: on });
   };
 
+  const toggleMarketingEmails = (on: boolean) => {
+    trackUiInteraction('settings_marketing_emails', on ? 'toggle_on' : 'toggle_off');
+    st.setMarketingEmailsEnabled(on);
+    void updateAccountPreferences({ marketingEmailsEnabled: on });
+  };
+
   const toggleSound = (on: boolean) => {
     trackUiInteraction('settings_sound', on ? 'toggle_on' : 'toggle_off');
     st.setSoundEnabled(on);
@@ -888,6 +899,28 @@ export function NastaveniScreen() {
     if (answer === 'denied') notificationsDenied();
   };
 
+  // The system can refuse notifications, so the switch shows the stored outcome, not the tap.
+  const togglePartyPush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (st.friendPushEnabled) {
+        if (!(await disableFriendPush())) toast({ kind: 'error', title: P().settings.partyPushDisableError });
+        return;
+      }
+      const result = await registerFriendPush();
+      if (result.ok || result.reason === 'cancelled') return;
+      if (result.reason === 'denied') notificationsDenied(P().settings.partyPushDenied);
+      else toast({ kind: 'error', title: P().settings.partyPushEnableError });
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const pickPalette = async (next: Palette) => {
+    if (!(await switchPalette(next))) toast({ kind: 'error', title: t.account.errorGeneric });
+  };
+
   const pickLocale = async (code: Locale) => {
     if (code === locale) return;
     if (!(await switchLocale(code))) toast({ kind: 'error', title: t.account.errorGeneric });
@@ -900,15 +933,22 @@ export function NastaveniScreen() {
       <PageTitle title={P().settings.title} />
       <Card>
         {me.isSignedIn ? (
-          <Row
-            last
-            leading={<Tile icon="user" />}
-            title={accountTitle}
-            titleWeight={700}
-            sub={providers.length > 0 ? P().settings.accountSub(providers.map(providerName).join(', ')) : undefined}
-            chevron
-            onPress={() => openAccount('/nv/ucet')}
-          />
+          <>
+            <Row
+              leading={<Tile icon="user" />}
+              title={accountTitle}
+              titleWeight={700}
+              sub={providers.length > 0 ? P().settings.accountSub(providers.map(providerName).join(', ')) : undefined}
+              chevron
+              onPress={() => openAccount('/nv/ucet')}
+            />
+            <Row
+              last
+              title={t.settings.marketingEmails.title}
+              sub={t.settings.marketingEmails.subtitle}
+              trailing={<Toggle value={st.marketingEmailsEnabled} onChange={toggleMarketingEmails} />}
+            />
+          </>
         ) : (
           <Row
             last
@@ -1003,6 +1043,13 @@ export function NastaveniScreen() {
           trailing={<Toggle value={tourRemindersOn} onChange={() => void toggleTourReminders()} />}
         />
         <Row title={P().settings.water} sub={P().settings.waterSub} trailing={<Toggle value={st.waterNudgeEnabled} onChange={toggleWater} />} />
+        {me.isSignedIn ? (
+          <Row
+            title={P().settings.partyPush}
+            sub={P().settings.partyPushSub}
+            trailing={<Toggle value={st.friendPushEnabled} onChange={() => void togglePartyPush()} />}
+          />
+        ) : null}
         <Row
           last
           title={P().settings.pubPing}
@@ -1049,6 +1096,22 @@ export function NastaveniScreen() {
             />
           }
         />
+        {/* The new look ignores the palette and Android keeps its icon (switchPalette), so there it would change nothing. */}
+        {Platform.OS === 'ios' ? (
+          <Row
+            title={P().settings.appIcon}
+            sub={P().settings.appIconSub}
+            trailing={
+              <Segmented
+                height={36}
+                style={{ width: 180 }}
+                options={PALETTES.map((key) => ({ key, label: key === 'brown' ? P().settings.appIconBrown : P().settings.appIconGray }))}
+                value={palette}
+                onChange={(next) => void pickPalette(next)}
+              />
+            }
+          />
+        ) : null}
         <Row title={P().settings.writeMe} chevron onPress={() => router.push('/nv/napis-mi')} />
         <Row last title={P().settings.about} chevron onPress={() => router.push('/nv/o-appce')} />
       </Card>
@@ -1530,7 +1593,6 @@ export function PrihlasovaniSheet() {
 export function PrihlaseniScreen() {
   const router = useRouter();
   const passwordRef = useRef<TextInputInstance>(null);
-  const insets = useSafeAreaInsets();
   const login = useAccountStore((st) => st.login);
   const register = useAccountStore((st) => st.register);
   const signInGoogle = useAccountStore((st) => st.signInGoogle);
@@ -1619,84 +1681,87 @@ export function PrihlaseniScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: 160 }}>
-        <Press onPress={() => close(router)} style={{ alignSelf: 'flex-end' }}>
-          <T s={15} w={600} c={C.muted}>
-            {P().signIn.skip}
-          </T>
-        </Press>
-        <PageTitle title={P().signIn.title} intro={P().signIn.intro} />
-        <Segmented
-          height={40}
-          options={[
-            { key: 'login', label: P().signIn.login },
-            { key: 'register', label: P().signIn.register },
-          ]}
-          value={mode}
-          onChange={(next) => {
-            if (next !== mode) trackUiInteraction(next === 'login' ? 'auth_login_mode' : 'auth_register_mode', 'select');
-            setMode(next);
-            setError('');
-          }}
-        />
-        {appleSupported ? (
-          <Button label={busy === 'apple' ? t.account.loading : P().signIn.apple} icon="apple" kind="white" height={52} disabled={busy !== null} onPress={() => void social('apple')} />
-        ) : null}
-        {googleConfigured ? (
-          <Button label={busy === 'google' ? t.account.loading : P().signIn.google} kind="raised" height={52} disabled={busy !== null} onPress={() => void social('google')} />
-        ) : null}
-        {appleSupported || googleConfigured ? (
-          <View style={[s.row, { gap: 12 }]}>
-            <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
-            <T s={13} c={C.muted}>
-              {P().signIn.orEmail}
+    <Screen
+      gap={16}
+      padTop={0}
+      footer={
+        <View style={{ gap: 14 }}>
+          <Button
+            label={busy === 'submit' ? t.account.loading : mode === 'login' ? P().signIn.login : P().signIn.register}
+            disabled={busy !== null}
+            onPress={() => void submit()}
+          />
+          <Press onPress={() => void forgot()} style={{ alignItems: 'center' }}>
+            <T s={14} w={600} c={C.yellow}>
+              {P().signIn.forgot}
             </T>
-            <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
-          </View>
-        ) : null}
-        <Field label={P().signIn.email}>
-          <Input
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="email"
-            textContentType="emailAddress"
-            returnKeyType="next"
-            submitBehavior="submit"
-            onSubmitEditing={() => passwordRef.current?.focus()}
-          />
-        </Field>
-        <Field label={P().signIn.password}>
-          <Input
-            inputRef={passwordRef}
-            value={password}
-            onChangeText={setPassword}
-            placeholder={P().signIn.passwordPlaceholder}
-            secureTextEntry
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            textContentType={mode === 'login' ? 'password' : 'newPassword'}
-            returnKeyType="go"
-            onSubmitEditing={() => void submit()}
-          />
-        </Field>
-        <ErrorLine text={error || (sessionExpired ? t.account.sessionExpired : '')} />
-      </KeyboardAwareScrollView>
-      <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4, gap: 14 }}>
-        <Button
-          label={busy === 'submit' ? t.account.loading : mode === 'login' ? P().signIn.login : P().signIn.register}
-          disabled={busy !== null}
-          onPress={() => void submit()}
-        />
-        <Press onPress={() => void forgot()} style={{ alignItems: 'center' }}>
-          <T s={14} w={600} c={C.yellow}>
-            {P().signIn.forgot}
+          </Press>
+        </View>
+      }
+    >
+      <Press onPress={() => close(router)} style={{ alignSelf: 'flex-end' }}>
+        <T s={15} w={600} c={C.muted}>
+          {P().signIn.skip}
+        </T>
+      </Press>
+      <PageTitle title={P().signIn.title} intro={P().signIn.intro} />
+      <Segmented
+        height={40}
+        options={[
+          { key: 'login', label: P().signIn.login },
+          { key: 'register', label: P().signIn.register },
+        ]}
+        value={mode}
+        onChange={(next) => {
+          if (next !== mode) trackUiInteraction(next === 'login' ? 'auth_login_mode' : 'auth_register_mode', 'select');
+          setMode(next);
+          setError('');
+        }}
+      />
+      {appleSupported ? (
+        <Button label={busy === 'apple' ? t.account.loading : P().signIn.apple} icon="apple" kind="white" height={52} disabled={busy !== null} onPress={() => void social('apple')} />
+      ) : null}
+      {googleConfigured ? (
+        <Button label={busy === 'google' ? t.account.loading : P().signIn.google} kind="raised" height={52} disabled={busy !== null} onPress={() => void social('google')} />
+      ) : null}
+      {appleSupported || googleConfigured ? (
+        <View style={[s.row, { gap: 12 }]}>
+          <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
+          <T s={13} c={C.muted}>
+            {P().signIn.orEmail}
           </T>
-        </Press>
-      </View>
-    </View>
+          <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
+        </View>
+      ) : null}
+      <Field label={P().signIn.email}>
+        <Input
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          textContentType="emailAddress"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+        />
+      </Field>
+      <Field label={P().signIn.password}>
+        <Input
+          inputRef={passwordRef}
+          value={password}
+          onChangeText={setPassword}
+          placeholder={P().signIn.passwordPlaceholder}
+          secureTextEntry
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+          textContentType={mode === 'login' ? 'password' : 'newPassword'}
+          returnKeyType="go"
+          onSubmitEditing={() => void submit()}
+        />
+      </Field>
+      <ErrorLine text={error || (sessionExpired ? t.account.sessionExpired : '')} />
+    </Screen>
   );
 }
 
@@ -1829,20 +1894,29 @@ export function SpravaPartyScreen() {
   const needsNickname = me.isSignedIn && me.profile != null && !me.nick;
   const [invite, setInvite] = useState<FriendInvite | null | 'loading'>('loading');
   const [friends, setFriends] = useState<FriendProfile[] | null>(null);
+  const [outgoing, setOutgoing] = useState<Friendship[]>([]);
   const [blocked, setBlocked] = useState<FriendProfile[]>([]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<FriendProfile[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [requesting, setRequesting] = useState<string | null>(null);
   const searchSeq = useRef(0);
+  const shown = useRef(false);
 
   const load = useCallback(() => {
     const controller = new AbortController();
     void loadFriendsDashboardSnapshot().then((snapshot) => {
-      if (!controller.signal.aborted && snapshot) setFriends((current) => current ?? snapshot.dashboard.friends);
+      // The saved copy only fills an empty screen; it can still hold a request cancelled here.
+      if (controller.signal.aborted || !snapshot || shown.current) return;
+      shown.current = true;
+      setFriends(snapshot.dashboard.friends);
+      setOutgoing(snapshot.dashboard.outgoingRequests);
     });
     void fetchFriendsDashboard(controller.signal).then((dashboard) => {
-      if (!controller.signal.aborted && dashboard) setFriends(dashboard.friends);
+      if (controller.signal.aborted || !dashboard) return;
+      shown.current = true;
+      setFriends(dashboard.friends);
+      setOutgoing(dashboard.outgoingRequests);
     });
     void fetchBlockedAccounts(controller.signal).then((list) => {
       if (!controller.signal.aborted && list) setBlocked(list);
@@ -1932,6 +2006,25 @@ export function SpravaPartyScreen() {
               if (!result.ok) return toast({ kind: 'error', title: result.detail });
               setBlocked((list) => list.filter((item) => item.id !== account.id));
               toast({ kind: 'saved', title: t.friends.unblocked, icon: 'check' });
+            }),
+        },
+      ],
+    });
+
+  const confirmCancelRequest = (request: Friendship) =>
+    dialog({
+      title: P().parta.cancelRequestTitle(friendDisplayName(request.recipient)),
+      actions: [
+        { label: t.nv.parta.back },
+        {
+          label: P().parta.cancelRequestConfirm,
+          kind: 'danger',
+          onPress: () =>
+            void cancelFriendRequest(request.recipient.id).then((result) => {
+              if (!result.ok) return toast({ kind: 'error', title: result.detail });
+              setOutgoing((list) => list.filter((item) => item.id !== request.id));
+              toast({ kind: 'saved', title: P().parta.requestCanceled, icon: 'check' });
+              load();
             }),
         },
       ],
@@ -2057,6 +2150,25 @@ export function SpravaPartyScreen() {
               ))}
             </Card>
           )}
+          {outgoing.length > 0 ? (
+            <>
+              <T s={17} w={700}>
+                {P().parta.outgoing}
+              </T>
+              <Card>
+                {outgoing.map((request, idx) => (
+                  <Row
+                    key={request.id}
+                    last={idx === outgoing.length - 1}
+                    leading={<ProfilAvatar uri={request.recipient.avatarUrl} initial={initialOf(request.recipient)} />}
+                    title={friendDisplayName(request.recipient)}
+                    sub={P().parta.outgoingSub}
+                    trailing={<Chip label={P().parta.cancelRequest} plain height={34} onPress={() => confirmCancelRequest(request)} />}
+                  />
+                ))}
+              </Card>
+            </>
+          ) : null}
           {blocked.length > 0 ? (
             <>
               <T s={17} w={700}>

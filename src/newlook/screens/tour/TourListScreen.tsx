@@ -5,9 +5,11 @@ import Animated from 'react-native-reanimated';
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 
 import { checkLocationPermission, ensureLocationPermission } from '@/compass/permissions';
-import { fetchTourRoster, type TourInviteRow } from '@/data/tourInvitesClient';
+import { fetchOpenTourInvites, fetchTourRoster, type OpenTourInvite, type TourInviteRow } from '@/data/tourInvitesClient';
 import { searchPublicTours, type PublicTourHit, type TourStopsFilter } from '@/data/toursClient';
+import { friendDisplayName } from '@/friends/FriendMini';
 import { intlLocale, t } from '@/i18n';
+import { useAccountStore } from '@/stores/accountStore';
 import { useToursStore } from '@/stores/toursStore';
 import { describeRun, sortPlans, upcomingPlan } from '@/tours/glance';
 import type { TourPlan } from '@/tours/model';
@@ -18,7 +20,7 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Input, PageTitle, Ticket } from '../../components/forms';
 import { Icon } from '../../components/Icon';
-import { Button, Card, Chip, IconButton, Press, Row, Segmented, Spinner, Stack, T, Tile } from '../../components/ui';
+import { Button, Card, Chip, IconButton, Person, Press, Row, Segmented, Spinner, Stack, T, Tile } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { fadeIn } from '../../motion';
 import { C, s } from '../../theme';
@@ -103,8 +105,60 @@ export function TourListScreen() {
         value={tab}
         onChange={setTab}
       />
-      {tab === 'moje' ? <MineTab /> : <PublicTab nearEndRef={nearEndRef} />}
+      {tab === 'moje' ? (
+        <>
+          <InviteInbox />
+          <MineTab />
+        </>
+      ) : (
+        <PublicTab nearEndRef={nearEndRef} />
+      )}
     </Screen>
+  );
+}
+
+/** Friends' tours waiting for this account's answer, read from the server so a missed push never hides one. */
+function InviteInbox() {
+  const router = useRouter();
+  const focused = useIsFocused();
+  const plans = useToursStore((st) => st.plans);
+  const hydrated = useToursStore((st) => st.hydrated);
+  // Kept with the account it was read for: after a logout or switch the previous account's invites never show.
+  const accountId = useAccountStore((st) => st.session?.accountId ?? null);
+  const [found, setFound] = useState<{ accountId: string; invites: OpenTourInvite[] } | null>(null);
+  useEffect(() => {
+    if (!focused || !accountId) return;
+    let alive = true;
+    void fetchOpenTourInvites().then((result) => { if (alive) setFound({ accountId, invites: result.ok ? result.value : [] }); });
+    return () => { alive = false; };
+  }, [focused, accountId]);
+  const invites = found && found.accountId === accountId ? found.invites : [];
+  // A declined invite is answered; a going one stays until its tour is saved, so the list is the way back to a lost copy.
+  const shown = invites.filter(
+    (invite) => invite.status === 'invited' || (invite.status === 'going' && !plans.some((plan) => plan.source?.tourId === invite.planId && plan.source.token === invite.token)),
+  );
+  if (!hydrated || !shown.length) return null;
+  return (
+    <>
+      <T s={17} w={700}>
+        {t.tourInvites.inboxTitle}
+      </T>
+      <Card>
+        {shown.map((invite, i) => (
+          <Row
+            key={invite.planId}
+            last={i === shown.length - 1}
+            height={72}
+            leading={<Person initial={(invite.inviter.nickname || invite.inviter.displayName || '?').charAt(0).toUpperCase()} />}
+            title={invite.title}
+            titleWeight={700}
+            sub={[t.tourInvites.invitedBy(friendDisplayName(invite.inviter)), whenText(invite), invite.firstPub || null].filter(Boolean).join(' · ')}
+            chevron
+            onPress={() => router.push({ pathname: '/nv/tour-verejna', params: { token: invite.token } } as unknown as Href)}
+          />
+        ))}
+      </Card>
+    </>
   );
 }
 

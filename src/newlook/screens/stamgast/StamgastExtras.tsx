@@ -10,7 +10,7 @@ import { ensureLocationPermission } from '@/compass/permissions';
 import { formatClock } from '@/counter/useAlcoholEstimate';
 import { useNowTick } from '@/friends/useNowTick';
 import { intlLocale, t } from '@/i18n';
-import { enablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
+import { enablePubReminderNotifications, type PubReminderEnableResult } from '@/notifications/pubReminderNotifications';
 import { useHomeTransitStore } from '@/stores/homeTransitStore';
 import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
 import { sessionCount, sessionTotalCzk, useTallyStore } from '@/stores/tallyStore';
@@ -27,6 +27,8 @@ import { Button, D, Kicker, Press, Row, T, Tile } from '../../components/ui';
 import { C, s } from '../../theme';
 import { toast } from '../../ui/store';
 import { GRAY_MAP } from '../kompas/NvMap';
+
+type PubReminderEnableFailureReason = Extract<PubReminderEnableResult, { ok: false }>['reason'];
 
 const CZECHIA: Region = { latitude: 49.8175, longitude: 15.473, latitudeDelta: 4.5, longitudeDelta: 4.5 };
 const STREET_DELTA = 0.014;
@@ -171,8 +173,10 @@ export function DomovskyBodScreen() {
 export function PripominkySheet() {
   const router = useRouter();
   const copy = t.nv.stamgast;
-  const [step, setStep] = useState<'offer' | 'perms' | 'denied'>('offer');
+  const [step, setStep] = useState<'offer' | 'perms'>('offer');
+  const [denied, setDenied] = useState<PubReminderEnableFailureReason | null>(null);
   const [busy, setBusy] = useState(false);
+  const failure = denied ? t.settings.pubReminders.denied[denied] : null;
   if (step === 'offer') {
     return (
       <Sheet closeIcon={false} top={470} scroll={false}>
@@ -198,9 +202,9 @@ export function PripominkySheet() {
   return (
     <Sheet closeIcon={false} top={340} scroll={false}>
       <View style={{ gap: 10 }}>
-        <D s={30}>{copy.remindPermsTitle}</D>
-        <T s={15} c={step === 'denied' ? C.danger : C.text2} lh={1.45}>
-          {step === 'denied' ? copy.remindDenied : copy.remindPermsBody}
+        <D s={30}>{failure ? failure.title : copy.remindPermsTitle}</D>
+        <T s={15} c={failure ? C.danger : C.text2} lh={1.45}>
+          {failure ? failure.body : copy.remindPermsBody}
         </T>
       </View>
       <View>
@@ -208,7 +212,7 @@ export function PripominkySheet() {
         <Row leading={<Tile icon="map-pin" color={C.white} size={36} />} title={copy.remindAlways} titleWeight={700} sub={copy.remindAlwaysSub} />
         <Row last leading={<Tile icon="shield-check" color={C.white} size={36} />} title={copy.remindNoTrack} titleWeight={700} sub={copy.remindNoTrackSub} />
       </View>
-      {step === 'denied' ? (
+      {failure ? (
         <Button label={copy.openSettings} onPress={() => void Linking.openSettings()} />
       ) : (
         <Button
@@ -220,7 +224,7 @@ export function PripominkySheet() {
             setBusy(false);
             useSettingsStore.getState().setPubReminderEnabled(result.ok);
             if (!result.ok) {
-              setStep('denied');
+              setDenied(result.reason);
               return;
             }
             nvBack(router);
@@ -228,7 +232,12 @@ export function PripominkySheet() {
           }}
         />
       )}
-      <Press onPress={() => setStep('offer')} style={{ alignItems: 'center', paddingBottom: 6 }}>
+      <Press
+        onPress={() => {
+          setDenied(null);
+          setStep('offer');
+        }}
+        style={{ alignItems: 'center', paddingBottom: 6 }}>
         <T s={15} w={700} c={C.text2}>
           {copy.back}
         </T>

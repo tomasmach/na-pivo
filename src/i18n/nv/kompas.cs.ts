@@ -223,6 +223,15 @@ export const kompasCs = {
   waiting: 'Čeká na odeslání',
   myPubsEmptyTitle: 'Zatím tu žádná není.',
   myPubsEmptyBody: 'Když v kompasu chybí hospoda, doplň ji. Přidám ji do mapy i ostatním.',
+  waitingEdit: 'Oprava čeká',
+  editTitle: 'Opravit hospodu',
+  editIntro: 'Název opravíš hned. Když změníš adresu, najdu ji znovu na mapě.',
+  editNeedsLocation: 'Tuhle adresu jsem na mapě nenašel. Oprav ji, nebo zapíchni špendlík přímo do hospody.',
+  editNeedsAddress: 'Tuhle adresu jsem na mapě nenašel. Oprav ji.',
+  editSave: 'Uložit opravu',
+  editSaved: 'Oprava je uložená.',
+  editQueued: 'Opravu pošlu, až bude signál.',
+  editRejected: 'Opravu server nevzal. Zkontroluj název a adresu.',
 
   // — Doplnit info —
   fillTitle: 'Doplnit info',
