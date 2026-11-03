@@ -1,0 +1,66 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "public-pages.css" %}">{{ structured_data }}{% endblock %}
+{% block og_image %}{% if og_image %}<meta property="og:image" content="{{ og_image }}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">{% endif %}{% endblock %}
+{% block scripts %}{% if not missing %}<script src="{% asset "public-pages.js" %}" defer></script>{% endif %}{% endblock %}
+{% block content %}
+{% if missing %}
+{% translate "Tahle trasa už není veřejná" as empty_title %}
+{% translate "Autor ji možná stáhl nebo upravil. Mrkni na další trasy, které lidi zveřejnili." as empty_text %}
+{% translate "Všechny trasy" as action_label %}
+{% web_url "web-tours" as tours_url %}
+{% include "web/components/empty.html" with icon="route" title=empty_title text=empty_text action_label=action_label action_url=tours_url %}
+{% else %}
+<div class="tr-mobile-map">{% include "web/public/_route.html" with map=map_phone %}</div>
+{% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
+<header class="tr-detail-head">
+  <div class="pp-head">
+    <h1 class="np-h1">{{ tour.title }}</h1>
+    <p class="pp-head__lead">{{ meta }}</p>
+  </div>
+  <div class="tr-actions">
+    <button class="np-btn" type="button" data-share="{{ share_url }}" data-copied="{% translate "Odkaz zkopírovaný" %}">{% icon "share" "np-icon--s" %}<span>{% translate "Sdílet s partou" %}</span></button>
+    <a class="np-btn np-btn--primary" href="{{ app_url }}">{% icon "footprints" "np-icon--s" %}{% translate "Projdi ji s appkou" %}</a>
+  </div>
+</header>
+
+<div class="np-card tr-stats">
+  {% for stat in stats %}<div class="tr-stats__item"><span class="tr-stats__value">{{ stat.value }}</span><span class="tr-stats__label">{{ stat.label }}</span></div>{% endfor %}
+</div>
+
+<div class="tr-body">
+  <section class="np-card tr-stops" aria-labelledby="tr-stops">
+    <div class="pi-card-head"><h2 class="np-title" id="tr-stops">{{ stops_title }}</h2><span class="np-small np-muted">{% translate "cena za půllitr" %}</span></div>
+    <ol class="tr-list">
+      {% for row in rows %}
+      {% if row.leg %}<li class="tr-leg">{% icon "footprints" "np-icon--s" %}{% blocktranslate with distance=row.leg.distance minutes=row.leg.minutes %}{{ distance }} · asi {{ minutes }} min pěšky{% endblocktranslate %}</li>{% endif %}
+      <li class="tr-stop">
+        <span class="tr-stop__n">{{ row.n }}</span>
+        <span class="tr-stop__body">
+          {% if row.url %}<a class="tr-stop__name" href="{{ row.url }}">{{ row.name }}</a>{% else %}<span class="tr-stop__name">{{ row.name }}</span>{% endif %}
+          {% if row.area %}<span class="tr-stop__meta">{{ row.area }}</span>{% endif %}
+          {% if row.challenge %}<span class="tr-stop__challenge">{% icon "sparkles" "np-icon--s" %}{{ row.challenge }}</span>{% endif %}
+        </span>
+        <span class="tr-stop__price">{% if row.price %}{{ row.price }} {% translate "Kč" %}{% else %}<span class="np-muted np-small">{% translate "cenu nevím" %}</span>{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    <p class="tr-stops__note">{% translate "Ceny hlásí lidi z appky. Pěší časy jsou odhad podle vzdálenosti." %}</p>
+  </section>
+  <section class="tr-map" aria-label="{% translate "Mapa trasy" %}">
+    <a class="np-btn tr-map__open" href="{{ maps_url }}" rel="noopener" target="_blank">{% icon "map" "np-icon--s" %}{% translate "Otevřít v mapách" %}</a>
+    {% include "web/public/_route.html" with map=map %}
+  </section>
+</div>
+
+{% if nearby %}
+<section class="tr-nearby" aria-labelledby="tr-nearby">
+  <div class="tr-nearby__head">
+    <h2 class="np-h2" id="tr-nearby">{% translate "Kousek vedle" %}</h2>
+    <a class="np-link np-small" href="{{ city_url }}">{% if city %}{% blocktranslate %}Všechny trasy: {{ city }}{% endblocktranslate %}{% else %}{% translate "Všechny trasy" %}{% endif %}{% icon "chevron-right" "np-icon--s" %}</a>
+  </div>
+  <div class="tr-grid">{% for card in nearby %}{% include "web/public/_tour_card.html" with card=card %}{% endfor %}</div>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

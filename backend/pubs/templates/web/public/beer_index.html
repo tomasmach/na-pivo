@@ -1,0 +1,140 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "public-pages.css" %}">{{ structured_data }}{% endblock %}
+{% block og_image %}{% if og_image %}<meta property="og:image" content="{{ og_image }}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">{% endif %}{% endblock %}
+{% block content %}
+{% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
+{% if not data %}
+<header class="pp-head"><h1 class="np-h1">{% translate "Pivní index Česka" %}</h1></header>
+{% translate "Index se teprve počítá" as empty_title %}
+{% translate "Zatím nemám dost cen z hospod, abych řekl, kolik stojí pivo v Česku. Jakmile lidi zapíšou ceny aspoň z pěti hospod, objeví se tady." as empty_text %}
+{% translate "Ceny piva" as action_label %}
+{% web_url "beer-prices" as prices_url %}
+{% include "web/components/empty.html" with icon="coins" title=empty_title text=empty_text action_label=action_label action_url=prices_url %}
+{% else %}
+<div class="pi-top">
+  <header class="pi-hero">
+    <h1 class="np-h1">{% translate "Pivní index Česka" %}</h1>
+    <div class="pi-hero__number">
+      <span class="pi-hero__value">{{ median }} {% translate "Kč" %}</span>
+      <span class="pi-hero__text">
+        <strong>{% translate "za nejlevnější pivo v hospodě" %}</strong>
+        <span>{% blocktranslate %}střední cena v Česku k {{ when }}{% endblocktranslate %}{% if change_label %} · {{ change_label }}{% endif %}</span>
+      </span>
+    </div>
+    <p class="pp-note">{% icon "info" "np-icon--s" %}{% blocktranslate %}Z cen zapsaných ve {{ pubs_label }} za poslední rok{% endblocktranslate %}</p>
+  </header>
+  {% if big_cities %}
+  <section class="np-card pi-cities" aria-labelledby="pi-big">
+    <div class="pp-side__head pi-card-head"><h2 class="np-title" id="pi-big">{% translate "Velká města" %}</h2><span class="np-small np-muted">{% translate "proti Česku" %}</span></div>
+    <ul class="pi-pairs">
+      {% for area in big_cities %}<li><span>{{ area.name }}</span><span class="np-muted np-small">{{ area.diff }} {% translate "Kč" %}</span><strong>{{ area.median }} {% translate "Kč" %}</strong></li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+
+<section class="np-card pi-section" aria-labelledby="pi-regions">
+  <div class="pi-card-head"><h2 class="np-title" id="pi-regions">{% translate "Pivo podle krajů" %}</h2><span class="np-small np-muted">{% blocktranslate %}střední cena nejlevnějšího piva, kraje s cenami aspoň z {{ min_pubs }} hospod{% endblocktranslate %}</span></div>
+  <div class="pi-regions">
+    <div class="pi-map">
+      {% for tile in tiles %}
+      <div class="pi-tile pi-at-{{ tile.col }}-{{ tile.row }}{% if tile.level is not None %} pi-tile--{{ tile.level }}{% else %} pi-tile--none{% endif %}">
+        <span class="pi-tile__name">{{ tile.short }}</span>
+        <span class="pi-tile__value">{% if tile.median %}{{ tile.median }} {% translate "Kč" %}{% else %}–{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="pi-facts">
+      {% if expensive %}
+      <div class="pi-fact"><span><strong>{% translate "Nejdražší kraj" %}</strong><span>{{ expensive.name }}</span></span><b>{{ expensive.median }} {% translate "Kč" %}</b></div>
+      <div class="pi-fact"><span><strong>{% translate "Nejlevnější kraj" %}</strong><span>{{ cheap.name }}</span></span><b>{{ cheap.median }} {% translate "Kč" %}</b></div>
+      <div class="pi-fact"><span><strong>{% translate "Rozdíl" %}</strong><span>{% translate "mezi nejdražším a nejlevnějším krajem" %}</span></span><b>{{ spread }} {% translate "Kč" %}</b></div>
+      {% else %}
+      <p class="np-muted">{% translate "Srovnání krajů ukážu, až budou ceny aspoň ze dvou krajů." %}</p>
+      {% endif %}
+      <div class="pi-legend">
+        <span class="np-small np-muted">{% translate "Barva dlaždice" %}</span>
+        <div class="pi-legend__steps">{% for label in legend %}<span><i class="pi-tile--{{ forloop.counter0 }}"></i>{{ label }}</span>{% endfor %}</div>
+        <span class="np-small np-muted"><i class="pi-swatch pi-tile--none"></i>{% translate "málo cen" %}</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if dear_cities %}
+<div class="pi-two">
+  <section class="np-card" aria-labelledby="pi-dear">
+    <div class="pi-card-head"><h2 class="np-title" id="pi-dear">{% translate "Kde je pivo nejdražší" %}</h2><span class="np-small np-muted">{% translate "města" %}</span></div>
+    {% include "web/public/_bars.html" with rows=dear_cities %}
+  </section>
+  <section class="np-card" aria-labelledby="pi-cheap">
+    <div class="pi-card-head"><h2 class="np-title" id="pi-cheap">{% translate "Kde je pivo nejlevnější" %}</h2><span class="np-small np-muted">{% translate "města" %}</span></div>
+    {% include "web/public/_bars.html" with rows=cheap_cities %}
+  </section>
+</div>
+{% endif %}
+
+<section class="np-card pi-section" aria-labelledby="pi-history">
+  <div class="pi-card-head"><h2 class="np-title" id="pi-history">{% translate "Jak se index měnil" %}</h2><span class="np-small np-muted">{% translate "střední cena na konci čtvrtletí" %}</span></div>
+  {% if history|length > 1 %}
+  <ol class="pi-history">
+    {% for row in history %}<li{% if row.last %} class="is-last"{% endif %}><span class="pi-history__value">{{ row.median }} {% translate "Kč" %}</span><svg class="pi-history__bar" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><rect x="0" y="{{ row.y }}" width="100" height="{{ row.height }}" rx="6"/></svg><span class="pi-history__label">{{ row.label }}</span></li>{% endfor %}
+  </ol>
+  {% else %}
+  <p class="pp-note">{% icon "info" "np-icon--s" %}{% translate "Ceny počítám každý den, ale celé čtvrtletí mám zatím jen jedno. Vývoj se tady ukáže, jakmile skončí další." %}</p>
+  {% endif %}
+</section>
+
+{% if beers or risers %}
+<div class="pi-two{% if beers and risers %} pi-two--wide{% else %} pi-two--one{% endif %}">
+  {% if beers %}
+  <section class="np-card" aria-labelledby="pi-beers">
+    <div class="pi-card-head"><h2 class="np-title" id="pi-beers">{% translate "Podle piva" %}</h2><span class="np-small np-muted">{% translate "střední cena za 0,5 l v Česku" %}</span></div>
+    {% include "web/public/_bars.html" with rows=beers beer=True %}
+  </section>
+  {% endif %}
+  {% if risers %}
+  <section class="np-card" aria-labelledby="pi-risers">
+    <div class="pi-card-head"><h2 class="np-title" id="pi-risers">{% translate "Kde podražilo nejvíc" %}</h2><span class="np-small np-muted">{% translate "za rok" %}</span></div>
+    <ul class="pi-pairs">
+      {% for row in risers %}<li><span>{{ row.name }}<small>{{ row.before }} → {{ row.now }} {% translate "Kč" %}</small></span><strong>{{ row.change_label }}</strong></li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+
+<section class="pi-method" aria-labelledby="pi-method">
+  <h2 class="np-h2" id="pi-method">{% translate "Jak index počítám" %}</h2>
+  <div class="pi-method__cols">
+    <div><h3>{% translate "Co se počítá" %}</h3><p>{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které má na lístku nebo které si tam někdo zapsal. Lahve a půllitry pod 0,4 l do indexu nepatří." %}</p></div>
+    <div><h3>{% translate "Odkud ceny jsou" %}</h3><p>{% translate "Zapisují je lidi v appce, když vyplní lístek nebo zapíšou pivo s cenou. Počítá se jen cena, kterou někdo potvrdil za poslední rok." %}</p></div>
+    <div><h3>{% translate "Proč střední cena" %}</h3><p>{% translate "Polovina hospod čepuje levněji, polovina dráž. Jedna turistická past na náměstí tak číslo nevytáhne nahoru." %}</p></div>
+    <div><h3>{% translate "Co vyřazuju" %}</h3><p>{% blocktranslate %}Hospody skryté komunitou a duplicity. Kraj nebo město ukážu, až mám ceny aspoň z {{ min_pubs }} tamních hospod.{% endblocktranslate %}</p></div>
+  </div>
+</section>
+
+<section class="pi-press" aria-labelledby="pi-press">
+  <div class="pi-press__quote">
+    <h2 class="np-h2" id="pi-press">{% translate "Píšeš o cenách piva? Ber." %}</h2>
+    <p class="np-muted">{% translate "Čísla klidně použij, jen uveď zdroj. Tady je hotová věta:" %}</p>
+    <blockquote>{{ quote }}<cite>{% translate "Zdroj: Pivní index Na pivo" %}, {{ page.canonical_url }}</cite></blockquote>
+  </div>
+  <div class="pi-press__files">
+    <h3 class="np-title">{% translate "Ke stažení" %}</h3>
+    <a class="np-tile pi-file" href="{{ csv_url }}" download>{% icon "file-spreadsheet" %}<span><strong>{% translate "Ceny po krajích a městech" %}</strong><span>CSV · {{ when }}</span></span>{% icon "download" %}</a>
+    <a class="np-tile pi-file" href="{{ og_url }}" download>{% icon "image" %}<span><strong>{% translate "Obrázek indexu" %}</strong><span>PNG · 1200 × 630</span></span>{% icon "download" %}</a>
+    <p class="np-small np-muted">{% translate "Potřebuješ jiný řez dat?" %} <a class="np-link" href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a></p>
+  </div>
+</section>
+
+<section class="pi-cta">
+  <div>
+    <h2 class="pp-cta__title">{% translate "Máš čerstvou cenu z hospody? Zapiš ji." %}</h2>
+    <p class="np-muted">{% translate "Každá cena z appky index zpřesní. Ten příští počítá i s tvojí." %}</p>
+  </div>
+  <a class="np-btn np-btn--primary" href="{% web_url "home" %}">{% icon "smartphone" "np-icon--s" %}{% translate "Stáhnout appku" %}</a>
+</section>
+{% endif %}
+{% endblock %}

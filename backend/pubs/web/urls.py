@@ -20,8 +20,12 @@ from pubs.web.auth_views import (
     oauth_start,
     register,
 )
+from pubs.web.beer_index import beer_index, beer_index_csv, beer_index_og
+from pubs.web.news import news
 from pubs.web.pages import coming_soon, component_gallery
+from pubs.web.rankings import rankings
 from pubs.web.routes import bilingual
+from pubs.web.tours import tour, tour_og, tours
 
 urlpatterns = [
     path("web/<str:filename>", web_asset, name="web-asset"),
@@ -32,14 +36,17 @@ urlpatterns = [
 
     *bilingual("hledat", "en/search", coming_soon, "web-search"),
 
-    *bilingual("zebricky", "en/rankings", coming_soon, "web-rankings"),
+    *bilingual("zebricky", "en/rankings", rankings, "web-rankings"),
 
-    *bilingual("novinky", "en/news", coming_soon, "web-news"),
+    *bilingual("novinky", "en/news", news, "web-news"),
 
-    *bilingual("trasy", "en/tours", coming_soon, "web-tours"),
-    *bilingual("trasy/<str:tour_id>", "en/tours/<str:tour_id>", coming_soon, "web-tour"),
+    *bilingual("trasy", "en/tours", tours, "web-tours"),
+    *bilingual("trasy/<str:tour_id>", "en/tours/<str:tour_id>", tour, "web-tour"),
+    *bilingual("trasy/<str:tour_id>/og.png", "en/tours/<str:tour_id>/og.png", tour_og, "tour-og"),
 
-    *bilingual("pivni-index", "en/beer-index", coming_soon, "web-beer-index"),
+    *bilingual("pivni-index", "en/beer-index", beer_index, "web-beer-index"),
+    *bilingual("pivni-index/data.csv", "en/beer-index/data.csv", beer_index_csv, "beer-index-csv"),
+    *bilingual("pivni-index/og.png", "en/beer-index/og.png", beer_index_og, "beer-index-og"),
 
     *bilingual("smazat-ucet", "en/delete-account", coming_soon, "web-delete-account"),
 
