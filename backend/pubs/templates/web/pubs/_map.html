@@ -1,0 +1,12 @@
+{% comment %}
+Map drawn on the server, see pubs/web/pub_map.py. map: the dict pub_map() returns; label: accessible name.
+{% endcomment %}{% load i18n l10n web %}{% localize off %}<svg class="np-map__svg" viewBox="0 0 {{ map.width }} {{ map.height }}" preserveAspectRatio="xMidYMid slice" role="img" aria-label="{{ label }}">
+  <defs><symbol id="np-map-beer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ map.icon }}</symbol></defs>
+  <rect class="np-map__ground" width="{{ map.width }}" height="{{ map.height }}"/>
+  <g aria-hidden="true">{% for cell in map.density %}<rect class="np-map__d{{ cell.level }}" x="{{ cell.x }}" y="{{ cell.y }}" width="6" height="6" rx="1.5"/>{% endfor %}</g>
+  {% for pin in map.pins %}{% if map.focus %}<g class="np-map__focus" transform="translate({{ pin.x }} {{ pin.y }})"><circle r="20"/><use class="np-map__icon" href="#np-map-beer" x="-10" y="-10" width="20" height="20"/></g>
+  {% elif pin.label %}<a href="{{ pin.url }}" aria-label="{{ pin.name }}, {{ pin.label }}"><g class="np-map__pin{% if pin.first %} is-first{% endif %}" transform="translate({{ pin.x }} {{ pin.y }})"><rect x="{{ pin.left }}" y="-15" width="{{ pin.width }}" height="30" rx="15"/><use class="np-map__icon" href="#np-map-beer" x="{{ pin.icon_x }}" y="-7" width="14" height="14"/><text x="{{ pin.text_x }}" y="5">{{ pin.label }}</text></g></a>
+  {% else %}<a href="{{ pin.url }}" aria-label="{{ pin.name }}"><circle class="np-map__dot" cx="{{ pin.x }}" cy="{{ pin.y }}" r="6"/></a>
+  {% endif %}{% endfor %}
+  <g class="np-map__scale" transform="translate({{ map.scale.x }} {{ map.height|add:"-24" }})" aria-hidden="true"><path d="M0 0v6h{{ map.scale.px }}v-6"/><text x="{{ map.scale.px|add:"8" }}" y="7">{{ map.scale.label }}</text></g>
+</svg>{% endlocalize %}

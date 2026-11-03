@@ -1,0 +1,14 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/pubs/_head.html" %}{% endblock %}
+{% block content %}
+{% if kind == "city" %}{% translate "Tohle město neznám" as empty_title %}{% translate "V tomhle městě zatím nemám žádnou hospodu. Zkus jiné, nebo hledej podle názvu." as empty_text %}
+{% else %}{% translate "Tuhle hospodu neznám" as empty_title %}{% translate "Možná už nefunguje, nebo je odkaz neúplný. Zkus ji najít podle názvu." as empty_text %}{% endif %}
+{% translate "Všechna města" as action_label %}
+{% web_url "web-pubs" as pubs_url %}
+{% include "web/components/empty.html" with icon="map-pin" title=empty_title text=empty_text action_label=action_label action_url=pubs_url %}
+{% if others %}<section class="np-pubs-section">
+  <h2 class="np-pubs-section__title">{% translate "Hospody v dalších městech" %}</h2>
+  <div class="np-pubs-tiles">{% for item in others %}<a class="np-tile" href="{{ item.url }}">{{ item.label }}{% icon "chevron-right" %}</a>{% endfor %}</div>
+</section>{% endif %}
+{% endblock %}

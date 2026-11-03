@@ -21,16 +21,18 @@ from pubs.web.auth_views import (
     register,
 )
 from pubs.web.pages import coming_soon, component_gallery
+from pubs.web.pubs_views import pub_og_image, pub_page, pubs_city, pubs_index, search_page
 from pubs.web.routes import bilingual
 
 urlpatterns = [
     path("web/<str:filename>", web_asset, name="web-asset"),
 
-    *bilingual("hospody", "en/pubs", coming_soon, "web-pubs"),
-    *bilingual("hospody/<slug:city>", "en/pubs/<slug:city>", coming_soon, "web-pubs-city"),
-    *bilingual("hospoda/<str:key>", "en/pub/<str:key>", coming_soon, "web-pub"),
+    *bilingual("hospody", "en/pubs", pubs_index, "web-pubs"),
+    *bilingual("hospody/<slug:city>", "en/pubs/<slug:city>", pubs_city, "web-pubs-city"),
+    *bilingual("hospoda/<str:key>", "en/pub/<str:key>", pub_page, "web-pub"),
+    *bilingual("hospoda/<str:key>/og.png", "en/pub/<str:key>/og.png", pub_og_image, "pub-og-image"),
 
-    *bilingual("hledat", "en/search", coming_soon, "web-search"),
+    *bilingual("hledat", "en/search", search_page, "web-search"),
 
     *bilingual("zebricky", "en/rankings", coming_soon, "web-rankings"),
 
