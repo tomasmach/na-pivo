@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Image, Linking, Platform, ScrollView, Share, View, type TextInputInstance } from 'react-native';
 
-import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -1536,7 +1535,6 @@ export function PrihlasovaniSheet() {
 export function PrihlaseniScreen() {
   const router = useRouter();
   const passwordRef = useRef<TextInputInstance>(null);
-  const insets = useSafeAreaInsets();
   const login = useAccountStore((st) => st.login);
   const register = useAccountStore((st) => st.register);
   const signInGoogle = useAccountStore((st) => st.signInGoogle);
@@ -1611,83 +1609,86 @@ export function PrihlaseniScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: 160 }}>
-        <Press onPress={() => close(router)} style={{ alignSelf: 'flex-end' }}>
-          <T s={15} w={600} c={C.muted}>
-            {P().signIn.skip}
-          </T>
-        </Press>
-        <PageTitle title={P().signIn.title} intro={P().signIn.intro} />
-        <Segmented
-          height={40}
-          options={[
-            { key: 'login', label: P().signIn.login },
-            { key: 'register', label: P().signIn.register },
-          ]}
-          value={mode}
-          onChange={(next) => {
-            setMode(next);
-            setError('');
-          }}
-        />
-        {appleSupported ? (
-          <Button label={busy === 'apple' ? t.account.loading : P().signIn.apple} icon="apple" kind="white" height={52} disabled={busy !== null} onPress={() => void social('apple')} />
-        ) : null}
-        {googleConfigured ? (
-          <Button label={busy === 'google' ? t.account.loading : P().signIn.google} kind="raised" height={52} disabled={busy !== null} onPress={() => void social('google')} />
-        ) : null}
-        {appleSupported || googleConfigured ? (
-          <View style={[s.row, { gap: 12 }]}>
-            <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
-            <T s={13} c={C.muted}>
-              {P().signIn.orEmail}
+    <Screen
+      gap={16}
+      padTop={0}
+      footer={
+        <View style={{ gap: 14 }}>
+          <Button
+            label={busy === 'submit' ? t.account.loading : mode === 'login' ? P().signIn.login : P().signIn.register}
+            disabled={busy !== null}
+            onPress={() => void submit()}
+          />
+          <Press onPress={() => void forgot()} style={{ alignItems: 'center' }}>
+            <T s={14} w={600} c={C.yellow}>
+              {P().signIn.forgot}
             </T>
-            <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
-          </View>
-        ) : null}
-        <Field label={P().signIn.email}>
-          <Input
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="email"
-            textContentType="emailAddress"
-            returnKeyType="next"
-            submitBehavior="submit"
-            onSubmitEditing={() => passwordRef.current?.focus()}
-          />
-        </Field>
-        <Field label={P().signIn.password}>
-          <Input
-            inputRef={passwordRef}
-            value={password}
-            onChangeText={setPassword}
-            placeholder={P().signIn.passwordPlaceholder}
-            secureTextEntry
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            textContentType={mode === 'login' ? 'password' : 'newPassword'}
-            returnKeyType="go"
-            onSubmitEditing={() => void submit()}
-          />
-        </Field>
-        <ErrorLine text={error || (sessionExpired ? t.account.sessionExpired : '')} />
-      </KeyboardAwareScrollView>
-      <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4, gap: 14 }}>
-        <Button
-          label={busy === 'submit' ? t.account.loading : mode === 'login' ? P().signIn.login : P().signIn.register}
-          disabled={busy !== null}
-          onPress={() => void submit()}
-        />
-        <Press onPress={() => void forgot()} style={{ alignItems: 'center' }}>
-          <T s={14} w={600} c={C.yellow}>
-            {P().signIn.forgot}
+          </Press>
+        </View>
+      }
+    >
+      <Press onPress={() => close(router)} style={{ alignSelf: 'flex-end' }}>
+        <T s={15} w={600} c={C.muted}>
+          {P().signIn.skip}
+        </T>
+      </Press>
+      <PageTitle title={P().signIn.title} intro={P().signIn.intro} />
+      <Segmented
+        height={40}
+        options={[
+          { key: 'login', label: P().signIn.login },
+          { key: 'register', label: P().signIn.register },
+        ]}
+        value={mode}
+        onChange={(next) => {
+          setMode(next);
+          setError('');
+        }}
+      />
+      {appleSupported ? (
+        <Button label={busy === 'apple' ? t.account.loading : P().signIn.apple} icon="apple" kind="white" height={52} disabled={busy !== null} onPress={() => void social('apple')} />
+      ) : null}
+      {googleConfigured ? (
+        <Button label={busy === 'google' ? t.account.loading : P().signIn.google} kind="raised" height={52} disabled={busy !== null} onPress={() => void social('google')} />
+      ) : null}
+      {appleSupported || googleConfigured ? (
+        <View style={[s.row, { gap: 12 }]}>
+          <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
+          <T s={13} c={C.muted}>
+            {P().signIn.orEmail}
           </T>
-        </Press>
-      </View>
-    </View>
+          <View style={[s.fill, { height: 1, backgroundColor: C.hairline }]} />
+        </View>
+      ) : null}
+      <Field label={P().signIn.email}>
+        <Input
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          textContentType="emailAddress"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+        />
+      </Field>
+      <Field label={P().signIn.password}>
+        <Input
+          inputRef={passwordRef}
+          value={password}
+          onChangeText={setPassword}
+          placeholder={P().signIn.passwordPlaceholder}
+          secureTextEntry
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+          textContentType={mode === 'login' ? 'password' : 'newPassword'}
+          returnKeyType="go"
+          onSubmitEditing={() => void submit()}
+        />
+      </Field>
+      <ErrorLine text={error || (sessionExpired ? t.account.sessionExpired : '')} />
+    </Screen>
   );
 }
 
