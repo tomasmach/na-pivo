@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Image, Linking, ScrollView, Share, View, type TextInputInstance } from 'react-native';
+import { AppState, Image, Linking, Platform, ScrollView, Share, View, type TextInputInstance } from 'react-native';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import * as Clipboard from 'expo-clipboard';
@@ -42,6 +42,7 @@ import {
   enableBeerCountReminderNotifications,
   reschedulePendingBeerCountReminder,
 } from '@/notifications/beerCountReminder';
+import { disableFriendPush, registerFriendPush } from '@/notifications/friendPush';
 import { disableHomeTransitReminder, enableHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { disablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
 import { askTourReminderPermission, notificationPermissionStatus } from '@/notifications/tourReminder';
@@ -65,6 +66,8 @@ import {
   useSettingsStore,
   type BeerCountReminderIntervalMinutes,
 } from '@/stores/settingsStore';
+import { palette, PALETTES, type Palette } from '@/theme/palette';
+import { switchPalette } from '@/theme/switchPalette';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 
@@ -747,6 +750,7 @@ export function NastaveniScreen() {
   const st = useSettingsStore();
   const [picker, setPicker] = useState<'distance' | 'interval' | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const homeSet = st.homePoint != null;
   const providers = me.profile?.providers ?? [];
   // On only when tour reminders can really come: a fresh install that was never asked shows off, and a tap asks.
@@ -830,6 +834,28 @@ export function NastaveniScreen() {
     if (answer !== 'granted') useSettingsStore.getState().setTourRemindersEnabled(false);
     // Only a real no sends people to the system settings; without an answer the toggle can simply be tried again.
     if (answer === 'denied') notificationsDenied();
+  };
+
+  // The system can refuse notifications, so the switch shows the stored outcome, not the tap.
+  const togglePartyPush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (st.friendPushEnabled) {
+        if (!(await disableFriendPush())) toast({ kind: 'error', title: P().settings.partyPushDisableError });
+        return;
+      }
+      const result = await registerFriendPush();
+      if (result.ok || result.reason === 'cancelled') return;
+      if (result.reason === 'denied') notificationsDenied();
+      else toast({ kind: 'error', title: P().settings.partyPushEnableError });
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const pickPalette = async (next: Palette) => {
+    if (!(await switchPalette(next))) toast({ kind: 'error', title: t.account.errorGeneric });
   };
 
   const pickLocale = async (code: Locale) => {
@@ -947,6 +973,13 @@ export function NastaveniScreen() {
           trailing={<Toggle value={tourRemindersOn} onChange={() => void toggleTourReminders()} />}
         />
         <Row title={P().settings.water} sub={P().settings.waterSub} trailing={<Toggle value={st.waterNudgeEnabled} onChange={st.setWaterNudgeEnabled} />} />
+        {me.isSignedIn ? (
+          <Row
+            title={P().settings.partyPush}
+            sub={P().settings.partyPushSub}
+            trailing={<Toggle value={st.friendPushEnabled} onChange={() => void togglePartyPush()} />}
+          />
+        ) : null}
         <Row
           last
           title={P().settings.pubPing}
@@ -992,6 +1025,22 @@ export function NastaveniScreen() {
             />
           }
         />
+        {/* The new look ignores the palette and Android keeps its icon (switchPalette), so there it would change nothing. */}
+        {Platform.OS === 'ios' ? (
+          <Row
+            title={P().settings.appIcon}
+            sub={P().settings.appIconSub}
+            trailing={
+              <Segmented
+                height={36}
+                style={{ width: 180 }}
+                options={PALETTES.map((key) => ({ key, label: key === 'brown' ? P().settings.appIconBrown : P().settings.appIconGray }))}
+                value={palette}
+                onChange={(next) => void pickPalette(next)}
+              />
+            }
+          />
+        ) : null}
         <Row title={P().settings.writeMe} chevron onPress={() => router.push('/nv/napis-mi')} />
         <Row last title={P().settings.about} chevron onPress={() => router.push('/nv/o-appce')} />
       </Card>
