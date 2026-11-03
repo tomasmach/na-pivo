@@ -25,13 +25,10 @@ from pubs.models import (
     PubDirectory,
     PubHours,
 )
+from pubs.web.pages import _csp
 
 PRAGUE = (50.08, 14.42)
 BRATISLAVA = (48.14, 17.11)
-PAGE_CSP = (
-    "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; "
-    "script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
-)
 
 pytestmark = pytest.mark.django_db
 _cells = iter(range(10_000))
@@ -279,11 +276,11 @@ def test_beer_page_shows_pubs_prices_and_dates_without_anyone_who_wrote_them(cli
     response = client.get("/pivo/testovar-11")
 
     assert response.status_code == 200
-    assert response["Content-Security-Policy"] == PAGE_CSP
+    assert response["Content-Security-Policy"] == _csp()
     assert response["Cache-Control"] == "public, max-age=600"
     html = response.content.decode()
     assert "<title>Testovar 11°: kde se čepuje a za kolik | Na pivo</title>" in html
-    assert '<h1 id="page-title">Kde se čepuje Testovar 11°</h1>' in html
+    assert '<h1 class="np-h1 rs-h1--long" id="page-title">Kde se čepuje Testovar 11°</h1>' in html
     assert re.search(r'<a href="https://www\.google\.com/maps/search/\?api=1&amp;query=[\d.]+,[\d.]+">U Lípy<', html)
     assert "pípy se tu střídají" in html and "cena chybí" in html and "za 0,3 l" in html
     # The pub not confirmed for four months comes last, under its own heading.
@@ -319,12 +316,12 @@ def test_beer_under_the_threshold_has_no_page_but_leads_to_the_others(client):
     for url in ("/pivo/testovar-12", "/pivo/neznam-tohle", "/en/beer/testovar-12"):
         response = client.get(url)
         assert response.status_code == 404
-        assert 'class="all-beers" href="/' in response.content.decode()
+        assert 'class="np-btn np-btn--primary" href="/' in response.content.decode()
     html = client.get("/pivo/testovar-12").content.decode()
-    assert '<h1 id="page-title">Testovar 12°</h1>' in html
+    assert '<h1 class="np-h1 rs-h1--long" id="page-title">Testovar 12°</h1>' in html
     assert "Tohle pivo tu teď nemám." in html and "Víš, kde se čepuje Testovar 12°?" in html
     assert 'rel="canonical"' not in html
-    assert '<h1 id="page-title">Tohle pivo neznám</h1>' in client.get("/pivo/neznam-tohle").content.decode()
+    assert '<h1 class="np-h1 rs-h1--long" id="page-title">Tohle pivo neznám</h1>' in client.get("/pivo/neznam-tohle").content.decode()
 
 
 def test_a_brand_with_one_beer_has_no_page_of_its_own(client):
@@ -344,7 +341,7 @@ def test_brand_page_gathers_its_beers_and_the_list_links_them_all(client):
     listing = client.get("/pivo")
 
     assert brand.status_code == 200 and listing.status_code == 200
-    assert '<h1 id="page-title">Kde se čepuje Testovar</h1>' in brand.content.decode()
+    assert '<h1 class="np-h1 rs-h1--long" id="page-title">Kde se čepuje Testovar</h1>' in brand.content.decode()
     assert '<a href="/pivo/testovar-11">Testovar 11°</a>' in brand.content.decode()
     assert "3\u00a0hospody" in brand.content.decode()
     assert '<a href="/pivo/testovar-11">Testovar 11°</a>' in listing.content.decode()

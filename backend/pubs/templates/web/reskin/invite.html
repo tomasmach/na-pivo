@@ -1,0 +1,19 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/reskin/_head.html" %}{% include "web/reskin/_social.html" %}{% endblock %}
+{% block content %}
+<div class="rs-invite">
+  <section class="rs-ticket" aria-labelledby="invite-title">
+    <p class="rs-ticket__eyebrow">{% translate "Pozvánka" %}<span class="rs-ticket__mark">{% icon "beer" "np-icon--s" %}</span></p>
+    <h1 class="rs-ticket__title" id="invite-title">{{ headline }}</h1>
+    <p class="rs-ticket__text">{{ body }}</p>
+    <div class="rs-ticket__cut" aria-hidden="true"></div>
+    <a class="np-btn np-btn--l np-btn--block rs-btn--ink" href="{{ deep_link }}">{% icon "smartphone" "np-icon--s" %}{% translate "Otevřít v appce" %}</a>
+  </section>
+  <div class="rs-invite__after">
+    <p class="np-muted np-small">{% translate "Když se nic nestane, nainstaluj nebo aktualizuj Na pivo a klepni znovu." %}</p>
+    {% include "web/reskin/_stores.html" %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{% asset "reskin.js" %}" defer></script>{% endblock %}

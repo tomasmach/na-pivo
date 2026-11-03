@@ -1,0 +1,31 @@
+{% load i18n web %}{% comment %}
+A card of areas (cities or Prague districts) with a bar per median on one shared axis. Long lists get
+a search, sorting and a fold from reskin.js; without it every row stays open.
+{% endcomment %}<section class="np-card rs-areas" aria-labelledby="{{ list_id }}-title" data-areas data-folded="{{ folded_rows }}">
+  <div class="np-card__head">
+    <h2 class="np-title" id="{{ list_id }}-title">{{ title }}</h2>
+    <span class="np-muted np-small">{% translate "medián" %}</span>
+  </div>
+  {% if areas|length > folded_rows %}
+  <div class="rs-tools" data-tools>
+    <label class="np-search rs-tools__search">{% icon "search" "np-icon--s" %}<input class="np-input" type="search" data-search placeholder="{{ search_label }}" aria-label="{{ search_label }}" autocomplete="off" spellcheck="false" enterkeyhint="search"></label>
+    <div class="np-segment" role="group" aria-label="{% translate "Seřadit" %}">
+      <button class="np-segment__item" type="button" data-sort="default" aria-pressed="true">{{ default_sort }}</button>
+      <button class="np-segment__item" type="button" data-sort="cheap" aria-pressed="false">{% translate "Nejlevnější" %}</button>
+      <button class="np-segment__item" type="button" data-sort="dear" aria-pressed="false">{% translate "Nejdražší" %}</button>
+    </div>
+  </div>
+  {% endif %}
+  <ol class="rs-strips" role="list" data-rows>
+    {% for area in areas %}<li class="rs-strip{% if area.mostly_stale %} is-stale{% endif %}" data-median="{{ area.median }}" data-low="{{ area.p25 }}" data-high="{{ area.p75 }}">
+      <span class="rs-strip__who"><span class="rs-strip__name name">{% if area.url %}<a href="{{ area.url }}">{{ area.name }}</a>{% else %}{{ area.name }}{% endif %}</span>{# Every listed area has at least five pubs, so the plural never changes. #}<span class="rs-strip__meta">{% blocktranslate with pubs=area.pubs %}{{ pubs }} hospod{% endblocktranslate %}{% if area.mostly_stale %} · {% translate "hlavně ceny starší 3 měsíců" %}{% endif %}</span></span>
+      <svg class="rs-strip__bar" aria-hidden="true" focusable="false"><rect class="rs-bar__track" width="100%" height="100%" rx="5"/><rect class="rs-bar__fill" width="{{ area.bar.mid }}" height="100%" rx="5"/></svg>
+      <span class="rs-strip__cost"><span class="rs-strip__median">{{ area.median }} {% translate "Kč" %}</span>{% if area.p25 != area.p75 %}<span class="rs-strip__meta">{{ area.p25 }}–{{ area.p75 }} {% translate "Kč" %}</span><span class="np-sr-only">{% blocktranslate with low=area.p25 high=area.p75 %}polovina hospod mezi {{ low }} a {{ high }} Kč{% endblocktranslate %}</span>{% endif %}</span>
+    </li>{% endfor %}
+  </ol>
+  <div class="rs-empty" data-empty role="status" hidden>
+    <p>{{ empty_text }}</p>
+    <button class="np-btn" type="button" data-clear>{% translate "Zrušit hledání" %}</button>
+  </div>
+  {% if areas|length > folded_rows %}<button class="np-btn rs-fold" type="button" data-more data-less="{% translate "Sbalit" %}" aria-expanded="false">{{ more_label }}</button>{% endif %}
+</section>

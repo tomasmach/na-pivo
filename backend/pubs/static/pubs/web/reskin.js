@@ -1,29 +1,11 @@
-// Price and beer page behaviour. Long lists get a search, sorting and a fold; bars grow and the bill lands as they
-// scroll in. Without this script the page still shows every number and every row.
-
-const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Home, price, beer and invite pages. Long lists get a search, sorting and a fold. Without this script
+// the page still shows every number and every row.
 
 // The store matching the visitor's phone goes first; desktop defaults to iPhone.
 const android = /Android/i.test(navigator.userAgent);
-document.querySelectorAll('.stores').forEach((group) => {
+document.querySelectorAll('[data-stores]').forEach((group) => {
   group.prepend(group.querySelector(android ? '[data-store="android"]' : '[data-store="ios"]'));
 });
-
-// Armed sections hide their final state until they scroll into view, so nothing animates off screen.
-if ('IntersectionObserver' in window && !reduced) {
-  const observer = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-in');
-        observer.unobserve(entry.target);
-      }
-    }
-  }, { rootMargin: '0px 0px -12% 0px' });
-  document.querySelectorAll('[data-reveal]').forEach((section) => {
-    section.classList.add('is-armed');
-    observer.observe(section);
-  });
-}
 
 // "Plzen" finds Plzeň, "ceske" finds České Budějovice.
 function plain(text) {
@@ -64,9 +46,7 @@ function setUpList(section) {
   let order = 'default';
   let expanded = false;
 
-  // A new order is dealt out again row by row: most of the visible rows change on a sort, so sliding them would
-  // only show rows crossing each other.
-  function render(deal) {
+  function render() {
     const query = plain(search.value);
     const sorted = rows.slice().sort(ORDERS[order]);
     let shown = 0;
@@ -76,8 +56,7 @@ function setUpList(section) {
       const match = !query || row.name.includes(query);
       if (match) matches += 1;
       const show = match && (query || expanded || shown < folded);
-      // Bars still waiting to grow in follow the order on screen.
-      if (show) row.element.style.setProperty('--n', shown++);
+      if (show) shown += 1;
       row.element.hidden = !show;
     }
     empty.hidden = matches > 0;
@@ -88,48 +67,38 @@ function setUpList(section) {
       if (first) first.element.prepend(oldHead);
     }
     more.hidden = Boolean(query);
-    if (!deal || reduced) return;
-    let index = 0;
-    for (const row of sorted) {
-      if (row.element.hidden) continue;
-      row.element.animate(
-        [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
-        { duration: 220, delay: Math.min(index, 12) * 18, easing: 'ease-out', fill: 'backwards' },
-      );
-      index += 1;
-    }
   }
 
   for (const button of sortButtons) {
     button.addEventListener('click', () => {
       order = button.dataset.sort;
       for (const other of sortButtons) other.setAttribute('aria-pressed', String(other === button));
-      render(true);
+      render();
     });
   }
-  search.addEventListener('input', () => render(false));
+  search.addEventListener('input', render);
   search.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && search.value) {
       search.value = '';
-      render(false);
+      render();
     }
   });
   section.querySelector('[data-clear]').addEventListener('click', () => {
     search.value = '';
-    render(false);
+    render();
     search.focus();
   });
   more.addEventListener('click', () => {
     expanded = !expanded;
     more.textContent = expanded ? more.dataset.less : moreLabel;
     more.setAttribute('aria-expanded', String(expanded));
-    render(false);
+    render();
     // Folding a long list would leave the reader far below it.
     if (!expanded && section.getBoundingClientRect().top < 0) section.scrollIntoView({ block: 'start' });
   });
 
   section.classList.add('is-live');
-  render(false);
+  render();
 }
 
 document.querySelectorAll('[data-areas]').forEach(setUpList);

@@ -1,0 +1,27 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/reskin/_head.html" %}{% include "web/reskin/_social.html" %}{% endblock %}
+{% block content %}
+{% if missing %}
+{% translate "Tenhle profil tu není." as empty_title %}{% translate "Buď je soukromý, nebo neexistuje." as empty_text %}
+{% include "web/components/empty.html" with icon="user" title=empty_title text=empty_text %}
+{% else %}
+<section class="np-card rs-profile" aria-labelledby="profile-title">
+  <div class="rs-profile__who">
+    {% include "web/components/avatar.html" with name=nickname size="l" ring=True %}
+    <div>
+      <h1 class="rs-profile__name" id="profile-title">@{{ nickname }}</h1>
+      <p class="np-muted">{{ stats.mapper_title }}, level {{ stats.mapper_level }}</p>
+    </div>
+  </div>
+  <div class="np-stats">
+    {% translate "piv celkem" as label %}{% include "web/components/stat.html" with value=stats.total_beers label=label %}
+    {% translate "hospod" as label %}{% include "web/components/stat.html" with value=stats.distinct_pubs label=label %}
+    {% translate "level Mapéra" as label %}{% include "web/components/stat.html" with value=stats.mapper_level label=label %}
+  </div>
+  <p class="np-muted np-small">{% translate "Jen čísla z večerů zveřejněných pro všechny." %}</p>
+  {% include "web/reskin/_stores.html" %}
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{% asset "reskin.js" %}" defer></script>{% endblock %}

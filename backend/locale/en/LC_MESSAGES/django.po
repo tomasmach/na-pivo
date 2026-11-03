@@ -3004,6 +3004,39 @@ msgstr "city"
 msgid "pivni-index"
 msgstr "beer-index"
 
+# web: reskin
+
+msgid "Potvrzeno za poslední 3 měsíce"
+msgstr "Confirmed in the last 3 months"
+
+msgid "piv s vlastní stránkou"
+msgstr "beers with their own page"
+
+msgid "Značka"
+msgstr "Brand"
+
+msgid "hospod je čepuje"
+msgstr "pubs pour them"
+
+msgid "piv na stránce"
+msgstr "beers on the page"
+
+#, python-format
+msgid "z %(count)s hodnocení"
+msgstr "from %(count)s ratings"
+
+msgid "obvykle za 0,5 l"
+msgstr "usually for 0.5 l"
+
+msgid "hospod ho čepuje"
+msgstr "pubs pour it"
+
+msgid "nejlevněji za 0,5 l"
+msgstr "cheapest for 0.5 l"
+
+msgid "v žebříčku piv"
+msgstr "in the beer ranking"
+
 msgid "hospod s cenou"
 msgstr "pubs with a price"
 
@@ -3204,6 +3237,214 @@ msgstr "Month"
 
 msgid "Rok"
 msgstr "Year"
+
+#, python-format
+msgid "Medián nejlevnějšího piva, stav k %(date)s"
+msgstr "Median cheapest beer, as of %(date)s"
+
+msgid "celá ČR"
+msgstr "all of Czechia"
+
+msgid "nejlevněji"
+msgstr "cheapest"
+
+msgid "polovina hospod"
+msgstr "half of the pubs"
+
+msgid "medián"
+msgstr "median"
+
+msgid "Profil nenalezen"
+msgstr "Profile not found"
+
+#, python-format
+msgid "%(avg)s z 5 hvězd"
+msgstr "%(avg)s out of 5 stars"
+
+#, python-format
+msgid "%(rank)s. v žebříčku piv"
+msgstr "No. %(rank)s in the beer ranking"
+
+msgid "Tohle pivo tu není"
+msgstr "This beer is not here"
+
+msgid "cena za 0,5 l"
+msgstr "price for 0.5 l"
+
+msgid "Co o něm říkají štamgasti"
+msgstr "What the regulars say"
+
+#, python-format
+msgid "%(count)s hodnocení"
+msgstr "%(count)s ratings"
+
+msgid "Kolik lidí dalo kolik hvězd"
+msgstr "How many people gave how many stars"
+
+msgid "Půllitr podle města"
+msgstr "Half litre by city"
+
+msgid "O pivu"
+msgstr "About the beer"
+
+#, python-format
+msgid "Další piva značky %(brand)s"
+msgstr "More beers from %(brand)s"
+
+#, python-format
+msgid "Všechna piva značky %(brand)s"
+msgstr "All beers from %(brand)s"
+
+msgid "Zatím nemám dost lístků."
+msgstr "I don't have enough menus yet."
+
+msgid "Pivo tu ukážu, až ho za poslední 3 měsíce potvrdí aspoň 3 hospody."
+msgstr "A beer shows up here once at least 3 pubs confirm it within 3 months."
+
+#, python-format
+msgid "Kde se %(brand)s čepuje nejvíc"
+msgstr "Where %(brand)s is poured the most"
+
+msgid "Pivní deníček Na pivo: piva za život, kalendář večerů a mapa hospod."
+msgstr "The Na pivo beer diary: lifetime beers, a calendar of nights and a map of pubs."
+
+msgid "Pivní deníček pro tebe a partu"
+msgstr "A beer diary for you and your crew"
+
+msgid "Kolik piv, kde a s kým."
+msgstr "How many beers, where and with whom."
+
+msgid "Pivo zapíšeš jedním klepnutím u stolu, zbytek dopočítám já. Deník, partu a statistiky teď otevřeš i na webu."
+msgstr "One tap at the table logs a beer and I work out the rest. Your diary, crew and stats now open on the web too."
+
+msgid "Otevřít na webu"
+msgstr "Open on the web"
+
+msgid "Deník v appce: piva za týden a detail jednoho večera."
+msgstr "The diary in the app: beers this week and the detail of one night."
+
+msgid "Deníček, co se píše sám"
+msgstr "A diary that writes itself"
+
+msgid "Každé pivo zapsané u stolu se složí do večera. Na webu ho pak projdeš po týdnech, měsících i letech."
+msgstr "Every beer logged at the table adds up to a night. On the web you go through them by week, month and year."
+
+msgid "piv letos zapsali lidi v Na pivo"
+msgstr "beers logged in Na pivo this year"
+
+msgid "Piva po měsících"
+msgstr "Beers by month"
+
+msgid "Letos se nejvíc pilo"
+msgstr "Most drunk this year"
+
+msgid "zapsaných piv"
+msgstr "beers logged"
+
+msgid "Otevřít svůj deník"
+msgstr "Open your diary"
+
+msgid "Ráno u kafe, večer u stolu"
+msgstr "Mornings with coffee, nights at the table"
+
+msgid "Na webu"
+msgstr "On the web"
+
+msgid "Hodnotíš piva"
+msgstr "Rate beers"
+
+msgid "Hvězdičky a poznámka, ať víš, co si příště nedat."
+msgstr "Stars and a note, so you know what to skip next time."
+
+msgid "Přidáváš hospody"
+msgstr "Add pubs"
+
+msgid "Chybí na mapě tvůj oblíbený pajzl? Přidáš ho i s otevíračkou."
+msgstr "Your favourite dive missing from the map? Add it with its opening hours."
+
+msgid "Dopisuješ večery zpětně"
+msgstr "Fill in nights later"
+
+msgid "Zapomněl jsi zapisovat? Večer doplníš druhý den z kalendáře."
+msgstr "Forgot to log? Fill in the night the next day from the calendar."
+
+msgid "Spravuješ partu"
+msgstr "Run your crew"
+
+msgid "Kamarádi, pozvánky a plán na pátek."
+msgstr "Friends, invites and the plan for Friday."
+
+msgid "Koukáš do statistik"
+msgstr "Look at your stats"
+
+msgid "Kolik, kde, s kým a za kolik. Po týdnech, měsících i letech."
+msgstr "How many, where, with whom and for how much. By week, month and year."
+
+msgid "V telefonu"
+msgstr "On the phone"
+
+msgid "Kompas na hospodu"
+msgstr "Compass to the pub"
+
+msgid "Ukáže směr a vzdálenost k nejbližšímu výčepu."
+msgstr "Shows the way and the distance to the nearest tap."
+
+msgid "Počítání u stolu"
+msgstr "Counting at the table"
+
+msgid "Jedno klepnutí na pivo. Zapíše se i bez signálu."
+msgstr "One tap per beer. It saves even without signal."
+
+msgid "Obojí potřebuje telefon v ruce, takže to na web nepatří."
+msgstr "Both need a phone in your hand, so they don't belong on the web."
+
+msgid "Stáhni si appku. Je zdarma a bez reklam."
+msgstr "Get the app. It's free and has no ads."
+
+msgid "Nebo to otevři na webu"
+msgstr "Or open it on the web"
+
+msgid "Pozvánka"
+msgstr "Invite"
+
+#, python-format
+msgid "Medián ceny piva: %(city)s."
+msgstr "Median beer price: %(city)s."
+
+msgid "Medián ceny piva v celé ČR, v Praze a v Brně."
+msgstr "Median beer price in all of Czechia, Prague and Brno."
+
+msgid "medián všech tamních hospod"
+msgstr "median of all pubs there"
+
+msgid "medián celé ČR"
+msgstr "median of all of Czechia"
+
+#, python-format
+msgid "Za kolik se čepuje: %(city)s"
+msgstr "What a beer costs: %(city)s"
+
+msgid "Za kolik se čepuje"
+msgstr "What a beer costs"
+
+#, python-format
+msgid "Všechny hospody: %(city)s"
+msgstr "All pubs: %(city)s"
+
+msgid "A jinde v Česku?"
+msgstr "And elsewhere in Czechia?"
+
+msgid "Zapiš ji v Na pivo. Každá cena z appky tuhle stránku zpřesní."
+msgstr "Log it in Na pivo. Every price from the app makes this page more accurate."
+
+msgid "Zastávky"
+msgstr "Stops"
+
+msgid "Přidej se k partě"
+msgstr "Join the crew"
+
+msgid "Přisedni ke stolu"
+msgstr "Join the table"
 
 msgid "večer"
 msgstr "night"
@@ -4033,9 +4274,6 @@ msgstr "What you're looking for"
 msgid "hodnocení od lidí z appky"
 msgstr "ratings from app users"
 
-msgid "medián"
-msgstr "median"
-
 msgid "Chybí ti tu hospoda?"
 msgstr "Is a pub missing?"
 
@@ -4455,3 +4693,117 @@ msgid "Z %(n)s hodnocení z appky Na pivo"
 msgid_plural "Z %(n)s hodnocení z appky Na pivo"
 msgstr[0] "From %(n)s rating in the Na pivo app"
 msgstr[1] "From %(n)s ratings in the Na pivo app"
+
+msgid "Pivní deníček s kompasem na hospodu"
+msgstr "A beer diary with a compass to the pub"
+
+#, python-format
+msgid "Z nejlevnějších piv v %(pubs)s hospodách za poslední rok. Stav k %(date)s."
+msgstr "From the cheapest beers in %(pubs)s pubs over the last year. As of %(date)s."
+
+msgid "Polovina hospod"
+msgstr "Half of the pubs"
+
+msgid "mezi čtvrtinou a třemi čtvrtinami"
+msgstr "between the first and third quarter"
+
+#, python-format
+msgid "%(low)s až %(high)s Kč"
+msgstr "%(low)s to %(high)s CZK"
+
+#, python-format
+msgid "o %(gap)s Kč dráž"
+msgstr "%(gap)s CZK dearer"
+
+#, python-format
+msgid "o %(gap)s Kč levněji"
+msgstr "%(gap)s CZK cheaper"
+
+msgid "stejně"
+msgstr "the same"
+
+msgid "světlé"
+msgstr "pale"
+
+msgid "polotmavé"
+msgstr "amber"
+
+msgid "tmavé"
+msgstr "dark"
+
+msgid "speciál"
+msgstr "special"
+
+msgid "9° a míň"
+msgstr "9° or less"
+
+msgid "13° a víc"
+msgstr "13° or more"
+
+msgid "Stupňovitost"
+msgstr "Degrees"
+
+#, python-format
+msgid "polovina hospod %(low)s–%(high)s Kč"
+msgstr "half of the pubs %(low)s–%(high)s CZK"
+
+msgid "hospod za 3 měsíce"
+msgstr "pubs in 3 months"
+
+msgid "hospod čepuje"
+msgstr "pubs pouring"
+
+#, python-format
+msgid "průměr %(beers)s z %(count)s hodnocení"
+msgstr "average of %(beers)s from %(count)s ratings"
+
+msgid "hodnocení"
+msgstr "ratings"
+
+msgctxt "short month"
+msgid "led"
+msgstr "Jan"
+
+msgctxt "short month"
+msgid "úno"
+msgstr "Feb"
+
+msgctxt "short month"
+msgid "bře"
+msgstr "Mar"
+
+msgctxt "short month"
+msgid "dub"
+msgstr "Apr"
+
+msgctxt "short month"
+msgid "kvě"
+msgstr "May"
+
+msgctxt "short month"
+msgid "čvn"
+msgstr "Jun"
+
+msgctxt "short month"
+msgid "čvc"
+msgstr "Jul"
+
+msgctxt "short month"
+msgid "srp"
+msgstr "Aug"
+
+msgctxt "short month"
+msgid "zář"
+msgstr "Sep"
+
+msgctxt "short month"
+msgid "říj"
+msgstr "Oct"
+
+msgctxt "short month"
+msgid "lis"
+msgstr "Nov"
+
+msgctxt "short month"
+msgid "pro"
+msgstr "Dec"
