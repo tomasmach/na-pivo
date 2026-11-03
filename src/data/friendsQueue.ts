@@ -224,6 +224,7 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
             address: place.address,
             message: message ?? '',
             scheduledFor: scheduledFor ?? null,
+            startedAt: item.payload.startedAt,
             recipientIds: item.payload.recipientIds,
           })
         : scheduledFor

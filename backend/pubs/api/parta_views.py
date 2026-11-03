@@ -231,6 +231,7 @@ class PartaPlanWriteSerializer(
         max_length=160, required=False, allow_blank=True, default="", trim_whitespace=True
     )
     scheduled_for = serializers.DateTimeField(required=False, allow_null=True)
+    started_at = serializers.DateTimeField(required=False, allow_null=True)
     recipient_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False, allow_empty=False
     )
@@ -450,8 +451,15 @@ class PartaActivityView(FriendActivityView):
         if is_plan:
             kind, started_at = FriendPubActivity.Kind.PLAN, scheduled_for
         else:
-            kind, started_at, scheduled_for = FriendPubActivity.Kind.LIVE, now, None
+            # A late offline delivery keeps the time it was meant for and never restarts a dead evening.
+            started_at = min(data.get("started_at") or scheduled_for or now, now)
+            kind, scheduled_for = FriendPubActivity.Kind.LIVE, None
         expires_at = started_at + _ttl(place_kind)
+        if expires_at <= now:
+            return Response(
+                {"detail": "expires_at must be in the future.", "code": "expired_activity"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         requested = data.get("recipient_ids")
         target_ids = _requested_activity_recipient_ids(

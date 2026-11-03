@@ -564,3 +564,29 @@ def test_claim_moves_home_checkins_and_style_votes(client, party):
     assert FriendHomeCheckin.objects.filter(account=target).count() == 1
     votes = dict(BeerStyleVote.objects.filter(account=target).values_list("product__key", "style"))
     assert votes == {"claim-kozel": "pale", "claim-bernard": "dark"}
+
+
+@pytest.mark.django_db
+def test_late_offline_invite_keeps_its_time_and_never_restarts(client, party):
+    token, host = party["host"]
+    body = {"place_kind": "home", "name": "U @klara doma", "address": ADDRESS}
+
+    stale = client.post(
+        "/v1/friends/pub-activity",
+        data={**body, "client_id": str(uuid.uuid4()), "scheduled_for": (timezone.now() - timedelta(days=2)).isoformat()},
+        format="json",
+        **_auth(token),
+    )
+    assert stale.status_code == status.HTTP_400_BAD_REQUEST
+    assert stale.json()["code"] == "expired_activity"
+
+    sent_at = timezone.now() - timedelta(minutes=40)
+    late = client.post(
+        "/v1/friends/pub-activity",
+        data={**body, "client_id": str(uuid.uuid4()), "started_at": sent_at.isoformat()},
+        format="json",
+        **_auth(token),
+    )
+    assert late.status_code == status.HTTP_201_CREATED
+    activity = FriendPubActivity.objects.filter(account=host).latest("pk")
+    assert abs((activity.started_at - sent_at).total_seconds()) < 1
