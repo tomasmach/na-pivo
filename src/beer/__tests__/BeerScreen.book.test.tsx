@@ -69,11 +69,18 @@ function setWindow(width: number, height: number) {
   windowSize.mockReturnValue({ width, height, scale: 3, fontScale: 1 });
 }
 
+// Unmounted after each test so the screens' minute clocks cannot tick after Jest tears down.
+const mounted: any[] = [];
+afterEach(() => {
+  for (const renderer of mounted.splice(0)) act(() => renderer.unmount());
+});
+
 function render() {
   let renderer: any;
   act(() => {
     renderer = TestRenderer.create(<BeerScreen />);
   });
+  mounted.push(renderer);
   return renderer;
 }
 
