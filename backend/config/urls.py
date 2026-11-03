@@ -9,6 +9,7 @@ from django.views.generic import RedirectView
 from pubs.models import BeerPage
 from pubs.profile_pages import public_profile_page
 from pubs.pub_web_views import pub_share_landing
+from pubs.web.routes import bilingual
 from pubs.web_views import (
     android_asset_statements,
     apple_app_site_association,
@@ -24,6 +25,9 @@ from pubs.web_views import (
     sitemap_xml,
     tour_invite_landing,
 )
+
+handler404 = "pubs.web.pages.not_found"
+handler500 = "pubs.web.pages.server_error"
 
 urlpatterns = [
     path("", home, name="home"),
@@ -55,11 +59,12 @@ urlpatterns = [
     path("en/beer/brand/<slug:key>/og.png", beer_pages_og_image, {"lang": "en", "kind": BeerPage.Kind.BRAND}, name="beer-brand-og-image-en"),
     path("en/beer/<slug:key>", beer_pages, {"lang": "en", "kind": BeerPage.Kind.BEER}, name="beer-en"),
     path("en/beer/<slug:key>/og.png", beer_pages_og_image, {"lang": "en", "kind": BeerPage.Kind.BEER}, name="beer-og-image-en"),
-    path("t/<slug:token>", tour_invite_landing, name="tour-invite-landing"),
-    path("p/<slug:code>", invite_landing, name="friend-invite-landing"),
+    # Shared from the app without a language; /en/… is the English page of the footer switch.
+    *bilingual("t/<slug:token>", "en/t/<slug:token>", tour_invite_landing, "tour-invite-landing"),
+    *bilingual("p/<slug:code>", "en/p/<slug:code>", invite_landing, "friend-invite-landing"),
     path("h/<str:key>", pub_share_landing, name="pub-share-landing"),
-    path("u/<str:nickname>", public_profile_page, name="public-profile"),
-    path("party/<slug:code>", party_invite_landing, name="party-invite-landing"),
+    *bilingual("u/<str:nickname>", "en/u/<str:nickname>", public_profile_page, "public-profile"),
+    *bilingual("party/<slug:code>", "en/party/<slug:code>", party_invite_landing, "party-invite-landing"),
     path(
         ".well-known/apple-app-site-association",
         apple_app_site_association,

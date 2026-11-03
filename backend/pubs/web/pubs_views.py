@@ -201,7 +201,7 @@ def missing_pub_page(request: HttpRequest) -> HttpResponse:
 
 @web_page
 def pubs_index(request: HttpRequest) -> HttpResponse:
-    wait = _wait(request, "pub_public")
+    wait = _wait(request, "web_pages")
     if wait:
         return _slow_down(request, wait, "pubs")
     cities = pubs_data.cities_by_size()
@@ -310,7 +310,7 @@ def _menu(label: str, current: bool, items: list[dict]) -> dict:
 
 @web_page
 def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
-    wait = _wait(request, "pub_public")
+    wait = _wait(request, "web_pages")
     if wait:
         return _slow_down(request, wait, "pubs")
     data = pubs_data.city_pubs(city)
@@ -579,7 +579,7 @@ def _pub_stats(pub: dict, now: datetime) -> list[dict]:
 
 @web_page
 def pub_page(request: HttpRequest, key: str) -> HttpResponse:
-    wait = _wait(request, "pub_public")
+    wait = _wait(request, "web_pages")
     if wait:
         return _slow_down(request, wait, "pubs")
     pub = _resolved(key)
@@ -664,7 +664,7 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
 
 @web_page
 def pub_og_image(request: HttpRequest, key: str) -> HttpResponse:
-    wait = _wait(request, "pub_public")
+    wait = _wait(request, "web_og")
     if wait:
         response = HttpResponse(status=429)
         response["Retry-After"] = str(wait)

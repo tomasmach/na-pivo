@@ -10,7 +10,6 @@ from __future__ import annotations
 import statistics
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from functools import wraps
 from pathlib import Path
 from urllib.parse import quote
 
@@ -39,7 +38,6 @@ from pubs.home_views import (
     play_store_url,
 )
 from pubs.home_views import PATHS as HOME_PATHS
-from pubs.i18n import current_locale
 from pubs.models import (
     Account,
     BeerBrand,
@@ -69,18 +67,6 @@ _ASSETS: dict[str, tuple[str, str]] = {
 }
 
 
-def _negotiated(view):
-    """``@web_page`` for an address without an English twin: the language comes from Accept-Language."""
-
-    page = web_page(view)
-
-    @wraps(view)
-    def wrapper(request: HttpRequest, *args, **kwargs) -> HttpResponse:
-        return page(request, *args, lang=current_locale(), **kwargs)
-
-    return wrapper
-
-
 def _stores(campaign: str) -> dict[str, str]:
     return {"app_store_url": app_store_url(campaign), "play_store_url": play_store_url(campaign)}
 
@@ -106,12 +92,12 @@ def _invite(request: HttpRequest, path: str, deep_link: str, campaign: str, text
     return response
 
 
-@_negotiated
+@web_page
 def invite_landing(request: HttpRequest, code: str) -> HttpResponse:
     """A generic, privacy-preserving landing for a Parta invite."""
 
     encoded = quote(code, safe="")
-    return _invite(request, f"/p/{encoded}", f"napivo://parta/pozvanka?code={encoded}", "invite", {
+    return _invite(request, web_reverse("friend-invite-landing", code=code), f"napivo://parta/pozvanka?code={encoded}", "invite", {
         "title": gettext("Přidej se k partě"),
         "description": gettext("Hospoda je lepší s kámoši. Otevři pozvánku v aplikaci Na pivo."),
         "headline": gettext("Kámoš tě zve do party."),
@@ -119,12 +105,12 @@ def invite_landing(request: HttpRequest, code: str) -> HttpResponse:
     })
 
 
-@_negotiated
+@web_page
 def party_invite_landing(request: HttpRequest, code: str) -> HttpResponse:
     """A privacy-preserving landing for a shared table invite."""
 
     encoded = quote(code, safe="")
-    return _invite(request, f"/party/{encoded}", f"napivo://party-live?code={encoded}", "party", {
+    return _invite(request, web_reverse("party-invite-landing", code=code), f"napivo://party-live?code={encoded}", "party", {
         "title": gettext("Přisedni ke stolu"),
         "description": gettext("Kámoši tě zvou ke stolu. Otevři pozvánku v aplikaci Na pivo."),
         "headline": gettext("U stolu je místo."),
@@ -221,7 +207,7 @@ def invite_asset(_request: HttpRequest, filename: str) -> FileResponse:
     return response
 
 
-@_negotiated
+@web_page
 def tour_invite_landing(request: HttpRequest, token: str) -> HttpResponse:
     """Read-only itinerary, with no trackers, map SDK or redirect."""
     from rest_framework.request import Request
@@ -236,7 +222,7 @@ def tour_invite_landing(request: HttpRequest, token: str) -> HttpResponse:
     )
 
     throttle = SharedScopedRateThrottle()
-    policy = type("TourPublicPolicy", (), {"throttle_scope": "tour_public"})()
+    policy = type("TourPublicPolicy", (), {"throttle_scope": "web_pages"})()
     if not throttle.allow_request(Request(request), policy):
         response = HttpResponse(gettext("Zkus to prosím za chvíli."), status=429)
         response["Retry-After"] = str(throttle.wait())
@@ -418,14 +404,14 @@ def home(request: HttpRequest) -> HttpResponse:
     return response
 
 
-def _price_map_wait(request: HttpRequest) -> int | None:
-    """Seconds to wait once this address spent its shared price-page budget."""
+def _price_map_wait(request: HttpRequest, scope: str = "web_pages") -> int | None:
+    """Seconds to wait once this address spent its budget of ``scope``."""
     from rest_framework.request import Request
 
     from pubs.api.throttling import SharedScopedRateThrottle
 
     throttle = SharedScopedRateThrottle()
-    policy = type("PriceMapPolicy", (), {"throttle_scope": "price_map"})()
+    policy = type("PriceMapPolicy", (), {"throttle_scope": scope})()
     if throttle.allow_request(Request(request), policy):
         return None
     return int(throttle.wait())
@@ -828,7 +814,7 @@ def _too_many(wait: int) -> HttpResponse:
 def beer_prices_og_image(request: HttpRequest, lang: str = "cs", city: str = "") -> HttpResponse:
     """Share image of the newest snapshot: the country one drawn with the snapshot, a city's on first ask."""
 
-    if wait := _price_map_wait(request):
+    if wait := _price_map_wait(request, "web_og"):
         return _too_many(wait)
     field = f"og_image_{lang}"
     if not city:
@@ -1134,7 +1120,7 @@ def beer_pages_og_image(
 ) -> HttpResponse:
     """Share image of one page, drawn on the first ask after each daily run and then kept."""
 
-    if wait := _price_map_wait(request):
+    if wait := _price_map_wait(request, "web_og"):
         return _too_many(wait)
     page = BeerPage.objects.filter(kind=kind, key=key).first()
     if page is None:

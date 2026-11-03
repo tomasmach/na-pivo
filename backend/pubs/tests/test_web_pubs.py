@@ -335,7 +335,7 @@ def test_pub_pages_are_throttled(client, monkeypatch):
     from pubs.api.throttling import SharedScopedRateThrottle
 
     monkeypatch.setattr(
-        SharedScopedRateThrottle, "THROTTLE_RATES", {**SharedScopedRateThrottle.THROTTLE_RATES, "pub_public": "2/min"}
+        SharedScopedRateThrottle, "THROTTLE_RATES", {**SharedScopedRateThrottle.THROTTLE_RATES, "web_pages": "2/min"}
     )
     tiger = _pub()
 

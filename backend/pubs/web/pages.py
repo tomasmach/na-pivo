@@ -17,11 +17,14 @@ from functools import wraps
 from urllib.parse import quote, urlsplit
 
 from django.conf import settings
+from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.template.response import SimpleTemplateResponse
 from django.utils import translation
 from django.utils.translation import gettext
+from django.views.defaults import page_not_found
+from django.views.defaults import server_error as django_server_error
 
 from pubs.home_views import app_store_url, canonical_host, play_store_url
 from pubs.pivar import pivar_progress
@@ -117,6 +120,47 @@ def _account_card(account) -> dict | None:
     }
 
 
+_FOOTER_SECONDS = 3600
+
+
+def _footer_data() -> dict:
+    """Cities with prices and the most poured beers, so every footer link has a page behind it."""
+
+    data = cache.get("web:footer")
+    if data is None:
+        from pubs.models import BeerPage, PubPriceSnapshot
+
+        snapshot = PubPriceSnapshot.objects.defer("og_image_cs", "og_image_en").first()
+        cities = sorted((snapshot.data if snapshot else {}).get("cities", []), key=lambda area: -area["pubs"])
+        listing = BeerPage.objects.filter(kind=BeerPage.Kind.LIST, key="").only("data").first()
+        data = {
+            "cities": [area["name"] for area in cities[:4]],
+            "beers": [{"key": beer["key"], "name": beer["name"]} for beer in (listing.data if listing else {}).get("beers", [])[:3]],
+        }
+        cache.set("web:footer", data, _FOOTER_SECONDS)
+    return data
+
+
+def _footer(lang: str) -> dict:
+    from pubs.beer_pages import page_path
+    from pubs.models import BeerPage
+    from pubs.price_map import city_slug
+    from pubs.web.pubs_views import _city_in
+
+    data = _footer_data()
+    return {
+        "pubs": [
+            {"label": gettext("Hospody %(where)s") % {"where": _city_in(name)}, "url": web_reverse("web-pubs-city", city=city_slug(name))}
+            for name in data["cities"]
+        ],
+        "prices": [
+            {"label": gettext("Kolik stojí pivo %(where)s") % {"where": _city_in(name)}, "url": web_reverse("beer-prices-city", city=city_slug(name))}
+            for name in data["cities"][:2]
+        ],
+        "beers": [{"label": beer["name"], "url": page_path(BeerPage.Kind.BEER, beer["key"], lang)} for beer in data["beers"]],
+    }
+
+
 def _alternates(request: HttpRequest) -> dict[str, str]:
     """The same page in each language, query string included (search keeps its ``q``)."""
 
@@ -172,6 +216,8 @@ def render_page(
         "privacy_url": f"{legal}/privacy.html",
         "terms_url": f"{legal}/terms.html",
         "search_query": request.GET.get("q", "")[:120] if section == "search" else "",
+        # Called by the template, so only pages with the public footer read it; the 500 page never does.
+        "footer": (lambda: _footer(lang)) if status < 500 else None,
     }
     response = render(request, template, {"page": page, **(context or {})}, status=status)
     if not page["indexable"]:
@@ -242,3 +288,35 @@ def component_gallery(request: HttpRequest) -> HttpResponse:
         title="Komponenty",
         indexable=False,
     )
+
+
+def _path_lang(request: HttpRequest) -> str:
+    return "en" if request.path == "/en" or request.path.startswith("/en/") else "cs"
+
+
+def not_found(request: HttpRequest, exception=None) -> HttpResponse:
+    """``handler404``: an unknown address inside the public shell. The API keeps Django's plain 404."""
+
+    if request.path.startswith("/v1/"):
+        return page_not_found(request, exception)
+
+    @web_page
+    def page(request: HttpRequest) -> HttpResponse:
+        return render_page(request, "web/404.html", title=gettext("Tohle tu nečepujeme"), status=404)
+
+    return page(request, lang=_path_lang(request))
+
+
+def server_error(request: HttpRequest) -> HttpResponse:
+    """``handler500``: no session, no database, only the template, since either may be what failed.
+
+    The API and a failing template get Django's built-in page: there is no top-level ``500.html``.
+    """
+
+    if request.path.startswith("/v1/"):
+        return django_server_error(request)
+    try:
+        with translation.override(_path_lang(request)):
+            return render_page(request, "web/500.html", title=gettext("Něco se pokazilo"), status=500)
+    except Exception:  # noqa: BLE001 -- the error page itself must not fail
+        return django_server_error(request)

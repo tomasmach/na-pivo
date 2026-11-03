@@ -162,7 +162,7 @@ def _listing(city: str, stops: str) -> dict:
 
 @web_page
 def tours(request: HttpRequest) -> HttpResponse:
-    wait = throttle_wait(request, "tour_public")
+    wait = throttle_wait(request, "web_pages")
     if wait:
         return too_many(request, wait, "tours")
 
@@ -282,7 +282,7 @@ def _detail(publication: TourPublication) -> dict:
 
 @web_page
 def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
-    wait = throttle_wait(request, "tour_public")
+    wait = throttle_wait(request, "web_pages")
     if wait:
         return too_many(request, wait, "tours")
     publication = readable_publications().filter(token=tour_id).first()
@@ -384,7 +384,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
 def tour_og(request: HttpRequest, tour_id: str, lang: str = "cs") -> HttpResponse:
     from django.utils import translation
 
-    wait = throttle_wait(request, "tour_public")
+    wait = throttle_wait(request, "web_og")
     if wait:
         response = HttpResponse(status=429)
         response["Retry-After"] = str(wait)

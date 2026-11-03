@@ -28,6 +28,7 @@ from pubs.web.auth_views import (
     oauth_return,
     oauth_start,
     register,
+    reset_password,
 )
 from pubs.web.beer_index import beer_index, beer_index_csv, beer_index_og
 from pubs.web.delete_account_views import delete_account, delete_account_confirm
@@ -74,6 +75,7 @@ urlpatterns = [
     # The one return address registered at Google and Apple; the language travels in the session.
     path("prihlaseni/<slug:provider>/navrat", oauth_return, name="web-oauth-return"),
     *bilingual("zapomenute-heslo", "en/forgot-password", forgot_password, "web-forgot-password"),
+    *bilingual("nove-heslo", "en/new-password", reset_password, "web-reset-password"),
     *bilingual("odhlasit", "en/logout", logout, "web-logout"),
 
     *bilingual("registrace", "en/register", register, "web-register"),

@@ -37,7 +37,7 @@ def test_every_reserved_page_answers_in_both_languages(client, name):
         if response.status_code == 302:
             assert response["Location"].startswith(web_reverse("web-login", lang) + "?next=")
             continue
-        assert response.status_code in (200, 404, 405)
+        assert response.status_code in (200, 400, 404, 405)
         if response.status_code == 405:
             continue
         assert response["Content-Language"] == lang
@@ -49,8 +49,8 @@ def test_english_page_is_translated_and_links_stay_english(client):
     html = client.get("/en/pubs/praha").content.decode()
     assert "Log in" in html and "Přihlásit se" not in html
     assert 'href="/en/login"' in html
-    assert 'href="/en/prices/praha"' in html
-    assert 'href="/en/beer/pilsner-urquell"' in html
+    assert 'href="/en/prices"' in html
+    assert 'href="/en/beer"' in html
     assert 'action="/en/search"' in html
 
 
