@@ -17,6 +17,7 @@ import type { FeedbackCategory, FeedbackContactType } from '@/data/feedbackClien
 import { enqueueFeedback } from '@/data/feedbackQueue';
 import { claimInviteCode } from '@/data/friendInviteLink';
 import {
+  cancelFriendRequest,
   fetchBlockedAccounts,
   fetchFriendInviteCode,
   fetchFriendsDashboard,
@@ -26,6 +27,7 @@ import {
   unblockFriend,
   type FriendInvite,
   type FriendProfile,
+  type Friendship,
   type InviteResolveResult,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
@@ -1757,20 +1759,29 @@ export function SpravaPartyScreen() {
   const needsNickname = me.isSignedIn && me.profile != null && !me.nick;
   const [invite, setInvite] = useState<FriendInvite | null | 'loading'>('loading');
   const [friends, setFriends] = useState<FriendProfile[] | null>(null);
+  const [outgoing, setOutgoing] = useState<Friendship[]>([]);
   const [blocked, setBlocked] = useState<FriendProfile[]>([]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<FriendProfile[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [requesting, setRequesting] = useState<string | null>(null);
   const searchSeq = useRef(0);
+  const shown = useRef(false);
 
   const load = useCallback(() => {
     const controller = new AbortController();
     void loadFriendsDashboardSnapshot().then((snapshot) => {
-      if (!controller.signal.aborted && snapshot) setFriends((current) => current ?? snapshot.dashboard.friends);
+      // The saved copy only fills an empty screen; it can still hold a request cancelled here.
+      if (controller.signal.aborted || !snapshot || shown.current) return;
+      shown.current = true;
+      setFriends(snapshot.dashboard.friends);
+      setOutgoing(snapshot.dashboard.outgoingRequests);
     });
     void fetchFriendsDashboard(controller.signal).then((dashboard) => {
-      if (!controller.signal.aborted && dashboard) setFriends(dashboard.friends);
+      if (controller.signal.aborted || !dashboard) return;
+      shown.current = true;
+      setFriends(dashboard.friends);
+      setOutgoing(dashboard.outgoingRequests);
     });
     void fetchBlockedAccounts(controller.signal).then((list) => {
       if (!controller.signal.aborted && list) setBlocked(list);
@@ -1857,6 +1868,25 @@ export function SpravaPartyScreen() {
               if (!result.ok) return toast({ kind: 'error', title: result.detail });
               setBlocked((list) => list.filter((item) => item.id !== account.id));
               toast({ kind: 'saved', title: t.friends.unblocked, icon: 'check' });
+            }),
+        },
+      ],
+    });
+
+  const confirmCancelRequest = (request: Friendship) =>
+    dialog({
+      title: P().parta.cancelRequestTitle(friendDisplayName(request.recipient)),
+      actions: [
+        { label: t.nv.parta.back },
+        {
+          label: P().parta.cancelRequestConfirm,
+          kind: 'danger',
+          onPress: () =>
+            void cancelFriendRequest(request.recipient.id).then((result) => {
+              if (!result.ok) return toast({ kind: 'error', title: result.detail });
+              setOutgoing((list) => list.filter((item) => item.id !== request.id));
+              toast({ kind: 'saved', title: P().parta.requestCanceled, icon: 'check' });
+              load();
             }),
         },
       ],
@@ -1982,6 +2012,25 @@ export function SpravaPartyScreen() {
               ))}
             </Card>
           )}
+          {outgoing.length > 0 ? (
+            <>
+              <T s={17} w={700}>
+                {P().parta.outgoing}
+              </T>
+              <Card>
+                {outgoing.map((request, idx) => (
+                  <Row
+                    key={request.id}
+                    last={idx === outgoing.length - 1}
+                    leading={<ProfilAvatar uri={request.recipient.avatarUrl} initial={initialOf(request.recipient)} />}
+                    title={friendDisplayName(request.recipient)}
+                    sub={P().parta.outgoingSub}
+                    trailing={<Chip label={P().parta.cancelRequest} plain height={34} onPress={() => confirmCancelRequest(request)} />}
+                  />
+                ))}
+              </Card>
+            </>
+          ) : null}
           {blocked.length > 0 ? (
             <>
               <T s={17} w={700}>
