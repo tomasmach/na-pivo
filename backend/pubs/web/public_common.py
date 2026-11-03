@@ -11,7 +11,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext
 from PIL import Image, ImageDraw
 
-from pubs.home_views import _LANDING_URLS, ld_json
+from pubs.home_views import HOME_OG_PATH, ld_json
 from pubs.price_map import _FOAM, _FOAM_MUTED, _GROUND, _HAIR, _MUTED, _fitted, _font
 from pubs.regions import REGION_CODES
 from pubs.web.pages import render_page
@@ -134,7 +134,7 @@ def structured(*graph: dict):
 
 
 def home_og_image() -> str:
-    return f"{settings.PUBLIC_WEB_ORIGIN}{_LANDING_URLS['og_home_png']}"
+    return f"{settings.PUBLIC_WEB_ORIGIN}{HOME_OG_PATH}"
 
 
 # Share images reuse the fonts and colours of the /ceny and /pivo images.

@@ -239,9 +239,9 @@ def tours(request: HttpRequest) -> HttpResponse:
 
 
 def _home_og() -> str:
-    from pubs.home_views import _LANDING_URLS
+    from pubs.home_views import HOME_OG_PATH
 
-    return _LANDING_URLS["og_home_png"]
+    return HOME_OG_PATH
 
 
 def _publication(token: str) -> TourPublication:

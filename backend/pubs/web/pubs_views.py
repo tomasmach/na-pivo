@@ -23,7 +23,7 @@ from django.utils.translation import gettext, pgettext
 from rest_framework.request import Request
 
 from pubs.api.throttling import SharedScopedRateThrottle
-from pubs.home_views import _LANDING_URLS, ld_json
+from pubs.home_views import HOME_OG_PATH, ld_json
 from pubs.i18n import current_locale
 from pubs.models import PubPriceSnapshot
 from pubs.price_map import city_slug
@@ -229,7 +229,7 @@ def pubs_index(request: HttpRequest) -> HttpResponse:
             "lead": lead,
             "crumbs": _crumbs(crumbs),
             "structured_data": ld_json({"@graph": [_breadcrumb_data(crumbs)]}),
-            "og_image_url": f"{settings.PUBLIC_WEB_ORIGIN}{_LANDING_URLS['og_home_png']}",
+            "og_image_url": f"{settings.PUBLIC_WEB_ORIGIN}{HOME_OG_PATH}",
         },
         title=gettext("Hospody po městech"),
         description=gettext("Hospody v českých městech: co čepují, kolik stojí půllitr a kdo má zrovna otevřeno."),
@@ -445,7 +445,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "other_cities": _others(8, skip=city),
             "crumbs": _crumbs(crumbs),
             "structured_data": ld_json(structured),
-            "og_image_url": f"{origin}{_LANDING_URLS['og_home_png']}",
+            "og_image_url": f"{origin}{HOME_OG_PATH}",
         },
         title=title,
         description=f"{lead} {gettext('Podívej se, kde mají otevřeno a co čepují.')}",

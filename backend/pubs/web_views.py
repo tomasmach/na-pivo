@@ -31,6 +31,7 @@ from pubs.checks import ANDROID_APP_LINK_FINGERPRINTS_ENV, normalized_cert_finge
 from pubs.home_views import (
     APP_STORE_URL,
     AUTHOR,
+    HOME_OG_PATH,
     PLAY_STORE_URL,
     app_store_url,
     ld_json,
@@ -57,7 +58,6 @@ from pubs.web.routes import web_reverse
 _FOLDED_ROWS = 12
 # Live numbers beside a daily snapshot: fresh enough, and one visit costs a few queries at most.
 _LIVE_SECONDS = 600
-HOME_OG_PATH = "/og/home.png"
 
 _ASSET_ROOT = Path(__file__).resolve().parent / "static" / "pubs" / "invite"
 _ASSETS: dict[str, tuple[str, str]] = {
