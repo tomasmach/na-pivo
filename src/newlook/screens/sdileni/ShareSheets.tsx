@@ -14,6 +14,7 @@ import { useVycepStore } from '@/stores/vycepStore';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, T, Tile, Toggle } from '../../components/ui';
+import { clampToFuture, QUARTER_HOUR_MS } from '../../format';
 import { C, s } from '../../theme';
 import { clockTime, durationLabel, shortDay, useTonightOrLast } from '../vycep/nightData';
 import { buildPubShareUrl } from '@/data/pubShareLink';
@@ -39,21 +40,13 @@ function useStageBackground(): string | null {
   return photo ? (photo.imageUrl ?? photo.localUri ?? null) : null;
 }
 
-const QUARTER = 15 * 60 * 1000;
+const QUARTER = QUARTER_HOUR_MS;
 const HALF_HOUR = 2 * QUARTER;
 const DAYS_AHEAD = 14;
 
 function nextSlots(now: Date, count: number): Date[] {
   const first = Math.ceil((now.getTime() + 1) / HALF_HOUR) * HALF_HOUR;
   return Array.from({ length: count }, (_, i) => new Date(first + i * HALF_HOUR));
-}
-
-/** Keeps a picked time on its own day and no earlier than the next quarter hour. */
-function clampToFuture(at: Date, now = new Date()): Date {
-  const dayStart = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
-  const dayEnd = dayStart + 24 * 60 * 60 * 1000 - QUARTER;
-  const earliest = Math.ceil((now.getTime() + 1) / QUARTER) * QUARTER;
-  return new Date(Math.min(dayEnd, Math.max(earliest, dayStart, at.getTime())));
 }
 
 function onDay(day: Date, at: Date): Date {

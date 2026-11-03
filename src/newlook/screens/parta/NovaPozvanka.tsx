@@ -17,6 +17,7 @@ import { Input, Ticket } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Row, Segmented, T } from '../../components/ui';
 import { toast } from '../../ui/store';
+import { clampToFuture } from '../../format';
 import { C, s } from '../../theme';
 import { personName, shortDay, ticketDay } from './partaModel';
 import { usePartaStore } from './partaStore';
@@ -24,8 +25,6 @@ import { usePartaStore } from './partaStore';
 type Open = 'where' | 'when' | 'whom' | null;
 type PlaceKindChoice = 'home' | 'pub';
 const DAYS_AHEAD = 14;
-const TIMES = Array.from({ length: 24 }, (_, i) => `${String(12 + Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
-
 function defaultWhen(now = new Date()): Date {
   const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19, 0);
   if (now.getHours() >= 17) at.setDate(at.getDate() + 1);
@@ -136,8 +135,8 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
   const title = kind === 'home' ? t.nv.parta.homePlaceMine : pub?.name ?? t.nv.parta.pickPub;
   const day = ticketDay((when ?? (editing && !editing.scheduledFor ? new Date(editing.startedAt) : new Date())).toISOString());
   const whenLabel = when ? t.nv.parta.whenLabel(shortDay(when.toISOString()), hhmm(when)) : t.nv.parta.whenNow;
-  const pickDay = (d: Date) => setWhen(withTime(d, hhmm(when ?? defaultWhen())));
-  const pickTime = (time: string) => setWhen(withTime(when ?? defaultWhen(), time));
+  const pickDay = (d: Date) => setWhen(clampToFuture(withTime(d, hhmm(when ?? defaultWhen()))));
+  const stepTime = (minutes: number) => setWhen(clampToFuture(new Date((when ?? defaultWhen()).getTime() + minutes * 60 * 1000)));
   const recipients = audience === 'all' ? undefined : audience;
   const whereLabel = kind === 'home' ? (address.trim() ? t.nv.parta.atMineAddress(address.trim()) : t.nv.parta.atMine) : pub?.name ?? t.nv.parta.pickPub;
   const whomLabel = audience === 'all' ? t.nv.parta.wholePartyN(friends.length) : t.nv.parta.peopleN(audience.length);
@@ -298,11 +297,11 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
                 />
               ))}
             </ScrollView>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {TIMES.map((time) => (
-                <Chip key={time} plain label={time} active={!!when && hhmm(when) === time} onPress={() => pickTime(time)} />
-              ))}
-            </ScrollView>
+            <View style={[s.row, { gap: 12, justifyContent: 'center' }]}>
+              <IconButton icon="minus" size={40} iconSize={18} label={t.tours.whenTimeDown} onPress={() => stepTime(-15)} />
+              <D s={32}>{hhmm(when ?? defaultWhen())}</D>
+              <IconButton icon="plus" size={40} iconSize={18} label={t.tours.whenTimeUp} onPress={() => stepTime(15)} />
+            </View>
           </View>
         ) : null}
         <PickerRow icon="users" label={t.nv.parta.whom} value={whomLabel} open={open === 'whom'} onPress={() => toggle('whom')} />
