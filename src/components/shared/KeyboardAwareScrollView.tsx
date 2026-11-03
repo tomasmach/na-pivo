@@ -62,6 +62,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
   const contentHeightRef = useRef(0);
   const scrollFrameRef = useRef<number | null>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollFocusedIntoViewRef = useRef<((onlyBelow: boolean) => void) | null>(null);
   const keyboardHeight = useKeyboardHeight();
   const keyboardHeightRef = useRef(keyboardHeight);
   keyboardHeightRef.current = keyboardHeight;
@@ -85,11 +86,12 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
     (event: NativeSyntheticEvent<TargetedEvent>) => {
       onFocus?.(event);
       cancelScheduledScroll();
-      const target = event.target;
+      // On the new architecture event.target is an element; the native tag is on nativeEvent.
+      const target = event.nativeEvent.target;
       const scrollView = scrollRef.current;
       if (!scrollView || typeof target !== 'number') return;
 
-      const scrollIntoView = () => {
+      const scrollIntoView = (onlyBelow = false) => {
         const current = scrollRef.current;
         const scrollNode = current ? findNodeHandle(current) : null;
         const currentInputHandle = focusedTextInputHandle();
@@ -98,7 +100,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
           target,
           scrollNode,
           () => undefined,
-          (_x, fieldY, _fieldWidth, fieldHeight) => {
+          (_x, contentY, _fieldWidth, fieldHeight) => {
             const latestInputHandle = focusedTextInputHandle();
             if (latestInputHandle !== target) return;
             const viewportHeight = viewportHeightRef.current;
@@ -110,9 +112,11 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
               Spacing.lg,
               viewportHeight - effectiveKeyboardHeight - Spacing.lg,
             );
+            // The new architecture measures against the scroll content, not the visible part.
+            const fieldY = contentY - scrollYRef.current;
             const fieldBottom = fieldY + fieldHeight;
             let deltaY = 0;
-            if (fieldY < Spacing.sm) {
+            if (fieldY < Spacing.sm && !onlyBelow) {
               deltaY = fieldY - Spacing.sm;
             } else if (fieldBottom > keyboardTop) {
               deltaY = fieldBottom - keyboardTop;
@@ -139,6 +143,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
           },
         );
       };
+      scrollFocusedIntoViewRef.current = scrollIntoView;
 
       // Keyboard events and focus arrive in either order across platforms.
       // Run after layout, then once again after the native keyboard animation.
@@ -154,6 +159,17 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
     [cancelScheduledScroll, keyboardAvoidedExternally, onFocus],
   );
 
+  // A parent that lifts this view shrinks the viewport after focus, and a
+  // multiline field grows while typing; both push the focused field below the visible part.
+  const followFocusedInput = useCallback(() => {
+    const scrollIntoView = scrollFocusedIntoViewRef.current;
+    if (!keyboardAvoidedExternally || !scrollIntoView || scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      scrollIntoView(true);
+    });
+  }, [keyboardAvoidedExternally]);
+
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       scrollYRef.current = event.nativeEvent.contentOffset.y;
@@ -165,17 +181,19 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       viewportHeightRef.current = event.nativeEvent.layout.height;
+      followFocusedInput();
       onLayout?.(event);
     },
-    [onLayout],
+    [followFocusedInput, onLayout],
   );
 
   const handleContentSizeChange = useCallback(
     (width: number, height: number) => {
       contentHeightRef.current = height;
+      followFocusedInput();
       onContentSizeChange?.(width, height);
     },
-    [onContentSizeChange],
+    [followFocusedInput, onContentSizeChange],
   );
 
   const { waitFor, ...sheetScroll } = useBottomSheetScroll({
