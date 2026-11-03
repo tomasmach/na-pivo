@@ -1285,6 +1285,7 @@ export const en: Strings = {
       ? `Invited ${n} ${englishPlural(n, { one: 'mate', other: 'mates' })}. Anyone with notifications on knows right away.`
       : 'Everyone you picked already has an invite.',
     rosterSummary: (invited: number, going: number) => going > 0 ? `${invited} invited · ${going} going` : `${invited} invited`,
+    inboxTitle: 'Invites',
     invitedBy: (name: string) => `${name} is inviting you`,
     going: "I'm in",
     notGoing: "Can't make it",
