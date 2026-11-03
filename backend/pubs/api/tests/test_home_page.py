@@ -152,10 +152,20 @@ def test_robots_lets_crawlers_in_and_points_to_the_sitemap(client, settings):
 
     assert response.status_code == 200
     assert response["Content-Type"] == "text/plain; charset=utf-8"
-    lines = response.content.decode().splitlines()
-    assert "Disallow: /v1/" in lines
-    assert "Disallow: /" not in lines
-    assert "Sitemap: https://na-pivo.cz/sitemap.xml" in lines
+    everyone, data_crawlers, _ = response.content.decode().split("\n\n")
+    assert everyone.splitlines() == ["User-agent: *", "Disallow: /v1/", "Disallow: /admin/"]
+    assert "User-agent: GPTBot" in data_crawlers and "User-agent: CCBot" in data_crawlers
+    assert data_crawlers.splitlines()[-1] == "Disallow: /" and "Googlebot" not in data_crawlers
+    assert response.content.decode().endswith("Sitemap: https://na-pivo.cz/sitemap.xml\n")
+
+
+def test_llms_txt_forbids_copying_the_data(client, settings):
+    settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
+
+    text = client.get("/llms.txt").content.decode()
+
+    assert text.startswith("# Na pivo") and "bez písemného souhlasu zakázáno" in text
+    assert "prohibited without written permission" in text and "https://na-pivo.cz" in text
 
 
 def test_sitemap_lists_both_languages_of_every_page(client, settings):

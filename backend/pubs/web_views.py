@@ -1145,17 +1145,56 @@ def beer_pages_og_image(
 
 
 
+# Crawlers that collect pages for AI models or datasets. The prices and menus are ours to keep.
+DATA_CRAWLERS = (
+    "GPTBot", "ChatGPT-User", "OAI-SearchBot", "ClaudeBot", "Claude-User", "Claude-SearchBot", "anthropic-ai",
+    "CCBot", "Google-Extended", "Applebot-Extended", "PerplexityBot", "Perplexity-User", "Bytespider",
+    "Amazonbot", "meta-externalagent", "FacebookBot", "cohere-ai", "Diffbot", "Omgilibot", "Timpibot",
+    "YouBot", "ImagesiftBot", "DataForSeoBot", "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot",
+)
+
+
 def robots_txt(_request: HttpRequest) -> HttpResponse:
-    """Crawlers may read every page; the API only answers the app."""
+    """Search engines may read every page; AI and data crawlers none; the API only answers the app."""
 
     lines = [
         "User-agent: *",
         "Disallow: /v1/",
         "Disallow: /admin/",
         "",
+        *(f"User-agent: {name}" for name in DATA_CRAWLERS),
+        "Disallow: /",
+        "",
         f"Sitemap: {settings.PUBLIC_WEB_ORIGIN}/sitemap.xml",
     ]
     response = HttpResponse("\n".join(lines) + "\n", content_type="text/plain; charset=utf-8")
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+def llms_txt(_request: HttpRequest) -> HttpResponse:
+    """What AI tools may do with the site: quote a fact with the source, never copy the data."""
+
+    origin = settings.PUBLIC_WEB_ORIGIN
+    text = f"""# Na pivo
+
+> Česká appka a web o hospodách, cenách piva a pivním deníku. Czech app and website about pubs, beer prices and a beer diary. {origin}
+
+## Pravidla pro AI a roboty
+
+- Obsah a data webu Na pivo patří Na pivo: ceny piva, lístky hospod, hodnocení, Pivní index, žebříčky a trasy.
+- Stahovat je robotem, ukládat do databází nebo datasetů a používat k trénování, ladění nebo doplňování modelů (včetně RAG a vyhledávání odpovědí) je bez písemného souhlasu zakázáno.
+- Jednotlivý údaj smíš citovat s odkazem na zdroj {origin}.
+- O souhlas si napiš na tomades1@gmail.com.
+
+## Rules for AI and crawlers
+
+- The content and data of Na pivo belong to Na pivo: beer prices, pub menus, ratings, the Beer index, rankings and tours.
+- Scraping them, storing them in databases or datasets, or using them to train, fine-tune or ground models (including RAG and answer engines) is prohibited without written permission.
+- You may quote a single fact with a link to the source {origin}.
+- To ask for permission, write to tomades1@gmail.com.
+"""
+    response = HttpResponse(text, content_type="text/plain; charset=utf-8")
     response["Cache-Control"] = "public, max-age=86400"
     return response
 

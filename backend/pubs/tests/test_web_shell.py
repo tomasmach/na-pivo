@@ -116,7 +116,7 @@ def test_reading_pages_has_room_for_a_crawler_but_share_images_stay_tight(client
     from pubs.api.throttling import SharedScopedRateThrottle
 
     rates = SharedScopedRateThrottle.THROTTLE_RATES
-    assert rates["web_pages"] == "600/min"
+    assert rates["web_pages"] == "120/min"
     assert rates["web_og"] == "60/min" and rates["web_search"] == "30/min"
-    statuses = {client.get(path).status_code for path in ("/hospody", "/ceny", "/pivo", "/zebricky", "/trasy") * 30}
+    statuses = {client.get(path).status_code for path in ("/hospody", "/ceny", "/pivo", "/zebricky", "/trasy") * 20}
     assert 429 not in statuses
