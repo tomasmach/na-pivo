@@ -1,6 +1,5 @@
 /* Deník, detail večera, zápis a profil. Builds on np.css tokens and components. */
 
-.dy-log [hidden], .dy-dialog [hidden] { display: none !important; }
 .dy-head__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .dy-stats { margin-bottom: 44px; }
 .dy-grid { display: grid; grid-template-columns: minmax(0, 1.32fr) minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -202,7 +201,6 @@ a.dy-year__tile:hover { background: var(--np-control-hover); }
   .dy-stats { gap: 16px 28px; margin-bottom: 28px; }
   .dy-stats .np-stat__value { font-size: 32px; }
   .dy-stats .np-stat--hero { flex: 1 0 100%; grid-template-columns: auto minmax(0, 1fr); }
-  .np-card.np-card--tight { padding: 8px; }
   .dy-stats .np-stat--hero .np-stat__value { font-size: 80px; }
   .dy-cal { padding: 16px 12px 12px; }
   .dy-cal__head { padding: 0 4px; }

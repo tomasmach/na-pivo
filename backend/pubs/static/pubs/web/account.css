@@ -278,7 +278,6 @@
 }
 .npa-gap-top { margin-top: 22px; }
 .npa-gap-s { margin-top: 10px; }
-.npa [hidden], .npa-dialog [hidden] { display: none !important; }
 .npa-fields { align-items: start; }
 .npa-row-btn { padding: 0; }
 .npa-round--mine { cursor: default; }

@@ -64,6 +64,7 @@ h1, h2, h3, p { margin: 0; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+[hidden] { display: none !important; }
 .np-skip { position: absolute; left: 16px; top: -60px; z-index: 10; }
 .np-skip:focus { top: 16px; }
 
@@ -331,7 +332,7 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
 .np-profile__line { display: flex; align-items: center; gap: 12px; }
 .np-profile__text { display: grid; min-width: 0; }
 .np-profile__name { overflow: hidden; font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.np-profile__level { font-size: 12px; color: var(--np-muted); }
+.np-profile__level { overflow: hidden; font-size: 12px; color: var(--np-muted); text-overflow: ellipsis; white-space: nowrap; }
 .np-profile__settings { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--np-muted); }
 .np-profile__settings:hover { background: var(--np-control); color: var(--np-white); }
 .np-profile .np-avatar { width: 44px; height: 44px; }
@@ -394,6 +395,7 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
   .np-stat--hero .np-stat__value { font-size: 80px; }
   .np-stats { gap: 16px 32px; }
   .np-card { padding: 20px; }
+  .np-card--tight { padding: 8px; }
   .np-empty { padding: 28px 20px; }
 
   .np-auth { display: block; }

@@ -189,8 +189,6 @@ a:hover > .np-map__pin.is-first rect { fill: var(--np-yellow-hover); }
   .np-pubs-filters { position: relative; }
   .np-pubs-layout, .np-pubs-layout--search { grid-template-columns: minmax(0, 1fr); }
   .np-pubs-list { margin: 0 -8px; }
-  /* np.css gives every card 20px on a phone, tight ones included. */
-  .np-main .np-card--tight { padding: 8px; }
   .np-pubrow { padding: 14px 12px 12px; }
   .np-pubrow__price { font-size: 24px; }
   .np-pubs-cities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
