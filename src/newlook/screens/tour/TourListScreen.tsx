@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import * as Location from 'expo-location';
 import Animated from 'react-native-reanimated';
 import { useIsFocused, useRouter, type Href } from 'expo-router';
@@ -18,7 +18,7 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Input, PageTitle, Ticket } from '../../components/forms';
 import { Icon } from '../../components/Icon';
-import { Button, Card, Chip, IconButton, Press, Row, Segmented, Stack, T, Tile } from '../../components/ui';
+import { Button, Card, Chip, IconButton, Press, Row, Segmented, Spinner, Stack, T, Tile } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { fadeIn } from '../../motion';
 import { C, s } from '../../theme';
@@ -56,7 +56,13 @@ export function TourListScreen() {
   const [tab, setTab] = useState<'moje' | 'verejne'>('moje');
   const store = useToursStore();
   const tx = t.nv.tour;
+  const nearEndRef = useRef<(() => void) | null>(null);
   useEffect(() => { void useToursStore.getState().hydrate(); }, []);
+
+  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    if (layoutMeasurement.height + contentOffset.y > contentSize.height - 600) nearEndRef.current?.();
+  };
 
   const more = () =>
     dialog({
@@ -85,6 +91,7 @@ export function TourListScreen() {
         ) : undefined
       }
       gap={16}
+      scrollProps={{ onScroll, scrollEventThrottle: 200 }}
     >
       <PageTitle title={tx.title} />
       <Segmented
@@ -96,7 +103,7 @@ export function TourListScreen() {
         value={tab}
         onChange={setTab}
       />
-      {tab === 'moje' ? <MineTab /> : <PublicTab />}
+      {tab === 'moje' ? <MineTab /> : <PublicTab nearEndRef={nearEndRef} />}
     </Screen>
   );
 }
@@ -290,7 +297,9 @@ async function readPosition(): Promise<Position | null> {
 
 const tileDistance = (meters: number) => (meters >= 10000 ? `${Math.round(meters / 1000).toLocaleString(intlLocale)} km` : formatWalkDistance(meters));
 
-function PublicTab() {
+type Failure = 'offline' | 'failed';
+
+function PublicTab({ nearEndRef }: { nearEndRef: React.RefObject<(() => void) | null> }) {
   const router = useRouter();
   const tx = t.nv.tour;
   const hidden = useToursStore((st) => st.hiddenPublic);
@@ -301,7 +310,10 @@ function PublicTab() {
   const [challenges, setChallenges] = useState(false);
   const [ready, setReady] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [result, setResult] = useState<{ key: string; hits: PublicTourHit[] | null; nearby: boolean; failure: 'offline' | 'failed' | null } | null>(null);
+  const [result, setResult] = useState<{ key: string; hits: PublicTourHit[] | null; nearby: boolean; nextPage: number | null; failure: Failure | null } | null>(null);
+  // The next page of the search in `key`; a failed one waits for a tap so scrolling does not hammer a dead connection.
+  const [more, setMore] = useState<{ key: string; failure: Failure | null } | null>(null);
+  const moreFor = useRef<string | null>(null);
   const term = /[\p{L}\p{N}]/u.test(query.trim()) ? query.trim() : '';
   const key = JSON.stringify([term, position, stops, challenges, retry]);
   const liveKey = useRef(key);
@@ -325,11 +337,44 @@ function PublicTab() {
     const timer = setTimeout(() => {
       void searchPublicTours({ q: term, ...(position ?? {}), stops, challenges }).then((r) => {
         if (liveKey.current !== key) return;
-        setResult(r.ok ? { key, hits: r.results, nearby: r.nearby, failure: null } : { key, hits: null, nearby: true, failure: r.offline ? 'offline' : 'failed' });
+        setResult(
+          r.ok
+            ? { key, hits: r.results, nearby: r.nearby, nextPage: r.nextPage, failure: null }
+            : { key, hits: null, nearby: true, nextPage: null, failure: r.offline ? 'offline' : 'failed' },
+        );
       });
     }, term ? 350 : 0);
     return () => clearTimeout(timer);
   }, [ready, key, term, position, stops, challenges]);
+
+  const current = result?.key === key ? result : null;
+  const pending = more?.key === key ? more : null;
+
+  async function loadMore(again = false) {
+    const asked = key;
+    const page = current?.nextPage;
+    if (page == null || moreFor.current === asked || (pending?.failure && !again)) return;
+    moreFor.current = asked;
+    setMore({ key: asked, failure: null });
+    const r = await searchPublicTours({ q: term, ...(position ?? {}), stops, challenges, page });
+    if (moreFor.current === asked) moreFor.current = null;
+    if (liveKey.current !== asked) return;
+    if (!r.ok) {
+      setMore({ key: asked, failure: r.offline ? 'offline' : 'failed' });
+      return;
+    }
+    setMore(null);
+    setResult((prev) => {
+      if (prev?.key !== asked || !prev.hits) return prev;
+      const seen = new Set(prev.hits.map((hit) => hit.id));
+      return { ...prev, nextPage: r.nextPage, hits: [...prev.hits, ...r.results.filter((hit) => !seen.has(hit.id))] };
+    });
+  }
+
+  useEffect(() => {
+    nearEndRef.current = () => void loadMore();
+    return () => { nearEndRef.current = null; };
+  });
 
   async function nearMe() {
     if (position) {
@@ -344,7 +389,6 @@ function PublicTab() {
     else toast({ kind: 'info', title: t.tours.discoverNoLocation, icon: 'navigation' });
   }
 
-  const current = result?.key === key ? result : null;
   const hits = (current?.hits ?? []).filter((hit) => !(hidden ?? []).includes(hit.id));
   const filtered = !!stops || challenges;
   const stopIndex = STOPS.indexOf(stops);
@@ -415,6 +459,16 @@ function PublicTab() {
               />
             ))}
           </Card>
+          {pending?.failure ? (
+            <StatusCard
+              text={pending.failure === 'offline' ? t.tours.discoverOffline : t.tours.discoverFailed}
+              action={t.tours.retry}
+              actionIcon="refresh-cw"
+              onAction={() => void loadMore(true)}
+            />
+          ) : pending ? (
+            <Spinner accessibilityLabel={t.tours.loading} style={{ paddingVertical: 8 }} />
+          ) : null}
         </Animated.View>
       )}
     </>
