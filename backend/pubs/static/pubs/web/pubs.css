@@ -76,26 +76,6 @@
 .np-pubs-city__name { font: 800 40px/0.95 var(--np-display); overflow-wrap: anywhere; }
 .np-pubs-city__count { color: var(--np-muted); font-size: 14px; }
 
-/* Map drawn on the server */
-.np-map { position: relative; overflow: hidden; border-radius: var(--np-radius-l); background: #121212; }
-.np-map__svg { width: 100%; height: auto; }
-.np-map__ground { fill: #121212; }
-.np-map__d1 { fill: #ffffff1a; }
-.np-map__d2 { fill: #ffffff30; }
-.np-map__d3 { fill: #ffffff4d; }
-.np-map__pin rect { fill: #1d1d1d; stroke: #ffffff26; stroke-width: 1; }
-.np-map__pin text { fill: var(--np-white); font: 700 12px var(--np-font); }
-.np-map__pin .np-map__icon { color: var(--np-yellow); }
-.np-map__pin.is-first rect { fill: var(--np-yellow); stroke: none; }
-.np-map__pin.is-first text { fill: var(--np-on-yellow); }
-.np-map__pin.is-first .np-map__icon { color: var(--np-on-yellow); }
-a:hover > .np-map__pin rect { fill: var(--np-control-hover); }
-a:hover > .np-map__pin.is-first rect { fill: var(--np-yellow-hover); }
-.np-map__dot { fill: var(--np-yellow); stroke: var(--np-bg); stroke-width: 2; }
-.np-map__focus circle { fill: var(--np-yellow); }
-.np-map__focus .np-map__icon { color: var(--np-on-yellow); }
-.np-map__scale path { fill: none; stroke: var(--np-muted); stroke-width: 1.5; }
-.np-map__scale text { fill: var(--np-muted); font: 500 11px var(--np-font); }
 .np-map__caption { padding: 12px 18px 14px; border-top: 1px solid var(--np-hairline); font-size: 13px; font-weight: 600; }
 
 /* Blocks with a heading line */

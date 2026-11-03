@@ -25,6 +25,7 @@ from pubs.api import views as api
 from pubs.api.auth_views import _disable_account_push_devices
 from pubs.web.auth_views import _over_limit
 from pubs.web.pages import render_page, signed_in_page, web_page
+from pubs.web.pub_map import live_map, pub_map
 from pubs.web.routes import web_reverse
 from pubs.web.session import end_session
 from pubs.web.words import plural
@@ -32,6 +33,8 @@ from pubs.web.words import plural
 TAGS = ("crisp", "great_foam", "smooth", "watery", "stale", "overpriced", "one_more", "never_again")
 STYLES = ("pale", "amber", "dark", "craft")
 VISIBILITIES = ("private", "friends", "public")
+# Pins on the map of /moje-hospody, the most visited first.
+MAP_PUBS = 40
 # Fields of a check-in the app sends back when it rewrites one (``beerCheckInWire``).
 _CHECKIN_WIRE = (
     "client_id", "beer_name", "brewery_name", "beer_style", "abv", "quantity", "price_czk",
@@ -115,7 +118,9 @@ def _ago(value) -> str:
     return f"{local.day}. {local.month}."
 
 
-def _render(request: HttpRequest, template: str, context: dict, *, title: str, section: str = "") -> HttpResponse:
+def _render(
+    request: HttpRequest, template: str, context: dict, *, title: str, section: str = "", with_map: bool = False
+) -> HttpResponse:
     js_text = {
         "offline": gettext("Jsi bez internetu. Zkus to znovu, až chytíš signál."),
         "tooMany": gettext("Moc pokusů za sebou. Dej si chvilku pauzu a zkus to znovu."),
@@ -133,6 +138,7 @@ def _render(request: HttpRequest, template: str, context: dict, *, title: str, s
         title=title,
         section=section,
         indexable=False,
+        with_map=with_map,
     )
 
 
@@ -318,23 +324,26 @@ def my_pubs(request: HttpRequest) -> HttpResponse:
 
     pubs: dict[str, dict] = {}
 
-    def _pub(key: str, name: str, city: str) -> dict:
-        return pubs.setdefault(key, {"key": key, "name": name, "city": city, "visits": 0, "last": None,
-                                     "favorite": False, "added": None})
+    def _pub(key: str, name: str, city: str, row: dict) -> dict:
+        pub = pubs.setdefault(key, {"key": key, "name": name, "city": city, "visits": 0, "last": None,
+                                    "favorite": False, "added": None, "lat": None, "lng": None})
+        if pub["lat"] is None and row.get("lat") is not None and row.get("lng") is not None:
+            pub["lat"], pub["lng"] = row["lat"], row["lng"]
+        return pub
 
     for visit in visits:
         if not visit.get("cache_key"):
             continue
-        pub = _pub(visit["cache_key"], visit.get("name") or "", visit.get("city") or "")
+        pub = _pub(visit["cache_key"], visit.get("name") or "", visit.get("city") or "", visit)
         pub["visits"] += 1
         started = _when(visit.get("started_at"))
         if started and (pub["last"] is None or started > pub["last"]):
             pub["last"] = started
     for favorite in favorites:
         if favorite.get("cache_key"):
-            _pub(favorite["cache_key"], favorite.get("name") or "", favorite.get("city") or "")["favorite"] = True
+            _pub(favorite["cache_key"], favorite.get("name") or "", favorite.get("city") or "", favorite)["favorite"] = True
     for row in added:
-        pub = _pub(row.get("cache_key") or f"added-{row['client_id']}", row.get("name") or "", row.get("city") or "")
+        pub = _pub(row.get("cache_key") or f"added-{row['client_id']}", row.get("name") or "", row.get("city") or "", row)
         pub["added"] = row
 
     items = sorted(pubs.values(), key=lambda pub: (pub["visits"], pub["last"] or datetime.min.replace(tzinfo=UTC)), reverse=True)
@@ -352,12 +361,28 @@ def my_pubs(request: HttpRequest) -> HttpResponse:
 
     picked = request.GET.get("hospoda", "")
     selected = next((pub for pub in items if pub["key"] == picked), items[0] if items else None)
+    on_map = [pub for pub in items if pub["lat"] is not None][:MAP_PUBS]
+    if selected is not None and selected["lat"] is not None and selected not in on_map:
+        on_map.append(selected)
+    # The selected pub first: the fallback drawing makes its first pin the yellow one.
+    on_map.sort(key=lambda pub: pub is not selected)
+    map_points = [
+        {"lat": pub["lat"], "lng": pub["lng"], "label": pub["name"], "url": pub["url"], "name": pub["name"],
+         "selected": pub is selected}
+        for pub in on_map
+    ]
     return _render(
         request,
         "web/account/my_pubs.html",
-        {"pubs": items, "selected": selected},
+        {
+            "pubs": items,
+            "selected": selected,
+            "map": pub_map(map_points, size=(640, 420)),
+            "live_map": live_map(map_points),
+        },
         title=gettext("Moje hospody"),
         section="pubs",
+        with_map=True,
     )
 
 

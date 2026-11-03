@@ -1,14 +1,14 @@
-"""A map drawn on the server as inline SVG: pins on top of the density of pubs around.
+"""Data of the web maps: the street map in the browser and its fallback drawn on the server.
 
-There are no map tiles. The app's Google map needs its SDK keys, Google's web
-map would load from a foreign CDN and its static images may not be cached or
-proxied, and self-hosted street tiles would be hundreds of megabytes for one
-picture. The pubs of the catalogue sketch the city well enough, and the page
-links out to a real map for directions.
+``live_map`` feeds ``web/components/map.html``: MapLibre (served by us) draws
+OpenFreeMap tiles in the browser. ``pub_map`` draws the same pins as inline SVG
+on top of the density of pubs around; the page shows that drawing without
+JavaScript, before the tiles arrive and when they never do.
 """
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
@@ -100,3 +100,34 @@ def pub_map(
         # Centred, so a frame cropped on a narrow screen keeps it.
         "scale": {"px": round(metres / metres_per_px), "x": round(width / 2 - metres / metres_per_px / 2), "label": _scale_label(metres)},
     }
+
+
+def live_map(points: list[dict], kind: str = "pins", centre: tuple[float, float] | None = None) -> str:
+    """JSON for ``data-map`` of ``web/components/map.html``.
+
+    ``points`` are ``{"lat", "lng", "label", "url", "name", "selected"}`` in priority
+    order. ``kind``: ``pins`` (pills with the label, the selected one yellow),
+    ``focus`` (one big pin), ``route`` (numbered stops joined in order, label is the
+    name) or ``decor`` (pins without links and controls). ``centre`` is ``(lat, lng)``
+    for a map without points.
+    """
+
+    return json.dumps(
+        {
+            "kind": kind,
+            "centre": [centre[1], centre[0]] if centre else None,
+            "points": [
+                {
+                    "lat": round(point["lat"], 6),
+                    "lng": round(point["lng"], 6),
+                    "label": point.get("label") or "",
+                    "url": point.get("url") or "",
+                    "name": point.get("name") or "",
+                    "selected": bool(point.get("selected")),
+                }
+                for point in points
+            ],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )

@@ -5091,3 +5091,16 @@ msgid "už jde"
 msgid_plural "už jdou"
 msgstr[0] "going"
 msgstr[1] "going"
+
+# web: map
+msgid "Přiblížit"
+msgstr "Zoom in"
+
+msgid "Oddálit"
+msgstr "Zoom out"
+
+msgid "Mapa tvých hospod"
+msgstr "Map of your pubs"
+
+msgid "Mapa hospod v Praze"
+msgstr "Map of pubs in Prague"

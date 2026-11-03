@@ -302,7 +302,10 @@ a.tr-stop__name:hover { text-decoration: underline; }
   background-image: linear-gradient(var(--np-hairline) 1px, transparent 1px), linear-gradient(90deg, var(--np-hairline) 1px, transparent 1px);
   background-size: 48px 48px;
 }
-.tr-map__open { position: absolute; top: 16px; right: 16px; min-height: 38px; font-size: 13px; }
+.tr-map__open { position: absolute; top: 16px; right: 16px; z-index: 5; min-height: 38px; font-size: 13px; }
+/* The street map covers the whole card, padding included. */
+.tr-map > .np-map__frame { position: static; }
+.tr-map .np-map__live { border-radius: inherit; }
 .tr-nearby { margin-top: 72px; }
 .tr-nearby__head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .tr-nearby__head .np-link { display: inline-flex; align-items: center; gap: 4px; }

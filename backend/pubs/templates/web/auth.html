@@ -62,8 +62,8 @@
     </main>
     <p class="np-auth__legal">{% blocktranslate with terms=page.terms_url privacy=page.privacy_url %}Pokračováním souhlasíš s <a href="{{ terms }}">podmínkami</a> a <a href="{{ privacy }}">zásadami ochrany soukromí</a>.{% endblocktranslate %}</p>
   </div>
-  <div class="np-auth__map" aria-hidden="true">
-    <img src="{% asset "auth-map.webp" %}" alt="" width="719" height="960">
+  <div class="np-auth__map">
+    {% translate "Mapa hospod v Praze" as map_label %}{% include "web/components/map.html" with live=live_map fallback=map|yesno:"web/pubs/_map.html," label=map_label %}
   </div>
 </div>
 {% endblock %}

@@ -33,13 +33,18 @@ _LEGAL_ROOT = "https://tomasmach.github.io/na-pivo"
 _OG_LOCALES = {"cs": "cs_CZ", "en": "en_US"}
 
 
-def _csp() -> str:
+# Style, tiles, glyphs and sprites of the street map; see web/components/map.html.
+MAP_TILES = "https://tiles.openfreemap.org"
+
+
+def _csp(with_map: bool = False) -> str:
     # Uploaded avatars are served from the API origin.
     api = urlsplit(settings.PUBLIC_API_ORIGIN)
     images = f"'self' data: {api.scheme}://{api.netloc}" if api.netloc else "'self' data:"
+    connect = f"'self' {MAP_TILES}" if with_map else "'self'"
     return (
         "default-src 'none'; style-src 'self'; font-src 'self'; "
-        f"img-src {images}; script-src 'self'; connect-src 'self'; "
+        f"img-src {images}; script-src 'self'; connect-src {connect}; "
         "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
     )
 
@@ -137,11 +142,13 @@ def render_page(
     section: str = "",
     status: int = 200,
     indexable: bool = True,
+    with_map: bool = False,
 ) -> HttpResponse:
     """Render a page of the public or signed-in shell.
 
     ``section`` marks the active item in the header or panel (``"pubs"``,
     ``"diary"``…). ``indexable=False`` keeps the page out of search engines.
+    ``with_map=True`` lets the page load the street map of ``web/components/map.html``.
     """
 
     lang = translation.get_language() if translation.get_language() in LANGS else "cs"
@@ -169,6 +176,8 @@ def render_page(
     response = render(request, template, {"page": page, **(context or {})}, status=status)
     if not page["indexable"]:
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    if with_map:
+        response.headers["Content-Security-Policy"] = _csp(with_map=True)
     return response
 
 

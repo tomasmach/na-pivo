@@ -14,7 +14,7 @@
 
 <div class="np-pub">
   <div class="np-pub__main">
-    {% if map %}<div class="np-map np-map--pub np-pub__map">{% include "web/pubs/_map.html" with map=map label=pub.name %}</div>{% endif %}
+    {% if map %}<div class="np-map np-map--pub np-pub__map">{% include "web/components/map.html" with live=live_map fallback="web/pubs/_map.html" label=pub.name %}</div>{% endif %}
 
     {% if stats %}<div class="np-pub-stats np-pub__stats">{% for stat in stats %}
       <div class="np-pub-stat"><span class="np-pub-stat__value">{{ stat.value }}</span><span class="np-pub-stat__label">{{ stat.label }}</span></div>{% endfor %}

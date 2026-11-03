@@ -32,7 +32,9 @@ from pubs.accounts import AccountError
 from pubs.api import auth_serializers as s
 from pubs.api.throttling import SharedScopedRateThrottle
 from pubs.models import AuthIdentity
+from pubs.web import pubs_data
 from pubs.web.pages import render_page, web_page
+from pubs.web.pub_map import live_map, pub_map
 from pubs.web.routes import web_reverse
 from pubs.web.session import end_session, safe_next, start_session
 
@@ -79,6 +81,26 @@ def _first_errors(errors: dict) -> dict[str, str]:
     return {field: str(messages[0]) for field, messages in errors.items() if messages}
 
 
+# Old Town Square: the map beside the form shows central Prague.
+_PRAGUE = (50.0875, 14.4213)
+
+
+def _prague_pins() -> list[dict]:
+    """A few pubs of central Prague with a known price, from the catalogue."""
+
+    city = pubs_data.city_pubs("praha")
+    near = [
+        pub for pub in (city or {}).get("list", [])
+        if pub["price"] and abs(pub["lat"] - _PRAGUE[0]) < 0.012 and abs(pub["lng"] - _PRAGUE[1]) < 0.018
+    ]
+    near.sort(key=lambda pub: (-pub["raters"], pub["name"]))
+    return [
+        {"lat": pub["lat"], "lng": pub["lng"], "label": f"{pub['price']}\u00a0{gettext('Kč')}", "name": pub["name"],
+         "selected": index == 0}
+        for index, pub in enumerate(near[:6])
+    ]
+
+
 def _render_auth(
     request: HttpRequest, mode: str, *, values: dict, errors: dict, error: str = "", status: int = 200, sent: bool = False
 ):
@@ -87,6 +109,7 @@ def _render_auth(
         "register": gettext("Registrace"),
         "forgot": gettext("Zapomenuté heslo"),
     }
+    pins = _prague_pins()
     return render_page(
         request,
         "web/auth.html",
@@ -98,10 +121,13 @@ def _render_auth(
             "next": safe_next(request, request.POST.get("next") or request.GET.get("next")) or "",
             "social": _social_buttons(),
             "sent": sent,
+            "map": pub_map(pins, size=(720, 960)),
+            "live_map": live_map(pins, kind="decor", centre=_PRAGUE),
         },
         title=titles[mode],
         status=status,
         indexable=mode != "forgot",
+        with_map=True,
     )
 
 

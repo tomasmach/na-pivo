@@ -1,4 +1,4 @@
-"""Files the web pages load: one stylesheet, scripts and two fonts, all first party.
+"""Files the web pages load: stylesheets, scripts, fonts and the map library, all served by us.
 
 Production serves nothing from /static/, so these come through ``web_asset`` the
 same way the home page serves its files. The content hash in the URL lets a
@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent / "static" / "pubs" / "web"
 _CONTENT_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
     ".woff2": "font/woff2",
     ".webp": "image/webp",
 }

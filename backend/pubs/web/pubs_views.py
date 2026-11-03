@@ -29,7 +29,7 @@ from pubs.models import PubPriceSnapshot
 from pubs.price_map import city_slug
 from pubs.web import pubs_data
 from pubs.web.pages import render_page, web_page
-from pubs.web.pub_map import pub_map
+from pubs.web.pub_map import live_map, pub_map
 from pubs.web.pubs_og import render_pub_og
 from pubs.web.routes import web_reverse
 from pubs.web.words import plural
@@ -407,6 +407,11 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             ],
         },
     ]}
+    map_points = [
+        {"lat": row["lat"], "lng": row["lng"], "label": row["price_label"], "url": row["url"], "name": row["name"],
+         "selected": index == 0}
+        for index, row in enumerate(shown[:PAGE_SIZE])
+    ]
     response = render_page(
         request,
         "web/pubs/city.html",
@@ -429,13 +434,8 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
                 else ""
             ),
             "filtered": bool(params),
-            "map": pub_map(
-                [
-                    {"lat": row["lat"], "lng": row["lng"], "label": row["price_label"], "url": row["url"], "name": row["name"]}
-                    for row in shown[:PAGE_SIZE]
-                ],
-                [(pub["lat"], pub["lng"]) for pub in data["list"]],
-            ),
+            "map": pub_map(map_points, [(pub["lat"], pub["lng"]) for pub in data["list"]]),
+            "live_map": live_map(map_points),
             "district_tiles": [
                 {"label": district, "url": _query({}, district=slugify(district))} for district, _ in districts[:8]
             ] if len(districts) >= 2 else [],
@@ -447,6 +447,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         title=title,
         description=f"{lead} {gettext('Podívej se, kde mají otevřeno a co čepují.')}",
         section="pubs",
+        with_map=True,
     )
     return _public(response)
 
@@ -642,6 +643,7 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
                 focus=True,
                 size=(862, 340),
             ),
+            "live_map": live_map([{"lat": pub["lat"], "lng": pub["lng"], "name": pub["name"]}], kind="focus"),
             "deep_link": f"napivo://h/{pub['cache_key']}?{urlencode({'n': pub['name']})}",
             "navigation_url": (
                 "https://www.google.com/maps/dir/?api=1&destination="
@@ -655,6 +657,7 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
         title=title,
         description=description,
         section="pubs",
+        with_map=True,
     )
     return _public(response)
 
@@ -786,6 +789,11 @@ def search_page(request: HttpRequest) -> HttpResponse:
             "cities": counted(totals["cities"], gettext("město nebo čtvrť"), gettext("města a čtvrti"), gettext("měst a čtvrtí")),
         }
     map_pubs = shown_pubs[:10]
+    map_points = [
+        {"lat": row["lat"], "lng": row["lng"], "label": row["price_label"], "url": row["url"], "name": row["name"],
+         "selected": index == 0}
+        for index, row in enumerate(map_pubs)
+    ]
     return render_page(
         request,
         "web/pubs/search.html",
@@ -801,13 +809,8 @@ def search_page(request: HttpRequest) -> HttpResponse:
             "beers": _beer_rows(found["beers"]) if kind in ("all", "beers") else [],
             "cities": _city_rows(found["cities"]) if kind in ("all", "cities") else [],
             "similar": similar,
-            "map": pub_map(
-                [
-                    {"lat": row["lat"], "lng": row["lng"], "label": row["price_label"], "url": row["url"], "name": row["name"]}
-                    for row in map_pubs
-                ],
-                size=(364, 380),
-            ) if kind in ("all", "pubs") else None,
+            "map": pub_map(map_points, size=(364, 380)) if kind in ("all", "pubs") else None,
+            "live_map": live_map(map_points),
             "map_caption": gettext("%(shown)s z %(total)s") % {"shown": num(len(map_pubs)), "total": _pubs_count(counts["pubs"])},
             "add_pub_url": web_reverse("web-my-pubs"),
             "pubs_url": web_reverse("web-pubs"),
@@ -815,6 +818,7 @@ def search_page(request: HttpRequest) -> HttpResponse:
         title=gettext("Hledáš „%(query)s“") % {"query": query},
         section="search",
         indexable=False,
+        with_map=True,
     )
 
 

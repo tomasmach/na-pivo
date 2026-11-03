@@ -25,6 +25,8 @@
         {% endfor %}
       </div>
     </section>
+    <div class="npa-side">
+    {% if map %}{% translate "Mapa tvých hospod" as map_label %}<div class="np-map">{% include "web/components/map.html" with live=live_map fallback="web/pubs/_map.html" label=map_label %}</div>{% endif %}
     {% if selected %}
       <aside class="np-card npa-pubcard" data-picked="hospoda" aria-label="{% translate "Vybraná hospoda" %}">
         <h2 class="npa-pubcard__name">{{ selected.name }}</h2>
@@ -41,6 +43,7 @@
         {% endif %}
       </aside>
     {% endif %}
+    </div>
   </div>
 {% else %}
   {% translate "Zatím žádná hospoda" as empty_title %}

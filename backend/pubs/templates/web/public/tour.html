@@ -11,7 +11,7 @@
 {% web_url "web-tours" as tours_url %}
 {% include "web/components/empty.html" with icon="route" title=empty_title text=empty_text action_label=action_label action_url=tours_url %}
 {% else %}
-<div class="tr-mobile-map">{% include "web/public/_route.html" with map=map_phone %}</div>
+{% translate "Mapa trasy" as map_label %}<div class="tr-mobile-map">{% include "web/components/map.html" with live=live_map fallback="web/public/_route.html" map=map_phone label=map_label %}</div>
 {% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
 <header class="tr-detail-head">
   <div class="pp-head">
@@ -49,7 +49,7 @@
   </section>
   <section class="tr-map" aria-label="{% translate "Mapa trasy" %}">
     <a class="np-btn tr-map__open" href="{{ maps_url }}" rel="noopener" target="_blank">{% icon "map" "np-icon--s" %}{% translate "Otevřít v mapách" %}</a>
-    {% include "web/public/_route.html" with map=map %}
+    {% include "web/components/map.html" with live=live_map fallback="web/public/_route.html" map=map label=map_label %}
   </section>
 </div>
 

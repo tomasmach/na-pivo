@@ -24,6 +24,7 @@ from pubs.models import FriendBlock, PubPriceIndex, TourPublication
 from pubs.price_map import _SOURCES, WINDOW_DAYS
 from pubs.tours import fresh_people_count, readable_publications
 from pubs.web.pages import render_page, web_page
+from pubs.web.pub_map import live_map
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
     breadcrumbs,
@@ -352,6 +353,13 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
                                   gettext("%(n)s zastávek")) % {"n": len(stops)},
             "map": _route_svg(stops, 600, 560, 70),
             "map_phone": _route_svg(stops, 390, 240, 34),
+            "live_map": live_map(
+                [
+                    {"lat": stop["lat"], "lng": stop["lon"], "label": stop["name"], "name": stop["name"], "url": row["url"]}
+                    for stop, row in zip(stops, detail["rows"], strict=True)
+                ],
+                kind="route",
+            ),
             "maps_url": maps_url,
             "app_url": f"/t/{quote(publication.token, safe='')}",
             "share_url": page_url,
@@ -367,6 +375,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
             "km": _km(publication.walk_m), "nick": publication.plan.owner.nickname,
         },
         section="tours",
+        with_map=True,
     )
     return public_cache(response, 300)
 

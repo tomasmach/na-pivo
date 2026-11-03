@@ -341,6 +341,56 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
 .np-app__title { font: 800 56px/1 var(--np-display); }
 .np-tabbar { display: none; }
 
+/* Map: a drawing from the server, the street map of map.js over it once loaded */
+.np-map { position: relative; overflow: hidden; border-radius: var(--np-radius-l); background: #121212; }
+.np-map__svg { width: 100%; height: auto; }
+.np-map__ground { fill: #121212; }
+.np-map__d1 { fill: #ffffff1a; }
+.np-map__d2 { fill: #ffffff30; }
+.np-map__d3 { fill: #ffffff4d; }
+.np-map__pin rect { fill: #1d1d1d; stroke: #ffffff26; stroke-width: 1; }
+.np-map__pin text { fill: var(--np-white); font: 700 12px var(--np-font); }
+.np-map__pin .np-map__icon { color: var(--np-yellow); }
+.np-map__pin.is-first rect { fill: var(--np-yellow); stroke: none; }
+.np-map__pin.is-first text { fill: var(--np-on-yellow); }
+.np-map__pin.is-first .np-map__icon { color: var(--np-on-yellow); }
+a:hover > .np-map__pin rect { fill: var(--np-control-hover); }
+a:hover > .np-map__pin.is-first rect { fill: var(--np-yellow-hover); }
+.np-map__dot { fill: var(--np-yellow); stroke: var(--np-bg); stroke-width: 2; }
+.np-map__focus circle { fill: var(--np-yellow); }
+.np-map__focus .np-map__icon { color: var(--np-on-yellow); }
+.np-map__scale path { fill: none; stroke: var(--np-muted); stroke-width: 1.5; }
+.np-map__scale text { fill: var(--np-muted); font: 500 11px var(--np-font); }
+.np-map__frame { position: relative; }
+/* Two classes: the library styles its container position: relative, and loads later. */
+.np-map__frame > .np-map__live { position: absolute; inset: 0; z-index: 1; visibility: hidden; background: #161616; }
+.np-map__frame.is-live > .np-map__live { visibility: visible; }
+.np-map__frame.is-live > svg { visibility: hidden; }
+.np-map__frame .np-map__live .maplibregl-ctrl-attrib { margin: 0 14px 10px 0; padding: 2px 8px; border-radius: 8px; background: #0a0a0acc; color: var(--np-muted); font: 500 10px/1.5 var(--np-font); }
+.np-map__frame .np-map__live .maplibregl-ctrl-attrib a { color: var(--np-text-2); }
+.np-map__zoom { position: absolute; top: 16px; left: 16px; z-index: 4; display: grid; overflow: hidden; border: 1px solid var(--np-hairline); border-radius: 12px; background: #1d1d1d; }
+.np-map__zoom button { display: grid; place-items: center; width: 40px; height: 40px; border: 0; background: none; color: var(--np-white); cursor: pointer; }
+.np-map__zoom button + button { border-top: 1px solid var(--np-hairline); }
+.np-map__zoom button:hover { background: var(--np-control-hover); }
+.np-map__zoom button:focus-visible { outline: 2px solid var(--np-yellow); outline-offset: -2px; }
+.np-map__zoom .np-icon { width: 18px; height: 18px; }
+.np-pin { z-index: 1; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px 0 10px; border: 1px solid #ffffff26; border-radius: var(--np-pill); background: #1d1d1d; box-shadow: 0 2px 8px #00000080; color: var(--np-white); font: 700 12px/1 var(--np-font); white-space: nowrap; }
+.np-pin .np-icon { width: 14px; height: 14px; color: var(--np-yellow); }
+a.np-pin:hover { z-index: 3; background: var(--np-control-hover); }
+a.np-pin:focus-visible { z-index: 3; outline: 2px solid var(--np-yellow); outline-offset: 2px; }
+.np-pin.is-selected { z-index: 2; border-color: transparent; background: var(--np-yellow); color: var(--np-on-yellow); }
+.np-pin.is-selected .np-icon { color: var(--np-on-yellow); }
+a.np-pin.is-selected:hover { background: var(--np-yellow-hover); }
+.np-pin.is-tight:not(.np-pin--stop) { z-index: 0; width: 14px; height: 14px; padding: 0; border: 2px solid var(--np-bg); background: var(--np-yellow); }
+.np-pin.is-tight:not(.np-pin--stop) > * { display: none; }
+.np-pin--focus, .np-pin--focus.is-selected { width: 40px; height: 40px; padding: 0; justify-content: center; border: 0; background: var(--np-yellow); }
+.np-pin--focus .np-icon { width: 20px; height: 20px; color: var(--np-on-yellow); }
+.np-pin--stop, a.np-pin--stop:hover { gap: 8px; height: auto; padding: 0; border: 0; background: none; box-shadow: none; }
+.np-pin__n { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid var(--np-bg); border-radius: 50%; background: var(--np-yellow); color: var(--np-on-yellow); font: 800 14px/1 var(--np-font); }
+.np-pin--stop .np-pin__label { padding: 7px 10px; border: 1px solid #ffffff26; border-radius: var(--np-pill); background: #1d1d1d; box-shadow: 0 2px 8px #00000080; }
+a.np-pin--stop:hover .np-pin__label { background: var(--np-control-hover); }
+.np-pin--stop.is-tight .np-pin__label { display: none; }
+
 /* Login, registration, forgotten password */
 .np-auth { display: grid; grid-template-columns: minmax(0, 720px) minmax(0, 1fr); min-height: 100vh; }
 .np-auth__side { display: flex; flex-direction: column; padding: 40px 64px 40px; }
@@ -356,7 +406,8 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
 .np-auth__legal a { text-decoration: underline; }
 .np-auth__legal a:hover { color: var(--np-white); }
 .np-auth__map { position: relative; overflow: hidden; border-left: 1px solid var(--np-card); background: var(--np-card); }
-.np-auth__map img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: left center; }
+.np-auth__map .np-map__frame { position: absolute; inset: 0; }
+.np-auth__map .np-map__svg { height: 100%; }
 .np-oauth { display: grid; place-items: center; min-height: 100vh; padding: 24px; text-align: center; }
 .np-oauth form { display: grid; gap: 16px; justify-items: center; }
 

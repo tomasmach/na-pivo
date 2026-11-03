@@ -52,7 +52,7 @@
   </div>
 
   <aside class="np-pubs-side">
-    {% if map %}<div class="np-map np-map--small">{% include "web/pubs/_map.html" with map=map label=map_caption %}
+    {% if map %}<div class="np-map np-map--small">{% include "web/components/map.html" with live=live_map fallback="web/pubs/_map.html" label=map_caption %}
       <div class="np-map__caption"><span>{{ map_caption }}</span></div>
     </div>{% endif %}
     <section class="np-card np-pubs-missing">
