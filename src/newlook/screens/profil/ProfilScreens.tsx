@@ -813,6 +813,11 @@ export function NastaveniScreen() {
     void updateAccountPreferences({ hapticEnabled: on });
   };
 
+  const toggleMarketingEmails = (on: boolean) => {
+    st.setMarketingEmailsEnabled(on);
+    void updateAccountPreferences({ marketingEmailsEnabled: on });
+  };
+
   const toggleSound = (on: boolean) => {
     st.setSoundEnabled(on);
     void updateAccountPreferences({ soundEnabled: on });
@@ -870,15 +875,22 @@ export function NastaveniScreen() {
       <PageTitle title={P().settings.title} />
       <Card>
         {me.isSignedIn ? (
-          <Row
-            last
-            leading={<Tile icon="user" />}
-            title={accountTitle}
-            titleWeight={700}
-            sub={providers.length > 0 ? P().settings.accountSub(providers.map(providerName).join(', ')) : undefined}
-            chevron
-            onPress={() => router.push('/nv/ucet')}
-          />
+          <>
+            <Row
+              leading={<Tile icon="user" />}
+              title={accountTitle}
+              titleWeight={700}
+              sub={providers.length > 0 ? P().settings.accountSub(providers.map(providerName).join(', ')) : undefined}
+              chevron
+              onPress={() => router.push('/nv/ucet')}
+            />
+            <Row
+              last
+              title={t.settings.marketingEmails.title}
+              sub={t.settings.marketingEmails.subtitle}
+              trailing={<Toggle value={st.marketingEmailsEnabled} onChange={toggleMarketingEmails} />}
+            />
+          </>
         ) : (
           <Row
             last
