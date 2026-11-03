@@ -15,6 +15,8 @@
     .card{padding:18px 20px;border:1px solid var(--line);border-radius:16px;background:var(--panel);margin:12px 0}
     .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}.ok{background:#62cf8a22;color:var(--green)}.miss{background:#ff6b5e22;color:var(--red)}.part{background:#ffc40022;color:var(--amber)}
     ol li,ul li{margin:6px 0}
+    .gallery{display:grid;gap:18px;margin:14px 0}.gallery.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.gallery.phones{grid-template-columns:repeat(3,minmax(0,1fr))}.gallery.narrow{grid-template-columns:minmax(0,220px)}
+    figure{margin:0}figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}figcaption{margin-top:6px;color:var(--muted);font-size:13px}
   </style>
 </head>
 <body>
@@ -24,7 +26,7 @@
   <p class="lead">Web dělá skoro všechno, co appka kromě kompasu a počítání u stolu. Veřejná část přivádí lidi z Googlu. Celé to běží v Djangu vedle <code>/v1/</code> API, takže backend pro appku zůstává, jak je.</p>
 
   <h2>Kde jsou návrhy</h2>
-  <p>Návrhy jsou v souboru <code>na-pivo-redesign.pen</code> v kořeni hlavního checkoutu na desce <strong>„Web · Na pivo na webu“</strong>. <strong>Soubor není v gitu</strong>, takže na jiný stroj ho musíš přenést ručně. V závorkách jsou ID uzlů v .pen souboru.</p>
+  <p>Návrhy jsou v souboru <code>na-pivo-redesign.pen</code> v kořeni hlavního checkoutu na desce <strong>„Web · Na pivo na webu“</strong>. <strong>Soubor není v gitu</strong>, takže na jiný stroj ho musíš přenést ručně. V závorkách jsou ID uzlů v .pen souboru. Exporty všech obrazovek jsou dole v části <a href="#design">Celý design</a>.</p>
   <p>Vybraný obrázek pro sdílení hlavní stránky je <code>output/og/og-home-web.png</code> a <code>og-home-web@2x.png</code> v hlavním checkoutu. Složka je v <code>.gitignore</code>.</p>
 
   <h2>Co je rozhodnuté</h2>
@@ -110,6 +112,71 @@
     <li><strong>Nové veřejné stránky:</strong> žebříčky, novinky, trasy, pivovar, Pivní index, pozvánka bez appky.</li>
     <li><strong>Obrázky pro sdílení:</strong> šablony podle OG · Pivo, Hospoda, Ceny ve městě, Pivní index, Trasa, Pozvánka. Obrázek se vytvoří při prvním požadavku a pak se drží v cache. Dlouhé názvy zmenšit písmo, chybějící číslo nahradit jiným údajem.</li>
   </ol>
+
+  <h2 id="design">Celý design</h2>
+  <p>Obrázky jsou exporty z .pen souboru v měřítku 1:1. Klepnutím otevřeš obrázek v plné velikosti.</p>
+  <h3>Kostra a komponenty</h3>
+  <div class="gallery wide">
+    <figure><a href="2026-11-03-web-v-djangu/komponenta-verejna-hlavicka.webp"><img src="2026-11-03-web-v-djangu/komponenta-verejna-hlavicka.webp" alt="Veřejná hlavička" loading="lazy"></a><figcaption>Veřejná hlavička</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/komponenta-verejna-paticka.webp"><img src="2026-11-03-web-v-djangu/komponenta-verejna-paticka.webp" alt="Veřejná patička" loading="lazy"></a><figcaption>Veřejná patička</figcaption></figure>
+  </div>
+  <div class="gallery narrow">
+    <figure><a href="2026-11-03-web-v-djangu/komponenta-postranni-panel.webp"><img src="2026-11-03-web-v-djangu/komponenta-postranni-panel.webp" alt="Postranní panel po přihlášení" loading="lazy"></a><figcaption>Postranní panel po přihlášení</figcaption></figure>
+  </div>
+  <h3>Veřejné stránky</h3>
+  <div class="gallery grid">
+    <figure><a href="2026-11-03-web-v-djangu/landing.webp"><img src="2026-11-03-web-v-djangu/landing.webp" alt="Landing · /" loading="lazy"></a><figcaption>Landing · /</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/hospody-ve-meste.webp"><img src="2026-11-03-web-v-djangu/hospody-ve-meste.webp" alt="Hospody ve městě" loading="lazy"></a><figcaption>Hospody ve městě</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/hospoda.webp"><img src="2026-11-03-web-v-djangu/hospoda.webp" alt="Stránka hospody" loading="lazy"></a><figcaption>Stránka hospody</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/ceny-piva.webp"><img src="2026-11-03-web-v-djangu/ceny-piva.webp" alt="Kolik stojí pivo v Praze" loading="lazy"></a><figcaption>Kolik stojí pivo v Praze</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/pivo.webp"><img src="2026-11-03-web-v-djangu/pivo.webp" alt="Stránka piva" loading="lazy"></a><figcaption>Stránka piva</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/pivovar.webp"><img src="2026-11-03-web-v-djangu/pivovar.webp" alt="Pivovar" loading="lazy"></a><figcaption>Pivovar</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/nejlepsi-piva.webp"><img src="2026-11-03-web-v-djangu/nejlepsi-piva.webp" alt="Nejlepší piva v Česku" loading="lazy"></a><figcaption>Nejlepší piva v Česku</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/hledani.webp"><img src="2026-11-03-web-v-djangu/hledani.webp" alt="Výsledky hledání" loading="lazy"></a><figcaption>Výsledky hledání</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/hledani-bez-vysledku.webp"><img src="2026-11-03-web-v-djangu/hledani-bez-vysledku.webp" alt="Hledání bez výsledku" loading="lazy"></a><figcaption>Hledání bez výsledku</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/novinky.webp"><img src="2026-11-03-web-v-djangu/novinky.webp" alt="Novinky" loading="lazy"></a><figcaption>Novinky</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/pivni-index.webp"><img src="2026-11-03-web-v-djangu/pivni-index.webp" alt="Pivní index Česka" loading="lazy"></a><figcaption>Pivní index Česka</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/pivni-trasy.webp"><img src="2026-11-03-web-v-djangu/pivni-trasy.webp" alt="Pivní trasy" loading="lazy"></a><figcaption>Pivní trasy</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/pivni-trasa.webp"><img src="2026-11-03-web-v-djangu/pivni-trasa.webp" alt="Pivní trasa Žižkovem" loading="lazy"></a><figcaption>Pivní trasa Žižkovem</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/pozvanka.webp"><img src="2026-11-03-web-v-djangu/pozvanka.webp" alt="Pozvánka bez appky" loading="lazy"></a><figcaption>Pozvánka bez appky</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/smazani-uctu.webp"><img src="2026-11-03-web-v-djangu/smazani-uctu.webp" alt="Smazání účtu bez přihlášení" loading="lazy"></a><figcaption>Smazání účtu bez přihlášení</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/prihlaseni.webp"><img src="2026-11-03-web-v-djangu/prihlaseni.webp" alt="Přihlášení" loading="lazy"></a><figcaption>Přihlášení</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/registrace.webp"><img src="2026-11-03-web-v-djangu/registrace.webp" alt="Registrace" loading="lazy"></a><figcaption>Registrace</figcaption></figure>
+  </div>
+  <h3>Veřejné stránky na telefonu</h3>
+  <div class="gallery phones">
+    <figure><a href="2026-11-03-web-v-djangu/mobil-ceny-piva.webp"><img src="2026-11-03-web-v-djangu/mobil-ceny-piva.webp" alt="Ceny piva" loading="lazy"></a><figcaption>Ceny piva</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/mobil-pivo.webp"><img src="2026-11-03-web-v-djangu/mobil-pivo.webp" alt="Pivo" loading="lazy"></a><figcaption>Pivo</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/mobil-nejlepsi-piva.webp"><img src="2026-11-03-web-v-djangu/mobil-nejlepsi-piva.webp" alt="Nejlepší piva" loading="lazy"></a><figcaption>Nejlepší piva</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/mobil-pivni-trasa.webp"><img src="2026-11-03-web-v-djangu/mobil-pivni-trasa.webp" alt="Pivní trasa" loading="lazy"></a><figcaption>Pivní trasa</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/mobil-pozvanka.webp"><img src="2026-11-03-web-v-djangu/mobil-pozvanka.webp" alt="Pozvánka" loading="lazy"></a><figcaption>Pozvánka</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/mobil-pozvanka-po-jdu.webp"><img src="2026-11-03-web-v-djangu/mobil-pozvanka-po-jdu.webp" alt="Pozvánka po Jdu" loading="lazy"></a><figcaption>Pozvánka po Jdu</figcaption></figure>
+  </div>
+  <h3>Po přihlášení</h3>
+  <div class="gallery grid">
+    <figure><a href="2026-11-03-web-v-djangu/app-denik.webp"><img src="2026-11-03-web-v-djangu/app-denik.webp" alt="Deník" loading="lazy"></a><figcaption>Deník</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-detail-vecera.webp"><img src="2026-11-03-web-v-djangu/app-detail-vecera.webp" alt="Detail večera" loading="lazy"></a><figcaption>Detail večera</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-dopsat-vecer.webp"><img src="2026-11-03-web-v-djangu/app-dopsat-vecer.webp" alt="Dopsat večer" loading="lazy"></a><figcaption>Dopsat večer</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-profil-statistiky.webp"><img src="2026-11-03-web-v-djangu/app-profil-statistiky.webp" alt="Profil a statistiky" loading="lazy"></a><figcaption>Profil a statistiky</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-piva.webp"><img src="2026-11-03-web-v-djangu/app-piva.webp" alt="Piva" loading="lazy"></a><figcaption>Piva</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-ohodnotit-pivo.webp"><img src="2026-11-03-web-v-djangu/app-ohodnotit-pivo.webp" alt="Ohodnotit pivo" loading="lazy"></a><figcaption>Ohodnotit pivo</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-hospody.webp"><img src="2026-11-03-web-v-djangu/app-hospody.webp" alt="Hospody" loading="lazy"></a><figcaption>Hospody</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-pridat-hospodu.webp"><img src="2026-11-03-web-v-djangu/app-pridat-hospodu.webp" alt="Přidat hospodu" loading="lazy"></a><figcaption>Přidat hospodu</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-parta.webp"><img src="2026-11-03-web-v-djangu/app-parta.webp" alt="Parta" loading="lazy"></a><figcaption>Parta</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-vycep.webp"><img src="2026-11-03-web-v-djangu/app-vycep.webp" alt="Výčep" loading="lazy"></a><figcaption>Výčep</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-nastaveni.webp"><img src="2026-11-03-web-v-djangu/app-nastaveni.webp" alt="Nastavení" loading="lazy"></a><figcaption>Nastavení</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/app-smazat-ucet.webp"><img src="2026-11-03-web-v-djangu/app-smazat-ucet.webp" alt="Smazat účet" loading="lazy"></a><figcaption>Smazat účet</figcaption></figure>
+  </div>
+  <h3>Obrázky pro sdílení (1200 × 630)</h3>
+  <div class="gallery grid">
+    <figure><a href="2026-11-03-web-v-djangu/og-hlavni.webp"><img src="2026-11-03-web-v-djangu/og-hlavni.webp" alt="Hlavní stránka (vybraná B4)" loading="lazy"></a><figcaption>Hlavní stránka (vybraná B4)</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/og-pivo.webp"><img src="2026-11-03-web-v-djangu/og-pivo.webp" alt="Pivo" loading="lazy"></a><figcaption>Pivo</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/og-hospoda.webp"><img src="2026-11-03-web-v-djangu/og-hospoda.webp" alt="Hospoda" loading="lazy"></a><figcaption>Hospoda</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/og-ceny-ve-meste.webp"><img src="2026-11-03-web-v-djangu/og-ceny-ve-meste.webp" alt="Ceny ve městě" loading="lazy"></a><figcaption>Ceny ve městě</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/og-pivni-index.webp"><img src="2026-11-03-web-v-djangu/og-pivni-index.webp" alt="Pivní index" loading="lazy"></a><figcaption>Pivní index</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/og-trasa.webp"><img src="2026-11-03-web-v-djangu/og-trasa.webp" alt="Trasa" loading="lazy"></a><figcaption>Trasa</figcaption></figure>
+    <figure><a href="2026-11-03-web-v-djangu/og-pozvanka.webp"><img src="2026-11-03-web-v-djangu/og-pozvanka.webp" alt="Pozvánka" loading="lazy"></a><figcaption>Pozvánka</figcaption></figure>
+  </div>
 
   <h2>Co nebylo ověřené</h2>
   <ul>
