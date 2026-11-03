@@ -96,7 +96,7 @@ const PRIVATE_STORAGE_KEYS = [
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
 ];
 
-const PRIVATE_STORAGE_PREFIXES = ['na-pivo-night-feed-v1:'];
+const PRIVATE_STORAGE_PREFIXES = ['na-pivo-night-feed-v1:', 'nv-my-ratings:'];
 const SETTINGS_STORAGE_KEY = 'na-pivo-settings';
 const PRIVATE_SETTINGS_DEFAULTS = {
   homePoint: null,

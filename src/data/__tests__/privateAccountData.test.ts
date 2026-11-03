@@ -214,6 +214,7 @@ it('removes retired 2.0 private data and settings while retaining public caches 
     'na-pivo-pub-reminder-geofences', 'na-pivo-handled-notification-responses-v1',
     'na-pivo-night-feed-v1:old-account:night-1',
     'na-pivo-night-feed-v1:old-account:night-2',
+    'nv-my-ratings:old-account',
   ];
   // Cleanup must also remove malformed data; it cannot rely on the retired schema.
   for (const key of retiredKeys) await AsyncStorage.setItem(key, '{malformed private data');
