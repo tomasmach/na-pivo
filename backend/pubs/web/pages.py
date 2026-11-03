@@ -96,7 +96,8 @@ def _account_card(account) -> dict | None:
         return None
     name = account.nickname or account.display_name or ""
     usage = getattr(account, "usage_stats", None)
-    progress = pivar_progress(int(getattr(usage, "pivar_xp", 0) or 0))
+    # One account level like the app: Mapér and Pivař XP together.
+    progress = pivar_progress(int(getattr(usage, "pivar_xp", 0) or 0) + int(getattr(usage, "mapper_xp", 0) or 0))
     avatar_url = None
     if account.avatar:
         try:

@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 import pubs.emailer as emailer
 import pubs.oauth as oauth
 from pubs.api.authentication import AccountTokenAuthentication, WebSessionAuthentication
-from pubs.models import Account, AuthIdentity, AuthToken, EmailCredential
+from pubs.models import Account, AccountUsageStats, AuthIdentity, AuthToken, EmailCredential
 from pubs.web.session import SESSION_KEY
 
 
@@ -284,3 +284,12 @@ def test_apple_sign_in_stores_the_refresh_token(fake_providers):
     identity = AuthIdentity.objects.get(provider=AuthIdentity.Provider.APPLE, subject="a-sub")
     assert identity.apple_refresh_token == "rt-abc"
     assert identity.account.display_name == "Tomáš Mach"
+
+
+def test_panel_level_counts_mapper_and_pivar_xp_like_the_app():
+    client = Client()
+    _register(client)
+    account = EmailCredential.objects.get(email=EMAIL).account
+    AccountUsageStats.objects.update_or_create(account=account, defaults={"mapper_xp": 300, "pivar_xp": 200})
+
+    assert "Level 3 · " in client.get("/denik").content.decode()
