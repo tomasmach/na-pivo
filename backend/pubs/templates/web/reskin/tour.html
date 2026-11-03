@@ -1,0 +1,34 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/reskin/_head.html" %}<meta name="referrer" content="no-referrer">{% endblock %}
+{% block content %}
+{% if unavailable %}
+{% translate "Tenhle odkaz už neplatí." as empty_title %}{% translate "Požádej autora o nový odkaz." as empty_text %}
+{% include "web/components/empty.html" with icon="map" title=empty_title text=empty_text %}
+{% else %}
+<div class="rs-invite rs-invite--tour">
+  <section class="rs-ticket" aria-labelledby="tour-title">
+    <p class="rs-ticket__eyebrow">Tour de pub<span class="rs-ticket__mark">{% icon "beer" "np-icon--s" %}</span></p>
+    <h1 class="rs-ticket__title" id="tour-title">{{ tour.title }}</h1>
+    {% if author %}<p class="rs-ticket__text">{% blocktranslate with nickname=author.nickname %}Veřejná tour od {{ nickname }}{% endblocktranslate %}</p>{% endif %}
+    {% if tour.scheduled_date %}<p class="rs-ticket__text">{% translate "Sraz" %}: {{ meeting_date|date:"DATE_FORMAT" }}{% if tour.scheduled_time %} · {{ tour.scheduled_time }}{% endif %} · {{ tour.timezone }}</p>{% endif %}
+    <div class="rs-ticket__cut" aria-hidden="true"></div>
+    <div class="rs-ticket__actions">
+      <a class="np-btn np-btn--l rs-btn--ink" href="{{ deep_link }}">{% icon "smartphone" "np-icon--s" %}{% translate "Otevřít v Na pivo" %}</a>
+      <a class="np-btn np-btn--l rs-btn--soft" href="{{ navigation_url }}" rel="noreferrer">{% icon "map-pin" "np-icon--s" %}{% if author %}{% translate "Navigovat na první hospodu" %}{% else %}{% translate "Navigovat na sraz" %}{% endif %}</a>
+    </div>
+  </section>
+  <section class="np-card rs-stops" aria-labelledby="stops-title">
+    <h2 class="np-title" id="stops-title">{% translate "Zastávky" %}</h2>
+    <ol class="rs-stops__list" role="list">
+      {% for stop in tour.stops %}<li class="rs-stop"><span class="rs-stop__number">{{ forloop.counter }}</span><span class="rs-stop__body"><strong>{{ stop.name }}</strong>{% if stop.address %}<span class="np-muted">{{ stop.address }}</span>{% endif %}{% if stop.challenge %}<span class="rs-stop__challenge">{% translate "Výzva:" %} {{ stop.challenge }}</span>{% endif %}</span></li>{% endfor %}
+    </ol>
+    <p class="np-muted np-small">{% translate "Tohle je plán hospod. Poloha lidí ani jejich průchod se nesdílí." %}</p>
+  </section>
+  <div class="rs-invite__after">
+    {% include "web/reskin/_stores.html" %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{% asset "reskin.js" %}" defer></script>{% endblock %}

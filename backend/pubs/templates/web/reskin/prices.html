@@ -1,0 +1,96 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/reskin/_head.html" %}{% endblock %}
+{% block og_image %}{% if area %}{% blocktranslate with city=area.name asvar og_image_alt %}Medián ceny piva: {{ city }}.{% endblocktranslate %}{% else %}{% translate "Medián ceny piva v celé ČR, v Praze a v Brně." as og_image_alt %}{% endif %}{% include "web/reskin/_og_image.html" %}{% endblock %}
+{% block content %}
+{% include "web/components/breadcrumbs.html" %}
+<section class="rs-head" aria-labelledby="page-title">
+  <div class="rs-head__main">
+    <h1 class="np-h1" id="page-title">{{ h1 }}</h1>
+    {% if stats and not throttled %}
+    <div class="rs-price">
+      <span class="rs-price__value">{{ stats.median }} {% translate "Kč" %}</span>
+      <span class="rs-price__text">
+        <span class="rs-price__label">{% translate "za nejlevnější pivo v hospodě" %}</span>
+        <span class="rs-price__sub">{% if area %}{% translate "medián všech tamních hospod" %}{% else %}{% translate "medián celé ČR" %}{% endif %}{% if stats.mostly_stale %} · {% translate "hlavně ceny starší 3 měsíců" %}{% endif %}</span>
+      </span>
+    </div>
+    {% if basis %}<p class="rs-note">{% icon "info" "np-icon--s" %}{{ basis }}</p>{% endif %}
+    {% endif %}
+  </div>
+  {% if facts %}
+  <aside class="np-card rs-facts" aria-labelledby="facts-title">
+    <h2 class="np-title" id="facts-title">{% if area %}{% blocktranslate with city=area.name %}Za kolik se čepuje: {{ city }}{% endblocktranslate %}{% else %}{% translate "Za kolik se čepuje" %}{% endif %}</h2>
+    <div class="np-list">
+      {% for fact in facts %}{% include "web/components/row.html" with title=fact.title meta=fact.meta value=fact.value value_meta=fact.value_meta href=fact.url %}{% endfor %}
+    </div>
+  </aside>
+  {% endif %}
+</section>
+
+{% if throttled %}
+{% translate "Ceny se teď nedotáhly. Zkus to za minutu." as empty_title %}{% translate "Načíst znovu" as action_label %}
+<div role="alert">{% include "web/components/empty.html" with icon="beer" title=empty_title action_label=action_label action_url=page_url %}</div>
+{% elif stats %}
+
+{% if cities or districts %}
+<div class="rs-grid{% if cities and districts %} rs-grid--two{% endif %}">
+  {% if cities %}
+  {% translate "Města" as title %}{% translate "Nejvíc hospod" as default_sort %}{% translate "Najdi město" as search_label %}
+  {% blocktranslate with count=cities|length asvar more_label %}Ukázat všechna města ({{ count }}){% endblocktranslate %}
+  {% translate "Tohle město tu zatím nemám. Ukážu ho, až budu mít ceny aspoň z 5 tamních hospod." as empty_text %}
+  {% include "web/reskin/_area_list.html" with areas=cities list_id="cities" %}
+  {% endif %}
+  {% if districts %}
+  {% translate "Praha podle městských částí" as title %}{% translate "Podle čísla" as default_sort %}{% translate "Najdi městskou část" as search_label %}
+  {% blocktranslate with count=districts|length asvar more_label %}Ukázat všechny městské části ({{ count }}){% endblocktranslate %}
+  {% translate "Tuhle část tu zatím nemám. Ukážu ji, až budu mít ceny aspoň z 5 tamních hospod." as empty_text %}
+  {% include "web/reskin/_area_list.html" with areas=districts list_id="districts" %}
+  {% endif %}
+</div>
+{% endif %}
+
+{% if cheapest %}
+<section class="np-card rs-section" aria-labelledby="cheapest-title">
+  <div class="np-card__head">
+    {# A small city lists all its pubs, so the list can't promise they are all cheap. #}
+    <h2 class="np-title" id="cheapest-title">{% if area %}{% translate "Hospody od nejlevnější" %}{% else %}{% translate "Nejlevnější hospody" %}{% endif %}</h2>
+    {% if area %}<a class="np-link np-small" href="{% web_url "web-pubs-city" city=city %}">{% blocktranslate with city=area.name %}Všechny hospody: {{ city }}{% endblocktranslate %} ›</a>{% endif %}
+  </div>
+  <ol class="rs-ranked" role="list">
+    {% for pub in cheapest %}<li class="rs-ranked__row">
+      <span class="rs-ranked__rank" aria-hidden="true">{{ forloop.counter }}</span>
+      <span class="rs-ranked__who"><span class="rs-ranked__name">{{ pub.name }}</span>{% if pub.city and pub.city != area.name %}<span class="rs-ranked__meta city">{{ pub.city }}</span>{% endif %}{% if pub.stale %}<span class="rs-ranked__meta">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</span>
+      <span class="rs-ranked__price">{{ pub.price_czk }} {% translate "Kč" %}{% if pub.volume_ml != 500 %}<span class="rs-ranked__meta">{% blocktranslate with litres=pub.litres %}za {{ litres }} l{% endblocktranslate %}</span>{% endif %}</span>
+    </li>{% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+{% if elsewhere %}
+<section class="rs-section" aria-labelledby="elsewhere-title">
+  <h2 class="np-title rs-section__title" id="elsewhere-title">{% translate "A jinde v Česku?" %}</h2>
+  <ul class="rs-tiles" role="list">
+    {% for tile in elsewhere %}<li><a class="np-card rs-tile" href="{{ tile.url }}"><span class="rs-tile__name">{{ tile.name }}</span><span class="rs-tile__value">{{ tile.median }} {% translate "Kč" %}</span><span class="rs-tile__note">{{ tile.note }}</span></a></li>{% endfor %}
+    {% if country %}<li><a class="np-card rs-tile" href="{{ prices_url }}"><span class="rs-tile__name">{% translate "Celá ČR" %}</span><span class="rs-tile__value">{{ country.median }} {% translate "Kč" %}</span><span class="rs-tile__note">{% translate "medián" %}</span></a></li>{% endif %}
+  </ul>
+</section>
+{% endif %}
+
+{% else %}
+{% translate "Zatím mám málo cen." as empty_title %}{% translate "Ceny v dalších městech" as action_label %}
+{% if missing %}{% include "web/components/empty.html" with icon="beer" title=empty_title action_label=action_label action_url=prices_url %}{% else %}{% include "web/components/empty.html" with icon="beer" title=empty_title %}{% endif %}
+{% endif %}
+
+{% if not throttled %}<p class="rs-method">{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod." %}</p>{% endif %}
+{% if area %}<a class="np-btn rs-back" href="{{ prices_url }}">{% translate "Ceny v dalších městech" %}</a>{% endif %}
+
+<section class="rs-cta" aria-labelledby="cta-title">
+  <div>
+    <h2 class="rs-cta__title" id="cta-title">{% translate "Znáš cenu ve své hospodě?" %}</h2>
+    <p class="rs-cta__text">{% translate "Zapiš ji v Na pivo. Každá cena z appky tuhle stránku zpřesní." %}</p>
+  </div>
+  {% include "web/reskin/_stores.html" %}
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% asset "reskin.js" %}" defer></script>{% endblock %}
