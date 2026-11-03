@@ -2285,11 +2285,11 @@ msgstr "What I leave out"
 msgid "Hospody skryté komunitou a duplicity. Kraj nebo město ukážu, až mám ceny aspoň z %(min_pubs)s tamních hospod."
 msgstr "Pubs the community hid, and duplicates. A region or city shows up once I have prices from at least %(min_pubs)s of its pubs."
 
-msgid "Píšeš o cenách piva? Ber."
-msgstr "Writing about beer prices? Help yourself."
+msgid "Píšeš o cenách piva?"
+msgstr "Writing about beer prices?"
 
-msgid "Čísla klidně použij, jen uveď zdroj. Tady je hotová věta:"
-msgstr "Use the numbers, just name the source. Here's a ready sentence:"
+msgid "Jednotlivá čísla klidně cituj, jen uveď zdroj. Tady je hotová věta:"
+msgstr "Feel free to quote single numbers, just name the source. Here's a ready sentence:"
 
 msgid "Zdroj: Pivní index Na pivo"
 msgstr "Source: Na pivo Beer Index"
@@ -2303,8 +2303,8 @@ msgstr "Prices by region and city"
 msgid "Obrázek indexu"
 msgstr "Index image"
 
-msgid "Potřebuješ jiný řez dat?"
-msgstr "Need the data cut another way?"
+msgid "Data indexu patří Na pivo. Kopírovat je, stahovat robotem nebo dál šířit jako celek bez souhlasu nesmíš."
+msgstr "The index data belongs to Na pivo. You may not copy it, scrape it or republish it as a whole without permission."
 
 msgid "Máš čerstvou cenu z hospody? Zapiš ji."
 msgstr "Got a fresh price from a pub? Log it."
@@ -2963,8 +2963,8 @@ msgstr "Q%(q)s %(year)s"
 msgid "Pivní index"
 msgstr "Beer Index"
 
-msgid "Kolik stojí pivo v českých hospodách: střední cena v Česku, po krajích a městech, jak se měnila a data ke stažení."
-msgstr "What beer costs in Czech pubs: the median price in Czechia, by region and city, how it moved and data to download."
+msgid "Kolik stojí pivo v českých hospodách: střední cena v Česku, po krajích a městech a jak se měnila."
+msgstr "What beer costs in Czech pubs: the median price in Czechia, by region and city and how it moved."
 
 #, python-format
 msgid "do %(n)s Kč"
@@ -2997,8 +2997,8 @@ msgid "stejně jako loni"
 msgstr "the same as last year"
 
 #, python-format
-msgid "Nejlevnější pivo v české hospodě stojí střední cenou %(price)s Kč. Ceny po krajích a městech, vývoj po čtvrtletích a data ke stažení."
-msgstr "The cheapest beer in a Czech pub costs a median %(price)s CZK. Prices by region and city, quarterly trend and data to download."
+msgid "Nejlevnější pivo v české hospodě stojí střední cenou %(price)s Kč. Ceny po krajích a městech a vývoj po čtvrtletích."
+msgstr "The cheapest beer in a Czech pub costs a median %(price)s CZK. Prices by region and city and the quarterly trend."
 
 msgid "Pivní index Česka: kolik stojí pivo v hospodě"
 msgstr "Czech Beer Index: what beer costs in a pub"

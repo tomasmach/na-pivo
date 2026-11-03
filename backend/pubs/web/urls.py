@@ -30,7 +30,7 @@ from pubs.web.auth_views import (
     register,
     reset_password,
 )
-from pubs.web.beer_index import beer_index, beer_index_csv, beer_index_og
+from pubs.web.beer_index import beer_index, beer_index_og
 from pubs.web.delete_account_views import delete_account, delete_account_confirm
 from pubs.web.diary_views import diary, log_beer, night, profile
 from pubs.web.invite_views import plan_invite, plan_invite_calendar, plan_invite_og
@@ -60,7 +60,6 @@ urlpatterns = [
     *bilingual("trasy/<str:tour_id>/og.png", "en/tours/<str:tour_id>/og.png", tour_og, "tour-og"),
 
     *bilingual("pivni-index", "en/beer-index", beer_index, "web-beer-index"),
-    *bilingual("pivni-index/data.csv", "en/beer-index/data.csv", beer_index_csv, "beer-index-csv"),
     *bilingual("pivni-index/og.png", "en/beer-index/og.png", beer_index_og, "beer-index-og"),
 
     *bilingual("smazat-ucet", "en/delete-account", delete_account, "web-delete-account"),

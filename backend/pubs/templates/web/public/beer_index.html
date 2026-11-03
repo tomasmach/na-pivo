@@ -117,15 +117,14 @@
 
 <section class="pi-press" aria-labelledby="pi-press">
   <div class="pi-press__quote">
-    <h2 class="np-h2" id="pi-press">{% translate "Píšeš o cenách piva? Ber." %}</h2>
-    <p class="np-muted">{% translate "Čísla klidně použij, jen uveď zdroj. Tady je hotová věta:" %}</p>
+    <h2 class="np-h2" id="pi-press">{% translate "Píšeš o cenách piva?" %}</h2>
+    <p class="np-muted">{% translate "Jednotlivá čísla klidně cituj, jen uveď zdroj. Tady je hotová věta:" %}</p>
     <blockquote>{{ quote }}<cite>{% translate "Zdroj: Pivní index Na pivo" %}, {{ page.canonical_url }}</cite></blockquote>
   </div>
   <div class="pi-press__files">
     <h3 class="np-title">{% translate "Ke stažení" %}</h3>
-    <a class="np-tile pi-file" href="{{ csv_url }}" download>{% icon "file-spreadsheet" %}<span><strong>{% translate "Ceny po krajích a městech" %}</strong><span>CSV · {{ when }}</span></span>{% icon "download" %}</a>
     <a class="np-tile pi-file" href="{{ og_url }}" download>{% icon "image" %}<span><strong>{% translate "Obrázek indexu" %}</strong><span>PNG · 1200 × 630</span></span>{% icon "download" %}</a>
-    <p class="np-small np-muted">{% translate "Potřebuješ jiný řez dat?" %} <a class="np-link" href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a></p>
+    <p class="np-small np-muted">{% translate "Data indexu patří Na pivo. Kopírovat je, stahovat robotem nebo dál šířit jako celek bez souhlasu nesmíš." %} <a class="np-link" href="mailto:tomades1@gmail.com">{% translate "Napiš mi" %}</a></p>
   </div>
 </section>
 

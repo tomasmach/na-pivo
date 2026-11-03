@@ -6,14 +6,12 @@ to that snapshot the first time this page reads it, so the work runs once a day.
 
 from __future__ import annotations
 
-import csv
-import io
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 
 from django.conf import settings
 from django.core.cache import cache
-from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.utils import formats, translation
 from django.utils.translation import gettext
 
@@ -176,7 +174,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
     context: dict = {"crumbs": crumbs, "data": None}
     graph = [crumb_graph]
     description = gettext(
-        "Kolik stojí pivo v českých hospodách: střední cena v Česku, po krajích a městech, jak se měnila a data ke stažení."
+        "Kolik stojí pivo v českých hospodách: střední cena v Česku, po krajích a městech a jak se měnila."
     )
     country = data["country"] if data else None
     if data and country:
@@ -288,12 +286,11 @@ def beer_index(request: HttpRequest) -> HttpResponse:
             ]),
             "risers": [row for row in risers if row["change"] > 0][:6],
             "quote": quote,
-            "csv_url": web_reverse("beer-index-csv"),
             "og_url": f"{web_reverse('beer-index-og')}?v={data['day']}",
             "min_pubs": MIN_PUBS,
         })
         description = gettext(
-            "Nejlevnější pivo v české hospodě stojí střední cenou %(price)s Kč. Ceny po krajích a městech, vývoj po čtvrtletích a data ke stažení."
+            "Nejlevnější pivo v české hospodě stojí střední cenou %(price)s Kč. Ceny po krajích a městech a vývoj po čtvrtletích."
         ) % {"price": country_median}
         graph.append({
             "@type": "Dataset",
@@ -303,13 +300,8 @@ def beer_index(request: HttpRequest) -> HttpResponse:
             "creator": AUTHOR,
             "dateModified": data["day"],
             "spatialCoverage": {"@type": "Place", "name": gettext("Česko")},
-            "isAccessibleForFree": True,
             "inLanguage": lang,
-            "distribution": [{
-                "@type": "DataDownload",
-                "encodingFormat": "text/csv",
-                "contentUrl": f"{settings.PUBLIC_WEB_ORIGIN}{web_reverse('beer-index-csv')}",
-            }],
+            "copyrightHolder": AUTHOR,
         })
     origin = settings.PUBLIC_WEB_ORIGIN
     context["og_image"] = (
@@ -325,43 +317,6 @@ def beer_index(request: HttpRequest) -> HttpResponse:
         section="prices",
     )
     return public_cache(response)
-
-
-def _csv(data: dict, lang: str) -> str:
-    names = region_names()
-    out = io.StringIO()
-    out.write(f"# {gettext('Pivní index Na pivo')}, {settings.PUBLIC_WEB_ORIGIN}{web_reverse('web-beer-index', lang)}\n")
-    out.write(f"# {gettext('Stav k')} {data['day']}. ")
-    out.write(gettext("Nejlevnější pivo od 0,4 l v každé hospodě za poslední rok, podle cen z appky Na pivo. Při použití uveď zdroj.") + "\n")
-    writer = csv.writer(out, lineterminator="\n")
-    writer.writerow([gettext("typ"), gettext("oblast"), gettext("medián Kč"), gettext("25. percentil Kč"), gettext("75. percentil Kč"), gettext("hospod")])
-    country = data["country"]
-    writer.writerow([gettext("Česko"), gettext("Česko"), country["median"], country["p25"], country["p75"], country["pubs"]])
-    for code in REGION_CODES:
-        if row := data["regions"].get(code):
-            writer.writerow([gettext("kraj"), names[code][1], row["median"], row["p25"], row["p75"], row["pubs"]])
-    for area in data["cities"]:
-        writer.writerow([gettext("město"), area["name"], area["median"], area["p25"], area["p75"], area["pubs"]])
-    return out.getvalue()
-
-
-@canonical_host
-def beer_index_csv(request: HttpRequest, lang: str = "cs") -> HttpResponse:
-    wait = throttle_wait(request, "web_og")
-    if wait:
-        response = HttpResponse(status=429)
-        response["Retry-After"] = str(wait)
-        return response
-    data = _index()
-    if not data or not data["country"]:
-        raise Http404
-    with translation.override(lang):
-        body = cache.get_or_set(f"web:beer-index:csv:{data['day']}:{lang}", lambda: _csv(data, lang), 3600)
-        filename = f"{gettext('pivni-index')}-{data['day']}.csv"
-    response = HttpResponse(body, content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
-    response["Cache-Control"] = "public, max-age=3600"
-    return response
 
 
 def _og(data: dict, lang: str) -> bytes:

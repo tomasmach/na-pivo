@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import csv
-import io
 import uuid
 
 import pytest
@@ -141,7 +139,7 @@ def _index_data():
     return save_price_snapshot()
 
 
-def test_beer_index_by_region_with_csv_and_share_image(client, django_assert_max_num_queries):
+def test_beer_index_by_region_with_share_image_and_no_bulk_export(client, django_assert_max_num_queries):
     country = _index_data().data["country"]
     assert country["median"] == 59
     with django_assert_max_num_queries(20):
@@ -154,14 +152,8 @@ def test_beer_index_by_region_with_csv_and_share_image(client, django_assert_max
     with django_assert_max_num_queries(12):
         client.get("/pivni-index")
 
-    response = client.get("/pivni-index/data.csv")
-    assert response.status_code == 200 and response["Content-Disposition"].startswith('attachment; filename="pivni-index-')
-    body = response.content.decode()
-    assert body.startswith("# Pivní index Na pivo, https://")
-    rows = list(csv.reader(io.StringIO("\n".join(line for line in body.splitlines() if not line.startswith("#")))))
-    assert rows[1] == ["Česko", "Česko", "59", str(country["p25"]), str(country["p75"]), "10"]
-    assert ["kraj", "Praha", "64", "62", "66", "5"] in rows and ["město", "Brno", "54", "52", "56", "5"] in rows
-    assert "region,Prague" in client.get("/en/beer-index/data.csv").content.decode()
+    assert client.get("/pivni-index/data.csv").status_code == 404
+    assert "data.csv" not in html and "DataDownload" not in html
 
     image = client.get("/pivni-index/og.png")
     assert image.status_code == 200 and image.content[:8] == b"\x89PNG\r\n\x1a\n"
@@ -170,7 +162,6 @@ def test_beer_index_by_region_with_csv_and_share_image(client, django_assert_max
 def test_beer_index_without_prices_waits(client):
     html = _page(client, "/pivni-index")
     assert "Index se teprve počítá" in html
-    assert client.get("/pivni-index/data.csv").status_code == 404
     image = client.get("/pivni-index/og.png")
     assert image.status_code == 302 and image["Location"] == "/og/home.png"
 
