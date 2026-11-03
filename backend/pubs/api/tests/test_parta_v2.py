@@ -16,8 +16,14 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from django.db import transaction
+
+from pubs import accounts
 from pubs.models import (
     Account,
+    BeerBrand,
+    BeerProduct,
+    BeerStyleVote,
     DrinkLog,
     FriendBlock,
     FriendHomeCheckin,
@@ -530,3 +536,31 @@ def test_public_profile_page_only_for_public_accounts(client, party):
     host.is_public = False
     host.save(update_fields=["is_public"])
     assert client.get("/u/klara").status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_claim_moves_home_checkins_and_style_votes(client, party):
+    token, _host = party["host"]
+    guest_token, guest = party["guest"]
+    _target_token, target = _register(client, "cilovy")
+    evening = _home_plan(client, token, recipients=[guest], scheduled=False).json()
+    client.post(
+        f"/v1/friends/pub-activity/{evening['id']}/checkin",
+        data={"client_id": str(uuid.uuid4())},
+        format="json",
+        **_auth(guest_token),
+    )
+    brand = BeerBrand.objects.create(key="claim-brand", name="Claim")
+    product = {"brand": brand, "brand_key": brand.key, "brand_name": brand.name}
+    kozel = BeerProduct.objects.create(key="claim-kozel", name="Kozel 11", **product)
+    bernard = BeerProduct.objects.create(key="claim-bernard", name="Bernard 12", **product)
+    BeerStyleVote.objects.create(account=guest, product=kozel, style="pale")
+    BeerStyleVote.objects.create(account=guest, product=bernard, style="amber")
+    BeerStyleVote.objects.create(account=target, product=bernard, style="dark")
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(guest, target)
+
+    assert FriendHomeCheckin.objects.filter(account=target).count() == 1
+    votes = dict(BeerStyleVote.objects.filter(account=target).values_list("product__key", "style"))
+    assert votes == {"claim-kozel": "pale", "claim-bernard": "dark"}

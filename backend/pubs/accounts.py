@@ -2229,6 +2229,18 @@ def _merge_beer_watches(source: Account, target: Account) -> None:
         target.save(update_fields=update_fields)
 
 
+def _merge_nv_rows(source: Account, target: Account) -> None:
+    """The claimed account keeps its own answer when both voted or joined the same evening."""
+    from pubs.models import BeerStyleVote, FriendHomeCheckin
+
+    _delete_or_move_account_rows(
+        BeerStyleVote, source=source, target=target, unique_fields=("product_id",)
+    )
+    _delete_or_move_account_rows(
+        FriendHomeCheckin, source=source, target=target, unique_fields=("activity_id",)
+    )
+
+
 def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     """Move best-effort anonymous data onto an existing signed-in account.
 
@@ -2643,6 +2655,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         unique_fields=("push_token",),
     )
     _merge_beer_watches(source, target)
+    _merge_nv_rows(source, target)
 
     PubCommunityData.objects.filter(account=source).update(account=target)
     PubBeerBrand.objects.filter(account=source).update(account=target)
