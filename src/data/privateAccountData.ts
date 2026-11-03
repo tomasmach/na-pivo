@@ -18,6 +18,7 @@ import { clearFeedbackQueue } from './feedbackQueue';
 import { clearFriendsQueue } from './friendsQueue';
 import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
 import { resetForegroundPulls } from './foregroundPulls';
+import { clearScreenCache } from './screenCache';
 import { clearLeaderboardsCache } from './leaderboardsClient';
 import { clearNightsQueue } from './nightsQueue';
 import { clearPhotoContestTeaserCache } from './photoContestClient';
@@ -141,6 +142,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // The wiped ratings, votes and own pubs must come back on the next foreground
   // even when the same account signs in again within the pull interval.
   resetForegroundPulls();
+  clearScreenCache();
   useTallyStore.setState({ current: null, history: [], restoredAccountId: null });
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });

@@ -10545,11 +10545,14 @@ def _nearby_pub_beer_kind_items(
     A catalog beer takes its kind from the beer ranking, where people's votes
     replace the name guess. Any other beer is judged by its name alone.
     """
-    rows = _nearby_menu_rows(lat=lat, lng=lng, radius_km=radius_km)
+    rows = [
+        (row, _menu_beer_names(row))
+        for row in _nearby_menu_rows(lat=lat, lng=lng, radius_km=radius_km)
+    ]
     match_cache = BeerCatalogMatchCache()
     product_of: dict[str, int | None] = {}
-    for row in rows:
-        for normalized, display in _menu_beer_names(row).items():
+    for _, names in rows:
+        for normalized, display in names.items():
             if normalized not in product_of:
                 found = match_beer(display, fuzzy=False, match_cache=match_cache)
                 product_of[normalized] = found.product.id if found and found.product else None
@@ -10558,17 +10561,21 @@ def _nearby_pub_beer_kind_items(
             product_id__in={pid for pid in product_of.values() if pid is not None}
         ).values_list("product_id", "styles")
     )
+    # Keyed by the display name: the name guess reads "12°", which normalizing drops.
+    kind_of: dict[str, bool] = {}
 
     def is_kind(normalized: str, display: str) -> bool:
         product_id = product_of.get(normalized)
         if product_id is not None and product_id in ranked_styles:
             return beer_kind in (ranked_styles[product_id] or [])
-        return beer_kind in classify_styles(display, [])
+        if display not in kind_of:
+            kind_of[display] = beer_kind in classify_styles(display, [])
+        return kind_of[display]
 
     matching = [
         row
-        for row in rows
-        if any(is_kind(name, display) for name, display in _menu_beer_names(row).items())
+        for row, names in rows
+        if any(is_kind(name, display) for name, display in names.items())
     ][:_BEER_BRAND_MAX_RESULTS]
     return [_pub_community_item(row) for row in matching], {row.cache_key for row in matching}
 

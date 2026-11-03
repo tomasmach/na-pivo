@@ -7,6 +7,7 @@ import { t } from '@/i18n';
 import { handleTabPress, partaBadge } from '@/navigation/tabs';
 import { TabsInsetsRoot } from '@/navigation/TabScreen';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
+import { NEW_LOOK } from '@/newlook/flag';
 
 // iOS would inset only the first scroll view of each tab. Screens pad for the
 // bar themselves via useBottomInset(); Android keeps its own wrapper, which
@@ -33,6 +34,8 @@ export default function TabsLayout() {
   const unread = usePartaSignalStore((s) => s.unread);
   const liveNow = usePartaSignalStore((s) => s.liveNow);
   const badge = partaBadge(pendingRequests, unread, liveNow);
+  // NewLookGate moves the new look to /nv; the old tabs must not start their GPS and pub loads meanwhile.
+  if (NEW_LOOK) return null;
 
   return (
     <TabsInsetsRoot>

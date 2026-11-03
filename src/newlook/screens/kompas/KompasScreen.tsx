@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig, runOnJS } from 'react-native-reanimated';
@@ -173,6 +173,18 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
   };
 
   const hours = target?.pub ? hoursNow(target.pub) : null;
+  const { livePubs, visitedCities } = k.map;
+  const friends = useMemo(
+    () =>
+      livePubs.map((p) => ({
+        key: p.cacheKey,
+        lat: p.lat,
+        lng: p.lng,
+        initial: (p.activities[0]?.account.displayName || p.activities[0]?.account.nickname || '?').slice(0, 1).toUpperCase(),
+      })),
+    [livePubs],
+  );
+  const cities = useMemo(() => visitedCities.map((c) => ({ key: c.key, name: c.name, lat: c.lat, lng: c.lng, count: c.visitCount })), [visitedCities]);
 
   // The map buttons sit just above whatever card is showing, or above the tab bar when none is.
   const cardSpace = st.mapView === 'stopy' ? (city ? 160 : 0) : target ? (collapsed ? 64 : 160) : 0;
@@ -183,13 +195,8 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
         pins={k.pins}
         me={k.position}
         target={target}
-        friends={k.map.livePubs.map((p) => ({
-          key: p.cacheKey,
-          lat: p.lat,
-          lng: p.lng,
-          initial: (p.activities[0]?.account.displayName || p.activities[0]?.account.nickname || '?').slice(0, 1).toUpperCase(),
-        }))}
-        cities={k.map.visitedCities.map((c) => ({ key: c.key, name: c.name, lat: c.lat, lng: c.lng, count: c.visitCount }))}
+        friends={friends}
+        cities={cities}
         view={st.mapView}
         pinMode={st.pinMode}
         selectedCity={city?.key}

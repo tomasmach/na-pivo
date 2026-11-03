@@ -159,17 +159,20 @@ def derive_account_profile_stats(account: Account, *, before: datetime | None = 
         "distinct_cities": distinct_cities,
         "beer_drinking_days": beer_drinking_days,
         "photos_count": account.beer_photos.count(),
-        "party_evenings": _party_evening_count(account, friend_ids),
+        "party_evenings": _party_evening_count(account, friend_ids, before=before),
     }
 
 
-def _party_evening_count(account: Account, friend_ids: set[int]) -> int:
+def _party_evening_count(
+    account: Account, friend_ids: set[int], *, before: datetime | None = None
+) -> int:
     """Drinking days spent with at least one current friend ("Večer s partou").
 
     A day counts when the account shared a party table (PartyEvening) with a
     friend, or both had a visit at the same pub on the same 04:00-rolling
     drinking day. The second rule is the same-pub-same-day definition the
     friend profile already uses for "nights together", without its window.
+    ``before`` limits both to that moment, like the drinks and visits above.
     """
 
     if not friend_ids:
@@ -182,23 +185,23 @@ def _party_evening_count(account: Account, friend_ids: set[int]) -> int:
         .values_list("started_at", flat=True)
         .distinct()
     )
+    my_visits = account.pub_visits.all()
+    friend_visits = PubVisit.objects.filter(account_id__in=friend_ids)
+    if before is not None:
+        tables = tables.filter(started_at__lt=before)
+        my_visits = my_visits.filter(started_at__lt=before)
+        friend_visits = friend_visits.filter(started_at__lt=before)
     days.update(drinking_day(started_at) for started_at in tables)
 
     my_days: dict[str, set[date]] = {}
-    for cache_key, started_at in account.pub_visits.order_by().values_list(
-        "cache_key", "started_at"
-    ):
+    for cache_key, started_at in my_visits.order_by().values_list("cache_key", "started_at"):
         my_days.setdefault(cache_key, set()).add(drinking_day(started_at))
     if my_days:
-        friend_visits = (
-            PubVisit.objects.filter(
-                account_id__in=friend_ids,
-                cache_key__in=account.pub_visits.values("cache_key"),
-            )
+        for cache_key, started_at in (
+            friend_visits.filter(cache_key__in=my_visits.values("cache_key"))
             .order_by()
             .values_list("cache_key", "started_at")
-        )
-        for cache_key, started_at in friend_visits:
+        ):
             day = drinking_day(started_at)
             if day in my_days.get(cache_key, ()):
                 days.add(day)
