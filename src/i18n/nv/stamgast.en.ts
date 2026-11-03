@@ -231,6 +231,9 @@ export const stamgastEn: typeof stamgastCs = {
   cheers: 'Cheers, see you next time.',
   howWasIt: 'How was it?',
   ratedSub: (n: number, pub: string) => `${n}× · ${pub}`,
+  myRatingA11y: (n: number) => `my rating ${n} of 5`,
+  receiptXp: (n: number) => `+${n} XP`,
+  receiptBadgeNext: (name: string, amount: string) => `${name}: ${amount} to go`,
   sticker: 'Story sticker',
   receiptMissing: "This evening isn't in your diary.",
 

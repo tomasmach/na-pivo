@@ -1,6 +1,6 @@
 import { parseBadgeProgress } from '@/data/achievements';
 
-import { buildNvBadges, nvStillLine, observeLevel } from '../profilModel';
+import { buildNvBadges, nightBadge, nvStillLine, observeLevel } from '../profilModel';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -36,5 +36,28 @@ describe('buildNvBadges', () => {
   it('keeps every old badge', () => {
     const badges = buildNvBadges(parseBadgeProgress({}), new Date());
     expect(badges).toHaveLength(27);
+  });
+});
+
+describe('nightBadge', () => {
+  const now = new Date('2026-11-01T12:00:00Z');
+  const progress = (raw: Record<string, unknown>) => parseBadgeProgress({ beers: 40, distinct_pubs: 3, ...raw });
+
+  it('names the medal the night unlocked', () => {
+    const result = nightBadge(progress({}), progress({ beers: 43, distinct_pubs: 5 }), now);
+    expect(result?.earned).toBe(true);
+    expect(result?.badge.key).toBe('pubs');
+    expect(result?.badge.state.tier).toBe(1);
+  });
+
+  it('without a new medal picks the next level the night moved closest', () => {
+    const result = nightBadge(progress({ distinct_pubs: 20 }), progress({ beers: 42, distinct_pubs: 24 }), now);
+    expect(result?.earned).toBe(false);
+    expect(result?.badge.key).toBe('pubs');
+    expect(result?.badge.state.next).toBe(25);
+  });
+
+  it('says nothing when the night moved no badge', () => {
+    expect(nightBadge(progress({}), progress({}), now)).toBeNull();
   });
 });

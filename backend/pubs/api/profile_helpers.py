@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.db.models import BooleanField, Count, ExpressionWrapper, Min, Q, Sum, TextField, Value
@@ -18,10 +18,18 @@ TASTER_MIN_BEERS = 10
 DRINKING_DAY_CUTOFF_HOUR = 4
 
 
-def derive_account_profile_stats(account: Account) -> dict:
-    """Aggregate durable account history for profile stats and achievements."""
+def derive_account_profile_stats(account: Account, *, before: datetime | None = None) -> dict:
+    """Aggregate durable account history for profile stats and achievements.
+
+    ``before`` limits drinks and pub visits to that moment, so a night's receipt
+    can compare badges before and after it; the other counters stay lifetime.
+    """
 
     public_drinks = account.drinks.filter(is_suspect=False)
+    pub_visits = account.pub_visits.all()
+    if before is not None:
+        public_drinks = public_drinks.filter(drank_at__lt=before)
+        pub_visits = pub_visits.filter(started_at__lt=before)
     is_beer = Q(drink_type=DrinkLog.DrinkType.BEER)
     drink_totals = public_drinks.annotate(
         local_hour=ExtractHour("drank_at", tzinfo=PRAGUE_TZ),
@@ -56,7 +64,7 @@ def derive_account_profile_stats(account: Account) -> dict:
     # order_by() first: the models' default ordering would otherwise leak the
     # ordering column into SELECT DISTINCT and defeat the dedup.
     pub_keys = set(
-        account.pub_visits.order_by().values_list("cache_key", flat=True).distinct()
+        pub_visits.order_by().values_list("cache_key", flat=True).distinct()
     )
     pub_keys.update(
         public_drinks.filter(cache_key__isnull=False)
@@ -66,7 +74,7 @@ def derive_account_profile_stats(account: Account) -> dict:
     )
     pub_keys.discard("")
     max_visit_row = (
-        account.pub_visits.values("cache_key")
+        pub_visits.values("cache_key")
         .annotate(n=Count("id"))
         .order_by("-n")
         .first()

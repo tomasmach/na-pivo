@@ -247,6 +247,9 @@ export const stamgastCs = {
   cheers: 'Na zdraví a zas příště.',
   howWasIt: 'Jak chutnalo?',
   ratedSub: (n: number, pub: string) => `${n}× · ${pub}`,
+  myRatingA11y: (n: number) => `moje hodnocení ${n} z 5`,
+  receiptXp: (n: number) => `+${n} XP`,
+  receiptBadgeNext: (name: string, amount: string) => `${name}: ještě ${amount}`,
   sticker: 'Nálepka na story',
   receiptMissing: 'Tenhle večer v deníku nemám.',
 

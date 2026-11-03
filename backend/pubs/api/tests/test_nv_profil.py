@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from django.core.cache import cache
@@ -11,7 +11,12 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.api.profile_helpers import derive_account_badge_progress, derive_account_profile_stats
+from pubs.api.profile_helpers import (
+    PRAGUE_TZ,
+    derive_account_badge_progress,
+    derive_account_profile_stats,
+)
+from pubs.api.stats import drinking_day
 from pubs.models import (
     Account,
     FriendBlock,
@@ -135,6 +140,110 @@ def test_xp_events_are_private_to_the_owner(client):
     response = client.get("/v1/account/me/xp-events", **_auth(other_token))
 
     assert response.json() == {"events": []}
+
+
+# --- Night summary (receipt) ------------------------------------------------
+
+# What the drink write answered before the night summary existed.
+_RELEASED_DRINK_RESPONSE_KEYS = {
+    "accepted",
+    "duplicate",
+    "limited",
+    "cache_key",
+    "place_context",
+    "serving_type",
+    "menu_updated",
+    "pivar",
+}
+_RELEASED_PIVAR_KEYS = {"level", "title", "xp", "xp_awarded", "xp_for_next_level", "xp_into_level"}
+
+
+def _drink_at(at: datetime, *, pub: str = "U Zlatého tygra", lat: float = _LAT) -> dict:
+    return {
+        **_drink_payload(),
+        "name": pub,
+        "lat": lat,
+        "external_id": f"mapy:{lat},{_LNG}",
+        "drank_at": at.replace(microsecond=0).isoformat(),
+    }
+
+
+def _prague(day: date, hour: int) -> datetime:
+    return datetime(day.year, day.month, day.day, hour, tzinfo=PRAGUE_TZ)
+
+
+@pytest.mark.django_db
+def test_released_drink_payload_answers_as_before_and_feeds_the_night_xp(client):
+    token, _account = _register(client)
+    logged = client.post("/v1/drinks", data=_drink_payload(), format="json", **_auth(token))
+
+    assert logged.status_code == status.HTTP_201_CREATED
+    body = logged.json()
+    # Released apps read these keys; the XP stored on the drink stays server-side.
+    assert set(body) == _RELEASED_DRINK_RESPONSE_KEYS
+    assert set(body["pivar"]) == _RELEASED_PIVAR_KEYS
+    day = drinking_day(timezone.now())
+    summary = client.get("/v1/account/me/night-summary", {"day": day.isoformat()}, **_auth(token))
+    assert summary.status_code == status.HTTP_200_OK
+    assert summary.json()["day"] == day.isoformat()
+    assert summary.json()["xp"] == body["pivar"]["xp_awarded"] > 0
+
+
+@pytest.mark.django_db
+def test_night_summary_counts_a_backfilled_beer_on_its_own_night(client):
+    token, _account = _register(client)
+    night = drinking_day(timezone.now()) - timedelta(days=2)
+    late = _prague(night + timedelta(days=1), 2)  # 2 a.m. still belongs to the night before
+    logged = client.post("/v1/drinks", data=_drink_at(late), format="json", **_auth(token))
+    assert logged.status_code == status.HTTP_201_CREATED
+
+    that_night = client.get("/v1/account/me/night-summary", {"day": night.isoformat()}, **_auth(token))
+    next_day = client.get(
+        "/v1/account/me/night-summary", {"day": (night + timedelta(days=1)).isoformat()}, **_auth(token)
+    )
+
+    assert that_night.json()["xp"] == logged.json()["pivar"]["xp_awarded"] > 0
+    assert next_day.json()["xp"] == 0
+
+
+@pytest.mark.django_db
+def test_night_summary_shows_badge_progress_before_and_after_the_night(client):
+    token, account = _register(client)
+    first = drinking_day(timezone.now()) - timedelta(days=3)
+    night = first + timedelta(days=1)
+    for at, pub, lat in (
+        (_prague(first, 20), "U Zlatého tygra", _LAT),
+        (_prague(night, 19), "Lokál Dlouhá", 50.0903),
+        (_prague(night, 21), "U Pinkasů", 50.0832),
+        (_prague(night + timedelta(days=1), 20), "U Fleků", 50.0789),
+    ):
+        response = client.post("/v1/drinks", data=_drink_at(at, pub=pub, lat=lat), format="json", **_auth(token))
+        assert response.status_code == status.HTTP_201_CREATED
+
+    body = client.get("/v1/account/me/night-summary", {"day": night.isoformat()}, **_auth(token)).json()
+
+    assert (body["badge_progress_before"]["beers"], body["badge_progress"]["beers"]) == (1, 3)
+    assert (body["badge_progress_before"]["distinct_pubs"], body["badge_progress"]["distinct_pubs"]) == (1, 3)
+    # Same keys as the profile's badge_progress, so the app reuses its tier math.
+    assert set(body["badge_progress"]) == set(body["badge_progress_before"]) == set(
+        derive_account_badge_progress(derive_account_profile_stats(account))
+    )
+
+
+@pytest.mark.django_db
+def test_night_summary_is_private_and_needs_a_day(client):
+    day = drinking_day(timezone.now()).isoformat()
+    assert client.get("/v1/account/me/night-summary", {"day": day}).status_code == status.HTTP_401_UNAUTHORIZED
+    owner_token, _owner = _register(client)
+    client.post("/v1/drinks", data=_drink_payload(), format="json", **_auth(owner_token))
+    other_token, _other = _register(client)
+
+    other = client.get("/v1/account/me/night-summary", {"day": day}, **_auth(other_token))
+    malformed = client.get("/v1/account/me/night-summary", {"day": "včera"}, **_auth(other_token))
+
+    assert other.json()["xp"] == 0
+    assert other.json()["badge_progress"]["beers"] == 0
+    assert malformed.status_code == status.HTTP_400_BAD_REQUEST
 
 
 # --- Invite preview ---------------------------------------------------------

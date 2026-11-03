@@ -79,7 +79,7 @@ from .piva_views import (
     BeerSearchView,
     BeerStyleVoteView,
 )
-from .profil_views import AccountXpEventsView
+from .profil_views import AccountNightSummaryView, AccountXpEventsView
 from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
 from .tour_invite_views import MyTourInviteListView, MyTourInviteView, TourInvitesView
@@ -580,6 +580,11 @@ urlpatterns = [
     ),
     path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
     path("account/me/xp-events", AccountXpEventsView.as_view(), name="account-me-xp-events"),
+    path(
+        "account/me/night-summary",
+        AccountNightSummaryView.as_view(),
+        name="account-me-night-summary",
+    ),
     path(
         "account/me/purchases/restore",
         RestorePurchasesView.as_view(),

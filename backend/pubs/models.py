@@ -4134,6 +4134,10 @@ class DrinkLog(models.Model):
         related_name="logged_drinks",
         help_text="The shared evening this drink was logged during, if any.",
     )
+    xp_awarded = models.PositiveIntegerField(
+        default=0,
+        help_text="Pivař XP this drink earned when it was logged; summed for a night's receipt.",
+    )
 
     # ---------- timestamps ----------
     drank_at = models.DateTimeField(

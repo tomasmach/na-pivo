@@ -4,6 +4,10 @@ const queued: { op: string; payload: BeerCheckInInput }[] = [];
 let pending: BeerCheckInInput[] = [];
 
 jest.mock('expo-location', () => ({}));
+jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 jest.mock('@/notifications/friendPush', () => ({ requestPushRegistration: jest.fn() }));
 jest.mock('@/beerWatch/beerWatchLocation', () => ({ syncBeerWatchLocation: jest.fn() }));
 jest.mock('@/stores/beerWatchStore', () => ({ useBeerWatchStore: { getState: jest.fn() }, findBeerWatch: jest.fn() }));
@@ -14,9 +18,11 @@ jest.mock('@/data/beerCheckinsQueue', () => ({
   }),
   getPendingBeerCheckIns: jest.fn(async () => pending),
 }));
+let serverHistory: BeerCheckIn[] | null = [];
+jest.mock('@/data/beerCheckinsClient', () => ({ fetchMyBeerCheckIns: jest.fn(async () => serverHistory) }));
 
 // eslint-disable-next-line import/first -- the mocks above must exist before the module loads
-import { reviewDay, saveBeerRating, savedRating } from '../model';
+import { loadMyRatings, myRating, reviewDay, saveBeerRating, savedRating } from '../model';
 
 function checkIn(overrides: Partial<BeerCheckIn> = {}): BeerCheckIn {
   return {
@@ -99,4 +105,49 @@ it('says the review day, never the hour', () => {
   expect(reviewDay('2026-10-31', now)).toBe('včera');
   expect(reviewDay('2026-10-29', now)).toBe('před 3 dny');
   expect(reviewDay('2026-10-22', now)).toBe('minulý týden');
+});
+
+describe('loadMyRatings', () => {
+  it('takes my newest rated check-in per beer, lets the offline queue win and keeps the server stars offline', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-02T20:00:00Z') });
+    serverHistory = [
+      checkIn({ beerName: 'Kozel 11°', rating: 4 }),
+      checkIn({ beerName: 'Kozel 11°', rating: 2 }),
+      checkIn({ beerName: 'Bernard 11°', rating: null }),
+      checkIn({ beerName: 'Matuška Raptor', rating: 5 }),
+    ];
+    pending = [{ ...checkIn({ beerName: 'Matuška Raptor', rating: 3 }), clientId: 'queued' } as BeerCheckInInput];
+
+    const online = await loadMyRatings();
+    expect(myRating(online, 'kozel 11°')).toBe(4);
+    expect(myRating(online, 'Bernard 11°')).toBeNull();
+    expect(myRating(online, 'Matuška Raptor')).toBe(3);
+
+    serverHistory = null;
+    pending = [];
+    jest.setSystemTime(new Date('2026-11-02T20:05:00Z'));
+    const offline = await loadMyRatings();
+    expect(myRating(offline, 'Kozel 11°')).toBe(4);
+    jest.useRealTimers();
+  });
+
+  it('after a restart offline shows the stars stored last time and skips malformed values', async () => {
+    serverHistory = null;
+    pending = [];
+    let storage!: { setItem: (key: string, value: string) => Promise<void> };
+    let fresh!: typeof import('../model');
+    jest.isolateModules(() => {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      storage = require('@react-native-async-storage/async-storage');
+      fresh = require('../model');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+    });
+    await storage.setItem('nv-my-ratings:me', JSON.stringify({ 'kozel 11': 4, rotten: 'x', 'too much': 9 }));
+
+    const ratings = await fresh.loadMyRatings();
+
+    expect(fresh.myRating(ratings, 'Kozel 11°')).toBe(4);
+    expect(fresh.myRating(ratings, 'rotten')).toBeNull();
+    expect(fresh.myRating(ratings, 'too much')).toBeNull();
+  });
 });

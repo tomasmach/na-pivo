@@ -1,7 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 
 import { generateUuidV4 } from '@/data/account';
-import type { BeerCheckIn, BeerCheckInInput, BeerCheckInVisibility, BeerTag } from '@/data/beerCheckinsClient';
+import { fetchMyBeerCheckIns, type BeerCheckIn, type BeerCheckInInput, type BeerCheckInVisibility, type BeerTag } from '@/data/beerCheckinsClient';
 import { enqueueBeerCheckInOp, getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
 import type { BeerDegree, BeerStyle, Position } from '@/data/beersClient';
 import { intlLocale, t } from '@/i18n';
@@ -166,6 +167,59 @@ export async function saveBeerRating(ctx: RatingContext, change: RatingChange): 
   savedThisSession.set(sessionKey(ctx.beerName), payload);
   await enqueueBeerCheckInOp({ op: 'checkin', payload });
   return payload;
+}
+
+export type MyRatings = ReadonlyMap<string, number>;
+
+const SERVER_RATINGS_TTL_MS = 60_000;
+const ratingsStorageKey = (account: string) => `nv-my-ratings:${account}`;
+// Per account, so offline the tiles keep the stars the server sent last, also after a restart.
+const serverRatings = new Map<string, { at: number; ratings: Map<string, number> }>();
+
+async function storedRatings(account: string): Promise<Map<string, number>> {
+  try {
+    const raw: unknown = JSON.parse((await AsyncStorage.getItem(ratingsStorageKey(account))) ?? '{}');
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return new Map();
+    return new Map(
+      Object.entries(raw).filter((entry): entry is [string, number] => typeof entry[1] === 'number' && entry[1] >= 1 && entry[1] <= 5),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * My stars per beer. What this session or the offline queue saved wins over my
+ * newest rated check-in on the server.
+ */
+export async function loadMyRatings(signal?: AbortSignal): Promise<MyRatings> {
+  const account = useAccountStore.getState().session?.accountId ?? '';
+  const cached = serverRatings.get(account);
+  if (!cached || Date.now() - cached.at > SERVER_RATINGS_TTL_MS) {
+    const history = await fetchMyBeerCheckIns(signal);
+    if (history) {
+      const fromServer = new Map<string, number>();
+      for (const c of history) {
+        if (c.rating !== null && !fromServer.has(beerKey(c.beerName))) fromServer.set(beerKey(c.beerName), c.rating);
+      }
+      serverRatings.set(account, { at: Date.now(), ratings: fromServer });
+      void AsyncStorage.setItem(ratingsStorageKey(account), JSON.stringify(Object.fromEntries(fromServer))).catch(() => undefined);
+    } else if (!cached) {
+      serverRatings.set(account, { at: 0, ratings: await storedRatings(account) });
+    }
+  }
+  const ratings = new Map(serverRatings.get(account)?.ratings ?? []);
+  for (const p of await getPendingBeerCheckIns()) {
+    if (typeof p.rating === 'number') ratings.set(beerKey(p.beerName), p.rating);
+  }
+  for (const [key, p] of savedThisSession) {
+    if (key.startsWith(`${account}|`) && typeof p.rating === 'number') ratings.set(beerKey(p.beerName), p.rating);
+  }
+  return ratings;
+}
+
+export function myRating(ratings: MyRatings, beerName: string): number | null {
+  return ratings.get(beerKey(beerName)) ?? null;
 }
 
 /** Watch or stop watching from the beer page, with the new look's toasts. */

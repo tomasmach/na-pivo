@@ -24,6 +24,8 @@ import { Button, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile 
 import { C, SCREEN_X, font, s } from '../../theme';
 import { toast } from '../../ui/store';
 import { useKompasState } from '../kompas/state';
+import { myRating } from '../piva/model';
+import { useMyRatings } from '../piva/useMyRatings';
 import { logDrink } from './counterActions';
 import { beerTally, drinkTally } from './eveningData';
 import { useBackfillPick, useCountPlace, useNvPlaceStore } from './placeStore';
@@ -56,12 +58,13 @@ function useAllSessions() {
   return useMemo(() => (current ? [current, ...history] : history), [current, history]);
 }
 
-function BeerTile({ o, on, onPress }: { o: Option; on: boolean; onPress: () => void }) {
+function BeerTile({ o, on, rating, onPress }: { o: Option; on: boolean; rating: number | null; onPress: () => void }) {
   return (
     <Press
       haptic
       onPress={onPress}
       accessibilityState={{ selected: on }}
+      accessibilityLabel={[o.name, rating ? t.nv.stamgast.myRatingA11y(rating) : null, o.badge, o.meta].filter(Boolean).join(', ')}
       style={{
         flex: 1,
         height: 104,
@@ -94,9 +97,19 @@ function BeerTile({ o, on, onPress }: { o: Option; on: boolean; onPress: () => v
         <T s={16} w={700} c={on ? C.black : C.white} numberOfLines={1}>
           {o.name}
         </T>
-        <T s={12} w={500} c={on ? '#0A0A0A99' : C.muted} numberOfLines={1}>
-          {o.meta}
-        </T>
+        <View style={[s.row, { gap: 6 }]}>
+          {rating ? (
+            <View style={[s.row, { height: 22, borderRadius: 11, paddingHorizontal: 7, gap: 3, backgroundColor: on ? '#0A0A0A14' : '#FFFFFF14' }]}>
+              <Icon name="star" size={11} color={on ? C.black : C.yellow} fill={on ? C.black : C.yellow} />
+              <T s={12} w={800} c={on ? C.black : C.white}>
+                {String(rating)}
+              </T>
+            </View>
+          ) : null}
+          <T s={12} w={500} c={on ? '#0A0A0A99' : C.muted} numberOfLines={1} style={{ flexShrink: 1 }}>
+            {o.meta}
+          </T>
+        </View>
       </View>
     </Press>
   );
@@ -155,6 +168,7 @@ export function ZapisSheet() {
   const currency = useSettingsStore((st) => st.priceCurrency);
   const sessions = useAllSessions();
   const menu = usePubMenu(pub);
+  const ratings = useMyRatings();
   const money = (czk: number) => formatPrice(czk, currency);
   const [kind, setKind] = useState<Kind>('pivo');
   const [homeServing, setHomeServing] = useState<HomeServing>('lahvac');
@@ -342,6 +356,7 @@ export function ZapisSheet() {
                   key={o.id}
                   o={o}
                   on={o.id === selected?.id}
+                  rating={kind === 'pivo' ? myRating(ratings, o.name) : null}
                   onPress={() => {
                     setSel(o.id);
                     setVolume(null);

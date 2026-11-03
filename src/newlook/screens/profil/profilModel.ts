@@ -146,6 +146,16 @@ export function nextGoal(badges: NvBadge[]): NvBadge | null {
   );
 }
 
+/** The medal one night unlocked, or else the next level it brought closest. */
+export function nightBadge(before: BadgeProgress, after: BadgeProgress, now = new Date()): { badge: NvBadge; earned: boolean } | null {
+  const was = new Map(buildNvBadges(before, now).map((badge) => [badge.key, badge.state]));
+  const badges = buildNvBadges(after, now);
+  const earned = badges.find((badge) => badge.state.tier > (was.get(badge.key)?.tier ?? 0));
+  if (earned) return { badge: earned, earned: true };
+  const moved = nextGoal(badges.filter((badge) => badge.state.value > (was.get(badge.key)?.value ?? 0)));
+  return moved ? { badge: moved, earned: false } : null;
+}
+
 /** Every badge of this account, or null before a backend sent values. */
 export function useNvBadges(): NvBadge[] | null {
   const profile = useAccountStore((s) => s.profile);

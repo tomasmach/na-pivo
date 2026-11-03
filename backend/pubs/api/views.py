@@ -3047,6 +3047,7 @@ class DrinksView(APIView):
                     drank_at=flags.drank_at,
                     is_suspect=flags.is_suspect,
                     suspect_reason=flags.suspect_reason,
+                    xp_awarded=xp_awarded,
                 )
                 record_xp_event(
                     account.pk,
