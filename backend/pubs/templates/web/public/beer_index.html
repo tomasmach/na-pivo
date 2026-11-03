@@ -22,7 +22,7 @@
         <span>{% blocktranslate %}střední cena v Česku k {{ when }}{% endblocktranslate %}{% if change_label %} · {{ change_label }}{% endif %}</span>
       </span>
     </div>
-    <p class="pp-note">{% icon "info" "np-icon--s" %}{% blocktranslate %}Z cen zapsaných ve {{ pubs_label }} za poslední rok{% endblocktranslate %}</p>
+    <p class="pp-note">{% icon "info" "np-icon--s" %}{{ pubs_label }}</p>
   </header>
   {% if big_cities %}
   <section class="np-card pi-cities" aria-labelledby="pi-big">

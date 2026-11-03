@@ -237,7 +237,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
                     change_now = area["median"] - before
                     risers.append({
                         "name": area["name"], "before": before, "now": area["median"], "change": change_now,
-                        "change_label": f"{_signed(change_now)} {gettext('Kč')}" if change_now else gettext("beze změny"),
+                        "change_label": f"{_signed(change_now)} {gettext('Kč')}",
                     })
             risers.sort(key=lambda row: (-row["change"], row["name"]))
         expensive, cheap = (by_price[-1], by_price[0]) if len(by_price) >= 2 else (None, None)
@@ -286,7 +286,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
                 ) % {"n": thousands(beer["pubs"])}}
                 for beer in data["beers"]
             ]),
-            "risers": risers[:6],
+            "risers": [row for row in risers if row["change"] > 0][:6],
             "quote": quote,
             "csv_url": web_reverse("beer-index-csv"),
             "og_url": f"{web_reverse('beer-index-og')}?v={data['day']}",

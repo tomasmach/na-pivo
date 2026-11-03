@@ -1978,10 +1978,6 @@ msgstr "for the cheapest beer in a pub"
 msgid "střední cena v Česku k %(when)s"
 msgstr "median price in Czechia as of %(when)s"
 
-#, python-format
-msgid "Z cen zapsaných ve %(pubs_label)s za poslední rok"
-msgstr "From prices logged in %(pubs_label)s over the last year"
-
 msgid "Velká města"
 msgstr "Big cities"
 
@@ -2305,9 +2301,6 @@ msgstr "%(n)s CZK and up"
 
 msgid "hlavní město"
 msgstr "capital city"
-
-msgid "beze změny"
-msgstr "no change"
 
 #, python-format
 msgid "„Nejlevnější pivo v české hospodě stálo k %(when)s střední cenou %(price)s Kč.%(regions)s“"
