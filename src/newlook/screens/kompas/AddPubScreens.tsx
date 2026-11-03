@@ -12,7 +12,15 @@ import { ensureLocationPermission } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
 import { lookupAddedPubLocation, type AddedPubLocation } from '@/data/addedPubLocationClient';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
-import { enqueueAddedPub, loadAddedPubSubmissions, retryAddedPub, syncOwnAddedPubs, type AddedPubSubmission } from '@/data/addedPubsQueue';
+import {
+  enqueueAddedPub,
+  enqueueAddedPubEdit,
+  loadAddedPubSubmissions,
+  onAddedPubSubmissionsChanged,
+  retryAddedPub,
+  syncOwnAddedPubs,
+  type AddedPubSubmission,
+} from '@/data/addedPubsQueue';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { resolvePubSearchResult, suggestPubsToAdd, type PubSearchResult } from '@/data/pubSearchClient';
 import { t } from '@/i18n';
@@ -37,9 +45,11 @@ type Located = AddedPubLocation & { source: 'address' | 'gps' | 'pin' };
 
 export function PridatHospoduScreen() {
   const router = useRouter();
+  const { clientId: editedId } = useLocalSearchParams<{ clientId?: string }>();
   const position = useRecentPosition();
   const bumpCatalogRevision = usePubStore((st) => st.bumpCatalogRevision);
-  const [manual, setManual] = useState(false);
+  const [manual, setManual] = useState(!!editedId);
+  const [original, setOriginal] = useState<AddedPubSubmission | null>(null);
   const [q, setQ] = useState('');
   const [found, setFound] = useState<{ term: string; items: PubSearchResult[] | null } | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
@@ -52,6 +62,32 @@ export function PridatHospoduScreen() {
   const request = useRef<AbortController | null>(null);
   const submitted = useRef(false);
   useEffect(() => () => request.current?.abort(), []);
+
+  useEffect(() => {
+    if (!editedId) return;
+    let active = true;
+    void loadAddedPubSubmissions().then((rows) => {
+      if (!active) return;
+      const row = rows.find((r) => r.client_id === editedId);
+      if (!row) {
+        nvBack(router);
+        return;
+      }
+      setOriginal(row);
+      setName(row.name);
+      setCity(row.city ?? '');
+      setAddress(row.address ?? '');
+    });
+    return () => {
+      active = false;
+    };
+  }, [editedId, router]);
+  // An unsent addition is still a create, so an aimed pin is kept as is.
+  // The server verifies an owner edit of a published pub against its address instead.
+  const canPin = !editedId || original?.pendingOperation === 'create';
+  const nameChanged = !!original && name.trim() !== original.name.trim();
+  const addressChanged = !!original && (city.trim() !== (original.city ?? '').trim() || address.trim() !== (original.address ?? '').trim());
+  const needsLocation = original?.failureReason === 'location-not-found';
 
   const term = q.trim();
   useEffect(() => {
@@ -87,6 +123,7 @@ export function PridatHospoduScreen() {
     const a = address.trim();
     const c = city.trim();
     if (!a || !c) return;
+    if (editedId && (!original || !addressChanged)) return;
     const timer = setTimeout(() => {
       void lookup({ address: a, city: c }, 'address').then((result) => {
         if (result) setLocated(result);
@@ -95,7 +132,7 @@ export function PridatHospoduScreen() {
     return () => clearTimeout(timer);
     // located is read only to keep a pin; changing it must not trigger a lookup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, city, lookup, manual]);
+  }, [address, city, lookup, manual, original]);
 
   // A point aimed on the pin map comes back through the shared state.
   useFocusEffect(
@@ -152,7 +189,44 @@ export function PridatHospoduScreen() {
     }
   };
 
-  const canSubmit = !!name.trim() && !!city.trim() && !!address.trim() && !!located && !locating;
+  // A lookup started for the previous text must not land on the new one.
+  const retype = (set: (v: string) => void, v: string) => {
+    set(v);
+    request.current?.abort();
+    setLocating(false);
+    setLookupFailed(false);
+    if (located?.source === 'address') setLocated(null);
+  };
+
+  const hasAddress = !!city.trim() && !!address.trim();
+  const canSubmit = editedId
+    ? !!original &&
+      !!name.trim() &&
+      (nameChanged || !!located) &&
+      (!needsLocation || !!located) &&
+      (!addressChanged || !!located) &&
+      (!located || hasAddress) &&
+      !locating
+    : !!name.trim() && hasAddress && !!located && !locating;
+
+  const save = () => {
+    if (!canSubmit || !original || submitted.current) return;
+    submitted.current = true;
+    const edit = {
+      client_id: original.client_id,
+      ...(nameChanged ? { name: name.trim().slice(0, 200) } : {}),
+      ...(located ? { lat: located.lat, lng: located.lng, city: city.trim(), address: address.trim() } : {}),
+    };
+    void enqueueAddedPubEdit(edit, { locationSource: located?.source === 'pin' ? 'map_pin' : undefined }).then((state) => {
+      bumpCatalogRevision();
+      if (state === 'synced') toast({ kind: 'saved', title: L().editSaved, icon: 'pencil' });
+      else if (state === 'pending') toast({ kind: 'offline', title: L().editSaved, sub: L().editQueued, icon: 'cloud-upload' });
+      else if (state === 'location-not-found' && canPin) toast({ kind: 'error', title: L().addLocationMissing, icon: 'map-pin' });
+      else toast({ kind: 'error', title: L().editRejected, icon: 'circle-alert' });
+    });
+    nvBack(router);
+  };
+
   const add = () => {
     if (!canSubmit || !located || submitted.current) return;
     submitted.current = true;
@@ -241,31 +315,39 @@ export function PridatHospoduScreen() {
     );
   }
 
+  if (editedId && !original) {
+    return (
+      <Screen header={<BackHeader />}>
+        <Spinner style={{ marginTop: 40 }} />
+      </Screen>
+    );
+  }
+
   return (
-    <Screen header={<BackHeader onBack={() => setManual(false)} />} footer={<Button label={L().addTitle} icon="plus" onPress={add} disabled={!canSubmit} />}>
-      <PageTitle title={L().addTitle} intro={L().addManualIntro} />
+    <Screen
+      header={<BackHeader onBack={editedId ? undefined : () => setManual(false)} />}
+      footer={
+        editedId ? (
+          <Button label={L().editSave} icon="check" onPress={save} disabled={!canSubmit} />
+        ) : (
+          <Button label={L().addTitle} icon="plus" onPress={add} disabled={!canSubmit} />
+        )
+      }
+    >
+      <PageTitle
+        title={editedId ? L().editTitle : L().addTitle}
+        intro={editedId ? (needsLocation ? (canPin ? L().editNeedsLocation : L().editNeedsAddress) : L().editIntro) : L().addManualIntro}
+      />
       <View style={{ gap: 14 }}>
         <Field label={L().addName}>
           <Input value={name} onChangeText={setName} maxLength={200} />
         </Field>
         <View style={[s.row, { gap: 10, alignItems: 'flex-start' }]}>
           <Field label={L().addCity} style={{ width: 120 }}>
-            <Input
-              value={city}
-              onChangeText={(v) => {
-                setCity(v);
-                if (located?.source === 'address') setLocated(null);
-              }}
-            />
+            <Input value={city} onChangeText={(v) => retype(setCity, v)} />
           </Field>
           <Field label={L().addAddress} style={s.fill}>
-            <Input
-              value={address}
-              onChangeText={(v) => {
-                setAddress(v);
-                if (located?.source === 'address') setLocated(null);
-              }}
-            />
+            <Input value={address} onChangeText={(v) => retype(setAddress, v)} />
           </Field>
         </View>
         {located || locating || lookupFailed ? (
@@ -316,6 +398,7 @@ export function PridatHospoduScreen() {
         <Kicker>{L().addWhenWrong}</Kicker>
         <Card>
           <Row
+            last={!canPin}
             leading={<Tile icon="locate-fixed" color={C.black} bg={C.yellow} size={36} radius={18} />}
             title={L().addStandingHere}
             titleWeight={700}
@@ -323,14 +406,16 @@ export function PridatHospoduScreen() {
             chevron
             onPress={() => void standingHere()}
           />
-          <Row
-            last
-            leading={<Tile icon="map-pin" bg="#FFFFFF0F" size={36} radius={18} />}
-            title={L().addPin}
-            titleWeight={700}
-            chevron
-            onPress={() => router.push({ pathname: '/nv/spendlik', params: located ? { lat: String(located.lat), lng: String(located.lng) } : {} })}
-          />
+          {canPin ? (
+            <Row
+              last
+              leading={<Tile icon="map-pin" bg="#FFFFFF0F" size={36} radius={18} />}
+              title={L().addPin}
+              titleWeight={700}
+              chevron
+              onPress={() => router.push({ pathname: '/nv/spendlik', params: located ? { lat: String(located.lat), lng: String(located.lng) } : {} })}
+            />
+          ) : null}
         </Card>
       </View>
     </Screen>
@@ -466,6 +551,7 @@ function CityPubs({ name, pubs }: { name: string; pubs: NonNullable<ReturnType<t
 }
 
 function AddedPubs({ onAdd }: { onAdd: () => void }) {
+  const router = useRouter();
   const bumpCatalogRevision = usePubStore((st) => st.bumpCatalogRevision);
   const [rows, setRows] = useState<AddedPubSubmission[] | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
@@ -473,16 +559,18 @@ function AddedPubs({ onAdd }: { onAdd: () => void }) {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      const reload = async () => {
+        const rows = await loadAddedPubSubmissions();
+        if (active) setRows(rows);
+      };
+      const stopListening = onAddedPubSubmissionsChanged(() => void reload());
       void (async () => {
-        const cached = await loadAddedPubSubmissions();
-        if (!active) return;
-        setRows(cached);
-        await syncOwnAddedPubs();
-        const fresh = await loadAddedPubSubmissions();
-        if (active) setRows(fresh);
+        await reload();
+        if (active) await syncOwnAddedPubs();
       })();
       return () => {
         active = false;
+        stopListening();
       };
     }, []),
   );
@@ -532,6 +620,8 @@ function AddedPubs({ onAdd }: { onAdd: () => void }) {
                     last={i === sorted.length - 1}
                     title={p.name}
                     titleWeight={700}
+                    chevron
+                    onPress={() => router.push({ pathname: '/nv/pridat-hospodu', params: { clientId: p.client_id } })}
                     sub={
                       failed ? (
                         <View style={{ gap: 6 }}>
@@ -556,7 +646,7 @@ function AddedPubs({ onAdd }: { onAdd: () => void }) {
                         <View style={[s.row, { gap: 6 }]}>
                           <Icon name="cloud-upload" size={15} color={C.muted} />
                           <T s={14} c={C.muted}>
-                            {L().waiting}
+                            {p.pendingOperation === 'edit' ? L().waitingEdit : L().waiting}
                           </T>
                         </View>
                       ) : failed ? (
