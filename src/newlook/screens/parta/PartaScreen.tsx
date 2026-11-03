@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -16,6 +16,7 @@ import type { PartaPlan } from '@/data/partaPlansClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
+import { usePartaSignalStore } from '@/stores/partaSignalStore';
 
 import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
 import { StatusCard } from '../../components/StatusCard';
@@ -192,6 +193,19 @@ export function PartaScreen() {
       void load();
     }, [load]),
   );
+
+  // A push tap or invite claim asks for fresh data even when Parta is already open, and may name a plan to open.
+  const pendingRefresh = usePartaSignalStore((st) => st.pendingRefresh);
+  useEffect(() => {
+    if (!pendingRefresh) return;
+    const target = usePartaSignalStore.getState().consumeRefresh();
+    void load().then(() => {
+      const id = target?.activityId;
+      if (id && usePartaStore.getState().plans?.some((plan) => plan.id === id)) {
+        router.push({ pathname: '/nv/plan/[id]', params: { id } });
+      }
+    });
+  }, [pendingRefresh, load, router]);
 
   const friends = dashboard?.friends ?? [];
   const settings = dashboard?.settings;
