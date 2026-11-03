@@ -10,7 +10,7 @@ import { Icon } from '../../components/Icon';
 import { Stack, T } from '../../components/ui';
 import { C, s } from '../../theme';
 import { clock, joinNames, personInitial } from './partaModel';
-import { useHomeEveningStore, type HomeEvening } from './partaStore';
+import { useHomeEveningStore, type HomeEvening } from '@/stores/homeEveningStore';
 
 const REFRESH_MS = 60_000;
 

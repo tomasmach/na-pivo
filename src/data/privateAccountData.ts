@@ -38,6 +38,7 @@ import { clearBeerPhotosForAccountBoundary } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
+import { useHomeEveningStore } from '@/stores/homeEveningStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
@@ -160,6 +161,8 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   clearBeerPhotosForAccountBoundary();
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
+  // "Jsem u kamaráda" belongs to the outgoing account's evening.
+  useHomeEveningStore.setState({ evening: null });
   useBeerWatchStore.getState().reset();
   // The cached boards carry the outgoing account's own rank.
   clearLeaderboardsCache();

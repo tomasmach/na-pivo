@@ -7,6 +7,7 @@ import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
+import { useHomeEveningStore } from '@/stores/homeEveningStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -87,6 +88,7 @@ beforeEach(async () => {
 });
 
 it('clears local private stores and private sync queue storage', async () => {
+  useHomeEveningStore.setState({ evening: { activityId: 'plan-1', hostName: '@klara', startedAt: '2026-06-14T19:00:00.000Z' } });
   useContestResultsStore.setState({
     lastSeenResultsContestId: 'round-0',
     counterNudgeDismissal: { contestId: 'round-1', onLastDay: false },
@@ -156,6 +158,8 @@ it('clears local private stores and private sync queue storage', async () => {
   }));
 
   await clearLocalPrivateAccountData();
+
+  expect(useHomeEveningStore.getState().evening).toBeNull();
 
   expect(useTallyStore.getState().current).toBeNull();
   expect(useTallyStore.getState().history).toEqual([]);

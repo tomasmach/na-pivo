@@ -28,7 +28,9 @@ import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
 import { PlanTicket } from './PartaScreen';
 import { joinNames, personInitial, personName, planTitle, shortDay } from './partaModel';
-import { useHomeEveningStore, usePartaStore } from './partaStore';
+import { useHomeEveningStore } from '@/stores/homeEveningStore';
+
+import { usePartaStore } from './partaStore';
 import { addPlanToCalendar, openNavigation, pingPerson } from './planActions';
 
 export { NovaPozvankaScreen } from './NovaPozvanka';
