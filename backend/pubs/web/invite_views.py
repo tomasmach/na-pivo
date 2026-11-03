@@ -52,6 +52,7 @@ from pubs.plan_guests import (
 from pubs.price_map import _FOAM, _FOAM_MUTED, _GROUND, _HAIR, _MUTED, _fitted, _font
 from pubs.web.limits import over_limit
 from pubs.web.pages import render_page, web_page
+from pubs.web.pub_map import live_map, pub_map
 from pubs.web.routes import web_reverse
 
 COOKIE = "np_guest"
@@ -120,8 +121,8 @@ def _place(activity: FriendPubActivity, host: str) -> dict:
         "meta": activity.city,
         "city": activity.city,
         "nav_url": f"https://www.google.com/maps/dir/?api=1&destination={activity.lat:.6f},{activity.lng:.6f}",
-        "lat": f"{activity.lat:.6f}",
-        "lng": f"{activity.lng:.6f}",
+        "map": pub_map([{"lat": activity.lat, "lng": activity.lng, "label": "", "url": ""}], focus=True, size=(608, 360)),
+        "live_map": live_map([{"lat": activity.lat, "lng": activity.lng, "name": activity.name}], kind="focus"),
     }
 
 
@@ -310,6 +311,7 @@ def plan_invite(request: HttpRequest, token: str) -> HttpResponse:
         description=gettext("%(place)s. Odpověz bez appky a bez registrace.") % {"place": activity.name},
         status=400 if errors else 200,
         indexable=False,
+        with_map=bool(context["place"].get("live_map")),
     )
     return _with_cookie(_private(response), request, fresh_cookie)
 

@@ -82,7 +82,7 @@
   </div>
 
   <div class="iv__side">
-    {% if place.nav_url %}<div class="iv-map" data-map data-lat="{{ place.lat }}" data-lng="{{ place.lng }}" data-label="{{ place.name }}"></div>{% endif %}
+    {% if place.live_map %}<div class="np-map iv-map">{% include "web/components/map.html" with live=place.live_map fallback="web/pubs/_map.html" map=place.map label=place.name %}</div>{% endif %}
     <section class="iv-place">
       <div class="iv-place__text">
         <h2 class="iv-place__name">{{ place.name }}</h2>

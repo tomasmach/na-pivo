@@ -84,11 +84,7 @@
 .iv-app__android { justify-self: center; color: var(--np-muted); font-size: 13px; }
 .iv-app__android:hover { color: var(--np-white); }
 
-/* Place and who goes. The map component fills .iv-map; until then it stays an empty frame. */
-.iv-map {
-  height: 360px; border: 1px solid var(--np-hairline); border-radius: var(--np-radius-l);
-  background: var(--np-card); overflow: hidden;
-}
+.iv-map { border: 1px solid var(--np-hairline); }
 .iv-place { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 4px 0; }
 .iv-place__text { min-width: 0; }
 .iv-place__name { font-size: 22px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
@@ -109,7 +105,6 @@
 @media (max-width: 960px) {
   .iv { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-top: 0; }
   .iv__done { font-size: 38px; }
-  .iv-map { height: 180px; }
   .iv-ticket { padding: 22px 20px 18px; }
   .iv-ticket__cut::before { left: -30px; }
   .iv-ticket__cut::after { right: -30px; }
