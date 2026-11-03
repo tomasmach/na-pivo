@@ -122,6 +122,7 @@ function RatingForm({ beer, params }: { beer: RatedBeer; params: Params }) {
           clientId,
           localUri,
           caption: beer.name,
+          beerName: beer.name,
           pubCacheKey: payload.pubCacheKey || undefined,
           pubName: payload.pubName || undefined,
           pubCity: payload.pubCity || undefined,
