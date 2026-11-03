@@ -29,7 +29,6 @@ from pubs.web.public_common import (
     breadcrumbs,
     decimal,
     og_image,
-    plural,
     pub_url,
     public_cache,
     structured,
@@ -38,6 +37,7 @@ from pubs.web.public_common import (
     too_many,
 )
 from pubs.web.routes import web_reverse
+from pubs.web.words import plural
 
 PAGE = 9
 # The app's walking guess: air distance with a quarter added for streets, 80 m a minute.

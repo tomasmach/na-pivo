@@ -16,7 +16,7 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, QueryDict
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django.utils.translation import get_language, gettext
+from django.utils.translation import gettext
 from django.views.decorators.http import require_POST
 
 from pubs import accounts
@@ -27,6 +27,7 @@ from pubs.web.auth_views import _over_limit
 from pubs.web.pages import render_page, signed_in_page, web_page
 from pubs.web.routes import web_reverse
 from pubs.web.session import end_session
+from pubs.web.words import plural
 
 TAGS = ("crisp", "great_foam", "smooth", "watery", "stale", "overpriced", "one_more", "never_again")
 STYLES = ("pale", "amber", "dark", "craft")
@@ -83,15 +84,9 @@ def _labels() -> dict:
 
 
 def _plural(n: int, one: str, few: str, many: str, **values) -> str:
-    """Czech has three plural forms and the .po file only two; pick by hand.
+    """``plural`` for forms that carry ``%(n)s``."""
 
-    ``one``, ``few`` and ``many`` are already translated and may contain ``%(n)s``.
-    """
-
-    if get_language() == "en":
-        form = one if n == 1 else many
-    else:
-        form = one if n == 1 else few if 2 <= n <= 4 else many
+    form = plural(n, one, few, many)
     return form % {"n": n, **values} if "%(" in form else form
 
 

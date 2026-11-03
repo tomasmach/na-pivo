@@ -27,7 +27,6 @@ from pubs.web.pages import render_page, web_page
 from pubs.web.public_common import (
     breadcrumbs,
     og_image,
-    plural,
     public_cache,
     region_names,
     structured,
@@ -36,6 +35,7 @@ from pubs.web.public_common import (
     too_many,
 )
 from pubs.web.routes import web_reverse
+from pubs.web.words import plural
 
 QUARTERS = 8
 CHART_CITIES = 5

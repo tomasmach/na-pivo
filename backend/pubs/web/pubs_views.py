@@ -32,6 +32,7 @@ from pubs.web.pages import render_page, web_page
 from pubs.web.pub_map import pub_map
 from pubs.web.pubs_og import render_pub_og
 from pubs.web.routes import web_reverse
+from pubs.web.words import plural
 from pubs.web_views import _short_date
 
 PAGE_SIZE = 20
@@ -75,14 +76,10 @@ def dec(value: float) -> str:
     return formats.number_format(value, 1)
 
 
-def noun(number: int, one: str, few: str, many: str) -> str:
-    """hospoda, hospody, hospod for 1, 3 and 5; English needs only one and many."""
-
-    return one if number == 1 else few if 2 <= number <= 4 else many
 
 
 def counted(number: int, one: str, few: str, many: str) -> str:
-    return f"{num(number)}\u00a0{noun(number, one, few, many)}"
+    return f"{num(number)}\u00a0{plural(number, one, few, many)}"
 
 
 def _pubs_count(number: int) -> str:
@@ -551,7 +548,7 @@ def _menu_updated(updated: datetime | None, now: datetime) -> str:
 def _pub_stats(pub: dict, now: datetime) -> list[dict]:
     stats = []
     if pub["week_beers"]:
-        stats.append({"value": num(pub["week_beers"]), "label": noun(
+        stats.append({"value": num(pub["week_beers"]), "label": plural(
             pub["week_beers"], gettext("pivo tu padlo minulý týden"), gettext("piva tu padla minulý týden"),
             gettext("piv tu padlo minulý týden"),
         )})
@@ -574,7 +571,7 @@ def _pub_stats(pub: dict, now: datetime) -> list[dict]:
     if len(stats) < 3 and pub["menu"]:
         stats.append({
             "value": num(len(pub["menu"])),
-            "label": noun(len(pub["menu"]), gettext("pivo na čepu"), gettext("piva na čepu"), gettext("piv na čepu")),
+            "label": plural(len(pub["menu"]), gettext("pivo na čepu"), gettext("piva na čepu"), gettext("piv na čepu")),
         })
     return stats[:3]
 

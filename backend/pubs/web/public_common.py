@@ -94,12 +94,6 @@ _CZECH_SHORT = {
 REGION_BY_SLUG = {region_slug(code): code for code in REGION_CODES}
 
 
-def plural(number: int, one: str, few: str, many: str) -> str:
-    """Czech picks the form by count (1 hospoda, 3 hospody, 5 hospod); English translates few and many alike."""
-
-    return one if number == 1 else few if 2 <= number <= 4 else many
-
-
 def money(value: float | int | None) -> str:
     return "" if value is None else f"{round(value)} {gettext('Kč')}"
 

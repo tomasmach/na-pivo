@@ -27,7 +27,6 @@ from pubs.web.public_common import (
     breadcrumbs,
     decimal,
     home_og_image,
-    plural,
     public_cache,
     region_names,
     region_slug,
@@ -37,6 +36,7 @@ from pubs.web.public_common import (
     too_many,
 )
 from pubs.web.routes import web_reverse
+from pubs.web.words import plural
 
 # A beer joins the public ranking once this many people rated it.
 MIN_RATINGS = 50

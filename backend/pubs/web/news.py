@@ -32,7 +32,6 @@ from pubs.web.public_common import (
     breadcrumbs,
     home_og_image,
     money,
-    plural,
     pub_url,
     public_cache,
     structured,
@@ -41,6 +40,7 @@ from pubs.web.public_common import (
     too_many,
 )
 from pubs.web.routes import web_reverse
+from pubs.web.words import plural
 
 WEEK = timedelta(days=7)
 MAX_WEEKS_BACK = 4

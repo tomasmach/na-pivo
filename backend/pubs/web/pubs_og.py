@@ -9,12 +9,11 @@ from django.utils.translation import gettext
 from PIL import Image, ImageDraw
 
 from pubs.price_map import _FOAM, _FOAM_MUTED, _GROUND, _HAIR, _MUTED, _fitted, _font
+from pubs.web.words import plural
 
 _YELLOW = (255, 196, 0)
 
 
-def _noun(number: int, one: str, few: str, many: str) -> str:
-    return one if number == 1 else few if 2 <= number <= 4 else many
 
 
 def _figures(data: dict) -> list[tuple[str, str]]:
@@ -27,10 +26,10 @@ def _figures(data: dict) -> list[tuple[str, str]]:
         figures.append((gettext("tankové"), gettext("čepují")))
     if data["week_beers"]:
         count = data["week_beers"]
-        figures.append((str(count), _noun(count, gettext("pivo minulý týden"), gettext("piva minulý týden"), gettext("piv minulý týden"))))
+        figures.append((str(count), plural(count, gettext("pivo minulý týden"), gettext("piva minulý týden"), gettext("piv minulý týden"))))
     if data["beers"]:
         count = data["beers"]
-        figures.append((str(count), _noun(count, gettext("pivo na lístku"), gettext("piva na lístku"), gettext("piv na lístku"))))
+        figures.append((str(count), plural(count, gettext("pivo na lístku"), gettext("piva na lístku"), gettext("piv na lístku"))))
     return figures[:3]
 
 

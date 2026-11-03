@@ -23,6 +23,7 @@ from pubs.web import diary as d
 from pubs.web.badges import earned_badges
 from pubs.web.pages import render_page, signed_in_page
 from pubs.web.routes import web_reverse
+from pubs.web.words import plural
 
 _RECENT_PUBS = 3
 # A year can hold hundreds of nights; the month tiles lead to the rest.
@@ -78,12 +79,10 @@ def _bar(value: int, peak: int) -> int:
     return 5 * round(20 * value / peak) if peak else 0
 
 
-def _word(n: int, one: str, few: str, many: str) -> str:
-    return one if n == 1 else few if 2 <= n <= 4 else many
 
 
 def _beers_word(n: int) -> str:
-    return _word(n, gettext("pivo"), gettext("piva"), gettext("piv"))
+    return plural(n, gettext("pivo"), gettext("piva"), gettext("piv"))
 
 
 def _num(n: int | float, digits: int = 0) -> str:
@@ -325,8 +324,8 @@ def diary(request: HttpRequest) -> HttpResponse:
         "stats": [
             s
             for s in (
-                {"value": _num(len(nights)), "label": _word(len(nights), gettext("večer"), gettext("večery"), gettext("večerů"))},
-                {"value": _num(d.distinct_pubs(nights)), "label": _word(d.distinct_pubs(nights), gettext("hospoda"), gettext("hospody"), gettext("hospod"))},
+                {"value": _num(len(nights)), "label": plural(len(nights), gettext("večer"), gettext("večery"), gettext("večerů"))},
+                {"value": _num(d.distinct_pubs(nights)), "label": plural(d.distinct_pubs(nights), gettext("hospoda"), gettext("hospody"), gettext("hospod"))},
                 {"value": _money(sum(n.spent_czk for n in nights)), "label": gettext("utraceno")} if any(n.priced for n in nights) else None,
                 {"value": _num(len(friends_at_table)), "label": gettext("kamarádi u stolu")} if friends_at_table else None,
             )
@@ -430,10 +429,10 @@ def night(request: HttpRequest, day: str) -> HttpResponse:
         "stats": [
             s
             for s in (
-                {"value": _num(the_night.beers), "label": _word(the_night.beers, gettext("pivo"), gettext("piva"), gettext("piv")), "hero": True},
+                {"value": _num(the_night.beers), "label": plural(the_night.beers, gettext("pivo"), gettext("piva"), gettext("piv")), "hero": True},
                 {"value": _money(the_night.spent_czk), "label": gettext("útrata")} if the_night.priced else None,
                 {"value": _duration(the_night.minutes), "label": gettext("u stolu")} if the_night.minutes else None,
-                {"value": _num(len(the_night.pub_keys)), "label": _word(len(the_night.pub_keys), gettext("hospoda"), gettext("hospody"), gettext("hospod"))} if the_night.pub_keys else None,
+                {"value": _num(len(the_night.pub_keys)), "label": plural(len(the_night.pub_keys), gettext("hospoda"), gettext("hospody"), gettext("hospod"))} if the_night.pub_keys else None,
             )
             if s
         ],
@@ -677,20 +676,20 @@ def profile(request: HttpRequest) -> HttpResponse:
         "headline": {
             "value": _num(summary["beers"]),
             "label": (
-                _word(summary["beers"], gettext("pivo letos"), gettext("piva letos"), gettext("piv letos"))
+                plural(summary["beers"], gettext("pivo letos"), gettext("piva letos"), gettext("piv letos"))
                 if scope == "letos"
-                else _word(summary["beers"], gettext("pivo za život"), gettext("piva za život"), gettext("piv za život"))
+                else plural(summary["beers"], gettext("pivo za život"), gettext("piva za život"), gettext("piv za život"))
             ),
             "sub": gettext("od %(date)s") % {"date": _long_date(first.astimezone(d.TZ).date())} if first else "",
         },
         "stats": [
             s
             for s in (
-                {"value": _num(summary["pubs"]), "label": _word(summary["pubs"], gettext("hospoda"), gettext("hospody"), gettext("hospod"))},
-                {"value": _num(summary["evenings"]), "label": _word(summary["evenings"], gettext("večer"), gettext("večery"), gettext("večerů"))},
+                {"value": _num(summary["pubs"]), "label": plural(summary["pubs"], gettext("hospoda"), gettext("hospody"), gettext("hospod"))},
+                {"value": _num(summary["evenings"]), "label": plural(summary["evenings"], gettext("večer"), gettext("večery"), gettext("večerů"))},
                 {"value": _num(per_evening, 1), "label": gettext("piva na večer")} if summary["evenings"] else None,
                 {"value": _money(summary["spent"]), "label": gettext("utraceno")} if summary["priced"] else None,
-                {"value": _num(friends), "label": _word(friends, gettext("kamarád"), gettext("kamarádi"), gettext("kamarádů"))},
+                {"value": _num(friends), "label": plural(friends, gettext("kamarád"), gettext("kamarádi"), gettext("kamarádů"))},
             )
             if s
         ],
@@ -707,7 +706,7 @@ def profile(request: HttpRequest) -> HttpResponse:
         "pubs": _top_pubs(drinks),
         "beers": beers,
         "companions": [
-            {**p, "value": f"{p['nights']} {_word(p['nights'], gettext('večer'), gettext('večery'), gettext('večerů'))}"}
+            {**p, "value": f"{p['nights']} {plural(p['nights'], gettext('večer'), gettext('večery'), gettext('večerů'))}"}
             for p in companions
         ],
         "weekdays": [
