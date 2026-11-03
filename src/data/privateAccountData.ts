@@ -36,7 +36,6 @@ import { clearVisitsSnapshot } from './visitsSnapshot';
 import { BADGE_STORAGE_KEY, useBadgeStore } from '@/stores/badgeStore';
 import { clearBeerPhotosForAccountBoundary } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
-import { useBookStore } from '@/stores/bookStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
@@ -161,7 +160,6 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   clearBeerPhotosForAccountBoundary();
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
-  useBookStore.getState().clearAll();
   useBeerWatchStore.getState().reset();
   // The cached boards carry the outgoing account's own rank.
   clearLeaderboardsCache();

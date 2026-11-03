@@ -1,3 +1,4 @@
+
 import React, { useCallback, useState } from 'react';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -20,7 +21,7 @@ import { submitPubEventSuggestion } from '@/data/pubEventsClient';
 import { t } from '@/i18n';
 import { dateTimeFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
-import { formatEventDateTime, parseEventDateTime } from '../../../../app/suggest-pub-event';
+import { formatEventDateTime, parseEventDateTime } from '@/utils/eventDateTime';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { Field, Input, PageTitle, Stepper, Ticket } from '../../components/forms';

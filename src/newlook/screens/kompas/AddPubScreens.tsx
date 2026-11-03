@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
@@ -15,7 +16,6 @@ import { enqueueAddedPub, loadAddedPubSubmissions, retryAddedPub, syncOwnAddedPu
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { resolvePubSearchResult, suggestPubsToAdd, type PubSearchResult } from '@/data/pubSearchClient';
 import { t } from '@/i18n';
-import { resetBeerMapLayerForAddedPub } from '@/map/BeerMapScreen';
 import { usePubStore } from '@/stores/pubStore';
 import { dateTimeFormat } from '@/utils/intlFormat';
 
@@ -165,7 +165,6 @@ export function PridatHospoduScreen() {
       address: address.trim(),
       ...(located.source === 'pin' ? { locationSource: 'map_pin' as const } : {}),
     };
-    resetBeerMapLayerForAddedPub();
     upsertLocalPub({ id: pubIdForCoords(entry.lat, entry.lng), name: entry.name, lat: entry.lat, lng: entry.lng, city: entry.city, address: entry.address, venueKind: 'pub', userAddedClientId: clientId });
     bumpCatalogRevision();
     void clearPubsSnapshot();

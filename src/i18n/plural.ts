@@ -11,7 +11,7 @@
 export type CzechPluralForm = 'one' | 'few' | 'many';
 
 /** Pick the Czech plural form for a non-negative integer count. */
-export function czechPluralForm(count: number): CzechPluralForm {
+function czechPluralForm(count: number): CzechPluralForm {
   const n = Math.abs(Math.trunc(count));
   if (n === 1) return 'one';
   if (n >= 2 && n <= 4) return 'few';
@@ -41,15 +41,3 @@ export function peopleCountLabel(count: number): string {
   return `${count} ${czechPlural(count, { one: 'člověk', few: 'lidi', many: 'lidí' })}`;
 }
 
-export function softDrinkCountLabel(count: number): string {
-  return `${count} nealko`;
-}
-
-export function shotCountLabel(count: number): string {
-  return `${count} ${czechPlural(count, { one: 'panák', few: 'panáky', many: 'panáků' })}`;
-}
-
-/** "1 víno", "3 vína", "5 vín" — counted glasses, pub-order style. */
-export function wineCountLabel(count: number): string {
-  return `${count} ${czechPlural(count, { one: 'víno', few: 'vína', many: 'vín' })}`;
-}

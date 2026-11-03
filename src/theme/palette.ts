@@ -8,8 +8,6 @@
 import * as SecureStore from 'expo-secure-store';
 
 export type Palette = 'gray' | 'brown';
-
-export const PALETTES: readonly Palette[] = ['gray', 'brown'];
 export const DEFAULT_PALETTE: Palette = 'gray';
 
 const STORAGE_KEY = 'na-pivo-palette';
@@ -26,10 +24,6 @@ export function readStoredPalette(): Palette {
   } catch {
     return DEFAULT_PALETTE;
   }
-}
-
-export function writeStoredPalette(next: Palette): void {
-  SecureStore.setItem(STORAGE_KEY, next, STORE_OPTIONS);
 }
 
 export const palette: Palette = readStoredPalette();
