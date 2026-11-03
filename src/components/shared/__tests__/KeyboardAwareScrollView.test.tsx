@@ -88,6 +88,33 @@ describe('KeyboardAwareScrollView', () => {
     expect(mockedScrollTo).not.toHaveBeenCalled();
   });
 
+  it('keeps the top of the field visible when the viewport is already above the keyboard', async () => {
+    mockKeyboardHeight = 300;
+    mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
+    mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
+      onSuccess(0, 100, 100, 50);
+    });
+    const screen = await render(
+      <KeyboardAwareScrollView testID="scroll-view">
+        <TextInput testID="field" />
+      </KeyboardAwareScrollView>,
+    );
+
+    await fireEvent(screen.getByTestId('scroll-view'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 250 } },
+    });
+    await fireEvent(screen.getByTestId('scroll-view'), 'contentSizeChange', 300, 2000);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
+      target: 22,
+      nativeEvent: { target: 22 },
+    });
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+
+    expect(mockedScrollTo).toHaveBeenLastCalledWith({ y: 92, animated: true });
+  });
+
   it('clamps the target offset to the maximum scrollable content offset', async () => {
     mockKeyboardHeight = 0;
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);

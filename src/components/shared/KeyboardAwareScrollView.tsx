@@ -119,10 +119,13 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
             if (fieldY < Spacing.sm && !onlyBelow) {
               deltaY = fieldY - Spacing.sm;
             } else if (fieldBottom > keyboardTop) {
-              deltaY = fieldBottom - keyboardTop;
+              // A parent may already have lifted the view, so the keyboard top can sit
+              // too high; never scroll the top of the field out of sight.
+              deltaY = Math.min(fieldBottom - keyboardTop, Math.max(0, fieldY - Spacing.sm));
             } else {
               return;
             }
+            if (deltaY === 0) return;
 
             const requestedY = Math.max(0, scrollYRef.current + deltaY);
             const contentHeight = contentHeightRef.current;
