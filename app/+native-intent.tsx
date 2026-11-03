@@ -6,13 +6,12 @@ import {
   parseTourTokenFromUrl,
 } from '@/data/inviteLinkRoutes';
 import { parsePubShareUrl } from '@/data/pubShareLink';
-import { NEW_LOOK } from '@/newlook/flag';
 
 function query(params: Record<string, string>): string {
   return new URLSearchParams(params).toString();
 }
 
-/** The new look's screens for the links the old app already answers. */
+/** The new look's screens for the links the released apps already answer. */
 function newLookPath(path: string): string | null {
   const tourToken = parseTourTokenFromUrl(path);
   if (tourToken) {
@@ -31,13 +30,5 @@ function newLookPath(path: string): string | null {
 }
 
 export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
-  if (NEW_LOOK) return newLookPath(path) ?? (isLegacyTableInviteUrl(path) ? '/nv' : path);
-  const tourToken = parseTourTokenFromUrl(path);
-  if (tourToken) {
-    const run = parseTourRunFromUrl(path);
-    return run ? `/t/${tourToken}?r=${run}` : `/t/${tourToken}`;
-  }
-  const inviteCode = parseInviteCodeFromUrl(path);
-  if (inviteCode) return `/parta/pozvanka?code=${inviteCode}`;
-  return isLegacyTableInviteUrl(path) ? '/party-live' : path;
+  return newLookPath(path) ?? (isLegacyTableInviteUrl(path) ? '/nv' : path);
 }

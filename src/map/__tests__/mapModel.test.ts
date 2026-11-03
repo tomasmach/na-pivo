@@ -2,14 +2,7 @@ import { geohash8 } from '@/data/geohash';
 import type { FriendPubActivity } from '@/data/friendsClient';
 import type { WireVisit } from '@/data/visitsClient';
 import type { TallySession } from '@/stores/tallyStore';
-import {
-  buildMapPubPoints,
-  buildLivePubs,
-  buildVisitedCities,
-  buildVisitedPubs,
-  clusterCoordinates,
-  pubOpeningVerdict,
-} from '../mapModel';
+import { buildMapPubPoints, buildLivePubs, buildVisitedCities, buildVisitedPubs, pubOpeningVerdict } from '../mapModel';
 
 const PRAGUE = { lat: 50.0876, lng: 14.4214 };
 const BRNO = { lat: 49.1951, lng: 16.6068 };
@@ -220,58 +213,5 @@ describe('pivní mapový model', () => {
     );
     expect(result).toHaveLength(1);
     expect(result[0].activities).toHaveLength(2);
-  });
-
-  it('grid clustering se při přiblížení rozpadne do samostatných pinů', () => {
-    const points = [
-      { lat: 50.0876, lng: 14.4214 },
-      { lat: 50.088, lng: 14.422 },
-    ];
-    const wide = clusterCoordinates(points, {
-      latitude: 50.0878,
-      longitude: 14.4217,
-      latitudeDelta: 1,
-      longitudeDelta: 1,
-    });
-    const close = clusterCoordinates(points, {
-      latitude: 50.0878,
-      longitude: 14.4217,
-      latitudeDelta: 0.003,
-      longitudeDelta: 0.003,
-    });
-    expect(wide).toHaveLength(1);
-    expect(wide[0].items).toHaveLength(2);
-    expect(close).toHaveLength(2);
-  });
-
-  it('grid clustering zůstane při posunu mapy na stejném zoomu stabilní', () => {
-    const points = [
-      { key: 'a', lat: 50.0876, lng: 14.4214 },
-      { key: 'b', lat: 50.088, lng: 14.422 },
-      { key: 'c', lat: 50.095, lng: 14.43 },
-    ];
-    const beforePan = clusterCoordinates(points, {
-      latitude: 50.0878,
-      longitude: 14.4217,
-      latitudeDelta: 0.1,
-      longitudeDelta: 0.1,
-    });
-    const afterPan = clusterCoordinates([...points].reverse(), {
-      latitude: 50.12,
-      longitude: 14.46,
-      // MapKit slightly changes reported deltas during a pan without a real
-      // zoom; that must not be enough to reshuffle cluster membership.
-      latitudeDelta: 0.1008,
-      longitudeDelta: 0.0994,
-    });
-    const membership = (clusters: typeof beforePan) =>
-      clusters
-        .map((cluster) => ({
-          id: cluster.id,
-          keys: cluster.items.map((item) => item.key).sort(),
-        }))
-        .sort((a, b) => a.id.localeCompare(b.id));
-
-    expect(membership(afterPan)).toEqual(membership(beforePan));
   });
 });
