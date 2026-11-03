@@ -20,6 +20,8 @@ type PartaState = {
   generation: number;
   meetups: CommunityEventsDashboard | null;
   load: () => Promise<void>;
+  /** A load that starts after any one already running, so it sees changes made since. */
+  reload: () => Promise<void>;
   setDashboard: (fn: (d: FriendsDashboard) => FriendsDashboard) => void;
   upsertPlan: (plan: PartaPlan) => void;
   removePlan: (id: string) => void;
@@ -71,6 +73,7 @@ export const usePartaStore = create<PartaState>((set, get) => ({
     });
     return inFlight;
   },
+  reload: () => (inFlight ? inFlight.then(() => get().load()) : get().load()),
   setDashboard: (fn) => {
     const current = get().dashboard;
     if (current) set({ dashboard: fn(current) });

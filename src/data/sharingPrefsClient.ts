@@ -10,7 +10,7 @@
 
 import { useVycepStore, type NightAutopublish, type SharingPrefs } from '@/stores/vycepStore';
 
-import { ensureAccount } from './account';
+import { ensureAccount, getSessionToken } from './account';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import type { NightVisibility } from './nightsClient';
@@ -58,7 +58,9 @@ async function request(body?: Record<string, unknown>): Promise<RemoteSharing | 
       return null;
     }
     if (!resp.ok) return null;
-    return parse((await resp.json()) as Record<string, unknown>);
+    const remote = parse((await resp.json()) as Record<string, unknown>);
+    // A sign-in or claim while this was in flight swapped the account; the reply describes the previous one.
+    return (await getSessionToken()) === session.token ? remote : null;
   } catch {
     return null;
   } finally {

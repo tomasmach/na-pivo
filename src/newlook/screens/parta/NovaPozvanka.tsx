@@ -155,7 +155,8 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
     if (busy) return;
     if (kind === 'pub' && !pub) return toast({ kind: 'info', title: t.nv.parta.pickPub, icon: 'map-pin' });
     if (recipients && recipients.length === 0) return toast({ kind: 'info', title: t.nv.parta.pickSomeone, icon: 'users' });
-    if (when && when.getTime() <= Date.now()) return toast({ kind: 'info', title: t.nv.parta.pickLaterTime, icon: 'calendar' });
+    const timeUnchanged = !!editing && (when?.getTime() ?? null) === (editing.scheduledFor ? Date.parse(editing.scheduledFor) : null);
+    if (when && !timeUnchanged && when.getTime() <= Date.now()) return toast({ kind: 'info', title: t.nv.parta.pickLaterTime, icon: 'calendar' });
     const input: PlanInput = {
       clientId,
       placeKind: kind,
@@ -174,7 +175,12 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
       toast({ kind: 'saved', title: toastTitle, sub, icon: 'send' });
     };
     if (editing) {
-      const res = await updatePartaPlan(editing.id, { ...input, clientId: undefined, recipientIds: audienceTouched ? (recipients ?? null) : undefined });
+      const res = await updatePartaPlan(editing.id, {
+        ...input,
+        clientId: undefined,
+        scheduledFor: timeUnchanged ? undefined : input.scheduledFor,
+        recipientIds: audienceTouched ? (recipients ?? null) : undefined,
+      });
       setBusy(false);
       if (res.ok) return done(res.detail?.plan, t.nv.parta.saved, t.nv.parta.savedSub);
       return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });

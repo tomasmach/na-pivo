@@ -199,13 +199,13 @@ export function PartaScreen() {
   useEffect(() => {
     if (!pendingRefresh) return;
     const target = usePartaSignalStore.getState().consumeRefresh();
-    void load().then(() => {
+    void usePartaStore.getState().reload().then(() => {
       const id = target?.activityId;
       if (id && usePartaStore.getState().plans?.some((plan) => plan.id === id)) {
         router.push({ pathname: '/nv/plan/[id]', params: { id } });
       }
     });
-  }, [pendingRefresh, load, router]);
+  }, [pendingRefresh, router]);
 
   const friends = dashboard?.friends ?? [];
   const settings = dashboard?.settings;

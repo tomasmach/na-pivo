@@ -608,3 +608,21 @@ def test_edit_switches_an_invite_back_to_the_whole_party(client, party):
     )
     assert resp.status_code == status.HTTP_200_OK
     assert other_sees()
+
+
+@pytest.mark.django_db
+def test_started_plan_can_still_be_edited(client, party, monkeypatch):
+    token, _host = party["host"]
+    _guest_token, guest = party["guest"]
+    plan_id = _home_plan(client, token, days=1, recipients=[guest]).json()["id"]
+    later = timezone.now() + timedelta(days=1, hours=1)
+    monkeypatch.setattr("pubs.api.parta_views.dj_timezone.now", lambda: later)
+
+    resp = client.patch(
+        f"/v1/friends/pub-activity/{plan_id}",
+        data={"message": "Guláš je hotový.", "recipient_ids": None},
+        format="json",
+        **_auth(token),
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["message"] == "Guláš je hotový."

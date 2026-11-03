@@ -569,7 +569,8 @@ class PartaActivityView(FriendActivityView):
             return Response({"lat": ["A pub needs its coordinates."]}, status=status.HTTP_400_BAD_REQUEST)
         # No time means the plan is on now, exactly like a plan created without one.
         scheduled_for = data.get("scheduled_for", activity.scheduled_for)
-        if scheduled_for is not None and (scheduled_for <= now or scheduled_for > now + PLAN_MAX_AHEAD):
+        # Only a new time must lie ahead; a started evening keeps its own while the rest is edited.
+        if "scheduled_for" in data and scheduled_for is not None and (scheduled_for <= now or scheduled_for > now + PLAN_MAX_AHEAD):
             return Response(
                 {"detail": gettext("Plán je moc daleko. Zkus dřívější čas."), "code": "invalid_schedule"},
                 status=status.HTTP_400_BAD_REQUEST,
