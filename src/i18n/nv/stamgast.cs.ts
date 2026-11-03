@@ -282,7 +282,6 @@ export const stamgastCs = {
   remindEnable: 'Zapnout připomínky',
   remindOn: 'Připomínky jedou.',
   remindOnSub: 'Cinknu, až sedneš do hospody.',
-  remindDenied: 'Bez povolení v telefonu ti cinknout neumím.',
   openSettings: 'Otevřít nastavení',
 
   // Notification preview
