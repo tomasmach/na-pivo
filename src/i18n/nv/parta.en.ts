@@ -75,6 +75,10 @@ export const partaEn: Strings['nv']['parta'] = {
   maybeCount: (n: number) => `${n} maybe`,
 
   share: 'Share',
+  shareInvite: 'Send the invite link',
+  inviteMessage: (place: string, url: string) => `Coming for a beer? ${place}. You can answer without the app: ${url}`,
+  guestsLabel: 'Via link',
+  guestMaybe: (name: string) => `${name} (maybe)`,
   goingLabel: 'Going',
   maybeLabel: 'Maybe',
   silentLabel: 'No answer',

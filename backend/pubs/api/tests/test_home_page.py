@@ -167,12 +167,9 @@ def test_sitemap_lists_both_languages_of_every_page(client, settings):
     root = ElementTree.fromstring(response.content)
     ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9", "x": "http://www.w3.org/1999/xhtml"}
     urls = {url.findtext("s:loc", namespaces=ns): url for url in root.findall("s:url", ns)}
-    assert set(urls) == {
-        "https://na-pivo.cz/",
-        "https://na-pivo.cz/en",
-        "https://na-pivo.cz/ceny",
-        "https://na-pivo.cz/en/prices",
-    }
+    pages = ("/", "/en", "/ceny", "/en/prices", "/hospody", "/en/pubs", "/zebricky", "/en/rankings")
+    pages += ("/novinky", "/en/news", "/pivni-index", "/en/beer-index", "/trasy", "/en/tours")
+    assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages + ("/smazat-ucet", "/en/delete-account")}
     alternates = {
         link.get("hreflang"): link.get("href")
         for link in urls["https://na-pivo.cz/en/prices"].findall("x:link", ns)

@@ -74,6 +74,10 @@ export const partaCs = {
   maybeCount: (n: number) => `${n} možná`,
 
   share: 'Sdílet',
+  shareInvite: 'Poslat odkaz na pozvánku',
+  inviteMessage: (place: string, url: string) => `Jdeš na pivo? ${place}. Odpovíš i bez appky: ${url}`,
+  guestsLabel: 'Přes odkaz',
+  guestMaybe: (name: string) => `${name} (možná)`,
   goingLabel: 'Jdou',
   maybeLabel: 'Možná',
   silentLabel: 'Mlčí',

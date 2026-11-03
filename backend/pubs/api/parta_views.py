@@ -31,7 +31,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
-from pubs.i18n import LocalizedText
+from pubs.i18n import LocalizedText, current_locale
 from pubs.models import (
     Account,
     DrinkLog,
@@ -41,6 +41,7 @@ from pubs.models import (
     FriendPubActivity,
     FriendPubActivityRecipient,
 )
+from pubs.plan_guests import guest_link, visible_guests
 
 from .authentication import AccountTokenAuthentication
 from .serializers import (
@@ -161,6 +162,7 @@ class PartaPlanSerializer(FriendPubActivitySerializer):
     lng = serializers.SerializerMethodField()
     is_mine = serializers.SerializerMethodField()
     invitee_count = serializers.SerializerMethodField()
+    invite_url = serializers.SerializerMethodField()
 
     class Meta(FriendPubActivitySerializer.Meta):
         fields = [
@@ -171,6 +173,7 @@ class PartaPlanSerializer(FriendPubActivitySerializer):
             "lng",
             "is_mine",
             "invitee_count",
+            "invite_url",
         ]
         read_only_fields = fields
 
@@ -200,6 +203,12 @@ class PartaPlanSerializer(FriendPubActivitySerializer):
         if targets:
             return int(targets)
         return len(self.context.get("my_friend_ids") or [])
+
+    def get_invite_url(self, obj: FriendPubActivity) -> str | None:
+        # Only the host hands the link out; it lets people without an account answer.
+        if not self.get_is_mine(obj):
+            return None
+        return guest_link(obj, current_locale())
 
 
 def _plan_context(request: Request) -> dict:
@@ -336,7 +345,7 @@ def _set_targets(activity: FriendPubActivity, target_ids: list[int] | None) -> N
 def _fresh(activity_pk: int) -> FriendPubActivity:
     return (
         FriendPubActivity.objects.select_related("account")
-        .prefetch_related(*_friend_activity_prefetches())
+        .prefetch_related(*_friend_activity_prefetches(), "guests")
         .get(pk=activity_pk)
     )
 
@@ -362,6 +371,7 @@ def _people(activity: FriendPubActivity, viewer: Account, context: dict) -> dict
         "maybe_count": len(buckets["maybe"]),
         "cant_count": len(buckets["cant"]),
         "silent": [],
+        "guests": visible_guests(activity, is_owner=is_owner),
     }
     if is_owner:
         silent_ids = [fid for fid in _invitee_ids(activity) if fid not in responded]
@@ -527,7 +537,7 @@ class PartaActivityView(FriendActivityView):
             return self.http_method_not_allowed(request)
         activity = (
             FriendPubActivity.objects.select_related("account")
-            .prefetch_related(*_friend_activity_prefetches())
+            .prefetch_related(*_friend_activity_prefetches(), "guests")
             .filter(public_id=activity_id)
             .first()
         )

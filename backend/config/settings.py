@@ -762,6 +762,12 @@ REST_FRAMEWORK = {
         "public_reads": PUBLIC_READS_THROTTLE_RATE,
         "transit_stops": TRANSIT_STOPS_THROTTLE_RATE,
         "transit_last_direct": TRANSIT_LAST_DIRECT_THROTTLE_RATE,
+        # Guest link of a plan: reading it, and answering per network and per plan.
+        "plan_invite": "60/min",
+        "plan_guest": "20/hour",
+        "plan_guest_plan": "60/hour",
+        # Deletion link from the web, counted per e-mail address on top of auth_email per network.
+        "delete_link_email": "3/hour",
     },
 }
 

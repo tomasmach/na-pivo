@@ -30,9 +30,11 @@ from pubs.web.auth_views import (
     register,
 )
 from pubs.web.beer_index import beer_index, beer_index_csv, beer_index_og
+from pubs.web.delete_account_views import delete_account, delete_account_confirm
 from pubs.web.diary_views import diary, log_beer, night, profile
+from pubs.web.invite_views import plan_invite, plan_invite_calendar, plan_invite_og
 from pubs.web.news import news
-from pubs.web.pages import coming_soon, component_gallery
+from pubs.web.pages import component_gallery
 from pubs.web.pubs_views import pub_og_image, pub_page, pubs_city, pubs_index, search_page
 from pubs.web.rankings import rankings
 from pubs.web.routes import bilingual
@@ -60,7 +62,12 @@ urlpatterns = [
     *bilingual("pivni-index/data.csv", "en/beer-index/data.csv", beer_index_csv, "beer-index-csv"),
     *bilingual("pivni-index/og.png", "en/beer-index/og.png", beer_index_og, "beer-index-og"),
 
-    *bilingual("smazat-ucet", "en/delete-account", coming_soon, "web-delete-account"),
+    *bilingual("smazat-ucet", "en/delete-account", delete_account, "web-delete-account"),
+    *bilingual("smazat-ucet/potvrdit", "en/delete-account/confirm", delete_account_confirm, "web-delete-account-confirm"),
+
+    *bilingual("pozvanka/<slug:token>", "en/invite/<slug:token>", plan_invite, "web-plan-invite"),
+    *bilingual("pozvanka/<slug:token>/og.png", "en/invite/<slug:token>/og.png", plan_invite_og, "web-plan-invite-og"),
+    *bilingual("pozvanka/<slug:token>/kalendar.ics", "en/invite/<slug:token>/calendar.ics", plan_invite_calendar, "web-plan-invite-calendar"),
 
     *bilingual("prihlaseni", "en/login", login, "web-login"),
     *bilingual("prihlaseni/<slug:provider>", "en/login/<slug:provider>", oauth_start, "web-oauth"),

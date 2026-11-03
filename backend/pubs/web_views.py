@@ -1167,9 +1167,10 @@ def robots_txt(_request: HttpRequest) -> HttpResponse:
 
 
 def _web_sitemap_paths() -> list[str]:
-    from pubs.web import beer_index, news, pubs_views, rankings, tours
+    from pubs.web import beer_index, delete_account_views, news, pubs_views, rankings, tours
 
-    return [path for module in (pubs_views, rankings, news, beer_index, tours) for path in module.sitemap_paths()]
+    modules = (pubs_views, rankings, news, beer_index, tours, delete_account_views)
+    return [path for module in modules for path in module.sitemap_paths()]
 
 
 def sitemap_xml(request: HttpRequest) -> HttpResponse:

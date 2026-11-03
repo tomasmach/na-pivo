@@ -21,6 +21,9 @@ _SAMPLE_KWARGS = {
     "web-pub": {"key": "u-pinkasu"},
     "web-tour": {"tour_id": "abc"},
     "web-night": {"day": "2026-10-24"},
+    "web-plan-invite": {"token": "abc"},
+    "web-plan-invite-og": {"token": "abc"},
+    "web-plan-invite-calendar": {"token": "abc"},
 }
 
 
