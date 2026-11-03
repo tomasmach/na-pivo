@@ -80,6 +80,7 @@ export const profilEn: Strings['nv']['profil'] = {
     pubPing: 'Ping me when I sit down in a pub',
     partyPush: 'Crew notifications',
     partyPushSub: "Pings, invites and who's out for a beer",
+    partyPushDenied: "Without notifications, pings from your crew won't reach you. Turn them on in Settings and try again.",
     partyPushEnableError: "Couldn't turn it on. Try again.",
     partyPushDisableError: "Couldn't turn notifications off yet. I'll try again when you're back in the app.",
     phone: 'Phone',

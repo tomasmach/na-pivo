@@ -80,6 +80,7 @@ export const profilCs = {
     pubPing: 'Cinknout, když sednu do hospody',
     partyPush: 'Upozornění na partu',
     partyPushSub: 'Cinky, pozvánky a kdo je na pivu',
+    partyPushDenied: 'Bez notifikací ti cinky od party nepřijdou. Zapni je v Nastavení a zkus to znovu.',
     partyPushEnableError: 'Zapnutí se nepovedlo. Zkus to znovu.',
     partyPushDisableError: 'Upozornění se zatím nepovedlo vypnout. Zkusím to znovu, až se do appky vrátíš.',
     phone: 'Telefon',

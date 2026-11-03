@@ -142,11 +142,11 @@ export function BadgeCircle({ icon, got, size = 76 }: { icon: IconName; got: boo
   );
 }
 
-function notificationsDenied() {
+function notificationsDenied(body?: string) {
   const copy = t.settings.pubReminders.denied['notifications-denied'];
   dialog({
     title: copy.title,
-    body: copy.body,
+    body: body ?? copy.body,
     actions: [
       { label: P().settings.cancel },
       { label: t.settings.pubReminders.openSettings, kind: 'primary', onPress: () => void Linking.openSettings() },
@@ -847,7 +847,7 @@ export function NastaveniScreen() {
       }
       const result = await registerFriendPush();
       if (result.ok || result.reason === 'cancelled') return;
-      if (result.reason === 'denied') notificationsDenied();
+      if (result.reason === 'denied') notificationsDenied(P().settings.partyPushDenied);
       else toast({ kind: 'error', title: P().settings.partyPushEnableError });
     } finally {
       setPushBusy(false);

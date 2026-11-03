@@ -64,7 +64,7 @@ async function keepDeviceWithoutParta(): Promise<boolean> {
 
 type PushRegistration = 'registered' | 'denied' | 'unavailable' | 'cancelled';
 
-/** Ask for notifications when undetermined, then register this device's token. */
+/** Ask for notifications while the system still allows asking, then register this device's token. */
 async function requestAndRegister(
   isCurrent: () => boolean,
   friendPush?: boolean,
@@ -74,7 +74,8 @@ async function requestAndRegister(
     const existing = await Notifications.getPermissionsAsync();
     if (!isCurrent()) return 'cancelled';
     let status = existing.status;
-    if (status === 'undetermined') {
+    // Android 13+ reports a never-asked permission as 'denied'; only canAskAgain tells it from a real no.
+    if (status !== 'granted' && existing.canAskAgain) {
       const requested = await Notifications.requestPermissionsAsync({
         ios: { allowAlert: true, allowBadge: false, allowSound: false },
       });
@@ -93,7 +94,7 @@ async function requestAndRegister(
 
 /**
  * Notification permission for a non-Parta feature (beer watch): prompts only
- * when undetermined and keeps the Parta choice as it is.
+ * while the system allows asking and keeps the Parta choice as it is.
  */
 export function requestPushRegistration(): Promise<Exclude<PushRegistration, 'cancelled'>> {
   return inOrder(async () => {
