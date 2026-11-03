@@ -114,7 +114,7 @@ function RankRow({ b, bottom, onPress, early, inRegion }: { b: RankedBeer; botto
 }
 
 function useRanking(order: 'best' | 'bottom', style: BeerStyle | null, degree: BeerDegree | null, region: CzRegion | null, enabled: boolean) {
-  return useLoad<BeerRankingPage>(`${order}:${style ?? ''}:${degree ?? ''}:${region ?? ''}`, (signal) => fetchBeerRanking({ order, style, degree, region }, signal), enabled);
+  return useLoad<BeerRankingPage>(`${order}:${style ?? ''}:${degree ?? ''}:${region ?? ''}`, (signal) => fetchBeerRanking({ order, style, degree, region }, signal), enabled, 'beer-ranking');
 }
 
 function useCollection() {

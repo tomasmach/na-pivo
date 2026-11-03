@@ -112,6 +112,8 @@ import { useBookLayout } from '@/layout/bookLayout';
 import { noteTopPathname, openDetail } from '@/layout/openDetail';
 import { PaneRouteMigrator } from '@/layout/PaneRouteMigrator';
 import { NEW_LOOK } from '@/newlook/flag';
+import { FontFiles as NewLookFontFiles } from '@/newlook/theme';
+import { hydratePubsSnapshot } from '@/data/pubs';
 import { autopublishClosedNight } from '@/data/nightAutopublish';
 import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
 
@@ -240,8 +242,15 @@ const launchInviteStashed = Linking.getInitialURL()
   })
   .catch(() => undefined);
 
+// The new look's first screen is the map; its saved pubs load while the fonts do.
+if (NEW_LOOK) void hydratePubsSnapshot();
+
+// The new look draws its first screen in its own fonts; loading them behind the
+// splash saves a blank frame between the splash and the first tab.
+const startupFonts = NEW_LOOK ? { ...fontAssets, ...NewLookFontFiles } : fontAssets;
+
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts(fontAssets);
+  const [fontsLoaded, fontError] = useFonts(startupFonts);
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
