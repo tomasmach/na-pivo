@@ -589,3 +589,22 @@ def test_late_offline_invite_keeps_its_time_and_never_restarts(client, party):
     assert late.status_code == status.HTTP_201_CREATED
     activity = FriendPubActivity.objects.filter(account=host).latest("pk")
     assert abs((activity.started_at - sent_at).total_seconds()) < 1
+
+
+@pytest.mark.django_db
+def test_edit_switches_an_invite_back_to_the_whole_party(client, party):
+    token, _host = party["host"]
+    _guest_token, guest = party["guest"]
+    other_token, _other = party["other"]
+    plan_id = _home_plan(client, token, recipients=[guest]).json()["id"]
+
+    def other_sees() -> bool:
+        plans = client.get("/v1/friends/plans", **_auth(other_token)).json()["plans"]
+        return any(row["id"] == plan_id for row in plans)
+
+    assert not other_sees()
+    resp = client.patch(
+        f"/v1/friends/pub-activity/{plan_id}", data={"recipient_ids": None}, format="json", **_auth(token)
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    assert other_sees()

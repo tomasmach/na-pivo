@@ -232,8 +232,9 @@ class PartaPlanWriteSerializer(
     )
     scheduled_for = serializers.DateTimeField(required=False, allow_null=True)
     started_at = serializers.DateTimeField(required=False, allow_null=True)
+    # On PATCH, null switches a plan back to the whole party.
     recipient_ids = serializers.ListField(
-        child=serializers.UUIDField(), required=False, allow_empty=False
+        child=serializers.UUIDField(), required=False, allow_empty=False, allow_null=True
     )
 
     def validate(self, attrs: dict) -> dict:
@@ -622,7 +623,7 @@ class PartaActivityView(FriendActivityView):
                     account=request.user, active=True, expires_at__gt=now, kind=FriendPubActivity.Kind.LIVE
                 ).exclude(pk=activity.pk).update(active=False, updated_at=now)
             activity.save()
-            if target_ids is not None:
+            if target_ids is not None or ("recipient_ids" in data and requested is None):
                 _set_targets(activity, target_ids)
 
         fresh = _fresh(activity.pk)

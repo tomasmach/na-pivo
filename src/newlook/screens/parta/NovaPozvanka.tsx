@@ -174,7 +174,7 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
       toast({ kind: 'saved', title: toastTitle, sub, icon: 'send' });
     };
     if (editing) {
-      const res = await updatePartaPlan(editing.id, { ...input, clientId: undefined, recipientIds: audienceTouched ? recipients : undefined });
+      const res = await updatePartaPlan(editing.id, { ...input, clientId: undefined, recipientIds: audienceTouched ? (recipients ?? null) : undefined });
       setBusy(false);
       if (res.ok) return done(res.detail?.plan, t.nv.parta.saved, t.nv.parta.savedSub);
       return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });

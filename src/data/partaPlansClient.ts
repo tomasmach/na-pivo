@@ -70,8 +70,8 @@ export interface PlanInput {
   scheduledFor?: string | null;
   /** When a queued "now" invite was really sent; the server keeps it instead of restarting the evening. */
   startedAt?: string;
-  /** Undefined means the whole party. */
-  recipientIds?: string[];
+  /** Undefined means the whole party; on an edit it keeps the audience and null switches back to the whole party. */
+  recipientIds?: string[] | null;
 }
 
 export type DuelWindow = 'month' | '30d' | '180d' | 'all';
@@ -177,7 +177,8 @@ function planBody(input: Partial<PlanInput>): Raw {
   if (input.message !== undefined) body.message = input.message;
   if (input.scheduledFor !== undefined) body.scheduled_for = input.scheduledFor;
   if (input.startedAt) body.started_at = input.startedAt;
-  if (input.recipientIds && input.recipientIds.length > 0) body.recipient_ids = input.recipientIds;
+  if (input.recipientIds === null) body.recipient_ids = null;
+  else if (input.recipientIds && input.recipientIds.length > 0) body.recipient_ids = input.recipientIds;
   return body;
 }
 
