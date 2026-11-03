@@ -12,11 +12,10 @@ from datetime import timedelta
 
 import pytest
 from django.core.cache import cache
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
-
-from django.db import transaction
 
 from pubs import accounts
 from pubs.models import (
