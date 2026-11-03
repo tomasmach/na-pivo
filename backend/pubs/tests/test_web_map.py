@@ -101,8 +101,9 @@ def test_my_pubs_map_shows_my_pubs_with_the_selected_one(client):
     response = web.get("/moje-hospody")
     assert TILES in response["Content-Security-Policy"]
     [live] = _maps(response.content.decode())
-    assert sorted(p["name"] for p in live["points"]) == ["U Pinkasů", "U Zlatého tygra"]
-    assert [p["selected"] for p in live["points"]] == [True, False]
+    # The map is the city's pubs, mine among them, and only the first pin is the selected one.
+    assert {"U Pinkasů", "U Zlatého tygra"} <= {p["name"] for p in live["points"]}
+    assert [p["selected"] for p in live["points"]] == [True] + [False] * (len(live["points"]) - 1)
 
     other = live["points"][1]
     [picked] = _maps(web.get(other["url"]).content.decode())

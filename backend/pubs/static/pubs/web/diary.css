@@ -76,7 +76,8 @@ a.dy-year__tile:hover { background: var(--np-control-hover); }
 
 /* Night detail */
 .dy-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 20px; color: var(--np-muted); font-size: 14px; }
-.dy-night-head { display: grid; gap: 10px; margin-bottom: 32px; }
+.dy-night-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 32px; }
+.dy-night-head > div { display: grid; gap: 10px; }
 .dy-night-head__sub { font-size: 16px; }
 .dy-stats--night { gap: 16px 64px; margin-bottom: 28px; }
 .dy-stats--night .np-stat__value { font-size: 48px; }
@@ -232,3 +233,16 @@ a.dy-year__tile:hover { background: var(--np-control-hover); }
   .dy-chart__label { font-size: 10px; }
   .dy-pair { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Jen pro mě / Parta next to the save button, like the app's Dopsat. */
+.dy-log__end { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.dy-log__submit { flex: 1 1 220px; }
+.dy-scope { display: flex; flex: 0 1 260px; margin: 0; padding: 3px; border: 0; border-radius: 999px; background: #ffffff12; }
+.dy-scope label { flex: 1; }
+.dy-scope span {
+  display: flex; align-items: center; justify-content: center; gap: 6px; height: 42px; padding: 0 14px;
+  border-radius: 999px; color: var(--np-text-2); font-weight: 600; cursor: pointer;
+}
+.dy-scope input:checked + span { background: var(--np-white); color: var(--np-bg); font-weight: 800; }
+.dy-scope input:focus-visible + span { outline: 2px solid var(--np-yellow); outline-offset: 2px; }
+@media (max-width: 560px) { .dy-scope { flex-basis: 100%; } }

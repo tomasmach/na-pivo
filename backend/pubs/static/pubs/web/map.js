@@ -147,10 +147,15 @@ function initialView(lib, data, box) {
   const bounds = new lib.LngLatBounds();
   for (const p of points) bounds.extend([p.lng, p.lat]);
   const pad = Math.round(Math.min(64, box.clientWidth * 0.14, box.clientHeight * 0.16));
+  // A pill is centred on its pin, so half the widest label (12 px bold, ~8 px a letter) must fit beside it.
+  const half = data.kind === "pins" ? Math.min(110, Math.max(...points.map((p) => p.label.length)) * 4 + 26) : 0;
+  const side = Math.max(pad, half);
   // Stop names sit right of their numbers, so a route keeps more room on that side.
-  const right = data.kind === "route" && box.clientWidth > 480 ? pad + 110 : pad;
+  const right = data.kind === "route" && box.clientWidth > 480 ? pad + 110 : side;
+  // The zoom buttons cover the top left corner (16 px in, 42 px wide).
+  const left = side + (data.kind === "decor" ? 0 : 58);
   // The credit line sits along the bottom edge; keep pins off it.
-  return { bounds, fitBoundsOptions: { padding: { top: pad, bottom: pad + 20, left: pad, right }, maxZoom: 16 } };
+  return { bounds, fitBoundsOptions: { padding: { top: pad, bottom: pad + 20, left, right }, maxZoom: 16 } };
 }
 
 async function start(frame) {

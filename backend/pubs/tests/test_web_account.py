@@ -86,7 +86,7 @@ def test_pages_render_real_data_within_a_query_budget(django_assert_max_num_quer
         "/piva?pivo=pilsner-urquell": "Tvoje známka",
         "/parta": "klara chce do party",
         "/nastaveni": "tomas@example.com",
-        "/moje-hospody": "Zatím žádná hospoda",
+        "/moje-hospody": "Tady zatím hospody nemám",
         "/vycep": "Výčep je zatím prázdný",
         "/parta?hledat=vl": "@vlk",
     }
@@ -255,4 +255,101 @@ def test_adding_a_pub_from_the_web(monkeypatch, settings):
     assert added.status_code == 201, added.content
     pub = UserAddedPub.objects.get()
     page = client.get(f"/moje-hospody?hospoda={pub.cache_key}").content.decode()
-    assert "U Komunity" in page and "Jičínská 12, Praha" in page
+    # Before the hourly catalogue knows it, the pub I added is on my map with its address.
+    assert "U Komunity" in page and "Jičínská 12" in page and "Přidal jsi ji ty" in page
+
+
+def test_beer_without_global_numbers_says_so_instead_of_zeros():
+    _, token = _member("tomas@example.com", "tomas")
+    _checkin(token)
+    html = _web("tomas@example.com").get("/piva?pivo=pilsner-urquell").content.decode()
+    # The hourly ranking job has not counted the beer yet: no "0 vypito" and no lone dash for the rating.
+    assert "Celkovou známku zatím nemá." in html
+    assert "vypito v Na pivo" not in html and 'npa-detail__big">–' not in html
+
+
+def test_friend_invite_link_on_the_web(settings):
+    inviter, inviter_token = _member("klara@example.com", "klara")
+    code = _bearer(inviter_token).get("/v1/friends/invite").json()["code"]
+
+    guest = Client().get(f"/p/{code}")
+    assert guest.status_code == 200
+    assert f"/prihlaseni?next=/p/{code}" in guest.content.decode()
+    assert "klara" not in guest.content.decode()
+
+    _member("tomas@example.com", "tomas")
+    client = _web("tomas@example.com")
+    page = client.get(f"/p/{code}")
+    assert page.status_code == 200 and page["Cache-Control"] == "private, no-store"
+    assert page.context["state"] == "valid" and "klara tě zve do party" in page.content.decode()
+    added = client.post("/v1/friends/requests", {"invite_code": code}, content_type="application/json", **_csrf(client))
+    assert added.status_code == 201
+    assert client.get(f"/p/{code}").context["state"] in ("pending", "friends")
+    assert _web("klara@example.com").get(f"/p/{code}").context["state"] == "self"
+    assert client.get("/p/neznamy-kod").context["state"] == "invalid"
+
+
+def test_pubs_page_shows_the_city_catalogue_with_my_pubs_and_where_the_crew_is(django_assert_max_num_queries):
+    from django.utils import timezone
+
+    from pubs.models import PubDirectory
+
+    def pub(name, lat, lng):
+        return PubDirectory.objects.create(name=name, lat=lat, lng=lng, city="Praha 1", country="cz", source="test",
+                                           refreshed_at=timezone.now())
+
+    tiger, kalich = pub("U Zlatého tygra", 50.0875, 14.4213), pub("U Kalicha", 50.0753, 14.4251)
+    pub("U Pinkasů", 50.0832, 14.4237)
+    me, my_token = _member("tomas@example.com", "tomas")
+    friend, friend_token = _member("klara@example.com", "klara")
+    assert _bearer(friend_token).post("/v1/friends/requests", {"nickname": "tomas"}, format="json").status_code == 201
+    request_id = _bearer(my_token).get("/v1/friends").json()["incoming_requests"][0]["id"]
+    assert _bearer(my_token).post(f"/v1/friends/requests/{request_id}/accept").status_code == 200
+    now = timezone.now().isoformat()
+    assert _bearer(my_token).post("/v1/pub-visits", {"client_id": str(uuid.uuid4()), "name": "U Kalicha",
+                                  "lat": kalich.lat, "lng": kalich.lng, "city": "Praha 1", "started_at": now,
+                                  "updated_at": now}, format="json").status_code in (200, 201)
+    assert _bearer(friend_token).post("/v1/friends/pub-activity", {"client_id": str(uuid.uuid4()), "name": tiger.name,
+                                      "lat": tiger.lat, "lng": tiger.lng, "city": "Praha 1"}, format="json").status_code == 201
+    client = _web("tomas@example.com")
+
+    with django_assert_max_num_queries(60):
+        page = client.get("/moje-hospody")
+    names = [row["name"] for row in page.context["rows"]]
+    assert sorted(names) == ["U Kalicha", "U Pinkasů", "U Zlatého tygra"]
+    row = {row["name"]: row for row in page.context["rows"]}
+    assert row["U Kalicha"]["mine"][0].startswith("Byl jsi tu 1×") and row["U Pinkasů"]["mine"] == []
+    assert row["U Zlatého tygra"]["friends"] == ["klara"] and row["U Kalicha"]["friends"] == []
+    assert [row["name"] for row in client.get("/moje-hospody?moje=1").context["rows"]] == ["U Kalicha"]
+    assert [row["name"] for row in client.get("/moje-hospody?parta=1").context["rows"]] == ["U Zlatého tygra"]
+    assert [row["name"] for row in client.get("/moje-hospody?q=pinkas").context["rows"]] == ["U Pinkasů"]
+    picked = client.get(f"/moje-hospody?hospoda={kalich.cache_key}").context["selected"]
+    assert picked["name"] == "U Kalicha" and f"hospoda={kalich.cache_key}" in picked["log_url"]
+
+    # A friend who is not out right now leaves no trace on the page.
+    activity = _bearer(friend_token).get("/v1/friends").json()
+    assert activity is not None
+    from pubs.models import FriendPubActivity
+
+    FriendPubActivity.objects.filter(account=friend).update(expires_at=timezone.now())
+    assert all(not row["friends"] for row in client.get("/moje-hospody").context["rows"])
+
+
+def test_small_fixes_on_settings_and_crew():
+    me, _ = _member("tomas@example.com", "tomas")
+    friend, friend_token = _member("klara@example.com", "klara")
+    assert _bearer(friend_token).post("/v1/friends/requests", {"nickname": "tomas"}, format="json").status_code == 201
+    client = _web("tomas@example.com")
+    request_id = client.get("/v1/friends").json()["incoming_requests"][0]["id"]
+    assert client.post(f"/v1/friends/requests/{request_id}/accept", content_type="application/json", **_csrf(client)).status_code == 200
+
+    settings_html = client.get("/nastaveni?ulozeno=profil").content.decode()
+    assert "Profil je uložený." in settings_html and "Profil je uložený." not in client.get("/nastaveni").content.decode()
+    assert "Automaticky partě" in settings_html and ">Všem<" not in settings_html
+
+    board = client.get("/parta").context["board"]
+    mine = next(row for row in board if row["is_me"])
+    assert mine["name"] == "Ty" and mine["avatar_name"][0].upper() == "T"
+    assert client.get("/parta").context["needs_nickname"] is False
+    Account.objects.filter(pk=me.pk).update(nickname=None)
+    assert "Jak ti má parta říkat?" in client.get("/parta").content.decode()

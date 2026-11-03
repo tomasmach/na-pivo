@@ -200,3 +200,80 @@ def test_badge_tiers_match_the_app():
     app["partyEvenings"] = tuple(int(x) for x in party.group(1).split(","))
     assert len(app) == len(BADGES)
     assert {b.key: b.tiers for b in BADGES} == app
+
+
+def test_log_page_preselects_the_pub_a_pub_page_links_to():
+    from django.utils import timezone
+
+    from pubs.models import PubDirectory
+
+    kalich = PubDirectory.objects.create(name="U Kalicha", lat=50.0753, lng=14.4251, city="Praha 2", country="cz",
+                                         source="test", refreshed_at=timezone.now())
+    PubDirectory.objects.create(name="Kalich II", lat=50.0753, lng=14.4251, city="Praha 2", country="cz",
+                                source="test", refreshed_at=timezone.now())
+    client, _, _ = _web()
+
+    linked = client.get(f"/denik/zapsat?hospoda={kalich.cache_key}&n=U%20Kalicha").context["data"]["pubs"][0]
+    assert (linked["key"], linked["name"], linked["linked"]) == (kalich.cache_key, "U Kalicha", True)
+    assert (linked["lat"], linked["lng"]) == (50.0753, 14.4251)
+    # Two pubs share the cell: the name picks the other one.
+    assert client.get(f"/denik/zapsat?hospoda={kalich.cache_key}&n=Kalich%20II").context["data"]["pubs"][0]["name"] == "Kalich II"
+    for bad in ("zzzzzzzz", "nonsense", ""):
+        assert client.get(f"/en/diary/log?hospoda={bad}").context["data"]["pubs"] == []
+
+
+def test_night_goes_up_on_the_taproom_from_the_web_like_from_the_app():
+    client, me, csrf = _web()
+    friend, friend_account, _ = _web("kamos@example.com")
+    for account, nick in ((me, "tomas"), (friend_account, "kamos")):
+        account.nickname = nick
+        account.save(update_fields=["nickname"])
+    token = _bearer("kamos@example.com")
+    assert APIClient().post("/v1/friends/requests", {"nickname": "tomas"}, format="json",
+                            HTTP_AUTHORIZATION=f"Bearer {token}").status_code == 201
+    request_id = client.get("/v1/friends").json()["incoming_requests"][0]["id"]
+    assert client.post(f"/v1/friends/requests/{request_id}/accept", content_type="application/json",
+                       HTTP_X_CSRFTOKEN=csrf).status_code == 200
+    for minute in (0, 40, 95):
+        assert _drink(client, _local(1, 19, 0) + timedelta(minutes=minute), csrf=csrf).status_code == 201
+    day = d.drinking_day(_local(1, 19))
+
+    page = client.get(f"/denik/vecer/{day.isoformat()}")
+    publish = page.context["publish"]
+    payload = publish["night"]
+    assert publish["published"] is None and "Vyvěsit na Výčep" in page.content.decode()
+    assert payload == {
+        "client_id": f"night-{day.isoformat()}", "drinking_day": day.isoformat(),
+        "started_at": payload["started_at"], "ended_at": payload["ended_at"], "beer_count": 3, "wine_count": 0,
+        "soft_drink_count": 0, "shot_count": 0, "pub_names": ["U Pinkasů"], "city": "Praha", "duration_minutes": 95,
+    }
+
+    body = {**payload, "visibility": "friends", "updated_at": datetime.now(PRAGUE).isoformat()}
+    assert client.post("/v1/nights", body, content_type="application/json").status_code == 403
+    assert client.post("/v1/nights", body, content_type="application/json", HTTP_X_CSRFTOKEN=csrf).status_code == 201
+    feed = friend.get("/v1/nights/feed?scope=friends").json()["nights"]
+    assert [(n["author"]["nickname"], n["beer_count"], n["visibility"]) for n in feed] == [("tomas", 3, "friends")]
+    assert "Visí na Výčepu partě" in client.get(f"/denik/vecer/{day.isoformat()}").content.decode()
+
+    assert client.delete(f"/v1/nights/{payload['client_id']}", HTTP_X_CSRFTOKEN=csrf).status_code in (200, 204)
+    assert friend.get("/v1/nights/feed?scope=friends").json()["nights"] == []
+
+
+def test_released_app_still_publishes_a_night_with_its_bearer_token():
+    _, me, csrf = _web()
+    token = _bearer("stamgast@example.com")
+    day = d.drinking_day(_local(1, 19)).isoformat()
+    body = {"client_id": f"night-{day}", "drinking_day": day, "started_at": _local(1, 19).isoformat(),
+            "ended_at": _local(1, 21).isoformat(), "beer_count": 2, "wine_count": 0, "soft_drink_count": 0,
+            "shot_count": 0, "pub_names": ["U Pinkasů"], "visibility": "friends", "updated_at": _local(1, 21).isoformat()}
+    response = APIClient().post("/v1/nights", body, format="json", HTTP_AUTHORIZATION=f"Bearer {token}")
+    assert response.status_code == 201 and response.json()["night"]["beer_count"] == 2
+
+
+def test_beers_logged_in_one_go_have_no_time_at_the_table():
+    client, _, csrf = _web()
+    for second in (0, 20):
+        assert _drink(client, _local(1, 19) + timedelta(seconds=second), csrf=csrf).status_code == 201
+    page = client.get(f"/denik/vecer/{d.drinking_day(_local(1, 19)).isoformat()}")
+    assert [stat["label"] for stat in page.context["stats"]] == ["piva", "útrata", "hospoda"]
+    assert "duration_minutes" not in page.context["publish"]["night"]

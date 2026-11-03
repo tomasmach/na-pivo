@@ -7,6 +7,7 @@
     {% translate "Čí večery" as seg_label %}
     {% include "web/components/segment.html" with items=segment label=seg_label %}
   </div>
+  <button class="np-btn" type="button" data-dialog="npa-publish">{% icon "megaphone" "np-icon--s np-yellow" %}{% translate "Vyvěsit noc" %}</button>
 </header>
 <div class="npa-split npa-split--wide">
   <div class="npa-feed">
@@ -27,7 +28,11 @@
             {% if night.title %}<p class="npa-night__route">{{ night.title }}</p>{% endif %}
           </div>
           {% if night.is_mine %}
-            <span class="np-btn npa-round npa-round--mine" title="{% translate "Vlastní rundu si kupovat nemusíš." %}">{% icon "beer" "np-icon--s" %}{% translate "Runda" %} · {{ night.rounds }}</span>
+            <span class="npa-night__mine" data-scope>
+              <button class="np-btn np-btn--ghost" type="button" data-api="/v1/nights/{{ night.client_id|urlencode:"" }}" data-method="DELETE" data-confirm="{% translate "Stáhnout noc? Zmizí z Výčepu. V deníčku ti zůstane." %}">{% translate "Stáhnout z Výčepu" %}</button>
+              <span class="np-btn npa-round npa-round--mine" title="{% translate "Vlastní rundu si kupovat nemusíš." %}">{% icon "beer" "np-icon--s" %}{% translate "Runda" %} · {{ night.rounds }}</span>
+              <span class="np-field__error" data-error hidden></span>
+            </span>
           {% else %}
             <button class="np-btn npa-round" type="button" data-round="{{ night.id }}" aria-pressed="{% if night.my_round %}true{% else %}false{% endif %}">{% icon "beer" "np-icon--s" %}{% translate "Runda" %} · <span data-count>{{ night.rounds }}</span></button>
           {% endif %}
@@ -55,7 +60,7 @@
         <div class="np-stats">
           {% translate "vyvěšených nocí" as l1 %}{% include "web/components/stat.html" with value=summary.nights label=l1 %}
           {% translate "piv" as l2 %}{% include "web/components/stat.html" with value=summary.beers label=l2 %}
-          {% if summary.leader %}{% translate "vede" as l3 %}{% if summary.leader.kind == "city" %}{% include "web/components/stat.html" with value=summary.leader.name label=l3 %}{% else %}{% include "web/components/stat.html" with value=summary.leader.name|default:summary.leader.nickname label=l3 %}{% endif %}{% endif %}
+          {% if summary.leader %}{% translate "vede" as l3 %}{% if summary.leader.is_me %}{% translate "Ty" as me_label %}{% include "web/components/stat.html" with value=me_label label=l3 %}{% else %}{% include "web/components/stat.html" with value=summary.leader.name label=l3 %}{% endif %}{% endif %}
         </div>
       </section>
     {% endif %}
@@ -77,3 +82,4 @@
   </aside>
 </div>
 {% endblock %}
+{% block dialogs %}{% include "web/account/_publish.html" %}{% endblock %}

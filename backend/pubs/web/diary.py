@@ -17,11 +17,23 @@ from datetime import UTC, date, datetime, time, timedelta
 from django.db.models import Count, Q
 
 from pubs.api.stats import drinking_day, resolve_stats_timezone
-from pubs.models import Account, BeerCheckIn, BeerPhoto, DrinkLog, Friendship, PartyEveningMember
+from pubs.models import (
+    Account,
+    BeerCheckIn,
+    BeerPhoto,
+    DrinkLog,
+    Friendship,
+    PartyEveningMember,
+    PublishedNight,
+)
 
 _, TZ = resolve_stats_timezone(None)
 # The app's tempo chart stops after twelve hours.
 _TEMPO_MAX_HOURS = 12
+# Beers logged in one go (no "Do" time) sit a minute apart; that is no time at the table.
+MIN_TABLE_MINUTES = 15
+# The backend keeps five pub names per published night (``PublishedNightRequestSerializer``).
+_MAX_PUB_NAMES = 5
 
 
 @dataclass
@@ -301,3 +313,38 @@ def my_ratings(account: Account) -> dict[str, float]:
     ):
         ratings[name.strip().casefold()] = float(rating)
     return ratings
+
+
+def publish_payload(night: Night) -> dict:
+    """The ``POST /v1/nights`` body of one night, built like ``buildNightSummary`` in the app.
+
+    Counts, pub names, city and length only: no prices, GPS or single beers.
+    The caller adds ``visibility`` and ``updated_at``.
+    """
+
+    counts = Counter(drink.drink_type for drink in night.drinks)
+    names: list[str] = []
+    for stop in night.stops:
+        name = stop.name.strip()[:80]
+        if stop.in_pub and name and name not in names and len(names) < _MAX_PUB_NAMES:
+            names.append(name)
+    payload = {
+        # The app's key for the same night, so either side updates one post.
+        "client_id": f"night-{night.day.isoformat()}",
+        "drinking_day": night.day.isoformat(),
+        "started_at": night.start.isoformat(),
+        "ended_at": night.end.isoformat(),
+        "beer_count": counts[DrinkLog.DrinkType.BEER],
+        "wine_count": counts[DrinkLog.DrinkType.WINE],
+        "soft_drink_count": counts[DrinkLog.DrinkType.SOFT_DRINK],
+        "shot_count": counts[DrinkLog.DrinkType.SHOT],
+        "pub_names": names,
+        "city": next((drink.city for drink in night.drinks if drink.in_pub and drink.city), "")[:120],
+    }
+    if night.minutes >= MIN_TABLE_MINUTES:
+        payload["duration_minutes"] = night.minutes
+    return payload
+
+
+def published_nights(account: Account, days: list[date]) -> dict[date, PublishedNight]:
+    return {night.drinking_day: night for night in PublishedNight.objects.filter(account=account, drinking_day__in=days)}

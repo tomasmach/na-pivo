@@ -24,13 +24,14 @@
         </div>
         <p class="np-field__error" data-error hidden></p>
       </div>
-      <form class="npa-set__row npa-set__row--block" data-api="/v1/account/me" data-method="PATCH" data-ugc data-scope>
+      <form class="npa-set__row npa-set__row--block" data-api="/v1/account/me" data-method="PATCH" data-ugc data-scope data-done="?ulozeno=profil#profil">
         <div class="npa-fields">
           {% translate "Přezdívka" as l_nick %}{% translate "Uvidí ji parta a lidi u tvých hodnocení." as h_nick %}
           {% include "web/components/field.html" with name="nickname" label=l_nick value=me.nickname maxlength=20 autocomplete="nickname" hint=h_nick %}
           {% translate "Jméno" as l_name %}{% include "web/components/field.html" with name="display_name" label=l_name value=me.display_name maxlength=120 autocomplete="name" %}
         </div>
         <p class="np-alert" role="alert" data-error hidden></p>
+        {% if profile_saved %}<p class="npa-ok" role="status">{% translate "Profil je uložený." %}</p>{% endif %}
         <div><button class="np-btn np-btn--primary" type="submit">{% translate "Uložit profil" %}</button></div>
       </form>
       <div class="npa-set__row">
@@ -104,7 +105,7 @@
       <div class="npa-set__row" data-scope>
         <label class="npa-set__text" for="npa-autopublish">
           <span class="npa-set__title">{% translate "Vyvěšovat noci" %}</span>
-          <span class="npa-set__sub">{% translate "Komu se večer sám vyvěsí na Výčep. Ručně znamená jen to, co pustíš sám." %}</span>
+          <span class="npa-set__sub">{% translate "Komu se noc po „Dopito“ sama vyvěsí na Výčep. Ručně vyvěsíš jen noc, kterou vybereš." %}</span>
           <span class="np-field__error" data-error hidden></span>
         </label>
         <select class="npa-select" id="npa-autopublish" name="night_autopublish" data-toggle="/v1/account/me">

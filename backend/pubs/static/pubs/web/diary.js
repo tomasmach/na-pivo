@@ -320,7 +320,9 @@
           return;
         }
       }
-      window.location.assign(data.night_url.replace("0000-00-00", next.day));
+      // "Parta" opens the night's Vyvěsit dialog, like the app's Dopsat opens its Vyvěsit sheet.
+      var toParta = form.querySelector("input[name=scope]:checked").value === "parta";
+      window.location.assign(data.night_url.replace("0000-00-00", next.day) + (toParta ? "?vyvesit=parta" : ""));
     });
   }
 

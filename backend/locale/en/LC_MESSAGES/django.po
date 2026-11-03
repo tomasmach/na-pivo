@@ -5197,3 +5197,172 @@ msgstr "The invite opens in the app. Send the link to the phone where you have N
 #, python-format
 msgid "Mapér: %(title)s"
 msgstr "Mapper: %(title)s"
+
+# web: app fixes
+msgid "Celkovou známku zatím nemá."
+msgstr "No overall rating yet."
+
+msgid "Vyvěsit noc"
+msgstr "Post a night"
+
+msgid "Vyvěsit na Výčep"
+msgstr "Post to the Taproom"
+
+msgid "Vyvěsit celému světu"
+msgstr "Post to the whole world"
+
+msgid "Vyvěsit partě"
+msgstr "Post to your crew"
+
+msgid "náhled"
+msgstr "preview"
+
+msgid "Komu noc vyvěsit"
+msgstr "Who sees the night"
+
+msgid "Celý svět"
+msgstr "Whole world"
+
+msgid "Uvidí každý ve Výčepu"
+msgstr "Everyone in the Taproom sees it"
+
+msgid "Jen parta"
+msgstr "Crew only"
+
+msgid "Vyvěsí se počet piv, hospody, datum a délka noci. Útrata a jednotlivá piva zůstávají jen tobě."
+msgstr "What gets posted: number of beers, pubs, date and length of the night. Spending and individual beers stay yours."
+
+msgid "Zatím nemáš co vyvěsit."
+msgstr "Nothing to post yet."
+
+msgid "Prázdnou noc nevyvěsíš. Nejdřív musí něco padnout."
+msgstr "You can't post an empty night. Something has to go down first."
+
+msgid "Zapiš si pivo"
+msgstr "Log a beer"
+
+msgid "Nastavit přezdívku"
+msgstr "Set a nickname"
+
+msgid "Aby noc mohl vidět celý svět, potřebuješ přezdívku. Nastavíš ji v Nastavení za minutku."
+msgstr "For the whole world to see your night, you need a nickname. Set it in Settings in a minute."
+
+msgid "Visí na Výčepu celému světu"
+msgstr "Posted to the whole world"
+
+msgid "Visí na Výčepu partě"
+msgstr "Posted to your crew"
+
+msgid "Stáhnout z Výčepu"
+msgstr "Take down from the Taproom"
+
+msgid "Stáhnout noc? Zmizí z Výčepu. V deníčku ti zůstane."
+msgstr "Take the night down? It leaves the Taproom. It stays in your diary."
+
+msgid "Automaticky celému světu"
+msgstr "Automatically to the world"
+
+msgid "Automaticky partě"
+msgstr "Automatically to the crew"
+
+msgid "Komu se noc po „Dopito“ sama vyvěsí na Výčep. Ručně vyvěsíš jen noc, kterou vybereš."
+msgstr "Who your night goes up to on the Taproom by itself after \"Done\". Manual posts only the night you pick."
+
+msgid "Profil je uložený."
+msgstr "Profile saved."
+
+msgid "Jak ti má parta říkat?"
+msgstr "What should the crew call you?"
+
+msgid "Doplň si přezdívku, ať tě kámoši najdou."
+msgstr "Add a nickname so your mates can find you."
+
+msgid "Uložit přezdívku"
+msgstr "Save the nickname"
+
+msgid "Kdo večer uvidí"
+msgstr "Who sees the night"
+
+msgid "Jen pro mě"
+msgstr "Just me"
+
+msgid "%(name)s tě zve do party"
+msgstr "%(name)s is inviting you to the crew"
+
+msgid "Přidáš se? Uvidíte, kdo z vás je zrovna na pivu."
+msgstr "Joining? You'll see which of you is out for a beer."
+
+msgid "Přidat do party"
+msgstr "Add to the crew"
+
+msgid "Do party"
+msgstr "Go to your crew"
+
+msgid "Už jste parta."
+msgstr "You're already in a crew together."
+
+msgid "Žádost už ti visí v partě a čeká na potvrzení."
+msgstr "Your request is already in your crew, waiting to be accepted."
+
+msgid "To je tvůj vlastní kód."
+msgstr "That's your own code."
+
+msgid "Pozvánka už vypršela. Ať ti kámoš pošle novou."
+msgstr "This invite has expired. Ask your mate for a new one."
+
+msgid "Tuhle pozvánku neznám."
+msgstr "I don't know this invite."
+
+msgid "%(n)s společný kamarád"
+msgstr "%(n)s mutual friend"
+
+msgid "%(n)s společní kamarádi"
+msgstr "%(n)s mutual friends"
+
+msgid "%(n)s společných kamarádů"
+msgstr "%(n)s mutual friends"
+
+msgid "Přihlas se a přidej"
+msgstr "Sign in and join"
+
+msgid "Hledej hospodu, ulici nebo pivo"
+msgstr "Search for a pub, street or beer"
+
+msgid "Čepujou tankové"
+msgstr "Tank beer"
+
+msgid "Parta teď"
+msgstr "Crew now"
+
+msgid "Moje"
+msgstr "Mine"
+
+msgid "%(n)s hospoda"
+msgstr "%(n)s pub"
+
+msgid "%(n)s hospody"
+msgstr "%(n)s pubs"
+
+msgid "%(n)s hospod"
+msgstr "%(n)s pubs"
+
+msgid "Teď tu sedí: %(names)s"
+msgstr "Here right now: %(names)s"
+
+msgid "Tady zatím hospody nemám"
+msgstr "No pubs here yet"
+
+msgid "Vyber jiné město, nebo hospodu přidej."
+msgstr "Pick another city, or add the pub."
+
+msgid "Mapa hospod: %(city)s"
+msgstr "Map of pubs: %(city)s"
+
+msgid "za %(v)s"
+msgstr "per %(v)s"
+
+msgid "půllitr za %(price)s"
+msgstr "half a litre for %(price)s"
+
+msgid "Trasa"
+msgstr "Directions"

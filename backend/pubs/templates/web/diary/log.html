@@ -33,7 +33,7 @@
     <fieldset class="dy-log__group">
       <legend class="dy-log__legend">{% translate "Kde to bylo?" %}</legend>
       <div class="np-chips" data-places>
-        {% for pub in data.pubs %}<button class="np-chip" type="button" data-place="pub:{{ pub.key }}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}">{% icon "history" %}{{ pub.name }}</button>{% endfor %}
+        {% for pub in data.pubs %}<button class="np-chip" type="button" data-place="pub:{{ pub.key }}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}">{% if pub.linked %}{% icon "map-pin" %}{% else %}{% icon "history" %}{% endif %}{{ pub.name }}</button>{% endfor %}
         <button class="np-chip" type="button" data-place="private" aria-pressed="{% if not data.pubs %}true{% else %}false{% endif %}">{% icon "house" %}{% translate "Doma" %}</button>
         <button class="np-chip" type="button" data-place="other" aria-pressed="false">{% translate "Mimo hospodu" %}</button>
         <button class="np-chip" type="button" data-search-toggle aria-expanded="false" aria-controls="dy-search">{% icon "search" %}{% translate "Jiná hospoda" %}</button>
@@ -60,7 +60,14 @@
 
     {% if backfill %}<p class="np-small np-muted">{% translate "Starší zápisy jsou nejdřív jen pro tebe." %}</p>{% endif %}
     <p class="np-alert" data-status role="status" hidden></p>
-    <button class="np-btn np-btn--primary np-btn--l np-btn--block" type="submit" data-submit>{% if backfill %}{% translate "Uložit vzpomínku" %}{% else %}{% translate "Zapsat" %}{% endif %}</button>
+    <div class="dy-log__end">
+      <fieldset class="dy-scope">
+        <legend class="np-sr-only">{% translate "Kdo večer uvidí" %}</legend>
+        <label><input class="np-sr-only" type="radio" name="scope" value="me" checked><span>{% icon "lock" "np-icon--s" %}{% translate "Jen pro mě" %}</span></label>
+        <label><input class="np-sr-only" type="radio" name="scope" value="parta"><span>{% icon "users" "np-icon--s" %}{% translate "Parta" %}</span></label>
+      </fieldset>
+      <button class="np-btn np-btn--primary np-btn--l dy-log__submit" type="submit" data-submit>{% if backfill %}{% translate "Uložit vzpomínku" %}{% else %}{% translate "Zapsat" %}{% endif %}</button>
+    </div>
   </form>
 </section>
 <template id="dy-beer-row">

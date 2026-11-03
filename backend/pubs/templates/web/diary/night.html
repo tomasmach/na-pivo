@@ -1,11 +1,14 @@
-{% extends "web/app.html" %}
+{% extends "web/account/base.html" %}
 {% load i18n web %}
-{% block head %}<link rel="stylesheet" href="{% asset "diary.css" %}">{% endblock %}
-{% block content %}
+{% block head %}{{ block.super }}<link rel="stylesheet" href="{% asset "diary.css" %}">{% endblock %}
+{% block page %}
 <a class="dy-back" href="{{ crumb.url }}">{% icon "chevron-left" "np-icon--s" %}{{ crumb.label }}</a>
 <header class="dy-night-head">
-  <h1 class="np-app__title">{{ title }}</h1>
-  <p class="np-lead dy-night-head__sub">{{ subtitle }}</p>
+  <div>
+    <h1 class="np-app__title">{{ title }}</h1>
+    <p class="np-lead dy-night-head__sub">{{ subtitle }}</p>
+  </div>
+  {% include "web/account/_publish_button.html" %}
 </header>
 <div class="np-stats dy-stats dy-stats--night">
   {% for stat in stats %}<div class="np-stat{% if stat.hero %} dy-stat--yellow{% endif %}"><span class="np-stat__value">{{ stat.value }}</span><span class="np-stat__label">{{ stat.label }}</span></div>{% endfor %}
@@ -73,4 +76,5 @@
 </dialog>
 {{ data|json_script:"dy-night-data" }}
 {% endblock %}
+{% block dialogs %}{% include "web/account/_publish.html" %}{% endblock %}
 {% block scripts %}{{ block.super }}<script src="{% asset "diary.js" %}" defer></script>{% endblock %}

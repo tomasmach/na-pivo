@@ -50,7 +50,7 @@ from pubs.models import (
 )
 from pubs.price_map import PATHS as PRICE_PATHS
 from pubs.price_map import city_slug, headline_prices, render_city_og_image
-from pubs.web.pages import render_page, web_page
+from pubs.web.pages import login_url, render_page, web_page
 from pubs.web.routes import web_reverse
 
 # Lists longer than this get search and sorting, and start folded to this many rows.
@@ -71,7 +71,9 @@ def _stores(campaign: str) -> dict[str, str]:
     return {"app_store_url": app_store_url(campaign), "play_store_url": play_store_url(campaign)}
 
 
-def _invite(request: HttpRequest, path: str, deep_link: str, campaign: str, texts: dict) -> HttpResponse:
+def _invite(
+    request: HttpRequest, path: str, deep_link: str, campaign: str, texts: dict, sign_in: bool = False
+) -> HttpResponse:
     response = render_page(
         request,
         "web/reskin/invite.html",
@@ -81,6 +83,7 @@ def _invite(request: HttpRequest, path: str, deep_link: str, campaign: str, text
             "deep_link": deep_link,
             "headline": texts["headline"],
             "body": texts["body"],
+            "login_url": login_url(request) if sign_in else "",
             **_stores(campaign),
         },
         title=texts["title"],
@@ -94,15 +97,20 @@ def _invite(request: HttpRequest, path: str, deep_link: str, campaign: str, text
 
 @web_page
 def invite_landing(request: HttpRequest, code: str) -> HttpResponse:
-    """A generic, privacy-preserving landing for a Parta invite."""
+    """A generic, privacy-preserving landing for a Parta invite; signed in, the web accepts it."""
 
+    if request.web_account is not None:
+        # Imported here: the signed-in pages import this module's helpers.
+        from pubs.web.account_views import friend_invite
+
+        return friend_invite(request, code)
     encoded = quote(code, safe="")
     return _invite(request, web_reverse("friend-invite-landing", code=code), f"napivo://parta/pozvanka?code={encoded}", "invite", {
         "title": gettext("Přidej se k partě"),
         "description": gettext("Hospoda je lepší s kámoši. Otevři pozvánku v aplikaci Na pivo."),
         "headline": gettext("Kámoš tě zve do party."),
         "body": gettext("Otevři pozvánku v Na pivo a hned budeš vědět, kdy se jde na jedno."),
-    })
+    }, sign_in=True)
 
 
 @web_page

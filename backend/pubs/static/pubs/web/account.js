@@ -114,7 +114,12 @@
     var result = await send(el.dataset.api, { method: el.dataset.method || "POST", body: bodyOf(el), ugc: "ugc" in el.dataset });
     busy(el, false);
     if (!result.ok) return showError(scope, message(result));
-    if (el.dataset.done) window.location.assign(el.dataset.done);
+    if (el.dataset.done) {
+      // Assigning the address the page already has would only scroll, not show the saved state.
+      var target = new URL(el.dataset.done, window.location.href).href;
+      if (target === window.location.href) window.location.reload();
+      else window.location.assign(target);
+    }
     else if (el.dataset.ok) { showError(scope, ""); var ok = scope.querySelector("[data-ok-text]"); if (ok) { ok.textContent = el.dataset.ok; ok.hidden = false; } }
     else window.location.reload();
   }
@@ -243,6 +248,48 @@
       if (!result.ok) return showError(dialog, message(result));
       window.location.reload();
     });
+  }
+
+  // Vyvěsit noc: the app's POST /v1/nights for one night; the server keeps one post per drinking day.
+  var publish = document.querySelector("#npa-publish form");
+  if (publish) {
+    var publishDialog = publish.closest("dialog");
+    var publishSubmit = publish.querySelector("[data-submit]");
+    var nicknameLink = publish.querySelector("[data-nickname-link]");
+    var chosenVisibility = function () { return publish.querySelector("input[name=visibility]:checked").value; };
+    publish.addEventListener("change", function () {
+      publishSubmit.textContent = chosenVisibility() === "public" ? publish.dataset.labelPublic : publish.dataset.labelFriends;
+      showError(publishDialog, "");
+      if (nicknameLink) nicknameLink.hidden = true;
+    });
+    publish.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var visibility = chosenVisibility();
+      // Like the app: a public night needs a nickname, the world sees nobody without one.
+      if (visibility === "public" && !("nickname" in publish.dataset)) {
+        showError(publishDialog, text.needNickname);
+        if (nicknameLink) nicknameLink.hidden = false;
+        return;
+      }
+      var body = Object.assign(JSON.parse(publish.dataset.night), { visibility: visibility, updated_at: new Date().toISOString() });
+      busy(publish, true);
+      var result = await send("/v1/nights", { method: "POST", body: body, ugc: true });
+      busy(publish, false);
+      if (!result.ok) return showError(publishDialog, message(result));
+      var after = new URL(window.location.href);
+      after.searchParams.delete("vyvesit");
+      after.hash = "";
+      if (after.href === window.location.href) window.location.reload();
+      else window.location.replace(after.href);
+    });
+  }
+  // ?vyvesit=parta|svet opens the dialog, as the app's Dopsat opens its Vyvěsit sheet.
+  var asked = new URLSearchParams(window.location.search).get("vyvesit");
+  var askedDialog = document.getElementById("npa-publish");
+  if (asked && askedDialog) {
+    var preset = publish && publish.querySelector('input[name=visibility][value="' + (asked === "svet" ? "public" : "friends") + '"]');
+    if (preset) { preset.checked = true; publish.dispatchEvent(new Event("change")); }
+    askedDialog.showModal();
   }
 
   // Avatar: the same multipart upload as the app; the server re-encodes it.

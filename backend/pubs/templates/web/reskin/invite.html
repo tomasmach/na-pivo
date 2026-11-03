@@ -10,6 +10,7 @@
     <div class="rs-ticket__cut" aria-hidden="true"></div>
     <a class="np-btn np-btn--l np-btn--block rs-btn--ink np-on-phone" href="{{ deep_link }}">{% icon "smartphone" "np-icon--s" %}{% translate "Otevřít v appce" %}</a>
     <div class="np-on-desktop">{% include "web/reskin/_stores.html" with ink=True %}</div>
+    {% if login_url %}<a class="np-btn np-btn--l np-btn--block" href="{{ login_url }}">{% icon "log-in" "np-icon--s" %}{% translate "Přihlas se a přidej" %}</a>{% endif %}
   </section>
   <div class="rs-invite__after">
     <p class="np-muted np-small np-on-phone">{% translate "Když se nic nestane, nainstaluj nebo aktualizuj Na pivo a klepni znovu." %}</p>

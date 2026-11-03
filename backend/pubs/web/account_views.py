@@ -8,8 +8,9 @@ visibility, blocking, limits and the account lock stay in the API.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from urllib.parse import urlencode
+import json
+from datetime import datetime, timedelta
+from urllib.parse import quote, urlencode
 
 from django.conf import settings
 from django.db import transaction
@@ -23,6 +24,11 @@ from pubs import accounts
 from pubs.api import piva_views, vycep_views
 from pubs.api import views as api
 from pubs.api.auth_views import _disable_account_push_devices
+from pubs.api.pub_beers_views import city_name
+from pubs.enrichment import names_match
+from pubs.price_map import city_slug
+from pubs.web import diary as d
+from pubs.web import pubs_data, pubs_views
 from pubs.web.auth_views import _over_limit
 from pubs.web.pages import render_page, signed_in_page, web_page
 from pubs.web.pub_map import live_map, pub_map
@@ -46,6 +52,13 @@ _CHECKIN_WIRE = (
 def _api(request: HttpRequest, view, query: dict | None = None, **kwargs) -> dict | list | None:
     """Body of a ``/v1/`` GET answered for this browser session, or None on any error."""
 
+    status, data = _api_call(request, view, query, **kwargs)
+    return data if status == 200 else None
+
+
+def _api_call(request: HttpRequest, view, query: dict | None = None, **kwargs) -> tuple[int, dict | list | None]:
+    """Status and body of a ``/v1/`` GET answered for this browser session."""
+
     query_string = urlencode({key: value for key, value in (query or {}).items() if value not in (None, "")})
     sub = HttpRequest()
     sub.method = "GET"
@@ -56,7 +69,7 @@ def _api(request: HttpRequest, view, query: dict | None = None, **kwargs) -> dic
     sub.COOKIES = request.COOKIES
     sub.session = request.session
     response = view.as_view()(sub, **kwargs)
-    return response.data if response.status_code == 200 else None
+    return response.status_code, response.data
 
 
 def _labels() -> dict:
@@ -118,23 +131,32 @@ def _ago(value) -> str:
     return f"{local.day}. {local.month}."
 
 
+def shell_context() -> dict:
+    """What ``web/account/base.html`` needs: texts of ``account.js`` and the UGC policy version."""
+
+    return {
+        "js_text": {
+            "offline": gettext("Jsi bez internetu. Zkus to znovu, až chytíš signál."),
+            "tooMany": gettext("Moc pokusů za sebou. Dej si chvilku pauzu a zkus to znovu."),
+            "failed": gettext("Nepovedlo se to. Zkus to prosím znovu."),
+            "copied": gettext("Zkopírováno"),
+            "verdicts": _labels()["verdicts"],
+            "fillAll": gettext("Vyplň název, město i adresu."),
+            "lookupDown": gettext("Adresu teď nedokážu dohledat. Zkus to za chvíli, vyplněné údaje ti tu nechám."),
+            "notFound": gettext("Tuhle adresu jsem nenašel. Zkontroluj ulici s číslem a město."),
+            "needNickname": gettext("Aby noc mohl vidět celý svět, potřebuješ přezdívku. Nastavíš ji v Nastavení za minutku."),
+        },
+        "ugc_version": settings.UGC_POLICY_VERSION,
+    }
+
+
 def _render(
     request: HttpRequest, template: str, context: dict, *, title: str, section: str = "", with_map: bool = False
 ) -> HttpResponse:
-    js_text = {
-        "offline": gettext("Jsi bez internetu. Zkus to znovu, až chytíš signál."),
-        "tooMany": gettext("Moc pokusů za sebou. Dej si chvilku pauzu a zkus to znovu."),
-        "failed": gettext("Nepovedlo se to. Zkus to prosím znovu."),
-        "copied": gettext("Zkopírováno"),
-        "verdicts": _labels()["verdicts"],
-        "fillAll": gettext("Vyplň název, město i adresu."),
-        "lookupDown": gettext("Adresu teď nedokážu dohledat. Zkus to za chvíli, vyplněné údaje ti tu nechám."),
-        "notFound": gettext("Tuhle adresu jsem nenašel. Zkontroluj ulici s číslem a město."),
-    }
     return render_page(
         request,
         template,
-        {"js_text": js_text, "ugc_version": settings.UGC_POLICY_VERSION, **context},
+        {**shell_context(), **context},
         title=title,
         section=section,
         indexable=False,
@@ -312,75 +334,259 @@ def beers(request: HttpRequest) -> HttpResponse:
 # ---------------------------------------------------------------------------
 
 
-def _pub_url(cache_key: str, name: str) -> str:
-    return f"/h/{cache_key}?{urlencode({'n': name})}" if cache_key else ""
+_DEFAULT_CITY = "praha"
+_MY_PUBS_FILTERS = ("open", "max55", "tank", "garden", "parta", "moje")
+
+
+def _my_pub_info(request: HttpRequest) -> dict[str, list[dict]]:
+    """My visits, favourites and added pubs per cache key; a cell can hold more pubs, so each keeps its name."""
+
+    visits = (_api(request, api.PubVisitView) or {}).get("visits") or []
+    favorites = (_api(request, api.PubFavoriteView) or {}).get("favorites") or []
+    added = _api(request, api.UserAddedPubView) or []
+    mine: dict[str, list[dict]] = {}
+
+    def entry(key: str, row: dict) -> dict:
+        name = row.get("name") or ""
+        rows = mine.setdefault(key, [])
+        found = next((item for item in rows if names_match(item["name"], name)), None)
+        if found is None:
+            found = {"name": name, "city": row.get("city") or "", "visits": 0, "last": None, "favorite": False,
+                     "added": None, "lat": row.get("lat"), "lng": row.get("lng")}
+            rows.append(found)
+        return found
+
+    for visit in visits:
+        if visit.get("cache_key"):
+            item = entry(visit["cache_key"], visit)
+            item["visits"] += 1
+            started = _when(visit.get("started_at"))
+            if started and (item["last"] is None or started > item["last"]):
+                item["last"] = started
+    for favorite in favorites:
+        if favorite.get("cache_key"):
+            entry(favorite["cache_key"], favorite)["favorite"] = True
+    for row in added:
+        if row.get("cache_key"):
+            entry(row["cache_key"], row)["added"] = row
+    return mine
+
+
+def _mine_lines(item: dict | None) -> list[str]:
+    if not item:
+        return []
+    lines = []
+    if item["visits"]:
+        visited = gettext("Byl jsi tu %(n)s×") % {"n": item["visits"]}
+        lines.append(f"{visited} · {gettext('naposledy %(when)s') % {'when': _ago(item['last'])}}" if item["last"] else visited)
+    if item["favorite"]:
+        lines.append(gettext("Máš ji v oblíbených"))
+    if item["added"]:
+        lines.append(gettext("Přidal jsi ji ty"))
+    return lines
+
+
+def _slug_of(raw_city: str) -> str:
+    return city_slug(city_name(raw_city)) if raw_city else ""
+
+
+def _my_city(mine: dict[str, list[dict]], cities: dict, picked: str, pub_key: str) -> str:
+    """The picked city, else the city of the picked pub, else of my newest visit, else Prague.
+
+    A city only my own added pub is in counts too: the catalogue rebuilds once an hour.
+    """
+
+    known = set(cities) | {_slug_of(item["city"]) for items in mine.values() for item in items} - {""}
+    if picked in known:
+        return picked
+    parsed = pubs_data.parse_pub_key(pub_key)
+    if parsed:
+        places = [pub["c"] for pub in pubs_data._candidates(parsed[1])]
+        places += [_slug_of(item["city"]) for item in mine.get(parsed[1], [])]
+        found = next((slug for slug in places if slug in known), "")
+        if found:
+            return found
+    newest = sorted(
+        (item for items in mine.values() for item in items if item["last"]),
+        key=lambda item: item["last"], reverse=True,
+    )
+    for item in newest:
+        slug = _slug_of(item["city"])
+        if slug in known:
+            return slug
+    return _DEFAULT_CITY if _DEFAULT_CITY in known else next(iter(sorted(known)), "")
 
 
 @signed_in_page
 def my_pubs(request: HttpRequest) -> HttpResponse:
-    visits = (_api(request, api.PubVisitView) or {}).get("visits") or []
-    favorites = (_api(request, api.PubFavoriteView) or {}).get("favorites") or []
-    added = _api(request, api.UserAddedPubView) or []
+    """The pubs of a city on a map, like the app's Hospody, with what I know about each of them.
 
-    pubs: dict[str, dict] = {}
+    The catalogue and its filters are the public ones of ``/hospody/<město>``. "Parta teď"
+    only uses the friends the app shows sitting in a pub right now (``active_friends``).
+    """
 
-    def _pub(key: str, name: str, city: str, row: dict) -> dict:
-        pub = pubs.setdefault(key, {"key": key, "name": name, "city": city, "visits": 0, "last": None,
-                                    "favorite": False, "added": None, "lat": None, "lng": None})
-        if pub["lat"] is None and row.get("lat") is not None and row.get("lng") is not None:
-            pub["lat"], pub["lng"] = row["lat"], row["lng"]
-        return pub
+    mine = _my_pub_info(request)
+    cities = pubs_data.catalogue()["cities"]
+    slug = _my_city(mine, cities, request.GET.get("mesto", ""), request.GET.get("hospoda", ""))
+    data = pubs_data.city_pubs(slug) if slug else None
+    base = web_reverse("web-my-pubs")
+    get = request.GET
+    chosen = {key: get.get(key) == "1" for key in _MY_PUBS_FILTERS}
+    sort = get.get("razeni", "")
+    sort = sort if sort in pubs_views.SORTS else ""
+    query = get.get("q", "").strip()[:80]
+    params = {"mesto": slug if get.get("mesto") else "", "q": query, "razeni": sort,
+              **{key: "1" for key, on in chosen.items() if on}}
 
-    for visit in visits:
-        if not visit.get("cache_key"):
-            continue
-        pub = _pub(visit["cache_key"], visit.get("name") or "", visit.get("city") or "", visit)
-        pub["visits"] += 1
-        started = _when(visit.get("started_at"))
-        if started and (pub["last"] is None or started > pub["last"]):
-            pub["last"] = started
-    for favorite in favorites:
-        if favorite.get("cache_key"):
-            _pub(favorite["cache_key"], favorite.get("name") or "", favorite.get("city") or "", favorite)["favorite"] = True
-    for row in added:
-        pub = _pub(row.get("cache_key") or f"added-{row['client_id']}", row.get("name") or "", row.get("city") or "", row)
-        pub["added"] = row
+    def url(**changes) -> str:
+        merged = {key: value for key, value in {**params, **changes}.items() if value}
+        return f"{base}?{urlencode(merged)}" if merged else base
 
-    items = sorted(pubs.values(), key=lambda pub: (pub["visits"], pub["last"] or datetime.min.replace(tzinfo=UTC)), reverse=True)
-    for pub in items:
-        parts = []
-        if pub["visits"]:
-            parts.append(gettext("Byl jsi tu %(n)s×") % {"n": pub["visits"]})
-        if pub["last"]:
-            parts.append(gettext("naposledy %(when)s") % {"when": _ago(pub["last"])})
-        pub["meta"] = " · ".join(parts)
-        pub["address"] = ", ".join(part for part in ((pub["added"] or {}).get("address"), pub["city"]) if part)
-        pub["status"] = gettext("Přidal jsi ji ty") if pub["added"] else ""
-        pub["url"] = f"{web_reverse('web-my-pubs')}?{urlencode({'hospoda': pub['key']})}"
-        pub["public_url"] = _pub_url(pub["key"] if not pub["key"].startswith("added-") else "", pub["name"])
+    now = timezone.now()
+    out_now: dict[str, list[str]] = {}
+    for row in (_api(request, api.FriendsView) or {}).get("active_friends") or []:
+        if row.get("cache_key"):
+            out_now.setdefault(row["cache_key"], []).append(_person(row.get("account")))
 
-    picked = request.GET.get("hospoda", "")
-    selected = next((pub for pub in items if pub["key"] == picked), items[0] if items else None)
-    on_map = [pub for pub in items if pub["lat"] is not None][:MAP_PUBS]
-    if selected is not None and selected["lat"] is not None and selected not in on_map:
-        on_map.append(selected)
-    # The selected pub first: the fallback drawing makes its first pin the yellow one.
-    on_map.sort(key=lambda pub: pub is not selected)
+    rows = []
+    for pub in (data or {}).get("list") or []:
+        row = pubs_views._pub_row(pub, now, data["name"])
+        item = next((item for item in mine.get(pub["cache_key"], []) if names_match(item["name"], pub["name"])), None)
+        row["mine"] = _mine_lines(item)
+        row["favorite"] = bool(item and item["favorite"])
+        row["visits"] = item["visits"] if item else 0
+        row["friends"] = out_now.get(pub["cache_key"], [])
+        rows.append(row)
+
+    # My pubs the catalogue does not list (yet): one I just added, or one hidden from the public lists.
+    listed = {(row["cache_key"], row["name"]) for row in rows}
+    for key, items in mine.items():
+        for item in items:
+            added = item["added"] or {}
+            if item["lat"] is None or _slug_of(item["city"]) != slug:
+                continue
+            if any(cache_key == key and names_match(item["name"], name) for cache_key, name in listed):
+                continue
+            row = pubs_views._pub_row({
+                "key": key, "cache_key": key, "name": item["name"], "district": "", "address": added.get("address") or "",
+                "lat": item["lat"], "lng": item["lng"], "hours": None, "beers": [], "tank": False, "price": None,
+                "volume": None, "garden": False, "rating": None, "raters": 0, "ratings": 0,
+            }, now, item["city"])
+            row.update(url="", mine=_mine_lines(item), favorite=item["favorite"], visits=item["visits"],
+                       friends=out_now.get(key, []))
+            rows.append(row)
+
+    tests = {
+        "open": lambda row: row["status"] and row["status"]["open"],
+        "max55": lambda row: row["price"] and pubs_data.half_litre(row["price"], row["volume"]) <= pubs_views.CHEAP_CZK,
+        "tank": lambda row: row["tank"],
+        "garden": lambda row: row["garden"],
+        "parta": lambda row: row["friends"],
+        "moje": lambda row: row["mine"],
+    }
+    visible = rows
+    for key, test in tests.items():
+        if chosen[key]:
+            visible = [row for row in visible if test(row)]
+    if query:
+        needle = pubs_data.fold(query)
+        visible = [
+            row for row in visible
+            if needle in pubs_data.fold(" ".join([row["name"], row["address"], row["district"], *row["beers"]]))
+        ]
+    visible = pubs_views._sorted(visible, sort)
+    try:
+        page = min(max(int(get.get("strana", "1")), 1), pubs_views.MAX_PAGES)
+    except ValueError:
+        page = 1
+    shown = visible[: page * pubs_views.PAGE_SIZE]
+
+    picked = get.get("hospoda", "")
+    selected = next((row for row in rows if picked and picked in (row["key"], row["cache_key"])), None)
+    selected = selected or (shown[0] if shown else None)
+    page_params = {"strana": str(page) if page > 1 else ""}
+    for row in shown:
+        row["pick_url"] = url(hospoda=row["key"], **page_params)
+        row["current"] = row is selected
+    on_map = shown[-pubs_views.PAGE_SIZE:]
+    if selected is not None and selected not in on_map:
+        on_map = [selected, *on_map]
+    on_map = sorted(on_map, key=lambda row: row is not selected)
     map_points = [
-        {"lat": pub["lat"], "lng": pub["lng"], "label": pub["name"], "url": pub["url"], "name": pub["name"],
-         "selected": pub is selected}
-        for pub in on_map
+        {"lat": row["lat"], "lng": row["lng"], "label": row["price_label"], "url": url(hospoda=row["key"], **page_params),
+         "name": row["name"], "selected": row is selected}
+        for row in on_map if row["lat"] is not None
     ]
+
+    def chip(label: str, key: str) -> dict:
+        return {"label": label, "url": url(**{key: "" if chosen[key] else "1"}, strana=""), "current": chosen[key]}
+
+    chips = []
+    if any(row["status"] for row in rows):
+        chips.append(chip(gettext("Otevřeno teď"), "open"))
+    if any(row["price"] for row in rows):
+        chips.append(chip(gettext("Do %(price)s Kč") % {"price": pubs_views.CHEAP_CZK}, "max55"))
+    if any(row["tank"] for row in rows):
+        chips.append(chip(gettext("Čepujou tankové"), "tank"))
+    if any(row["garden"] for row in rows):
+        chips.append(chip(gettext("Zahrádka"), "garden"))
+    if any(row["friends"] for row in rows) or chosen["parta"]:
+        chips.append(chip(gettext("Parta teď"), "parta"))
+    if any(row["mine"] for row in rows) or chosen["moje"]:
+        chips.append(chip(gettext("Moje"), "moje"))
+
+    my_slugs = []
+    for items in mine.values():
+        for item in items:
+            city = _slug_of(item["city"])
+            if city and city not in my_slugs:
+                my_slugs.append(city)
+    city_choices = my_slugs + [city["slug"] for city in pubs_data.cities_by_size()[:12] if city["slug"] not in my_slugs]
+    names = {code: city["name"] for code, city in cities.items()}
+    for items in mine.values():
+        for item in items:
+            names.setdefault(_slug_of(item["city"]), city_name(item["city"]))
+    menu_city = {
+        "label": names.get(slug) or gettext("Město"),
+        "current": False,
+        "items": [{"label": names[code], "url": url(mesto=code, hospoda="", strana=""), "current": code == slug}
+                  for code in city_choices],
+    }
+    sort_labels = {"": gettext("nejlíp hodnocené"), "price": gettext("nejlevnější"), "name": gettext("podle názvu")}
+    menu_sort = {
+        "label": gettext("Řadit: %(sort)s") % {"sort": sort_labels[sort]},
+        "current": False,
+        "items": [{"label": label, "url": url(razeni=key, strana=""), "current": sort == key} for key, label in sort_labels.items()],
+    }
+    if selected is not None:
+        selected["log_url"] = f"{web_reverse('web-log-beer')}?{urlencode({'hospoda': selected['cache_key'], 'n': selected['name']})}"
+        destination = f"{selected['lat']},{selected['lng']}"
+        selected["route_url"] = f"https://www.google.com/maps/dir/?{urlencode({'api': '1', 'destination': destination})}"
+        selected["ratings_label"] = _plural(selected["ratings"], gettext("%(n)s hodnocení"), gettext("%(n)s hodnocení"),
+                                            gettext("%(n)s hodnocení")) if selected["ratings"] else ""
+        selected["friends_label"] = (gettext("Teď tu sedí: %(names)s") % {"names": ", ".join(selected["friends"][:3])}
+                                     if selected["friends"] else "")
+    count = len(visible)
     return _render(
         request,
         "web/account/my_pubs.html",
         {
-            "pubs": items,
+            "rows": shown,
             "selected": selected,
-            "map": pub_map(map_points, size=(640, 420)),
+            "query": query,
+            "hidden_params": {key: value for key, value in params.items() if value and key != "q"},
+            "chips": chips,
+            "menu_city": menu_city,
+            "menu_sort": menu_sort,
+            "count_label": _plural(count, gettext("%(n)s hospoda"), gettext("%(n)s hospody"), gettext("%(n)s hospod")),
+            "more_url": url(strana=str(page + 1)) if len(visible) > len(shown) and page < pubs_views.MAX_PAGES else "",
+            "filtered": any(chosen.values()) or bool(query),
+            "clear_url": url(**{key: "" for key in _MY_PUBS_FILTERS}, q="", strana=""),
+            "map": pub_map(map_points, size=(640, 520)) if map_points else None,
             "live_map": live_map(map_points),
+            "city_name": names.get(slug, ""),
         },
-        title=gettext("Moje hospody"),
+        title=gettext("Hospody"),
         section="pubs",
         with_map=True,
     )
@@ -435,6 +641,7 @@ def crew(request: HttpRequest) -> HttpResponse:
     board = data.get("leaderboard") or []
     for row in board:
         row["name"] = gettext("Ty") if row.get("is_me") else _person(row.get("account"))
+        row["avatar_name"] = _person(row.get("account")).lstrip("@")
         row["unit"] = _plural(row.get("beers_30d") or 0, gettext("pivo"), gettext("piva"), gettext("piv"))
     board.sort(key=lambda row: -(row.get("beers_30d") or 0))
     chase = ""
@@ -472,6 +679,7 @@ def crew(request: HttpRequest) -> HttpResponse:
             "term": term,
             "results": results,
             "invite_url": invite.get("web_url") or "",
+            "needs_nickname": not request.web_account.nickname,
         },
         title=gettext("Parta"),
         section="crew",
@@ -490,6 +698,51 @@ def _duration(minutes) -> str:
     if not hours:
         return gettext("%(m)s min") % {"m": rest}
     return gettext("%(h)s h %(m)s min") % {"h": hours, "m": rest} if rest else gettext("%(h)s h") % {"h": hours}
+
+
+_SHAREABLE = ("friends", "public")
+# How far back "Vyvěsit noc" on the Výčep looks for a night to hang up.
+_PUBLISH_DAYS = 60
+
+
+def publish_context(account, night: d.Night | None) -> dict:
+    """The "Vyvěsit noc" dialog for one night, like ``VyvesitSheet`` in the app."""
+
+    if night is None:
+        return {"night": None}
+    payload = d.publish_payload(night)
+    published = d.published_nights(account, [night.day]).get(night.day)
+    if published is not None:
+        visibility = published.visibility
+    elif account.night_autopublish in _SHAREABLE:
+        visibility = account.night_autopublish
+    else:
+        visibility = account.share_default if account.share_default in _SHAREABLE else "friends"
+    local = timezone.localtime(night.start)
+    return {
+        "night": payload,
+        "night_json": json.dumps(payload, ensure_ascii=False),
+        "published": published,
+        "visibility": visibility,
+        "handle": f"@{account.nickname}" if account.nickname else (account.display_name or gettext("Ty")),
+        "has_nickname": bool(account.nickname),
+        "where": " · ".join(part for part in (payload["city"], f"{_ago(night.start)} {local:%H:%M}") if part),
+        "beers": _plural(payload["beer_count"], gettext("%(n)s pivo"), gettext("%(n)s piva"), gettext("%(n)s piv")),
+        "route": " · ".join(
+            part for part in (" → ".join(payload["pub_names"]), _duration(payload.get("duration_minutes"))) if part
+        ),
+    }
+
+
+def _night_to_publish(account) -> d.Night | None:
+    """The newest night not on the Výčep yet, else the newest, as the app picks it."""
+
+    today = d.today()
+    nights = d.nights_of(d.load_drinks(account, today - timedelta(days=_PUBLISH_DAYS), today))
+    if not nights:
+        return None
+    published = d.published_nights(account, [night.day for night in nights])
+    return next((night for night in nights if night.day not in published), nights[0])
 
 
 @signed_in_page
@@ -535,6 +788,8 @@ def taproom(request: HttpRequest) -> HttpResponse:
                 f"{base}?{urlencode({**({'kde': 'parta'} if scope == 'friends' else {}), 'dalsi': feed['next_cursor']})}"
                 if feed.get("next_cursor") else ""
             ),
+            "publish": publish_context(request.web_account, _night_to_publish(request.web_account)),
+            "log_url": web_reverse("web-log-beer"),
         },
         title=gettext("Výčep"),
         section="taproom",
@@ -565,12 +820,13 @@ def settings_page(request: HttpRequest) -> HttpResponse:
             "autopublish": me.get("night_autopublish") or "off",
             "autopublish_options": [
                 ("off", gettext("Ručně")),
-                ("friends", gettext("Partě")),
-                ("public", gettext("Všem")),
+                ("public", gettext("Automaticky celému světu")),
+                ("friends", gettext("Automaticky partě")),
             ],
             "diary_line": _plural(stats.get("total_beers") or 0, gettext("Deník: %(n)s zapsané pivo"),
                                   gettext("Deník: %(n)s zapsaná piva"), gettext("Deník: %(n)s zapsaných piv")),
             "grace_days": settings.ACCOUNT_DELETION_GRACE_DAYS,
+            "profile_saved": request.GET.get("ulozeno") == "profil",
             "export_url": "/v1/account/export",
             "lang_urls": {
                 "cs": web_reverse("web-settings", "cs"),
@@ -579,6 +835,45 @@ def settings_page(request: HttpRequest) -> HttpResponse:
         },
         title=gettext("Nastavení"),
         section="settings",
+    )
+
+
+def friend_invite(request: HttpRequest, code: str) -> HttpResponse:
+    """``/p/<kód>`` for a signed-in browser: who invites me, and "Přidat do party" like the app's claim screen.
+
+    Called by ``invite_landing``, which already set up the page and the session.
+    """
+
+    status, resolved = _api_call(request, api.FriendInviteResolveView, code=code)
+    inviter = (resolved or {}).get("inviter") if status == 200 else None
+    state = "valid"
+    if inviter is None:
+        state = "expired" if (resolved or {}).get("code") == "invite_expired" else "invalid"
+    elif inviter["id"] == str(request.web_account.public_id):
+        state = "self"
+    else:
+        crew = _api(request, api.FriendsView) or {}
+        if any(friend["id"] == inviter["id"] for friend in crew.get("friends") or []):
+            state = "friends"
+        elif any(row["recipient"]["id"] == inviter["id"] for row in crew.get("outgoing_requests") or []):
+            state = "pending"
+    name = _person(inviter)
+    mutual = ((resolved or {}).get("mutual_friends") or {}).get("count") or 0
+    return _render(
+        request,
+        "web/account/invite.html",
+        {
+            "state": state,
+            "inviter": inviter,
+            "name": name,
+            "initial": name.lstrip("@"),
+            "mutual": _plural(mutual, gettext("%(n)s společný kamarád"), gettext("%(n)s společní kamarádi"),
+                              gettext("%(n)s společných kamarádů")) if mutual else "",
+            "body_json": json.dumps({"invite_code": code}),
+            "deep_link": f"napivo://parta/pozvanka?code={quote(code, safe='')}",
+        },
+        title=gettext("Přidej se k partě"),
+        section="crew",
     )
 
 

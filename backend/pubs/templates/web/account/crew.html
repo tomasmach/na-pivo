@@ -4,6 +4,18 @@
 <header class="np-app__head"><h1 class="np-app__title">{% translate "Parta" %}</h1></header>
 <div class="npa-split npa-split--wide">
   <div class="np-stack">
+    {% if needs_nickname %}
+      <form class="np-card npa-nick" data-api="/v1/account/me" data-method="PATCH" data-ugc data-scope aria-labelledby="npa-nick-title">
+        <h2 class="np-title" id="npa-nick-title">{% translate "Jak ti má parta říkat?" %}</h2>
+        <p class="npa-note">{% translate "Doplň si přezdívku, ať tě kámoši najdou." %}</p>
+        <div class="npa-nick__row">
+          <label class="np-sr-only" for="npa-nick-input">{% translate "Přezdívka" %}</label>
+          <input class="np-input" id="npa-nick-input" name="nickname" maxlength="20" autocomplete="nickname" required placeholder="{% translate "Přezdívka" %}">
+          <button class="np-btn np-btn--primary" type="submit">{% translate "Uložit přezdívku" %}</button>
+        </div>
+        <p class="np-alert" role="alert" data-error hidden></p>
+      </form>
+    {% endif %}
     {% if incoming %}
       <section aria-labelledby="npa-req">
         <div class="npa-section-head"><h2 class="np-title" id="npa-req">{% translate "Žádosti o přátelství" %}</h2><span class="np-small">{{ incoming|length }}</span></div>
@@ -99,7 +111,7 @@
           {% for row in board %}
             <li{% if row.is_me %} class="is-me"{% endif %}>
               <span class="npa-board__pos{% if forloop.first %} np-yellow{% endif %}">{{ forloop.counter }}</span>
-              {% include "web/components/avatar.html" with name=row.name src=row.account.avatar_url size="s" ring=row.is_me %}
+              {% include "web/components/avatar.html" with name=row.avatar_name src=row.account.avatar_url size="s" ring=row.is_me %}
               <span class="npa-board__name">{{ row.name }}</span>
               <span class="npa-board__score">{{ row.beers_30d }}<small>{{ row.unit }}</small></span>
             </li>

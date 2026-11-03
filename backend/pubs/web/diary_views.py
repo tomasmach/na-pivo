@@ -14,12 +14,16 @@ from datetime import date, datetime, timedelta
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from django.utils import translation
+from django.utils.text import slugify
 from django.utils.translation import gettext, pgettext
 
 from pubs.api.profile_helpers import derive_account_badge_progress, derive_account_profile_stats
+from pubs.identity import normalize_pub_name
 from pubs.models import PubVisit
 from pubs.pivar import pivar_progress
 from pubs.web import diary as d
+from pubs.web import pubs_data
+from pubs.web.account_views import publish_context, shell_context
 from pubs.web.badges import earned_badges
 from pubs.web.pages import render_page, signed_in_page
 from pubs.web.routes import web_reverse
@@ -431,7 +435,7 @@ def night(request: HttpRequest, day: str) -> HttpResponse:
             for s in (
                 {"value": _num(the_night.beers), "label": plural(the_night.beers, gettext("pivo"), gettext("piva"), gettext("piv")), "hero": True},
                 {"value": _money(the_night.spent_czk), "label": gettext("útrata")} if the_night.priced else None,
-                {"value": _duration(the_night.minutes), "label": gettext("u stolu")} if the_night.minutes else None,
+                {"value": _duration(the_night.minutes), "label": gettext("u stolu")} if the_night.minutes >= d.MIN_TABLE_MINUTES else None,
                 {"value": _num(len(the_night.pub_keys)), "label": plural(len(the_night.pub_keys), gettext("hospoda"), gettext("hospody"), gettext("hospod"))} if the_night.pub_keys else None,
             )
             if s
@@ -485,6 +489,8 @@ def night(request: HttpRequest, day: str) -> HttpResponse:
         ],
         "log_url": log_url,
         "diary_url": month_url,
+        "publish": publish_context(account, the_night),
+        **shell_context(),
     }
     return render_page(request, "web/diary/night.html", context, title=title, section="diary", indexable=False)
 
@@ -511,6 +517,32 @@ def _recent_pubs(account) -> list[dict]:
     return pubs
 
 
+def _linked_pub(key: str, name_hint: str) -> dict | None:
+    """The pub a "Zapsat pivo" link from a pub page names by its cache key, or None for an unknown one.
+
+    A cell can hold more than one pub, so the optional name (``n``) or the slug of
+    a page address picks among them; without either the catalogue's first wins.
+    """
+
+    parsed = pubs_data.parse_pub_key(key.strip())
+    if parsed is None:
+        return None
+    slug, cache_key = parsed
+    candidates = [pub for pub in pubs_data._candidates(cache_key) if pub.get("lat") is not None]
+    if not candidates:
+        return None
+    hint = normalize_pub_name(name_hint)
+    pub = next(
+        (
+            pub for pub in candidates
+            if (hint and normalize_pub_name(pub["n"]) == hint) or (slug and slugify(pub["n"])[:60].strip("-") == slug)
+        ),
+        candidates[0],
+    )
+    return {"key": cache_key, "name": pub["n"], "lat": pub["lat"], "lng": pub["lng"], "city": pub["raw"],
+            "external_id": "", "linked": True}
+
+
 @signed_in_page
 def log_beer(request: HttpRequest) -> HttpResponse:
     account = request.web_account
@@ -532,10 +564,14 @@ def log_beer(request: HttpRequest) -> HttpResponse:
     ]
     recent = d.beer_tally(d.load_drinks(account, earliest, today))
     top = recent[0] if recent else None
+    pubs = _recent_pubs(account)
+    linked = _linked_pub(request.GET.get("hospoda", ""), request.GET.get("n", "")[:200])
+    if linked:
+        pubs = [linked, *(pub for pub in pubs if pub["key"] != linked["key"])]
     data = {
         "today": today.isoformat(),
         "earliest": earliest.isoformat(),
-        "pubs": _recent_pubs(account),
+        "pubs": pubs,
         "visits": visits,
         "beer": {"name": top[0], "price": top[2].price_czk} if top else None,
         "diary_url": web_reverse("web-diary"),

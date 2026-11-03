@@ -62,6 +62,7 @@
 .npa-detail__score-side { display: grid; gap: 6px; font-size: 14px; }
 .npa-detail__score-side .np-muted { display: inline-flex; align-items: center; gap: 6px; }
 .npa-detail__stats .np-stat__value { font-size: 32px; }
+.npa-detail__unrated { margin: 0; color: var(--np-muted); font-size: 15px; }
 .npa-detail__mine, .npa-detail__party {
   display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; padding-top: 18px; border-top: 1px solid var(--np-hairline);
 }
@@ -120,16 +121,28 @@
 .npa-radio input:checked + span .np-icon { color: var(--np-yellow); }
 .npa-radio input:focus-visible + span { outline: 2px solid var(--np-yellow); }
 
-/* Moje hospody */
-.npa-pubs { display: grid; }
-.npa-pub { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--np-radius); }
-.npa-pub + .npa-pub { box-shadow: 0 -1px 0 var(--np-hairline); }
-.npa-pub:hover, .npa-pub[aria-current="true"] { background: var(--np-control); }
-.npa-pub__body { display: grid; gap: 3px; flex: 1; min-width: 0; }
-.npa-pub__name { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; }
-.npa-pub__name .np-icon { color: var(--np-yellow); fill: var(--np-yellow); }
-.npa-pub__meta { color: var(--np-muted); font-size: 13px; }
-.npa-pub__status { color: var(--np-open); font-size: 13px; }
+/* Hospody (moje-hospody) */
+.npa-myp { display: grid; grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.25fr); gap: 24px; align-items: start; }
+.npa-myp__list { display: grid; gap: 4px; }
+.npa-myp__count { padding: 8px 12px 6px; }
+.npa-myp__rows { display: grid; }
+.npa-myp__row { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: var(--np-radius); }
+.npa-myp__row + .npa-myp__row { box-shadow: 0 -1px 0 var(--np-hairline); }
+.npa-myp__row:hover, .npa-myp__row[aria-current="true"] { background: var(--np-control); box-shadow: none; }
+.npa-myp__row[aria-current="true"] + .npa-myp__row, .npa-myp__row:hover + .npa-myp__row { box-shadow: none; }
+.npa-myp__body { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.npa-myp__name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 16px; font-weight: 700; }
+.npa-myp__rating { display: inline-flex; align-items: center; gap: 3px; color: var(--np-text-2); font-size: 13px; font-weight: 600; }
+.npa-myp__rating .np-icon { color: var(--np-white); fill: var(--np-white); width: 12px; height: 12px; }
+.npa-myp__name .np-yellow { fill: var(--np-yellow); }
+.npa-myp__meta { overflow: hidden; color: var(--np-muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.npa-myp__tap, .npa-myp__mine { overflow: hidden; color: var(--np-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.npa-myp__friends { display: flex; align-items: center; gap: 6px; color: var(--np-yellow); font-size: 12px; font-weight: 600; }
+.npa-myp__price { display: grid; justify-items: end; flex-shrink: 0; }
+.npa-myp__price b { font: 800 24px/1 var(--np-display); }
+.npa-myp__price span { color: var(--np-muted); font-size: 11px; }
+.npa-myp__more { margin-top: 8px; }
+.npa-myp__side { display: grid; gap: 20px; position: sticky; top: 24px; }
 .npa-pubcard { display: grid; gap: 16px; padding: 28px; }
 .npa-pubcard__name { font: 800 40px/1 var(--np-display); overflow-wrap: anywhere; }
 .npa-pubcard__lines { display: grid; gap: 10px; }
@@ -249,6 +262,8 @@
 
 @media (max-width: 1180px) {
   .npa-split, .npa-split--wide { grid-template-columns: minmax(0, 1fr); }
+  .npa-myp { grid-template-columns: minmax(0, 1fr); }
+  .npa-myp__side { position: static; order: -1; }
 }
 @media (max-width: 960px) {
   .npa-card { padding: 14px; }
@@ -283,3 +298,41 @@
 .npa-round--mine { cursor: default; }
 .npa-round--mine:hover { background: var(--np-control); }
 .npa-gone__inner { display: grid; gap: 28px; max-width: 560px; }
+.npa-nick { display: grid; gap: 12px; }
+.npa-nick__row { display: flex; gap: 10px; flex-wrap: wrap; }
+.npa-nick__row .np-input { flex: 1 1 200px; min-width: 0; }
+
+/* Vyvěsit noc */
+.npa-publish { display: grid; gap: 18px; }
+.npa-publish .npa-dialog__actions, .npa-publish .np-alert { margin-top: 0; }
+.npa-preview { display: grid; gap: 4px; padding: 16px; border: 1px solid var(--np-hairline); border-radius: var(--np-radius-l); background: var(--np-bg); }
+.npa-preview .npa-night__head { padding: 0 0 8px; }
+.npa-preview .npa-night__who { flex: 1; }
+.npa-preview .npa-night__beers { font-size: 34px; }
+.npa-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; padding: 0; border: 0; }
+.npa-choice > span {
+  display: grid; gap: 4px; height: 100%; padding: 14px; border: 1px solid var(--np-hairline); border-radius: var(--np-radius);
+  cursor: pointer;
+}
+.npa-choice .np-icon { color: var(--np-text-2); }
+.npa-choice input:checked + span { border-color: var(--np-white); background: var(--np-control); }
+.npa-choice input:checked + span .np-icon { color: var(--np-yellow); }
+.npa-choice input:focus-visible + span { outline: 2px solid var(--np-yellow); outline-offset: 2px; }
+.npa-publish__note { display: flex; gap: 8px; align-items: flex-start; }
+.npa-published { display: grid; justify-items: end; gap: 8px; }
+.npa-published__state { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.npa-night__mine { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+
+/* Pozvánka do party */
+.npa-claim { display: grid; justify-items: center; gap: 12px; max-width: 520px; margin: 40px auto 0; padding: 40px 28px; text-align: center; }
+.npa-claim .npa-dialog__text { margin: 0; }
+.npa-claim__icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--np-control); color: var(--np-muted); }
+.npa-claim__cta { width: 100%; margin-top: 8px; }
+.npa-claim .np-alert { width: 100%; }
+.npa-myp-head .npa-head-actions { flex-wrap: nowrap; }
+.npa-myp-head .npa-head-search { width: 360px; }
+.npa-myp-head .npa-head-actions .np-btn { flex-shrink: 0; }
+@media (max-width: 960px) {
+  .npa-myp-head .npa-head-actions { flex-wrap: wrap; width: 100%; }
+  .npa-myp-head .npa-head-search { width: 100%; }
+}

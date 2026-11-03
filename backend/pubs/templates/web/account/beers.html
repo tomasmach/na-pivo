@@ -82,19 +82,25 @@
     {% if selected %}
       <h2 class="npa-detail__name">{{ selected.beer_name }}</h2>
       {% if selected.kind %}<p class="npa-detail__kind">{{ selected.kind }}</p>{% endif %}
-      <div class="npa-detail__score">
-        <span class="npa-detail__big">{% if selected.global_rating is not None %}{{ selected.global_rating|floatformat:1 }}{% else %}–{% endif %}</span>
-        <span class="npa-detail__score-side">
-          {% if selected.global_rating is not None %}<span class="npa-stars npa-stars--l" aria-hidden="true">{% for n in stars %}{% if n <= selected.global_stars %}{% icon "star" "npa-star npa-star--on" %}{% else %}{% icon "star" "npa-star" %}{% endif %}{% endfor %}</span>{% endif %}
-          <span>{{ selected.count_label }}</span>
-          {% if selected.national_rank %}<span class="np-muted">{% icon "trophy" "np-icon--s" %}{% blocktranslate with rank=selected.national_rank %}{{ rank }}. v Česku{% endblocktranslate %}</span>{% endif %}
-        </span>
-      </div>
-      <div class="np-stats npa-detail__stats">
-        {% translate "vypito v Na pivo" as l1 %}{% include "web/components/stat.html" with value=selected.drunk_total label=l1 %}
-        {% translate "lidí ho pilo" as l2 %}{% include "web/components/stat.html" with value=selected.drinkers label=l2 %}
-        {% translate "tento týden" as l3 %}{% include "web/components/stat.html" with value=selected.drunk_week label=l3 %}
-      </div>
+      {% if selected.global_rating is not None %}
+        <div class="npa-detail__score">
+          <span class="npa-detail__big">{{ selected.global_rating|floatformat:1 }}</span>
+          <span class="npa-detail__score-side">
+            <span class="npa-stars npa-stars--l" aria-hidden="true">{% for n in stars %}{% if n <= selected.global_stars %}{% icon "star" "npa-star npa-star--on" %}{% else %}{% icon "star" "npa-star" %}{% endif %}{% endfor %}</span>
+            <span>{{ selected.count_label }}</span>
+            {% if selected.national_rank %}<span class="np-muted">{% icon "trophy" "np-icon--s" %}{% blocktranslate with rank=selected.national_rank %}{{ rank }}. v Česku{% endblocktranslate %}</span>{% endif %}
+          </span>
+        </div>
+      {% else %}
+        <p class="npa-detail__unrated">{% translate "Celkovou známku zatím nemá." %}</p>
+      {% endif %}
+      {% if selected.drunk_total %}
+        <div class="np-stats npa-detail__stats">
+          {% translate "vypito v Na pivo" as l1 %}{% include "web/components/stat.html" with value=selected.drunk_total label=l1 %}
+          {% translate "lidí ho pilo" as l2 %}{% include "web/components/stat.html" with value=selected.drinkers label=l2 %}
+          {% translate "tento týden" as l3 %}{% include "web/components/stat.html" with value=selected.drunk_week label=l3 %}
+        </div>
+      {% endif %}
       <div class="npa-detail__mine">
         <span>{% translate "Tvoje známka" %}</span>
         <span class="npa-stars npa-stars--l" role="img" aria-label="{% if selected.my_rating %}{% blocktranslate with n=selected.my_rating %}{{ n }} z 5 hvězd{% endblocktranslate %}{% else %}{% translate "Ještě bez známky" %}{% endif %}">{% for n in stars %}{% if n <= selected.my_rating %}{% icon "star" "npa-star npa-star--on" %}{% else %}{% icon "star" "npa-star" %}{% endif %}{% endfor %}</span>

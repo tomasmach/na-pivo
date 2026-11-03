@@ -8179,7 +8179,7 @@ def _sync_published_night_pub_references(night: PublishedNight) -> None:
 class PublishedNightView(APIView):
     """POST/DELETE /v1/nights — publish or unpublish one finished night."""
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
@@ -9758,7 +9758,7 @@ class FriendInviteResolveView(APIView):
     client can show "to je tvůj kód".
     """
 
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
