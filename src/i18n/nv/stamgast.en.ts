@@ -108,6 +108,9 @@ export const stamgastEn: typeof stamgastCs = {
   addNothing: "Don't add anything",
   boardDone: 'Menu updated!',
   retake: 'Take again',
+  pickAnother: 'Pick another photo',
+  writeByHand: 'Type them in yourself',
+  menuUnread: "I can't read the menu right now. Maybe you have no signal, try again in a bit.",
   reading: 'Reading the photo…',
   labelUnread: "I couldn't read the label. Try a closer photo.",
 

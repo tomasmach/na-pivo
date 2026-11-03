@@ -12,6 +12,7 @@ import {
   emptyWeeklyHours,
   historicalBeersAfterMenuReplacement,
   isSameBeerIdentity,
+  mergeBeerIntoMenu,
   normalizeEditableHoursInterval,
   parseOsmOpeningHoursToWeeklyHours,
   type CommunityBeer,
@@ -76,7 +77,7 @@ export function DoplnitInfoScreen() {
     useKompasState.getState().set({ hoursDraft: { key, hours: startHours } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [details.hoursLoaded, key]);
-  useEffect(() => () => useKompasState.getState().set({ hoursDraft: null }), []);
+  useEffect(() => () => useKompasState.getState().set({ hoursDraft: null, menuScan: null }), []);
   const setHours = (next: WeeklyHours) => useKompasState.getState().set({ hoursDraft: { key, hours: next } });
 
   const [rotating, setRotating] = useState<boolean | null>(null);
@@ -128,13 +129,37 @@ export function DoplnitInfoScreen() {
       actions: [{ label: L().reportBack }, { label: L().removeBeer, kind: 'danger', onPress: () => setBeers(shownBeers.filter((b) => b !== beer)) }],
     });
 
+  const scanMenu = () => {
+    const add = (scanned: CommunityBeer[]) => {
+      submit(undefined, scanned.reduce<CommunityBeer[]>((list, beer) => mergeBeerIntoMenu(list, beer), shownBeers));
+      setBeers(null);
+      toast({ kind: 'saved', title: t.nv.stamgast.boardDone, icon: 'list-plus' });
+    };
+    const open = (source: 'camera' | 'library') => {
+      useKompasState.getState().set({ menuScan: { known: shownBeers, add } });
+      router.push({ pathname: '/nv/vyfot', params: { mode: 'listek', source } });
+    };
+    dialog({
+      title: t.contribute.scanMenu.sheetTitle,
+      actions: [
+        { label: t.contribute.scanMenu.camera, kind: 'primary', onPress: () => open('camera') },
+        { label: t.contribute.scanMenu.library, kind: 'raised', onPress: () => open('library') },
+      ],
+    });
+  };
+
   const save = () => {
     const sendHours = hoursTouched && normalized ? normalized : undefined;
     const sendBeers = beersTouched ? shownBeers : undefined;
-    if (!sendHours && !sendBeers) {
-      nvBack(router);
-      return;
+    if (sendHours || sendBeers) {
+      submit(sendHours, sendBeers);
+      toast({ kind: 'saved', title: L().savedThanks, icon: 'map-pin-plus' });
     }
+    nvBack(router);
+  };
+
+  function submit(sendHours: WeeklyHours | undefined, sendBeers: CommunityBeer[] | undefined) {
+    if (!pub) return;
     const entry = buildCommunityEntry(
       {
         externalId: pub.id || null,
@@ -172,9 +197,7 @@ export function DoplnitInfoScreen() {
       }
       if (response.xpAwarded > 0) toast({ kind: 'xp', title: L().xpGained(response.xpAwarded), xp: response.xpAwarded });
     });
-    nvBack(router);
-    toast({ kind: 'saved', title: L().savedThanks, icon: 'map-pin-plus' });
-  };
+  }
 
   return (
     <Screen
@@ -275,7 +298,7 @@ export function DoplnitInfoScreen() {
             <T s={19} w={700}>
               {L().tapsTitle}
             </T>
-            <Press onPress={() => router.push({ pathname: '/nv/vyfot', params: { mode: 'tabule' } })} style={[s.row, { gap: 6 }]}>
+            <Press onPress={scanMenu} disabled={!details.hoursLoaded} style={[s.row, { gap: 6, opacity: details.hoursLoaded ? 1 : 0.4 }]}>
               <Icon name="camera" size={16} color={C.yellow} />
               <T s={15} w={600} c={C.yellow}>
                 {L().snapMenu}

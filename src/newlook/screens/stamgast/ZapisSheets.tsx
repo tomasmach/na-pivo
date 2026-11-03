@@ -23,6 +23,7 @@ import { Sheet } from '../../components/overlays';
 import { Button, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { toast } from '../../ui/store';
+import { useKompasState } from '../kompas/state';
 import { logDrink } from './counterActions';
 import { beerTally, drinkTally } from './eveningData';
 import { useBackfillPick, useCountPlace, useNvPlaceStore } from './placeStore';
@@ -563,16 +564,20 @@ function scanFailureMessage(status: string): string {
 
 type Phase = { step: 'shooting' } | { step: 'reading' } | { step: 'label'; beer: ScannedLabel } | { step: 'board'; missing: CommunityBeer[] } | { step: 'failed'; message: string };
 
-/** Camera for "Vyfoť etiketu" (home) or "Vyfoť tabuli" (pub): a real photo read by the vision helper. */
+/**
+ * Camera for "Vyfoť etiketu" (home), "Vyfoť tabuli" (pub) or the menu photo of
+ * "Doplnit info" (`listek`), which hands the confirmed beers back to that screen.
+ */
 export function VyfotScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const copy = t.nv.stamgast;
-  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const { mode, source } = useLocalSearchParams<{ mode?: string; source?: string }>();
   const label = mode === 'etiketa';
+  const fill = mode === 'listek';
   const place = useCountPlace();
   const pub = place?.kind === 'pub' ? place.pub : null;
-  const menu = usePubMenu(label ? null : pub);
+  const menu = usePubMenu(label || fill ? null : pub);
   const [uri, setUri] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>({ step: 'shooting' });
   const [checked, setChecked] = useState<boolean[]>([]);
@@ -582,17 +587,17 @@ export function VyfotScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!label && !pub) {
+    if (!label && !fill && !pub) {
       toast({ kind: 'info', title: t.counter.cameraMenuNeedsPub, icon: 'map-pin' });
       nvBack(router);
       return undefined;
     }
     void (async () => {
       setPhase({ step: 'shooting' });
-      const picked = await pickAndPrepareMenuPhoto('camera');
+      const picked = await pickAndPrepareMenuPhoto(fill && source === 'library' ? 'library' : 'camera');
       if (cancelled) return;
       if (picked.status === 'cancelled') {
-        if (attempt === 0) nvBack(router);
+        if (attempt === 0 || fill) nvBack(router);
         else setPhase({ step: 'failed', message: copy.labelUnread });
         return;
       }
@@ -619,10 +624,14 @@ export function VyfotScreen() {
       const result = await scanMenuPhoto(picked.uri);
       if (cancelled) return;
       if (result.status !== 'ok') {
-        setPhase({ step: 'failed', message: result.status === 'empty' ? t.counter.scanDrinksEmpty : scanFailureMessage(result.status) });
+        setPhase({
+          step: 'failed',
+          message: result.status === 'empty' ? t.counter.scanDrinksEmpty : fill && result.status === 'error' ? copy.menuUnread : scanFailureMessage(result.status),
+        });
         return;
       }
-      const known = new Set(menu.beers.map((b) => normalizeBeerName(b.name)));
+      const listed = fill ? (useKompasState.getState().menuScan?.known ?? []) : menu.beers;
+      const known = new Set(listed.map((b) => normalizeBeerName(b.name)));
       const missing = result.drinks
         .filter((d) => d.drinkType === 'beer' && !known.has(normalizeBeerName(d.name)))
         .map<CommunityBeer>((d) => ({ name: d.name, ...(d.priceCzk ? { priceCzk: d.priceCzk } : {}), ...(d.volumeMl ? { volumeMl: d.volumeMl } : {}) }));
@@ -637,6 +646,8 @@ export function VyfotScreen() {
   }, [attempt]);
 
   const retake = () => setAttempt((n) => n + 1);
+  const fromLibrary = fill && source === 'library';
+  const retakeLabel = fromLibrary ? copy.pickAnother : copy.retake;
   const n = checked.filter(Boolean).length;
   const panel = { position: 'absolute' as const, left: 10, right: 10, bottom: Math.max(insets.bottom, 12), backgroundColor: C.dialog, borderRadius: 28, padding: 20, gap: 14, borderWidth: 1, borderColor: C.tint };
 
@@ -669,11 +680,11 @@ export function VyfotScreen() {
           <T s={15} w={600} c={C.text2}>
             {phase.message}
           </T>
-          <Button label={copy.retake} icon="camera" onPress={retake} />
-          {label ? (
+          <Button label={retakeLabel} icon={fromLibrary ? 'image' : 'camera'} onPress={retake} />
+          {label || fill ? (
             <Press onPress={() => nvBack(router)} style={{ alignItems: 'center' }}>
               <T s={14} w={700} c={C.text2}>
-                {copy.notIt}
+                {fill ? copy.writeByHand : copy.notIt}
               </T>
             </Press>
           ) : null}
@@ -732,9 +743,16 @@ export function VyfotScreen() {
           ))}
           <Button
             label={n ? copy.addToBoard(n) : copy.addNothing}
-            disabled={n > 0 && !menu.fresh}
+            disabled={n > 0 && !fill && !menu.fresh}
             onPress={() => {
               const added = phase.missing.filter((_b, i) => checked[i]);
+              if (fill) {
+                const handoff = useKompasState.getState().menuScan;
+                useKompasState.getState().set({ menuScan: null });
+                if (handoff && added.length) handoff.add(added);
+                nvBack(router);
+                return;
+              }
               if (!added.length || !pub) {
                 nvBack(router);
                 return;
@@ -749,7 +767,7 @@ export function VyfotScreen() {
           />
           <Press style={{ alignItems: 'center' }} onPress={retake}>
             <T s={14} w={700} c={C.text2}>
-              {copy.retake}
+              {retakeLabel}
             </T>
           </Press>
         </View>

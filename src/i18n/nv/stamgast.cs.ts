@@ -116,6 +116,9 @@ export const stamgastCs = {
   addNothing: 'Nic nepřidávat',
   boardDone: 'Lístek doplněný!',
   retake: 'Vyfotit znovu',
+  pickAnother: 'Vybrat jinou fotku',
+  writeByHand: 'Napiš je ručně',
+  menuUnread: 'Lístek teď nepřečtu. Možná nemáš signál, zkus to za chvíli znovu.',
   reading: 'Čtu fotku…',
   labelUnread: 'Etiketu jsem nepřečetl. Zkus ji vyfotit zblízka.',
 

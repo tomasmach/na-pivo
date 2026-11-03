@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { useRouter } from 'expo-router';
 
 import { updateAccountPreferences } from '@/data/account';
-import type { WeeklyHours } from '@/data/communityHours';
+import type { CommunityBeer, WeeklyHours } from '@/data/communityHours';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import { EMPTY_PUB_SEARCH_FILTERS, normalizePubSearchFilters, type PubSearchFilters } from '@/data/pubSearchFilters';
@@ -28,6 +28,8 @@ type KompasState = {
   picked: Pub | null;
   /** Opening hours being edited in "Doplnit info", shared with the one-day sheet. */
   hoursDraft: { key: string; hours: WeeklyHours } | null;
+  /** A menu photo read for "Doplnit info": the beers it already lists and where the confirmed ones go. */
+  menuScan: { known: CommunityBeer[]; add: (beers: CommunityBeer[]) => void } | null;
   /** Pubs visited in one city, handed from the "Moje stopy" card to its list. */
   cityPubs: { name: string; pubs: VisitedPubSummary[] } | null;
   /** A point aimed on the pin map, picked up by "Přidat hospodu". */
@@ -45,6 +47,7 @@ export const useKompasState = create<KompasState>((set, get) => ({
   onlyDrunk: false,
   picked: null,
   hoursDraft: null,
+  menuScan: null,
   cityPubs: null,
   pin: null,
   set: (patch) => set(patch),
