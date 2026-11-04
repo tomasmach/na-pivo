@@ -39,9 +39,7 @@ tags: [critical, full, identity, blocked]
 - runScript:
     file: registration-input.js
     env: { PHASE: email }
-# Known Android failure NP-E2E-019: with the keyboard up from the e-mail field
-# the password field stays hidden below it. The keyboard's next key reaches it.
-- pressKey: Enter
+- tapOn: { id: auth-password }
 - inputText:
     text: ${MAESTRO_PASSWORD}
     label: Enter disposable fixture password
