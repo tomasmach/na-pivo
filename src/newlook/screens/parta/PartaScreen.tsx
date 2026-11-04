@@ -9,6 +9,7 @@ import {
   respondFriendRequest,
   shareFriendPubActivity,
   updateFriendSettings,
+  type FriendPresence,
   type FriendProfile,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
@@ -27,6 +28,7 @@ import { dialog, toast } from '../../ui/store';
 import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
 import { lastTogetherLabel, personInitial, personName, planTime, planTitle, ticketDay } from './partaModel';
+import { CheerButton } from './cheer';
 import { usePartaStore } from './partaStore';
 import { pingPerson, respondToPlan } from './planActions';
 
@@ -142,7 +144,7 @@ export function PlanTicket({ plan, width, big }: { plan: PartaPlan; width?: numb
   );
 }
 
-function LiveRow({ profile, sub, last }: { profile: FriendProfile; sub: string; last?: boolean }) {
+function LiveRow({ profile, sub, last, cheer }: { profile: FriendProfile; sub: string; last?: boolean; cheer?: FriendPresence }) {
   const [done, setDone] = useState(false);
   return (
     <Row
@@ -153,7 +155,7 @@ function LiveRow({ profile, sub, last }: { profile: FriendProfile; sub: string; 
       titleWeight={700}
       sub={sub}
       trailing={
-        <Press
+        cheer ? <CheerButton presence={cheer} /> : <Press
           haptic
           disabled={done}
           onPress={() => {
@@ -335,7 +337,7 @@ export function PartaScreen() {
                 leading={<Person initial={myProfile ? personInitial(myProfile) : t.nv.parta.you.slice(0, 1)} />}
                 title={t.nv.parta.you}
                 titleWeight={700}
-                sub={!visible ? t.nv.parta.invisible : me ? t.nv.parta.visibleAt(me.pubName) : t.nv.parta.visibleNotOut}
+                sub={!visible ? t.nv.parta.invisible : me ? (me.reactions?.cheers ? t.nv.parta.cheersAt(me.pubName, me.reactions.cheers) : t.nv.parta.visibleAt(me.pubName)) : t.nv.parta.visibleNotOut}
                 onPress={
                   me && visible && me.lat != null
                     ? () =>
@@ -349,7 +351,7 @@ export function PartaScreen() {
                 trailing={<Toggle value={visible} onChange={setVisible} />}
               />
               {presence.map((p, i) => (
-                <LiveRow key={p.account.id} profile={p.account} last={i === presence.length - 1 && homePresence.length === 0} sub={t.nv.parta.liveSub(p.pubName, p.beers)} />
+                <LiveRow key={p.account.id} profile={p.account} cheer={p} last={i === presence.length - 1 && homePresence.length === 0} sub={t.nv.parta.liveSub(p.pubName, p.beers)} />
               ))}
               {homePresence.map((p, i) => (
                 <LiveRow key={p.account.id} profile={p.account} last={i === homePresence.length - 1} sub={t.nv.parta.atSomeonesHome} />
