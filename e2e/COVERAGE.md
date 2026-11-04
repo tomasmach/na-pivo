@@ -4,25 +4,25 @@
 
 Nový vzhled (`app/nv`, `src/newlook`) nahradil staré obrazovky. Přepsané scénáře klikají na nové obrazovky a kontrolují stejné chování a stejné DB/API oracles jako dřív. Starší části dokumentu níže popisují ověření starého vzhledu a zůstávají jako historie.
 
-Ověření běželo na Androidu: vlastní AVD s profilem Pixel 10, obraz API 36 Google APIs x86_64 na linuxovém hostiteli, Maestro 2.11.0, revize `feat/new-look` se sloučenou opravou `8eec9ff0`. iOS na tomto stroji nejde spustit, přepsané scénáře tam zatím neprošly.
+Ověření běželo na Androidu: vlastní AVD s profilem Pixel 10, obraz API 36 Google APIs x86_64 na linuxovém hostiteli, Maestro 2.11.0, revize `feat/new-look` s opravou klávesnice `ba9e7311`. Každý přepsaný scénář prošel jednou včetně svého DB/API oracle; tři průchody za sebou se podle pravidla pouštějí až před releasem. Běhy `191a29df` (10 scénářů), `0f29d14a` (večer a Výčep po úpravě kroků Deníku) a `b6a27d22` (registrace). `login-keyboard.yaml` na produktovém kódu z `8eec9ff0` selhal a na `ba9e7311` prošel. iOS na tomto stroji nejde spustit, přepsané scénáře tam zatím neběžely.
 
 | Scénář | Chování, které hlídá | Android |
 |---|---|---|
-| `spike/persist-drink.yaml` | Přihlášení, pivo z lístku E2E U Testera, restart, přesný DB záznam | STAB |
-| `identity/login-keyboard.yaml` | Tlačítko přihlášení nad klávesnicí a klepnutí do pole Heslo (NP-E2E-018, NP-E2E-019) | STAB |
-| `identity/logout.yaml` | Offline pivo, odhlášení, další účet nevidí historii ani frontu | STAB |
-| `identity/delete.yaml` | Zrušené a potvrzené smazání, odvolané relace, prázdný deník po restartu | STAB |
-| `identity/password-reset.yaml` | Skutečný e-mail, nové heslo, staré heslo odmítnuté | STAB |
-| `identity/email-export.yaml` | Export odmítnutý před ověřením e-mailu, po ověření jen vlastní data | STAB |
-| `identity/profile.yaml` | Obsazená přezdívka, jméno, soukromý profil, pohled cizího účtu | STAB |
-| `diary/evening.yaml` | Offline pivo, Dopito, přejmenování a odebrání piva, sync, statistiky v Deníku | STAB |
-| `diary/vycep.yaml` | Offline vyvěšení noci, foreground sync (NP-E2E-007), noc ve Výčepu po restartu | STAB |
-| `places-social/feedback-offline.yaml` | Offline „Napiš mi“ s přílohou, restart, jediné doručení | STAB |
-| `places-social/report-offline.yaml` | Zrušené nahlášení nic neodešle, offline nahlášení skryje hospodu jen autorovi | STAB |
-| `places-social/pub-create-offline.yaml` | Offline hospoda se špendlíkem, jediné doručení, přejmenování zachová identitu | STAB |
-| `identity/registration.yaml` | Claim anonymní online i offline historie registrací | REG |
+| `spike/persist-drink.yaml` | Přihlášení, pivo z lístku E2E U Testera, restart, přesný DB záznam | 1× zelený |
+| `identity/login-keyboard.yaml` | Tlačítko přihlášení nad klávesnicí a klepnutí do pole Heslo (NP-E2E-018, NP-E2E-019) | 1× zelený |
+| `identity/logout.yaml` | Offline pivo, odhlášení, další účet nevidí historii ani frontu | 1× zelený |
+| `identity/delete.yaml` | Zrušené a potvrzené smazání, odvolané relace, prázdný deník po restartu | 1× zelený |
+| `identity/password-reset.yaml` | Skutečný e-mail, nové heslo, staré heslo odmítnuté | 1× zelený |
+| `identity/email-export.yaml` | Export odmítnutý před ověřením e-mailu, po ověření jen vlastní data | 1× zelený |
+| `identity/profile.yaml` | Obsazená přezdívka, jméno, soukromý profil, pohled cizího účtu | 1× zelený |
+| `diary/evening.yaml` | Offline pivo, Dopito, přejmenování a odebrání piva, sync, statistiky v Deníku | 1× zelený |
+| `diary/vycep.yaml` | Offline vyvěšení noci, foreground sync (NP-E2E-007), noc ve Výčepu po restartu | 1× zelený |
+| `places-social/feedback-offline.yaml` | Offline „Napiš mi“ s přílohou, restart, jediné doručení | 1× zelený |
+| `places-social/report-offline.yaml` | Zrušené nahlášení nic neodešle, offline nahlášení skryje hospodu jen autorovi | 1× zelený |
+| `places-social/pub-create-offline.yaml` | Offline hospoda se špendlíkem, jediné doručení, přejmenování zachová identitu | 1× zelený |
+| `identity/registration.yaml` | Claim anonymní online i offline historie registrací pod stejnou soukromou identitou | 1× zelený, tag `blocked` zůstává kvůli neověřenému iOS |
 
-Změny oproti starému vzhledu: přezdívku a viditelnost volí nový účet až po registraci, proto oracle registrace hledá původní anonymní identitu podle ID. Druhé pivo krátce po prvním appka potvrzuje dialogem „Pivo před chvilkou.“, sdílený krok `repeat-beer.yaml` ho potvrdí. Nový vzhled neukazuje u večera stav „Visí ve Výčepu“, vyvěšení proto test ověřuje přes DB a přes Výčep po restartu. Statistiky ukazuje měsíční přehled v Deníku místo samostatného listu.
+Změny oproti starému vzhledu: přezdívku a viditelnost volí nový účet až po registraci, proto oracle registrace hledá původní anonymní identitu podle ID. Přepínač „Veřejný profil“ je u nového účtu zapnutý, test ho vypne stejně jako dřív volba „Jen pro partu“. Registrace na Androidu prošla s plným heslem; dřívější iOS blokátor zadávání hesla na novém vzhledu ověřený není, proto `blocked` zůstává. Druhé pivo krátce po prvním appka potvrzuje dialogem „Pivo před chvilkou.“, sdílený krok `repeat-beer.yaml` ho potvrdí. Nový vzhled neukazuje u večera stav „Visí ve Výčepu“, vyvěšení proto test ověřuje přes DB a přes záložku Parta ve Výčepu po restartu. Statistiky ukazuje měsíční přehled v Deníku místo samostatného listu.
 
 ### Nepřepsané scénáře
 

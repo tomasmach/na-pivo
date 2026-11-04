@@ -1,7 +1,7 @@
 appId: ${MAESTRO_APP_ID}
 name: Registration claims online and offline history under the same private account
-# Blocked on iOS: the local React password category stayed "one", also with
-# character-by-character input. Limits are documented in ../../COVERAGE.md.
+# Blocked: on the old look iOS kept a one-character password. The new look passes
+# on Android; iOS is unverified. Limits are documented in ../../COVERAGE.md.
 tags: [critical, full, identity, blocked]
 ---
 - runFlow:
@@ -55,12 +55,19 @@ tags: [critical, full, identity, blocked]
     env:
       CASE: register
       PHASE: submitted
-# A new account picks its nickname and visibility; private is the default.
+# A new account picks its nickname and visibility; this person keeps it private.
 - extendedWaitUntil:
     visible: { id: profile-nickname }
     timeout: 20000
 - tapOn: { id: profile-nickname }
 - inputText: 'E2ERegister'
+- hideKeyboard
+- runFlow:
+    when:
+      visible: { id: profile-public, checked: true }
+    commands:
+      - tapOn: { id: profile-public }
+- assertVisible: { id: profile-public, checked: false }
 - tapOn: { id: profile-save }
 - extendedWaitUntil:
     notVisible: { id: profile-save }
