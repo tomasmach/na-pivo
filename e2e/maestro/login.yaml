@@ -10,15 +10,13 @@ appId: ${MAESTRO_APP_ID}
     text: >-
       ${typeof ACCOUNT === 'undefined' || ACCOUNT === 'primary' ? MAESTRO_EMAIL : ACCOUNT + '-' + MAESTRO_EMAIL}
     label: Enter disposable fixture email
-- tapOn:
-    id: auth-password
+# Known Android failure NP-E2E-019: the lifted submit button covers the password
+# field, so a tap there submits. identity/login-keyboard.yaml keeps failing on it;
+# the keyboard's next key reaches the field the same way a person can.
+- pressKey: Enter
 - inputText:
     text: ${MAESTRO_PASSWORD}
     label: Enter disposable fixture password
-# Known Android failure NP-E2E-018: the keyboard covers the submit button.
-# identity/login-keyboard.yaml keeps failing on it; here the keyboard is
-# closed so the other flows still reach the account they test.
-- hideKeyboard
 - tapOn:
     id: auth-submit
 - extendedWaitUntil:

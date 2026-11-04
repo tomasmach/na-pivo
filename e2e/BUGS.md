@@ -185,5 +185,15 @@ Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, oče
 - Skutečnost: klávesnice zakryje celý spodní blok s tlačítkem i odkazem. Formulář nad ní zůstane, tlačítko na obrazovce chybí. Posun obsahu tahem nahoru ho neodhalí: diagnostický běh `f80aedd7` nenašel tlačítko před posunem ani po něm. Odeslat jde jen klávesou Enter na klávesnici, nebo po zavření klávesnice. [Prohlédnutý snímek po posunu](https://files.tmach.dev/android-login-submit-covered-83d037887c4a4648b1ea.png), pole jsou prázdná.
 - Pravděpodobná příčina podle kódu: `PrihlaseniScreen` v `src/newlook/screens/profil/ProfilScreens.tsx` kreslí tlačítka v absolutně umístěném `View` mimo `KeyboardAwareScrollView`, ukotveném k dolnímu okraji obrazovky. Posun se ho netýká a Android edge-to-edge okno při otevřené klávesnici nezmenší.
 - Reprodukce: `tests/identity/login-keyboard.yaml`. Sdílený krok `maestro/login.yaml` před odesláním klávesnici zavře, aby ostatní scénáře ověřily svůj výsledek; komentář tam odkazuje sem.
-- Stav: neopraveno v této větvi. Oprava produktu čeká v samostatném PR #347 (`fix/login-button-above-keyboard`); po jeho sloučení má test projít. Test zůstává v `critical` i `full`, na Androidu do opravy selhává a nepočítá se mezi úspěšné průchody.
+- Stav: opraveno v PR #347 (`fix/login-button-above-keyboard`), sloučeném do `feat/new-look`. Na `feat/new-look` `13f54ae5` test na Androidu prošel; tlačítko i odkaz zůstávají nad klávesnicí. Na opravu navázala NP-E2E-019.
+
+## NP-E2E-019: zvednuté tlačítko přihlášení zakryje pole Heslo a klepnutí na něj odešle formulář
+
+- Priorita P1, přihlášení. Větev `feat/new-look` `13f54ae5` s opravou NP-E2E-018 a testovacími `testID` z této sady. Android emulátor s profilem Pixel 10, obraz API 36 Google APIs x86_64 na linuxovém hostiteli, Maestro 2.11.0. iOS zatím ověřený není.
+- Kroky: přeskočit onboarding, otevřít přihlášení (`/nv/prihlaseni`), klepnout do pole E-mail, napsat adresu a pak klepnout do pole Heslo.
+- Očekávání: pole Heslo dostane fokus a dá se do něj psát.
+- Skutečnost: tlačítko „Přihlásit se“ se s klávesnicí zvedne a zakryje skoro celé pole Heslo, nad tlačítkem zůstane jen jeho horní okraj. Klepnutí na místo pole trefí tlačítko a formulář se odešle s prázdným heslem, appka ukáže „Heslo musí mít alespoň 8 znaků.“. Posun obsahu tahem nahoru pole odhalí. Na pole se dá dostat i klávesou „další“ na klávesnici. Diagnostický běh `1c2f50aa`: [pole zakryté tlačítkem](https://files.tmach.dev/android-login-footer-covers-password-291fe4996a174b3d9b9d.png), [stav po klepnutí a posunu](https://files.tmach.dev/android-login-password-tap-submits-3230c7dc41824ae580aa.png). Oba snímky jsou prohlédnuté a obsahují jen syntetickou adresu.
+- Pravděpodobná příčina podle kódu: oprava NP-E2E-018 zvedá patičku obrazovky nad klávesnici, ale posun formuláře k aktivnímu poli nepočítá s její výškou. Pole pod aktivním polem tak zůstane schované za patičkou.
+- Reprodukce: `tests/identity/login-keyboard.yaml`. Sdílený krok `maestro/login.yaml` a reset hesla přecházejí z e-mailu na heslo klávesou „další“, aby ostatní scénáře ověřily svůj výsledek; komentář tam odkazuje sem.
+- Stav: neopraveno. Test zůstává v `critical` i `full`, na Androidu do opravy selhává a nepočítá se mezi úspěšné průchody.
 

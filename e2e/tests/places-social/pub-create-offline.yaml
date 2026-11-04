@@ -1,5 +1,5 @@
 appId: ${MAESTRO_APP_ID}
-name: Confirmed map pin queues one pub offline and delivers it once
+name: Confirmed map pin queues one pub and rename preserves its identity
 tags: [critical, full]
 ---
 - runFlow:
@@ -64,3 +64,19 @@ tags: [critical, full]
 - assertVisible: E2E Nová hospoda
 - evalScript: ${output.local.screenshot('places-added-pub-delivered')}
 - evalScript: ${output.ps.check('pub-created')}
+- tapOn: E2E Nová hospoda
+- extendedWaitUntil:
+    visible: { id: add-pub-name }
+    timeout: 15000
+- tapOn: { id: add-pub-name }
+- eraseText
+- inputText: E2E Přejmenovaná hospoda
+- hideKeyboard
+- tapOn: { id: add-pub-save, enabled: true }
+- evalScript: ${output.local.poll(function () { output.ps.check('pub-renamed'); }, 15000)}
+- extendedWaitUntil:
+    visible: E2E Přejmenovaná hospoda
+    timeout: 15000
+- assertNotVisible: E2E Nová hospoda
+- evalScript: ${output.local.screenshot('places-published-owner-edit')}
+- evalScript: ${output.ps.check('pub-renamed')}

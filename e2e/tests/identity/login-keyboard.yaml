@@ -1,7 +1,6 @@
 appId: ${MAESTRO_APP_ID}
 name: Sign-in keeps its submit button above the keyboard
-# Known Android failure: NP-E2E-018; see ../../BUGS.md. The keyboard covers
-# the bottom submit button and scrolling does not reveal it.
+# Regression NP-E2E-018 (fixed) and known Android failure NP-E2E-019; see ../../BUGS.md.
 tags: [critical, full, identity]
 ---
 - runFlow: ../../maestro/reset.yaml
@@ -16,3 +15,11 @@ tags: [critical, full, identity]
 - evalScript: ${output.local.screenshot('identity-login-keyboard-open')}
 - assertVisible: { id: auth-submit }
 - assertVisible: 'Zapomenuté heslo\?'
+# With the keyboard up from the e-mail field, a tap on the password field must
+# focus it, not hit the lifted submit button and submit an empty password.
+- tapOn: { id: auth-email }
+- inputText: a@example.test
+- tapOn: { id: auth-password }
+- inputText: x
+- assertNotVisible: 'Heslo musí mít alespoň 8 znaků\.'
+- evalScript: ${output.local.screenshot('identity-login-password-focused')}

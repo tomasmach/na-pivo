@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Offline private photos persist and remain isolated
-tags: [critical, full, identity]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [critical, full, identity, legacy-ui]
 ---
 - runFlow:
     file: ../../maestro/reset.yaml

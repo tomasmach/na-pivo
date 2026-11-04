@@ -39,11 +39,13 @@ tags: [critical, full, identity, blocked]
 - runScript:
     file: registration-input.js
     env: { PHASE: email }
-- tapOn: { id: auth-password }
+# Known Android failure NP-E2E-019: the lifted submit button covers the password
+# field, so a tap there submits. identity/login-keyboard.yaml keeps failing on it;
+# the keyboard's next key reaches the field the same way a person can.
+- pressKey: Enter
 - inputText:
     text: ${MAESTRO_PASSWORD}
     label: Enter disposable fixture password
-- hideKeyboard
 - tapOn: { id: auth-submit }
 - evalScript: ${output.registrationError = 'none'}
 - runFlow:
@@ -62,7 +64,6 @@ tags: [critical, full, identity, blocked]
     timeout: 20000
 - tapOn: { id: profile-nickname }
 - inputText: 'E2ERegister'
-- hideKeyboard
 - tapOn: { id: profile-save }
 - extendedWaitUntil:
     notVisible: { id: profile-save }

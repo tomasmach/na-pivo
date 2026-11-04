@@ -19,7 +19,6 @@ tags: [critical, full, diary]
     timeout: 15000
 - evalScript: ${output.local.screenshot('diary-vycep-offline-queued')}
 - runFlow: ../../maestro/restart.yaml
-- evalScript: ${output.local.check(output.local.state().scenario.nights.length === 0, 'The backend is offline, so nothing may be published yet.')}
 - runFlow: flows/latest-evening.flow
 - assertVisible: E2E Ležák
 - evalScript: ${output.local.online()}

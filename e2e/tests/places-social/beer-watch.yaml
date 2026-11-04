@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Watched beer newly on tap nearby sends one push a day that opens the pub
-tags: [critical, full]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [critical, full, legacy-ui]
 ---
 - runFlow:
     file: ../../maestro/reset.yaml

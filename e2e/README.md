@@ -2,6 +2,10 @@
 
 Testy řídí skutečný iPhone 17 v iOS simulátoru a skutečný Django backend. Používají pouze vlastní SQLite a syntetická data. Výchozí runner je Maestro 2.11.0; důvod přechodu z TesterArmy a původní měření ChatGPT replay jsou v COVERAGE.md. Běžný `dev-local` runner se nepoužívá, protože vybírá `backend/db.sqlite3`.
 
+## Nový vzhled
+
+Sada kliká na nový vzhled appky (`app/nv`, `src/newlook`). Přepsané scénáře a jejich výsledky uvádí začátek COVERAGE.md. Scénáře, které ještě ovládají odstraněné obrazovky, mají tag `legacy-ui`; `critical` a `full` je vynechávají, dokud je někdo nepřepíše. Sdílené kroky pro nový vzhled jsou v `e2e/maestro/`: `counter.yaml` otevře Štamgast s rozpoznanou E2E U Testera, `repeat-beer.yaml` připíše další pivo včetně potvrzení „Pivo před chvilkou.“, `open-pub.yaml` otevře hospodu přes hledání a `dismiss-onboarding.yaml` přeskočí onboarding, pokud se po odhlášení vrátí.
+
 ## První spuštění na macOS
 
 Použij Node.js 24 a Javu 17 nebo novější. Runner před startem vyžaduje alespoň 30 GiB volného místa a při poklesu pod 20 GiB zastaví pouze vlastní běh s kódem 75. Rezerva chrání i ostatní práci na stroji; neplánuj souběžné mobilní buildy. Pro více simulátorů je nutná větší rezerva; dva běhy zde později vyčerpaly i 5 GiB kvůli souběžné spotřebě systému. Takové přerušení není selháním produktu. Lokální kontroler načítá TypeScript přímo přes podporu Node.js.
@@ -81,6 +85,8 @@ npm run e2e:blocked
 Oblasti spouštěj postupně. Pro nový čistý simulátor archivuj vlastní `.e2e/simulator-1.json` pod jiným názvem; runner vytvoří nový jednoznačně pojmenovaný iPhone 17. Starý simulátor nemaž ani nepřebírej cizí. Čas celého běhu zaznamená `command-metrics.json`. Maestro modelovou replay cache nemá, její metriky jsou nepoužitelné; skutečné replay měření původního TesterArmy spike je v COVERAGE.md. Další celý Maestro běh by tento důkaz neposkytl. Dostupná iOS sada již dokončila 32 PASS a jedno známé selhání; po ní začalo ověřování na Android Pixel 10.
 
 ## Android
+
+Na linuxovém hostiteli runner použije obraz `system-images;android-36;google_apis;x86_64`, SDK v `~/Android/Sdk` a Javu z `PATH`; na macOS zůstává ARM64 obraz níže. Vždy vytvoří vlastní AVD s profilem Pixel 10 v `.e2e/android-avds` a pouští ho na emulator-5556, cizí emulátory nepřebírá. Gradle krok buildu běží bez `NA_PIVO_E2E_NATIVE`, protože `expo-widgets` při něm bundluje JS s `NODE_ENV=production` a E2E pojistka v `app.config.ts` by ho odmítla; E2E konfiguraci nativního projektu nastaví už prebuild.
 
 Android ověřování začalo po dokončení dostupné iOS sady s jedním známým selháním NP-E2E-014. Příprava používá místní SDK s ARM64 obrazem `system-images;android-36.1;google_apis_playstore;arm64-v8a` a profilem `pixel_10`. Nevhodný nebo chybějící obraz runner sám nestahuje. Vytvoří vlastní pojmenovaný Pixel 10, při dalších bězích použije pouze svůj neobsazený AVD. Běh používá stejný slot, samostatné API/Metro/DB a navíc vlastní konzolový a gRPC port.
 
