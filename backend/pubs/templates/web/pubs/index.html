@@ -1,0 +1,26 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/pubs/_head.html" %}{% endblock %}
+{% block og_image %}{% include "web/pubs/_og.html" %}{% endblock %}
+{% block content %}
+{% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
+<div class="np-pubs-head">
+  <h1 class="np-pubs-h1">{% translate "Hospody po městech" %}</h1>
+  {% if lead %}<p class="np-pubs-lead">{{ lead }}</p>{% endif %}
+</div>
+{% if big %}
+<div class="np-pubs-cities">{% for city in big %}
+  <a class="np-pubs-city" href="{{ city.url }}"><span class="np-pubs-city__name">{{ city.label }}</span><span class="np-pubs-city__count">{{ city.pubs }}</span></a>{% endfor %}
+</div>
+{% if rest %}<section class="np-pubs-section">
+  <h2 class="np-pubs-section__title">{% translate "Další města" %}</h2>
+  <div class="np-pubs-tiles">{% for city in rest %}<a class="np-tile" href="{{ city.url }}"><span>{{ city.label }}</span><span class="np-pubs-tile__count">{{ city.pubs }}</span></a>{% endfor %}</div>
+</section>{% endif %}
+{% else %}
+{% translate "Zatím tu nejsou žádné hospody" as empty_title %}
+{% translate "Mrkni mezitím, kolik stojí pivo." as empty_text %}
+{% translate "Ceny piva" as action_label %}
+{% web_url "beer-prices" as prices_url %}
+{% include "web/components/empty.html" with icon="map-pin" title=empty_title text=empty_text action_label=action_label action_url=prices_url %}
+{% endif %}
+{% endblock %}

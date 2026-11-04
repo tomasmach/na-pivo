@@ -6,6 +6,9 @@ Final exports:
 - `favicon.ico` — 16, 32, 48 and 64 px favicon bundle.
 - `favicon-512.png` — flat-color favicon source/export.
 - `apple-touch-icon.png` — 180 × 180 touch icon.
+- `og-home.png` — 1200 × 630 share image of the home page, variant B4 „Deník s mapou“
+  from the web redesign (export `og-hlavni.webp`), saved as PNG. The numbers, calendar
+  and map pins on it are an illustration, not anyone's diary.
 
 The OG illustration was generated with the built-in image generation tool using
 `assets/images/onboarding/slide-parta.png` as the style reference. Prompt summary:

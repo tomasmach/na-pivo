@@ -1,0 +1,48 @@
+{% load i18n web %}
+<dialog class="npa-dialog" id="npa-publish" aria-labelledby="npa-publish-title">
+  {% if publish.night %}
+    <form class="npa-publish" data-scope data-night="{{ publish.night_json }}"{% if publish.has_nickname %} data-nickname{% endif %}
+          data-label-public="{% translate "Vyvěsit celému světu" %}" data-label-friends="{% translate "Vyvěsit partě" %}">
+      <div class="npa-dialog__top">
+        <h2 class="npa-dialog__title" id="npa-publish-title">{% translate "Vyvěsit noc" %}</h2>
+        <button class="np-btn np-btn--icon" type="button" data-close aria-label="{% translate "Zavřít" %}">{% icon "x" %}</button>
+      </div>
+      <div class="npa-preview">
+        <div class="npa-night__head">
+          {% include "web/components/avatar.html" with name=publish.handle|cut:"@" size="s" %}
+          <span class="npa-night__who"><strong>{{ publish.handle }}</strong><span class="np-small np-muted">{{ publish.where }}</span></span>
+          <span class="np-small np-muted">{% translate "náhled" %}</span>
+        </div>
+        <p class="npa-night__beers">{{ publish.beers }}</p>
+        {% if publish.route %}<p class="npa-night__route">{{ publish.route }}</p>{% endif %}
+      </div>
+      <fieldset class="npa-choices">
+        <legend class="np-sr-only">{% translate "Komu noc vyvěsit" %}</legend>
+        <label class="npa-choice">
+          <input class="np-sr-only" type="radio" name="visibility" value="public"{% if publish.visibility == "public" %} checked{% endif %}>
+          <span>{% icon "globe" %}<b>{% translate "Celý svět" %}</b><span class="np-small np-muted">{% translate "Uvidí každý ve Výčepu" %}</span></span>
+        </label>
+        <label class="npa-choice">
+          <input class="np-sr-only" type="radio" name="visibility" value="friends"{% if publish.visibility != "public" %} checked{% endif %}>
+          <span>{% icon "users" %}<b>{% translate "Jen parta" %}</b><span class="np-small np-muted">{% translate "Uvidí tvoje parta" %}</span></span>
+        </label>
+      </fieldset>
+      <p class="npa-note npa-publish__note">{% icon "lock" "np-icon--s" %}<span>{% translate "Vyvěsí se počet piv, hospody, datum a délka noci. Útrata a jednotlivá piva zůstávají jen tobě." %}</span></p>
+      <p class="np-alert" role="alert" data-error hidden></p>
+      {% if not publish.has_nickname %}<a class="np-link np-small" href="{% web_url "web-settings" %}#profil" data-nickname-link hidden>{% translate "Nastavit přezdívku" %} ›</a>{% endif %}
+      <div class="npa-dialog__actions">
+        <button class="np-btn np-btn--primary np-btn--l npa-grow" type="submit" data-submit>{% if publish.visibility == "public" %}{% translate "Vyvěsit celému světu" %}{% else %}{% translate "Vyvěsit partě" %}{% endif %}</button>
+      </div>
+    </form>
+  {% else %}
+    <div class="npa-publish">
+      <div class="npa-dialog__top">
+        <h2 class="npa-dialog__title" id="npa-publish-title">{% translate "Vyvěsit noc" %}</h2>
+        <button class="np-btn np-btn--icon" type="button" data-close aria-label="{% translate "Zavřít" %}">{% icon "x" %}</button>
+      </div>
+      <p><b>{% translate "Zatím nemáš co vyvěsit." %}</b></p>
+      <p class="npa-note">{% translate "Prázdnou noc nevyvěsíš. Nejdřív musí něco padnout." %}</p>
+      <div class="npa-dialog__actions"><a class="np-btn np-btn--primary np-btn--l npa-grow" href="{% web_url "web-log-beer" %}">{% icon "plus" "np-icon--s" %}{% translate "Zapiš si pivo" %}</a></div>
+    </div>
+  {% endif %}
+</dialog>

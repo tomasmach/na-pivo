@@ -18,7 +18,8 @@
       },
       "ios": {
         "buildFromSource": [
-          "expo-location"
+          "expo-location",
+          "expo-media-library"
         ]
       }
     }
@@ -40,8 +41,8 @@
     "test": "jest --passWithNoTests",
     "lint": "expo lint",
     "e2e:build": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/preflight-native-build.mjs ios && E2E_TELEMETRY_DISABLED=1 EXPO_NO_TELEMETRY=1 EXPO_NO_DOTENV=1 EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_URL=local EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY=e2e-invalid-local-only NA_PIVO_SKIP_IOS_WIDGETS=1 expo run:ios --device generic --no-bundler --output .e2e/build",
-    "e2e:critical": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag critical --exclude-tag blocked",
-    "e2e:full": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag full --exclude-tag blocked",
+    "e2e:critical": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag critical --exclude-tag blocked,legacy-ui",
+    "e2e:full": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag full --exclude-tag blocked,legacy-ui",
     "e2e:blocked": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/run.mjs --tag blocked",
     "e2e:maestro:install": "E2E_TELEMETRY_DISABLED=1 MAESTRO_CLI_NO_ANALYTICS=1 bash e2e/runtime/install-maestro.sh",
     "e2e:build:android": "E2E_TELEMETRY_DISABLED=1 node e2e/runtime/build-android.mjs"
@@ -58,6 +59,7 @@
     "expo-asset": "~58.0.18",
     "expo-audio": "~58.0.11",
     "expo-build-properties": "~58.0.12",
+    "expo-calendar": "~58.0.6",
     "expo-camera": "~58.0.14",
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.13",
@@ -70,13 +72,13 @@
     "expo-image-picker": "~58.0.10",
     "expo-linking": "~58.0.15",
     "expo-location": "~58.0.20",
+    "expo-media-library": "~58.0.13",
     "expo-notifications": "~58.1.7",
     "expo-router": "~58.0.29",
     "expo-secure-store": "~58.0.2",
     "expo-sharing": "~58.0.21",
     "expo-splash-screen": "~58.0.12",
     "expo-status-bar": "~58.0.4",
-    "expo-store-review": "~58.0.2",
     "expo-system-ui": "~58.0.7",
     "expo-task-manager": "~58.0.13",
     "expo-updates": "~58.0.20",

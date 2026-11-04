@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.db.models import BooleanField, Count, ExpressionWrapper, Min, Q, Sum, TextField, Value
 from django.db.models.functions import Coalesce, ExtractHour, Lower, NullIf, Trim, TruncDate
 
+from pubs.api.stats import drinking_day
 from pubs.mapper import maper_progress
-from pubs.models import Account, DrinkLog, Friendship, PublishedNight
+from pubs.models import Account, DrinkLog, Friendship, PartyEvening, PublishedNight, PubVisit
 
 PRAGUE_TZ = ZoneInfo("Europe/Prague")
 # Ochutnávač: this many different beers.
@@ -17,10 +18,18 @@ TASTER_MIN_BEERS = 10
 DRINKING_DAY_CUTOFF_HOUR = 4
 
 
-def derive_account_profile_stats(account: Account) -> dict:
-    """Aggregate durable account history for profile stats and achievements."""
+def derive_account_profile_stats(account: Account, *, before: datetime | None = None) -> dict:
+    """Aggregate durable account history for profile stats and achievements.
+
+    ``before`` limits drinks and pub visits to that moment, so a night's receipt
+    can compare badges before and after it; the other counters stay lifetime.
+    """
 
     public_drinks = account.drinks.filter(is_suspect=False)
+    pub_visits = account.pub_visits.all()
+    if before is not None:
+        public_drinks = public_drinks.filter(drank_at__lt=before)
+        pub_visits = pub_visits.filter(started_at__lt=before)
     is_beer = Q(drink_type=DrinkLog.DrinkType.BEER)
     drink_totals = public_drinks.annotate(
         local_hour=ExtractHour("drank_at", tzinfo=PRAGUE_TZ),
@@ -55,7 +64,7 @@ def derive_account_profile_stats(account: Account) -> dict:
     # order_by() first: the models' default ordering would otherwise leak the
     # ordering column into SELECT DISTINCT and defeat the dedup.
     pub_keys = set(
-        account.pub_visits.order_by().values_list("cache_key", flat=True).distinct()
+        pub_visits.order_by().values_list("cache_key", flat=True).distinct()
     )
     pub_keys.update(
         public_drinks.filter(cache_key__isnull=False)
@@ -65,7 +74,7 @@ def derive_account_profile_stats(account: Account) -> dict:
     )
     pub_keys.discard("")
     max_visit_row = (
-        account.pub_visits.values("cache_key")
+        pub_visits.values("cache_key")
         .annotate(n=Count("id"))
         .order_by("-n")
         .first()
@@ -112,10 +121,16 @@ def derive_account_profile_stats(account: Account) -> dict:
         .distinct()
     }
 
-    accepted_friend_count = Friendship.objects.filter(
+    friendships = Friendship.objects.filter(
         Q(requester=account) | Q(recipient=account),
         status=Friendship.Status.ACCEPTED,
-    ).count()
+    ).values_list("requester_id", "recipient_id")
+    friendships = list(friendships)
+    accepted_friend_count = len(friendships)
+    friend_ids = {
+        recipient_id if requester_id == account.id else requester_id
+        for requester_id, recipient_id in friendships
+    }
 
     return {
         "total_beers": int(drink_totals["total_beers"] or 0),
@@ -144,7 +159,53 @@ def derive_account_profile_stats(account: Account) -> dict:
         "distinct_cities": distinct_cities,
         "beer_drinking_days": beer_drinking_days,
         "photos_count": account.beer_photos.count(),
+        "party_evenings": _party_evening_count(account, friend_ids, before=before),
     }
+
+
+def _party_evening_count(
+    account: Account, friend_ids: set[int], *, before: datetime | None = None
+) -> int:
+    """Drinking days spent with at least one current friend ("Večer s partou").
+
+    A day counts when the account shared a party table (PartyEvening) with a
+    friend, or both had a visit at the same pub on the same 04:00-rolling
+    drinking day. The second rule is the same-pub-same-day definition the
+    friend profile already uses for "nights together", without its window.
+    ``before`` limits both to that moment, like the drinks and visits above.
+    """
+
+    if not friend_ids:
+        return 0
+    days: set[date] = set()
+    tables = (
+        PartyEvening.objects.filter(memberships__account=account)
+        .filter(memberships__account_id__in=friend_ids)
+        .order_by()
+        .values_list("started_at", flat=True)
+        .distinct()
+    )
+    my_visits = account.pub_visits.all()
+    friend_visits = PubVisit.objects.filter(account_id__in=friend_ids)
+    if before is not None:
+        tables = tables.filter(started_at__lt=before)
+        my_visits = my_visits.filter(started_at__lt=before)
+        friend_visits = friend_visits.filter(started_at__lt=before)
+    days.update(drinking_day(started_at) for started_at in tables)
+
+    my_days: dict[str, set[date]] = {}
+    for cache_key, started_at in my_visits.order_by().values_list("cache_key", "started_at"):
+        my_days.setdefault(cache_key, set()).add(drinking_day(started_at))
+    if my_days:
+        for cache_key, started_at in (
+            friend_visits.filter(cache_key__in=my_visits.values("cache_key"))
+            .order_by()
+            .values_list("cache_key", "started_at")
+        ):
+            day = drinking_day(started_at)
+            if day in my_days.get(cache_key, ()):
+                days.add(day)
+    return len(days)
 
 
 def derive_account_achievements(account: Account, stats: dict | None = None) -> dict:
@@ -223,6 +284,7 @@ def derive_account_badge_progress(stats: dict) -> dict:
         "beer_day_fridays": sum(
             1 for day in days if day.month == 8 and day.weekday() == 4 and day.day <= 7
         ),
+        "party_evenings": stats.get("party_evenings", 0),
     }
 
 

@@ -14,6 +14,11 @@ import { fetchMyStats, type RemoteStats } from '@/data/statsClient';
 import { useAccountStore } from '@/stores/accountStore';
 
 export function useMyStats(enabled = true): RemoteStats | null {
+  return useMyStatsState(enabled).stats;
+}
+
+/** Same as `useMyStats`, plus whether the latest fetch has finished, so an empty screen can tell "nothing yet" from "still loading". */
+export function useMyStatsState(enabled = true, allPubs = false): { stats: RemoteStats | null; settled: boolean } {
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const removedDrinkIds = useAccountStore((state) => state.removedDrinkIds);
   const [snapshot, setSnapshot] = useState<{
@@ -21,6 +26,7 @@ export function useMyStats(enabled = true): RemoteStats | null {
     removedDrinkIds: ReadonlySet<string>;
     stats: RemoteStats;
   } | null>(null);
+  const [settledFor, setSettledFor] = useState<{ accountId: string | null; removedDrinkIds: ReadonlySet<string> } | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -33,17 +39,19 @@ export function useMyStats(enabled = true): RemoteStats | null {
       removedDrinkIds.forEach((id) => {
         if (!confirmed.has(id)) pending.add(id);
       });
-      const result = await fetchMyStats(controller.signal, [...pending]);
-      if (active && result) setSnapshot({ accountId, removedDrinkIds, stats: result });
+      const result = await fetchMyStats(controller.signal, [...pending], allPubs);
+      if (!active) return;
+      if (result) setSnapshot({ accountId, removedDrinkIds, stats: result });
+      setSettledFor({ accountId, removedDrinkIds });
     })();
     return () => {
       active = false;
       controller.abort();
     };
-  }, [accountId, enabled, removedDrinkIds]);
+  }, [accountId, allPubs, enabled, removedDrinkIds]);
 
   // Stats read before the latest removal still count that drink.
-  return snapshot?.accountId === accountId && snapshot.removedDrinkIds === removedDrinkIds
-    ? snapshot.stats
-    : null;
+  const stats = snapshot?.accountId === accountId && snapshot.removedDrinkIds === removedDrinkIds ? snapshot.stats : null;
+  const settled = settledFor?.accountId === accountId && settledFor.removedDrinkIds === removedDrinkIds;
+  return { stats, settled };
 }

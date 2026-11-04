@@ -38,16 +38,17 @@ if (CASE === 'logout') {
     if (PHASE === 'final') observe('primary', '/v1/account/me', 200, 'new');
   }
 } else if (CASE === 'register') {
-  const registered = accounts.find(function (a) { return a.nickname === 'E2ERegister'; });
+  // The new look asks for the nickname after registration, so match the claimed identity.
+  const registered = accounts.find(function (a) { return a.publicId === output.anonymousId; });
   if (PHASE === 'anonymous') {
     const anonymous = state.accounts.filter(function (a) { return !a.registered; });
     check(anonymous.length === 1 && anonymous[0].drinks.length === 1, 'Online anonymous beer must persist before offline registration.');
     output.anonymousId = anonymous[0].publicId;
   } else if (PHASE === 'submitted') {
-    check(registered && registered.publicId === output.anonymousId, 'UI submit must register the original anonymous DB account before choosing visibility. Registered: ' + Boolean(registered) + ', validation: ' + output.registrationError);
+    check(registered && state.accounts.some(function (a) { return a.publicId === registered.publicId && a.registered; }), 'UI submit must register the original anonymous DB account before choosing visibility. Registered: ' + Boolean(registered) + ', validation: ' + output.registrationError);
     check(registered.originalPasswordWorks, 'The actual registered credential must match the complete original fixture password.');
   } else {
-    check(registered && registered.publicId === output.anonymousId && !registered.isPublic, 'Registration must claim the same anonymous identity with private visibility.');
+    check(registered && registered.nickname === 'E2ERegister' && !registered.isPublic, 'Registration must claim the same anonymous identity with the chosen nickname and private visibility.');
     check(registered.originalPasswordWorks, 'Registration must preserve the complete fixture password through app restart.');
     equal(names(registered), ['E2E Ležák', 'E2E Ležák'], 'Claim must preserve exactly both online and offline beers.');
     const expectedDrink = {beer_name: 'E2E Ležák', price_czk: 41, volume_ml: 500, place_context: 'pub', drink_type: 'beer'};

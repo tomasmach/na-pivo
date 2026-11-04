@@ -1,0 +1,11 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block content %}
+{% translate "Tohle tu nečepujeme" as empty_title %}
+{% translate "Na téhle adrese nic není. Možná je v odkazu překlep, nebo stránka zmizela." as empty_text %}
+{% translate "Najít hospodu" as action_label %}
+{% translate "Na úvod" as secondary_label %}
+{% web_url "web-pubs" as pubs_url %}
+{% web_url "home" as home_url %}
+{% include "web/components/empty.html" with icon="beer" title=empty_title text=empty_text action_label=action_label action_url=pubs_url secondary_label=secondary_label secondary_url=home_url %}
+{% endblock %}

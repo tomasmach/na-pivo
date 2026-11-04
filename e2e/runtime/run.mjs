@@ -17,6 +17,8 @@ const freeBytes = () => { const disk = fs.statfsSync(root); return disk.bavail *
 if (freeBytes() < 30 * 1024 ** 3) throw new Error('Local E2E needs at least 30 GiB of free disk space before starting.');
 process.chdir(root);
 process.env.E2E_TELEMETRY_DISABLED = '1';
+// Process ownership compares ps lstart text; children use the same locale.
+process.env.LC_ALL = 'en_US.UTF-8';
 const args = process.argv.slice(2);
 const engine = process.env.E2E_ENGINE === 'testerarmy' ? 'testerarmy' : 'maestro';
 const platform = process.env.E2E_PLATFORM || 'ios';
@@ -33,7 +35,7 @@ for (let index = 0; index < args.length; index++) {
 }
 if (engine === 'testerarmy' && repeat > 1 && args.includes('--no-cache')) throw new Error('--stability requires the replay cache.');
 const slot = Number(process.env.E2E_SLOT || '1');
-if (process.platform !== 'darwin') throw new Error('This runner requires macOS and an iPhone 17 simulator.');
+if (process.platform !== 'darwin' && platform === 'ios') throw new Error('The iOS runner requires macOS and an iPhone 17 simulator.');
 if (![1, 2, 3].includes(slot)) throw new Error('E2E_SLOT must be 1, 2, or 3.');
 const gitDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
 const lockRoot = path.join(gitDir, 'napivo-e2e');

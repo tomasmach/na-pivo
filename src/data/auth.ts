@@ -990,6 +990,8 @@ export async function reportProfileContent(params: {
    * additive). Older backends ignore the extra field.
    */
   nightId?: string;
+  /** Piva tab: pin the report to one beer review (backend field `checkin_id`, additive). */
+  checkinId?: string;
 }): Promise<AuthActionResult> {
   const res = await authFetch('/v1/content-reports', {
     method: 'POST',
@@ -1000,6 +1002,7 @@ export async function reportProfileContent(params: {
       comment: params.comment ?? '',
       ...(params.photoId ? { photo_id: params.photoId } : {}),
       ...(params.nightId ? { night_id: params.nightId } : {}),
+      ...(params.checkinId ? { checkin_id: params.checkinId } : {}),
     },
   });
   return resolveActionResult(res);

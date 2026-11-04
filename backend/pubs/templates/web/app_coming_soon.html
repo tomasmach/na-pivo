@@ -1,0 +1,7 @@
+{% extends "web/app.html" %}
+{% load i18n web %}
+{% block content %}
+{% translate "Tuhle stránku ještě čepujeme" as empty_title %}
+{% translate "Na webu tu brzy bude. V appce už to máš." as empty_text %}
+{% include "web/components/empty.html" with icon="beer" title=empty_title text=empty_text %}
+{% endblock %}

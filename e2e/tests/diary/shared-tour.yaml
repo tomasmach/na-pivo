@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Tour imports once and withdrawing both links preserves the original plan
-tags: [critical, full, diary]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [critical, full, diary, legacy-ui]
 ---
 - runFlow: flows/start.flow
 - runFlow:

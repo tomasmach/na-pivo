@@ -3,7 +3,7 @@ appId: ${MAESTRO_APP_ID}
 - runFlow:
     file: route.yaml
     env:
-      ROUTE: /auth
+      ROUTE: /nv/prihlaseni
 - tapOn:
     id: auth-email
 - inputText:

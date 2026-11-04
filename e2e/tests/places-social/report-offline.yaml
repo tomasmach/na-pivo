@@ -10,30 +10,28 @@ tags: [critical, full]
 - runFlow: ../../maestro/login.yaml
 - runScript: oracle.js
 - runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /pub-search
-- tapOn: Hledat hospodu
-- inputText: E2E Druhá hospoda
-- tapOn: 'E2E Druhá hospoda,.*'
-- assertVisible: E2E Druhá hospoda
-- tapOn: Další možnosti hospody
-- tapOn: Nahlásit hospodu
+    file: ../../maestro/open-pub.yaml
+    env: { PUB: E2E Druhá hospoda }
+- tapOn: Další
 - tapOn: Hospoda už nefunguje
+- assertVisible: 'Nahlásit „E2E Druhá hospoda“\?'
 - tapOn: Zpátky
+- assertNotVisible: 'Nahlásit „E2E Druhá hospoda“\?'
 - evalScript: ${output.ps.check('report-none')}
 - evalScript: ${output.local.offline()}
-- tapOn: Další možnosti hospody
-- tapOn: Nahlásit hospodu
+- tapOn: Další
 - tapOn: Hospoda už nefunguje
 - tapOn: Nahlásit
+- assertNotVisible: 'Nahlásit „E2E Druhá hospoda“\?'
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /pub-search
-- tapOn: Hledat hospodu
+      ROUTE: /nv/hledani
+- tapOn: { id: pub-search-input }
 - inputText: E2E Druhá
+- waitForAnimationToEnd:
+    timeout: 5000
 - assertNotVisible: '.*E2E Druhá hospoda.*'
 - evalScript: ${output.local.screenshot('places-reported-hidden-offline')}
 - evalScript: ${output.local.online()}

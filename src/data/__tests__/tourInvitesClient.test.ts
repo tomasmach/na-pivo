@@ -52,11 +52,14 @@ it('answers an invite and parses the inviter', async () => {
 
 it('lists open invites with what the Tours list needs, and drops rows without a usable link', async () => {
   const row = { plan_id: plan, status: 'invited', inviter: petr, token: 'invite-token-for-tours-list-test', title: 'Pátek po hospodách',
-    scheduled_date: '2026-10-02', scheduled_time: '19:00', first_pub: 'U Bulínů' };
+    scheduled_date: '2026-10-02', scheduled_time: '19:00', timezone: 'Europe/Bratislava', first_pub: 'U Bulínů' };
   reply(200, { invites: [row, { ...row, token: '../../x' }] });
   await expect(fetchOpenTourInvites()).resolves.toEqual({ ok: true, value: [expect.objectContaining({
-    planId: plan, token: row.token, title: 'Pátek po hospodách', scheduledDate: '2026-10-02', scheduledTime: '19:00', firstPub: 'U Bulínů' })] });
+    planId: plan, token: row.token, title: 'Pátek po hospodách', scheduledDate: '2026-10-02', scheduledTime: '19:00', timezone: 'Europe/Bratislava', firstPub: 'U Bulínů' })] });
   expect(global.fetch).toHaveBeenLastCalledWith('https://api.example.test/v1/tour-invites', expect.objectContaining({ method: 'GET' }));
+  const { timezone: _older, ...olderRow } = row;
+  reply(200, { invites: [olderRow] });
+  await expect(fetchOpenTourInvites()).resolves.toMatchObject({ ok: true, value: [{ timezone: 'Europe/Prague' }] });
   (global.fetch as jest.Mock).mockResolvedValue({ status: 404, json: async () => { throw new SyntaxError('html'); } });
   await expect(fetchOpenTourInvites()).resolves.toMatchObject({ ok: false, error: 'unsupported' });
 });

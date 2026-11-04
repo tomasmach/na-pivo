@@ -1,0 +1,6 @@
+{% comment %}
+Segmented switch made of links. items: list of {"label": ..., "url": ..., "current": bool};
+label: accessible name of the group; block=True stretches it to full width.
+{% endcomment %}<nav class="np-segment{% if block %} np-segment--block{% endif %}" aria-label="{{ label }}">{% for item in items %}
+  <a class="np-segment__item" href="{{ item.url }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.label }}</a>{% endfor %}
+</nav>

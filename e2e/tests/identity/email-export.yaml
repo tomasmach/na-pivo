@@ -11,15 +11,14 @@ tags: [critical, full, identity]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /account
-- assertVisible: "E-mail není ověřen"
-- tapOn: "Otevřít další možnosti účtu"
-- tapOn: "Stáhnout moje data"
-# The toast is transient while the sheet closes. Check the actual UI request.
+      ROUTE: /nv/ucet
+- assertVisible: 'E-mail ještě není ověřený\.'
+- tapOn: 'Poslat moje data e-mailem'
+# The toast is transient. Check the actual UI request.
 - runScript:
     file: export-checks.js
     env: { PHASE: denied }
-- tapOn: "Poslat znovu"
+- tapOn: 'Poslat znovu'
 - runScript:
     file: export-checks.js
     env: { PHASE: mail }
@@ -28,11 +27,10 @@ tags: [critical, full, identity]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /account
-- assertVisible: "E-mail ověřen"
-- assertNotVisible: "Poslat znovu"
-- tapOn: "Otevřít další možnosti účtu"
-- tapOn: "Stáhnout moje data"
+      ROUTE: /nv/ucet
+- assertVisible: 'E-mail ověřen'
+- assertNotVisible: 'Poslat znovu'
+- tapOn: 'Poslat moje data e-mailem'
 - runScript:
     file: export-checks.js
     env: { PHASE: exported }
@@ -40,13 +38,13 @@ tags: [critical, full, identity]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /account
-- assertVisible: "E-mail ověřen"
+      ROUTE: /nv/ucet
+- assertVisible: 'E-mail ověřen'
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /profile
-- assertVisible: "Upravit profil"
+      ROUTE: /nv/profil
+- assertVisible: 'Upravit profil'
 - evalScript: ${output.local.screenshot('identity-email-verified-exported')}
 - runScript:
     file: export-checks.js

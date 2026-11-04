@@ -34,7 +34,7 @@ export interface LivePubSummary {
   activities: FriendPubActivity[];
 }
 
-export interface MapPubPoint {
+interface MapPubPoint {
   key: string;
   pub: Pub;
   lat: number;
@@ -44,13 +44,6 @@ export interface MapPubPoint {
 
 export interface MapPubPointSet {
   points: MapPubPoint[];
-}
-
-export interface MapCluster<T> {
-  id: string;
-  lat: number;
-  lng: number;
-  items: T[];
 }
 
 function normalizedCity(city: string | null | undefined): string {
@@ -281,52 +274,4 @@ export function buildLivePubs(
     });
   }
   return [...grouped.values()];
-}
-
-/**
- * Deterministic world-anchored grid clustering. Cell sizes follow the zoom,
- * while cell boundaries stay fixed when the map is panned. This prevents pins
- * from jumping between clusters just because the viewport center moved.
- */
-export function clusterCoordinates<T extends { lat: number; lng: number }>(
-  items: T[],
-  region: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number },
-  // Coarse grid on purpose: fewer, larger clusters read better than a screen
-  // full of small overlapping bubbles.
-  columns: number = 5,
-  rows: number = 8,
-): MapCluster<T>[] {
-  if (items.length === 0) return [];
-  // Native maps report tiny delta fluctuations while panning even when the
-  // user did not zoom. Snapping the cell size to powers of two keeps those
-  // harmless changes from moving pubs across otherwise world-anchored cells.
-  const quantizeStep = (raw: number) => {
-    const safe = Math.max(raw, 0.00005);
-    return 2 ** Math.round(Math.log2(safe));
-  };
-  const latStep = quantizeStep(region.latitudeDelta / rows);
-  const lngStep = quantizeStep(region.longitudeDelta / columns);
-  const buckets = new Map<string, MapCluster<T>>();
-
-  for (const item of items) {
-    const latCell = Math.floor((item.lat + 90) / latStep);
-    const lngCell = Math.floor((item.lng + 180) / lngStep);
-    const id = `${latCell}:${lngCell}`;
-    const bucket = buckets.get(id);
-    if (!bucket) {
-      buckets.set(id, {
-        id,
-        lat: item.lat,
-        lng: item.lng,
-        items: [item],
-      });
-      continue;
-    }
-    const nextCount = bucket.items.length + 1;
-    bucket.lat = (bucket.lat * bucket.items.length + item.lat) / nextCount;
-    bucket.lng = (bucket.lng * bucket.items.length + item.lng) / nextCount;
-    bucket.items.push(item);
-  }
-
-  return [...buckets.values()];
 }

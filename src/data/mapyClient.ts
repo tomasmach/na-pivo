@@ -11,7 +11,7 @@ import type { HoursStatus, Pub, VenueKind } from './pubs';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 import { trackApiFailure } from './telemetryClient';
-import { beerNameFromFilterKey } from './pubSearchFilters';
+import { beerKindFromFilterKey, beerNameFromFilterKey } from './pubSearchFilters';
 import { isPriceFresh } from '@/utils/priceAge';
 
 // Mapy.cz returns mixed categories under our text queries. Keep only the ones
@@ -191,6 +191,7 @@ interface BackendPubsNearResponse {
     amenities?: string[];
     beer_brand?: string | null;
     beer_name?: string;
+    beer_kind?: string;
     include_other_places?: boolean;
   };
 }
@@ -226,8 +227,10 @@ async function backendSuggest(
   url.searchParams.set('lng', String(lng));
   url.searchParams.set('radius_km', String(kmRadius));
   const beerName = beerNameFromFilterKey(beerBrandKey);
-  const brandKey = beerName ? null : beerBrandKey || null;
+  const beerKind = beerKindFromFilterKey(beerBrandKey);
+  const brandKey = beerName || beerKind ? null : beerBrandKey || null;
   if (beerName) url.searchParams.set('beer_name', beerName);
+  if (beerKind) url.searchParams.set('beer_kind', beerKind);
   if (brandKey) url.searchParams.set('beer_brand', brandKey);
   if (amenityKeys.length > 0) url.searchParams.set('amenities', amenityKeys.join(','));
   if (includeOtherPlaces) url.searchParams.set('include_other_places', 'true');
@@ -251,6 +254,15 @@ async function backendSuggest(
       // An older backend ignores beer_name. Fail closed: unfiltered pubs must
       // never masquerade as pubs pouring the searched beer.
       console.warn('[pubs] backend did not acknowledge beer name filter');
+      trackApiFailure('pubs_near_backend', {
+        endpoint: '/v1/pubs/near',
+        reason: 'filter_contract_mismatch',
+      });
+      return null;
+    }
+    if (beerKind && data.applied_filters?.beer_kind !== beerKind) {
+      // Same fail-closed rule for a backend that does not know beer_kind yet.
+      console.warn('[pubs] backend did not acknowledge beer kind filter');
       trackApiFailure('pubs_near_backend', {
         endpoint: '/v1/pubs/near',
         reason: 'filter_contract_mismatch',

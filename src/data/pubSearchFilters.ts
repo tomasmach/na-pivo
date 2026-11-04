@@ -26,6 +26,13 @@ export function beerNameFromFilterKey(key: string | null | undefined): string | 
   return key.slice(BEER_NAME_FILTER_PREFIX.length).trim() || null;
 }
 
+/** Pubs pouring at least one craft beer, sent as `beer_kind` instead of a brand. */
+export const CRAFT_BEER_FILTER_KEY = 'kind:craft';
+
+export function beerKindFromFilterKey(key: string | null | undefined): 'craft' | null {
+  return key === CRAFT_BEER_FILTER_KEY ? 'craft' : null;
+}
+
 export interface PubSearchFilters {
   beerBrand: BeerBrandFilterValue | null;
   amenityKeys: AmenityKey[];

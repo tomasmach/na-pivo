@@ -1,0 +1,41 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "delete-account.css" %}">{% endblock %}
+{% block content %}
+<div class="da">
+  <header class="da__head">
+    <h1 class="np-h1">{% translate "Smazání účtu Na pivo" %}</h1>
+    <p class="da__lead">{% blocktranslate count days=grace_days %}Smažeme účet a s ním deník, hodnocení, fotky, partu a odznaky. Do {{ days }} dne se stačí přihlásit a účet ti zůstane, pak je to nevratné.{% plural %}Smažeme účet a s ním deník, hodnocení, fotky, partu a odznaky. Do {{ days }} dní se stačí přihlásit a účet ti zůstane, pak je to nevratné.{% endblocktranslate %}</p>
+  </header>
+
+  <ol class="np-card da-steps">
+    <li class="da-steps__item"><span class="da-steps__n">1</span><span><strong>{% translate "Přihlas se" %}</strong><span>{% translate "stejně jako v appce" %}</span></span></li>
+    <li class="da-steps__item"><span class="da-steps__n">2</span><span><strong>{% translate "Otevři Nastavení" %}</strong><span>{% translate "Tvoje data → Smazat účet" %}</span></span></li>
+    <li class="da-steps__item"><span class="da-steps__n">3</span><span><strong>{% translate "Potvrď smazání" %}</strong><span>{% translate "e-mailem dostaneš datum, do kdy jde smazání zrušit" %}</span></span></li>
+  </ol>
+
+  <a class="np-btn np-btn--primary np-btn--l da__cta" href="{{ settings_url }}">{% if page.account %}{% translate "Otevřít Nastavení" %}{% else %}{% translate "Přihlásit se a smazat účet" %}{% endif %}</a>
+
+  <section class="da-mail" aria-labelledby="da-mail">
+    <h2 class="da-mail__title" id="da-mail">{% translate "Nedostaneš se dovnitř?" %}</h2>
+    <p class="da-mail__text">{% translate "Napiš e-mail, pod kterým máš účet. Pošleme na něj odkaz, kterým smazání potvrdíš." %}</p>
+    {% if error %}<p class="np-alert" role="alert">{{ error }}</p>{% endif %}
+    {% if sent %}
+      <p class="np-alert np-alert--ok" role="status">{% translate "Jestli k tomu e-mailu máš účet, odkaz už ti letí. Platí hodinu." %}</p>
+    {% else %}
+      <form class="da-mail__form" method="post" novalidate>
+        {% csrf_token %}
+        <div class="da-mail__field np-search">
+          {% icon "mail" "np-icon--s" %}
+          <label class="np-sr-only" for="da-email">{% translate "E-mail" %}</label>
+          <input class="np-input" id="da-email" name="email" type="email" value="{{ values.email }}" placeholder="tvuj@email.cz" autocomplete="email" maxlength="254" required{% if errors.email %} aria-invalid="true" aria-describedby="da-email-error"{% endif %}>
+        </div>
+        <button class="np-btn np-btn--l" type="submit">{% translate "Poslat odkaz" %}</button>
+      </form>
+      {% if errors.email %}<p class="np-field__error" id="da-email-error">{{ errors.email }}</p>{% endif %}
+    {% endif %}
+    <p class="da__fine">{% translate "Přihlašuješ se přes Apple nebo Google? Přihlas se tady stejně jako v appce a účet smaž v Nastavení. Účet bez přihlášení smažeš jen v appce." %}</p>
+    <p class="da__fine">{% translate "V telefonu to jde taky: Nastavení → Účet → Smazat účet." %}</p>
+  </section>
+</div>
+{% endblock %}

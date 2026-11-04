@@ -1,0 +1,45 @@
+{% extends "web/base.html" %}
+{% load i18n web %}
+{% block shell %}
+<header class="np-header" id="menu">
+  <div class="np-wrap np-header__bar">
+    {% include "web/components/logo.html" %}
+    <nav class="np-header__nav" aria-label="{% translate "Hlavní menu" %}">
+      {% include "web/components/public_nav.html" %}
+    </nav>
+    <form class="np-header__search np-search" role="search" action="{% web_url "web-search" %}" method="get">
+      {% icon "search" "np-icon--s" %}
+      <label class="np-sr-only" for="np-search-q">{% translate "Hledat" %}</label>
+      <input class="np-input" id="np-search-q" type="search" name="q" value="{{ page.search_query }}" placeholder="{% translate "Hospoda, pivo nebo město" %}" maxlength="120">
+    </form>
+    <div class="np-header__actions">
+      {% include "web/components/public_account.html" %}
+      <a class="np-btn np-btn--primary" href="{% web_url "home" %}">{% translate "Stáhnout appku" %}</a>
+    </div>
+    <div class="np-header__menu">
+      {% if page.account %}<a class="np-header__me" href="{% web_url "web-diary" %}" aria-label="{% translate "Deník" %}">{% include "web/components/avatar.html" with name=page.account.name src=page.account.avatar_url ring=True %}</a>{% endif %}
+      <a class="np-btn np-btn--icon" href="{% web_url "web-search" %}" aria-label="{% translate "Hledat" %}">{% icon "search" %}</a>
+      <a class="np-btn np-btn--icon" href="#menu" aria-label="{% translate "Menu" %}" aria-controls="np-mobile-menu" data-menu-open>{% icon "menu" %}</a>
+    </div>
+  </div>
+  <div class="np-header__mobile" id="np-mobile-menu">
+    <div class="np-wrap np-header__mobile-inner">
+      <nav aria-label="{% translate "Hlavní menu" %}">
+        {% include "web/components/public_nav.html" %}
+      </nav>
+      <div class="np-header__mobile-actions">
+        {% include "web/components/public_account.html" with mobile=True %}
+        <a class="np-btn np-btn--primary" href="{% web_url "home" %}">{% translate "Stáhnout appku" %}</a>
+      </div>
+      <a class="np-btn np-btn--ghost" href="#" data-menu-close>{% icon "x" "np-icon--s" %}{% translate "Zavřít" %}</a>
+    </div>
+  </div>
+</header>
+<main class="np-main" id="obsah">
+  <div class="np-wrap">
+    {% block content %}{% endblock %}
+  </div>
+</main>
+{% include "web/components/footer.html" %}
+<script src="{% asset "web.js" %}" defer></script>
+{% endblock %}

@@ -19,6 +19,8 @@ from pubs.models import (
     Account,
     AmenityKind,
     BeerBrand,
+    BeerProduct,
+    BeerRanking,
     PubAmenity,
     PubBeerBrand,
     PubCommunityData,
@@ -1850,3 +1852,47 @@ def test_beer_name_filter_uses_imported_menus_only_without_a_community_menu(clie
 
     assert resp.status_code == status.HTTP_200_OK
     assert [item["name"] for item in resp.json()["items"]] == ["Imported Only"]
+
+
+@pytest.mark.django_db
+def test_beer_kind_filter_finds_pubs_pouring_craft(client):
+    voted_craft, voted_pale = BeerProduct.objects.filter(active=True, brand__active=True).order_by(
+        "key"
+    )[:2]
+    now = dj_tz.now()
+    BeerRanking.objects.create(product=voted_craft, styles=["craft"], computed_at=now)
+    BeerRanking.objects.create(product=voted_pale, styles=["pale"], computed_at=now)
+    _menu_pub("Hlasovaný craft", _LAT, _LNG, [voted_craft.name])
+    _menu_pub("Craft podle názvu", _LAT + 0.001, _LNG, ["Sibeeria Hoppy IPA"])
+    _menu_pub("Jen ležák", _LAT + 0.002, _LNG, [voted_pale.name, "Gambrinus 10"])
+    _external_menu("Importovaný craft", _LAT + 0.003, ["Zichovec APA"])
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 5, "beer_kind": "craft"},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == [
+        "Hlasovaný craft",
+        "Craft podle názvu",
+        "Importovaný craft",
+    ]
+    assert resp.json()["applied_filters"]["beer_kind"] == "craft"
+    assert resp.json()["applied_filters"]["beer_brand"] is None
+
+
+@pytest.mark.django_db
+def test_beer_kind_filter_rejects_unknown_kind_and_beer_combination(client):
+    BeerBrand.objects.get_or_create(key="pilsner-urquell", defaults={"name": "Pilsner Urquell"})
+    base = {"lat": _LAT, "lng": _LNG, "radius_km": 25}
+
+    unknown = client.get("/v1/pubs/near", data={**base, "beer_kind": "dark"})
+    with_brand = client.get(
+        "/v1/pubs/near", data={**base, "beer_kind": "craft", "beer_brand": "pilsner-urquell"}
+    )
+    with_name = client.get("/v1/pubs/near", data={**base, "beer_kind": "craft", "beer_name": "ipa"})
+
+    assert unknown.status_code == status.HTTP_400_BAD_REQUEST
+    assert with_brand.status_code == status.HTTP_400_BAD_REQUEST
+    assert with_name.status_code == status.HTTP_400_BAD_REQUEST
