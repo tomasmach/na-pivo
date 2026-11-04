@@ -1,0 +1,33 @@
+{% extends "web/base.html" %}
+{% load i18n web %}
+{% block shell %}
+<div class="np-app">
+  <aside class="np-panel" aria-label="{% translate "Menu" %}">
+    <div class="np-panel__logo">{% include "web/components/logo.html" %}</div>
+    <a class="np-btn np-btn--primary np-btn--block np-panel__log" href="{% web_url "web-log-beer" %}">{% icon "plus" %}{% translate "Zapsat pivo" %}</a>
+    <nav class="np-panel__nav" aria-label="{% translate "Tvoje Na pivo" %}">
+      {% include "web/components/app_nav.html" %}
+    </nav>
+    <div class="np-panel__foot">
+      <p class="np-panel__app">{% translate "Kompas máš v telefonu" %}<a href="{% web_url "home" %}">{% translate "Stáhnout appku" %} ›</a></p>
+      {% if page.account %}{% include "web/components/profile_card.html" %}{% endif %}
+    </div>
+  </aside>
+  <div class="np-app__content">
+    <header class="np-app__top">
+      {% include "web/components/logo.html" %}
+      {% if page.account %}<div class="np-app__top-actions">
+        <a href="{% web_url "web-crew" %}" aria-label="{% translate "Parta" %}"{% if page.section == "crew" %} aria-current="page"{% endif %}>{% icon "users" %}</a>
+        <a href="{% web_url "web-profile" %}" aria-label="{% translate "Profil" %}">{% include "web/components/avatar.html" with name=page.account.name src=page.account.avatar_url ring=True %}</a>
+      </div>{% endif %}
+    </header>
+    <main class="np-app__main" id="obsah">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <nav class="np-tabbar" aria-label="{% translate "Tvoje Na pivo" %}">
+    {% include "web/components/app_nav.html" with tabbar=True %}
+  </nav>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{% asset "web.js" %}" defer></script>{% endblock %}

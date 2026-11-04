@@ -9,6 +9,6 @@
   // scripts/check-zod-audit-exception.js fails the audit when a vulnerable zod
   // shows up anywhere else in production. Remove both once @expo/cli ships a
   // patched zod.
-  // npm audit reports the path as @expo/cli>zod; the resolved tree is still expo>@expo/cli>zod.
-  "allowlist": ["GHSA-mrhx-c7xc-m3w5|@expo/cli>zod"]
+  // Depending on the expo version npm reports the path as @expo/cli>zod or expo>@expo/cli>zod.
+  "allowlist": ["GHSA-mrhx-c7xc-m3w5|@expo/cli>zod", "GHSA-mrhx-c7xc-m3w5|expo>@expo/cli>zod"]
 }

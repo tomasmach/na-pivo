@@ -14,6 +14,7 @@ import logging
 from rest_framework import authentication, exceptions
 
 from pubs.models import Account, AuthToken, hash_account_token
+from pubs.web.session import session_token
 
 logger = logging.getLogger("pubs.api.auth")
 
@@ -95,3 +96,27 @@ class AccountTokenAuthentication(authentication.BaseAuthentication):
     def authenticate_header(self, request):  # noqa: ARG002
         # Returning a value makes DRF answer 401 (not 403) when auth is missing.
         return self.keyword
+
+
+class WebSessionAuthentication(authentication.BaseAuthentication):
+    """Authenticate the signed-in web (na-pivo.cz) by its session cookie.
+
+    Add it after ``AccountTokenAuthentication`` on an endpoint the web calls
+    from JavaScript; bearer clients keep working unchanged and a Bearer header
+    always wins. The session points at a server-side AuthToken (see
+    ``pubs.web.session``), so revocation, account deletion and merges end it
+    exactly like a bearer token, and the account-boundary checks see the same
+    ``na_pivo_deletion_epoch``. Unsafe methods must carry the CSRF token.
+    ``request.auth`` is None: endpoints that revoke or lock the presented token
+    (logout, push device) stay bearer-only.
+    """
+
+    def authenticate(self, request):
+        auth_token = session_token(request._request)
+        if auth_token is None:
+            return None
+        authentication.SessionAuthentication().enforce_csrf(request)
+        account = auth_token.account
+        request._request.na_pivo_account_id = str(account.public_id)
+        request._request.na_pivo_deletion_epoch = auth_token.deletion_epoch
+        return (account, None)

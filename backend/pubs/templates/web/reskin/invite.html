@@ -1,0 +1,22 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/reskin/_head.html" %}{% include "web/reskin/_social.html" %}{% endblock %}
+{% block content %}
+<div class="rs-invite">
+  <section class="rs-ticket" aria-labelledby="invite-title">
+    <p class="rs-ticket__eyebrow">{% translate "Pozvánka" %}<span class="rs-ticket__mark">{% icon "beer" "np-icon--s" %}</span></p>
+    <h1 class="rs-ticket__title" id="invite-title">{{ headline }}</h1>
+    <p class="rs-ticket__text">{{ body }}</p>
+    <div class="rs-ticket__cut" aria-hidden="true"></div>
+    <a class="np-btn np-btn--l np-btn--block rs-btn--ink np-on-phone" href="{{ deep_link }}">{% icon "smartphone" "np-icon--s" %}{% translate "Otevřít v appce" %}</a>
+    <div class="np-on-desktop">{% include "web/reskin/_stores.html" with ink=True %}</div>
+    {% if login_url %}<a class="np-btn np-btn--l np-btn--block" href="{{ login_url }}">{% icon "log-in" "np-icon--s" %}{% translate "Přihlas se a přidej" %}</a>{% endif %}
+  </section>
+  <div class="rs-invite__after">
+    <p class="np-muted np-small np-on-phone">{% translate "Když se nic nestane, nainstaluj nebo aktualizuj Na pivo a klepni znovu." %}</p>
+    <p class="np-muted np-small np-on-desktop">{% translate "Pozvánka se otevře v appce. Pošli si odkaz do telefonu, kde máš Na pivo." %}</p>
+    <div class="np-on-phone">{% include "web/reskin/_stores.html" %}</div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{% asset "reskin.js" %}" defer></script>{% endblock %}

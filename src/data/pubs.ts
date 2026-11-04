@@ -704,13 +704,23 @@ export function isLoaded(): boolean {
   return _loaded;
 }
 
+let _hydrating: Promise<boolean> | null = null;
+
 /**
  * Hydrate the last public nearby-pubs snapshot without requiring a fresh GPS
  * fix. The map uses this to remain useful when location permission is off or
- * the device is offline. No fetch center is exposed to callers.
+ * the device is offline. No fetch center is exposed to callers. Callers that
+ * ask while a read is out share it.
  */
-export async function hydratePubsSnapshot(): Promise<boolean> {
-  if (_loaded) return true;
+export function hydratePubsSnapshot(): Promise<boolean> {
+  if (_loaded) return Promise.resolve(true);
+  _hydrating ??= readPubsSnapshot().finally(() => {
+    _hydrating = null;
+  });
+  return _hydrating;
+}
+
+async function readPubsSnapshot(): Promise<boolean> {
   // A prior GPS fetch may have inspected the snapshot but rejected it because
   // its saved area did not cover the current fix. The map-without-location path
   // can still use that last area, so intentionally read it again here.

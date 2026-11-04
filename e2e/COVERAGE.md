@@ -1,5 +1,40 @@
 # Pokrytí skutečného mobilního E2E
 
+## Nový vzhled, listopad 2026
+
+Nový vzhled (`app/nv`, `src/newlook`) nahradil staré obrazovky. Přepsané scénáře klikají na nové obrazovky a kontrolují stejné chování a stejné DB/API oracles jako dřív. Starší části dokumentu níže popisují ověření starého vzhledu a zůstávají jako historie.
+
+Ověření běželo na Androidu: vlastní AVD s profilem Pixel 10, obraz API 36 Google APIs x86_64 na linuxovém hostiteli, Maestro 2.11.0, revize `feat/new-look` s opravou klávesnice `ba9e7311`. Každý přepsaný scénář prošel jednou včetně svého DB/API oracle; tři průchody za sebou se podle pravidla pouštějí až před releasem. Běhy `191a29df` (10 scénářů), `0f29d14a` (večer a Výčep po úpravě kroků Deníku) a `b6a27d22` (registrace). `login-keyboard.yaml` na produktovém kódu z `8eec9ff0` selhal a na `ba9e7311` prošel. iOS na tomto stroji nejde spustit, přepsané scénáře tam zatím neběžely.
+
+| Scénář | Chování, které hlídá | Android |
+|---|---|---|
+| `spike/persist-drink.yaml` | Přihlášení, pivo z lístku E2E U Testera, restart, přesný DB záznam | 1× zelený |
+| `identity/login-keyboard.yaml` | Tlačítko přihlášení nad klávesnicí a klepnutí do pole Heslo (NP-E2E-018, NP-E2E-019) | 1× zelený |
+| `identity/logout.yaml` | Offline pivo, odhlášení, další účet nevidí historii ani frontu | 1× zelený |
+| `identity/delete.yaml` | Zrušené a potvrzené smazání, odvolané relace, prázdný deník po restartu | 1× zelený |
+| `identity/password-reset.yaml` | Skutečný e-mail, nové heslo, staré heslo odmítnuté | 1× zelený |
+| `identity/email-export.yaml` | Export odmítnutý před ověřením e-mailu, po ověření jen vlastní data | 1× zelený |
+| `identity/profile.yaml` | Obsazená přezdívka, jméno, soukromý profil, pohled cizího účtu | 1× zelený |
+| `diary/evening.yaml` | Offline pivo, Dopito, přejmenování a odebrání piva, sync, statistiky v Deníku | 1× zelený |
+| `diary/vycep.yaml` | Offline vyvěšení noci, foreground sync (NP-E2E-007), noc ve Výčepu po restartu | 1× zelený |
+| `places-social/feedback-offline.yaml` | Offline „Napiš mi“ s přílohou, restart, jediné doručení | 1× zelený |
+| `places-social/report-offline.yaml` | Zrušené nahlášení nic neodešle, offline nahlášení skryje hospodu jen autorovi | 1× zelený |
+| `places-social/pub-create-offline.yaml` | Offline hospoda se špendlíkem, jediné doručení, přejmenování zachová identitu | 1× zelený |
+| `identity/registration.yaml` | Claim anonymní online i offline historie registrací pod stejnou soukromou identitou | 1× zelený, tag `blocked` zůstává kvůli neověřenému iOS |
+
+Změny oproti starému vzhledu: přezdívku a viditelnost volí nový účet až po registraci, proto oracle registrace hledá původní anonymní identitu podle ID. Přepínač „Veřejný profil“ je u nového účtu zapnutý, test ho vypne stejně jako dřív volba „Jen pro partu“. Registrace na Androidu prošla s plným heslem; dřívější iOS blokátor zadávání hesla na novém vzhledu ověřený není, proto `blocked` zůstává. Druhé pivo krátce po prvním appka potvrzuje dialogem „Pivo před chvilkou.“, sdílený krok `repeat-beer.yaml` ho potvrdí. Nový vzhled neukazuje u večera stav „Visí ve Výčepu“, vyvěšení proto test ověřuje přes DB a přes záložku Parta ve Výčepu po restartu. Statistiky ukazuje měsíční přehled v Deníku místo samostatného listu.
+
+### Nepřepsané scénáře
+
+Těchto 23 scénářů pořád ovládá odstraněné obrazovky. Mají tag `legacy-ui`, `critical` a `full` je vynechávají a nic z nich není ověřené na novém vzhledu. Zda nový vzhled jejich chování nabízí, ověřené není, kromě vyznačených případů.
+
+- Účet a média: `identity/avatar.yaml`, `badges-information.yaml`, `media-denied.yaml`, `onboarding-complete.yaml`, `onboarding-interrupt.yaml`, `photos.yaml` (P0 soukromí fotek), `settings.yaml` (nastavení pushů dostává nový vzhled v samostatné práci).
+- Deník a tour: `diary/checkin.yaml`, `private-tour.yaml` (P0), `shared-tour.yaml` (P0, pozvánky do tour dostává nový vzhled v samostatné práci).
+- Hospody a Parta: `places-social/beer-watch.yaml`, `catalogue-offline.yaml` (známé NP-E2E-014), `community-create-retry.yaml`, `community-privacy.yaml` (P0), `contest-privacy.yaml` (P0), `contributions-offline.yaml` (známé NP-E2E-017), `favorite-offline.yaml`, `home-persistence.yaml` (P0), `invite-offline.yaml`, `leaderboard-privacy.yaml` (P0), `party-privacy.yaml` (P0), `permissions-denied.yaml`, `pub-event-moderation.yaml`.
+
+Doporučené pořadí dalšího přepisu: nejdřív P0 soukromí (fotky, Parta, komunitní akce, žebříčky, fotosoutěž), potom offline tour a domovský bod, nakonec P1 a P2.
+
+
 Průzkum začal na čerstvém `origin/dev` `e72d145c` (3. 10. 2026); infrastruktura a integrační větev byly 4. 10. aktualizované na `2e7a120e`. Tři nezávislé read-only průzkumy prošly routy, klienty, backend a Jest. Tabulka popisuje ověřované uživatelské výsledky, nikoli počet jednotlivých kliknutí. `Plán` není důkaz proběhlého testu.
 
 Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/drop klasifikaci, poškozenou storage a mockované závody. E2E přidává skutečný routing, nativní vstupy, SecureStore, AsyncStorage, restart procesu a lokální HTTP. Backendové oracles čtou skutečnou testovací DB přes místní kontrolní endpoint; nevyměňují odpovědi aplikačního API.
@@ -85,7 +120,7 @@ TesterArmy `e2e 0.16.0` / `@e2e-dev/mobile 0.9.1` na Expo SDK 56 dev buildu a iO
 
 Zkouška proběhla samostatně na jediném iPhonu 17, s aktuálním bundlem, sekundovým čekáním po otevření nabídky, výchozím i `forceFull` capture a konfigurací `settle: 350`, `transition: 1000`. Poslední dokumentovaný restart vlastního simulátoru výsledek nezměnil: obě capture měly jeden prvek a shodný důvod, pořízení trvalo 322/307 ms. Finální repro `42b0163c` trvalo 95 s, spotřebovalo 8 929 tokenů ve třech modelových voláních a skončilo selháním. Globální daemon cizích sessions nebyl zastaven. Nativní engine nemá dokumentované nastavení rozpočtu snapshotu; jeho zdroj navíc nepoužívá nakonfigurovaný settle pro deterministické tap/fill.
 
-Podle zadání proto následuje deterministický Maestro `2.11.0`, nejnovější stabilní vydání ověřené v oficiálním GitHub release 3. 10. 2026. Původní TesterArmy průchody a jejich naměřená cache nejsou vydávány za důkaz nové sady. Maestro nepoužívá model ani replay cache: modelová spotřeba je nula, replayed/handed off/missed jsou nepoužitelné. Každý nový Maestro průchod stále musí projít třikrát a skončit skutečným datovým oracle.
+Podle zadání proto následuje deterministický Maestro `2.11.0`, nejnovější stabilní vydání ověřené v oficiálním GitHub release 3. 10. 2026. Původní TesterArmy průchody a jejich naměřená cache nejsou vydávány za důkaz nové sady. Maestro nepoužívá model ani replay cache: modelová spotřeba je nula, replayed/handed off/missed jsou nepoužitelné. Každý nový Maestro průchod musí skončit skutečným datovým oracle. U běžné změny stačí jeden zelený průchod, tři za sebou (`--stability`) se pouštějí před releasem.
 
 Maestro neumí vypnout zápis vyhodnocených vstupů do debug reportů. Mach 3. 10. 2026 výslovně povolil výjimku pouze pro jednorázové účty `@example.test`: debug reporty jsou neveřejné, gitignorované a po každém běhu odstraněné, včetně selhání a přerušení. Skutečné údaje a přihlášení k ChatGPT se do Maestro prostředí nepředávají. Bearer tokeny a tokeny e-mailových odkazů drží místní Node kontroler v paměti. Zůstávají pouze naměřené souhrny a zkontrolované screenshoty konečných stavů.
 

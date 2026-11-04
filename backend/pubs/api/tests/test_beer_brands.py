@@ -174,6 +174,21 @@ def test_match_cache_reuses_product_snapshot():
     assert count_beer_catalog_selects(queries.captured_queries) == (1, 0)
 
 
+@pytest.mark.django_db
+def test_cached_exact_match_agrees_with_the_full_catalogue_scan():
+    names = ["Domácí kvasnicák", "tanková Plzeň", "IPA 14°", "12", ""]
+    for entity in [*BeerProduct.objects.all(), *BeerBrand.objects.all()]:
+        names += [entity.name, *(entity.aliases or [])]
+    match_cache = BeerCatalogMatchCache()
+
+    def identity(match):
+        return None if match is None else (match.brand.pk, match.product and match.product.pk)
+
+    for name in names:
+        expected = identity(match_beer(name, fuzzy=False))
+        assert identity(match_beer(name, fuzzy=False, match_cache=match_cache)) == expected, name
+
+
 def test_beer_brand_throttle_scope_is_configured():
     assert settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["beer_brands"]
 

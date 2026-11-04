@@ -188,6 +188,7 @@ jest.mock('@/stores/releaseStore', () => ({
 }));
 jest.mock('@/stores/tallyStore', () => ({
   useTallyStore: { getState: () => ({ current: null }), subscribe: jest.fn(() => () => undefined) },
+  onTallySessionClosed: jest.fn(() => () => undefined),
 }));
 jest.mock('@/notifications/friendPush', () => ({
   ...mockResolved('consumeInitialTourInviteTap', 'ensureFriendPushRegisteredIfGranted'),
@@ -202,19 +203,6 @@ jest.mock('@/stores/beerWatchStore', () => ({
   useBeerWatchStore: { getState: () => mockResolved('refresh') },
 }));
 jest.mock('@/location/locationCurrency', () => mockResolved('refreshCurrencyFromLastKnownLocation'));
-jest.mock('@/components/shared/WhatsNewModal', () => mockComponents('WhatsNewModal'));
-jest.mock('@/photos/ContestResultsModal', () => mockComponents('ContestResultsModal'));
-jest.mock('@/components/shared/PubReminderOnboardingModal', () =>
-  mockComponents('PubReminderOnboardingModal'),
-);
-jest.mock('@/components/shared/NicknameNudgeModal', () => mockComponents('NicknameNudgeModal'));
-jest.mock('@/components/shared/PubReminderEnableFailureModal', () =>
-  mockComponents('PubReminderEnableFailureModal'),
-);
-jest.mock('@/components/shared/AppDialog', () => mockComponents('AppDialogScreen'));
-jest.mock('@/reviews/AppReviewPromptGate', () => mockComponents('AppReviewPromptGate'));
-jest.mock('@/components/shared/Toast', () => mockComponents('Toast'));
-jest.mock('@/profile/BadgeHost', () => mockComponents('BadgeHost'));
 jest.mock('@/notifications/pubReminderNotifications', () => ({
   ...mockResolved(
     'cancelPendingPubReminder',

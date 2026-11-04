@@ -2,6 +2,10 @@
 
 Testy řídí skutečný iPhone 17 v iOS simulátoru a skutečný Django backend. Používají pouze vlastní SQLite a syntetická data. Výchozí runner je Maestro 2.11.0; důvod přechodu z TesterArmy a původní měření ChatGPT replay jsou v COVERAGE.md. Běžný `dev-local` runner se nepoužívá, protože vybírá `backend/db.sqlite3`.
 
+## Nový vzhled
+
+Sada kliká na nový vzhled appky (`app/nv`, `src/newlook`). Přepsané scénáře a jejich výsledky uvádí začátek COVERAGE.md. Scénáře, které ještě ovládají odstraněné obrazovky, mají tag `legacy-ui`; `critical` a `full` je vynechávají, dokud je někdo nepřepíše. Sdílené kroky pro nový vzhled jsou v `e2e/maestro/`: `counter.yaml` otevře Štamgast s rozpoznanou E2E U Testera, `repeat-beer.yaml` připíše další pivo včetně potvrzení „Pivo před chvilkou.“, `open-pub.yaml` otevře hospodu přes hledání a `dismiss-onboarding.yaml` přeskočí onboarding, pokud se po odhlášení vrátí.
+
 ## První spuštění na macOS
 
 Použij Node.js 24 a Javu 17 nebo novější. Runner před startem vyžaduje alespoň 30 GiB volného místa a při poklesu pod 20 GiB zastaví pouze vlastní běh s kódem 75. Rezerva chrání i ostatní práci na stroji; neplánuj souběžné mobilní buildy. Pro více simulátorů je nutná větší rezerva; dva běhy zde později vyčerpaly i 5 GiB kvůli souběžné spotřebě systému. Takové přerušení není selháním produktu. Lokální kontroler načítá TypeScript přímo přes podporu Node.js.
@@ -28,7 +32,7 @@ E2E_SLOT=2 npm run e2e:critical -- e2e/tests/spike/
 
 `e2e/tests/config.yaml` zapíná [hledání flow v podadresářích](https://docs.maestro.dev/maestro-flows/workspace-management/test-discovery-and-tags) pro celou sadu. Sdílené vnořené kroky zůstávají mimo tento adresář v `e2e/maestro/`, takže se nespouštějí samostatně.
 
-`critical` a `full` vynechávají výslovně označené `blocked` scénáře. Ty se spouštějí samostatně přes `e2e:blocked` a nejsou započítané mezi ověřené průchody. Každý musí mít konkrétní důvod v COVERAGE.md. Aktuálně jde o registraci: Maestro vyplní nativní formulář, ale aplikace při odeslání hlásí příliš krátké heslo; příčina není prokázaná. Tento blokátor brání claimu anonymních dat. Ověření e-mailu a export mají samostatný průchod existujícího neověřeného účtu v `identity/email-export.yaml`; aktuální výsledek uvádí COVERAGE.md.
+`critical` a `full` vynechávají výslovně označené `blocked` scénáře. Ty se spouštějí samostatně přes `e2e:blocked` a nejsou započítané mezi ověřené průchody. Každý musí mít konkrétní důvod v COVERAGE.md. Aktuálně jde o registraci: na starém vzhledu iOS po zadání přes Maestro hlásil příliš krátké heslo a příčina se neprokázala. Na novém vzhledu registrace s claimem anonymních dat jednou prošla na Androidu, iOS ověřený není. Ověření e-mailu a export mají samostatný průchod existujícího neověřeného účtu v `identity/email-export.yaml`; aktuální výsledek uvádí COVERAGE.md.
 
 Katalogový průchod má navíc potvrzené známé selhání [NP-E2E-014](BUGS.md#np-e2e-014-nabídka-otevřené-hospody-zmizí-po-offline-restartu): nabídka dříve otevřené hospody se neuloží pro offline restart. Tento test zůstává v `critical` i `full`, takže do opravy vrací celý příkaz nenulový kód. Stejně zůstává v obou sadách `places-social/contributions-offline.yaml` se známým selháním [NP-E2E-017](BUGS.md#np-e2e-017-offline-úprava-piv-smaže-veřejnou-nabídku-hospody): offline úprava piv nahradí celou veřejnou nabídku. Známé chyby je nutné ve výsledku odlišit od nových selhání; kontroly nabídky nebyly oslabené.
 
@@ -57,7 +61,7 @@ Backend se spouští zvláštním settings modulem mimo produkční Docker conte
 - `/capability/discover` najde jedinou veřejnou tour podle přesného fixture názvu přes skutečný anonymní katalog. Vrací jen identitu a obsah; token uloží pod aliasem v paměti kontroleru. Používá se pro kontrolu publikace a odvolání, nikoli jako důkaz nativního Copy.
 - `/capability/status` čte skutečný veřejný endpoint odkazu bez přihlášení. Vrací jen status a případně porovnání aliasů; nevytváří observer session a nevrací token odkazu.
 - `output.local.request('/home-point')` čte pouze domovský bod z uložených nastavení vlastní appky. Vrací `present` a `matchesFixture`, nikoli souřadnice; druhý příznak porovná bod s pevnou simulovanou polohou. Ověř jej po uložení a restartu, po zrušení rozpracované změny i po smazání.
-- Sdílené helpery, config, adaptéry a produkční `testID` mění hlavní agent. Každý test musí chytat pojmenovanou regresi z COVERAGE.md a projít třikrát.
+- Sdílené helpery, config, adaptéry a produkční `testID` mění hlavní agent. Každý test musí chytat pojmenovanou regresi z COVERAGE.md a projít jednou. Tři průchody za sebou (`--stability`) patří k releasu nebo na výslovný pokyn.
 
 Na iOS jsou oprávnění výslovně `all: deny`, poloha `inuse` a fotky povolené, kamera a notifikace zakázané. Pro scénář zamítnutí použij konkrétní override v `launchApp`; při návratu nastav celý očekávaný stav. Případné nativní potvrzení odmítni. Lokální fake navíc brání registraci skutečného push tokenu.
 
@@ -81,6 +85,8 @@ npm run e2e:blocked
 Oblasti spouštěj postupně. Pro nový čistý simulátor archivuj vlastní `.e2e/simulator-1.json` pod jiným názvem; runner vytvoří nový jednoznačně pojmenovaný iPhone 17. Starý simulátor nemaž ani nepřebírej cizí. Čas celého běhu zaznamená `command-metrics.json`. Maestro modelovou replay cache nemá, její metriky jsou nepoužitelné; skutečné replay měření původního TesterArmy spike je v COVERAGE.md. Další celý Maestro běh by tento důkaz neposkytl. Dostupná iOS sada již dokončila 32 PASS a jedno známé selhání; po ní začalo ověřování na Android Pixel 10.
 
 ## Android
+
+Na linuxovém hostiteli runner použije obraz `system-images;android-36;google_apis;x86_64`, SDK v `~/Android/Sdk` a Javu z `PATH`; na macOS zůstává ARM64 obraz níže. Vždy vytvoří vlastní AVD s profilem Pixel 10 v `.e2e/android-avds` a pouští ho na emulator-5556, cizí emulátory nepřebírá. Gradle krok buildu běží bez `NA_PIVO_E2E_NATIVE`, protože `expo-widgets` při něm bundluje JS s `NODE_ENV=production` a E2E pojistka v `app.config.ts` by ho odmítla; E2E konfiguraci nativního projektu nastaví už prebuild.
 
 Android ověřování začalo po dokončení dostupné iOS sady s jedním známým selháním NP-E2E-014. Příprava používá místní SDK s ARM64 obrazem `system-images;android-36.1;google_apis_playstore;arm64-v8a` a profilem `pixel_10`. Nevhodný nebo chybějící obraz runner sám nestahuje. Vytvoří vlastní pojmenovaný Pixel 10, při dalších bězích použije pouze svůj neobsazený AVD. Běh používá stejný slot, samostatné API/Metro/DB a navíc vlastní konzolový a gRPC port.
 

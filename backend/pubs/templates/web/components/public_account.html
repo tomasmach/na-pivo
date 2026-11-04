@@ -1,0 +1,4 @@
+{% load i18n web %}{% if page.account %}<a class="np-header__account" href="{% web_url "web-diary" %}">
+  {% include "web/components/avatar.html" with name=page.account.name src=page.account.avatar_url size="s" %}
+  <span>{% translate "Deník" %}</span>
+</a>{% else %}<a class="np-header__login{% if mobile %} np-btn np-btn--block{% endif %}" href="{% web_url "web-login" %}">{% translate "Přihlásit se" %}</a>{% endif %}

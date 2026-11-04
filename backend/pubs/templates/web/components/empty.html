@@ -1,0 +1,12 @@
+{% comment %}
+Empty state. title, text; icon (lucide name); action_label + action_url (yellow button);
+secondary_label + secondary_url (quiet button).
+{% endcomment %}{% load web %}<section class="np-empty">
+  {% if icon %}<span class="np-empty__icon">{% icon icon "np-icon--l" %}</span>{% endif %}
+  <h2 class="np-empty__title">{{ title }}</h2>
+  {% if text %}<p class="np-empty__text">{{ text }}</p>{% endif %}
+  {% if action_url or secondary_url %}<div class="np-empty__actions">
+    {% if action_url %}<a class="np-btn np-btn--primary" href="{{ action_url }}">{{ action_label }}</a>{% endif %}
+    {% if secondary_url %}<a class="np-btn" href="{{ secondary_url }}">{{ secondary_label }}</a>{% endif %}
+  </div>{% endif %}
+</section>

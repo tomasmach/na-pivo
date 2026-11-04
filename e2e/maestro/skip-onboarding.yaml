@@ -1,8 +1,15 @@
 appId: ${MAESTRO_APP_ID}
 ---
+# Skipping onboarding opens sign-in; "Zatím bez účtu" leaves it for the tabs,
+# so every flow starts signed out on Kompas.
 - tapOn:
     id: onboarding-skip
 - extendedWaitUntil:
+    visible:
+      id: auth-submit
+    timeout: 10000
+- tapOn: 'Zatím bez účtu|No account for now'
+- extendedWaitUntil:
     notVisible:
-      id: onboarding-skip
+      id: auth-submit
     timeout: 10000

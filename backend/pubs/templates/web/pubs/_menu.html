@@ -1,0 +1,9 @@
+{% comment %}
+Dropdown of filter links without JavaScript. menu: {"label", "current", "items": [{"label", "url", "current"}]};
+right=True opens it towards the left edge.
+{% endcomment %}{% load web %}<details class="np-pubs-menu{% if right %} np-pubs-menu--right{% endif %}">
+  <summary class="np-chip{% if plain %} np-pubs-menu__plain{% endif %}"{% if menu.current %} aria-current="true"{% endif %}>{{ menu.label }}{% icon "chevron-down" %}</summary>
+  <div class="np-pubs-menu__list">{% for item in menu.items %}
+    <a href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
+  </div>
+</details>

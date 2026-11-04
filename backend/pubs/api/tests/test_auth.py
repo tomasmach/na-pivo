@@ -2942,34 +2942,41 @@ def test_request_password_reset_known_email_sends_web_link_and_creates_token(cli
 
 
 @pytest.mark.django_db
-def test_reset_password_landing_page_opens_app(client):
+def test_reset_password_landing_page_hands_the_token_to_the_web_page(client):
+    """E-mails already sent keep working: the web page offers the browser form and the app."""
     resp = client.get("/v1/auth/reset?token=abc")
 
-    assert resp.status_code == status.HTTP_200_OK
-    html = resp.content.decode("utf-8")
-    assert 'href="napivo://auth/reset?token=abc"' in html
-    assert "Nastavit nové heslo v appce" in html
+    assert resp.status_code == status.HTTP_302_FOUND
+    assert resp["Location"] == "/nove-heslo?token=abc"
+    assert resp["Referrer-Policy"] == "no-referrer"
+    page = client.get(resp["Location"]).content.decode("utf-8")
+    assert 'href="napivo://auth/reset?token=abc"' in page
+    assert 'name="token" value="abc"' in page
 
 
 @pytest.mark.django_db
-def test_reset_password_landing_page_rejects_missing_token(client):
+def test_reset_password_landing_page_follows_the_reader_language(client):
+    resp = client.get("/v1/auth/reset?token=abc", HTTP_ACCEPT_LANGUAGE="en")
+
+    assert resp["Location"] == "/en/new-password?token=abc"
+
+
+@pytest.mark.django_db
+def test_reset_password_landing_page_without_token_explains_the_dead_link(client):
     resp = client.get("/v1/auth/reset")
 
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    html = resp.content.decode("utf-8")
-    assert "Tenhle odkaz nefunguje" in html
-    assert (
-        "Odkazu chybí kód. Otevři e-mail znovu a klepni na tlačítko, "
-        "nebo si v appce řekni o nový."
-    ) in html
+    assert resp["Location"] == "/nove-heslo"
+    page = client.get(resp["Location"])
+    assert page.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Tenhle odkaz už neplatí." in page.content.decode("utf-8")
 
 
 @pytest.mark.django_db
 def test_reset_password_landing_page_url_encodes_token(client):
     resp = client.get("/v1/auth/reset", data={"token": "abc&next=value"})
 
-    assert resp.status_code == status.HTTP_200_OK
-    assert 'href="napivo://auth/reset?token=abc%26next%3Dvalue"' in resp.content.decode(
+    assert resp["Location"] == "/nove-heslo?token=abc%26next%3Dvalue"
+    assert 'href="napivo://auth/reset?token=abc%26next%3Dvalue"' in client.get(resp["Location"]).content.decode(
         "utf-8"
     )
 

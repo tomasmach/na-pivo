@@ -1,0 +1,80 @@
+{% extends "web/account/base.html" %}
+{% load i18n web %}
+{% block head %}{{ block.super }}<link rel="stylesheet" href="{% asset "diary.css" %}">{% endblock %}
+{% block page %}
+<a class="dy-back" href="{{ crumb.url }}">{% icon "chevron-left" "np-icon--s" %}{{ crumb.label }}</a>
+<header class="dy-night-head">
+  <div>
+    <h1 class="np-app__title">{{ title }}</h1>
+    <p class="np-lead dy-night-head__sub">{{ subtitle }}</p>
+  </div>
+  {% include "web/account/_publish_button.html" %}
+</header>
+<div class="np-stats dy-stats dy-stats--night">
+  {% for stat in stats %}<div class="np-stat{% if stat.hero %} dy-stat--yellow{% endif %}"><span class="np-stat__value">{{ stat.value }}</span><span class="np-stat__label">{{ stat.label }}</span></div>{% endfor %}
+</div>
+<div class="dy-grid dy-grid--night">
+  <div class="dy-main">
+    {% if tempo %}<section class="np-card dy-tempo" aria-labelledby="dy-tempo-title">
+      <div class="np-card__head"><h2 class="np-title" id="dy-tempo-title">{% translate "Tempo po hodinách" %}</h2><span class="np-small np-muted">{{ tempo_peak }}</span></div>
+      <div class="dy-tempo__bars">{% for hour in tempo %}
+        <div class="dy-tempo__col"><span class="dy-tempo__bar{% if hour.peak %} is-peak{% elif hour.count %} is-on{% endif %}" data-h="{{ hour.height }}" title="{{ hour.count }}"></span><span class="dy-tempo__label">{{ hour.hour }}</span></div>{% endfor %}
+      </div>
+    </section>{% endif %}
+    <section class="np-card np-card--tight dy-poured" aria-labelledby="dy-poured-title">
+      <div class="dy-nights__head"><h2 class="np-title" id="dy-poured-title">{% translate "Co padlo" %}</h2><span class="np-small np-muted">{{ poured_meta }}</span></div>
+      <div class="np-list" data-drinks>{% for drink in drinks %}
+        <div class="np-row dy-drink" data-drink="{{ drink.client_id }}" data-name="{{ drink.name }}" data-price="{{ drink.price_czk|default_if_none:'' }}">
+          <span class="dy-drink__time">{{ drink.time }}</span>
+          <span class="np-row__body"><span class="np-row__title">{{ drink.name }}</span><span class="np-row__meta">{{ drink.meta }}</span></span>
+          {% if drink.price %}<span class="dy-drink__price">{{ drink.price }}</span>{% endif %}
+          <button class="np-btn np-btn--ghost np-btn--icon dy-drink__more" type="button" data-edit aria-label="{% blocktranslate with name=drink.name %}Upravit {{ name }}{% endblocktranslate %}">{% icon "ellipsis" %}</button>
+        </div>{% endfor %}
+      </div>
+      <a class="dy-add" href="{{ log_url }}">{% icon "plus" "np-icon--s" %}{% translate "Dopsat pivo k tomuhle večeru" %}</a>
+    </section>
+  </div>
+  <aside class="dy-side">
+    <section class="np-card dy-stops" aria-labelledby="dy-stops-title">
+      <h2 class="np-title" id="dy-stops-title">{% translate "Kde" %}</h2>
+      <ol class="dy-stops__list">{% for stop in stops %}
+        <li><span class="dy-stops__n">{{ forloop.counter }}</span><span><b>{{ stop.name }}</b><span class="np-small np-muted">{{ stop.meta }}</span></span></li>{% endfor %}
+      </ol>
+      <a class="dy-add dy-add--quiet" href="{{ log_url }}">{% icon "plus" "np-icon--s" %}{% translate "Přidat další zastávku" %}</a>
+    </section>
+    {% if people %}<section class="np-card np-card--tight dy-people" aria-labelledby="dy-people-title">
+      <div class="dy-nights__head"><h2 class="np-title" id="dy-people-title">{% translate "S kým" %}</h2></div>
+      <div class="np-list">{% for person in people %}
+        <div class="np-row">{% include "web/components/avatar.html" with name=person.name %}<span class="np-row__body"><span class="np-row__title">{{ person.name }}</span>{% if person.handle %}<span class="np-row__meta">{{ person.handle }}</span>{% endif %}</span>{% if person.beers %}<span class="np-small np-muted">{{ person.beers_label }}</span>{% endif %}</div>{% endfor %}
+      </div>
+    </section>{% endif %}
+    {% if photos %}<section class="np-card dy-photos" aria-labelledby="dy-photos-title">
+      <h2 class="np-title" id="dy-photos-title">{% translate "Fotky" %}</h2>
+      <div class="dy-photos__grid">{% for photo in photos %}<img src="{{ photo.url }}" alt="{{ photo.alt }}" loading="lazy">{% endfor %}</div>
+    </section>{% endif %}
+  </aside>
+</div>
+<dialog class="dy-dialog" id="dy-edit" aria-labelledby="dy-edit-title">
+  <form class="np-form" method="dialog" data-edit-form>
+    <div class="dy-dialog__head"><h2 class="np-title" id="dy-edit-title">{% translate "Opravit pivo" %}</h2>
+      <button class="np-btn np-btn--icon" type="button" value="cancel" data-close aria-label="{% translate "Zavřít" %}">{% icon "x" "np-icon--s" %}</button></div>
+    {% translate "Název piva" as name_label %}{% include "web/components/field.html" with name="edit-name" label=name_label required=True maxlength=80 %}
+    {% translate "Cena" as price_label %}{% translate "volitelně" as optional %}{% include "web/components/field.html" with name="edit-price" label=price_label type="number" placeholder=optional %}
+    <p class="np-field__error" data-edit-error hidden></p>
+    <div class="dy-dialog__actions">
+      <button class="np-btn np-btn--danger" type="button" data-delete>{% icon "trash-2" "np-icon--s" %}{% translate "Smazat" %}</button>
+      <button class="np-btn np-btn--primary" type="submit" data-save>{% translate "Uložit" %}</button>
+    </div>
+    <div class="dy-confirm" data-confirm hidden>
+      <p>{% translate "Smazat tohle pivo z deníku? Vrátit to nepůjde." %}</p>
+      <div class="dy-dialog__actions">
+        <button class="np-btn" type="button" data-confirm-no>{% translate "Nechat" %}</button>
+        <button class="np-btn np-btn--primary" type="button" data-confirm-yes>{% translate "Smazat" %}</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+{{ data|json_script:"dy-night-data" }}
+{% endblock %}
+{% block dialogs %}{% include "web/account/_publish.html" %}{% endblock %}
+{% block scripts %}{{ block.super }}<script src="{% asset "diary.js" %}" defer></script>{% endblock %}

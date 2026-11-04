@@ -13,6 +13,8 @@ const shareFriendPubActivity = jest.fn(async () => ({ ok: true }));
 const createFriendPlan = jest.fn(async () => ({ ok: true }));
 const endFriendPubActivity = jest.fn(async () => ({ ok: true }));
 const sendFriendRequest = jest.fn(async () => ({ ok: true }));
+const cheerFriend = jest.fn(async () => ({ ok: true }));
+const clearFriendCheer = jest.fn(async () => ({ ok: true }));
 
 jest.mock('../friendsClient', () => ({
   respondToActivity: (...a: unknown[]) => respondToActivity(...(a as [])),
@@ -23,6 +25,8 @@ jest.mock('../friendsClient', () => ({
   createFriendPlan: (...a: unknown[]) => createFriendPlan(...(a as [])),
   endFriendPubActivity: (...a: unknown[]) => endFriendPubActivity(...(a as [])),
   sendFriendRequest: (...a: unknown[]) => sendFriendRequest(...(a as [])),
+  cheerFriend: (...a: unknown[]) => cheerFriend(...(a as [])),
+  clearFriendCheer: (...a: unknown[]) => clearFriendCheer(...(a as [])),
 }));
 
 import {
@@ -58,6 +62,8 @@ beforeEach(async () => {
   createFriendPlan.mockResolvedValue({ ok: true });
   endFriendPubActivity.mockResolvedValue({ ok: true });
   sendFriendRequest.mockResolvedValue({ ok: true });
+  cheerFriend.mockResolvedValue({ ok: true });
+  clearFriendCheer.mockResolvedValue({ ok: true });
   await AsyncStorage.clear();
 });
 
@@ -92,6 +98,45 @@ describe('enqueueFriendOp — composite dedup keys', () => {
     expect(endFriendPubActivity).not.toHaveBeenCalled();
     expect(shareFriendPubActivity).toHaveBeenCalledTimes(1); // NOT re-sent
     expect(await readQueue()).toEqual([]); // end dropped
+  });
+});
+
+describe('Na zdraví to a friend sitting out', () => {
+  it('waits offline and sends only the last tap once there is signal', async () => {
+    cheerFriend.mockResolvedValue(retry());
+    clearFriendCheer.mockResolvedValue(retry());
+    await enqueueFriendOp({ op: 'friend-cheer', accountId: 'klara' });
+    await enqueueFriendOp({ op: 'friend-cheer-clear', accountId: 'klara' });
+    await enqueueFriendOp({ op: 'friend-cheer', accountId: 'klara' });
+    // A cheer to a broadcast and to the person are separate actions.
+    reactToActivity.mockResolvedValue(retry());
+    await enqueueFriendOp({ op: 'cheer', activityId: 'klara' });
+    expect(await readQueue()).toEqual([
+      { op: 'friend-cheer', accountId: 'klara' },
+      { op: 'cheer', activityId: 'klara' },
+    ]);
+
+    cheerFriend.mockClear();
+    cheerFriend.mockResolvedValue({ ok: true });
+    reactToActivity.mockResolvedValue({ ok: true });
+    await flushFriendsQueue();
+    expect(cheerFriend).toHaveBeenCalledTimes(1);
+    expect(cheerFriend).toHaveBeenCalledWith('klara');
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('drops the cheer once the friend has gone home', async () => {
+    const notOut = () => ({ ok: false as const, code: 'not_out', detail: 'x' });
+    cheerFriend.mockResolvedValue(notOut());
+    await enqueueFriendOp({ op: 'friend-cheer', accountId: 'klara' });
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('drops a stored cheer without a friend id', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ op: 'friend-cheer' }, { op: 'friend-cheer-clear', accountId: 'petra' }]));
+    clearFriendCheer.mockResolvedValue(retry());
+    await flushFriendsQueue();
+    expect(await readQueue()).toEqual([{ op: 'friend-cheer-clear', accountId: 'petra' }]);
   });
 });
 

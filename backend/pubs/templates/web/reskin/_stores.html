@@ -1,0 +1,4 @@
+{% load web %}<div class="rs-stores" data-stores>
+  <a class="np-btn np-btn--l {% if ink %}rs-btn--ink{% else %}np-btn--light{% endif %}" data-store="ios" href="{{ app_store_url }}">{% icon "apple" %}App Store</a>
+  <a class="np-btn np-btn--l{% if ink %} rs-btn--ink{% endif %}" data-store="android" href="{{ play_store_url }}">{% icon "play" %}Google Play</a>
+</div>

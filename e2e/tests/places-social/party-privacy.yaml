@@ -1,7 +1,9 @@
 # Known visual ambiguity NP-E2E-005: ../../BUGS.md. Automatic sharing and explicit cink have separate documented API contracts; a green flow does not resolve the toggle wording.
 appId: ${MAESTRO_APP_ID}
 name: Sharing ghost mode and blocking revoke real friend API access
-tags: [critical, full]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [critical, full, legacy-ui]
 ---
 - runFlow:
     file: ../../maestro/reset.yaml

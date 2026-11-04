@@ -719,6 +719,31 @@ class Account(models.Model):
         help_text="Whether the user opted in to product/marketing e-mails.",
     )
 
+    # ---------- Výčep sharing defaults (new look) ----------
+    # Both default to the most private option. Released clients never send
+    # them, so their behavior stays exactly as before.
+    class ShareDefault(models.TextChoices):
+        FRIENDS = "friends", "Friends"
+        PUBLIC = "public", "Public"
+
+    class NightAutopublish(models.TextChoices):
+        OFF = "off", "Off"
+        FRIENDS = "friends", "Friends"
+        PUBLIC = "public", "Public"
+
+    share_default = models.CharField(
+        max_length=16,
+        choices=ShareDefault.choices,
+        default=ShareDefault.FRIENDS,
+        help_text="Preselected audience for published nights, ratings and photos.",
+    )
+    night_autopublish = models.CharField(
+        max_length=16,
+        choices=NightAutopublish.choices,
+        default=NightAutopublish.OFF,
+        help_text="Whether the app hangs a finished night on the Výčep by itself.",
+    )
+
     # ---------- UGC consent proof ----------
     ugc_terms_version = models.CharField(
         max_length=32,
@@ -1336,6 +1361,32 @@ class FriendPubActivity(models.Model):
         blank=True,
         help_text="When the afternoon plan reminder was pushed, so it fires once.",
     )
+    # Plans v2 (new look). Empty place_kind marks a row from a released client:
+    # one plan at a time, always a pub. Newer clients send pub/home/custom.
+    place_kind = models.CharField(
+        max_length=8,
+        blank=True,
+        default="",
+        help_text="'' legacy pub row; pub / home / custom from the new look.",
+    )
+    address = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Free-text address of a home or custom place. Only invitees ever read it.",
+    )
+    last_reminded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the host last nudged the silent invitees, for the cooldown.",
+    )
+    guest_token_hash = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="SHA-256 of the guest link token; set when the host first reads the link.",
+    )
     started_at = models.DateTimeField()
     expires_at = models.DateTimeField(db_index=True)
     active = models.BooleanField(default=True, db_index=True)
@@ -1418,6 +1469,8 @@ class FriendNotification(models.Model):
         FRIEND_PLAN = "friend_plan", "Friend plan"
         # A friend invited me to their tour de pub.
         FRIEND_TOUR_INVITE = "friend_tour_invite", "Friend tour invite"
+        # A friend nudged me directly, without a pub ("cinknutí").
+        FRIEND_PING = "friend_ping", "Friend ping"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     recipient = models.ForeignKey(
@@ -1525,6 +1578,45 @@ class FriendActivityResponse(models.Model):
         return f"FriendActivityResponse({self.account_id} -> {self.activity_id}: {self.response})"
 
 
+class FriendPlanGuest(models.Model):
+    """An answer to a plan from someone without an account, through the guest link.
+
+    The guest is only a name. ``device_hash`` is the SHA-256 of a random cookie,
+    so one browser keeps one answer per plan and can change it. Rows go with
+    the plan (CASCADE), which the prune job deletes a few days after it ends.
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    activity = models.ForeignKey(
+        "pubs.FriendPubActivity",
+        on_delete=models.CASCADE,
+        related_name="guests",
+    )
+    device_hash = models.CharField(max_length=64)
+    name = models.CharField(max_length=30)
+    response = models.CharField(
+        max_length=8,
+        choices=FriendActivityResponse.Response.choices,
+        default=FriendActivityResponse.Response.GOING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Friend plan guest"
+        verbose_name_plural = "Friend plan guests"
+        ordering = ["created_at", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "device_hash"],
+                name="unique_plan_guest_per_device",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"FriendPlanGuest({self.activity_id}: {self.response})"
+
+
 class FriendActivityReaction(models.Model):
     """One friend's lightweight reaction to a FriendPubActivity (the "Na zdraví" loop).
 
@@ -1577,6 +1669,44 @@ class FriendActivityReaction(models.Model):
 
     def __str__(self) -> str:
         return f"FriendActivityReaction({self.account_id} -> {self.activity_id}: {self.kind})"
+
+
+class FriendHomeCheckin(models.Model):
+    """A guest who arrived at a friend's home evening ("Jsem u Kláry").
+
+    The evening is the host's ``FriendPubActivity`` with ``place_kind=home``.
+    Stores only that the guest is there, never where: the address lives on the
+    activity and is read by invitees only. Leaving keeps the row with
+    ``left_at`` so an offline retry of the arrival cannot silently undo it.
+    """
+
+    activity = models.ForeignKey(
+        "pubs.FriendPubActivity",
+        on_delete=models.CASCADE,
+        related_name="home_checkins",
+    )
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="home_checkins",
+    )
+    client_id = models.UUIDField(help_text="Client idempotency key of the arrival.")
+    joined_at = models.DateTimeField(default=timezone.now)
+    left_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Friend home check-in"
+        verbose_name_plural = "Friend home check-ins"
+        ordering = ["joined_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "account"], name="unique_home_checkin_per_account"
+            )
+        ]
+        indexes = [models.Index(fields=["account", "left_at"])]
+
+    def __str__(self) -> str:
+        return f"FriendHomeCheckin({self.account_id} @ {self.activity_id})"
 
 
 class PartyEvening(models.Model):
@@ -1797,6 +1927,8 @@ class BeerCheckIn(models.Model):
     class Visibility(models.TextChoices):
         PRIVATE = "private", "Private"
         FRIENDS = "friends", "Friends"
+        # Opt-in: friends still see it, and it shows as a review on the beer page.
+        PUBLIC = "public", "Public"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     account = models.ForeignKey(
@@ -2128,6 +2260,8 @@ class BeerPhoto(models.Model):
     class Visibility(models.TextChoices):
         PRIVATE = "private", "Private"
         FRIENDS = "friends", "Friends"
+        # Explicit opt-in from the new look; released clients never send it.
+        PUBLIC = "public", "Public"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     account = models.ForeignKey(
@@ -2149,6 +2283,10 @@ class BeerPhoto(models.Model):
     pub_cache_key = models.CharField(max_length=12, blank=True, default="", db_index=True)
     pub_name = models.TextField(blank=True, default="")
     pub_city = models.TextField(blank=True, default="")
+    # Optional beer tag. ``beer_key`` uses the BeerCheckIn identity: the
+    # catalogue product key when the name matches, otherwise the text hash.
+    beer_name = models.CharField(max_length=200, blank=True, default="")
+    beer_key = models.CharField(max_length=100, blank=True, default="", db_index=True)
     visibility = models.CharField(
         max_length=16,
         choices=Visibility.choices,
@@ -2321,7 +2459,10 @@ class PhotoContest(models.Model):
 
 
 class PhotoContestEntry(models.Model):
-    """One account's entry (a photo of their own) in one contest round.
+    """One entry (a photo of the account's own) in one contest round.
+
+    An account may enter several photos per round. Released clients that
+    assume a single entry still get replace semantics from the API.
 
     ``final_votes`` is stamped for every entry at close time and ``final_rank``
     for the top 3, making them the DURABLE results record. The entry row itself
@@ -2355,16 +2496,13 @@ class PhotoContestEntry(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["contest", "account"],
-                name="unique_photo_contest_entry_per_account",
-            ),
-            models.UniqueConstraint(
                 fields=["contest", "photo"],
                 name="unique_photo_contest_entry_per_photo",
             ),
         ]
         indexes = [
             models.Index(fields=["contest", "created_at"]),
+            models.Index(fields=["contest", "account"], name="pubs_contest_entry_acct_idx"),
         ]
 
     def __str__(self) -> str:
@@ -2372,10 +2510,11 @@ class PhotoContestEntry(models.Model):
 
 
 class PhotoContestVote(models.Model):
-    """One account's single vote in one contest round.
+    """One account's "runda" (vote) on one contest entry.
 
-    Unique on (contest, voter): re-voting MOVES the vote to another entry
-    (update_or_create on the entry FK) rather than adding a second one.
+    Unique on (entry, voter): a voter may give a runda to any number of
+    entries, at most one each. Released clients still get the old single,
+    movable vote through POST /v1/photo-contest/vote.
     """
 
     contest = models.ForeignKey(
@@ -2401,12 +2540,13 @@ class PhotoContestVote(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["contest", "voter"],
-                name="unique_photo_contest_vote_per_voter",
+                fields=["entry", "voter"],
+                name="unique_photo_contest_vote_per_entry_voter",
             )
         ]
         indexes = [
             models.Index(fields=["entry"]),
+            models.Index(fields=["contest", "voter"], name="pubs_contest_vote_voter_idx"),
         ]
 
     def __str__(self) -> str:
@@ -2509,6 +2649,7 @@ class OneTimeToken(models.Model):
     class Purpose(models.TextChoices):
         VERIFY_EMAIL = "verify_email", "Verify email"
         RESET_PASSWORD = "reset_password", "Reset password"
+        DELETE_ACCOUNT = "delete_account", "Delete account"
 
     account = models.ForeignKey(
         "pubs.Account",
@@ -3760,6 +3901,103 @@ class BeerWatchPush(models.Model):
         ]
 
 
+class BeerRanking(models.Model):
+    """Hourly aggregate behind the national beer ranking and the global part of a beer page.
+
+    Rebuilt by ``refresh_beer_ranking``. Each account counts once per beer, with
+    its latest rating, so nothing here points back to a person.
+    """
+
+    product = models.OneToOneField(BeerProduct, on_delete=models.CASCADE, related_name="ranking")
+    rating_avg = models.FloatField(null=True, blank=True)
+    rating_count = models.PositiveIntegerField(default=0)
+    # Raters per star, 5 down to 1.
+    stars = models.JSONField(default=list, blank=True)
+    tag_counts = models.JSONField(default=dict, blank=True)
+    tagged_count = models.PositiveIntegerField(default=0)
+    styles = models.JSONField(default=list, blank=True)
+    # True once enough people agreed on the style; until then ``styles`` is guessed from the name.
+    style_settled = models.BooleanField(default=False)
+    # Czech degrees bucket: from the name, else what most people answered; "" when unknown.
+    degree = models.CharField(max_length=6, blank=True, default="")
+    rank = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    # Final rank of the previous ISO week, for the arrow next to the rank.
+    last_week_rank = models.PositiveIntegerField(null=True, blank=True)
+    week_start = models.DateField(null=True, blank=True)
+    drunk_total = models.PositiveIntegerField(default=0)
+    drinkers = models.PositiveIntegerField(default=0)
+    drunk_week = models.PositiveIntegerField(default=0)
+    computed_at = models.DateTimeField()
+
+    def __str__(self) -> str:
+        return f"BeerRanking({self.product_id}: {self.rank})"
+
+
+class BeerStyleVote(models.Model):
+    """One account's answer to "Jaké je to pivo?" for a catalogue beer: its kind and degrees.
+
+    The majority wins once enough people agree, so a single careless tap changes
+    nothing. ``unknown`` records "Nevím" and only stops the app asking again.
+    """
+
+    class Style(models.TextChoices):
+        PALE = "pale", "Pale"
+        AMBER = "amber", "Amber"
+        DARK = "dark", "Dark"
+        CRAFT = "craft", "Craft"
+        OTHER = "other", "Other"
+        UNKNOWN = "unknown", "Unknown"
+
+    class Degree(models.TextChoices):
+        NINE = "9", "9° or less"
+        TEN = "10", "10°"
+        ELEVEN = "11", "11°"
+        TWELVE = "12", "12°"
+        STRONG = "13plus", "13° or more"
+
+    account = models.ForeignKey(
+        "pubs.Account", on_delete=models.CASCADE, related_name="beer_style_votes"
+    )
+    product = models.ForeignKey(BeerProduct, on_delete=models.CASCADE, related_name="style_votes")
+    style = models.CharField(max_length=8, choices=Style.choices, blank=True, default="")
+    degree = models.CharField(max_length=6, choices=Degree.choices, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["account", "product"], name="beer_style_vote_unique"),
+        ]
+
+    def __str__(self) -> str:
+        return f"BeerStyleVote({self.account_id}, {self.product_id}: {self.style})"
+
+
+class BeerRegionRanking(models.Model):
+    """Hourly per-region slice of ``BeerRanking``: ratings and drinks at pubs in one kraj.
+
+    Built by ``refresh_beer_ranking`` from the pub cell of each check-in and drink,
+    so the region is where the beer was drunk, not where it is brewed.
+    """
+
+    product = models.ForeignKey(BeerProduct, on_delete=models.CASCADE, related_name="region_rankings")
+    region = models.CharField(max_length=5, help_text="NUTS 3 code of the Czech region, e.g. CZ064.")
+    rating_avg = models.FloatField(null=True, blank=True)
+    rating_count = models.PositiveIntegerField(default=0)
+    stars = models.JSONField(default=list, blank=True)
+    rank = models.PositiveIntegerField(null=True, blank=True)
+    drunk_total = models.PositiveIntegerField(default=0)
+    computed_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["product", "region"], name="beer_region_ranking_unique"),
+        ]
+        indexes = [models.Index(fields=["region", "rank"])]
+
+    def __str__(self) -> str:
+        return f"BeerRegionRanking({self.product_id}, {self.region}: {self.rank})"
+
+
 class DrinkLog(models.Model):
     """
     A single drink the user logged via the in-app counter.
@@ -3942,6 +4180,10 @@ class DrinkLog(models.Model):
         blank=True,
         related_name="logged_drinks",
         help_text="The shared evening this drink was logged during, if any.",
+    )
+    xp_awarded = models.PositiveIntegerField(
+        default=0,
+        help_text="Pivař XP this drink earned when it was logged; summed for a night's receipt.",
     )
 
     # ---------- timestamps ----------
@@ -4297,6 +4539,34 @@ class PubVisit(models.Model):
 
     def __str__(self) -> str:
         return f"PubVisit({self.name} [{self.cache_key}] @ {self.started_at:%Y-%m-%d %H:%M})"
+
+
+class PubVisitReaction(models.Model):
+    """A friend's "Na zdraví" to somebody sitting in a pub right now.
+
+    Parta's "Teď venku" rows come from visits, not broadcasts, so this is the
+    reaction for a friend who never broadcast. Identity is (visit, account): a
+    re-tap upserts the same row. Both FKs CASCADE, so the row goes with the visit
+    or the account, like ``FriendActivityReaction``.
+    """
+
+    class Kind(models.TextChoices):
+        CHEERS = "cheers", "Cheers"
+
+    visit = models.ForeignKey(PubVisit, on_delete=models.CASCADE, related_name="reactions")
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="visit_reactions")
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.CHEERS)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["visit", "account"], name="unique_visit_reaction_per_account")
+        ]
+
+    def __str__(self) -> str:
+        return f"PubVisitReaction({self.account_id} -> {self.visit_id}: {self.kind})"
 
 
 class OfflineMutationTombstone(models.Model):
@@ -5428,3 +5698,34 @@ class TransitServiceDate(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["feed", "date"], name="transit_service_date")]
+
+
+class XpEvent(models.Model):
+    """One XP award, kept so the app can say what moved the account up a level.
+
+    Written next to every Pivař and Mapér XP increment. The counters on
+    AccountUsageStats stay the source of truth; this log only explains them.
+    Rows older than ``pubs.xp_events.XP_EVENT_RETENTION`` are pruned when the
+    owner reads them.
+    """
+
+    class Reason(models.TextChoices):
+        DRINK = "drink", "Drink"
+        PHOTO = "photo", "Photo"
+        CHECKIN = "checkin", "Check-in"
+        MAPPING = "mapping", "Mapping"
+        COMMUNITY = "community", "Hours or menu"
+        CONTEST = "contest", "Photo contest"
+
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="xp_events")
+    reason = models.CharField(max_length=16, choices=Reason.choices)
+    amount = models.PositiveIntegerField()
+    cache_key = models.CharField(max_length=12, blank=True, default="")
+    pub_name = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        indexes = [models.Index(fields=["account", "-created_at"], name="xp_event_account_recent")]
+
+    def __str__(self) -> str:
+        return f"XpEvent({self.reason} +{self.amount})"

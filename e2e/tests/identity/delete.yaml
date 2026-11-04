@@ -11,13 +11,11 @@ tags: [critical, full, identity]
 - runFlow: ../../maestro/skip-onboarding.yaml
 - evalScript: ${output.local.check(output.local.observe('primary', '/v1/account/me').status === 200, 'Establish the cached observer before the app login so its deletion epoch stays current.')}
 - runFlow: ../../maestro/login.yaml
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /beer
+- runFlow: ../../maestro/counter.yaml
 - tapOn: { id: counter-primary }
-- tapOn: "Připsat E2E Ležák za 0,5 l · 41 Kč"
-- assertVisible: "1 pivo, utraceno 41\\sKč\\. Otevře tvůj účet\\."
+- tapOn: 'E2E Ležák, 41\sKč'
+- tapOn: { id: drink-save }
+- assertVisible: '1 pivo dnes večer'
 - runScript:
     file: checks.js
     env:
@@ -26,27 +24,21 @@ tags: [critical, full, identity]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /account
-- tapOn: "Otevřít další možnosti účtu"
-- tapOn: "Smazat účet"
+      ROUTE: /nv/ucet
+- tapOn: 'Smazat účet'
 - assertVisible: 'Smazat účet\?'
-- assertVisible: { id: app-dialog-primary }
-- tapOn: { id: app-dialog-secondary-0 }
+- tapOn: 'Zrušit'
 - assertNotVisible: 'Smazat účet\?'
-- assertNotVisible: { id: app-dialog-primary }
 - runScript:
     file: checks.js
     env:
       CASE: delete
       PHASE: cancel
-- tapOn: "Otevřít další možnosti účtu"
-- tapOn: "Smazat účet"
+- tapOn: 'Smazat účet'
 - assertVisible: 'Smazat účet\?'
-- assertVisible: { id: app-dialog-primary }
 - evalScript: ${output.local.debugScreenshot('identity-delete-dialog')}
-- tapOn: { id: app-dialog-primary }
+- tapOn: 'Smazat'
 - assertNotVisible: 'Smazat účet\?'
-- assertNotVisible: { id: app-dialog-primary }
 - evalScript: ${output.local.debugScreenshot('identity-delete-confirmed')}
 - runScript:
     file: checks.js
@@ -54,16 +46,18 @@ tags: [critical, full, identity]
       CASE: delete
       PHASE: deleted
 - runFlow: ../../maestro/restart.yaml
+- runFlow: ../../maestro/dismiss-onboarding.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /profile
-- assertVisible: "Zatím bez účtu"
+      ROUTE: /nv/profil
+- assertVisible: 'Zatím bez účtu'
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /beer
-- assertVisible: "Čistej tácek, zatím nic nepadlo"
+      ROUTE: /nv/stamgast
+- assertVisible: '0 piv dnes večer'
+- assertVisible: 'Zatím nic\. První pivo zapíšeš tlačítkem dole\.'
 - evalScript: ${output.local.screenshot('identity-account-deleted')}
 - runScript:
     file: checks.js

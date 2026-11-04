@@ -709,9 +709,14 @@ REST_FRAMEWORK = {
         "tour_write": "20/hour",
         "tour_share": "10/hour",
         "tour_public": "60/min",
-        # Public beer price page and its share image; a reader loads one page at a time.
-        "price_map": "60/min",
+        # Public web pages per network. A person reads a few pages a minute and Google slows down on a
+        # 429 by itself; a scraper copying every pub's menu and prices has to take hours, not minutes.
+        "web_pages": "120/min",
+        # Share images and the CSV draw on a cache miss, so they keep a tighter budget.
+        "web_og": "60/min",
         "tour_search": "60/min",
+        # Web search: one query per submitted form, so a person stays far below this.
+        "web_search": "30/min",
         "tour_publish": "20/hour",
         "tour_run": "240/hour",
         # Inviting friends pushes to their phones, so it has a tighter budget than reading who answered.
@@ -730,6 +735,8 @@ REST_FRAMEWORK = {
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
         "pub_favorites": PUB_FAVORITES_THROTTLE_RATE,
         "beer_watches": "60/min",
+        # Piva tab reads: ranking pages, search while typing, reviews and the collection.
+        "beers": "120/min",
         "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,
         "pub_location_lookup": PUB_LOCATION_LOOKUP_THROTTLE_RATE,
@@ -756,6 +763,12 @@ REST_FRAMEWORK = {
         "public_reads": PUBLIC_READS_THROTTLE_RATE,
         "transit_stops": TRANSIT_STOPS_THROTTLE_RATE,
         "transit_last_direct": TRANSIT_LAST_DIRECT_THROTTLE_RATE,
+        # Guest link of a plan: reading it, and answering per network and per plan.
+        "plan_invite": "60/min",
+        "plan_guest": "20/hour",
+        "plan_guest_plan": "60/hour",
+        # Deletion link from the web, counted per e-mail address on top of auth_email per network.
+        "delete_link_email": "3/hour",
     },
 }
 

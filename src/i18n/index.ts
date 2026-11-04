@@ -10,7 +10,6 @@ import * as enCounts from './enHelpers';
 import { intlLocaleFor, readStoredLocale, type Locale } from './locale';
 
 export type { Locale, Strings };
-export { SUPPORTED_LOCALES } from './locale';
 
 export const locale: Locale = readStoredLocale();
 
@@ -22,12 +21,8 @@ export const t: Strings = locale === 'en' ? en : cs;
 const counts = locale === 'en' ? enCounts : csCounts;
 
 export const formatVolume = locale === 'en' ? enCounts.formatVolume : formatVolumeCs;
-export const beerNoun = counts.beerNoun;
 export const beerCountLabel = counts.beerCountLabel;
 export const peopleCountLabel = counts.peopleCountLabel;
-export const softDrinkCountLabel = counts.softDrinkCountLabel;
-export const shotCountLabel = counts.shotCountLabel;
-export const wineCountLabel = counts.wineCountLabel;
 
 /** Locale-aware "1 beer / 3 beers" style plural: give both language shapes. */
 export function plural(

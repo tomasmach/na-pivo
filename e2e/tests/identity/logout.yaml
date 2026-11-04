@@ -8,45 +8,41 @@ tags: [critical, full, identity]
       SCENARIO: identity
 - runFlow: ../../maestro/skip-onboarding.yaml
 - runFlow: ../../maestro/login.yaml
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /beer
+- runFlow: ../../maestro/counter.yaml
 - tapOn: { id: counter-primary }
-- tapOn: "Připsat E2E Ležák za 0,5 l · 41 Kč"
+- tapOn: 'E2E Ležák, 41\sKč'
+- tapOn: { id: drink-save }
+- assertVisible: '1 pivo dnes večer'
 - runScript:
     file: checks.js
     env:
       CASE: logout
       PHASE: online
 - evalScript: ${output.local.offline()}
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /beer
-- tapOn: "Připsat další E2E Ležák"
-- tapOn: "Jo, připsat další pivo"
-- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
+- runFlow: ../../maestro/repeat-beer.yaml
+- assertVisible: '2 piva dnes večer'
 - runFlow: ../../maestro/restart.yaml
+- runFlow: ../../maestro/counter.yaml
+- assertVisible: '2 piva dnes večer'
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /beer
-- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /account
-- assertVisible: "Odhlásit se"
+      ROUTE: /nv/ucet
+- assertVisible: 'Odhlásit se'
 - evalScript: ${output.local.screenshot('identity-account-offline-logout-after')}
-- tapOn: "Odhlásit se"
-- assertNotVisible: "Odhlásit se"
+- tapOn: 'Odhlásit se'
+- extendedWaitUntil:
+    visible:
+      id: auth-submit
+    timeout: 15000
+- tapOn: 'Zatím bez účtu'
 - runFlow: ../../maestro/restart.yaml
+- runFlow: ../../maestro/dismiss-onboarding.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /profile
-- assertVisible: "Zatím bez účtu"
+      ROUTE: /nv/profil
+- assertVisible: 'Zatím bez účtu'
 - evalScript: ${output.local.online()}
 - runFlow:
     file: ../../maestro/login.yaml
@@ -56,15 +52,14 @@ tags: [critical, full, identity]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /profile
-- tapOn: "Upravit profil"
-- assertVisible: "E2E second"
-- tapOn: "Zavřít"
+      ROUTE: /nv/profil
+- assertVisible: '@E2EKamarad'
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /beer
-- assertVisible: "Čistej tácek, zatím nic nepadlo"
+      ROUTE: /nv/stamgast
+- assertVisible: '0 piv dnes večer'
+- assertVisible: 'Zatím nic\. První pivo zapíšeš tlačítkem dole\.'
 - evalScript: ${output.local.screenshot('identity-next-account-isolated')}
 - runScript:
     file: checks.js

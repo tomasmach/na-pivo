@@ -50,11 +50,6 @@ export function hoursOnDay(hours: WeeklyHours | null, day: number): string[] | n
   return hours[DAY_KEYS[day]].map(([start, end]) => `${start}–${end}`);
 }
 
-/** A pub's opening intervals on one weekday, from what the phone already knows; null when unknown. */
-export function pubHoursOnDay(pub: Pick<Pub, 'communityHours' | 'openingHours'>, day: number): string[] | null {
-  return hoursOnDay(pub.communityHours ?? parseOsmOpeningHoursToWeeklyHours(pub.openingHours), day);
-}
-
 function factsFromPub(pub: Pick<Pub, 'communityHours' | 'openingHours' | 'beers'>): StopFacts {
   return {
     hours: pub.communityHours ?? parseOsmOpeningHoursToWeeklyHours(pub.openingHours),

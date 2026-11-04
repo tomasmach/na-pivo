@@ -1,0 +1,93 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}{% include "web/reskin/_head.html" %}{% endblock %}
+{% block og_image %}{% translate "Pivní deníček Na pivo: piva za život, kalendář večerů a mapa hospod." as og_image_alt %}{% include "web/reskin/_og_image.html" %}{% endblock %}
+{% block body_class %}rs-home{% endblock %}
+{% block content %}
+<section class="rs-hero" aria-labelledby="hero-title">
+  <div class="rs-hero__copy">
+    <p class="rs-eyebrow">{% translate "Pivní deníček pro tebe a partu" %}</p>
+    <h1 class="rs-hero__title" id="hero-title">{% translate "Kolik piv," %}<br>{% translate "kde a s kým." %}</h1>
+    <p class="rs-hero__lead">{% translate "Pivo zapíšeš jedním klepnutím u stolu, zbytek dopočítám já. Deník, partu a statistiky teď otevřeš i na webu." %}</p>
+    <div class="rs-actions">
+      <a class="np-btn np-btn--l np-btn--primary" href="{% web_url "web-diary" %}">{% translate "Otevřít na webu" %}{% icon "arrow-right" "np-icon--s" %}</a>
+      {% include "web/reskin/_stores.html" %}
+    </div>
+  </div>
+  <img class="rs-hero__phones" src="{% asset "home-phones.webp" %}" width="720" height="740" alt="{% translate "Deník v appce: piva za týden a detail jednoho večera." %}">
+</section>
+
+<section class="rs-year" aria-labelledby="year-title">
+  <h2 class="rs-h2" id="year-title">{% translate "Deníček, co se píše sám" %}</h2>
+  <p class="rs-year__text">{% translate "Každé pivo zapsané u stolu se složí do večera. Na webu ho pak projdeš po týdnech, měsících i letech." %}</p>
+  {% if year.count %}
+  <div class="rs-year__numbers">
+    <div class="np-stat np-stat--hero rs-year__hero">
+      <span class="np-stat__value">{{ year.beers }}</span>
+      <span class="np-stat__label">{% translate "piv letos zapsali lidi v Na pivo" %}</span>
+      {% if year.summary %}<span class="np-stat__sub">{{ year.summary }}</span>{% endif %}
+    </div>
+    <ol class="rs-bars" aria-label="{% translate "Piva po měsících" %}">
+      {% for month in months %}<li class="rs-bars__month{% if month.current %} is-current{% elif month.future %} is-future{% endif %}">
+        <svg class="rs-bars__bar" aria-hidden="true" focusable="false"><rect width="100%" height="{{ month.height }}" y="{{ month.top }}" rx="6"/>{% if not month.future and month.beers %}<text x="50%" y="{{ month.top }}" dy="-10" text-anchor="middle">{{ month.beers }}</text>{% endif %}</svg>
+        <span class="rs-bars__label">{{ month.label }}{% if not month.future %}<span class="np-sr-only">: {{ month.beers }}</span>{% endif %}</span>
+      </li>{% endfor %}
+    </ol>
+  </div>
+  {% if top_beers %}
+  <div class="rs-year__list">
+    <div class="np-card__head"><h3 class="np-title">{% translate "Letos se nejvíc pilo" %}</h3><span class="np-muted np-small">{% translate "zapsaných piv" %}</span></div>
+    <div class="np-list">
+      {% for beer in top_beers %}{% include "web/components/row.html" with title=beer.name href=beer.url value=beer.beers %}{% endfor %}
+    </div>
+    <a class="np-link rs-more" href="{% web_url "web-diary" %}">{% icon "notebook-pen" "np-icon--s" %}{% translate "Otevřít svůj deník" %}</a>
+  </div>
+  {% endif %}
+  {% else %}
+  <a class="np-link rs-more" href="{% web_url "web-diary" %}">{% icon "notebook-pen" "np-icon--s" %}{% translate "Otevřít svůj deník" %}</a>
+  {% endif %}
+</section>
+
+<section class="rs-split" aria-labelledby="split-title">
+  <h2 class="rs-h2" id="split-title">{% translate "Ráno u kafe, večer u stolu" %}</h2>
+  <div class="rs-split__cols">
+    <div>
+      <h3 class="rs-split__head">{% icon "monitor" "np-icon--s" %}{% translate "Na webu" %}</h3>
+      <div class="np-list rs-features">
+        {% translate "Hodnotíš piva" as t1 %}{% translate "Hvězdičky a poznámka, ať víš, co si příště nedat." as m1 %}
+        {% include "web/components/row.html" with icon="star" title=t1 meta=m1 %}
+        {% translate "Přidáváš hospody" as t2 %}{% translate "Chybí na mapě tvůj oblíbený pajzl? Přidáš ho i s otevíračkou." as m2 %}
+        {% include "web/components/row.html" with icon="map-pin-plus" title=t2 meta=m2 %}
+        {% translate "Dopisuješ večery zpětně" as t3 %}{% translate "Zapomněl jsi zapisovat? Večer doplníš druhý den z kalendáře." as m3 %}
+        {% include "web/components/row.html" with icon="notebook-pen" title=t3 meta=m3 %}
+        {% translate "Spravuješ partu" as t4 %}{% translate "Kamarádi, pozvánky a plán na pátek." as m4 %}
+        {% include "web/components/row.html" with icon="users" title=t4 meta=m4 %}
+        {% translate "Koukáš do statistik" as t5 %}{% translate "Kolik, kde, s kým a za kolik. Po týdnech, měsících i letech." as m5 %}
+        {% include "web/components/row.html" with icon="chart-column" title=t5 meta=m5 %}
+      </div>
+    </div>
+    <div class="rs-split__phone">
+      <h3 class="rs-split__head">{% icon "smartphone" "np-icon--s" %}{% translate "V telefonu" %}</h3>
+      <div class="np-list rs-features">
+        {% translate "Kompas na hospodu" as t6 %}{% translate "Ukáže směr a vzdálenost k nejbližšímu výčepu." as m6 %}
+        {% include "web/components/row.html" with icon="compass" title=t6 meta=m6 %}
+        {% translate "Počítání u stolu" as t7 %}{% translate "Jedno klepnutí na pivo. Zapíše se i bez signálu." as m7 %}
+        {% include "web/components/row.html" with icon="beer" title=t7 meta=m7 %}
+      </div>
+      <p class="np-muted np-small">{% translate "Obojí potřebuje telefon v ruce, takže to na web nepatří." %}</p>
+    </div>
+  </div>
+</section>
+
+<section class="rs-band" aria-labelledby="band-title">
+  <div>
+    <h2 class="rs-band__title" id="band-title">{% translate "Kompas máš v telefonu" %}</h2>
+    <p class="rs-band__text">{% translate "Stáhni si appku. Je zdarma a bez reklam." %}</p>
+  </div>
+  <div class="rs-band__actions">
+    {% include "web/reskin/_stores.html" with ink=True %}
+    <a class="rs-band__web" href="{% web_url "web-diary" %}">{% translate "Nebo to otevři na webu" %}{% icon "arrow-right" "np-icon--s" %}</a>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% asset "reskin.js" %}" defer></script>{% endblock %}

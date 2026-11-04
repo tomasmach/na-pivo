@@ -1,0 +1,15 @@
+{% extends "web/base.html" %}
+{% load i18n web %}
+{% block shell %}
+<main class="npa-gone" id="obsah">
+  <div class="npa-gone__inner">
+  {% include "web/components/logo.html" %}
+  {% translate "Účet mažeme" as empty_title %}
+  {% blocktranslate with days=grace_days asvar empty_text %}Odhlásil jsem tě na webu i v appce. Účet a data se nevratně smažou za {{ days }} dní. Když si to rozmyslíš, stačí se do té doby znovu přihlásit a účet se obnoví i se vším, co v něm máš.{% endblocktranslate %}
+  {% web_url "home" as home_url %}{% translate "Na úvod" as home_label %}
+  {% web_url "web-login" as login_url %}{% translate "Přihlásit se a obnovit účet" as login_label %}
+  {% include "web/components/empty.html" with icon="beer" title=empty_title text=empty_text action_url=home_url action_label=home_label secondary_url=login_url secondary_label=login_label %}
+  </div>
+</main>
+{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% asset "account.css" %}">{% endblock %}

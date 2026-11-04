@@ -99,6 +99,7 @@ from pubs.models import (
     FriendBlock,
     FriendInviteCode,
     FriendNotification,
+    FriendPlanGuest,
     FriendPubActivity,
     FriendPubActivityRecipient,
     Friendship,
@@ -135,6 +136,7 @@ from pubs.models import (
     PubVisit,
     PushDevice,
     UserAddedPub,
+    XpEvent,
     account_deletion_fingerprint_candidates,
     account_merge_fingerprint,
     account_merge_fingerprint_matches,
@@ -899,6 +901,11 @@ def set_password(account: Account, raw_password: str, *, email: str | None = Non
     cred.password = make_password(raw_password)
     cred.save()
     return cred
+
+
+def new_registration_account() -> Account:
+    """Fresh account for an e-mail registration that has no anonymous account to claim."""
+    return Account.objects.create(device_id=f"reg-{uuid.uuid4()}")
 
 
 def register_email(
@@ -1723,9 +1730,7 @@ def _merge_contest_entry_tree(
     source_entry: PhotoContestEntry, target_entry: PhotoContestEntry
 ) -> None:
     target_voters = set(
-        PhotoContestVote.objects.filter(contest=target_entry.contest)
-        .exclude(entry=source_entry)
-        .values_list("voter_id", flat=True)
+        PhotoContestVote.objects.filter(entry=target_entry).values_list("voter_id", flat=True)
     )
     for vote in PhotoContestVote.objects.filter(entry=source_entry).order_by("pk"):
         if vote.voter_id in target_voters:
@@ -1752,6 +1757,8 @@ def _merge_beer_photo_tree(
             "pub_cache_key",
             "pub_name",
             "pub_city",
+            "beer_name",
+            "beer_key",
         ):
             if not getattr(target_photo, field_name) and getattr(source_photo, field_name):
                 setattr(target_photo, field_name, getattr(source_photo, field_name))
@@ -1770,10 +1777,10 @@ def _merge_beer_photo_tree(
         entry.photo = target_photo
         entry.save(update_fields=["photo"])
         target_entries[entry.contest_id] = entry
-    # Never turn a reference to a PRIVATE source into a visible FRIENDS photo.
+    # Never turn a reference to a PRIVATE source into a visible shared photo.
     if not (
         source_photo.visibility == BeerPhoto.Visibility.PRIVATE
-        and target_photo.visibility == BeerPhoto.Visibility.FRIENDS
+        and target_photo.visibility != BeerPhoto.Visibility.PRIVATE
     ):
         _replace_published_night_reference(
             "photo_ids",
@@ -1945,6 +1952,13 @@ def _merge_friend_activity_tree(
             target_parent=target_activity,
             unique_fields=("account_id",),
         )
+    _move_parent_rows(
+        FriendPlanGuest,
+        parent_field="activity",
+        source_parent=source_activity,
+        target_parent=target_activity,
+        unique_fields=("device_hash",),
+    )
     FriendNotification.objects.filter(activity=source_activity).update(activity=target_activity)
     source_activity.delete()
 
@@ -2174,17 +2188,9 @@ def _merge_community_events(source: Account, target: Account) -> None:
 
 
 def _merge_photo_contest_entries(source: Account, target: Account) -> None:
-    target_by_contest = {
-        row.contest_id: row for row in PhotoContestEntry.objects.filter(account=target)
-    }
-    for entry in PhotoContestEntry.objects.filter(account=source).order_by("pk"):
-        conflict = target_by_contest.get(entry.contest_id)
-        if conflict is not None:
-            _merge_contest_entry_tree(entry, conflict)
-            continue
-        entry.account = target
-        entry.save(update_fields=["account"])
-        target_by_contest[entry.contest_id] = entry
+    # An account may hold several entries per round, so every source entry
+    # simply moves. Entries of one photo were already merged with the photo.
+    PhotoContestEntry.objects.filter(account=source).update(account=target)
 
 
 def _merge_tour_invites(source: Account, target: Account) -> None:
@@ -2234,6 +2240,31 @@ def _merge_beer_watches(source: Account, target: Account) -> None:
         update_fields += ["beer_watch_lat", "beer_watch_lng", "beer_watch_located_at"]
     if update_fields:
         target.save(update_fields=update_fields)
+
+
+def _move_visit_reactions(dropped: PubVisit, kept: PubVisit) -> None:
+    """Cheers received on a duplicate visit follow the copy that stays."""
+    from pubs.models import PubVisitReaction
+
+    _delete_or_move_account_rows(
+        PubVisitReaction, source=dropped, target=kept, unique_fields=("account_id",), account_field="visit"
+    )
+
+
+def _merge_nv_rows(source: Account, target: Account) -> None:
+    """The claimed account keeps its own answer when both voted or joined the same evening."""
+    from pubs.models import BeerStyleVote, FriendHomeCheckin, PubVisitReaction
+
+    _delete_or_move_account_rows(
+        BeerStyleVote, source=source, target=target, unique_fields=("product_id",)
+    )
+    _delete_or_move_account_rows(
+        FriendHomeCheckin, source=source, target=target, unique_fields=("activity_id",)
+    )
+    _delete_or_move_account_rows(
+        PubVisitReaction, source=source, target=target, unique_fields=("visit_id",)
+    )
+    PubVisitReaction.objects.filter(account=target, visit__account=target).delete()
 
 
 def _merge_anonymous_account(source: Account | None, target: Account) -> None:
@@ -2405,8 +2436,11 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
             if visit.closed_at is None and previous.closed_at is not None:
                 visit.closed_at = previous.closed_at
                 visit.save(update_fields=["closed_at"])
+            _move_visit_reactions(previous, visit)
             previous.delete()
-        elif previous.closed_at is None and visit.closed_at is not None:
+            continue
+        _move_visit_reactions(visit, previous)
+        if previous.closed_at is None and visit.closed_at is not None:
             previous.closed_at = visit.closed_at
             previous.save(update_fields=["closed_at"])
     _delete_or_move_account_rows(
@@ -2517,7 +2551,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         source=source,
         target=target,
         account_field="voter",
-        unique_fields=("contest_id",),
+        unique_fields=("entry_id",),
     )
     PhotoContestVote.objects.filter(voter=target, entry__account=target).delete()
 
@@ -2650,6 +2684,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         unique_fields=("push_token",),
     )
     _merge_beer_watches(source, target)
+    _merge_nv_rows(source, target)
 
     PubCommunityData.objects.filter(account=source).update(account=target)
     PubBeerBrand.objects.filter(account=source).update(account=target)
@@ -2658,6 +2693,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     ClientEvent.objects.filter(account=source).update(account=target)
     ContentReport.objects.filter(reporter=source).update(reporter=target)
     ContentReport.objects.filter(target_account=source).update(target_account=target)
+    XpEvent.objects.filter(account=source).update(account=target)
     _merge_usage_stats(source, target)
 
     # Future Account-owned models must be added above. Failing the transaction
@@ -3128,6 +3164,60 @@ def request_password_reset(email: str, *, link_base: str | None = None) -> None:
     emailer.send_password_reset_email(
         cred.email, link=link, code=raw, locale=locale_for_account(cred.account)
     )
+
+
+DELETION_LINK_TTL = timedelta(hours=1)
+
+
+def request_account_deletion_link(email: str, *, link_base: str) -> None:
+    """Email a link that confirms account deletion. Silent for unknown e-mails."""
+    norm = normalize_email(email)
+    if not norm:
+        return
+    # A Google or Apple account has no password e-mail; the provider vouched for its address.
+    holder = (
+        EmailCredential.objects.select_related("account")
+        .filter(email=norm, account__status=Account.Status.ACTIVE)
+        .first()
+    ) or (
+        AuthIdentity.objects.select_related("account")
+        .filter(email__iexact=norm, account__status=Account.Status.ACTIVE)
+        .first()
+    )
+    if holder is None:
+        return
+    raw = _create_one_time_token(
+        holder.account, purpose=OneTimeToken.Purpose.DELETE_ACCOUNT, ttl=DELETION_LINK_TTL
+    )
+    emailer.send_account_deletion_link_email(
+        norm,
+        link=_append_token(link_base, raw),
+        locale=locale_for_account(holder.account),
+    )
+
+
+def account_for_deletion_link(raw_token: str) -> Account | None:
+    """The account a still valid deletion link belongs to, without using it up."""
+    return (
+        Account.objects.filter(
+            one_time_tokens__token_hash=hash_account_token(raw_token),
+            one_time_tokens__purpose=OneTimeToken.Purpose.DELETE_ACCOUNT,
+            one_time_tokens__used_at__isnull=True,
+            one_time_tokens__expires_at__gt=timezone.now(),
+        ).first()
+        if raw_token
+        else None
+    )
+
+
+def delete_account_with_link(raw_token: str) -> Account:
+    """Use up a deletion link and start the same deletion as the app's DELETE."""
+    with transaction.atomic():
+        owner = _consume_one_time_token(raw_token, purpose=OneTimeToken.Purpose.DELETE_ACCOUNT)
+        account = Account.objects.select_for_update().get(pk=owner.pk)
+        if account.status == Account.Status.ACTIVE:
+            schedule_deletion(account)
+    return account
 
 
 def reset_password(raw_token: str, *, new_password: str) -> tuple[Account, str]:
