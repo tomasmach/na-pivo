@@ -316,4 +316,5 @@ export const stamgastEn: typeof stamgastCs = {
   statsYourPubsSub: 'Where it flowed the most',
   statsAllPubs: (n) => `All ${n} ›`,
   statsStartCounting: 'Start counting',
+  statsLoadFailed: "Your numbers didn't load. Try again when you have signal.",
 };

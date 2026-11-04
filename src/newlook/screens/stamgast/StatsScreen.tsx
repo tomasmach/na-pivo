@@ -5,7 +5,8 @@ import { useRouter } from 'expo-router';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { useNowTick } from '@/friends/useNowTick';
 import { intlLocale, t } from '@/i18n';
-import { useMyStats } from '@/stats/useMyStats';
+import { useMyStatsState } from '@/stats/useMyStats';
+import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { allSessionsNewestFirst, drinkingDayKey, useTallyStore } from '@/stores/tallyStore';
 import { formatPrice } from '@/utils/currency';
@@ -13,7 +14,7 @@ import { formatPrice } from '@/utils/currency';
 import { BackHeader, Screen } from '../../components/chrome';
 import { PageTitle } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
-import { Button, Card, D, Press, Row, SectionTitle, T, Tile } from '../../components/ui';
+import { Button, Card, D, Press, Row, SectionTitle, Spinner, T, Tile } from '../../components/ui';
 import { C, s } from '../../theme';
 import { useKompasState } from '../kompas/state';
 import { useCounterSegment } from './counterSegment';
@@ -30,12 +31,31 @@ export function StatsScreen() {
   const router = useRouter();
   const current = useTallyStore((st) => st.current);
   const history = useTallyStore((st) => st.history);
-  const remote = useMyStats();
+  const { stats: remote, settled } = useMyStatsState();
+  const hasAccount = useAccountStore((st) => st.session?.accountId != null);
   const now = useNowTick();
   const stats = useMemo(
     () => computeStats(allSessionsNewestFirst(current, history), remote, new Date(now), drinkingDayKey),
     [current, history, now, remote],
   );
+
+  // A new phone has no beers of its own yet; wait for the server before saying there is nothing to measure.
+  if (stats.beers === 0 && hasAccount && (!settled || remote === null)) {
+    return (
+      <Screen header={<BackHeader />} scroll={false} contentStyle={{ flex: 1 }}>
+        <PageTitle title={L().statsTitle} />
+        <View style={[s.fill, s.center, { paddingHorizontal: 12, paddingBottom: 160 }]}>
+          {settled ? (
+            <T s={15} c={C.text2} lh={1.45} style={{ textAlign: 'center' }}>
+              {L().statsLoadFailed}
+            </T>
+          ) : (
+            <Spinner />
+          )}
+        </View>
+      </Screen>
+    );
+  }
 
   if (stats.beers === 0) {
     return (

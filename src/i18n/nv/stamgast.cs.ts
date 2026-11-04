@@ -338,4 +338,5 @@ export const stamgastCs = {
   statsYourPubsSub: 'Kde ti to teklo nejvíc',
   statsAllPubs: (n: number) => `Všech ${n} ›`,
   statsStartCounting: 'Začít počítat',
+  statsLoadFailed: 'Čísla se teď nenačetla. Zkus to znovu, až bude signál.',
 };
