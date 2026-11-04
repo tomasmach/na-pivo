@@ -215,6 +215,8 @@ export async function fetchMyStats(
   signal?: AbortSignal,
   /** Drinks removed on this phone whose DELETE may not have landed yet. */
   excludeClientIds: readonly string[] = [],
+  /** Every pub instead of the top 8; older servers ignore it and send the top 8. */
+  allPubs = false,
 ): Promise<RemoteStats | null> {
   if (signal?.aborted) return null;
 
@@ -223,6 +225,7 @@ export async function fetchMyStats(
   const params: string[] = [];
   const timezone = deviceTimezone();
   if (timezone) params.push(`timezone=${encodeURIComponent(timezone)}`);
+  if (allPubs) params.push('top_pubs=all');
   // Past the server's cap the aggregates would still count some removed
   // drinks; the screen falls back to local numbers instead.
   if (excludeClientIds.length > MAX_EXCLUDED_DRINKS) return null;

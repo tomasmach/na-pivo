@@ -167,6 +167,6 @@ export function computeStats(
     longest,
     months,
     years,
-    topPubs: topPubs.slice(0, 4),
+    topPubs,
   };
 }

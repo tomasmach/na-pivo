@@ -353,7 +353,7 @@ from .serializers import (
     normalize_beer_checkin_tags,
     shot_volume,
 )
-from .stats import compute_my_stats, drinking_day, drinking_day_bounds
+from .stats import ALL_TOP_PUBS_LIMIT, compute_my_stats, drinking_day, drinking_day_bounds
 from .ugc_consent import ugc_consent_precondition, ugc_consent_snapshot, ugc_may_publish
 
 logger = logging.getLogger(__name__)
@@ -4544,6 +4544,8 @@ class MyStatsView(APIView):
                 timezone_name=request.query_params.get("timezone"),
                 exclude_drinking_day=exclude_drinking_day,
                 exclude_client_ids=exclude_client_ids,
+                # Additive: the full pub list screen asks for every pub, released apps get the top 8.
+                **({"top_pubs_limit": ALL_TOP_PUBS_LIMIT} if request.query_params.get("top_pubs") == "all" else {}),
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("me-stats: unexpected error computing stats: %s", exc, exc_info=True)

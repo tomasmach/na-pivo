@@ -18,7 +18,7 @@ export function useMyStats(enabled = true): RemoteStats | null {
 }
 
 /** Same as `useMyStats`, plus whether the latest fetch has finished, so an empty screen can tell "nothing yet" from "still loading". */
-export function useMyStatsState(enabled = true): { stats: RemoteStats | null; settled: boolean } {
+export function useMyStatsState(enabled = true, allPubs = false): { stats: RemoteStats | null; settled: boolean } {
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const removedDrinkIds = useAccountStore((state) => state.removedDrinkIds);
   const [snapshot, setSnapshot] = useState<{
@@ -39,7 +39,7 @@ export function useMyStatsState(enabled = true): { stats: RemoteStats | null; se
       removedDrinkIds.forEach((id) => {
         if (!confirmed.has(id)) pending.add(id);
       });
-      const result = await fetchMyStats(controller.signal, [...pending]);
+      const result = await fetchMyStats(controller.signal, [...pending], allPubs);
       if (!active) return;
       if (result) setSnapshot({ accountId, removedDrinkIds, stats: result });
       setSettledFor({ accountId, removedDrinkIds });
@@ -48,7 +48,7 @@ export function useMyStatsState(enabled = true): { stats: RemoteStats | null; se
       active = false;
       controller.abort();
     };
-  }, [accountId, enabled, removedDrinkIds]);
+  }, [accountId, allPubs, enabled, removedDrinkIds]);
 
   // Stats read before the latest removal still count that drink.
   const stats = snapshot?.accountId === accountId && snapshot.removedDrinkIds === removedDrinkIds ? snapshot.stats : null;

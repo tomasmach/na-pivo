@@ -17,7 +17,6 @@ import { Icon, type IconName } from '../../components/Icon';
 import { Button, Card, D, Press, Row, SectionTitle, Spinner, T, Tile } from '../../components/ui';
 import { C, s } from '../../theme';
 import { useHidePubNames } from '../../hiddenPubNames';
-import { useKompasState } from '../kompas/state';
 import { useCounterSegment } from './counterSegment';
 import { dateOfDay } from './eveningData';
 import { computeStats, type StatsView } from './statsData';
@@ -278,14 +277,37 @@ function Years({ years }: { years: StatsView['years'] }) {
   );
 }
 
+const TOP_PUBS_SHOWN = 4;
+
+function PubRows({ pubs }: { pubs: StatsView['topPubs'] }) {
+  const hideNames = useHidePubNames();
+  return (
+    <Card>
+      {pubs.map((pub, i) => (
+        <Row
+          key={pub.key}
+          last={i === pubs.length - 1}
+          leading={
+            <D s={24} c={i === 0 ? C.yellow : C.muted} style={{ width: 22 }}>
+              {String(i + 1)}
+            </D>
+          }
+          title={hideNames ? t.nv.common.secretPub : pub.name}
+          sub={pub.nights != null ? L().evenings(pub.nights) : undefined}
+          trailing={
+            <T s={15} w={700}>
+              {L().statsBeerCount(pub.beers)}
+            </T>
+          }
+        />
+      ))}
+    </Card>
+  );
+}
+
 function TopPubs({ stats }: { stats: StatsView }) {
   const router = useRouter();
-  const hideNames = useHidePubNames();
   if (stats.topPubs.length === 0) return null;
-  const openAll = () => {
-    useKompasState.getState().set({ mapView: 'stopy' });
-    router.navigate('/nv/kompas');
-  };
   return (
     <>
       <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 4, paddingTop: 4 }]}>
@@ -297,32 +319,31 @@ function TopPubs({ stats }: { stats: StatsView }) {
             {L().statsYourPubsSub}
           </T>
         </View>
-        <Press onPress={openAll} hitSlop={10} accessibilityRole="button">
+        <Press onPress={() => router.push('/nv/cisla-hospody')} hitSlop={10} accessibilityRole="button">
           <T s={15} w={600} c={C.yellow}>
             {L().statsAllPubs(stats.pubs)}
           </T>
         </Press>
       </View>
-      <Card>
-        {stats.topPubs.map((pub, i) => (
-          <Row
-            key={pub.key}
-            last={i === stats.topPubs.length - 1}
-            leading={
-              <D s={24} c={i === 0 ? C.yellow : C.muted} style={{ width: 22 }}>
-                {String(i + 1)}
-              </D>
-            }
-            title={hideNames ? t.nv.common.secretPub : pub.name}
-            sub={pub.nights != null ? L().evenings(pub.nights) : undefined}
-            trailing={
-              <T s={15} w={700}>
-                {L().statsBeerCount(pub.beers)}
-              </T>
-            }
-          />
-        ))}
-      </Card>
+      <PubRows pubs={stats.topPubs.slice(0, TOP_PUBS_SHOWN)} />
     </>
+  );
+}
+
+/** Every pub from "Tvoje hospody", counted the same way as on the numbers screen. */
+export function StatsPubsScreen() {
+  const current = useTallyStore((st) => st.current);
+  const history = useTallyStore((st) => st.history);
+  const { stats: remote, settled } = useMyStatsState(true, true);
+  const now = useNowTick();
+  const stats = useMemo(
+    () => computeStats(allSessionsNewestFirst(current, history), remote, new Date(now), drinkingDayKey),
+    [current, history, now, remote],
+  );
+  return (
+    <Screen header={<BackHeader />} gap={18}>
+      <PageTitle title={L().statsYourPubs} intro={L().statsYourPubsSub} />
+      {stats.topPubs.length > 0 ? <PubRows pubs={stats.topPubs} /> : settled ? null : <Spinner style={{ marginTop: 40 }} />}
+    </Screen>
   );
 }

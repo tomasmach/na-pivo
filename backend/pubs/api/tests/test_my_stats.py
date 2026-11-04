@@ -747,3 +747,17 @@ def test_stats_endpoint_uses_its_own_scoped_throttle(client, monkeypatch):
 
     assert first.status_code == status.HTTP_200_OK
     assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.django_db
+def test_full_pub_list_only_on_request(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    for i in range(10):
+        _drink(account, cache_key=f"u2fkbn{i:02d}", name=f"Hospoda {i}", price_czk=50, drank_at=datetime(2026, 6, 1 + i, 20, 0, tzinfo=PRAGUE))
+
+    released = client.get("/v1/me/stats", **_auth(token)).json()
+    full = client.get("/v1/me/stats?top_pubs=all", **_auth(token)).json()
+
+    assert len(released["top_pubs"]) == 8
+    assert len(full["top_pubs"]) == 10 == full["distinct_pubs"]
