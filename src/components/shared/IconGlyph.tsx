@@ -65,7 +65,7 @@ import CircleDot from 'lucide-react-native/icons/circle-dot';
 import Radio from 'lucide-react-native/icons/radio';
 import Mic from 'lucide-react-native/icons/mic';
 import Tv from 'lucide-react-native/icons/tv';
-import SquareParking from 'lucide-react-native/icons/square-parking';
+import SquareParking from 'lucide-react-native/icons/square-letter-p';
 import Wind from 'lucide-react-native/icons/wind';
 import MapPinned from 'lucide-react-native/icons/map-pinned';
 import MapPinPlus from 'lucide-react-native/icons/map-pin-plus';
