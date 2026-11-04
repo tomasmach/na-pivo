@@ -54,6 +54,7 @@ from .community_event_views import (
 )
 from .label_scan_views import BeerLabelScanView
 from .parta_views import (
+    FriendCheerView,
     FriendPingView,
     PartaActivityView,
     PartaHomeCheckinView,
@@ -540,6 +541,7 @@ urlpatterns = [
         name="friends-activity-checkin",
     ),
     path("friends/<uuid:account_id>/ping", FriendPingView.as_view(), name="friend-ping"),
+    path("friends/<uuid:account_id>/cheer", FriendCheerView.as_view(), name="friend-cheer"),
     path(
         "friends/<uuid:public_id>/beer-photos",
         FriendBeerPhotosView.as_view(),

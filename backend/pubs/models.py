@@ -4494,6 +4494,34 @@ class PubVisit(models.Model):
         return f"PubVisit({self.name} [{self.cache_key}] @ {self.started_at:%Y-%m-%d %H:%M})"
 
 
+class PubVisitReaction(models.Model):
+    """A friend's "Na zdraví" to somebody sitting in a pub right now.
+
+    Parta's "Teď venku" rows come from visits, not broadcasts, so this is the
+    reaction for a friend who never broadcast. Identity is (visit, account): a
+    re-tap upserts the same row. Both FKs CASCADE, so the row goes with the visit
+    or the account, like ``FriendActivityReaction``.
+    """
+
+    class Kind(models.TextChoices):
+        CHEERS = "cheers", "Cheers"
+
+    visit = models.ForeignKey(PubVisit, on_delete=models.CASCADE, related_name="reactions")
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="visit_reactions")
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.CHEERS)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["visit", "account"], name="unique_visit_reaction_per_account")
+        ]
+
+    def __str__(self) -> str:
+        return f"PubVisitReaction({self.account_id} -> {self.visit_id}: {self.kind})"
+
+
 class OfflineMutationTombstone(models.Model):
     """
     Remove-wins marker for at-least-once mobile and wearable mutations.

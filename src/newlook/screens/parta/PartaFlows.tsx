@@ -30,6 +30,7 @@ import { C, s } from '../../theme';
 import { PlanTicket } from './PartaScreen';
 import { useNvPlaceStore } from '../stamgast/placeStore';
 import { joinNames, personInitial, personName, planTitle, shortDay } from './partaModel';
+import { CheerButton } from './cheer';
 import { usePartaStore } from './partaStore';
 import { addPlanToCalendar, openNavigation, pingPerson } from './planActions';
 
@@ -112,11 +113,12 @@ export function KamosScreen() {
         </View>
       </View>
       {presence || atHome ? (
-        <View style={[s.row, { gap: 10, height: 46, borderRadius: 16, paddingHorizontal: 16, backgroundColor: '#FFC40014', borderWidth: 1, borderColor: '#FFC40026' }]}>
+        <View style={[s.row, { gap: 10, height: 54, borderRadius: 16, paddingLeft: 16, paddingRight: 10, backgroundColor: '#FFC40014', borderWidth: 1, borderColor: '#FFC40026' }]}>
           <Dot />
-          <T s={15} w={600}>
+          <T s={15} w={600} numberOfLines={1} style={s.fill}>
             {presence ? t.nv.parta.sitsNow(presence.pubName, presence.beers) : t.nv.parta.sitsAtHome}
           </T>
+          {presence && detail.isFriend ? <CheerButton presence={presence} /> : null}
         </View>
       ) : null}
       {stats ? (

@@ -459,6 +459,9 @@ msgstr "%(name)s accepted your request."
 msgid "Tenhle kámoš tu není."
 msgstr "This friend is not here."
 
+msgid "Kámoš už nesedí venku."
+msgstr "Your friend is not out anymore."
+
 msgid "Plán je moc daleko. Zkus dřívější čas."
 msgstr "That plan is too far away. Try an earlier time."
 

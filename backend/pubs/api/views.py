@@ -243,6 +243,7 @@ from pubs.models import (
     PubReport,
     PubSearchCache,
     PubVisit,
+    PubVisitReaction,
     PushDevice,
     ReleaseNote,
     TourInvite,
@@ -4992,6 +4993,18 @@ def _friend_presence_slice(
         drink_stats = {(row["account_id"], row["cache_key"]): row for row in stat_rows}
 
     profile_context = _friend_profile_context(request)
+    visit_ids = [visit.id for visit in selected_visits]
+    cheer_counts = dict(
+        PubVisitReaction.objects.filter(visit_id__in=visit_ids)
+        .values("visit_id")
+        .annotate(n=Count("id"))
+        .values_list("visit_id", "n")
+    )
+    my_cheers = set(
+        PubVisitReaction.objects.filter(visit_id__in=visit_ids, account=request.user).values_list(
+            "visit_id", flat=True
+        )
+    )
 
     def _payload(visit: PubVisit) -> dict:
         stats_row = drink_stats.get((visit.account_id, visit.cache_key), {})
@@ -5012,6 +5025,9 @@ def _friend_presence_slice(
             "activity_id": (
                 str(visit.presence_activity_id) if visit.presence_activity_id is not None else None
             ),
+            # Additive: "Na zdraví" to this sitting, see FriendCheerView.
+            "reactions": {"cheers": cheer_counts.get(visit.id, 0)},
+            "my_reaction": "cheers" if visit.id in my_cheers else None,
         }
 
     presence: list[dict] = []
@@ -11883,6 +11899,7 @@ def _load_export_account(account: Account) -> Account:
                 "activity_reactions",
                 queryset=FriendActivityReaction.objects.select_related("activity"),
             ),
+            Prefetch("visit_reactions", queryset=PubVisitReaction.objects.select_related("visit__account")),
             Prefetch("home_checkins", queryset=FriendHomeCheckin.objects.select_related("activity")),
             Prefetch(
                 "friend_notifications",
@@ -12606,6 +12623,17 @@ def _export_account_data(account: Account) -> dict:
                     "created_at": _iso(row.created_at),
                 }
                 for row in account.night_rounds.all()
+            ]
+            + [
+                {
+                    "target": "friend_presence",
+                    "friend_id": str(row.visit.account.public_id),
+                    "pub_name": row.visit.name,
+                    "kind": row.kind,
+                    "created_at": _iso(row.created_at),
+                    "updated_at": _iso(row.updated_at),
+                }
+                for row in account.visit_reactions.all()
             ],
             "notifications": [
                 {

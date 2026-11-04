@@ -1291,7 +1291,7 @@ def test_account_export_reuses_loaded_auth_relations(client):
     assert sum('"pubs_emailcredential"' in sql for sql in select_queries) == 1
     assert sum('"pubs_authidentity"' in sql for sql in select_queries) == 1
     assert sum('"pubs_offlinemutationtombstone"' in sql for sql in select_queries) == 1
-    assert len(queries.captured_queries) <= 46
+    assert len(queries.captured_queries) <= 47
 
 
 @pytest.mark.django_db
@@ -2029,6 +2029,7 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
         "activity_responses": "social.rsvp[*].response",
         "home_checkins": "social.home_checkins[*].activity_id",
         "activity_reactions": "social.reactions[?target=friend_activity].kind",
+        "visit_reactions": "social.reactions[?target=friend_presence].kind",
         "beer_checkin_reactions": "social.reactions[?target=beer_checkin].checkin_id",
         "night_rounds": "social.reactions[?target=published_night].night_id",
         "friend_notifications": "social.notifications[*].id",
