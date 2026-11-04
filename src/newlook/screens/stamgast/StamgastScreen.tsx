@@ -356,6 +356,7 @@ function CounterView() {
         <View style={{ alignItems: 'center' }}>
           <Press
             haptic
+            testID="counter-place"
             onPress={openPlace}
             style={[s.row, { height: 34, borderRadius: 17, paddingHorizontal: 14, gap: 6, backgroundColor: C.tint }]}
           >
@@ -522,7 +523,7 @@ function CounterView() {
         </Animated.View>
       ) : null}
       <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 12 }}>
-        <Button height={60} label={ctaLabel} sub={ctaSub} onPress={oneMore} />
+        <Button testID="counter-primary" height={60} label={ctaLabel} sub={ctaSub} onPress={oneMore} />
       </View>
     </View>
   );

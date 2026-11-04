@@ -1,44 +1,27 @@
 appId: ${MAESTRO_APP_ID}
 ---
-# The first tour beer uses the main CTA; the repeat shortcut exists only after a beer.
-- runFlow:
-    when:
-      true: ${typeof FIRST_BEER !== 'undefined' && FIRST_BEER === 'true'}
-    commands:
-      - tapOn:
-          id: counter-primary
-- runFlow:
-    when:
-      true: ${typeof FIRST_BEER === 'undefined' || FIRST_BEER !== 'true'}
-    commands:
-      - tapOn: Vybrat jiné pivo nebo drink
-- runFlow:
-    when:
-      visible: Přidat nové pivo
-    commands:
-      - tapOn: Přidat nové pivo
+# A beer missing from the pub's list: typed name, then its price in the drink sheet.
+- tapOn: Jiné pivo
+- tapOn: Přidat pivo
+- tapOn:
+    id: beer-search
+- inputText: ${BEER_NAME}
+- tapOn: ${'Přidat „' + BEER_NAME + '“'}
 - extendedWaitUntil:
     visible:
-      id: beer-form-name
+      id: drink-price
     timeout: 10000
-- evalScript: ${output.local.screenshot('diary-beer-form-before-input')}
 - tapOn:
-    id: beer-form-name
-- inputText: ${BEER_NAME}
-- tapOn:
-    id: beer-form-price
+    id: drink-price
 - inputText: ${BEER_PRICE}
-# Numeric iOS keyboards have no standard dismiss action; the real submit stays above it.
-- assertVisible:
-    id: beer-form-submit
 - evalScript: ${output.local.screenshot('diary-beer-form-filled')}
 - tapOn:
-    id: beer-form-submit
+    id: drink-save
+# A beer moments after the previous one asks before counting it.
 - runFlow:
     when:
-      visible: Jo, připsat další pivo
+      visible: 'Pivo před chvilkou\.'
     commands:
-      - tapOn: Jo, připsat další pivo
+      - tapOn: { id: app-dialog-primary }
 - assertNotVisible:
-    id: beer-form-submit
-- evalScript: ${output.local.screenshot('diary-beer-counted-after-form')}
+    id: drink-save

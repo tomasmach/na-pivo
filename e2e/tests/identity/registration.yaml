@@ -1,7 +1,7 @@
 appId: ${MAESTRO_APP_ID}
 name: Registration claims online and offline history under the same private account
-# Blocked: local React password category stays "one", also with character-by-character input.
-# Keep the full reproduction; registration limits are documented in ../../COVERAGE.md.
+# Blocked: on the old look iOS kept a one-character password. The new look passes
+# on Android; iOS is unverified. Limits are documented in ../../COVERAGE.md.
 tags: [critical, full, identity, blocked]
 ---
 - runFlow:
@@ -9,53 +9,29 @@ tags: [critical, full, identity, blocked]
     env:
       SCENARIO: registration
 - runFlow: ../../maestro/skip-onboarding.yaml
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /beer
+- runFlow: ../../maestro/counter.yaml
 - tapOn: { id: counter-primary }
-- tapOn: "Připsat E2E Ležák za 0,5 l · 41 Kč"
+- tapOn: 'E2E Ležák, 41\sKč'
+- tapOn: { id: drink-save }
+- assertVisible: '1 pivo dnes večer'
 - runScript:
     file: checks.js
     env:
       CASE: register
       PHASE: anonymous
 - evalScript: ${output.local.offline()}
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /beer
-- tapOn: "Připsat další E2E Ležák"
-- tapOn: "Jo, připsat další pivo"
-- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
+- runFlow: ../../maestro/repeat-beer.yaml
+- assertVisible: '2 piva dnes večer'
 - runFlow: ../../maestro/restart.yaml
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /beer
-- assertVisible: "2 piva, utraceno 82\\sKč\\. Otevře tvůj účet\\."
+- runFlow: ../../maestro/counter.yaml
+- assertVisible: '2 piva dnes večer'
 - evalScript: ${output.local.online()}
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /auth
-- tapOn: { id: auth-register-mode }
-- tapOn: { id: profile-nickname }
-- eraseText
-- inputText: "E2ERegister"
-- pressKey: Enter
-- assertVisible: { id: profile-nickname, text: "E2ERegister" }
-- waitForAnimationToEnd
-- extendedWaitUntil:
-    visible: "Volné"
-    timeout: 15000
-- scrollUntilVisible:
-    element: { id: auth-email }
-    direction: DOWN
-    centerElement: true
-    timeout: 15000
+      ROUTE: /nv/prihlaseni
+- tapOn: 'Registrovat'
 - tapOn: { id: auth-email }
-- waitForAnimationToEnd
 - inputText:
     text: ${MAESTRO_EMAIL}
     label: Enter disposable fixture email
@@ -63,47 +39,39 @@ tags: [critical, full, identity, blocked]
 - runScript:
     file: registration-input.js
     env: { PHASE: email }
-- pressKey: Enter
-- waitForAnimationToEnd
-- scrollUntilVisible:
-    element: { id: auth-password }
-    direction: DOWN
-    centerElement: true
-    timeout: 15000
 - tapOn: { id: auth-password }
-- waitForAnimationToEnd
 - inputText:
     text: ${MAESTRO_PASSWORD}
     label: Enter disposable fixture password
-- tapOn: "HESLO"
-- waitForAnimationToEnd
-- copyTextFrom: { id: auth-email }
-- runScript:
-    file: registration-input.js
-    env: { PHASE: email }
-- assertVisible: { id: profile-nickname, text: "E2ERegister" }
-- scrollUntilVisible:
-    element: { id: auth-submit }
-    direction: DOWN
-    centerElement: true
-    timeout: 15000
 - tapOn: { id: auth-submit }
 - evalScript: ${output.registrationError = 'none'}
 - runFlow:
     when:
-      visible: { id: auth-error }
+      visible: 'Heslo musí mít alespoň 8 znaků\.'
     commands:
-      - copyTextFrom: { id: auth-error }
-      - runScript:
-          file: registration-input.js
-          env: { PHASE: validation }
+      - evalScript: ${output.registrationError = 'password_short'}
 - runScript:
     file: checks.js
     env:
       CASE: register
       PHASE: submitted
-- tapOn: "Jen pro partu. Veřejně tě nikdo nenajde. Profil uvidí jen tvoji kamarádi."
-- tapOn: "Potvrdit a jít na pivo"
+# A new account picks its nickname and visibility; this person keeps it private.
+- extendedWaitUntil:
+    visible: { id: profile-nickname }
+    timeout: 20000
+- tapOn: { id: profile-nickname }
+- inputText: 'E2ERegister'
+- hideKeyboard
+- runFlow:
+    when:
+      visible: { id: profile-public, checked: true }
+    commands:
+      - tapOn: { id: profile-public }
+- assertVisible: { id: profile-public, checked: false }
+- tapOn: { id: profile-save }
+- extendedWaitUntil:
+    notVisible: { id: profile-save }
+    timeout: 20000
 - runScript:
     file: checks.js
     env:
@@ -113,8 +81,8 @@ tags: [critical, full, identity, blocked]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /profile
-- assertVisible: "Upravit profil"
+      ROUTE: /nv/profil
+- assertVisible: '@E2ERegister'
 - evalScript: ${output.local.screenshot('identity-registered-private')}
 - runScript:
     file: checks.js

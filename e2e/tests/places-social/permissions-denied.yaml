@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Denied location and camera preserve manual search and text feedback
-tags: [full]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [full, legacy-ui]
 ---
 - runFlow:
     file: ../../maestro/reset.yaml

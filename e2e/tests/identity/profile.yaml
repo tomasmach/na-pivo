@@ -16,47 +16,28 @@ tags: [critical, full, identity]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /profile
-- tapOn: "Upravit profil"
-- assertVisible: "E2EPivar"
+      ROUTE: /nv/upravit-profil
+- assertVisible: { id: profile-nickname, text: '@ E2EPivar' }
 - tapOn: { id: profile-nickname }
 - eraseText
-- inputText: "E2EKamarad"
-- runFlow:
-    when:
-      platform: Android
-    commands:
-      - hideKeyboard
+- inputText: 'E2EKamarad'
+- hideKeyboard
+- tapOn: { id: profile-save }
+# The new look checks uniqueness on save; the form stays open with the error.
+- extendedWaitUntil:
+    visible: 'Tahle přezdívka je zabraná'
+    timeout: 15000
 - evalScript: ${output.local.screenshot('identity-nickname-validation')}
-- extendedWaitUntil:
-    visible: "Tahle přezdívka je zabraná"
-    timeout: 15000
 - tapOn: { id: profile-nickname }
 - eraseText
-- inputText: "E2EUpdated"
-- runFlow:
-    when:
-      platform: iOS
-    commands:
-      - pressKey: Enter
-- runFlow:
-    when:
-      platform: Android
-    commands:
-      - hideKeyboard
-- assertVisible: { id: profile-nickname, text: "E2EUpdated" }
-- extendedWaitUntil:
-    visible: "Volné"
-    timeout: 15000
-- scrollUntilVisible:
-    element: { id: profile-display-name }
-    direction: DOWN
-    timeout: 15000
+- inputText: 'E2EUpdated'
+- hideKeyboard
+- assertVisible: { id: profile-nickname, text: '@ E2EUpdated' }
 - tapOn: { id: profile-display-name }
 - eraseText
-- inputText: "E2E Upravený"
-- pressKey: Enter
-- assertVisible: { id: profile-display-name, text: "E2E Upravený" }
+- inputText: 'E2E Upravený'
+- hideKeyboard
+- assertVisible: { id: profile-display-name, text: 'E2E Upravený' }
 - scrollUntilVisible:
     element: { id: profile-public }
     direction: DOWN
@@ -64,7 +45,6 @@ tags: [critical, full, identity]
 - tapOn: { id: profile-public }
 - evalScript: ${output.local.screenshot('identity-profile-before-save')}
 - tapOn: { id: profile-save }
-- evalScript: ${output.local.screenshot('identity-profile-after-save')}
 - extendedWaitUntil:
     notVisible: { id: profile-save }
     timeout: 20000
@@ -72,10 +52,13 @@ tags: [critical, full, identity]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /profile
-- tapOn: "Upravit profil"
-- assertVisible: "E2E Upravený"
-- tapOn: "Zavřít"
+      ROUTE: /nv/profil
+- assertVisible: '@E2EUpdated'
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /nv/upravit-profil
+- assertVisible: { id: profile-display-name, text: 'E2E Upravený' }
 - evalScript: ${output.local.screenshot('identity-profile-private')}
 - runScript:
     file: checks.js

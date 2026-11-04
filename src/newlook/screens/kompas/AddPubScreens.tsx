@@ -341,9 +341,9 @@ export function PridatHospoduScreen() {
       header={<BackHeader onBack={editedId ? undefined : () => setManual(false)} />}
       footer={
         editedId ? (
-          <Button label={L().editSave} icon="check" onPress={save} disabled={!canSubmit} />
+          <Button testID="add-pub-save" label={L().editSave} icon="check" onPress={save} disabled={!canSubmit} />
         ) : (
-          <Button label={L().addTitle} icon="plus" onPress={add} disabled={!canSubmit} />
+          <Button testID="add-pub-save" label={L().addTitle} icon="plus" onPress={add} disabled={!canSubmit} />
         )
       }
     >
@@ -353,14 +353,14 @@ export function PridatHospoduScreen() {
       />
       <View style={{ gap: 14 }}>
         <Field label={L().addName}>
-          <Input value={name} onChangeText={setName} maxLength={200} />
+          <Input testID="add-pub-name" value={name} onChangeText={setName} maxLength={200} />
         </Field>
         <View style={[s.row, { gap: 10, alignItems: 'flex-start' }]}>
           <Field label={L().addCity} style={{ width: 120 }}>
-            <Input value={city} onChangeText={(v) => retype(setCity, v)} />
+            <Input testID="add-pub-city" value={city} onChangeText={(v) => retype(setCity, v)} />
           </Field>
           <Field label={L().addAddress} style={s.fill}>
-            <Input value={address} onChangeText={(v) => retype(setAddress, v)} />
+            <Input testID="add-pub-address" value={address} onChangeText={(v) => retype(setAddress, v)} />
           </Field>
         </View>
         {located || locating || lookupFailed ? (

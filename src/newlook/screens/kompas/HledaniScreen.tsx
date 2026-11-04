@@ -175,6 +175,7 @@ export function HledaniScreen() {
         <View style={[s.fill, s.row, { height: 48, borderRadius: 24, paddingHorizontal: 16, gap: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.yellowStrong }]}>
           <Icon name="search" size={18} color={C.text2} />
           <TextInput
+            testID="pub-search-input"
             autoFocus
             value={q}
             onChangeText={(next) => {

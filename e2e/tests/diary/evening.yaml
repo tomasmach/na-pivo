@@ -20,55 +20,40 @@ tags: [critical, full, diary]
 - runFlow: flows/finish-evening.flow
 - runFlow: ../../maestro/restart.yaml
 - runFlow: flows/latest-evening.flow
-- assertVisible: '.*E2E Ležák.*'
-- assertVisible: '.*E2E Odebrat.*'
-- assertVisible: '.*E2E Offline.*'
+- assertVisible: 'E2E Ležák'
+- assertVisible: 'E2E Odebrat'
+- assertVisible: 'E2E Offline'
+- tapOn: 'E2E Ležák'
+- tapOn: 'Opravit název'
 - tapOn:
-    id: ${'evening-edit-' + output.diary.original.client_id}
-- tapOn:
-    id: evening-edit-name-input
+    id: drink-rename-input
 - eraseText
 - inputText: E2E Opravený
-- tapOn:
-    id: evening-edit-save
-- tapOn:
-    id: ${'evening-delete-' + output.diary.removable.client_id}
-- tapOn:
-    id: app-dialog-primary
+- tapOn: Uložit
+- assertVisible: 'E2E Opravený'
+- tapOn: 'E2E Odebrat'
+- tapOn: Odebrat
+- assertVisible: 'Odebrat jeden nápoj\?'
+- tapOn: Odebrat
+- assertNotVisible: 'E2E Odebrat'
 - runFlow: ../../maestro/restart.yaml
 - runFlow: flows/latest-evening.flow
-- assertVisible: '.*E2E Opravený.*'
-- assertVisible: '.*E2E Offline.*'
-- assertNotVisible: '.*E2E Odebrat.*'
+- assertVisible: 'E2E Opravený'
+- assertVisible: 'E2E Offline'
+- assertNotVisible: 'E2E Odebrat'
 - evalScript: ${output.local.online()}
 - runFlow: ../../maestro/foreground.yaml
-- assertVisible: '.*E2E Opravený.*'
+- assertVisible: 'E2E Opravený'
 - runScript:
     file: evening.js
     env: { STAGE: synced }
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
-    env: { ROUTE: /beer }
-- tapOn:
-    id: diary-segment
-- tapOn:
-    id: diary-stats-open
-- evalScript: ${output.local.screenshot('diary-stats-opened')}
-# iOS exposes the sheet as one accessibility description. Verify each exact value.
-- runFlow:
-    when:
-      platform: iOS
-    commands:
-      - assertVisible: '.*2 · PIV CELKEM, Večerů · 1, Hospod · 1, Utraceno · 84\sKč,.*'
-- runFlow:
-    when:
-      platform: Android
-    commands:
-      - assertVisible: { id: diary-stats-total-beers, text: "^2 · PIV CELKEM$" }
-      - assertVisible: { id: diary-stats-evenings, text: "^Večerů · 1$" }
-      - assertVisible: { id: diary-stats-pubs, text: "^Hospod · 1$" }
-      - assertVisible: { id: diary-stats-spent, text: "^Utraceno · 84\\sKč$" }
+    env: { ROUTE: /nv/stamgast }
+- tapOn: Deník
+- assertVisible: { id: diary-hero-count, text: '2' }
+- assertVisible: { id: diary-hero-meta, text: '1 večer\s+·\s+1 hospoda\s+·\s+84\sKč' }
 - evalScript: ${output.local.screenshot('diary-offline-reconciled-stats')}
 - runScript:
     file: evening.js
