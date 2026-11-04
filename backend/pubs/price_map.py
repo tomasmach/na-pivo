@@ -11,6 +11,7 @@ import re
 import statistics
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from functools import cache
 from io import BytesIO
 from pathlib import Path
 
@@ -48,13 +49,16 @@ _SOURCES = (PubPriceIndex.Source.COMMUNITY, PubPriceIndex.Source.DRINK)
 PATHS = {"cs": "/ceny", "en": "/en/prices"}
 _PRAGUE_NUMBERED = re.compile(r"Praha\s*[-–]?\s*(\d{1,2})\b")
 
-_FONTS = Path(__file__).resolve().parent / "fonts"
-_GROUND = (35, 20, 7)
-_FOAM = (251, 243, 224)
-_FOAM_MUTED = (232, 220, 192)
-_MUTED = (168, 137, 106)
-# Foam at 12 % over the ground, the hairline the web pages use.
-_HAIR = tuple(round(g + (f - g) * 0.12) for g, f in zip(_GROUND, _FOAM, strict=True))
+_WEB = Path(__file__).resolve().parent / "static" / "pubs" / "web"
+# The web's own woff2 files; Pillow's FreeType reads WOFF2 (the wheel bundles brotli).
+_FONT_FILES = {"ExtraBold": "sofia-sans-extra-condensed-800.woff2", "SemiBold": "sofia-sans.woff2"}
+# The web's grey tokens (np.css): ground, white, second text, grey, hairline and amber.
+_GROUND = (10, 10, 10)
+_FOAM = (247, 247, 242)
+_FOAM_MUTED = (212, 212, 206)
+_MUTED = (143, 143, 138)
+_HAIR = (36, 36, 36)
+_AMBER = (255, 196, 0)
 
 
 def _chunks(keys: list[str], size: int = 500):
@@ -294,8 +298,14 @@ def headline_prices(data: dict) -> list[tuple[str, dict | None]]:
     ]
 
 
+@cache
 def _font(name: str, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(_FONTS / f"Baloo2-{name}.ttf"), size)
+    """"ExtraBold" is Sofia Sans Extra Condensed 800, "SemiBold" Sofia Sans at 600."""
+
+    font = ImageFont.truetype(str(_WEB / _FONT_FILES[name]), size)
+    if name == "SemiBold":
+        font.set_variation_by_axes([600])
+    return font
 
 
 def _fitted(draw: ImageDraw.ImageDraw, text: str, name: str, size: int, width: int):
@@ -306,42 +316,104 @@ def _fitted(draw: ImageDraw.ImageDraw, text: str, name: str, size: int, width: i
     return font
 
 
-def render_og_image(data: dict, day, lang: str) -> bytes:
-    """A flat 1200 × 630 share image with the three headline medians."""
+def _wrapped(draw: ImageDraw.ImageDraw, text: str, size: int, width: int, lines: int = 2):
+    """A title in at most ``lines`` lines of ``width``, the font shrunk until it fits."""
+
+    while True:
+        font = _font("ExtraBold", size)
+        rows: list[str] = []
+        for word in text.split():
+            if rows and draw.textlength(f"{rows[-1]} {word}", font=font) <= width:
+                rows[-1] = f"{rows[-1]} {word}"
+            else:
+                rows.append(word)
+        if size <= 40 or (len(rows) <= lines and all(draw.textlength(row, font=font) <= width for row in rows)):
+            return font, rows
+        size -= 4
+
+
+def share_card(
+    *, eyebrow: str, title: str, number: str, number_label: str, figures: list[tuple[str, str]], address: str
+) -> bytes:
+    """The web's 1200 × 630 share image: a title, one amber number and up to three figures under a line."""
 
     image = Image.new("RGB", (1200, 630), _GROUND)
     draw = ImageDraw.Draw(image)
-    with translation.override(lang):
-        draw.text((80, 92), "Na pivo", font=_font("ExtraBold", 40), fill=_FOAM, anchor="ls")
-        title = gettext("Kolik stojí pivo v hospodě")
-        draw.text((80, 196), title, font=_fitted(draw, title, "ExtraBold", 72, 1040), fill=_FOAM, anchor="ls")
-        draw.line((80, 252, 1120, 252), fill=_HAIR, width=2)
+    mark = Image.open(_WEB / "og-mark.png")
+    image.paste(mark, (64, 54), mark)
+    draw.text((120, 93), "Na pivo", font=_font("ExtraBold", 38), fill=_FOAM, anchor="ls")
+    draw.text((1136, 88), address, font=_fitted(draw, address, "SemiBold", 22, 520), fill=_MUTED, anchor="rs")
 
-        number_font = _font("ExtraBold", 132)
-        unit_font = _font("ExtraBold", 44)
-        label_font = _font("SemiBold", 36)
-        unit = gettext("Kč")
-        for index, (label, stats) in enumerate(headline_prices(data)):
-            x = 80 + index * 360
-            draw.text((x, 318), label, font=label_font, fill=_FOAM_MUTED, anchor="ls")
-            value = str(stats["median"]) if stats else "–"
-            draw.text((x, 462), value, font=number_font, fill=_FOAM, anchor="ls")
-            if stats:
-                unit_x = x + draw.textlength(value, font=number_font) + 14
-                draw.text((unit_x, 462), unit, font=unit_font, fill=_FOAM_MUTED, anchor="ls")
+    number_font = _fitted(draw, number, "ExtraBold", 150, 400)
+    number_width = draw.textlength(number, font=number_font) if number else 0
+    title_font, rows = _wrapped(draw, title, 96, 1072 - max(number_width, 0) - (48 if number else 0))
+    line = title_font.size * 0.98
+    top = 300 - (len(rows) - 1) * line / 2
+    if eyebrow:
+        draw.text((64, top - title_font.size * 0.95), eyebrow, font=_fitted(draw, eyebrow, "SemiBold", 28, 700), fill=_FOAM_MUTED, anchor="ls")
+    for index, row in enumerate(rows):
+        draw.text((64, top + index * line + title_font.size * 0.3), row, font=title_font, fill=_FOAM, anchor="ls")
+    if number:
+        draw.text((1136, 350), number, font=number_font, fill=_AMBER, anchor="rs")
+        draw.text((1136, 404), number_label, font=_fitted(draw, number_label, "SemiBold", 26, 400), fill=_FOAM_MUTED, anchor="rs")
 
-        draw.line((80, 524, 1120, 524), fill=_HAIR, width=2)
-        footer_font = _font("SemiBold", 30)
-        footer = gettext("Medián nejlevnějšího piva od 0,4 l, stav k %(date)s") % {
-            "date": formats.date_format(day, "DATE_FORMAT"),
-        }
-        draw.text((80, 576), footer, font=_fitted(draw, footer, "SemiBold", 30, 760), fill=_MUTED, anchor="ls")
-        address = settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + PATHS[lang]
-        draw.text((1120, 576), address, font=footer_font, fill=_FOAM_MUTED, anchor="rs")
+    draw.line((64, 470, 1136, 470), fill=_HAIR, width=2)
+    x = 64
+    for value, label in figures[:3]:
+        value_font = _fitted(draw, value, "ExtraBold", 48, 300)
+        label_font = _fitted(draw, label, "SemiBold", 22, 300)
+        draw.text((x, 540), value, font=value_font, fill=_FOAM, anchor="ls")
+        draw.text((x, 575), label, font=label_font, fill=_MUTED, anchor="ls")
+        x += max(draw.textlength(value, font=value_font), draw.textlength(label, font=label_font)) + 56
 
     buffer = BytesIO()
     image.save(buffer, format="PNG", optimize=True)
     return buffer.getvalue()
+
+
+def _address(path: str) -> str:
+    return settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + path
+
+
+def render_og_image(data: dict, day, lang: str) -> bytes:
+    """Share image of the whole map: the country median, Praha and Brno beside it."""
+
+    with translation.override(lang):
+        country = data.get("country")
+        cities = {area["name"]: area for area in data.get("cities", [])}
+        figures = [
+            (f"{cities[name]['median']}\u00a0{gettext('Kč')}", name) for name in ("Praha", "Brno") if name in cities
+        ]
+        if country:
+            figures.append((str(country["pubs"]), gettext("hospod s cenou")))
+        return share_card(
+            eyebrow=gettext("Medián nejlevnějšího piva, stav k %(date)s") % {"date": formats.date_format(day, "DATE_FORMAT")},
+            title=gettext("Kolik stojí pivo v hospodě"),
+            number=f"{country['median']}\u00a0{gettext('Kč')}" if country else "",
+            number_label=gettext("celá ČR"),
+            figures=figures,
+            address=_address(PATHS[lang]),
+        )
+
+
+def render_city_og_image(area: dict, day, lang: str) -> bytes:
+    """Share image of one city: its median, cheapest pub and the middle half of its pubs."""
+
+    with translation.override(lang):
+        unit = gettext("Kč")
+        figures = []
+        if area.get("cheapest"):
+            figures.append((f"{area['cheapest'][0]['price_czk']}\u00a0{unit}", gettext("nejlevněji")))
+        figures.append((f"{area['p25']}–{area['p75']}\u00a0{unit}", gettext("polovina hospod")))
+        figures.append((str(area["pubs"]), gettext("hospod s cenou")))
+        return share_card(
+            eyebrow=gettext("Medián nejlevnějšího piva, stav k %(date)s") % {"date": formats.date_format(day, "DATE_FORMAT")},
+            title=gettext("Kolik stojí pivo: %(city)s") % {"city": area["name"]},
+            number=f"{area['median']}\u00a0{unit}",
+            number_label=gettext("medián"),
+            figures=figures,
+            address=_address(f"{PATHS[lang]}/{city_slug(area['name'])}"),
+        )
 
 
 def save_price_snapshot(now: datetime | None = None) -> PubPriceSnapshot:

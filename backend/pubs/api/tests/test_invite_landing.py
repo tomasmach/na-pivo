@@ -23,7 +23,7 @@ def test_invite_assets_are_public_and_cacheable(client, path, content_type):
     assert b"".join(response.streaming_content)
 
 
-def test_invite_landing_has_canonical_deep_link_and_social_metadata(client, settings):
+def test_invite_landing_has_canonical_deep_link_and_social_metadata(client, settings, db):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 
     response = client.get("/p/Ab3xK9_pQ2sT")
@@ -36,7 +36,7 @@ def test_invite_landing_has_canonical_deep_link_and_social_metadata(client, sett
     assert "noindex" in response["X-Robots-Tag"]
 
 
-def test_party_invite_landing_opens_the_prefilled_table_flow(client, settings):
+def test_party_invite_landing_opens_the_prefilled_table_flow(client, settings, db):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 
     response = client.get("/party/EFJ66G")

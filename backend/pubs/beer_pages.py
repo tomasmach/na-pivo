@@ -10,14 +10,12 @@ from __future__ import annotations
 import statistics
 from collections import defaultdict
 from datetime import datetime, timedelta
-from io import BytesIO
 
 from django.conf import settings
 from django.db import transaction
 from django.db.models import F, Q
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext
-from PIL import Image, ImageDraw
 
 from pubs.api.pub_beers_views import _merged_aliases, _places, city_name
 from pubs.api.views import _globally_reported_pub_cache_keys
@@ -38,20 +36,14 @@ from pubs.models import (
     PubContributionLog,
 )
 from pubs.price_map import (
-    _FOAM,
-    _FOAM_MUTED,
-    _GROUND,
-    _HAIR,
-    _MUTED,
     CHEAPEST_MIN_CZK,
     FRESH_DAYS,
     WINDOW_DAYS,
     _chunks,
-    _fitted,
-    _font,
     _in_czechia,
     _round,
     prague_district,
+    share_card,
 )
 
 # A beer gets its page once this many pubs confirmed it within FRESH_DAYS.
@@ -341,51 +333,53 @@ def save_beer_pages(now: datetime | None = None) -> dict:
     return pages["list"]
 
 
-def render_og_image(page: BeerPage, lang: str) -> bytes:
-    """A flat 1200 × 630 share image: the beer, how many pubs have it and what it costs."""
+def render_og_image(page: BeerPage, lang: str, ranking: dict | None = None) -> bytes:
+    """Share image of a beer, a brand or the list: the rating once people rated it, else what it costs."""
 
     data = page.data
-    image = Image.new("RGB", (1200, 630), _GROUND)
-    draw = ImageDraw.Draw(image)
     with translation.override(lang):
-        if page.kind == BeerPage.Kind.LIST:
-            title = gettext("Kde se čepuje které pivo")
-            figures = [(gettext("Piva"), len(data["beers"]), ""), (gettext("Hospody"), data["pubs"], "")]
-        elif page.kind == BeerPage.Kind.BRAND:
-            title = gettext("Kde se čepuje %(beer)s") % {"beer": data["name"]}
-            figures = [(gettext("Piva"), len(data["beers"]), ""), (gettext("Hospody"), data["pubs"], "")]
-        else:
-            title = gettext("Kde se čepuje %(beer)s") % {"beer": data["name"]}
-            figures = [(gettext("Hospody"), data["pubs"], "")]
-            if data["median"] is not None:
-                figures.append((gettext("Obvykle za 0,5 l"), data["median"], gettext("Kč")))
-            if data["cheapest"]:
-                figures.append((gettext("Nejlevněji za 0,5 l"), data["cheapest"]["price_czk"], gettext("Kč")))
-
-        draw.text((80, 92), "Na pivo", font=_font("ExtraBold", 40), fill=_FOAM, anchor="ls")
-        draw.text((80, 196), title, font=_fitted(draw, title, "ExtraBold", 72, 1040), fill=_FOAM, anchor="ls")
-        draw.line((80, 252, 1120, 252), fill=_HAIR, width=2)
-        number_font = _font("ExtraBold", 132)
-        unit_font = _font("ExtraBold", 44)
-        for index, (label, number, unit) in enumerate(figures):
-            x = 80 + index * 360
-            value = str(number)
-            draw.text((x, 318), label, font=_fitted(draw, label, "SemiBold", 36, 330), fill=_FOAM_MUTED, anchor="ls")
-            draw.text((x, 462), value, font=number_font, fill=_FOAM, anchor="ls")
-            if unit:
-                unit_x = x + draw.textlength(value, font=number_font) + 14
-                draw.text((unit_x, 462), unit, font=unit_font, fill=_FOAM_MUTED, anchor="ls")
-
-        draw.line((80, 524, 1120, 524), fill=_HAIR, width=2)
-        footer = gettext("Potvrzeno za poslední 3 měsíce, stav k %(date)s") % {
-            "date": formats.date_format(page.day, "DATE_FORMAT"),
-        }
-        draw.text((80, 576), footer, font=_fitted(draw, footer, "SemiBold", 30, 640), fill=_MUTED, anchor="ls")
+        unit = gettext("Kč")
         address = settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + page_path(page.kind, page.key, lang)
-        draw.text(
-            (1120, 576), address, font=_fitted(draw, address, "SemiBold", 30, 420), fill=_FOAM_MUTED, anchor="rs"
+        if page.kind == BeerPage.Kind.LIST:
+            return share_card(
+                eyebrow=gettext("Potvrzeno za poslední 3 měsíce"),
+                title=gettext("Kde se čepuje které pivo"),
+                number=str(len(data["beers"])),
+                number_label=gettext("piv s vlastní stránkou"),
+                figures=[(str(data["pubs"]), gettext("hospod"))],
+                address=address,
+            )
+        if page.kind == BeerPage.Kind.BRAND:
+            return share_card(
+                eyebrow=gettext("Značka"),
+                title=data["name"],
+                number=str(data["pubs"]),
+                number_label=gettext("hospod je čepuje"),
+                figures=[(str(len(data["beers"])), gettext("piv na stránce"))],
+                address=address,
+            )
+        figures = []
+        rated = ranking is not None and ranking["avg"] is not None
+        if rated:
+            number = formats.number_format(round(ranking["avg"], 1), 1)
+            number_label = gettext("z %(count)s hodnocení") % {"count": ranking["count"]}
+            if data["median"] is not None:
+                figures.append((f"{data['median']}\u00a0{unit}", gettext("obvykle za 0,5 l")))
+        elif data["median"] is not None:
+            number, number_label = f"{data['median']}\u00a0{unit}", gettext("obvykle za 0,5 l")
+        else:
+            number, number_label = str(data["pubs"]), gettext("hospod ho čepuje")
+        if rated or data["median"] is not None:
+            figures.append((str(data["pubs"]), gettext("hospod ho čepuje")))
+        if data["cheapest"]:
+            figures.append((f"{data['cheapest']['price_czk']}\u00a0{unit}", gettext("nejlevněji za 0,5 l")))
+        if rated and ranking["rank"]:
+            figures.append((f"{ranking['rank']}.", gettext("v žebříčku piv")))
+        return share_card(
+            eyebrow=data["brand_name"] if data["brand_name"] not in data["name"] else "",
+            title=data["name"],
+            number=number,
+            number_label=number_label,
+            figures=figures,
+            address=address,
         )
-
-    buffer = BytesIO()
-    image.save(buffer, format="PNG", optimize=True)
-    return buffer.getvalue()

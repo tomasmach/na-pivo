@@ -99,6 +99,7 @@ from pubs.models import (
     FriendBlock,
     FriendInviteCode,
     FriendNotification,
+    FriendPlanGuest,
     FriendPubActivity,
     FriendPubActivityRecipient,
     Friendship,
@@ -900,6 +901,11 @@ def set_password(account: Account, raw_password: str, *, email: str | None = Non
     cred.password = make_password(raw_password)
     cred.save()
     return cred
+
+
+def new_registration_account() -> Account:
+    """Fresh account for an e-mail registration that has no anonymous account to claim."""
+    return Account.objects.create(device_id=f"reg-{uuid.uuid4()}")
 
 
 def register_email(
@@ -1946,6 +1952,13 @@ def _merge_friend_activity_tree(
             target_parent=target_activity,
             unique_fields=("account_id",),
         )
+    _move_parent_rows(
+        FriendPlanGuest,
+        parent_field="activity",
+        source_parent=source_activity,
+        target_parent=target_activity,
+        unique_fields=("device_hash",),
+    )
     FriendNotification.objects.filter(activity=source_activity).update(activity=target_activity)
     source_activity.delete()
 
@@ -3135,6 +3148,60 @@ def request_password_reset(email: str, *, link_base: str | None = None) -> None:
     emailer.send_password_reset_email(
         cred.email, link=link, code=raw, locale=locale_for_account(cred.account)
     )
+
+
+DELETION_LINK_TTL = timedelta(hours=1)
+
+
+def request_account_deletion_link(email: str, *, link_base: str) -> None:
+    """Email a link that confirms account deletion. Silent for unknown e-mails."""
+    norm = normalize_email(email)
+    if not norm:
+        return
+    # A Google or Apple account has no password e-mail; the provider vouched for its address.
+    holder = (
+        EmailCredential.objects.select_related("account")
+        .filter(email=norm, account__status=Account.Status.ACTIVE)
+        .first()
+    ) or (
+        AuthIdentity.objects.select_related("account")
+        .filter(email__iexact=norm, account__status=Account.Status.ACTIVE)
+        .first()
+    )
+    if holder is None:
+        return
+    raw = _create_one_time_token(
+        holder.account, purpose=OneTimeToken.Purpose.DELETE_ACCOUNT, ttl=DELETION_LINK_TTL
+    )
+    emailer.send_account_deletion_link_email(
+        norm,
+        link=_append_token(link_base, raw),
+        locale=locale_for_account(holder.account),
+    )
+
+
+def account_for_deletion_link(raw_token: str) -> Account | None:
+    """The account a still valid deletion link belongs to, without using it up."""
+    return (
+        Account.objects.filter(
+            one_time_tokens__token_hash=hash_account_token(raw_token),
+            one_time_tokens__purpose=OneTimeToken.Purpose.DELETE_ACCOUNT,
+            one_time_tokens__used_at__isnull=True,
+            one_time_tokens__expires_at__gt=timezone.now(),
+        ).first()
+        if raw_token
+        else None
+    )
+
+
+def delete_account_with_link(raw_token: str) -> Account:
+    """Use up a deletion link and start the same deletion as the app's DELETE."""
+    with transaction.atomic():
+        owner = _consume_one_time_token(raw_token, purpose=OneTimeToken.Purpose.DELETE_ACCOUNT)
+        account = Account.objects.select_for_update().get(pk=owner.pk)
+        if account.status == Account.Status.ACTIVE:
+            schedule_deletion(account)
+    return account
 
 
 def reset_password(raw_token: str, *, new_password: str) -> tuple[Account, str]:

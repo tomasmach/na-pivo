@@ -1,0 +1,6 @@
+{% load i18n web %}<a href="{% web_url "web-pubs" %}"{% if page.section == "pubs" %} aria-current="page"{% endif %}>{% translate "Hospody" %}</a>
+<a href="{% web_url "beer-list" %}"{% if page.section == "beer" %} aria-current="page"{% endif %}>{% translate "Piva" %}</a>
+<a href="{% web_url "beer-prices" %}"{% if page.section == "prices" %} aria-current="page"{% endif %}>{% translate "Ceny piva" %}</a>
+<a href="{% web_url "web-tours" %}"{% if page.section == "tours" %} aria-current="page"{% endif %}>{% translate "Trasy" %}</a>
+<a href="{% web_url "web-rankings" %}"{% if page.section == "rankings" %} aria-current="page"{% endif %}>{% translate "Žebříčky" %}</a>
+<a href="{% web_url "web-news" %}"{% if page.section == "news" %} aria-current="page"{% endif %}>{% translate "Novinky" %}</a>

@@ -29,6 +29,15 @@ export interface PartaPlan extends FriendPubActivity {
   isMine: boolean;
   /** How many people my own plan went to; null on friends' plans. */
   inviteeCount: number | null;
+  /** Link for people without the app; only the host gets it. */
+  inviteUrl: string | null;
+}
+
+/** Someone without an account who answered through the plan's link. */
+export interface PlanGuest {
+  id: string;
+  name: string;
+  response: 'going' | 'maybe' | 'cant';
 }
 
 export interface PlanPeople {
@@ -39,6 +48,8 @@ export interface PlanPeople {
   silent: FriendProfile[];
   maybeCount: number;
   cantCount: number;
+  /** The host sees every guest, invitees only those who go. */
+  guests: PlanGuest[];
 }
 
 export interface HomeEveningState {
@@ -114,7 +125,19 @@ export function parsePartaPlan(raw: unknown): PartaPlan | null {
     lng: typeof row.lng === 'number' ? row.lng : null,
     isMine: row.is_mine === true,
     inviteeCount: typeof row.invitee_count === 'number' ? row.invitee_count : null,
+    inviteUrl: typeof row.invite_url === 'string' && row.invite_url.startsWith('https://') ? row.invite_url : null,
   };
+}
+
+function guests(raw: unknown): PlanGuest[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    const row = (item ?? {}) as Raw;
+    const response = row.response;
+    if (typeof row.id !== 'string' || typeof row.name !== 'string') return [];
+    if (response !== 'going' && response !== 'maybe' && response !== 'cant') return [];
+    return [{ id: row.id, name: row.name, response }];
+  });
 }
 
 function parseHome(raw: unknown): HomeEveningState | null {
@@ -142,6 +165,7 @@ export function parsePlanDetail(raw: unknown): PlanDetail | null {
       silent: profiles(people.silent),
       maybeCount: count(people.maybe_count),
       cantCount: count(people.cant_count),
+      guests: guests(people.guests),
     },
     home: parseHome((raw as Raw).home),
   };

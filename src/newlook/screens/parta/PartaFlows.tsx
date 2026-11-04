@@ -437,7 +437,12 @@ export function PlanScreen() {
 
   // RSVPs and edits land in the store first; every detail fetch writes there too.
   const plan = cached ?? detail?.plan ?? null;
-  const share = <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.share} onPress={() => router.push('/nv/nalepky')} />;
+  const inviteUrl = plan?.isMine ? plan.inviteUrl : null;
+  const share = inviteUrl ? (
+    <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.shareInvite} onPress={() => void Share.share({ message: t.nv.parta.inviteMessage(plan?.name ?? '', inviteUrl) })} />
+  ) : (
+    <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.share} onPress={() => router.push('/nv/nalepky')} />
+  );
 
   if (gone) {
     return (
@@ -465,6 +470,10 @@ export function PlanScreen() {
 
   if (plan.isMine) {
     const going = [t.nv.parta.you, ...(people?.going ?? []).map(personName)].join(', ');
+    const guests = (people?.guests ?? [])
+      .filter((g) => g.response !== 'cant')
+      .map((g) => (g.response === 'maybe' ? t.nv.parta.guestMaybe(g.name) : g.name))
+      .join(', ');
     const remind = () => {
       setReminding(true);
       void remindPlan(plan.id).then((res) => {
@@ -479,6 +488,7 @@ export function PlanScreen() {
         <Card>
           <PeopleRow label={t.nv.parta.goingLabel} people={going} />
           <PeopleRow label={t.nv.parta.maybeLabel} people={people?.maybe ?? []} />
+          {guests ? <PeopleRow label={t.nv.parta.guestsLabel} people={guests} /> : null}
           <PeopleRow
             last
             label={t.nv.parta.silentLabel}
@@ -522,6 +532,8 @@ export function PlanScreen() {
 
   const home = detail?.home;
   const goingPeople = [plan.account, ...(people?.going ?? plan.responses.goingProfiles).filter((p) => p.id !== plan.account.id)];
+  const goingGuests = (people?.guests ?? []).filter((g) => g.response === 'going');
+  const goingTotal = goingPeople.length + goingGuests.length;
   const where =
     plan.placeKind === 'pub'
       ? { title: plan.name, sub: plan.city }
@@ -580,10 +592,10 @@ export function PlanScreen() {
       <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end' }]}>
         <View style={[s.row, { alignItems: 'flex-end', gap: 6 }]}>
           <D s={30} lh={1}>
-            {String(goingPeople.length)}
+            {String(goingTotal)}
           </D>
           <T s={17} w={700}>
-            {t.nv.parta.goingWord(goingPeople.length)}
+            {t.nv.parta.goingWord(goingTotal)}
           </T>
         </View>
         {people?.maybeCount ? (
@@ -598,6 +610,14 @@ export function PlanScreen() {
             <Person initial={personInitial(p)} size={46} filled={false} />
             <T s={12} w={600} c={i === 0 ? C.yellow : C.text2} numberOfLines={1}>
               {personName(p)}
+            </T>
+          </View>
+        ))}
+        {goingGuests.slice(0, Math.max(0, 5 - goingPeople.length)).map((g) => (
+          <View key={g.id} style={{ alignItems: 'center', gap: 6 }}>
+            <Person initial={g.name.slice(0, 1).toLocaleUpperCase()} size={46} filled={false} />
+            <T s={12} w={600} c={C.muted} numberOfLines={1} style={{ maxWidth: 72 }}>
+              {g.name}
             </T>
           </View>
         ))}
