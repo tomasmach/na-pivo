@@ -23,6 +23,7 @@
 <main>
   <div class="eyebrow">Podklad pro build · 3. 11. 2026</div>
   <h1>Web Na pivo v Djangu</h1>
+  <p class="muted">Podklad popisuje stav před stavbou webu. Web podle něj vznikl ve větvi <code>feat/new-look</code> (<code>backend/pubs/web</code>) včetně odpovědi hosta na pozvánku a smazání účtu odkazem z e-mailu. Přihlášení přes Apple na webu zatím není, i když ho mocky ukazují. Aktuální stav ber z kódu.</p>
   <p class="lead">Web dělá skoro všechno, co appka kromě kompasu a počítání u stolu. Veřejná část přivádí lidi z Googlu. Celé to běží v Djangu vedle <code>/v1/</code> API, takže backend pro appku zůstává, jak je.</p>
 
   <h2>Kde jsou návrhy</h2>
@@ -35,7 +36,7 @@
     <li>Vzhled přebírá šedý jazyk redesignu, jen tmavý režim. Barvy jsou proměnné <code>np-*</code> v .pen souboru (země <code>#0A0A0A</code>, karty <code>#151515</code>, ovládací prvky <code>#232323</code>, jantar <code>#FFC400</code>). Písma jsou Sofia Sans Extra Condensed 800 na nadpisy a čísla a Sofia Sans na text, ikony jsou lucide.</li>
     <li>Po přihlášení je vlevo panel (Deník, Piva, Hospody, Výčep, Parta, dole profil). Jediná jantarová věc v panelu je „Zapsat pivo“. Veřejné stránky mají společnou hlavičku (Hospody, Piva, Ceny piva, Trasy, Žebříčky, Novinky, hledání) a patičku s odkazy na města, ceny a piva.</li>
     <li>Kompas a počítání u stolu zůstávají jen v appce.</li>
-    <li>Hodnocení piv s přezdívkou, hospodou a datem jsou veřejná.</li>
+    <li>Hodnocení piv s přezdívkou, hospodou a datem můžou být veřejná, ale jen když je autor sám zveřejní. <code>BeerCheckIn</code> má dnes jen viditelnost <code>private</code> (výchozí) a <code>friends</code>, takže existující zápisy zůstanou soukromé. Veřejné hodnocení potřebuje novou hodnotu viditelnosti a volbu u zápisu.</li>
     <li>Smazání účtu má dál 14denní lhůtu (<code>ACCOUNT_DELETION_GRACE_DAYS</code>).</li>
     <li>Obrázek pro sdílení hlavní stránky je B4 „Deník s mapou“. Pro pivo, hospodu, ceny ve městě, Pivní index, trasu a pozvánku jsou textové šablony. Pivovar, žebříček a novinky zatím použijí B4.</li>
     <li>Na později nebo vůbec: Pivní rok 2026 (až potom), odznak pro hospody (teď ne).</li>
@@ -46,7 +47,7 @@
   <table>
     <tr><th>Adresa</th><th>Kód</th><th>Podle návrhu</th></tr>
     <tr><td><code>/</code>, <code>/en</code></td><td><code>home_views.home</code>, <code>home.html</code></td><td>Web · Landing (VPR7K)</td></tr>
-    <tr><td><code>/ceny</code>, <code>/ceny/&lt;město&gt;</code>, <code>…/og.png</code></td><td><code>web_views.beer_prices</code>, <code>beer_prices.html</code></td><td>Web · Ceny piva Praha (a7alfJ), mobil (G9r4uJ), OG · Ceny ve městě (ximSF)</td></tr>
+    <tr><td><code>/ceny</code>, <code>/ceny/&lt;město&gt;</code>, <code>/ceny/og.png</code></td><td><code>web_views.beer_prices</code>, <code>beer_prices.html</code></td><td>Web · Ceny piva Praha (a7alfJ), mobil (G9r4uJ), OG · Ceny ve městě (ximSF). Dnes je jen společný <code>/ceny/og.png</code>, obrázek pro každé město je nový.</td></tr>
     <tr><td><code>/pivo</code>, <code>/pivo/&lt;pivo&gt;</code>, <code>…/og.png</code></td><td><code>web_views.beer_pages</code>, <code>beers.html</code></td><td>Web · Pivo Pilsner Urquell (bWe2h), mobil (NtKxB), OG · Pivo (q0vjzL)</td></tr>
     <tr><td><code>/pivo/znacka/&lt;značka&gt;</code></td><td><code>web_views.beer_pages</code> (BRAND)</td><td>Web · Pivovar Plzeňský Prazdroj (gD5hr)</td></tr>
     <tr><td><code>/p/&lt;kód&gt;</code>, <code>/t/&lt;token&gt;</code>, <code>/party/&lt;kód&gt;</code></td><td><code>invite_landing.html</code>, <code>tour_landing.html</code></td><td>Přebarvit. Návrh pozvánky (TStMv, gnDJz, aFlSI) je pozvánka na pivo s Jdu / Možná / Nejdu. Ověř, ke kterému typu pozvánky patří.</td></tr>
@@ -61,8 +62,8 @@
     <tr><td>Hospody ve městě</td><td>Web · Hospody v Praze (R8p5o2)</td><td><span class="tag part">část</span> hospody, <code>city</code> a ceny jsou. Filtr „otevřeno teď“ jde z <code>hours_json</code>. Agregace a cache se musí dopsat.</td></tr>
     <tr><td>Stránka hospody</td><td>Web · Stránka hospody (F6Xo39)</td><td><span class="tag ok">je</span> komunitní data, ceny, hodnocení</td></tr>
     <tr><td>Žebříček piv</td><td>Web · Nejlepší piva v Česku (Y0MkjT), mobil (Iqrua)</td><td><span class="tag part">část</span> hodnocení jsou v <code>BeerCheckIn.rating</code>. Žebříček a práh 50 hodnocení se musí dopsat.</td></tr>
-    <tr><td>Hledání</td><td>Web · Výsledky hledání (fOvbj), bez výsledku (SRAaz)</td><td><span class="tag part">část</span> v API je jen hledání hospod. Piva a města přidat.</td></tr>
-    <tr><td>Novinky</td><td>Web · Novinky (kgvft)</td><td><span class="tag part">část</span> „nově na čepu“ dává <code>BeerTapEvent</code>, změny cen <code>PubPriceSnapshot</code>, nové hospody <code>UserAddedPub</code>, „už nečepují“ jde odvodit z <code>historical_beers</code>. <span class="tag miss">chybí</span> model pro akce hospod jsem nenašel.</td></tr>
+    <tr><td>Hledání</td><td>Web · Výsledky hledání (fOvbj), bez výsledku (SRAaz)</td><td><span class="tag part">část</span> hospody hledá API hospod, piva a značky <code>/v1/beer-brands/suggest</code> (<code>beer_catalog.suggest_beers()</code>). Chybí společné výsledky pro web a hledání měst.</td></tr>
+    <tr><td>Novinky</td><td>Web · Novinky (kgvft)</td><td><span class="tag part">část</span> „nově na čepu“ dává <code>BeerTapEvent</code>, změny cen jde odvodit porovnáním zápisů v <code>PubContributionLog</code> (<code>PubPriceSnapshot</code> drží jen denní souhrn měst a nejlevnějších hospod, ne historii cen každého piva), nové hospody <code>UserAddedPub</code>, „už nečepují“ jde odvodit z <code>historical_beers</code>. Akce hospod jsou v <code>PubEvent</code> (<code>backend/pubs/pub_events.py</code>, <code>/v1/pub-events</code>), na web patří jen ověřené.</td></tr>
     <tr><td>Pivní index Česka</td><td>Web · Pivní index Česka (Y1cTjL), OG · Pivní index (z8hTBS)</td><td><span class="tag part">část</span> ceny po hospodách jsou v <code>PubPriceIndex</code> a <code>PubPriceSnapshot</code>. Kraj ani okres hospoda nemá, jen <code>city</code>, takže je potřeba převod na kraje. Čtvrtletní historii a export pro novináře dopsat.</td></tr>
     <tr><td>Pivovar</td><td>Web · Pivovar (gD5hr)</td><td><span class="tag part">část</span> <code>BeerBrand</code> má jen název a aliasy. Město a rok založení z návrhu v datech nejsou. Doplnit, nebo z návrhu vypustit.</td></tr>
     <tr><td>Pivní trasy</td><td>Web · Pivní trasy (SZUnv), Web · Pivní trasa Žižkovem (pXuDA), mobil (AUSku), OG · Trasa (hA69N)</td><td><span class="tag ok">je</span> <code>TourPublication</code> a <code>/v1/tour-publications/search</code>. Počet lidí, kteří trasu prošli, ověřit.</td></tr>
@@ -79,10 +80,10 @@
     <tr><td>Dopsat večer</td><td>Web · Dopsat večer (IQate)</td><td>Zápis zpětně musí jít stejnou cestou a stejnými pravidly jako „Dopsat piva“ v appce: jeden zápis, žádná druhá kopie.</td></tr>
     <tr><td>Profil a statistiky</td><td>Web · Profil a statistiky (PkUDB)</td><td>Piva po měsících, kam chodíš, co piješ, s kým, kdy, odznaky.</td></tr>
     <tr><td>Piva a hodnocení</td><td>Web · Piva (xpoHl), Ohodnotit pivo (jCv49)</td><td>Hodnocení je <code>BeerCheckIn</code>.</td></tr>
-    <tr><td>Hospody a přidání hospody</td><td>Web · Hospody (JrVtl), Přidat hospodu (N9ucXS)</td><td>Přidání jde přes <code>UserAddedPub</code>, stejně jako v appce.</td></tr>
+    <tr><td>Hospody a přidání hospody</td><td>Web · Hospody (JrVtl), Přidat hospodu (N9ucXS)</td><td>Přidání jde přes <code>UserAddedPub</code>, stejně jako v appce. Přidaná hospoda je hned vidět všem, schvalování neexistuje. Věta v mocku „do schválení ji vidíš jen ty“ proto neplatí.</td></tr>
     <tr><td>Parta</td><td>Web · Parta (cX38o)</td><td>Kamarádi, žádosti, pozvánka odkazem.</td></tr>
     <tr><td>Výčep</td><td>Web · Výčep (F0hVo)</td><td><code>/v1/nights/feed</code>, Runda, Svět a Parta.</td></tr>
-    <tr><td>Nastavení a smazání účtu</td><td>Web · Nastavení (hbMbD), Smazat účet (SG0S2)</td><td>Export dat je <code>AccountExportJob</code>, smazání stejný tok jako v appce.</td></tr>
+    <tr><td>Nastavení a smazání účtu</td><td>Web · Nastavení (hbMbD), Smazat účet (SG0S2)</td><td>Export dat je <code>AccountExportJob</code>, smazání stejný tok jako v appce (<code>accounts.schedule_deletion()</code>, 14 dní na návrat). Věta „Vrátit to nejde“ v mocku Nastavení neplatí.</td></tr>
   </table>
   <p class="muted">Mobilní verze má jen část veřejných stránek. U ostatních obrazovek je odvoď z mobilních vzorů v .pen souboru (Mobil · Ceny, Mobil · Pivo).</p>
 
