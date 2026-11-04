@@ -1036,17 +1036,16 @@ def test_anonymous_merge_enqueues_durable_source_avatar_cleanup(tmp_media, monke
     avatar_name = source.avatar.name
     avatar_path = Path(source.avatar.path)
     storage = Account._meta.get_field("avatar").storage
-    original_delete = storage.delete
 
     def failing_delete(_name):
         raise OSError("media unavailable")
 
     # Force the post-commit cleanup to fail so the outbox row survives for the
     # worker-retry assertions below instead of vanishing on commit.
-    monkeypatch.setattr(storage, "delete", failing_delete)
-
-    with transaction.atomic():
-        accounts._merge_anonymous_account(source, target)
+    with monkeypatch.context() as patched:
+        patched.setattr(storage, "delete", failing_delete)
+        with transaction.atomic():
+            accounts._merge_anonymous_account(source, target)
 
     assert not Account.objects.filter(pk=source.pk).exists()
     assert avatar_path.exists()
@@ -1059,7 +1058,6 @@ def test_anonymous_merge_enqueues_durable_source_avatar_cleanup(tmp_media, monke
     # The row must survive the source-account CASCADE as a durable pointer.
     assert pending.account_id is None
 
-    monkeypatch.setattr(storage, "delete", original_delete)
     assert retry_beer_photo_file_deletion(pending.pk)
     assert not avatar_path.exists()
     assert not BeerPhotoFileDeletion.objects.exists()
@@ -3585,20 +3583,17 @@ def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
             FeedbackReport._meta.get_field("attachment").storage,
         )
     }
-    original_deletes = {
-        storage_id: storage.delete for storage_id, storage in storages.items()
-    }
 
     assert client.delete("/v1/account/me", **_auth(token)).status_code == status.HTTP_204_NO_CONTENT
     sent_emails.clear()
-    for storage in storages.values():
-        monkeypatch.setattr(
-            storage,
-            "delete",
-            lambda _name: (_ for _ in ()).throw(OSError("media unavailable")),
-        )
-
-    call_command("purge_deleted_accounts", "--grace-days", "0")
+    with monkeypatch.context() as patched:
+        for storage in storages.values():
+            patched.setattr(
+                storage,
+                "delete",
+                lambda _name: (_ for _ in ()).throw(OSError("media unavailable")),
+            )
+        call_command("purge_deleted_accounts", "--grace-days", "0")
 
     assert not Account.objects.filter(pk=account_pk).exists()
     assert avatar_path.exists()
@@ -3626,8 +3621,6 @@ def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
     # failed-attachment cleanup above survives.
     assert not FeedbackReport.objects.filter(pk=feedback_pk).exists()
 
-    for storage_id, storage in storages.items():
-        monkeypatch.setattr(storage, "delete", original_deletes[storage_id])
     BeerPhotoFileDeletion.objects.update(
         last_attempted_at=timezone.now() - timedelta(minutes=16)
     )
