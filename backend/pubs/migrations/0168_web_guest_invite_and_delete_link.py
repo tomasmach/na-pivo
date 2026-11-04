@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pubs', '0166_drink_xp_awarded'),
+        ('pubs', '0167_pub_visit_reaction'),
     ]
 
     operations = [
