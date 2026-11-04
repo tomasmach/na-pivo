@@ -20,8 +20,10 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, time, timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone as dj_timezone
 from django.utils.translation import gettext, gettext_lazy
 from rest_framework import serializers, status
@@ -31,7 +33,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
-from pubs.i18n import LocalizedText
+from pubs.i18n import LocalizedText, current_locale
 from pubs.models import (
     Account,
     DrinkLog,
@@ -40,10 +42,14 @@ from pubs.models import (
     FriendNotification,
     FriendPubActivity,
     FriendPubActivityRecipient,
+    PubVisit,
+    PubVisitReaction,
 )
+from pubs.plan_guests import guest_link, visible_guests
 
 from .authentication import AccountTokenAuthentication
 from .serializers import (
+    FriendActivityReactionSerializer,
     FriendProfileSerializer,
     FriendPubActivitySerializer,
     _LatLngBoundsValidationMixin,
@@ -161,6 +167,7 @@ class PartaPlanSerializer(FriendPubActivitySerializer):
     lng = serializers.SerializerMethodField()
     is_mine = serializers.SerializerMethodField()
     invitee_count = serializers.SerializerMethodField()
+    invite_url = serializers.SerializerMethodField()
 
     class Meta(FriendPubActivitySerializer.Meta):
         fields = [
@@ -171,6 +178,7 @@ class PartaPlanSerializer(FriendPubActivitySerializer):
             "lng",
             "is_mine",
             "invitee_count",
+            "invite_url",
         ]
         read_only_fields = fields
 
@@ -200,6 +208,12 @@ class PartaPlanSerializer(FriendPubActivitySerializer):
         if targets:
             return int(targets)
         return len(self.context.get("my_friend_ids") or [])
+
+    def get_invite_url(self, obj: FriendPubActivity) -> str | None:
+        # Only the host hands the link out; it lets people without an account answer.
+        if not self.get_is_mine(obj):
+            return None
+        return guest_link(obj, current_locale())
 
 
 def _plan_context(request: Request) -> dict:
@@ -338,7 +352,7 @@ def _set_targets(activity: FriendPubActivity, target_ids: list[int] | None) -> N
 def _fresh(activity_pk: int) -> FriendPubActivity:
     return (
         FriendPubActivity.objects.select_related("account")
-        .prefetch_related(*_friend_activity_prefetches())
+        .prefetch_related(*_friend_activity_prefetches(), "guests")
         .get(pk=activity_pk)
     )
 
@@ -364,6 +378,7 @@ def _people(activity: FriendPubActivity, viewer: Account, context: dict) -> dict
         "maybe_count": len(buckets["maybe"]),
         "cant_count": len(buckets["cant"]),
         "silent": [],
+        "guests": visible_guests(activity, is_owner=is_owner),
     }
     if is_owner:
         silent_ids = [fid for fid in _invitee_ids(activity) if fid not in responded]
@@ -536,7 +551,7 @@ class PartaActivityView(FriendActivityView):
             return self.http_method_not_allowed(request)
         activity = (
             FriendPubActivity.objects.select_related("account")
-            .prefetch_related(*_friend_activity_prefetches())
+            .prefetch_related(*_friend_activity_prefetches(), "guests")
             .filter(public_id=activity_id)
             .first()
         )
@@ -893,6 +908,140 @@ class FriendPingView(APIView):
             {"kind": "friend_ping", "actor_id": str(request.user.public_id)},
         )
         return Response({"sent": True}, status=status.HTTP_201_CREATED)
+
+
+def current_presence_visit(friend: Account, now: datetime) -> PubVisit | None:
+    """The friend's sitting that "Teď venku" shows, by the same rules as the dashboard."""
+
+    if (
+        friend.status != Account.Status.ACTIVE
+        or friend.ghost_mode
+        or not friend.share_drinks_with_parta
+    ):
+        return None
+    cutoff = now - timedelta(minutes=settings.FRIEND_PRESENCE_WINDOW_MINUTES)
+    return (
+        PubVisit.objects.filter(account=friend, closed_at__isnull=True)
+        .filter(Q(ended_at__gte=cutoff) | Q(started_at__gte=cutoff))
+        .annotate(last_seen_at=Coalesce("ended_at", "started_at"))
+        .filter(last_seen_at__gte=cutoff)
+        .order_by("-last_seen_at", "-started_at", "-id")
+        .first()
+    )
+
+
+def _visit_reaction_payload(visit: PubVisit | None, viewer: Account) -> dict:
+    if visit is None:
+        return {"reactions": {"cheers": 0}, "my_reaction": None}
+    rows = PubVisitReaction.objects.filter(visit=visit)
+    return {
+        "reactions": {"cheers": rows.count()},
+        "my_reaction": "cheers" if rows.filter(account=viewer).exists() else None,
+    }
+
+
+class FriendCheerView(APIView):
+    """POST/DELETE /v1/friends/<id>/cheer — "Na zdraví" to a friend sitting out now.
+
+    The target is the friend's current sitting from "Teď venku", so it works
+    without a broadcast. Accepted, unblocked friends only; a friend in ghost mode
+    or not sharing drinks with the party is not out. A ghost sender sends nothing.
+    A new reaction notifies the friend (``friend_cheers``), at most once per pub
+    sitting within ``FRIEND_REACTION_NOTIFY_COOLDOWN_MIN``. DELETE is idempotent so
+    an offline replay is safe.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def _friend(self, request: Request, account_id) -> Account | None:
+        friend = Account.objects.filter(public_id=account_id).first()
+        if (
+            friend is None
+            or friend.id == request.user.id
+            or friend.id in _blocked_account_ids(request.user)
+            or friend.id not in _accepted_friend_ids(request.user)
+        ):
+            return None
+        return friend
+
+    def post(self, request: Request, account_id) -> Response:
+        serializer = FriendActivityReactionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": gettext("Tuhle reakci neznám."), "code": "invalid_reaction"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        friend = self._friend(request, account_id)
+        if friend is None:
+            return Response(
+                {"detail": gettext("Tenhle kámoš tu není."), "code": "friend_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if request.user.ghost_mode:
+            return Response(
+                {"detail": gettext("Jsi neviditelný, nikomu nic nepípne."), "code": "ghost_mode"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        now = dj_timezone.now()
+        visit = current_presence_visit(friend, now)
+        if visit is None:
+            return Response(
+                {"detail": gettext("Kámoš už nesedí venku."), "code": "not_out"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            with transaction.atomic():
+                _, created = PubVisitReaction.objects.update_or_create(
+                    visit=visit,
+                    account=request.user,
+                    defaults={"kind": serializer.validated_data["reaction"]},
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("friends: presence cheer failed: %s", exc, exc_info=True)
+            return _internal_error()
+
+        cooldown = now - timedelta(minutes=settings.FRIEND_REACTION_NOTIFY_COOLDOWN_MIN)
+        if created and not FriendNotification.objects.filter(
+            recipient=friend,
+            actor=request.user,
+            kind=FriendNotification.Kind.FRIEND_CHEERS,
+            pub_cache_key=visit.cache_key,
+            created_at__gte=max(cooldown, visit.started_at),
+        ).exists():
+            title = LocalizedText(gettext_lazy("Na zdraví!"))
+            body = LocalizedText(
+                gettext_lazy("%(name)s ti připil. Na zdraví!"),
+                {"name": _friend_display_name(request.user)},
+            )
+            _create_friend_notification(
+                recipient=friend,
+                actor=request.user,
+                kind=FriendNotification.Kind.FRIEND_CHEERS,
+                title=title,
+                body=body,
+                pub_cache_key=visit.cache_key,
+                pub_name=visit.name[:200],
+            )
+            _send_friend_push(
+                [friend.id],
+                title,
+                body,
+                {"kind": "friend_cheers", "actor_id": str(request.user.public_id)},
+            )
+        return Response(_visit_reaction_payload(visit, request.user), status=status.HTTP_200_OK)
+
+    def delete(self, request: Request, account_id) -> Response:
+        friend = self._friend(request, account_id)
+        if friend is None:
+            return Response({"reactions": {"cheers": 0}, "my_reaction": None}, status=status.HTTP_200_OK)
+        PubVisitReaction.objects.filter(
+            account=request.user, visit__account=friend, visit__closed_at__isnull=True
+        ).delete()
+        visit = current_presence_visit(friend, dj_timezone.now())
+        return Response(_visit_reaction_payload(visit, request.user), status=status.HTTP_200_OK)
 
 
 def home_presence_slice(viewer: Account, friend_ids: list[int], now) -> list[dict]:

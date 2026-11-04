@@ -10,6 +10,9 @@ from PIL import Image
 
 from pubs.home_views import APP_STORE_URL, PLAY_STORE_URL
 
+# The home page shows this year's totals from the database.
+pytestmark = pytest.mark.django_db
+
 
 def test_home_is_czech_with_store_links_and_alternates(client, settings):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
@@ -21,7 +24,7 @@ def test_home_is_czech_with_store_links_and_alternates(client, settings):
     assert "X-Robots-Tag" not in response
     html = response.content.decode()
     assert '<html lang="cs">' in html
-    assert "Čárkuj piva jak na tácku." in html
+    assert "Kolik piv,<br>kde a s kým." in html
     assert f'href="{APP_STORE_URL}?ct=web-home&amp;mt=8"' in html
     assert f'href="{PLAY_STORE_URL}&amp;referrer=utm_source%3Dna-pivo.cz%26utm_medium%3Dweb%26utm_campaign%3Dhome"' in html
     assert '<link rel="canonical" href="https://na-pivo.cz/">' in html
@@ -38,49 +41,62 @@ def test_english_home_is_translated_and_links_english_documents(client, settings
     assert response["Content-Language"] == "en"
     html = response.content.decode()
     assert '<html lang="en">' in html
-    assert "Keep a tally, pub style." in html
-    assert "Čárkuj" not in html
-    assert '"empty": "Clean coaster."' in html
+    assert "How many beers,<br>where and with whom." in html
+    assert "Kolik piv" not in html
     assert "https://tomasmach.github.io/na-pivo/en/privacy.html" in html
 
 
 def test_home_loads_nothing_from_other_origins(client):
     html = client.get("/").content.decode()
-    loaded = re.findall(r'(?:src|<image href|rel="preload" href)="([^"]+)"', html)
-    loaded += [
-        candidate.strip().split(maxsplit=1)[0]
-        for srcset in re.findall(r'srcset="([^"]+)"', html)
-        for candidate in srcset.split(",")
-    ]
-    loaded += re.findall(r'url\("([^"]+)"\)', html)
+    loaded = re.findall(r'<(?:link|script|img)\b[^>]*?\s(?:src|href)="([^"]+)"', html)
 
-    assert len(loaded) >= 10
+    assert len(loaded) >= 6
     for url in loaded:
-        # Inline data: URLs (the pencil cursor) stay on the page too.
-        assert url.startswith(("/landing/", "data:")), url
+        assert re.match(r"/(?!/)|https://na-pivo\.cz/", url), url
 
 
 def test_every_home_asset_is_served(client):
     html = client.get("/").content.decode()
-    paths = {chunk.split('"', 1)[0].split(" ", 1)[0] for chunk in html.split('"/landing/')[1:]}
+    paths = set(re.findall(r'"(/web/[^"?]+)\?v=\w+"', html))
 
-    assert len(paths) >= 10
+    assert {"/web/np.css", "/web/reskin.css", "/web/reskin.js", "/web/home-phones.webp"} <= paths
     for path in paths:
-        response = client.get(f"/landing/{path.split('?', 1)[0]}")
+        response = client.get(path)
         assert response.status_code == 200, path
         assert "immutable" in response["Cache-Control"]
 
 
-@pytest.mark.parametrize("name", ["missing.js", "..%2Fhome_views.py", "coaster.min.js"])
-def test_landing_serves_only_known_files(client, name):
-    assert client.get(f"/landing/{name}").status_code == 404
+def test_home_social_image_has_preview_dimensions(client, settings):
+    settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 
-
-def test_home_social_image_has_preview_dimensions(client):
-    response = client.get("/landing/og-home.png")
+    assert '<meta property="og:image" content="https://na-pivo.cz/og/home.png">' in client.get("/").content.decode()
+    response = client.get("/og/home.png")
     image = Image.open(BytesIO(b"".join(response.streaming_content)))
 
     assert image.size == (1200, 630)
+
+
+def test_home_counts_this_years_beers_of_everyone_but_suspect_ones(client):
+    import uuid
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from pubs.models import Account, DrinkLog
+
+    account = Account.objects.create(device_id="home-year")
+    evening = uuid.uuid4()
+    for price, suspect in ((52, False), (48, False), (999, True)):
+        DrinkLog.objects.create(
+            account=account, client_id=uuid.uuid4(), evening_client_id=evening, cache_key="u2fkb",
+            name="U Lípy", drink_type=DrinkLog.DrinkType.BEER, beer_name="Desítka", price_czk=price,
+            drank_at=timezone.now() - timedelta(minutes=5), is_suspect=suspect,
+        )
+
+    html = client.get("/").content.decode()
+
+    assert '<span class="np-stat__value">2</span>' in html
+    assert "1\u00a0večer · 1\u00a0hospoda · 100\u00a0Kč" in html
 
 
 def _structured_data(html: str) -> dict:
@@ -104,11 +120,10 @@ def test_home_names_the_site_and_the_app_for_search_engines(client, settings):
 
 
 def test_home_links_the_price_page_in_its_language(client):
-    assert client.get("/").content.decode().count('href="/ceny"') == 2
-    assert client.get("/en").content.decode().count('href="/en/prices"') == 2
+    assert 'href="/ceny"' in client.get("/").content.decode()
+    assert 'href="/en/prices"' in client.get("/en").content.decode()
 
 
-@pytest.mark.django_db
 @pytest.mark.parametrize("path", ["/", "/en", "/ceny", "/en/prices?ref=x"])
 def test_pages_on_the_api_host_move_to_the_web_host(client, settings, path):
     settings.DEBUG = False
@@ -137,13 +152,22 @@ def test_robots_lets_crawlers_in_and_points_to_the_sitemap(client, settings):
 
     assert response.status_code == 200
     assert response["Content-Type"] == "text/plain; charset=utf-8"
-    lines = response.content.decode().splitlines()
-    assert "Disallow: /v1/" in lines
-    assert "Disallow: /" not in lines
-    assert "Sitemap: https://na-pivo.cz/sitemap.xml" in lines
+    everyone, data_crawlers, _ = response.content.decode().split("\n\n")
+    assert everyone.splitlines() == ["User-agent: *", "Disallow: /v1/", "Disallow: /admin/"]
+    assert "User-agent: GPTBot" in data_crawlers and "User-agent: CCBot" in data_crawlers
+    assert data_crawlers.splitlines()[-1] == "Disallow: /" and "Googlebot" not in data_crawlers
+    assert response.content.decode().endswith("Sitemap: https://na-pivo.cz/sitemap.xml\n")
 
 
-@pytest.mark.django_db
+def test_llms_txt_forbids_copying_the_data(client, settings):
+    settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
+
+    text = client.get("/llms.txt").content.decode()
+
+    assert text.startswith("# Na pivo") and "bez písemného souhlasu zakázáno" in text
+    assert "prohibited without written permission" in text and "https://na-pivo.cz" in text
+
+
 def test_sitemap_lists_both_languages_of_every_page(client, settings):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 
@@ -153,12 +177,9 @@ def test_sitemap_lists_both_languages_of_every_page(client, settings):
     root = ElementTree.fromstring(response.content)
     ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9", "x": "http://www.w3.org/1999/xhtml"}
     urls = {url.findtext("s:loc", namespaces=ns): url for url in root.findall("s:url", ns)}
-    assert set(urls) == {
-        "https://na-pivo.cz/",
-        "https://na-pivo.cz/en",
-        "https://na-pivo.cz/ceny",
-        "https://na-pivo.cz/en/prices",
-    }
+    pages = ("/", "/en", "/ceny", "/en/prices", "/hospody", "/en/pubs", "/zebricky", "/en/rankings")
+    pages += ("/novinky", "/en/news", "/pivni-index", "/en/beer-index", "/trasy", "/en/tours")
+    assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages + ("/smazat-ucet", "/en/delete-account")}
     alternates = {
         link.get("hreflang"): link.get("href")
         for link in urls["https://na-pivo.cz/en/prices"].findall("x:link", ns)

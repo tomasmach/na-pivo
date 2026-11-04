@@ -1380,6 +1380,13 @@ class FriendPubActivity(models.Model):
         blank=True,
         help_text="When the host last nudged the silent invitees, for the cooldown.",
     )
+    guest_token_hash = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="SHA-256 of the guest link token; set when the host first reads the link.",
+    )
     started_at = models.DateTimeField()
     expires_at = models.DateTimeField(db_index=True)
     active = models.BooleanField(default=True, db_index=True)
@@ -1569,6 +1576,45 @@ class FriendActivityResponse(models.Model):
 
     def __str__(self) -> str:
         return f"FriendActivityResponse({self.account_id} -> {self.activity_id}: {self.response})"
+
+
+class FriendPlanGuest(models.Model):
+    """An answer to a plan from someone without an account, through the guest link.
+
+    The guest is only a name. ``device_hash`` is the SHA-256 of a random cookie,
+    so one browser keeps one answer per plan and can change it. Rows go with
+    the plan (CASCADE), which the prune job deletes a few days after it ends.
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    activity = models.ForeignKey(
+        "pubs.FriendPubActivity",
+        on_delete=models.CASCADE,
+        related_name="guests",
+    )
+    device_hash = models.CharField(max_length=64)
+    name = models.CharField(max_length=30)
+    response = models.CharField(
+        max_length=8,
+        choices=FriendActivityResponse.Response.choices,
+        default=FriendActivityResponse.Response.GOING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Friend plan guest"
+        verbose_name_plural = "Friend plan guests"
+        ordering = ["created_at", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "device_hash"],
+                name="unique_plan_guest_per_device",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"FriendPlanGuest({self.activity_id}: {self.response})"
 
 
 class FriendActivityReaction(models.Model):
@@ -2603,6 +2649,7 @@ class OneTimeToken(models.Model):
     class Purpose(models.TextChoices):
         VERIFY_EMAIL = "verify_email", "Verify email"
         RESET_PASSWORD = "reset_password", "Reset password"
+        DELETE_ACCOUNT = "delete_account", "Delete account"
 
     account = models.ForeignKey(
         "pubs.Account",
@@ -4492,6 +4539,34 @@ class PubVisit(models.Model):
 
     def __str__(self) -> str:
         return f"PubVisit({self.name} [{self.cache_key}] @ {self.started_at:%Y-%m-%d %H:%M})"
+
+
+class PubVisitReaction(models.Model):
+    """A friend's "Na zdraví" to somebody sitting in a pub right now.
+
+    Parta's "Teď venku" rows come from visits, not broadcasts, so this is the
+    reaction for a friend who never broadcast. Identity is (visit, account): a
+    re-tap upserts the same row. Both FKs CASCADE, so the row goes with the visit
+    or the account, like ``FriendActivityReaction``.
+    """
+
+    class Kind(models.TextChoices):
+        CHEERS = "cheers", "Cheers"
+
+    visit = models.ForeignKey(PubVisit, on_delete=models.CASCADE, related_name="reactions")
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="visit_reactions")
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.CHEERS)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["visit", "account"], name="unique_visit_reaction_per_account")
+        ]
+
+    def __str__(self) -> str:
+        return f"PubVisitReaction({self.account_id} -> {self.visit_id}: {self.kind})"
 
 
 class OfflineMutationTombstone(models.Model):

@@ -1,0 +1,9 @@
+{% load i18n web %}{% if publish.published and not publish.published.is_removed %}
+  <div class="npa-published" data-scope>
+    <span class="npa-published__state">{% icon "megaphone" "np-icon--s np-yellow" %}{% if publish.published.visibility == "public" %}{% translate "Visí na Výčepu celému světu" %}{% else %}{% translate "Visí na Výčepu partě" %}{% endif %}</span>
+    <button class="np-btn" type="button" data-api="/v1/nights/{{ publish.published.client_id|urlencode:"" }}" data-method="DELETE" data-confirm="{% translate "Stáhnout noc? Zmizí z Výčepu. V deníčku ti zůstane." %}">{% translate "Stáhnout z Výčepu" %}</button>
+    <p class="np-field__error" data-error hidden></p>
+  </div>
+{% elif publish.night and not publish.published %}
+  <button class="np-btn np-btn--primary" type="button" data-dialog="npa-publish">{% icon "megaphone" "np-icon--s" %}{% translate "Vyvěsit na Výčep" %}</button>
+{% endif %}

@@ -1,0 +1,105 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "public-pages.css" %}">{{ structured_data }}{% endblock %}
+{% block og_image %}<meta property="og:image" content="{{ og_image }}">{% endblock %}
+{% block content %}
+{% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
+<header class="pp-head">
+  <h1 class="np-h1">{{ h1 }}</h1>
+  <p class="pp-head__meta">{% if ratings_label %}{% icon "users" "np-icon--s" %}<span>{{ ratings_label }}{% if updated %} · {{ updated }}{% endif %}</span> {% endif %}<a class="pp-head__how" href="#jak">{% translate "Jak to počítáme?" %}</a></p>
+</header>
+
+<div class="pp-filters">
+  <div class="pp-filters__row">
+    <span class="pp-filters__label">{% translate "Styl" %}</span>
+    <nav class="np-chips" aria-label="{% translate "Styl piva" %}">
+      {% for item in style_chips %}<a class="np-chip np-chip--accent{% if item.current %} is-active{% endif %}" href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
+    </nav>
+  </div>
+  <div class="pp-filters__row pp-filters__row--wide">
+    <span class="pp-filters__label">{% translate "Kraj" %}</span>
+    <nav class="np-chips" aria-label="{% translate "Kraj" %}">
+      {% for item in region_chips %}<a class="np-chip np-chip--accent{% if item.current %} is-active{% endif %}" href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
+      <details class="pp-more">
+        <summary class="np-chip np-chip--accent{% if more_current %} is-active{% endif %}">{% if more_current %}{{ more_current }}{% else %}{% translate "Další kraje" %}{% endif %}{% icon "chevron-down" %}</summary>
+        <div class="pp-more__menu">
+          {% for item in more_regions %}<a href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
+        </div>
+      </details>
+    </nav>
+  </div>
+  <details class="pp-more pp-select">
+    <summary class="pp-select__bar">{% icon "map-pin" %}<span class="np-muted">{% translate "Kraj" %}</span><strong>{{ region_label }}</strong>{% icon "chevron-down" %}</summary>
+    <div class="pp-more__menu">
+      {% for item in all_regions %}<a href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
+    </div>
+  </details>
+</div>
+
+<div class="pp-grid">
+  <section class="pp-main" id="zebricek" aria-labelledby="pp-list-title">
+    <div class="pp-section-head">
+      <h2 class="np-title" id="pp-list-title">{{ list_heading }}</h2>
+      <span class="np-small np-muted">{% blocktranslate %}jen piva s aspoň {{ min_ratings }} hodnoceními{% endblocktranslate %}</span>
+    </div>
+    {% if rows %}
+    <ol class="np-card np-card--tight pp-rank">
+      {% for row in rows %}
+      <li class="pp-rank__row">
+        <span class="pp-rank__pos{% if row.position == 1 %} np-yellow{% endif %}">{{ row.position }}</span>
+        <span class="pp-rank__beer">
+          {% if row.url %}<a class="pp-rank__name" href="{{ row.url }}">{{ row.name }}</a>{% else %}<span class="pp-rank__name">{{ row.name }}</span>{% endif %}
+          <span class="pp-rank__brand">{{ row.brand }}</span>
+          {% if row.pubs_line %}<span class="pp-rank__pubs pp-rank__pubs--inline">{% icon "map-pin" "np-icon--s" %}{{ row.pubs_line }}</span>{% endif %}
+        </span>
+        <span class="pp-rank__pubs pp-rank__pubs--column">{% if row.pubs_line %}{% icon "map-pin" "np-icon--s" %}<span>{{ row.pubs_line }}</span>{% endif %}</span>
+        <span class="pp-rank__score">
+          <span class="pp-rank__avg">{% icon "star" "np-icon--s np-yellow" %}{{ row.avg_label }}</span>
+          <span class="pp-rank__count"><span class="pp-rank__count-long">{{ row.count_label }}</span><span class="pp-rank__count-short">{% icon "users" "np-icon--s" %}{{ row.count_short }}</span></span>
+        </span>
+      </li>
+      {% endfor %}
+    </ol>
+    <div class="pp-under">
+      {% if more_url %}<a class="np-btn" href="{{ more_url }}">{{ more_label }}{% icon "chevron-down" "np-icon--s" %}</a>{% endif %}
+      <p class="pp-note">{% icon "star" "np-icon--s" %}{% translate "Každý dává pivu jednu známku a může ji kdykoli změnit." %}</p>
+    </div>
+    {% else %}
+    {% translate "Žebříček se teprve plní" as empty_title %}
+    {% blocktranslate asvar empty_text %}Pivo se sem dostane, až ho ohodnotí aspoň {{ min_ratings }} lidí. Zatím žádné tak daleko nedošlo, tak hodnoť, co piješ.{% endblocktranslate %}
+    {% translate "Stáhnout appku" as action_label %}
+    {% web_url "home" as home_url %}
+    {% include "web/components/empty.html" with icon="trophy" title=empty_title text=empty_text action_label=action_label action_url=home_url %}
+    {% endif %}
+  </section>
+
+  <aside class="pp-side">
+    <section class="np-card np-card--tight">
+      <h2 class="np-title pp-side__title">{% translate "Další žebříčky" %}</h2>
+      <div class="np-list">
+        {% translate "Nejlevnější hospody" as cheap_title %}
+        {% if cheapest %}{% blocktranslate asvar cheap_meta %}Půllitr od {{ cheapest }} Kč, podle cen z appky{% endblocktranslate %}{% else %}{% translate "Podle cen z appky" as cheap_meta %}{% endif %}
+        {% web_url "beer-prices" as prices_url %}
+        {% include "web/components/row.html" with title=cheap_title meta=cheap_meta icon="coins" href=prices_url %}
+        {% translate "Nové hospody" as new_title %}
+        {% web_url "web-news" as news_url %}
+        {% include "web/components/row.html" with title=new_title meta=new_pubs_label icon="map-pin-plus" href=news_url|add:"?typ=hospody" %}
+      </div>
+    </section>
+
+    <section class="pp-cta">
+      <h2 class="pp-cta__title">{% translate "Tvoje dvanáctka tu chybí?" %}</h2>
+      <p>{% translate "V appce ji ohodnotíš rovnou u stolu. Do žebříčku se tvoje známka propíše do hodiny." %}</p>
+      <div class="pp-cta__actions">
+        <a class="np-btn" href="{% web_url "home" %}">{% icon "smartphone" "np-icon--s" %}{% translate "Stáhnout appku" %}</a>
+        {% if not page.account %}<a class="np-btn np-btn--ghost" href="{% web_url "web-login" %}">{% translate "nebo se přihlas" %}</a>{% endif %}
+      </div>
+    </section>
+  </aside>
+</div>
+
+<section class="pp-explain" id="jak">
+  <h2 class="np-h2">{% translate "Jak to počítáme" %}</h2>
+  <p>{% blocktranslate %}Každý, kdo pivo v appce ohodnotí, má jeden hlas: počítá se jeho poslední známka. Pořadí dělá průměr známek, při shodě vyhrává pivo s víc hodnoceními. Na web pouštím jen piva, která ohodnotilo aspoň {{ min_ratings }} lidí, ať jeden nadšenec nerozhoduje za všechny. Krajský žebříček bere jen hodnocení zapsaná v hospodách v daném kraji.{% endblocktranslate %}</p>
+</section>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "public-pages.css" %}">{{ structured_data }}{% endblock %}
+{% block og_image %}<meta property="og:image" content="{{ og_image }}">{% endblock %}
+{% block scripts %}<script src="{% asset "public-pages.js" %}" defer></script>{% endblock %}
+{% block content %}
+{% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
+<header class="pp-head">
+  <h1 class="np-h1">{{ h1 }}</h1>
+  <p class="pp-head__lead">{{ summary }}</p>
+</header>
+
+<div class="pp-toolbar">
+  {% translate "Druh novinky" as kind_label %}
+  {% include "web/components/chips.html" with items=kind_chips label=kind_label %}
+  {% if city_links|length > 1 %}
+  <details class="pp-more pp-more--end">
+    <summary class="np-chip">{% icon "map-pin" %}{% if city %}{{ city }}{% else %}{% translate "Všechna města" %}{% endif %}{% icon "chevron-down" %}</summary>
+    <div class="pp-more__menu">
+      {% for item in city_links %}<a href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
+    </div>
+  </details>
+  {% endif %}
+</div>
+
+<div class="pp-grid">
+  <section class="pp-main" aria-label="{% translate "Novinky" %}">
+    {% for day in days %}
+    <h2 class="pp-day">{{ day.label }}</h2>
+    <div class="np-card np-card--tight">
+      <div class="np-list">
+        {% for row in day.rows %}{% include "web/components/row.html" with title=row.title meta=row.meta icon=row.icon value=row.value href=row.url %}{% endfor %}
+      </div>
+    </div>
+    {% empty %}
+    {% if filtered %}
+    {% translate "Tady je zatím ticho" as empty_title %}
+    {% translate "S tímhle filtrem jsem za ten týden nic nenašel. Zkus jiný druh novinky nebo všechna města." as empty_text %}
+    {% translate "Ukázat všechno" as action_label %}
+    {% include "web/components/empty.html" with icon="sparkles" title=empty_title text=empty_text action_label=action_label action_url=all_url %}
+    {% else %}
+    {% translate "Tenhle týden je v hospodách klid" as empty_title %}
+    {% translate "Nikdo zatím nezapsal nové pivo, cenu ani hospodu. Až něco přibude, uvidíš to tady." as empty_text %}
+    {% translate "Stáhnout appku" as action_label %}
+    {% web_url "home" as home_url %}
+    {% include "web/components/empty.html" with icon="sparkles" title=empty_title text=empty_text action_label=action_label action_url=home_url %}
+    {% endif %}
+    {% endfor %}
+    {% if older_url or newer_url %}
+    <nav class="pp-pager" aria-label="{% translate "Starší a novější novinky" %}">
+      {% if newer_url %}<a class="np-link" href="{{ newer_url }}">{% icon "chevron-left" "np-icon--s" %}{% translate "Novější" %}</a>{% endif %}
+      {% if older_url %}<a class="np-link" href="{{ older_url }}">{% translate "Starší novinky" %}{% icon "chevron-right" "np-icon--s" %}</a>{% endif %}
+    </nav>
+    {% endif %}
+  </section>
+
+  <aside class="pp-side">
+    <section class="np-card">
+      <h2 class="np-title">{{ stats_title }}</h2>
+      <div class="pp-stats3">
+        {% for stat in stats %}<div><span class="pp-stats3__value">{{ stat.value }}</span><span class="pp-stats3__label">{{ stat.label }}</span></div>{% endfor %}
+      </div>
+    </section>
+
+    {% if new_pubs %}
+    <section class="np-card np-card--tight">
+      <div class="pp-side__head">
+        <h2 class="np-title">{% translate "Nové hospody" %}</h2>
+        <a class="np-link np-small" href="{{ new_pubs_url }}">{% translate "Všechny" %}</a>
+      </div>
+      <div class="np-list">
+        {% for pub in new_pubs %}{% include "web/components/row.html" with title=pub.name meta=pub.meta href=pub.url %}{% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="pp-cta">
+      <h2 class="pp-cta__title">{% translate "Čepují něco nového?" %}</h2>
+      <p>{% translate "Zapiš to v appce a ukáže se to tady. Nové pivo, cenu i hospodu." %}</p>
+      <div class="pp-cta__actions">
+        <a class="np-btn np-btn--primary" href="{{ page.app_store_url }}" data-play="{{ page.play_store_url }}">{% icon "plus" "np-icon--s" %}{% translate "Zapsat novinku" %}</a>
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}

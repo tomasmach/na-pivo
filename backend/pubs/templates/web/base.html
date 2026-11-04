@@ -1,0 +1,35 @@
+{% load i18n web %}<!doctype html>
+<html lang="{{ page.lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0A0A0A">
+<title>{{ page.title }} | Na pivo</title>
+{% if page.description %}<meta name="description" content="{{ page.description }}">{% endif %}
+{% if page.indexable %}
+<link rel="canonical" href="{{ page.canonical_url }}">
+<link rel="alternate" hreflang="cs" href="{{ page.alternate_urls.cs }}">
+<link rel="alternate" hreflang="en" href="{{ page.alternate_urls.en }}">
+<link rel="alternate" hreflang="x-default" href="{{ page.alternate_urls.cs }}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Na pivo">
+<meta property="og:locale" content="{{ page.og_locale }}">
+<meta property="og:title" content="{{ page.title }}">
+{% if page.description %}<meta property="og:description" content="{{ page.description }}">{% endif %}
+<meta property="og:url" content="{{ page.canonical_url }}">
+{% block og_image %}{% endblock %}
+{% endif %}
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="{% asset "sofia-sans.woff2" %}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{% asset "sofia-sans-extra-condensed-800.woff2" %}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{% asset "np.css" %}">
+{% if page.account %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
+{% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<a class="np-skip np-btn np-btn--primary" href="#obsah">{% translate "Přeskočit na obsah" %}</a>
+{% block shell %}{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, Platform, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
@@ -208,11 +208,12 @@ export function Screen({
   const footerLift = useAnimatedStyle(() => ({
     transform: [{ translateY: -Math.max(0, keyboard.value + 12 - footerBottom) }],
   }));
-  // With the keyboard up the scroll area stops where the lifted footer starts, so the
-  // focused field scrolls above the footer, not under it. The strip it gives up sits
-  // under the resting footer and its fade, so the switch is never visible.
-  const keyboardUp = useKeyboardHeight() > 0;
-  const footerRoom = footer && keyboardUp ? footerH + 24 : 0;
+  // With the keyboard up the scroll area ends where the lifted footer starts, so no field
+  // sits hidden under the footer where a tap would hit its button instead.
+  // React Native on Android leaves the navigation bar out of the keyboard height.
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardTop = keyboardHeight > 0 ? keyboardHeight + (Platform.OS === 'android' ? insets.bottom : 0) : 0;
+  const footerRoom = footer && keyboardTop > 0 ? Math.max(footerBottom, keyboardTop + 12) + footerH + 8 : 0;
   const footerSpace = footer ? footerH + 32 : 0;
   const content = (
     <View style={[{ paddingHorizontal: SCREEN_X, gap, paddingTop: padTop }, contentStyle]}>{children}</View>
@@ -225,6 +226,7 @@ export function Screen({
       {scroll ? (
         <KeyboardAwareScrollView
           {...scrollProps}
+          keyboardAvoidedExternally={!!footer}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: bottomBase + footerSpace + 24 }}
           keyboardShouldPersistTaps="handled"

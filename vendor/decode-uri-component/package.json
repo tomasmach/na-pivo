@@ -1,7 +1,7 @@
 {
   "name": "decode-uri-component",
-  "version": "0.5.0",
-  "description": "CommonJS-compatible backport of decode-uri-component 0.5.0",
+  "version": "0.5.1",
+  "description": "CommonJS-compatible backport of decode-uri-component 0.5.1",
   "license": "MIT",
   "repository": "SamVerschueren/decode-uri-component",
   "main": "index.js",

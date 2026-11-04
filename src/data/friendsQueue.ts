@@ -13,6 +13,7 @@
  * actions on the same activity from colliding:
  *   - rsvp:<activityId>   → respond / clear response
  *   - cheer:<activityId>  → react / clear reaction
+ *   - fcheer:<accountId>  → "Na zdraví" to a friend sitting out / take it back
  *   - act:<clientId>      → live-or-plan broadcast, and its later end (supersedes)
  *   - req:<identity>      → a friend request (invite code / account id / nickname)
  *
@@ -23,7 +24,9 @@
  */
 
 import {
+  cheerFriend,
   clearActivityReaction,
+  clearFriendCheer,
   clearActivityResponse,
   createFriendPlan,
   endFriendPubActivity,
@@ -72,6 +75,8 @@ export type FriendQueueItem =
   | { op: 'rsvp-clear'; activityId: string }
   | { op: 'cheer'; activityId: string }
   | { op: 'cheer-clear'; activityId: string }
+  | { op: 'friend-cheer'; accountId: string }
+  | { op: 'friend-cheer-clear'; accountId: string }
   | { op: 'activity'; clientId: string; payload: ActivityPayload }
   | { op: 'end'; clientId: string; activityId?: string }
   | { op: 'request'; key: string; inviteCode?: string; accountId?: string; nickname?: string }
@@ -91,6 +96,9 @@ function dedupKey(item: FriendQueueItem): string {
     case 'cheer':
     case 'cheer-clear':
       return `cheer:${item.activityId}`;
+    case 'friend-cheer':
+    case 'friend-cheer-clear':
+      return `fcheer:${item.accountId}`;
     case 'activity':
     case 'end':
       return `act:${item.clientId}`;
@@ -124,6 +132,9 @@ function isQueueItem(value: unknown): value is FriendQueueItem {
     case 'cheer':
     case 'cheer-clear':
       return typeof (i as { activityId?: unknown }).activityId === 'string';
+    case 'friend-cheer':
+    case 'friend-cheer-clear':
+      return typeof (i as { accountId?: unknown }).accountId === 'string';
     case 'activity':
       return (
         typeof i.clientId === 'string' &&
@@ -211,6 +222,10 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
       return classify(await reactToActivity(item.activityId, 'cheers'));
     case 'cheer-clear':
       return classify(await clearActivityReaction(item.activityId));
+    case 'friend-cheer':
+      return classify(await cheerFriend(item.accountId));
+    case 'friend-cheer-clear':
+      return classify(await clearFriendCheer(item.accountId));
     case 'activity': {
       if (isFinishedBroadcast(item)) return 'ok';
       const { pub, message, scheduledFor, place } = item.payload;

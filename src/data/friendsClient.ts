@@ -163,6 +163,9 @@ export interface FriendPresence {
   lastDrinkName: string;
   /** Set when they ALSO broadcast, which is what makes an RSVP possible. */
   activityId: string | null;
+  /** "Na zdraví" to this sitting. Missing in snapshots saved by older builds. */
+  reactions?: { cheers: number };
+  myReaction?: ReactionKind | null;
 }
 
 /** My own row in the same shape, plus whether the party can actually see it. */
@@ -414,6 +417,8 @@ interface RawFriendPresence {
   last_drink_name?: string;
   activity_id?: string | null;
   visible_to_parta?: boolean;
+  reactions?: RawActivityReactions;
+  my_reaction?: string | null;
 }
 
 interface RawFriendNotification {
@@ -620,6 +625,8 @@ function parsePresence(raw: RawFriendPresence): FriendPresence {
     beers: typeof raw.beers === 'number' ? raw.beers : 0,
     lastDrinkName: raw.last_drink_name ?? '',
     activityId: typeof raw.activity_id === 'string' ? raw.activity_id : null,
+    reactions: parseReactions(raw.reactions),
+    myReaction: parseReactionKind(raw.my_reaction),
   };
 }
 
@@ -1199,6 +1206,23 @@ export async function clearActivityReaction(activityId: string): Promise<FriendA
     { method: 'DELETE' },
   );
   return res.ok ? { ok: true } : res.result;
+}
+
+/** "Na zdraví" to a friend sitting out now, broadcast or not. Idempotent upsert. */
+export async function cheerFriend(accountId: string): Promise<{ ok: true; reactions: { cheers: number } } | FriendActionError> {
+  const res = await requestJson(`/v1/friends/${encodeURIComponent(accountId)}/cheer`, {
+    method: 'POST',
+    body: { reaction: 'cheers' },
+  });
+  if (!res.ok) return res.result;
+  return { ok: true, reactions: parseReactions((res.data as { reactions?: RawActivityReactions })?.reactions) };
+}
+
+/** Take back my "Na zdraví" to a friend's current sitting. Idempotent. */
+export async function clearFriendCheer(accountId: string): Promise<{ ok: true; reactions: { cheers: number } } | FriendActionError> {
+  const res = await requestJson(`/v1/friends/${encodeURIComponent(accountId)}/cheer`, { method: 'DELETE' });
+  if (!res.ok) return res.result;
+  return { ok: true, reactions: parseReactions((res.data as { reactions?: RawActivityReactions })?.reactions) };
 }
 
 /** Full friend profile (stats, live/plan, recent-together) for the pushed route (§F1). */

@@ -1,0 +1,15 @@
+{% comment %}
+One pub in a list. row: what pubs_views._pub_row returns; distance etc. are not known on the web.
+{% endcomment %}{% load i18n web %}<a class="np-pubrow" href="{{ row.url }}"{% if row.anchor %} id="{{ row.anchor }}"{% endif %}>
+  <span class="np-pubrow__body">
+    <span class="np-pubrow__name">{{ row.name }}</span>
+    {% if row.place %}<span class="np-pubrow__place">{{ row.place }}</span>{% endif %}
+    {% if row.tap %}<span class="np-pubrow__tap">{{ row.tap }}</span>{% endif %}
+    {% if row.status %}<span class="np-pubrow__status{% if row.status.open %} is-open{% endif %}">{{ row.status.text }}</span>{% endif %}
+  </span>
+  {% if row.price_label or row.rating_label %}<span class="np-pubrow__end">
+    {% if row.price_label %}<span class="np-pubrow__price">{{ row.price_label }}</span>{% endif %}
+    {% if row.volume_label %}<span class="np-pubrow__volume">{{ row.volume_label }}</span>{% endif %}
+    {% if row.rating_label %}<span class="np-pubrow__rating">{% icon "star" "np-icon--s" %}{{ row.rating_label }}</span>{% endif %}
+  </span>{% endif %}
+</a>

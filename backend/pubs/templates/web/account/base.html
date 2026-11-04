@@ -1,0 +1,21 @@
+{% extends "web/app.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "account.css" %}">{% endblock %}
+{% block content %}
+<div id="npa" class="npa" data-ugc-version="{{ ugc_version }}">
+{% block page %}{% endblock %}
+</div>
+<dialog class="npa-dialog npa-dialog--small" id="npa-consent" aria-labelledby="npa-consent-title">
+  <form method="dialog">
+    <h2 class="npa-dialog__title" id="npa-consent-title">{% translate "Než to uvidí ostatní" %}</h2>
+    <p class="npa-dialog__text">{% translate "Sdílené hodnocení, přezdívku, fotku nebo hospodu uvidí i jiní pivaři. Potvrď, že budeš psát slušně a nebudeš sdílet nic cizího." %} <a class="np-link" href="{{ page.terms_url }}" target="_blank" rel="noopener">{% translate "Pravidla" %}</a></p>
+    <div class="npa-dialog__actions">
+      <button class="np-btn" value="no">{% translate "Zrušit" %}</button>
+      <button class="np-btn np-btn--primary" value="yes">{% translate "Potvrzuju" %}</button>
+    </div>
+  </form>
+</dialog>
+{% block dialogs %}{% endblock %}
+{{ js_text|json_script:"npa-text" }}
+{% endblock %}
+{% block scripts %}{{ block.super }}<script src="{% asset "account.js" %}" defer></script>{% endblock %}

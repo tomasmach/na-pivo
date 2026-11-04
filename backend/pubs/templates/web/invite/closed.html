@@ -1,0 +1,7 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block content %}
+{% translate "Co je Na pivo?" as action_label %}
+{% web_url "home" as home_url %}
+{% include "web/components/empty.html" with icon="beer" title=empty_title text=empty_text action_label=action_label action_url=home_url %}
+{% endblock %}

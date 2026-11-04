@@ -962,6 +962,12 @@ export function NastaveniScreen() {
         )}
       </Card>
       <T s={15} w={700} c={C.muted}>
+        {P().settings.privacySection}
+      </T>
+      <Card>
+        <Row last title={P().settings.hideNames} sub={P().settings.hideNamesSub} trailing={<Toggle value={st.hidePubNames} onChange={toggleHideNames} />} />
+      </Card>
+      <T s={15} w={700} c={C.muted}>
         {P().settings.vycep}
       </T>
       <Card>
@@ -1001,7 +1007,6 @@ export function NastaveniScreen() {
             />
           }
         />
-        <Row title={P().settings.hideNames} sub={P().settings.hideNamesSub} trailing={<Toggle value={st.hidePubNames} onChange={toggleHideNames} />} />
         <Row
           last
           title={P().settings.homePoint}

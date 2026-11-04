@@ -34,6 +34,8 @@ import XIcon from 'lucide-react-native/icons/x';
 import PlusIcon from 'lucide-react-native/icons/plus';
 import ChevronLeftIcon from 'lucide-react-native/icons/chevron-left';
 import TrophyIcon from 'lucide-react-native/icons/trophy';
+import ChartColumnIcon from 'lucide-react-native/icons/chart-column';
+import HourglassIcon from 'lucide-react-native/icons/hourglass';
 import EllipsisIcon from 'lucide-react-native/icons/ellipsis';
 import CameraIcon from 'lucide-react-native/icons/camera';
 import SearchIcon from 'lucide-react-native/icons/search';
@@ -171,6 +173,8 @@ const ICONS = {
   'plus': PlusIcon,
   'chevron-left': ChevronLeftIcon,
   'trophy': TrophyIcon,
+  'chart-column': ChartColumnIcon,
+  'hourglass': HourglassIcon,
   'ellipsis': EllipsisIcon,
   'camera': CameraIcon,
   'search': SearchIcon,

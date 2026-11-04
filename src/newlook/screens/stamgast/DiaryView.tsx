@@ -14,6 +14,7 @@ import { BottomFade, useTabBarSpace } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
 import { D, T, IconButton, Press } from '../../components/ui';
 import { NO_VALUE } from '../../format';
+import { useHidePubNames } from '../../hiddenPubNames';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import {
   beerTally,
@@ -34,6 +35,18 @@ import { nightDayLabel } from './stamgastFormat';
 type Period = 'tyden' | 'mesic' | 'rok';
 
 function PubLineWithMarks({ night }: { night: Night }) {
+  const hidden = useHidePubNames();
+  const secret = hidden ? new Set(night.pubs.filter((p) => !p.pubKey.startsWith('ctx:')).map((p) => p.pubKey)).size : 0;
+  if (secret > 0) {
+    return (
+      <View style={[s.row, { gap: 5 }]}>
+        <Icon name="eye-off" size={13} color={C.yellow} />
+        <T s={13} w={700} c={C.muted} numberOfLines={1}>
+          {t.nv.common.secretPubs(secret)}
+        </T>
+      </View>
+    );
+  }
   return (
     <View style={[s.row, { gap: 4, overflow: 'hidden' }]}>
       {night.pubs.map((pub, i) => (
@@ -233,11 +246,27 @@ function Month({ nights, today, onToday }: { nights: Night[]; today: string; onT
   const weeks = Array.from({ length: cells.length / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7));
   const best = [...inMonth].sort((a, b) => b.beers - a.beers)[0];
   const pubTop = topPub(inMonth);
+  const hidePubNames = useHidePubNames();
   const beerTop = beerTally(inMonth.flatMap((n) => n.sessions))[0];
 
   return (
     <>
       <Hero count={sumBeers(inMonth)} label={copy.heroMonth(copy.monthsIn[month])} meta={heroMeta(inMonth, money(sumSpent(inMonth)))} />
+      <Press
+        haptic
+        onPress={() => {
+          trackUiInteraction('beer_stats_open');
+          router.push('/nv/cisla');
+        }}
+        accessibilityRole="button"
+        style={[s.row, { alignSelf: 'center', height: 40, borderRadius: 20, paddingHorizontal: 16, gap: 8, marginTop: -6, backgroundColor: C.control }]}
+      >
+        <Icon name="chart-column" size={16} color={C.yellow} />
+        <T s={15} w={700}>
+          {copy.statsEntry}
+        </T>
+        <Icon name="chevron-right" size={16} color={C.muted} />
+      </Press>
       <View style={{ backgroundColor: C.card, borderRadius: 24, paddingTop: 16, paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
         <CardHead title={copy.monthTitle(copy.months[month], year)} onPrev={() => setOffset(offset - 1)} onNext={() => setOffset(offset + 1)} nextDisabled={offset >= 0} />
         <View style={[s.row, { gap: 4 }]}>
@@ -301,7 +330,7 @@ function Month({ nights, today, onToday }: { nights: Night[]; today: string; onT
       {best ? (
         <View style={[s.row, { gap: 8 }]}>
           <Record value={copy.recordBeers(best.beers)} label={copy.recordMostNight} />
-          {pubTop ? <Record value={copy.recordTimes(pubTop.times)} label={pubTop.name} /> : null}
+          {pubTop ? <Record value={copy.recordTimes(pubTop.times)} label={hidePubNames ? t.nv.common.secretPub : pubTop.name} /> : null}
           {beerTop ? <Record value={copy.recordTimes(beerTop.count)} label={beerTop.name} /> : null}
         </View>
       ) : null}
@@ -380,6 +409,7 @@ function Year({ nights, today }: { nights: Night[]; today: string }) {
   const spent = Math.max(sumSpent(inYear), serverYear?.spentCzk ?? 0);
   const best = counts.reduce((bi, n, i) => (n > counts[bi] ? i : bi), 0);
   const pubTop = topPub(inYear);
+  const hidePubNames = useHidePubNames();
   const earlier = new Set(nights.filter((n) => n.day < `${year}-01-01`).flatMap((n) => n.pubs.map((p) => p.pubKey)));
   const newPubs = new Set(inYear.flatMap((n) => n.pubs.filter((p) => !p.pubKey.startsWith('ctx:') && !earlier.has(p.pubKey)).map((p) => p.pubKey))).size;
 
@@ -430,7 +460,7 @@ function Year({ nights, today }: { nights: Night[]; today: string }) {
       {total ? (
         <View style={[s.row, { gap: 8 }]}>
           <Record value={copy.recordBeers(counts[best])} label={copy.recordMostIn(copy.monthsIn[best])} />
-          {pubTop ? <Record value={copy.recordTimes(pubTop.times)} label={pubTop.name} /> : null}
+          {pubTop ? <Record value={copy.recordTimes(pubTop.times)} label={hidePubNames ? t.nv.common.secretPub : pubTop.name} /> : null}
           <Record value={String(newPubs)} label={copy.recordNewPubs} />
         </View>
       ) : null}

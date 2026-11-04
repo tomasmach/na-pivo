@@ -1,0 +1,4 @@
+{% comment %}
+Avatar with the first letter of the name. name: shown name; src: optional photo URL;
+size: "s" (28), default (40), "l" (64); ring: yellow ring of the signed-in user.
+{% endcomment %}<span class="np-avatar{% if size %} np-avatar--{{ size }}{% endif %}{% if ring %} np-avatar--ring{% endif %}">{% if src %}<img src="{{ src }}" alt="" loading="lazy">{% else %}<span aria-hidden="true">{{ name|default:"?"|slice:":1"|upper }}</span>{% endif %}</span>

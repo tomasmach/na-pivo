@@ -1,0 +1,34 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block head %}<link rel="stylesheet" href="{% asset "delete-account.css" %}">{% endblock %}
+{% block content %}
+<div class="da">
+  {% if state == "confirm" %}
+    <header class="da__head">
+      <h1 class="np-h1">{% translate "Opravdu smazat účet?" %}</h1>
+      {% if email %}<p class="da__email">{{ email }}</p>{% endif %}
+      <p class="da__lead">{% blocktranslate count days=grace_days %}Hned tě odhlásíme ze všech telefonů i z webu. Když se do {{ days }} dne přihlásíš, účet ti zůstane. Potom ho smažeme i s deníkem, hodnoceními, fotkami a partou.{% plural %}Hned tě odhlásíme ze všech telefonů i z webu. Když se do {{ days }} dní přihlásíš, účet ti zůstane. Potom ho smažeme i s deníkem, hodnoceními, fotkami a partou.{% endblocktranslate %}</p>
+    </header>
+    <form method="post" class="da__actions">
+      <input type="hidden" name="token" value="{{ token }}">
+      <button class="np-btn np-btn--l np-btn--danger" type="submit">{% translate "Smazat účet" %}</button>
+      <a class="np-btn np-btn--l np-btn--ghost" href="{% web_url "home" %}">{% translate "Nechat si ho" %}</a>
+    </form>
+  {% elif state == "done" %}
+    {% blocktranslate with date=cancel_by asvar done_text %}Odhlásili jsme tě všude. Rozmyslíš si to? Přihlas se do {{ date }} a účet ti zůstane. Pak ho smažeme natrvalo.{% endblocktranslate %}
+    {% translate "Účet se maže" as done_title %}
+    {% translate "Zpátky na úvod" as home_label %}
+    {% web_url "home" as home_url %}
+    {% include "web/components/empty.html" with icon="check" title=done_title text=done_text secondary_label=home_label secondary_url=home_url %}
+  {% elif state == "limited" %}
+    {% translate "Moc pokusů za sebou" as limited_title %}
+    {% translate "Dej si chvilku pauzu a otevři odkaz z e-mailu znovu." as limited_text %}
+    {% include "web/components/empty.html" with icon="circle-question-mark" title=limited_title text=limited_text %}
+  {% else %}
+    {% translate "Odkaz už neplatí" as invalid_title %}
+    {% translate "Platí hodinu a jen jednou. Pošli si nový a smazání potvrď hned." as invalid_text %}
+    {% translate "Poslat nový odkaz" as again_label %}
+    {% include "web/components/empty.html" with icon="mail" title=invalid_title text=invalid_text action_label=again_label action_url=request_url %}
+  {% endif %}
+</div>
+{% endblock %}

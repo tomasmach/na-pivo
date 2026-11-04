@@ -9,15 +9,13 @@ Pages are ``noindex``, so a profile does not become searchable on the web.
 
 from __future__ import annotations
 
-from django.conf import settings
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render
 from django.utils.translation import gettext
 
 from pubs.api.profile_helpers import derive_account_public_stats
 from pubs.home_views import app_store_url, play_store_url
-from pubs.i18n import current_locale
 from pubs.models import Account
+from pubs.web.pages import render_page, web_page
 
 
 def public_profile_account(nickname: str) -> Account | None:
@@ -30,33 +28,27 @@ def public_profile_account(nickname: str) -> Account | None:
     ).first()
 
 
+@web_page
 def public_profile_page(request: HttpRequest, nickname: str) -> HttpResponse:
     account = public_profile_account(nickname[:20])
-    context = {"LANGUAGE_CODE": current_locale()}
     if account is None:
-        response = render(
-            request,
-            "pubs/public_profile.html",
-            {**context, "missing": True, "page_title": gettext("Profil nenalezen | Na pivo")},
-            status=404,
+        response = render_page(
+            request, "web/reskin/profile.html", {"missing": True},
+            title=gettext("Profil nenalezen"), status=404, indexable=False,
         )
     else:
-        stats = derive_account_public_stats(account, is_friend=False)
-        response = render(
+        response = render_page(
             request,
-            "pubs/public_profile.html",
+            "web/reskin/profile.html",
             {
-                **context,
                 "nickname": account.nickname,
-                "initial": (account.nickname or "?")[:1].upper(),
-                "stats": stats,
-                "page_title": gettext("@%(nick)s na Na pivo") % {"nick": account.nickname},
-                "canonical_url": f"{settings.PUBLIC_WEB_ORIGIN}/u/{account.nickname}",
+                "stats": derive_account_public_stats(account, is_friend=False),
                 "app_store_url": app_store_url("profile"),
                 "play_store_url": play_store_url("profile"),
             },
+            title=f"@{account.nickname}",
+            indexable=False,
         )
     response.headers["Cache-Control"] = "public, max-age=300"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["X-Robots-Tag"] = "noindex, nofollow"
     return response

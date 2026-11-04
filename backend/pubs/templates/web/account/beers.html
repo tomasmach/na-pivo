@@ -1,0 +1,179 @@
+{% extends "web/account/base.html" %}
+{% load i18n web %}
+{% block page %}
+<header class="np-app__head">
+  <h1 class="np-app__title">{% translate "Piva" %}</h1>
+  <form class="np-search npa-head-search" method="get" action="{% web_url "web-beers" %}" role="search">
+    {% icon "search" %}
+    <label class="np-sr-only" for="npa-beer-q">{% translate "Hledej pivo nebo pivovar" %}</label>
+    <input class="np-input" id="npa-beer-q" name="q" type="search" value="{{ query }}" placeholder="{% translate "Hledej pivo nebo pivovar" %}" maxlength="80">
+  </form>
+</header>
+
+<div class="npa-split">
+  <div class="np-stack">
+    <section class="np-card npa-card">
+      {% if search is not None %}
+        <div class="npa-card__head">
+          <h2 class="np-title">{% blocktranslate %}Výsledky pro „{{ query }}“{% endblocktranslate %}</h2>
+          <a class="np-link np-small" href="{% web_url "web-beers" %}">{% translate "Zpátky na žebříček" %}</a>
+        </div>
+      {% else %}
+        <div class="npa-card__head">
+          <h2 class="np-title">{% translate "Nejlepší piva v Česku" %}</h2>
+          {% if early %}<span class="np-small np-muted">{% translate "Žebříček se teprve plní" %}</span>{% endif %}
+        </div>
+        {% translate "Styl piva" as chips_label %}
+        {% include "web/components/chips.html" with items=style_chips label=chips_label %}
+      {% endif %}
+      {% if listed %}
+        <ol class="npa-rank">
+          {% for beer in listed %}
+            <li>
+              <a class="npa-rank__row" href="{{ beer.url }}"{% if beer.current %} aria-current="true"{% endif %}>
+                {% if beer.position %}<span class="npa-rank__pos{% if beer.position == 1 %} np-yellow{% endif %}">{{ beer.position }}</span>{% endif %}
+                <span class="npa-rank__body">
+                  <span class="npa-rank__name">{{ beer.name }}</span>
+                  {% if beer.kind %}<span class="npa-rank__meta">{{ beer.kind }}</span>{% endif %}
+                  {% if beer.bar %}<svg class="npa-bar" viewBox="0 0 200 4" preserveAspectRatio="none" aria-hidden="true">{% for part in beer.bar %}<rect x="{{ part.x }}" width="{{ part.w }}" height="4" class="npa-bar__{{ forloop.counter }}"/>{% endfor %}</svg>{% endif %}
+                </span>
+                <span class="npa-rank__end">
+                  <span class="npa-rank__value">{% if beer.rating_avg is not None %}{{ beer.rating_avg|floatformat:1 }}{% else %}–{% endif %}</span>
+                  <span class="npa-rank__count">{% icon "users" "np-icon--s" %}{{ beer.rating_count }}</span>
+                </span>
+              </a>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="npa-empty-line">{% if search is not None %}{% translate "Tohle pivo v katalogu nemám. Zkus jiný název nebo pivovar." %}{% else %}{% translate "Žebříček zatím nemá dost hodnocení. Ohodnoť pár piv a naplní se." %}{% endif %}</p>
+      {% endif %}
+    </section>
+
+    <section aria-labelledby="npa-mine">
+      <div class="npa-section-head">
+        <h2 class="np-title" id="npa-mine">{% translate "Moje piva" %}</h2>
+        {% if mine %}<span class="np-small">{{ mine_total }}</span>{% endif %}
+      </div>
+      {% if mine %}
+        <div class="np-card np-card--tight"><div class="np-list">
+          {% for beer in mine %}
+            <div class="np-row npa-mine">
+              <span class="np-row__body">
+                {% if beer.url %}<a class="np-row__title" href="{{ beer.url }}">{{ beer.name }}</a>{% else %}<span class="np-row__title">{{ beer.name }}</span>{% endif %}
+                {% if beer.meta %}<span class="np-row__meta">{{ beer.meta }}</span>{% endif %}
+              </span>
+              <button class="npa-mine__rate" type="button" data-dialog="npa-rate" data-entry="{{ beer.id }}">
+                {% if beer.stars %}<span class="npa-stars" role="img" aria-label="{% blocktranslate with n=beer.stars %}{{ n }} z 5 hvězd{% endblocktranslate %}">{% for n in stars %}{% if n <= beer.stars %}{% icon "star" "np-icon--s npa-star npa-star--on" %}{% else %}{% icon "star" "np-icon--s npa-star" %}{% endif %}{% endfor %}</span><span class="np-sr-only">{% translate "Změnit hodnocení" %}</span>
+                {% else %}<span class="np-yellow">{% translate "Ještě bez známky" %}</span>{% endif %}
+              </button>
+            </div>
+          {% endfor %}
+        </div></div>
+      {% else %}
+        {% translate "Zatím tu nic není" as empty_title %}
+        {% translate "Vyber pivo v žebříčku nebo ho najdi a dej mu hvězdy. Piva zapsaná v appce se tu objeví taky." as empty_text %}
+        {% include "web/components/empty.html" with icon="beer" title=empty_title text=empty_text %}
+      {% endif %}
+    </section>
+  </div>
+
+  <aside class="np-card npa-detail" id="vybrane-pivo" data-picked="pivo" aria-label="{% translate "Vybrané pivo" %}">
+    {% if selected %}
+      <h2 class="npa-detail__name">{{ selected.beer_name }}</h2>
+      {% if selected.kind %}<p class="npa-detail__kind">{{ selected.kind }}</p>{% endif %}
+      {% if selected.global_rating is not None %}
+        <div class="npa-detail__score">
+          <span class="npa-detail__big">{{ selected.global_rating|floatformat:1 }}</span>
+          <span class="npa-detail__score-side">
+            <span class="npa-stars npa-stars--l" aria-hidden="true">{% for n in stars %}{% if n <= selected.global_stars %}{% icon "star" "npa-star npa-star--on" %}{% else %}{% icon "star" "npa-star" %}{% endif %}{% endfor %}</span>
+            <span>{{ selected.count_label }}</span>
+            {% if selected.national_rank %}<span class="np-muted">{% icon "trophy" "np-icon--s" %}{% blocktranslate with rank=selected.national_rank %}{{ rank }}. v Česku{% endblocktranslate %}</span>{% endif %}
+          </span>
+        </div>
+      {% else %}
+        <p class="npa-detail__unrated">{% translate "Celkovou známku zatím nemá." %}</p>
+      {% endif %}
+      {% if selected.drunk_total %}
+        <div class="np-stats npa-detail__stats">
+          {% translate "vypito v Na pivo" as l1 %}{% include "web/components/stat.html" with value=selected.drunk_total label=l1 %}
+          {% translate "lidí ho pilo" as l2 %}{% include "web/components/stat.html" with value=selected.drinkers label=l2 %}
+          {% translate "tento týden" as l3 %}{% include "web/components/stat.html" with value=selected.drunk_week label=l3 %}
+        </div>
+      {% endif %}
+      <div class="npa-detail__mine">
+        <span>{% translate "Tvoje známka" %}</span>
+        <span class="npa-stars npa-stars--l" role="img" aria-label="{% if selected.my_rating %}{% blocktranslate with n=selected.my_rating %}{{ n }} z 5 hvězd{% endblocktranslate %}{% else %}{% translate "Ještě bez známky" %}{% endif %}">{% for n in stars %}{% if n <= selected.my_rating %}{% icon "star" "npa-star npa-star--on" %}{% else %}{% icon "star" "npa-star" %}{% endif %}{% endfor %}</span>
+        <button class="np-btn npa-detail__rate" type="button" data-dialog="npa-rate" data-entry="selected">{% icon "star" "np-icon--s np-yellow" %}{% if selected.my_rating %}{% translate "Změnit" %}{% else %}{% translate "Ohodnotit" %}{% endif %}</button>
+      </div>
+      {% if selected.party_names %}
+        <div class="npa-detail__party">
+          <span class="np-avatars">{% for p in selected.party_drinkers|slice:":3" %}{% include "web/components/avatar.html" with name=p.display_name|default:p.nickname src=p.avatar_url size="s" %}{% endfor %}</span>
+          <span class="npa-detail__party-text">{% if selected.party_more %}{% blocktranslate with names=selected.party_names more=selected.party_more %}{{ names }} a další {{ more }} ho pijou{% endblocktranslate %}{% else %}{% blocktranslate with names=selected.party_names %}{{ names }} ho pijou{% endblocktranslate %}{% endif %}</span>
+          {% if selected.party_average_rating %}<span class="np-small np-muted">{% translate "průměr party" %} <strong class="npa-white">{{ selected.party_average_rating|floatformat:1 }}</strong></span>{% endif %}
+        </div>
+      {% endif %}
+      {% if selected.pubs_pouring %}
+        <p class="npa-detail__pouring">{% icon "map-pin" "np-icon--s" %}{{ selected.pouring_label }} · <a class="np-link" href="{% web_url "beer" key=selected.product_key %}">{% translate "Kde přesně" %}</a></p>
+      {% endif %}
+      {% if selected.photos %}
+        <div class="npa-section-head"><h3 class="np-title">{% translate "Fotky od lidí" %}</h3>{% if selected.photo_total > 4 %}<span class="np-small np-muted">{{ selected.photo_total }}</span>{% endif %}</div>
+        <div class="npa-photos">{% for photo in selected.photos %}<img src="{{ photo.image_url }}" alt="" loading="lazy">{% endfor %}</div>
+      {% endif %}
+    {% else %}
+      {% translate "Vyber si pivo" as empty_title %}
+      {% translate "Klepni na pivo vlevo a uvidíš, jak ho hodnotí ostatní i tvoje parta." as empty_text %}
+      {% include "web/components/empty.html" with icon="beer" title=empty_title text=empty_text %}
+    {% endif %}
+  </aside>
+</div>
+{{ rating_entries|json_script:"npa-entries" }}
+{% endblock %}
+
+{% block dialogs %}
+<dialog class="npa-dialog" id="npa-rate" aria-labelledby="npa-rate-title">
+  <form class="npa-rate" data-scope>
+    <div class="npa-dialog__top">
+      <div>
+        <h2 class="npa-dialog__title" id="npa-rate-title" data-beer-name></h2>
+        <p class="npa-dialog__sub" data-beer-brewery></p>
+      </div>
+      <button class="np-btn np-btn--icon" type="button" data-close aria-label="{% translate "Zavřít" %}">{% icon "x" %}</button>
+    </div>
+    <fieldset class="npa-rate__stars">
+      <legend class="np-sr-only">{% translate "Hvězdy" %}</legend>
+      {% for n in stars %}
+        <input class="np-sr-only" type="radio" name="rating" id="npa-star-{{ n }}" value="{{ n }}">
+        <label for="npa-star-{{ n }}">{% icon "star" "npa-rate__star" %}<span class="np-sr-only">{% blocktranslate %}{{ n }} z 5 hvězd{% endblocktranslate %}</span></label>
+      {% endfor %}
+      <span class="npa-rate__verdict" data-verdict aria-live="polite"></span>
+    </fieldset>
+    <fieldset class="npa-rate__group">
+      <legend class="npa-label">{% translate "Štítky" %}</legend>
+      <div class="np-chips">
+        {% for code, label in labels.tags.items %}
+          <label class="npa-check"><input class="np-sr-only" type="checkbox" name="tags" value="{{ code }}"><span class="np-chip">{{ label }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="npa-rate__group">
+      <label class="npa-label" for="npa-note">{% translate "Pár slov" %}</label>
+      <textarea class="np-input npa-textarea" id="npa-note" name="note" maxlength="500" rows="3" placeholder="{% translate "Pár slov, když chceš" %}"></textarea>
+    </div>
+    <p class="npa-rate__pub" data-beer-pub hidden>{% icon "map-pin" "np-icon--s np-yellow" %}<span></span></p>
+    <fieldset class="npa-rate__group">
+      <legend class="npa-label">{% translate "Kdo hodnocení uvidí?" %}</legend>
+      <div class="npa-visibility">
+        {% for code, label in labels.visibility.items %}
+          <label class="npa-radio"><input type="radio" name="visibility" value="{{ code }}"><span>{% if code == "public" %}{% icon "globe" "np-icon--s" %}{% elif code == "friends" %}{% icon "users" "np-icon--s" %}{% else %}{% icon "lock" "np-icon--s" %}{% endif %}{{ label }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <p class="np-alert" role="alert" data-error hidden></p>
+    <div class="npa-dialog__actions">
+      <button class="np-btn np-btn--l" type="button" data-close>{% translate "Zrušit" %}</button>
+      <button class="np-btn np-btn--primary np-btn--l npa-grow" type="submit">{% translate "Uložit hodnocení" %}</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
