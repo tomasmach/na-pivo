@@ -1,5 +1,40 @@
 # Pokrytí skutečného mobilního E2E
 
+## Nový vzhled, listopad 2026
+
+Nový vzhled (`app/nv`, `src/newlook`) nahradil staré obrazovky. Přepsané scénáře klikají na nové obrazovky a kontrolují stejné chování a stejné DB/API oracles jako dřív. Starší části dokumentu níže popisují ověření starého vzhledu a zůstávají jako historie.
+
+Ověření běželo na Androidu: vlastní AVD s profilem Pixel 10, obraz API 36 Google APIs x86_64 na linuxovém hostiteli, Maestro 2.11.0, revize `feat/new-look` se sloučenou opravou `8eec9ff0`. iOS na tomto stroji nejde spustit, přepsané scénáře tam zatím neprošly.
+
+| Scénář | Chování, které hlídá | Android |
+|---|---|---|
+| `spike/persist-drink.yaml` | Přihlášení, pivo z lístku E2E U Testera, restart, přesný DB záznam | STAB |
+| `identity/login-keyboard.yaml` | Tlačítko přihlášení nad klávesnicí a klepnutí do pole Heslo (NP-E2E-018, NP-E2E-019) | STAB |
+| `identity/logout.yaml` | Offline pivo, odhlášení, další účet nevidí historii ani frontu | STAB |
+| `identity/delete.yaml` | Zrušené a potvrzené smazání, odvolané relace, prázdný deník po restartu | STAB |
+| `identity/password-reset.yaml` | Skutečný e-mail, nové heslo, staré heslo odmítnuté | STAB |
+| `identity/email-export.yaml` | Export odmítnutý před ověřením e-mailu, po ověření jen vlastní data | STAB |
+| `identity/profile.yaml` | Obsazená přezdívka, jméno, soukromý profil, pohled cizího účtu | STAB |
+| `diary/evening.yaml` | Offline pivo, Dopito, přejmenování a odebrání piva, sync, statistiky v Deníku | STAB |
+| `diary/vycep.yaml` | Offline vyvěšení noci, foreground sync (NP-E2E-007), noc ve Výčepu po restartu | STAB |
+| `places-social/feedback-offline.yaml` | Offline „Napiš mi“ s přílohou, restart, jediné doručení | STAB |
+| `places-social/report-offline.yaml` | Zrušené nahlášení nic neodešle, offline nahlášení skryje hospodu jen autorovi | STAB |
+| `places-social/pub-create-offline.yaml` | Offline hospoda se špendlíkem, jediné doručení, přejmenování zachová identitu | STAB |
+| `identity/registration.yaml` | Claim anonymní online i offline historie registrací | REG |
+
+Změny oproti starému vzhledu: přezdívku a viditelnost volí nový účet až po registraci, proto oracle registrace hledá původní anonymní identitu podle ID. Druhé pivo krátce po prvním appka potvrzuje dialogem „Pivo před chvilkou.“, sdílený krok `repeat-beer.yaml` ho potvrdí. Nový vzhled neukazuje u večera stav „Visí ve Výčepu“, vyvěšení proto test ověřuje přes DB a přes Výčep po restartu. Statistiky ukazuje měsíční přehled v Deníku místo samostatného listu.
+
+### Nepřepsané scénáře
+
+Těchto 23 scénářů pořád ovládá odstraněné obrazovky. Mají tag `legacy-ui`, `critical` a `full` je vynechávají a nic z nich není ověřené na novém vzhledu. Zda nový vzhled jejich chování nabízí, ověřené není, kromě vyznačených případů.
+
+- Účet a média: `identity/avatar.yaml`, `badges-information.yaml`, `media-denied.yaml`, `onboarding-complete.yaml`, `onboarding-interrupt.yaml`, `photos.yaml` (P0 soukromí fotek), `settings.yaml` (nastavení pushů dostává nový vzhled v samostatné práci).
+- Deník a tour: `diary/checkin.yaml`, `private-tour.yaml` (P0), `shared-tour.yaml` (P0, pozvánky do tour dostává nový vzhled v samostatné práci).
+- Hospody a Parta: `places-social/beer-watch.yaml`, `catalogue-offline.yaml` (známé NP-E2E-014), `community-create-retry.yaml`, `community-privacy.yaml` (P0), `contest-privacy.yaml` (P0), `contributions-offline.yaml` (známé NP-E2E-017), `favorite-offline.yaml`, `home-persistence.yaml` (P0), `invite-offline.yaml`, `leaderboard-privacy.yaml` (P0), `party-privacy.yaml` (P0), `permissions-denied.yaml`, `pub-event-moderation.yaml`.
+
+Doporučené pořadí dalšího přepisu: nejdřív P0 soukromí (fotky, Parta, komunitní akce, žebříčky, fotosoutěž), potom offline tour a domovský bod, nakonec P1 a P2.
+
+
 Průzkum začal na čerstvém `origin/dev` `e72d145c` (3. 10. 2026); infrastruktura a integrační větev byly 4. 10. aktualizované na `2e7a120e`. Tři nezávislé read-only průzkumy prošly routy, klienty, backend a Jest. Tabulka popisuje ověřované uživatelské výsledky, nikoli počet jednotlivých kliknutí. `Plán` není důkaz proběhlého testu.
 
 Jest dál ověřuje kombinatoriku validací, výpočty, wire payloady, retry/drop klasifikaci, poškozenou storage a mockované závody. E2E přidává skutečný routing, nativní vstupy, SecureStore, AsyncStorage, restart procesu a lokální HTTP. Backendové oracles čtou skutečnou testovací DB přes místní kontrolní endpoint; nevyměňují odpovědi aplikačního API.

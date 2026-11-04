@@ -10,9 +10,8 @@ appId: ${MAESTRO_APP_ID}
     text: >-
       ${typeof ACCOUNT === 'undefined' || ACCOUNT === 'primary' ? MAESTRO_EMAIL : ACCOUNT + '-' + MAESTRO_EMAIL}
     label: Enter disposable fixture email
-# Known Android failure NP-E2E-019: the lifted submit button covers the password
-# field, so a tap there submits. identity/login-keyboard.yaml keeps failing on it;
-# the keyboard's next key reaches the field the same way a person can.
+# Known Android failure NP-E2E-019: with the keyboard up from the e-mail field
+# the password field stays hidden below it. The keyboard's next key reaches it.
 - pressKey: Enter
 - inputText:
     text: ${MAESTRO_PASSWORD}

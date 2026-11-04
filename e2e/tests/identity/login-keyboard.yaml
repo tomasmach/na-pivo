@@ -1,6 +1,6 @@
 appId: ${MAESTRO_APP_ID}
 name: Sign-in keeps its submit button above the keyboard
-# Regression NP-E2E-018 (fixed) and known Android failure NP-E2E-019; see ../../BUGS.md.
+# Regression NP-E2E-018 and part of NP-E2E-019; see ../../BUGS.md.
 tags: [critical, full, identity]
 ---
 - runFlow: ../../maestro/reset.yaml
