@@ -40,6 +40,7 @@ import { C, SCREEN_X, s, shadow } from '../../theme';
 import { toast } from '../../ui/store';
 import { TourRunContent } from '../tour/TourScreens';
 import { useTourSegment } from '../tour/tourSegment';
+import { useCounterSegment } from './counterSegment';
 import { logDrink, useCounterNudges } from './counterActions';
 import { DegreePicker, KindPicker } from '../piva/StylePicker';
 import { FriendEveningCard, leaveFriendHome, useFriendHomeEvening } from '../parta/FriendEveningCard';
@@ -95,6 +96,12 @@ export function StamgastScreen() {
   if (tourRequested !== seenTourRequest) {
     setSeenTourRequest(tourRequested);
     setStored('tour');
+  }
+  const counterRequested = useCounterSegment((st) => st.requested);
+  const [seenCounterRequest, setSeenCounterRequest] = useState(counterRequested);
+  if (counterRequested !== seenCounterRequest) {
+    setSeenCounterRequest(counterRequested);
+    setStored('pocitat');
   }
   const mode = stored === 'tour' && !tourActive ? 'pocitat' : stored;
   // The tab mounts before the tally may have loaded; the counter counts as opened the first time it is on screen.

@@ -476,12 +476,14 @@ def compute_my_stats(
                 "beers": int(is_beer),
                 "spent_czk": price_czk or 0,
                 "last_drank_at": at,
+                "days": {day},
             }
         else:
             pub["beers"] += int(is_beer)
             pub["spent_czk"] += price_czk or 0
             pub["name"] = name  # ascending → newest name / timestamp win
             pub["last_drank_at"] = at
+            pub["days"].add(day)
 
     if first_drink_at is None:
         payload = _empty_payload()
@@ -519,6 +521,8 @@ def compute_my_stats(
             "beers": pub["beers"],
             "spent_czk": pub["spent_czk"],
             "last_drank_at": pub["last_drank_at"].isoformat(),
+            # Additive: drinking days with a drink here, so Štamgast can say "12 večerů".
+            "evenings": len(pub["days"]),
         }
         for pub in top_pubs
     ]

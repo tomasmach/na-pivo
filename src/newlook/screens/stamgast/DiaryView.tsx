@@ -237,6 +237,21 @@ function Month({ nights, today, onToday }: { nights: Night[]; today: string; onT
   return (
     <>
       <Hero count={sumBeers(inMonth)} label={copy.heroMonth(copy.monthsIn[month])} meta={heroMeta(inMonth, money(sumSpent(inMonth)))} />
+      <Press
+        haptic
+        onPress={() => {
+          trackUiInteraction('beer_stats_open');
+          router.push('/nv/cisla');
+        }}
+        accessibilityRole="button"
+        style={[s.row, { alignSelf: 'center', height: 40, borderRadius: 20, paddingHorizontal: 16, gap: 8, marginTop: -6, backgroundColor: C.control }]}
+      >
+        <Icon name="chart-column" size={16} color={C.yellow} />
+        <T s={15} w={700}>
+          {copy.statsEntry}
+        </T>
+        <Icon name="chevron-right" size={16} color={C.muted} />
+      </Press>
       <View style={{ backgroundColor: C.card, borderRadius: 24, paddingTop: 16, paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
         <CardHead title={copy.monthTitle(copy.months[month], year)} onPrev={() => setOffset(offset - 1)} onNext={() => setOffset(offset + 1)} nextDisabled={offset >= 0} />
         <View style={[s.row, { gap: 4 }]}>

@@ -184,6 +184,7 @@ def test_single_evening_one_pub(client):
             "beers": 3,
             "spent_czk": 165,
             "last_drank_at": t2.astimezone(UTC).isoformat(),
+            "evenings": 1,
         }
     ]
 
@@ -270,9 +271,29 @@ def test_non_pub_and_non_beer_rows_follow_stats_contract(client):
             "beers": 1,
             "spent_czk": 240,
             "last_drank_at": pub_time.astimezone(UTC).isoformat(),
+            "evenings": 1,
         }
     ]
     assert body["records"]["most_beers_in_evening"] == 1
+
+
+@pytest.mark.django_db
+def test_top_pub_counts_each_drinking_day_once(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    # Two beers on one night (the second after midnight still belongs to it)
+    # and one beer a week later: two evenings at the same pub.
+    for drank_at in (
+        datetime(2026, 6, 12, 22, 0, tzinfo=PRAGUE),
+        datetime(2026, 6, 13, 1, 30, tzinfo=PRAGUE),
+        datetime(2026, 6, 19, 20, 0, tzinfo=PRAGUE),
+    ):
+        _drink(account, cache_key=_KEY_TYGR, name="U Zlatého tygra", price_czk=60, drank_at=drank_at)
+
+    body = client.get("/v1/me/stats", **_auth(token)).json()
+
+    assert body["top_pubs"][0]["beers"] == 3
+    assert body["top_pubs"][0]["evenings"] == 2
 
 
 @pytest.mark.django_db
