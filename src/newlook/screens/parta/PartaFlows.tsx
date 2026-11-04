@@ -33,6 +33,7 @@ import { joinNames, personInitial, personName, planTitle, shortDay } from './par
 import { CheerButton } from './cheer';
 import { usePartaStore } from './partaStore';
 import { addPlanToCalendar, openNavigation, pingPerson } from './planActions';
+import { FriendPhotosSection } from './PartaPhotos';
 
 export { NovaPozvankaScreen } from './NovaPozvanka';
 export { PivoUNekohoScreen, SetkaniScreen } from './Meetups';
@@ -169,6 +170,7 @@ export function KamosScreen() {
           ))}
         </View>
       ) : null}
+      {detail.isFriend ? <FriendPhotosSection id={profile.id} name={name} /> : null}
       {detail.recentTogether.length ? (
         <>
           <T s={19} w={700}>

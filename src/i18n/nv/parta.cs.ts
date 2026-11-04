@@ -227,4 +227,13 @@ export const partaCs = {
   nobodyElse: 'Zatím tu nikdo další není.',
   coming: (names: string) => `Dorazí ${names}.`,
   homeLock: 'Zbytek party vidí jen „U někoho doma“.',
+  freshPhotos: 'Čerstvě cvaknuto',
+  lastSevenDays: 'posledních 7 dní',
+  seenByParta: 'Vidí jen parta',
+  seenByAll: 'Vidí všichni',
+  photoPage: (n: number, total: number) => `${n} z ${total} · přejeď na další`,
+  photoToday: (time: string) => `dnes ${time}`,
+  photoYesterday: (time: string) => `včera ${time}`,
+  beerPhotos: 'Pivní fotky',
+  allPhotos: (n: number) => `Všech ${n}`,
 };
