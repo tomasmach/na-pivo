@@ -2242,6 +2242,15 @@ def _merge_beer_watches(source: Account, target: Account) -> None:
         target.save(update_fields=update_fields)
 
 
+def _move_visit_reactions(dropped: PubVisit, kept: PubVisit) -> None:
+    """Cheers received on a duplicate visit follow the copy that stays."""
+    from pubs.models import PubVisitReaction
+
+    _delete_or_move_account_rows(
+        PubVisitReaction, source=dropped, target=kept, unique_fields=("account_id",), account_field="visit"
+    )
+
+
 def _merge_nv_rows(source: Account, target: Account) -> None:
     """The claimed account keeps its own answer when both voted or joined the same evening."""
     from pubs.models import BeerStyleVote, FriendHomeCheckin, PubVisitReaction
@@ -2427,8 +2436,11 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
             if visit.closed_at is None and previous.closed_at is not None:
                 visit.closed_at = previous.closed_at
                 visit.save(update_fields=["closed_at"])
+            _move_visit_reactions(previous, visit)
             previous.delete()
-        elif previous.closed_at is None and visit.closed_at is not None:
+            continue
+        _move_visit_reactions(visit, previous)
+        if previous.closed_at is None and visit.closed_at is not None:
             previous.closed_at = visit.closed_at
             previous.save(update_fields=["closed_at"])
     _delete_or_move_account_rows(

@@ -225,3 +225,31 @@ def test_signing_in_after_an_anonymous_cheer_keeps_the_cheer_on_the_account(clie
         [friend_visit.pk, other_visit.pk]
     )
     assert not PubVisitReaction.objects.filter(visit=own_visit).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("newer", ["anonymous", "existing"])
+def test_cheers_on_a_duplicate_visit_survive_the_sign_in_merge(client, party, newer):
+    from django.db import transaction
+
+    from pubs import accounts
+
+    _, anonymous, _, friend = party
+    _, existing = _register(client, "existing")
+    Friendship.objects.create(requester=existing, recipient=friend, status=Friendship.Status.ACCEPTED)
+    shared_id = uuid.uuid4()
+    copies = {}
+    for owner, offset in ((anonymous, 1 if newer == "anonymous" else 0), (existing, 1 if newer == "existing" else 0)):
+        visit = _out(owner)
+        PubVisit.objects.filter(pk=visit.pk).update(
+            client_id=shared_id, client_updated_at=visit.client_updated_at + timedelta(minutes=offset)
+        )
+        copies[owner.pk] = visit
+    older = copies[existing.pk] if newer == "anonymous" else copies[anonymous.pk]
+    PubVisitReaction.objects.create(visit=older, account=friend)
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(anonymous, existing)
+
+    kept = PubVisit.objects.get(account=existing, client_id=shared_id)
+    assert list(PubVisitReaction.objects.filter(visit=kept).values_list("account_id", flat=True)) == [friend.pk]
