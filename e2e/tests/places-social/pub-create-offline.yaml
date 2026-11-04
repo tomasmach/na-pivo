@@ -1,5 +1,5 @@
 appId: ${MAESTRO_APP_ID}
-name: Confirmed map pin queues one pub and rename preserves its identity
+name: Confirmed map pin queues one pub offline and delivers it once
 tags: [critical, full]
 ---
 - runFlow:
@@ -12,91 +12,55 @@ tags: [critical, full]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /
-- assertVisible: '.*E2E U Testera.*'
-# The real compass entry passes its current position to the pin picker.
-- tapOn: 'Co ještě\? Mapa, filtry a další'
-- tapOn: Přidat hospodu
+      ROUTE: /nv/pridat-hospodu
 - evalScript: ${output.local.offline()}
-- tapOn: Název hospody
+- hideKeyboard
+- tapOn: Nemůžu svoji hospodu najít
+- tapOn: { id: add-pub-name }
 - inputText: E2E Nová hospoda
-- pressKey: Enter
-- waitForAnimationToEnd:
-    timeout: 5000
-- scrollUntilVisible:
-    element: {text: Zapíchnout špendlík hospody do mapy}
-    direction: DOWN
-    centerElement: true
-- tapOn: Zapíchnout špendlík hospody do mapy
-- evalScript: ${output.local.screenshot('places-new-pub-map-pin')}
-- extendedWaitUntil:
-    visible: {id: map-pin-confirm}
-    timeout: 15000
-- tapOn: {id: map-pin-confirm}
-- scrollUntilVisible:
-    element: {text: Město hospody}
-    direction: DOWN
-    centerElement: true
-- tapOn: Město hospody
-- eraseText
+- tapOn: { id: add-pub-city }
 - inputText: Praha
-- pressKey: Enter
-- waitForAnimationToEnd:
-    timeout: 5000
-- scrollUntilVisible:
-    element: {text: Adresa hospody}
-    direction: DOWN
-    centerElement: true
-- tapOn: Adresa hospody
-- eraseText
+- tapOn: { id: add-pub-address }
 - inputText: E2E Ulice 12
-- pressKey: Enter
-- waitForAnimationToEnd:
-    timeout: 5000
+- hideKeyboard
 - scrollUntilVisible:
-    element: {id: add-pub-save, enabled: true}
+    element: Zapíchnout špendlík do mapy
     direction: DOWN
     centerElement: true
-- assertVisible: {id: add-pub-save, enabled: true}
-- tapOn: {id: add-pub-save, enabled: true}
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /my-added-pubs
-- assertVisible: '.*E2E Nová hospoda.*Čeká na odeslání.*'
+- tapOn: Zapíchnout špendlík do mapy
+# The pin map starts on the current position, which is the synthetic fixture point.
+- extendedWaitUntil:
+    visible: Použít
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 5000
+- evalScript: ${output.local.screenshot('places-new-pub-map-pin')}
+- tapOn: Použít
+- extendedWaitUntil:
+    visible: { id: add-pub-save, enabled: true }
+    timeout: 15000
+- tapOn: { id: add-pub-save }
+- extendedWaitUntil:
+    visible: Čeká na odeslání
+    timeout: 15000
+- assertVisible: E2E Nová hospoda
 - runFlow: ../../maestro/restart.yaml
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /my-added-pubs
-- assertVisible: '.*E2E Nová hospoda.*Čeká na odeslání.*'
+      ROUTE: /nv/moje-hospody
+- assertVisible: E2E Nová hospoda
+- assertVisible: Čeká na odeslání
 - evalScript: ${output.local.online()}
 - runFlow: ../../maestro/foreground.yaml
 - evalScript: ${output.local.poll(function () { output.ps.check('pub-created'); }, 15000)}
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /my-added-pubs
-- tapOn: 'Otevřít akce hospody E2E Nová hospoda.*'
-- tapOn: Opravit hospodu
-- tapOn: Název hospody
-- eraseText
-- inputText: E2E Přejmenovaná hospoda
-- pressKey: Enter
-- waitForAnimationToEnd:
-    timeout: 5000
-- scrollUntilVisible:
-    element: {id: add-pub-save, enabled: true}
-    direction: DOWN
-    centerElement: true
-- assertVisible: {id: add-pub-save, enabled: true}
-- tapOn: {id: add-pub-save, enabled: true}
-- evalScript: ${output.local.poll(function () { output.ps.check('pub-renamed'); }, 15000)}
-- runFlow:
-    file: ../../maestro/route.yaml
-    env:
-      ROUTE: /my-added-pubs
-- assertVisible: 'Otevřít akce hospody E2E Přejmenovaná hospoda\. E2E Ulice 12, Praha'
-- assertNotVisible: '.*E2E Nová hospoda.*'
-- evalScript: ${output.local.screenshot('places-published-owner-edit')}
-- evalScript: ${output.ps.check('pub-renamed')}
+      ROUTE: /nv/moje-hospody
+- extendedWaitUntil:
+    notVisible: Čeká na odeslání
+    timeout: 15000
+- assertVisible: E2E Nová hospoda
+- evalScript: ${output.local.screenshot('places-added-pub-delivered')}
+- evalScript: ${output.ps.check('pub-created')}

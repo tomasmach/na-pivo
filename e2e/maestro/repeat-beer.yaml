@@ -1,0 +1,9 @@
+appId: ${MAESTRO_APP_ID}
+---
+# "Ještě jedno" repeats the last pour. A second beer within moments asks first.
+- tapOn: { id: counter-primary }
+- runFlow:
+    when:
+      visible: 'Pivo před chvilkou\.'
+    commands:
+      - tapOn: { id: app-dialog-primary }

@@ -176,3 +176,14 @@ Nový nález musí mít stabilní ID, revizi, kroky na lokálním backendu, oče
 - Reprodukce: `tests/places-social/contributions-offline.yaml`, přesná kontrola celé nabídky v `oracle.js`. Běh `b54f22d8` a diagnostický běh `2ce7d107` selhaly se stejnou nabídkou `[E2E Nový ležák 52 Kč 0,5 l]`. [Detail hospody po synchronizaci](https://files.tmach.dev/places-offline-contribution-wiped-menu-1c421909ac3748cd9141.png).
 - Dřívější tři úspěchy tohoto testu kontrolovaly jen přítomnost nového piva, proto chybu nezachytily.
 - Stav: neopraveno. Bezpečná oprava potřebuje produktové rozhodnutí a kontrakt, který zvládnou i vydané verze: buď editor bez známé nabídky nedovolí odeslat náhradu, nebo server přestane slepě přepisovat nabídku. Test zůstává přísný a do opravy se nepočítá mezi úspěšné průchody.
+
+## NP-E2E-018: klávesnice na Androidu zakryje tlačítko přihlášení
+
+- Priorita P1, přihlášení. Větev `feat/connect-new-look-mock` `ed761fb9` (nový vzhled) s testovacími `testID` z této sady. Android emulátor s profilem Pixel 10, obraz API 36 Google APIs x86_64 na linuxovém hostiteli, Maestro 2.11.0. iOS zatím ověřený není.
+- Kroky: přeskočit onboarding, otevřít přihlášení (`/nv/prihlaseni`) a klepnout do pole Heslo.
+- Očekávání: tlačítko „Přihlásit se“ (v režimu registrace „Registrovat“) a odkaz „Zapomenuté heslo?“ zůstanou nad klávesnicí, jak to nový vzhled slibuje pro formuláře.
+- Skutečnost: klávesnice zakryje celý spodní blok s tlačítkem i odkazem. Formulář nad ní zůstane, tlačítko na obrazovce chybí. Posun obsahu tahem nahoru ho neodhalí: diagnostický běh `f80aedd7` nenašel tlačítko před posunem ani po něm. Odeslat jde jen klávesou Enter na klávesnici, nebo po zavření klávesnice. [Prohlédnutý snímek po posunu](https://files.tmach.dev/android-login-submit-covered-83d037887c4a4648b1ea.png), pole jsou prázdná.
+- Pravděpodobná příčina podle kódu: `PrihlaseniScreen` v `src/newlook/screens/profil/ProfilScreens.tsx` kreslí tlačítka v absolutně umístěném `View` mimo `KeyboardAwareScrollView`, ukotveném k dolnímu okraji obrazovky. Posun se ho netýká a Android edge-to-edge okno při otevřené klávesnici nezmenší.
+- Reprodukce: `tests/identity/login-keyboard.yaml`. Sdílený krok `maestro/login.yaml` před odesláním klávesnici zavře, aby ostatní scénáře ověřily svůj výsledek; komentář tam odkazuje sem.
+- Stav: neopraveno v této větvi. Oprava produktu čeká v samostatném PR #347 (`fix/login-button-above-keyboard`); po jeho sloučení má test projít. Test zůstává v `critical` i `full`, na Androidu do opravy selhává a nepočítá se mezi úspěšné průchody.
+

@@ -54,10 +54,10 @@ const watch = setInterval(() => {
     void cleanup(75);
   }
 }, 1000);
-async function command(executable, args, cwd) {
+async function command(executable, args, cwd, commandEnv = env) {
   const pending = path.join(runDir, 'build-command-starting');
   fs.writeFileSync(pending, '', { mode: 0o600 });
-  child = start(executable, args, { cwd, env });
+  child = start(executable, args, { cwd, env: commandEnv });
   fs.writeFileSync(path.join(root, '.e2e/android-build-process.json'), JSON.stringify({
     root, pid: child.pid, started: birth(child.pid),
   }), { mode: 0o600 });
@@ -68,8 +68,11 @@ async function command(executable, args, cwd) {
 }
 try {
   await command(process.execPath, ['node_modules/expo/bin/cli', 'prebuild', '--platform', 'android', '--no-install'], root);
+  // Prebuild already applied the E2E native config. expo-widgets bundles its JS
+  // with NODE_ENV=production during Gradle, which that config guard rejects.
+  const { NA_PIVO_E2E_NATIVE: _prebuildOnly, ...gradleEnv } = env;
   if (!closing) await command(path.join(root, 'android/gradlew'), ['assembleDebug', '--no-daemon', '--max-workers=2',
-    `-PreactNativeArchitectures=${androidAbi}`, '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m'], path.join(root, 'android'));
+    `-PreactNativeArchitectures=${androidAbi}`, '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m'], path.join(root, 'android'), gradleEnv);
   if (!closing) {
     const output = path.join(root, '.e2e/build/na-pivo-debug.apk');
     fs.mkdirSync(path.dirname(output), { recursive: true });

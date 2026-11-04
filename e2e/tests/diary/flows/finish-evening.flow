@@ -1,8 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 ---
-- tapOn:
-    id: counter-more
-- assertVisible: Dopito, zavřít tenhle večer
-- evalScript: ${output.local.screenshot('diary-counter-dopito-menu')}
-- tapOn: Dopito, zavřít tenhle večer
 - tapOn: Dopito
+- extendedWaitUntil:
+    visible: Na zdraví a zas příště.
+    timeout: 10000
+- evalScript: ${output.local.screenshot('diary-counter-receipt')}
+- tapOn: Zavřít

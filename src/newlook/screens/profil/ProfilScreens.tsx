@@ -1212,7 +1212,7 @@ export function UpravitProfilScreen() {
   };
 
   return (
-    <Screen header={<BackHeader />} footer={<Button label={saving ? t.account.loading : P().editProfile.save} disabled={saving} onPress={() => void save()} />} gap={16}>
+    <Screen header={<BackHeader />} footer={<Button testID="profile-save" label={saving ? t.account.loading : P().editProfile.save} disabled={saving} onPress={() => void save()} />} gap={16}>
       <PageTitle title={P().editProfile.title} />
       <Press onPress={changePhoto} disabled={avatarBusy} style={{ alignItems: 'center', gap: 10 }} accessibilityRole="button">
         <ProfilAvatar uri={me.avatarUrl} initial={me.initial} size={96} />
@@ -1225,11 +1225,12 @@ export function UpravitProfilScreen() {
         )}
       </Press>
       <Field label={P().editProfile.name}>
-        <Input value={name} onChangeText={setName} />
+        <Input testID="profile-display-name" value={name} onChangeText={setName} />
       </Field>
       <View style={{ gap: 8 }}>
         <Field label={P().editProfile.nick}>
           <Input
+            testID="profile-nickname"
             value={nick ? `@ ${nick}` : ''}
             onChangeText={(v) => setNick(v.replace(/^@\s?/, ''))}
             placeholder={P().finishAccount.placeholder}
@@ -1243,7 +1244,7 @@ export function UpravitProfilScreen() {
       </View>
       <ErrorLine text={error} />
       <Card>
-        <Row last title={P().editProfile.public} trailing={<Toggle value={pub} onChange={setPub} />} />
+        <Row last title={P().editProfile.public} trailing={<Toggle testID="profile-public" value={pub} onChange={setPub} />} />
       </Card>
       <T s={13} c={C.muted} lh={1.45}>
         {P().editProfile.publicNote}
@@ -1687,6 +1688,7 @@ export function PrihlaseniScreen() {
       footer={
         <View style={{ gap: 14 }}>
           <Button
+            testID="auth-submit"
             label={busy === 'submit' ? t.account.loading : mode === 'login' ? P().signIn.login : P().signIn.register}
             disabled={busy !== null}
             onPress={() => void submit()}
@@ -1735,6 +1737,7 @@ export function PrihlaseniScreen() {
       ) : null}
       <Field label={P().signIn.email}>
         <Input
+          testID="auth-email"
           value={email}
           onChangeText={setEmail}
           placeholder={t.account.emailPlaceholder}
@@ -1750,6 +1753,7 @@ export function PrihlaseniScreen() {
       </Field>
       <Field label={P().signIn.password}>
         <Input
+          testID="auth-password"
           inputRef={passwordRef}
           value={password}
           onChangeText={setPassword}
@@ -1804,17 +1808,18 @@ export function ObnovaHeslaScreen() {
   return (
     <Screen
       header={<BackHeader icon="x" onBack={() => close(router)} />}
-      footer={<Button label={busy ? t.account.loading : P().reset.submit} disabled={busy} onPress={() => void submit()} />}
+      footer={<Button testID="reset-submit" label={busy ? t.account.loading : P().reset.submit} disabled={busy} onPress={() => void submit()} />}
       gap={16}
     >
       <PageTitle title={P().reset.title} />
       {!linkToken ? (
         <Field label={P().reset.code}>
-          <Input value={code} onChangeText={setCode} placeholder={P().reset.codePlaceholder} autoCapitalize="none" autoCorrect={false} />
+          <Input testID="reset-code" value={code} onChangeText={setCode} placeholder={P().reset.codePlaceholder} autoCapitalize="none" autoCorrect={false} />
         </Field>
       ) : null}
       <Field label={P().reset.password}>
         <Input
+          testID="reset-password"
           value={password}
           onChangeText={setPassword}
           placeholder={P().reset.passwordPlaceholder}
@@ -2447,7 +2452,7 @@ export function NapisMiScreen() {
           <Chip key={key} label={label} active={kind === key} onPress={() => setKind(key)} />
         ))}
       </ChipWrap>
-      <Input multiline value={message} onChangeText={setMessage} placeholder={P().writeMe.placeholder} style={{ minHeight: 124 }} />
+      <Input testID="feedback-message" multiline value={message} onChangeText={setMessage} placeholder={P().writeMe.placeholder} style={{ minHeight: 124 }} />
       <T s={13} c={C.text2}>
         {P().writeMe.attachment}
       </T>
@@ -2588,6 +2593,7 @@ export function OnboardingScreen() {
           ))}
         </View>
         <Press
+          testID="onboarding-skip"
           onPress={() => {
             trackUiInteraction('onboarding_skip');
             finish('onboarding_skipped');

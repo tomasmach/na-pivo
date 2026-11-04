@@ -99,13 +99,13 @@ function PeriodSwitch({ value, onChange }: { value: Period; onChange: (v: Period
 function Hero({ count, label, meta }: { count: number; label: string; meta: string }) {
   return (
     <View style={{ alignItems: 'center', gap: 4 }}>
-      <D s={88} lh={1} c={C.yellow} style={{ letterSpacing: -2 }}>
+      <D testID="diary-hero-count" s={88} lh={1} c={C.yellow} style={{ letterSpacing: -2 }}>
         {String(count)}
       </D>
       <T s={17} w={600} c={C.text2}>
         {label}
       </T>
-      <T s={14} c={C.dim}>
+      <T testID="diary-hero-meta" s={14} c={C.dim}>
         {meta}
       </T>
     </View>
@@ -164,6 +164,7 @@ function NightsCard({ nights, today }: { nights: readonly Night[]; today: string
       {nights.map((night) => (
         <Press
           key={night.day}
+          testID="diary-night"
           onPress={() => {
             trackUiInteraction('diary_evening_open');
             router.push({ pathname: '/nv/vecer/[id]', params: { id: night.day } });

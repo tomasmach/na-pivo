@@ -1,0 +1,18 @@
+appId: ${MAESTRO_APP_ID}
+name: Sign-in keeps its submit button above the keyboard
+# Known Android failure: NP-E2E-018; see ../../BUGS.md. The keyboard covers
+# the bottom submit button and scrolling does not reveal it.
+tags: [critical, full, identity]
+---
+- runFlow: ../../maestro/reset.yaml
+- runFlow: ../../maestro/skip-onboarding.yaml
+- runFlow:
+    file: ../../maestro/route.yaml
+    env:
+      ROUTE: /nv/prihlaseni
+- tapOn: { id: auth-password }
+- waitForAnimationToEnd:
+    timeout: 5000
+- evalScript: ${output.local.screenshot('identity-login-keyboard-open')}
+- assertVisible: { id: auth-submit }
+- assertVisible: 'Zapomenuté heslo\?'

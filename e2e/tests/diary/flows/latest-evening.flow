@@ -3,8 +3,13 @@ appId: ${MAESTRO_APP_ID}
 - runFlow:
     file: ../../../maestro/route.yaml
     env:
-      ROUTE: /beer
+      ROUTE: /nv/stamgast
+- tapOn: Deník
+- scrollUntilVisible:
+    element:
+      id: diary-night
+    direction: DOWN
+    centerElement: true
 - tapOn:
-    id: diary-segment
-- tapOn:
-    id: diary-latest-evening
+    id: diary-night
+    index: 0

@@ -108,6 +108,7 @@ export function Button({
   style,
   disabled,
   flex,
+  testID,
 }: {
   label: string;
   sub?: string;
@@ -118,6 +119,7 @@ export function Button({
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
   flex?: boolean;
+  testID?: string;
 }) {
   const k = BUTTON[kind];
   const labelSize = height >= 56 ? 17 : height >= 50 ? 16 : 15;
@@ -128,6 +130,7 @@ export function Button({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
+      testID={testID}
       style={[
         {
           height,
@@ -414,7 +417,7 @@ const TOGGLE_OFF_TRACK = '#39393D';
 const TOGGLE_OFF_KNOB = '#FFFFFF';
 
 /** The knob slides and both colors blend over the same stretch; the switch never shrinks under the finger. */
-export function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({ value, onChange, testID }: { value: boolean; onChange: (v: boolean) => void; testID?: string }) {
   const move = useSharedValue(value ? 1 : 0);
   const tone = useSharedValue(value ? 1 : 0);
   useEffect(() => {
@@ -428,6 +431,7 @@ export function Toggle({ value, onChange }: { value: boolean; onChange: (v: bool
   }));
   return (
     <Pressable
+      testID={testID}
       onPress={() => {
         if (useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
         onChange(!value);

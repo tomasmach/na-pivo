@@ -319,7 +319,7 @@ export function ZapisSheet() {
     <Sheet
       title={copy.whatDrink}
       top={140}
-      footer={<Button height={60} label={copy.logBeer} sub={footerSub} disabled={!selected} onPress={save} />}
+      footer={<Button testID="drink-save" height={60} label={copy.logBeer} sub={footerSub} disabled={!selected} onPress={save} />}
     >
       <Press onPress={() => router.push('/nv/zmenit-misto')} style={[s.row, { gap: 6, marginTop: -8 }]}>
         <Icon name={home ? 'house' : 'map-pin'} size={16} color={C.yellow} />
@@ -406,6 +406,7 @@ export function ZapisSheet() {
             {copy.priceLabel}
           </T>
           <TextInput
+            testID="drink-price"
             value={typedPrice}
             onChangeText={setTypedPrice}
             keyboardType="number-pad"
@@ -483,7 +484,7 @@ export function PridatPivoSheet() {
       </View>
       <View style={[s.row, { height: 52, borderRadius: 18, paddingHorizontal: 16, gap: 10, backgroundColor: C.control, borderWidth: 1, borderColor: C.tint }]}>
         <Icon name="search" size={18} color={C.text2} />
-        <TextInput value={q} onChangeText={setQ} placeholder={copy.searchBeer} placeholderTextColor={C.muted} keyboardAppearance="dark" selectionColor={C.yellow} style={[font(16, 500), { flex: 1, padding: 0 }]} />
+        <TextInput testID="beer-search" value={q} onChangeText={setQ} placeholder={copy.searchBeer} placeholderTextColor={C.muted} keyboardAppearance="dark" selectionColor={C.yellow} style={[font(16, 500), { flex: 1, padding: 0 }]} />
       </View>
       <Press
         onPress={() => {

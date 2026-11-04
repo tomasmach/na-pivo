@@ -3,7 +3,7 @@ appId: ${MAESTRO_APP_ID}
 - runFlow:
     file: route.yaml
     env:
-      ROUTE: /auth
+      ROUTE: /nv/prihlaseni
 - tapOn:
     id: auth-email
 - inputText:
@@ -15,6 +15,10 @@ appId: ${MAESTRO_APP_ID}
 - inputText:
     text: ${MAESTRO_PASSWORD}
     label: Enter disposable fixture password
+# Known Android failure NP-E2E-018: the keyboard covers the submit button.
+# identity/login-keyboard.yaml keeps failing on it; here the keyboard is
+# closed so the other flows still reach the account they test.
+- hideKeyboard
 - tapOn:
     id: auth-submit
 - extendedWaitUntil:

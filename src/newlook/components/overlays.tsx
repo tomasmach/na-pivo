@@ -136,6 +136,7 @@ export function DialogHost() {
           {(d.actions.length > 2 ? [...d.actions].reverse() : d.actions).map((a) => (
             <Button
               key={a.label}
+              testID={a === d.actions[d.actions.length - 1] ? 'app-dialog-primary' : `app-dialog-secondary-${d.actions.indexOf(a)}`}
               label={a.label}
               kind={a.kind ?? 'raised'}
               flex={d.actions.length <= 2}
