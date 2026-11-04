@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Image, ScrollView, View, useWindowDimensions } from 'react-native';
+import { FlatList, Image, ScrollView, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create } from 'zustand';
@@ -106,7 +106,7 @@ export function PartaPhotoScreen() {
         initialScrollIndex={start}
         getItemLayout={(_, n) => ({ length: width, offset: width * n, index: n })}
         keyExtractor={(p) => p.key}
-        onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
+        onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
         renderItem={({ item }) => (
           <View style={{ width }}>
             <Image source={{ uri: item.uri }} style={{ width, height: imageH, backgroundColor: C.card }} resizeMode="cover" />

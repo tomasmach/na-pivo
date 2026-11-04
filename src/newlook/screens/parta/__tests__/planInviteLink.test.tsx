@@ -26,6 +26,8 @@ jest.mock('expo-router', () => ({
 jest.mock('@/newlook/navigation', () => ({ nvBack: jest.fn() }));
 jest.mock('expo-location', () => ({}));
 jest.mock('expo-calendar/legacy', () => ({}));
+jest.mock('../PartaPhotos', () => ({ FriendPhotosSection: () => null, PartaPhotoStrip: () => null }));
+jest.mock('../../stamgast/placeStore', () => ({ useNvPlaceStore: { getState: () => ({ setOutside: jest.fn() }) } }));
 jest.mock('@/newlook/components/Icon', () => ({ Icon: () => null }));
 jest.mock('@/newlook/ui/store', () => ({ dialog: jest.fn(), toast: jest.fn() }));
 jest.mock('@/data/partaPlansClient', () => ({
