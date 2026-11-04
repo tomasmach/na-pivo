@@ -246,8 +246,11 @@ def companions(account: Account, nights: list[Night]) -> dict[date, list[dict]]:
     """Who shared a party table with the account on each night.
 
     Only explicit shared tables count (``DrinkLog.party_evening``): a friend's
-    private visit to the same pub is not something this page may reveal.
+    private visit to the same pub is not something this page may reveal. Ghost
+    mode, a block either way and an opt-out of sharing drinks hide the same
+    things here as at the table in the app.
     """
+    from pubs.api.party_views import _blocked_account_ids
 
     by_evening: dict[int, set[date]] = {}
     for night in nights:
@@ -257,14 +260,19 @@ def companions(account: Account, nights: list[Night]) -> dict[date, list[dict]]:
     if not by_evening:
         return {}
     members = list(
-        PartyEveningMember.objects.filter(evening_id__in=by_evening, account__status=Account.Status.ACTIVE)
+        PartyEveningMember.objects.filter(
+            evening_id__in=by_evening, account__status=Account.Status.ACTIVE, account__ghost_mode=False
+        )
         .exclude(account=account)
+        .exclude(account_id__in=_blocked_account_ids(account))
         .select_related("account")
     )
     beers = {
         (row["party_evening_id"], row["account_id"]): row["n"]
         for row in DrinkLog.objects.filter(
-            party_evening_id__in=by_evening, drink_type=DrinkLog.DrinkType.BEER
+            party_evening_id__in=by_evening,
+            drink_type=DrinkLog.DrinkType.BEER,
+            account__share_drinks_with_parta=True,
         )
         .exclude(account=account)
         .values("party_evening_id", "account_id")

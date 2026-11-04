@@ -157,7 +157,14 @@ def test_friends_see_public_checkins_in_feed_and_can_cheer_public_from_strangers
         **_auth(stranger_token),
     )
     assert cheer.status_code == status.HTTP_200_OK
-    assert cheer.json()["reactions"]["cheers"] == 1
+    assert cheer.json() == {"id": checkin["id"], "reactions": {"cheers": 1}, "my_reaction": "cheers"}
+    friend_cheer = client.post(
+        f"/v1/beer-checkins/{checkin['id']}/react",
+        data={"reaction": "cheers"},
+        format="json",
+        **_auth(friend_token),
+    )
+    assert friend_cheer.json()["checked_in_at"] == checkin["checked_in_at"]
 
     party_only = _checkin(
         client, owner_token, product, rating="3", visibility="friends", note="Jen pro partu."

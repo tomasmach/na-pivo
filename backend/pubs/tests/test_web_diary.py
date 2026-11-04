@@ -277,3 +277,26 @@ def test_beers_logged_in_one_go_have_no_time_at_the_table():
     page = client.get(f"/denik/vecer/{d.drinking_day(_local(1, 19)).isoformat()}")
     assert [stat["label"] for stat in page.context["stats"]] == ["piva", "útrata", "hospoda"]
     assert "duration_minutes" not in page.context["publish"]["night"]
+
+
+def test_night_companions_hide_ghosts_blocks_and_unshared_beers():
+    from pubs.models import FriendBlock, PartyEvening, PartyEveningMember
+
+    _client, me, _csrf = _web()
+    evening = PartyEvening.objects.create(host=me, client_id=uuid.uuid4(), join_code="WEBDY001", pub_name="U Pinkasů")
+    at = _local(1, 20)
+    people = {}
+    for name in ("visible", "ghost", "blocked", "private"):
+        person = Account.objects.create(device_id=str(uuid.uuid4()), nickname=name, display_name=name.title())
+        PartyEveningMember.objects.create(evening=evening, account=person)
+        DrinkLog.objects.create(party_evening=evening, account=person, client_id=uuid.uuid4(), beer_name="Plzeň", drank_at=at)
+        people[name] = person
+    DrinkLog.objects.create(party_evening=evening, account=me, client_id=uuid.uuid4(), beer_name="Plzeň", drank_at=at)
+    Account.objects.filter(pk=people["ghost"].pk).update(ghost_mode=True)
+    FriendBlock.objects.create(blocker=people["blocked"], blocked=me)
+    Account.objects.filter(pk=people["private"].pk).update(share_drinks_with_parta=False)
+
+    nights = d.nights_of(d.load_drinks(me))
+    table = d.companions(me, nights)[nights[0].day]
+
+    assert {p["name"]: p["beers"] for p in table} == {"Visible": 1, "Private": 0}

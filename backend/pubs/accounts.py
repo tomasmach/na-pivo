@@ -2244,7 +2244,7 @@ def _merge_beer_watches(source: Account, target: Account) -> None:
 
 def _merge_nv_rows(source: Account, target: Account) -> None:
     """The claimed account keeps its own answer when both voted or joined the same evening."""
-    from pubs.models import BeerStyleVote, FriendHomeCheckin
+    from pubs.models import BeerStyleVote, FriendHomeCheckin, PubVisitReaction
 
     _delete_or_move_account_rows(
         BeerStyleVote, source=source, target=target, unique_fields=("product_id",)
@@ -2252,6 +2252,10 @@ def _merge_nv_rows(source: Account, target: Account) -> None:
     _delete_or_move_account_rows(
         FriendHomeCheckin, source=source, target=target, unique_fields=("activity_id",)
     )
+    _delete_or_move_account_rows(
+        PubVisitReaction, source=source, target=target, unique_fields=("visit_id",)
+    )
+    PubVisitReaction.objects.filter(account=target, visit__account=target).delete()
 
 
 def _merge_anonymous_account(source: Account | None, target: Account) -> None:

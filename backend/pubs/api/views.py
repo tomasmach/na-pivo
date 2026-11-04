@@ -8134,7 +8134,12 @@ class BeerCheckInReactView(APIView):
         except Exception as exc:  # noqa: BLE001
             logger.error("beer_checkins: reaction failed: %s", exc, exc_info=True)
             return _internal_error()
-        return Response(self._serialize_fresh(request, checkin), status=status.HTTP_200_OK)
+        data = self._serialize_fresh(request, checkin)
+        if checkin.account_id not in _accepted_friend_ids(request.user):
+            # A stranger reacting to a public review learns only the reaction state,
+            # not the times, pub and price the full check-in carries.
+            data = {key: data[key] for key in ("id", "reactions", "my_reaction")}
+        return Response(data, status=status.HTTP_200_OK)
 
     def delete(self, request: Request, checkin_id) -> Response:
         checkin = BeerCheckIn.objects.filter(public_id=checkin_id).first()

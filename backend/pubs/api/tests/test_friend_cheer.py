@@ -200,3 +200,28 @@ def test_export_lists_the_cheers_i_gave(client, party):
             "updated_at": reactions[-1]["updated_at"],
         }
     ]
+
+
+@pytest.mark.django_db
+def test_signing_in_after_an_anonymous_cheer_keeps_the_cheer_on_the_account(client, party):
+    from django.db import transaction
+
+    from pubs import accounts
+
+    _, anonymous, _, friend = party
+    _, existing = _register(client, "existing")
+    friend_visit = _out(friend)
+    other_visit = _out(friend, name="U Fleků")
+    own_visit = _out(existing, name="Lokál")
+    PubVisitReaction.objects.create(visit=friend_visit, account=anonymous)
+    PubVisitReaction.objects.create(visit=other_visit, account=anonymous)
+    PubVisitReaction.objects.create(visit=own_visit, account=anonymous)
+    PubVisitReaction.objects.create(visit=friend_visit, account=existing)
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(anonymous, existing)
+
+    assert sorted(PubVisitReaction.objects.filter(account=existing).values_list("visit_id", flat=True)) == sorted(
+        [friend_visit.pk, other_visit.pk]
+    )
+    assert not PubVisitReaction.objects.filter(visit=own_visit).exists()
