@@ -6,3 +6,6 @@ appId: ${MAESTRO_APP_ID}
     timeout: 10000
 - evalScript: ${output.local.screenshot('diary-counter-receipt')}
 - tapOn: Zavřít
+# Wait for the receipt to close before the next tap.
+- waitForAnimationToEnd:
+    timeout: 5000

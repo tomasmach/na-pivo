@@ -38,6 +38,10 @@ tags: [critical, full, diary]
 - runFlow:
     file: ../../maestro/route.yaml
     env: { ROUTE: /nv/vycep }
+# The night hangs for the party only, so it is under Parta, not Svět.
+- tapOn:
+    text: Parta
+    above: 'Posledních 7 dní.*'
 - extendedWaitUntil:
     visible: '.*E2E U Testera.*'
     timeout: 20000

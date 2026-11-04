@@ -5,6 +5,11 @@ appId: ${MAESTRO_APP_ID}
     env:
       ROUTE: /nv/stamgast
 - tapOn: Deník
+- runFlow:
+    when:
+      notVisible: { id: diary-hero-count }
+    commands:
+      - tapOn: Deník
 - scrollUntilVisible:
     element:
       id: diary-night
