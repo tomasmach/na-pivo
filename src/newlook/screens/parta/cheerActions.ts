@@ -36,7 +36,8 @@ export async function toggleCheer(accountId: string): Promise<void> {
   }
   if (isRetriableFriendError(res)) {
     await enqueueFriendOp(next ? { op: 'friend-cheer', accountId } : { op: 'friend-cheer-clear', accountId });
-    toast({ kind: 'offline', title: t.nv.parta.cheerOffline, sub: t.nv.parta.cheerOfflineSub, icon: 'cloud-off' });
+    // Taking a cheer back says nothing online either, so offline it stays quiet too.
+    if (next) toast({ kind: 'offline', title: t.nv.parta.cheerOffline, sub: t.nv.parta.cheerOfflineSub, icon: 'cloud-off' });
     return;
   }
   patchRow(accountId, !next);

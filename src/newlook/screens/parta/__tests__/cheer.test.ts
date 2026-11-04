@@ -64,3 +64,14 @@ it('takes the cheer back on a second tap and reverts when the server refuses', a
   expect(row()).toMatchObject({ myReaction: 'cheers', reactions: { cheers: 3 } });
   expect(toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }));
 });
+
+it('queues taking the cheer back without signal and does not claim it will cheer', async () => {
+  usePartaStore.setState({ dashboard: { presence: [{ ...klara, myReaction: 'cheers', reactions: { cheers: 3 } }] } as unknown as FriendsDashboard });
+  (clearFriendCheer as jest.Mock).mockResolvedValue({ ok: false, code: 'network', detail: 'x' });
+
+  await toggleCheer('klara');
+
+  expect(enqueueFriendOp).toHaveBeenCalledWith({ op: 'friend-cheer-clear', accountId: 'klara' });
+  expect(row()).toMatchObject({ myReaction: null, reactions: { cheers: 2 } });
+  expect(toast).not.toHaveBeenCalled();
+});
