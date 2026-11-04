@@ -29,6 +29,7 @@ import { C, SCREEN_X, s } from '../../theme';
 import { lastTogetherLabel, personInitial, personName, planTime, planTitle, ticketDay } from './partaModel';
 import { usePartaStore } from './partaStore';
 import { pingPerson, respondToPlan } from './planActions';
+import { PartaPhotoStrip } from './PartaPhotos';
 
 const RSVP: { key: 'going' | 'maybe' | 'cant'; label: () => string; icon: IconName }[] = [
   { key: 'going', label: () => t.nv.parta.rsvpGoing, icon: 'check' },
@@ -355,6 +356,7 @@ export function PartaScreen() {
                 <LiveRow key={p.account.id} profile={p.account} last={i === homePresence.length - 1} sub={t.nv.parta.atSomeonesHome} />
               ))}
             </Card>
+            <PartaPhotoStrip />
             {dashboard.incomingRequests.map((req) => (
               <View key={req.id} style={{ paddingHorizontal: 16, borderRadius: 24, borderWidth: 1, borderColor: C.hairline }}>
                 <Row

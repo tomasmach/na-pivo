@@ -220,4 +220,13 @@ export const partaEn: Strings['nv']['parta'] = {
   nobodyElse: 'Nobody else is here yet.',
   coming: (names: string) => `On the way: ${names}.`,
   homeLock: 'The rest of the crew only sees “At someone’s place”.',
+  freshPhotos: 'Fresh snaps',
+  lastSevenDays: 'last 7 days',
+  seenByParta: 'Only the crew sees it',
+  seenByAll: 'Everyone sees it',
+  photoPage: (n, total) => `${n} of ${total} · swipe for the next`,
+  photoToday: (time) => `today ${time}`,
+  photoYesterday: (time) => `yesterday ${time}`,
+  beerPhotos: 'Beer photos',
+  allPhotos: (n) => `All ${n}`,
 };

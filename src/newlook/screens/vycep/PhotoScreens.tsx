@@ -82,8 +82,8 @@ function monthLabel(iso: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function byMonth(items: PhotoItem[]): { month: string; photos: PhotoItem[] }[] {
-  const groups: { month: string; photos: PhotoItem[] }[] = [];
+export function byMonth<P extends { takenAt: string }>(items: P[]): { month: string; photos: P[] }[] {
+  const groups: { month: string; photos: P[] }[] = [];
   for (const item of items) {
     const month = monthLabel(item.takenAt);
     const last = groups[groups.length - 1];
