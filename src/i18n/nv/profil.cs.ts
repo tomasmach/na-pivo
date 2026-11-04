@@ -68,7 +68,7 @@ export const profilCs = {
     homeSet: 'Nastavený',
     homeUnset: 'Nenastavený',
     hideNames: 'Schovávat názvy hospod',
-    hideNamesSub: 'Název ukážu až po ťuknutí a skryju ho i v upozorněních',
+    hideNamesSub: 'Název ukážu až po ťuknutí a skryju ho i v\u00A0upozorněních',
     reminders: 'Připomínky',
     nextBeer: 'Připomenout další pivo',
     nextBeerSub: (minutes: number) => `Za ${minutes} minut po každém pivu`,
