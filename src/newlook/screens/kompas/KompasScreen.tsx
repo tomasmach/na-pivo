@@ -23,6 +23,7 @@ import { openPubInMaps } from '@/utils/maps';
 import { Glass, GlassButton, LevelAvatar, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, Chip, D, Dot, IconButton, Press, T } from '../../components/ui';
+import { usePubNameReveal } from '../../hiddenPubNames';
 import { toast } from '../../ui/store';
 import { DURATION, enter, fadeIn, riseIn } from '../../motion';
 import { C, SCREEN_X, s, shadow } from '../../theme';
@@ -78,14 +79,22 @@ function subLine(target: KompasTarget, mode: 'price' | 'count', k: Kompas): stri
   return L().unknownTaps;
 }
 
-function goThere(target: KompasTarget) {
+type NameReveal = ReturnType<typeof usePubNameReveal>;
+
+function goThere(target: KompasTarget, secret: boolean) {
   trackUiInteraction('compass_directions_open');
-  const sub = target.distance != null ? L().guideSub(target.name, distanceLabel(target.distance)) : target.name;
+  const name = secret ? t.nv.common.secretPub : target.name;
+  const sub = target.distance != null ? L().guideSub(name, distanceLabel(target.distance)) : name;
   toast({ kind: 'info', title: L().guideTitle, sub, icon: 'navigation' });
   void openPubInMaps({ lat: target.lat, lng: target.lng, name: target.name, googlePlaceId: target.pub?.googlePlaceId });
 }
 
-function openTarget(router: ReturnType<typeof useRouter>, target: KompasTarget, from: 'map' | 'compass') {
+function openTarget(router: ReturnType<typeof useRouter>, target: KompasTarget, from: 'map' | 'compass', name: NameReveal) {
+  if (name.secret) {
+    trackUiInteraction('compass_pub_reveal');
+    name.reveal();
+    return;
+  }
   trackUiInteraction(from === 'map' ? 'map_pub_detail_open' : 'compass_pub_card_open');
   openNvPub(router, target.pub ?? { id: '', name: target.name, lat: target.lat, lng: target.lng });
 }
@@ -119,6 +128,9 @@ export function KompasScreen() {
   const [mode, setMode] = useState<'map' | 'compass'>('map');
   const k = useKompas();
   const { arrived, target, dismissArrival } = k;
+  const picked = useKompasState((st) => st.picked);
+  // A pub you picked on the map or in search is no secret to you.
+  const name = usePubNameReveal(target && target.kind !== 'tour' && !(picked && target.kind === 'pub') ? target.key : null);
 
   useEffect(() => {
     if (!arrived || !target) return;
@@ -135,10 +147,10 @@ export function KompasScreen() {
     trackUiInteraction('compass_map_open');
     setMode('map');
   };
-  return mode === 'map' ? <MapMode k={k} onCompass={showCompass} /> : <CompassMode k={k} onMap={showMap} />;
+  return mode === 'map' ? <MapMode k={k} name={name} onCompass={showCompass} /> : <CompassMode k={k} name={name} onMap={showMap} />;
 }
 
-function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
+function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompass: () => void }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
@@ -345,11 +357,22 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
                   <Grabber />
                 </Press>
                 <Animated.View key={target.key} entering={SWAP_IN}>
-                  <Press onPress={() => openTarget(router, target, 'map')} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
+                  <Press onPress={() => openTarget(router, target, 'map', name)} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
                     <View style={[s.fill, { gap: 3 }]}>
-                      <T s={18} w={600} c={C.black} style={{ letterSpacing: -0.2 }} numberOfLines={1}>
-                        {target.name}
-                      </T>
+                      <View style={[s.row, { gap: 6 }]}>
+                        {name.secret ? <Icon name="eye-off" size={17} color={C.black} /> : null}
+                        <T s={18} w={600} c={C.black} style={{ letterSpacing: -0.2, flexShrink: 1 }} numberOfLines={1}>
+                          {name.secret ? t.nv.common.secretPub : target.name}
+                        </T>
+                      </View>
+                      {name.secret || name.secondsLeft ? (
+                        <View style={[s.row, { gap: 5 }]}>
+                          {name.secondsLeft ? <Icon name="eye-off" size={13} color={C.onYellowMuted} /> : null}
+                          <T s={13} w={600} c={name.secret ? C.black : C.onYellowMuted} numberOfLines={1} style={s.fill}>
+                            {name.secondsLeft ? t.nv.common.secretHidesIn(name.secondsLeft) : t.nv.common.secretReveal}
+                          </T>
+                        </View>
+                      ) : (
                       <View style={[s.row, { gap: 5 }]}>
                         {hours ? (
                           <>
@@ -361,6 +384,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
                         ) : null}
                         <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>{`${hours ? '· ' : ''}${subLine(target, st.pinMode, k)}`}</T>
                       </View>
+                      )}
                     </View>
                     {target.distance != null ? (
                       <View style={[s.row, { alignItems: 'flex-end', gap: 3 }]}>
@@ -375,7 +399,7 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
                   </Press>
                 </Animated.View>
                 <View style={[s.row, { gap: 10 }]}>
-                  <Button label={L().guideMe} icon="navigation" kind="onYellow" height={46} flex onPress={() => goThere(target)} />
+                  <Button label={L().guideMe} icon="navigation" kind="onYellow" height={46} flex onPress={() => goThere(target, name.secret)} />
                   {target.kind !== 'tour' ? (
                     <Button label={L().another} icon="shuffle" kind="onYellowGhost" height={46} style={{ paddingHorizontal: 16 }} onPress={k.nextTarget} />
                   ) : null}
@@ -396,8 +420,9 @@ function MapMode({ k, onCompass }: { k: Kompas; onCompass: () => void }) {
                       </T>
                     </>
                   ) : null}
+                  {name.secret ? <Icon name="eye-off" size={15} color={C.yellow} /> : null}
                   <T s={15} w={700} numberOfLines={1}>
-                    {target.name}
+                    {name.secret ? t.nv.common.secretPub : target.name}
                   </T>
                   <Icon name="chevron-up" size={16} color={C.text2} />
                 </Glass>
@@ -446,7 +471,7 @@ function emptyCopy(state: Exclude<Kompas['state'], 'normal'>): { title: string; 
   }
 }
 
-function CompassMode({ k, onMap }: { k: Kompas; onMap: () => void }) {
+function CompassMode({ k, name, onMap }: { k: Kompas; name: NameReveal; onMap: () => void }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
@@ -493,11 +518,26 @@ function CompassMode({ k, onMap }: { k: Kompas; onMap: () => void }) {
               heading={k.compass.heading}
             />
             <View style={{ alignItems: 'center', gap: 6 }}>
-              <Press onPress={() => openTarget(router, target, 'compass')} style={[s.row, { gap: 6 }]}>
-                <T s={22} w={700} numberOfLines={1} style={{ flexShrink: 1 }}>
-                  {target.name}
-                </T>
-                <Icon name="chevron-right" size={18} color={C.muted} />
+              <Press onPress={() => openTarget(router, target, 'compass', name)} style={{ alignItems: 'center', gap: 6 }}>
+                <View style={[s.row, { gap: 8 }]}>
+                  {name.secret ? <Icon name="eye-off" size={20} color={C.yellow} /> : null}
+                  <T s={22} w={700} numberOfLines={1} style={{ flexShrink: 1 }}>
+                    {name.secret ? t.nv.common.secretPub : target.name}
+                  </T>
+                  {name.secret ? null : <Icon name="chevron-right" size={18} color={C.muted} />}
+                </View>
+                {name.secret ? (
+                  <T s={15} w={600} c={C.yellow}>
+                    {t.nv.common.secretReveal}
+                  </T>
+                ) : name.secondsLeft ? (
+                  <View style={[s.row, { gap: 6 }]}>
+                    <Icon name="eye-off" size={15} color={C.muted} />
+                    <T s={15} c={C.muted}>
+                      {t.nv.common.secretHidesIn(name.secondsLeft)}
+                    </T>
+                  </View>
+                ) : null}
               </Press>
               <View style={[s.row, { gap: 6 }]}>
                 {hours ? (
@@ -543,7 +583,7 @@ function CompassMode({ k, onMap }: { k: Kompas; onMap: () => void }) {
       </View>
       {state === 'normal' && target ? (
         <View style={{ gap: 10 }}>
-          <Button label={L().guideMe} icon="navigation" onPress={() => goThere(target)} />
+          <Button label={L().guideMe} icon="navigation" onPress={() => goThere(target, name.secret)} />
           <View style={[s.row, { gap: 10 }]}>
             {tour ? (
               <Button label={L().skip} icon="skip-forward" kind="raised" flex onPress={() => target.stopId && void useToursStore.getState().markStop(target.stopId, 'skipped')} />

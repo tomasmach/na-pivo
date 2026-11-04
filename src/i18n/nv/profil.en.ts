@@ -54,6 +54,7 @@ export const profilEn: Strings['nv']['profil'] = {
   settings: {
     title: 'Settings',
     accountSub: (method: string) => `Signed in with ${method} · account and privacy`,
+    privacySection: 'Privacy',
     vycep: 'Taproom',
     publishNights: 'Post my nights',
     kompas: 'Compass',
@@ -67,7 +68,7 @@ export const profilEn: Strings['nv']['profil'] = {
     homeSet: 'Set',
     homeUnset: 'Not set',
     hideNames: 'Hide pub names',
-    hideNamesSub: "I won't show them on the lock screen or in notifications",
+    hideNamesSub: "I'll show a name only after you tap it, and keep it out of notifications",
     reminders: 'Reminders',
     nextBeer: 'Remind me of the next beer',
     nextBeerSub: (minutes: number) => `${minutes} minutes after every beer`,

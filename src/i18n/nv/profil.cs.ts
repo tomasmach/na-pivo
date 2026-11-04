@@ -54,6 +54,7 @@ export const profilCs = {
   settings: {
     title: 'Nastavení',
     accountSub: (method: string) => `Přihlášený přes ${method} · účet a soukromí`,
+    privacySection: 'Soukromí',
     vycep: 'Výčep',
     publishNights: 'Vyvěšovat noci',
     kompas: 'Kompas',
@@ -67,7 +68,7 @@ export const profilCs = {
     homeSet: 'Nastavený',
     homeUnset: 'Nenastavený',
     hideNames: 'Schovávat názvy hospod',
-    hideNamesSub: 'Na zamčené obrazovce a v upozorněních je neukážu',
+    hideNamesSub: 'Název ukážu až po ťuknutí a skryju ho i v upozorněních',
     reminders: 'Připomínky',
     nextBeer: 'Připomenout další pivo',
     nextBeerSub: (minutes: number) => `Za ${minutes} minut po každém pivu`,

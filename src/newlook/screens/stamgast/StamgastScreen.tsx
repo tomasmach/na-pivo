@@ -37,6 +37,7 @@ import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, Press, Segmented, T, Tile } from '../../components/ui';
 import { fadeIn, fadeOut, riseIn, sinkOut } from '../../motion';
 import { C, SCREEN_X, s, shadow } from '../../theme';
+import { useHidePubNames } from '../../hiddenPubNames';
 import { toast } from '../../ui/store';
 import { TourRunContent } from '../tour/TourScreens';
 import { useTourSegment } from '../tour/tourSegment';
@@ -240,6 +241,7 @@ function CounterView() {
   const current = useTallyStore((st) => st.current);
   const history = useTallyStore((st) => st.history);
   const priceCurrency = useSettingsStore((st) => st.priceCurrency);
+  const hidePubNames = useHidePubNames();
   const profile = useSettingsStore((st) => st.bodyProfile);
   const { estimate } = useAlcoholEstimate();
   const now = useNowTick();
@@ -323,7 +325,10 @@ function CounterView() {
   };
 
   const promile = profile ? (estimate ? copy.estimateValue(formatPromile(estimate.now)) : copy.estimateValue(formatPromile(0))) : copy.estimateSetup;
-  const placeName = atFriend && friendHome
+  const secretPlace = hidePubNames && !atFriend && place?.kind === 'pub';
+  const placeName = secretPlace
+    ? t.nv.common.secretPub
+    : atFriend && friendHome
     ? t.nv.parta.homePlace(friendHome.hostName)
     : place?.kind === 'outside'
       ? t.counter.outsideLabel(place.context)
@@ -347,7 +352,7 @@ function CounterView() {
             onPress={openPlace}
             style={[s.row, { height: 34, borderRadius: 17, paddingHorizontal: 14, gap: 6, backgroundColor: C.tint }]}
           >
-            <Icon name={atFriend || place?.kind === 'outside' ? 'house' : 'map-pin'} size={15} color={C.yellow} />
+            <Icon name={secretPlace ? 'eye-off' : atFriend || place?.kind === 'outside' ? 'house' : 'map-pin'} size={15} color={C.yellow} />
             <T s={14} w={700} numberOfLines={1} style={{ maxWidth: 260 }}>
               {placeName}
             </T>
