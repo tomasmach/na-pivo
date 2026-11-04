@@ -178,6 +178,9 @@ export function tabBarBottom(insetBottom: number) {
  * A scrolling screen on the app ground. `tab` leaves room for the floating
  * tab bar; `footer` pins content (usually the main action) above it.
  */
+// Roughly one label and input of the next field, so moving through a form never ends on a cut-off field.
+const NEXT_FIELD_REVEAL = 96;
+
 export function Screen({
   children,
   tab,
@@ -227,6 +230,7 @@ export function Screen({
         <KeyboardAwareScrollView
           {...scrollProps}
           keyboardAvoidedExternally={!!footer}
+          revealBelow={NEXT_FIELD_REVEAL}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: bottomBase + footerSpace + 24 }}
           keyboardShouldPersistTaps="handled"

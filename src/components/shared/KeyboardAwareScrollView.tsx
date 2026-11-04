@@ -23,6 +23,8 @@ interface KeyboardAwareScrollViewProps extends ScrollViewProps {
    * keyboard inset is injected.
    */
   keyboardAvoidedExternally?: boolean;
+  /** Also keep this much below the focused field in view, so the next field is not cut off. */
+  revealBelow?: number;
 }
 
 function focusedTextInputHandle(): number | null {
@@ -45,6 +47,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
     automaticallyAdjustKeyboardInsets,
     contentContainerStyle,
     keyboardAvoidedExternally = false,
+    revealBelow = 0,
     onContentSizeChange,
     onFocus,
     onLayout,
@@ -112,7 +115,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
             );
             // The new architecture measures against the scroll content, not the visible part.
             const fieldY = contentY - scrollYRef.current;
-            const fieldBottom = fieldY + fieldHeight;
+            const fieldBottom = fieldY + fieldHeight + revealBelow;
             let deltaY = 0;
             if (fieldY < Spacing.sm && !onlyBelow) {
               deltaY = fieldY - Spacing.sm;
@@ -157,7 +160,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
         scrollIntoView();
       }, 300);
     },
-    [cancelScheduledScroll, keyboardAvoidedExternally, onFocus],
+    [cancelScheduledScroll, keyboardAvoidedExternally, onFocus, revealBelow],
   );
 
   // A parent that lifts this view shrinks the viewport after focus, and a

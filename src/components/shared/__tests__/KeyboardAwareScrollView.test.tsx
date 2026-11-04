@@ -201,6 +201,34 @@ describe('KeyboardAwareScrollView', () => {
     expect(mockedScrollTo).toHaveBeenCalledWith({ y: 20, animated: true });
   });
 
+  it('keeps room below the focused field so the next field is not cut off', async () => {
+    mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
+    mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
+      onSuccess(0, 350, 100, 50);
+    });
+    const screen = await render(
+      <KeyboardAwareScrollView testID="scroll-view" keyboardAvoidedExternally revealBelow={60}>
+        <TextInput testID="field" />
+      </KeyboardAwareScrollView>,
+    );
+
+    const scrollView = screen.getByTestId('scroll-view');
+    await fireEvent(scrollView, 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+    });
+    await fireEvent(scrollView, 'contentSizeChange', 300, 600);
+    await fireEvent(screen.getByTestId('field'), 'focus', {
+      target: 22,
+      nativeEvent: { target: 22 },
+    });
+    await act(() => {
+      jest.advanceTimersByTime(16);
+    });
+
+    // Same field as above, plus 60 more so the field under it stays visible.
+    expect(mockedScrollTo).toHaveBeenCalledWith({ y: 80, animated: true });
+  });
+
   it('reads the native tag when the focus target is an element', async () => {
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
     mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
