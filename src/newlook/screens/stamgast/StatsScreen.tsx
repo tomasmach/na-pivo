@@ -16,6 +16,7 @@ import { PageTitle } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, Card, D, Press, Row, SectionTitle, Spinner, T, Tile } from '../../components/ui';
 import { C, s } from '../../theme';
+import { useHidePubNames } from '../../hiddenPubNames';
 import { useKompasState } from '../kompas/state';
 import { useCounterSegment } from './counterSegment';
 import { dateOfDay } from './eveningData';
@@ -158,12 +159,13 @@ function RecordRow({ icon, title, sub, value, last }: { icon: IconName; title: s
 
 function Records({ stats }: { stats: StatsView }) {
   const { mostBeers, fastest, longest } = stats;
+  const hideNames = useHidePubNames();
   const rows = [
     mostBeers && {
       icon: 'trophy' as const,
       title: L().statsMostBeers,
       sub: joined(
-        mostBeers.pubNames.length === 1 ? mostBeers.pubNames[0] : mostBeers.pubNames.length > 1 ? L().statsStops(mostBeers.pubNames.length) : null,
+        mostBeers.pubNames.length === 1 ? (hideNames ? t.nv.common.secretPub : mostBeers.pubNames[0]) : mostBeers.pubNames.length > 1 ? L().statsStops(mostBeers.pubNames.length) : null,
         mostBeers.day ? nightDayLabel(mostBeers.day) : null,
       ),
       value: L().statsBeerCount(mostBeers.value),
@@ -278,6 +280,7 @@ function Years({ years }: { years: StatsView['years'] }) {
 
 function TopPubs({ stats }: { stats: StatsView }) {
   const router = useRouter();
+  const hideNames = useHidePubNames();
   if (stats.topPubs.length === 0) return null;
   const openAll = () => {
     useKompasState.getState().set({ mapView: 'stopy' });
@@ -310,7 +313,7 @@ function TopPubs({ stats }: { stats: StatsView }) {
                 {String(i + 1)}
               </D>
             }
-            title={pub.name}
+            title={hideNames ? t.nv.common.secretPub : pub.name}
             sub={pub.nights != null ? L().evenings(pub.nights) : undefined}
             trailing={
               <T s={15} w={700}>
