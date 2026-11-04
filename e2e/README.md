@@ -61,7 +61,7 @@ Backend se spouští zvláštním settings modulem mimo produkční Docker conte
 - `/capability/discover` najde jedinou veřejnou tour podle přesného fixture názvu přes skutečný anonymní katalog. Vrací jen identitu a obsah; token uloží pod aliasem v paměti kontroleru. Používá se pro kontrolu publikace a odvolání, nikoli jako důkaz nativního Copy.
 - `/capability/status` čte skutečný veřejný endpoint odkazu bez přihlášení. Vrací jen status a případně porovnání aliasů; nevytváří observer session a nevrací token odkazu.
 - `output.local.request('/home-point')` čte pouze domovský bod z uložených nastavení vlastní appky. Vrací `present` a `matchesFixture`, nikoli souřadnice; druhý příznak porovná bod s pevnou simulovanou polohou. Ověř jej po uložení a restartu, po zrušení rozpracované změny i po smazání.
-- Sdílené helpery, config, adaptéry a produkční `testID` mění hlavní agent. Každý test musí chytat pojmenovanou regresi z COVERAGE.md a projít třikrát.
+- Sdílené helpery, config, adaptéry a produkční `testID` mění hlavní agent. Každý test musí chytat pojmenovanou regresi z COVERAGE.md a projít jednou. Tři průchody za sebou (`--stability`) patří k releasu nebo na výslovný pokyn.
 
 Na iOS jsou oprávnění výslovně `all: deny`, poloha `inuse` a fotky povolené, kamera a notifikace zakázané. Pro scénář zamítnutí použij konkrétní override v `launchApp`; při návratu nastav celý očekávaný stav. Případné nativní potvrzení odmítni. Lokální fake navíc brání registraci skutečného push tokenu.
 
