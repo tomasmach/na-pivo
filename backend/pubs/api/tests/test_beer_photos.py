@@ -457,22 +457,21 @@ def test_worker_retries_failed_beer_photo_storage_cleanup(client, monkeypatch):
     client_id = created.json()["photo"]["client_id"]
     stored = Path(BeerPhoto.objects.get().image.path)
     storage = BeerPhoto._meta.get_field("image").storage
-    original_delete = storage.delete
 
-    monkeypatch.setattr(
-        storage,
-        "delete",
-        lambda _name: (_ for _ in ()).throw(OSError("media volume unavailable")),
-    )
-    failed = client.delete(
-        f"/v1/beer-photos/by-client/{client_id}",
-        **_auth(token),
-    )
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            storage,
+            "delete",
+            lambda _name: (_ for _ in ()).throw(OSError("media volume unavailable")),
+        )
+        failed = client.delete(
+            f"/v1/beer-photos/by-client/{client_id}",
+            **_auth(token),
+        )
     assert failed.status_code == status.HTTP_503_SERVICE_UNAVAILABLE, failed.content
     assert stored.exists()
     assert BeerPhotoFileDeletion.objects.count() == 1
 
-    monkeypatch.setattr(storage, "delete", original_delete)
     BeerPhotoFileDeletion.objects.update(
         last_attempted_at=timezone.now() - timedelta(minutes=16)
     )
@@ -554,15 +553,14 @@ def test_late_upload_cleanup_remains_durable_when_storage_is_unavailable(
         return original_filter(*args, **kwargs)
 
     storage = BeerPhoto._meta.get_field("image").storage
-    original_delete = storage.delete
     monkeypatch.setattr(BeerPhotoDeletionTombstone.objects, "filter", tombstone_filter)
-    monkeypatch.setattr(
-        storage,
-        "delete",
-        lambda _name: (_ for _ in ()).throw(OSError("media volume unavailable")),
-    )
-
-    response = _post_photo(client, token, client_id=client_id)
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            storage,
+            "delete",
+            lambda _name: (_ for _ in ()).throw(OSError("media volume unavailable")),
+        )
+        response = _post_photo(client, token, client_id=client_id)
 
     assert response.status_code == status.HTTP_410_GONE, response.content
     assert tombstone_checks == 2
@@ -571,7 +569,6 @@ def test_late_upload_cleanup_remains_durable_when_storage_is_unavailable(
     stored = Path(settings.MEDIA_ROOT) / cleanup.image_name
     assert stored.exists()
 
-    monkeypatch.setattr(storage, "delete", original_delete)
     BeerPhotoFileDeletion.objects.filter(pk=cleanup.pk).update(
         last_attempted_at=timezone.now() - timedelta(minutes=16)
     )
