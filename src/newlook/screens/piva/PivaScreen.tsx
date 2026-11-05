@@ -5,7 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomFade, TabHeader, TopFade, useTabBarSpace } from '../../components/chrome';
+import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { D, T, Card, Chip, IconButton, Press, Row, Segmented, Tile } from '../../components/ui';
@@ -161,10 +161,16 @@ export function PivaScreen() {
   const page = ranking.state.status === 'ready' ? ranking.state.data : null;
   const early = page?.early === true && tab === 'best';
   const unrated = collection.state.status === 'ready' ? collection.state.data.unrated : [];
+  const onScroll = useTabHeaderScroll('piva');
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: tabSpace + 30 }}>
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: tabSpace + 30 }}
+      >
         <TabHeader title={p.title}>
           <IconButton icon="search" iconSize={20} onPress={() => router.push('/nv/hledat-pivo')} label={p.searchA11y} />
         </TabHeader>
@@ -273,7 +279,7 @@ export function PivaScreen() {
             <Collection data={collection.state.data} watchedCount={watchedCount} />
           </Animated.View>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
       <TopFade />
       <BottomFade height={tabSpace + 40} tabBar />
     </View>

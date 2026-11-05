@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Image, ScrollView, View } from 'react-native';
+import { Image, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,7 +25,7 @@ import { intlLocale, t } from '@/i18n';
 import { useToursStore } from '@/stores/toursStore';
 import { useVycepStore } from '@/stores/vycepStore';
 
-import { BottomFade, TabHeader, TopFade, useTabBarSpace } from '../../components/chrome';
+import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { StatusCard } from '../../components/StatusCard';
 import { Icon, type IconName } from '../../components/Icon';
 import { D, T, Button, Dot, Press, Segmented } from '../../components/ui';
@@ -343,6 +343,7 @@ export function VycepScreen() {
   const feed = useFeed(feedScope);
   const summary = useSummary(feedScope);
   const { contestDays, rank, plan } = useShortcutData();
+  const onScroll = useTabHeaderScroll('vycep');
 
   useEffect(() => {
     void syncSharingPrefs();
@@ -359,7 +360,9 @@ export function VycepScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <FlatList
+      <Animated.FlatList
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         data={feed.nights ?? NO_NIGHTS}
         keyExtractor={nightKey}
         renderItem={({ item, index }) => {

@@ -32,7 +32,7 @@ import { runGlance } from '@/tours/glance';
 import { formatDepartureTime, idosConnectionUrl, isUpcomingDeparture } from '@/transit/homeTransit';
 import { formatPrice } from '@/utils/currency';
 
-import { BottomFade, LevelAvatar, TopFade, useTabBarSpace } from '../../components/chrome';
+import { AvatarSlot, BottomFade, TopFade, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, Press, Segmented, T, Tile } from '../../components/ui';
 import { fadeIn, fadeOut, riseIn, sinkOut } from '../../motion';
@@ -129,7 +129,7 @@ export function StamgastScreen() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={[s.row, { paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 12, zIndex: 2 }]} onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
         <Segmented style={s.fill} options={options} value={mode} onChange={changeMode} />
-        <LevelAvatar />
+        <AvatarSlot />
       </View>
       {mode === 'pocitat' ? (
         // The count, a new row and the nudge animate when they change, not when the counter opens.

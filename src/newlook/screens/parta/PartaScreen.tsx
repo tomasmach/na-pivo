@@ -19,7 +19,7 @@ import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 
-import { BottomFade, TabHeader, TopFade, useTabBarSpace } from '../../components/chrome';
+import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { StatusCard } from '../../components/StatusCard';
 import { Ticket } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
@@ -220,6 +220,7 @@ export function PartaScreen() {
   const myProfile = useAccountStore((st) => st.profile);
   const [page, setPage] = useState(0);
   const ticketW = Math.min(300, width - SCREEN_X * 2 - 50);
+  const onScroll = useTabHeaderScroll('parta');
 
   useFocusEffect(
     useCallback(() => {
@@ -309,7 +310,12 @@ export function PartaScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}>
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}
+      >
         <TabHeader title={t.nv.parta.title}>
           <Button label={t.nv.parta.add} icon="user-plus" kind="raised" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/sprava-party')} />
         </TabHeader>
@@ -479,7 +485,7 @@ export function PartaScreen() {
             </Card>
           </Animated.View>
         ) : null}
-      </ScrollView>
+      </Animated.ScrollView>
       <TopFade />
       <BottomFade height={tabSpace + 40} tabBar />
     </View>

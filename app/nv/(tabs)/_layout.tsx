@@ -3,6 +3,7 @@ import { Easing } from 'react-native';
 import { Tabs } from 'expo-router';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { TabAvatar } from '@/newlook/components/chrome';
 import { TabBar } from '@/newlook/components/TabBar';
 import { DURATION } from '@/newlook/motion';
 import { C } from '@/newlook/theme';
@@ -21,7 +22,12 @@ export default function NewLookTabs() {
   const shift = reducedMotion ? 0 : SHIFT;
   return (
     <Tabs
-      tabBar={(props) => <TabBar {...props} />}
+      tabBar={(props) => (
+        <>
+          <TabBar {...props} />
+          <TabAvatar tab={props.state.routes[props.state.index]?.name ?? ''} />
+        </>
+      )}
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: C.bg },
