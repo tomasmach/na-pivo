@@ -217,7 +217,7 @@ export function DiaryView({ onToday }: { onToday?: () => void }) {
           <Year nights={nights} today={today} />
         )}
       </ScrollView>
-      <BottomFade height={tabSpace + 60} />
+      <BottomFade height={tabSpace + 60} tabBar />
     </View>
   );
 }
