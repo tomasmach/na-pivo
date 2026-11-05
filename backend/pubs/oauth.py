@@ -167,19 +167,22 @@ def verify_apple_identity_token(token: str) -> dict:
     return claims
 
 
-def exchange_apple_auth_code(code: str) -> dict:
+def exchange_apple_auth_code(code: str, *, client_id: str = "", redirect_uri: str = "") -> dict:
     """Exchange an Apple authorization code at https://appleid.apple.com/auth/token.
 
     Returns the JSON dict (contains refresh_token). Used at first sign-in so we
-    can later revoke. Raises OAuthError on failure.
+    can later revoke. A code from the web is bound to the Services ID and its
+    return address, so the web passes both. Raises OAuthError on failure.
     """
-    client_id = _apple_client_id()
+    client_id = _apple_client_id(client_id)
     data = {
         "client_id": client_id,
-        "client_secret": _apple_client_secret(),
+        "client_secret": _apple_client_secret(client_id),
         "code": code,
         "grant_type": "authorization_code",
     }
+    if redirect_uri:
+        data["redirect_uri"] = redirect_uri
 
     try:
         response = requests.post(
@@ -206,16 +209,16 @@ def exchange_apple_auth_code(code: str) -> dict:
         raise OAuthError("Apple authorization code exchange returned invalid JSON.") from exc
 
 
-def revoke_apple_token(token: str, token_type_hint: str = "refresh_token") -> None:
+def revoke_apple_token(token: str, token_type_hint: str = "refresh_token", *, client_id: str = "") -> None:
     """Revoke an Apple token at account deletion.
 
-    POSTs to https://appleid.apple.com/auth/revoke. Raises OAuthError on
-    non-200.
+    POSTs to https://appleid.apple.com/auth/revoke with the client_id the token
+    was issued to. Raises OAuthError on non-200.
     """
-    client_id = _apple_client_id()
+    client_id = _apple_client_id(client_id)
     data = {
         "client_id": client_id,
-        "client_secret": _apple_client_secret(),
+        "client_secret": _apple_client_secret(client_id),
         "token": token,
         "token_type_hint": token_type_hint,
     }
@@ -252,13 +255,13 @@ def _apple_response_error_code(response: requests.Response) -> str:
     return "unknown"
 
 
-def _apple_client_id() -> str:
+def _apple_client_id(client_id: str = "") -> str:
     """Return the Apple client_id used for the client-secret JWT and REST calls.
 
     Defaults to APPLE_CLIENT_ID (the app's bundle id). Raises OAuthError if it
     is not configured.
     """
-    client_id = getattr(settings, "APPLE_CLIENT_ID", None)
+    client_id = client_id or getattr(settings, "APPLE_CLIENT_ID", None)
     if not client_id:
         raise OAuthError("Apple client_id is not configured.")
     return str(client_id)
@@ -273,7 +276,7 @@ def _normalize_private_key(raw: str) -> str:
     return raw.replace("\\n", "\n")
 
 
-def _apple_client_secret() -> str:
+def _apple_client_secret(client_id: str) -> str:
     """Build a short-lived ES256 client-secret JWT signed with APPLE_PRIVATE_KEY.
 
     The JWT proves to Apple that we control the registered key. Raises OAuthError
@@ -282,7 +285,6 @@ def _apple_client_secret() -> str:
     team_id = getattr(settings, "APPLE_TEAM_ID", None)
     key_id = getattr(settings, "APPLE_KEY_ID", None)
     private_key = getattr(settings, "APPLE_PRIVATE_KEY", None)
-    client_id = _apple_client_id()
 
     if not team_id or not key_id or not private_key:
         raise OAuthError("Apple client-secret settings are not configured.")

@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 
 import pubs.emailer as emailer
 import pubs.oauth as oauth
+from pubs import accounts
 from pubs.api.authentication import AccountTokenAuthentication, WebSessionAuthentication
 from pubs.models import Account, AccountUsageStats, AuthIdentity, AuthToken, EmailCredential
 from pubs.web.session import SESSION_KEY
@@ -261,7 +262,14 @@ def fake_providers(monkeypatch, settings):
 
     monkeypatch.setattr(oauth, "verify_google_id_token", claims)
     monkeypatch.setattr(oauth, "verify_apple_identity_token", claims)
-    monkeypatch.setattr(oauth, "exchange_apple_auth_code", lambda code: {"refresh_token": f"rt-{code}"})
+    exchanges = []
+
+    def exchange(code: str, **kwargs) -> dict:
+        exchanges.append(kwargs)
+        return {"refresh_token": f"rt-{code}"}
+
+    monkeypatch.setattr(oauth, "exchange_apple_auth_code", exchange)
+    return exchanges
 
 
 def _start(client: Client, provider: str, next_url: str = "") -> dict:
@@ -307,11 +315,51 @@ def test_social_sign_in_rejects_a_foreign_state_or_nonce(fake_providers):
     assert replay.status_code == 400
 
 
-def test_apple_sign_in_is_not_offered_on_the_web(client, settings):
-    settings.APPLE_SERVICES_ID = "cz.napivo.web"
+def _apple_sign_in(client: Client) -> object:
+    pending = _start(client, "apple")
+    return client.post("/prihlaseni/apple", {
+        "state": pending["state"],
+        "id_token": f"apple:a-sub:{EMAIL}:{pending['nonce']}",
+        "code": "abc",
+        "user": '{"name": {"firstName": "Tomáš", "lastName": "Mach"}}',
+    })
 
-    assert "Pokračovat přes Apple" not in client.get("/prihlaseni").content.decode()
-    assert client.get("/prihlaseni/apple").status_code == 404
+
+def test_apple_sign_in_swaps_the_code_for_the_web_services_id(fake_providers):
+    assert "Pokračovat přes Apple" in Client().get("/prihlaseni").content.decode()
+    done = _apple_sign_in(Client())
+    assert done.status_code == 302 and done["Location"] == "/denik"
+    assert fake_providers == [
+        {"client_id": "cz.napivo.web", "redirect_uri": "https://na-pivo.cz/prihlaseni/apple/navrat"}
+    ]
+    identity = AuthIdentity.objects.get(provider=AuthIdentity.Provider.APPLE, subject="a-sub")
+    assert (identity.apple_refresh_token, identity.apple_client_id) == ("rt-abc", "cz.napivo.web")
+    assert identity.account.display_name == "Tomáš Mach"
+
+
+def test_web_apple_token_is_revoked_with_the_client_it_was_issued_to(fake_providers, monkeypatch):
+    revoked = []
+    monkeypatch.setattr(oauth, "revoke_apple_token", lambda token, **kwargs: revoked.append((token, kwargs)))
+    _apple_sign_in(Client())
+    identity = AuthIdentity.objects.get(subject="a-sub")
+
+    accounts.schedule_deletion(identity.account)
+
+    assert revoked == [("rt-abc", {"client_id": "cz.napivo.web"})]
+
+
+def test_app_sign_in_after_the_web_switches_revoke_back_to_the_app(fake_providers):
+    _apple_sign_in(Client())
+    response = APIClient().post(
+        "/v1/auth/apple",
+        {"identity_token": f"apple:a-sub:{EMAIL}:n", "authorization_code": "app"},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    identity = AuthIdentity.objects.get(subject="a-sub")
+    assert (identity.apple_refresh_token, identity.apple_client_id) == ("rt-app", "")
+    assert fake_providers[-1] == {"client_id": "", "redirect_uri": ""}
+
 
 def test_panel_level_counts_mapper_and_pivar_xp_like_the_app():
     client = Client()

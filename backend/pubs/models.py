@@ -2623,6 +2623,13 @@ class AuthIdentity(models.Model):
         help_text="Apple refresh token, stored so the token can be revoked at "
         "account deletion (Apple requires revocation). Empty for Google.",
     )
+    apple_client_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Apple client_id the refresh token was issued to; revoke must use the "
+        "same one. Empty means APPLE_CLIENT_ID (the app).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

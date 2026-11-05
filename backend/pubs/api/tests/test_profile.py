@@ -1269,7 +1269,7 @@ def fake_oauth_with_picture(monkeypatch):
         _, sub, email = token.split(":")
         return {"sub": sub, "email": email, "email_verified": True}
 
-    def fake_exchange(code: str) -> dict:
+    def fake_exchange(code: str, **_kwargs) -> dict:
         return {"refresh_token": "rt_test"}
 
     monkeypatch.setattr(oauth, "verify_google_id_token", fake_google)
