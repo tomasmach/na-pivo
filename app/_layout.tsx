@@ -1,4 +1,4 @@
-import { Stack, useRouter, usePathname, type Href } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider, useRouter, usePathname, type Href } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { hideAsync, preventAutoHideAsync } from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -98,10 +98,13 @@ import {
 } from '@/liveActivity/liveBeerActivity';
 import { initializeHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransitSync';
-import { FontFiles as NewLookFontFiles } from '@/newlook/theme';
+import { C as NewLookColors, FontFiles as NewLookFontFiles } from '@/newlook/theme';
 import { hydratePubsSnapshot } from '@/data/pubs';
 import { autopublishClosedNight } from '@/data/nightAutopublish';
 import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
+
+// The native stack paints its container with the theme background, and a fast back swipe overshoots onto it.
+const NAV_THEME = { ...DarkTheme, colors: { ...DarkTheme.colors, background: NewLookColors.bg } };
 
 /** Every route outside app/nv falls back to its start, so a deep link into /nv survives a cold start. */
 function NewLookGate() {
@@ -509,25 +512,27 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.stout }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: Colors.stout },
-            animation: 'fade',
-          }}
-        >
-          <Stack.Screen name="nv" options={{ animation: 'none', gestureEnabled: false }} />
-        </Stack>
-        <OnboardingGate />
-        <NewLookGate />
-        <ProductTelemetryTracker
-          enabled={
-            telemetryReady &&
-            onboardingDecided &&
-            !(onboardingDecision === 'show' && pathname !== '/nv/onboarding')
-          }
-        />
+        <ThemeProvider value={NAV_THEME}>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: Colors.stout },
+              animation: 'fade',
+            }}
+          >
+            <Stack.Screen name="nv" options={{ animation: 'none', gestureEnabled: false }} />
+          </Stack>
+          <OnboardingGate />
+          <NewLookGate />
+          <ProductTelemetryTracker
+            enabled={
+              telemetryReady &&
+              onboardingDecided &&
+              !(onboardingDecision === 'show' && pathname !== '/nv/onboarding')
+            }
+          />
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

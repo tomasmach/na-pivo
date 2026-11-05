@@ -377,7 +377,7 @@ export function VycepScreen() {
         ListHeaderComponentStyle={{ gap: 16 }}
         ListHeaderComponent={
           <>
-            <TabHeader title={t.nv.vycep.title}>
+            <TabHeader tab="vycep" title={t.nv.vycep.title}>
               <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
             </TabHeader>
             <Segmented
