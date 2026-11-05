@@ -167,7 +167,7 @@ export const profilCs = {
     login: 'Přihlásit se',
     register: 'Registrovat',
     apple: 'Pokračovat přes Apple',
-    google: 'G  Pokračovat přes Google',
+    google: 'Pokračovat přes Google',
     orEmail: 'nebo e-mailem',
     email: 'E-mail',
     password: 'Heslo',
