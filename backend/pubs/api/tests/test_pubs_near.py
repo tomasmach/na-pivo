@@ -26,6 +26,7 @@ from pubs.models import (
     PubCommunityData,
     PubDirectory,
     PubExternalBeerMenu,
+    PubGooglePlace,
     PubHours,
     PubNameCorrection,
     PubPriceIndex,
@@ -161,6 +162,133 @@ def test_local_first_serves_directory_without_provider_or_search_cache(client, s
     assert [item["name"] for item in body["items"]] == ["Hospoda Z Adresáře"]
     assert body["fetched_at"]
     assert not PubSearchCache.objects.exists()
+
+
+@pytest.mark.django_db
+def test_directory_response_keeps_exact_items_with_every_enrichment(client):
+    """Pin the full wire items while the nearby read path is optimised."""
+    directory = _directory_pub("Hospoda U Měření", lat=50.0815, lng=14.4185)
+    PubHours.objects.create(
+        cache_key=directory.cache_key,
+        name=directory.name,
+        lat=directory.lat,
+        lng=directory.lng,
+        opening_hours_raw="24/7",
+        status=PubHours.Status.OK,
+        rating_value=4.4,
+        rating_count=120,
+        rating_label="Velmi dobré",
+        has_garden=True,
+        venue_kind=PubHours.VenueKind.PUB,
+        venue_categories=["Hospody a hostince"],
+        venue_tags=["se-zahradkou"],
+    )
+    PubGooglePlace.objects.create(
+        cache_key=directory.cache_key,
+        name_key=directory.name_key,
+        google_place_id="ChIJ-measured",
+        matched_at=dj_tz.now(),
+    )
+    observed_at = dj_tz.now().replace(microsecond=0) - timedelta(days=3)
+    PubPriceIndex.objects.create(
+        cache_key=directory.cache_key,
+        name=directory.name,
+        lat=directory.lat,
+        lng=directory.lng,
+        price_czk=59,
+        volume_ml=None,
+        observed_at=observed_at,
+        source=PubPriceIndex.Source.DRINK,
+    )
+    _directory_pub("Bar Vedle", lat=50.0816, lng=14.4190, venue_kind="maybe")
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444451",
+        cache_key=geohash8(50.0816, 14.4190),
+        external_id="mapy:50.08160,14.41900",
+        original_name="Bar Vedle",
+        suggested_name="Bar Vedle Opravený",
+        lat=50.0816,
+        lng=14.4190,
+        active=True,
+    )
+    PubCommunityData.objects.create(
+        cache_key=geohash8(50.0820, 14.4170),
+        name="Komunitní Výčep",
+        lat=50.0820,
+        lng=14.4170,
+        city="Praha",
+        external_id="provider-community-id",
+        beers=[{"name": "Kozel 11°", "price_czk": 49, "volume_ml": 500}],
+        hours_json={day: [] for day in ("mo", "tu", "we", "th", "fr", "sa", "su")},
+        opening_hours_raw="off",
+    )
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    assert resp.status_code == status.HTTP_200_OK
+    country = {"name": "Česko", "type": "regional.country", "isoCode": "CZ"}
+    assert resp.json()["items"] == [
+        {
+            "name": "Hospoda U Měření",
+            "label": "Hospoda",
+            "position": {"lat": 50.0815, "lon": 14.4185},
+            "regionalStructure": [
+                {"name": "Praha", "type": "regional.municipality"},
+                country,
+            ],
+            "googlePlaceId": "ChIJ-measured",
+            "pubDetails": {
+                "opening_hours": "24/7",
+                "isOpenNow": True,
+                "nextChange": None,
+                "status": "ok",
+                "source": "firmy",
+                "rating": 4.4,
+                "ratingCount": 120,
+                "ratingLabel": "Velmi dobré",
+                "hasGarden": True,
+                "venueKind": "pub",
+                "beer_menu_rotates": False,
+                "price": {
+                    "czk": 59,
+                    "volume_ml": 500,
+                    "observed_at": observed_at.isoformat().replace("+00:00", "Z"),
+                    "source": "drink",
+                },
+            },
+        },
+        {
+            "name": "Bar Vedle Opravený",
+            "label": "Restaurace a pohostinství",
+            "position": {"lat": 50.0816, "lon": 14.419},
+            "regionalStructure": [
+                {"name": "Praha", "type": "regional.municipality"},
+                country,
+            ],
+        },
+        {
+            "name": "Komunitní Výčep",
+            "label": "Hospoda",
+            "position": {"lat": 50.082, "lon": 14.417},
+            "source": "community_signal",
+            "id": "provider-community-id",
+            "regionalStructure": [{"name": "Praha", "type": "regional.municipality"}],
+            "location": "Praha",
+            "pubDetails": {
+                "opening_hours": "off",
+                "isOpenNow": False,
+                "nextChange": None,
+                "status": "ok",
+                "source": "community",
+                "rating": None,
+                "ratingCount": None,
+                "ratingLabel": None,
+                "hasGarden": None,
+                "venueKind": "pub",
+                "beer_menu_rotates": False,
+            },
+        },
+    ]
 
 
 @pytest.mark.django_db
