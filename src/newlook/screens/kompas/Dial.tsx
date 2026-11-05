@@ -15,7 +15,7 @@ const FACE_R = 96;
 const NEEDLE_R = FACE_R - 13;
 // The bezel bar starts filling at this distance and is full on arrival.
 const FILL_FROM_M = 1000;
-const BAR_HALF_DEG = 12;
+const BAR_HALF_DEG = 30;
 
 export type LatLng = { latitude: number; longitude: number };
 /** Anything the dial can place: a pub, a tour stop or a friend's table. */
