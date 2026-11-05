@@ -21,6 +21,7 @@ import { formatPrice } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
+import { Input } from '../../components/forms';
 import { Button, Card, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { toast } from '../../ui/store';
@@ -117,15 +118,20 @@ function BeerTile({ o, on, rating, onPress }: { o: Option; on: boolean; rating: 
   );
 }
 
-function AddTile({ sub, onPress }: { sub: string; onPress: () => void }) {
+function AddTile({ label, sub, on, onPress }: { label: string; sub: string; on?: boolean; onPress: () => void }) {
   return (
-    <Press haptic onPress={onPress} style={{ flex: 1, height: 104, padding: 14, borderRadius: 20, justifyContent: 'space-between', borderWidth: 1.5, borderColor: C.lineStrong }}>
+    <Press
+      haptic
+      onPress={onPress}
+      accessibilityState={{ selected: !!on }}
+      style={{ flex: 1, height: 104, padding: 14, borderRadius: 20, justifyContent: 'space-between', borderWidth: 1.5, borderColor: on ? C.white : C.lineStrong }}
+    >
       <View style={[{ width: 26, height: 26, borderRadius: 13, backgroundColor: C.yellow }, s.center]}>
         <Icon name="plus" size={16} color={C.black} />
       </View>
       <View style={{ gap: 2 }}>
         <T s={16} w={700}>
-          {t.nv.stamgast.addBeer}
+          {label}
         </T>
         <T s={12} c={C.muted}>
           {sub}
@@ -176,6 +182,9 @@ export function ZapisSheet() {
   const [homeServing, setHomeServing] = useState<HomeServing>('lahvac');
   const [volume, setVolume] = useState<number | null>(null);
   const [typedPrice, setTypedPrice] = useState('');
+  /** A wine, soft drink or shot typed by hand; null while a tile is picked. */
+  const [custom, setCustom] = useState<string | null>(null);
+  const customName = custom?.trim() ?? '';
 
   const options = useMemo<Option[]>(() => {
     const key = place ? placeKey(place) : '';
@@ -255,7 +264,11 @@ export function ZapisSheet() {
     setSeenAdded(params.added);
     if (params.added) setSel(normalizeBeerName(params.added));
   }
-  const selected = options.find((o) => o.id === sel) ?? options[0] ?? null;
+  const selected = useMemo<Option | null>(() => {
+    if (kind === 'pivo' || custom === null) return options.find((o) => o.id === sel) ?? options[0] ?? null;
+    return customName ? { id: normalizeBeerName(customName), name: customName, meta: '', sizes: [{ name: customName }] } : null;
+  }, [custom, customName, kind, options, sel]);
+  const nameMissing = kind !== 'pivo' && custom !== null && !customName;
 
   const sizeChoices = useMemo(() => {
     if (!selected || home || kind !== 'pivo') return [];
@@ -287,7 +300,9 @@ export function ZapisSheet() {
         : chosenSize?.volumeMl
           ? formatVolume(chosenSize.volumeMl)
           : '';
-  const footerSub = selected
+  const footerSub = nameMissing
+    ? copy.customNameMissing
+    : selected
     ? [selected.name, sizeLabel, typeof price === 'number' && !home ? money(price) : null].filter(Boolean).join(' · ')
     : undefined;
 
@@ -344,6 +359,7 @@ export function ZapisSheet() {
         onChange={(k) => {
           setKind(k);
           setSel(null);
+          setCustom(null);
           setVolume(null);
           setTypedPrice('');
         }}
@@ -354,15 +370,20 @@ export function ZapisSheet() {
           <View key={i} style={[s.row, { gap: 10 }]}>
             {r.map((o) =>
               o === null ? (
-                <AddTile key="__add" sub={home ? copy.addBeerHome : copy.addBeerPub} onPress={() => router.push('/nv/pridat-pivo')} />
+                kind === 'pivo' ? (
+                  <AddTile key="__add" label={copy.addBeer} sub={home ? copy.addBeerHome : copy.addBeerPub} onPress={() => router.push('/nv/pridat-pivo')} />
+                ) : (
+                  <AddTile key="__add" label={copy.customTile[kind]} sub={copy.customTileSub} on={custom !== null} onPress={() => setCustom(custom ?? '')} />
+                )
               ) : (
                 <BeerTile
                   key={o.id}
                   o={o}
-                  on={o.id === selected?.id}
+                  on={custom === null && o.id === selected?.id}
                   rating={kind === 'pivo' ? myRating(ratings, o.name) : null}
                   onPress={() => {
                     setSel(o.id);
+                    setCustom(null);
                     setVolume(null);
                     setTypedPrice('');
                     if (o.servingType === 'can') setHomeServing('plech');
@@ -374,6 +395,17 @@ export function ZapisSheet() {
           </View>
         ))}
       </View>
+      {kind !== 'pivo' && custom !== null ? (
+        <Input
+          testID="drink-custom-name"
+          value={custom}
+          onChangeText={setCustom}
+          placeholder={copy.customPlaceholder[kind]}
+          maxLength={80}
+          autoFocus
+          returnKeyType="done"
+        />
+      ) : null}
       {kind === 'pivo' && (home || sizeChoices.length > 0) ? (
         <View style={{ gap: 12 }}>
           <Kicker>{home ? copy.howHome : copy.howMuch}</Kicker>

@@ -89,6 +89,10 @@ export const stamgastCs = {
   softKofola: 'Kofola',
   shotFernet: 'Fernet',
   shotSlivovice: 'Slivovice',
+  customTile: { vino: 'Jiné víno', nealko: 'Jiné nealko', panak: 'Jiný panák' },
+  customTileSub: 'napiš název',
+  customPlaceholder: { vino: 'Název, např. Ryzlink vlašský', nealko: 'Název, např. Kofola', panak: 'Název, např. Slivovice' },
+  customNameMissing: 'Nejdřív napiš název',
 
   // Add beer
   back: 'Zpět',

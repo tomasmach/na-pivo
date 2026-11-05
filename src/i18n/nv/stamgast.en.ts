@@ -83,6 +83,10 @@ export const stamgastEn: typeof stamgastCs = {
   softKofola: 'Kofola',
   shotFernet: 'Fernet',
   shotSlivovice: 'Slivovice',
+  customTile: { vino: 'Other wine', nealko: 'Other soft drink', panak: 'Other shot' },
+  customTileSub: 'type the name',
+  customPlaceholder: { vino: 'Name, e.g. Welschriesling', nealko: 'Name, e.g. Kofola', panak: 'Name, e.g. Slivovice' },
+  customNameMissing: 'Type a name first',
 
   back: 'Back',
   searchBeer: 'Search beer...',
