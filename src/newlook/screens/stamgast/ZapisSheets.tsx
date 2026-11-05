@@ -39,6 +39,8 @@ const OUTSIDE_CHOICES = ['private', 'outdoors'] as const;
 type HomeServing = 'lahvac' | 'plech' | 'jinak';
 
 const KIND_TYPE: Record<Kind, DrinkType> = { pivo: 'beer', vino: 'wine', nealko: 'soft_drink', panak: 'shot' };
+// Same servings as the default tiles, so a typed drink still counts in the alcohol estimate.
+const CUSTOM_VOLUME_ML: Record<Exclude<Kind, 'pivo'>, number> = { vino: 200, nealko: 500, panak: 40 };
 const HOME_SERVING: Record<HomeServing, { servingType: ServingType; volumeMl?: number }> = {
   lahvac: { servingType: 'bottle', volumeMl: 500 },
   plech: { servingType: 'can', volumeMl: 500 },
@@ -266,7 +268,7 @@ export function ZapisSheet() {
   }
   const selected = useMemo<Option | null>(() => {
     if (kind === 'pivo' || custom === null) return options.find((o) => o.id === sel) ?? options[0] ?? null;
-    return customName ? { id: normalizeBeerName(customName), name: customName, meta: '', sizes: [{ name: customName }] } : null;
+    return customName ? { id: normalizeBeerName(customName), name: customName, meta: '', sizes: [{ name: customName, volumeMl: CUSTOM_VOLUME_ML[kind] }] } : null;
   }, [custom, customName, kind, options, sel]);
   const nameMissing = kind !== 'pivo' && custom !== null && !customName;
 
@@ -336,7 +338,7 @@ export function ZapisSheet() {
     <Sheet
       title={copy.whatDrink}
       top={140}
-      footer={<Button testID="drink-save" height={60} label={copy.logBeer} sub={footerSub} disabled={!selected} haptic={!place} onPress={save} />}
+      footer={<Button testID="drink-save" height={60} label={kind === 'pivo' ? copy.logBeer : copy.logOther[kind]} sub={footerSub} disabled={!selected} haptic={!place} onPress={save} />}
     >
       <Press onPress={() => router.push('/nv/zmenit-misto')} style={[s.row, { gap: 6, marginTop: -8 }]}>
         <Icon name={place?.kind === 'outside' ? OUTSIDE_ICON[place.context] : 'map-pin'} size={16} color={C.yellow} />

@@ -48,6 +48,7 @@ export const stamgastCs = {
   rate: 'Ohodnotit',
   oneMore: 'Ještě jedno',
   logBeer: 'Zapsat pivo',
+  logOther: { vino: 'Zapsat víno', nealko: 'Zapsat nealko', panak: 'Zapsat panáka' },
   draft: 'čepované',
 
   // Place sheet

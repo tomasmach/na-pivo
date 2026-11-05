@@ -101,7 +101,7 @@ it('logs a wine under the name the user typed', async () => {
   await act(async () => saveButton(renderer).props.onPress());
 
   expect(logDrink).toHaveBeenCalledTimes(1);
-  expect(logDrink.mock.calls[0][1]).toEqual({ name: 'Ryzlink vlašský', drinkType: 'wine' });
+  expect(logDrink.mock.calls[0][1]).toEqual({ name: 'Ryzlink vlašský', drinkType: 'wine', volumeMl: 200 });
 });
 
 it('will not log an empty or blank name and says why', async () => {

@@ -44,6 +44,7 @@ export const stamgastEn: typeof stamgastCs = {
   rate: 'Rate',
   oneMore: 'One more',
   logBeer: 'Log beer',
+  logOther: { vino: 'Log wine', nealko: 'Log soft drink', panak: 'Log shot' },
   draft: 'draught',
 
   placeHome: 'At home / cottage',
