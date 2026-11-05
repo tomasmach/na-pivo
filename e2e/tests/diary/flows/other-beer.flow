@@ -20,7 +20,7 @@ appId: ${MAESTRO_APP_ID}
 # A beer moments after the previous one asks before counting it.
 - runFlow:
     when:
-      visible: 'Pivo před chvilkou\.'
+      visible: 'Další pivo .*\?'
     commands:
       - tapOn: { id: app-dialog-primary }
 - assertNotVisible:

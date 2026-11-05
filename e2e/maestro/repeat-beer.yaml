@@ -4,6 +4,6 @@ appId: ${MAESTRO_APP_ID}
 - tapOn: { id: counter-primary }
 - runFlow:
     when:
-      visible: 'Pivo před chvilkou\.'
+      visible: 'Další pivo .*\?'
     commands:
       - tapOn: { id: app-dialog-primary }

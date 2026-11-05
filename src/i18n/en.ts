@@ -684,8 +684,6 @@ export const en: Strings = {
     resumeSub: (summary: string) => `Last time here: ${summary}.`,
     placeUnknown: 'Where are you sitting?',
     undo: 'Undo',
-    rapidInline: (minutes: number) => `Beer ${minutes} min ago.`,
-    rapidInlineJustNow: 'Beer a moment ago.',
     rapidInlineConfirm: 'One more',
     scanDrinksEmpty: "I couldn't read a single drink off that photo.",
     cameraMenuNeedsPub: 'Pick a pub and then tap the camera again',
