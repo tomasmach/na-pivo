@@ -4,15 +4,12 @@ import Animated from 'react-native-reanimated';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { generateUuidV4 } from '@/data/account';
 import {
   respondFriendRequest,
-  shareFriendPubActivity,
   updateFriendSettings,
   type FriendPresence,
   type FriendProfile,
 } from '@/data/friendsClient';
-import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import type { PartaPlan } from '@/data/partaPlansClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
@@ -24,7 +21,7 @@ import { StatusCard } from '../../components/StatusCard';
 import { Ticket } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, Card, IconButton, Person, Press, Row, SectionTitle, Stack, T, Tile, Toggle } from '../../components/ui';
-import { dialog, toast } from '../../ui/store';
+import { toast } from '../../ui/store';
 import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
 import { lastTogetherLabel, personInitial, personName, planTime, planTitle, ticketDay } from './partaModel';
@@ -266,25 +263,6 @@ export function PartaScreen() {
     });
   };
 
-  const callParty = () => {
-    if (!me || me.lat == null || me.lng == null) return;
-    const pub = { id: '', name: me.pubName, lat: me.lat, lng: me.lng, city: me.pubCity };
-    const clientId = generateUuidV4();
-    trackUiInteraction('parta_activity_share', 'submit');
-    void shareFriendPubActivity(pub, '', clientId).then(async (res) => {
-      trackUiInteraction('parta_activity_share', res.ok || isRetriableFriendError(res) ? 'success' : 'failure');
-      if (res.ok) {
-        toast({ kind: 'saved', title: t.nv.parta.called, sub: t.nv.parta.calledSub, icon: 'megaphone' });
-        void usePartaStore.getState().reload();
-      } else if (isRetriableFriendError(res)) {
-        await enqueueFriendOp({ op: 'activity', clientId, payload: { pub } });
-        toast({ kind: 'offline', title: t.nv.parta.calledOffline, icon: 'cloud-off' });
-      } else {
-        toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
-      }
-    });
-  };
-
   const answerRequest = (id: string, name: string, action: 'accept' | 'decline') => {
     trackUiInteraction(action === 'accept' ? 'friends_request_accept' : 'friends_request_decline', action);
     usePartaStore.getState().setDashboard((d) => ({ ...d, incomingRequests: d.incomingRequests.filter((r) => r.id !== id) }));
@@ -317,7 +295,8 @@ export function PartaScreen() {
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}
       >
         <TabHeader tab="parta" title={t.nv.parta.title}>
-          <Button label={t.nv.parta.add} icon="user-plus" kind="raised" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/sprava-party')} />
+          <Button label={t.nv.parta.pingPartyShort} icon="bell-ring" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/cinknout')} />
+          <IconButton icon="user-plus" label={t.nv.parta.addA11y} onPress={() => router.push('/nv/sprava-party')} />
         </TabHeader>
         {failed && dashboard ? (
           <Press onPress={() => void load()} style={[s.row, { gap: 10, paddingHorizontal: 4 }]}>
@@ -411,16 +390,6 @@ export function PartaScreen() {
                 title={t.nv.parta.you}
                 titleWeight={700}
                 sub={!visible ? t.nv.parta.invisible : me ? (me.reactions?.cheers ? t.nv.parta.cheersAt(me.pubName, me.reactions.cheers) : t.nv.parta.visibleAt(me.pubName)) : t.nv.parta.visibleNotOut}
-                onPress={
-                  me && visible && me.lat != null
-                    ? () =>
-                        dialog({
-                          title: t.nv.parta.callTitle,
-                          body: t.nv.parta.callBody(me.pubName),
-                          actions: [{ label: t.nv.parta.back }, { label: t.nv.parta.call, kind: 'primary', onPress: callParty }],
-                        })
-                    : undefined
-                }
                 trailing={<Toggle value={visible} onChange={setVisible} />}
               />
               {presence.map((p, i) => (

@@ -40,7 +40,7 @@ function hhmm(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-function PickerRow({ icon, label, value, open, onPress, last }: { icon: 'map-pin' | 'calendar' | 'users'; label: string; value: string; open: boolean; onPress: () => void; last?: boolean }) {
+export function PickerRow({ icon, label, value, open, onPress, last }: { icon: 'map-pin' | 'calendar' | 'users'; label: string; value: string; open: boolean; onPress: () => void; last?: boolean }) {
   return (
     <Row
       last={last}

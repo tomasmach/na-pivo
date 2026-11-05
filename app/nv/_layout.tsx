@@ -38,6 +38,7 @@ const SHEETS = [
   'tour-zastavka',
   'tour-prizvat',
   'tour-cinknout',
+  'cinknout',
   'tour-ukoncit',
   'odznak',
   'novy-level',

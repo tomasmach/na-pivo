@@ -620,7 +620,7 @@ export function TourPrizvatSheet() {
   );
 }
 
-function CheckRow({ friend, sub, selected, disabled, last, onPress }: { friend: FriendProfile; sub: string; selected: boolean; disabled?: boolean; last: boolean; onPress: () => void }) {
+export function CheckRow({ friend, sub, selected, disabled, last, onPress }: { friend: FriendProfile; sub: string; selected: boolean; disabled?: boolean; last: boolean; onPress: () => void }) {
   const name = friend.displayName || friend.nickname || '?';
   return (
     <Row
@@ -640,7 +640,7 @@ function CheckRow({ friend, sub, selected, disabled, last, onPress }: { friend: 
   );
 }
 
-function useParty(): PartyFriends | null | undefined {
+export function useParty(): PartyFriends | null | undefined {
   const [party, setParty] = useState<PartyFriends | null | undefined>(undefined);
   useEffect(() => {
     let alive = true;

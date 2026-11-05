@@ -126,17 +126,17 @@ function Hero({ count, label, meta }: { count: number; label: string; meta: stri
   );
 }
 
-function CardHead({ title, onPrev, onNext, nextDisabled }: { title: string; onPrev?: () => void; onNext?: () => void; nextDisabled?: boolean }) {
+function CardHead({ title, onPrev, onNext, nextDisabled, prevLabel, nextLabel }: { title: string; onPrev?: () => void; onNext?: () => void; nextDisabled?: boolean; prevLabel?: string; nextLabel?: string }) {
   const router = useRouter();
   const copy = t.nv.stamgast;
   return (
     <View style={[s.row, { justifyContent: 'space-between', paddingHorizontal: 4, paddingBottom: 4 }]}>
       <View style={[s.row, { gap: 6 }]}>
-        <IconButton icon="chevron-left" size={32} iconSize={16} onPress={onPrev} label={copy.prev} />
+        <IconButton icon="chevron-left" size={32} iconSize={16} onPress={onPrev} label={prevLabel ?? copy.prev} />
         <T s={15} w={700} style={{ minWidth: 71, textAlign: 'center' }}>
           {title}
         </T>
-        <IconButton icon="chevron-right" size={32} iconSize={16} onPress={nextDisabled ? undefined : onNext} label={copy.next} color={nextDisabled ? C.muted : C.white} />
+        <IconButton icon="chevron-right" size={32} iconSize={16} onPress={nextDisabled ? undefined : onNext} label={nextLabel ?? copy.next} color={nextDisabled ? C.muted : C.white} />
       </View>
       <Press
         haptic
@@ -447,13 +447,7 @@ function Year({ nights, today }: { nights: Night[]; today: string }) {
     <>
       <Hero count={total} label={copy.heroYear(total, year)} meta={[copy.evenings(evenings), copy.pubs(distinctPubs(inYear)), money(spent)].join(copy.metaSep)} />
       <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 14, gap: 12 }}>
-        <View style={[s.row, { gap: 6 }]}>
-          <IconButton icon="chevron-left" size={32} iconSize={16} label={copy.prevYear} onPress={() => setOffset(offset - 1)} />
-          <T s={15} w={700}>
-            {String(year)}
-          </T>
-          <IconButton icon="chevron-right" size={32} iconSize={16} color={offset >= 0 ? C.muted : C.white} label={copy.nextYear} onPress={offset >= 0 ? undefined : () => setOffset(offset + 1)} />
-        </View>
+        <CardHead title={String(year)} onPrev={() => setOffset(offset - 1)} onNext={() => setOffset(offset + 1)} nextDisabled={offset >= 0} prevLabel={copy.prevYear} nextLabel={copy.nextYear} />
         {[0, 1, 2].map((row) => (
           <View key={row} style={[s.row, { gap: 8 }]}>
             {copy.months.slice(row * 4, row * 4 + 4).map((m, i) => {
