@@ -1220,7 +1220,7 @@ export function UpravitProfilScreen() {
     <Screen header={<BackHeader />} footer={<Button testID="profile-save" label={saving ? t.account.loading : P().editProfile.save} disabled={saving} onPress={() => void save()} />} gap={16}>
       <PageTitle title={P().editProfile.title} />
       <Press onPress={changePhoto} disabled={avatarBusy} style={{ alignItems: 'center', gap: 10 }} accessibilityRole="button">
-        <ProfilAvatar uri={me.avatarUrl} initial={me.initial} size={96} />
+        <ProfilAvatar uri={me.avatarUrl} initial={(nick.trim() || name.trim()).charAt(0).toLocaleUpperCase()} size={96} />
         {avatarBusy ? (
           <Spinner />
         ) : (
