@@ -11,7 +11,8 @@ import { geohash8 } from '@/data/geohash';
 import { buildPubShareUrl } from '@/data/pubShareLink';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { formatVolume, t } from '@/i18n';
-import { calendarDaysBetween, eventDay, eventStartTime } from '@/pubPage/pubPageModel';
+import type { WeeklyHours } from '@/data/communityHours';
+import { calendarDaysBetween, dayKeyOf, eventDay, eventStartTime, pubWallClock } from '@/pubPage/pubPageModel';
 import { findFavoriteKey, usePubFavoritesStore } from '@/stores/pubFavoritesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -26,7 +27,7 @@ import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../compon
 import { toast } from '../../ui/store';
 import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
-import { distanceLabel } from './format';
+import { distanceLabel, weekRows } from './format';
 import { GRAY_MAP } from './NvMap';
 import { openPubVerdict, verdictLabel } from '../stamgast/PubVerdict';
 import { nvPubParams, showOnKompas, useKompasState } from './state';
@@ -115,6 +116,28 @@ function AddLink({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
+function WeekHours({ week, now }: { week: WeeklyHours; now: Date }) {
+  const rows = weekRows(week, dayKeyOf(pubWallClock(now)));
+  return (
+    <View>
+      {rows.map((row, i) => {
+        const days = row.from === row.to ? L().daysShort[row.from] : `${L().daysShort[row.from]}–${L().daysShort[row.to]}`;
+        const w = row.today ? 800 : 500;
+        return (
+          <View key={row.from} style={[s.row, { minHeight: 44, gap: 12 }, i < rows.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
+            <T s={16} w={w} style={s.fill}>
+              {row.today ? `${days} · ${L().hoursToday}` : days}
+            </T>
+            <T s={15} w={w} c={row.intervals.length ? C.white : C.muted}>
+              {row.intervals.length ? row.intervals.join(', ') : L().closed}
+            </T>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function verifiedLabel(iso: string | null | undefined, now: Date): string | undefined {
   const at = iso ? new Date(iso) : null;
   if (!at || !Number.isFinite(at.getTime())) return undefined;
@@ -173,7 +196,7 @@ export function PubScreen() {
     useKompasState.getState().pick(pub);
     const sub = distance != null ? L().guideSub(pub.name, distanceLabel(distance)) : pub.name;
     toast({ kind: 'info', title: L().guideTitle, sub, icon: 'navigation' });
-    void openPubInMaps(pub);
+    openPubInMaps(pub).catch(() => toast({ kind: 'error', title: L().navigationFailed, icon: 'navigation' }));
   };
   const verified = details.taps.length ? verifiedLabel(pub.beersUpdatedAt, details.now) : undefined;
   const ratingValue =
@@ -302,6 +325,25 @@ export function PubScreen() {
             <Line key={event.id} title={event.title} sub={eventWhen(event, details.now)} />
           ))}
           <AddLink label={L().suggestEvent} onPress={() => router.push({ pathname: '/nv/navrhnout-akci', params: params() })} />
+        </Section>
+        <Band />
+        <Section title={L().tabHours}>
+          {details.week ? (
+            <WeekHours week={details.week} now={details.now} />
+          ) : pub.openingHours?.trim() ? (
+            <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
+              {pub.openingHours}
+            </T>
+          ) : !details.hoursLoaded ? (
+            <Ghost height={TAP_ROW_HEIGHT - 12} radius={14} style={{ marginVertical: 6 }} />
+          ) : (
+            <Animated.View entering={fadeIn}>
+              <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
+                {L().hoursUnknown}
+              </T>
+              <AddLink label={L().addHours} onPress={() => router.push({ pathname: '/nv/doplnit-info', params: params() })} />
+            </Animated.View>
+          )}
         </Section>
         <Band />
         <Section title={L().about}>
