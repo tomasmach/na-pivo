@@ -124,6 +124,15 @@ def test_suggest_caps_limit(client):
 
 
 @pytest.mark.django_db
+def test_suggest_lists_a_brand_named_like_its_beer_once(client):
+    resp = client.get("/v1/beer-brands/suggest", {"q": "Pils", "limit": 6})
+
+    assert resp.status_code == status.HTTP_200_OK
+    names = [item["name"] for item in resp.json()["suggestions"]]
+    assert names.count("Pilsner Urquell") == 1
+
+
+@pytest.mark.django_db
 def test_suggest_blank_query_returns_top_ranked_brands(client):
     resp = client.get("/v1/beer-brands/suggest", {"q": "", "limit": 3})
 

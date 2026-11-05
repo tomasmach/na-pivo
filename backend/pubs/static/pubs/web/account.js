@@ -147,22 +147,31 @@
   });
 
   // Toggles save on change and flip back when the server says no.
-  document.addEventListener("change", async function (e) {
-    var input = e.target.closest("input[data-toggle], select[data-toggle]");
+  // Radios stay enabled so arrow keys keep focus; a short pause saves only the choice the user stops on.
+  document.addEventListener("change", function (e) {
+    var input = e.target.closest("input[data-toggle]");
     if (!input) return;
     var scope = input.closest("[data-scope]");
+    if (input.type !== "radio") return save(input, scope);
+    clearTimeout(scope.saveTimer);
+    scope.saveTimer = setTimeout(function () { save(input, scope); }, 400);
+  });
+  async function save(input, scope) {
     var value = input.type === "checkbox" ? input.checked : input.value;
     var body = {};
     body[input.name] = value;
-    input.disabled = true;
+    if (input.type === "checkbox") input.disabled = true;
     var result = await send(input.dataset.toggle, { method: "PATCH", body: body, ugc: "ugc" in input.dataset && value === true });
     input.disabled = false;
-    if (result.ok) return showError(scope, "");
+    if (result.ok) {
+      if (input.type === "radio") scope.dataset.saved = value;
+      return showError(scope, "");
+    }
     if (input.type === "checkbox") input.checked = !value;
-    else input.value = input.dataset.saved;
+    else scope.querySelector('input[value="' + scope.dataset.saved + '"]').checked = true;
     showError(scope, message(result));
-  });
-  document.querySelectorAll("select[data-toggle]").forEach(function (s) { s.dataset.saved = s.value; });
+  }
+  document.querySelectorAll("input[type=radio][data-toggle]:checked").forEach(function (r) { r.closest("[data-scope]").dataset.saved = r.value; });
 
   // Výčep: a round for somebody else's night, on and off.
   document.querySelectorAll("[data-round]").forEach(function (btn) {

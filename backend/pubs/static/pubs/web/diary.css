@@ -145,7 +145,19 @@ a.dy-year__tile:hover { background: var(--np-control-hover); }
 .dy-beers__head span:nth-child(2) { text-align: center; }
 .dy-beers__head span:last-child { text-align: right; }
 .dy-beer { min-height: 64px; border-bottom: 1px solid var(--np-hairline); }
-.dy-beer .dy-beer__name { min-height: 40px; padding: 0; border: 0; background: none; font-weight: 700; }
+.dy-beer__name { position: relative; }
+.dy-log .dy-beer__name .np-input { min-height: 40px; padding: 0; border: 0; background: none; font-weight: 700; }
+.dy-suggest {
+  position: absolute; z-index: 4; top: calc(100% + 4px); left: -8px; display: grid; min-width: min(320px, 100%);
+  padding: 6px; border: 1px solid var(--np-hairline); border-radius: var(--np-radius);
+  background: var(--np-card); box-shadow: 0 12px 32px #00000080; scroll-margin-bottom: 96px;
+}
+.dy-suggest[hidden] { display: none; }
+.dy-suggest__item {
+  display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: var(--np-radius-s);
+  color: var(--np-text-2); font-size: 14px; cursor: pointer;
+}
+.dy-suggest__item:hover, .dy-suggest__item[aria-selected="true"] { background: var(--np-control); color: var(--np-white); }
 .dy-beer__count { display: flex; align-items: center; justify-content: center; gap: 10px; }
 .dy-beer__step { width: 30px; min-height: 30px; }
 .dy-beer__n { min-width: 16px; font: 800 24px/1 var(--np-display); text-align: center; }

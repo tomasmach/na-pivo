@@ -106,15 +106,15 @@
         </label>
         <span class="npa-switch"><input id="npa-share" type="checkbox" name="share_drinks_with_parta" data-toggle="/v1/friends/settings"{% if share_drinks %} checked{% endif %}><span></span></span>
       </div>
-      <div class="npa-set__row" data-scope>
-        <label class="npa-set__text" for="npa-autopublish">
-          <span class="npa-set__title">{% translate "Vyvěšovat noci" %}</span>
+      <div class="npa-set__row npa-set__row--block" data-scope>
+        <span class="npa-set__text">
+          <span class="npa-set__title" id="npa-autopublish">{% translate "Vyvěšovat noci" %}</span>
           <span class="npa-set__sub">{% translate "Komu se noc po „Dopito“ sama vyvěsí na Výčep. Ručně vyvěsíš jen noc, kterou vybereš." %}</span>
           <span class="np-field__error" data-error hidden></span>
-        </label>
-        <select class="npa-select" id="npa-autopublish" name="night_autopublish" data-toggle="/v1/account/me">
-          {% for value, label in autopublish_options %}<option value="{{ value }}"{% if value == autopublish %} selected{% endif %}>{{ label }}</option>{% endfor %}
-        </select>
+        </span>
+        <div class="npa-visibility" role="radiogroup" aria-labelledby="npa-autopublish">
+          {% for value, label in autopublish_options %}<label class="npa-radio"><input type="radio" name="night_autopublish" value="{{ value }}" data-toggle="/v1/account/me"{% if value == autopublish %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}
+        </div>
       </div>
     </div>
 

@@ -55,7 +55,6 @@
           <span class="np-small np-muted" data-total aria-live="polite"></span>
         </div>
       </div>
-      <datalist id="dy-beer-names"></datalist>
     </fieldset>
 
     {% if backfill %}<p class="np-small np-muted">{% translate "Starší zápisy jsou nejdřív jen pro tebe." %}</p>{% endif %}
@@ -73,7 +72,10 @@
 <template id="dy-beer-row">
   <div class="dy-beer" data-beer>
     <label class="np-sr-only">{% translate "Název piva" %}</label>
-    <input class="np-input dy-beer__name" type="text" maxlength="80" list="dy-beer-names" placeholder="{% translate "Název piva" %}" autocomplete="off" data-name>
+    <div class="dy-beer__name">
+      <input class="np-input" type="text" maxlength="80" placeholder="{% translate "Název piva" %}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" data-name>
+      <div class="dy-suggest" role="listbox" hidden data-suggest></div>
+    </div>
     <div class="dy-beer__count">
       <button class="np-btn np-btn--icon dy-beer__step" type="button" data-step="-1" aria-label="{% translate "O jedno míň" %}">{% icon "minus" "np-icon--s" %}</button>
       <output class="dy-beer__n" data-n>1</output>
