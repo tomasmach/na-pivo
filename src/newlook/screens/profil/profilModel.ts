@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { accountXpProgress } from '@/data/accountXp';
 import type { BadgeProgress } from '@/data/auth';
+import type { RemoteStats } from '@/data/statsClient';
 import { t } from '@/i18n';
 import {
   BADGE_GROUPS,
@@ -16,8 +17,10 @@ import {
 import { badgeAmount, badgeName, cellStatus, stillLine } from '@/profile/badgeText';
 import { selectIsPublic, selectIsSignedIn, selectNickname, useAccountStore } from '@/stores/accountStore';
 import { useBadgeStore } from '@/stores/badgeStore';
+import { drinkingDayKey, type TallySession } from '@/stores/tallyStore';
 
 import type { IconName } from '../../components/Icon';
+import { computeStats } from '../stamgast/statsData';
 
 /** "Večer s partou" lives only in the new look, so it is not a BadgeKey of the old app. */
 export type NvBadgeKey = BadgeKey | 'partyEvenings';
@@ -178,6 +181,12 @@ export function markBadgeOpened(key: NvBadgeKey): void {
   if (!store.unopened.includes(key)) return;
   store.open(key);
   store.close();
+}
+
+/** Nights and beers per night on the profile, counted the same way as Čísla so both screens agree. */
+export function profileNights(sessions: readonly TallySession[], remote: RemoteStats | null, now = new Date()): { nights: number; average: number } {
+  const stats = computeStats(sessions, remote, now, drinkingDayKey);
+  return { nights: stats.nights, average: stats.average };
 }
 
 /** Who I am in the header and on the profile. */

@@ -301,7 +301,7 @@ export function HledaniScreen() {
                 {L().inView}
               </T>
               <T s={13} c={C.muted}>
-                {L().inViewCount(suggestions.pubs.length)}
+                {L().inViewCount(nearbyRows.length)}
               </T>
             </View>
             <Card>

@@ -45,7 +45,7 @@ export const partaEn: Strings['nv']['parta'] = {
   liveSub: (pub: string, n: number) => `${pub} · ${n} ${beers(n)}`,
   atSomeonesHome: 'At someone’s place',
 
-  wantsIn: (name: string) => `${name} wants to join the crew`,
+  requestsTitle: (n: number) => (n === 1 ? 'Wants to join' : 'Want to join'),
   decline: 'Decline',
   accept: 'Accept',
   joined: (name: string) => `${name} is in the crew.`,
@@ -147,9 +147,9 @@ export const partaEn: Strings['nv']['parta'] = {
   levelLine: (nick: string, title: string, level: number) => `@${nick} · ${title}, level ${level}`,
   sitsNow: (pub: string, n: number) => `At ${pub} now · ${n} ${beers(n)}`,
   sitsAtHome: 'At someone’s place now',
-  beersTotal: 'beers in total',
-  pubsTotal: 'pubs',
-  badgesTotal: 'badges',
+  beersTotal: (n: number) => `${beers(n)} in total`,
+  pubsTotal: (n: number) => englishPlural(n, { one: 'pub', other: 'pubs' }),
+  badgesTotal: (n: number) => englishPlural(n, { one: 'badge', other: 'badges' }),
   beersIn: (month: string) => `Beers in ${month}`,
   monthsIn: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
   youLead: (n: number) => `You lead by ${n}`,
@@ -238,5 +238,5 @@ export const partaEn: Strings['nv']['parta'] = {
   photoToday: (time) => `today ${time}`,
   photoYesterday: (time) => `yesterday ${time}`,
   beerPhotos: 'Beer photos',
-  allPhotos: (n) => `All ${n}`,
+  allPhotos: (n) => (n === 1 ? 'All' : `All ${n}`),
 };

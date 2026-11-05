@@ -12,7 +12,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { formatPrice } from '@/utils/currency';
 
-import { BottomFade } from '../../components/chrome';
+import { BottomFade, TopFade } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, IconButton, Press, T } from '../../components/ui';
 import { C, SCREEN_X, s } from '../../theme';
@@ -236,6 +236,7 @@ export function UctenkaScreen() {
           </View>
         ) : null}
       </ScrollView>
+      <TopFade />
       <BottomFade height={210} />
       <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4, gap: 10 }}>
         <View style={[s.row, { gap: 10 }]}>

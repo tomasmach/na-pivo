@@ -37,7 +37,7 @@ export function T({ s: size = 15, w = 400, c = C.white, lh, style, ...rest }: TP
 
 /** Sofia Sans Extra Condensed: big numbers and headlines. */
 export function D({ s: size = 44, c = C.white, lh = 1.05, style, ...rest }: TProps) {
-  return <Text maxFontSizeMultiplier={1.1} {...rest} style={[display(size, c, lh), style]} />;
+  return <Text maxFontSizeMultiplier={1.1} textBreakStrategy="balanced" lineBreakStrategyIOS="push-out" {...rest} style={[display(size, c, lh), style]} />;
 }
 
 /** The one spinner color of the new look; dark only on yellow or white buttons. */
@@ -98,6 +98,8 @@ const BUTTON: Record<ButtonKind, { bg: string; fg: string; extra?: ViewStyle }> 
   danger: { bg: C.control, fg: C.danger, extra: shadow.raised },
 };
 
+const DISABLED_PRIMARY: { bg: string; fg: string; extra?: ViewStyle } = { bg: C.control, fg: C.muted };
+
 export function Button({
   label,
   sub,
@@ -109,6 +111,7 @@ export function Button({
   disabled,
   flex,
   testID,
+  haptic = true,
 }: {
   label: string;
   sub?: string;
@@ -120,12 +123,15 @@ export function Button({
   disabled?: boolean;
   flex?: boolean;
   testID?: string;
+  haptic?: boolean;
 }) {
-  const k = BUTTON[kind];
+  // A dimmed yellow turns brown on the dark ground, so a disabled primary sits back as a plain control.
+  const dimmedPrimary = !!disabled && kind === 'primary';
+  const k = dimmedPrimary ? DISABLED_PRIMARY : BUTTON[kind];
   const labelSize = height >= 56 ? 17 : height >= 50 ? 16 : 15;
   return (
     <Press
-      haptic
+      haptic={haptic}
       disabled={disabled}
       onPress={onPress}
       accessibilityRole="button"
@@ -142,7 +148,7 @@ export function Button({
         },
         k.extra,
         flex && { flex: 1 },
-        disabled && { opacity: 0.4 },
+        disabled && !dimmedPrimary && { opacity: 0.4 },
         style,
       ]}
     >
@@ -153,7 +159,7 @@ export function Button({
         </T>
       </View>
       {sub ? (
-        <T s={12} w={600} c={kind === 'primary' ? C.onYellowMuted : C.muted}>
+        <T s={12} w={600} c={kind === 'primary' && !dimmedPrimary ? C.onYellowMuted : C.muted}>
           {sub}
         </T>
       ) : null}
@@ -245,6 +251,7 @@ export function Chip({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: !!active }}
+      hitSlop={{ top: Math.max(0, (44 - height) / 2), bottom: Math.max(0, (44 - height) / 2) }}
       style={[
         s.row,
         {
@@ -346,6 +353,12 @@ export function Tile({ icon, color = C.yellow, size = 40, bg = C.control, radius
   );
 }
 
+/** A switch in a row reads the row's title to a screen reader instead of a bare "switch". */
+function namedSwitch(trailing: React.ReactNode, title: React.ReactNode): React.ReactNode {
+  if (!React.isValidElement<{ label?: string }>(trailing) || trailing.type !== Toggle || trailing.props.label || typeof title !== 'string') return trailing;
+  return React.cloneElement(trailing, { label: title });
+}
+
 /** List row inside a card: optional leading element, title + sub, trailing slot. */
 export function Row({
   title,
@@ -399,7 +412,7 @@ export function Row({
           )
         ) : null}
       </View>
-      {trailing}
+      {namedSwitch(trailing, title)}
       {chevron ? <Icon name="chevron-right" size={16} color={C.muted} /> : null}
     </View>
   );
@@ -417,7 +430,7 @@ const TOGGLE_OFF_TRACK = '#39393D';
 const TOGGLE_OFF_KNOB = '#FFFFFF';
 
 /** The knob slides and both colors blend over the same stretch; the switch never shrinks under the finger. */
-export function Toggle({ value, onChange, testID }: { value: boolean; onChange: (v: boolean) => void; testID?: string }) {
+export function Toggle({ value, onChange, testID, label }: { value: boolean; onChange: (v: boolean) => void; testID?: string; label?: string }) {
   const move = useSharedValue(value ? 1 : 0);
   const tone = useSharedValue(value ? 1 : 0);
   useEffect(() => {
@@ -438,6 +451,8 @@ export function Toggle({ value, onChange, testID }: { value: boolean; onChange: 
       }}
       accessibilityRole="switch"
       accessibilityState={{ checked: value }}
+      accessibilityLabel={label}
+      hitSlop={{ top: 7, bottom: 7, left: 8, right: 8 }}
     >
       <Animated.View style={[{ width: 51, height: 31, borderRadius: 16, padding: 2 }, track]}>
         <Animated.View style={[{ width: 27, height: 27, borderRadius: 14 }, knob]} />

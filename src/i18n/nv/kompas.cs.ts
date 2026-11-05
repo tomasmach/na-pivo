@@ -115,7 +115,7 @@ export const kompasCs = {
   pouring: (beer: string) => `Čepují ${beer} v okolí`,
   findPouring: 'Najít v okolí',
   findPouringSub: 'Ukážu je na mapě',
-  inView: 'Ve výřezu mapy',
+  inView: 'Nejblíž k tobě',
   inViewCount: pubs,
   unknownMenu: 'Nabídku neznám',
   areaOpenUntil: (area: string, time: string) => `${area} · otevřeno do ${time}`,

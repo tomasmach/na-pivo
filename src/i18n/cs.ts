@@ -180,7 +180,7 @@ export const cs = {
     },
     haptics: {
       title: 'Vibrace',
-      subtitle: 'Při ťukání i když dojdeš k cíli',
+      subtitle: 'Při ťukání a když dojdeš k cíli',
     },
     pubReminders: {
       title: 'Připomenout v hospodě',
@@ -789,8 +789,6 @@ export const cs = {
     undo: 'Vrátit',
     // The rapid-drink guard is inline now: the tap does NOT count until this is
     // confirmed, and letting it time out means "no".
-    rapidInline: (minutes: number) => `Pivo před ${minutes} min.`,
-    rapidInlineJustNow: 'Pivo před chvilkou.',
     rapidInlineConfirm: 'Ještě jedno',
     scanDrinksEmpty: 'Na fotce jsem žádný nápoj nepřečetl.',
     cameraMenuNeedsPub: 'Vyber hospodu a pak klepni na foťák znovu',

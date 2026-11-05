@@ -13,7 +13,7 @@ import {
 } from '@/stores/tallyStore';
 
 /**
- * Lifetime beers, pubs, evenings and spend for the profile. Local sessions are
+ * Lifetime beers, pubs and spend for the profile. Local sessions are
  * the floor; the server knows evenings this phone never had, so its numbers win
  * once they are larger, as in Deník.
  */
@@ -46,7 +46,6 @@ export function useLifetimeSummary(opened: boolean) {
   }
 
   const lifetime = useMemo(() => {
-    const evenings = sessions.filter((session) => session.drinks.length > 0).length;
     const localPubs = new Set(
       sessions
         .filter((session) => session.drinks.length > 0 && !isContextPubKey(session.pubKey))
@@ -54,11 +53,10 @@ export function useLifetimeSummary(opened: boolean) {
     ).size;
     const localSpent = sessions.reduce((total, session) => total + sessionTotalCzk(session), 0);
     return {
-      evenings: Math.max(remoteStats?.totalEvenings ?? 0, evenings),
       pubs: Math.max(reconciledStats?.distinctPubs ?? 0, localPubs),
       spentCzk: Math.max(reconciledStats?.totalSpentCzk ?? 0, localSpent),
     };
-  }, [reconciledStats, remoteStats, sessions]);
+  }, [reconciledStats, sessions]);
 
   // The server snapshot holds the whole drink history; scan it only when the
   // snapshot changes, not on every local drink.
@@ -87,5 +85,5 @@ export function useLifetimeSummary(opened: boolean) {
     [diarySnapshot, isSignedIn, profile?.stats?.firstBeerAt, remoteFirstBeerAt, sessions],
   );
 
-  return { beers, ...lifetime, firstBeerAt, sessions, diarySnapshot };
+  return { beers, ...lifetime, firstBeerAt, sessions, diarySnapshot, remoteStats };
 }

@@ -5,7 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
+import { BottomFade, TabHeader, TopFade, useTabBarSpace } from '../../components/chrome';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { D, T, Card, Chip, IconButton, Press, Row, Segmented, Tile } from '../../components/ui';
@@ -187,22 +187,24 @@ export function PivaScreen() {
                 <Chip key={f ?? 'all'} label={styleFilterLabel(f)} active={style === f} plain onPress={() => setStyle(f)} />
               ))}
             </ScrollView>
-            <View style={[s.row, { gap: 6, marginTop: -4 }]}>
-              <T s={12} w={500} c={C.muted}>
-                {p.legendLead}
-              </T>
-              <T s={12} w={700} c={C.text2}>
-                {p.legendTop}
-              </T>
-              <View style={[s.row, { gap: 2 }]}>
-                {SHADES.map((c) => (
-                  <View key={c} style={{ width: 12, height: 6, borderRadius: 1, backgroundColor: c }} />
-                ))}
+            {page?.items.length ? (
+              <View style={[s.row, { gap: 6, marginTop: -4 }]}>
+                <T s={12} w={500} c={C.muted}>
+                  {p.legendLead}
+                </T>
+                <T s={12} w={700} c={C.text2}>
+                  {p.legendTop}
+                </T>
+                <View style={[s.row, { gap: 2 }]}>
+                  {SHADES.map((c) => (
+                    <View key={c} style={{ width: 12, height: 6, borderRadius: 1, backgroundColor: c }} />
+                  ))}
+                </View>
+                <T s={12} w={700} c={C.text2}>
+                  {p.legendBottom}
+                </T>
               </View>
-              <T s={12} w={700} c={C.text2}>
-                {p.legendBottom}
-              </T>
-            </View>
+            ) : null}
             {ranking.state.status === 'loading' ? (
               <View>
                 {GHOST_ROWS.map((i) => (
@@ -218,7 +220,12 @@ export function PivaScreen() {
                 ))}
               </Animated.View>
             ) : (
-              <StatusCard text={region ? p.regionEmpty : p.rankingEmpty} />
+              <StatusCard
+                text={region ? p.regionEmpty : p.rankingEmpty}
+                action={region ? undefined : p.findBeer}
+                actionIcon="search"
+                onAction={() => router.push('/nv/hledat-pivo')}
+              />
             )}
             {tab === 'best' && (early || (page && !page.items.length)) && unrated.length ? (
               <>
@@ -267,6 +274,7 @@ export function PivaScreen() {
           </Animated.View>
         )}
       </ScrollView>
+      <TopFade />
       <BottomFade height={tabSpace + 40} />
     </View>
   );
@@ -427,7 +435,7 @@ export function HledatPivoScreen() {
                 leading={<Tile icon="beer" />}
                 title={b.name}
                 sub={[b.brandName, kindLine(b.styles, null)].filter(Boolean).join(' · ')}
-                trailing={<D s={22}>{b.ratingAvg !== null ? fmtRating(b.ratingAvg) : NO_VALUE}</D>}
+                trailing={b.ratingAvg !== null ? <D s={22}>{fmtRating(b.ratingAvg)}</D> : undefined}
                 onPress={() => openBeer(router, b.productKey, true)}
               />
             ))}

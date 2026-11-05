@@ -44,7 +44,7 @@ export const partaCs = {
   liveSub: (pub: string, n: number) => `${pub} · ${n} ${beers(n)}`,
   atSomeonesHome: 'U někoho doma',
 
-  wantsIn: (name: string) => `${name} chce do party`,
+  requestsTitle: (n: number) => (n === 1 ? 'Chce do party' : 'Chtějí do party'),
   decline: 'Odmítnout',
   accept: 'Přijmout',
   joined: (name: string) => `${name} je v partě.`,
@@ -146,9 +146,9 @@ export const partaCs = {
   levelLine: (nick: string, title: string, level: number) => `@${nick} · ${title}, level ${level}`,
   sitsNow: (pub: string, n: number) => `Teď sedí ${pub} · ${n} ${beers(n)}`,
   sitsAtHome: 'Teď je u někoho doma',
-  beersTotal: 'piv celkem',
-  pubsTotal: 'hospod',
-  badgesTotal: 'odznaků',
+  beersTotal: (n: number) => `${beers(n)} celkem`,
+  pubsTotal: (n: number) => czechPlural(n, { one: 'hospoda', few: 'hospody', many: 'hospod' }),
+  badgesTotal: (n: number) => czechPlural(n, { one: 'odznak', few: 'odznaky', many: 'odznaků' }),
   beersIn: (month: string) => `Piva v ${month}`,
   monthsIn: ['lednu', 'únoru', 'březnu', 'dubnu', 'květnu', 'červnu', 'červenci', 'srpnu', 'září', 'říjnu', 'listopadu', 'prosinci'],
   youLead: (n: number) => `Vedeš o ${n}`,
@@ -239,5 +239,5 @@ export const partaCs = {
   photoToday: (time: string) => `dnes ${time}`,
   photoYesterday: (time: string) => `včera ${time}`,
   beerPhotos: 'Pivní fotky',
-  allPhotos: (n: number) => `Všech ${n}`,
+  allPhotos: (n: number) => czechPlural(n, { one: 'Všechny', few: `Všechny ${n}`, many: `Všech ${n}` }),
 };

@@ -19,7 +19,7 @@ import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
 
-import { BackHeader, BottomFade, Screen } from '../../components/chrome';
+import { BackHeader, BottomFade, Screen, TopFade } from '../../components/chrome';
 import { Ghost } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../components/ui';
@@ -316,6 +316,7 @@ export function PubScreen() {
           {details.visit ? <VisitLine pubKey={details.visit.cacheKey} name={pub.name} visitCount={details.visit.visitCount} lastVisitedAt={details.visit.lastVisitedAt} /> : null}
         </Section>
       </ScrollView>
+      <TopFade />
       <BottomFade height={184} />
       <View style={[s.row, { position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4, gap: 10 }]}>
         <Button label={L().guideMe} icon="navigation" flex onPress={guide} />

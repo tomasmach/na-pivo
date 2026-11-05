@@ -206,6 +206,8 @@ export function Screen({
   const tabSpace = useTabBarSpace();
   const bottomBase = tab ? tabSpace : Math.max(insets.bottom, 16);
   const [footerH, setFooterH] = useState(52);
+  const [headerH, setHeaderH] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
   const keyboard = useKeyboardLift();
   const footerBottom = bottomBase + (tab ? 14 : 0);
   const footerLift = useAnimatedStyle(() => ({
@@ -223,12 +225,18 @@ export function Screen({
   );
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingBottom: footerRoom }}>
-      <View style={{ paddingTop: insets.top + 8 }}>
+      <View style={{ paddingTop: insets.top + 8 }} onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
         {header ? <View style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>{header}</View> : null}
       </View>
       {scroll ? (
         <KeyboardAwareScrollView
+          scrollEventThrottle={16}
           {...scrollProps}
+          onScroll={(e) => {
+            const under = e.nativeEvent.contentOffset.y > 0;
+            if (under !== scrolled) setScrolled(under);
+            scrollProps?.onScroll?.(e);
+          }}
           keyboardAvoidedExternally={!!footer}
           revealBelow={NEXT_FIELD_REVEAL}
           showsVerticalScrollIndicator={false}
@@ -240,6 +248,7 @@ export function Screen({
       ) : (
         <View style={{ flex: 1, paddingBottom: bottomBase + footerSpace }}>{content}</View>
       )}
+      {scroll && scrolled && headerH > 0 ? <TopFade below={headerH} /> : null}
       <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} />
       {footer ? (
         <Animated.View
@@ -250,6 +259,32 @@ export function Screen({
         </Animated.View>
       ) : null}
     </View>
+  );
+}
+
+/**
+ * Keeps scrolled content from running under the clock. Without `below` it covers the status bar and
+ * fades out where content starts, so resting content stays untouched. With `below` it is a short
+ * fade under a fixed header; show it only once the content has scrolled under that header.
+ */
+export function TopFade({ below }: { below?: number }) {
+  const insets = useSafeAreaInsets();
+  const fade = 16;
+  const top = below ?? 0;
+  const height = below === undefined ? insets.top + 8 : fade;
+  const solidUntil = below === undefined ? Math.round(((insets.top - 8) / height) * 100) : 0;
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top,
+        height,
+        experimental_backgroundImage: `linear-gradient(180deg, ${C.bg} 0%, ${C.bg} ${solidUntil}%, ${C.bg}00 100%)`,
+      }}
+    />
   );
 }
 

@@ -58,6 +58,7 @@ export const pivaCs = {
   mostOften: (verdict: string) => `nejčastěji „${verdict}“`,
   rankingFailed: 'Žebříček se nedotáhl.',
   rankingEmpty: 'Žebříček se teprve plní, tak ohodnoť piva, která piješ.',
+  findBeer: 'Najít pivo',
   unratedTitle: 'Pil jsi, ještě jsi nehodnotil',
   unratedHint: 'pomůžeš žebříčku',
   drankTimes: (n: number) => `pil jsi ho ${n}×`,
@@ -115,7 +116,11 @@ export const pivaCs = {
     photos: 'Fotky',
     whatPeopleWrite: 'Co lidi píšou',
     reviewFilters: { newest: 'Nejnovější', party: 'Od party', photo: 'S fotkou' },
-    allReviews: (n: string) => `Všech ${n} recenzí`,
+    // The count arrives already grouped ("1 234"); its digits pick the form.
+    allReviews: (n: string) => {
+      const count = Number(n.replace(/\D/g, ''));
+      return czechPlural(count, { one: 'Všechny recenze', few: `Všechny ${n} recenze`, many: `Všech ${n} recenzí` });
+    },
     noReviews: 'Zatím tu nikdo nic nenapsal.',
     failed: 'Pivo se nedotáhlo.',
   },

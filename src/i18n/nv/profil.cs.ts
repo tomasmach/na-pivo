@@ -7,8 +7,7 @@ export const profilCs = {
     avatarA11y: (level: number | null) => (level == null ? 'Profil' : `Profil, level ${level}`),
   },
   profile: {
-    levelLine: (level: number, title: string, isPublic: boolean) =>
-      `Level ${level} · ${title} · ${isPublic ? 'veřejný profil' : 'soukromý profil'}`,
+    levelLine: (level: number, title: string) => `Level ${level} · ${title}`,
     edit: 'Upravit profil',
     settings: 'Nastavení',
     signIn: 'Přihlásit se',
@@ -86,7 +85,7 @@ export const profilCs = {
     partyPushDisableError: 'Upozornění se zatím nepovedlo vypnout. Zkusím to znovu, až se do appky vrátíš.',
     phone: 'Telefon',
     haptics: 'Vibrace',
-    hapticsSub: 'Při ťukání i když dojdeš k cíli',
+    hapticsSub: 'Při ťukání a když dojdeš k cíli',
     sound: 'Zvuk cinknutí',
     soundSub: 'Drobné „cink“ u cíle',
     other: 'Ostatní',

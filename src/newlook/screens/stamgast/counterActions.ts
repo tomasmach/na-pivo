@@ -6,7 +6,7 @@ import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { sessionCount, useTallyStore } from '@/stores/tallyStore';
-import { fireRigidImpactHaptic } from '@/utils/haptics';
+import { fireRigidImpactHaptic, fireSelectionHaptic } from '@/utils/haptics';
 
 import { dialog, toast } from '../../ui/store';
 import { hasBeerBefore } from './eveningData';
@@ -64,18 +64,20 @@ function record(place: CountPlace, beer: CountableDrink, menu?: readonly Communi
  * The only count path of the new look. A tap that lands suspiciously soon
  * after the last drink writes nothing until the drinker confirms it.
  */
-export function logDrink(place: CountPlace, beer: CountableDrink, menu?: readonly CommunityBeer[]): void {
+export function logDrink(place: CountPlace, beer: CountableDrink, menu?: readonly CommunityBeer[], opts?: { silentTap?: boolean }): void {
   const at = lastAlcoholAt();
   if (beer.drinkType === 'soft_drink' || !isRapidDrink(at)) {
     record(place, beer, menu);
     return;
   }
   const minutes = minutesAgo(at);
+  // A silent tap expected the count to buzz; the question opens instead, so it buzzes here.
+  if (opts?.silentTap && useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
   dialog({
-    title: minutes === 0 ? t.counter.rapidInlineJustNow : t.counter.rapidInline(minutes),
+    title: t.nv.stamgast.rapidAgain(minutes),
     actions: [
       { label: t.counter.cancel, kind: 'raised' },
-      { label: t.counter.rapidInlineConfirm, kind: 'primary', onPress: () => record(place, beer, menu) },
+      { label: t.counter.rapidInlineConfirm, kind: 'primary', haptic: false, onPress: () => record(place, beer, menu) },
     ],
   });
 }

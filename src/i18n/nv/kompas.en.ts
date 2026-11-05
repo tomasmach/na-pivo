@@ -106,7 +106,7 @@ export const kompasEn: Strings['nv']['kompas'] = {
   pouring: (beer) => `${beer} on tap nearby`,
   findPouring: 'Find nearby',
   findPouringSub: "I'll show them on the map",
-  inView: 'In the map view',
+  inView: 'Closest to you',
   inViewCount: pubs,
   unknownMenu: 'Menu unknown',
   areaOpenUntil: (area, time) => `${area} · open until ${time}`,

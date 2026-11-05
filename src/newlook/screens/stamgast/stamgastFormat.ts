@@ -1,5 +1,5 @@
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
-import { formatVolume, intlLocale, t } from '@/i18n';
+import { formatVolume, t } from '@/i18n';
 import type { TallyDrink } from '@/stores/tallyStore';
 
 import { dateOfDay } from './eveningData';
@@ -29,7 +29,7 @@ export function nightDayLabel(day: string): string {
   return t.nv.stamgast.dayLabel(t.nv.stamgast.weekdaysFromSunday[d.getDay()], d.getDate(), d.getMonth() + 1);
 }
 
-export function distanceLabel(meters: number): string {
-  if (meters < 1000) return `${Math.max(10, Math.round(meters / 10) * 10)} m`;
-  return `${(meters / 1000).toLocaleString(intlLocale, { maximumFractionDigits: 1 })} km`;
+/** "Pilsner Urquell 12°" already says its degrees, so nobody needs to be asked. */
+export function nameStatesDegree(beerName: string): boolean {
+  return /\d\s*°/.test(beerName);
 }

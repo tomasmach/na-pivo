@@ -4,7 +4,7 @@ Testy řídí skutečný iPhone 17 v iOS simulátoru a skutečný Django backend
 
 ## Nový vzhled
 
-Sada kliká na nový vzhled appky (`app/nv`, `src/newlook`). Přepsané scénáře a jejich výsledky uvádí začátek COVERAGE.md. Scénáře, které ještě ovládají odstraněné obrazovky, mají tag `legacy-ui`; `critical` a `full` je vynechávají, dokud je někdo nepřepíše. Sdílené kroky pro nový vzhled jsou v `e2e/maestro/`: `counter.yaml` otevře Štamgast s rozpoznanou E2E U Testera, `repeat-beer.yaml` připíše další pivo včetně potvrzení „Pivo před chvilkou.“, `open-pub.yaml` otevře hospodu přes hledání a `dismiss-onboarding.yaml` přeskočí onboarding, pokud se po odhlášení vrátí.
+Sada kliká na nový vzhled appky (`app/nv`, `src/newlook`). Přepsané scénáře a jejich výsledky uvádí začátek COVERAGE.md. Scénáře, které ještě ovládají odstraněné obrazovky, mají tag `legacy-ui`; `critical` a `full` je vynechávají, dokud je někdo nepřepíše. Sdílené kroky pro nový vzhled jsou v `e2e/maestro/`: `counter.yaml` otevře Štamgast s rozpoznanou E2E U Testera, `repeat-beer.yaml` připíše další pivo včetně potvrzení „Další pivo už po …?“, `open-pub.yaml` otevře hospodu přes hledání a `dismiss-onboarding.yaml` přeskočí onboarding, pokud se po odhlášení vrátí.
 
 ## První spuštění na macOS
 

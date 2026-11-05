@@ -1,6 +1,8 @@
 import { parseBadgeProgress } from '@/data/achievements';
 
-import { buildNvBadges, nightBadge, nvStillLine, observeLevel } from '../profilModel';
+import type { TallySession } from '@/stores/tallyStore';
+
+import { buildNvBadges, nightBadge, nvStillLine, observeLevel, profileNights } from '../profilModel';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -59,5 +61,25 @@ describe('nightBadge', () => {
 
   it('says nothing when the night moved no badge', () => {
     expect(nightBadge(progress({}), progress({}), now)).toBeNull();
+  });
+});
+
+describe('profileNights', () => {
+  const sitting = (clientId: string, pubKey: string, beers: Date[]): TallySession => ({
+    clientId,
+    pubKey,
+    pubName: pubKey,
+    startedAt: beers[0].toISOString(),
+    drinks: beers.map((at, i) => ({ id: `${clientId}-${i}`, at: at.toISOString(), beerName: 'Pilsner Urquell' })),
+  });
+
+  it('counts two pubs on one night as one evening, like Čísla', () => {
+    const sessions = [
+      sitting('a', 'u2fkbn12', [new Date(2026, 9, 24, 19), new Date(2026, 9, 24, 20)]),
+      // After midnight, before the 04:00 cutoff: still the same night.
+      sitting('b', 'u2fkbn34', [new Date(2026, 9, 24, 22), new Date(2026, 9, 25, 0, 40)]),
+      sitting('c', 'u2fkbn12', [new Date(2026, 9, 21, 20)]),
+    ];
+    expect(profileNights(sessions, null, new Date(2026, 10, 4, 12))).toEqual({ nights: 2, average: 2.5 });
   });
 });

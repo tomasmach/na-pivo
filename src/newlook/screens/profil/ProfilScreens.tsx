@@ -91,6 +91,7 @@ import {
   nvBadgeAmount,
   nvBadgeName,
   nvStillLine,
+  profileNights,
   buildNvBadges,
   useMe,
   useNvBadges,
@@ -224,11 +225,12 @@ export function ProfilScreen() {
     : missingNick
       ? t.profile.nicknameMissing
       : xp
-        ? P().profile.levelLine(xp.level, xp.title, me.isPublic)
-        : me.isPublic
-          ? t.profile.visibilityPublic
-          : t.profile.visibilityPrivate;
-  const average = summary.evenings > 0 ? summary.beers / summary.evenings : 0;
+        ? P().profile.levelLine(xp.level, xp.title)
+        : null;
+  // Level and visibility get a line each, so neither wraps next to the edit buttons.
+  const visibility = me.isSignedIn && !missingNick ? (me.isPublic ? t.profile.visibilityPublic : t.profile.visibilityPrivate) : null;
+  const levelCaption = me.isSignedIn && !missingNick;
+  const nights = useMemo(() => profileNights(summary.sessions, summary.remoteStats), [summary.sessions, summary.remoteStats]);
   const since = summary.firstBeerAt
     ? dateTimeFormat({ day: 'numeric', month: 'numeric', year: 'numeric' }).format(new Date(summary.firstBeerAt))
     : null;
@@ -255,9 +257,16 @@ export function ProfilScreen() {
             {title}
           </D>
           <Press disabled={!missingNick} onPress={() => router.push('/nv/dokoncit-ucet')}>
-            <T s={14} c={missingNick ? C.yellow : C.muted}>
-              {caption}
-            </T>
+            {caption ? (
+              <T s={14} c={missingNick ? C.yellow : C.muted} numberOfLines={levelCaption ? 1 : undefined} adjustsFontSizeToFit={levelCaption} minimumFontScale={0.85}>
+                {caption}
+              </T>
+            ) : null}
+            {visibility ? (
+              <T s={14} c={C.muted} numberOfLines={1}>
+                {visibility}
+              </T>
+            ) : null}
           </Press>
         </View>
         <IconButton
@@ -319,8 +328,8 @@ export function ProfilScreen() {
       <View style={[s.row, { justifyContent: 'space-between' }]}>
         {[
           [nf.format(summary.pubs), P().profile.pubs(summary.pubs)],
-          [nf.format(summary.evenings), P().profile.evenings(summary.evenings)],
-          [numberFormat({ maximumFractionDigits: 1 }).format(average), P().profile.perEvening],
+          [nf.format(nights.nights), P().profile.evenings(nights.nights)],
+          [numberFormat({ maximumFractionDigits: 1 }).format(nights.average), P().profile.perEvening],
           [formatPrice(summary.spentCzk, priceCurrency), P().profile.spent],
         ].map(([v, l]) => (
           <View key={l} style={{ gap: 2 }}>
@@ -1220,7 +1229,7 @@ export function UpravitProfilScreen() {
     <Screen header={<BackHeader />} footer={<Button testID="profile-save" label={saving ? t.account.loading : P().editProfile.save} disabled={saving} onPress={() => void save()} />} gap={16}>
       <PageTitle title={P().editProfile.title} />
       <Press onPress={changePhoto} disabled={avatarBusy} style={{ alignItems: 'center', gap: 10 }} accessibilityRole="button">
-        <ProfilAvatar uri={me.avatarUrl} initial={me.initial} size={96} />
+        <ProfilAvatar uri={me.avatarUrl} initial={(nick.trim() || name.trim()).charAt(0).toLocaleUpperCase()} size={96} />
         {avatarBusy ? (
           <Spinner />
         ) : (

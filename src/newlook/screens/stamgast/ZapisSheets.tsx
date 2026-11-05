@@ -24,6 +24,7 @@ import { Sheet } from '../../components/overlays';
 import { Button, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { toast } from '../../ui/store';
+import { distanceLabel } from '../kompas/format';
 import { useKompasState } from '../kompas/state';
 import { myRating } from '../piva/model';
 import { useMyRatings } from '../piva/useMyRatings';
@@ -31,7 +32,6 @@ import { logDrink } from './counterActions';
 import { beerTally, drinkTally } from './eveningData';
 import { useBackfillPick, useCountPlace, useNvPlaceStore } from './placeStore';
 import { addBeersToMenu, usePubMenu } from './pubMenu';
-import { distanceLabel } from './stamgastFormat';
 
 type Kind = 'pivo' | 'vino' | 'nealko' | 'panak';
 type HomeServing = 'lahvac' | 'plech' | 'jinak';
@@ -307,6 +307,7 @@ export function ZapisSheet() {
         ...(serving ? serving : chosenSize?.volumeMl ? { volumeMl: chosenSize.volumeMl } : {}),
       },
       menu.beers,
+      { silentTap: true },
     );
     nvBack(router);
   };
@@ -319,7 +320,7 @@ export function ZapisSheet() {
     <Sheet
       title={copy.whatDrink}
       top={140}
-      footer={<Button testID="drink-save" height={60} label={copy.logBeer} sub={footerSub} disabled={!selected} onPress={save} />}
+      footer={<Button testID="drink-save" height={60} label={copy.logBeer} sub={footerSub} disabled={!selected} haptic={!place} onPress={save} />}
     >
       <Press onPress={() => router.push('/nv/zmenit-misto')} style={[s.row, { gap: 6, marginTop: -8 }]}>
         <Icon name={home ? 'house' : 'map-pin'} size={16} color={C.yellow} />
@@ -531,10 +532,12 @@ export function PridatPivoSheet() {
                 leading={tile}
                 title={b.name}
                 titleWeight={700}
-                sub={copy.nearbySub(
-                  [b.pubName, typeof b.priceCzk === 'number' ? formatPrice(b.priceCzk, currency) : null].filter(Boolean).join(' · '),
-                  distanceLabel(b.distanceMeters),
-                )}
+                sub={[
+                  b.pubName,
+                  typeof b.priceCzk === 'number' ? formatPrice(b.priceCzk, currency) : null,
+                  // The distance is measured from the pub you sit in, so it means nothing for that pub itself.
+                  b.pubName === pub.name ? null : distanceLabel(b.distanceMeters),
+                ].filter(Boolean).join(' · ')}
                 trailing={plusIcon}
                 onPress={() => pick(b.name, { volumeMl: b.volumeMl })}
               />
@@ -724,12 +727,13 @@ export function VyfotScreen() {
           </View>
           <Button
             height={58}
+            haptic={false}
             label={copy.logBeer}
             sub={`${phase.beer.name} · ${(serving === 'lahvac' ? copy.bottle : copy.can).toLowerCase()} ${formatVolume(phase.beer.volumeMl ?? 500)}`}
             onPress={() => {
               const target: CountPlace = place?.kind === 'outside' ? place : { kind: 'outside', context: 'private' };
               if (place?.kind !== 'outside') useNvPlaceStore.getState().setOutside('private');
-              logDrink(target, { name: phase.beer.name, drinkType: 'beer', servingType: serving === 'lahvac' ? 'bottle' : 'can', volumeMl: phase.beer.volumeMl ?? 500 });
+              logDrink(target, { name: phase.beer.name, drinkType: 'beer', servingType: serving === 'lahvac' ? 'bottle' : 'can', volumeMl: phase.beer.volumeMl ?? 500 }, undefined, { silentTap: true });
               router.dismissTo('/nv/stamgast');
             }}
           />

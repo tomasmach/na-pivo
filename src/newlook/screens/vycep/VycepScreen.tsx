@@ -25,7 +25,7 @@ import { intlLocale, t } from '@/i18n';
 import { useToursStore } from '@/stores/toursStore';
 import { useVycepStore } from '@/stores/vycepStore';
 
-import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
+import { BottomFade, TabHeader, TopFade, useTabBarSpace } from '../../components/chrome';
 import { StatusCard } from '../../components/StatusCard';
 import { Icon, type IconName } from '../../components/Icon';
 import { D, T, Button, Dot, Press, Segmented } from '../../components/ui';
@@ -38,6 +38,7 @@ import { clockTime, daysUntil, routeLine } from './nightData';
 export function RundaButton({ count, given, onPress, disabled }: { count: number; given: boolean; onPress: () => void; disabled?: boolean }) {
   if (disabled) {
     // Your own night collects rounds but cannot take one, so it shows a count instead of a button.
+    if (count === 0) return null;
     return (
       <View style={[s.row, { height: 36, gap: 6 }]} accessible accessibilityLabel={t.nv.vycep.round(count)}>
         <Icon name="hand-platter" size={16} color={C.muted} />
@@ -69,7 +70,7 @@ export function RundaButton({ count, given, onPress, disabled }: { count: number
     >
       <Icon name="hand-platter" size={16} color={C.yellow} />
       <T s={14} w={600} c={given ? C.yellow : C.white}>
-        {t.nv.vycep.round(count)}
+        {count > 0 ? t.nv.vycep.round(count) : t.nv.vycep.roundGive}
       </T>
     </Press>
   );
@@ -105,7 +106,7 @@ function postWhen(iso: string, now = new Date()): string {
   return d.toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
 }
 
-const Post = memo(function Post({ night, onRemoved }: { night: PublishedNight; onRemoved: (id: string) => void }) {
+const Post = memo(function Post({ night, showScope, onRemoved }: { night: PublishedNight; showScope: boolean; onRemoved: (id: string) => void }) {
   const [given, setGiven] = useState(night.myRound);
   const [count, setCount] = useState(night.rounds);
   const busy = useRef(false);
@@ -185,7 +186,8 @@ const Post = memo(function Post({ night, onRemoved }: { night: PublishedNight; o
       ],
     });
 
-  const meta = [night.city, postWhen(night.createdAt), night.visibility === 'public' ? t.nv.vycep.postScopeWorld : t.nv.vycep.postScopeParta]
+  const scopeLabel = night.visibility === 'public' ? t.nv.vycep.postScopeWorld : t.nv.vycep.postScopeParta;
+  const meta = [night.city, postWhen(night.createdAt), showScope ? scopeLabel : null]
     .filter(Boolean)
     .join(' · ');
 
@@ -360,15 +362,11 @@ export function VycepScreen() {
       <FlatList
         data={feed.nights ?? NO_NIGHTS}
         keyExtractor={nightKey}
-        renderItem={({ item, index }) =>
-          index < FADED_POSTS ? (
-            <Animated.View entering={fadeIn}>
-              <Post night={item} onRemoved={feed.remove} />
-            </Animated.View>
-          ) : (
-            <Post night={item} onRemoved={feed.remove} />
-          )
-        }
+        renderItem={({ item, index }) => {
+          // Everything in the world tab is public, so only your own night repeats who can see it.
+          const post = <Post night={item} showScope={scope === 'parta' || item.isMine} onRemoved={feed.remove} />;
+          return index < FADED_POSTS ? <Animated.View entering={fadeIn}>{post}</Animated.View> : post;
+        }}
         onEndReached={feed.loadMore}
         onEndReachedThreshold={1.5}
         showsVerticalScrollIndicator={false}
@@ -447,6 +445,7 @@ export function VycepScreen() {
           </>
         }
       />
+      <TopFade />
       <BottomFade height={tabSpace + 40} />
     </View>
   );
