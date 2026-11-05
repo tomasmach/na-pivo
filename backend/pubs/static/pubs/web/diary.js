@@ -248,8 +248,8 @@
       clearTimeout(suggestTimer);
       var q = input.value.trim();
       if (q.length < 2) { closeSuggest(input); return; }
+      var seq = ++suggestSeq;
       suggestTimer = setTimeout(async function () {
-        var seq = ++suggestSeq;
         var res = await window.npApi("/v1/beer-brands/suggest?limit=6&q=" + encodeURIComponent(q));
         if (seq !== suggestSeq || document.activeElement !== input) return;
         showSuggest(input, res.ok && res.data ? res.data.suggestions : []);
