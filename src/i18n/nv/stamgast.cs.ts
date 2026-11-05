@@ -33,6 +33,7 @@ export const stamgastCs = {
   quickOther: 'Jiné pivo',
   quickBackfill: 'Dopsat',
   quickPhoto: 'Fotka',
+  quickPing: 'Cinknout',
   quickDone: 'Dopito',
   nothingYet: 'Dneska ještě nic nepadlo.',
   stickerTitle: (n: number) => `${n}. pivo. Hoď to na story?`,

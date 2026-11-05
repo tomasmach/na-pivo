@@ -29,6 +29,7 @@ export const stamgastEn: typeof stamgastCs = {
   quickOther: 'Other beer',
   quickBackfill: 'Add past',
   quickPhoto: 'Photo',
+  quickPing: 'Ping',
   quickDone: 'Done',
   nothingYet: 'Nothing poured today yet.',
   stickerTitle: (n: number) => `Beer number ${n}. Put it on your story?`,
