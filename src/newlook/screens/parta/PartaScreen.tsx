@@ -274,7 +274,6 @@ export function PartaScreen() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}>
         <TabHeader title={t.nv.parta.title}>
-          <IconButton icon="qr-code" iconSize={20} onPress={() => router.push('/nv/sprava-party')} label={t.nv.parta.qrLabel} />
           <Button label={t.nv.parta.add} icon="user-plus" kind="raised" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/sprava-party')} />
         </TabHeader>
         {failed && dashboard ? (

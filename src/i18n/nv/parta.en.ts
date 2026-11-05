@@ -6,7 +6,6 @@ const people = (n: number) => englishPlural(n, { one: 'person', other: 'people' 
 
 export const partaEn: Strings['nv']['parta'] = {
   title: 'Crew',
-  qrLabel: 'Crew QR code',
   add: 'Add',
   loading: 'Loading…',
   loadFailed: 'Your crew did not come through.',

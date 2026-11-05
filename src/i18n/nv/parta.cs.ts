@@ -5,7 +5,6 @@ const beers = (n: number) => czechPlural(n, { one: 'pivo', few: 'piva', many: 'p
 
 export const partaCs = {
   title: 'Parta',
-  qrLabel: 'QR kód party',
   add: 'Přidat',
   loading: 'Načítám…',
   loadFailed: 'Parta se nedotáhla.',
