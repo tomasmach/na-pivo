@@ -20,7 +20,7 @@ import { useToursStore } from '@/stores/toursStore';
 import { formatPrice } from '@/utils/currency';
 import { openPubInMaps } from '@/utils/maps';
 
-import { Glass, GlassButton, LevelAvatar, useTabBarSpace } from '../../components/chrome';
+import { AvatarSlot, Glass, GlassButton, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, Chip, D, Dot, IconButton, Press, T } from '../../components/ui';
 import { usePubNameReveal } from '../../hiddenPubNames';
@@ -244,7 +244,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
           experimental_backgroundImage: 'linear-gradient(180deg, #0A0A0AF5 0%, #0A0A0AB3 60%, #0A0A0A00 100%)',
         }}
       />
-      <View style={{ position: 'absolute', top: insets.top + 4, left: SCREEN_X, right: SCREEN_X, gap: 12 }}>
+      <View style={{ position: 'absolute', top: insets.top + 3, left: SCREEN_X, right: SCREEN_X, gap: 12 }}>
         <View style={[s.row, { gap: 10 }]}>
           <Press haptic onPress={onCompass} accessibilityLabel={L().compassA11y} style={{ width: 54, height: 54 }}>
             <MiniCompass />
@@ -271,7 +271,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
             </View>
             <IconButton icon="sliders-horizontal" size={38} iconSize={17} badge={k.filterCount || undefined} onPress={() => openFilters(router)} label={L().filters} />
           </Press>
-          <LevelAvatar />
+          <AvatarSlot />
         </View>
       </View>
       <ScrollView
@@ -539,7 +539,7 @@ function CompassMode({ k, name, onMap }: { k: Kompas; name: NameReveal; onMap: (
         <IconButton icon="map" color={C.yellow} onPress={onMap} label={L().map} iconSize={20} />
         <View style={[s.row, { gap: 10 }]}>
           <IconButton icon="search" onPress={() => router.push('/nv/hledani')} label={L().search} iconSize={20} />
-          <LevelAvatar />
+          <AvatarSlot />
         </View>
       </View>
       <View style={[s.row, { gap: 8, marginTop: 12, opacity: tour ? 0 : 1 }]} pointerEvents={tour ? 'none' : 'auto'}>

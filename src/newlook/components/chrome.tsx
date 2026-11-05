@@ -3,7 +3,7 @@ import { Image, Platform, View, type ScrollViewProps, type StyleProp, type ViewS
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Animated, { interpolate, makeMutable, useAnimatedScrollHandler, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -59,8 +59,10 @@ export function GlassButton({ icon, onPress, size = 46, label }: { icon: IconNam
   );
 }
 
+const AVATAR = 44;
+
 /** The profile entry on every tab: avatar with the level ring and a new-badge dot. */
-export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: () => void }) {
+export function LevelAvatar({ size = AVATAR, onPress }: { size?: number; onPress?: () => void }) {
   const router = useRouter();
   const me = useMe();
   const dot = useUnopenedBadges().length > 0;
@@ -119,6 +121,43 @@ export function LevelAvatar({ size = 44, onPress }: { size?: number; onPress?: (
   );
 }
 
+const headerScroll: Record<string, SharedValue<number>> = {};
+const scrollOf = (tab: string) => (headerScroll[tab] ??= makeMutable(0));
+
+/** For a tab whose header scrolls with its content, so the shared avatar scrolls along. */
+export function useTabHeaderScroll(tab: string) {
+  const y = scrollOf(tab);
+  return useAnimatedScrollHandler({
+    onScroll: (e) => {
+      y.value = e.contentOffset.y;
+    },
+  });
+}
+
+/** Where a tab header keeps room for the avatar that `TabAvatar` draws above all tabs. */
+export function AvatarSlot() {
+  return <View style={{ width: AVATAR, height: AVATAR }} />;
+}
+
+/**
+ * The avatar of every tab, drawn once above them so switching tabs neither moves nor fades it.
+ * It sits where each tab header has its `AvatarSlot`. Drawn above the screen's `TopFade`, it fades
+ * itself out while its middle passes through that fade.
+ */
+export function TabAvatar({ tab }: { tab: string }) {
+  const insets = useSafeAreaInsets();
+  const y = scrollOf(tab);
+  const follow = useAnimatedStyle(() => ({
+    opacity: interpolate(y.value, [AVATAR / 2, AVATAR / 2 + 16], [1, 0], 'clamp'),
+    transform: [{ translateY: -y.value }],
+  }));
+  return (
+    <Animated.View style={[{ position: 'absolute', top: insets.top + 8, right: SCREEN_X }, follow]}>
+      <LevelAvatar />
+    </Animated.View>
+  );
+}
+
 /** Big tab title row: title, optional actions, avatar. */
 export function TabHeader({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
@@ -126,9 +165,9 @@ export function TabHeader({ title, children }: { title: string; children?: React
       <D s={44} accessibilityRole="header" numberOfLines={1} style={{ flexShrink: 1 }}>
         {title}
       </D>
-      <View style={[s.row, { gap: 10 }]}>
+      <View style={[s.row, { gap: 10, alignSelf: 'flex-start' }]}>
         {children}
-        <LevelAvatar />
+        <AvatarSlot />
       </View>
     </View>
   );
