@@ -173,6 +173,11 @@ export const profilEn: Strings['nv']['profil'] = {
     password: 'Password',
     passwordPlaceholder: 'At least 8 characters',
     forgot: 'Forgot your password?',
+    termsPrefix: 'By creating an account you agree to the ',
+    termsLink: 'terms of use',
+    termsMiddle: ' and acknowledge the ',
+    privacyLink: 'privacy policy',
+    termsSuffix: '.',
   },
   reset: {
     title: 'Reset password',

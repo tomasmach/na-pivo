@@ -173,6 +173,11 @@ export const profilCs = {
     password: 'Heslo',
     passwordPlaceholder: 'Alespoň 8 znaků',
     forgot: 'Zapomenuté heslo?',
+    termsPrefix: 'Vytvořením účtu souhlasíš s ',
+    termsLink: 'podmínkami použití',
+    termsMiddle: ' a bereš na vědomí ',
+    privacyLink: 'zásady soukromí',
+    termsSuffix: '.',
   },
   reset: {
     title: 'Obnova hesla',

@@ -85,6 +85,7 @@ import { ProfilAvatar } from './ProfilAvatar';
 import {
   groupBadges,
   isPublicBadge,
+  legalUrl,
   markBadgeOpened,
   nextGoal,
   nvBadgeAbout,
@@ -101,7 +102,8 @@ import {
 const P = () => t.nv.profil;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
-const PRIVACY_URL = 'https://tomasmach.github.io/na-pivo/privacy.html';
+const TERMS_URL = legalUrl('terms', locale);
+const PRIVACY_URL = legalUrl('privacy', locale);
 const DISTANCE_OPTIONS: (number | null)[] = [0.5, 1, 1.5, 2, 2.5, 5, 10, null];
 const BADGES_SHOWN = 5;
 
@@ -1780,6 +1782,17 @@ export function PrihlaseniScreen() {
         />
       </Field>
       <ErrorLine text={error || (sessionExpired ? t.account.sessionExpired : '')} />
+      <T s={13} c={C.muted} lh={1.45}>
+        {P().signIn.termsPrefix}
+        <T s={13} w={600} c={C.text2} style={{ textDecorationLine: 'underline' }} accessibilityRole="link" onPress={() => void Linking.openURL(TERMS_URL)}>
+          {P().signIn.termsLink}
+        </T>
+        {P().signIn.termsMiddle}
+        <T s={13} w={600} c={C.text2} style={{ textDecorationLine: 'underline' }} accessibilityRole="link" onPress={() => void Linking.openURL(PRIVACY_URL)}>
+          {P().signIn.privacyLink}
+        </T>
+        {P().signIn.termsSuffix}
+      </T>
     </Screen>
   );
 }
