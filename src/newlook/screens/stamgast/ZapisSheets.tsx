@@ -186,6 +186,8 @@ export function ZapisSheet() {
   const [volume, setVolume] = useState<number | null>(null);
   const [typedPrice, setTypedPrice] = useState('');
   const priceInput = useRef<TextInputInstance>(null);
+  /** The picked size has a price on the menu and the user is correcting it. */
+  const [editPrice, setEditPrice] = useState(false);
   /** A wine, soft drink or shot typed by hand; null while a tile is picked. */
   const [custom, setCustom] = useState<string | null>(null);
   const customName = custom?.trim() ?? '';
@@ -288,8 +290,10 @@ export function ZapisSheet() {
   const chosenSize =
     sizeChoices.find((size) => size.volumeMl === volume) ?? sizeChoices.find((size) => size.volumeMl === 500) ?? sizeChoices[0] ?? selected?.sizes[0] ?? null;
   const typed = Number(typedPrice.replace(',', '.'));
-  const price = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : typed > 0 && typed <= 1000 ? Math.round(typed) : undefined;
-  const needsPrice = !!pub && !!selected && kind === 'pivo' && typeof chosenSize?.priceCzk !== 'number';
+  const typedCzk = typed > 0 && typed <= 1000 ? Math.round(typed) : undefined;
+  const menuPrice = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : undefined;
+  const price = (editPrice ? typedCzk : undefined) ?? menuPrice ?? typedCzk;
+  const needsPrice = !!pub && !!selected && kind === 'pivo' && (editPrice || menuPrice === undefined);
 
   const homeLabel = {
     lahvac: `${copy.bottle.toLowerCase()} ${formatVolume(500)}`,
@@ -366,6 +370,7 @@ export function ZapisSheet() {
           setCustom(null);
           setVolume(null);
           setTypedPrice('');
+          setEditPrice(false);
         }}
       />
       <View style={{ gap: 10 }}>
@@ -390,6 +395,7 @@ export function ZapisSheet() {
                     setCustom(null);
                     setVolume(null);
                     setTypedPrice('');
+                    setEditPrice(false);
                     if (o.servingType === 'can') setHomeServing('plech');
                   }}
                 />
@@ -421,20 +427,27 @@ export function ZapisSheet() {
                 <SizeCard title={copy.otherServing} sub={copy.otherServingSub} on={homeServing === 'jinak'} onPress={() => setHomeServing('jinak')} />
               </>
             ) : (
-              sizeChoices.map((size) => (
-                <SizeCard
-                  key={size.volumeMl}
-                  title={size.volumeMl ? formatVolume(size.volumeMl) : ''}
-                  sub={typeof size.priceCzk === 'number' ? money(size.priceCzk) : copy.priceUnknown}
-                  icon={typeof size.priceCzk !== 'number'}
-                  on={size.volumeMl === chosenSize?.volumeMl}
-                  onPress={() => {
-                    setVolume(size.volumeMl ?? null);
-                    setTypedPrice('');
-                    if (typeof size.priceCzk !== 'number') requestAnimationFrame(() => priceInput.current?.focus());
-                  }}
-                />
-              ))
+              sizeChoices.map((size) => {
+                const on = size.volumeMl === chosenSize?.volumeMl;
+                const known = typeof size.priceCzk === 'number';
+                return (
+                  <SizeCard
+                    key={size.volumeMl}
+                    title={size.volumeMl ? formatVolume(size.volumeMl) : ''}
+                    sub={typeof size.priceCzk === 'number' ? money(size.priceCzk) : copy.priceUnknown}
+                    icon={!known || on}
+                    on={on}
+                    onPress={() => {
+                      // A second tap on the picked size with a price opens that price for a fix.
+                      const fix = on && known;
+                      setVolume(size.volumeMl ?? null);
+                      setEditPrice(fix);
+                      setTypedPrice(fix ? String(size.priceCzk) : '');
+                      if (fix || !known) requestAnimationFrame(() => priceInput.current?.focus());
+                    }}
+                  />
+                );
+              })
             )}
           </View>
         </View>
