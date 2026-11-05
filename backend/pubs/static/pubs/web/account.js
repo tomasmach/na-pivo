@@ -153,6 +153,7 @@
     if (!input) return;
     var scope = input.closest("[data-scope]");
     if (input.type !== "radio") return save(input, scope);
+    scope.dataset.latest = input.value;
     clearTimeout(scope.saveTimer);
     scope.saveTimer = setTimeout(function () { save(input, scope); }, 400);
   });
@@ -161,7 +162,6 @@
     var body = {};
     body[input.name] = value;
     if (input.type === "checkbox") input.disabled = true;
-    else scope.dataset.latest = value;
     var result = await send(input.dataset.toggle, { method: "PATCH", body: body, ugc: "ugc" in input.dataset && value === true });
     input.disabled = false;
     if (input.type === "radio" && result.ok) scope.dataset.saved = value;

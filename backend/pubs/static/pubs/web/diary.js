@@ -260,6 +260,7 @@
       var input = event.target;
       if (!input.matches("[data-name]")) return;
       var box = input.closest("[data-beer]").querySelector("[data-suggest]");
+      if (event.key === "Escape") closeSuggest(input);
       if (box.hidden) return;
       var options = Array.prototype.slice.call(box.children);
       var active = box.querySelector('[aria-selected="true"]');
@@ -273,9 +274,6 @@
         event.preventDefault();
         if (active) pickSuggestion(input, active);
         else closeSuggest(input);
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        closeSuggest(input);
       }
     });
 
