@@ -440,8 +440,9 @@ function PubCard({ onCollapse, onPullOpen, children }: { onCollapse: () => void;
   const height = useSharedValue(160);
 
   const slideAway = () => {
-    opacity.value = withTiming(0, fadeOutTiming(DURATION.base));
-    y.value = withTiming(height.value, exitTiming(DURATION.base), (done) => {
+    y.value = withTiming(height.value, exitTiming(DURATION.base));
+    // The fade still runs with Reduce Motion on, so it decides when the card is gone.
+    opacity.value = withTiming(0, fadeOutTiming(DURATION.base), (done) => {
       if (done) runOnJS(onCollapse)();
     });
   };
@@ -459,8 +460,9 @@ function PubCard({ onCollapse, onPullOpen, children }: { onCollapse: () => void;
     .onUpdate((e) => {
       y.value = e.translationY < 0 ? e.translationY * PULL_UP_FOLLOW : e.translationY;
     })
-    .onEnd((e) => {
-      runOnJS(release)(e.translationY, e.velocityY);
+    .onEnd((e, success) => {
+      if (success) runOnJS(release)(e.translationY, e.velocityY);
+      else y.value = withTiming(0, enterTiming());
     });
   const drag = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateY: y.value }] }));
 
