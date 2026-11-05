@@ -330,6 +330,36 @@ export function PartaScreen() {
         )}
         {dashboard ? (
           <Animated.View entering={fadeIn} style={{ gap: 20 }}>
+            {dashboard.incomingRequests.length ? (
+              <>
+                <SectionTitle title={t.nv.parta.requestsTitle} />
+                {dashboard.incomingRequests.map((req) => (
+                  <View key={req.id} style={{ paddingHorizontal: 16, borderRadius: 24, borderWidth: 1, borderColor: C.hairline }}>
+                    <Row
+                      last
+                      leading={<Person initial={personInitial(req.requester)} ring={false} />}
+                      title={personName(req.requester)}
+                      titleWeight={700}
+                      sub={req.requester.nickname ? `@${req.requester.nickname}` : undefined}
+                      trailing={
+                        <View style={[s.row, { gap: 8 }]}>
+                          <IconButton icon="x" size={36} iconSize={16} label={t.nv.parta.decline} onPress={() => answerRequest(req.id, personName(req.requester), 'decline')} />
+                          <IconButton
+                            icon="check"
+                            size={36}
+                            iconSize={16}
+                            bg={C.white}
+                            color={C.black}
+                            label={t.nv.parta.accept}
+                            onPress={() => answerRequest(req.id, personName(req.requester), 'accept')}
+                          />
+                        </View>
+                      }
+                    />
+                  </View>
+                ))}
+              </>
+            ) : null}
             <SectionTitle title={t.nv.parta.outNow} action={t.nv.parta.outCount(outCount, friends.length + 1)} />
             <Card>
               <Row
@@ -359,31 +389,6 @@ export function PartaScreen() {
               ))}
             </Card>
             <PartaPhotoStrip />
-            {dashboard.incomingRequests.map((req) => (
-              <View key={req.id} style={{ paddingHorizontal: 16, borderRadius: 24, borderWidth: 1, borderColor: C.hairline }}>
-                <Row
-                  last
-                  leading={<Person initial={personInitial(req.requester)} ring={false} />}
-                  title={t.nv.parta.wantsIn(personName(req.requester))}
-                  titleWeight={700}
-                  sub={req.requester.nickname ? `@${req.requester.nickname}` : undefined}
-                  trailing={
-                    <View style={[s.row, { gap: 8 }]}>
-                      <IconButton icon="x" size={36} iconSize={16} label={t.nv.parta.decline} onPress={() => answerRequest(req.id, personName(req.requester), 'decline')} />
-                      <IconButton
-                        icon="check"
-                        size={36}
-                        iconSize={16}
-                        bg={C.white}
-                        color={C.black}
-                        label={t.nv.parta.accept}
-                        onPress={() => answerRequest(req.id, personName(req.requester), 'accept')}
-                      />
-                    </View>
-                  }
-                />
-              </View>
-            ))}
             {friends.length === 0 || rest.length ? (
               <>
                 <SectionTitle
