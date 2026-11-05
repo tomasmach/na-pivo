@@ -40,7 +40,8 @@ Vytvoř **tři** klienty:
 - Web: u **Web application** klienta přidej do **Authorized redirect URIs**
   `https://na-pivo.cz/prihlaseni/google/navrat` (pro jiný `PUBLIC_WEB_ORIGIN`
   jeho adresu + `/prihlaseni/google/navrat`). Bez toho Google hlásí
-  `redirect_uri_mismatch`.
+  `redirect_uri_mismatch`. Pro lokální vývoj je tam i
+  `http://localhost:8012/prihlaseni/google/navrat`.
 
 ## 2. Sign in with Apple
 
@@ -55,17 +56,16 @@ Identifiers & Profiles**:
    - `APPLE_PRIVATE_KEY` = obsah `.p8` (řádky odděl `\n`)
    - `APPLE_BUNDLE_ID=com.tomasmach.na-pivo` (default, native iOS `aud`)
    - `APPLE_SERVICES_ID` nech prázdné, pokud nechceš Apple login na webu.
-4. Web: v **Identifiers → Services IDs** vytvoř Services ID (např.
-   `cz.na-pivo.web`), zapni u něj **Sign In with Apple**, jako Primary App ID
-   vyber `com.tomasmach.na-pivo` (pak má člověk na webu i v appce stejný účet),
-   do **Domains** dej `na-pivo.cz` a do **Return URLs**
-   `https://na-pivo.cz/prihlaseni/apple/navrat`. Jeho identifikátor dej do
-   `APPLE_SERVICES_ID`; tlačítko Apple se na webu objeví až s ním. Stačí stejný
-   klíč z bodu 2.
+4. Web: Services ID `com.tomasmach.na-pivo.web` („Na pivo Web“) už existuje.
+   Má zapnuté **Sign In with Apple** s Primary App ID `com.tomasmach.na-pivo`
+   (člověk má na webu i v appce stejný účet), doménu `na-pivo.cz` a Return URL
+   `https://na-pivo.cz/prihlaseni/apple/navrat`. Na serveru nastav
+   `APPLE_SERVICES_ID=com.tomasmach.na-pivo.web`; tlačítko Apple se na webu
+   objeví až s ním. Podepisuje se stejným klíčem z bodu 2.
 
-> Pozn.: v mobilním repu už leží `AuthKey.p8`. Ověř, jestli je to klíč
-> **Sign in with Apple** (ne APNs / App Store Connect). Pokud ne, vytvoř nový dle
-> bodu 2.
+> Pozn.: klíč Na pivo je `34FWF7QAGJ` („Na pivo Sign in with Apple“, Team
+> `T5W2WM23A6`). `AuthKey.p8` v kořeni mobilního repa je jiný, starší klíč a Apple
+> s ním výměnu kódu odmítne (`invalid_client`).
 
 ## 3. Resend (e-maily)
 
