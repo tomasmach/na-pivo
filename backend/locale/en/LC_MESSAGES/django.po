@@ -4390,6 +4390,9 @@ msgstr "Pubs in other towns"
 msgid "Další města"
 msgstr "More towns"
 
+msgid "Města podle písmen"
+msgstr "Towns by letter"
+
 msgid "Zatím tu nejsou žádné hospody"
 msgstr "No pubs here yet"
 

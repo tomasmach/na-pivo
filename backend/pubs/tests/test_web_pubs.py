@@ -178,6 +178,17 @@ def test_city_index_and_english_pages(client):
     assert "Hospody v Praze" not in english
 
 
+def test_more_cities_follow_the_czech_alphabet():
+    names = ["Žatec", "Ústí nad Labem", "Chomutov", "Senica", "Česká Lípa", "Zlín", "Hodonín", "Cheb", "Šaľa", "Cvikov", "Uherský Brod"]
+
+    groups = pubs_views._by_letter([{"label": name} for name in names])
+
+    assert [(group["letter"], [city["label"] for city in group["cities"]]) for group in groups] == [
+        ("C", ["Cvikov"]), ("Č", ["Česká Lípa"]), ("H", ["Hodonín"]), ("Ch", ["Cheb", "Chomutov"]),
+        ("S", ["Senica"]), ("Š", ["Šaľa"]), ("U", ["Uherský Brod", "Ústí nad Labem"]), ("Z", ["Zlín"]), ("Ž", ["Žatec"]),
+    ]
+
+
 def test_reported_pub_needs_a_quorum_to_disappear(client, settings):
     settings.PUB_REPORT_GLOBAL_HIDE_THRESHOLD = 2
     tiger = _pub()
