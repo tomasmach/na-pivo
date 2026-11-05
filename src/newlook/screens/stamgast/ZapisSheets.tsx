@@ -144,18 +144,15 @@ function AddTile({ label, sub, on, onPress }: { label: string; sub: string; on?:
   );
 }
 
-function SizeCard({ title, sub, on, onPress, icon }: { title: string; sub: string; on: boolean; onPress: () => void; icon?: boolean }) {
+function SizeCard({ title, sub, on, onPress }: { title: string; sub: string; on: boolean; onPress: () => void }) {
   return (
     <Press haptic onPress={onPress} style={[{ flex: 1, height: 56, borderRadius: 16, backgroundColor: on ? C.white : C.card, borderWidth: 1, borderColor: on ? C.white : C.hairline }, s.center]}>
       <T s={16} w={800} c={on ? C.black : C.white}>
         {title}
       </T>
-      <View style={[s.row, { gap: 4 }]}>
-        <T s={12} c={on ? '#0A0A0A99' : C.muted}>
-          {sub}
-        </T>
-        {icon ? <Icon name="pencil" size={11} color={on ? '#0A0A0A99' : C.muted} /> : null}
-      </View>
+      <T s={12} c={on ? '#0A0A0A99' : C.muted}>
+        {sub}
+      </T>
     </Press>
   );
 }
@@ -292,27 +289,13 @@ export function ZapisSheet() {
   const typed = Number(typedPrice.replace(',', '.'));
   const typedCzk = typed > 0 && typed <= 1000 ? Math.round(typed) : undefined;
   const menuPrice = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : undefined;
-  const price = (editPrice ? typedCzk : undefined) ?? menuPrice ?? typedCzk;
-  const needsPrice = !!pub && !!selected && kind === 'pivo' && (editPrice || menuPrice === undefined);
-
-  const homeLabel = {
-    lahvac: `${copy.bottle.toLowerCase()} ${formatVolume(500)}`,
-    plech: `${copy.can.toLowerCase()} ${formatVolume(500)}`,
-    jinak: copy.otherServing.toLowerCase(),
-  }[homeServing];
-  const sizeLabel =
-    home && kind === 'pivo'
-      ? homeLabel
-      : kind === 'pivo'
-        ? `${copy.draft} ${chosenSize?.volumeMl ? formatVolume(chosenSize.volumeMl) : ''}`.trim()
-        : chosenSize?.volumeMl
-          ? formatVolume(chosenSize.volumeMl)
-          : '';
-  const footerSub = nameMissing
-    ? copy.customNameMissing
-    : selected
-    ? [selected.name, sizeLabel, typeof price === 'number' && !home ? money(price) : null].filter(Boolean).join(' · ')
-    : undefined;
+  const price = typedCzk ?? menuPrice;
+  const priceRow = !!pub && !!selected && kind === 'pivo';
+  const priceFor = copy.priceFor(chosenSize?.volumeMl ? formatVolume(chosenSize.volumeMl) : '');
+  const openPrice = () => {
+    setTypedPrice(menuPrice === undefined ? '' : String(menuPrice));
+    setEditPrice(true);
+  };
 
   const save = () => {
     if (!place) {
@@ -344,7 +327,7 @@ export function ZapisSheet() {
     <Sheet
       title={copy.whatDrink}
       top={140}
-      footer={<Button testID="drink-save" height={60} label={kind === 'pivo' ? copy.logBeer : copy.logOther[kind]} sub={footerSub} disabled={!selected} haptic={!place} onPress={save} />}
+      footer={<Button testID="drink-save" height={60} label={kind === 'pivo' ? copy.logBeer : copy.logOther[kind]} sub={nameMissing ? copy.customNameMissing : undefined} disabled={!selected} haptic={!place} onPress={save} />}
     >
       <Press onPress={() => router.push('/nv/zmenit-misto')} style={[s.row, { gap: 6, marginTop: -8 }]}>
         <Icon name={place?.kind === 'outside' ? OUTSIDE_ICON[place.context] : 'map-pin'} size={16} color={C.yellow} />
@@ -427,40 +410,70 @@ export function ZapisSheet() {
                 <SizeCard title={copy.otherServing} sub={copy.otherServingSub} on={homeServing === 'jinak'} onPress={() => setHomeServing('jinak')} />
               </>
             ) : (
-              sizeChoices.map((size) => {
-                const on = size.volumeMl === chosenSize?.volumeMl;
-                const known = typeof size.priceCzk === 'number';
-                return (
-                  <SizeCard
-                    key={size.volumeMl}
-                    title={size.volumeMl ? formatVolume(size.volumeMl) : ''}
-                    sub={typeof size.priceCzk === 'number' ? money(size.priceCzk) : copy.priceUnknown}
-                    icon={!known || on}
-                    on={on}
-                    onPress={() => {
-                      // A second tap on the picked size with a price opens that price for a fix.
-                      const fix = on && known;
-                      setVolume(size.volumeMl ?? null);
-                      setEditPrice(fix);
-                      setTypedPrice(fix ? String(size.priceCzk) : '');
-                      if (fix || !known) requestAnimationFrame(() => priceInput.current?.focus());
-                    }}
-                  />
-                );
-              })
+              sizeChoices.map((size) => (
+                <SizeCard
+                  key={size.volumeMl}
+                  title={size.volumeMl ? formatVolume(size.volumeMl) : ''}
+                  sub={typeof size.priceCzk === 'number' ? money(size.priceCzk) : copy.priceUnknown}
+                  on={size.volumeMl === chosenSize?.volumeMl}
+                  onPress={() => {
+                    setVolume(size.volumeMl ?? null);
+                    setTypedPrice('');
+                    setEditPrice(false);
+                  }}
+                />
+              ))
             )}
           </View>
         </View>
       ) : null}
-      {needsPrice ? (
-        <Input
-          inputRef={priceInput}
-          testID="drink-price"
-          value={typedPrice}
-          onChangeText={(v) => setTypedPrice(v.replace(/[^0-9]/g, '').slice(0, 4))}
-          keyboardType="number-pad"
-          placeholder={copy.fixPrice}
-          returnKeyType="done"
+      {priceRow && editPrice ? (
+        <Press
+          onPress={() => priceInput.current?.focus()}
+          accessible={false}
+          style={[s.row, { height: 48, borderRadius: 16, paddingHorizontal: 14, gap: 4, backgroundColor: C.card, borderWidth: 1, borderColor: C.yellowStrong }]}
+        >
+          <T s={15} w={500} c={C.muted} style={s.fill}>
+            {priceFor}
+          </T>
+          <TextInput
+            ref={priceInput}
+            testID="drink-price"
+            accessibilityLabel={priceFor}
+            value={typedPrice}
+            onChangeText={(v) => setTypedPrice(v.replace(/[^0-9]/g, '').slice(0, 4))}
+            keyboardType="number-pad"
+            keyboardAppearance="dark"
+            returnKeyType="done"
+            autoFocus
+            selectionColor={C.yellow}
+            cursorColor={C.yellow}
+            style={[font(16, 700), { minWidth: 32, textAlign: 'right', padding: 0 }]}
+          />
+          <T s={16} w={700}>
+            {copy.priceUnit}
+          </T>
+        </Press>
+      ) : priceRow ? (
+        <Row
+          title={priceFor}
+          titleWeight={500}
+          titleColor={C.text2}
+          height={48}
+          last
+          onPress={openPrice}
+          trailing={
+            <View style={[s.row, { gap: 12 }]}>
+              {menuPrice !== undefined ? (
+                <T s={15} w={700}>
+                  {money(menuPrice)}
+                </T>
+              ) : null}
+              <T s={15} w={700} c={C.yellow}>
+                {menuPrice !== undefined ? copy.edit : copy.priceAdd}
+              </T>
+            </View>
+          }
         />
       ) : null}
       {pub && selected?.fresh && typeof price === 'number' ? (
