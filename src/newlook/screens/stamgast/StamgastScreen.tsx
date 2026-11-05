@@ -412,6 +412,11 @@ function CounterView() {
                 <T s={15} w={700}>
                   {copy.newBeerTitle}
                 </T>
+                {nudges.newBeer ? (
+                  <T s={13} c={C.muted} numberOfLines={1}>
+                    {nudges.newBeer.name}
+                  </T>
+                ) : null}
               </View>
               <Press
                 haptic

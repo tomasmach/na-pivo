@@ -187,22 +187,24 @@ export function PivaScreen() {
                 <Chip key={f ?? 'all'} label={styleFilterLabel(f)} active={style === f} plain onPress={() => setStyle(f)} />
               ))}
             </ScrollView>
-            <View style={[s.row, { gap: 6, marginTop: -4 }]}>
-              <T s={12} w={500} c={C.muted}>
-                {p.legendLead}
-              </T>
-              <T s={12} w={700} c={C.text2}>
-                {p.legendTop}
-              </T>
-              <View style={[s.row, { gap: 2 }]}>
-                {SHADES.map((c) => (
-                  <View key={c} style={{ width: 12, height: 6, borderRadius: 1, backgroundColor: c }} />
-                ))}
+            {page && !page.items.length ? null : (
+              <View style={[s.row, { gap: 6, marginTop: -4 }]}>
+                <T s={12} w={500} c={C.muted}>
+                  {p.legendLead}
+                </T>
+                <T s={12} w={700} c={C.text2}>
+                  {p.legendTop}
+                </T>
+                <View style={[s.row, { gap: 2 }]}>
+                  {SHADES.map((c) => (
+                    <View key={c} style={{ width: 12, height: 6, borderRadius: 1, backgroundColor: c }} />
+                  ))}
+                </View>
+                <T s={12} w={700} c={C.text2}>
+                  {p.legendBottom}
+                </T>
               </View>
-              <T s={12} w={700} c={C.text2}>
-                {p.legendBottom}
-              </T>
-            </View>
+            )}
             {ranking.state.status === 'loading' ? (
               <View>
                 {GHOST_ROWS.map((i) => (

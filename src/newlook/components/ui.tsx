@@ -317,7 +317,6 @@ export function Segmented<K extends string>({
             onPress={() => onChange(o.key)}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
-            hitSlop={{ top: Math.max(0, (44 - height) / 2) + 3, bottom: Math.max(0, (44 - height) / 2) + 3 }}
             style={[
               s.fill,
               s.center,
@@ -355,6 +354,12 @@ export function Tile({ icon, color = C.yellow, size = 40, bg = C.control, radius
 }
 
 /** List row inside a card: optional leading element, title + sub, trailing slot. */
+/** A switch in a row reads the row's title to a screen reader instead of a bare "switch". */
+function namedSwitch(trailing: React.ReactNode, title: React.ReactNode): React.ReactNode {
+  if (!React.isValidElement<{ label?: string }>(trailing) || trailing.type !== Toggle || trailing.props.label || typeof title !== 'string') return trailing;
+  return React.cloneElement(trailing, { label: title });
+}
+
 export function Row({
   title,
   sub,
@@ -407,7 +412,7 @@ export function Row({
           )
         ) : null}
       </View>
-      {trailing}
+      {namedSwitch(trailing, title)}
       {chevron ? <Icon name="chevron-right" size={16} color={C.muted} /> : null}
     </View>
   );

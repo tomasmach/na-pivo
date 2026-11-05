@@ -207,6 +207,7 @@ export function Screen({
   const bottomBase = tab ? tabSpace : Math.max(insets.bottom, 16);
   const [footerH, setFooterH] = useState(52);
   const [headerH, setHeaderH] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
   const keyboard = useKeyboardLift();
   const footerBottom = bottomBase + (tab ? 14 : 0);
   const footerLift = useAnimatedStyle(() => ({
@@ -230,6 +231,12 @@ export function Screen({
       {scroll ? (
         <KeyboardAwareScrollView
           {...scrollProps}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            const under = e.nativeEvent.contentOffset.y > 0;
+            if (under !== scrolled) setScrolled(under);
+            scrollProps?.onScroll?.(e);
+          }}
           keyboardAvoidedExternally={!!footer}
           revealBelow={NEXT_FIELD_REVEAL}
           showsVerticalScrollIndicator={false}
@@ -241,7 +248,7 @@ export function Screen({
       ) : (
         <View style={{ flex: 1, paddingBottom: bottomBase + footerSpace }}>{content}</View>
       )}
-      {scroll && headerH > 0 ? <TopFade below={headerH} /> : null}
+      {scroll && scrolled && headerH > 0 ? <TopFade below={headerH} /> : null}
       <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} />
       {footer ? (
         <Animated.View
@@ -255,16 +262,17 @@ export function Screen({
   );
 }
 
-const TOP_FADE = 24;
-
 /**
- * Keeps scrolled content from running under the clock: solid behind the status bar, then a short fade.
- * With `below`, only the fade, starting at that offset under a fixed header.
+ * Keeps scrolled content from running under the clock. Without `below` it covers the status bar and
+ * fades out where content starts, so resting content stays untouched. With `below` it is a short
+ * fade under a fixed header; show it only once the content has scrolled under that header.
  */
 export function TopFade({ below }: { below?: number }) {
   const insets = useSafeAreaInsets();
-  const solid = below === undefined ? insets.top : 0;
-  const height = solid + TOP_FADE;
+  const fade = 16;
+  const top = below ?? 0;
+  const height = below === undefined ? insets.top + 8 : fade;
+  const solidUntil = below === undefined ? Math.round(((insets.top - 8) / height) * 100) : 0;
   return (
     <View
       pointerEvents="none"
@@ -272,9 +280,9 @@ export function TopFade({ below }: { below?: number }) {
         position: 'absolute',
         left: 0,
         right: 0,
-        top: below ?? 0,
+        top,
         height,
-        experimental_backgroundImage: `linear-gradient(180deg, ${C.bg} 0%, ${C.bg} ${Math.round((solid / height) * 100)}%, ${C.bg}00 100%)`,
+        experimental_backgroundImage: `linear-gradient(180deg, ${C.bg} 0%, ${C.bg} ${solidUntil}%, ${C.bg}00 100%)`,
       }}
     />
   );

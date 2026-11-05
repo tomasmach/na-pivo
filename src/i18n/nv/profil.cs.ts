@@ -85,7 +85,7 @@ export const profilCs = {
     partyPushDisableError: 'Upozornění se zatím nepovedlo vypnout. Zkusím to znovu, až se do appky vrátíš.',
     phone: 'Telefon',
     haptics: 'Vibrace',
-    hapticsSub: 'Při ťukání i když dojdeš k cíli',
+    hapticsSub: 'Při ťukání a když dojdeš k cíli',
     sound: 'Zvuk cinknutí',
     soundSub: 'Drobné „cink“ u cíle',
     other: 'Ostatní',
