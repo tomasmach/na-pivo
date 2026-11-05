@@ -12,7 +12,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
-import { latestUnpublishedNight, nightPublishPayload, nightSummariesNewestFirst, type NightSummary } from '@/vycep/nightModel';
+import { nightPublishPayload, type NightSummary } from '@/vycep/nightModel';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
@@ -20,19 +20,15 @@ import { Sheet } from '../../components/overlays';
 import { Button, D, Press, T } from '../../components/ui';
 import { C, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
-import { routeLine, shortDay } from './nightData';
+import { nightToPublish, routeLine, shortDay } from './nightData';
 
 const HOUR = 60 * 60 * 1000;
 
-/** The night to hang up: the newest one not on the Výčep yet, else the newest. */
-function useNightToPublish(): NightSummary | null {
+function useNightToPublish(day?: string): NightSummary | null {
   const current = useTallyStore((st) => st.current);
   const history = useTallyStore((st) => st.history);
   const published = useVycepStore((st) => st.published);
-  return useMemo(
-    () => latestUnpublishedNight(current, history, published) ?? nightSummariesNewestFirst(current, history)[0] ?? null,
-    [current, history, published],
-  );
+  return useMemo(() => nightToPublish(current, history, published, day), [current, history, published, day]);
 }
 
 function useMe() {
@@ -146,9 +142,14 @@ function useNightPhoto(night: NightSummary | null, since: number): BeerPhotoLoca
   }, [night, photos, since]);
 }
 
+const DAY_PARAM = /^\d{4}-\d{2}-\d{2}$/;
+
 export function VyvesitSheet() {
   const router = useRouter();
-  const night = useNightToPublish();
+  const param = useLocalSearchParams<{ day?: string }>().day;
+  const day = typeof param === 'string' && DAY_PARAM.test(param) ? param : undefined;
+  const night = useNightToPublish(day);
+  const hanging = useVycepStore((st) => (day && night ? st.published[night.clientKey] : undefined));
   const me = useMe();
   const autopublish = useVycepStore((st) => st.nightAutopublish);
   const shareDefault = useVycepStore((st) => st.shareDefault);
@@ -169,6 +170,27 @@ export function VyvesitSheet() {
           <T s={14} c={C.muted} lh={1.4}>
             {t.nv.vycep.nothingBody}
           </T>
+        </View>
+      </Sheet>
+    );
+  }
+
+  if (hanging) {
+    return (
+      <Sheet title={t.nv.vycep.publishTitle} scroll={false} footer={<Button label={t.nv.vycep.back} kind="raised" onPress={() => nvBack(router)} />}>
+        <View style={[s.row, { gap: 10, alignItems: 'flex-start' }]}>
+          <Icon name="circle-check" size={18} color={C.yellow} />
+          <View style={[s.fill, { gap: 4 }]}>
+            <T s={13} w={700} c={C.muted}>
+              {[shortDay(night.startedAt), t.nv.vycep.postBeers(night.beerCount)].join(' · ')}
+            </T>
+            <T s={16} w={700}>
+              {t.nv.vycep.alreadyTitle}
+            </T>
+            <T s={14} c={C.muted} lh={1.4}>
+              {hanging.visibility === 'public' ? t.nv.vycep.alreadyWorld : t.nv.vycep.alreadyParta}
+            </T>
+          </View>
         </View>
       </Sheet>
     );

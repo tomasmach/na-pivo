@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { intlLocale } from '@/i18n';
 import { isContextPubKey } from '@/drinks/drinkTypes';
 import { drinkingDayKey, sessionDrinkTypeCounts, useTallyStore, type TallySession } from '@/stores/tallyStore';
-import { buildNightSummary, nightSummariesNewestFirst, sessionsOfNight, type NightSummary } from '@/vycep/nightModel';
+import { buildNightSummary, latestUnpublishedNight, nightSummariesNewestFirst, sessionsOfNight, type NightSummary } from '@/vycep/nightModel';
 
 import { durationLabel as formatDuration } from '../stamgast/stamgastFormat';
 
@@ -28,6 +28,17 @@ function viewOf(sessions: TallySession[]): NightView | null {
     else perPub.push({ pub: name, count: beers });
   }
   return { summary, sessions, perPub };
+}
+
+/** The asked drinking day; without one the newest night not on the Výčep yet, else the newest. */
+export function nightToPublish(
+  current: TallySession | null,
+  history: TallySession[],
+  published: Record<string, unknown>,
+  day?: string,
+): NightSummary | null {
+  if (day) return buildNightSummary(sessionsOfNight(current, history, day));
+  return latestUnpublishedNight(current, history, published) ?? nightSummariesNewestFirst(current, history)[0] ?? null;
 }
 
 /** Tonight (current drinking day) if anything was logged, else the latest night. */
