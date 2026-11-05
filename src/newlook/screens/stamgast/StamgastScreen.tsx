@@ -74,7 +74,8 @@ function useBeerQuestion(beerName: string | null): BeerQuestion | null {
     const controller = new AbortController();
     void fetchBeerPage({ beerName }, null, controller.signal).then((page) => {
       if (controller.signal.aborted || !page?.productKey) return;
-      setKnown({ name: beerName, key: page.productKey, kind: !page.styleSettled && !page.myStyle, degree: !page.degree && !page.myDegree });
+      const nameStatesDegree = /\d\s*°/.test(beerName);
+      setKnown({ name: beerName, key: page.productKey, kind: !page.styleSettled && !page.myStyle, degree: !page.degree && !page.myDegree && !nameStatesDegree });
     });
     return () => controller.abort();
   }, [beerName]);

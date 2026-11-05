@@ -125,9 +125,9 @@ export function KamosScreen() {
       {stats ? (
         <View style={[s.row, { justifyContent: 'space-between' }]}>
           {[
-            [String(stats.totalBeers), t.nv.parta.beersTotal],
-            [String(stats.distinctPubs), t.nv.parta.pubsTotal],
-            ...(badges !== null ? [[String(badges), t.nv.parta.badgesTotal]] : []),
+            [String(stats.totalBeers), t.nv.parta.beersTotal(stats.totalBeers)],
+            [String(stats.distinctPubs), t.nv.parta.pubsTotal(stats.distinctPubs)],
+            ...(badges !== null ? [[String(badges), t.nv.parta.badgesTotal(badges)]] : []),
           ].map(([v, l], i, arr) => (
             <View key={l} style={{ gap: 2, alignItems: i === arr.length - 1 && i > 0 ? 'flex-end' : i === 1 ? 'center' : 'flex-start' }}>
               <D s={34} lh={1}>
