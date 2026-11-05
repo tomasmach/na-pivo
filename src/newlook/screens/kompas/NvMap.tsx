@@ -2,7 +2,7 @@ import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, u
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapStyleElement, type Region } from 'react-native-maps';
 
-import { clusterPins, type PinCluster } from '@/map/clusterPins';
+import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, type PinCluster } from '@/map/clusterPins';
 import { StaticMapMarker } from '@/map/StaticMapMarker';
 
 import { Icon } from '../../components/Icon';
@@ -70,7 +70,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   const centered = useRef(false);
   const [initialRegion] = useState(() => (me ? nearRegion(me) : COUNTRY_REGION));
   const [viewport, setViewport] = useState<Region>(initialRegion);
-  const [widthPt, setWidthPt] = useState(0);
+  const [size, setSize] = useState({ width: 0, height: 0 });
   const padding = useMemo(() => ({ top: 0, left: 0, right: 0, bottom: bottomPadding }), [bottomPadding]);
   // Position fixes re-render the map; stable handlers let the marker lists skip them.
   const handlers = useRef({ onPub, onCity });
@@ -79,11 +79,19 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   });
   const pressPub = useCallback((id: string) => handlers.current.onPub?.(id), []);
   const pressCity = useCallback((key: string) => handlers.current.onCity?.(key), []);
+  const layout = useRef({ size, bottomPadding });
+  useEffect(() => {
+    layout.current = { size, bottomPadding };
+  });
   const pressCluster = useCallback((cluster: PinCluster) => {
-    ref.current?.fitToCoordinates(
-      cluster.members.map((m) => ({ latitude: m.lat, longitude: m.lng })),
-      { edgePadding: CLUSTER_EDGE_PADDING, animated: true },
-    );
+    const { size: map, bottomPadding: bottom } = layout.current;
+    const pad = CLUSTER_EDGE_PADDING;
+    const camera = clusterCamera(cluster.members, {
+      width: map.width - pad.left - pad.right,
+      height: map.height - bottom - pad.top - pad.bottom,
+    });
+    if (camera.zoom >= NO_CLUSTER_ZOOM) ref.current?.animateCamera(camera, { duration: 450 });
+    else ref.current?.fitToCoordinates(cluster.members.map((m) => ({ latitude: m.lat, longitude: m.lng })), { edgePadding: pad, animated: true });
   }, []);
 
   useImperativeHandle(handle, () => ({ centerOn: (at) => ref.current?.animateToRegion(nearRegion(at), 450) }));
@@ -111,10 +119,10 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   const { singles, clusters } = useMemo(() => {
     if (view === 'stopy') return { singles: [], clusters: [] };
     // The pub the compass points at stays its own pin, never inside a cluster.
-    const grouped = clusterPins(pins.filter((p) => p.key !== targetKey), viewport, widthPt || 390);
+    const grouped = clusterPins(pins.filter((p) => p.key !== targetKey), viewport, size.width || 390);
     const targetPins = pins.filter((p) => p.key === targetKey);
     return { singles: [...grouped.singles, ...targetPins], clusters: grouped.clusters };
-  }, [pins, targetKey, view, viewport, widthPt]);
+  }, [pins, targetKey, view, viewport, size.width]);
 
   return (
     <MapView
@@ -130,7 +138,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
       toolbarEnabled={false}
       mapPadding={padding}
       userInterfaceStyle="dark"
-      onLayout={(e) => setWidthPt(e.nativeEvent.layout.width)}
+      onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
       onMapReady={() => setReady(true)}
       onRegionChangeComplete={(region) => {
         setViewport(region);
@@ -152,7 +160,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
             />
           ) : null}
           {me ? (
-            <StaticMapMarker coordinate={{ latitude: me.lat, longitude: me.lng }} anchor={{ x: 0.5, y: 0.5 }}>
+            <StaticMapMarker coordinate={{ latitude: me.lat, longitude: me.lng }} anchor={{ x: 0.5, y: 0.5 }} zIndex={1}>
               <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.line }, s.center]}>
                 <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: C.white, borderWidth: 3, borderColor: C.black }} />
               </View>
@@ -185,7 +193,7 @@ const PubMarkers = memo(function PubMarkers({
       coordinate={{ latitude: p.lat, longitude: p.lng }}
       anchor={{ x: 0.5, y: 0.5 }}
       onPress={() => onPress(p.id)}
-      zIndex={p.key === targetKey ? 1 : 0}
+      zIndex={p.key === targetKey ? 2 : 0}
     >
       <PubPin label={p.label} target={p.key === targetKey} mode={pinMode} />
     </StaticMapMarker>
@@ -261,11 +269,12 @@ export function PubPin({ label, target, mode }: { label: string | null; target: 
   );
 }
 
+// Black with a white number, like the count badge of CityPin, so it never reads as a white pub pin.
 function ClusterPin({ count }: { count: number }) {
-  const size = count < 100 ? 40 : 46;
+  const size = count < 100 ? 32 : 38;
   return (
-    <View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.white, borderWidth: 2, borderColor: C.black }, s.center]}>
-      <T s={14} w={800} c={C.black}>
+    <View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.black, borderWidth: 2, borderColor: C.white }, s.center]}>
+      <T s={13} w={800} c={C.white}>
         {count}
       </T>
     </View>

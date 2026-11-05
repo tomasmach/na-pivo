@@ -1,4 +1,4 @@
-import { clusterPins, zoomOf } from '../clusterPins';
+import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, zoomOf } from '../clusterPins';
 
 const WIDTH = 390;
 const city = { longitudeDelta: 0.2 };
@@ -16,7 +16,7 @@ describe('clusterPins', () => {
     expect(singles.map((p) => p.id)).toEqual(['far']);
     expect(clusters).toHaveLength(1);
     expect(clusters[0].count).toBe(3);
-    expect(clusters[0].lat).toBe(50.0806);
+    expect(clusters[0].lat).toBeCloseTo(50.0807, 6);
   });
 
   it('shows every pub on its own at street zoom', () => {
@@ -33,5 +33,14 @@ describe('clusterPins', () => {
     const before = clusterPins(pins, { longitudeDelta: 0.1 }, WIDTH).clusters.map((c) => `${c.key}:${c.count}`);
     const after = clusterPins(pins, { longitudeDelta: 0.1 + 1e-9 }, WIDTH).clusters.map((c) => `${c.key}:${c.count}`);
     expect(after).toEqual(before);
+  });
+
+  it('stops zooming in where clusters break apart, and fits a wide cluster whole', () => {
+    const area = { width: 280, height: 400 };
+    const close = clusterCamera([{ lat: 50.0806, lng: 14.428 }, { lat: 50.0807, lng: 14.4281 }], area);
+    expect(close.zoom).toBe(NO_CLUSTER_ZOOM);
+    expect(close.center.latitude).toBeCloseTo(50.08065, 5);
+    const wide = clusterCamera([{ lat: 50.0, lng: 14.3 }, { lat: 50.1, lng: 14.5 }], area);
+    expect(wide.zoom).toBeLessThan(13);
   });
 });
