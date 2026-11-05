@@ -288,6 +288,14 @@ export function ZapisSheet() {
 
   const chosenSize =
     sizeChoices.find((size) => size.volumeMl === volume) ?? sizeChoices.find((size) => size.volumeMl === 500) ?? sizeChoices[0] ?? selected?.sizes[0] ?? null;
+  // A typed price belongs to one place, beer and size; any other pick starts from the menu again.
+  const priceKey = `${place ? placeKey(place) : ''}|${selected?.id ?? ''}|${chosenSize?.volumeMl ?? ''}`;
+  const [seenPriceKey, setSeenPriceKey] = useState(priceKey);
+  if (priceKey !== seenPriceKey) {
+    setSeenPriceKey(priceKey);
+    setTypedPrice('');
+    setEditPrice(false);
+  }
   const typedCzk = (typedPrice.trim() && parsePriceInputToCzk(typedPrice, currency)) || undefined;
   const menuPrice = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : undefined;
   const price = typedCzk ?? menuPrice;
@@ -352,8 +360,6 @@ export function ZapisSheet() {
           setSel(null);
           setCustom(null);
           setVolume(null);
-          setTypedPrice('');
-          setEditPrice(false);
         }}
       />
       <View style={{ gap: 10 }}>
@@ -377,8 +383,6 @@ export function ZapisSheet() {
                     setSel(o.id);
                     setCustom(null);
                     setVolume(null);
-                    setTypedPrice('');
-                    setEditPrice(false);
                     if (o.servingType === 'can') setHomeServing('plech');
                   }}
                 />
@@ -417,8 +421,6 @@ export function ZapisSheet() {
                   on={size.volumeMl === chosenSize?.volumeMl}
                   onPress={() => {
                     setVolume(size.volumeMl ?? null);
-                    setTypedPrice('');
-                    setEditPrice(false);
                   }}
                 />
               ))

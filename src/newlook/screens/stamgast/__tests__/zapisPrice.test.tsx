@@ -17,10 +17,11 @@ jest.mock('react-native-reanimated', () => {
   return new Proxy({ ...lean, ...extra }, { get: (target, key) => (key in target ? target[key as keyof typeof target] : chain) });
 });
 
+let mockParams: { added?: string } = {};
 const mockRouter = { push: jest.fn(), back: jest.fn(), dismissTo: jest.fn(), canGoBack: () => true };
 jest.mock('expo-router', () => ({
   useRouter: () => mockRouter,
-  useLocalSearchParams: () => ({}),
+  useLocalSearchParams: () => mockParams,
 }));
 jest.mock('@/newlook/navigation', () => ({ nvBack: jest.fn() }));
 jest.mock('@/newlook/components/Icon', () => ({ Icon: () => null }));
@@ -97,6 +98,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   useTallyStore.setState({ current: null, history: [] });
   useSettingsStore.setState({ priceCurrency: 'CZK' });
+  mockParams = {};
   mockMenu = [
     { name: 'Pilsner Urquell', volumeMl: 300, priceCzk: 45 },
     { name: 'Pilsner Urquell', volumeMl: 500, priceCzk: 59 },
@@ -154,4 +156,20 @@ it('takes the price in the currency the user picked', async () => {
   await act(async () => priceField(renderer).props.onChangeText('3'));
   await act(async () => saveButton(renderer).props.onPress());
   expect(logDrink.mock.calls[0][1]).toMatchObject({ priceCzk: 75 });
+});
+
+it('drops a typed price when another beer comes back from adding one', async () => {
+  mockMenu = [
+    { name: 'Pilsner Urquell', volumeMl: 500, priceCzk: 59 },
+    { name: 'Kozel 11°', volumeMl: 500, priceCzk: 40 },
+  ];
+  const renderer = await renderSheet();
+  await act(async () => pressText(renderer, copy.edit));
+  await act(async () => priceField(renderer).props.onChangeText('62'));
+
+  mockParams = { added: 'Kozel 11°' };
+  await act(async () => renderer.update(React.createElement(ZapisSheet)));
+  await act(async () => saveButton(renderer).props.onPress());
+
+  expect(logDrink.mock.calls[0][1]).toMatchObject({ name: 'Kozel 11°', priceCzk: 40, volumeMl: 500 });
 });
