@@ -420,7 +420,15 @@ custom-scheme fallback work. Keep the API upload limit on the API host only:
 na-pivo.cz {
     reverse_proxy napivo-web:8000
 }
+
+www.na-pivo.cz {
+    redir https://na-pivo.cz{uri} permanent
+}
 ```
+
+`www.na-pivo.cz` has a DNS record, so without its own block Caddy fails the TLS
+handshake there. Keep it a redirect: `deploy.py` expects exactly two
+`reverse_proxy napivo-web:8000` lines.
 
 ### First-time setup
 
