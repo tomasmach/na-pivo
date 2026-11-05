@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 from django.conf import settings
 from django.db import transaction
@@ -63,7 +63,8 @@ def _api_call(request: HttpRequest, view, query: dict | None = None, **kwargs) -
     sub = HttpRequest()
     sub.method = "GET"
     sub.path = sub.path_info = request.path
-    sub.META = {**request.META, "QUERY_STRING": query_string}
+    # Absolute upload URLs must name the API host: only it serves /media/.
+    sub.META = {**request.META, "QUERY_STRING": query_string, "HTTP_HOST": urlsplit(settings.PUBLIC_API_ORIGIN).netloc}
     sub.META.pop("HTTP_AUTHORIZATION", None)
     sub.GET = QueryDict(query_string)
     sub.COOKIES = request.COOKIES
