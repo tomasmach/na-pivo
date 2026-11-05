@@ -1,6 +1,5 @@
 import React from 'react';
 import { t } from '@/i18n';
-import type { TallySession } from '@/stores/tallyStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
