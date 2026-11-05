@@ -137,12 +137,15 @@ export function TabHeader({ title, children }: { title: string; children?: React
 /** Header of a pushed screen: back button, optional centered title, right actions. */
 export function BackHeader({
   title,
+  heading,
   right,
   onBack,
   icon = 'chevron-left',
   style,
 }: {
   title?: string;
+  /** Big page title right next to the back button. */
+  heading?: string;
   right?: React.ReactNode;
   onBack?: () => void;
   icon?: IconName;
@@ -151,7 +154,14 @@ export function BackHeader({
   const router = useRouter();
   return (
     <View style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
-      <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={onBack ?? (() => nvBack(router))} iconSize={20} />
+      <View style={[s.row, s.fill, { gap: 14 }]}>
+        <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={onBack ?? (() => nvBack(router))} iconSize={20} />
+        {heading ? (
+          <D s={44} accessibilityRole="header" numberOfLines={1} style={{ flexShrink: 1 }}>
+            {heading}
+          </D>
+        ) : null}
+      </View>
       {title ? (
         <View style={{ position: 'absolute', left: 56, right: 56, alignItems: 'center' }} pointerEvents="none">
           <T s={16} w={700} numberOfLines={1}>

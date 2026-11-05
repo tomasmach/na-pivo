@@ -21,7 +21,6 @@ import { badgeStates, PUBLIC_BADGE_KEYS } from '@/profile/badgeModel';
 import { useHomeEveningStore } from '@/stores/homeEveningStore';
 
 import { BackHeader, Screen } from '../../components/chrome';
-import { PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { D, T, Button, Card, Chip, Dot, IconButton, Person, Row, Segmented } from '../../components/ui';
 import { NO_VALUE } from '../../format';
@@ -29,6 +28,7 @@ import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
 import { PlanTicket } from './PartaScreen';
 import { useNvPlaceStore } from '../stamgast/placeStore';
+import { useMe } from '../profil/profilModel';
 import { joinNames, personInitial, personName, planTitle, shortDay } from './partaModel';
 import { CheerButton } from './cheer';
 import { usePartaStore } from './partaStore';
@@ -238,8 +238,8 @@ export function KamosScreen() {
 
 type BoardTab = 'piva' | 'objevitele' | 'maperi' | 'hospody';
 type BoardPeriodKey = Extract<BoardPeriod, 'week' | 'month' | 'all'>;
-type BoardRow = { key: string; initial: string; name: string; sub: string; score: string; me: boolean; rank: number };
-type BoardView = { rank: string; title: string; sub: string; rows: BoardRow[] };
+type BoardRow = { key: string; initial: string; uri?: string | null; name: string; sub: string; score: string; me: boolean; rank: number };
+type BoardView = { rank: string; title: string; sub: string; rows: BoardRow[]; empty: boolean };
 
 function personBoard(tab: Exclude<BoardTab, 'hospody'>, board: Leaderboard, period: BoardPeriodKey): BoardView {
   const score = (n: number) => (tab === 'piva' ? t.nv.parta.scoreBeers(n) : tab === 'objevitele' ? t.nv.parta.scorePubs(n) : t.nv.parta.scoreXp(n));
@@ -248,6 +248,7 @@ function personBoard(tab: Exclude<BoardTab, 'hospody'>, board: Leaderboard, peri
     key: e.account.id,
     rank: e.rank,
     initial: personInitial(e.account),
+    uri: e.account.avatarUrl,
     name: e.isMe ? t.nv.parta.you : e.account.nickname ? `@${e.account.nickname}` : personName(e.account),
     sub: e.isFriend ? t.nv.parta.inParty : '',
     score: String(e.score),
@@ -261,6 +262,7 @@ function personBoard(tab: Exclude<BoardTab, 'hospody'>, board: Leaderboard, peri
     title: board.me.rank ? (tab === 'piva' ? t.nv.parta.rankBeers : tab === 'objevitele' ? t.nv.parta.rankExplorers : t.nv.parta.rankMappers) : t.nv.parta.noRank,
     sub: !board.me.eligible ? t.nv.parta.privateRank : [score(board.me.score), race].filter(Boolean).join(' · '),
     rows,
+    empty: rows.length === 0,
   };
 }
 
@@ -270,7 +272,8 @@ function pubsBoard(board: PubBoard, period: BoardPeriodKey): BoardView {
     rank: top ? '1.' : NO_VALUE,
     title: top?.name ?? t.nv.parta.boardEmpty,
     sub: top ? t.nv.parta.pubBoardSub(top.beers, period) : '',
-    rows: board.entries.slice(0, 10).map((e) => ({
+    // The leader already sits in the card above.
+    rows: board.entries.slice(1, 10).map((e) => ({
       key: e.key,
       rank: e.rank,
       initial: e.name.slice(0, 1).toUpperCase(),
@@ -279,10 +282,13 @@ function pubsBoard(board: PubBoard, period: BoardPeriodKey): BoardView {
       score: String(e.beers),
       me: false,
     })),
+    // The card above already says when no pub made it.
+    empty: false,
   };
 }
 
 export function ZebrickyScreen() {
+  const myAvatar = useMe().avatarUrl;
   const [tab, setTab] = useState<BoardTab>('piva');
   const [period, setPeriod] = useState<BoardPeriodKey>('week');
   const [attempt, setAttempt] = useState(0);
@@ -315,8 +321,7 @@ export function ZebrickyScreen() {
   ];
 
   return (
-    <Screen header={<BackHeader />} gap={16}>
-      <PageTitle title={t.nv.parta.boards} />
+    <Screen header={<BackHeader heading={t.nv.parta.boards} />} gap={16} padTop={20}>
       <Segmented
         height={38}
         options={[
@@ -365,7 +370,7 @@ export function ZebrickyScreen() {
                       <D s={22} c={r.me ? C.yellow : C.muted} style={{ minWidth: 16 }}>
                         {String(r.rank)}
                       </D>
-                      <Person initial={r.initial} size={36} ring={r.me} />
+                      <Person initial={r.initial} uri={r.uri ?? (r.me ? myAvatar : null)} size={36} ring={r.me} />
                     </View>
                   }
                   title={r.name}
@@ -380,7 +385,7 @@ export function ZebrickyScreen() {
                 />
               ))}
             </Card>
-          ) : view.title === t.nv.parta.boardEmpty ? null : (
+          ) : !view.empty ? null : (
             <T s={14} c={C.muted}>
               {t.nv.parta.boardEmpty}
             </T>
