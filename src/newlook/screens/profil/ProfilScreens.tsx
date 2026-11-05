@@ -91,6 +91,7 @@ import {
   nvBadgeAmount,
   nvBadgeName,
   nvStillLine,
+  profileNights,
   buildNvBadges,
   useMe,
   useNvBadges,
@@ -228,7 +229,7 @@ export function ProfilScreen() {
         : me.isPublic
           ? t.profile.visibilityPublic
           : t.profile.visibilityPrivate;
-  const average = summary.evenings > 0 ? summary.beers / summary.evenings : 0;
+  const nights = useMemo(() => profileNights(summary.sessions, summary.remoteStats), [summary.sessions, summary.remoteStats]);
   const since = summary.firstBeerAt
     ? dateTimeFormat({ day: 'numeric', month: 'numeric', year: 'numeric' }).format(new Date(summary.firstBeerAt))
     : null;
@@ -319,8 +320,8 @@ export function ProfilScreen() {
       <View style={[s.row, { justifyContent: 'space-between' }]}>
         {[
           [nf.format(summary.pubs), P().profile.pubs(summary.pubs)],
-          [nf.format(summary.evenings), P().profile.evenings(summary.evenings)],
-          [numberFormat({ maximumFractionDigits: 1 }).format(average), P().profile.perEvening],
+          [nf.format(nights.nights), P().profile.evenings(nights.nights)],
+          [numberFormat({ maximumFractionDigits: 1 }).format(nights.average), P().profile.perEvening],
           [formatPrice(summary.spentCzk, priceCurrency), P().profile.spent],
         ].map(([v, l]) => (
           <View key={l} style={{ gap: 2 }}>
