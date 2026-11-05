@@ -77,7 +77,6 @@ export const stamgastCs = {
   otherServingSub: 'PETka, 0,33 l',
   priceFor: (size: string) => `Cena za ${size}`.trim(),
   priceAdd: 'Doplnit',
-  priceUnit: 'Kč',
   priceUnknown: 'cena?',
   addToMenu: (beer: string, pub: string) => `${beer} přidám na lístek ${pub}.`,
   badgeLastTime: 'minule tady',

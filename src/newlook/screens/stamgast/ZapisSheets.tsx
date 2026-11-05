@@ -17,7 +17,7 @@ import { isContextPubKey, type DrinkType, type ServingType } from '@/drinks/drin
 import { formatVolume, intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
-import { formatPrice } from '@/utils/currency';
+import { formatPrice, getCurrencyRate, parsePriceInputToCzk } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
@@ -286,16 +286,14 @@ export function ZapisSheet() {
 
   const chosenSize =
     sizeChoices.find((size) => size.volumeMl === volume) ?? sizeChoices.find((size) => size.volumeMl === 500) ?? sizeChoices[0] ?? selected?.sizes[0] ?? null;
-  const typed = Number(typedPrice.replace(',', '.'));
-  const typedCzk = typed > 0 && typed <= 1000 ? Math.round(typed) : undefined;
+  const typedCzk = (typedPrice.trim() && parsePriceInputToCzk(typedPrice, currency)) || undefined;
   const menuPrice = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : undefined;
   const price = typedCzk ?? menuPrice;
   const priceRow = !!pub && !!selected && kind === 'pivo';
   const priceFor = copy.priceFor(chosenSize?.volumeMl ? formatVolume(chosenSize.volumeMl) : '');
-  const openPrice = () => {
-    setTypedPrice(menuPrice === undefined ? '' : String(menuPrice));
-    setEditPrice(true);
-  };
+  // The field takes the price in the user's currency, like the pub menu form does.
+  const inCurrency = (czk: number) => String(Math.round((czk / (getCurrencyRate(currency) ?? 1)) * 100) / 100);
+  const currencyMark = formatPrice(0, currency).replace(/[\d\s.,]/g, '');
 
   const save = () => {
     if (!place) {
@@ -414,7 +412,13 @@ export function ZapisSheet() {
                 <SizeCard
                   key={size.volumeMl}
                   title={size.volumeMl ? formatVolume(size.volumeMl) : ''}
-                  sub={typeof size.priceCzk === 'number' ? money(size.priceCzk) : copy.priceUnknown}
+                  sub={
+                    size.volumeMl === chosenSize?.volumeMl && price !== undefined
+                      ? money(price)
+                      : typeof size.priceCzk === 'number'
+                        ? money(size.priceCzk)
+                        : copy.priceUnknown
+                  }
                   on={size.volumeMl === chosenSize?.volumeMl}
                   onPress={() => {
                     setVolume(size.volumeMl ?? null);
@@ -433,7 +437,7 @@ export function ZapisSheet() {
           accessible={false}
           style={[s.row, { height: 48, borderRadius: 16, paddingHorizontal: 14, gap: 4, backgroundColor: C.card, borderWidth: 1, borderColor: C.yellowStrong }]}
         >
-          <T s={15} w={500} c={C.muted} style={s.fill}>
+          <T s={15} w={500} c={C.text2} style={s.fill}>
             {priceFor}
           </T>
           <TextInput
@@ -441,36 +445,44 @@ export function ZapisSheet() {
             testID="drink-price"
             accessibilityLabel={priceFor}
             value={typedPrice}
-            onChangeText={(v) => setTypedPrice(v.replace(/[^0-9]/g, '').slice(0, 4))}
-            keyboardType="number-pad"
+            onChangeText={(v) => setTypedPrice(v.replace(/[^0-9.,]/g, '').slice(0, 6))}
+            onBlur={() => setEditPrice(false)}
+            placeholder={menuPrice !== undefined ? inCurrency(menuPrice) : '0'}
+            placeholderTextColor={C.muted}
+            keyboardType="decimal-pad"
             keyboardAppearance="dark"
             returnKeyType="done"
             autoFocus
             selectionColor={C.yellow}
             cursorColor={C.yellow}
-            style={[font(16, 700), { minWidth: 32, textAlign: 'right', padding: 0 }]}
+            style={[font(15, 700), { minWidth: 32, textAlign: 'right', padding: 0 }]}
           />
-          <T s={16} w={700}>
-            {copy.priceUnit}
+          <T s={15} w={700}>
+            {currencyMark}
           </T>
         </Press>
       ) : priceRow ? (
         <Row
-          title={priceFor}
-          titleWeight={500}
-          titleColor={C.text2}
+          title={
+            <T s={15} w={500} c={C.text2}>
+              {priceFor}
+            </T>
+          }
           height={48}
           last
-          onPress={openPrice}
+          onPress={() => {
+            if (!typedPrice && menuPrice !== undefined) setTypedPrice(inCurrency(menuPrice));
+            setEditPrice(true);
+          }}
           trailing={
             <View style={[s.row, { gap: 12 }]}>
-              {menuPrice !== undefined ? (
+              {price !== undefined ? (
                 <T s={15} w={700}>
-                  {money(menuPrice)}
+                  {money(price)}
                 </T>
               ) : null}
               <T s={15} w={700} c={C.yellow}>
-                {menuPrice !== undefined ? copy.edit : copy.priceAdd}
+                {price !== undefined ? copy.edit : copy.priceAdd}
               </T>
             </View>
           }
