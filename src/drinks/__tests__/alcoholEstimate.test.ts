@@ -121,6 +121,31 @@ describe('estimateAlcohol', () => {
     expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('07:30', 18)))!.drinks).toHaveLength(EVENING.length);
   });
 
+  it('lists only tonight when the last three nights each had Radegast', () => {
+    const name = 'Radegast Ryze Hořká 12°';
+    const logged = [
+      '2026-10-19T20:46:01Z',
+      '2026-10-19T20:46:04Z',
+      '2026-10-19T20:46:06Z',
+      '2026-10-19T21:06:27Z',
+      '2026-10-20T21:52:51Z',
+      '2026-10-20T21:52:55Z',
+      '2026-10-21T16:06:30Z',
+      '2026-10-21T22:19:51Z',
+      '2026-10-21T22:46:50Z',
+      '2026-10-21T22:54:22Z',
+    ].map((time, i): EstimateDrink => ({ id: `r${i}`, beerName: name, drinkType: 'beer', volumeMl: 500, at: time }));
+    const tonight = logged.slice(-3);
+    const now = Date.parse('2026-10-21T23:06:00Z');
+    const estimate = estimateAlcohol(logged, PROFILE, now)!;
+
+    expect(estimate.drinks.map((drink) => drink.id)).toEqual(tonight.map((drink) => drink.id));
+    const threeBeers = estimateAlcohol(tonight, PROFILE, now)!;
+    expect(estimate.now).toBeCloseTo(threeBeers.now, 1);
+    expect(estimate.rising!.promile).toBeCloseTo(threeBeers.rising!.promile, 1);
+    expect(estimate.zeroAt).toEqual(threeBeers.zeroAt);
+  });
+
   it('drops yesterday from the list the moment a new drink lands mid-minute', () => {
     const yesterday = { ...beer('old', '20:00'), at: at('20:00', 16) };
     const fresh = { ...beer('new', '20:00'), at: new Date(Date.parse(at('20:00')) + 30_000).toISOString() };
