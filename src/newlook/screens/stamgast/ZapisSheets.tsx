@@ -22,7 +22,7 @@ import { formatPrice } from '@/utils/currency';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Input } from '../../components/forms';
-import { Button, Card, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
+import { Button, Chip, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { toast } from '../../ui/store';
 import { distanceLabel } from '../kompas/format';
@@ -866,6 +866,24 @@ export function ZmenitMistoSheet() {
 
   return (
     <Sheet title={copy.placeUnknown} top={360}>
+      {forBackfill ? null : (
+        <View style={[s.row, { gap: 10 }]}>
+          {OUTSIDE_CHOICES.map((context) => (
+            <Chip
+              key={context}
+              label={context === 'private' ? copy.placeHome : t.counter.outsideLabel(context)}
+              icon={OUTSIDE_ICON[context]}
+              active={place?.kind === 'outside' && place.context === context}
+              height={48}
+              style={{ flex: 1, justifyContent: 'center' }}
+              onPress={() => {
+                useNvPlaceStore.getState().setOutside(context);
+                nvBack(router);
+              }}
+            />
+          ))}
+        </View>
+      )}
       <View>
         {permission !== 'granted' ? (
           <Row
@@ -901,28 +919,6 @@ export function ZmenitMistoSheet() {
           })
         )}
       </View>
-      {forBackfill ? null : (
-        <Card pad={14}>
-          {OUTSIDE_CHOICES.map((context, i) => {
-            const on = place?.kind === 'outside' && place.context === context;
-            return (
-              <Row
-                key={context}
-                last={i === OUTSIDE_CHOICES.length - 1}
-                leading={<Tile icon={OUTSIDE_ICON[context]} color={on ? C.black : C.yellow} bg={on ? C.yellow : C.control} />}
-                title={context === 'private' ? copy.placeHome : t.counter.outsideLabel(context)}
-                titleWeight={700}
-                sub={context === 'private' ? copy.placeHomeSub : undefined}
-                trailing={on ? <Icon name="check" size={18} color={C.yellow} /> : null}
-                onPress={() => {
-                  useNvPlaceStore.getState().setOutside(context);
-                  nvBack(router);
-                }}
-              />
-            );
-          })}
-        </Card>
-      )}
     </Sheet>
   );
 }

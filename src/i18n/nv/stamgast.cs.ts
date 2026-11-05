@@ -53,7 +53,6 @@ export const stamgastCs = {
 
   // Place sheet
   placeHome: 'Doma / na chatě',
-  placeHomeSub: 'lahváče, plechovky, bez hospody',
   placeLocate: 'Povolit polohu',
   placeLocateSub: 'ukážu hospody kolem tebe',
   placeSearching: 'Hledám hospody kolem tebe…',
