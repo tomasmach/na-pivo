@@ -12,6 +12,7 @@ used as the canonical PubHours.cache_key.
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 
 import geohash2
 from rapidfuzz import fuzz
@@ -25,6 +26,9 @@ def geohash(lat: float, lng: float, precision: int) -> str:
     return geohash2.encode(lat, lng, precision=precision)
 
 
+# The encoder is pure Python, and one /v1/pubs/near response re-derives
+# the cell of the same few hundred pubs thousands of times.
+@lru_cache(maxsize=16384)
 def geohash8(lat: float, lng: float) -> str:
     """Return a Geohash string at precision 8 (~38 m accuracy)."""
     return geohash(lat, lng, precision=8)

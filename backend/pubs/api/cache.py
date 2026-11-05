@@ -796,7 +796,11 @@ def get_cached_pub_details(
     keys = [entry["cache_key"] for entry in entries]
     hours_by_key = {
         row.cache_key: row
-        for row in PubHours.objects.filter(cache_key__in=keys)
+        # The result never reads the Firmy.cz classification inputs; parsing
+        # their JSON for every pin of a city map was measurable.
+        for row in PubHours.objects.filter(cache_key__in=keys).defer(
+            "venue_categories", "venue_tags", "error"
+        )
     }
     community_by_key = {
         row.cache_key: row

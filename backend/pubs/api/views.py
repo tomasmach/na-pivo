@@ -10268,10 +10268,10 @@ def _attach_google_place_ids(items: list[dict]) -> None:
     if not wanted:
         return
     matches = {
-        (row.cache_key, row.name_key): row.google_place_id
-        for row in PubGooglePlace.objects.filter(
+        (cache_key, name_key): google_place_id
+        for cache_key, name_key, google_place_id in PubGooglePlace.objects.filter(
             cache_key__in={identity[0] for identity in wanted.values()}
-        ).only("cache_key", "name_key", "google_place_id")
+        ).values_list("cache_key", "name_key", "google_place_id")
     }
     for index, identity in wanted.items():
         place_id = matches.get(identity)
@@ -10343,8 +10343,14 @@ def _with_pub_name_corrections(items: list[dict]) -> list[dict]:
 
     cache_keys = {_item_cache_key(item) for item in items}
     cache_keys.discard("")
-    external_ids = {_item_external_id(item) for item in items}
-    external_ids.discard(None)
+    # Coordinate ids only ever match through their cache key below, so
+    # querying them would just double the IN list for directory items.
+    external_ids = {
+        external_id
+        for item in items
+        if (external_id := _item_external_id(item))
+        and not _is_coordinate_external_id(external_id)
+    }
     if not cache_keys and not external_ids:
         return items
 
@@ -10616,7 +10622,8 @@ def _nearby_pub_community_items(
     appear out of nowhere while preserving the imported directory as primary.
     """
     rows = _nearest_rows(
-        PubCommunityData.objects.all(),
+        # Skip the menu and hours JSON: the map item only needs the place.
+        PubCommunityData.objects.only("cache_key", "name", "lat", "lng", "city", "external_id"),
         lat,
         lng,
         radius_km,
@@ -10971,8 +10978,10 @@ def _nearby_pub_directory_items(
         .exclude(venue_kind=PubHours.VenueKind.NOT_PUB)
         .annotate(distance_score=distance_score)
         .order_by("distance_score", "pk")
-        .only(
-            "id",
+        # Plain rows: a city scan reads up to 900 of them per request, and
+        # building model instances was a large share of the response time.
+        .values_list(
+            "pk",
             "name",
             "lat",
             "lng",
@@ -10981,7 +10990,7 @@ def _nearby_pub_directory_items(
             "country",
             "venue_kind",
             "discovery_kind",
-            "has_beer_signal",
+            named=True,
         )[:scan_limit]
     )
     if not candidates:
