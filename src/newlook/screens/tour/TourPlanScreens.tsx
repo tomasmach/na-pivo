@@ -517,7 +517,7 @@ export function TourKdySheet() {
   };
   const timeTooEarly = !!time && earliest !== null && minutesOf(time) < earliest;
   return (
-    <Sheet title={t.tours.whenTitle} top={270} scroll={false}>
+    <Sheet title={t.tours.whenTitle} scroll={false}>
       <View style={[s.row, { justifyContent: 'space-between', marginTop: -6 }]}>
         <T s={16} w={700}>
           {monthLabel}
@@ -619,9 +619,9 @@ function StopActions({ id }: { id: string }) {
   const draft = useToursStore((st) => st.draft);
   const index = draft?.stops.findIndex((st) => st.id === id) ?? -1;
   const st = index >= 0 ? draft!.stops[index] : undefined;
-  if (!st) return <Sheet title={t.tours.errors.unavailable} top={560} scroll={false}>{null}</Sheet>;
+  if (!st) return <Sheet title={t.tours.errors.unavailable} scroll={false}>{null}</Sheet>;
   return (
-    <Sheet title={st.name} top={560} scroll={false}>
+    <Sheet title={st.name} scroll={false}>
       <T s={15} c={C.text2} style={{ marginTop: -10 }}>
         {t.nv.tour.stopAt(index + 1, st.address)}
       </T>
@@ -655,7 +655,7 @@ function PlanActions({ id }: { id: string }) {
   const plan = useToursStore((st) => st.plans.find((p) => p.id === id));
   const walking = useToursStore((st) => st.activeRun?.planId === id);
   const [busy, setBusy] = useState(false);
-  if (!plan) return <Sheet title={t.tours.errors.unavailable} top={560} scroll={false}>{null}</Sheet>;
+  if (!plan) return <Sheet title={t.tours.errors.unavailable} scroll={false}>{null}</Sheet>;
   const own = !plan.source && !plan.publicSource;
   const publication = plan.publication;
   const rows: { icon: React.ComponentProps<typeof Icon>['name']; title: string; onPress: () => void; danger?: boolean }[] = [];
@@ -722,7 +722,7 @@ function PlanActions({ id }: { id: string }) {
         }),
     });
   return (
-    <Sheet title={plan.title} top={200} scroll={false}>
+    <Sheet title={plan.title} scroll={false}>
       <Card>
         {rows.map((row, i) => (
           <Row key={row.title} last={i === rows.length - 1} leading={<Icon name={row.icon} size={18} color={row.danger ? C.danger : C.white} />} title={row.title} titleColor={row.danger ? C.danger : C.white} chevron={!row.danger} onPress={busy ? undefined : row.onPress} />
@@ -744,9 +744,9 @@ export function TourVyzvaSheet() {
   const index = draft?.stops.findIndex((st) => st.id === stop) ?? -1;
   const st = index >= 0 ? draft!.stops[index] : undefined;
   const [text, setText] = useState(st?.challenge ?? '');
-  if (!st) return <Sheet title={t.tours.errors.unavailable} top={520} scroll={false}>{null}</Sheet>;
+  if (!st) return <Sheet title={t.tours.errors.unavailable} scroll={false}>{null}</Sheet>;
   return (
-    <Sheet title={t.tours.challenge} top={520} scroll={false}>
+    <Sheet title={t.tours.challenge} scroll={false}>
       <View style={[s.row, { gap: 12, marginTop: -6 }]}>
         <NumberTile n={index + 1} />
         <View style={s.fill}>
@@ -911,7 +911,7 @@ export function TourPozvatSheet() {
   const plan = useToursStore((st) => st.plans.find((p) => p.id === id));
   const sticker = useRef<ViewInstance>(null);
   const [busy, setBusy] = useState<'sticker' | 'link' | null>(null);
-  if (!plan) return <Sheet title={t.tours.errors.unavailable} top={290} scroll={false}>{null}</Sheet>;
+  if (!plan) return <Sheet title={t.tours.errors.unavailable} scroll={false}>{null}</Sheet>;
 
   async function copySticker() {
     setBusy('sticker');
@@ -932,7 +932,7 @@ export function TourPozvatSheet() {
     if (error) toast({ kind: 'error', title: error });
   }
   return (
-    <Sheet title={tx.inviteTitle} top={290} scroll={false}>
+    <Sheet title={tx.inviteTitle} scroll={false}>
       <Stage>
         <View ref={sticker} collapsable={false} style={{ padding: 14 }}>
           <StickerKdoJde where={stickerWhere(plan)} />

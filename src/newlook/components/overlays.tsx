@@ -222,10 +222,12 @@ export function Sheet({
   const footerRoom = footer ? footerH + 24 : 0;
   const scrimStyle = useAnimatedStyle(() => ({ opacity: shown.value }));
   const minTop = insets.top + 40;
+  // A sheet that cannot scroll takes its content's height; a cap would cut its last rows off.
+  const capTop = scroll ? top : minTop;
   const cardStyle = useAnimatedStyle(() => {
     const paddingBottom = keyboard.value + Math.min(keyboard.value, footerRoom);
     // A short sheet grows by the keyboard's height, so its content stays above it.
-    const maxHeight = height - Math.max(minTop, top - keyboard.value);
+    const maxHeight = height - Math.max(minTop, capTop - keyboard.value);
     return reduced
       ? { opacity: shown.value * cardFade.value, paddingBottom, maxHeight }
       : {
