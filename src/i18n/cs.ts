@@ -180,7 +180,7 @@ export const cs = {
     },
     haptics: {
       title: 'Vibrace',
-      subtitle: 'Při ťukání i když dojdeš k cíli',
+      subtitle: 'Při ťukání a když dojdeš k cíli',
     },
     pubReminders: {
       title: 'Připomenout v hospodě',
