@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Image, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, TextInput, View, type TextInputInstance } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -72,7 +72,8 @@ function BeerTile({ o, on, rating, onPress }: { o: Option; on: boolean; rating: 
       accessibilityLabel={[o.name, rating ? t.nv.stamgast.myRatingA11y(rating) : null, o.badge, o.meta].filter(Boolean).join(', ')}
       style={{
         flex: 1,
-        height: 104,
+        minHeight: 104,
+        gap: 8,
         padding: 14,
         borderRadius: 20,
         justifyContent: 'space-between',
@@ -99,7 +100,7 @@ function BeerTile({ o, on, rating, onPress }: { o: Option; on: boolean; rating: 
         </View>
       </View>
       <View style={{ gap: 4 }}>
-        <T s={16} w={700} c={on ? C.black : C.white} numberOfLines={1}>
+        <T s={16} w={700} lh={1.15} c={on ? C.black : C.white} numberOfLines={2}>
           {o.name}
         </T>
         <View style={[s.row, { gap: 6 }]}>
@@ -126,7 +127,7 @@ function AddTile({ label, sub, on, onPress }: { label: string; sub: string; on?:
       haptic
       onPress={onPress}
       accessibilityState={{ selected: !!on }}
-      style={{ flex: 1, height: 104, padding: 14, borderRadius: 20, justifyContent: 'space-between', borderWidth: 1.5, borderColor: on ? C.white : C.lineStrong }}
+      style={{ flex: 1, minHeight: 104, gap: 8, padding: 14, borderRadius: 20, justifyContent: 'space-between', borderWidth: 1.5, borderColor: on ? C.white : C.lineStrong }}
     >
       <View style={[{ width: 26, height: 26, borderRadius: 13, backgroundColor: C.yellow }, s.center]}>
         <Icon name="plus" size={16} color={C.black} />
@@ -184,6 +185,7 @@ export function ZapisSheet() {
   const [homeServing, setHomeServing] = useState<HomeServing>('lahvac');
   const [volume, setVolume] = useState<number | null>(null);
   const [typedPrice, setTypedPrice] = useState('');
+  const priceInput = useRef<TextInputInstance>(null);
   /** A wine, soft drink or shot typed by hand; null while a tile is picked. */
   const [custom, setCustom] = useState<string | null>(null);
   const customName = custom?.trim() ?? '';
@@ -369,7 +371,7 @@ export function ZapisSheet() {
       <View style={{ gap: 10 }}>
         {menu.loading && options.length === 0 ? <Spinner /> : null}
         {rows.map((r, i) => (
-          <View key={i} style={[s.row, { gap: 10 }]}>
+          <View key={i} style={[s.row, { gap: 10, alignItems: 'stretch' }]}>
             {r.map((o) =>
               o === null ? (
                 kind === 'pivo' ? (
@@ -429,6 +431,7 @@ export function ZapisSheet() {
                   onPress={() => {
                     setVolume(size.volumeMl ?? null);
                     setTypedPrice('');
+                    if (typeof size.priceCzk !== 'number') requestAnimationFrame(() => priceInput.current?.focus());
                   }}
                 />
               ))
@@ -437,22 +440,15 @@ export function ZapisSheet() {
         </View>
       ) : null}
       {needsPrice ? (
-        <View style={[s.row, { height: 48, borderRadius: 16, paddingHorizontal: 14, gap: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.tint }]}>
-          <T s={15} w={600} c={C.muted} style={s.fill}>
-            {copy.priceLabel}
-          </T>
-          <TextInput
-            testID="drink-price"
-            value={typedPrice}
-            onChangeText={setTypedPrice}
-            keyboardType="number-pad"
-            keyboardAppearance="dark"
-            placeholder={copy.priceUnknown}
-            placeholderTextColor={C.muted}
-            selectionColor={C.yellow}
-            style={[font(16, 700), { minWidth: 60, textAlign: 'right', padding: 0 }]}
-          />
-        </View>
+        <Input
+          inputRef={priceInput}
+          testID="drink-price"
+          value={typedPrice}
+          onChangeText={(v) => setTypedPrice(v.replace(/[^0-9]/g, '').slice(0, 4))}
+          keyboardType="number-pad"
+          placeholder={copy.fixPrice}
+          returnKeyType="done"
+        />
       ) : null}
       {pub && selected?.fresh && typeof price === 'number' ? (
         <View style={[s.row, { gap: 10 }]}>

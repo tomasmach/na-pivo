@@ -76,7 +76,6 @@ export const stamgastCs = {
   otherServing: 'Jinak',
   otherServingSub: 'PETka, 0,33 l',
   priceUnknown: 'cena?',
-  priceLabel: 'Cena',
   addToMenu: (beer: string, pub: string) => `${beer} přidám na lístek ${pub}.`,
   badgeLastTime: 'minule tady',
   badgeNew: 'nové',
