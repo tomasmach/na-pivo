@@ -144,15 +144,17 @@ function AddTile({ label, sub, on, onPress }: { label: string; sub: string; on?:
   );
 }
 
-function SizeCard({ title, sub, on, onPress }: { title: string; sub: string; on: boolean; onPress: () => void }) {
+function SizeCard({ title, sub, on, onPress }: { title: string; sub?: string; on: boolean; onPress: () => void }) {
   return (
     <Press haptic onPress={onPress} style={[{ flex: 1, height: 56, borderRadius: 16, backgroundColor: on ? C.white : C.card, borderWidth: 1, borderColor: on ? C.white : C.hairline }, s.center]}>
       <T s={16} w={800} c={on ? C.black : C.white}>
         {title}
       </T>
-      <T s={12} c={on ? '#0A0A0A99' : C.muted}>
-        {sub}
-      </T>
+      {sub ? (
+        <T s={12} c={on ? '#0A0A0A99' : C.muted}>
+          {sub}
+        </T>
+      ) : null}
     </Press>
   );
 }
@@ -412,13 +414,6 @@ export function ZapisSheet() {
                 <SizeCard
                   key={size.volumeMl}
                   title={size.volumeMl ? formatVolume(size.volumeMl) : ''}
-                  sub={
-                    size.volumeMl === chosenSize?.volumeMl && price !== undefined
-                      ? money(price)
-                      : typeof size.priceCzk === 'number'
-                        ? money(size.priceCzk)
-                        : copy.priceUnknown
-                  }
                   on={size.volumeMl === chosenSize?.volumeMl}
                   onPress={() => {
                     setVolume(size.volumeMl ?? null);

@@ -71,7 +71,6 @@ export const stamgastEn: typeof stamgastCs = {
   otherServingSub: 'plastic, 0.33 l',
   priceFor: (size: string) => `Price for ${size}`.trim(),
   priceAdd: 'Add',
-  priceUnknown: 'price?',
   addToMenu: (beer: string, pub: string) => `I'll add ${beer} to the menu of ${pub}.`,
   badgeLastTime: 'last time here',
   badgeNew: 'new',

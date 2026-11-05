@@ -118,8 +118,8 @@ it('corrects only the picked size and shows the new price once the field closes'
   await act(async () => priceField(renderer).props.onBlur());
 
   expect(renderer.root.findAll((n: any) => n.props.testID === 'drink-price')).toHaveLength(0);
-  expect(sizeCard(renderer, '0,5 l')).toContain('62 Kč');
-  expect(sizeCard(renderer, '0,3 l')).toContain('45 Kč');
+  expect(texts(renderer)).toContain('62 Kč');
+  expect(sizeCard(renderer, '0,5 l')).toEqual(['0,5 l']);
   await act(async () => saveButton(renderer).props.onPress());
   expect(logDrink.mock.calls[0][1]).toMatchObject({ name: 'Pilsner Urquell', priceCzk: 62, volumeMl: 500 });
 });
