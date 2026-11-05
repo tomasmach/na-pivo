@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { LayoutAnimationConfig, runOnJS } from 'react-native-reanimated';
+import Animated, { LayoutAnimationConfig, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -25,7 +25,7 @@ import { Icon, type IconName } from '../../components/Icon';
 import { Button, Chip, D, Dot, IconButton, Press, T } from '../../components/ui';
 import { usePubNameReveal } from '../../hiddenPubNames';
 import { toast } from '../../ui/store';
-import { DURATION, enter, fadeIn, riseIn } from '../../motion';
+import { DURATION, enter, enterTiming, exitTiming, fadeIn, fadeOutTiming, layoutMove, riseIn } from '../../motion';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import { Dial } from './Dial';
 import { distanceLabel, formatDistance, hoursNow } from './format';
@@ -89,14 +89,16 @@ function goThere(target: KompasTarget, secret: boolean) {
   void openPubInMaps({ lat: target.lat, lng: target.lng, name: target.name, googlePlaceId: target.pub?.googlePlaceId });
 }
 
-function openTarget(router: ReturnType<typeof useRouter>, target: KompasTarget, from: 'map' | 'compass', name: NameReveal) {
+/** Returns false when it only revealed a secret name and stayed on the map. */
+function openTarget(router: ReturnType<typeof useRouter>, target: KompasTarget, from: 'map' | 'compass', name: NameReveal, via?: 'card'): boolean {
   if (name.secret) {
     trackUiInteraction('compass_pub_reveal');
     name.reveal();
-    return;
+    return false;
   }
   trackUiInteraction(from === 'map' ? 'map_pub_detail_open' : 'compass_pub_card_open');
-  openNvPub(router, target.pub ?? { id: '', name: target.name, lat: target.lat, lng: target.lng });
+  openNvPub(router, target.pub ?? { id: '', name: target.name, lat: target.lat, lng: target.lng }, via);
+  return true;
 }
 
 function openFilters(router: ReturnType<typeof useRouter>) {
@@ -161,12 +163,6 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
   const [cityKey, setCityKey] = useState<string | null>(null);
   const layersDot = st.mapView !== 'okoli' || st.pinMode !== 'price' || st.onlyDrunk;
   const city = k.map.visitedCities.find((c) => c.key === cityKey) ?? k.map.visitedCities[0];
-
-  const swipe = Gesture.Pan()
-    .activeOffsetY([-12, 12])
-    .onEnd((e) => {
-      if (e.translationY > 30) runOnJS(setCollapsed)(true);
-    });
 
   const beerFilter = st.filters.beerBrand;
   const activeChip = st.mapView === 'stopy' ? L().chipTraces : st.onlyDrunk ? L().chipOnlyDrunk : beerFilter?.label ?? null;
@@ -326,7 +322,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
         })}
       </ScrollView>
 
-      <View style={{ position: 'absolute', right: SCREEN_X - 8, bottom: tabSpace + cardSpace + 12, gap: 8 }}>
+      <Animated.View layout={layoutMove} style={{ position: 'absolute', right: SCREEN_X - 8, bottom: tabSpace + cardSpace + 12, gap: 8 }}>
         <View>
           <GlassButton icon="layers" label={L().layers} onPress={() => router.push('/nv/vrstvy')} />
           {layersDot ? (
@@ -334,7 +330,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
           ) : null}
         </View>
         <GlassButton icon="locate-fixed" label={L().myLocation} onPress={() => void locate()} />
-      </View>
+      </Animated.View>
 
       <View style={{ position: 'absolute', left: 12, right: 12, bottom: tabSpace + 4 }}>
         {/* The card is already there when the tab opens; it only rises in when it shows up later. */}
@@ -351,61 +347,56 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
               <Button label={L().showMyPubs} icon="map-pinned" kind="onYellow" height={46} onPress={showCityPubs} />
             </Animated.View>
           ) : st.mapView !== 'stopy' && target && !collapsed ? (
-            <GestureDetector gesture={swipe}>
-              <Animated.View entering={riseIn} style={[{ backgroundColor: C.yellow, borderRadius: 26, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, gap: 14 }]}>
-                <Press onPress={() => setCollapsed(true)} hitSlop={12} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 20 }}>
-                  <Grabber />
-                </Press>
-                <Animated.View key={target.key} entering={SWAP_IN}>
-                  <Press onPress={() => openTarget(router, target, 'map', name)} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
-                    <View style={[s.fill, { gap: 3 }]}>
-                      <View style={[s.row, { gap: 6 }]}>
-                        {name.secret ? <Icon name="eye-off" size={17} color={C.black} /> : null}
-                        <T s={18} w={600} c={C.black} style={{ letterSpacing: -0.2, flexShrink: 1 }} numberOfLines={1}>
-                          {name.secret ? t.nv.common.secretPub : target.name}
-                        </T>
-                      </View>
-                      {name.secret || name.secondsLeft ? (
-                        <View style={[s.row, { gap: 5 }]}>
-                          {name.secondsLeft ? <Icon name="eye-off" size={13} color={C.onYellowMuted} /> : null}
-                          <T s={13} w={600} c={name.secret ? C.black : C.onYellowMuted} numberOfLines={1} style={s.fill}>
-                            {name.secondsLeft ? t.nv.common.secretHidesIn(name.secondsLeft) : t.nv.common.secretReveal}
-                          </T>
-                        </View>
-                      ) : (
-                      <View style={[s.row, { gap: 5 }]}>
-                        {hours ? (
-                          <>
-                            <Dot color={hours.tone === 'open' ? C.black : C.onYellowMuted} />
-                            <T s={13} w={600} c={C.black}>
-                              {hours.tone === 'open' ? (hours.until ? L().openUntilShort(hours.until) : L().openShort) : hours.tone === 'closed' ? L().closedShort : L().hoursUnknownShort}
-                            </T>
-                          </>
-                        ) : null}
-                        <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>{`${hours ? '· ' : ''}${subLine(target, st.pinMode, k)}`}</T>
-                      </View>
-                      )}
+            <PubCard onCollapse={() => setCollapsed(true)} onPullOpen={() => openTarget(router, target, 'map', name, 'card')}>
+              <Animated.View key={target.key} entering={SWAP_IN}>
+                <Press onPress={() => openTarget(router, target, 'map', name)} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
+                  <View style={[s.fill, { gap: 3 }]}>
+                    <View style={[s.row, { gap: 6 }]}>
+                      {name.secret ? <Icon name="eye-off" size={17} color={C.black} /> : null}
+                      <T s={18} w={600} c={C.black} style={{ letterSpacing: -0.2, flexShrink: 1 }} numberOfLines={1}>
+                        {name.secret ? t.nv.common.secretPub : target.name}
+                      </T>
                     </View>
-                    {target.distance != null ? (
-                      <View style={[s.row, { alignItems: 'flex-end', gap: 3 }]}>
-                        <D s={24} c={C.black} lh={1.15}>
-                          {formatDistance(target.distance).value}
-                        </D>
-                        <T s={14} w={600} c={C.onYellowMuted} style={{ marginBottom: 3 }}>
-                          {formatDistance(target.distance).unit}
+                    {name.secret || name.secondsLeft ? (
+                      <View style={[s.row, { gap: 5 }]}>
+                        {name.secondsLeft ? <Icon name="eye-off" size={13} color={C.onYellowMuted} /> : null}
+                        <T s={13} w={600} c={name.secret ? C.black : C.onYellowMuted} numberOfLines={1} style={s.fill}>
+                          {name.secondsLeft ? t.nv.common.secretHidesIn(name.secondsLeft) : t.nv.common.secretReveal}
                         </T>
                       </View>
-                    ) : null}
-                  </Press>
-                </Animated.View>
-                <View style={[s.row, { gap: 10 }]}>
-                  <Button label={L().guideMe} icon="navigation" kind="onYellow" height={46} flex onPress={() => goThere(target, name.secret)} />
-                  {target.kind !== 'tour' ? (
-                    <Button label={L().another} icon="shuffle" kind="onYellowGhost" height={46} style={{ paddingHorizontal: 16 }} onPress={k.nextTarget} />
+                    ) : (
+                    <View style={[s.row, { gap: 5 }]}>
+                      {hours ? (
+                        <>
+                          <Dot color={hours.tone === 'open' ? C.black : C.onYellowMuted} />
+                          <T s={13} w={600} c={C.black}>
+                            {hours.tone === 'open' ? (hours.until ? L().openUntilShort(hours.until) : L().openShort) : hours.tone === 'closed' ? L().closedShort : L().hoursUnknownShort}
+                          </T>
+                        </>
+                      ) : null}
+                      <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>{`${hours ? '· ' : ''}${subLine(target, st.pinMode, k)}`}</T>
+                    </View>
+                    )}
+                  </View>
+                  {target.distance != null ? (
+                    <View style={[s.row, { alignItems: 'flex-end', gap: 3 }]}>
+                      <D s={24} c={C.black} lh={1.15}>
+                        {formatDistance(target.distance).value}
+                      </D>
+                      <T s={14} w={600} c={C.onYellowMuted} style={{ marginBottom: 3 }}>
+                        {formatDistance(target.distance).unit}
+                      </T>
+                    </View>
                   ) : null}
-                </View>
+                </Press>
               </Animated.View>
-            </GestureDetector>
+              <View style={[s.row, { gap: 10 }]}>
+                <Button label={L().guideMe} icon="navigation" kind="onYellow" height={46} flex onPress={() => goThere(target, name.secret)} />
+                {target.kind !== 'tour' ? (
+                  <Button label={L().another} icon="shuffle" kind="onYellowGhost" height={46} style={{ paddingHorizontal: 16 }} onPress={k.nextTarget} />
+                ) : null}
+              </View>
+            </PubCard>
           ) : st.mapView !== 'stopy' && target ? (
             <Animated.View entering={fadeIn} style={{ alignItems: 'center' }}>
               <Press haptic onPress={() => setCollapsed(false)}>
@@ -432,6 +423,63 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
         </LayoutAnimationConfig>
       </View>
     </View>
+  );
+}
+
+// Pulling up opens the pub page; the card follows the finger at a fraction, so it feels held.
+const PULL_OPEN = 60;
+const PULL_DOWN = 30;
+const FLING = 600;
+const PULL_UP_FOLLOW = 0.4;
+// Long enough for the page sliding up over the card to cover it before the card resets.
+const RESET_UNDER_PAGE = 450;
+
+function PubCard({ onCollapse, onPullOpen, children }: { onCollapse: () => void; onPullOpen: () => boolean; children: React.ReactNode }) {
+  const y = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const height = useSharedValue(160);
+
+  const slideAway = () => {
+    opacity.value = withTiming(0, fadeOutTiming(DURATION.base));
+    y.value = withTiming(height.value, exitTiming(DURATION.base), (done) => {
+      if (done) runOnJS(onCollapse)();
+    });
+  };
+  const release = (dy: number, vy: number) => {
+    if (dy < -PULL_OPEN / PULL_UP_FOLLOW || vy < -FLING) {
+      y.value = onPullOpen() ? withDelay(RESET_UNDER_PAGE, withTiming(0, { duration: 0 })) : withTiming(0, enterTiming());
+    } else if (dy > PULL_DOWN || vy > FLING) {
+      slideAway();
+    } else {
+      y.value = withTiming(0, enterTiming());
+    }
+  };
+  const pan = Gesture.Pan()
+    .activeOffsetY([-12, 12])
+    .onUpdate((e) => {
+      y.value = e.translationY < 0 ? e.translationY * PULL_UP_FOLLOW : e.translationY;
+    })
+    .onEnd((e) => {
+      runOnJS(release)(e.translationY, e.velocityY);
+    });
+  const drag = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateY: y.value }] }));
+
+  return (
+    <Animated.View entering={riseIn}>
+      <GestureDetector gesture={pan}>
+        <Animated.View
+          onLayout={(e) => {
+            height.value = e.nativeEvent.layout.height;
+          }}
+          style={[{ backgroundColor: C.yellow, borderRadius: 26, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, gap: 14 }, drag]}
+        >
+          <Press onPress={slideAway} hitSlop={12} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 20 }}>
+            <Grabber />
+          </Press>
+          {children}
+        </Animated.View>
+      </GestureDetector>
+    </Animated.View>
   );
 }
 

@@ -86,8 +86,9 @@ export function nvPubParams(pub: Pub): { id: string; ref: string; name: string; 
   return { id: key, ref: ref ?? '', name, lat, lng };
 }
 
-export function openNvPub(router: Router, pub: Pub): void {
-  router.push({ pathname: '/nv/hospoda/[id]', params: nvPubParams(pub) });
+/** `via: 'card'` makes the page rise from the bottom card it was pulled out of. */
+export function openNvPub(router: Router, pub: Pub, via?: 'card'): void {
+  router.push({ pathname: '/nv/hospoda/[id]', params: via ? { ...nvPubParams(pub), via } : nvPubParams(pub) });
 }
 
 /** Point the compass at a pub and switch to the Kompas tab. */
