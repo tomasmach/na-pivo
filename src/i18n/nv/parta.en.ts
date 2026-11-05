@@ -6,6 +6,7 @@ const people = (n: number) => englishPlural(n, { one: 'person', other: 'people' 
 
 export const partaEn: Strings['nv']['parta'] = {
   title: 'Crew',
+  tabBadgeA11y: (n: number) => `Crew, ${n} new`,
   add: 'Add',
   loading: 'Loading…',
   loadFailed: 'Your crew did not come through.',
@@ -61,6 +62,16 @@ export const partaEn: Strings['nv']['parta'] = {
   homeMeetupsSub: 'Small meetups with strangers',
 
   yourPlan: 'Your plan',
+  yourPing: 'Your call',
+  nobodyGoingYet: 'Nobody is coming yet',
+  ghostTurnedOff: "I turned invisible mode off, the crew can see you again.",
+  endPing: 'Wrap it up',
+  endPingA11y: 'End the call',
+  endPingTitle: 'Wrap it up?',
+  endPingBody: "The call disappears from the Crew. They'll still see you're in the pub.",
+  endPingConfirm: 'Wrap up',
+  pingEnded: 'Call ended.',
+  pingEndQueued: "I'll wrap it up once you get a signal.",
   inviteFrom: (name: string) => `${name} invites you`,
   homePlace: (name: string) => `At ${name}’s place`,
   homePlaceMine: 'At my place',

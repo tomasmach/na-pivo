@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { accountXpProgress } from '@/data/accountXp';
 import type { BadgeProgress } from '@/data/auth';
 import type { RemoteStats } from '@/data/statsClient';
-import { t } from '@/i18n';
+import { t, type Locale } from '@/i18n';
 import {
   BADGE_GROUPS,
   PUBLIC_BADGE_KEYS,
@@ -245,4 +245,9 @@ export async function observeLevel(accountId: string, level: number): Promise<{ 
     // Best effort: a failed write shows the level-up once more.
   }
   return seen && seen.accountId === accountId ? { since: seen.at } : null;
+}
+
+/** Terms and privacy live on GitHub Pages; the English copies sit under /en/. */
+export function legalUrl(page: 'terms' | 'privacy', lang: Locale): string {
+  return `https://tomasmach.github.io/na-pivo/${lang === 'en' ? 'en/' : ''}${page}.html`;
 }

@@ -590,6 +590,22 @@ def test_screen_view_event_accepts_released_diary_screen_name(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "screen",
+    ["beer_rankings", "search", "stats", "receipt", "watched_beers", "plan_detail", "new_invite", "tour"],
+)
+def test_screen_view_event_accepts_new_look_screen_names(client, screen):
+    resp = client.post(
+        "/v1/client-events",
+        data={"event": "screen_viewed", "context": {"screen": screen, "previous_screen": "friends"}},
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {"screen": screen, "previous_screen": "friends"}
+
+
+@pytest.mark.django_db
 def test_screen_view_event_drops_unknown_screen_values(client):
     resp = client.post(
         "/v1/client-events",

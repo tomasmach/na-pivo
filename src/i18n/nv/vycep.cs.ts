@@ -72,6 +72,9 @@ export const vycepCs = {
   choicePartaSub: 'Uvidí tvoje parta',
   privacyNote:
     'Vyvěsí se počet piv, hospody, datum a délka noci. Útrata a jednotlivá piva zůstávají jen tobě.',
+  alreadyTitle: 'Tahle noc už na Výčepu visí.',
+  alreadyWorld: 'Vidí ji celý svět. Podruhé ji nevyvěsím, stáhnout ji můžeš ve Výčepu.',
+  alreadyParta: 'Vidí ji tvoje parta. Podruhé ji nevyvěsím, stáhnout ji můžeš ve Výčepu.',
   nothingTitle: 'Zatím nemáš co vyvěsit.',
   nothingBody: 'Prázdnou noc nevyvěsíš. Nejdřív musí něco padnout.',
   logBeer: 'Zapiš si pivo',

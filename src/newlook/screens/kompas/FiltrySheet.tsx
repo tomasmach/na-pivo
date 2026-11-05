@@ -3,22 +3,24 @@ import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 
-import type { AmenityKey } from '@/data/amenities';
+import { AMENITIES, type AmenityKey } from '@/data/amenities';
 import { POPULAR_BEER_BRANDS } from '@/data/beerSuggestionsClient';
 import { geohash8 } from '@/data/geohash';
 import { getAllLoadedPubs } from '@/data/pubs';
-import { backendPubSearchFilterKey, pubMatchesPriceFilter } from '@/data/pubSearchFilters';
+import { MAX_AMENITY_FILTERS, backendPubSearchFilterKey, pubMatchesPriceFilter } from '@/data/pubSearchFilters';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { pubOpeningVerdict } from '@/map/mapModel';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { openHomeInMaps } from '@/utils/maps';
 
 import { ButtonPair, Sheet } from '../../components/overlays';
 import { Card, Chip, ChipWrap, Row, T, Toggle } from '../../components/ui';
 import type { IconName } from '../../components/Icon';
+import { toast } from '../../ui/store';
 import { C } from '../../theme';
-import { setOpenOnly, setSurprise, useKompasState } from './state';
+import { setOpenOnly, setSurprise, toggleAmenityFilter, useKompasState } from './state';
 
 const BEER_KEYS = ['pilsner-urquell', 'velkopopovicky-kozel', 'gambrinus', 'radegast', 'budweiser-budvar', 'staropramen'];
 const BEER_CHIPS = BEER_KEYS.map((key) => POPULAR_BEER_BRANDS.find((b) => b.key === key)).filter((b) => b !== undefined);
@@ -29,6 +31,15 @@ const FUN: [AmenityKey, () => string, IconName][] = [
   ['game_foosball', () => t.nv.kompas.foosball, 'goal'],
   ['atmosphere_sports_tv', () => t.nv.kompas.categories.sportsTv, 'tv'],
 ];
+
+const PRACTICAL_ICONS: [AmenityKey, IconName][] = [
+  ['payment_card', 'credit-card'],
+  ['seating_barrier_free', 'accessibility'],
+  ['practical_wifi', 'wifi'],
+  ['practical_parking', 'car'],
+  ['practical_vape_friendly', 'wind'],
+];
+const PRACTICAL = PRACTICAL_ICONS.map(([key, icon]) => ({ key, icon, label: AMENITIES.find((a) => a.key === key)?.label ?? key }));
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -66,8 +77,18 @@ export function FiltrySheet() {
         pubMatchesPriceFilter(pub, filters.priceMinCzk, filters.priceMaxCzk),
     ).length;
   }, [countKnown, filters, openOnly, reportedIds, reportedKeys]);
-  const toggleAmenity = (key: AmenityKey) =>
-    st.setFilters({ amenityKeys: filters.amenityKeys.includes(key) ? filters.amenityKeys.filter((k) => k !== key) : [...filters.amenityKeys, key] });
+  const homePoint = useSettingsStore((s) => s.homePoint);
+  const toggleAmenity = (key: AmenityKey) => {
+    if (!toggleAmenityFilter(key)) toast({ kind: 'info', title: L.amenityLimit(MAX_AMENITY_FILTERS), icon: 'sliders-horizontal' });
+  };
+  const navigateHome = () => {
+    if (!homePoint) {
+      router.push('/nv/domovsky-bod');
+      return;
+    }
+    nvBack(router);
+    openHomeInMaps(homePoint).catch(() => toast({ kind: 'error', title: L.navigationFailed, icon: 'navigation' }));
+  };
   const garden = filters.amenityKeys.includes('seating_garden');
   const stands = filters.includeOtherPlaces === true;
   return (
@@ -100,7 +121,6 @@ export function FiltrySheet() {
           }
         />
         <Row
-          last
           title={L.surprise}
           sub={L.surpriseSub}
           trailing={
@@ -112,6 +132,13 @@ export function FiltrySheet() {
               }}
             />
           }
+        />
+        <Row
+          last
+          title={L.navigateHome}
+          trailing={homePoint ? undefined : <T s={15} c={C.muted}>{L.homeUnset}</T>}
+          chevron
+          onPress={navigateHome}
         />
       </Card>
       <Group title={L.beerGroup}>
@@ -142,6 +169,12 @@ export function FiltrySheet() {
       <Group title={L.placesGroup}>
         <Chip label={L.categories.garden} icon={garden ? 'check' : 'trees'} active={garden} onPress={() => toggleAmenity('seating_garden')} />
         <Chip label={L.standsAndCamps} icon={stands ? 'check' : 'tent'} active={stands} onPress={() => st.setFilters({ includeOtherPlaces: !stands })} />
+      </Group>
+      <Group title={L.practicalGroup}>
+        {PRACTICAL.map(({ key, icon, label }) => {
+          const on = filters.amenityKeys.includes(key);
+          return <Chip key={key} label={label} icon={on ? 'check' : icon} active={on} onPress={() => toggleAmenity(key)} />;
+        })}
       </Group>
     </Sheet>
   );

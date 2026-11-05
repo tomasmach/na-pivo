@@ -173,6 +173,11 @@ export const profilEn: Strings['nv']['profil'] = {
     password: 'Password',
     passwordPlaceholder: 'At least 8 characters',
     forgot: 'Forgot your password?',
+    termsPrefix: 'By creating an account you agree to the ',
+    termsLink: 'terms of use',
+    termsMiddle: ' and acknowledge the ',
+    privacyLink: 'privacy policy',
+    termsSuffix: '.',
   },
   reset: {
     title: 'Reset password',
@@ -218,6 +223,9 @@ export const profilEn: Strings['nv']['profil'] = {
     cancelRequestTitle: (name: string) => `Cancel the request to ${name}?`,
     cancelRequestConfirm: 'Cancel request',
     requestCanceled: 'Request cancelled.',
+    ghostTitle: 'Invisible mode',
+    ghostSub:
+      "The crew can't see where you're sitting or what you've drunk. Your pings stay with you, and while it's on I leave your beers out of the pub counts on the map and the leaderboard.",
   },
   invite: {
     kicker: 'Crew invite',

@@ -5,7 +5,8 @@ import { updateAccountPreferences } from '@/data/account';
 import type { CommunityBeer, WeeklyHours } from '@/data/communityHours';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
-import { EMPTY_PUB_SEARCH_FILTERS, normalizePubSearchFilters, type PubSearchFilters } from '@/data/pubSearchFilters';
+import type { AmenityKey } from '@/data/amenities';
+import { EMPTY_PUB_SEARCH_FILTERS, MAX_AMENITY_FILTERS, normalizePubSearchFilters, type PubSearchFilters } from '@/data/pubSearchFilters';
 import type { VisitedPubSummary } from '@/map/mapModel';
 import { pubPageParams } from '@/pubPage/openPubPage';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
@@ -63,6 +64,18 @@ export const useKompasState = create<KompasState>((set, get) => ({
     set({ picked: pub });
   },
 }));
+
+/** Returns false and changes nothing when another amenity would go over the server's limit. */
+export function toggleAmenityFilter(key: AmenityKey): boolean {
+  const { filters, setFilters } = useKompasState.getState();
+  if (filters.amenityKeys.includes(key)) {
+    setFilters({ amenityKeys: filters.amenityKeys.filter((k) => k !== key) });
+    return true;
+  }
+  if (filters.amenityKeys.length >= MAX_AMENITY_FILTERS) return false;
+  setFilters({ amenityKeys: [...filters.amenityKeys, key] });
+  return true;
+}
 
 /** "Překvap mě" is the old compass's surprise mode, synced to the account like before. */
 export function setSurprise(on: boolean): void {

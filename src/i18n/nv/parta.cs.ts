@@ -5,6 +5,7 @@ const beers = (n: number) => czechPlural(n, { one: 'pivo', few: 'piva', many: 'p
 
 export const partaCs = {
   title: 'Parta',
+  tabBadgeA11y: (n: number) => `Parta, ${n} ${czechPlural(n, { one: 'novinka', few: 'novinky', many: 'novinek' })}`,
   add: 'Přidat',
   loading: 'Načítám…',
   loadFailed: 'Parta se nedotáhla.',
@@ -60,6 +61,16 @@ export const partaCs = {
   homeMeetupsSub: 'Komorní setkání s cizími lidmi',
 
   yourPlan: 'Tvůj plán',
+  yourPing: 'Tvoje svolání',
+  nobodyGoingYet: 'Zatím nikdo nejde',
+  ghostTurnedOff: 'Neviditelný režim jsem vypnul, parta tě zase vidí.',
+  endPing: 'Zabalit',
+  endPingA11y: 'Ukončit svolání',
+  endPingTitle: 'Zabalit to?',
+  endPingBody: 'Svolání zmizí z Party. Že sedíš v hospodě, parta uvidí dál.',
+  endPingConfirm: 'Zabalit',
+  pingEnded: 'Svolání je pryč.',
+  pingEndQueued: 'Zabalím to, až chytíš signál.',
   inviteFrom: (name: string) => `Zve tě ${name}`,
   homePlace: (name: string) => `Na návštěvě · ${name}`,
   homePlaceMine: 'U mě doma',

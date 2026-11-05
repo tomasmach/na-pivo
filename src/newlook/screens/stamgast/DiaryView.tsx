@@ -24,6 +24,7 @@ import {
   distinctPubs,
   nightsBetween,
   nightsOf,
+  nightToFix,
   pad2,
   sumBeers,
   sumSpent,
@@ -196,6 +197,34 @@ function NightsCard({ nights, today }: { nights: readonly Night[]; today: string
   );
 }
 
+/** Drinks the server refused live only on the phone until they are fixed or removed. */
+function RejectedNudge({ nights }: { nights: readonly Night[] }) {
+  const router = useRouter();
+  const copy = t.nv.stamgast;
+  const toFix = nightToFix(nights);
+  if (!toFix) return null;
+  return (
+    <Press
+      testID="diary-rejected"
+      accessibilityRole="button"
+      onPress={() => {
+        trackUiInteraction('diary_evening_open');
+        router.push({ pathname: '/nv/vecer/[id]', params: { id: toFix.night.day } });
+      }}
+      style={[s.row, { minHeight: 52, borderRadius: 18, paddingHorizontal: 14, gap: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.hairline }]}
+    >
+      <Icon name="circle-alert" size={18} color={C.yellow} />
+      <T s={15} w={700} style={s.fill}>
+        {copy.rejectedCount(toFix.count)}
+      </T>
+      <T s={14} w={700} c={C.text2}>
+        {copy.rejectedShow}
+      </T>
+      <Icon name="chevron-right" size={16} color={C.muted} />
+    </Press>
+  );
+}
+
 export function DiaryView({ onToday }: { onToday?: () => void }) {
   const tabSpace = useTabBarSpace();
   const [period, setPeriod] = useState<Period>('mesic');
@@ -208,6 +237,7 @@ export function DiaryView({ onToday }: { onToday?: () => void }) {
   return (
     <View style={{ flex: 1 }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_X, paddingTop: 18, gap: 18, paddingBottom: tabSpace + 40 }}>
+        <RejectedNudge nights={nights} />
         <PeriodSwitch value={period} onChange={setPeriod} />
         {period === 'mesic' ? (
           <Month nights={nights} today={today} onToday={onToday} />

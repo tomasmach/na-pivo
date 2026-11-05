@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
+import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useActiveTourRun } from '@/tours/activeRun';
 import { runGlance } from '@/tours/glance';
 
@@ -30,10 +31,18 @@ const TAB_TELEMETRY_TARGETS: Record<string, UiInteractionTarget> = {
   parta: 'tab_friends',
 };
 
+/** Waiting friend requests as a number (9+ from ten), otherwise an empty dot for news or a friend out now. */
+export function partaBadge(pendingRequests: number, unread: number, liveNow: boolean): string | null {
+  if (pendingRequests > 0) return pendingRequests > 9 ? '9+' : String(pendingRequests);
+  return unread > 0 || liveNow ? '' : null;
+}
+
 /** Two glass pills with the Štamgast circle between them. */
 export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const current = state.routes[state.index]?.name;
+  const pendingRequests = usePartaSignalStore((st) => st.pendingRequests);
+  const partaBadgeText = usePartaSignalStore((st) => partaBadge(st.pendingRequests, st.unread, st.liveNow));
 
   const go = (name: string) => {
     const route = state.routes.find((r) => r.name === name);
@@ -50,17 +59,21 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
     const side = SIDE[name];
     const label = side.label();
     const on = current === name;
+    const badge = name === 'parta' ? partaBadgeText : null;
     return (
       <Press
         key={name}
         haptic
         onPress={() => press(name)}
         accessibilityRole="tab"
-        accessibilityLabel={label}
+        accessibilityLabel={name === 'parta' && pendingRequests > 0 ? t.nv.parta.tabBadgeA11y(pendingRequests) : label}
         accessibilityState={{ selected: on }}
         style={[s.fill, s.center, { borderRadius: 27, gap: 3, alignSelf: 'stretch' }]}
       >
-        <Icon name={side.icon} size={21} color={on ? C.yellow : C.glassText} />
+        <View>
+          <Icon name={side.icon} size={21} color={on ? C.yellow : C.glassText} />
+          {badge === null ? null : <TabBadge text={badge} />}
+        </View>
         <T s={10} w={700} c={on ? C.yellow : C.glassText}>
           {label}
         </T>
@@ -108,6 +121,22 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
         </Glass>
       </View>
     </>
+  );
+}
+
+function TabBadge({ text }: { text: string }) {
+  if (!text) {
+    return <View testID="tab-parta-dot" style={{ position: 'absolute', top: -1, right: -4, width: 8, height: 8, borderRadius: 4, backgroundColor: C.yellow }} />;
+  }
+  return (
+    <View
+      testID="tab-parta-badge"
+      style={[{ position: 'absolute', top: -6, left: 13, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: C.yellow }, s.center]}
+    >
+      <T s={11} w={800} c={C.black} maxFontSizeMultiplier={1.1}>
+        {text}
+      </T>
+    </View>
   );
 }
 

@@ -1,9 +1,10 @@
 import { enqueueDelete, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
-import { flushDrinksQueue, removeQueuedDrink, updateQueuedDrinkBeerName } from '@/data/drinksQueue';
+import { enqueueDrink, flushDrinksQueue, removeQueuedDrink, updateQueuedDrinkBeerName } from '@/data/drinksQueue';
+import { buildHistoricalDrinkEntry } from '@/data/drinksHistorySync';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { useAccountStore } from '@/stores/accountStore';
-import { findSessionByStart, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
+import { findSessionByStart, rejectedFieldOf, useTallyStore, type DrinkFix, type TallyDrink } from '@/stores/tallyStore';
 
 function syncSession(startedAt: string): void {
   const { current, history } = useTallyStore.getState();
@@ -41,6 +42,26 @@ export function deleteSessionDrink(startedAt: string, drinkId: string): boolean 
         .then(() => flushDeleteDrinksQueue())
         .catch(() => undefined);
     }
+  });
+  return true;
+}
+
+/** Corrects a drink the server refused and sends it again under its own client_id; offline it waits in the queue. */
+export function fixSessionDrink(startedAt: string, drink: TallyDrink, fix: DrinkFix): boolean {
+  const store = useTallyStore.getState();
+  if (!store.fixDrinkInSession(startedAt, drink.id, fix)) return false;
+  const { current, history } = useTallyStore.getState();
+  const session = findSessionByStart(current, history, startedAt);
+  if (!session) return false;
+  syncVisit(session, new Date().toISOString());
+  const fixed = session.drinks.find((candidate) => candidate.id === drink.id);
+  const entry = fixed ? buildHistoricalDrinkEntry(session, fixed) : null;
+  if (!entry) {
+    store.markDrinkRejected(drink.id, rejectedFieldOf(drink));
+    return false;
+  }
+  void enqueueDrink(entry).then((delivered) => {
+    if (delivered) useTallyStore.getState().markDrinkSynced(drink.id);
   });
   return true;
 }

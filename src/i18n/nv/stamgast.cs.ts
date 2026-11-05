@@ -48,11 +48,11 @@ export const stamgastCs = {
   rate: 'Ohodnotit',
   oneMore: 'Ještě jedno',
   logBeer: 'Zapsat pivo',
+  logOther: { vino: 'Zapsat víno', nealko: 'Zapsat nealko', panak: 'Zapsat panáka' },
   draft: 'čepované',
 
   // Place sheet
   placeHome: 'Doma / na chatě',
-  placeHomeSub: 'lahváče, plechovky, bez hospody',
   placeLocate: 'Povolit polohu',
   placeLocateSub: 'ukážu hospody kolem tebe',
   placeSearching: 'Hledám hospody kolem tebe…',
@@ -89,6 +89,10 @@ export const stamgastCs = {
   softKofola: 'Kofola',
   shotFernet: 'Fernet',
   shotSlivovice: 'Slivovice',
+  customTile: { vino: 'Jiné víno', nealko: 'Jiné nealko', panak: 'Jiný panák' },
+  customTileSub: 'napiš název',
+  customPlaceholder: { vino: 'Název, např. Ryzlink vlašský', nealko: 'Název, např. Kofola', panak: 'Název, např. Slivovice' },
+  customNameMissing: 'Nejdřív napiš název',
 
   // Add beer
   back: 'Zpět',
@@ -311,6 +315,13 @@ export const stamgastCs = {
   photoNeedNickname: 'Do FotoPivaře potřebuješ přezdívku.',
   photoNone: '-',
   renameDrink: 'Opravit název',
+  fixDrink: 'Opravit',
+  rejectedWhy: (hint: string) => `Neuložilo se, mám to jen v telefonu. ${hint}`,
+  fixName: 'Název',
+  fixVolume: 'Objem v ml',
+  fixPrice: 'Cena v Kč',
+  rejectedCount: (n: number) => `${n} ${czechPlural(n, { one: 'zápis', few: 'zápisy', many: 'zápisů' })} k opravě`,
+  rejectedShow: 'Ukázat',
 
   // Lifetime numbers
   statsEntry: 'Čísla za celou dobu',

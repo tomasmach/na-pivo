@@ -173,6 +173,11 @@ export const profilCs = {
     password: 'Heslo',
     passwordPlaceholder: 'Alespoň 8 znaků',
     forgot: 'Zapomenuté heslo?',
+    termsPrefix: 'Vytvořením účtu souhlasíš s ',
+    termsLink: 'podmínkami použití',
+    termsMiddle: ' a bereš na vědomí ',
+    privacyLink: 'zásady soukromí',
+    termsSuffix: '.',
   },
   reset: {
     title: 'Obnova hesla',
@@ -218,6 +223,9 @@ export const profilCs = {
     cancelRequestTitle: (name: string) => `Zrušit žádost pro ${name}?`,
     cancelRequestConfirm: 'Zrušit žádost',
     requestCanceled: 'Žádost zrušená.',
+    ghostTitle: 'Neviditelný režim',
+    ghostSub:
+      'Parta nevidí, kde sedíš, ani co máš vypito. Tvoje cinknutí zůstanou jen u tebe a dokud je zapnutý, nezapočítám tvoje piva ani do počtů u hospod na mapě a v žebříčku.',
   },
   invite: {
     kicker: 'Pozvánka do party',

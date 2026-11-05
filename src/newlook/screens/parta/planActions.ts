@@ -3,6 +3,7 @@ import * as Linking from 'expo-linking';
 
 import {
   clearActivityResponse,
+  endFriendPubActivity,
   respondToActivity,
   type ActivityResponseKind,
   type FriendProfile,
@@ -13,7 +14,7 @@ import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildNavigationUrl } from '@/utils/maps';
 
-import { toast } from '../../ui/store';
+import { dialog, toast } from '../../ui/store';
 import { personName, planTime, planTitle } from './partaModel';
 import { usePartaStore } from './partaStore';
 
@@ -93,4 +94,30 @@ export async function pingPerson(profile: FriendProfile): Promise<boolean> {
   }
   toast({ kind: 'error', title: result.code === 'network' || result.code === 'offline' ? t.clientErrors.offline : result.detail, icon: 'circle-alert' });
   return false;
+}
+
+/** Ends my own pub ping after a confirm; without signal the end waits in the friends queue. */
+export function endPing(plan: PartaPlan, onEnded?: () => void): void {
+  dialog({
+    title: t.nv.parta.endPingTitle,
+    body: t.nv.parta.endPingBody,
+    actions: [
+      { label: t.nv.parta.back },
+      {
+        label: t.nv.parta.endPingConfirm,
+        kind: 'danger',
+        onPress: () =>
+          void endFriendPubActivity(plan.id).then(async (result) => {
+            if (!result.ok && !isRetriableFriendError(result)) {
+              toast({ kind: 'error', title: result.detail, icon: 'circle-alert' });
+              return;
+            }
+            if (!result.ok) await enqueueFriendOp({ op: 'end', clientId: plan.id, activityId: plan.id });
+            usePartaStore.getState().removePlan(plan.id);
+            toast(result.ok ? { kind: 'info', title: t.nv.parta.pingEnded, icon: 'beer' } : { kind: 'offline', title: t.nv.parta.pingEndQueued, icon: 'cloud-off' });
+            onEnded?.();
+          }),
+      },
+    ],
+  });
 }

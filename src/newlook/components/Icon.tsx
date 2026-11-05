@@ -43,6 +43,7 @@ import SlidersHorizontalIcon from 'lucide-react-native/icons/sliders-horizontal'
 import FlaskConicalIcon from 'lucide-react-native/icons/flask-conical';
 import TargetIcon from 'lucide-react-native/icons/target';
 import TreesIcon from 'lucide-react-native/icons/trees';
+import TreePineIcon from 'lucide-react-native/icons/tree-pine';
 import LocateFixedIcon from 'lucide-react-native/icons/locate-fixed';
 import LayersIcon from 'lucide-react-native/icons/layers';
 import ChevronUpIcon from 'lucide-react-native/icons/chevron-up';
@@ -136,6 +137,10 @@ import MoonStarIcon from 'lucide-react-native/icons/moon-star';
 import TimerIcon from 'lucide-react-native/icons/timer';
 import SignalIcon from 'lucide-react-native/icons/signal';
 import WifiIcon from 'lucide-react-native/icons/wifi';
+import CreditCardIcon from 'lucide-react-native/icons/credit-card';
+import AccessibilityIcon from 'lucide-react-native/icons/accessibility';
+import CarIcon from 'lucide-react-native/icons/car';
+import WindIcon from 'lucide-react-native/icons/wind';
 import BatteryFullIcon from 'lucide-react-native/icons/battery-full';
 
 // Deep imports: the package root would evaluate all ~1,850 icons at startup.
@@ -182,6 +187,7 @@ const ICONS = {
   'flask-conical': FlaskConicalIcon,
   'target': TargetIcon,
   'trees': TreesIcon,
+  'tree-pine': TreePineIcon,
   'locate-fixed': LocateFixedIcon,
   'layers': LayersIcon,
   'chevron-up': ChevronUpIcon,
@@ -275,6 +281,10 @@ const ICONS = {
   'timer': TimerIcon,
   'signal': SignalIcon,
   'wifi': WifiIcon,
+  'credit-card': CreditCardIcon,
+  'accessibility': AccessibilityIcon,
+  'car': CarIcon,
+  'wind': WindIcon,
   'battery-full': BatteryFullIcon,
   history: RotateCcwClockIcon,
   'trash-2': TrashIcon,

@@ -5,7 +5,7 @@ import * as Location from 'expo-location';
 
 import { checkLocationPermission } from '@/compass/permissions';
 import { pubInfoFromPub, usePubInfoFacts } from '@/components/amenities/pubInfoContext';
-import { computeOpenState } from '@/data/communityHours';
+import { DAY_KEYS, computeOpenState, parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
 import { fetchPubHours } from '@/data/hoursClient';
 import { fetchPubAmenities, type WireAmenityAggregate, type WireAmenityCompleteness } from '@/data/pubAmenitiesClient';
@@ -203,19 +203,29 @@ export function usePubDetails(initial: Pub | null, key: string) {
     [override, pub],
   );
   // The page asks the server once, so hours filled in here show from the local edit until the next visit.
-  const hours = useMemo(() => {
-    const local = override?.hours;
+  const localHours = useMemo(() => {
     const serverAt = pub?.hoursUpdatedAt ? Date.parse(pub.hoursUpdatedAt) : 0;
-    if (local && !(override.updatedAt <= serverAt)) {
-      const open = computeOpenState(local, now);
+    return override?.hours && !(override.updatedAt <= serverAt) ? override.hours : null;
+  }, [override, pub]);
+  const hours = useMemo(() => {
+    if (localHours) {
+      const open = computeOpenState(localHours, now);
       return hoursNow({ hoursStatus: 'ok', isOpenNow: open.isOpenNow, nextChange: open.nextChange });
     }
     return hoursNow(pub ?? {});
-  }, [now, override, pub]);
+  }, [localHours, now, pub]);
+  // A week with no open day says nothing, the same as in the editor.
+  const week = useMemo(
+    () =>
+      [localHours, pub?.communityHours, parseOsmOpeningHoursToWeeklyHours(pub?.openingHours)].find(
+        (known) => known && DAY_KEYS.some((day) => known[day].length > 0),
+      ) ?? null,
+    [localHours, pub?.communityHours, pub?.openingHours],
+  );
   const shownEvents = useMemo(
     () => visibleEvents(pub ? events.filter((event) => isEventOfPub(event, pub)) : events, now).map(inPubTime),
     [events, now, pub],
   );
 
-  return { pub, hoursLoaded, hours, taps, events: shownEvents, beersLastWeek, mappedPercent, visit, aggregates, identityKey, now };
+  return { pub, hoursLoaded, hours, week, taps, events: shownEvents, beersLastWeek, mappedPercent, visit, aggregates, identityKey, now };
 }

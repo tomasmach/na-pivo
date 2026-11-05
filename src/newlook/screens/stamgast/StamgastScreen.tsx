@@ -47,7 +47,7 @@ import { DegreePicker, KindPicker } from '../piva/StylePicker';
 import { FriendEveningCard, leaveFriendHome, useFriendHomeEvening } from '../parta/FriendEveningCard';
 import { DiaryView } from './DiaryView';
 import { durationLabel, nameStatesDegree, servingLine } from './stamgastFormat';
-import { currentCountPlace, useCountPlace, useCountPlaceHost, useNvPlaceStore } from './placeStore';
+import { OUTSIDE_ICON, currentCountPlace, useCountPlace, useCountPlaceHost, useNvPlaceStore } from './placeStore';
 
 type Mode = 'pocitat' | 'denik' | 'tour';
 
@@ -364,7 +364,7 @@ function CounterView() {
             onPress={openPlace}
             style={[s.row, { height: 34, borderRadius: 17, paddingHorizontal: 14, gap: 6, backgroundColor: C.tint }]}
           >
-            <Icon name={secretPlace ? 'eye-off' : atFriend || place?.kind === 'outside' ? 'house' : 'map-pin'} size={15} color={C.yellow} />
+            <Icon name={secretPlace ? 'eye-off' : atFriend ? 'house' : place?.kind === 'outside' ? OUTSIDE_ICON[place.context] : 'map-pin'} size={15} color={C.yellow} />
             <T s={14} w={700} numberOfLines={1} style={{ maxWidth: 260 }}>
               {placeName}
             </T>

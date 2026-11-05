@@ -158,3 +158,118 @@ describe('menu photo for "Doplnit info"', () => {
     expect(nvBack).not.toHaveBeenCalled();
   });
 });
+
+describe('beers on tap in "Doplnit info"', () => {
+  const k = t.nv.kompas;
+
+  async function renderBeers(): Promise<any> {
+    mockParams.current = { tab: 'piva' };
+    let renderer: any;
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(DoplnitInfoScreen));
+    });
+    return renderer;
+  }
+
+  function inputs(renderer: any): any[] {
+    return renderer.root.findAll((n: any) => n.type === 'TextInput');
+  }
+
+  function savedBeers(): CommunityBeer[] {
+    return (enqueuePubCommunity as jest.Mock).mock.calls[0][0].beers.map((b: any) => ({ name: b.name, volumeMl: b.volume_ml, priceCzk: b.price_czk }));
+  }
+
+  beforeEach(() => {
+    act(() => {
+      useCommunityStore.setState({ overrides: {} });
+    });
+  });
+
+  it('corrects the price and volume of a beer on tap and saves it through the community queue', async () => {
+    const renderer = await renderBeers();
+    act(() => pressText(renderer, 'Pilsner Urquell'));
+    const [name, price] = inputs(renderer);
+    expect(name.props.value).toBe('Pilsner Urquell');
+    expect(price.props.value).toBe('69');
+
+    act(() => price.props.onChangeText('59'));
+    act(() => pressText(renderer, '0,4 l'));
+    act(() => pressText(renderer, k.done));
+    act(() => pressText(renderer, k.save));
+
+    expect(enqueuePubCommunity).toHaveBeenCalledTimes(1);
+    expect(savedBeers()).toEqual([{ name: 'Pilsner Urquell', volumeMl: 400, priceCzk: 59 }]);
+  });
+
+  it('keeps a beer still open in the form when the big Save is pressed', async () => {
+    const renderer = await renderBeers();
+    act(() => pressText(renderer, k.addBeer));
+    act(() => inputs(renderer)[0].props.onChangeText('Kozel 11'));
+    act(() => inputs(renderer)[1].props.onChangeText('45'));
+    act(() => pressText(renderer, k.save));
+
+    expect(savedBeers()).toEqual([
+      { name: 'Pilsner Urquell', volumeMl: 500, priceCzk: 69 },
+      { name: 'Kozel 11', volumeMl: 500, priceCzk: 45 },
+    ]);
+  });
+
+  it('saves the other changes when an add form was opened and left empty', async () => {
+    const renderer = await renderBeers();
+    act(() => pressText(renderer, 'Pilsner Urquell'));
+    act(() => inputs(renderer)[1].props.onChangeText('59'));
+    act(() => pressText(renderer, k.done));
+    act(() => pressText(renderer, k.addBeer));
+    const save = renderer.root.findAll((n: { props: { label?: string } }) => n.props.label === k.save)[0];
+    expect(save.props.disabled).toBe(false);
+    act(() => pressText(renderer, k.save));
+
+    expect(savedBeers()).toEqual([{ name: 'Pilsner Urquell', volumeMl: 500, priceCzk: 59 }]);
+  });
+
+  it('adds the same beer as a small one next to the big one', async () => {
+    const renderer = await renderBeers();
+    act(() => pressText(renderer, 'Pilsner Urquell'));
+    act(() => pressText(renderer, k.addSmallBeer('0,3 l')));
+    act(() => pressText(renderer, k.save));
+
+    expect(savedBeers()).toEqual([
+      { name: 'Pilsner Urquell', volumeMl: 500, priceCzk: 69 },
+      { name: 'Pilsner Urquell', volumeMl: 300, priceCzk: undefined },
+    ]);
+  });
+
+  it('adds a new beer as 0,5 l unless another volume is picked', async () => {
+    const renderer = await renderBeers();
+    act(() => pressText(renderer, k.addBeer));
+    act(() => inputs(renderer)[0].props.onChangeText('Kozel 11'));
+    act(() => pressText(renderer, '0,3 l'));
+    act(() => inputs(renderer)[1].props.onChangeText('45'));
+    act(() => pressText(renderer, k.addBeer));
+    act(() => pressText(renderer, k.save));
+
+    expect(savedBeers()).toEqual([
+      { name: 'Pilsner Urquell', volumeMl: 500, priceCzk: 69 },
+      { name: 'Kozel 11', volumeMl: 300, priceCzk: 45 },
+    ]);
+  });
+
+  it('does not let a nonsense price or volume through', async () => {
+    const renderer = await renderBeers();
+    act(() => pressText(renderer, 'Pilsner Urquell'));
+    act(() => inputs(renderer)[1].props.onChangeText('5000'));
+    expect(texts(renderer)).toContain(k.invalidPrice);
+    act(() => pressText(renderer, k.done));
+    expect(texts(renderer)).toContain(k.done);
+
+    act(() => inputs(renderer)[1].props.onChangeText('69'));
+    act(() => pressText(renderer, k.volumeOther));
+    act(() => inputs(renderer)[2].props.onChangeText('750'));
+    expect(texts(renderer)).toContain(k.invalidVolume('300, 330, 400, 500, 1000'));
+    act(() => inputs(renderer)[2].props.onChangeText('330'));
+    act(() => pressText(renderer, k.done));
+    act(() => pressText(renderer, k.save));
+
+    expect(savedBeers()).toEqual([{ name: 'Pilsner Urquell', volumeMl: 330, priceCzk: 69 }]);
+  });
+});

@@ -10,8 +10,11 @@ import {
   DAY_KEYS,
   computeOpenState,
   emptyWeeklyHours,
+  ALLOWED_BEER_VOLUMES_ML,
   historicalBeersAfterMenuReplacement,
+  isAllowedBeerVolume,
   isSameBeerIdentity,
+  normalizeBeerName,
   mergeBeerIntoMenu,
   normalizeEditableHoursInterval,
   parseOsmOpeningHoursToWeeklyHours,
@@ -27,7 +30,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { formatPrice, parsePriceInputToCzk } from '@/utils/currency';
+import { formatPrice, getCurrencyRate, parsePriceInputToCzk } from '@/utils/currency';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { Field, FieldLabel, Input, PageTitle } from '../../components/forms';
@@ -42,7 +45,39 @@ import { usePubDetails, useParamPub } from './usePubPage';
 
 const L = () => t.nv.kompas;
 const MAX_BEERS = 12;
+const VOLUME_PRESETS = [300, 400, 500];
 const DEFAULT_VOLUME_ML = 500;
+const SMALL_VOLUME_ML = 300;
+
+/** A beer being added (`index` null) or changed in the editor. `volume` null keeps a volume nobody filled in. */
+type BeerDraft = { index: number | null; name: string; price: string; volume: number | 'custom' | null; customMl: string };
+
+function newBeerDraft(): BeerDraft {
+  return { index: null, name: '', price: '', volume: DEFAULT_VOLUME_ML, customMl: '' };
+}
+
+function beerDraftOf(beer: CommunityBeer, index: number, currency: string): BeerDraft {
+  const rate = getCurrencyRate(currency) ?? 1;
+  const preset = beer.volumeMl === undefined || VOLUME_PRESETS.includes(beer.volumeMl);
+  return {
+    index,
+    name: beer.name,
+    price: beer.priceCzk ? String(Math.round((beer.priceCzk / rate) * 100) / 100) : '',
+    volume: preset ? (beer.volumeMl ?? null) : 'custom',
+    customMl: preset ? '' : String(beer.volumeMl),
+  };
+}
+
+/** The beer a draft describes, or null with the reason it cannot be saved yet. */
+function readBeerDraft(draft: BeerDraft, currency: string): { beer: CommunityBeer | null; badPrice: boolean; badVolume: boolean } {
+  const name = draft.name.trim().slice(0, 80);
+  const priceCzk = draft.price.trim() ? parsePriceInputToCzk(draft.price, currency) : undefined;
+  const volumeMl = draft.volume === 'custom' ? Number(draft.customMl) : (draft.volume ?? undefined);
+  const badPrice = priceCzk === null;
+  const badVolume = volumeMl !== undefined && !isAllowedBeerVolume(volumeMl);
+  if (!name || badPrice || badVolume) return { beer: null, badPrice, badVolume: badVolume && draft.customMl !== '' };
+  return { beer: { name, ...(volumeMl !== undefined ? { volumeMl } : {}), ...(priceCzk != null ? { priceCzk } : {}) }, badPrice, badVolume };
+}
 
 function intervalsLabel(intervals: HoursInterval[]): string {
   return intervals.length ? intervals.map(([a, b]) => `${a}–${b}`).join(', ') : L().closed;
@@ -82,9 +117,7 @@ export function DoplnitInfoScreen() {
 
   const [rotating, setRotating] = useState<boolean | null>(null);
   const [beers, setBeers] = useState<CommunityBeer[] | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newPrice, setNewPrice] = useState('');
+  const [form, setForm] = useState<BeerDraft | null>(null);
   const currentBeers = details.taps;
   const shownBeers = beers ?? currentBeers;
   const menuRotates = rotating ?? pub?.beerMenuRotates ?? false;
@@ -113,20 +146,47 @@ export function DoplnitInfoScreen() {
   const addBeer = (beer: CommunityBeer) => {
     setBeers([...shownBeers.filter((b) => !isSameBeerIdentity(b, beer)), beer].slice(0, MAX_BEERS));
   };
-  const confirmAdd = () => {
-    const name = newName.trim().slice(0, 80);
-    if (!name) return;
-    const czk = parsePriceInputToCzk(newPrice, currency);
-    addBeer({ name, volumeMl: DEFAULT_VOLUME_ML, ...(czk !== null ? { priceCzk: czk } : {}) });
-    setNewName('');
-    setNewPrice('');
-    setAdding(false);
+  const formBeer = form ? readBeerDraft(form, currency).beer : null;
+  // An add form opened and left empty is not a draft, so it must not block saving the rest.
+  const blankAdd = form?.index === null && !form.name.trim() && !form.price.trim();
+  const withForm = (): CommunityBeer[] => {
+    if (!form || !formBeer) return shownBeers;
+    if (form.index === null) return [...shownBeers.filter((b) => !isSameBeerIdentity(b, formBeer)), formBeer].slice(0, MAX_BEERS);
+    // The changed beer keeps its place and takes over another row it now matches.
+    return shownBeers.map((b, i) => (i === form.index ? formBeer : b)).filter((b, i) => i === form.index || !isSameBeerIdentity(b, formBeer));
+  };
+  const saveForm = () => {
+    if (!formBeer) return;
+    setBeers(withForm());
+    setForm(null);
+  };
+  const editing = form?.index != null ? shownBeers[form.index] : undefined;
+  const canAddSmall =
+    !!editing &&
+    shownBeers.length < MAX_BEERS &&
+    editing.volumeMl !== SMALL_VOLUME_ML &&
+    !shownBeers.some((b) => b.volumeMl === SMALL_VOLUME_ML && normalizeBeerName(b.name) === normalizeBeerName(editing.name));
+  const addSmall = () => {
+    if (!editing || form?.index == null) return;
+    const at = form.index + 1;
+    setBeers([...shownBeers.slice(0, at), { name: editing.name, volumeMl: SMALL_VOLUME_ML }, ...shownBeers.slice(at)]);
+    setForm(null);
   };
   const removeBeer = (beer: CommunityBeer) =>
     dialog({
       title: L().removeBeer,
       body: beer.name,
-      actions: [{ label: L().reportBack }, { label: L().removeBeer, kind: 'danger', onPress: () => setBeers(shownBeers.filter((b) => b !== beer)) }],
+      actions: [
+        { label: L().reportBack },
+        {
+          label: L().removeBeer,
+          kind: 'danger',
+          onPress: () => {
+            setBeers(shownBeers.filter((b) => b !== beer));
+            setForm(null);
+          },
+        },
+      ],
     });
 
   const scanMenu = () => {
@@ -150,7 +210,8 @@ export function DoplnitInfoScreen() {
 
   const save = () => {
     const sendHours = hoursTouched && normalized ? normalized : undefined;
-    const sendBeers = beersTouched ? shownBeers : undefined;
+    // A beer still open in the form counts as written, so the big Save never drops it.
+    const sendBeers = formBeer ? withForm() : beersTouched ? shownBeers : undefined;
     if (sendHours || sendBeers) {
       submit(sendHours, sendBeers);
       toast({ kind: 'saved', title: L().savedThanks, icon: 'map-pin-plus' });
@@ -211,7 +272,7 @@ export function DoplnitInfoScreen() {
                 {L().seenByOthers}
               </T>
             </View>
-            <Button label={L().save} onPress={save} disabled={hoursTouched && !normalized} />
+            <Button label={L().save} onPress={save} disabled={(hoursTouched && !normalized) || (!!form && !formBeer && !blankAdd)} />
           </View>
         )
       }
@@ -306,39 +367,42 @@ export function DoplnitInfoScreen() {
             </Press>
           </View>
           <Card>
-            {shownBeers.map((b) => (
-              <Row
-                key={`${b.name}-${b.volumeMl ?? ''}`}
-                title={b.name}
-                sub={b.volumeMl ? formatVolume(b.volumeMl) : undefined}
-                onPress={() => removeBeer(b)}
-                trailing={
-                  b.priceCzk ? (
-                    <T s={15} w={700}>
-                      {formatPrice(b.priceCzk, currency)}
-                    </T>
-                  ) : (
-                    <T s={15} c={C.muted}>
-                      {L().priceMissing}
-                    </T>
-                  )
-                }
-              />
-            ))}
-            {adding ? (
-              <View style={{ gap: 10, paddingVertical: 12 }}>
-                <View style={[s.row, { gap: 10, alignItems: 'flex-end' }]}>
-                  <Field label={L().beerName} style={s.fill}>
-                    <Input value={newName} onChangeText={setNewName} autoFocus maxLength={80} returnKeyType="next" />
-                  </Field>
-                  <Field label={L().beerPriceLabel} style={{ width: 92 }}>
-                    <Input value={newPrice} onChangeText={setNewPrice} keyboardType="decimal-pad" onSubmitEditing={confirmAdd} />
-                  </Field>
-                </View>
-                <Button label={L().addBeer} icon="plus" kind="raised" height={44} disabled={!newName.trim()} onPress={confirmAdd} />
-              </View>
+            {shownBeers.map((b, i) =>
+              form?.index === i ? (
+                <BeerForm
+                  key={`${b.name}-${b.volumeMl ?? ''}`}
+                  draft={form}
+                  currency={currency}
+                  onChange={setForm}
+                  onSave={saveForm}
+                  onCancel={() => setForm(null)}
+                  onRemove={() => removeBeer(b)}
+                  onAddSmall={canAddSmall ? addSmall : undefined}
+                />
+              ) : (
+                <Row
+                  key={`${b.name}-${b.volumeMl ?? ''}`}
+                  title={b.name}
+                  sub={b.volumeMl ? formatVolume(b.volumeMl) : undefined}
+                  onPress={() => setForm(beerDraftOf(b, i, currency))}
+                  trailing={
+                    b.priceCzk ? (
+                      <T s={15} w={700}>
+                        {formatPrice(b.priceCzk, currency)}
+                      </T>
+                    ) : (
+                      <T s={15} c={C.muted}>
+                        {L().priceMissing}
+                      </T>
+                    )
+                  }
+                />
+              ),
+            )}
+            {form?.index === null ? (
+              <BeerForm draft={form} currency={currency} onChange={setForm} onSave={saveForm} />
             ) : shownBeers.length < MAX_BEERS ? (
-              <Press onPress={() => setAdding(true)} style={[s.row, { height: 56, gap: 12 }]}>
+              <Press onPress={() => setForm(newBeerDraft())} style={[s.row, { height: 56, gap: 12 }]}>
                 <View style={[{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.yellow }, s.center]}>
                   <Icon name="plus" size={18} color={C.black} />
                 </View>
@@ -387,8 +451,83 @@ export function DoplnitInfoScreen() {
           </Card>
         </>
       )}
-      {tab === 'piva' && !shownBeers.length && !adding ? <Button label={L().firstBeer} kind="raised" onPress={() => setAdding(true)} /> : null}
+      {tab === 'piva' && !shownBeers.length && !form ? <Button label={L().firstBeer} kind="raised" onPress={() => setForm(newBeerDraft())} /> : null}
     </Screen>
+  );
+}
+
+function BeerForm({
+  draft,
+  currency,
+  onChange,
+  onSave,
+  onCancel,
+  onRemove,
+  onAddSmall,
+}: {
+  draft: BeerDraft;
+  currency: string;
+  onChange: (draft: BeerDraft) => void;
+  onSave: () => void;
+  onCancel?: () => void;
+  onRemove?: () => void;
+  onAddSmall?: () => void;
+}) {
+  const { beer, badPrice, badVolume } = readBeerDraft(draft, currency);
+  const set = (patch: Partial<BeerDraft>) => onChange({ ...draft, ...patch });
+  const adding = draft.index === null;
+  return (
+    <View style={[{ gap: 12, paddingVertical: 12 }, !adding && { borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
+      <View style={[s.row, { gap: 10, alignItems: 'flex-end' }]}>
+        <Field label={L().beerName} style={s.fill}>
+          <Input value={draft.name} onChangeText={(name) => set({ name })} autoFocus={adding} maxLength={80} returnKeyType="next" />
+        </Field>
+        <Field label={L().beerPriceLabel} style={{ width: 92 }}>
+          <Input value={draft.price} onChangeText={(price) => set({ price })} keyboardType="decimal-pad" autoFocus={!adding} onSubmitEditing={onSave} />
+        </Field>
+      </View>
+      <ChipWrap>
+        {VOLUME_PRESETS.map((ml) => (
+          <Chip key={ml} label={formatVolume(ml)} active={draft.volume === ml} onPress={() => set({ volume: ml })} />
+        ))}
+        <Chip label={L().volumeOther} active={draft.volume === 'custom'} onPress={() => set({ volume: 'custom' })} />
+      </ChipWrap>
+      {draft.volume === 'custom' ? (
+        <Field label={L().volumeCustomLabel} style={{ width: 140 }}>
+          <Input value={draft.customMl} onChangeText={(v) => set({ customMl: v.replace(/[^0-9]/g, '').slice(0, 4) })} keyboardType="number-pad" maxLength={4} autoFocus />
+        </Field>
+      ) : null}
+      {badPrice || badVolume ? (
+        <T s={13} c={C.danger}>
+          {badPrice ? L().invalidPrice : L().invalidVolume(ALLOWED_BEER_VOLUMES_ML.join(', '))}
+        </T>
+      ) : null}
+      {adding ? (
+        <Button label={L().addBeer} icon="plus" kind="raised" height={44} disabled={!beer} onPress={onSave} />
+      ) : (
+        <>
+          <View style={[s.row, { gap: 10 }]}>
+            <Button label={L().cancel} kind="raised" height={44} flex onPress={onCancel} />
+            <Button label={L().done} kind="raised" height={44} flex disabled={!beer} onPress={onSave} />
+            <IconButton
+              icon="trash-2"
+              size={44}
+              iconSize={18}
+              color={C.muted}
+              bg="transparent"
+              style={{ borderWidth: 1, borderColor: C.hairline }}
+              label={L().removeBeer}
+              onPress={onRemove}
+            />
+          </View>
+          {onAddSmall ? (
+            <View style={s.row}>
+              <Chip label={L().addSmallBeer(formatVolume(SMALL_VOLUME_ML))} icon="plus" onPress={onAddSmall} />
+            </View>
+          ) : null}
+        </>
+      )}
+    </View>
   );
 }
 

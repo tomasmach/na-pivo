@@ -413,6 +413,7 @@ export function PlanScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const cached = usePartaStore((st) => st.plans?.find((p) => p.id === id) ?? null);
+  const ping = usePartaStore((st) => !!id && st.pingIds.includes(id));
   const [detail, setDetail] = useState<PlanDetail | null>(null);
   const [gone, setGone] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -484,7 +485,7 @@ export function PlanScreen() {
     };
     return (
       <Screen header={<BackHeader right={share} />} gap={18}>
-        <PlanTicket plan={plan} big />
+        <PlanTicket plan={plan} big onEnded={() => nvBack(router)} />
         <Card>
           <PeopleRow label={t.nv.parta.goingLabel} people={going} />
           <PeopleRow label={t.nv.parta.maybeLabel} people={people?.maybe ?? []} />
@@ -496,35 +497,40 @@ export function PlanScreen() {
             trailing={people?.silent.length ? <Chip label={t.nv.parta.remind} icon="bell" height={34} onPress={reminding ? undefined : remind} /> : undefined}
           />
         </Card>
+        {/* A pub ping cannot be edited; the ticket above carries the way to end it. */}
         <Card>
-          <Row leading={<Icon name="pencil-line" size={18} color={C.text2} />} title={t.nv.parta.editPlan} onPress={() => router.push({ pathname: '/nv/nova-pozvanka', params: { id: plan.id } })} />
-          <Row leading={<Icon name="sticker" size={18} color={C.text2} />} title={t.nv.parta.sendSticker} onPress={() => router.push('/nv/nalepky')} />
-          <Row
-            last
-            leading={<Icon name="circle-x" size={18} color={C.text2} />}
-            title={t.nv.parta.cancelPlan}
-            onPress={() =>
-              dialog({
-                title: t.nv.parta.cancelTitle,
-                body: t.nv.parta.cancelBody,
-                actions: [
-                  { label: t.nv.parta.keep },
-                  {
-                    label: t.nv.parta.cancel,
-                    kind: 'danger',
-                    onPress: () =>
-                      void endFriendPubActivity(plan.id).then(async (res) => {
-                        if (!res.ok && !isRetriableFriendError(res)) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
-                        if (!res.ok) await enqueueFriendOp({ op: 'end', clientId: plan.id, activityId: plan.id });
-                        usePartaStore.getState().removePlan(plan.id);
-                        nvBack(router);
-                        toast({ kind: 'info', title: t.nv.parta.cancelled, icon: 'circle-x' });
-                      }),
-                  },
-                ],
-              })
-            }
-          />
+          {ping ? null : (
+            <Row leading={<Icon name="pencil-line" size={18} color={C.text2} />} title={t.nv.parta.editPlan} onPress={() => router.push({ pathname: '/nv/nova-pozvanka', params: { id: plan.id } })} />
+          )}
+          <Row last={ping} leading={<Icon name="sticker" size={18} color={C.text2} />} title={t.nv.parta.sendSticker} onPress={() => router.push('/nv/nalepky')} />
+          {ping ? null : (
+            <Row
+              last
+              leading={<Icon name="circle-x" size={18} color={C.text2} />}
+              title={t.nv.parta.cancelPlan}
+              onPress={() =>
+                dialog({
+                  title: t.nv.parta.cancelTitle,
+                  body: t.nv.parta.cancelBody,
+                  actions: [
+                    { label: t.nv.parta.keep },
+                    {
+                      label: t.nv.parta.cancel,
+                      kind: 'danger',
+                      onPress: () =>
+                        void endFriendPubActivity(plan.id).then(async (res) => {
+                          if (!res.ok && !isRetriableFriendError(res)) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
+                          if (!res.ok) await enqueueFriendOp({ op: 'end', clientId: plan.id, activityId: plan.id });
+                          usePartaStore.getState().removePlan(plan.id);
+                          nvBack(router);
+                          toast({ kind: 'info', title: t.nv.parta.cancelled, icon: 'circle-x' });
+                        }),
+                    },
+                  ],
+                })
+              }
+            />
+          )}
         </Card>
       </Screen>
     );

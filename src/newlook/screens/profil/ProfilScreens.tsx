@@ -24,6 +24,7 @@ import {
   searchFriends,
   sendFriendRequest,
   unblockFriend,
+  updateFriendSettings,
   type FriendInvite,
   type FriendProfile,
   type Friendship,
@@ -81,10 +82,12 @@ import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Person, Press, Pro
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { Dial } from '../kompas/Dial';
+import { usePartaStore } from '../parta/partaStore';
 import { ProfilAvatar } from './ProfilAvatar';
 import {
   groupBadges,
   isPublicBadge,
+  legalUrl,
   markBadgeOpened,
   nextGoal,
   nvBadgeAbout,
@@ -101,7 +104,8 @@ import {
 const P = () => t.nv.profil;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
-const PRIVACY_URL = 'https://tomasmach.github.io/na-pivo/privacy.html';
+const TERMS_URL = legalUrl('terms', locale);
+const PRIVACY_URL = legalUrl('privacy', locale);
 const DISTANCE_OPTIONS: (number | null)[] = [0.5, 1, 1.5, 2, 2.5, 5, 10, null];
 const BADGES_SHOWN = 5;
 
@@ -1780,6 +1784,17 @@ export function PrihlaseniScreen() {
         />
       </Field>
       <ErrorLine text={error || (sessionExpired ? t.account.sessionExpired : '')} />
+      <T s={13} c={C.muted} lh={1.45}>
+        {P().signIn.termsPrefix}
+        <T s={13} w={600} c={C.text2} style={{ textDecorationLine: 'underline' }} accessibilityRole="link" onPress={() => void Linking.openURL(TERMS_URL)}>
+          {P().signIn.termsLink}
+        </T>
+        {P().signIn.termsMiddle}
+        <T s={13} w={600} c={C.text2} style={{ textDecorationLine: 'underline' }} accessibilityRole="link" onPress={() => void Linking.openURL(PRIVACY_URL)}>
+          {P().signIn.privacyLink}
+        </T>
+        {P().signIn.termsSuffix}
+      </T>
     </Screen>
   );
 }
@@ -1917,6 +1932,7 @@ export function SpravaPartyScreen() {
   const [outgoing, setOutgoing] = useState<Friendship[]>([]);
   const [canceling, setCanceling] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<FriendProfile[]>([]);
+  const [ghost, setGhost] = useState<boolean | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<FriendProfile[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -1932,12 +1948,14 @@ export function SpravaPartyScreen() {
       shown.current = true;
       setFriends(snapshot.dashboard.friends);
       setOutgoing(snapshot.dashboard.outgoingRequests);
+      setGhost(snapshot.dashboard.settings.ghostMode);
     });
     void fetchFriendsDashboard(controller.signal).then((dashboard) => {
       if (controller.signal.aborted || !dashboard) return;
       shown.current = true;
       setFriends(dashboard.friends);
       setOutgoing(dashboard.outgoingRequests);
+      setGhost(dashboard.settings.ghostMode);
     });
     void fetchBlockedAccounts(controller.signal).then((list) => {
       if (!controller.signal.aborted && list) setBlocked(list);
@@ -2011,6 +2029,18 @@ export function SpravaPartyScreen() {
     setQuery('');
     setResults(null);
     load();
+  };
+
+  const toggleGhost = (on: boolean) => {
+    const sync = (ghostMode: boolean) => usePartaStore.getState().setDashboard((d) => ({ ...d, settings: { ...d.settings, ghostMode } }));
+    setGhost(on);
+    sync(on);
+    void updateFriendSettings({ ghostMode: on }).then((result) => {
+      if (result.ok) return;
+      setGhost(!on);
+      sync(!on);
+      toast({ kind: 'error', title: result.detail, icon: 'circle-alert' });
+    });
   };
 
   const confirmUnblock = (account: FriendProfile) =>
@@ -2174,6 +2204,16 @@ export function SpravaPartyScreen() {
               ))}
             </Card>
           )}
+          {ghost !== null ? (
+            <>
+              <T s={17} w={700}>
+                {P().settings.privacySection}
+              </T>
+              <Card>
+                <Row last title={P().parta.ghostTitle} sub={P().parta.ghostSub} trailing={<Toggle value={ghost} onChange={toggleGhost} />} />
+              </Card>
+            </>
+          ) : null}
           {outgoing.length > 0 ? (
             <>
               <T s={17} w={700}>

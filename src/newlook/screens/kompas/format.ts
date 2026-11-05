@@ -1,3 +1,4 @@
+import { DAY_KEYS, type DayKey, type WeeklyHours } from '@/data/communityHours';
 import { numberFormat } from '@/utils/intlFormat';
 
 /** 260 → { "260", "m" }, 1240 → { "1,2", "km" } in the app's language. */
@@ -30,4 +31,22 @@ export function hoursNow(pub: {
 }): { tone: HoursTone; until: string | null } {
   if (pub.hoursStatus !== 'ok' || typeof pub.isOpenNow !== 'boolean') return { tone: 'unknown', until: null };
   return { tone: pub.isOpenNow ? 'open' : 'closed', until: clockOf(pub.nextChange) };
+}
+
+export type WeekRow = { from: DayKey; to: DayKey; intervals: string[]; today: boolean };
+
+/** Runs of neighbouring days with the same hours, so "Po–Čt 15:00–23:00" is one row instead of four. */
+export function weekRows(week: WeeklyHours, today: DayKey): WeekRow[] {
+  const rows: WeekRow[] = [];
+  for (const day of DAY_KEYS) {
+    const intervals = week[day].map(([start, end]) => `${start}–${end}`);
+    const last = rows[rows.length - 1];
+    if (last && last.intervals.join(',') === intervals.join(',')) {
+      last.to = day;
+      last.today ||= day === today;
+    } else {
+      rows.push({ from: day, to: day, intervals, today: day === today });
+    }
+  }
+  return rows;
 }
