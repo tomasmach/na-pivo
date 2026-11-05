@@ -508,12 +508,19 @@ async function handleUnauthorized(session: AccountSession, endpoint: string): Pr
   await clearCachedAnonymousAccount(session, { source: 'friends_request', endpoint });
 }
 
+// Some serializer call sites lack the request context and send a bare /media/ path.
+function avatarUrlFromWire(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return getBackendEndpoint(raw);
+}
+
 export function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
   return {
     id: raw?.id ?? '',
     nickname: typeof raw?.nickname === 'string' && raw.nickname.length > 0 ? raw.nickname : null,
     displayName: raw?.display_name ?? '',
-    avatarUrl: raw?.avatar_url ?? null,
+    avatarUrl: avatarUrlFromWire(raw?.avatar_url),
     isPublic: raw?.is_public !== false,
   };
 }
