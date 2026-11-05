@@ -322,7 +322,7 @@ export const stamgastCs = {
   fixVolume: 'Objem v ml',
   fixPrice: 'Cena v Kč',
   rejectedCount: (n: number) => `${n} ${czechPlural(n, { one: 'zápis', few: 'zápisy', many: 'zápisů' })} k opravě`,
-  rejectedShow: 'Ukaž',
+  rejectedShow: 'Ukázat',
 
   // Lifetime numbers
   statsEntry: 'Čísla za celou dobu',

@@ -297,7 +297,6 @@ export const kompasCs = {
   previously: 'Dříve tu bylo',
   firstBeer: 'Zapsat první pivo',
   removeBeer: 'Odebrat pivo',
-  saveBeer: 'Uložit pivo',
   addSmallBeer: (volume: string) => `Přidat malé ${volume}`,
   volumeOther: 'Jiné',
   volumeCustomLabel: 'Objem v ml',

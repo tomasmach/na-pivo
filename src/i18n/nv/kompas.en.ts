@@ -281,7 +281,6 @@ export const kompasEn: Strings['nv']['kompas'] = {
   previously: 'Used to be here',
   firstBeer: 'Add the first beer',
   removeBeer: 'Remove beer',
-  saveBeer: 'Save beer',
   addSmallBeer: (volume) => `Add a small ${volume}`,
   volumeOther: 'Other',
   volumeCustomLabel: 'Volume in ml',

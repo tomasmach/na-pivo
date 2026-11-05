@@ -532,6 +532,7 @@ export function EveningDetailScreen() {
               key={drink.id}
               last={i === arr.length - 1}
               onPress={session ? () => drinkActions(router, night.day, session.startedAt, drink, arr.length === 1) : undefined}
+              chevron={!!session && drink.syncStatus === 'rejected'}
               leading={
                 <T s={13} c={C.muted} style={{ width: 38 }}>
                   {formatClock(new Date(drink.at))}

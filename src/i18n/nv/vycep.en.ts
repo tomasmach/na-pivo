@@ -71,9 +71,9 @@ export const vycepEn: typeof vycepCs = {
   choicePartaSub: 'Your crew sees it',
   privacyNote:
     'What gets posted: number of beers, pubs, date and length of the night. Spending and individual beers stay yours.',
-  alreadyTitle: 'This night is already up on the Taproom.',
-  alreadyWorld: "The whole world sees it. I won't post it twice, you can take it down on the Taproom.",
-  alreadyParta: "Your crew sees it. I won't post it twice, you can take it down on the Taproom.",
+  alreadyTitle: 'This night is already up in the Taproom.',
+  alreadyWorld: "The whole world sees it. I won't post it twice, you can take it down in the Taproom.",
+  alreadyParta: "Your crew sees it. I won't post it twice, you can take it down in the Taproom.",
   nothingTitle: 'Nothing to post yet.',
   nothingBody: "You can't post an empty night. Something has to go down first.",
   logBeer: 'Log a beer',

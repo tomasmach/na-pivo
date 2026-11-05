@@ -930,7 +930,7 @@ export const cs = {
     // One line in the fix sheet for the field that was refused.
     fixDrinkHintVolume: 'Tuhle velikost jsem nevzal. Vyber jinou.',
     fixDrinkHintPrice: 'Tuhle cenu jsem nevzal. Zkus 1 až 1000 Kč.',
-    fixDrinkHintName: 'Tenhle název jsem nevzal. Zkus ho zkrátit.',
+    fixDrinkHintName: 'Tenhle název jsem nevzal. Zkus ho napsat jinak.',
     fixDrinkTitle: 'Oprav zápis',
     fixDrinkSubmit: 'Uložit znovu',
     fixDrinkSaved: 'Beru. Zkusím to uložit znovu.',

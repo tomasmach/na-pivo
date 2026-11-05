@@ -789,7 +789,7 @@ export const en: Strings = {
     drinkRejectedRemoveOnly: "This didn't save and can't be fixed here. Remove it.",
     fixDrinkHintVolume: "I couldn't take this size. Pick another one.",
     fixDrinkHintPrice: "I couldn't take this price. Try 1 to 1000 CZK.",
-    fixDrinkHintName: "I couldn't take this name. Try a shorter one.",
+    fixDrinkHintName: "I couldn't take this name. Try writing it differently.",
     fixDrinkTitle: 'Fix the entry',
     fixDrinkSubmit: 'Save again',
     fixDrinkSaved: "Got it. I'll try saving it again.",

@@ -254,8 +254,12 @@ export function PartaScreen() {
     const patch = value ? { shareDrinksWithParta: true, ...(settings?.ghostMode ? { ghostMode: false } : {}) } : { shareDrinksWithParta: false };
     const previous = settings;
     usePartaStore.getState().setDashboard((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
+    const leavesGhost = value && !!settings?.ghostMode;
     void updateFriendSettings(patch).then((res) => {
-      if (res.ok) return;
+      if (res.ok) {
+        if (leavesGhost) toast({ kind: 'saved', title: t.nv.parta.ghostTurnedOff, icon: 'eye' });
+        return;
+      }
       if (previous) usePartaStore.getState().setDashboard((d) => ({ ...d, settings: previous }));
       toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
     });

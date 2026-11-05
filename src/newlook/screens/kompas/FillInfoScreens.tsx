@@ -146,12 +146,16 @@ export function DoplnitInfoScreen() {
   const addBeer = (beer: CommunityBeer) => {
     setBeers([...shownBeers.filter((b) => !isSameBeerIdentity(b, beer)), beer].slice(0, MAX_BEERS));
   };
-  const saveForm = () => {
-    const beer = form && readBeerDraft(form, currency).beer;
-    if (!form || !beer) return;
-    if (form.index === null) addBeer(beer);
+  const formBeer = form ? readBeerDraft(form, currency).beer : null;
+  const withForm = (): CommunityBeer[] => {
+    if (!form || !formBeer) return shownBeers;
+    if (form.index === null) return [...shownBeers.filter((b) => !isSameBeerIdentity(b, formBeer)), formBeer].slice(0, MAX_BEERS);
     // The changed beer keeps its place and takes over another row it now matches.
-    else setBeers(shownBeers.map((b, i) => (i === form.index ? beer : b)).filter((b, i) => i === form.index || !isSameBeerIdentity(b, beer)));
+    return shownBeers.map((b, i) => (i === form.index ? formBeer : b)).filter((b, i) => i === form.index || !isSameBeerIdentity(b, formBeer));
+  };
+  const saveForm = () => {
+    if (!formBeer) return;
+    setBeers(withForm());
     setForm(null);
   };
   const editing = form?.index != null ? shownBeers[form.index] : undefined;
@@ -204,7 +208,8 @@ export function DoplnitInfoScreen() {
 
   const save = () => {
     const sendHours = hoursTouched && normalized ? normalized : undefined;
-    const sendBeers = beersTouched ? shownBeers : undefined;
+    // A beer still open in the form counts as written, so the big Save never drops it.
+    const sendBeers = formBeer ? withForm() : beersTouched ? shownBeers : undefined;
     if (sendHours || sendBeers) {
       submit(sendHours, sendBeers);
       toast({ kind: 'saved', title: L().savedThanks, icon: 'map-pin-plus' });
@@ -265,7 +270,7 @@ export function DoplnitInfoScreen() {
                 {L().seenByOthers}
               </T>
             </View>
-            <Button label={L().save} onPress={save} disabled={hoursTouched && !normalized} />
+            <Button label={L().save} onPress={save} disabled={(hoursTouched && !normalized) || (!!form && !formBeer)} />
           </View>
         )
       }
@@ -501,7 +506,7 @@ function BeerForm({
         <>
           <View style={[s.row, { gap: 10 }]}>
             <Button label={L().cancel} kind="raised" height={44} flex onPress={onCancel} />
-            <Button label={L().saveBeer} height={44} flex disabled={!beer} onPress={onSave} />
+            <Button label={L().done} kind="raised" height={44} flex disabled={!beer} onPress={onSave} />
             <IconButton
               icon="trash-2"
               size={44}

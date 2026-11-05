@@ -194,11 +194,24 @@ describe('beers on tap in "Doplnit info"', () => {
 
     act(() => price.props.onChangeText('59'));
     act(() => pressText(renderer, '0,4 l'));
-    act(() => pressText(renderer, k.saveBeer));
+    act(() => pressText(renderer, k.done));
     act(() => pressText(renderer, k.save));
 
     expect(enqueuePubCommunity).toHaveBeenCalledTimes(1);
     expect(savedBeers()).toEqual([{ name: 'Pilsner Urquell', volumeMl: 400, priceCzk: 59 }]);
+  });
+
+  it('keeps a beer still open in the form when the big Save is pressed', async () => {
+    const renderer = await renderBeers();
+    act(() => pressText(renderer, k.addBeer));
+    act(() => inputs(renderer)[0].props.onChangeText('Kozel 11'));
+    act(() => inputs(renderer)[1].props.onChangeText('45'));
+    act(() => pressText(renderer, k.save));
+
+    expect(savedBeers()).toEqual([
+      { name: 'Pilsner Urquell', volumeMl: 500, priceCzk: 69 },
+      { name: 'Kozel 11', volumeMl: 500, priceCzk: 45 },
+    ]);
   });
 
   it('adds the same beer as a small one next to the big one', async () => {
@@ -233,15 +246,15 @@ describe('beers on tap in "Doplnit info"', () => {
     act(() => pressText(renderer, 'Pilsner Urquell'));
     act(() => inputs(renderer)[1].props.onChangeText('5000'));
     expect(texts(renderer)).toContain(k.invalidPrice);
-    act(() => pressText(renderer, k.saveBeer));
-    expect(texts(renderer)).toContain(k.saveBeer);
+    act(() => pressText(renderer, k.done));
+    expect(texts(renderer)).toContain(k.done);
 
     act(() => inputs(renderer)[1].props.onChangeText('69'));
     act(() => pressText(renderer, k.volumeOther));
     act(() => inputs(renderer)[2].props.onChangeText('750'));
     expect(texts(renderer)).toContain(k.invalidVolume('300, 330, 400, 500, 1000'));
     act(() => inputs(renderer)[2].props.onChangeText('330'));
-    act(() => pressText(renderer, k.saveBeer));
+    act(() => pressText(renderer, k.done));
     act(() => pressText(renderer, k.save));
 
     expect(savedBeers()).toEqual([{ name: 'Pilsner Urquell', volumeMl: 330, priceCzk: 69 }]);
