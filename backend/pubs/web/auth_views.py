@@ -1,4 +1,4 @@
-"""Sign-in pages of the web: login, registration, forgotten password and Google.
+"""Sign-in pages of the web: login, registration, forgotten password, Google and Apple.
 
 Every credential check runs the same code as the app's ``/v1/auth/*``: the DRF
 serializers validate the form, ``pubs.accounts`` proves the credential and
@@ -9,6 +9,7 @@ web and the API share one budget.
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 from urllib.parse import urlencode
@@ -46,14 +47,16 @@ _PROVIDERS = {
         "scope": "openid email profile",
         "response_type": "id_token",
     },
+    "apple": {
+        "authorize": "https://appleid.apple.com/auth/authorize",
+        "scope": "name email",
+        "response_type": "code id_token",
+    },
 }
-# Sign in with Apple stays in the app for now: the backend swaps Apple's code with the app's
-# client ID, and a code issued to the web Services ID would leave a new account without the
-# refresh token its deletion has to revoke.
 
 
 def _client_id(provider: str) -> str:
-    return settings.GOOGLE_WEB_CLIENT_ID
+    return settings.GOOGLE_WEB_CLIENT_ID if provider == "google" else settings.APPLE_SERVICES_ID
 
 
 def _social_buttons() -> dict[str, bool]:
@@ -326,7 +329,7 @@ def _oauth_redirect_uri(provider: str) -> str:
 
 @web_page
 def oauth_start(request: HttpRequest, provider: str) -> HttpResponse:
-    """GET sends the browser to Google; POST finishes the sign-in."""
+    """GET sends the browser to Google or Apple; POST finishes the sign-in."""
 
     if provider not in _PROVIDERS or not _client_id(provider):
         raise Http404
@@ -358,7 +361,7 @@ def oauth_start(request: HttpRequest, provider: str) -> HttpResponse:
 @csrf_exempt
 @web_page
 def oauth_return(request: HttpRequest, provider: str) -> HttpResponse:
-    """Google posts the result here from its own site.
+    """Google and Apple post the result here from their own site.
 
     That cross-site POST carries no SameSite=Lax session cookie, so this page
     only hands the fields back to ``oauth_start`` as a same-site POST. That
@@ -371,7 +374,7 @@ def oauth_return(request: HttpRequest, provider: str) -> HttpResponse:
         raise Http404
     fields = {
         key: request.POST.get(key, "")[:8192]
-        for key in ("state", "id_token", "error")
+        for key in ("state", "id_token", "code", "user", "error")
     }
     response = render_page(
         request,
@@ -382,6 +385,17 @@ def oauth_return(request: HttpRequest, provider: str) -> HttpResponse:
     )
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+def _apple_full_name(raw: str) -> str:
+    """Apple sends the name only at the first sign-in, as JSON beside the token."""
+    try:
+        name = json.loads(raw).get("name") or {}
+    except (ValueError, AttributeError):
+        return ""
+    if not isinstance(name, dict):
+        return ""
+    return " ".join(str(name.get(part) or "").strip() for part in ("firstName", "lastName")).strip()[:120]
 
 
 def _oauth_finish(request: HttpRequest, provider: str) -> HttpResponse:
@@ -402,13 +416,28 @@ def _oauth_finish(request: HttpRequest, provider: str) -> HttpResponse:
     try:
         if not id_token:
             raise AccountError(gettext("Přihlášení se nepovedlo. Zkus to prosím znovu."), code="oauth_cancelled")
-        idp = AuthIdentity.Provider.GOOGLE
+        idp = AuthIdentity.Provider.GOOGLE if provider == "google" else AuthIdentity.Provider.APPLE
         claims = accounts.verify_provider_token(idp, id_token)
         if not secrets.compare_digest(str(claims.get("nonce", "")), str(pending.get("nonce", ""))):
             raise AccountError(gettext("Přihlášení se nepovedlo. Zkus to prosím znovu."), code="oauth_nonce")
-        _account, token, _created = accounts.resolve_social(
-            None, provider=idp, claims=claims, full_name=claims.get("name", "")
-        )
+        if provider == "google":
+            _account, token, _created = accounts.resolve_social(
+                None, provider=idp, claims=claims, full_name=claims.get("name", "")
+            )
+        else:
+            client_id = _client_id(provider)
+            _account, token, _created = accounts.resolve_social(
+                None,
+                provider=idp,
+                claims=claims,
+                full_name=_apple_full_name(request.POST.get("user", "")),
+                apple_refresh_token=accounts.apple_refresh_from_code(
+                    request.POST.get("code", ""),
+                    client_id=client_id,
+                    redirect_uri=_oauth_redirect_uri(provider),
+                ),
+                apple_client_id=client_id,
+            )
     except AccountError as exc:
         logger.warning(
             "web social sign-in rejected",

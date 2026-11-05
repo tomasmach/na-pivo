@@ -126,10 +126,10 @@ def fake_oauth(monkeypatch):
         _, sub, email = token.split(":")
         return {"sub": sub, "email": email, "email_verified": True}
 
-    def fake_exchange(code: str) -> dict:
+    def fake_exchange(code: str, **_kwargs) -> dict:
         return {"refresh_token": "rt_test"}
 
-    def fake_revoke(token: str, token_type_hint: str = "refresh_token") -> None:
+    def fake_revoke(token: str, token_type_hint: str = "refresh_token", **_kwargs) -> None:
         revoked.append(token)
 
     monkeypatch.setattr(oauth, "verify_google_id_token", fake_google)
@@ -2657,7 +2657,7 @@ def test_unlink_apple_keeps_identity_when_revocation_fails(
         **_auth(token),
     )
 
-    def fail_revoke(token: str, token_type_hint: str = "refresh_token") -> None:
+    def fail_revoke(token: str, token_type_hint: str = "refresh_token", **_kwargs) -> None:
         raise oauth.OAuthError("apple down")
 
     monkeypatch.setattr(oauth, "revoke_apple_token", fail_revoke)
@@ -3412,7 +3412,7 @@ def test_purge_keeps_apple_account_when_revocation_fails(
     identity = AuthIdentity.objects.get(subject="A-PURGE-FAIL")
     account_pk = identity.account_id
 
-    def fail_revoke(token: str, token_type_hint: str = "refresh_token") -> None:
+    def fail_revoke(token: str, token_type_hint: str = "refresh_token", **_kwargs) -> None:
         raise oauth.OAuthError("apple down")
 
     monkeypatch.setattr(oauth, "revoke_apple_token", fail_revoke)

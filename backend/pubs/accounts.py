@@ -1074,7 +1074,7 @@ def verify_provider_token(provider: str, token: str) -> dict:
     raise AccountError(gettext("Neznámý poskytovatel přihlášení."), code="bad_provider")
 
 
-def apple_refresh_from_code(authorization_code: str) -> str:
+def apple_refresh_from_code(authorization_code: str, *, client_id: str = "", redirect_uri: str = "") -> str:
     """Exchange an Apple auth code for a refresh token.
 
     Returns an empty string when no code is provided or the exchange fails; callers
@@ -1083,7 +1083,9 @@ def apple_refresh_from_code(authorization_code: str) -> str:
     if not authorization_code:
         return ""
     try:
-        data = oauth.exchange_apple_auth_code(authorization_code)
+        data = oauth.exchange_apple_auth_code(
+            authorization_code, client_id=client_id, redirect_uri=redirect_uri
+        )
         return data.get("refresh_token", "") or ""
     except oauth.OAuthError as exc:
         logger.warning(
@@ -2757,6 +2759,7 @@ def resolve_social(
     claims: dict,
     full_name: str = "",
     apple_refresh_token: str = "",
+    apple_client_id: str = "",
     merge_operation_id: uuid.UUID | None = None,
 ) -> tuple[Account, str, bool]:
     """Resolve a verified social login to an account and issue a token.
@@ -2803,7 +2806,8 @@ def resolve_social(
             updated = []
             if apple_refresh_token and apple_refresh_token != existing.apple_refresh_token:
                 existing.apple_refresh_token = apple_refresh_token
-                updated.append("apple_refresh_token")
+                existing.apple_client_id = apple_client_id
+                updated += ["apple_refresh_token", "apple_client_id"]
             if email and email != existing.email:
                 existing.email = email
                 updated.append("email")
@@ -2900,6 +2904,7 @@ def resolve_social(
                 subject=subject,
                 email=email,
                 apple_refresh_token=apple_refresh_token,
+                apple_client_id=apple_client_id,
             )
             _maybe_set_display_name(account, full_name or claims.get("name", ""))
             # The verified provider subject is the proof, not the email: stamp
@@ -2974,7 +2979,8 @@ def link_social(
             if provider == AuthIdentity.Provider.APPLE:
                 if apple_refresh_token and apple_refresh_token != existing.apple_refresh_token:
                     existing.apple_refresh_token = apple_refresh_token
-                    existing.save(update_fields=["apple_refresh_token"])
+                    existing.apple_client_id = ""
+                    existing.save(update_fields=["apple_refresh_token", "apple_client_id"])
                 elif not existing.apple_refresh_token:
                     raise AccountError(
                         gettext("Propojení přes Apple teď potřebuje nový autorizační kód."),
@@ -3050,7 +3056,7 @@ def unlink(account: Account, *, provider: str) -> None:
         # Revoke at Apple before dropping the identity so we do not lose the only
         # token that can satisfy Apple's deletion/unlink requirement.
         try:
-            oauth.revoke_apple_token(identity.apple_refresh_token)
+            oauth.revoke_apple_token(identity.apple_refresh_token, client_id=identity.apple_client_id)
         except oauth.OAuthError as exc:
             logger.warning(
                 "apple token revoke on unlink failed (%s)",
@@ -3911,7 +3917,7 @@ def _revoke_apple_identities(account: Account, *, fail_on_error: bool = False) -
         if not identity.apple_refresh_token:
             continue
         try:
-            oauth.revoke_apple_token(identity.apple_refresh_token)
+            oauth.revoke_apple_token(identity.apple_refresh_token, client_id=identity.apple_client_id)
         except oauth.OAuthError as exc:
             logger.warning(
                 "apple token revoke on deletion failed (%s)",

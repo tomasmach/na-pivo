@@ -409,7 +409,6 @@ a.np-pin--stop:hover .np-pin__label { background: var(--np-control-hover); }
 .np-auth__title { font: 800 56px/1 var(--np-display); }
 .np-auth__lead { margin: -4px 0 8px; color: var(--np-text-2); font-size: 16px; line-height: 1.5; }
 .np-auth__social { display: grid; gap: 16px; }
-.np-auth__g { font-weight: 800; }
 .np-auth__forgot { justify-self: center; font-size: 14px; }
 .np-auth__legal { color: var(--np-muted); font-size: 12px; }
 .np-auth__legal a { text-decoration: underline; }

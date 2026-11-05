@@ -73,8 +73,8 @@ def fake_oauth(monkeypatch):
 
     monkeypatch.setattr(oauth, "verify_google_id_token", fake_google)
     monkeypatch.setattr(oauth, "verify_apple_identity_token", fake_apple)
-    monkeypatch.setattr(oauth, "exchange_apple_auth_code", lambda code: {"refresh_token": "rt_test"})
-    monkeypatch.setattr(oauth, "revoke_apple_token", lambda token, token_type_hint="": None)
+    monkeypatch.setattr(oauth, "exchange_apple_auth_code", lambda code, **_kwargs: {"refresh_token": "rt_test"})
+    monkeypatch.setattr(oauth, "revoke_apple_token", lambda token, token_type_hint="", **_kwargs: None)
 
 
 @pytest.fixture
