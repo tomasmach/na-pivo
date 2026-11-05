@@ -14,11 +14,11 @@
 </div>
 {% if letters %}<section class="np-pubs-section">
   <h2 class="np-pubs-section__title">{% translate "Další města" %}</h2>
-  <nav class="np-pubs-jump" aria-label="{% translate "Města podle písmen" %}">{% for group in letters %}<a href="#mesta-{{ forloop.counter }}">{{ group.letter }}</a>{% endfor %}</nav>
+  <nav class="np-pubs-jump" aria-label="{% translate "Města podle písmen" %}">{% for group in letters %}<a class="np-tile" href="#mesta-{{ forloop.counter }}">{{ group.letter }}</a>{% endfor %}</nav>
   <div class="np-pubs-index">{% for group in letters %}
     <div class="np-pubs-letter" id="mesta-{{ forloop.counter }}">
       <h3 class="np-pubs-letter__title">{{ group.letter }}</h3>
-      {% for city in group.cities %}<a class="np-pubs-index__city" href="{{ city.url }}" aria-label="{{ city.label }}, {{ city.pubs }}"><span>{{ city.label }}</span><span class="np-pubs-index__count">{{ city.count }}</span></a>{% endfor %}
+      <ul>{% for city in group.cities %}<li><a class="np-pubs-index__city" href="{{ city.url }}" aria-label="{{ city.label }}, {{ city.pubs }}"><span>{{ city.label }}</span><span class="np-pubs-index__count">{{ city.count }}</span></a></li>{% endfor %}</ul>
     </div>{% endfor %}
   </div>
 </section>{% endif %}
