@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -504,8 +505,30 @@ export function Dot({ color = C.yellow, size = 6 }: { color?: string; size?: num
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />;
 }
 
-/** Letter avatar with a yellow ring, the way people appear in lists. */
-export function Person({ initial, size = 40, ring = true, filled }: { initial: string; size?: number; ring?: boolean; filled?: boolean }) {
+/** Profile photo when there is one, otherwise a letter avatar with a yellow ring. */
+export function Person({
+  initial,
+  uri,
+  size = 40,
+  ring = true,
+  filled,
+}: {
+  initial: string;
+  uri?: string | null;
+  size?: number;
+  ring?: boolean;
+  filled?: boolean;
+}) {
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.avatarBase }}
+        resizeMode="cover"
+        accessibilityIgnoresInvertColors
+      />
+    );
+  }
   return (
     <View
       style={[

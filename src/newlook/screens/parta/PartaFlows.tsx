@@ -107,7 +107,7 @@ export function KamosScreen() {
       footer={detail.isFriend ? <Button label={t.nv.parta.ping} icon="bell-ring" onPress={() => void pingPerson(profile)} /> : undefined}
     >
       <View style={[s.row, { gap: 16 }]}>
-        <Person initial={personInitial(profile)} size={84} />
+        <Person initial={personInitial(profile)} uri={profile.avatarUrl} size={84} />
         <View style={[s.fill, { gap: 4 }]}>
           <D s={34}>{name}</D>
           {profile.nickname && stats ? <T s={14} c={C.muted}>{t.nv.parta.levelLine(profile.nickname, stats.mapperTitle, stats.mapperLevel)}</T> : null}
@@ -607,7 +607,7 @@ export function PlanScreen() {
       <View style={[s.row, { gap: 18, flexWrap: 'wrap' }]}>
         {goingPeople.slice(0, 5).map((p, i) => (
           <View key={p.id} style={{ alignItems: 'center', gap: 6 }}>
-            <Person initial={personInitial(p)} size={46} filled={false} />
+            <Person initial={personInitial(p)} uri={p.avatarUrl} size={46} filled={false} />
             <T s={12} w={600} c={i === 0 ? C.yellow : C.text2} numberOfLines={1}>
               {personName(p)}
             </T>

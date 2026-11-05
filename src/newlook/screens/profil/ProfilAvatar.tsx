@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Icon } from '../../components/Icon';
 import { Person } from '../../components/ui';
@@ -17,17 +17,7 @@ export function ProfilAvatar({
   size?: number;
   ring?: boolean;
 }) {
-  if (uri) {
-    return (
-      <Image
-        source={{ uri }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
-        resizeMode="cover"
-        accessibilityIgnoresInvertColors
-      />
-    );
-  }
-  if (initial) return <Person initial={initial} size={size} ring={ring} />;
+  if (uri || initial) return <Person initial={initial} uri={uri} size={size} ring={ring} />;
   return (
     <View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.avatarBase, borderWidth: ring ? 2 : 0, borderColor: C.yellow }, s.center]}>
       <Icon name="user" size={Math.round(size * 0.4)} color={C.yellow} />

@@ -151,7 +151,7 @@ function LiveRow({ profile, sub, last, cheer }: { profile: FriendProfile; sub: s
     <Row
       last={last}
       height={66}
-      leading={<Person initial={personInitial(profile)} />}
+      leading={<Person initial={personInitial(profile)} uri={profile.avatarUrl} />}
       title={personName(profile)}
       titleWeight={700}
       sub={sub}
@@ -337,7 +337,7 @@ export function PartaScreen() {
                   <View key={req.id} style={{ paddingHorizontal: 16, borderRadius: 24, borderWidth: 1, borderColor: C.hairline }}>
                     <Row
                       last
-                      leading={<Person initial={personInitial(req.requester)} ring={false} />}
+                      leading={<Person initial={personInitial(req.requester)} uri={req.requester.avatarUrl} ring={false} />}
                       title={personName(req.requester)}
                       titleWeight={700}
                       sub={req.requester.nickname ? `@${req.requester.nickname}` : undefined}
@@ -365,7 +365,7 @@ export function PartaScreen() {
               <Row
                 height={66}
                 last={presence.length + homePresence.length === 0}
-                leading={<Person initial={myProfile ? personInitial(myProfile) : t.nv.parta.you.slice(0, 1)} />}
+                leading={<Person initial={myProfile ? personInitial(myProfile) : t.nv.parta.you.slice(0, 1)} uri={myProfile?.avatarUrl} />}
                 title={t.nv.parta.you}
                 titleWeight={700}
                 sub={!visible ? t.nv.parta.invisible : me ? (me.reactions?.cheers ? t.nv.parta.cheersAt(me.pubName, me.reactions.cheers) : t.nv.parta.visibleAt(me.pubName)) : t.nv.parta.visibleNotOut}
@@ -409,7 +409,7 @@ export function PartaScreen() {
                         <Row
                           key={f.id}
                           last={i === arr.length - 1}
-                          leading={<Person initial={personInitial(f)} />}
+                          leading={<Person initial={personInitial(f)} uri={f.avatarUrl} />}
                           title={personName(f)}
                           sub={lastTogetherLabel(stats?.lastSharedAt ?? null, stats?.lastPubName ?? '')}
                           chevron
