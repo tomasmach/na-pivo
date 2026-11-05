@@ -44,7 +44,7 @@ export const partaCs = {
   liveSub: (pub: string, n: number) => `${pub} · ${n} ${beers(n)}`,
   atSomeonesHome: 'U někoho doma',
 
-  requestsTitle: 'Chtějí do party',
+  requestsTitle: (n: number) => (n === 1 ? 'Chce do party' : 'Chtějí do party'),
   decline: 'Odmítnout',
   accept: 'Přijmout',
   joined: (name: string) => `${name} je v partě.`,

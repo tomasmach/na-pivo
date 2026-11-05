@@ -6,7 +6,7 @@ import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { sessionCount, useTallyStore } from '@/stores/tallyStore';
-import { fireRigidImpactHaptic } from '@/utils/haptics';
+import { fireRigidImpactHaptic, fireSelectionHaptic } from '@/utils/haptics';
 
 import { dialog, toast } from '../../ui/store';
 import { hasBeerBefore } from './eveningData';
@@ -71,6 +71,8 @@ export function logDrink(place: CountPlace, beer: CountableDrink, menu?: readonl
     return;
   }
   const minutes = minutesAgo(at);
+  // The tap that led here skipped its own haptic, expecting the count to give one.
+  if (useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
   dialog({
     title: t.nv.stamgast.rapidAgain(minutes),
     actions: [

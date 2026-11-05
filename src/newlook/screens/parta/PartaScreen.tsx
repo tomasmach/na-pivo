@@ -332,7 +332,7 @@ export function PartaScreen() {
           <Animated.View entering={fadeIn} style={{ gap: 20 }}>
             {dashboard.incomingRequests.length ? (
               <>
-                <SectionTitle title={t.nv.parta.requestsTitle} />
+                <SectionTitle title={t.nv.parta.requestsTitle(dashboard.incomingRequests.length)} />
                 {dashboard.incomingRequests.map((req) => (
                   <View key={req.id} style={{ paddingHorizontal: 16, borderRadius: 24, borderWidth: 1, borderColor: C.hairline }}>
                     <Row
