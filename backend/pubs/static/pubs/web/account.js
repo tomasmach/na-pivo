@@ -153,11 +153,11 @@
     if (!input) return;
     var scope = input.closest("[data-scope]");
     if (input.type !== "radio") return save(input, scope);
-    scope.dataset.latest = input.value;
+    var change = scope.changes = (scope.changes || 0) + 1;
     clearTimeout(scope.saveTimer);
-    scope.saveTimer = setTimeout(function () { save(input, scope); }, 400);
+    scope.saveTimer = setTimeout(function () { save(input, scope, change); }, 400);
   });
-  async function save(input, scope) {
+  async function save(input, scope, change) {
     var value = input.type === "checkbox" ? input.checked : input.value;
     var body = {};
     body[input.name] = value;
@@ -166,7 +166,7 @@
     input.disabled = false;
     if (input.type === "radio" && result.ok) scope.dataset.saved = value;
     // An older radio save must not touch the UI after the user picked something newer.
-    if (input.type === "radio" && scope.dataset.latest !== value) return;
+    if (input.type === "radio" && scope.changes !== change) return;
     if (result.ok) return showError(scope, "");
     if (input.type === "checkbox") input.checked = !value;
     else scope.querySelector('input[value="' + scope.dataset.saved + '"]').checked = true;
