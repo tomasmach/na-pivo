@@ -32,7 +32,7 @@ import { runGlance } from '@/tours/glance';
 import { formatDepartureTime, idosConnectionUrl, isUpcomingDeparture } from '@/transit/homeTransit';
 import { formatPrice } from '@/utils/currency';
 
-import { BottomFade, LevelAvatar, useTabBarSpace } from '../../components/chrome';
+import { BottomFade, LevelAvatar, TopFade, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, Press, Segmented, T, Tile } from '../../components/ui';
 import { fadeIn, fadeOut, riseIn, sinkOut } from '../../motion';
@@ -92,6 +92,7 @@ export function StamgastScreen() {
   const { glance } = useTourGlance();
   const tourActive = !!glance;
   const [stored, setStored] = useState<Mode>('pocitat');
+  const [headerH, setHeaderH] = useState(0);
   const tourRequested = useTourSegment((st) => st.requested);
   const [seenTourRequest, setSeenTourRequest] = useState(0);
   if (tourRequested !== seenTourRequest) {
@@ -126,7 +127,7 @@ export function StamgastScreen() {
   ];
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <View style={[s.row, { paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 12, zIndex: 2 }]}>
+      <View style={[s.row, { paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 12, zIndex: 2 }]} onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
         <Segmented style={s.fill} options={options} value={mode} onChange={changeMode} />
         <LevelAvatar />
       </View>
@@ -140,6 +141,7 @@ export function StamgastScreen() {
       ) : (
         <TourTab tabSpace={tabSpace} />
       )}
+      {headerH > 0 ? <TopFade below={headerH} /> : null}
     </View>
   );
 }
