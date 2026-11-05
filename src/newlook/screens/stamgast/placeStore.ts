@@ -9,6 +9,8 @@ import type { Pub } from '@/data/pubs';
 import type { OutsidePlaceContext } from '@/drinks/drinkTypes';
 import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
 
+import type { IconName } from '../../components/Icon';
+
 /**
  * Where the new-look counter counts. The Štamgast tab owns GPS (useNearbyPub)
  * and publishes it here, so the "Kde sedíš?" sheet and the drink sheet read the
@@ -42,6 +44,8 @@ export const useNvPlaceStore = create<PlaceState>((set) => ({
   pickPub: (pub) => set({ picked: pub, outside: null }),
   setOutside: (context) => set({ outside: context }),
 }));
+
+export const OUTSIDE_ICON: Record<OutsidePlaceContext, IconName> = { private: 'house', outdoors: 'tree-pine', other: 'map-pin' };
 
 function placeOf(state: Pick<PlaceState, 'outside' | 'picked' | 'detected'>): CountPlace | null {
   if (state.outside) return { kind: 'outside', context: state.outside };

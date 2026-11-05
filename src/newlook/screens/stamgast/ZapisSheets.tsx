@@ -21,7 +21,7 @@ import { formatPrice } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
-import { Button, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
+import { Button, Card, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { toast } from '../../ui/store';
 import { distanceLabel } from '../kompas/format';
@@ -30,10 +30,11 @@ import { myRating } from '../piva/model';
 import { useMyRatings } from '../piva/useMyRatings';
 import { logDrink } from './counterActions';
 import { beerTally, drinkTally } from './eveningData';
-import { useBackfillPick, useCountPlace, useNvPlaceStore } from './placeStore';
+import { OUTSIDE_ICON, useBackfillPick, useCountPlace, useNvPlaceStore } from './placeStore';
 import { addBeersToMenu, usePubMenu } from './pubMenu';
 
 type Kind = 'pivo' | 'vino' | 'nealko' | 'panak';
+const OUTSIDE_CHOICES = ['private', 'outdoors'] as const;
 type HomeServing = 'lahvac' | 'plech' | 'jinak';
 
 const KIND_TYPE: Record<Kind, DrinkType> = { pivo: 'beer', vino: 'wine', nealko: 'soft_drink', panak: 'shot' };
@@ -323,7 +324,7 @@ export function ZapisSheet() {
       footer={<Button testID="drink-save" height={60} label={copy.logBeer} sub={footerSub} disabled={!selected} haptic={!place} onPress={save} />}
     >
       <Press onPress={() => router.push('/nv/zmenit-misto')} style={[s.row, { gap: 6, marginTop: -8 }]}>
-        <Icon name={home ? 'house' : 'map-pin'} size={16} color={C.yellow} />
+        <Icon name={place?.kind === 'outside' ? OUTSIDE_ICON[place.context] : 'map-pin'} size={16} color={C.yellow} />
         <T s={15} w={700} numberOfLines={1} style={{ flexShrink: 1 }}>
           {place ? (place.kind === 'outside' ? t.counter.outsideLabel(place.context) : place.pub.name) : copy.placeUnknown}
         </T>
@@ -826,7 +827,7 @@ export function ZmenitMistoSheet() {
     else useNvPlaceStore.getState().pickPub(pub);
     nvBack(router);
   };
-  const atHome = !forBackfill && place?.kind === 'outside';
+  const outside = !forBackfill && place?.kind === 'outside';
   const selectedKey = forBackfill ? (backfillPub ? placeKey({ kind: 'pub', pub: backfillPub }) : null) : place?.kind === 'pub' ? placeKey(place) : null;
 
   return (
@@ -851,7 +852,7 @@ export function ZmenitMistoSheet() {
           <Row last leading={<Tile icon="rotate-cw" color={C.yellow} bg={C.control} />} title={copy.placeNone} sub={copy.placeRetry} onPress={() => useNvPlaceStore.getState().retry()} />
         ) : (
           near.map((c, i) => {
-            const on = !atHome && selectedKey === c.pubKey;
+            const on = !outside && selectedKey === c.pubKey;
             return (
               <Row
                 key={c.pubKey}
@@ -867,23 +868,26 @@ export function ZmenitMistoSheet() {
         )}
       </View>
       {forBackfill ? null : (
-        <Press
-          onPress={() => {
-            useNvPlaceStore.getState().setOutside('private');
-            nvBack(router);
-          }}
-          style={[s.row, { gap: 12, padding: 14, borderRadius: 20, backgroundColor: C.card }]}
-        >
-          <Tile icon="house" color={atHome ? C.black : C.yellow} bg={atHome ? C.yellow : C.control} />
-          <View style={[s.fill, { gap: 2 }]}>
-            <T s={16} w={700}>
-              {copy.placeHome}
-            </T>
-            <T s={13} c={C.muted}>
-              {copy.placeHomeSub}
-            </T>
-          </View>
-        </Press>
+        <Card pad={14}>
+          {OUTSIDE_CHOICES.map((context, i) => {
+            const on = place?.kind === 'outside' && place.context === context;
+            return (
+              <Row
+                key={context}
+                last={i === OUTSIDE_CHOICES.length - 1}
+                leading={<Tile icon={OUTSIDE_ICON[context]} color={on ? C.black : C.yellow} bg={on ? C.yellow : C.control} />}
+                title={context === 'private' ? copy.placeHome : t.counter.outsideLabel(context)}
+                titleWeight={700}
+                sub={context === 'private' ? copy.placeHomeSub : undefined}
+                trailing={on ? <Icon name="check" size={18} color={C.yellow} /> : null}
+                onPress={() => {
+                  useNvPlaceStore.getState().setOutside(context);
+                  nvBack(router);
+                }}
+              />
+            );
+          })}
+        </Card>
       )}
     </Sheet>
   );

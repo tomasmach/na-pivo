@@ -43,6 +43,7 @@ import SlidersHorizontalIcon from 'lucide-react-native/icons/sliders-horizontal'
 import FlaskConicalIcon from 'lucide-react-native/icons/flask-conical';
 import TargetIcon from 'lucide-react-native/icons/target';
 import TreesIcon from 'lucide-react-native/icons/trees';
+import TreePineIcon from 'lucide-react-native/icons/tree-pine';
 import LocateFixedIcon from 'lucide-react-native/icons/locate-fixed';
 import LayersIcon from 'lucide-react-native/icons/layers';
 import ChevronUpIcon from 'lucide-react-native/icons/chevron-up';
@@ -186,6 +187,7 @@ const ICONS = {
   'flask-conical': FlaskConicalIcon,
   'target': TargetIcon,
   'trees': TreesIcon,
+  'tree-pine': TreePineIcon,
   'locate-fixed': LocateFixedIcon,
   'layers': LayersIcon,
   'chevron-up': ChevronUpIcon,
