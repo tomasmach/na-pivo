@@ -218,7 +218,12 @@ export function PivaScreen() {
                 ))}
               </Animated.View>
             ) : (
-              <StatusCard text={region ? p.regionEmpty : p.rankingEmpty} />
+              <StatusCard
+                text={region ? p.regionEmpty : p.rankingEmpty}
+                action={region ? undefined : p.findBeer}
+                actionIcon="search"
+                onAction={() => router.push('/nv/hledat-pivo')}
+              />
             )}
             {tab === 'best' && (early || (page && !page.items.length)) && unrated.length ? (
               <>
@@ -428,7 +433,7 @@ export function HledatPivoScreen() {
                 leading={<Tile icon="beer" />}
                 title={b.name}
                 sub={[b.brandName, kindLine(b.styles, null)].filter(Boolean).join(' · ')}
-                trailing={<D s={22}>{b.ratingAvg !== null ? fmtRating(b.ratingAvg) : NO_VALUE}</D>}
+                trailing={b.ratingAvg !== null ? <D s={22}>{fmtRating(b.ratingAvg)}</D> : undefined}
                 onPress={() => openBeer(router, b.productKey, true)}
               />
             ))}
