@@ -185,6 +185,7 @@ const PubMarkers = memo(function PubMarkers({
       coordinate={{ latitude: p.lat, longitude: p.lng }}
       anchor={{ x: 0.5, y: 0.5 }}
       onPress={() => onPress(p.id)}
+      zIndex={p.key === targetKey ? 1 : 0}
     >
       <PubPin label={p.label} target={p.key === targetKey} mode={pinMode} />
     </StaticMapMarker>
