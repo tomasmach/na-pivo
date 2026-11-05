@@ -100,7 +100,6 @@ export const stamgastCs = {
   nearbyTaps: 'Čepují v okolí',
   nearbyLoading: 'Koukám, co se čepuje kolem…',
   nearbyFailed: 'Okolí teď nenačtu.',
-  nearbySub: (pub: string, distance: string) => `${pub} · ${distance}`,
   yourBottles: 'Tvoje lahváče a plechovky',
   drinkMost: 'Piješ nejčastěji',
   inDiary: (n: number) => `v deníku ${n}×`,

@@ -531,10 +531,12 @@ export function PridatPivoSheet() {
                 leading={tile}
                 title={b.name}
                 titleWeight={700}
-                sub={copy.nearbySub(
-                  [b.pubName, typeof b.priceCzk === 'number' ? formatPrice(b.priceCzk, currency) : null].filter(Boolean).join(' · '),
-                  distanceLabel(b.distanceMeters),
-                )}
+                sub={[
+                  b.pubName,
+                  typeof b.priceCzk === 'number' ? formatPrice(b.priceCzk, currency) : null,
+                  // The distance is measured from the pub you sit in, so it means nothing for that pub itself.
+                  b.pubName === pub.name ? null : distanceLabel(b.distanceMeters),
+                ].filter(Boolean).join(' · ')}
                 trailing={plusIcon}
                 onPress={() => pick(b.name, { volumeMl: b.volumeMl })}
               />

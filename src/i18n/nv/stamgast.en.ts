@@ -93,7 +93,6 @@ export const stamgastEn: typeof stamgastCs = {
   nearbyTaps: 'On tap nearby',
   nearbyLoading: "Checking what's on tap around…",
   nearbyFailed: "Can't load the area right now.",
-  nearbySub: (pub: string, distance: string) => `${pub} · ${distance}`,
   yourBottles: 'Your bottles and cans',
   drinkMost: 'You drink most',
   inDiary: (n: number) => `in the diary ${n}×`,
