@@ -5,12 +5,18 @@ export type PinCluster = Point & { key: string; count: number; members: Point[] 
 
 /** A pub joins a cluster this close to its first pub, in points. Keeps bubbles apart on screen. */
 const RADIUS_PT = 64;
+/** Bubble centres closer than this, in points, would overlap (a bubble is up to 38 pt wide). */
+const BUBBLE_GAP_PT = 42;
 /** From this Google zoom on every pub has its own pin, even when two share a street corner. */
 export const NO_CLUSTER_ZOOM = 17;
 
 function mercatorY(lat: number): number {
   const rad = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
   return (Math.log(Math.tan(Math.PI / 4 + rad / 2)) * 180) / Math.PI;
+}
+
+function latOf(y: number): number {
+  return (Math.atan(Math.sinh((y * Math.PI) / 180)) * 180) / Math.PI;
 }
 
 /** Google zoom of a viewport `widthPt` points wide. */
@@ -29,31 +35,56 @@ export function clusterPins<P extends Point>(
 ): { singles: P[]; clusters: PinCluster[] } {
   if (pins.length < 2 || zoomOf(viewport, widthPt) >= NO_CLUSTER_ZOOM) return { singles: [...pins], clusters: [] };
   const zoom = Math.floor(zoomOf(viewport, widthPt) * 4) / 4;
-  const radius = (RADIUS_PT * 360) / (256 * 2 ** zoom);
+  const ptToDeg = 360 / (256 * 2 ** zoom);
+  const radius = RADIUS_PT * ptToDeg;
   const points = pins
     .map((pin) => ({ pin, x: pin.lng, y: mercatorY(pin.lat) }))
     .sort((a, b) => a.x - b.x || a.y - b.y);
   const taken = new Array<boolean>(points.length).fill(false);
-  const singles: P[] = [];
-  const clusters: PinCluster[] = [];
+  type Group = { key: string; members: P[]; x: number; y: number };
+  const groups: Group[] = [];
   for (let i = 0; i < points.length; i++) {
     if (taken[i]) continue;
     const seed = points[i];
-    const members: P[] = [seed.pin];
+    const group: Group = { key: `${zoom}:${seed.x}:${seed.y}`, members: [seed.pin], x: seed.x, y: seed.y };
     // Points are sorted by x, so the scan stops once x is out of reach.
     for (let j = i + 1; j < points.length && points[j].x - seed.x <= radius; j++) {
-      if (!taken[j] && Math.abs(points[j].y - seed.y) <= radius && Math.hypot(points[j].x - seed.x, points[j].y - seed.y) <= radius) {
+      if (!taken[j] && Math.hypot(points[j].x - seed.x, points[j].y - seed.y) <= radius) {
         taken[j] = true;
-        members.push(points[j].pin);
+        group.members.push(points[j].pin);
+        group.x += points[j].x;
+        group.y += points[j].y;
       }
     }
-    if (members.length === 1) {
-      singles.push(seed.pin);
-      continue;
+    group.x /= group.members.length;
+    group.y /= group.members.length;
+    groups.push(group);
+  }
+  // A bubble sits in the middle of its pubs, which can bring it onto a neighbour; merge those.
+  const gap = BUBBLE_GAP_PT * ptToDeg;
+  for (let merged = true; merged; ) {
+    merged = false;
+    for (let i = 0; i < groups.length; i++) {
+      for (let j = i + 1; j < groups.length; j++) {
+        const a = groups[i];
+        const b = groups[j];
+        if ((a.members.length > 1 || b.members.length > 1) && Math.hypot(a.x - b.x, a.y - b.y) < gap) {
+          const n = a.members.length + b.members.length;
+          a.x = (a.x * a.members.length + b.x * b.members.length) / n;
+          a.y = (a.y * a.members.length + b.y * b.members.length) / n;
+          a.members.push(...b.members);
+          groups.splice(j, 1);
+          merged = true;
+          j--;
+        }
+      }
     }
-    const lat = members.reduce((sum, m) => sum + m.lat, 0) / members.length;
-    const lng = members.reduce((sum, m) => sum + m.lng, 0) / members.length;
-    clusters.push({ key: `${zoom}:${seed.x}:${seed.y}`, lat, lng, count: members.length, members });
+  }
+  const singles: P[] = [];
+  const clusters: PinCluster[] = [];
+  for (const g of groups) {
+    if (g.members.length === 1) singles.push(g.members[0]);
+    else clusters.push({ key: g.key, lat: latOf(g.y), lng: g.x, count: g.members.length, members: g.members });
   }
   return { singles, clusters };
 }
@@ -69,9 +100,8 @@ export function clusterCamera(members: readonly Point[], areaPt: { width: number
   const spanY = Math.max(...ys) - Math.min(...ys);
   const fit = (pt: number, span: number) => (span > 0 ? Math.log2((360 * pt) / (256 * span)) : NO_CLUSTER_ZOOM);
   const zoom = Math.min(NO_CLUSTER_ZOOM, fit(areaPt.width, spanX), fit(areaPt.height, spanY));
-  const midY = ((Math.max(...ys) + Math.min(...ys)) / 2) * (Math.PI / 180);
   return {
-    center: { latitude: (Math.atan(Math.sinh(midY)) * 180) / Math.PI, longitude: (Math.max(...xs) + Math.min(...xs)) / 2 },
+    center: { latitude: latOf((Math.max(...ys) + Math.min(...ys)) / 2), longitude: (Math.max(...xs) + Math.min(...xs)) / 2 },
     zoom,
   };
 }

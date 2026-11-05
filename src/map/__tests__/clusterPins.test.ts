@@ -16,7 +16,7 @@ describe('clusterPins', () => {
     expect(singles.map((p) => p.id)).toEqual(['far']);
     expect(clusters).toHaveLength(1);
     expect(clusters[0].count).toBe(3);
-    expect(clusters[0].lat).toBeCloseTo(50.0807, 6);
+    expect(clusters[0].lat).toBeCloseTo(50.0807, 5);
   });
 
   it('shows every pub on its own at street zoom', () => {
@@ -42,5 +42,15 @@ describe('clusterPins', () => {
     expect(close.center.latitude).toBeCloseTo(50.08065, 5);
     const wide = clusterCamera([{ lat: 50.0, lng: 14.3 }, { lat: 50.1, lng: 14.5 }], area);
     expect(wide.zoom).toBeLessThan(13);
+  });
+
+  it('never leaves two bubbles on top of each other after centring them', () => {
+    const ptToDeg = 360 / (256 * 2 ** 15);
+    const zoom15 = { longitudeDelta: WIDTH * ptToDeg };
+    const pins = [0, 62, 63, 63.5, 64.5, 65].map((pt) => ({ lat: 50, lng: 14.4 + pt * ptToDeg }));
+    const { singles, clusters } = clusterPins(pins, zoom15, WIDTH);
+    const centres = [...clusters.map((c) => c.lng), ...singles.map((p) => p.lng)].sort((a, b) => a - b);
+    for (let i = 1; i < centres.length; i++) expect((centres[i] - centres[i - 1]) / ptToDeg).toBeGreaterThanOrEqual(42);
+    expect(clusters.reduce((n, c) => n + c.count, 0) + singles.length).toBe(6);
   });
 });

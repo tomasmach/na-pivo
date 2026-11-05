@@ -118,10 +118,11 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   const targetKey = target?.key ?? null;
   const { singles, clusters } = useMemo(() => {
     if (view === 'stopy') return { singles: [], clusters: [] };
-    // The pub the compass points at stays its own pin, never inside a cluster.
-    const grouped = clusterPins(pins.filter((p) => p.key !== targetKey), viewport, size.width || 390);
-    const targetPins = pins.filter((p) => p.key === targetKey);
-    return { singles: [...grouped.singles, ...targetPins], clusters: grouped.clusters };
+    // The pub the compass points at stays its own pin, never inside a cluster. Its key is a
+    // geohash cell, which a neighbouring pub can share; that one still clusters.
+    const targetPin = pins.find((p) => p.key === targetKey);
+    const grouped = clusterPins(targetPin ? pins.filter((p) => p !== targetPin) : pins, viewport, size.width || 390);
+    return { singles: targetPin ? [...grouped.singles, targetPin] : grouped.singles, clusters: grouped.clusters };
   }, [pins, targetKey, view, viewport, size.width]);
 
   return (
