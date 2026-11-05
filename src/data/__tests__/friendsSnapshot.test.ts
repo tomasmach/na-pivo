@@ -119,7 +119,7 @@ it('keeps saved invitations until they expire and skips unreadable ones', async 
   await savePartaPlansSnapshot([plan('saturday', '2026-11-08T03:00:00Z'), plan('yesterday', '2026-11-05T03:00:00Z')], snapshotGeneration());
   expect((await loadPartaPlansSnapshot(now))?.map((p) => p.id)).toEqual(['saturday']);
 
-  await AsyncStorage.setItem(PARTA_PLANS_SNAPSHOT_KEY, JSON.stringify([{ id: 'broken' }, plan('ok', '')]));
+  await AsyncStorage.setItem(PARTA_PLANS_SNAPSHOT_KEY, JSON.stringify([{ id: 'broken' }, { ...plan('no-name', ''), account: {} }, plan('ok', '')]));
   expect((await loadPartaPlansSnapshot(now))?.map((p) => p.id)).toEqual(['ok']);
 
   await AsyncStorage.setItem(PARTA_PLANS_SNAPSHOT_KEY, '{not json');

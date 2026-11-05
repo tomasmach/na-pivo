@@ -120,14 +120,19 @@ export async function savePartaPlansSnapshot(plans: PartaPlan[], generation: num
   }
 }
 
+function isProfile(value: unknown): boolean {
+  return !!value && typeof (value as { displayName?: unknown }).displayName === 'string';
+}
+
 function isRenderablePlan(value: unknown): value is PartaPlan {
   const plan = value as Partial<PartaPlan> | null;
   return (
     !!plan &&
     typeof plan.id === 'string' &&
-    !!plan.account &&
+    isProfile(plan.account) &&
     typeof plan.expiresAt === 'string' &&
-    Array.isArray(plan.responses?.goingProfiles)
+    Array.isArray(plan.responses?.goingProfiles) &&
+    plan.responses.goingProfiles.every(isProfile)
   );
 }
 
