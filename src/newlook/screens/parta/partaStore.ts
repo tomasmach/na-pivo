@@ -6,7 +6,12 @@ import {
   type ActivityResponseKind,
   type FriendsDashboard,
 } from '@/data/friendsClient';
-import { loadFriendsDashboardSnapshot, snapshotGeneration } from '@/data/friendsSnapshot';
+import {
+  loadFriendsDashboardSnapshot,
+  loadPartaPlansSnapshot,
+  savePartaPlansSnapshot,
+  snapshotGeneration,
+} from '@/data/friendsSnapshot';
 import { fetchPartaPlans, type PartaPlan } from '@/data/partaPlansClient';
 import type { CommunityEventsDashboard } from '@/data/communityEventsClient';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
@@ -45,16 +50,19 @@ export const usePartaStore = create<PartaState>((set, get) => ({
       const generation = snapshotGeneration();
       // An account switch must not show the previous account's crew.
       if (generation !== get().generation) set({ dashboard: null, plans: null, meetups: null, generation });
-      if (!get().dashboard) {
-        const saved = await loadFriendsDashboardSnapshot();
-        if (saved && generation === snapshotGeneration() && !get().dashboard) set({ dashboard: saved.dashboard });
-      }
       set({ loading: true });
-      const [dashboard, plans] = await Promise.all([fetchFriendsDashboard(), fetchPartaPlans()]);
-      if (generation !== snapshotGeneration()) return;
+      const sameAccount = () => generation === snapshotGeneration();
+      const dashboardRequest = fetchFriendsDashboard();
+      // Invitations show as soon as they arrive; the dashboard is the heavier request.
+      const plansRequest = fetchPartaPlans().then((plans) => {
+        if (plans && sameAccount()) set({ plans });
+        return plans;
+      });
+      await showSavedCopies(generation);
+      const [dashboard, plans] = await Promise.all([dashboardRequest, plansRequest]);
+      if (!sameAccount()) return;
       set({
         dashboard: dashboard ?? get().dashboard,
-        plans: plans ?? get().plans,
         failed: !dashboard || !plans,
         loading: false,
       });
@@ -94,3 +102,22 @@ export const usePartaStore = create<PartaState>((set, get) => ({
     }),
   setMeetups: (meetups) => set({ meetups }),
 }));
+
+async function showSavedCopies(generation: number): Promise<void> {
+  const { dashboard, plans } = usePartaStore.getState();
+  const [savedDashboard, savedPlans] = await Promise.all([
+    dashboard ? null : loadFriendsDashboardSnapshot(),
+    plans ? null : loadPartaPlansSnapshot(),
+  ]);
+  if (generation !== snapshotGeneration()) return;
+  const state = usePartaStore.getState();
+  if (savedDashboard && !state.dashboard) usePartaStore.setState({ dashboard: savedDashboard.dashboard });
+  if (savedPlans && !state.plans) usePartaStore.setState({ plans: savedPlans });
+}
+
+// Reading storage takes a moment on a cold start; doing it now means opening Parta doesn't wait for it.
+void showSavedCopies(snapshotGeneration());
+
+usePartaStore.subscribe((state, previous) => {
+  if (state.plans && state.plans !== previous.plans) void savePartaPlansSnapshot(state.plans, state.generation);
+});

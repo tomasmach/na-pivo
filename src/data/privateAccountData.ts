@@ -93,7 +93,7 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-handled-notification-responses-v1',
   'na-pivo-beer-watch-location-v1',
   BADGE_STORAGE_KEY,
-  // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
+  // Note: the Parta snapshots ('na-pivo-friends-dashboard', 'na-pivo-parta-plans') are cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
 ];

@@ -321,7 +321,7 @@ export function PartaScreen() {
               ))}
             </View>
           </View>
-        ) : plans === null && loading ? (
+        ) : plans === null && (loading || !failed) ? (
           <StatusCard text={t.nv.parta.loading} action={t.nv.parta.newInvite} actionIcon="plus" reserve />
         ) : plans === null && failed ? (
           <StatusCard text={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />

@@ -16,8 +16,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { FriendsDashboard } from './friendsClient';
+import type { PartaPlan } from './partaPlansClient';
 
 export const FRIENDS_DASHBOARD_SNAPSHOT_KEY = 'na-pivo-friends-dashboard';
+/** Last-known Parta invitations, so they show with the rest of the tab instead of waiting for the network. */
+export const PARTA_PLANS_SNAPSHOT_KEY = 'na-pivo-parta-plans';
 
 interface StoredSnapshot {
   leaderboardVersion: 1;
@@ -106,6 +109,49 @@ export async function loadFriendsDashboardSnapshot(): Promise<FriendsDashboardSn
   }
 }
 
+/** Persist the shown invitations under the same account-boundary guard as the dashboard. Never throws. */
+export async function savePartaPlansSnapshot(plans: PartaPlan[], generation: number): Promise<void> {
+  if (generation !== boundaryGeneration) return;
+  try {
+    await AsyncStorage.setItem(PARTA_PLANS_SNAPSHOT_KEY, JSON.stringify(plans));
+    if (generation !== boundaryGeneration) await AsyncStorage.removeItem(PARTA_PLANS_SNAPSHOT_KEY);
+  } catch {
+    // Without a saved copy the invitations just wait for the network.
+  }
+}
+
+function isProfile(value: unknown): boolean {
+  return !!value && typeof (value as { displayName?: unknown }).displayName === 'string';
+}
+
+function isRenderablePlan(value: unknown): value is PartaPlan {
+  const plan = value as Partial<PartaPlan> | null;
+  return (
+    !!plan &&
+    typeof plan.id === 'string' &&
+    isProfile(plan.account) &&
+    typeof plan.expiresAt === 'string' &&
+    Array.isArray(plan.responses?.goingProfiles) &&
+    plan.responses.goingProfiles.every(isProfile)
+  );
+}
+
+/** The saved invitations that have not expired yet, or null when absent / unreadable. */
+export async function loadPartaPlansSnapshot(now = Date.now()): Promise<PartaPlan[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(PARTA_PLANS_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter(isRenderablePlan).filter((plan) => {
+      const expires = Date.parse(plan.expiresAt);
+      return Number.isNaN(expires) || expires > now;
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Drop the persisted snapshot at an account boundary. Bumps the generation FIRST
  * so any in-flight dashboard fetch's pending write is suppressed rather than
@@ -114,7 +160,7 @@ export async function loadFriendsDashboardSnapshot(): Promise<FriendsDashboardSn
 export async function clearFriendsDashboardSnapshot(): Promise<void> {
   boundaryGeneration += 1;
   try {
-    await AsyncStorage.removeItem(FRIENDS_DASHBOARD_SNAPSHOT_KEY);
+    await AsyncStorage.multiRemove([FRIENDS_DASHBOARD_SNAPSHOT_KEY, PARTA_PLANS_SNAPSHOT_KEY]);
   } catch {
     // Nothing to do — the write guard above already blocks a stale re-persist.
   }
