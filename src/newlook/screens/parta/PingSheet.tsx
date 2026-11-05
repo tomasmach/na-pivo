@@ -67,7 +67,9 @@ export function PingSheet() {
 
   const friends = party?.friends ?? [];
   const chosen = (picked ?? friends.map((f) => f.id)).filter((id) => friends.some((f) => f.id === id));
-  const ghost = !!party?.ghost;
+  // The Profil switch updates Parta in memory but not the saved party, which is all there is offline.
+  const storeGhost = usePartaStore((st) => st.dashboard?.settings?.ghostMode);
+  const ghost = !!party?.ghost || !!storeGhost;
   const quiet = party === null ? t.nv.parta.pingPartyOffline : party && !friends.length ? t.nv.parta.pingNoFriends : null;
 
   const choosePub = (next: Pub) => {
@@ -117,8 +119,6 @@ export function PingSheet() {
       await enqueueFriendOp({ op: 'activity', clientId, payload: { pub: target, message, recipientIds, startedAt } });
       toast({ kind: 'offline', title: t.nv.parta.pingQueued, icon: 'cloud-off' });
     }
-    // The counter did not know where I sit, so it counts there from now on.
-    if (!currentCountPlace()) useNvPlaceStore.getState().pickPub(pub);
     nvBack(router);
   }
 

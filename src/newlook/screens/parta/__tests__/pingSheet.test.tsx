@@ -47,18 +47,21 @@ const friends = [
 ];
 let mockParty: { friends: typeof friends; ghost: boolean } | null | undefined = { friends, ghost: false };
 let mockPlace: { kind: 'pub'; pub: typeof pinkasy } | null = { kind: 'pub', pub: pinkasy };
-const mockPickPub = jest.fn();
 jest.mock('../../tour/TourRunScreens', () => ({ useParty: () => mockParty, CheckRow: () => null }));
 jest.mock('../NovaPozvanka', () => ({ PickerRow: () => null }));
 jest.mock('../../stamgast/placeStore', () => ({
   currentCountPlace: () => mockPlace,
-  useNvPlaceStore: Object.assign((select: (st: { candidates: never[] }) => unknown) => select({ candidates: [] }), {
-    getState: () => ({ pickPub: mockPickPub }),
-  }),
+  useNvPlaceStore: (select: (st: { candidates: never[] }) => unknown) => select({ candidates: [] }),
 }));
-jest.mock('../partaStore', () => ({
-  usePartaStore: { getState: () => ({ dashboard: null, reload: jest.fn(async () => undefined), setDashboard: jest.fn() }) },
-}));
+let mockStoreGhost: boolean | undefined;
+jest.mock('../partaStore', () => {
+  const state = () => ({
+    dashboard: mockStoreGhost === undefined ? null : { settings: { ghostMode: mockStoreGhost } },
+    reload: jest.fn(async () => undefined),
+    setDashboard: jest.fn(),
+  });
+  return { usePartaStore: Object.assign((select: (st: ReturnType<typeof state>) => unknown) => select(state()), { getState: state }) };
+});
 
 const share = shareFriendPubActivity as jest.Mock;
 
@@ -78,6 +81,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockParty = { friends, ghost: false };
   mockPlace = { kind: 'pub', pub: pinkasy };
+  mockStoreGhost = undefined;
 });
 
 test('pings the whole party from the pub the counter counts in', async () => {
@@ -85,7 +89,6 @@ test('pings the whole party from the pub the counter counts in', async () => {
   await sendFrom(t.nv.parta.pingPartyShort);
   expect(share).toHaveBeenCalledWith(pinkasy, '', 'client-1', undefined, expect.any(String));
   expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: t.nv.parta.pingedToast, sub: t.nv.parta.pingSentSub('U Pinkasů') }));
-  expect(mockPickPub).not.toHaveBeenCalled();
 });
 
 test('without signal the ping waits in the queue under the same client id', async () => {
@@ -121,4 +124,13 @@ test('without a pub there is nothing to send', async () => {
   const button = await sendFrom(t.nv.parta.pingPartyShort);
   expect(share).not.toHaveBeenCalled();
   expect(button.props.disabled).toBe(true);
+});
+
+test('invisible mode switched on in Profil counts even when the saved party is older', async () => {
+  mockStoreGhost = true;
+  (updateFriendSettings as jest.Mock).mockResolvedValue({ ok: false, code: 'network', detail: 'offline' });
+  await sendFrom(t.nv.parta.pingGhostSend);
+  expect(updateFriendSettings).toHaveBeenCalledWith({ ghostMode: false });
+  expect(share).not.toHaveBeenCalled();
+  expect(enqueueFriendOp).not.toHaveBeenCalled();
 });
