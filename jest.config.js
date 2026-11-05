@@ -20,6 +20,7 @@ module.exports = {
             // react-native 0.88 publishes its types only through package exports.
             'react-native': ['node_modules/react-native/types_generated/index.d.ts'],
             'expo-router/native-tabs': ['node_modules/expo-router/build/native-tabs/index.d.ts'],
+            'expo-router/js-tabs': ['node_modules/expo-router/build/layouts/Tabs.d.ts'],
           },
           types: ['jest', 'node'],
         },

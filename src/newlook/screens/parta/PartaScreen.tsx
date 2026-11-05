@@ -252,6 +252,8 @@ export function PartaScreen() {
   const answerRequest = (id: string, name: string, action: 'accept' | 'decline') => {
     trackUiInteraction(action === 'accept' ? 'friends_request_accept' : 'friends_request_decline', action);
     usePartaStore.getState().setDashboard((d) => ({ ...d, incomingRequests: d.incomingRequests.filter((r) => r.id !== id) }));
+    const signal = usePartaSignalStore.getState();
+    signal.setSignal({ pendingRequests: Math.max(0, signal.pendingRequests - 1), unread: signal.unread, liveNow: signal.liveNow });
     void respondFriendRequest(id, action).then((res) => {
       if (res.ok) {
         if (action === 'accept') toast({ kind: 'saved', title: t.nv.parta.joined(name), icon: 'user-plus' });
