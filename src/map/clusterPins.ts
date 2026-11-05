@@ -105,3 +105,17 @@ export function clusterCamera(members: readonly Point[], areaPt: { width: number
     zoom,
   };
 }
+
+/**
+ * The pin of the pub the compass points at. Its key is a geohash cell that a neighbouring pub can
+ * share, so among the pins of that cell it is the one standing on the target itself.
+ */
+export function targetPin<P extends Point & { key: string }>(pins: readonly P[], target: (Point & { key: string }) | null): P | undefined {
+  if (!target) return undefined;
+  let best: P | undefined;
+  for (const pin of pins) {
+    if (pin.key !== target.key) continue;
+    if (!best || Math.hypot(pin.lat - target.lat, pin.lng - target.lng) < Math.hypot(best.lat - target.lat, best.lng - target.lng)) best = pin;
+  }
+  return best;
+}

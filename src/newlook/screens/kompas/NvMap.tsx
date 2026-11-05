@@ -2,7 +2,7 @@ import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, u
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapStyleElement, type Region } from 'react-native-maps';
 
-import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, type PinCluster } from '@/map/clusterPins';
+import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, type PinCluster } from '@/map/clusterPins';
 import { StaticMapMarker } from '@/map/StaticMapMarker';
 
 import { Icon } from '../../components/Icon';
@@ -116,14 +116,15 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   }, [me, onRegion, ready, view]);
 
   const targetKey = target?.key ?? null;
+  const targetLat = target?.lat;
+  const targetLng = target?.lng;
   const { singles, clusters } = useMemo(() => {
     if (view === 'stopy') return { singles: [], clusters: [] };
-    // The pub the compass points at stays its own pin, never inside a cluster. Its key is a
-    // geohash cell, which a neighbouring pub can share; that one still clusters.
-    const targetPin = pins.find((p) => p.key === targetKey);
-    const grouped = clusterPins(targetPin ? pins.filter((p) => p !== targetPin) : pins, viewport, size.width || 390);
-    return { singles: targetPin ? [...grouped.singles, targetPin] : grouped.singles, clusters: grouped.clusters };
-  }, [pins, targetKey, view, viewport, size.width]);
+    // The pub the compass points at stays its own pin, never inside a cluster.
+    const own = targetKey && targetLat != null && targetLng != null ? targetPin(pins, { key: targetKey, lat: targetLat, lng: targetLng }) : undefined;
+    const grouped = clusterPins(own ? pins.filter((p) => p !== own) : pins, viewport, size.width || 390);
+    return { singles: own ? [...grouped.singles, own] : grouped.singles, clusters: grouped.clusters };
+  }, [pins, targetKey, targetLat, targetLng, view, viewport, size.width]);
 
   return (
     <MapView

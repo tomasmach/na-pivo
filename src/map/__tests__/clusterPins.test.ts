@@ -1,4 +1,4 @@
-import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, zoomOf } from '../clusterPins';
+import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, zoomOf } from '../clusterPins';
 
 const WIDTH = 390;
 const city = { longitudeDelta: 0.2 };
@@ -52,5 +52,12 @@ describe('clusterPins', () => {
     const centres = [...clusters.map((c) => c.lng), ...singles.map((p) => p.lng)].sort((a, b) => a - b);
     for (let i = 1; i < centres.length; i++) expect((centres[i] - centres[i - 1]) / ptToDeg).toBeGreaterThanOrEqual(42);
     expect(clusters.reduce((n, c) => n + c.count, 0) + singles.length).toBe(6);
+  });
+
+  it('keeps out the target pub itself when a neighbour shares its geohash cell', () => {
+    const a = { id: 'a', key: 'u2fkbm01', lat: 50.08137, lng: 14.42531 };
+    const b = { id: 'b', key: 'u2fkbm01', lat: 50.08139, lng: 14.42535 };
+    expect(targetPin([a, b], { key: b.key, lat: b.lat, lng: b.lng })).toBe(b);
+    expect(targetPin([a, b], null)).toBeUndefined();
   });
 });
