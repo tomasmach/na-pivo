@@ -173,3 +173,15 @@ it('drops a typed price when another beer comes back from adding one', async () 
 
   expect(logDrink.mock.calls[0][1]).toMatchObject({ name: 'Kozel 11°', priceCzk: 40, volumeMl: 500 });
 });
+
+it('does not carry a typed beer price over to a soft drink of the same name', async () => {
+  mockMenu = [{ name: 'Birell', volumeMl: 500, priceCzk: 35 }];
+  const renderer = await renderSheet();
+  await act(async () => pressText(renderer, copy.edit));
+  await act(async () => priceField(renderer).props.onChangeText('62'));
+  await act(async () => pressText(renderer, copy.kindSoft));
+  await act(async () => saveButton(renderer).props.onPress());
+
+  expect(logDrink.mock.calls[0][1]).toMatchObject({ name: 'Birell', drinkType: 'soft_drink' });
+  expect(logDrink.mock.calls[0][1].priceCzk).toBeUndefined();
+});

@@ -288,8 +288,8 @@ export function ZapisSheet() {
 
   const chosenSize =
     sizeChoices.find((size) => size.volumeMl === volume) ?? sizeChoices.find((size) => size.volumeMl === 500) ?? sizeChoices[0] ?? selected?.sizes[0] ?? null;
-  // A typed price belongs to one place, beer and size; any other pick starts from the menu again.
-  const priceKey = `${place ? placeKey(place) : ''}|${selected?.id ?? ''}|${chosenSize?.volumeMl ?? ''}`;
+  // A typed price belongs to one place, drink and size; any other pick starts from the menu again.
+  const priceKey = `${place ? placeKey(place) : ''}|${kind}|${selected?.id ?? ''}|${chosenSize?.volumeMl ?? ''}`;
   const [seenPriceKey, setSeenPriceKey] = useState(priceKey);
   if (priceKey !== seenPriceKey) {
     setSeenPriceKey(priceKey);
