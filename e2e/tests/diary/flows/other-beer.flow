@@ -8,11 +8,13 @@ appId: ${MAESTRO_APP_ID}
 - inputText: ${BEER_NAME}
 - tapOn: ${'Přidat „' + BEER_NAME + '“'}
 - extendedWaitUntil:
+    visible: 'Cena za .*'
+    timeout: 10000
+- tapOn: 'Cena za .*'
+- extendedWaitUntil:
     visible:
       id: drink-price
     timeout: 10000
-- tapOn:
-    id: drink-price
 - inputText: ${BEER_PRICE}
 - evalScript: ${output.local.screenshot('diary-beer-form-filled')}
 - tapOn:

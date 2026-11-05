@@ -156,6 +156,8 @@ export function DialogHost() {
 // Routes whose sheet has already slid in; a sheet that re-mounts on the same route
 // (loading, then content) fades in place instead of sliding up a second time.
 const enteredRoutes = new Set<string>();
+// Content at rest ends above this fade, so only rows scrolled behind the footer dim.
+const FOOTER_FADE = 28;
 
 /**
  * Bottom sheet rendered by a transparent modal route that animates nothing
@@ -241,7 +243,7 @@ export function Sheet({
   const footerStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -Math.max(0, keyboard.value + 12 - footerBottom) }] }));
 
   const body = (
-    <View style={[{ gap: 20, paddingTop: 14, paddingHorizontal: SCREEN_X, paddingBottom: footer ? footerH + 40 : insets.bottom + 24 }, contentStyle]}>
+    <View style={[{ gap: 20, paddingTop: 14, paddingHorizontal: SCREEN_X, paddingBottom: footer ? footerH + footerBottom + FOOTER_FADE + 8 : insets.bottom + 24 }, contentStyle]}>
       {children}
     </View>
   );
@@ -299,7 +301,7 @@ export function Sheet({
                 left: 0,
                 right: 0,
                 bottom: 0,
-                height: footerH + footerBottom + 28,
+                height: footerH + footerBottom + FOOTER_FADE,
                 experimental_backgroundImage: `linear-gradient(180deg, ${C.dialog}00 0%, ${C.dialog} 35%)`,
               },
               footerStyle,

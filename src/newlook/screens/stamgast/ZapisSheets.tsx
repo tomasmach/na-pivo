@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Image, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, TextInput, View, type TextInputInstance } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +17,7 @@ import { isContextPubKey, type DrinkType, type ServingType } from '@/drinks/drin
 import { formatVolume, intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
-import { formatPrice } from '@/utils/currency';
+import { formatPrice, getCurrencyRate, parsePriceInputToCzk } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
@@ -72,7 +72,8 @@ function BeerTile({ o, on, rating, onPress }: { o: Option; on: boolean; rating: 
       accessibilityLabel={[o.name, rating ? t.nv.stamgast.myRatingA11y(rating) : null, o.badge, o.meta].filter(Boolean).join(', ')}
       style={{
         flex: 1,
-        height: 104,
+        minHeight: 104,
+        gap: 8,
         padding: 14,
         borderRadius: 20,
         justifyContent: 'space-between',
@@ -99,7 +100,7 @@ function BeerTile({ o, on, rating, onPress }: { o: Option; on: boolean; rating: 
         </View>
       </View>
       <View style={{ gap: 4 }}>
-        <T s={16} w={700} c={on ? C.black : C.white} numberOfLines={1}>
+        <T s={16} w={700} lh={1.15} c={on ? C.black : C.white} numberOfLines={2}>
           {o.name}
         </T>
         <View style={[s.row, { gap: 6 }]}>
@@ -126,7 +127,7 @@ function AddTile({ label, sub, on, onPress }: { label: string; sub: string; on?:
       haptic
       onPress={onPress}
       accessibilityState={{ selected: !!on }}
-      style={{ flex: 1, height: 104, padding: 14, borderRadius: 20, justifyContent: 'space-between', borderWidth: 1.5, borderColor: on ? C.white : C.lineStrong }}
+      style={{ flex: 1, minHeight: 104, gap: 8, padding: 14, borderRadius: 20, justifyContent: 'space-between', borderWidth: 1.5, borderColor: on ? C.white : C.lineStrong }}
     >
       <View style={[{ width: 26, height: 26, borderRadius: 13, backgroundColor: C.yellow }, s.center]}>
         <Icon name="plus" size={16} color={C.black} />
@@ -143,18 +144,17 @@ function AddTile({ label, sub, on, onPress }: { label: string; sub: string; on?:
   );
 }
 
-function SizeCard({ title, sub, on, onPress, icon }: { title: string; sub: string; on: boolean; onPress: () => void; icon?: boolean }) {
+function SizeCard({ title, sub, on, onPress }: { title: string; sub?: string; on: boolean; onPress: () => void }) {
   return (
     <Press haptic onPress={onPress} style={[{ flex: 1, height: 56, borderRadius: 16, backgroundColor: on ? C.white : C.card, borderWidth: 1, borderColor: on ? C.white : C.hairline }, s.center]}>
       <T s={16} w={800} c={on ? C.black : C.white}>
         {title}
       </T>
-      <View style={[s.row, { gap: 4 }]}>
+      {sub ? (
         <T s={12} c={on ? '#0A0A0A99' : C.muted}>
           {sub}
         </T>
-        {icon ? <Icon name="pencil" size={11} color={on ? '#0A0A0A99' : C.muted} /> : null}
-      </View>
+      ) : null}
     </Press>
   );
 }
@@ -184,6 +184,9 @@ export function ZapisSheet() {
   const [homeServing, setHomeServing] = useState<HomeServing>('lahvac');
   const [volume, setVolume] = useState<number | null>(null);
   const [typedPrice, setTypedPrice] = useState('');
+  const priceInput = useRef<TextInputInstance>(null);
+  /** The picked size has a price on the menu and the user is correcting it. */
+  const [editPrice, setEditPrice] = useState(false);
   /** A wine, soft drink or shot typed by hand; null while a tile is picked. */
   const [custom, setCustom] = useState<string | null>(null);
   const customName = custom?.trim() ?? '';
@@ -285,28 +288,22 @@ export function ZapisSheet() {
 
   const chosenSize =
     sizeChoices.find((size) => size.volumeMl === volume) ?? sizeChoices.find((size) => size.volumeMl === 500) ?? sizeChoices[0] ?? selected?.sizes[0] ?? null;
-  const typed = Number(typedPrice.replace(',', '.'));
-  const price = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : typed > 0 && typed <= 1000 ? Math.round(typed) : undefined;
-  const needsPrice = !!pub && !!selected && kind === 'pivo' && typeof chosenSize?.priceCzk !== 'number';
-
-  const homeLabel = {
-    lahvac: `${copy.bottle.toLowerCase()} ${formatVolume(500)}`,
-    plech: `${copy.can.toLowerCase()} ${formatVolume(500)}`,
-    jinak: copy.otherServing.toLowerCase(),
-  }[homeServing];
-  const sizeLabel =
-    home && kind === 'pivo'
-      ? homeLabel
-      : kind === 'pivo'
-        ? `${copy.draft} ${chosenSize?.volumeMl ? formatVolume(chosenSize.volumeMl) : ''}`.trim()
-        : chosenSize?.volumeMl
-          ? formatVolume(chosenSize.volumeMl)
-          : '';
-  const footerSub = nameMissing
-    ? copy.customNameMissing
-    : selected
-    ? [selected.name, sizeLabel, typeof price === 'number' && !home ? money(price) : null].filter(Boolean).join(' · ')
-    : undefined;
+  // A typed price belongs to one place, drink and size; any other pick starts from the menu again.
+  const priceKey = `${place ? placeKey(place) : ''}|${kind}|${selected?.id ?? ''}|${chosenSize?.volumeMl ?? ''}`;
+  const [seenPriceKey, setSeenPriceKey] = useState(priceKey);
+  if (priceKey !== seenPriceKey) {
+    setSeenPriceKey(priceKey);
+    setTypedPrice('');
+    setEditPrice(false);
+  }
+  const typedCzk = (typedPrice.trim() && parsePriceInputToCzk(typedPrice, currency)) || undefined;
+  const menuPrice = typeof chosenSize?.priceCzk === 'number' ? chosenSize.priceCzk : undefined;
+  const price = typedCzk ?? menuPrice;
+  const priceRow = !!pub && !!selected && kind === 'pivo';
+  const priceFor = copy.priceFor(chosenSize?.volumeMl ? formatVolume(chosenSize.volumeMl) : '');
+  // The field takes the price in the user's currency, like the pub menu form does.
+  const inCurrency = (czk: number) => String(Math.round((czk / (getCurrencyRate(currency) ?? 1)) * 100) / 100);
+  const currencyMark = formatPrice(0, currency).replace(/[\d\s.,]/g, '');
 
   const save = () => {
     if (!place) {
@@ -338,7 +335,7 @@ export function ZapisSheet() {
     <Sheet
       title={copy.whatDrink}
       top={140}
-      footer={<Button testID="drink-save" height={60} label={kind === 'pivo' ? copy.logBeer : copy.logOther[kind]} sub={footerSub} disabled={!selected} haptic={!place} onPress={save} />}
+      footer={<Button testID="drink-save" height={60} label={kind === 'pivo' ? copy.logBeer : copy.logOther[kind]} sub={nameMissing ? copy.customNameMissing : undefined} disabled={!selected} haptic={!place} onPress={save} />}
     >
       <Press onPress={() => router.push('/nv/zmenit-misto')} style={[s.row, { gap: 6, marginTop: -8 }]}>
         <Icon name={place?.kind === 'outside' ? OUTSIDE_ICON[place.context] : 'map-pin'} size={16} color={C.yellow} />
@@ -363,13 +360,12 @@ export function ZapisSheet() {
           setSel(null);
           setCustom(null);
           setVolume(null);
-          setTypedPrice('');
         }}
       />
       <View style={{ gap: 10 }}>
         {menu.loading && options.length === 0 ? <Spinner /> : null}
         {rows.map((r, i) => (
-          <View key={i} style={[s.row, { gap: 10 }]}>
+          <View key={i} style={[s.row, { gap: 10, alignItems: 'stretch' }]}>
             {r.map((o) =>
               o === null ? (
                 kind === 'pivo' ? (
@@ -387,7 +383,6 @@ export function ZapisSheet() {
                     setSel(o.id);
                     setCustom(null);
                     setVolume(null);
-                    setTypedPrice('');
                     if (o.servingType === 'can') setHomeServing('plech');
                   }}
                 />
@@ -423,12 +418,9 @@ export function ZapisSheet() {
                 <SizeCard
                   key={size.volumeMl}
                   title={size.volumeMl ? formatVolume(size.volumeMl) : ''}
-                  sub={typeof size.priceCzk === 'number' ? money(size.priceCzk) : copy.priceUnknown}
-                  icon={typeof size.priceCzk !== 'number'}
                   on={size.volumeMl === chosenSize?.volumeMl}
                   onPress={() => {
                     setVolume(size.volumeMl ?? null);
-                    setTypedPrice('');
                   }}
                 />
               ))
@@ -436,23 +428,62 @@ export function ZapisSheet() {
           </View>
         </View>
       ) : null}
-      {needsPrice ? (
-        <View style={[s.row, { height: 48, borderRadius: 16, paddingHorizontal: 14, gap: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.tint }]}>
-          <T s={15} w={600} c={C.muted} style={s.fill}>
-            {copy.priceLabel}
+      {priceRow && editPrice ? (
+        <Press
+          onPress={() => priceInput.current?.focus()}
+          accessible={false}
+          style={[s.row, { height: 48, borderRadius: 16, paddingHorizontal: 14, gap: 4, backgroundColor: C.card, borderWidth: 1, borderColor: C.yellowStrong }]}
+        >
+          <T s={15} w={500} c={C.text2} style={s.fill}>
+            {priceFor}
           </T>
           <TextInput
+            ref={priceInput}
             testID="drink-price"
+            accessibilityLabel={priceFor}
             value={typedPrice}
-            onChangeText={setTypedPrice}
-            keyboardType="number-pad"
-            keyboardAppearance="dark"
-            placeholder={copy.priceUnknown}
+            onChangeText={(v) => setTypedPrice(v.replace(/[^0-9.,]/g, '').slice(0, 6))}
+            onBlur={() => setEditPrice(false)}
+            placeholder={menuPrice !== undefined ? inCurrency(menuPrice) : '0'}
             placeholderTextColor={C.muted}
+            keyboardType="decimal-pad"
+            keyboardAppearance="dark"
+            returnKeyType="done"
+            autoFocus
             selectionColor={C.yellow}
-            style={[font(16, 700), { minWidth: 60, textAlign: 'right', padding: 0 }]}
+            cursorColor={C.yellow}
+            style={[font(15, 700), { minWidth: 32, textAlign: 'right', padding: 0 }]}
           />
-        </View>
+          <T s={15} w={700}>
+            {currencyMark}
+          </T>
+        </Press>
+      ) : priceRow ? (
+        <Row
+          title={
+            <T s={15} w={500} c={C.text2}>
+              {priceFor}
+            </T>
+          }
+          height={48}
+          last
+          onPress={() => {
+            if (!typedPrice && menuPrice !== undefined) setTypedPrice(inCurrency(menuPrice));
+            setEditPrice(true);
+          }}
+          trailing={
+            <View style={[s.row, { gap: 12 }]}>
+              {price !== undefined ? (
+                <T s={15} w={700}>
+                  {money(price)}
+                </T>
+              ) : null}
+              <T s={15} w={700} c={C.yellow}>
+                {price !== undefined ? copy.edit : copy.priceAdd}
+              </T>
+            </View>
+          }
+        />
       ) : null}
       {pub && selected?.fresh && typeof price === 'number' ? (
         <View style={[s.row, { gap: 10 }]}>
