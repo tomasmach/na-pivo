@@ -79,7 +79,8 @@ export function display(size: number, color: string = C.white, lineHeight = 1.05
 export const shadow = {
   raised: { boxShadow: 'inset 0 1px 0 #FFFFFF29, 0 6px 14px #00000073' },
   primary: { boxShadow: 'inset 0 1px 0 #FFFFFF73, 0 6px 16px #00000059' },
-  glass: { boxShadow: 'inset 0 1px 2px #FFFFFF33, 0 10px 28px #00000073' },
+  // No drop shadow: glass floats over the map, and a dark halo there reads as a dimmed bottom of the screen.
+  glass: { boxShadow: 'inset 0 1px 2px #FFFFFF33' },
   soft: { boxShadow: '0 2px 8px #00000066' },
 } as const;
 

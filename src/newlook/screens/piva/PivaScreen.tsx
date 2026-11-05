@@ -171,7 +171,7 @@ export function PivaScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: tabSpace + 30 }}
       >
-        <TabHeader title={p.title}>
+        <TabHeader tab="piva" title={p.title}>
           <IconButton icon="search" iconSize={20} onPress={() => router.push('/nv/hledat-pivo')} label={p.searchA11y} />
         </TabHeader>
         <Segmented

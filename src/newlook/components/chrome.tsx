@@ -149,7 +149,8 @@ export function TabAvatar({ tab }: { tab: string }) {
   const y = scrollOf(tab);
   const follow = useAnimatedStyle(() => ({
     opacity: interpolate(y.value, [AVATAR / 2, AVATAR / 2 + 16], [1, 0], 'clamp'),
-    transform: [{ translateY: -y.value }],
+    // Pulling down past the top stretches only the content; the header row stays put.
+    transform: [{ translateY: -Math.max(0, y.value) }],
   }));
   return (
     <Animated.View style={[{ position: 'absolute', top: insets.top + 8, right: SCREEN_X }, follow]}>
@@ -158,10 +159,12 @@ export function TabAvatar({ tab }: { tab: string }) {
   );
 }
 
-/** Big tab title row: title, optional actions, avatar. */
-export function TabHeader({ title, children }: { title: string; children?: React.ReactNode }) {
+/** Big tab title row: title, optional actions, avatar. Stays put while its tab is pulled down past the top. */
+export function TabHeader({ tab, title, children }: { tab: string; title: string; children?: React.ReactNode }) {
+  const y = scrollOf(tab);
+  const hold = useAnimatedStyle(() => ({ transform: [{ translateY: Math.min(0, y.value) }] }));
   return (
-    <View style={[s.row, { justifyContent: 'space-between', minHeight: 46 }]}>
+    <Animated.View style={[s.row, { justifyContent: 'space-between', minHeight: 46 }, hold]}>
       <D s={44} accessibilityRole="header" numberOfLines={1} style={{ flexShrink: 1 }}>
         {title}
       </D>
@@ -169,7 +172,7 @@ export function TabHeader({ title, children }: { title: string; children?: React
         {children}
         <AvatarSlot />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
