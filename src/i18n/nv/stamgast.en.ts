@@ -295,6 +295,13 @@ export const stamgastEn: typeof stamgastCs = {
   photoNeedNickname: 'FotoPivar needs a nickname.',
   photoNone: '-',
   renameDrink: 'Fix the name',
+  fixDrink: 'Fix',
+  rejectedWhy: (hint: string) => `This didn't save, it's only on your phone. ${hint}`,
+  fixName: 'Name',
+  fixVolume: 'Volume in ml',
+  fixPrice: 'Price in CZK',
+  rejectedCount: (n: number) => `${n} ${englishPlural(n, { one: 'entry', other: 'entries' })} to fix`,
+  rejectedShow: 'Show',
 
   statsEntry: 'All-time numbers',
   statsTitle: 'All-time numbers',

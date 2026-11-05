@@ -8,12 +8,12 @@ import { cautiousCeil, formatClock, formatPromile, formatZeroAt, isMorning, useA
 import { decodeGeohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import { BODY_LIMITS, drinkAbv, isBodyValueValid, type BodyProfile, type BodySex } from '@/drinks/alcoholEstimate';
-import { isContextPubKey } from '@/drinks/drinkTypes';
+import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useNowTick } from '@/friends/useNowTick';
 import { intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useTallyStore, type TallyDrink } from '@/stores/tallyStore';
-import { deleteSessionDrink, renameSessionDrinks } from '@/myBeers/drinkEdits';
+import { rejectedFieldOf, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
+import { deleteSessionDrink, fixSessionDrink, renameSessionDrinks } from '@/myBeers/drinkEdits';
 import { formatPrice } from '@/utils/currency';
 
 import { BackHeader, Screen } from '../../components/chrome';
@@ -24,7 +24,7 @@ import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, Segmented, T }
 import { C, font, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { PubVerdictSection } from './PubVerdict';
-import { beerTally, dateOfDay, dayKeyOf, dayString, hourlyTempo, minutesBetween, nightsOf } from './eveningData';
+import { beerTally, canFixRejectedField, dateOfDay, dayKeyOf, dayString, hourlyTempo, minutesBetween, nightsOf } from './eveningData';
 import { durationLabel, nightDayLabel, servingLine } from './stamgastFormat';
 import { NO_VALUE } from '../../format';
 import { useBackfillPick, useCountPlace } from './placeStore';
@@ -313,16 +313,38 @@ export function DopsatSheet() {
   );
 }
 
+/** The fix-form line for a refused field the form can change. */
+function rejectedFieldHint(field: string | undefined): string | undefined {
+  if (field === 'beer.volume_ml') return t.myBeers.fixDrinkHintVolume;
+  if (field === 'beer.price_czk') return t.myBeers.fixDrinkHintPrice;
+  if (field === 'beer.name') return t.myBeers.fixDrinkHintName;
+  return undefined;
+}
+
+function rejectedLine(drink: TallyDrink): string {
+  const field = rejectedFieldOf(drink);
+  if (!canFixRejectedField(field)) return t.myBeers.drinkRejectedRemoveOnly;
+  const hint = rejectedFieldHint(field);
+  return hint ? t.nv.stamgast.rejectedWhy(hint) : t.myBeers.drinkRejected;
+}
+
 function drinkActions(router: ReturnType<typeof useRouter>, day: string, startedAt: string, drink: TallyDrink, lastOne: boolean) {
   const old = t.myBeers;
+  const rejected = drink.syncStatus === 'rejected';
+  const edit = () => router.push({ pathname: '/nv/opravit-pivo', params: { day, id: drink.id } });
   const remove = () => {
     if (deleteSessionDrink(startedAt, drink.id) && lastOne) nvBack(router);
   };
   dialog({
     title: drink.beerName,
+    ...(rejected ? { body: rejectedLine(drink) } : {}),
     actions: [
       { label: old.editDrinkCancel },
-      { label: t.nv.stamgast.renameDrink, kind: 'raised', onPress: () => router.push({ pathname: '/nv/opravit-pivo', params: { day, id: drink.id } }) },
+      ...(!rejected
+        ? [{ label: t.nv.stamgast.renameDrink, kind: 'raised' as const, onPress: edit }]
+        : canFixRejectedField(rejectedFieldOf(drink))
+          ? [{ label: t.nv.stamgast.fixDrink, kind: 'raised' as const, onPress: edit }]
+          : []),
       {
         label: old.deleteDrinkConfirm,
         kind: 'danger',
@@ -337,7 +359,56 @@ function drinkActions(router: ReturnType<typeof useRouter>, day: string, started
   });
 }
 
-/** Renames one logged drink of a past or running evening. */
+function FixDrinkSheet({ startedAt, drink }: { startedAt: string; drink: TallyDrink }) {
+  const router = useRouter();
+  const old = t.myBeers;
+  const copy = t.nv.stamgast;
+  const field = rejectedFieldOf(drink);
+  const hint = rejectedFieldHint(field);
+  const [name, setName] = useState(drink.beerName);
+  const [volume, setVolume] = useState(typeof drink.volumeMl === 'number' ? String(drink.volumeMl) : '');
+  const [price, setPrice] = useState(typeof drink.priceCzk === 'number' ? String(drink.priceCzk) : '');
+  const priceCzk = price ? Number(price) : undefined;
+  const volumeMl = Number(volume) > 0 ? Number(volume) : undefined;
+  const problem = !name.trim() ? old.editDrinkEmpty : priceCzk !== undefined && (priceCzk < 1 || priceCzk > 1000) ? old.fixDrinkHintPrice : null;
+  const save = () => {
+    if (problem) return;
+    const fix = {
+      beerName: name.trim(),
+      drinkType: normalizeDrinkType(drink.drinkType),
+      ...(priceCzk !== undefined ? { priceCzk } : {}),
+      ...(volumeMl !== undefined ? { volumeMl } : {}),
+      ...(drink.servingType ? { servingType: drink.servingType } : {}),
+    };
+    if (fixSessionDrink(startedAt, drink, fix)) toast({ kind: 'saved', title: old.fixDrinkSaved, icon: 'pencil' });
+    nvBack(router);
+  };
+  return (
+    <Sheet title={old.fixDrinkTitle} top={150} footer={<Button testID="drink-fix-save" label={old.fixDrinkSubmit} sub={problem ?? undefined} disabled={!!problem} onPress={save} />}>
+      {hint ? (
+        <View style={[s.row, { gap: 8, alignItems: 'flex-start' }]}>
+          <Icon name="circle-alert" size={16} color={C.yellow} />
+          <T s={14} c={C.text2} lh={1.4} style={s.fill}>
+            {hint}
+          </T>
+        </View>
+      ) : null}
+      <Field label={copy.fixName}>
+        <Input testID="drink-fix-name" value={name} onChangeText={setName} placeholder={old.editDrinkPlaceholder} maxLength={80} autoFocus={!field || field === 'beer.name'} />
+      </Field>
+      <View style={[s.row, { gap: 10 }]}>
+        <Field label={copy.fixVolume} style={s.fill}>
+          <Input testID="drink-fix-volume" value={volume} onChangeText={(v) => setVolume(v.replace(/[^0-9]/g, '').slice(0, 4))} keyboardType="number-pad" autoFocus={field === 'beer.volume_ml'} />
+        </Field>
+        <Field label={copy.fixPrice} style={s.fill}>
+          <Input testID="drink-fix-price" value={price} onChangeText={(v) => setPrice(v.replace(/[^0-9]/g, '').slice(0, 4))} keyboardType="number-pad" autoFocus={field === 'beer.price_czk'} />
+        </Field>
+      </View>
+    </Sheet>
+  );
+}
+
+/** Renames one logged drink of a past or running evening; a drink the server refused gets the fix form. */
 export function OpravitPivoSheet() {
   const router = useRouter();
   const old = t.myBeers;
@@ -347,6 +418,7 @@ export function OpravitPivoSheet() {
   const drink = session?.drinks.find((d) => d.id === id);
   const [name, setName] = useState(drink?.beerName ?? '');
   if (!session || !drink) return null;
+  if (drink.syncStatus === 'rejected') return <FixDrinkSheet startedAt={session.startedAt} drink={drink} />;
   const next = name.trim();
   return (
     <Sheet title={old.editDrinkTitle} scroll={false}>
@@ -467,7 +539,23 @@ export function EveningDetailScreen() {
               }
               title={drink.beerName}
               titleWeight={700}
-              sub={[session?.pubName, servingLine(drink, inPub)].filter(Boolean).join(' · ')}
+              sub={
+                drink.syncStatus === 'rejected' ? (
+                  <View style={{ gap: 4 }}>
+                    <T s={13} w={500} c={C.muted}>
+                      {[session?.pubName, servingLine(drink, inPub)].filter(Boolean).join(' · ')}
+                    </T>
+                    <View testID="drink-rejected" style={[s.row, { gap: 6, alignItems: 'flex-start' }]}>
+                      <Icon name="circle-alert" size={14} color={C.yellow} />
+                      <T s={13} w={600} c={C.text2} style={s.fill}>
+                        {rejectedLine(drink)}
+                      </T>
+                    </View>
+                  </View>
+                ) : (
+                  [session?.pubName, servingLine(drink, inPub)].filter(Boolean).join(' · ')
+                )
+              }
               trailing={
                 typeof drink.priceCzk === 'number' ? (
                   <T s={15} w={700}>

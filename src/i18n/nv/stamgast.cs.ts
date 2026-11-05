@@ -315,6 +315,13 @@ export const stamgastCs = {
   photoNeedNickname: 'Do FotoPivaře potřebuješ přezdívku.',
   photoNone: '-',
   renameDrink: 'Opravit název',
+  fixDrink: 'Opravit',
+  rejectedWhy: (hint: string) => `Neuložilo se, mám to jen v telefonu. ${hint}`,
+  fixName: 'Název',
+  fixVolume: 'Objem v ml',
+  fixPrice: 'Cena v Kč',
+  rejectedCount: (n: number) => `${n} ${czechPlural(n, { one: 'zápis', few: 'zápisy', many: 'zápisů' })} k opravě`,
+  rejectedShow: 'Ukaž',
 
   // Lifetime numbers
   statsEntry: 'Čísla za celou dobu',

@@ -34,6 +34,25 @@ export const isBeer = (drink: TallyDrink) => normalizeDrinkType(drink.drinkType)
 
 const atMs = (drink: TallyDrink) => Date.parse(drink.at);
 
+const isRejected = (drink: TallyDrink) => drink.syncStatus === 'rejected';
+
+/** The newest night holding drinks the server refused, and how many it holds. */
+export function nightToFix(nights: readonly Night[]): { night: Night; count: number } | null {
+  const night = nights.find((n) => n.drinks.some(isRejected));
+  return night ? { night, count: night.drinks.filter(isRejected).length } : null;
+}
+
+/** Place and time come from the evening, so the fix form cannot change a rejection there. */
+const UNFIXABLE_REJECTED_FIELDS = new Set([
+  'name', 'lat', 'lng', 'city', 'external_id', 'place_context', 'drank_at',
+  'client_id', 'evening_client_id', 'party_code',
+]);
+
+/** Whether the fix form can repair a rejection of `field`. Unknown means yes. */
+export function canFixRejectedField(field: string | undefined): boolean {
+  return !field || !UNFIXABLE_REJECTED_FIELDS.has(field);
+}
+
 export function dayKeyOf(date: Date): string {
   return drinkingDayKey(date);
 }
