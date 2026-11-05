@@ -12,6 +12,8 @@ const SIZE = 320;
 const CX = SIZE / 2;
 const RANGE_M = 300;
 const FACE_R = 96;
+const NEEDLE_TAIL_R = 20;
+const NEEDLE_MIN_R = 44;
 
 export type LatLng = { latitude: number; longitude: number };
 /** Anything the dial can place: a pub, a tour stop or a friend's table. */
@@ -58,13 +60,18 @@ export function Dial({
 }) {
   const origin = from ?? ILLUSTRATION_ORIGIN;
   const tb = target ? bearing(origin, target.coord) : 0;
-  const tr = target ? Math.min(target.distance / RANGE_M, 1.05) * (FACE_R - 13) : 0;
+  // A pub a few dozen metres away would put the head inside the hub and behind the tail, so the needle keeps a minimum reach.
+  const tr = target ? Math.max(Math.min(target.distance / RANGE_M, 1.05) * (FACE_R - 13), NEEDLE_MIN_R) : 0;
   const tp = polar(tr, tb);
-  const tail = polar(28, tb + 180);
+  const tail = polar(NEEDLE_TAIL_R, tb + 180);
   const dist = target ? formatDistance(target.distance) : null;
   const faceStyle = useAnimatedStyle(() => {
     const deg = heading?.value;
     return { transform: [{ rotate: `${typeof deg === 'number' ? -deg : 0}deg` }] };
+  });
+  const uprightStyle = useAnimatedStyle(() => {
+    const deg = heading?.value;
+    return { transform: [{ rotate: `${typeof deg === 'number' ? deg : 0}deg` }] };
   });
   return (
     <View style={{ width: SIZE, height: SIZE, alignSelf: 'center' }}>
@@ -111,13 +118,6 @@ export function Dial({
           <SvgText x={227} y={238} fill="#FFFFFF38" fontSize={8} fontFamily="SofiaSans-Bold" textAnchor="middle">
             {`${RANGE_M} m`}
           </SvgText>
-          {target && !dim ? (
-            <G>
-              <Line x1={tail.x} y1={tail.y} x2={tp.x} y2={tp.y} stroke={C.yellow} strokeWidth={3} strokeLinecap="round" />
-              <Circle cx={tp.x} cy={tp.y} r={11} fill="#FFC40033" />
-              <Circle cx={tp.x} cy={tp.y} r={6} fill={C.yellow} stroke={C.black} strokeWidth={2} />
-            </G>
-          ) : null}
           {!centerIcon ? <Circle cx={CX} cy={CX} r={7} fill={C.black} stroke={C.yellow} strokeWidth={3} /> : null}
         </Svg>
         {!dim
@@ -125,9 +125,9 @@ export function Dial({
               const r = Math.min(p.distance / RANGE_M, 1) * (FACE_R - 10);
               const pt = polar(r, bearing(origin, p.coord));
               return (
-                <View key={p.id} style={{ position: 'absolute', left: pt.x - 6.5, top: pt.y - 6.5 }}>
+                <Animated.View key={p.id} style={[{ position: 'absolute', left: pt.x - 6.5, top: pt.y - 6.5 }, uprightStyle]}>
                   <Icon name="beer" size={13} color="#FFFFFF73" />
-                </View>
+                </Animated.View>
               );
             })
           : null}
@@ -149,6 +149,19 @@ export function Dial({
             {dist.unit}
           </T>
         </View>
+      ) : null}
+      {/* Above the distance label, so a pub behind you still shows where the needle points. */}
+      {target && !dim ? (
+        <Animated.View style={[{ position: 'absolute', top: 0, left: 0, width: SIZE, height: SIZE }, faceStyle]} pointerEvents="none">
+          <Svg width={SIZE} height={SIZE}>
+            <G>
+              <Line x1={tail.x} y1={tail.y} x2={tp.x} y2={tp.y} stroke={C.yellow} strokeWidth={3} strokeLinecap="round" />
+              <Circle cx={tp.x} cy={tp.y} r={11} fill="#FFC40033" />
+              <Circle cx={tp.x} cy={tp.y} r={6} fill={C.yellow} stroke={C.black} strokeWidth={2} />
+            </G>
+            {!centerIcon ? <Circle cx={CX} cy={CX} r={7} fill={C.black} stroke={C.yellow} strokeWidth={3} /> : null}
+          </Svg>
+        </Animated.View>
       ) : null}
     </View>
   );
