@@ -132,5 +132,8 @@ async function showSavedCopies(generation: number): Promise<void> {
 void showSavedCopies(snapshotGeneration());
 
 usePartaStore.subscribe((state, previous) => {
-  if (state.plans && state.plans !== previous.plans) void savePartaPlansSnapshot(state.plans, state.generation);
+  // Live pings come back with the dashboard; a saved one would reopen as an editable plan.
+  if (state.plans && state.plans !== previous.plans) {
+    void savePartaPlansSnapshot(state.plans.filter((p) => !state.pingIds.includes(p.id)), state.generation);
+  }
 });

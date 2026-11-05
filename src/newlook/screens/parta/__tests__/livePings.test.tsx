@@ -3,6 +3,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 
 import { endFriendPubActivity, fetchFriendsDashboard, parseActivity, respondToActivity, type RawFriendActivity } from '@/data/friendsClient';
 import { enqueueFriendOp } from '@/data/friendsQueue';
+import { savePartaPlansSnapshot } from '@/data/friendsSnapshot';
 import { fetchPartaPlans, fetchPlanDetail, parsePlanDetail } from '@/data/partaPlansClient';
 import { t } from '@/i18n';
 import { nvBack } from '@/newlook/navigation';
@@ -38,7 +39,12 @@ jest.mock('../PartaPhotos', () => ({ FriendPhotosSection: () => null, PartaPhoto
 jest.mock('../../stamgast/placeStore', () => ({ useNvPlaceStore: { getState: () => ({ setOutside: jest.fn() }) } }));
 jest.mock('@/newlook/components/Icon', () => ({ Icon: () => null }));
 jest.mock('@/newlook/ui/store', () => ({ dialog: jest.fn(), toast: jest.fn() }));
-jest.mock('@/data/friendsSnapshot', () => ({ loadFriendsDashboardSnapshot: jest.fn(async () => null), snapshotGeneration: () => 0 }));
+jest.mock('@/data/friendsSnapshot', () => ({
+  loadFriendsDashboardSnapshot: jest.fn(async () => null),
+  loadPartaPlansSnapshot: jest.fn(async () => null),
+  savePartaPlansSnapshot: jest.fn(async () => undefined),
+  snapshotGeneration: () => 0,
+}));
 jest.mock('@/data/friendsQueue', () => ({
   enqueueFriendOp: jest.fn(async () => undefined),
   isRetriableFriendError: (result: { code: string }) => result.code === 'network',
@@ -138,6 +144,8 @@ describe('live pub pings in Parta', () => {
     const state = usePartaStore.getState();
     expect(state.plans?.map((plan) => plan.id).sort()).toEqual(['ping-friend', 'ping-mine', 'plan-now']);
     expect(state.pingIds.sort()).toEqual(['ping-friend', 'ping-mine']);
+    const saved = (savePartaPlansSnapshot as jest.Mock).mock.calls.at(-1)?.[0] as { id: string }[];
+    expect(saved.map((plan) => plan.id)).toEqual(['plan-now']);
   });
 
   it("answers a friend's ping with Jdu and keeps the answer offline", async () => {
