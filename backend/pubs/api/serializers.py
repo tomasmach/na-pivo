@@ -497,6 +497,15 @@ _CLIENT_EVENT_SCREEN_NAMES = {
     "my_added_pubs",
     "profile_photos",
     "pub_page",
+    # New-look screens without an older equivalent.
+    "beer_rankings",
+    "search",
+    "stats",
+    "receipt",
+    "watched_beers",
+    "plan_detail",
+    "new_invite",
+    "tour",
 }
 # Mirror of UI_INTERACTION_TARGETS in src/data/uxTelemetry.ts. A target missing
 # here is silently dropped, which is how a week of 3.0 taps landed as an unknown
