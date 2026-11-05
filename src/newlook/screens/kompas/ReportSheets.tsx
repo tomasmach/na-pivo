@@ -52,7 +52,7 @@ export function NesediSheet() {
     });
   };
   return (
-    <Sheet title={L.wrongTitle} top={480} scroll={false}>
+    <Sheet title={L.wrongTitle} scroll={false}>
       <T s={16} c={C.text2} lh={1.4} style={{ marginTop: -8 }}>
         {L.wrongBody(pub.name)}
       </T>
@@ -90,7 +90,7 @@ export function OpravitNazevSheet() {
   if (!pub) return null;
   const next = name.trim().slice(0, 200);
   return (
-    <Sheet title={L.renameTitle} top={560} scroll={false}>
+    <Sheet title={L.renameTitle} scroll={false}>
       <T s={16} c={C.text2} lh={1.4} style={{ marginTop: -8 }}>
         {L.renameBody(pub.name)}
       </T>

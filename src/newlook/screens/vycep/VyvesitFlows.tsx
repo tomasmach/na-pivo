@@ -161,7 +161,7 @@ export function VyvesitSheet() {
 
   if (!night) {
     return (
-      <Sheet title={t.nv.vycep.publishTitle} top={330} scroll={false} footer={<Button label={t.nv.vycep.logBeer} icon="plus" onPress={() => router.replace('/nv/stamgast')} />}>
+      <Sheet title={t.nv.vycep.publishTitle} scroll={false} footer={<Button label={t.nv.vycep.logBeer} icon="plus" onPress={() => router.replace('/nv/stamgast')} />}>
         <View style={{ gap: 6 }}>
           <T s={17} w={700}>
             {t.nv.vycep.nothingTitle}
