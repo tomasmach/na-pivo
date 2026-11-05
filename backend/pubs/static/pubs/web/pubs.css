@@ -63,8 +63,6 @@
 .np-pubs-section { display: grid; gap: 14px; margin-top: 8px; }
 .np-pubs-section__title { font-size: 17px; font-weight: 700; }
 .np-pubs-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-.np-pubs-tiles .np-tile span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.np-pubs-tile__count { color: var(--np-muted); font-size: 12px; white-space: nowrap; }
 
 /* Cities index */
 .np-pubs-cities { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 40px; }
@@ -75,6 +73,16 @@
 .np-pubs-city:hover { background: var(--np-control); }
 .np-pubs-city__name { font: 800 40px/0.95 var(--np-display); overflow-wrap: anywhere; }
 .np-pubs-city__count { color: var(--np-muted); font-size: 14px; }
+.np-pubs-jump { display: flex; flex-wrap: wrap; gap: 6px; }
+.np-pubs-jump .np-tile { justify-content: center; min-width: 40px; padding: 0 10px; font-weight: 600; }
+.np-pubs-index { columns: 5 200px; column-gap: 40px; margin-top: 12px; }
+.np-pubs-letter { break-inside: avoid; margin-bottom: 22px; scroll-margin-top: 24px; }
+.np-pubs-letter__title { margin-bottom: 4px; color: var(--np-yellow); font: 800 30px/1 var(--np-display); }
+.np-pubs-letter ul { margin: 0; padding: 0; list-style: none; }
+.np-pubs-index__city { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; color: var(--np-text-2); }
+.np-pubs-index__city:hover span:first-child { text-decoration: underline; text-underline-offset: 3px; }
+.np-pubs-index__city:hover .np-pubs-index__count { color: var(--np-text-2); }
+.np-pubs-index__count { color: var(--np-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 
 .np-map__caption { padding: 12px 18px 14px; border-top: 1px solid var(--np-hairline); font-size: 13px; font-weight: 600; }
 
@@ -175,6 +183,8 @@
   .np-pubs-city { min-height: 104px; padding: 16px; }
   .np-pubs-city__name { font-size: 30px; }
   .np-pubs-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .np-pubs-jump .np-tile { min-width: 44px; min-height: 44px; }
+  .np-pubs-index__city { padding: 11px 0; }
   .np-map--pub .np-map__svg { aspect-ratio: 4 / 3; height: auto; }
 
   /* Pub page: one column, the app button right under the map. */

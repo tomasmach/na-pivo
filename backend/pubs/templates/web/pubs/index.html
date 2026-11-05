@@ -12,9 +12,15 @@
 <div class="np-pubs-cities">{% for city in big %}
   <a class="np-pubs-city" href="{{ city.url }}"><span class="np-pubs-city__name">{{ city.label }}</span><span class="np-pubs-city__count">{{ city.pubs }}</span></a>{% endfor %}
 </div>
-{% if rest %}<section class="np-pubs-section">
+{% if letters %}<section class="np-pubs-section">
   <h2 class="np-pubs-section__title">{% translate "Další města" %}</h2>
-  <div class="np-pubs-tiles">{% for city in rest %}<a class="np-tile" href="{{ city.url }}"><span>{{ city.label }}</span><span class="np-pubs-tile__count">{{ city.pubs }}</span></a>{% endfor %}</div>
+  <nav class="np-pubs-jump" aria-label="{% translate "Města podle písmen" %}">{% for group in letters %}<a class="np-tile" href="#mesta-{{ forloop.counter }}">{{ group.letter }}</a>{% endfor %}</nav>
+  <div class="np-pubs-index">{% for group in letters %}
+    <div class="np-pubs-letter" id="mesta-{{ forloop.counter }}">
+      <h3 class="np-pubs-letter__title">{{ group.letter }}</h3>
+      <ul>{% for city in group.cities %}<li><a class="np-pubs-index__city" href="{{ city.url }}" aria-label="{{ city.label }}, {{ city.pubs }}"><span>{{ city.label }}</span><span class="np-pubs-index__count">{{ city.count }}</span></a></li>{% endfor %}</ul>
+    </div>{% endfor %}
+  </div>
 </section>{% endif %}
 {% else %}
 {% translate "Zatím tu nejsou žádné hospody" as empty_title %}

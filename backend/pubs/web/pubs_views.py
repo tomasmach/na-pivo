@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from datetime import datetime
 from urllib.parse import quote, urlencode
 
@@ -184,6 +185,35 @@ def _others(limit: int = 8, skip: str = "") -> list[dict]:
     ][:limit]
 
 
+# Czech alphabet: Č, Ř, Š and Ž follow their plain letter, Ch follows H; other accents sort with the plain letter.
+_OWN_LETTERS = {"č": "c~", "ř": "r~", "š": "s~", "ž": "z~"}
+_LETTER_LABELS = {"c~": "Č", "r~": "Ř", "s~": "Š", "z~": "Ž", "h~": "Ch"}
+
+
+def _czech_letters(name: str) -> list[str]:
+    lowered, letters, index = name.casefold(), [], 0
+    while index < len(lowered):
+        if lowered.startswith("ch", index):
+            letters.append("h~")
+            index += 2
+            continue
+        char = lowered[index]
+        letters.append(_OWN_LETTERS.get(char) or unicodedata.normalize("NFD", char)[0])
+        index += 1
+    return letters
+
+
+def _by_letter(cities: list[dict]) -> list[dict]:
+    groups: list[dict] = []
+    for city in sorted(cities, key=lambda city: (_czech_letters(city["label"]), city["label"])):
+        first = (_czech_letters(city["label"]) or [""])[0]
+        letter = _LETTER_LABELS.get(first, first.upper())
+        if not groups or groups[-1]["letter"] != letter:
+            groups.append({"letter": letter, "cities": []})
+        groups[-1]["cities"].append(city)
+    return groups
+
+
 def _missing(request: HttpRequest, kind: str) -> HttpResponse:
     title = gettext("Tohle město neznám") if kind == "city" else gettext("Tuhle hospodu neznám")
     return render_page(
@@ -207,7 +237,7 @@ def pubs_index(request: HttpRequest) -> HttpResponse:
     cities = pubs_data.cities_by_size()
     total = sum(city["pubs"] for city in cities)
     shown = [
-        {"label": city["name"], "url": web_reverse("web-pubs-city", city=city["slug"]), "pubs": _pubs_count(city["pubs"])}
+        {"label": city["name"], "url": web_reverse("web-pubs-city", city=city["slug"]), "pubs": _pubs_count(city["pubs"]), "count": city["pubs"]}
         for city in cities[:120]
     ]
     crumbs = [("Na pivo", web_reverse("home")), (gettext("Hospody"), web_reverse("web-pubs"))]
@@ -222,7 +252,7 @@ def pubs_index(request: HttpRequest) -> HttpResponse:
         "web/pubs/index.html",
         {
             "big": shown[:8],
-            "rest": shown[8:],
+            "letters": _by_letter(shown[8:]),
             "lead": lead,
             "crumbs": _crumbs(crumbs),
             "structured_data": ld_json({"@graph": [_breadcrumb_data(crumbs)]}),
