@@ -46,7 +46,7 @@ import {
   type VisitedPubSummary,
 } from './mapModel';
 
-const VIEWPORT_DEBOUNCE_MS = 650;
+const VIEWPORT_DEBOUNCE_MS = 250;
 const LIVE_REFRESH_MS = 35_000;
 const IDLE_LIVE_REFRESH_MS = 3 * 60_000;
 /** The map draws its own native location dot, so JS only needs one fix to
