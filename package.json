@@ -136,8 +136,8 @@
     "image-size": "2.0.4"
   },
   "allowScripts": {
-    "@parcel/watcher": false,
-    "protobufjs": false,
-    "unrs-resolver": false
+    "@parcel/watcher": true,
+    "protobufjs": true,
+    "unrs-resolver": true
   }
 }
