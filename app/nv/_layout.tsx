@@ -62,6 +62,10 @@ export default function NewLookLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'slide_from_right' }}>
         <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+        <Stack.Screen
+          name="hospoda/[id]"
+          options={({ route }) => ({ animation: (route.params as { via?: string } | undefined)?.via === 'card' ? 'slide_from_bottom' : 'slide_from_right' })}
+        />
         <Stack.Screen name="prichod" options={{ animation: 'fade' }} />
         <Stack.Screen name="hledani" options={{ animation: 'fade' }} />
         <Stack.Screen name="hledat-pivo" options={{ animation: 'fade' }} />
