@@ -147,22 +147,36 @@
   });
 
   // Toggles save on change and flip back when the server says no.
-  document.addEventListener("change", async function (e) {
-    var input = e.target.closest("input[data-toggle], select[data-toggle]");
+  // Radios stay enabled so arrow keys keep focus; a short pause saves only the choice the user stops on.
+  // Radio saves go one after another, so the server and the last saved value always follow click order.
+  document.addEventListener("change", function (e) {
+    var input = e.target.closest("input[data-toggle]");
     if (!input) return;
     var scope = input.closest("[data-scope]");
+    if (input.type !== "radio") return save(input, scope);
+    var change = scope.changes = (scope.changes || 0) + 1;
+    clearTimeout(scope.saveTimer);
+    scope.saveTimer = setTimeout(function () {
+      var run = function () { return save(input, scope, change); };
+      scope.saving = (scope.saving || Promise.resolve()).then(run, run);
+    }, 400);
+  });
+  async function save(input, scope, change) {
     var value = input.type === "checkbox" ? input.checked : input.value;
     var body = {};
     body[input.name] = value;
-    input.disabled = true;
+    if (input.type === "checkbox") input.disabled = true;
     var result = await send(input.dataset.toggle, { method: "PATCH", body: body, ugc: "ugc" in input.dataset && value === true });
     input.disabled = false;
+    if (input.type === "radio" && result.ok) scope.dataset.saved = value;
+    // An older radio save must not touch the UI after the user picked something newer.
+    if (input.type === "radio" && scope.changes !== change) return;
     if (result.ok) return showError(scope, "");
     if (input.type === "checkbox") input.checked = !value;
-    else input.value = input.dataset.saved;
+    else scope.querySelector('input[value="' + scope.dataset.saved + '"]').checked = true;
     showError(scope, message(result));
-  });
-  document.querySelectorAll("select[data-toggle]").forEach(function (s) { s.dataset.saved = s.value; });
+  }
+  document.querySelectorAll("input[type=radio][data-toggle]:checked").forEach(function (r) { r.closest("[data-scope]").dataset.saved = r.value; });
 
   // Výčep: a round for somebody else's night, on and off.
   document.querySelectorAll("[data-round]").forEach(function (btn) {

@@ -247,10 +247,6 @@
 .npa-switch input:checked + span::after { transform: translateX(20px); background: var(--np-bg); }
 .npa-switch input:focus-visible + span { outline: 2px solid var(--np-yellow); outline-offset: 2px; }
 .npa-switch input:disabled + span { opacity: 0.5; }
-.npa-select {
-  min-height: 40px; padding: 0 12px; border: 1px solid var(--np-hairline); border-radius: var(--np-pill);
-  background: var(--np-control); color: var(--np-white); font-size: 14px;
-}
 .npa-provider { display: flex; align-items: center; gap: 10px; }
 .npa-linkbtn { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; text-align: left; }
 .npa-row-btn { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }

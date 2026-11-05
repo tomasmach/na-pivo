@@ -101,7 +101,8 @@ def test_invite_opens_the_app_on_a_phone_and_offers_the_stores_on_a_computer(cli
 
     assert re.search(r'class="[^"]*np-on-phone[^"]*" href="napivo://parta/pozvanka\?code=ABC123"', html)
     desktop = html[html.index('class="np-on-desktop"'):]
-    assert "apps.apple.com" in desktop[:600] and "play.google.com" in desktop[:900]
+    desktop = desktop[: desktop.index("</div>")]
+    assert "apps.apple.com" in desktop and "play.google.com" in desktop
 
 
 def test_public_profile_names_the_mapper_level(client):

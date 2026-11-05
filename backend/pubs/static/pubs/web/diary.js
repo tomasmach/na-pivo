@@ -66,7 +66,6 @@
     var total = form.querySelector("[data-total]");
     var status = form.querySelector("[data-status]");
     var submit = form.querySelector("[data-submit]");
-    var names = document.getElementById("dy-beer-names");
     var rowTemplate = document.getElementById("dy-beer-row");
     var pubs = {};
     data.pubs.forEach(function (pub) { pubs["pub:" + pub.key] = pub; });
@@ -178,6 +177,8 @@
       var input = row.querySelector("[data-name]");
       var id = "dy-beer-" + list.children.length;
       input.id = id;
+      input.setAttribute("aria-controls", id + "-suggest");
+      row.querySelector("[data-suggest]").id = id + "-suggest";
       row.querySelector("label").setAttribute("for", id);
       input.value = name || "";
       row.querySelector("[data-price]").value = price || "";
@@ -199,21 +200,97 @@
     list.addEventListener("input", refreshTotal);
 
     var suggestTimer = null;
-    list.addEventListener("input", function (event) {
-      if (!event.target.matches("[data-name]")) return;
+    var suggestSeq = 0;
+
+    function closeSuggest(input) {
       clearTimeout(suggestTimer);
-      var q = event.target.value.trim();
-      if (q.length < 2) return;
+      suggestSeq++;
+      var box = input.closest("[data-beer]").querySelector("[data-suggest]");
+      box.hidden = true;
+      box.textContent = "";
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+    }
+
+    function showSuggest(input, suggestions) {
+      var box = input.closest("[data-beer]").querySelector("[data-suggest]");
+      var typed = input.value.trim().toLowerCase();
+      var seen = {};
+      box.textContent = "";
+      suggestions.forEach(function (s) {
+        var key = s.name.toLowerCase();
+        if (seen[key] || key === typed) return;
+        seen[key] = true;
+        var option = document.createElement("div");
+        option.className = "dy-suggest__item";
+        option.id = box.id + "-" + box.children.length;
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", "false");
+        option.textContent = s.name;
+        box.appendChild(option);
+      });
+      box.hidden = !box.children.length;
+      input.setAttribute("aria-expanded", box.hidden ? "false" : "true");
+      input.removeAttribute("aria-activedescendant");
+      // On a phone the list would otherwise open under the tab bar.
+      if (!box.hidden) box.scrollIntoView({ block: "nearest" });
+    }
+
+    function pickSuggestion(input, option) {
+      input.value = option.textContent;
+      closeSuggest(input);
+      refreshTotal();
+    }
+
+    list.addEventListener("input", function (event) {
+      var input = event.target;
+      if (!input.matches("[data-name]")) return;
+      clearTimeout(suggestTimer);
+      var q = input.value.trim();
+      if (q.length < 2) { closeSuggest(input); return; }
+      var seq = ++suggestSeq;
       suggestTimer = setTimeout(async function () {
         var res = await window.npApi("/v1/beer-brands/suggest?limit=6&q=" + encodeURIComponent(q));
-        if (!res.ok || !res.data) return;
-        names.textContent = "";
-        res.data.suggestions.forEach(function (s) {
-          var option = document.createElement("option");
-          option.value = s.name;
-          names.appendChild(option);
-        });
+        if (seq !== suggestSeq || document.activeElement !== input) return;
+        showSuggest(input, res.ok && res.data ? res.data.suggestions : []);
       }, 220);
+    });
+
+    list.addEventListener("keydown", function (event) {
+      var input = event.target;
+      if (!input.matches("[data-name]")) return;
+      var box = input.closest("[data-beer]").querySelector("[data-suggest]");
+      if (box.hidden) {
+        if (event.key === "Escape" || event.key === "Enter") closeSuggest(input);
+        return;
+      }
+      var options = Array.prototype.slice.call(box.children);
+      var active = box.querySelector('[aria-selected="true"]');
+      var index = options.indexOf(active);
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        index = event.key === "ArrowDown" ? (index + 1) % options.length : (index <= 0 ? options.length : index) - 1;
+        options.forEach(function (o, i) { o.setAttribute("aria-selected", i === index ? "true" : "false"); });
+        input.setAttribute("aria-activedescendant", options[index].id);
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        if (active) pickSuggestion(input, active);
+        else closeSuggest(input);
+      } else if (event.key === "Escape") {
+        closeSuggest(input);
+      }
+    });
+
+    // mousedown keeps focus in the input, so blur only fires when the user leaves the field.
+    list.addEventListener("mousedown", function (event) {
+      if (event.target.closest("[data-suggest]")) event.preventDefault();
+    });
+    list.addEventListener("click", function (event) {
+      var option = event.target.closest(".dy-suggest__item");
+      if (option) pickSuggestion(option.closest("[data-beer]").querySelector("[data-name]"), option);
+    });
+    list.addEventListener("focusout", function (event) {
+      if (event.target.matches("[data-name]")) closeSuggest(event.target);
     });
 
     form.querySelector("[data-add-beer]").addEventListener("click", function () { addRow("", "").focus(); });

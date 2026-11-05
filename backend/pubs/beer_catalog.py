@@ -489,9 +489,12 @@ def suggest_beers(query: str, *, brewery: str = "", limit: int = 12) -> list[Bee
                 )
             )
 
+    # A brand named exactly like one of its beers ("Pilsner Urquell") would
+    # show up twice, and the product suggestion is the more precise one.
+    product_names = {normalize_beer_text(item.name) for _, _, _, item in scored}
     for brand in BeerBrand.objects.filter(active=True).order_by("rank", "name"):
         aliases = _alias_candidates(brand)
-        if not aliases:
+        if not aliases or normalize_beer_text(brand.name) in product_names:
             continue
         score = 7
         for alias in aliases:
