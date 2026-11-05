@@ -203,6 +203,8 @@
     var suggestSeq = 0;
 
     function closeSuggest(input) {
+      clearTimeout(suggestTimer);
+      suggestSeq++;
       var box = input.closest("[data-beer]").querySelector("[data-suggest]");
       box.hidden = true;
       box.textContent = "";
@@ -235,8 +237,6 @@
     }
 
     function pickSuggestion(input, option) {
-      clearTimeout(suggestTimer);
-      suggestSeq++;
       input.value = option.textContent;
       closeSuggest(input);
       refreshTotal();
@@ -247,7 +247,7 @@
       if (!input.matches("[data-name]")) return;
       clearTimeout(suggestTimer);
       var q = input.value.trim();
-      if (q.length < 2) { suggestSeq++; closeSuggest(input); return; }
+      if (q.length < 2) { closeSuggest(input); return; }
       suggestTimer = setTimeout(async function () {
         var seq = ++suggestSeq;
         var res = await window.npApi("/v1/beer-brands/suggest?limit=6&q=" + encodeURIComponent(q));
@@ -288,7 +288,7 @@
       if (option) pickSuggestion(option.closest("[data-beer]").querySelector("[data-name]"), option);
     });
     list.addEventListener("focusout", function (event) {
-      if (event.target.matches("[data-name]")) { suggestSeq++; closeSuggest(event.target); }
+      if (event.target.matches("[data-name]")) closeSuggest(event.target);
     });
 
     form.querySelector("[data-add-beer]").addEventListener("click", function () { addRow("", "").focus(); });

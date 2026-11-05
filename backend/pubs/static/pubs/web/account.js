@@ -161,12 +161,13 @@
     var body = {};
     body[input.name] = value;
     if (input.type === "checkbox") input.disabled = true;
+    else scope.dataset.latest = value;
     var result = await send(input.dataset.toggle, { method: "PATCH", body: body, ugc: "ugc" in input.dataset && value === true });
     input.disabled = false;
-    if (result.ok) {
-      if (input.type === "radio") scope.dataset.saved = value;
-      return showError(scope, "");
-    }
+    if (input.type === "radio" && result.ok) scope.dataset.saved = value;
+    // An older radio save must not touch the UI after the user picked something newer.
+    if (input.type === "radio" && scope.dataset.latest !== value) return;
+    if (result.ok) return showError(scope, "");
     if (input.type === "checkbox") input.checked = !value;
     else scope.querySelector('input[value="' + scope.dataset.saved + '"]').checked = true;
     showError(scope, message(result));
