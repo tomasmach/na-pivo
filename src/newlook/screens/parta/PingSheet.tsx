@@ -20,6 +20,7 @@ import { C, s } from '../../theme';
 import { currentCountPlace, useNvPlaceStore } from '../stamgast/placeStore';
 import { CheckRow, useParty } from '../tour/TourRunScreens';
 import { PickerRow } from './NovaPozvanka';
+import { personName } from './partaModel';
 import { usePartaStore } from './partaStore';
 
 type Open = 'where' | 'whom' | null;
@@ -109,7 +110,8 @@ export function PingSheet() {
       return;
     }
     if (res.ok) {
-      toast({ kind: 'saved', title: t.nv.parta.pingedToast, sub: t.nv.parta.pingSentSub(target.name), icon: 'bell-ring' });
+      const who = !recipientIds ? undefined : recipientIds.length === 1 ? personName(friends.find((f) => f.id === recipientIds[0]) ?? null) : t.nv.parta.peopleN(recipientIds.length);
+      toast({ kind: 'saved', title: t.nv.parta.pingedToast, sub: t.nv.parta.pingSentSub(target.name, who), icon: 'bell-ring' });
       void usePartaStore.getState().reload();
     } else {
       await enqueueFriendOp({ op: 'activity', clientId, payload: { pub: target, message, recipientIds, startedAt } });
@@ -177,7 +179,8 @@ export function PingSheet() {
                   sub={friend.nickname ? `@${friend.nickname}` : ''}
                   selected={selected}
                   last={i === friends.length - 1}
-                  onPress={() => setPicked(selected ? chosen.filter((id) => id !== friend.id) : [...chosen, friend.id])}
+                  // The last one stays picked: a ping to nobody has nothing to send.
+                  onPress={() => setPicked(selected ? (chosen.length > 1 ? chosen.filter((id) => id !== friend.id) : chosen) : [...chosen, friend.id])}
                 />
               );
             })

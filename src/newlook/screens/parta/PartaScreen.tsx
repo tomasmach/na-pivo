@@ -296,7 +296,7 @@ export function PartaScreen() {
       >
         <TabHeader tab="parta" title={t.nv.parta.title}>
           <Button label={t.nv.parta.pingPartyShort} icon="bell-ring" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/cinknout')} />
-          <IconButton icon="user-plus" label={t.nv.parta.add} onPress={() => router.push('/nv/sprava-party')} />
+          <IconButton icon="user-plus" label={t.nv.parta.addA11y} onPress={() => router.push('/nv/sprava-party')} />
         </TabHeader>
         {failed && dashboard ? (
           <Press onPress={() => void load()} style={[s.row, { gap: 10, paddingHorizontal: 4 }]}>
@@ -390,13 +390,7 @@ export function PartaScreen() {
                 title={t.nv.parta.you}
                 titleWeight={700}
                 sub={!visible ? t.nv.parta.invisible : me ? (me.reactions?.cheers ? t.nv.parta.cheersAt(me.pubName, me.reactions.cheers) : t.nv.parta.visibleAt(me.pubName)) : t.nv.parta.visibleNotOut}
-                onPress={() => router.push('/nv/cinknout')}
-                trailing={
-                  <View style={[s.row, { gap: 10 }]}>
-                    <Icon name="chevron-right" size={16} color={C.muted} />
-                    <Toggle value={visible} onChange={setVisible} label={t.nv.parta.you} />
-                  </View>
-                }
+                trailing={<Toggle value={visible} onChange={setVisible} />}
               />
               {presence.map((p, i) => (
                 <LiveRow key={p.account.id} profile={p.account} cheer={p} last={i === presence.length - 1 && homePresence.length === 0} sub={t.nv.parta.liveSub(p.pubName, p.beers)} />

@@ -388,8 +388,8 @@ function CounterView() {
         </View>
         <View style={[s.row, { paddingTop: 4 }]}>
           <QuickAction icon="plus" label={copy.quickOther} onPress={openAddDrink} />
-          <QuickAction icon="camera" label={copy.quickPhoto} onPress={() => router.push('/nv/do-denicku')} />
           <QuickAction icon="bell-ring" label={copy.quickPing} onPress={() => router.push('/nv/cinknout')} />
+          <QuickAction icon="camera" label={copy.quickPhoto} onPress={() => router.push('/nv/do-denicku')} />
           <QuickAction icon="circle-check" label={copy.quickDone} onPress={finish} />
         </View>
         {nudges.newBeer && question ? (
