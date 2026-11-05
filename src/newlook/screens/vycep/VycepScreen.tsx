@@ -446,7 +446,7 @@ export function VycepScreen() {
         }
       />
       <TopFade />
-      <BottomFade height={tabSpace + 40} />
+      <BottomFade height={tabSpace + 40} tabBar />
     </View>
   );
 }

@@ -288,7 +288,9 @@ export function TopFade({ below }: { below?: number }) {
   );
 }
 
-export function BottomFade({ height }: { height: number }) {
+/** `tabBar` leaves the bar alone where Liquid Glass shows the content under it. */
+export function BottomFade({ height, tabBar = false }: { height: number; tabBar?: boolean }) {
+  if (tabBar && glassAvailable) return null;
   return (
     <View
       pointerEvents="none"

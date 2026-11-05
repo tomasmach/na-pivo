@@ -445,7 +445,7 @@ export function PartaScreen() {
         ) : null}
       </ScrollView>
       <TopFade />
-      <BottomFade height={tabSpace + 40} />
+      <BottomFade height={tabSpace + 40} tabBar />
     </View>
   );
 }

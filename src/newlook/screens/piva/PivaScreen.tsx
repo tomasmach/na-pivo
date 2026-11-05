@@ -275,7 +275,7 @@ export function PivaScreen() {
         )}
       </ScrollView>
       <TopFade />
-      <BottomFade height={tabSpace + 40} />
+      <BottomFade height={tabSpace + 40} tabBar />
     </View>
   );
 }
