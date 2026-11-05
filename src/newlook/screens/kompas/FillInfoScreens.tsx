@@ -147,6 +147,8 @@ export function DoplnitInfoScreen() {
     setBeers([...shownBeers.filter((b) => !isSameBeerIdentity(b, beer)), beer].slice(0, MAX_BEERS));
   };
   const formBeer = form ? readBeerDraft(form, currency).beer : null;
+  // An add form opened and left empty is not a draft, so it must not block saving the rest.
+  const blankAdd = form?.index === null && !form.name.trim() && !form.price.trim();
   const withForm = (): CommunityBeer[] => {
     if (!form || !formBeer) return shownBeers;
     if (form.index === null) return [...shownBeers.filter((b) => !isSameBeerIdentity(b, formBeer)), formBeer].slice(0, MAX_BEERS);
@@ -270,7 +272,7 @@ export function DoplnitInfoScreen() {
                 {L().seenByOthers}
               </T>
             </View>
-            <Button label={L().save} onPress={save} disabled={(hoursTouched && !normalized) || (!!form && !formBeer)} />
+            <Button label={L().save} onPress={save} disabled={(hoursTouched && !normalized) || (!!form && !formBeer && !blankAdd)} />
           </View>
         )
       }

@@ -214,6 +214,19 @@ describe('beers on tap in "Doplnit info"', () => {
     ]);
   });
 
+  it('saves the other changes when an add form was opened and left empty', async () => {
+    const renderer = await renderBeers();
+    act(() => pressText(renderer, 'Pilsner Urquell'));
+    act(() => inputs(renderer)[1].props.onChangeText('59'));
+    act(() => pressText(renderer, k.done));
+    act(() => pressText(renderer, k.addBeer));
+    const save = renderer.root.findAll((n: { props: { label?: string } }) => n.props.label === k.save)[0];
+    expect(save.props.disabled).toBe(false);
+    act(() => pressText(renderer, k.save));
+
+    expect(savedBeers()).toEqual([{ name: 'Pilsner Urquell', volumeMl: 500, priceCzk: 59 }]);
+  });
+
   it('adds the same beer as a small one next to the big one', async () => {
     const renderer = await renderBeers();
     act(() => pressText(renderer, 'Pilsner Urquell'));
