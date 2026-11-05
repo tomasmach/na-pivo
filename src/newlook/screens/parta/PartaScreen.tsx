@@ -19,7 +19,7 @@ import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 
-import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
+import { BottomFade, TabHeader, TopFade, useTabBarSpace } from '../../components/chrome';
 import { StatusCard } from '../../components/StatusCard';
 import { Ticket } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
@@ -439,6 +439,7 @@ export function PartaScreen() {
           </Animated.View>
         ) : null}
       </ScrollView>
+      <TopFade />
       <BottomFade height={tabSpace + 40} />
     </View>
   );

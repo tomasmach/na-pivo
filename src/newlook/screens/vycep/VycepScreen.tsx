@@ -25,7 +25,7 @@ import { intlLocale, t } from '@/i18n';
 import { useToursStore } from '@/stores/toursStore';
 import { useVycepStore } from '@/stores/vycepStore';
 
-import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
+import { BottomFade, TabHeader, TopFade, useTabBarSpace } from '../../components/chrome';
 import { StatusCard } from '../../components/StatusCard';
 import { Icon, type IconName } from '../../components/Icon';
 import { D, T, Button, Dot, Press, Segmented } from '../../components/ui';
@@ -447,6 +447,7 @@ export function VycepScreen() {
           </>
         }
       />
+      <TopFade />
       <BottomFade height={tabSpace + 40} />
     </View>
   );

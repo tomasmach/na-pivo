@@ -206,6 +206,7 @@ export function Screen({
   const tabSpace = useTabBarSpace();
   const bottomBase = tab ? tabSpace : Math.max(insets.bottom, 16);
   const [footerH, setFooterH] = useState(52);
+  const [headerH, setHeaderH] = useState(0);
   const keyboard = useKeyboardLift();
   const footerBottom = bottomBase + (tab ? 14 : 0);
   const footerLift = useAnimatedStyle(() => ({
@@ -223,7 +224,7 @@ export function Screen({
   );
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingBottom: footerRoom }}>
-      <View style={{ paddingTop: insets.top + 8 }}>
+      <View style={{ paddingTop: insets.top + 8 }} onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
         {header ? <View style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>{header}</View> : null}
       </View>
       {scroll ? (
@@ -240,6 +241,7 @@ export function Screen({
       ) : (
         <View style={{ flex: 1, paddingBottom: bottomBase + footerSpace }}>{content}</View>
       )}
+      {scroll && headerH > 0 ? <TopFade below={headerH} /> : null}
       <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} />
       {footer ? (
         <Animated.View
@@ -250,6 +252,31 @@ export function Screen({
         </Animated.View>
       ) : null}
     </View>
+  );
+}
+
+const TOP_FADE = 24;
+
+/**
+ * Keeps scrolled content from running under the clock: solid behind the status bar, then a short fade.
+ * With `below`, only the fade, starting at that offset under a fixed header.
+ */
+export function TopFade({ below }: { below?: number }) {
+  const insets = useSafeAreaInsets();
+  const solid = below === undefined ? insets.top : 0;
+  const height = solid + TOP_FADE;
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: below ?? 0,
+        height,
+        experimental_backgroundImage: `linear-gradient(180deg, ${C.bg} 0%, ${C.bg} ${Math.round((solid / height) * 100)}%, ${C.bg}00 100%)`,
+      }}
+    />
   );
 }
 

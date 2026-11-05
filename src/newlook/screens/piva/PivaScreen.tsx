@@ -5,7 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomFade, TabHeader, useTabBarSpace } from '../../components/chrome';
+import { BottomFade, TabHeader, TopFade, useTabBarSpace } from '../../components/chrome';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { D, T, Card, Chip, IconButton, Press, Row, Segmented, Tile } from '../../components/ui';
@@ -267,6 +267,7 @@ export function PivaScreen() {
           </Animated.View>
         )}
       </ScrollView>
+      <TopFade />
       <BottomFade height={tabSpace + 40} />
     </View>
   );

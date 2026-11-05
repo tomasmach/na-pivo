@@ -73,7 +73,7 @@ const DISPLAY_MIN_LINE = 1.15;
 export function display(size: number, color: string = C.white, lineHeight = 1.05): TextStyle {
   const line = Math.max(lineHeight, DISPLAY_MIN_LINE);
   const trim = Math.round((size * (line - lineHeight)) / 2);
-  return { fontFamily: DISPLAY_FONT, fontSize: size, color, lineHeight: Math.round(size * line), marginVertical: -trim };
+  return { fontFamily: DISPLAY_FONT, fontSize: size, color, lineHeight: Math.round(size * line), marginVertical: -trim, fontVariant: ['tabular-nums'] };
 }
 
 export const shadow = {
