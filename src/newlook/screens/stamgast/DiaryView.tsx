@@ -159,7 +159,7 @@ function Record({ value, label }: { value: string; label: string }) {
       <D s={22} lh={1.15}>
         {value}
       </D>
-      <T s={12} w={500} c={C.muted} numberOfLines={1}>
+      <T s={12} w={500} c={C.muted} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
         {label}
       </T>
     </View>
@@ -189,7 +189,7 @@ function NightsCard({ nights, today }: { nights: readonly Night[]; today: string
             </T>
             <PubLineWithMarks night={night} />
           </View>
-          <D s={22}>{String(night.beers)}</D>
+          <D s={22}>{t.nv.stamgast.recordBeers(night.beers)}</D>
         </Press>
       ))}
     </View>
@@ -251,7 +251,7 @@ function Month({ nights, today, onToday }: { nights: Night[]; today: string; onT
 
   return (
     <>
-      <Hero count={sumBeers(inMonth)} label={copy.heroMonth(copy.monthsIn[month])} meta={heroMeta(inMonth, money(sumSpent(inMonth)))} />
+      <Hero count={sumBeers(inMonth)} label={copy.heroMonth(sumBeers(inMonth), copy.monthsIn[month])} meta={heroMeta(inMonth, money(sumSpent(inMonth)))} />
       <Press
         haptic
         onPress={() => {
@@ -351,7 +351,7 @@ function Week({ nights, today }: { nights: Night[]; today: string }) {
   const max = Math.max(...counts, 1);
   return (
     <>
-      <Hero count={sumBeers(week)} label={copy.heroWeek} meta={heroMeta(week, money(sumSpent(week)))} />
+      <Hero count={sumBeers(week)} label={copy.heroWeek(sumBeers(week))} meta={heroMeta(week, money(sumSpent(week)))} />
       <View style={{ backgroundColor: C.card, borderRadius: 24, paddingTop: 16, paddingHorizontal: 14, paddingBottom: 14, gap: 8 }}>
         <CardHead title={copy.weekTitle(days[0], days[6])} onPrev={() => setOffset(offset - 1)} onNext={() => setOffset(offset + 1)} nextDisabled={offset >= 0} />
         <View style={[s.row, { height: 160, alignItems: 'flex-end', gap: 14, paddingHorizontal: 6 }]}>
@@ -415,7 +415,7 @@ function Year({ nights, today }: { nights: Night[]; today: string }) {
 
   return (
     <>
-      <Hero count={total} label={copy.heroYear(year)} meta={[copy.evenings(evenings), copy.pubs(distinctPubs(inYear)), money(spent)].join(copy.metaSep)} />
+      <Hero count={total} label={copy.heroYear(total, year)} meta={[copy.evenings(evenings), copy.pubs(distinctPubs(inYear)), money(spent)].join(copy.metaSep)} />
       <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 14, gap: 12 }}>
         <View style={[s.row, { gap: 6 }]}>
           <IconButton icon="chevron-left" size={32} iconSize={16} label={copy.prevYear} onPress={() => setOffset(offset - 1)} />

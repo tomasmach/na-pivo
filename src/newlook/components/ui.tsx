@@ -111,6 +111,7 @@ export function Button({
   disabled,
   flex,
   testID,
+  haptic = true,
 }: {
   label: string;
   sub?: string;
@@ -122,6 +123,7 @@ export function Button({
   disabled?: boolean;
   flex?: boolean;
   testID?: string;
+  haptic?: boolean;
 }) {
   // A dimmed yellow turns brown on the dark ground, so a disabled primary sits back as a plain control.
   const dimmedPrimary = !!disabled && kind === 'primary';
@@ -129,7 +131,7 @@ export function Button({
   const labelSize = height >= 56 ? 17 : height >= 50 ? 16 : 15;
   return (
     <Press
-      haptic
+      haptic={haptic}
       disabled={disabled}
       onPress={onPress}
       accessibilityRole="button"

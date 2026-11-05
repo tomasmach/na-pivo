@@ -238,5 +238,5 @@ export const partaEn: Strings['nv']['parta'] = {
   photoToday: (time) => `today ${time}`,
   photoYesterday: (time) => `yesterday ${time}`,
   beerPhotos: 'Beer photos',
-  allPhotos: (n) => `All ${n}`,
+  allPhotos: (n) => (n === 1 ? 'All' : `All ${n}`),
 };

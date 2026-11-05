@@ -72,7 +72,7 @@ export function logDrink(place: CountPlace, beer: CountableDrink, menu?: readonl
   }
   const minutes = minutesAgo(at);
   dialog({
-    title: minutes === 0 ? t.counter.rapidInlineJustNow : t.counter.rapidInline(minutes),
+    title: t.nv.stamgast.rapidAgain(minutes),
     actions: [
       { label: t.counter.cancel, kind: 'raised' },
       { label: t.counter.rapidInlineConfirm, kind: 'primary', onPress: () => record(place, beer, menu) },
