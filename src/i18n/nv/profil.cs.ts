@@ -7,8 +7,7 @@ export const profilCs = {
     avatarA11y: (level: number | null) => (level == null ? 'Profil' : `Profil, level ${level}`),
   },
   profile: {
-    levelLine: (level: number, title: string, isPublic: boolean) =>
-      `Level ${level} · ${title} · ${isPublic ? 'veřejný profil' : 'soukromý profil'}`,
+    levelLine: (level: number, title: string) => `Level ${level} · ${title}`,
     edit: 'Upravit profil',
     settings: 'Nastavení',
     signIn: 'Přihlásit se',

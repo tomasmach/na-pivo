@@ -45,7 +45,7 @@ export const partaEn: Strings['nv']['parta'] = {
   liveSub: (pub: string, n: number) => `${pub} · ${n} ${beers(n)}`,
   atSomeonesHome: 'At someone’s place',
 
-  wantsIn: (name: string) => `${name} wants to join the crew`,
+  requestsTitle: 'Want to join',
   decline: 'Decline',
   accept: 'Accept',
   joined: (name: string) => `${name} is in the crew.`,

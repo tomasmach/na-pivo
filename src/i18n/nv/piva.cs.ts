@@ -58,6 +58,7 @@ export const pivaCs = {
   mostOften: (verdict: string) => `nejčastěji „${verdict}“`,
   rankingFailed: 'Žebříček se nedotáhl.',
   rankingEmpty: 'Žebříček se teprve plní, tak ohodnoť piva, která piješ.',
+  findBeer: 'Najít pivo',
   unratedTitle: 'Pil jsi, ještě jsi nehodnotil',
   unratedHint: 'pomůžeš žebříčku',
   drankTimes: (n: number) => `pil jsi ho ${n}×`,

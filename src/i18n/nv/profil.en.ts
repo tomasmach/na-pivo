@@ -7,8 +7,7 @@ export const profilEn: Strings['nv']['profil'] = {
     avatarA11y: (level: number | null) => (level == null ? 'Profile' : `Profile, level ${level}`),
   },
   profile: {
-    levelLine: (level: number, title: string, isPublic: boolean) =>
-      `Level ${level} · ${title} · ${isPublic ? 'public profile' : 'private profile'}`,
+    levelLine: (level: number, title: string) => `Level ${level} · ${title}`,
     edit: 'Edit profile',
     settings: 'Settings',
     signIn: 'Sign in',

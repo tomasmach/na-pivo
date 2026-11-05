@@ -58,6 +58,7 @@ export const pivaEn: Strings['nv']['piva'] = {
   mostOften: (verdict: string) => `most often “${verdict}”`,
   rankingFailed: 'The ranking did not come through.',
   rankingEmpty: 'The ranking is still filling up, so rate the beers you drink.',
+  findBeer: 'Find a beer',
   unratedTitle: 'You drank these but never rated them',
   unratedHint: 'helps the ranking',
   drankTimes: (n: number) => `you had it ${n}×`,
